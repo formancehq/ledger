@@ -15,12 +15,13 @@ import (
 	"testing"
 	"time"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // driverConn runs the generated gRPC client against a deterministic transport

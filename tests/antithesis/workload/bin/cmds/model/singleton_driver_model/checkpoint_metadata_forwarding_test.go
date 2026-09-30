@@ -7,14 +7,16 @@ import (
 	"testing"
 	"time"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
+
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 // Reproduce the RPC contract that the model relies on: GetLedger arriving at
@@ -64,6 +66,7 @@ type checkpointFenceLeader struct {
 
 func (s *checkpointFenceLeader) GetLedger(context.Context, *commonpb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
 	s.fenced.Store(true)
+
 	return &commonpb.LedgerInfo{}, nil
 }
 
@@ -73,6 +76,7 @@ func (*checkpointFenceLeader) Barrier(context.Context, *commonpb.BarrierRequest)
 
 type checkpointFenceFollower struct {
 	checkpointMetadataServer
+
 	leader     commonpb.BucketServiceClient
 	forwarded  atomic.Int32
 	localPolls atomic.Int32
@@ -116,6 +120,7 @@ func serveCheckpointMetadata(t *testing.T, bucket commonpb.BucketServiceServer, 
 	conn, err := grpc.NewClient("passthrough:///checkpoint-fence", grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) { return listener.DialContext(ctx) }), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
+
 	return commonpb.NewBucketServiceClient(conn), commonpb.NewClusterServiceClient(conn)
 }
 
@@ -217,6 +222,7 @@ func newCheckpointFenceProbe() *checkpointFenceProbe {
 
 func (s *checkpointFenceProbe) Barrier(context.Context, *commonpb.BarrierRequest) (*commonpb.BarrierResponse, error) {
 	s.barriers.Add(1)
+
 	return &commonpb.BarrierResponse{CommitIndex: s.target}, s.barrierErr
 }
 

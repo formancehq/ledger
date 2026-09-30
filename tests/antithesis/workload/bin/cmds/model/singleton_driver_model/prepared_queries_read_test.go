@@ -1,7 +1,6 @@
 package main
 
 import (
-	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"testing"
 
 	"github.com/holiman/uint256"
@@ -11,6 +10,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )

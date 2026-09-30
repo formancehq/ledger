@@ -6,11 +6,12 @@ import (
 	"testing"
 	"time"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
+
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestSetupLedgersCanRemainBlockedBeforeFirstOutcome(t *testing.T) {
@@ -67,6 +68,7 @@ func requireSignal(t *testing.T, signal <-chan struct{}, message string) {
 
 type blockingSetupServer struct {
 	commonpb.UnimplementedBucketServiceServer
+
 	applyEntered chan struct{}
 }
 

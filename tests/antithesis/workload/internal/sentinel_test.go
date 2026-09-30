@@ -6,16 +6,19 @@ import (
 	"testing"
 	"time"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/sdktest"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/sdktest"
 )
 
 type sentinelSDKServer struct {
 	commonpb.UnimplementedBucketServiceServer
+
 	code  codes.Code
 	calls atomic.Int32
 }
@@ -28,6 +31,7 @@ func (s *sentinelSDKServer) GetTransaction(_ context.Context, request *commonpb.
 	if s.code != codes.OK {
 		return nil, status.Error(s.code, "sentinel read fixture")
 	}
+
 	return &commonpb.GetTransactionResponse{Transaction: &commonpb.Transaction{Id: 42}}, nil
 }
 

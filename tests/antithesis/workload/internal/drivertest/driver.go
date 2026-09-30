@@ -15,15 +15,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
-	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 // CheckDriver executes the unchanged command entry point and requires each

@@ -9,10 +9,11 @@ import (
 	"testing/synctest"
 	"time"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"google.golang.org/grpc"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // pollingConn exercises the generated client and observes the context delivered
@@ -31,6 +32,7 @@ func (c pollingConn) Invoke(ctx context.Context, _ string, _, reply any, _ ...gr
 	state.Leader = 1
 	state.Nodes = []*commonpb.NodeInfo{{Id: 1, Suffrage: "Voter"}}
 	state.ClusterConfig = &commonpb.ClusterConfig{}
+
 	return nil
 }
 

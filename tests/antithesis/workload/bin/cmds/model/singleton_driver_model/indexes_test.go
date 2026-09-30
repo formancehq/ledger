@@ -6,16 +6,18 @@ import (
 	"strings"
 	"testing"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
-	"github.com/formancehq/ledger/v3/internal/domain/indexes"
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
-	"github.com/formancehq/ledger/v3/tests/oracle"
-	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
+	"github.com/formancehq/ledger/v3/tests/oracle"
+	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func TestIndexNeeds(t *testing.T) {
@@ -185,6 +187,7 @@ func TestIndexedQueryOutcomeLegal_MismatchAndAbsentCoexist(t *testing.T) {
 // interface — the poller must not call anything else.
 type fakeStatusClient struct {
 	commonpb.BucketServiceClient
+
 	resp *commonpb.GetIndexStatusResponse
 }
 

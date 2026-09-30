@@ -4,11 +4,12 @@ import (
 	"sync"
 	"testing"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
-	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	"github.com/formancehq/ledger/v3/tests/oracle"
 )
 
 func TestCheckpointCreateGateSerializesPredictedIDProbes(t *testing.T) {
@@ -149,6 +150,7 @@ func checkpointMetadata(value string) map[string]*commonpb.MetadataValue {
 
 func checkpointMetadataWrite(value string, sequence uint64) (oracleBulk oracle.Bulk, response *commonpb.ApplyResponse) {
 	md := checkpointMetadata(value)
+
 	return bulkOf(&commonpb.Request{Type: &commonpb.Request_SaveLedgerMetadata{SaveLedgerMetadata: &commonpb.SaveLedgerMetadataRequest{Ledger: "L", Metadata: md}}}), &commonpb.ApplyResponse{Logs: []*commonpb.Log{{Sequence: sequence, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_SavedLedgerMetadata{SavedLedgerMetadata: &commonpb.SavedLedgerMetadataLog{Ledger: "L", Metadata: md}}}}}}
 }
 

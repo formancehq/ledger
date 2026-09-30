@@ -8,11 +8,6 @@ import (
 	"testing"
 	"time"
 
-	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
-	ledgergrpc "github.com/formancehq/ledger/v3/internal/adapter/grpc"
-	"github.com/formancehq/ledger/v3/internal/application/ctrl/ctrlmock"
-	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/mock/gomock"
@@ -21,6 +16,12 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgergrpc "github.com/formancehq/ledger/v3/internal/adapter/grpc"
+	"github.com/formancehq/ledger/v3/internal/application/ctrl/ctrlmock"
+	"github.com/formancehq/ledger/v3/internal/pkg/version"
 )
 
 // Exercise the production list handler and real gRPC trailers, rather than

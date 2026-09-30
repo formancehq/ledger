@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/antithesishq/antithesis-sdk-go/random"
+
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 )
@@ -47,6 +48,7 @@ func generateCheckpointBulk(state oracle.GlobalState) oracle.Bulk {
 	if req == nil {
 		req = &commonpb.Request{Type: &commonpb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &commonpb.CreateQueryCheckpointRequest{}}}
 	}
+
 	return oracle.Bulk{Requests: []*commonpb.Request{req}}
 }
 

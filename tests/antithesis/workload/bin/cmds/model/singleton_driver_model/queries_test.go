@@ -1,7 +1,6 @@
 package main
 
 import (
-	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"math/big"
 	"testing"
 
@@ -9,6 +8,7 @@ import (
 
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )

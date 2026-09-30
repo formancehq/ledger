@@ -2,6 +2,7 @@ package internal
 
 import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 

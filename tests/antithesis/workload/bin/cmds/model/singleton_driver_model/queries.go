@@ -10,7 +10,6 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
-	"github.com/formancehq/ledger/v3/internal/proto/publicpolicy"
 	"github.com/holiman/uint256"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -18,6 +17,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	"github.com/formancehq/ledger/v3/internal/proto/publicpolicy"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"

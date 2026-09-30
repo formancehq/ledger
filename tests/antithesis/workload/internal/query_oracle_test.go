@@ -6,16 +6,18 @@ import (
 	"io"
 	"testing"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
-	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/pkg/actions"
-	workload "github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/drivertest"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/pkg/actions"
+
+	workload "github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/drivertest"
 )
 
 const permanentOracleError = "query oracle encountered a permanent setup or read error"
@@ -45,7 +47,7 @@ func TestQueryOracleReadErrors(t *testing.T) {
 				} else {
 					seedOracle(t, ctx, client)
 				}
-				var reader commonpb.BucketServiceClient = client
+				var reader = client
 				if !tc.missingIndex {
 					reader = &faultedQueryClient{BucketServiceClient: client, failure: status.Error(tc.code, "injected read failure"), open: tc.open}
 				}
@@ -190,6 +192,7 @@ func seedOracle(t *testing.T, ctx context.Context, client commonpb.BucketService
 // neither implement a substitute query engine nor manufacture missing indexes.
 type faultedQueryClient struct {
 	commonpb.BucketServiceClient
+
 	failure      error
 	open         bool
 	once         bool

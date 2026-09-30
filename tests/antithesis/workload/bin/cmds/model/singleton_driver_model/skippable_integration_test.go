@@ -7,15 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
-	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
-	"github.com/formancehq/ledger/v3/pkg/actions"
-	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
-	"github.com/formancehq/ledger/v3/pkg/testserver"
-	workloadinternal "github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
-	"github.com/formancehq/ledger/v3/tests/oracle"
-	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -23,6 +14,17 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
+	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
+	"github.com/formancehq/ledger/v3/pkg/testserver"
+	"github.com/formancehq/ledger/v3/tests/oracle"
+	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
+
+	workloadinternal "github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 // Exercise the same wire requests through the real admission/FSM path and the

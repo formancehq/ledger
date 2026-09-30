@@ -7,11 +7,13 @@ import (
 	"testing"
 	"time"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func TestCheckpointMetadataReadsFenceSameNode(t *testing.T) {
@@ -82,6 +84,7 @@ func (s *checkpointMetadataServer) Barrier(context.Context, *commonpb.BarrierReq
 	if s.denied {
 		return nil, status.Error(codes.PermissionDenied, "fence denied")
 	}
+
 	return &commonpb.BarrierResponse{CommitIndex: 42}, nil
 }
 

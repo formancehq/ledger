@@ -3,7 +3,6 @@ package internal_test
 import (
 	"context"
 	"fmt"
-	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"io"
 	"math/big"
 	"net"
@@ -11,16 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
-	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
-	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
-	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/infra/transport"
-	"github.com/formancehq/ledger/v3/pkg/actions"
-	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
-	"github.com/formancehq/ledger/v3/pkg/testserver"
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -28,6 +17,19 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
+	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/transport"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
+	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
+	"github.com/formancehq/ledger/v3/pkg/testserver"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 // The backend is a real single-node Ledger (admission, Raft, FSM and Pebble).

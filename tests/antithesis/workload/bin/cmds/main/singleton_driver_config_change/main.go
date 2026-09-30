@@ -24,10 +24,12 @@ import (
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 var ccSentinelLedger = internal.PrefixSentinel.WithSuffix("config-change")

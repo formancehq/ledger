@@ -6,8 +6,10 @@ import (
 	"sync"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 

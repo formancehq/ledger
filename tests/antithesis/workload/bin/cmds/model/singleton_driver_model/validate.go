@@ -1,19 +1,21 @@
 package main
 
 import (
-	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"fmt"
 	"maps"
 	"slices"
 	"strconv"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"github.com/holiman/uint256"
+
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/tests/oracle"
-	"github.com/holiman/uint256"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 // The model-conformance checks: every observed server outcome — a committed

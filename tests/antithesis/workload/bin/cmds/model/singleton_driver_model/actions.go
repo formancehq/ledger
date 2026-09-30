@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"math/big"
 	"math/bits"
 	"slices"
@@ -10,12 +9,15 @@ import (
 	"strings"
 
 	"github.com/antithesishq/antithesis-sdk-go/random"
+	"github.com/holiman/uint256"
+
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/pkg/actions"
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/formancehq/ledger/v3/tests/oracle"
-	"github.com/holiman/uint256"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 // applyRequest renders a bulk into a sendable ApplyRequest. Idempotency is per
@@ -312,6 +314,7 @@ func generateLifecycle(g oracle.GlobalState, ledgers []string, newLedger string,
 		if len(mirrors) == 0 {
 			return nil
 		}
+
 		return &commonpb.Request{Type: &commonpb.Request_PromoteLedger{PromoteLedger: &commonpb.PromoteLedgerRequest{Ledger: random.RandomChoice(mirrors)}}}
 	default:
 		// Enables stop every business worker for the recovery window, so generate

@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/formancehq/ledger/v3/internal/protohelpers"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 

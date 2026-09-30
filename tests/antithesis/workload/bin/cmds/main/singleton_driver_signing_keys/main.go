@@ -6,6 +6,7 @@ import (
 	"log"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/pkg/actions"

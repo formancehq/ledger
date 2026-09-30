@@ -2,14 +2,15 @@ package internal
 
 import (
 	"fmt"
-	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"math"
 	"math/big"
 	"math/rand"
 	"strconv"
 
 	antirandom "github.com/antithesishq/antithesis-sdk-go/random"
+
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 // GeometricBulkSize returns a value in [low, high] drawn from a Geometric(p) distribution

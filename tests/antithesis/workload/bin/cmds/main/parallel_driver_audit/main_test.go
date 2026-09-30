@@ -14,13 +14,14 @@ import (
 	"testing"
 	"time"
 
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+
+	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestAuditDriverStream(t *testing.T) {

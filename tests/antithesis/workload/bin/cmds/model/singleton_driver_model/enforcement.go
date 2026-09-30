@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/antithesishq/antithesis-sdk-go/random"
+
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
@@ -21,5 +22,6 @@ func enforcementModeRequest(ledger string, mode commonpb.ChartEnforcementMode, n
 	if nested {
 		return &commonpb.Request{Type: &commonpb.Request_Apply{Apply: &commonpb.LedgerApplyRequest{Ledger: ledger, Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_SetDefaultEnforcementMode{SetDefaultEnforcementMode: &commonpb.SetDefaultEnforcementModeRequest{EnforcementMode: mode}}}}}}
 	}
+
 	return &commonpb.Request{Type: &commonpb.Request_SetDefaultEnforcementMode{SetDefaultEnforcementMode: &commonpb.SetDefaultEnforcementModeLedgerRequest{Ledger: ledger, EnforcementMode: mode}}}
 }

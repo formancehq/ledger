@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"log"
 	"math/big"
 	"time"
@@ -13,6 +12,7 @@ import (
 	antirandom "github.com/antithesishq/antithesis-sdk-go/random"
 
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )

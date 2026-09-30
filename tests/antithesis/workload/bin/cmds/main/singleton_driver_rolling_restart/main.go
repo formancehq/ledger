@@ -15,16 +15,18 @@ package main
 
 import (
 	"context"
-	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"log"
 	"slices"
 	"sync/atomic"
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"k8s.io/client-go/kubernetes"
+
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 var rrSentinelLedger = internal.PrefixSentinel.WithSuffix("rolling-restart")

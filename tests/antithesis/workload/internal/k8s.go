@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -21,6 +20,8 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // ClusterGVR is the GroupVersionResource for the Cluster CRD.

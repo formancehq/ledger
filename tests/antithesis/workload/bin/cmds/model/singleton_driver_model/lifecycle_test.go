@@ -4,16 +4,17 @@ import (
 	"context"
 	"testing"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
-	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/pkg/actions"
-	"github.com/formancehq/ledger/v3/tests/oracle"
-	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/tests/oracle"
+	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
 type immediateApplyClient struct {
@@ -26,6 +27,7 @@ func (immediateApplyClient) Apply(context.Context, *commonpb.ApplyRequest, ...gr
 
 type scriptedApplyClient struct {
 	commonpb.BucketServiceClient
+
 	responses []*commonpb.ApplyResponse
 	errors    []error
 	calls     int

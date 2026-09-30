@@ -3,8 +3,9 @@ package main
 import (
 	"testing"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/stretchr/testify/require"
+
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestCheckpointBaselineUsesProbeAllocationFrontier(t *testing.T) {
