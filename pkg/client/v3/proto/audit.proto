@@ -34,7 +34,8 @@ message AuditEntry {
   // Formula: H(key, header_payload || concat(per_item_payload) ||
   //              previous_audit_hash)
   // where:
-  //   - `key` is derived from the immutable ClusterID via domain-separated BLAKE3
+  //   - `key` is derived from the once-committed random audit secret via
+  //     domain-separated BLAKE3, independently of the operational cluster ID
   //   - `header_payload` is the canonical binary encoding of EVERY other field
   //     of this AuditEntry (sequence, timestamp, proposal_id, outcome,
   //     order_count, ledgers, hash_version, caller_snapshot), rebuilt by the
