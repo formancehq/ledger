@@ -181,7 +181,7 @@ def _create_prepared_query_body():
                     lambda i: f"pq-{i}"
                 ),
                 "target": st.just(target),
-                "filter": st.sampled_from(_FILTERS_BY_TARGET[target]),
+                "filter": st.sampled_from([None, *_FILTERS_BY_TARGET[target]]),
             }
         )
 
@@ -195,7 +195,7 @@ def _create_prepared_query_body():
 def _update_prepared_query_body():
     # Update targets an existing query by (fuzzed) name; any well-formed filter
     # is fine for conformance.
-    return st.fixed_dictionaries({"filter": st.sampled_from(_ALL_FILTERS)}).map(
+    return st.fixed_dictionaries({"filter": st.sampled_from([None, *_ALL_FILTERS])}).map(
         copy.deepcopy
     )
 

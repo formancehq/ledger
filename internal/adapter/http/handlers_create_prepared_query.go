@@ -1,6 +1,7 @@
 package http
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -53,8 +54,9 @@ func (s *Server) handleCreatePreparedQuery(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if filter == nil {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("filter is required"))
+	filterInput := bytes.TrimSpace(body.Filter)
+	if filter == nil && len(filterInput) > 0 && !bytes.Equal(filterInput, []byte("null")) {
+		writeBadRequest(w, "INVALID_REQUEST", errors.New("filter must contain at least one condition"))
 
 		return
 	}

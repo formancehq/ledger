@@ -5145,7 +5145,6 @@ components:
       required:
         - name
         - target
-        - filter
       properties:
         name:
           type: string
@@ -5162,14 +5161,21 @@ components:
             target is `LOGS`.
         filter:
           $ref: '#/components/schemas/PreparedQueryFilterInput'
+          description: >-
+            Optional filter. Omit it or set it to `null` to create a match-all
+            query for the selected target. An empty object or empty textual
+            expression is invalid.
 
     UpdatePreparedQueryRequest:
       type: object
-      required:
-        - filter
       properties:
         filter:
           $ref: '#/components/schemas/PreparedQueryFilterInput'
+          description: >-
+            Replacement filter. Omit the field to leave the stored filter
+            unchanged; set it to `null` to remove the filter and make the query
+            match all entities in its target. An empty object or empty textual
+            expression is invalid.
 
     ExecutePreparedQueryRequest:
       type: object
@@ -5216,7 +5222,6 @@ components:
       required:
         - name
         - target
-        - filter
       properties:
         name:
           type: string
@@ -5232,6 +5237,8 @@ components:
             usable prepared-query targets (create, list/get and execute).
         filter:
           $ref: '#/components/schemas/QueryFilter'
+          description: >-
+            Stored filter. Omitted for a match-all prepared query.
         allowedModes:
           type: array
           items:
@@ -5366,10 +5373,15 @@ components:
           `"metadata[status] == \"active\""`.
 
 
-        Responses always echo the stored filter back in the structured
-        `QueryFilter` form.
+        `null` represents a match-all query. An empty object and an empty or
+        whitespace-only textual expression are invalid. Responses echo a stored
+        non-null filter in the structured `QueryFilter` form and omit this field
+        for match-all queries.
       oneOf:
-        - $ref: '#/components/schemas/QueryFilter'
+        - type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/QueryFilter'
         - type: string
           description: Textual filter expression (filter grammar).
 

@@ -112,12 +112,9 @@ func TestProcessUpdatePreparedQuery_RejectsFilterInvalidForStoredTarget(t *testi
 	require.Contains(t, derr.Error(), "accounts")
 }
 
-// TestProcessUpdatePreparedQuery_RejectsNilFilter guards against silently erasing
-// a stored prepared query's filter: an update replaces the filter, and a nil
-// filter passes ValidateFilterForTarget (nil == "no filter"), so without an
-// explicit guard `updated.Filter = nil` would persist and drop the query's
-// definition. The FSM must reject a nil filter (and never call Put).
-func TestProcessUpdatePreparedQuery_RejectsNilFilter(t *testing.T) {
+// TestProcessUpdatePreparedQuery_NilFilterClears pins the Apply/gRPC contract:
+// nil explicitly replaces the stored filter with the match-all definition.
+func TestProcessUpdatePreparedQuery_NilFilterClears(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -126,22 +123,27 @@ func TestProcessUpdatePreparedQuery_RejectsNilFilter(t *testing.T) {
 	mockStore := NewMockScope(ctrl)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger"}).AsReader(), nil)
 
+	previousFilter := &commonpb.QueryFilter{}
+	require.NoError(t, json.Unmarshal([]byte(`{"$exists":{"metadata":"x"}}`), previousFilter))
+
 	pq := setupPreparedQueriesStub(mockStore)
 	pq.onGet(func(_ domain.PreparedQueryKey) (commonpb.PreparedQueryReader, error) {
 		return (&commonpb.PreparedQuery{
 			Name:   "q1",
 			Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-			Filter: &commonpb.QueryFilter{},
+			Filter: previousFilter,
 		}).AsReader(), nil
 	})
-	pq.onPut(func(domain.PreparedQueryKey, *commonpb.PreparedQuery) {
-		t.Fatal("Put must not be called when the update carries a nil filter")
+	pq.onPut(func(key domain.PreparedQueryKey, query *commonpb.PreparedQuery) {
+		require.Equal(t, domain.PreparedQueryKey{LedgerName: "test-ledger", Name: "q1"}, key)
+		require.Nil(t, query.GetFilter())
 	})
 
 	order := &raftcmdpb.UpdatePreparedQueryOrder{Name: "q1"} // Filter left nil
-	_, derr := processUpdatePreparedQuery("test-ledger", order, &Context{Scope: mockStore})
-	require.NotNil(t, derr, "a nil filter must be rejected, not persisted over the stored filter")
-	require.ErrorIs(t, derr, domain.ErrPreparedQueryFilterRequired)
+	payload, derr := processUpdatePreparedQuery("test-ledger", order, &Context{Scope: mockStore})
+	require.Nil(t, derr)
+	require.Equal(t, previousFilter, payload.GetUpdatedPreparedQuery().GetPreviousFilter())
+	require.Nil(t, payload.GetUpdatedPreparedQuery().GetNewFilter())
 }
 
 // TestProcessUpdatePreparedQuery_RejectsNonExecutableStoredTarget covers a

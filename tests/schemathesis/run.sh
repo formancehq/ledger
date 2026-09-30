@@ -130,7 +130,7 @@ pip3 install -q -r "$SCRIPT_DIR/requirements.txt"
 
 echo "==> Verifying Schemathesis event accounting..."
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
-    -s "$SCRIPT_DIR" -p 'test_reporting.py'
+    -s "$SCRIPT_DIR" -p 'test_*.py'
 
 echo "==> Running Schemathesis tests..."
 echo ""

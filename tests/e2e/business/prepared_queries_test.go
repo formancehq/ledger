@@ -15,6 +15,7 @@ import (
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 // accountAddresses extracts addresses from a slice of Account objects.
@@ -934,6 +935,51 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 			Expect(ok).To(BeTrue(), "expected EUR volumes")
 			Expect(eurVol.Input.ToBigInt().Int64()).To(Equal(int64(50)))
 			Expect(eurVol.Output.ToBigInt().Int64()).To(Equal(int64(0)))
+		})
+
+		It("Should create and update filterless queries with direct aggregation parity", func() {
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_CreatePreparedQuery{CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+					Ledger: ledgerName,
+					Query: &commonpb.PreparedQuery{
+						Name:   "all-volumes",
+						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Filter: nil,
+					},
+				}},
+			}))
+			Expect(err).To(Succeed())
+
+			expectDirectParity := func(queryName string) {
+				Eventually(func(g Gomega) {
+					prepared, execErr := sharedClient.ExecutePreparedQuery(sharedCtx, &servicepb.ExecutePreparedQueryRequest{
+						Ledger:    ledgerName,
+						QueryName: queryName,
+						Mode:      commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES,
+					})
+					g.Expect(execErr).To(Succeed())
+
+					direct, directErr := sharedClient.AggregateVolumes(sharedCtx, &servicepb.AggregateVolumesRequest{
+						Ledger: ledgerName,
+					})
+					g.Expect(directErr).To(Succeed())
+					g.Expect(proto.Equal(prepared.GetAggregate(), direct)).To(BeTrue(),
+						"filterless prepared aggregation must equal the direct endpoint")
+				}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+			}
+
+			expectDirectParity("all-volumes")
+
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_UpdatePreparedQuery{UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
+					Ledger: ledgerName,
+					Name:   "admin-volumes",
+					Filter: nil,
+				}},
+			}))
+			Expect(err).To(Succeed())
+
+			expectDirectParity("admin-volumes")
 		})
 	})
 

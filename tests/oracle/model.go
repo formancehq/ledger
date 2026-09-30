@@ -2085,8 +2085,8 @@ func (s *LedgerState) fieldTypes(target commonpb.TargetType) Map[string, commonp
 // validation gates call the very functions the FSM calls, and surface their own
 // Reason, so the two cannot drift.
 //
-// A nil filter is accepted here exactly as the FSM accepts it — only the update
-// path requires one — and executes as the unfiltered universe.
+// A nil filter is accepted here exactly as the FSM accepts it and executes as
+// the unfiltered universe.
 //
 // The stored definition is cloned so the model never aliases the request
 // message: a later mutation of the submitted proto must not reach committed
@@ -2136,12 +2136,6 @@ func (s *LedgerState) applyUpdatePreparedQuery(req *servicepb.UpdatePreparedQuer
 	existing, ok := s.preparedQueries.Get(req.GetName())
 	if !ok {
 		return OrderResult{Reason: domain.ErrReasonPreparedQueryNotFound}
-	}
-
-	// An update replaces the stored filter, so a nil one would silently erase
-	// the definition; the FSM rejects it rather than persisting it.
-	if req.GetFilter() == nil {
-		return OrderResult{Reason: domain.ErrPreparedQueryFilterRequired.Reason()}
 	}
 
 	if !domain.IsPreparedQueryExecutableTarget(existing.GetTarget()) {

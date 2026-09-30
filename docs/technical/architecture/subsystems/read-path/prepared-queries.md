@@ -2,7 +2,7 @@
 
 ## Overview
 
-Prepared queries are **named, parameterizable query templates** registered cluster-wide per ledger. A client creates a prepared query once (with a filter expression), then references it by name at execution time. The server compiles the filter against the current ledger schema, runs it against the read store, and streams the result back.
+Prepared queries are **named, parameterizable query templates** registered cluster-wide per ledger. A client creates a prepared query once, optionally with a filter expression, then references it by name at execution time. A query without a filter matches every entity in its target. The server compiles non-nil filters against the current ledger schema, runs the query against the read store, and streams the result back.
 
 The motivation is twofold:
 
@@ -69,7 +69,12 @@ Two layers, following the project-wide pattern (see [admission / validation.md](
 
 - Ledger must exist (rejects `ErrLedgerNotFound` otherwise).
 - Name must not already be in use (rejects on duplicate — there is no implicit upsert; clients must explicitly `Update`).
-- Filter must compile against the ledger's current declared-metadata schema (`Compile()` with the standard `MaxFilterDepth=100` guard).
+- A non-nil filter must compile against the ledger's current declared-metadata schema (`Compile()` with the standard `MaxFilterDepth=100` guard). Nil is the match-all definition; an empty filter object or empty textual expression is invalid.
+
+HTTP creation treats an omitted `filter` and explicit JSON `null` as match-all.
+HTTP update treats omission as no change and JSON `null` as an explicit request
+to remove the stored filter. Apply/gRPC represents that removal with a nil
+protobuf filter because protobuf has no separate JSON-null value for this field.
 
 A compile error at FSM time is hash-bound as an `AuditFailure`, so a checker run can re-derive the rejection from the audit chain.
 

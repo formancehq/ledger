@@ -56,6 +56,28 @@ func TestHandleListPreparedQueries_Empty(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 }
 
+func TestHandleListPreparedQueries_FilterlessOmitsFilter(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ListPreparedQueries(gomock.Any(), gomock.Any()).Return(
+		[]*commonpb.PreparedQuery{{
+			Name:   "all-accounts",
+			Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		}}, nil)
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodGet, "/ledger1/prepared-queries", nil, map[string]string{
+		"ledgerName": "ledger1",
+	})
+
+	srv.handleListPreparedQueries(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.JSONEq(t, `{"data":[{"name":"all-accounts","target":"ACCOUNTS"}]}`, w.Body.String())
+}
+
 // TestHandleListPreparedQueries_CamelCaseBodyShape pins the wire format of
 // the LIST response. Without this assertion, the existing status-only checks
 // let #478 ship: PreparedQuery's oneof variants and enum field went out as

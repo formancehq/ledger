@@ -176,6 +176,104 @@ var _ = Describe("PreparedQuery REST shape (EN-1465)", Ordered, func() {
 		}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 	})
 
+	It("creates and updates a filterless query over REST", func() {
+		createReq, err := http.NewRequestWithContext(sharedCtx, http.MethodPost, restURL("/prepared-queries"),
+			bytes.NewBufferString(`{"name":"rest-all-accounts","target":"ACCOUNTS"}`))
+		Expect(err).To(Succeed())
+		createReq.Header.Set("Content-Type", "application/json")
+
+		createResp, err := http.DefaultClient.Do(createReq)
+		Expect(err).To(Succeed())
+		defer func() { _ = createResp.Body.Close() }()
+		createRaw, err := io.ReadAll(createResp.Body)
+		Expect(err).To(Succeed())
+		Expect(createResp.StatusCode).To(Equal(http.StatusNoContent), "unexpected create status; body=%s", string(createRaw))
+
+		execute := func(g Gomega) []string {
+			execReq, execErr := http.NewRequestWithContext(sharedCtx, http.MethodPost,
+				restURL("/prepared-queries/rest-all-accounts/execute"), bytes.NewBufferString(`{"mode":"LIST"}`))
+			g.Expect(execErr).To(Succeed())
+			execReq.Header.Set("Content-Type", "application/json")
+
+			execResp, execErr := http.DefaultClient.Do(execReq)
+			g.Expect(execErr).To(Succeed())
+			defer func() { _ = execResp.Body.Close() }()
+			execRaw, execErr := io.ReadAll(execResp.Body)
+			g.Expect(execErr).To(Succeed())
+			g.Expect(execResp.StatusCode).To(Equal(http.StatusOK), "unexpected execute status; body=%s", string(execRaw))
+
+			var result struct {
+				Cursor struct {
+					AccountData []json.RawMessage `json:"accountData"`
+				} `json:"cursor"`
+			}
+			g.Expect(json.Unmarshal(execRaw, &result)).To(Succeed())
+
+			addresses := make([]string, 0, len(result.Cursor.AccountData))
+			for _, raw := range result.Cursor.AccountData {
+				var account struct {
+					Address string `json:"address"`
+				}
+				g.Expect(json.Unmarshal(raw, &account)).To(Succeed())
+				addresses = append(addresses, account.Address)
+			}
+
+			return addresses
+		}
+
+		directAccounts := func(g Gomega) []string {
+			stream, listErr := sharedClient.ListAccounts(sharedCtx, &servicepb.ListAccountsRequest{Ledger: ledgerName})
+			g.Expect(listErr).To(Succeed())
+
+			var addresses []string
+			for {
+				account, recvErr := stream.Recv()
+				if recvErr == io.EOF {
+					break
+				}
+				g.Expect(recvErr).To(Succeed())
+				addresses = append(addresses, account.GetAddress())
+			}
+
+			return addresses
+		}
+
+		var initialAccounts []string
+		Eventually(func(g Gomega) {
+			initialAccounts = execute(g)
+			g.Expect(initialAccounts).NotTo(BeEmpty())
+			g.Expect(initialAccounts).To(ConsistOf(directAccounts(g)),
+				"filterless prepared LIST must match the direct unfiltered endpoint")
+		}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+
+		update := func(body string) {
+			updateReq, updateErr := http.NewRequestWithContext(sharedCtx, http.MethodPut,
+				restURL("/prepared-queries/rest-all-accounts"), bytes.NewBufferString(body))
+			Expect(updateErr).To(Succeed())
+			updateReq.Header.Set("Content-Type", "application/json")
+
+			updateResp, updateErr := http.DefaultClient.Do(updateReq)
+			Expect(updateErr).To(Succeed())
+			defer func() { _ = updateResp.Body.Close() }()
+			updateRaw, updateErr := io.ReadAll(updateResp.Body)
+			Expect(updateErr).To(Succeed())
+			Expect(updateResp.StatusCode).To(Equal(http.StatusNoContent),
+				"unexpected update status; body=%s", string(updateRaw))
+		}
+
+		update(`{"filter":{"$match":{"address":"does-not-exist:"}}}`)
+		Eventually(func(g Gomega) {
+			g.Expect(execute(g)).To(BeEmpty())
+		}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+
+		update(`{"filter":null}`)
+		Eventually(func(g Gomega) {
+			preparedAccounts := execute(g)
+			g.Expect(preparedAccounts).To(ConsistOf(directAccounts(g)))
+			g.Expect(preparedAccounts).To(ConsistOf(initialAccounts))
+		}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+	})
+
 	It("rejects a legacy protojson-shaped filter (no silent acceptance)", func() {
 		// The old protojson wire shape (`and.filters[]`, `field.field.metadata`)
 		// must be rejected rather than silently parsed — it is not the documented

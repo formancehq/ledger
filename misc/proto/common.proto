@@ -1735,6 +1735,8 @@ enum QueryMode {
 // LedgerScopedOrder; it is intentionally NOT a field on the value itself.
 message PreparedQuery {
   string name = 1;
+  // Nil means match all entities in target. Empty/conditionless messages are
+  // invalid and must not be used as a match-all representation.
   QueryFilter filter = 2;
   QueryTarget target = 3;
 }

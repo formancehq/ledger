@@ -989,7 +989,6 @@ func TestGlobalState_Apply_PreparedQueryValidation(t *testing.T) {
 		// not the generic validation one — the model reports whatever
 		// ValidateFilterForTarget reports, so the two cannot drift.
 		{"condition invalid for target", NewGlobalState(), logsWithAddress, domain.ErrReasonFilterCompilation},
-		{"update with nil filter", seeded.State, pqUpdateReq("q", nil), domain.ErrReasonValidation},
 		{"delete with empty name", seeded.State, pqDeleteReq(""), domain.ErrReasonValidation},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1002,10 +1001,9 @@ func TestGlobalState_Apply_PreparedQueryValidation(t *testing.T) {
 	}
 }
 
-// TestGlobalState_Apply_PreparedQueryNilFilterOnCreate pins the create/update
-// asymmetry: the FSM accepts a nil filter at creation (it means "no filter")
-// and rejects one on update, where it would silently erase the definition.
-func TestGlobalState_Apply_PreparedQueryNilFilterOnCreate(t *testing.T) {
+// TestGlobalState_Apply_PreparedQueryNilFilter pins the match-all contract on
+// both create and update.
+func TestGlobalState_Apply_PreparedQueryNilFilter(t *testing.T) {
 	t.Parallel()
 
 	created := NewGlobalState().Apply(bulkOf(pqReq("universe", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, nil)))
@@ -1014,6 +1012,18 @@ func TestGlobalState_Apply_PreparedQueryNilFilterOnCreate(t *testing.T) {
 	stored, ok := created.State.Ledger("L").PreparedQuery("universe")
 	require.True(t, ok)
 	require.Nil(t, stored.GetFilter())
+
+	filtered := created.State.Apply(bulkOf(pqUpdateReq("universe", pqFilter("a:"))))
+	require.True(t, filtered.OK)
+
+	cleared := filtered.State.Apply(bulkOf(pqUpdateReq("universe", nil)))
+	require.True(t, cleared.OK)
+
+	stored, ok = cleared.State.Ledger("L").PreparedQuery("universe")
+	require.True(t, ok)
+	require.Nil(t, stored.GetFilter())
+	require.NotNil(t, cleared.Orders[0].PreparedQueryLog.GetUpdatedPreparedQuery().GetPreviousFilter())
+	require.Nil(t, cleared.Orders[0].PreparedQueryLog.GetUpdatedPreparedQuery().GetNewFilter())
 }
 
 // TestGlobalState_Apply_PreparedQueryNoAliasing pins that committed state never

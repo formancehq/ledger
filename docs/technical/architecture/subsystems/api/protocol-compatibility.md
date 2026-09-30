@@ -216,6 +216,14 @@ reason and metadata differently. The revision increments from the target
 branch's 14 to 15, and all communicating service clients and servers must be
 rebuilt with the matching revision. HTTP missing-ledger responses remain 404.
 
+## Filterless prepared-query updates (revision 16)
+
+Revision 16 changes a nil `Apply(UpdatePreparedQuery)` filter from a validation
+failure into an explicit removal of the stored filter. The query then matches
+every entity in its immutable target. The protobuf wire shape is unchanged, but
+a revision-15 peer interprets the identical request differently, so clients,
+servers, and every Raft replica must agree on revision 16 semantics.
+
 ## Maintaining the revision
 
 The author of a service contract change must determine whether an existing

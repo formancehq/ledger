@@ -96,9 +96,12 @@ func generatePreparedQueryOp(g oracle.GlobalState, ledger string) *servicepb.Req
 	if !exists {
 		target := random.RandomChoice(preparedQueryTargets)
 
-		filter := genPreparedQueryFilter(ls, ledger, target)
-		if filter == nil {
-			return nil
+		var filter *commonpb.QueryFilter
+		if !oneIn(8) {
+			filter = genPreparedQueryFilter(ls, ledger, target)
+			if filter == nil {
+				return nil
+			}
 		}
 
 		return createPreparedQueryReq(ledger, &commonpb.PreparedQuery{
@@ -110,6 +113,9 @@ func generatePreparedQueryOp(g oracle.GlobalState, ledger string) *servicepb.Req
 
 	if oneIn(4) {
 		return deletePreparedQueryReq(ledger, name)
+	}
+	if oneIn(8) {
+		return updatePreparedQueryReq(ledger, name, nil)
 	}
 
 	// An update carries no target: the new filter must be valid on the STORED
@@ -145,8 +151,8 @@ func genPreparedQueryFilter(ls oracle.LedgerState, ledger string, target commonp
 		panic(fmt.Sprintf("genPreparedQueryFilter: non-executable target %v", target))
 	}
 
-	// A nil filter is storable (it means "no filter") but only on create — an
-	// update rejects it. Skip the round rather than split the two paths.
+	// Match-all writes are selected explicitly by generatePreparedQueryOp. A nil
+	// here means the ad-hoc generator produced no concrete filter this round.
 	if concrete == nil || filterInvalidForTarget(concrete, target) || !bareOrNoHasAsset(concrete) {
 		return nil
 	}
