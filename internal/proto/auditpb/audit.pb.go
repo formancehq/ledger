@@ -54,8 +54,8 @@ type AuditEntry struct {
 	//     domain-separated BLAKE3, independently of the operational cluster ID
 	//   - `header_payload` is the canonical binary encoding of every other field
 	//     of this AuditEntry (sequence, timestamp, proposal_id, outcome,
-	//     order_count, ledgers, hash_version, caller_snapshot, and nonzero
-	//     failure_projection_version), rebuilt by the
+	//     order_count, ledgers, hash_version, caller_snapshot, and
+	//     failure_projection_version, including zero), rebuilt by the
 	//     verifier at check time from the stored fields via
 	//     state.BuildHashedHeaderPayload — never persisted separately, so the
 	//     typed fields ARE the source of truth
@@ -83,7 +83,8 @@ type AuditEntry struct {
 	Idempotency *commonpb.Idempotency         `protobuf:"bytes,12,opt,name=idempotency,proto3" json:"idempotency,omitempty"`
 	Signature   *signaturepb.SignedApplyBatch `protobuf:"bytes,13,opt,name=signature,proto3" json:"signature,omitempty"`
 	// Raft-applied failure projection semantics in force for this entry.
-	// Zero is the pre-versioning projection; the checker retains its wire bytes.
+	// Zero preserves the original failure mapping. Both versions are bound into
+	// the canonical header, so zero does not preserve earlier hash bytes.
 	FailureProjectionVersion uint32 `protobuf:"varint,14,opt,name=failure_projection_version,json=failureProjectionVersion,proto3" json:"failure_projection_version,omitempty"`
 	unknownFields            protoimpl.UnknownFields
 	sizeCache                protoimpl.SizeCache
