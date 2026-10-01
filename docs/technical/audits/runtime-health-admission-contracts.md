@@ -29,10 +29,10 @@ Follow extra callees only to complete this chain and load their owning contract.
 
 | Signal / surface | Current anchor and evidence boundary |
 | --- | --- |
-| WAL/data pressure | `diskusage.Collector.collect`, `HealthChecker.check`, `Thresholds.NextDiskBlocked`; CLI Server Health Check Flags. Fractions measure filesystem usage including reserved space, not just Ledger directory bytes. Hysteresis uses successful samples, with block equality and strict below-resume release. |
+| WAL/data pressure | `diskusage.Collector.collect`, `VolumeSample.Usable`, `HealthChecker.check`, `Thresholds.NextDiskBlocked`; CLI Server Health Check Flags. Fractions measure filesystem usage including reserved space, not just Ledger directory bytes. Hysteresis uses fresh, valid samples, with block equality and strict below-resume release. |
 | Clock skew | `HealthChecker.exceedsClockSkew`: midpoint estimate, excessive-RTT discard, disabled check and failed call are distinct from an observed skew violation. Do not impose disk hysteresis on clock skew. |
-| Missing or stale observations | Collector errors retain cached values; failed peer disk calls omit that peer's sample; initial nil gate permits writes. No sample-age deadline is encoded here. Whether a different freshness/fail-closed policy is desirable remains a question unless an existing promise proves a violation. |
-| Combined reasons | `gateState` is atomically published and loaded once; disk error wins over skew, while either blocks. Existing no-torn-state and nonleader-reset regressions are protections to challenge against, not new findings. |
+| Missing or stale observations | `diskusage.SampleUsable` requires successful, nonzero-capacity, timestamped WAL/data samples no older than one minute. A failed Statfs retains cached bytes but invalidates the sample. Committed members missing from the service pool or failing disk RPC contribute invalid samples: they cannot clear an existing disk block. A nil or previous-epoch gate rejects writes until the new leader polls fresh local WAL and data. An unavailable remote member alone does not impose a permanent initial block on a healthy quorum. Nonleaders do not publish a fresh verdict. |
+| Combined reasons | `gateState` is atomically published and loaded once; disk error wins over skew, while either blocks. `TestHealthChecker_LeadershipChangeInvalidatesWriteGate` and `TestCheckWritesAllowed_NoTornStateBetweenReasons` are current protections to challenge against, not new findings. |
 | Admission routes | `Admission.Admit` and `Barrier` call `CheckWritesAllowed` before proposing. Resolve actual HTTP/gRPC/controller forwarding and internal callers. A technical proposal outside these methods is not automatically a bypass defect; establish the promise for that operation. No global revocation of in-flight work is implied. |
 | Progress prerequisites | `Admission.Admit`, `Node.WaitLeaderReady`, `waitClusterPolicyReady`, `checkQueryCheckpointProjectionReady` and `plan.resolve` expose distinct wait/reject conditions. This domain owns signal consumption and release; the computation of consensus progress, projection correctness and cache coverage belong to their neighbors. No universal lag threshold is promised. |
 | HTTP probes | `DefaultBackend` and health handlers: `/livez` is process liveness, `/readyz` local Raft-loop start, `/health` local Leader/Follower health and `/clusterz` connectivity plus elected leader. Disk/skew do not feed these readiness predicates. |
@@ -68,7 +68,7 @@ reports and active PRs; state which were inspected and do not claim Jira/backlog
 deduplication without reading it. Historical fixed defects require a new,
 currently reachable counterexample before becoming candidates.
 
-Exclude performance tuning, invented freshness SLAs, arbitrary thresholds,
+Exclude performance tuning, freshness SLAs beyond the established one-minute disk-sample limit, arbitrary thresholds,
 universal blocking requirements, new product semantics and a generic monitoring
 or security audit. Unspecified behavior and conflicting authority remain audit
 questions. Local health can gate admission, never reinterpret committed business

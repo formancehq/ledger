@@ -169,6 +169,7 @@ func checkpointTestServer(t *testing.T) (context.Context, string, servicepb.Buck
 
 		return err == nil && state.GetLeader() != 0
 	}, 5*time.Second, 10*time.Millisecond)
+	testserver.WaitForWriteAdmission(t, ctx, client)
 	_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("checkpoint-driver", nil)))
 	require.NoError(t, err)
 

@@ -424,7 +424,8 @@ func (p *ConnectionPool) GetPeerAddress(peerID uint64) string {
 	return entry.addr
 }
 
-// PeerIDs returns the IDs of all known peers.
+// PeerIDs returns the IDs of all known peers. Pool membership is diagnostic;
+// committed Raft membership is authoritative for health decisions.
 func (p *ConnectionPool) PeerIDs() []uint64 {
 	p.mu.Lock()
 	defer p.mu.Unlock()

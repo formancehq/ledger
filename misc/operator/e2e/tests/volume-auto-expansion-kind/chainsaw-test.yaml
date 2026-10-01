@@ -1,0 +1,179 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: volume-auto-expansion-kind
+spec:
+  timeouts:
+    assert: 5m
+  steps:
+    - name: Create expandable local StorageClass
+      try:
+        - apply:
+            file: storage-class.yaml
+      cleanup:
+        - script:
+            content: |
+              kubectl delete cluster auto-expand-kind -n "$NAMESPACE" --ignore-not-found=true
+              kubectl delete storageclass ledger-e2e-expandable --ignore-not-found=true
+            timeout: 90s
+
+    - name: Deploy a three-replica PVC-backed Cluster
+      try:
+        - apply:
+            file: cluster.yaml
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: ledger-auto-expand-kind
+              status:
+                readyReplicas: 3
+
+    - name: Prove every pod exposes fresh WAL and data measurements
+      try:
+        - script:
+            content: |
+              for ordinal in 0 1 2; do
+                usage=$(kubectl exec "ledger-auto-expand-kind-$ordinal" -n "$NAMESPACE" -c ledger -- \
+                  /bin/sh -c './ledgerctl cluster disk-usage --json \
+                    --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"')
+                echo "$usage" | jq -e '
+                  .walVolume.valid == true and
+                  .dataVolume.valid == true and
+                  (.walVolume.totalBytes | tonumber) > 0 and
+                  (.dataVolume.totalBytes | tonumber) > 0 and
+                  (.walVolume.observedAtUs | tonumber) > 0 and
+                  (.dataVolume.observedAtUs | tonumber) > 0
+                ' >/dev/null
+              done
+            timeout: 60s
+
+    - name: Capture the stable workload identity
+      try:
+        - script:
+            content: |
+              for ordinal in 0 1 2; do
+                uid=$(kubectl get pod "ledger-auto-expand-kind-$ordinal" -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
+                kubectl annotate namespace "$NAMESPACE" "auto-expand-kind-pod-$ordinal=$uid" --overwrite
+              done
+              hash=$(kubectl get statefulset ledger-auto-expand-kind -n "$NAMESPACE" \
+                -o jsonpath='{.spec.template.metadata.annotations.ledger\.formance\.com/spec-hash}')
+              kubectl annotate namespace "$NAMESPACE" "auto-expand-kind-spec-hash=$hash" --overwrite
+
+    - name: Enable WAL and data auto-expansion
+      try:
+        - script:
+            content: |
+              # The Kind local-path provisioner exposes the node filesystem to
+              # Statfs. Its baseline utilization is normally already above 2%.
+              # Keep the fixture bounded if an unusually empty runner needs a
+              # little data to cross that deliberately low test threshold.
+              usage=$(kubectl exec ledger-auto-expand-kind-0 -n "$NAMESPACE" -c ledger -- \
+                /bin/sh -c './ledgerctl cluster disk-usage --json \
+                  --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"')
+              used=$(echo "$usage" | jq -r '.dataVolume.usedBytes')
+              total=$(echo "$usage" | jq -r '.dataVolume.totalBytes')
+              target=$(( (total * 2 + 99) / 100 ))
+              if [ "$used" -lt "$target" ]; then
+                missing=$(( target - used + 16777216 ))
+                if [ "$missing" -gt 536870912 ]; then
+                  echo "FAIL: reaching the 2% Kind threshold would require $missing bytes"
+                  exit 1
+                fi
+                count=$(( (missing + 1048575) / 1048576 ))
+                kubectl exec ledger-auto-expand-kind-0 -n "$NAMESPACE" -c ledger -- \
+                  /bin/sh -c "dd if=/dev/zero of=/data/app/auto-expand-kind-trigger bs=1M count=$count"
+              fi
+
+              kubectl patch cluster auto-expand-kind -n "$NAMESPACE" --type merge -p '
+                {"spec":{"persistence":{
+                  "wal":{"autoExpansion":{"enabled":true,"thresholdPercent":2,"targetPercent":1,"minimumIncrement":"128Mi","maximumSize":"2Gi"}},
+                  "data":{"autoExpansion":{"enabled":true,"thresholdPercent":2,"targetPercent":1,"minimumIncrement":"128Mi","maximumSize":"2Gi"}}
+                }}}'
+            timeout: 60s
+
+    - name: Wait for all live PVC requests to expand
+      try:
+        - script:
+            content: |
+              for attempt in $(seq 1 60); do
+                expanded=0
+                for volume in wal data; do
+                  for ordinal in 0 1 2; do
+                    request=$(kubectl get pvc "$volume-ledger-auto-expand-kind-$ordinal" -n "$NAMESPACE" \
+                      -o jsonpath='{.spec.resources.requests.storage}')
+                    target=$(kubectl get pvc "$volume-ledger-auto-expand-kind-$ordinal" -n "$NAMESPACE" \
+                      -o jsonpath='{.metadata.annotations.ledger\.formance\.com/last-expansion-target}')
+                    timestamp=$(kubectl get pvc "$volume-ledger-auto-expand-kind-$ordinal" -n "$NAMESPACE" \
+                      -o jsonpath='{.metadata.annotations.ledger\.formance\.com/last-expansion-at}')
+                    if [ "$request" = "2Gi" ] && [ "$target" = "2Gi" ] && [ -n "$timestamp" ]; then
+                      expanded=$((expanded + 1))
+                    fi
+                  done
+                done
+                [ "$expanded" -eq 6 ] && break
+                sleep 2
+              done
+              [ "$expanded" -eq 6 ] && exit 0
+              kubectl get pvc -n "$NAMESPACE" -o wide
+              echo "FAIL: expected all six live PVC requests to reach 2Gi"
+              exit 1
+            timeout: 150s
+
+    - name: Cluster status exposes both pending expansion groups
+      try:
+        - script:
+            content: |
+              for attempt in $(seq 1 30); do
+                status=$(kubectl get cluster auto-expand-kind -n "$NAMESPACE" -o json)
+                wal=$(echo "$status" | jq -r '.status.conditions[] | select(.type == "WALVolumeExpansionReady") | [.status, .reason] | join(":")')
+                data=$(echo "$status" | jq -r '.status.conditions[] | select(.type == "DataVolumeExpansionReady") | [.status, .reason] | join(":")')
+                if { [ "$wal" = "False:ExpansionPending" ] || [ "$wal" = "True:Ready" ]; } && \
+                   { [ "$data" = "False:ExpansionPending" ] || [ "$data" = "True:Ready" ]; }; then
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "FAIL: expected durable WAL and data expansion conditions"
+              echo "$status" | jq '.status.conditions'
+              exit 1
+            timeout: 90s
+
+    - name: Expansion policy does not roll Ledger pods
+      try:
+        - script:
+            content: |
+              initial_hash=$(kubectl get namespace "$NAMESPACE" -o jsonpath='{.metadata.annotations.auto-expand-kind-spec-hash}')
+              current_hash=$(kubectl get statefulset ledger-auto-expand-kind -n "$NAMESPACE" \
+                -o jsonpath='{.spec.template.metadata.annotations.ledger\.formance\.com/spec-hash}')
+              [ "$current_hash" = "$initial_hash" ] || {
+                echo "FAIL: auto-expansion changed the pod-template spec hash"
+                exit 1
+              }
+              for ordinal in 0 1 2; do
+                initial_uid=$(kubectl get namespace "$NAMESPACE" \
+                  -o "jsonpath={.metadata.annotations.auto-expand-kind-pod-$ordinal}")
+                current_uid=$(kubectl get pod "ledger-auto-expand-kind-$ordinal" -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
+                [ "$current_uid" = "$initial_uid" ] || {
+                  echo "FAIL: pod $ordinal rolled while only the expansion policy changed"
+                  exit 1
+                }
+              done
+
+  catch:
+    - describe:
+        apiVersion: ledger.formance.com/v1alpha1
+        kind: Cluster
+        name: auto-expand-kind
+    - describe:
+        apiVersion: apps/v1
+        kind: StatefulSet
+        name: ledger-auto-expand-kind
+    - script:
+        content: |
+          kubectl get pvc -n "$NAMESPACE" -o yaml
+          kubectl get events -n "$NAMESPACE" --sort-by=.lastTimestamp
+    - podLogs:
+        selector: app.kubernetes.io/instance=auto-expand-kind
+        container: ledger

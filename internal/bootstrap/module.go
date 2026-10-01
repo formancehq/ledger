@@ -893,10 +893,15 @@ func Module() fx.Option {
 				eventsManager *events.Manager,
 				mirrorManager *mirror.Manager,
 				backupOrchestrator *backupapp.Orchestrator,
+				healthChecker *clusterhealth.HealthChecker,
 			) {
 				n.SetObserver(node.NewObserver(func(event any) {
 					switch e := event.(type) {
 					case node.LeadershipChangeEvent:
+						// Disk evidence is leader-term local. Invalidate it inline,
+						// before admission can observe the new leadership term.
+						healthChecker.OnLeadershipChange(e.IsLeader)
+
 						// The backup orchestrator's OnLeadershipChange is cheap
 						// (it just swaps a context) and must observe leadership
 						// transitions IN ORDER: a stale goroutine landing
@@ -913,6 +918,7 @@ func Module() fx.Option {
 						// slow Pebble reconciliation asynchronously.
 						handleLeadershipChangeEvent(e, eventsManager, mirrorManager, logger)
 					case node.LeaderReadyEvent:
+						healthChecker.OnLeaderReady()
 						proposeClusterConfigIfNeeded(n, builder, store, cfg, logger)
 					default:
 						logger.Errorf("Unknown observer event type: %T", event)

@@ -13,6 +13,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -90,6 +91,25 @@ func TestMain(m *testing.M) {
 		Recorder: mgr.GetEventRecorderFor("cluster-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		panic(fmt.Sprintf("setting up Cluster controller: %v", err))
+	}
+
+	if err := (&VolumeExpansionReconciler{
+		Client:    mgr.GetClient(),
+		APIReader: mgr.GetAPIReader(),
+		Recorder:  mgr.GetEventRecorderFor("volume-expansion-controller"),
+		ReadDiskUsage: func(context.Context, *ledgerv1alpha1.Cluster, string, string) (podDiskUsage, error) {
+			walQuantity := resource.MustParse("5Gi")
+			dataQuantity := resource.MustParse("100Gi")
+			walTotal := uint64(walQuantity.Value())
+			dataTotal := uint64(dataQuantity.Value())
+
+			return podDiskUsage{
+				WAL:  freshMeasuredVolume(walTotal/10, walTotal, time.Now()),
+				Data: freshMeasuredVolume(dataTotal*8/10, dataTotal, time.Now()),
+			}, nil
+		},
+	}).SetupWithManager(mgr); err != nil {
+		panic(fmt.Sprintf("setting up VolumeExpansion controller: %v", err))
 	}
 
 	if err := (&CredentialsReconciler{
