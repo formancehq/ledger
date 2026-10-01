@@ -300,7 +300,7 @@ type OrderTechnical struct {
 	// (invariant #2) — provided every replica runs a binary that knows these
 	// fields. A binary predating them silently drops the artifact and interprets
 	// with its own bundled library, so this change is a stop-all-nodes
-	// deployment boundary (service protocol revision 16; see
+	// deployment boundary (service protocol revision 17; see
 	// docs/ops/deployment.md, "Upgrading across the Numscript VM execution
 	// change"). Every scripted order admission proposes carries one: a script
 	// the VM cannot run is rejected at admission. A scripted order reaching the
