@@ -26,8 +26,14 @@ func (c *Checker) removeInflight(ticket uint64) {
 	delete(c.inflight, ticket)
 }
 
-// registerRead reserves a ticket for an outstanding read. Holding it gates
-// draining (see tryDrain), so the read needs no drain-race skip. Caller holds c.mu.
+// registerRead reserves a ticket for an outstanding read. While it is held, no
+// bulk whose commit was observed at or after this ticket can drain (see
+// tryDrain), so a state snapshotted in the same critical section cannot advance
+// past what the read could have seen. Bulks observed BEFORE the ticket are not
+// held back: the server had already applied them when the read was issued, so
+// the read saw their result, and the model is right to fold them in under it.
+// Take the ticket in the same critical section as the snapshot it protects,
+// before picking anything from that snapshot. Caller holds c.mu.
 func (c *Checker) registerRead() uint64 {
 	t := c.ticketSeq.Add(1)
 	c.reads[t] = struct{}{}
@@ -144,7 +150,9 @@ func (c *Checker) handleObservation(obs observation) {
 // greater than the head's observeTicket — i.e. was dispatched after the head was
 // observed, so a bulk committed after it (can't precede it) and a read saw it.
 // That gate is what lets failures and reads validate against the model with no
-// skip. Caller holds c.mu.
+// skip. Conversely a head observed before every outstanding ticket drains at
+// once, reads in flight or not: the server had applied it before those reads
+// were issued, so they saw its result. Caller holds c.mu.
 func (c *Checker) tryDrain() {
 	for len(c.pending) > 0 {
 		head := c.pending[0]

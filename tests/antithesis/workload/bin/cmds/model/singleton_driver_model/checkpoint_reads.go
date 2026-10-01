@@ -139,7 +139,7 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 			stats.GetLogCount() == uint64(len(frozenLS.LogDates()))
 		concrete = err == nil && stats.GetLogCount() > 0
 	case 8:
-		target, learned, ok := pickFrozenLogSequence(frozen, ledgerNames)
+		target, learned, ok := pickLogSequence(frozen)
 		if !ok {
 			return
 		}
@@ -157,7 +157,7 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 			concrete = matches
 		} else {
 			rows := serverLogRows([]*commonpb.Log{log})
-			matches = err == nil && len(rows) == 1 && committedLogMatches(frozen.Ledger(ledger), target, rows[0])
+			matches = err == nil && len(rows) == 1 && committedLogMatches(frozen, target, rows[0])
 			concrete = matches
 		}
 	case 6:
@@ -587,34 +587,4 @@ func (c *Checker) checkpointLedgerReadOutcomeMatches(id, maxTicket uint64, ledge
 	})
 
 	return matches
-}
-
-// pickFrozenLogSequence chooses a global sequence a frozen checkpoint holds a
-// log for, or — one read in eight — one past everything it froze.
-func pickFrozenLogSequence(frozen oracle.GlobalState, ledgerNames []string) (target committedLogTarget, learned, ok bool) {
-	var (
-		known  []committedLogTarget
-		maxSeq uint64
-	)
-
-	for _, ledger := range ledgerNames {
-		for _, row := range frozen.Ledger(ledger).LogRows() {
-			if row.Sequence == 0 {
-				continue
-			}
-
-			known = append(known, committedLogTarget{ledger: ledger, id: row.ID, sequence: row.Sequence})
-			maxSeq = max(maxSeq, row.Sequence)
-		}
-	}
-
-	if len(known) == 0 {
-		return committedLogTarget{}, false, false
-	}
-
-	if oneIn(8) {
-		return committedLogTarget{sequence: maxSeq + unassignedSeqSlack}, false, true
-	}
-
-	return known[internal.Rand().Intn(len(known))], true, true
 }
