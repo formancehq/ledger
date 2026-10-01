@@ -129,7 +129,7 @@ A response signature (`SignedLog`) is attached at the gRPC layer on the way out 
 Admission may read the local store to build a proposal, but ordinary admission
 must remain bounded by the request and its declared dependencies. A new path
 must not enumerate an unbounded historical prefix, expand every persisted row
-owned by a touched account, or hold a lifecycle lock until FSM application
+owned by a touched entity, or hold a lifecycle lock until FSM application
 completes unless the owning architecture document records an explicit
 exception.
 

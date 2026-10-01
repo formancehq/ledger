@@ -161,12 +161,10 @@ WAL layout and checkpoint reconstruction remain with the recovery domain.
 
 Lifecycle cleanup is correct only when the proposal declares the complete set
 of current-state keys that the FSM may inspect or delete. The declaration must
-cover both volume and account-metadata rows for every affected account. It must
-also cover account-type transitions that can reclassify existing rows, while
-preserving immutable account-to-transaction, source, and destination history.
+cover every affected current-state key while preserving immutable history.
 
 Review the boundary between the producer and apply for each lifecycle path:
-ordinary postings, metadata-only orders, account-type changes, skipped orders,
+ordinary writes, metadata-only orders, state transitions, skipped orders,
 idempotent replays, and mirror ingestion. A producer must not hide an
 unbounded historical scan behind ordinary admission, and apply must not widen
 the read horizon to compensate for an incomplete plan. If the candidate set
