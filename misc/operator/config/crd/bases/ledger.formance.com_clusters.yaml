@@ -1186,8 +1186,9 @@ spec:
                     type: integer
                 type: object
               clusterID:
-                default: default
-                description: ClusterID for inter-node communication validation.
+                description: |-
+                  ClusterID for inter-node communication validation. When omitted, the
+                  operator generates and persists a UUID before creating workloads.
                 type: string
                 x-kubernetes-validations:
                 - message: clusterID is immutable once set

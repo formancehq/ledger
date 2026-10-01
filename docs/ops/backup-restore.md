@@ -147,6 +147,15 @@ references. The operator's scheduled `Backup` resource has a fixed `bucketId`,
 so rotating immutable retention points currently requires external
 orchestration.
 
+For operator-managed clusters without an explicit `clusterID`, the committed
+random ID is also the default backup `bucketId`. This separates independently
+created clusters even when their Kubernetes names and object-storage bucket are
+the same. An explicit backup `bucketId` remains authoritative. Record the
+source Cluster's `spec.clusterID` (and any explicit `bucketId`) with restore
+procedures: a destination Cluster has its own identity and therefore its own
+default namespace. Pass the source namespace explicitly to restore download or
+offline bootstrap, then use the destination namespace for new backups.
+
 Test restoring every retention class. Retaining only a manifest, or only the
 checkpoint objects without all incremental segments referenced by that
 manifest, is not a usable backup.

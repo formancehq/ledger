@@ -113,6 +113,14 @@ helm install ledger-operator misc/operator/helm/operator \
 
 ### Deploy a Ledger Cluster
 
+If `spec.clusterID` is omitted, the operator writes a random UUID into the
+Cluster resource before creating workloads. That committed value is shared by
+every replica and survives reconciliation and pod restarts. Set `clusterID`
+explicitly only when attaching data whose persisted identity must be reused;
+Ledger rejects an ID mismatch on boot. A deleted Cluster recreated with fresh
+storage receives a new ID. Inspect `kubectl get cluster my-ledger -o
+jsonpath='{.spec.clusterID}'` to discover the resolved value.
+
 ```yaml
 apiVersion: ledger.formance.com/v1alpha1
 kind: Cluster
@@ -123,7 +131,6 @@ spec:
   image:
     repository: ghcr.io/formancehq/ledger
     tag: latest
-  clusterID: default
   podAntiAffinity:
     enabled: true
     type: hard
