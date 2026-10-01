@@ -69,6 +69,21 @@ Identify where the decision is implemented and where its durable intent is commi
 
 Define how we know the original requirement is satisfied. Prefer tests, model checks, scenarios, metrics, compatibility checks, or other observable evidence over implementation assertions.
 
+### Operational cost for admission and storage decisions
+
+When a decision changes admission, preload coverage, cache state, proposal
+encoding, storage scans, locking, or a projection boundary, the traceability
+chain must also state its operational budget. Record the expected complexity,
+the cardinality that drives it, the maximum lock scope, and any proposal, WAL,
+cache, or storage amplification. Validate the budget with a deterministic
+cost-shape test and representative benchmark evidence. A green functional test
+does not prove that a new admission path is safe under production cardinality
+or concurrency.
+
+The PR must name the trigger that causes the extra work and the path that does
+not. If the cost cannot be bounded, the decision is an architecture question,
+not an implementation detail.
+
 ## Where the evidence lives
 
 The repository is the durable source of technical intent. Jira, support cases, incidents, customer requests, or roadmap items may establish the need, but significant technical decisions must leave enough evidence in-repo for a future reviewer or auditor to understand the requirement and decision without private conversation history.

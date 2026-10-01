@@ -124,6 +124,30 @@ The guard's job is to make sure the cache state observed during preload is the s
 
 A response signature (`SignedLog`) is attached at the gRPC layer on the way out — see [signing.md](signing.md).
 
+## Admission cost boundary
+
+Admission may read the local store to build a proposal, but ordinary admission
+must remain bounded by the request and its declared dependencies. A new path
+must not enumerate an unbounded historical prefix, expand every persisted row
+owned by a touched account, or hold a lifecycle lock until FSM application
+completes unless the owning architecture document records an explicit
+exception.
+
+An exception must state all of the following before implementation:
+
+- the product or operational need that requires the wider read or lock;
+- the complexity and the cardinality that bound it;
+- the lock owner, cancellation rule, and maximum hold time;
+- the proposal, WAL, cache, and storage amplification;
+- the alternatives considered, including a bounded or asynchronous design;
+- the deterministic cost-shape test and the representative throughput and
+  latency evidence that validate the budget.
+
+The proposal guard protects cache-generation correctness. It is not a license
+to move unrelated enumeration or serialization work into the admission
+critical path. If a design cannot state a cost boundary, keep it out of the
+ordinary write path and raise an architecture question first.
+
 ## Idempotency
 
 Two-stage check:

@@ -86,6 +86,14 @@ Do not accept a test merely because it passes. Check that the observation actual
 
 For concurrency, timing, retry, and failure-path tests, prefer synchronization on an observable state transition over arbitrary sleeps. In particular, verify that a rewritten test still reaches the original regression state rather than only a nearby proxy state.
 
+For changes to admission, preload coverage, cache planning, storage scans, or
+proposal encoding, review the operational cost boundary as part of correctness.
+Identify the request-sized work, any work proportional to persisted state, lock
+scope, cancellation behavior, proposal/WAL amplification, and the validation
+that proves the difference. Functional tests do not cover this review point by
+themselves. If the cost is not bounded or the evidence is absent, request the
+traceability and benchmark evidence before approval.
+
 When a test is intentionally probabilistic or stress-based, state that clearly and verify that its failure signal corresponds to the invariant being tested.
 
 ## Fresh final review contract

@@ -157,6 +157,28 @@ occur after that commit, so a failed check leaves the writes durable and
 propagates a fatal error. This domain owns the expectation reduction; durable
 WAL layout and checkpoint reconstruction remain with the recovery domain.
 
+### Lifecycle coverage is a closed set
+
+Lifecycle cleanup is correct only when the proposal declares the complete set
+of current-state keys that the FSM may inspect or delete. The declaration must
+cover both volume and account-metadata rows for every affected account. It must
+also cover account-type transitions that can reclassify existing rows, while
+preserving immutable account-to-transaction, source, and destination history.
+
+Review the boundary between the producer and apply for each lifecycle path:
+ordinary postings, metadata-only orders, account-type changes, skipped orders,
+idempotent replays, and mirror ingestion. A producer must not hide an
+unbounded historical scan behind ordinary admission, and apply must not widen
+the read horizon to compensate for an incomplete plan. If the candidate set
+cannot be bounded by the request and its declared dependencies, the design is
+an architecture question rather than a local coverage change.
+
+The minimum evidence is a deterministic matrix that compares the declared
+keys, proposal bytes, and durable deletion set for the same request with
+unrelated persisted rows added. Add separate rows for type transitions and
+for a delayed or cancelled proposal. A functional purge test alone does not
+prove that ordinary admission remains bounded.
+
 ## Hot-path capability proof
 
 Do not stop at names such as `WriteSession` or `Scope`. Inspect concrete fields,
