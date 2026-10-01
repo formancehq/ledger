@@ -17,6 +17,7 @@ import (
 	"go.uber.org/fx"
 
 	"github.com/formancehq/go-libs/v5/pkg/authn/jwt"
+
 	"github.com/formancehq/ledger/internal/controller/system"
 )
 
