@@ -29,6 +29,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/PageSize'
         - $ref: '#/components/parameters/PageCursor'
         - name: reverse
@@ -163,6 +164,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
       responses:
         '200':
@@ -322,6 +324,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
       responses:
         '200':
@@ -364,6 +367,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/PageSize'
         - $ref: '#/components/parameters/PageCursor'
@@ -457,6 +461,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/PageSize'
         - $ref: '#/components/parameters/PageCursor'
         - name: reverse
@@ -554,6 +559,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - name: sequence
           in: path
           required: true
@@ -701,8 +707,9 @@ paths:
         `filter={"$match":{"reference":"..."}}`, URL-encoded). Requires
         `ledger:TransactionRead` scope.
 
-        This is a live linearizable read of the current committed state, with
-        automatic alignment of every projection used by the filter. Unlike the
+        This is a live read, linearizable by default. `X-Consistency: stale`
+        reads the receiving node's local state, which may lag the leader. Every
+        projection used by the filter is automatically aligned. Unlike the
         gRPC API, it does not accept the `checkpointId` option to pin the read
         to a specific historical snapshot — use gRPC for checkpoint-pinned
         reads. (Tracked follow-up, same carve-out as the audit reads.)
@@ -713,6 +720,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/PageSize'
         - $ref: '#/components/parameters/PageCursor'
@@ -795,6 +803,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/TransactionId'
       responses:
@@ -834,6 +843,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/PageSize'
         - $ref: '#/components/parameters/PageCursor'
@@ -898,6 +908,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/AccountAddress'
         - name: collapseColors
@@ -947,6 +958,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/ListFilter'
         - name: useMaxPrecision
@@ -1314,6 +1326,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
       responses:
         '200':
@@ -1352,6 +1365,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
         - name: canonicalId
           in: path
@@ -1429,6 +1443,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
         - name: variableThreshold
           in: query
@@ -1474,6 +1489,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
         - name: variableThreshold
           in: query
@@ -1592,6 +1608,7 @@ paths:
       tags:
         - Numscript Library
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/PageSize'
         - $ref: '#/components/parameters/PageCursor'
@@ -1629,6 +1646,7 @@ paths:
       tags:
         - Numscript Library
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
         - name: name
           in: path
@@ -1741,6 +1759,7 @@ paths:
       tags:
         - Numscript Library
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
         - name: name
           in: path
@@ -1778,6 +1797,7 @@ paths:
       tags:
         - Numscript Library
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
         - name: name
           in: path
@@ -2036,6 +2056,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
       responses:
         '200':
@@ -2144,6 +2165,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/QueryName'
         - name: pageSize
@@ -2248,6 +2270,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
       responses:
         '200':
@@ -2322,6 +2345,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/TypeName'
       responses:
@@ -2390,6 +2414,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - name: sequence
           in: path
           required: true
@@ -2431,7 +2456,11 @@ paths:
       security:
         - BearerAuth: []
         - {}
+      parameters:
+        - $ref: '#/components/parameters/Consistency'
       responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '200':
           description: Event sinks retrieved successfully.
           content:
@@ -2475,8 +2504,9 @@ paths:
         Lists the Ed25519 signing keys registered on the cluster, paged by key
         id (ascending unless `reverse=true`). Requires `ledger:OpsRead` scope.
 
-        This route performs a live linearizable read; signing-key reads are
-        live-only on both transports.
+        This route performs a live read, linearizable by default.
+        `X-Consistency: stale` reads the receiving node's local state, which
+        may lag the leader. Signing-key reads are live-only on both transports.
       operationId: listSigningKeys
       tags:
         - Ops
@@ -2484,6 +2514,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/PageSize'
         - $ref: '#/components/parameters/PageCursor'
         - name: reverse
@@ -2543,6 +2574,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - name: scope
           in: query
           schema:
@@ -2591,6 +2623,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - name: canonicalId
           in: path
           required: true
@@ -2636,6 +2669,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - name: canonicalId
           in: path
           required: true
@@ -2684,11 +2718,14 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - name: ledger
           in: query
           schema:
             type: string
       responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '200':
           description: Index status retrieved successfully.
           content:
@@ -2722,6 +2759,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
       responses:
         '200':
@@ -2834,6 +2872,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
         - name: canonicalId
           in: path
@@ -2923,6 +2962,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
         - name: canonicalId
           in: path
@@ -3065,6 +3105,24 @@ components:
         type: string
         maxLength: 256
       description: Idempotency key for the request
+
+    Consistency:
+      name: X-Consistency
+      in: header
+      required: false
+      schema:
+        type: string
+        enum: [linearizable, stale]
+        default: linearizable
+      description: |
+        Read consistency. `linearizable` (the default) runs a Raft ReadIndex
+        barrier and waits for the receiving node to apply up to it. `stale`
+        serves the read from the receiving node's own store, with no barrier
+        and no forwarding to the leader, so the answer may lag the leader.
+        Matching ignores case and surrounding whitespace. An unknown value, or a
+        repeated or comma-joined header, returns `400 INVALID_REQUEST` on every
+        `/v3` route, writes included; a valid value has no effect on writes. The
+        gRPC equivalent is the `x-consistency` request metadata.
 
     QueryProfile:
       name: X-Query-Profile

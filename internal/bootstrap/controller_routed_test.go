@@ -233,3 +233,34 @@ func TestRoutedController_IndexedReadsForwardLocalBarrierHorizon(t *testing.T) {
 		})
 	}
 }
+
+// TestRoutedControllerStaleReadSkipsBarrier pins the stale route: a context
+// carrying query.ConsistencyStale (set by either transport) reads the local
+// controller without a ReadIndex barrier and without a barrier horizon.
+func TestRoutedControllerStaleReadSkipsBarrier(t *testing.T) {
+	t.Parallel()
+
+	mockCtrl := gomock.NewController(t)
+	local := ctrlmock.NewMockController(mockCtrl)
+	local.EXPECT().GetAccount(gomock.Any(), "ledger", "world", gomock.Any()).
+		DoAndReturn(func(ctx context.Context, _, _ string, _ ctrl.GetAccountOptions) (*commonpb.Account, error) {
+			_, hasHorizon := query.ReadBarrierHorizon(ctx)
+			assert.False(t, hasHorizon, "a stale read must not carry a barrier horizon")
+
+			return &commonpb.Account{}, nil
+		})
+
+	routed := &RoutedController{
+		Node:            &node.Node{},
+		localController: local,
+		readIndexAndWait: func(context.Context) (*node.ReadBarrierInfo, error) {
+			t.Error("a stale read must not run the ReadIndex barrier")
+
+			return nil, nil
+		},
+	}
+
+	ctx := query.WithConsistency(t.Context(), query.ConsistencyStale)
+	_, err := routed.GetAccount(ctx, "ledger", "world", ctrl.GetAccountOptions{})
+	require.NoError(t, err)
+}

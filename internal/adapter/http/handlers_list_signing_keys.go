@@ -11,7 +11,8 @@ import (
 // handleListSigningKeys handles GET /signing-keys to list registered
 // Ed25519 signing keys, paged by key id.
 //
-// This route performs a live linearizable read; signing-key reads are
+// This route performs a live read (linearizable unless the caller sends
+// `X-Consistency: stale`, see readConsistency); signing-key reads are
 // live-only on both transports.
 func (s *Server) handleListSigningKeys(w http.ResponseWriter, r *http.Request) {
 	page, ok := parsePageQuery(w, r)
