@@ -246,8 +246,8 @@ github.com/formancehq/go-libs/v5 v5.9.0 h1:ihfC9Fc5K1F93pOSE1ER9NxzC05+uZnUJGtwG
 github.com/formancehq/go-libs/v5 v5.9.0/go.mod h1:8q/WLSMqsGKhivMmYDY5hvx3mDoP+28QDBEn6sNJZ4A=
 github.com/formancehq/invariants v0.11.0 h1:AHFBhK7U8Ak/qoJwgaNU+cAb9w61Ba7dwlcrJTkWBE4=
 github.com/formancehq/invariants v0.11.0/go.mod h1:ywzSexCUdhw2dC9Njiv0t4u2KfPVKj6SecFujPgmXno=
-github.com/formancehq/numscript v0.0.27-0.20260930085110-c8b929d6b6b1 h1:p7L4fJ6FTtwXIXaB3q4FoN6H6mD/mjdaVqWBoXMGTOE=
-github.com/formancehq/numscript v0.0.27-0.20260930085110-c8b929d6b6b1/go.mod h1:cD+unaG/vauN/IBZmU/td9EAr8UwKeErYLEizIzjaEc=
+github.com/formancehq/numscript v0.0.27-0.20261001120839-af9bc7715f1f h1:X7c9q2PJWo1Lc0e1N2z9WqR32Z+8mB9zEDAv3sDPK6w=
+github.com/formancehq/numscript v0.0.27-0.20261001120839-af9bc7715f1f/go.mod h1:cD+unaG/vauN/IBZmU/td9EAr8UwKeErYLEizIzjaEc=
 github.com/formancehq/pebble/v2 v2.1.7 h1:izJr/+dUVT7OzYANXqUuCqez9RZyOMFJYHTmI/R9U3Y=
 github.com/formancehq/pebble/v2 v2.1.7/go.mod h1:JhU5cqqYkr2BdsBHbZhRZOryAtfhcV3eNI/oBcbrxWc=
 github.com/fortytw2/leaktest v1.3.0 h1:u8491cBMTQ8ft8aeV+adlcytMZylmA5nnwwkRZjI8vw=
