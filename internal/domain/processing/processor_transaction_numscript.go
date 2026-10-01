@@ -139,8 +139,10 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	// true, the store returns unlimited balances to bypass balance checks.
 	//
 	// The artifact is derivable from the script text, so a missing one is
-	// recompiled here exactly as admission compiles it: it costs a compile and
-	// never changes the outcome. Re-running an audited order, which never
+	// recompiled here exactly as admission compiles it: it costs a compile and,
+	// under the same bundled library, never changes the outcome (history from
+	// a library with different execution semantics can replay differently, see
+	// numscript.CompileForReplay). Re-running an audited order, which never
 	// carries compiled code, always gets here. Anywhere else it is an admission
 	// bug — admission binds an artifact to every scripted order it proposes,
 	// and one it forwards without is marked preload_unavailable and rejected

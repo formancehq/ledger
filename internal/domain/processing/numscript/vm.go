@@ -72,9 +72,12 @@ func compileScript(entry *lruEntry, vars map[string]string) (out *CompiledScript
 
 // CompileForReplay compiles script with vars exactly as admission does, for a
 // caller that re-runs an audited order. The audit keeps only the business part
-// of an order, so an audited order never carries the compiled code. Every
-// compilation of a script means the same thing, so running this one gives the
-// order its original outcome.
+// of an order, so an audited order never carries the compiled code. Under the
+// same bundled library every compilation of a script means the same thing, so
+// running this one gives the order its original outcome; history applied by a
+// library with different execution semantics can replay differently (see
+// docs/ops/deployment.md, "Upgrading across the Numscript VM execution
+// change").
 func CompileForReplay(cache *NumscriptCache, script string, vars map[string]string) (*CompiledScript, domain.SerializableError) {
 	entry := cache.getOrParseEntry(script)
 	if entry.script.err != nil {
