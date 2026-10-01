@@ -9,8 +9,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 )
 
@@ -37,7 +36,7 @@ type PerNodeConn struct {
 	NodeID uint32
 
 	conn    *grpc.ClientConn
-	Bucket  servicepb.BucketServiceClient
+	Bucket  clusterpb.BucketServiceClient
 	Cluster clusterpb.ClusterServiceClient
 }
 
@@ -129,7 +128,7 @@ func DialPerNode(ctx context.Context) (PerNodeConns, error) {
 		conns = append(conns, &PerNodeConn{
 			Addr:    addr,
 			conn:    conn,
-			Bucket:  servicepb.NewBucketServiceClient(conn),
+			Bucket:  clusterpb.NewBucketServiceClient(conn),
 			Cluster: clusterpb.NewClusterServiceClient(conn),
 		})
 	}

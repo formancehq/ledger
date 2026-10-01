@@ -13,8 +13,9 @@ import (
 	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/proto"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestHandleListTransactions_Success(t *testing.T) {

@@ -125,9 +125,9 @@ proto-internal oneof/wrapper names onto the public REST surface (`and.filters[]`
 `not.filter`, `field.field.metadata`, `stringCond`, `hardcodedExact`, and the
 `QUERY_TARGET_*` enum prefix). To keep the REST wire aligned with the rest of the
 Formance platform, `QueryFilter` carries a **hand-written JSON codec**
-(`internal/proto/commonpb/query_filter.go`) that mirrors the shared Formance query
+(`pkg/client/v3/grpc/commonpb_query_filter.go`) that mirrors the shared Formance query
 DSL (`go-libs/pkg/query`, as used by ledger v2). `PreparedQuery.MarshalJSON`
-(`internal/proto/commonpb/common.pb.json.go`) uses it plus a string target enum;
+(`pkg/client/v3/grpc/commonpb_common.pb.json.go`) uses it plus a string target enum;
 the HTTP decoder (`internal/adapter/http/prepared_query_filter.go`) decodes through
 the same codec.
 
@@ -160,7 +160,7 @@ empty `$and`/`$or`, an operator body without exactly one field, an unsupported f
 an empty `$param` name, and a proto oneof arm it does not recognise — so a new proto
 arm cannot silently drop a filter. The full DSL is documented under `QueryFilter` in
 `openapi.yml`. Round-trip and error-path tests live in
-`internal/proto/commonpb/query_filter_test.go`; the REST wire is asserted in
+`pkg/client/v3/grpc/commonpb_query_filter_test.go`; the REST wire is asserted in
 `tests/e2e/business/prepared_query_rest_shape_test.go`.
 
 This shape is shared by every filtered endpoint that accepts the structured JSON

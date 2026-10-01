@@ -7,10 +7,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 func TestProcessCreateTransactionRejectsExhaustedIDBeforeWrites(t *testing.T) {
@@ -212,12 +214,12 @@ func TestProcessCreateTransaction(t *testing.T) {
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, nil)
 
-	request := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+	request := &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Postings: []*commonpb.Posting{
 							{
 								Source:      "bank",
@@ -270,12 +272,12 @@ func TestProcessCreateTransaction_InsufficientFunds(t *testing.T) {
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	expectGetVolume(mockStore, sourceKey, sourceVolume.AsReader(), nil)
 
-	request := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+	request := &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Postings: []*commonpb.Posting{
 							{
 								Source:      "users:123",
@@ -334,12 +336,12 @@ func TestProcessCreateTransaction_WorldSource(t *testing.T) {
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, nil)
 
-	request := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+	request := &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Postings: []*commonpb.Posting{
 							{
 								Source:      "world", // Can go negative
@@ -373,11 +375,11 @@ func TestProcessApply_LedgerNotFound(t *testing.T) {
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "nonexistent"}, nil, domain.ErrNotFound)
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "nonexistent"}, nil, domain.ErrNotFound)
 
-	request := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+	request := &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: "nonexistent",
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_AddMetadata{
 					AddMetadata: &commonpb.SaveMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Account{
@@ -438,12 +440,12 @@ func TestProcessCreateTransaction_Numscript_WorldSource(t *testing.T) {
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, nil)
 
-	request := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+	request := &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Script: &commonpb.Script{
 							Plain: `
 								send [USD/2 10000] (
@@ -499,12 +501,12 @@ func TestProcessCreateTransaction_Numscript_WithVariables(t *testing.T) {
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, nil)
 
-	request := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+	request := &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Script: &commonpb.Script{
 							Plain: `
 								vars {
@@ -567,12 +569,12 @@ func TestProcessCreateTransaction_Numscript_MultiplePostings(t *testing.T) {
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, nil)
 
-	request := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+	request := &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Script: &commonpb.Script{
 							Plain: `
 								send [USD/2 10000] (
@@ -636,12 +638,12 @@ func TestProcessCreateTransaction_Numscript_UnboundedOverdraft(t *testing.T) {
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, nil)
 
-	request := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+	request := &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Script: &commonpb.Script{
 							Plain: `
 								send [USD/2 100000] (
@@ -689,12 +691,12 @@ func TestProcessCreateTransaction_Numscript_ParseError(t *testing.T) {
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 
-	request := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+	request := &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Script: &commonpb.Script{
 							Plain: `
 								send [USD/2 invalid] (
@@ -737,12 +739,12 @@ func TestProcessCreateTransaction_Numscript_EmptyScript(t *testing.T) {
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 
-	request := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+	request := &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Script: &commonpb.Script{
 							Plain: "",
 						},
@@ -778,12 +780,12 @@ func TestProcessCreateTransaction_Numscript_NoSendStillRejected(t *testing.T) {
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 
 	// A numscript that declares a variable but never emits a `send`.
-	request := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+	request := &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Script: &commonpb.Script{
 							Plain: "vars { account $a }",
 							Vars:  map[string]string{"a": "users:alice"},
@@ -822,12 +824,12 @@ func TestProcessCreateTransaction_Numscript_SendToMultipleDestinations(t *testin
 	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, nil)
 
 	// Test allotment to multiple destinations
-	request := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+	request := &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Script: &commonpb.Script{
 							Plain: `
 								send [USD/2 10000] (
@@ -886,19 +888,19 @@ func TestProcessCreateTransaction_Numscript_SetTxMeta(t *testing.T) {
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, nil, func(_ domain.TransactionKey, state *commonpb.TransactionState) {
-		metadata := commonpb.MetadataToGoMap(state.GetMetadata())
+	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, nil, func(_ domain.TransactionKey, state *internalcommonpb.TransactionState) {
+		metadata := protohelpers.MetadataToGoMap(state.GetMetadata())
 		require.Equal(t, "payment", metadata["type"])
 		require.Equal(t, "purchase", metadata["category"])
 	})
 
 	// Test set_tx_meta
-	request := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+	request := &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Script: &commonpb.Script{
 							Plain: `
 								set_tx_meta("type", "payment")
@@ -927,7 +929,7 @@ func TestProcessCreateTransaction_Numscript_SetTxMeta(t *testing.T) {
 	require.NotNil(t, createdTx.GetTransaction().GetMetadata())
 
 	// Verify metadata was set
-	metaMap := commonpb.MetadataToGoMap(createdTx.GetTransaction().GetMetadata())
+	metaMap := protohelpers.MetadataToGoMap(createdTx.GetTransaction().GetMetadata())
 	require.Equal(t, "payment", metaMap["type"])
 	require.Equal(t, "purchase", metaMap["category"])
 }
@@ -962,12 +964,12 @@ func TestProcessCreateTransaction_Numscript_DoesNotMutateOrderMetadata(t *testin
 
 	// Caller metadata collides with the script on "type" (caller must win) and
 	// carries a caller-only key the script never sets.
-	request := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+	request := &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Metadata: map[string]*commonpb.MetadataValue{
 							"type":        commonpb.NewStringValue("caller-wins"),
 							"caller-only": commonpb.NewStringValue("kept"),
@@ -1004,7 +1006,7 @@ func TestProcessCreateTransaction_Numscript_DoesNotMutateOrderMetadata(t *testin
 	createdTx := result.GetApply().GetLog().GetData().GetCreatedTransaction()
 	require.NotNil(t, createdTx)
 
-	metaMap := commonpb.MetadataToGoMap(createdTx.GetTransaction().GetMetadata())
+	metaMap := protohelpers.MetadataToGoMap(createdTx.GetTransaction().GetMetadata())
 	require.Equal(t, "caller-wins", metaMap["type"], "caller metadata must win collisions")
 	require.Equal(t, "purchase", metaMap["category"], "script metadata must be merged in")
 	require.Equal(t, "kept", metaMap["caller-only"], "caller-only metadata must be preserved")
@@ -1035,12 +1037,12 @@ func TestProcessCreateTransaction_Numscript_RejectsEmptyMetadataKey(t *testing.T
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 	setupNumscriptVolumeMocks(mockStore)
 
-	request := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+	request := &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Script: &commonpb.Script{
 							Plain: `
 								set_tx_meta("", "ghost")
@@ -1117,12 +1119,12 @@ func TestProcessCreateTransaction_Numscript_RejectsNullByteMetadataValue(t *test
 			mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 			setupNumscriptVolumeMocks(mockStore)
 
-			request := &servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
+			request := &commonpb.Request{
+				Type: &commonpb.Request_Apply{
+					Apply: &commonpb.LedgerApplyRequest{
 						Ledger: "test-ledger",
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
+						Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+							CreateTransaction: &commonpb.CreateTransactionPayload{
 								Script: &commonpb.Script{
 									Plain: tt.script,
 									Vars: map[string]string{
@@ -1164,9 +1166,9 @@ func TestProcessCreateTransaction_Numscript_CompetingMetadataErrors(t *testing.T
 		expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 		mockStore.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1234567890}).AsReader()).AnyTimes()
 		setupNumscriptVolumeMocks(mockStore)
-		request := &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
+		request := &commonpb.Request{Type: &commonpb.Request_Apply{Apply: &commonpb.LedgerApplyRequest{
 			Ledger: "test-ledger",
-			Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{CreateTransaction: &servicepb.CreateTransactionPayload{
+			Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{CreateTransaction: &commonpb.CreateTransactionPayload{
 				Script: &commonpb.Script{Plain: script, Vars: map[string]string{"poison": "safe\x00poison"}},
 			}}},
 		}}}
@@ -1218,12 +1220,12 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 	expectPutAccountMetadata(t, mockStore, createdByKey, commonpb.NewStringValue("numscript"))
 
 	// Test set_account_meta
-	request := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+	request := &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Script: &commonpb.Script{
 							Plain: `
 								set_account_meta(@users:alice, "account_type", "savings")
@@ -1256,7 +1258,7 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 	require.Contains(t, createdTx.GetAccountMetadata(), "users:alice", "AccountMetadata should contain users:alice")
 	aliceMeta := createdTx.GetAccountMetadata()["users:alice"]
 	require.NotNil(t, aliceMeta)
-	metaMap := commonpb.MetadataMapToGoMap(aliceMeta)
+	metaMap := protohelpers.MetadataMapToGoMap(aliceMeta)
 	require.Equal(t, "savings", metaMap["account_type"])
 	require.Equal(t, "numscript", metaMap["created_by"])
 }
@@ -1298,12 +1300,12 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta_WritesOnce(t *testing
 	// to capture a previous value (it stores the client value verbatim).
 	expectPutAccountMetadata(t, mockStore, roleKey, commonpb.NewStringValue("viewer"))
 
-	request := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+	request := &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Script: &commonpb.Script{
 							Plain: `
 								set_account_meta(@users:alice, "role", "viewer")
@@ -1327,7 +1329,7 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta_WritesOnce(t *testing
 	// New metadata in the log.
 	aliceMeta := createdTx.GetAccountMetadata()["users:alice"]
 	require.NotNil(t, aliceMeta)
-	require.Equal(t, "viewer", commonpb.MetadataMapToGoMap(aliceMeta)["role"])
+	require.Equal(t, "viewer", protohelpers.MetadataMapToGoMap(aliceMeta)["role"])
 }
 
 func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
@@ -1375,12 +1377,12 @@ func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, nil)
 
-	request := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+	request := &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Force: true, // Force flag bypasses balance check
 						Postings: []*commonpb.Posting{
 							{
@@ -1447,12 +1449,12 @@ func TestProcessCreateTransaction_Force_ZeroBalance(t *testing.T) {
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, nil)
 
-	request := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+	request := &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Force: true,
 						Postings: []*commonpb.Posting{
 							{
@@ -1498,12 +1500,12 @@ func TestProcessCreateTransaction_Numscript_Force_InsufficientFunds(t *testing.T
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, nil)
 
-	request := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+	request := &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Force: true, // Force bypasses balance checks in Numscript
 						Script: &commonpb.Script{
 							Plain: `
@@ -1558,12 +1560,12 @@ func TestProcessCreateTransaction_Numscript_OverflowUint256(t *testing.T) {
 	// This exceeds the uint256 max (2^256 - 1) and must be rejected.
 	overflow256 := "115792089237316195423570985008687907853269984665640564039457584007913129639936"
 
-	request := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+	request := &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Script: &commonpb.Script{
 							Plain: `
 								vars {
@@ -1607,12 +1609,12 @@ func TestProcessCreateTransaction_Numscript_NegativeAmount(t *testing.T) {
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	setupNumscriptVolumeMocks(mockStore)
 
-	request := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+	request := &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Script: &commonpb.Script{
 							Plain: `
 								vars {
@@ -1691,12 +1693,12 @@ func TestProcessCreateTransaction_StoresAccountMetadataVerbatim(t *testing.T) {
 	// Exact verbatim write: no GetAccountMetadata pre-read, no coercion.
 	expectPutAccountMetadata(t, mockStore, metaKey, clientSent)
 
-	request := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+	request := &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Postings: []*commonpb.Posting{
 							{Source: "world", Destination: "users:123", Amount: commonpb.NewUint256FromUint64(1000), Asset: "USD"},
 						},

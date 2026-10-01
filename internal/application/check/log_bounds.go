@@ -4,8 +4,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // logBoundsVerifier re-derives the highest log sequence the audit chain
@@ -338,10 +337,10 @@ type storedLogObservations struct {
 // proves the FSM allocated every position in it. On the unaudited side there is
 // no such proof — nothing says the planted rows are contiguous — so the count is
 // the rows actually observed.
-func (v *logBoundsVerifier) compare(observed storedLogObservations, callback func(*servicepb.CheckStoreEvent)) {
+func (v *logBoundsVerifier) compare(observed storedLogObservations, callback func(*auditpb.CheckStoreEvent)) {
 	if v.incompleteReason != "" {
 		callback(errorEvent(
-			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE,
+			auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE,
 			v.incompleteReason, 0, "", "", ""))
 
 		return
@@ -354,7 +353,7 @@ func (v *logBoundsVerifier) compare(observed storedLogObservations, callback fun
 		first := observed.highestWithinBound + 1
 
 		callback(errorEvent(
-			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP,
+			auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP,
 			fmt.Sprintf("log sequences %d..%d are missing: the audit chain accounts for logs up to %d "+
 				"but the highest stored log at or below that bound is %d (%d logs)",
 				first, v.expectedMax, v.expectedMax, observed.highestWithinBound,
@@ -368,7 +367,7 @@ func (v *logBoundsVerifier) compare(observed storedLogObservations, callback fun
 		first := v.expectedMax + 1
 
 		callback(errorEvent(
-			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED,
+			auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED,
 			fmt.Sprintf("log sequences %d..%d have no audited origin: the audit chain accounts for logs "+
 				"up to %d but the store holds logs up to %d (%d logs)",
 				first, observed.highestKey, v.expectedMax, observed.highestKey, observed.rowsAboveBound),

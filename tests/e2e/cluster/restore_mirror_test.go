@@ -14,11 +14,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -110,16 +107,16 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 		requestsAtSample   int
 	)
 
-	storage := func() *commonpb.BackupStorage {
-		return testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+	storage := func() *clusterpb.BackupStorage {
+		return testutil.S3BackupStorage(&clusterpb.S3StorageConfig{
 			Bucket:   s3Bucket,
 			Region:   restoreS3Region,
 			Endpoint: minioEndpoint,
 		})
 	}
 
-	syncProgress := func(g Gomega, client servicepb.BucketServiceClient) *commonpb.MirrorSyncProgress {
-		info, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
+	syncProgress := func(g Gomega, client clusterpb.BucketServiceClient) *clusterpb.MirrorSyncProgress {
+		info, err := client.GetLedger(ctx, &clusterpb.GetLedgerRequest{Ledger: ledgerName})
 		g.Expect(err).To(Succeed())
 
 		return info.GetMirrorSyncProgress()
@@ -140,7 +137,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 	// the same source logs moves differently: the mirrored transaction count
 	// (unchanged, because a re-apply reuses the source transaction ids) and the
 	// account volumes (doubled, because the postings apply again).
-	expectSingleIngestion := func(g Gomega, client servicepb.BucketServiceClient, phase string) {
+	expectSingleIngestion := func(g Gomega, client clusterpb.BucketServiceClient, phase string) {
 		txs, err := listAllTransactions(ctx, client, ledgerName, 100, 0)
 		g.Expect(err).To(Succeed())
 		g.Expect(txs).To(HaveLen(preBackupTxCount), "%s: mirrored transaction count", phase)
@@ -211,7 +208,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 	Describe("Phase 1: a mirror checkpoint prefix followed by an exported delta", Ordered, func() {
 		var (
 			sourceServer  *testservice.Service
-			client        servicepb.BucketServiceClient
+			client        clusterpb.BucketServiceClient
 			clusterClient clusterpb.ClusterServiceClient
 			grpcConn      *grpc.ClientConn
 		)
@@ -250,15 +247,15 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 		})
 
 		It("creates a mirror ledger pointed at the v2 source", func() {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-				Type: &servicepb.Request_CreateLedger{
-					CreateLedger: &servicepb.CreateLedgerRequest{
+			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", &clusterpb.Request{
+				Type: &clusterpb.Request_CreateLedger{
+					CreateLedger: &clusterpb.CreateLedgerRequest{
 						Name: ledgerName,
-						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
-						MirrorSource: &commonpb.MirrorSourceConfig{
+						Mode: clusterpb.LedgerMode_LEDGER_MODE_MIRROR,
+						MirrorSource: &clusterpb.MirrorSourceConfig{
 							LedgerName: "default",
-							Type: &commonpb.MirrorSourceConfig_Http{
-								Http: &commonpb.HttpMirrorSourceConfig{
+							Type: &clusterpb.MirrorSourceConfig_Http{
+								Http: &clusterpb.HttpMirrorSourceConfig{
 									BaseUrl: mockV2.URL(),
 								},
 							},
@@ -275,7 +272,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 				g.Expect(progress.GetError().GetMessage()).To(BeEmpty())
 				g.Expect(progress.GetCursor()).To(Equal(uint64(checkpointSourceLogCount)))
 				g.Expect(progress.GetSourceLogCount()).To(Equal(uint64(checkpointSourceLogCount)))
-				g.Expect(progress.GetState()).To(Equal(commonpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING))
+				g.Expect(progress.GetState()).To(Equal(clusterpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING))
 
 				txs, err := listAllTransactions(ctx, client, ledgerName, 100, 0)
 				g.Expect(err).To(Succeed())
@@ -304,7 +301,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 				g.Expect(progress.GetError().GetMessage()).To(BeEmpty())
 				g.Expect(progress.GetCursor()).To(Equal(uint64(sourceLogCount)))
 				g.Expect(progress.GetSourceLogCount()).To(Equal(uint64(sourceLogCount)))
-				g.Expect(progress.GetState()).To(Equal(commonpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING))
+				g.Expect(progress.GetState()).To(Equal(clusterpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING))
 
 				txs, err := listAllTransactions(ctx, client, ledgerName, 100, 0)
 				g.Expect(err).To(Succeed())
@@ -339,7 +336,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 
 	Describe("Phase 2: restore", Ordered, func() {
 		var (
-			restoreClient restorepb.RestoreServiceClient
+			restoreClient clusterpb.RestoreServiceClient
 			grpcConn      *grpc.ClientConn
 			server        *testservice.Service
 		)
@@ -374,25 +371,25 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 		})
 
 		It("downloads and finalizes the backup", func() {
-			startResp, err := restoreClient.StartDownloadBackup(ctx, &restorepb.StartDownloadBackupRequest{Storage: storage()})
+			startResp, err := restoreClient.StartDownloadBackup(ctx, &clusterpb.StartDownloadBackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
 
-			Eventually(func() restorepb.DownloadState {
-				resp, statusErr := restoreClient.GetDownloadStatus(ctx, &restorepb.GetDownloadStatusRequest{JobId: startResp.GetJobId()})
+			Eventually(func() clusterpb.DownloadState {
+				resp, statusErr := restoreClient.GetDownloadStatus(ctx, &clusterpb.GetDownloadStatusRequest{JobId: startResp.GetJobId()})
 				Expect(statusErr).To(Succeed())
 				return resp.GetState()
-			}, 2*time.Minute, 500*time.Millisecond).Should(Equal(restorepb.DownloadState_DOWNLOAD_STATE_SUCCEEDED))
+			}, 2*time.Minute, 500*time.Millisecond).Should(Equal(clusterpb.DownloadState_DOWNLOAD_STATE_SUCCEEDED))
 
 			Expect(validateRestoreWithoutErrors(ctx, restoreClient)).To(Succeed())
 
-			_, err = restoreClient.FinalizeRestore(ctx, &restorepb.FinalizeRestoreRequest{})
+			_, err = restoreClient.FinalizeRestore(ctx, &clusterpb.FinalizeRestoreRequest{})
 			Expect(err).To(Succeed())
 		})
 	})
 
 	Describe("Phase 3: verify the restored mirror resume position", Ordered, func() {
 		var (
-			client        servicepb.BucketServiceClient
+			client        clusterpb.BucketServiceClient
 			clusterClient clusterpb.ClusterServiceClient
 			grpcConn      *grpc.ClientConn
 			server        *testservice.Service
@@ -432,7 +429,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 			// parked. GetLedger serves from local Pebble and needs no leader,
 			// so this answers whatever RebuildDelta wrote.
 			Eventually(func(g Gomega) {
-				info, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
+				info, err := client.GetLedger(ctx, &clusterpb.GetLedgerRequest{Ledger: ledgerName})
 				g.Expect(err).To(Succeed())
 				restoredCursor = info.GetMirrorSyncProgress().GetCursor()
 				requestsAtSample = mockV2.requestCount()
@@ -501,7 +498,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 				// by ANY head from 1 to sourceLogCount. Only this assertion
 				// separates "published the real head" from "published a head".
 				g.Expect(progress.GetSourceLogCount()).To(Equal(uint64(sourceLogCount)))
-				g.Expect(progress.GetState()).To(Equal(commonpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING))
+				g.Expect(progress.GetState()).To(Equal(clusterpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING))
 			}).Within(60 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
 		})
 
@@ -548,7 +545,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 				// FOLLOWING again after the fresh ingest advances both the
 				// cursor and the source head in lock-step.
 				g.Expect(progress.GetSourceLogCount()).To(Equal(uint64(postRestoreLogID)))
-				g.Expect(progress.GetState()).To(Equal(commonpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING))
+				g.Expect(progress.GetState()).To(Equal(clusterpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING))
 				g.Expect(progress.GetRemainingLogs()).To(BeZero())
 			}).Within(60 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
 		})

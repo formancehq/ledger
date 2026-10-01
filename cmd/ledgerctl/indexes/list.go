@@ -9,10 +9,10 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // NewListCommand creates the indexes list command.
@@ -61,8 +61,8 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 
 	spinner := cmdutil.StartSpinner(fmt.Sprintf("Fetching indexes for %s...", ledgerName))
 
-	stream, err := client.ListIndexes(ctx, &servicepb.ListIndexesRequest{
-		Scope:  servicepb.ListIndexesRequest_SCOPE_LEDGER,
+	stream, err := client.ListIndexes(ctx, &commonpb.ListIndexesRequest{
+		Scope:  commonpb.ListIndexesRequest_SCOPE_LEDGER,
 		Ledger: ledgerName,
 	})
 	if err != nil {
@@ -120,7 +120,7 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 		lastLogSeq         uint64
 	)
 
-	idxStatus, statusErr := client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{Ledger: ledgerName})
+	idxStatus, statusErr := client.GetIndexStatus(ctx, &commonpb.GetIndexStatusRequest{Ledger: ledgerName})
 	if statusErr != nil {
 		spinner.Fail(fmt.Sprintf("Failed to fetch index status: %v", statusErr))
 	} else {

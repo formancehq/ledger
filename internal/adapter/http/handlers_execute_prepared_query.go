@@ -10,8 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // handleExecutePreparedQuery handles POST /{ledgerName}/prepared-queries/{name}/execute.
@@ -83,7 +82,7 @@ func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	req := &servicepb.ExecutePreparedQueryRequest{
+	req := &commonpb.ExecutePreparedQueryRequest{
 		Ledger:     ledgerName,
 		QueryName:  queryName,
 		Parameters: params,
@@ -117,9 +116,9 @@ func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Reque
 	//     decimal-string amounts, and `color` on every volume row.
 	envelope := executePreparedQueryResponseJSON{}
 	switch result := resp.GetResult().(type) {
-	case *servicepb.ExecutePreparedQueryResponse_Aggregate:
+	case *commonpb.ExecutePreparedQueryResponse_Aggregate:
 		envelope.AggregateResult = toAggregateVolumesJSON(result.Aggregate)
-	case *servicepb.ExecutePreparedQueryResponse_Cursor:
+	case *commonpb.ExecutePreparedQueryResponse_Cursor:
 		envelope.Cursor = result.Cursor
 	}
 

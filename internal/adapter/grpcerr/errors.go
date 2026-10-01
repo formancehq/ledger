@@ -22,8 +22,8 @@
 //     reconstructed like any other, so INDEX_BUILDING and COVERAGE_MISS keep
 //     their reason across the hop.
 //   - A bare codes.NotFound — carrying no ErrorInfo at all, which is the
-//     shape of roughly twenty commonpb.NewNotFoundError sites — becomes a
-//     *commonpb.NotFoundError, which the HTTP handler already maps to 404. A
+//     shape of roughly twenty protoerr.NewNotFoundError sites — becomes a
+//     *protoerr.NotFoundError, which the HTTP handler already maps to 404. A
 //     NotFound carrying another service's ErrorInfo is not bare and is left
 //     untouched: reinterpreting it as a ledger NotFoundError would answer a
 //     foreign contract as this one.
@@ -78,9 +78,11 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/adapter/apierr"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	protoerr "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // errorDomain is the ErrorInfo.domain the server stamps on every business
@@ -204,9 +206,9 @@ func FromStatusError(err error) error {
 	// The bare-NotFound fallback, and only for a status that carries no
 	// ErrorInfo at all. One that carries a foreign domain's ErrorInfo is that
 	// service's contract to answer: Decode already declines it, and wrapping
-	// it as a ledger *commonpb.NotFoundError here would put it back.
+	// it as a ledger *protoerr.NotFoundError here would put it back.
 	if st.Code() == codes.NotFound && !hasErrorInfo(st) {
-		return &reconstructedError{st: st, inner: commonpb.NewNotFoundError("%s", st.Message())}
+		return &reconstructedError{st: st, inner: protoerr.NewNotFoundError("%s", st.Message())}
 	}
 
 	return err

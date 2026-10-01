@@ -4,17 +4,17 @@
 package eventspb
 
 import (
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	grpc "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // EventReader provides read-only access to Event.
 // Call Mutate() to obtain a mutable clone.
 type EventReader interface {
-	GetType() commonpb.EventType
+	GetType() grpc.EventType
 	GetLedger() string
-	GetDate() commonpb.TimestampReader
+	GetDate() grpc.TimestampReader
 	GetLogSequence() uint64
-	GetLog() commonpb.LogReader
+	GetLog() grpc.LogReader
 	GetApp() string
 	GetVersion() string
 	Mutate() *Event
@@ -22,7 +22,7 @@ type EventReader interface {
 
 type eventReadonly Event
 
-func (r *eventReadonly) GetType() commonpb.EventType {
+func (r *eventReadonly) GetType() grpc.EventType {
 	return (*Event)(r).GetType()
 }
 
@@ -30,7 +30,7 @@ func (r *eventReadonly) GetLedger() string {
 	return (*Event)(r).GetLedger()
 }
 
-func (r *eventReadonly) GetDate() commonpb.TimestampReader {
+func (r *eventReadonly) GetDate() grpc.TimestampReader {
 	v := (*Event)(r).GetDate()
 	if v == nil {
 		return nil
@@ -42,7 +42,7 @@ func (r *eventReadonly) GetLogSequence() uint64 {
 	return (*Event)(r).GetLogSequence()
 }
 
-func (r *eventReadonly) GetLog() commonpb.LogReader {
+func (r *eventReadonly) GetLog() grpc.LogReader {
 	v := (*Event)(r).GetLog()
 	if v == nil {
 		return nil

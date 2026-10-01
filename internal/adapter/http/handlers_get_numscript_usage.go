@@ -7,7 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // templateUsageJSON is the camelCase JSON DTO for TemplateUsage. It

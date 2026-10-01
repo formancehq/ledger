@@ -3,8 +3,7 @@ package http
 import (
 	"net/http"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // handlePromoteLedger handles POST /{ledgerName}/promote to promote a mirror ledger to normal mode.
@@ -14,9 +13,9 @@ func (s *Server) handlePromoteLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logs, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{
-		Type: &servicepb.Request_PromoteLedger{
-			PromoteLedger: &servicepb.PromoteLedgerRequest{
+	logs, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &commonpb.Request{
+		Type: &commonpb.Request_PromoteLedger{
+			PromoteLedger: &commonpb.PromoteLedgerRequest{
 				Ledger: ledgerName,
 			},
 		},

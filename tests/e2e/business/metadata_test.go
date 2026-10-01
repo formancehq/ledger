@@ -3,11 +3,11 @@
 package business
 
 import (
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"math/big"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -19,11 +19,11 @@ var _ = Describe("Metadata", Ordered, func() {
 
 		BeforeAll(func() {
 			// Create ledger
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// Create account via transaction
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "test-account", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -36,17 +36,17 @@ var _ = Describe("Metadata", Ordered, func() {
 				"owner": "user123",
 				"tier":  "premium",
 			}
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "test-account", metadata)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "test-account", metadata)))
 			Expect(err).To(Succeed())
 
 			// Verify metadata via GetAccount
-			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+			account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "test-account",
 			})
 			Expect(err).To(Succeed())
 			Expect(account.Metadata).NotTo(BeNil())
-			metaMap := commonpb.MetadataToGoMap(account.Metadata)
+			metaMap := protohelpers.MetadataToGoMap(account.Metadata)
 			Expect(metaMap["type"]).To(Equal("savings"))
 			Expect(metaMap["owner"]).To(Equal("user123"))
 			Expect(metaMap["tier"]).To(Equal("premium"))
@@ -54,26 +54,26 @@ var _ = Describe("Metadata", Ordered, func() {
 
 		It("Should update existing metadata", func() {
 			// Set initial metadata
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "test-account", map[string]string{
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "test-account", map[string]string{
 				"key1": "value1",
 				"key2": "value2",
 			})))
 			Expect(err).To(Succeed())
 
 			// Update metadata (should merge)
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "test-account", map[string]string{
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "test-account", map[string]string{
 				"key2": "updated_value2",
 				"key3": "value3",
 			})))
 			Expect(err).To(Succeed())
 
 			// Verify merged metadata
-			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+			account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "test-account",
 			})
 			Expect(err).To(Succeed())
-			metaMap := commonpb.MetadataToGoMap(account.Metadata)
+			metaMap := protohelpers.MetadataToGoMap(account.Metadata)
 			Expect(metaMap["key1"]).To(Equal("value1"))
 			Expect(metaMap["key2"]).To(Equal("updated_value2"))
 			Expect(metaMap["key3"]).To(Equal("value3"))
@@ -81,23 +81,23 @@ var _ = Describe("Metadata", Ordered, func() {
 
 		It("Should delete metadata and verify removal", func() {
 			// Set metadata
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "test-account", map[string]string{
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "test-account", map[string]string{
 				"keep":   "this",
 				"delete": "this",
 			})))
 			Expect(err).To(Succeed())
 
 			// Delete one key
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.DeleteAccountMetadataAction(ledgerName, "test-account", "delete")))
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.DeleteAccountMetadataAction(ledgerName, "test-account", "delete")))
 			Expect(err).To(Succeed())
 
 			// Verify deletion (deleted keys should not exist)
-			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+			account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "test-account",
 			})
 			Expect(err).To(Succeed())
-			metaMap := commonpb.MetadataToGoMap(account.Metadata)
+			metaMap := protohelpers.MetadataToGoMap(account.Metadata)
 			Expect(metaMap["keep"]).To(Equal("this"))
 			// Deleted metadata key should not exist in the map
 			_, exists := metaMap["delete"]
@@ -106,18 +106,18 @@ var _ = Describe("Metadata", Ordered, func() {
 
 		It("Should set metadata on account that doesn't have transactions yet", func() {
 			// Set metadata on a new account (creates account implicitly)
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "new-account", map[string]string{
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "new-account", map[string]string{
 				"created": "via-metadata",
 			})))
 			Expect(err).To(Succeed())
 
 			// Verify account exists with metadata
-			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+			account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "new-account",
 			})
 			Expect(err).To(Succeed())
-			Expect(commonpb.MetadataToGoMap(account.Metadata)["created"]).To(Equal("via-metadata"))
+			Expect(protohelpers.MetadataToGoMap(account.Metadata)["created"]).To(Equal("via-metadata"))
 		})
 
 		It("Should handle metadata with special characters", func() {
@@ -127,16 +127,16 @@ var _ = Describe("Metadata", Ordered, func() {
 				"description": "A \"quoted\" string with 'apostrophes'",
 				"json":        `{"key": "value"}`,
 			}
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "test-account", metadata)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "test-account", metadata)))
 			Expect(err).To(Succeed())
 
 			// Verify
-			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+			account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "test-account",
 			})
 			Expect(err).To(Succeed())
-			metaMap := commonpb.MetadataToGoMap(account.Metadata)
+			metaMap := protohelpers.MetadataToGoMap(account.Metadata)
 			Expect(metaMap["url"]).To(Equal("https://example.com/path?query=value"))
 			Expect(metaMap["description"]).To(Equal("A \"quoted\" string with 'apostrophes'"))
 			Expect(metaMap["json"]).To(Equal(`{"key": "value"}`))
@@ -144,7 +144,7 @@ var _ = Describe("Metadata", Ordered, func() {
 
 		It("Should delete multiple metadata keys sequentially", func() {
 			// Set multiple metadata keys
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "test-account", map[string]string{
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "test-account", map[string]string{
 				"key1": "value1",
 				"key2": "value2",
 				"key3": "value3",
@@ -152,19 +152,19 @@ var _ = Describe("Metadata", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			// Delete keys one by one
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.DeleteAccountMetadataAction(ledgerName, "test-account", "key1")))
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.DeleteAccountMetadataAction(ledgerName, "test-account", "key1")))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.DeleteAccountMetadataAction(ledgerName, "test-account", "key2")))
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.DeleteAccountMetadataAction(ledgerName, "test-account", "key2")))
 			Expect(err).To(Succeed())
 
 			// Verify: key1 and key2 should not exist, key3 should remain
-			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+			account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "test-account",
 			})
 			Expect(err).To(Succeed())
-			metaMap := commonpb.MetadataToGoMap(account.Metadata)
+			metaMap := protohelpers.MetadataToGoMap(account.Metadata)
 			_, key1Exists := metaMap["key1"]
 			Expect(key1Exists).To(BeFalse())
 			_, key2Exists := metaMap["key2"]
@@ -178,13 +178,13 @@ var _ = Describe("Metadata", Ordered, func() {
 
 		BeforeAll(func() {
 			// Create ledger
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should be able to get a transaction after creating it", func() {
 			// Create transaction without metadata
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -194,7 +194,7 @@ var _ = Describe("Metadata", Ordered, func() {
 			Expect(transactionID).To(Equal(uint64(1)))
 
 			// Get the transaction immediately
-			tx, err := sharedClient.GetTransaction(sharedCtx, &servicepb.GetTransactionRequest{
+			tx, err := sharedClient.GetTransaction(sharedCtx, &commonpb.GetTransactionRequest{
 				Ledger:        ledgerName,
 				TransactionId: transactionID,
 			})
@@ -204,7 +204,7 @@ var _ = Describe("Metadata", Ordered, func() {
 
 		It("Should be able to get a transaction before and after saving metadata", func() {
 			// Create transaction without metadata
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -213,7 +213,7 @@ var _ = Describe("Metadata", Ordered, func() {
 			transactionID := applyLog.Log.Data.GetCreatedTransaction().Transaction.Id
 
 			// Get the transaction BEFORE saving metadata - should work
-			txBefore, err := sharedClient.GetTransaction(sharedCtx, &servicepb.GetTransactionRequest{
+			txBefore, err := sharedClient.GetTransaction(sharedCtx, &commonpb.GetTransactionRequest{
 				Ledger:        ledgerName,
 				TransactionId: transactionID,
 			})
@@ -221,24 +221,24 @@ var _ = Describe("Metadata", Ordered, func() {
 			Expect(txBefore.Transaction.Id).To(Equal(transactionID))
 
 			// Save metadata
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveTransactionMetadataAction(ledgerName, transactionID, map[string]string{
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveTransactionMetadataAction(ledgerName, transactionID, map[string]string{
 				"key": "value",
 			})))
 			Expect(err).To(Succeed(), "Save metadata should succeed")
 
 			// Get the transaction AFTER saving metadata - this is what fails
-			txAfter, err := sharedClient.GetTransaction(sharedCtx, &servicepb.GetTransactionRequest{
+			txAfter, err := sharedClient.GetTransaction(sharedCtx, &commonpb.GetTransactionRequest{
 				Ledger:        ledgerName,
 				TransactionId: transactionID,
 			})
 			Expect(err).To(Succeed(), "GetTransaction after metadata should succeed")
 			Expect(txAfter.Transaction.Id).To(Equal(transactionID))
-			Expect(commonpb.MetadataToGoMap(txAfter.Transaction.Metadata)["key"]).To(Equal("value"))
+			Expect(protohelpers.MetadataToGoMap(txAfter.Transaction.Metadata)["key"]).To(Equal("value"))
 		})
 
 		It("Should set metadata and verify it persists", func() {
 			// Create transaction
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -252,17 +252,17 @@ var _ = Describe("Metadata", Ordered, func() {
 				"source":    "api",
 				"status":    "processed",
 			}
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveTransactionMetadataAction(ledgerName, transactionID, metadata)))
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveTransactionMetadataAction(ledgerName, transactionID, metadata)))
 			Expect(err).To(Succeed())
 
 			// Verify metadata via GetTransaction
-			tx, err := sharedClient.GetTransaction(sharedCtx, &servicepb.GetTransactionRequest{
+			tx, err := sharedClient.GetTransaction(sharedCtx, &commonpb.GetTransactionRequest{
 				Ledger:        ledgerName,
 				TransactionId: transactionID,
 			})
 			Expect(err).To(Succeed())
 			Expect(tx.Transaction.Metadata).NotTo(BeNil())
-			metaMap := commonpb.MetadataToGoMap(tx.Transaction.Metadata)
+			metaMap := protohelpers.MetadataToGoMap(tx.Transaction.Metadata)
 			Expect(metaMap["reference"]).To(Equal("order-123"))
 			Expect(metaMap["source"]).To(Equal("api"))
 			Expect(metaMap["status"]).To(Equal("processed"))
@@ -270,7 +270,7 @@ var _ = Describe("Metadata", Ordered, func() {
 
 		It("Should update existing transaction metadata", func() {
 			// Create transaction
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -279,26 +279,26 @@ var _ = Describe("Metadata", Ordered, func() {
 			transactionID := applyLog.Log.Data.GetCreatedTransaction().Transaction.Id
 
 			// Set initial metadata
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveTransactionMetadataAction(ledgerName, transactionID, map[string]string{
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveTransactionMetadataAction(ledgerName, transactionID, map[string]string{
 				"status": "pending",
 				"key1":   "value1",
 			})))
 			Expect(err).To(Succeed())
 
 			// Update metadata
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveTransactionMetadataAction(ledgerName, transactionID, map[string]string{
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveTransactionMetadataAction(ledgerName, transactionID, map[string]string{
 				"status": "completed",
 				"key2":   "value2",
 			})))
 			Expect(err).To(Succeed())
 
 			// Verify merged metadata
-			tx, err := sharedClient.GetTransaction(sharedCtx, &servicepb.GetTransactionRequest{
+			tx, err := sharedClient.GetTransaction(sharedCtx, &commonpb.GetTransactionRequest{
 				Ledger:        ledgerName,
 				TransactionId: transactionID,
 			})
 			Expect(err).To(Succeed())
-			metaMap := commonpb.MetadataToGoMap(tx.Transaction.Metadata)
+			metaMap := protohelpers.MetadataToGoMap(tx.Transaction.Metadata)
 			Expect(metaMap["status"]).To(Equal("completed"))
 			Expect(metaMap["key1"]).To(Equal("value1"))
 			Expect(metaMap["key2"]).To(Equal("value2"))
@@ -306,7 +306,7 @@ var _ = Describe("Metadata", Ordered, func() {
 
 		It("Should delete transaction metadata and verify removal", func() {
 			// Create transaction
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -315,23 +315,23 @@ var _ = Describe("Metadata", Ordered, func() {
 			transactionID := applyLog.Log.Data.GetCreatedTransaction().Transaction.Id
 
 			// Set metadata
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveTransactionMetadataAction(ledgerName, transactionID, map[string]string{
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveTransactionMetadataAction(ledgerName, transactionID, map[string]string{
 				"keep":   "this",
 				"delete": "this",
 			})))
 			Expect(err).To(Succeed())
 
 			// Delete one key
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.DeleteTransactionMetadataAction(ledgerName, transactionID, "delete")))
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.DeleteTransactionMetadataAction(ledgerName, transactionID, "delete")))
 			Expect(err).To(Succeed())
 
 			// Verify deletion (deleted keys should not exist)
-			tx, err := sharedClient.GetTransaction(sharedCtx, &servicepb.GetTransactionRequest{
+			tx, err := sharedClient.GetTransaction(sharedCtx, &commonpb.GetTransactionRequest{
 				Ledger:        ledgerName,
 				TransactionId: transactionID,
 			})
 			Expect(err).To(Succeed())
-			metaMap := commonpb.MetadataToGoMap(tx.Transaction.Metadata)
+			metaMap := protohelpers.MetadataToGoMap(tx.Transaction.Metadata)
 			Expect(metaMap["keep"]).To(Equal("this"))
 			// Deleted metadata key should not exist in the map
 			_, exists := metaMap["delete"]
@@ -340,28 +340,28 @@ var _ = Describe("Metadata", Ordered, func() {
 
 		It("Should read back empty metadata after deleting the last key", func() {
 			// Create a transaction carrying a single metadata key at creation.
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 			}, map[string]string{"only": "value"}, nil)))
 			Expect(err).To(Succeed())
 			transactionID := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().Transaction.Id
 
 			// Delete that key, emptying the transaction's metadata.
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.DeleteTransactionMetadataAction(ledgerName, transactionID, "only")))
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.DeleteTransactionMetadataAction(ledgerName, transactionID, "only")))
 			Expect(err).To(Succeed())
 
 			// The read reflects the state (now empty), not the create-time metadata.
-			tx, err := sharedClient.GetTransaction(sharedCtx, &servicepb.GetTransactionRequest{
+			tx, err := sharedClient.GetTransaction(sharedCtx, &commonpb.GetTransactionRequest{
 				Ledger:        ledgerName,
 				TransactionId: transactionID,
 			})
 			Expect(err).To(Succeed())
-			Expect(commonpb.MetadataToGoMap(tx.Transaction.Metadata)).To(BeEmpty())
+			Expect(protohelpers.MetadataToGoMap(tx.Transaction.Metadata)).To(BeEmpty())
 		})
 
 		It("Should preserve metadata set at transaction creation", func() {
 			// Create transaction with initial metadata
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "user", big.NewInt(500), "USD"),
 			}, map[string]string{
 				"initial": "metadata",
@@ -374,18 +374,18 @@ var _ = Describe("Metadata", Ordered, func() {
 			newTxID := applyLog.Log.Data.GetCreatedTransaction().Transaction.Id
 
 			// Add more metadata
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveTransactionMetadataAction(ledgerName, newTxID, map[string]string{
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveTransactionMetadataAction(ledgerName, newTxID, map[string]string{
 				"additional": "metadata",
 			})))
 			Expect(err).To(Succeed())
 
 			// Verify all metadata is present
-			tx, err := sharedClient.GetTransaction(sharedCtx, &servicepb.GetTransactionRequest{
+			tx, err := sharedClient.GetTransaction(sharedCtx, &commonpb.GetTransactionRequest{
 				Ledger:        ledgerName,
 				TransactionId: newTxID,
 			})
 			Expect(err).To(Succeed())
-			metaMap := commonpb.MetadataToGoMap(tx.Transaction.Metadata)
+			metaMap := protohelpers.MetadataToGoMap(tx.Transaction.Metadata)
 			Expect(metaMap["initial"]).To(Equal("metadata"))
 			Expect(metaMap["type"]).To(Equal("deposit"))
 			Expect(metaMap["additional"]).To(Equal("metadata"))
@@ -393,7 +393,7 @@ var _ = Describe("Metadata", Ordered, func() {
 
 		It("Should delete multiple metadata keys in bulk", func() {
 			// Create transaction
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -402,7 +402,7 @@ var _ = Describe("Metadata", Ordered, func() {
 			transactionID := applyLog.Log.Data.GetCreatedTransaction().Transaction.Id
 
 			// Set multiple metadata keys
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveTransactionMetadataAction(ledgerName, transactionID, map[string]string{
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveTransactionMetadataAction(ledgerName, transactionID, map[string]string{
 				"key1": "value1",
 				"key2": "value2",
 				"key3": "value3",
@@ -411,17 +411,17 @@ var _ = Describe("Metadata", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			// Delete multiple keys in one bulk request
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.DeleteTransactionMetadataAction(ledgerName, transactionID, "key1"),
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.DeleteTransactionMetadataAction(ledgerName, transactionID, "key1"),
 				actions.DeleteTransactionMetadataAction(ledgerName, transactionID, "key3")))
 			Expect(err).To(Succeed())
 
 			// Verify: key1 and key3 should not exist, key2 and key4 should remain
-			tx, err := sharedClient.GetTransaction(sharedCtx, &servicepb.GetTransactionRequest{
+			tx, err := sharedClient.GetTransaction(sharedCtx, &commonpb.GetTransactionRequest{
 				Ledger:        ledgerName,
 				TransactionId: transactionID,
 			})
 			Expect(err).To(Succeed())
-			metaMap := commonpb.MetadataToGoMap(tx.Transaction.Metadata)
+			metaMap := protohelpers.MetadataToGoMap(tx.Transaction.Metadata)
 			_, key1Exists := metaMap["key1"]
 			Expect(key1Exists).To(BeFalse())
 			Expect(metaMap["key2"]).To(Equal("value2"))
@@ -432,7 +432,7 @@ var _ = Describe("Metadata", Ordered, func() {
 
 		It("Should handle metadata on reverted transaction", func() {
 			// Create transaction to revert
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "user", big.NewInt(100), "USD"),
 			}, map[string]string{"original": "true"}, nil)))
 			Expect(err).To(Succeed())
@@ -442,7 +442,7 @@ var _ = Describe("Metadata", Ordered, func() {
 			originalTxID := applyLog.Log.Data.GetCreatedTransaction().Transaction.Id
 
 			// Revert the transaction
-			revertResp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.RevertTransactionAction(ledgerName, originalTxID, false, false, map[string]string{
+			revertResp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.RevertTransactionAction(ledgerName, originalTxID, false, false, map[string]string{
 				"revert_reason": "test",
 			})))
 			Expect(err).To(Succeed())
@@ -453,21 +453,21 @@ var _ = Describe("Metadata", Ordered, func() {
 			revertTxID := revertApplyLog.Log.Data.GetRevertedTransaction().RevertTransaction.Id
 
 			// Verify metadata on revert transaction
-			revertTx, err := sharedClient.GetTransaction(sharedCtx, &servicepb.GetTransactionRequest{
+			revertTx, err := sharedClient.GetTransaction(sharedCtx, &commonpb.GetTransactionRequest{
 				Ledger:        ledgerName,
 				TransactionId: revertTxID,
 			})
 			Expect(err).To(Succeed())
-			Expect(commonpb.MetadataToGoMap(revertTx.Transaction.Metadata)["revert_reason"]).To(Equal("test"))
+			Expect(protohelpers.MetadataToGoMap(revertTx.Transaction.Metadata)["revert_reason"]).To(Equal("test"))
 
 			// Original transaction should still have its metadata and be marked as reverted
-			originalTx, err := sharedClient.GetTransaction(sharedCtx, &servicepb.GetTransactionRequest{
+			originalTx, err := sharedClient.GetTransaction(sharedCtx, &commonpb.GetTransactionRequest{
 				Ledger:        ledgerName,
 				TransactionId: originalTxID,
 			})
 			Expect(err).To(Succeed())
 			Expect(originalTx.Transaction.Reverted).To(BeTrue())
-			Expect(commonpb.MetadataToGoMap(originalTx.Transaction.Metadata)["original"]).To(Equal("true"))
+			Expect(protohelpers.MetadataToGoMap(originalTx.Transaction.Metadata)["original"]).To(Equal("true"))
 		})
 	})
 })

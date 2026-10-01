@@ -7,10 +7,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 func TestProcessCreateLedger(t *testing.T) {
@@ -40,9 +40,9 @@ func TestProcessCreateLedger(t *testing.T) {
 		require.Equal(t, uint64(1), boundaries.GetNextLogId())
 	})
 
-	request := &servicepb.Request{
-		Type: &servicepb.Request_CreateLedger{
-			CreateLedger: &servicepb.CreateLedgerRequest{
+	request := &commonpb.Request{
+		Type: &commonpb.Request_CreateLedger{
+			CreateLedger: &commonpb.CreateLedgerRequest{
 				Name: "test-ledger",
 			},
 		},
@@ -201,9 +201,9 @@ func TestProcessCreateLedger_AlreadyExists(t *testing.T) {
 	existingLedger := &commonpb.LedgerInfo{Name: "test-ledger"}
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, existingLedger.AsReader(), nil)
 
-	request := &servicepb.Request{
-		Type: &servicepb.Request_CreateLedger{
-			CreateLedger: &servicepb.CreateLedgerRequest{
+	request := &commonpb.Request{
+		Type: &commonpb.Request_CreateLedger{
+			CreateLedger: &commonpb.CreateLedgerRequest{
 				Name: "test-ledger",
 			},
 		},
@@ -234,9 +234,9 @@ func TestProcessDeleteLedger(t *testing.T) {
 	// The Boundary cascade is gated through the Scope (EN-1522).
 	expectDeleteBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"})
 
-	request := &servicepb.Request{
-		Type: &servicepb.Request_DeleteLedger{
-			DeleteLedger: &servicepb.DeleteLedgerRequest{
+	request := &commonpb.Request{
+		Type: &commonpb.Request_DeleteLedger{
+			DeleteLedger: &commonpb.DeleteLedgerRequest{
 				Name: "test-ledger",
 			},
 		},
@@ -264,9 +264,9 @@ func TestProcessDeleteLedger_NotFound(t *testing.T) {
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, domain.ErrNotFound)
 
-	request := &servicepb.Request{
-		Type: &servicepb.Request_DeleteLedger{
-			DeleteLedger: &servicepb.DeleteLedgerRequest{
+	request := &commonpb.Request{
+		Type: &commonpb.Request_DeleteLedger{
+			DeleteLedger: &commonpb.DeleteLedgerRequest{
 				Name: "test-ledger",
 			},
 		},

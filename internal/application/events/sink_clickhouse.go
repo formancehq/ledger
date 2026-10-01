@@ -11,7 +11,8 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 )
 
@@ -173,7 +174,7 @@ func (s *ClickHouseSink) Publish(ctx context.Context, events []*eventspb.Event) 
 		}
 
 		eventType := strings.ToLower(event.GetType().String())
-		eventDate := event.GetDate().AsTime().Time
+		eventDate := event.GetDate().AsTime()
 
 		if err := batch.Append(
 			event.GetLogSequence(),

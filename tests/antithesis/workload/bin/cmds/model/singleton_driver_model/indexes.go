@@ -15,9 +15,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/proto/publicpolicy"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -486,15 +486,15 @@ func (c *Checker) foldDiag(maxTicket uint64) string {
 // Apply request. Both are idempotent on the server (a duplicate create on a
 // present index is a no-op, a drop of an absent index a no-op — no
 // AlreadyExists / NotFound), so the model applies them as always-OK.
-func createIndexReq(ledger string, id *commonpb.IndexID) *servicepb.Request {
-	return &servicepb.Request{Type: &servicepb.Request_CreateIndex{
-		CreateIndex: &servicepb.CreateIndexRequest{Ledger: ledger, Id: id},
+func createIndexReq(ledger string, id *commonpb.IndexID) *commonpb.Request {
+	return &commonpb.Request{Type: &commonpb.Request_CreateIndex{
+		CreateIndex: &commonpb.CreateIndexRequest{Ledger: ledger, Id: id},
 	}}
 }
 
-func dropIndexReq(ledger string, id *commonpb.IndexID) *servicepb.Request {
-	return &servicepb.Request{Type: &servicepb.Request_DropIndex{
-		DropIndex: &servicepb.DropIndexRequest{Ledger: ledger, Id: id},
+func dropIndexReq(ledger string, id *commonpb.IndexID) *commonpb.Request {
+	return &commonpb.Request{Type: &commonpb.Request_DropIndex{
+		DropIndex: &commonpb.DropIndexRequest{Ledger: ledger, Id: id},
 	}}
 }
 
@@ -561,7 +561,7 @@ func rollIndexOp(ls oracle.LedgerState) bool {
 // probes CreateIndex on an UNDECLARED metadata field — rejected with
 // METADATA_FIELD_NOT_IN_SCHEMA, which the model predicts identically. Reads
 // committed state only.
-func generateIndexOp(g oracle.GlobalState, ledger string) *servicepb.Request {
+func generateIndexOp(g oracle.GlobalState, ledger string) *commonpb.Request {
 	if oneIn(16) {
 		return createIndexReq(ledger, indexes.MetadataID(
 			random.RandomChoice([]commonpb.TargetType{
@@ -723,7 +723,7 @@ func reconcileIndexes(ctx context.Context, c *Checker, conns internal.PerNodeCon
 			// ready", so the answer must be locally attributable. The default
 			// linearizable read forwards exactly when the node is syncing —
 			// crediting a rebuilding follower with the leader's ready state.
-			resp, err := pc.Bucket.GetIndexStatus(internal.WithStaleConsistency(ctx), &servicepb.GetIndexStatusRequest{Ledger: ledger})
+			resp, err := pc.Bucket.GetIndexStatus(internal.WithStaleConsistency(ctx), &commonpb.GetIndexStatusRequest{Ledger: ledger})
 			if err != nil {
 				for canon := range canons {
 					readyAll[canon] = false
@@ -1064,7 +1064,7 @@ func indexedQueryOutcomeLegal(
 	// ErrorInfo metadata. A sibling index being active must still make its
 	// own refusal a finding, even when this filter also touches a retype.
 	if errKind == indexedErrNotReady {
-		targetName := commonpb.TargetHumanName(target)
+		targetName := publicpolicy.TargetHumanName(target)
 		for _, ref := range refs {
 			if rejectedIndex == fmt.Sprintf("metadata[%q] on %s", ref.key, targetName) {
 				return true

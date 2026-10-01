@@ -633,7 +633,7 @@ decision in [ledger#2025](https://github.com/formancehq/ledger/issues/2025)).
   marshaller always omits them.
 - **Not filterable.** The generated per-target validity table sets
   `ConditionKindBuiltinUint: false` for `QUERY_TARGET_ACCOUNTS`
-  (`internal/proto/commonpb/common_queryfilter_validity.pb.go`), so no
+  (`pkg/client/v3/grpc/common_queryfilter_validity.pb.go`), so no
   **builtin** date condition is valid on the accounts target. `ConditionKindField`
   is `true` there, which is what the metadata-range replacement below rides on;
   what is gone is a builtin date field to point a condition at. The names are

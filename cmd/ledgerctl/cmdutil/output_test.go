@@ -13,14 +13,14 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.yaml.in/yaml/v3"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // Sequential because captureStdout mutates os.Stdout.
 func TestEncodeStructured_ExactNumbers(t *testing.T) {
-	response := &servicepb.GetTransactionResponse{Transaction: &commonpb.Transaction{
+	response := &commonpb.GetTransactionResponse{Transaction: &commonpb.Transaction{
 		Id: 9007199254740993,
 		Metadata: map[string]*commonpb.MetadataValue{
 			"positive":      commonpb.NewUintValue(9007199254740993),
@@ -37,8 +37,8 @@ func TestEncodeStructured_ExactNumbers(t *testing.T) {
 			prefix []string
 		}{
 			{name: "response", data: response},
-			{name: "proto slice", data: []*servicepb.GetTransactionResponse{response}, prefix: []string{"0"}},
-			{name: "proto map", data: map[string]*servicepb.GetTransactionResponse{"item": response}, prefix: []string{"item"}},
+			{name: "proto slice", data: []*commonpb.GetTransactionResponse{response}, prefix: []string{"0"}},
+			{name: "proto map", data: map[string]*commonpb.GetTransactionResponse{"item": response}, prefix: []string{"item"}},
 			{name: "mixed map", data: map[string]any{"item": response}, prefix: []string{"item"}},
 		} {
 			t.Run(format+"/"+tc.name, func(t *testing.T) {

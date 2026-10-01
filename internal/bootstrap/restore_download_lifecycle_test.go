@@ -19,11 +19,10 @@ import (
 	"google.golang.org/grpc/status"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	grpcadp "github.com/formancehq/ledger/v3/internal/adapter/grpc"
 	"github.com/formancehq/ledger/v3/internal/pkg/network"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
 )
 
 // restoreLifecycleEvents observes the hooks Fx actually executes. Method names
@@ -126,7 +125,7 @@ func TestRestoreDownloadStopsWithFxApplication(t *testing.T) {
 	defer cancelStart()
 	require.NoError(t, app.Start(startCtx))
 
-	start, err := restoreServer.StartDownloadBackup(context.Background(), &restorepb.StartDownloadBackupRequest{
+	start, err := restoreServer.StartDownloadBackup(context.Background(), &commonpb.StartDownloadBackupRequest{
 		Storage: &commonpb.BackupStorage{Provider: &commonpb.BackupStorage_S3{S3: &commonpb.S3StorageConfig{
 			Bucket:          "backups",
 			Region:          "us-east-1",
@@ -168,7 +167,7 @@ func TestRestoreDownloadStopsWithFxApplication(t *testing.T) {
 		"join restore requests and job",
 	}, lifecycleEvents.stopPhases(), "restore shutdown phases must surround network teardown")
 
-	_, err = restoreServer.StartDownloadBackup(context.Background(), &restorepb.StartDownloadBackupRequest{})
+	_, err = restoreServer.StartDownloadBackup(context.Background(), &commonpb.StartDownloadBackupRequest{})
 	require.Equal(t, codes.Unavailable, status.Code(err))
 	require.NotEmpty(t, start.GetJobId())
 }

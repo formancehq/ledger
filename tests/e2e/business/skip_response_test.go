@@ -5,8 +5,7 @@ package business
 import (
 	"math/big"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -16,12 +15,12 @@ var _ = Describe("SkipResponse", Ordered, func() {
 	var ledgerName = "skip-response-ledger"
 
 	BeforeAll(func() {
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())
 	})
 
 	It("Should strip log payloads when skip_response=true", func() {
-		applyReq := servicepb.UnsignedApplyRequest("",
+		applyReq := commonpb.UnsignedApplyRequest("",
 			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "skip-resp-1", big.NewInt(100), "USD"),
 			}, nil, nil),
@@ -39,7 +38,7 @@ var _ = Describe("SkipResponse", Ordered, func() {
 	})
 
 	It("Should include full payloads by default", func() {
-		resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+		resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "skip-resp-2", big.NewInt(200), "USD"),
 			}, nil, nil),
@@ -56,7 +55,7 @@ var _ = Describe("SkipResponse", Ordered, func() {
 	})
 
 	It("Should strip payloads for batch operations", func() {
-		applyReq := servicepb.UnsignedApplyRequest("",
+		applyReq := commonpb.UnsignedApplyRequest("",
 			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "skip-resp-batch-1", big.NewInt(100), "USD"),
 			}, nil, nil),
@@ -81,7 +80,7 @@ var _ = Describe("SkipResponse", Ordered, func() {
 
 	It("Should still apply transactions even when response is skipped", func() {
 		// Create a transaction with skip_response
-		applyReq := servicepb.UnsignedApplyRequest("",
+		applyReq := commonpb.UnsignedApplyRequest("",
 			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "skip-resp-verify", big.NewInt(500), "USD"),
 			}, nil, nil),
@@ -92,7 +91,7 @@ var _ = Describe("SkipResponse", Ordered, func() {
 		Expect(resp.Logs).To(HaveLen(1))
 
 		// Verify the transaction was actually applied by reading the account
-		account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+		account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 			Ledger:  ledgerName,
 			Address: "skip-resp-verify",
 		})

@@ -787,7 +787,7 @@ ledger run --node-id 1 --cluster-id prod-ledger --data-dir ./fresh-data --bootst
 | `internal/infra/attributes/prepare.go` | `PrepareForBackup()` — Global-zone resets for portable backup (used during restore) |
 | **Restore (gRPC)** | |
 | `misc/proto/restore.proto` | RestoreService proto definition |
-| `internal/proto/restorepb/` | Generated proto code |
+| `pkg/client/v3/grpc/` | Generated proto code |
 | `internal/adapter/grpc/server_restore.go` | RestoreService gRPC implementation |
 | `internal/bootstrap/module_restore.go` | Minimal fx module for restore mode |
 | `internal/pkg/tarutil/extract.go` | Shared tar extraction utility |

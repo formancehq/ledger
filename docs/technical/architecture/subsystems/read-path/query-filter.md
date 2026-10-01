@@ -115,7 +115,7 @@ true and selects the whole target universe (the same rows as no filter at all),
 (`compileAnd`/`compileOr` and their descending twins) and the audit compiler
 (`compileAuditAnd`) all agree on this. The zero-operand form is reachable over
 gRPC only: both serializations of the REST surface require at least one operand
-per combinator (`decodeCombinator`, `internal/proto/commonpb/query_filter.go`).
+per combinator (`decodeCombinator`, `pkg/client/v3/grpc/commonpb_query_filter.go`).
 
 On ACCOUNTS, "the universe" is the main store's volume ∪ metadata rows
 (`NewPebbleAccountIterator`), and two leaves reach past it. A drained ephemeral
@@ -147,5 +147,5 @@ grammar is the canonical serialization for `GET /v3/_/audit-entries`.
 ---
 
 **Source of truth.** The per-target validity table is
-`internal/proto/commonpb/common_queryfilter_validity.pb.go`; the parse entry point
+`pkg/client/v3/grpc/common_queryfilter_validity.pb.go`; the parse entry point
 is `internal/pkg/filterexpr/decode.go`.

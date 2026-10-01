@@ -153,11 +153,11 @@ fuzz-check:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "==> Replaying fuzz seed corpora..."
-    go test ./internal/proto/commonpb/ -run 'Fuzz' -timeout 60s
-    go test ./internal/proto/servicepb/ -run 'Fuzz' -timeout 60s
+    go -C pkg/client/v3 test ./grpc/ -run 'Fuzz' -timeout 60s
+    go test ./internal/protohelpers/ -run 'Fuzz' -timeout 60s
+    go test ./internal/adapter/restbulk/ -run 'Fuzz' -timeout 60s
     go test ./internal/proto/rafttransportpb/ -run 'Fuzz' -timeout 60s
     go test ./internal/proto/raftcmdpb/ -run 'Fuzz' -timeout 60s
-    go test ./internal/proto/signaturepb/ -run 'Fuzz' -timeout 60s
     go test ./internal/proto/snapshotpb/ -run 'Fuzz' -timeout 60s
     go test ./internal/pkg/filterexpr/ -run 'Fuzz' -timeout 60s
     go test ./internal/pkg/semver/ -run 'Fuzz' -timeout 60s
@@ -173,7 +173,13 @@ fuzz duration="30s": fuzz-inventory-check
     set -euo pipefail
     while read -r pkg name || [[ -n "${pkg:-}${name:-}" ]]; do
         echo "==> Fuzzing $name ({{duration}})..."
-        if ! go test "$pkg" -run '^$' -fuzz="^${name}$" -fuzztime="{{duration}}" -timeout 600s; then
+        if [[ "$pkg" == ./pkg/client/v3/* ]]; then
+            client_pkg=".${pkg#./pkg/client/v3}"
+            command=(go -C pkg/client/v3 test "$client_pkg")
+        else
+            command=(go test "$pkg")
+        fi
+        if ! "${command[@]}" -run '^$' -fuzz="^${name}$" -fuzztime="{{duration}}" -timeout 600s; then
             echo "FAIL: $name"
             exit 1
         fi
@@ -238,17 +244,16 @@ fuzz-check-coverage:
     set -euo pipefail
     mkdir -p {{coverage_dir}}
     fuzz_pkgs=(
-        ./internal/proto/commonpb/
-        ./internal/proto/servicepb/
+        ./internal/adapter/restbulk/
         ./internal/proto/rafttransportpb/
         ./internal/proto/raftcmdpb/
-        ./internal/proto/signaturepb/
         ./internal/proto/snapshotpb/
         ./internal/pkg/filterexpr/
         ./internal/pkg/semver/
     )
     echo "==> Fuzz seed replay with coverage..."
     GOTOOLCHAIN=$(go env GOVERSION) go test -coverprofile={{coverage_dir}}/fuzz.out -coverpkg={{coverage_pkgs}} -run 'Fuzz' -timeout 60s "${fuzz_pkgs[@]}"
+    GOTOOLCHAIN=$(go env GOVERSION) go -C pkg/client/v3 test -coverprofile=../../../{{coverage_dir}}/client-fuzz.out -run 'Fuzz' -timeout 60s ./grpc/
     echo "Coverage profile: {{coverage_dir}}/fuzz.out"
 
 # Merge all coverage profiles into a single report
@@ -257,7 +262,7 @@ coverage-merge:
     set -euo pipefail
     mkdir -p {{coverage_dir}}
     profiles=()
-    for f in {{coverage_dir}}/unit.out {{coverage_dir}}/internal.out {{coverage_dir}}/antithesis.out {{coverage_dir}}/e2e.out {{coverage_dir}}/scenario.out {{coverage_dir}}/fuzz.out; do
+    for f in {{coverage_dir}}/unit.out {{coverage_dir}}/internal.out {{coverage_dir}}/antithesis.out {{coverage_dir}}/e2e.out {{coverage_dir}}/scenario.out {{coverage_dir}}/fuzz.out {{coverage_dir}}/client-fuzz.out; do
         [ -f "$f" ] && profiles+=("$f")
     done
     if [ ${#profiles[@]} -eq 0 ]; then
@@ -313,62 +318,7 @@ generate:
 
 # Generate gRPC code from protobuf files
 generate-proto:
-    @echo "Generating gRPC code from proto files..."
-    rm -f internal/proto/rafttransportpb/*.pb.go internal/proto/commonpb/*.pb.go internal/proto/servicepb/*.pb.go internal/proto/raftcmdpb/*.pb.go internal/proto/snapshotpb/*.pb.go internal/proto/clusterpb/*.pb.go internal/proto/clusterbootstrappb/*.pb.go internal/proto/auditpb/*.pb.go internal/proto/signaturepb/*.pb.go internal/proto/eventspb/*.pb.go internal/proto/restorepb/*.pb.go internal/proto/proposalpb/*.pb.go || true
-    mkdir -p internal/proto/clusterpb internal/proto/clusterbootstrappb internal/proto/rafttransportpb internal/proto/auditpb internal/proto/signaturepb internal/proto/eventspb internal/proto/restorepb internal/proto/proposalpb
-    @cd tools/protoc-gen-dethash && go build -o ../../build/protoc-gen-dethash .
-    @cd tools/protoc-gen-reader && go build -o ../../build/protoc-gen-reader .
-    @cd tools/protoc-gen-skippable && go build -o ../../build/protoc-gen-skippable .
-    @cd tools/protoc-gen-queryfilter-validity && go build -o ../../build/protoc-gen-queryfilter-validity .
-    @cd tools/protoc-gen-ledger-log-category && go build -o ../../build/protoc-gen-ledger-log-category .
-    @cd tools/protoc-gen-rpcauth && go build -o ../../build/protoc-gen-rpcauth .
-    @protoc --go_out=. --go_opt=module=github.com/formancehq/ledger/v3 \
-        --go-grpc_out=. \
-        --go-grpc_opt=module=github.com/formancehq/ledger/v3 \
-        --go-vtproto_out=. \
-        --go-vtproto_opt=module=github.com/formancehq/ledger/v3 \
-        --go-vtproto_opt=features=marshal+unmarshal+size+clone+equal+pool \
-        --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.Proposal \
-        --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.ExecutionPlan \
-        --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.AttributeValue \
-        --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.AttributePlan \
-        --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.Order \
-        --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.TechnicalUpdate \
-        --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.EventsSinkUpdate \
-        --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.MirrorSyncUpdate \
-        --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/auditpb.AuditEntry \
-        --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/proposalpb.AppliedProposal \
-        --plugin=protoc-gen-dethash=build/protoc-gen-dethash \
-        --dethash_out=. \
-        --dethash_opt=module=github.com/formancehq/ledger/v3 \
-        --plugin=protoc-gen-reader=build/protoc-gen-reader \
-        --reader_out=. \
-        --reader_opt=module=github.com/formancehq/ledger/v3 \
-        --plugin=protoc-gen-skippable=build/protoc-gen-skippable \
-        --skippable_out=. \
-        --skippable_opt=module=github.com/formancehq/ledger/v3 \
-        --plugin=protoc-gen-queryfilter-validity=build/protoc-gen-queryfilter-validity \
-        --queryfilter-validity_out=. \
-        --queryfilter-validity_opt=module=github.com/formancehq/ledger/v3 \
-        --plugin=protoc-gen-ledger-log-category=build/protoc-gen-ledger-log-category \
-        --ledger-log-category_out=. \
-        --ledger-log-category_opt=module=github.com/formancehq/ledger/v3 \
-        --plugin=protoc-gen-rpcauth=build/protoc-gen-rpcauth \
-        --rpcauth_out=. \
-        --rpcauth_opt=module=github.com/formancehq/ledger/v3 \
-        -I misc/proto \
-        misc/proto/raft_transport.proto \
-        misc/proto/common.proto \
-        misc/proto/cluster.proto \
-        misc/proto/cluster_bootstrap.proto \
-        misc/proto/bucket.proto \
-        misc/proto/raft_cmd.proto \
-        misc/proto/snapshot.proto \
-        misc/proto/audit.proto \
-        misc/proto/signature.proto \
-        misc/proto/events.proto \
-        misc/proto/restore.proto \
-        misc/proto/proposal.proto
+    bash scripts/generate-proto.sh
 
 test-rpcauth-generator:
     go -C tools/protoc-gen-rpcauth test ./...

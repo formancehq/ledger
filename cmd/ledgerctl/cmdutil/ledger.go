@@ -9,8 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // ErrNoLedgers is returned when no ledgers exist.
@@ -21,7 +20,7 @@ var ErrNoLedgers = errors.New("no ledgers found")
 // If only one ledger exists, it returns that ledger's name automatically.
 // If multiple ledgers exist, it prompts the user to select one.
 // If no ledgers exist, it returns an error with a hint to create one.
-func SelectLedger(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerFlag string) (string, error) {
+func SelectLedger(cmd *cobra.Command, client commonpb.BucketServiceClient, ledgerFlag string) (string, error) {
 	// If a ledger was specified via flag, use it directly
 	if ledgerFlag != "" {
 		return ledgerFlag, nil
@@ -129,14 +128,14 @@ func sortStrings(s []string) {
 // GetAllLedgersInfo collects every ledger from the streaming RPC, following
 // the x-next-cursor trailer chain so clusters with more ledgers than the
 // server's default page still surface them all.
-func GetAllLedgersInfo(ctx context.Context, client servicepb.BucketServiceClient, checkpointID ...uint64) (map[string]*commonpb.LedgerInfo, error) {
+func GetAllLedgersInfo(ctx context.Context, client commonpb.BucketServiceClient, checkpointID ...uint64) (map[string]*commonpb.LedgerInfo, error) {
 	var read *commonpb.ReadOptions
 	if len(checkpointID) > 0 && checkpointID[0] > 0 {
 		read = &commonpb.ReadOptions{CheckpointId: checkpointID[0]}
 	}
 
 	all, err := DrainAllPages("", func(cur string) ([]*commonpb.LedgerInfo, metadata.MD, error) {
-		stream, streamErr := client.ListLedgers(ctx, &servicepb.ListLedgersRequest{
+		stream, streamErr := client.ListLedgers(ctx, &commonpb.ListLedgersRequest{
 			Options: &commonpb.ListOptions{Read: read, Cursor: cur},
 		})
 		if streamErr != nil {

@@ -26,8 +26,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -93,7 +92,7 @@ func main() {
 	}
 }
 
-func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset kubernetes.Interface, clusterClient clusterpb.ClusterServiceClient, client servicepb.BucketServiceClient) {
+func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset kubernetes.Interface, clusterClient clusterpb.ClusterServiceClient, client clusterpb.BucketServiceClient) {
 	current, err := internal.GetCurrentReplicas(ctx, lsClient, internal.ClusterName)
 	if err != nil {
 		log.Printf("quorum-recovery: cannot read current replicas: %s", err)

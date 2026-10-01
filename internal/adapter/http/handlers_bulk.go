@@ -7,13 +7,15 @@ import (
 	"net/http"
 	"runtime/pprof"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/adapter/apierr"
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
+	"github.com/formancehq/ledger/v3/internal/adapter/restbulk"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	protoerr "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // handleBulk handles POST /{ledgerName}/bulk to create multiple transactions/operations.
@@ -45,7 +47,7 @@ func (s *Server) serveBulk(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Parse JSON array of bulk elements directly into typed structs.
-	var elements []*servicepb.BulkElement
+	var elements []*restbulk.BulkElement
 
 	err := json.UnmarshalRead(r.Body, &elements)
 	if err != nil {
@@ -122,33 +124,33 @@ type bulkResult struct {
 	err error
 }
 
-// convertBulkElementToRequest converts a servicepb.BulkElement to a servicepb.Request.
+// convertBulkElementToRequest converts a restbulk.BulkElement to a commonpb.Request.
 // The per-entry SkippableReasons list is hoisted onto the LedgerApplyRequest so
 // admission validates it against the per-action whitelist and the FSM records
 // an OrderSkippedLog when a matching business failure fires.
-func convertBulkElementToRequest(ledgerName string, elem *servicepb.BulkElement) *servicepb.Request {
-	applyRequest := &servicepb.LedgerApplyRequest{
+func convertBulkElementToRequest(ledgerName string, elem *restbulk.BulkElement) *commonpb.Request {
+	applyRequest := &commonpb.LedgerApplyRequest{
 		Ledger:           ledgerName,
 		Action:           elem.Action,
 		SkippableReasons: elem.SkippableReasons,
 	}
 
-	return &servicepb.Request{
-		Type: &servicepb.Request_Apply{
+	return &commonpb.Request{
+		Type: &commonpb.Request_Apply{
 			Apply: applyRequest,
 		},
 	}
 }
 
 // runBulk processes a list of bulk elements and returns the results.
-func (s *Server) runBulk(ctx context.Context, ledgerName string, elements []*servicepb.BulkElement, opts bulkOptions) []bulkResult {
+func (s *Server) runBulk(ctx context.Context, ledgerName string, elements []*restbulk.BulkElement, opts bulkOptions) []bulkResult {
 	if len(elements) == 0 {
 		return nil
 	}
 
 	// Build requests slice + parallel per-element idempotency keys (used only in
 	// non-atomic mode, where each element is its own proposal).
-	requests := make([]*servicepb.Request, len(elements))
+	requests := make([]*commonpb.Request, len(elements))
 	keys := make([]string, len(elements))
 	for i, elem := range elements {
 		requests[i] = convertBulkElementToRequest(ledgerName, elem)
@@ -164,7 +166,7 @@ func (s *Server) runBulk(ctx context.Context, ledgerName string, elements []*ser
 
 // runBulkAtomic applies all requests as one atomic batch under a single
 // idempotency key (the bulk-level Idempotency-Key header).
-func (s *Server) runBulkAtomic(ctx context.Context, idempotencyKey string, requests []*servicepb.Request) []bulkResult {
+func (s *Server) runBulkAtomic(ctx context.Context, idempotencyKey string, requests []*commonpb.Request) []bulkResult {
 	results := make([]bulkResult, len(requests))
 
 	logs, err := s.applyUnsigned(ctx, idempotencyKey, requests...)
@@ -186,7 +188,7 @@ func (s *Server) runBulkAtomic(ctx context.Context, idempotencyKey string, reque
 
 // runBulkSequential applies requests one by one, each as its own proposal under
 // its per-element idempotency key.
-func (s *Server) runBulkSequential(ctx context.Context, requests []*servicepb.Request, keys []string, continueOnFailure bool) []bulkResult {
+func (s *Server) runBulkSequential(ctx context.Context, requests []*commonpb.Request, keys []string, continueOnFailure bool) []bulkResult {
 	results := make([]bulkResult, len(requests))
 	hasError := false
 
@@ -232,13 +234,13 @@ func (s *Server) runBulkSequential(ctx context.Context, requests []*servicepb.Re
 //
 // Any 5xx/429 status from infra/retryable/rate-limit errors always surfaces,
 // with `Retry-After: 1` on 503 to match handleError.
-func writeBulkResponse(w http.ResponseWriter, r *http.Request, elements []*servicepb.BulkElement, results []bulkResult, continueOnFailure bool) {
+func writeBulkResponse(w http.ResponseWriter, r *http.Request, elements []*restbulk.BulkElement, results []bulkResult, continueOnFailure bool) {
 	worstBusiness := 0 // highest 4xx from a per-element business failure
 	worstInfra := 0    // highest ≥429 from a retryable/infra/rate-limit error
 	apiResults := make([]bulkAPIResult, len(results))
 
 	for i, result := range results {
-		responseType := servicepb.GetLedgerActionType(elements[i].Action)
+		responseType := commonpb.GetLedgerActionType(elements[i].Action)
 
 		var data any
 
@@ -353,7 +355,7 @@ func perElementStatus(err error) int {
 
 	// Retryable infra sentinels handled before Describable dispatch,
 	// mirroring handleError.
-	if errors.Is(err, commonpb.ErrNoLeader) || errors.Is(err, plan.ErrCacheHorizonExceeded) {
+	if errors.Is(err, protoerr.ErrNoLeader) || errors.Is(err, plan.ErrCacheHorizonExceeded) {
 		return http.StatusServiceUnavailable
 	}
 

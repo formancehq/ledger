@@ -7,15 +7,14 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
 // collectLogs drains a ListLogs gRPC stream into a slice.
-func collectLogs(stream servicepb.BucketService_ListLogsClient) []*commonpb.Log {
+func collectLogs(stream commonpb.BucketService_ListLogsClient) []*commonpb.Log {
 	var logs []*commonpb.Log
 
 	for {
@@ -43,14 +42,14 @@ var _ = Describe("Log date index", Ordered, func() {
 	BeforeAll(func() {
 		// Create ledger with the date index enabled.
 		// The per-ledger log index is always-on (no explicit CreateIndex needed).
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil),
+		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil),
 			actions.CreateLogBuiltinIndexAction(ledgerName, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)))
 		Expect(err).To(Succeed())
 
 		// Create 3 transactions. Log dates will be close to wall-clock time.
 		nowRef = time.Now()
 
-		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "alice", big.NewInt(100), "USD")}, nil),
+		_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "alice", big.NewInt(100), "USD")}, nil),
 			actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "bob", big.NewInt(200), "USD")}, nil),
 			actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "carol", big.NewInt(300), "USD")}, nil)))
 		Expect(err).To(Succeed())
@@ -71,7 +70,7 @@ var _ = Describe("Log date index", Ordered, func() {
 	It("Should list all logs without date filter", func() {
 		// List all logs for the ledger (no date filter).
 		Eventually(func(g Gomega) {
-			stream, err := sharedClient.ListLogs(sharedCtx, &servicepb.ListLogsRequest{
+			stream, err := sharedClient.ListLogs(sharedCtx, &commonpb.ListLogsRequest{
 				Ledger: ledgerName,
 				Options: &commonpb.ListOptions{
 					PageSize: 100,
@@ -110,7 +109,7 @@ var _ = Describe("Log date index", Ordered, func() {
 		}
 
 		Eventually(func(g Gomega) {
-			stream, err := sharedClient.ListLogs(sharedCtx, &servicepb.ListLogsRequest{
+			stream, err := sharedClient.ListLogs(sharedCtx, &commonpb.ListLogsRequest{
 				Ledger: ledgerName,
 				Options: &commonpb.ListOptions{
 					PageSize: 100,
@@ -143,7 +142,7 @@ var _ = Describe("Log date index", Ordered, func() {
 			},
 		}
 
-		stream, err := sharedClient.ListLogs(sharedCtx, &servicepb.ListLogsRequest{
+		stream, err := sharedClient.ListLogs(sharedCtx, &commonpb.ListLogsRequest{
 			Ledger: ledgerName,
 			Options: &commonpb.ListOptions{
 				PageSize: 100,
@@ -194,7 +193,7 @@ var _ = Describe("Log date index", Ordered, func() {
 		}
 
 		Eventually(func(g Gomega) {
-			stream, err := sharedClient.ListLogs(sharedCtx, &servicepb.ListLogsRequest{
+			stream, err := sharedClient.ListLogs(sharedCtx, &commonpb.ListLogsRequest{
 				Ledger: ledgerName,
 				Options: &commonpb.ListOptions{
 					PageSize: 100,

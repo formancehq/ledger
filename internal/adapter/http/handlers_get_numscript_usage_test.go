@@ -13,11 +13,12 @@ import (
 	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	protoerr "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // TestToTemplateUsageJSON_EpochLastUsed is the regression guard for the
@@ -236,7 +237,7 @@ func TestHandleGetNumscriptUsage_NoLeaderError(t *testing.T) {
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetTemplateUsage(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _, _ string) (*commonpb.TemplateUsage, error) {
-			return nil, commonpb.ErrNoLeader
+			return nil, protoerr.ErrNoLeader
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 

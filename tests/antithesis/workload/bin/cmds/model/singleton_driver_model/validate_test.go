@@ -6,8 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
@@ -73,7 +72,7 @@ func TestSuccessfulBusinessWriteClassification(t *testing.T) {
 	}})
 	tx := oracletest.TxReqRefL("L", "ref", "world", "account", "USD", 1)
 	mode := enforcementModeRequest("L", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, true)
-	create := &servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{Name: "L"}}}
+	create := &commonpb.Request{Type: &commonpb.Request_CreateLedger{CreateLedger: &commonpb.CreateLedgerRequest{Name: "L"}}}
 
 	require.True(t, isSuccessfulBusinessWrite(tx, committed))
 	require.False(t, isSuccessfulBusinessWrite(tx, skipped))

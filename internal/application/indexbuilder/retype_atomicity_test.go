@@ -8,12 +8,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
@@ -78,7 +80,7 @@ func TestRetypeDuringBackfill_FailedFoldRollsBackThenRetriesAndRestarts(t *testi
 		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
 			Apply: &commonpb.ApplyLedgerLog{
 				LedgerName: ledger,
-				Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+				Log: protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&commonpb.LedgerLogPayload{
 					Payload: &commonpb.LedgerLogPayload_SetMetadataFieldType{
 						SetMetadataFieldType: &commonpb.SetMetadataFieldTypeLog{
 							TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
@@ -86,7 +88,7 @@ func TestRetypeDuringBackfill_FailedFoldRollsBackThenRetriesAndRestarts(t *testi
 							Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
 						},
 					},
-				}).WithID(1),
+				}), 1),
 			},
 		}},
 	})

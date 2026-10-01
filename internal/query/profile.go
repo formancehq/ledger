@@ -11,8 +11,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // QueryProfile collects execution statistics for a read query.

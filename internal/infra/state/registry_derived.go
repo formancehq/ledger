@@ -3,9 +3,11 @@ package state
 import (
 	"slices"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -17,12 +19,12 @@ type DerivedRegistry struct {
 	Volumes           *attributes.DerivedKeyStore[domain.VolumeKey, *raftcmdpb.VolumePair]
 	AccountMetadata   *attributes.DerivedKeyStore[domain.MetadataKey, *commonpb.MetadataValue]
 	Idempotency       *DerivedIdempotencyStore
-	References        *attributes.DerivedKeyStore[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
+	References        *attributes.DerivedKeyStore[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue]
 	Ledgers           *attributes.DerivedKeyStore[domain.LedgerKey, *commonpb.LedgerInfo]
 	Boundaries        *attributes.DerivedKeyStore[domain.LedgerKey, *raftcmdpb.LedgerBoundaries]
 	SinkConfigs       *attributes.DerivedKeyStore[domain.SinkConfigKey, *commonpb.SinkConfig]
-	NumscriptVersions *attributes.DerivedKeyStore[domain.NumscriptVersionKey, *commonpb.NumscriptVersionValue]
-	Transactions      *attributes.DerivedKeyStore[domain.TransactionKey, *commonpb.TransactionState]
+	NumscriptVersions *attributes.DerivedKeyStore[domain.NumscriptVersionKey, *internalcommonpb.NumscriptVersionValue]
+	Transactions      *attributes.DerivedKeyStore[domain.TransactionKey, *internalcommonpb.TransactionState]
 	NumscriptContents *attributes.DerivedKeyStore[domain.NumscriptEntryKey, *commonpb.NumscriptInfo]
 	PreparedQueries   *attributes.DerivedKeyStore[domain.PreparedQueryKey, *commonpb.PreparedQuery]
 	LedgerMetadata    *attributes.DerivedKeyStore[domain.LedgerMetadataKey, *commonpb.MetadataValue]

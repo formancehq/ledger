@@ -5,8 +5,8 @@ package raftcmdpb
 
 import (
 	bytes "bytes"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	signaturepb "github.com/formancehq/ledger/v3/internal/proto/signaturepb"
+	grpc "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	slices "slices"
 )
 
@@ -308,13 +308,13 @@ func NewSystemScopedOrderListReader(s []*SystemScopedOrder) SystemScopedOrderLis
 // CreatePreparedQueryOrderReader provides read-only access to CreatePreparedQueryOrder.
 // Call Mutate() to obtain a mutable clone.
 type CreatePreparedQueryOrderReader interface {
-	GetQuery() commonpb.PreparedQueryReader
+	GetQuery() grpc.PreparedQueryReader
 	Mutate() *CreatePreparedQueryOrder
 }
 
 type createPreparedQueryOrderReadonly CreatePreparedQueryOrder
 
-func (r *createPreparedQueryOrderReadonly) GetQuery() commonpb.PreparedQueryReader {
+func (r *createPreparedQueryOrderReadonly) GetQuery() grpc.PreparedQueryReader {
 	v := (*CreatePreparedQueryOrder)(r).GetQuery()
 	if v == nil {
 		return nil
@@ -380,7 +380,7 @@ func NewCreatePreparedQueryOrderListReader(s []*CreatePreparedQueryOrder) Create
 // Call Mutate() to obtain a mutable clone.
 type UpdatePreparedQueryOrderReader interface {
 	GetName() string
-	GetFilter() commonpb.QueryFilterReader
+	GetFilter() grpc.QueryFilterReader
 	Mutate() *UpdatePreparedQueryOrder
 }
 
@@ -390,7 +390,7 @@ func (r *updatePreparedQueryOrderReadonly) GetName() string {
 	return (*UpdatePreparedQueryOrder)(r).GetName()
 }
 
-func (r *updatePreparedQueryOrderReadonly) GetFilter() commonpb.QueryFilterReader {
+func (r *updatePreparedQueryOrderReadonly) GetFilter() grpc.QueryFilterReader {
 	v := (*UpdatePreparedQueryOrder)(r).GetFilter()
 	if v == nil {
 		return nil
@@ -522,13 +522,13 @@ func NewDeletePreparedQueryOrderListReader(s []*DeletePreparedQueryOrder) Delete
 // AddEventsSinkOrderReader provides read-only access to AddEventsSinkOrder.
 // Call Mutate() to obtain a mutable clone.
 type AddEventsSinkOrderReader interface {
-	GetConfig() commonpb.SinkConfigReader
+	GetConfig() grpc.SinkConfigReader
 	Mutate() *AddEventsSinkOrder
 }
 
 type addEventsSinkOrderReadonly AddEventsSinkOrder
 
-func (r *addEventsSinkOrderReadonly) GetConfig() commonpb.SinkConfigReader {
+func (r *addEventsSinkOrderReadonly) GetConfig() grpc.SinkConfigReader {
 	v := (*AddEventsSinkOrder)(r).GetConfig()
 	if v == nil {
 		return nil
@@ -948,13 +948,13 @@ func NewSetMaintenanceModeOrderListReader(s []*SetMaintenanceModeOrder) SetMaint
 // SetClusterPolicyOrderReader provides read-only access to SetClusterPolicyOrder.
 // Call Mutate() to obtain a mutable clone.
 type SetClusterPolicyOrderReader interface {
-	GetPolicy() commonpb.ClusterPolicyReader
+	GetPolicy() grpc.ClusterPolicyReader
 	Mutate() *SetClusterPolicyOrder
 }
 
 type setClusterPolicyOrderReadonly SetClusterPolicyOrder
 
-func (r *setClusterPolicyOrderReadonly) GetPolicy() commonpb.ClusterPolicyReader {
+func (r *setClusterPolicyOrderReadonly) GetPolicy() grpc.ClusterPolicyReader {
 	v := (*SetClusterPolicyOrder)(r).GetPolicy()
 	if v == nil {
 		return nil
@@ -1227,7 +1227,7 @@ func NewDeleteQueryCheckpointOrderListReader(s []*DeleteQueryCheckpointOrder) De
 type QueryCheckpointStateReader interface {
 	GetCheckpointId() uint64
 	GetMaxSequence() uint64
-	GetCreatedAt() commonpb.TimestampReader
+	GetCreatedAt() grpc.TimestampReader
 	GetAppliedIndex() uint64
 	GetRestoredFromBackup() bool
 	Mutate() *QueryCheckpointState
@@ -1243,7 +1243,7 @@ func (r *queryCheckpointStateReadonly) GetMaxSequence() uint64 {
 	return (*QueryCheckpointState)(r).GetMaxSequence()
 }
 
-func (r *queryCheckpointStateReadonly) GetCreatedAt() commonpb.TimestampReader {
+func (r *queryCheckpointStateReadonly) GetCreatedAt() grpc.TimestampReader {
 	v := (*QueryCheckpointState)(r).GetCreatedAt()
 	if v == nil {
 		return nil
@@ -1445,25 +1445,25 @@ func NewDeleteQueryCheckpointScheduleOrderListReader(s []*DeleteQueryCheckpointS
 // CreateLedgerOrderReader provides read-only access to CreateLedgerOrder.
 // Call Mutate() to obtain a mutable clone.
 type CreateLedgerOrderReader interface {
-	GetInitialSchema() commonpb.SetMetadataFieldTypeCommandListReader
-	GetMode() commonpb.LedgerMode
-	GetMirrorSource() commonpb.MirrorSourceConfigReader
+	GetInitialSchema() grpc.SetMetadataFieldTypeCommandListReader
+	GetMode() grpc.LedgerMode
+	GetMirrorSource() grpc.MirrorSourceConfigReader
 	GetAccountTypes() CreateLedgerOrder_AccountTypesMapReader
-	GetDefaultEnforcementMode() commonpb.ChartEnforcementMode
+	GetDefaultEnforcementMode() grpc.ChartEnforcementMode
 	Mutate() *CreateLedgerOrder
 }
 
 type createLedgerOrderReadonly CreateLedgerOrder
 
-func (r *createLedgerOrderReadonly) GetInitialSchema() commonpb.SetMetadataFieldTypeCommandListReader {
-	return commonpb.NewSetMetadataFieldTypeCommandListReader((*CreateLedgerOrder)(r).GetInitialSchema())
+func (r *createLedgerOrderReadonly) GetInitialSchema() grpc.SetMetadataFieldTypeCommandListReader {
+	return grpc.NewSetMetadataFieldTypeCommandListReader((*CreateLedgerOrder)(r).GetInitialSchema())
 }
 
-func (r *createLedgerOrderReadonly) GetMode() commonpb.LedgerMode {
+func (r *createLedgerOrderReadonly) GetMode() grpc.LedgerMode {
 	return (*CreateLedgerOrder)(r).GetMode()
 }
 
-func (r *createLedgerOrderReadonly) GetMirrorSource() commonpb.MirrorSourceConfigReader {
+func (r *createLedgerOrderReadonly) GetMirrorSource() grpc.MirrorSourceConfigReader {
 	v := (*CreateLedgerOrder)(r).GetMirrorSource()
 	if v == nil {
 		return nil
@@ -1475,7 +1475,7 @@ func (r *createLedgerOrderReadonly) GetAccountTypes() CreateLedgerOrder_AccountT
 	return createLedgerOrder_accountTypesMapReadonly((*CreateLedgerOrder)(r).GetAccountTypes())
 }
 
-func (r *createLedgerOrderReadonly) GetDefaultEnforcementMode() commonpb.ChartEnforcementMode {
+func (r *createLedgerOrderReadonly) GetDefaultEnforcementMode() grpc.ChartEnforcementMode {
 	return (*CreateLedgerOrder)(r).GetDefaultEnforcementMode()
 }
 
@@ -1536,15 +1536,15 @@ func NewCreateLedgerOrderListReader(s []*CreateLedgerOrder) CreateLedgerOrderLis
 // CreateLedgerOrder_AccountTypesMapReader provides read-only access to CreateLedgerOrder.AccountTypes.
 type CreateLedgerOrder_AccountTypesMapReader interface {
 	Len() int
-	Get(k string) (commonpb.AccountTypeReader, bool)
-	Range(yield func(string, commonpb.AccountTypeReader) bool)
+	Get(k string) (grpc.AccountTypeReader, bool)
+	Range(yield func(string, grpc.AccountTypeReader) bool)
 }
 
-type createLedgerOrder_accountTypesMapReadonly map[string]*commonpb.AccountType
+type createLedgerOrder_accountTypesMapReadonly map[string]*grpc.AccountType
 
 func (m createLedgerOrder_accountTypesMapReadonly) Len() int { return len(m) }
 
-func (m createLedgerOrder_accountTypesMapReadonly) Get(k string) (commonpb.AccountTypeReader, bool) {
+func (m createLedgerOrder_accountTypesMapReadonly) Get(k string) (grpc.AccountTypeReader, bool) {
 	v, ok := m[k]
 	if !ok || v == nil {
 		return nil, ok
@@ -1552,9 +1552,9 @@ func (m createLedgerOrder_accountTypesMapReadonly) Get(k string) (commonpb.Accou
 	return v.AsReader(), true
 }
 
-func (m createLedgerOrder_accountTypesMapReadonly) Range(yield func(string, commonpb.AccountTypeReader) bool) {
+func (m createLedgerOrder_accountTypesMapReadonly) Range(yield func(string, grpc.AccountTypeReader) bool) {
 	for k, v := range m {
-		var r commonpb.AccountTypeReader
+		var r grpc.AccountTypeReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -1639,7 +1639,7 @@ func NewMirrorIngestOrderListReader(s []*MirrorIngestOrder) MirrorIngestOrderLis
 // Call Mutate() to obtain a mutable clone.
 type MirrorLogEntryReader interface {
 	GetV2LogId() uint64
-	GetDate() commonpb.TimestampReader
+	GetDate() grpc.TimestampReader
 	GetData() isMirrorLogEntry_Data
 	Mutate() *MirrorLogEntry
 }
@@ -1650,7 +1650,7 @@ func (r *mirrorLogEntryReadonly) GetV2LogId() uint64 {
 	return (*MirrorLogEntry)(r).GetV2LogId()
 }
 
-func (r *mirrorLogEntryReadonly) GetDate() commonpb.TimestampReader {
+func (r *mirrorLogEntryReadonly) GetDate() grpc.TimestampReader {
 	v := (*MirrorLogEntry)(r).GetDate()
 	if v == nil {
 		return nil
@@ -1787,9 +1787,9 @@ func NewMirrorFillGapListReader(s []*MirrorFillGap) MirrorFillGapListReader {
 // Call Mutate() to obtain a mutable clone.
 type MirrorCreatedTransactionReader interface {
 	GetTransactionId() uint64
-	GetPostings() commonpb.PostingListReader
+	GetPostings() grpc.PostingListReader
 	GetMetadata() MirrorCreatedTransaction_MetadataMapReader
-	GetTimestamp() commonpb.TimestampReader
+	GetTimestamp() grpc.TimestampReader
 	GetReference() string
 	GetAccountMetadata() MirrorCreatedTransaction_AccountMetadataMapReader
 	Mutate() *MirrorCreatedTransaction
@@ -1801,15 +1801,15 @@ func (r *mirrorCreatedTransactionReadonly) GetTransactionId() uint64 {
 	return (*MirrorCreatedTransaction)(r).GetTransactionId()
 }
 
-func (r *mirrorCreatedTransactionReadonly) GetPostings() commonpb.PostingListReader {
-	return commonpb.NewPostingListReader((*MirrorCreatedTransaction)(r).GetPostings())
+func (r *mirrorCreatedTransactionReadonly) GetPostings() grpc.PostingListReader {
+	return grpc.NewPostingListReader((*MirrorCreatedTransaction)(r).GetPostings())
 }
 
 func (r *mirrorCreatedTransactionReadonly) GetMetadata() MirrorCreatedTransaction_MetadataMapReader {
 	return mirrorCreatedTransaction_metadataMapReadonly((*MirrorCreatedTransaction)(r).GetMetadata())
 }
 
-func (r *mirrorCreatedTransactionReadonly) GetTimestamp() commonpb.TimestampReader {
+func (r *mirrorCreatedTransactionReadonly) GetTimestamp() grpc.TimestampReader {
 	v := (*MirrorCreatedTransaction)(r).GetTimestamp()
 	if v == nil {
 		return nil
@@ -1882,15 +1882,15 @@ func NewMirrorCreatedTransactionListReader(s []*MirrorCreatedTransaction) Mirror
 // MirrorCreatedTransaction_MetadataMapReader provides read-only access to MirrorCreatedTransaction.Metadata.
 type MirrorCreatedTransaction_MetadataMapReader interface {
 	Len() int
-	Get(k string) (commonpb.MetadataValueReader, bool)
-	Range(yield func(string, commonpb.MetadataValueReader) bool)
+	Get(k string) (grpc.MetadataValueReader, bool)
+	Range(yield func(string, grpc.MetadataValueReader) bool)
 }
 
-type mirrorCreatedTransaction_metadataMapReadonly map[string]*commonpb.MetadataValue
+type mirrorCreatedTransaction_metadataMapReadonly map[string]*grpc.MetadataValue
 
 func (m mirrorCreatedTransaction_metadataMapReadonly) Len() int { return len(m) }
 
-func (m mirrorCreatedTransaction_metadataMapReadonly) Get(k string) (commonpb.MetadataValueReader, bool) {
+func (m mirrorCreatedTransaction_metadataMapReadonly) Get(k string) (grpc.MetadataValueReader, bool) {
 	v, ok := m[k]
 	if !ok || v == nil {
 		return nil, ok
@@ -1898,9 +1898,9 @@ func (m mirrorCreatedTransaction_metadataMapReadonly) Get(k string) (commonpb.Me
 	return v.AsReader(), true
 }
 
-func (m mirrorCreatedTransaction_metadataMapReadonly) Range(yield func(string, commonpb.MetadataValueReader) bool) {
+func (m mirrorCreatedTransaction_metadataMapReadonly) Range(yield func(string, grpc.MetadataValueReader) bool) {
 	for k, v := range m {
-		var r commonpb.MetadataValueReader
+		var r grpc.MetadataValueReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -1913,15 +1913,15 @@ func (m mirrorCreatedTransaction_metadataMapReadonly) Range(yield func(string, c
 // MirrorCreatedTransaction_AccountMetadataMapReader provides read-only access to MirrorCreatedTransaction.AccountMetadata.
 type MirrorCreatedTransaction_AccountMetadataMapReader interface {
 	Len() int
-	Get(k string) (commonpb.MetadataMapReader, bool)
-	Range(yield func(string, commonpb.MetadataMapReader) bool)
+	Get(k string) (grpc.MetadataMapReader, bool)
+	Range(yield func(string, grpc.MetadataMapReader) bool)
 }
 
-type mirrorCreatedTransaction_accountMetadataMapReadonly map[string]*commonpb.MetadataMap
+type mirrorCreatedTransaction_accountMetadataMapReadonly map[string]*grpc.MetadataMap
 
 func (m mirrorCreatedTransaction_accountMetadataMapReadonly) Len() int { return len(m) }
 
-func (m mirrorCreatedTransaction_accountMetadataMapReadonly) Get(k string) (commonpb.MetadataMapReader, bool) {
+func (m mirrorCreatedTransaction_accountMetadataMapReadonly) Get(k string) (grpc.MetadataMapReader, bool) {
 	v, ok := m[k]
 	if !ok || v == nil {
 		return nil, ok
@@ -1929,9 +1929,9 @@ func (m mirrorCreatedTransaction_accountMetadataMapReadonly) Get(k string) (comm
 	return v.AsReader(), true
 }
 
-func (m mirrorCreatedTransaction_accountMetadataMapReadonly) Range(yield func(string, commonpb.MetadataMapReader) bool) {
+func (m mirrorCreatedTransaction_accountMetadataMapReadonly) Range(yield func(string, grpc.MetadataMapReader) bool) {
 	for k, v := range m {
-		var r commonpb.MetadataMapReader
+		var r grpc.MetadataMapReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -1944,14 +1944,14 @@ func (m mirrorCreatedTransaction_accountMetadataMapReadonly) Range(yield func(st
 // MirrorSavedMetadataReader provides read-only access to MirrorSavedMetadata.
 // Call Mutate() to obtain a mutable clone.
 type MirrorSavedMetadataReader interface {
-	GetTarget() commonpb.TargetReader
+	GetTarget() grpc.TargetReader
 	GetMetadata() MirrorSavedMetadata_MetadataMapReader
 	Mutate() *MirrorSavedMetadata
 }
 
 type mirrorSavedMetadataReadonly MirrorSavedMetadata
 
-func (r *mirrorSavedMetadataReadonly) GetTarget() commonpb.TargetReader {
+func (r *mirrorSavedMetadataReadonly) GetTarget() grpc.TargetReader {
 	v := (*MirrorSavedMetadata)(r).GetTarget()
 	if v == nil {
 		return nil
@@ -2020,15 +2020,15 @@ func NewMirrorSavedMetadataListReader(s []*MirrorSavedMetadata) MirrorSavedMetad
 // MirrorSavedMetadata_MetadataMapReader provides read-only access to MirrorSavedMetadata.Metadata.
 type MirrorSavedMetadata_MetadataMapReader interface {
 	Len() int
-	Get(k string) (commonpb.MetadataValueReader, bool)
-	Range(yield func(string, commonpb.MetadataValueReader) bool)
+	Get(k string) (grpc.MetadataValueReader, bool)
+	Range(yield func(string, grpc.MetadataValueReader) bool)
 }
 
-type mirrorSavedMetadata_metadataMapReadonly map[string]*commonpb.MetadataValue
+type mirrorSavedMetadata_metadataMapReadonly map[string]*grpc.MetadataValue
 
 func (m mirrorSavedMetadata_metadataMapReadonly) Len() int { return len(m) }
 
-func (m mirrorSavedMetadata_metadataMapReadonly) Get(k string) (commonpb.MetadataValueReader, bool) {
+func (m mirrorSavedMetadata_metadataMapReadonly) Get(k string) (grpc.MetadataValueReader, bool) {
 	v, ok := m[k]
 	if !ok || v == nil {
 		return nil, ok
@@ -2036,9 +2036,9 @@ func (m mirrorSavedMetadata_metadataMapReadonly) Get(k string) (commonpb.Metadat
 	return v.AsReader(), true
 }
 
-func (m mirrorSavedMetadata_metadataMapReadonly) Range(yield func(string, commonpb.MetadataValueReader) bool) {
+func (m mirrorSavedMetadata_metadataMapReadonly) Range(yield func(string, grpc.MetadataValueReader) bool) {
 	for k, v := range m {
-		var r commonpb.MetadataValueReader
+		var r grpc.MetadataValueReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -2053,9 +2053,9 @@ func (m mirrorSavedMetadata_metadataMapReadonly) Range(yield func(string, common
 type MirrorRevertedTransactionReader interface {
 	GetRevertedTransactionId() uint64
 	GetNewTransactionId() uint64
-	GetReversePostings() commonpb.PostingListReader
+	GetReversePostings() grpc.PostingListReader
 	GetMetadata() MirrorRevertedTransaction_MetadataMapReader
-	GetTimestamp() commonpb.TimestampReader
+	GetTimestamp() grpc.TimestampReader
 	Mutate() *MirrorRevertedTransaction
 }
 
@@ -2069,15 +2069,15 @@ func (r *mirrorRevertedTransactionReadonly) GetNewTransactionId() uint64 {
 	return (*MirrorRevertedTransaction)(r).GetNewTransactionId()
 }
 
-func (r *mirrorRevertedTransactionReadonly) GetReversePostings() commonpb.PostingListReader {
-	return commonpb.NewPostingListReader((*MirrorRevertedTransaction)(r).GetReversePostings())
+func (r *mirrorRevertedTransactionReadonly) GetReversePostings() grpc.PostingListReader {
+	return grpc.NewPostingListReader((*MirrorRevertedTransaction)(r).GetReversePostings())
 }
 
 func (r *mirrorRevertedTransactionReadonly) GetMetadata() MirrorRevertedTransaction_MetadataMapReader {
 	return mirrorRevertedTransaction_metadataMapReadonly((*MirrorRevertedTransaction)(r).GetMetadata())
 }
 
-func (r *mirrorRevertedTransactionReadonly) GetTimestamp() commonpb.TimestampReader {
+func (r *mirrorRevertedTransactionReadonly) GetTimestamp() grpc.TimestampReader {
 	v := (*MirrorRevertedTransaction)(r).GetTimestamp()
 	if v == nil {
 		return nil
@@ -2142,15 +2142,15 @@ func NewMirrorRevertedTransactionListReader(s []*MirrorRevertedTransaction) Mirr
 // MirrorRevertedTransaction_MetadataMapReader provides read-only access to MirrorRevertedTransaction.Metadata.
 type MirrorRevertedTransaction_MetadataMapReader interface {
 	Len() int
-	Get(k string) (commonpb.MetadataValueReader, bool)
-	Range(yield func(string, commonpb.MetadataValueReader) bool)
+	Get(k string) (grpc.MetadataValueReader, bool)
+	Range(yield func(string, grpc.MetadataValueReader) bool)
 }
 
-type mirrorRevertedTransaction_metadataMapReadonly map[string]*commonpb.MetadataValue
+type mirrorRevertedTransaction_metadataMapReadonly map[string]*grpc.MetadataValue
 
 func (m mirrorRevertedTransaction_metadataMapReadonly) Len() int { return len(m) }
 
-func (m mirrorRevertedTransaction_metadataMapReadonly) Get(k string) (commonpb.MetadataValueReader, bool) {
+func (m mirrorRevertedTransaction_metadataMapReadonly) Get(k string) (grpc.MetadataValueReader, bool) {
 	v, ok := m[k]
 	if !ok || v == nil {
 		return nil, ok
@@ -2158,9 +2158,9 @@ func (m mirrorRevertedTransaction_metadataMapReadonly) Get(k string) (commonpb.M
 	return v.AsReader(), true
 }
 
-func (m mirrorRevertedTransaction_metadataMapReadonly) Range(yield func(string, commonpb.MetadataValueReader) bool) {
+func (m mirrorRevertedTransaction_metadataMapReadonly) Range(yield func(string, grpc.MetadataValueReader) bool) {
 	for k, v := range m {
-		var r commonpb.MetadataValueReader
+		var r grpc.MetadataValueReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -2173,14 +2173,14 @@ func (m mirrorRevertedTransaction_metadataMapReadonly) Range(yield func(string, 
 // MirrorDeletedMetadataReader provides read-only access to MirrorDeletedMetadata.
 // Call Mutate() to obtain a mutable clone.
 type MirrorDeletedMetadataReader interface {
-	GetTarget() commonpb.TargetReader
+	GetTarget() grpc.TargetReader
 	GetKey() string
 	Mutate() *MirrorDeletedMetadata
 }
 
 type mirrorDeletedMetadataReadonly MirrorDeletedMetadata
 
-func (r *mirrorDeletedMetadataReadonly) GetTarget() commonpb.TargetReader {
+func (r *mirrorDeletedMetadataReadonly) GetTarget() grpc.TargetReader {
 	v := (*MirrorDeletedMetadata)(r).GetTarget()
 	if v == nil {
 		return nil
@@ -2373,14 +2373,14 @@ func NewDeleteLedgerOrderListReader(s []*DeleteLedgerOrder) DeleteLedgerOrderLis
 // LedgerApplyOrderReader provides read-only access to LedgerApplyOrder.
 // Call Mutate() to obtain a mutable clone.
 type LedgerApplyOrderReader interface {
-	GetSkippableReasons() []commonpb.ErrorReason
+	GetSkippableReasons() []grpc.ErrorReason
 	GetData() isLedgerApplyOrder_Data
 	Mutate() *LedgerApplyOrder
 }
 
 type ledgerApplyOrderReadonly LedgerApplyOrder
 
-func (r *ledgerApplyOrderReadonly) GetSkippableReasons() []commonpb.ErrorReason {
+func (r *ledgerApplyOrderReadonly) GetSkippableReasons() []grpc.ErrorReason {
 	return slices.Clone((*LedgerApplyOrder)(r).GetSkippableReasons())
 }
 
@@ -2445,13 +2445,13 @@ func NewLedgerApplyOrderListReader(s []*LedgerApplyOrder) LedgerApplyOrderListRe
 // CreateIndexOrderReader provides read-only access to CreateIndexOrder.
 // Call Mutate() to obtain a mutable clone.
 type CreateIndexOrderReader interface {
-	GetId() commonpb.IndexIDReader
+	GetId() grpc.IndexIDReader
 	Mutate() *CreateIndexOrder
 }
 
 type createIndexOrderReadonly CreateIndexOrder
 
-func (r *createIndexOrderReadonly) GetId() commonpb.IndexIDReader {
+func (r *createIndexOrderReadonly) GetId() grpc.IndexIDReader {
 	v := (*CreateIndexOrder)(r).GetId()
 	if v == nil {
 		return nil
@@ -2516,13 +2516,13 @@ func NewCreateIndexOrderListReader(s []*CreateIndexOrder) CreateIndexOrderListRe
 // DropIndexOrderReader provides read-only access to DropIndexOrder.
 // Call Mutate() to obtain a mutable clone.
 type DropIndexOrderReader interface {
-	GetId() commonpb.IndexIDReader
+	GetId() grpc.IndexIDReader
 	Mutate() *DropIndexOrder
 }
 
 type dropIndexOrderReadonly DropIndexOrder
 
-func (r *dropIndexOrderReadonly) GetId() commonpb.IndexIDReader {
+func (r *dropIndexOrderReadonly) GetId() grpc.IndexIDReader {
 	v := (*DropIndexOrder)(r).GetId()
 	if v == nil {
 		return nil
@@ -2587,13 +2587,13 @@ func NewDropIndexOrderListReader(s []*DropIndexOrder) DropIndexOrderListReader {
 // AddAccountTypeOrderReader provides read-only access to AddAccountTypeOrder.
 // Call Mutate() to obtain a mutable clone.
 type AddAccountTypeOrderReader interface {
-	GetAccountType() commonpb.AccountTypeReader
+	GetAccountType() grpc.AccountTypeReader
 	Mutate() *AddAccountTypeOrder
 }
 
 type addAccountTypeOrderReadonly AddAccountTypeOrder
 
-func (r *addAccountTypeOrderReadonly) GetAccountType() commonpb.AccountTypeReader {
+func (r *addAccountTypeOrderReadonly) GetAccountType() grpc.AccountTypeReader {
 	v := (*AddAccountTypeOrder)(r).GetAccountType()
 	if v == nil {
 		return nil
@@ -2725,13 +2725,13 @@ func NewRemoveAccountTypeOrderListReader(s []*RemoveAccountTypeOrder) RemoveAcco
 // UpdateDefaultEnforcementModeOrderReader provides read-only access to UpdateDefaultEnforcementModeOrder.
 // Call Mutate() to obtain a mutable clone.
 type UpdateDefaultEnforcementModeOrderReader interface {
-	GetEnforcementMode() commonpb.ChartEnforcementMode
+	GetEnforcementMode() grpc.ChartEnforcementMode
 	Mutate() *UpdateDefaultEnforcementModeOrder
 }
 
 type updateDefaultEnforcementModeOrderReadonly UpdateDefaultEnforcementModeOrder
 
-func (r *updateDefaultEnforcementModeOrderReadonly) GetEnforcementMode() commonpb.ChartEnforcementMode {
+func (r *updateDefaultEnforcementModeOrderReadonly) GetEnforcementMode() grpc.ChartEnforcementMode {
 	return (*UpdateDefaultEnforcementModeOrder)(r).GetEnforcementMode()
 }
 
@@ -2792,15 +2792,15 @@ func NewUpdateDefaultEnforcementModeOrderListReader(s []*UpdateDefaultEnforcemen
 // SetMetadataFieldTypeOrderReader provides read-only access to SetMetadataFieldTypeOrder.
 // Call Mutate() to obtain a mutable clone.
 type SetMetadataFieldTypeOrderReader interface {
-	GetTargetType() commonpb.TargetType
+	GetTargetType() grpc.TargetType
 	GetKey() string
-	GetType() commonpb.MetadataType
+	GetType() grpc.MetadataType
 	Mutate() *SetMetadataFieldTypeOrder
 }
 
 type setMetadataFieldTypeOrderReadonly SetMetadataFieldTypeOrder
 
-func (r *setMetadataFieldTypeOrderReadonly) GetTargetType() commonpb.TargetType {
+func (r *setMetadataFieldTypeOrderReadonly) GetTargetType() grpc.TargetType {
 	return (*SetMetadataFieldTypeOrder)(r).GetTargetType()
 }
 
@@ -2808,7 +2808,7 @@ func (r *setMetadataFieldTypeOrderReadonly) GetKey() string {
 	return (*SetMetadataFieldTypeOrder)(r).GetKey()
 }
 
-func (r *setMetadataFieldTypeOrderReadonly) GetType() commonpb.MetadataType {
+func (r *setMetadataFieldTypeOrderReadonly) GetType() grpc.MetadataType {
 	return (*SetMetadataFieldTypeOrder)(r).GetType()
 }
 
@@ -2869,14 +2869,14 @@ func NewSetMetadataFieldTypeOrderListReader(s []*SetMetadataFieldTypeOrder) SetM
 // RemoveMetadataFieldTypeOrderReader provides read-only access to RemoveMetadataFieldTypeOrder.
 // Call Mutate() to obtain a mutable clone.
 type RemoveMetadataFieldTypeOrderReader interface {
-	GetTargetType() commonpb.TargetType
+	GetTargetType() grpc.TargetType
 	GetKey() string
 	Mutate() *RemoveMetadataFieldTypeOrder
 }
 
 type removeMetadataFieldTypeOrderReadonly RemoveMetadataFieldTypeOrder
 
-func (r *removeMetadataFieldTypeOrderReadonly) GetTargetType() commonpb.TargetType {
+func (r *removeMetadataFieldTypeOrderReadonly) GetTargetType() grpc.TargetType {
 	return (*RemoveMetadataFieldTypeOrder)(r).GetTargetType()
 }
 
@@ -2941,9 +2941,9 @@ func NewRemoveMetadataFieldTypeOrderListReader(s []*RemoveMetadataFieldTypeOrder
 // CreateTransactionOrderReader provides read-only access to CreateTransactionOrder.
 // Call Mutate() to obtain a mutable clone.
 type CreateTransactionOrderReader interface {
-	GetPostings() commonpb.PostingListReader
-	GetScript() commonpb.ScriptReader
-	GetTimestamp() commonpb.TimestampReader
+	GetPostings() grpc.PostingListReader
+	GetScript() grpc.ScriptReader
+	GetTimestamp() grpc.TimestampReader
 	GetReference() string
 	GetMetadata() CreateTransactionOrder_MetadataMapReader
 	GetAccountMetadata() CreateTransactionOrder_AccountMetadataMapReader
@@ -2954,11 +2954,11 @@ type CreateTransactionOrderReader interface {
 
 type createTransactionOrderReadonly CreateTransactionOrder
 
-func (r *createTransactionOrderReadonly) GetPostings() commonpb.PostingListReader {
-	return commonpb.NewPostingListReader((*CreateTransactionOrder)(r).GetPostings())
+func (r *createTransactionOrderReadonly) GetPostings() grpc.PostingListReader {
+	return grpc.NewPostingListReader((*CreateTransactionOrder)(r).GetPostings())
 }
 
-func (r *createTransactionOrderReadonly) GetScript() commonpb.ScriptReader {
+func (r *createTransactionOrderReadonly) GetScript() grpc.ScriptReader {
 	v := (*CreateTransactionOrder)(r).GetScript()
 	if v == nil {
 		return nil
@@ -2966,7 +2966,7 @@ func (r *createTransactionOrderReadonly) GetScript() commonpb.ScriptReader {
 	return v.AsReader()
 }
 
-func (r *createTransactionOrderReadonly) GetTimestamp() commonpb.TimestampReader {
+func (r *createTransactionOrderReadonly) GetTimestamp() grpc.TimestampReader {
 	v := (*CreateTransactionOrder)(r).GetTimestamp()
 	if v == nil {
 		return nil
@@ -3055,15 +3055,15 @@ func NewCreateTransactionOrderListReader(s []*CreateTransactionOrder) CreateTran
 // CreateTransactionOrder_MetadataMapReader provides read-only access to CreateTransactionOrder.Metadata.
 type CreateTransactionOrder_MetadataMapReader interface {
 	Len() int
-	Get(k string) (commonpb.MetadataValueReader, bool)
-	Range(yield func(string, commonpb.MetadataValueReader) bool)
+	Get(k string) (grpc.MetadataValueReader, bool)
+	Range(yield func(string, grpc.MetadataValueReader) bool)
 }
 
-type createTransactionOrder_metadataMapReadonly map[string]*commonpb.MetadataValue
+type createTransactionOrder_metadataMapReadonly map[string]*grpc.MetadataValue
 
 func (m createTransactionOrder_metadataMapReadonly) Len() int { return len(m) }
 
-func (m createTransactionOrder_metadataMapReadonly) Get(k string) (commonpb.MetadataValueReader, bool) {
+func (m createTransactionOrder_metadataMapReadonly) Get(k string) (grpc.MetadataValueReader, bool) {
 	v, ok := m[k]
 	if !ok || v == nil {
 		return nil, ok
@@ -3071,9 +3071,9 @@ func (m createTransactionOrder_metadataMapReadonly) Get(k string) (commonpb.Meta
 	return v.AsReader(), true
 }
 
-func (m createTransactionOrder_metadataMapReadonly) Range(yield func(string, commonpb.MetadataValueReader) bool) {
+func (m createTransactionOrder_metadataMapReadonly) Range(yield func(string, grpc.MetadataValueReader) bool) {
 	for k, v := range m {
-		var r commonpb.MetadataValueReader
+		var r grpc.MetadataValueReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -3086,15 +3086,15 @@ func (m createTransactionOrder_metadataMapReadonly) Range(yield func(string, com
 // CreateTransactionOrder_AccountMetadataMapReader provides read-only access to CreateTransactionOrder.AccountMetadata.
 type CreateTransactionOrder_AccountMetadataMapReader interface {
 	Len() int
-	Get(k string) (commonpb.MetadataMapReader, bool)
-	Range(yield func(string, commonpb.MetadataMapReader) bool)
+	Get(k string) (grpc.MetadataMapReader, bool)
+	Range(yield func(string, grpc.MetadataMapReader) bool)
 }
 
-type createTransactionOrder_accountMetadataMapReadonly map[string]*commonpb.MetadataMap
+type createTransactionOrder_accountMetadataMapReadonly map[string]*grpc.MetadataMap
 
 func (m createTransactionOrder_accountMetadataMapReadonly) Len() int { return len(m) }
 
-func (m createTransactionOrder_accountMetadataMapReadonly) Get(k string) (commonpb.MetadataMapReader, bool) {
+func (m createTransactionOrder_accountMetadataMapReadonly) Get(k string) (grpc.MetadataMapReader, bool) {
 	v, ok := m[k]
 	if !ok || v == nil {
 		return nil, ok
@@ -3102,9 +3102,9 @@ func (m createTransactionOrder_accountMetadataMapReadonly) Get(k string) (common
 	return v.AsReader(), true
 }
 
-func (m createTransactionOrder_accountMetadataMapReadonly) Range(yield func(string, commonpb.MetadataMapReader) bool) {
+func (m createTransactionOrder_accountMetadataMapReadonly) Range(yield func(string, grpc.MetadataMapReader) bool) {
 	for k, v := range m {
-		var r commonpb.MetadataMapReader
+		var r grpc.MetadataMapReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -3218,14 +3218,14 @@ func (m numscriptReference_varsMapReadonly) Range(yield func(string, string) boo
 // SaveMetadataOrderReader provides read-only access to SaveMetadataOrder.
 // Call Mutate() to obtain a mutable clone.
 type SaveMetadataOrderReader interface {
-	GetTarget() commonpb.TargetReader
+	GetTarget() grpc.TargetReader
 	GetMetadata() SaveMetadataOrder_MetadataMapReader
 	Mutate() *SaveMetadataOrder
 }
 
 type saveMetadataOrderReadonly SaveMetadataOrder
 
-func (r *saveMetadataOrderReadonly) GetTarget() commonpb.TargetReader {
+func (r *saveMetadataOrderReadonly) GetTarget() grpc.TargetReader {
 	v := (*SaveMetadataOrder)(r).GetTarget()
 	if v == nil {
 		return nil
@@ -3294,15 +3294,15 @@ func NewSaveMetadataOrderListReader(s []*SaveMetadataOrder) SaveMetadataOrderLis
 // SaveMetadataOrder_MetadataMapReader provides read-only access to SaveMetadataOrder.Metadata.
 type SaveMetadataOrder_MetadataMapReader interface {
 	Len() int
-	Get(k string) (commonpb.MetadataValueReader, bool)
-	Range(yield func(string, commonpb.MetadataValueReader) bool)
+	Get(k string) (grpc.MetadataValueReader, bool)
+	Range(yield func(string, grpc.MetadataValueReader) bool)
 }
 
-type saveMetadataOrder_metadataMapReadonly map[string]*commonpb.MetadataValue
+type saveMetadataOrder_metadataMapReadonly map[string]*grpc.MetadataValue
 
 func (m saveMetadataOrder_metadataMapReadonly) Len() int { return len(m) }
 
-func (m saveMetadataOrder_metadataMapReadonly) Get(k string) (commonpb.MetadataValueReader, bool) {
+func (m saveMetadataOrder_metadataMapReadonly) Get(k string) (grpc.MetadataValueReader, bool) {
 	v, ok := m[k]
 	if !ok || v == nil {
 		return nil, ok
@@ -3310,9 +3310,9 @@ func (m saveMetadataOrder_metadataMapReadonly) Get(k string) (commonpb.MetadataV
 	return v.AsReader(), true
 }
 
-func (m saveMetadataOrder_metadataMapReadonly) Range(yield func(string, commonpb.MetadataValueReader) bool) {
+func (m saveMetadataOrder_metadataMapReadonly) Range(yield func(string, grpc.MetadataValueReader) bool) {
 	for k, v := range m {
-		var r commonpb.MetadataValueReader
+		var r grpc.MetadataValueReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -3407,15 +3407,15 @@ func NewRevertTransactionOrderListReader(s []*RevertTransactionOrder) RevertTran
 // RevertTransactionOrder_MetadataMapReader provides read-only access to RevertTransactionOrder.Metadata.
 type RevertTransactionOrder_MetadataMapReader interface {
 	Len() int
-	Get(k string) (commonpb.MetadataValueReader, bool)
-	Range(yield func(string, commonpb.MetadataValueReader) bool)
+	Get(k string) (grpc.MetadataValueReader, bool)
+	Range(yield func(string, grpc.MetadataValueReader) bool)
 }
 
-type revertTransactionOrder_metadataMapReadonly map[string]*commonpb.MetadataValue
+type revertTransactionOrder_metadataMapReadonly map[string]*grpc.MetadataValue
 
 func (m revertTransactionOrder_metadataMapReadonly) Len() int { return len(m) }
 
-func (m revertTransactionOrder_metadataMapReadonly) Get(k string) (commonpb.MetadataValueReader, bool) {
+func (m revertTransactionOrder_metadataMapReadonly) Get(k string) (grpc.MetadataValueReader, bool) {
 	v, ok := m[k]
 	if !ok || v == nil {
 		return nil, ok
@@ -3423,9 +3423,9 @@ func (m revertTransactionOrder_metadataMapReadonly) Get(k string) (commonpb.Meta
 	return v.AsReader(), true
 }
 
-func (m revertTransactionOrder_metadataMapReadonly) Range(yield func(string, commonpb.MetadataValueReader) bool) {
+func (m revertTransactionOrder_metadataMapReadonly) Range(yield func(string, grpc.MetadataValueReader) bool) {
 	for k, v := range m {
-		var r commonpb.MetadataValueReader
+		var r grpc.MetadataValueReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -3438,14 +3438,14 @@ func (m revertTransactionOrder_metadataMapReadonly) Range(yield func(string, com
 // DeleteMetadataOrderReader provides read-only access to DeleteMetadataOrder.
 // Call Mutate() to obtain a mutable clone.
 type DeleteMetadataOrderReader interface {
-	GetTarget() commonpb.TargetReader
+	GetTarget() grpc.TargetReader
 	GetKey() string
 	Mutate() *DeleteMetadataOrder
 }
 
 type deleteMetadataOrderReadonly DeleteMetadataOrder
 
-func (r *deleteMetadataOrderReadonly) GetTarget() commonpb.TargetReader {
+func (r *deleteMetadataOrderReadonly) GetTarget() grpc.TargetReader {
 	v := (*DeleteMetadataOrder)(r).GetTarget()
 	if v == nil {
 		return nil
@@ -3581,15 +3581,15 @@ func NewSaveLedgerMetadataOrderListReader(s []*SaveLedgerMetadataOrder) SaveLedg
 // SaveLedgerMetadataOrder_MetadataMapReader provides read-only access to SaveLedgerMetadataOrder.Metadata.
 type SaveLedgerMetadataOrder_MetadataMapReader interface {
 	Len() int
-	Get(k string) (commonpb.MetadataValueReader, bool)
-	Range(yield func(string, commonpb.MetadataValueReader) bool)
+	Get(k string) (grpc.MetadataValueReader, bool)
+	Range(yield func(string, grpc.MetadataValueReader) bool)
 }
 
-type saveLedgerMetadataOrder_metadataMapReadonly map[string]*commonpb.MetadataValue
+type saveLedgerMetadataOrder_metadataMapReadonly map[string]*grpc.MetadataValue
 
 func (m saveLedgerMetadataOrder_metadataMapReadonly) Len() int { return len(m) }
 
-func (m saveLedgerMetadataOrder_metadataMapReadonly) Get(k string) (commonpb.MetadataValueReader, bool) {
+func (m saveLedgerMetadataOrder_metadataMapReadonly) Get(k string) (grpc.MetadataValueReader, bool) {
 	v, ok := m[k]
 	if !ok || v == nil {
 		return nil, ok
@@ -3597,9 +3597,9 @@ func (m saveLedgerMetadataOrder_metadataMapReadonly) Get(k string) (commonpb.Met
 	return v.AsReader(), true
 }
 
-func (m saveLedgerMetadataOrder_metadataMapReadonly) Range(yield func(string, commonpb.MetadataValueReader) bool) {
+func (m saveLedgerMetadataOrder_metadataMapReadonly) Range(yield func(string, grpc.MetadataValueReader) bool) {
 	for k, v := range m {
-		var r commonpb.MetadataValueReader
+		var r grpc.MetadataValueReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -3681,12 +3681,12 @@ func NewDeleteLedgerMetadataOrderListReader(s []*DeleteLedgerMetadataOrder) Dele
 type ProposalReader interface {
 	GetId() uint64
 	GetOrders() OrderListReader
-	GetDate() commonpb.TimestampReader
+	GetDate() grpc.TimestampReader
 	GetExecutionPlan() ExecutionPlanReader
 	GetPredictedIndex() uint64
-	GetCallerSnapshot() commonpb.CallerSnapshotReader
-	GetIdempotency() commonpb.IdempotencyReader
-	GetSignature() signaturepb.SignedApplyBatchReader
+	GetCallerSnapshot() grpc.CallerSnapshotReader
+	GetIdempotency() grpc.IdempotencyReader
+	GetSignature() grpc.SignedApplyBatchReader
 	GetTechnicalUpdates() TechnicalUpdateListReader
 	Mutate() *Proposal
 }
@@ -3701,7 +3701,7 @@ func (r *proposalReadonly) GetOrders() OrderListReader {
 	return NewOrderListReader((*Proposal)(r).GetOrders())
 }
 
-func (r *proposalReadonly) GetDate() commonpb.TimestampReader {
+func (r *proposalReadonly) GetDate() grpc.TimestampReader {
 	v := (*Proposal)(r).GetDate()
 	if v == nil {
 		return nil
@@ -3721,7 +3721,7 @@ func (r *proposalReadonly) GetPredictedIndex() uint64 {
 	return (*Proposal)(r).GetPredictedIndex()
 }
 
-func (r *proposalReadonly) GetCallerSnapshot() commonpb.CallerSnapshotReader {
+func (r *proposalReadonly) GetCallerSnapshot() grpc.CallerSnapshotReader {
 	v := (*Proposal)(r).GetCallerSnapshot()
 	if v == nil {
 		return nil
@@ -3729,7 +3729,7 @@ func (r *proposalReadonly) GetCallerSnapshot() commonpb.CallerSnapshotReader {
 	return v.AsReader()
 }
 
-func (r *proposalReadonly) GetIdempotency() commonpb.IdempotencyReader {
+func (r *proposalReadonly) GetIdempotency() grpc.IdempotencyReader {
 	v := (*Proposal)(r).GetIdempotency()
 	if v == nil {
 		return nil
@@ -3737,7 +3737,7 @@ func (r *proposalReadonly) GetIdempotency() commonpb.IdempotencyReader {
 	return v.AsReader()
 }
 
-func (r *proposalReadonly) GetSignature() signaturepb.SignedApplyBatchReader {
+func (r *proposalReadonly) GetSignature() grpc.SignedApplyBatchReader {
 	v := (*Proposal)(r).GetSignature()
 	if v == nil {
 		return nil
@@ -4706,7 +4706,7 @@ func NewIdempotencyEvictionListReader(s []*IdempotencyEviction) IdempotencyEvict
 // Call Mutate() to obtain a mutable clone.
 type MirrorSyncUpdateReader interface {
 	GetLedgerName() string
-	GetError() commonpb.MirrorSyncErrorReader
+	GetError() grpc.MirrorSyncErrorReader
 	GetClearError() bool
 	GetSourceLogCount() uint64
 	Mutate() *MirrorSyncUpdate
@@ -4718,7 +4718,7 @@ func (r *mirrorSyncUpdateReadonly) GetLedgerName() string {
 	return (*MirrorSyncUpdate)(r).GetLedgerName()
 }
 
-func (r *mirrorSyncUpdateReadonly) GetError() commonpb.MirrorSyncErrorReader {
+func (r *mirrorSyncUpdateReadonly) GetError() grpc.MirrorSyncErrorReader {
 	v := (*MirrorSyncUpdate)(r).GetError()
 	if v == nil {
 		return nil
@@ -4793,7 +4793,7 @@ func NewMirrorSyncUpdateListReader(s []*MirrorSyncUpdate) MirrorSyncUpdateListRe
 type EventsSinkUpdateReader interface {
 	GetSinkName() string
 	GetCursor() uint64
-	GetError() commonpb.SinkErrorReader
+	GetError() grpc.SinkErrorReader
 	GetClearError() bool
 	Mutate() *EventsSinkUpdate
 }
@@ -4808,7 +4808,7 @@ func (r *eventsSinkUpdateReadonly) GetCursor() uint64 {
 	return (*EventsSinkUpdate)(r).GetCursor()
 }
 
-func (r *eventsSinkUpdateReadonly) GetError() commonpb.SinkErrorReader {
+func (r *eventsSinkUpdateReadonly) GetError() grpc.SinkErrorReader {
 	v := (*EventsSinkUpdate)(r).GetError()
 	if v == nil {
 		return nil
@@ -5021,14 +5021,14 @@ func NewLedgerBoundariesListReader(s []*LedgerBoundaries) LedgerBoundariesListRe
 // VolumePairReader provides read-only access to VolumePair.
 // Call Mutate() to obtain a mutable clone.
 type VolumePairReader interface {
-	GetInput() commonpb.Uint256Reader
-	GetOutput() commonpb.Uint256Reader
+	GetInput() grpc.Uint256Reader
+	GetOutput() grpc.Uint256Reader
 	Mutate() *VolumePair
 }
 
 type volumePairReadonly VolumePair
 
-func (r *volumePairReadonly) GetInput() commonpb.Uint256Reader {
+func (r *volumePairReadonly) GetInput() grpc.Uint256Reader {
 	v := (*VolumePair)(r).GetInput()
 	if v == nil {
 		return nil
@@ -5036,7 +5036,7 @@ func (r *volumePairReadonly) GetInput() commonpb.Uint256Reader {
 	return v.AsReader()
 }
 
-func (r *volumePairReadonly) GetOutput() commonpb.Uint256Reader {
+func (r *volumePairReadonly) GetOutput() grpc.Uint256Reader {
 	v := (*VolumePair)(r).GetOutput()
 	if v == nil {
 		return nil
@@ -5349,7 +5349,7 @@ func NewAttributeValueListReader(s []*AttributeValue) AttributeValueListReader {
 // Call Mutate() to obtain a mutable clone.
 type ReloadIdempotencyKeyReader interface {
 	GetKey() string
-	GetValue() commonpb.IdempotencyKeyValueReader
+	GetValue() internalcommonpb.IdempotencyKeyValueReader
 	Mutate() *ReloadIdempotencyKey
 }
 
@@ -5359,7 +5359,7 @@ func (r *reloadIdempotencyKeyReadonly) GetKey() string {
 	return (*ReloadIdempotencyKey)(r).GetKey()
 }
 
-func (r *reloadIdempotencyKeyReadonly) GetValue() commonpb.IdempotencyKeyValueReader {
+func (r *reloadIdempotencyKeyReadonly) GetValue() internalcommonpb.IdempotencyKeyValueReader {
 	v := (*ReloadIdempotencyKey)(r).GetValue()
 	if v == nil {
 		return nil

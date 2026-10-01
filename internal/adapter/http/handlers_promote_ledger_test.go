@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 func TestHandlePromoteLedger_Success(t *testing.T) {
@@ -19,7 +19,7 @@ func TestHandlePromoteLedger_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return &domain.ApplyResult{Logs: []*commonpb.Log{{
 				Payload: &commonpb.LogPayload{
 					Type: &commonpb.LogPayload_PromoteLedger{
@@ -62,7 +62,7 @@ func TestHandlePromoteLedger_NotMirrorMode(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, &domain.ErrLedgerNotInMirrorMode{Name: "normal-ledger"}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -128,7 +128,7 @@ func TestHandlePromoteLedger_LedgerNotFound(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, &domain.ErrLedgerNotFound{Name: "missing"}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)

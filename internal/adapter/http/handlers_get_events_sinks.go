@@ -5,8 +5,9 @@ import (
 
 	"google.golang.org/protobuf/encoding/protojson"
 
+	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // handleGetEventsSinks handles GET /_/events-sinks to list configured event

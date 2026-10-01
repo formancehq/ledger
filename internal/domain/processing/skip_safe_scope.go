@@ -6,8 +6,10 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -90,11 +92,11 @@ func (s *skipSafeScope) LedgerMetadata() Accessor[domain.LedgerMetadataKey, *com
 	return s.inner.LedgerMetadata()
 }
 
-func (s *skipSafeScope) TransactionReferences() Accessor[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader] {
+func (s *skipSafeScope) TransactionReferences() Accessor[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader] {
 	return s.inner.TransactionReferences()
 }
 
-func (s *skipSafeScope) TransactionStates() Accessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader] {
+func (s *skipSafeScope) TransactionStates() Accessor[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader] {
 	return s.inner.TransactionStates()
 }
 

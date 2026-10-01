@@ -9,11 +9,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -68,7 +68,7 @@ func TestExecutePropagatesMainSnapshotOpenFailure(t *testing.T) {
 	_, err := query.Execute(
 		t.Context(), rs, failingQueryHandleStore{err: wantErr},
 		attrs.Volume, attrs.PreparedQuery, attrs.Index,
-		&servicepb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q"}, nil, nil,
+		&commonpb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q"}, nil, nil,
 	)
 	require.ErrorIs(t, err, wantErr)
 }
@@ -128,7 +128,7 @@ func TestExecute_ReadsDefinitionAndLedgerFromMainSnapshot(t *testing.T) {
 
 			_, err := query.Execute(
 				t.Context(), rs, opener, attrs.Volume, attrs.PreparedQuery, attrs.Index,
-				&servicepb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q"}, nil, nil,
+				&commonpb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q"}, nil, nil,
 			)
 			require.NoError(t, err,
 				"definition and schema reads must stay on the handle opened before the live mutation")
@@ -185,7 +185,7 @@ func TestExecute_UnfilteredQueryDoesNotWaitForTheFold(t *testing.T) {
 
 			attrs := attributes.New()
 			seedPreparedQuery(t, store, attrs, "l", "q", tc.target, tc.filter)
-			req := &servicepb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q"}
+			req := &commonpb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q"}
 
 			ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 			defer cancel()
@@ -299,7 +299,7 @@ func TestExecute_DefinitionMutationAfterSnapshotIsNotObserved(t *testing.T) {
 
 			_, err := query.Execute(
 				ctx, rs, opener, attrs.Volume, attrs.PreparedQuery, attrs.Index,
-				&servicepb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q"}, nil, nil,
+				&commonpb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q"}, nil, nil,
 			)
 
 			// Control: the barrier mutation is a committed write, so a handle
@@ -462,7 +462,7 @@ func TestExecute_DefinitionCommittedBeforeSnapshotIsObserved(t *testing.T) {
 
 			_, err := query.Execute(
 				ctx, rs, opener, attrs.Volume, attrs.PreparedQuery, attrs.Index,
-				&servicepb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q"}, nil, nil,
+				&commonpb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q"}, nil, nil,
 			)
 
 			// Control: without a committed barrier write the subtest would pass

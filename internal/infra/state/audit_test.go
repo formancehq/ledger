@@ -9,9 +9,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -73,7 +73,7 @@ func TestApplyProposalRejectsLogSequenceExhaustionWithoutPublishingBusinessWrite
 	entries := listAuditEntries(t, dataStore, 0)
 	require.Len(t, entries, 2)
 	for _, entry := range entries {
-		require.Equal(t, commonpb.ErrorReason_ERROR_REASON_SEQUENCE_EXHAUSTED, entry.GetFailure().GetReason())
+		require.Equal(t, auditpb.ErrorReason_ERROR_REASON_SEQUENCE_EXHAUSTED, entry.GetFailure().GetReason())
 		require.Equal(t, "logSequence", entry.GetFailure().GetContext()["counter"])
 	}
 }

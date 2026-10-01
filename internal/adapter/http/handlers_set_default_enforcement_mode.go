@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"net/http"
 
+	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 type setDefaultEnforcementModeRequest struct {

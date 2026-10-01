@@ -6,8 +6,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -484,7 +486,7 @@ func TestProcessOrders_SkipOnReferenceConflict(t *testing.T) {
 	// sub-processor detects to raise ErrTransactionReferenceConflict, and
 	// its ExistingTransactionID surfaces on the skip's context so
 	// callers can correlate without a follow-up read.
-	existingRef := &commonpb.TransactionReferenceValue{TransactionId: 7}
+	existingRef := &internalcommonpb.TransactionReferenceValue{TransactionId: 7}
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil).AnyTimes()

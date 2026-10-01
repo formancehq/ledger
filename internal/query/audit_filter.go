@@ -9,7 +9,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
+	"github.com/formancehq/ledger/v3/internal/proto/publicpolicy"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -174,8 +176,8 @@ func compileAuditNode(idx AuditIndexReader, filter *commonpb.QueryFilter, depth 
 	// than as an undocumented exception. Concretely it admits audit-condition leaves
 	// and and/or, and rejects not and every non-audit condition — matching the
 	// dispatch below.
-	kind := commonpb.ConditionKindOf(filter)
-	if !commonpb.ConditionValidForTarget(commonpb.QueryTarget_QUERY_TARGET_AUDIT, kind) {
+	kind := publicpolicy.ConditionKindOf(filter)
+	if !publicpolicy.ConditionValidForTarget(commonpb.QueryTarget_QUERY_TARGET_AUDIT, kind) {
 		return auditCompiled{}, status.Errorf(codes.InvalidArgument,
 			"unsupported filter for audit entries: only bare audit fields combined with and/or are allowed")
 	}

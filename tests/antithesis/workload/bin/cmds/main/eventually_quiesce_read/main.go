@@ -11,8 +11,8 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	antirandom "github.com/antithesishq/antithesis-sdk-go/random"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -70,7 +70,7 @@ func main() {
 	defer cancelProbe()
 
 	start := time.Now()
-	_, readErr := client.GetAccount(probeCtx, &servicepb.GetAccountRequest{
+	_, readErr := client.GetAccount(probeCtx, &commonpb.GetAccountRequest{
 		Ledger:  ledger,
 		Address: dest,
 	})
@@ -93,7 +93,7 @@ func main() {
 }
 
 // waitForLedger polls until a ledger is listable or the stabilize window ends.
-func waitForLedger(ctx context.Context, client servicepb.BucketServiceClient) string {
+func waitForLedger(ctx context.Context, client commonpb.BucketServiceClient) string {
 	stabilizeCtx, cancel := context.WithTimeout(ctx, stabilizeTimeout)
 	defer cancel()
 
@@ -113,17 +113,17 @@ func waitForLedger(ctx context.Context, client servicepb.BucketServiceClient) st
 // was acknowledged. Failures are logged, not asserted: write availability is
 // covered by other drivers, and a skipped probe is preferable to a false
 // finding while the cluster is still recovering.
-func writeProbeTransaction(ctx context.Context, client servicepb.BucketServiceClient, ledger, dest string) bool {
+func writeProbeTransaction(ctx context.Context, client commonpb.BucketServiceClient, ledger, dest string) bool {
 	for attempt := range writeAttempts {
 		writeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
-		_, err := client.Apply(writeCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+		_, err := client.Apply(writeCtx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_Apply{
+				Apply: &commonpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-						CreateTransaction: &servicepb.CreateTransactionPayload{
+					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &commonpb.CreateTransactionPayload{
 							Postings: []*commonpb.Posting{
-								commonpb.NewPosting("world", dest, "COIN", big.NewInt(1)),
+								protohelpers.NewPosting("world", dest, "COIN", big.NewInt(1)),
 							},
 							Force: true,
 						},

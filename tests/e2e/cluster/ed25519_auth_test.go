@@ -16,11 +16,9 @@ import (
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -109,7 +107,7 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 	var (
 		ctx           context.Context
 		grpcConn      *grpc.ClientConn
-		client        servicepb.BucketServiceClient
+		client        clusterpb.BucketServiceClient
 		clusterClient clusterpb.ClusterServiceClient
 		edPrivKey     ed25519.PrivateKey
 		keyID         string
@@ -195,13 +193,13 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 
 	Context("with Ed25519 auth enabled", func() {
 		It("should allow unauthenticated endpoints without token", func() {
-			resp, err := client.Discovery(ctx, &servicepb.DiscoveryRequest{})
+			resp, err := client.Discovery(ctx, &clusterpb.DiscoveryRequest{})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 		})
 
 		It("should reject authenticated endpoints without token", func() {
-			_, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: "test"})
+			_, err := client.GetLedger(ctx, &clusterpb.GetLedgerRequest{Ledger: "test"})
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
@@ -213,7 +211,7 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
-			resp, err := client.Apply(authCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("ed25519-auth-test-ledger", nil)))
+			resp, err := client.Apply(authCtx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction("ed25519-auth-test-ledger", nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 		})
@@ -224,7 +222,7 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
-			_, err = client.Apply(authCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("ed25519-auth-test-ledger-2", nil)))
+			_, err = client.Apply(authCtx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction("ed25519-auth-test-ledger-2", nil)))
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
@@ -236,7 +234,7 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
-			_, err = client.GetLedger(authCtx, &servicepb.GetLedgerRequest{Ledger: "ed25519-auth-test-ledger"})
+			_, err = client.GetLedger(authCtx, &clusterpb.GetLedgerRequest{Ledger: "ed25519-auth-test-ledger"})
 			Expect(err).To(Succeed())
 		})
 
@@ -245,7 +243,7 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
-			resp, err := client.Apply(authCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("ed25519-auth-test-ledger", []*commonpb.Posting{
+			resp, err := client.Apply(authCtx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction("ed25519-auth-test-ledger", []*clusterpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -283,7 +281,7 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
-			_, err = client.GetLedger(authCtx, &servicepb.GetLedgerRequest{Ledger: "test"})
+			_, err = client.GetLedger(authCtx, &clusterpb.GetLedgerRequest{Ledger: "test"})
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
@@ -299,7 +297,7 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
-			_, err = client.GetLedger(authCtx, &servicepb.GetLedgerRequest{Ledger: "test"})
+			_, err = client.GetLedger(authCtx, &clusterpb.GetLedgerRequest{Ledger: "test"})
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
@@ -312,7 +310,7 @@ var _ = Describe("Ed25519 Auth Scope Restrictions", Ordered, func() {
 	var (
 		ctx           context.Context
 		grpcConn      *grpc.ClientConn
-		client        servicepb.BucketServiceClient
+		client        clusterpb.BucketServiceClient
 		clusterClient clusterpb.ClusterServiceClient
 		edPrivKey     ed25519.PrivateKey
 		keyID         string
@@ -392,7 +390,7 @@ var _ = Describe("Ed25519 Auth Scope Restrictions", Ordered, func() {
 			g.Expect(err).To(Succeed())
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
-			_, err = client.GetLedger(authCtx, &servicepb.GetLedgerRequest{Ledger: "wait-for-leader"})
+			_, err = client.GetLedger(authCtx, &clusterpb.GetLedgerRequest{Ledger: "wait-for-leader"})
 			if err != nil {
 				st, ok := status.FromError(err)
 				g.Expect(ok).To(BeTrue())
@@ -408,7 +406,7 @@ var _ = Describe("Ed25519 Auth Scope Restrictions", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
-			_, err = client.Apply(authCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("scope-test-ledger", nil)))
+			_, err = client.Apply(authCtx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction("scope-test-ledger", nil)))
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
@@ -434,7 +432,7 @@ var _ = Describe("Ed25519 Auth Scope Restrictions", Ordered, func() {
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
 			// GetLedger is a read operation — ledger may not exist but shouldn't be auth error
-			_, err = client.GetLedger(authCtx, &servicepb.GetLedgerRequest{Ledger: "nonexistent"})
+			_, err = client.GetLedger(authCtx, &clusterpb.GetLedgerRequest{Ledger: "nonexistent"})
 			// Either succeeds or fails with NOT_FOUND, but not auth error
 			if err != nil {
 				st, ok := status.FromError(err)
@@ -503,7 +501,7 @@ var _ = Describe("Ed25519 Auth God Mode", Ordered, func() {
 	var (
 		ctx            context.Context
 		grpcConn       *grpc.ClientConn
-		client         servicepb.BucketServiceClient
+		client         clusterpb.BucketServiceClient
 		clusterClient  clusterpb.ClusterServiceClient
 		godPrivKey     ed25519.PrivateKey
 		regularPrivKey ed25519.PrivateKey
@@ -604,7 +602,7 @@ var _ = Describe("Ed25519 Auth God Mode", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
-			resp, err := client.Apply(authCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("god-mode-test-ledger", nil)))
+			resp, err := client.Apply(authCtx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction("god-mode-test-ledger", nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 		})
@@ -616,7 +614,7 @@ var _ = Describe("Ed25519 Auth God Mode", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
-			_, err = client.GetLedger(authCtx, &servicepb.GetLedgerRequest{Ledger: "god-mode-test-ledger"})
+			_, err = client.GetLedger(authCtx, &clusterpb.GetLedgerRequest{Ledger: "god-mode-test-ledger"})
 			Expect(err).To(Succeed())
 		})
 	})
@@ -629,7 +627,7 @@ var _ = Describe("Ed25519 Auth God Mode", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
-			_, err = client.GetLedger(authCtx, &servicepb.GetLedgerRequest{Ledger: "test"})
+			_, err = client.GetLedger(authCtx, &clusterpb.GetLedgerRequest{Ledger: "test"})
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())

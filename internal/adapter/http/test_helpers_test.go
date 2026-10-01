@@ -13,12 +13,11 @@ import (
 	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // newTestServer creates a Server with a mock backend for testing.
@@ -57,7 +56,7 @@ func backendReturningLogs(t *testing.T, logs []*commonpb.Log) *MockBackend {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return &domain.ApplyResult{Logs: logs}, nil
 		}).Times(1)
 

@@ -11,8 +11,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -71,13 +70,13 @@ func TestReferenceOracleDetectsInjectedDuplicate(t *testing.T) {
 // successful filtered response gains a second distinct ID for oracle sensitivity;
 // this does not claim that the engine committed a duplicate reference.
 type duplicateReferenceClient struct {
-	servicepb.BucketServiceClient
+	commonpb.BucketServiceClient
 
 	injectedID uint64
 	stream     *duplicateReferenceStream
 }
 
-func (c *duplicateReferenceClient) ListTransactions(ctx context.Context, req *servicepb.ListTransactionsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Transaction], error) {
+func (c *duplicateReferenceClient) ListTransactions(ctx context.Context, req *commonpb.ListTransactionsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Transaction], error) {
 	stream, err := c.BucketServiceClient.ListTransactions(ctx, req, opts...)
 	if err != nil {
 		return nil, err

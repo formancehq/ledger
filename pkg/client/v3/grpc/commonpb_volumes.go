@@ -1,0 +1,121 @@
+package grpc
+
+import (
+	"math/big"
+	"sort"
+
+	"github.com/formancehq/ledger/pkg/client/v3/internal/json"
+)
+
+// Balance calculates the balance (input - output).
+func (v *Volumes) Balance() *big.Int {
+	if v == nil {
+		return big.NewInt(0)
+	}
+
+	input, _ := new(big.Int).SetString(v.GetInput(), 10)
+	output, _ := new(big.Int).SetString(v.GetOutput(), 10)
+
+	if input == nil {
+		input = big.NewInt(0)
+	}
+
+	if output == nil {
+		output = big.NewInt(0)
+	}
+
+	return new(big.Int).Sub(input, output)
+}
+
+// MarshalJSON implements json.Marshaler for Volumes.
+func (v *Volumes) MarshalJSON() ([]byte, error) {
+	if v == nil {
+		return json.Marshal(nil)
+	}
+
+	balance := v.Balance()
+	input, _ := new(big.Int).SetString(v.GetInput(), 10)
+	output, _ := new(big.Int).SetString(v.GetOutput(), 10)
+
+	if input == nil {
+		input = big.NewInt(0)
+	}
+
+	if output == nil {
+		output = big.NewInt(0)
+	}
+
+	return json.Marshal(VolumesWithBalance{
+		Input:   input.String(),
+		Output:  output.String(),
+		Balance: balance.String(),
+	})
+}
+
+// AssetColored is implemented by every volume-bearing message keyed by an
+// (asset, color) tuple. It lets a single comparator order any of them.
+type AssetColored interface {
+	GetAsset() string
+	GetColor() string
+}
+
+// LessByAssetColor reports whether a sorts before b by (asset, color)
+// ascending. It is the single comparator shared by every deterministic
+// volume ordering (VolumeEntry, AccountVolume, AggregatedVolume) so the sort
+// key can never drift between call sites.
+func LessByAssetColor[T AssetColored](a, b T) bool {
+	if x, y := a.GetAsset(), b.GetAsset(); x != y {
+		return x < y
+	}
+
+	return a.GetColor() < b.GetColor()
+}
+
+// SortVolumes orders the inner volumes list by (asset, color) ascending.
+// Stable order is required so JSON / proto output is deterministic across
+// reads and so snapshot tests don't flap.
+func (v *VolumesByAssets) SortVolumes() {
+	if v == nil {
+		return
+	}
+	sort.Slice(v.GetVolumes(), func(i, j int) bool {
+		return LessByAssetColor(v.GetVolumes()[i], v.GetVolumes()[j])
+	})
+}
+
+// FindVolume returns the *Volumes for a given (asset, color) tuple, or nil
+// when no entry matches. Color "" is the uncolored bucket.
+//
+// VolumesByAssets is a sorted list, so this is an O(n) linear scan. For
+// repeated lookups, callers should build their own map.
+func (v *VolumesByAssets) FindVolume(asset, color string) *Volumes {
+	if entry := v.findVolumeEntry(asset, color); entry != nil {
+		return entry.GetVolumes()
+	}
+
+	return nil
+}
+
+// findVolumeEntry returns the *VolumeEntry matching (asset, color), or nil.
+func (v *VolumesByAssets) findVolumeEntry(asset, color string) *VolumeEntry {
+	if v == nil {
+		return nil
+	}
+	for _, entry := range v.GetVolumes() {
+		if entry.GetAsset() == asset && entry.GetColor() == color {
+			return entry
+		}
+	}
+
+	return nil
+}
+
+// SortVolumes sorts every per-account volume list deterministically.
+func (a *PostCommitVolumes) SortVolumes() {
+	if a == nil {
+		return
+	}
+	for _, vba := range a.GetVolumesByAccount() {
+		vba.SortVolumes()
+	}
+}

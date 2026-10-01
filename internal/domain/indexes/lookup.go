@@ -3,8 +3,9 @@ package indexes
 import (
 	"errors"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 //go:generate mockgen -typed -write_source_comment=false -write_package_comment=false -source=lookup.go -destination=lookup_generated_test.go -package=indexes_test Lookup,IndexWriter

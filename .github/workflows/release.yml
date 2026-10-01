@@ -18,6 +18,8 @@ jobs:
           dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
+      - name: Verify public client release
+        run: nix develop --command bash scripts/verify-client-release.sh "$GITHUB_REF_NAME"
       - name: Set up Docker Buildx
         uses: namespacelabs/nscloud-setup-buildx-action@d059ed7184f0bc7c8b27e8810cea153d02bcc6dd # v0.0.23
       - name: Login to GitHub Container Registry
@@ -40,3 +42,9 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           nix develop --command just operator-helm-publish "$version"
+      - name: Preserve client release provenance
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: client-release-provenance
+          path: build/client-release-provenance.json
+          if-no-files-found: error

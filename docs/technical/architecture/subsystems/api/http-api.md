@@ -140,6 +140,10 @@ Three paths need correlated server-side diagnostics because the raw value can co
 2. **Unmapped errors** (`handleError` fallthrough → `writeInternalServerError`) — any error that is not a domain `Classifiable` or a known sentinel.
 3. **`KindInternal` domain errors** — recognized internal failures whose status and reason are preserved. `INDEX_INCONSISTENT` and `COVERAGE_MISS` supply public messages (`index is inconsistent` and `preload coverage miss`) that omit internal identifiers and storage details, including when wrapped. Other recognized errors retain their type-owned message, with outer diagnostic prefixes omitted.
 
+The caller-attribution trust-boundary guard is classified `KindInternal` but
+has no public reason or audit-failure record. It is rejected before a proposal
+or before a committed entry mutates business state, and the response is generic.
+
 Type-owned public details are selected through `domain.PublicErrorDetails` at the response boundary. Diagnostic `Error()` and `Metadata()` values remain unchanged, including the coverage failure context in the authoritative audit chain.
 
 Every path logs the raw cause **server-side** with a `correlation_id` field. When the request span is recording, the log also carries `trace_id` and `span_id`, and the span records both the correlation ID and the error. Panic spans additionally carry the panic value and stack. Unmapped errors and panics remain sanitized identically to the gRPC adapter, so the client receives only a generic body:

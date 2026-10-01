@@ -12,7 +12,8 @@ import (
 
 	dbsql "github.com/databricks/databricks-sql-go"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 )
 
@@ -202,7 +203,7 @@ func (s *DatabricksSink) Publish(ctx context.Context, events []*eventspb.Event) 
 		}
 
 		eventType := strings.ToLower(event.GetType().String())
-		eventDate := event.GetDate().AsTime().Time
+		eventDate := event.GetDate().AsTime()
 
 		if i > 0 {
 			sb.WriteString(", ")

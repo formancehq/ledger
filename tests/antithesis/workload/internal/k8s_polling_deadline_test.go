@@ -13,8 +13,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // pollingConn exercises the generated client and observes the context delivered
@@ -29,9 +28,9 @@ func (c pollingConn) Invoke(ctx context.Context, _ string, _, reply any, _ ...gr
 	if err := c.request(ctx); err != nil {
 		return err
 	}
-	state := reply.(*clusterpb.ClusterState)
+	state := reply.(*commonpb.ClusterState)
 	state.Leader = 1
-	state.Nodes = []*clusterpb.NodeInfo{{Id: 1, Suffrage: "Voter"}}
+	state.Nodes = []*commonpb.NodeInfo{{Id: 1, Suffrage: "Voter"}}
 	state.ClusterConfig = &commonpb.ClusterConfig{}
 
 	return nil
@@ -48,8 +47,8 @@ type pollingCase struct {
 
 func pollingCases(t *testing.T) []pollingCase {
 	t.Helper()
-	clusterClient := func(request func(context.Context) error) clusterpb.ClusterServiceClient {
-		return clusterpb.NewClusterServiceClient(pollingConn{request: request})
+	clusterClient := func(request func(context.Context) error) commonpb.ClusterServiceClient {
+		return commonpb.NewClusterServiceClient(pollingConn{request: request})
 	}
 	kubeClient := func(request func(context.Context) error, body string) kubernetes.Interface {
 		client, err := kubernetes.NewForConfigAndClient(&rest.Config{Host: "http://polling.test", QPS: -1}, &http.Client{

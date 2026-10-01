@@ -8,8 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/scenario"
 	"github.com/stretchr/testify/require"
@@ -125,7 +124,7 @@ func TestMarketplaceLifecycle(t *testing.T) {
 
 	// --- Phase 2: Customer Deposits (50 Apply calls) ---
 	t.Run("CustomerDeposits", func(t *testing.T) {
-		reqs := make([]*servicepb.Request, 0, numCustomers)
+		reqs := make([]*commonpb.Request, 0, numCustomers)
 		for i := 1; i <= numCustomers; i++ {
 			reqs = append(reqs, actions.CreateScriptRefTransactionAction(ledger, "deposit", "1.0.0", map[string]string{
 				"customer": fmt.Sprintf("customer:%d", i),
@@ -592,7 +591,7 @@ send $amount (
 	})
 
 	// --- Tail phases: StoreCheck, Backup, Restart+Verify, BackupRestore+Verify ---
-	scenariotest.RunPostTestPhases(t, sc, func(t *testing.T, client servicepb.BucketServiceClient) {
+	scenariotest.RunPostTestPhases(t, sc, func(t *testing.T, client commonpb.BucketServiceClient) {
 		scenariotest.CheckDoubleEntryBalance(t, ctx, client, ledger)
 		scenariotest.CheckNoNegativeBalances(t, ctx, client, ledger, []string{"world"})
 		scenariotest.CheckAccountBalance(t, ctx, client, ledger, "platform:fees", "USD/2", totalFees)

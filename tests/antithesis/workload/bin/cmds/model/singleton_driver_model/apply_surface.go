@@ -3,12 +3,11 @@ package main
 import (
 	"github.com/antithesishq/antithesis-sdk-go/random"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 )
 
-func requestedEnforcementMode(req *servicepb.Request) *commonpb.ChartEnforcementMode {
+func requestedEnforcementMode(req *commonpb.Request) *commonpb.ChartEnforcementMode {
 	if setter := req.GetSetDefaultEnforcementMode(); setter != nil {
 		mode := setter.GetEnforcementMode()
 
@@ -25,7 +24,7 @@ func requestedEnforcementMode(req *servicepb.Request) *commonpb.ChartEnforcement
 
 // maybeAddSkippableReason composes skip opt-ins with ordinary generated slots,
 // preserving their position, ledger selection, and surrounding bulk shape.
-func maybeAddSkippableReason(ls oracle.LedgerState, req *servicepb.Request) *servicepb.Request {
+func maybeAddSkippableReason(ls oracle.LedgerState, req *commonpb.Request) *commonpb.Request {
 	if random.RandomChoice([]uint8{0, 1, 2, 3}) != 0 {
 		return req
 	}
@@ -33,18 +32,18 @@ func maybeAddSkippableReason(ls oracle.LedgerState, req *servicepb.Request) *ser
 	// The ordinary chart generators use the top-level request forms. Skippable
 	// reasons live on Apply, so retain their generated payload while nesting it.
 	switch top := req.GetType().(type) {
-	case *servicepb.Request_AddAccountType:
-		req = &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
+	case *commonpb.Request_AddAccountType:
+		req = &commonpb.Request{Type: &commonpb.Request_Apply{Apply: &commonpb.LedgerApplyRequest{
 			Ledger: top.AddAccountType.GetLedger(),
-			Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddAccountType{
-				AddAccountType: &servicepb.AddAccountTypeRequest{AccountType: top.AddAccountType.GetAccountType()},
+			Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_AddAccountType{
+				AddAccountType: &commonpb.AddAccountTypeRequest{AccountType: top.AddAccountType.GetAccountType()},
 			}},
 		}}}
-	case *servicepb.Request_RemoveAccountType:
-		req = &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
+	case *commonpb.Request_RemoveAccountType:
+		req = &commonpb.Request{Type: &commonpb.Request_Apply{Apply: &commonpb.LedgerApplyRequest{
 			Ledger: top.RemoveAccountType.GetLedger(),
-			Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RemoveAccountType{
-				RemoveAccountType: &servicepb.RemoveAccountTypeRequest{Name: top.RemoveAccountType.GetName()},
+			Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_RemoveAccountType{
+				RemoveAccountType: &commonpb.RemoveAccountTypeRequest{Name: top.RemoveAccountType.GetName()},
 			}},
 		}}}
 	}
@@ -72,7 +71,7 @@ func maybeAddSkippableReason(ls oracle.LedgerState, req *servicepb.Request) *ser
 
 // generatedSkippableReason maps existing Apply actions to a skip reason.
 // Mode setters deliberately use a disallowed reason to cover admission rejection.
-func generatedSkippableReason(req *servicepb.Request) (commonpb.ErrorReason, bool) {
+func generatedSkippableReason(req *commonpb.Request) (commonpb.ErrorReason, bool) {
 	if reason, ok := allowedSkippableReason(req); ok {
 		return reason, true
 	}
@@ -85,18 +84,18 @@ func generatedSkippableReason(req *servicepb.Request) (commonpb.ErrorReason, boo
 
 // allowedSkippableReason is the model's independent copy of the public
 // per-action whitelist. It must not use admission's generated lookup table.
-func allowedSkippableReason(req *servicepb.Request) (commonpb.ErrorReason, bool) {
+func allowedSkippableReason(req *commonpb.Request) (commonpb.ErrorReason, bool) {
 	action := req.GetApply().GetAction()
 	switch action.GetData().(type) {
-	case *servicepb.LedgerAction_CreateTransaction:
+	case *commonpb.LedgerAction_CreateTransaction:
 		return commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, true
-	case *servicepb.LedgerAction_RevertTransaction:
+	case *commonpb.LedgerAction_RevertTransaction:
 		return commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED, true
-	case *servicepb.LedgerAction_DeleteMetadata:
+	case *commonpb.LedgerAction_DeleteMetadata:
 		return commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND, true
-	case *servicepb.LedgerAction_AddAccountType:
+	case *commonpb.LedgerAction_AddAccountType:
 		return commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS, true
-	case *servicepb.LedgerAction_RemoveAccountType:
+	case *commonpb.LedgerAction_RemoveAccountType:
 		return commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND, true
 	default:
 		return commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED, false

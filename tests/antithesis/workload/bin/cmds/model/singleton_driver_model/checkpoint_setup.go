@@ -9,9 +9,7 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -26,7 +24,7 @@ import (
 func setupQueryCheckpoints(ctx context.Context, node *internal.PerNodeConn, c *Checker) bool {
 	bucket := node.Bucket
 	ctx = metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
-	scheduleLog, err := applyCheckpointSetup(ctx, bucket, &servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpointSchedule{DeleteQueryCheckpointSchedule: &servicepb.DeleteQueryCheckpointScheduleRequest{}}})
+	scheduleLog, err := applyCheckpointSetup(ctx, bucket, &commonpb.Request{Type: &commonpb.Request_DeleteQueryCheckpointSchedule{DeleteQueryCheckpointSchedule: &commonpb.DeleteQueryCheckpointScheduleRequest{}}})
 	if err != nil {
 		return checkpointSetupFailure(err)
 	}
@@ -42,19 +40,19 @@ func setupQueryCheckpoints(ctx context.Context, node *internal.PerNodeConn, c *C
 	limit := c.modelState.QueryCheckpointLimit()
 	if limit != 0 && uint64(len(listed.GetCheckpoints())) >= limit {
 		victim := listed.GetCheckpoints()[0].GetCheckpointId()
-		log, deleteErr := applyCheckpointSetup(ctx, bucket, &servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &servicepb.DeleteQueryCheckpointRequest{CheckpointId: victim}}})
+		log, deleteErr := applyCheckpointSetup(ctx, bucket, &commonpb.Request{Type: &commonpb.Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &commonpb.DeleteQueryCheckpointRequest{CheckpointId: victim}}})
 		if deleteErr != nil {
 			return checkpointSetupFailure(deleteErr)
 		}
 		if log.GetPayload().GetDeletedQueryCheckpoint().GetCheckpointId() != victim {
 			return checkpointSetupFailure(errors.New("checkpoint baseline deletion returned the wrong log"))
 		}
-		listed.Checkpoints = slices.DeleteFunc(listed.GetCheckpoints(), func(cp *clusterpb.QueryCheckpointInfo) bool {
+		listed.Checkpoints = slices.DeleteFunc(listed.GetCheckpoints(), func(cp *commonpb.QueryCheckpointInfo) bool {
 			return cp.GetCheckpointId() == victim
 		})
 	}
 
-	log, err := applyCheckpointSetup(ctx, bucket, &servicepb.Request{Type: &servicepb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{}}})
+	log, err := applyCheckpointSetup(ctx, bucket, &commonpb.Request{Type: &commonpb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &commonpb.CreateQueryCheckpointRequest{}}})
 	if err != nil {
 		return checkpointSetupFailure(err)
 	}
@@ -73,8 +71,8 @@ func setupQueryCheckpoints(ctx context.Context, node *internal.PerNodeConn, c *C
 	return true
 }
 
-func applyCheckpointSetup(ctx context.Context, bucket servicepb.BucketServiceClient, request *servicepb.Request) (*commonpb.Log, error) {
-	response, err := bucket.Apply(ctx, applyRequest(oracle.Bulk{Requests: []*servicepb.Request{request}}))
+func applyCheckpointSetup(ctx context.Context, bucket commonpb.BucketServiceClient, request *commonpb.Request) (*commonpb.Log, error) {
+	response, err := bucket.Apply(ctx, applyRequest(oracle.Bulk{Requests: []*commonpb.Request{request}}))
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +96,7 @@ func checkpointSetupFailure(err error) bool {
 // checkpointBaseline combines the current registry with the setup probe. The
 // probe is the latest allocation, so it establishes the next ID without walking
 // the global log history from the previous invocation.
-func checkpointBaseline(listed *clusterpb.ListQueryCheckpointsResponse, probeID uint64) ([]uint64, uint64, error) {
+func checkpointBaseline(listed *commonpb.ListQueryCheckpointsResponse, probeID uint64) ([]uint64, uint64, error) {
 	if probeID == 0 || probeID == ^uint64(0) {
 		return nil, 0, fmt.Errorf("checkpoint baseline has invalid probe ID %d", probeID)
 	}

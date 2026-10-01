@@ -1,7 +1,7 @@
 package events
 
 import (
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // sinkFactory creates a Sink from a SinkConfig and a format.

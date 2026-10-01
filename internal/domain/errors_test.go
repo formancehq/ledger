@@ -13,7 +13,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestBusinessError(t *testing.T) {
@@ -301,7 +301,8 @@ func TestNewFilterCompilationError(t *testing.T) {
 
 // TestEveryDomainErrorImplementsDescribable parses every Go file in this
 // package and asserts that every `type Err... struct` declaration has a
-// corresponding *T or T that satisfies the Describable interface. This is
+// corresponding *T or T that satisfies the Describable interface, except the
+// internal-only caller attribution guard. This is
 // the structural backstop for #431: adding a new domain error without
 // implementing Describable fails this test even if the new type is never
 // reached via a BusinessError construction site (which would catch it at
@@ -464,6 +465,15 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 		require.True(t, ok,
 			"type %s declared in internal/domain has no entry in TestEveryDomainErrorImplementsDescribable.instances — add one (and a Describable implementation) to keep the structural check tight",
 			name)
+
+		// Caller attribution is an internal trust-boundary violation rejected
+		// before audit. It must never acquire a public ErrorReason.
+		if name == "ErrInvalidCallerAttribution" {
+			require.True(t, reflect.TypeOf(inst).Implements(reflect.TypeFor[Classifiable]()))
+			require.False(t, reflect.TypeOf(inst).Implements(describableType))
+
+			continue
+		}
 
 		require.True(t,
 			reflect.TypeOf(inst).Implements(describableType),

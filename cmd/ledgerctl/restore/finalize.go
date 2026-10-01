@@ -9,8 +9,9 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
+	restorepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
 )
 
 // NewFinalizeCommand creates the restore finalize command.

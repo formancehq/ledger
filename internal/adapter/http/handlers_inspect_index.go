@@ -7,9 +7,10 @@ import (
 	"strconv"
 	"time"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 type inspectDistinctValuesJSON struct {
@@ -50,7 +51,7 @@ func metadataValueToAny(v *commonpb.MetadataValue, declaredType commonpb.Metadat
 	case *commonpb.MetadataValue_StringValue:
 		return t.StringValue
 	case *commonpb.MetadataValue_IntValue:
-		if commonpb.IsDatetimeType(declaredType) {
+		if protohelpers.IsDatetimeType(declaredType) {
 			return time.UnixMicro(t.IntValue).UTC().Format(time.RFC3339Nano)
 		}
 
@@ -98,14 +99,14 @@ func (s *Server) handleInspectIndex(w http.ResponseWriter, r *http.Request) {
 	targetType := metaID.GetTarget()
 	metadataKey := metaID.GetKey()
 
-	var mode servicepb.InspectIndexMode
+	var mode commonpb.InspectIndexMode
 	switch r.URL.Query().Get("mode") {
 	case "distinctValues", "distinct-values":
-		mode = servicepb.InspectIndexMode_INSPECT_INDEX_MODE_DISTINCT_VALUES
+		mode = commonpb.InspectIndexMode_INSPECT_INDEX_MODE_DISTINCT_VALUES
 	case "facets":
-		mode = servicepb.InspectIndexMode_INSPECT_INDEX_MODE_FACETS
+		mode = commonpb.InspectIndexMode_INSPECT_INDEX_MODE_FACETS
 	default:
-		mode = servicepb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY
+		mode = commonpb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY
 	}
 
 	var pageSize uint32
@@ -120,7 +121,7 @@ func (s *Server) handleInspectIndex(w http.ResponseWriter, r *http.Request) {
 		pageSize = uint32(v)
 	}
 
-	resp, err := s.backend.InspectIndex(r.Context(), &servicepb.InspectIndexRequest{
+	resp, err := s.backend.InspectIndex(r.Context(), &commonpb.InspectIndexRequest{
 		Ledger:      ledgerName,
 		TargetType:  targetType,
 		MetadataKey: metadataKey,
@@ -137,7 +138,7 @@ func (s *Server) handleInspectIndex(w http.ResponseWriter, r *http.Request) {
 	declaredType := s.declaredMetadataType(r.Context(), ledgerName, targetType, metadataKey)
 
 	switch result := resp.GetResult().(type) {
-	case *servicepb.InspectIndexResponse_DistinctValues:
+	case *commonpb.InspectIndexResponse_DistinctValues:
 		dv := result.DistinctValues
 		values := make([]any, len(dv.GetValues()))
 
@@ -151,7 +152,7 @@ func (s *Server) handleInspectIndex(w http.ResponseWriter, r *http.Request) {
 			NextCursor: dv.GetNextCursor(),
 		})
 
-	case *servicepb.InspectIndexResponse_Facets:
+	case *commonpb.InspectIndexResponse_Facets:
 		f := result.Facets
 		facets := make([]inspectFacetJSON, len(f.GetFacets()))
 
@@ -168,7 +169,7 @@ func (s *Server) handleInspectIndex(w http.ResponseWriter, r *http.Request) {
 			NextCursor: f.GetNextCursor(),
 		})
 
-	case *servicepb.InspectIndexResponse_Summary:
+	case *commonpb.InspectIndexResponse_Summary:
 		s := result.Summary
 		writeOK(w, &inspectSummaryJSON{
 			Cardinality:      s.GetCardinality(),
@@ -190,7 +191,7 @@ func (s *Server) declaredMetadataType(ctx context.Context, ledgerName string, ta
 		return commonpb.MetadataType_METADATA_TYPE_STRING
 	}
 
-	_, fs := commonpb.SchemaFieldForTarget(info.GetMetadataSchema(), targetType, key)
+	_, fs := protohelpers.SchemaFieldForTarget(info.GetMetadataSchema(), targetType, key)
 
 	return fs.GetType()
 }

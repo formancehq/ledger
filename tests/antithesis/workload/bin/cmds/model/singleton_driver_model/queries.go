@@ -16,8 +16,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	"github.com/formancehq/ledger/v3/internal/proto/publicpolicy"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -56,7 +56,7 @@ func queryPageSize() int {
 // runAccountQuery issues a linearizable ListAccounts and checks the streamed
 // page against the model's ordered window (see validateAccountQuery). Filters
 // cover indexed and index-free reads plus missing-index and invalid-kind probes.
-func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+func runAccountQuery(ctx context.Context, client commonpb.BucketServiceClient, c *Checker) {
 	ledger, _ := pickLedgerReadTarget(c.liveLedgerNamesSnapshot(), 0)
 	filter := genAccountFilter(c.sampleAccountFieldSeeds(ledger))
 	needed := map[string]struct{}{}
@@ -85,7 +85,7 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 	// base.
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 	responseFrontier := c.beginResponseFrontier()
-	stream, err := client.ListAccounts(readCtx, &servicepb.ListAccountsRequest{
+	stream, err := client.ListAccounts(readCtx, &commonpb.ListAccountsRequest{
 		Ledger: ledger,
 		Options: &commonpb.ListOptions{
 			PageSize: uint32(pageSize),
@@ -178,7 +178,7 @@ func (c *Checker) sampleAccountFieldSeeds(ledger string) []fieldSeed {
 // runTransactionQuery issues a linearizable ListTransactions and checks the
 // streamed page against the model's ordered window (see validateTransactionQuery).
 // Filters cover indexed and index-free reads plus missing-index and invalid-kind probes.
-func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+func runTransactionQuery(ctx context.Context, client commonpb.BucketServiceClient, c *Checker) {
 	ledger, _ := pickLedgerReadTarget(c.liveLedgerNamesSnapshot(), 0)
 	filter := genTransactionFilter(c.sampleTxFilterSeeds(ledger))
 	needed := map[string]struct{}{}
@@ -210,7 +210,7 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 	// base.
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 	responseFrontier := c.beginResponseFrontier()
-	stream, err := client.ListTransactions(readCtx, &servicepb.ListTransactionsRequest{
+	stream, err := client.ListTransactions(readCtx, &commonpb.ListTransactionsRequest{
 		Ledger: ledger,
 		Options: &commonpb.ListOptions{
 			PageSize: uint32(pageSize),
@@ -1290,16 +1290,16 @@ func unionNeeds(children []indexNeed) indexNeed {
 // validity before index availability, so callers must consult this before
 // filterNeedsIndex.
 func filterInvalidForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarget) bool {
-	invalidKind := func(kind commonpb.ConditionKind) bool {
-		return !commonpb.ConditionValidForTarget(target, kind)
+	invalidKind := func(kind publicpolicy.ConditionKind) bool {
+		return !publicpolicy.ConditionValidForTarget(target, kind)
 	}
 
 	return foldFilter(f, filterFold[bool]{
-		and: func(children []bool) bool { return invalidKind(commonpb.ConditionKindAnd) || anyOf(children) },
-		or:  func(children []bool) bool { return invalidKind(commonpb.ConditionKindOr) || anyOf(children) },
-		not: func(child bool) bool { return invalidKind(commonpb.ConditionKindNot) || child },
+		and: func(children []bool) bool { return invalidKind(publicpolicy.ConditionKindAnd) || anyOf(children) },
+		or:  func(children []bool) bool { return invalidKind(publicpolicy.ConditionKindOr) || anyOf(children) },
+		not: func(child bool) bool { return invalidKind(publicpolicy.ConditionKindNot) || child },
 		leaf: func(leaf *commonpb.QueryFilter) bool {
-			return leaf.GetFilter() != nil && invalidKind(commonpb.ConditionKindOf(leaf))
+			return leaf.GetFilter() != nil && invalidKind(publicpolicy.ConditionKindOf(leaf))
 		},
 	})
 }

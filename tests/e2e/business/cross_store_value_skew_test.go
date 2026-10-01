@@ -9,8 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
@@ -39,7 +38,7 @@ var _ = Describe("Cross-store value skew", Ordered, func() {
 	// sweeps are O(logs)), so it gets a server of its own.
 	var (
 		ctx    context.Context
-		client servicepb.BucketServiceClient
+		client commonpb.BucketServiceClient
 	)
 
 	const ledgerName = "cross-store-value-skew-ledger"
@@ -49,13 +48,13 @@ var _ = Describe("Cross-store value skew", Ordered, func() {
 		ctx, node = testutil.SetupSingleNode()
 		client = node.Client
 
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 			{TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT, Key: "tier", Type: commonpb.MetadataType_METADATA_TYPE_STRING},
 		})))
 		Expect(err).To(Succeed())
 
 		// Fold cost per log is multiplicative in the live index count.
-		for _, req := range []*servicepb.Request{
+		for _, req := range []*commonpb.Request{
 			actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
 			actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
 			actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS),
@@ -64,7 +63,7 @@ var _ = Describe("Cross-store value skew", Ordered, func() {
 			actions.CreateAccountMetadataIndexAction(ledgerName, "tier"),
 			actions.CreateAccountAssetIndexAction(ledgerName),
 		} {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", req))
+			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", req))
 			Expect(err).To(Succeed())
 		}
 		Expect(actions.WaitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")).To(Succeed())
@@ -91,7 +90,7 @@ var _ = Describe("Cross-store value skew", Ordered, func() {
 					default:
 					}
 
-					reqs := make([]*servicepb.Request, 0, 20)
+					reqs := make([]*commonpb.Request, 0, 20)
 					for j := 0; j < 20; j++ {
 						n++
 						// Each touch of an account lands one round (128 txs)
@@ -109,7 +108,7 @@ var _ = Describe("Cross-store value skew", Ordered, func() {
 							b: {Values: map[string]*commonpb.MetadataValue{"tier": commonpb.NewStringValue(flip[(round+1)%2])}},
 						}))
 					}
-					if _, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", reqs...)); err != nil {
+					if _, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", reqs...)); err != nil {
 						return
 					}
 				}

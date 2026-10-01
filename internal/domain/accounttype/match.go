@@ -3,7 +3,7 @@ package accounttype
 import (
 	"slices"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // CompiledType holds an account type with its pre-parsed pattern segments,

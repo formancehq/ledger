@@ -6,9 +6,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // LoadSigningKey loads the signing key and key ID from command flags.
@@ -78,7 +78,7 @@ func VerifyResponseSignatures(cmd *cobra.Command, logs []*commonpb.Log) error {
 // returns the ApplyRequest to pass to Apply — signed as a whole when a signing
 // key is configured on the command flags, unsigned otherwise. Signing the batch
 // authenticates its composition and ordering.
-func BuildApplyRequest(cmd *cobra.Command, requests ...*servicepb.Request) (*servicepb.ApplyRequest, error) {
+func BuildApplyRequest(cmd *cobra.Command, requests ...*commonpb.Request) (*commonpb.ApplyRequest, error) {
 	// Commands that expose batch retries register this flag. Resolve it before
 	// signing so the authenticated batch includes its idempotency key.
 	var idempotencyKey string
@@ -94,20 +94,20 @@ func BuildApplyRequest(cmd *cobra.Command, requests ...*servicepb.Request) (*ser
 }
 
 // BuildApplyRequestWithIdempotencyKey binds the key into the batch before signing.
-func BuildApplyRequestWithIdempotencyKey(cmd *cobra.Command, idempotencyKey string, requests ...*servicepb.Request) (*servicepb.ApplyRequest, error) {
+func BuildApplyRequestWithIdempotencyKey(cmd *cobra.Command, idempotencyKey string, requests ...*commonpb.Request) (*commonpb.ApplyRequest, error) {
 	keyID, privKey, err := LoadSigningKey(cmd)
 	if err != nil {
 		return nil, err
 	}
 
 	if privKey == nil {
-		return servicepb.UnsignedApplyRequest(idempotencyKey, requests...), nil
+		return commonpb.UnsignedApplyRequest(idempotencyKey, requests...), nil
 	}
 
-	sb, err := signing.Sign(&servicepb.ApplyBatch{Requests: requests, IdempotencyKey: idempotencyKey}, keyID, privKey)
+	sb, err := signing.Sign(&commonpb.ApplyBatch{Requests: requests, IdempotencyKey: idempotencyKey}, keyID, privKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign batch: %w", err)
 	}
 
-	return servicepb.SignedApplyRequest(sb), nil
+	return commonpb.SignedApplyRequest(sb), nil
 }

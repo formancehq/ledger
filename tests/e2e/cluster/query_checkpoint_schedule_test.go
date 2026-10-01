@@ -7,10 +7,8 @@ import (
 	"math/big"
 	"time"
 
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -21,10 +19,10 @@ import (
 )
 
 // setQueryCheckpointScheduleAction creates a SetQueryCheckpointSchedule request.
-func setQueryCheckpointScheduleAction(cron string) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_SetQueryCheckpointSchedule{
-			SetQueryCheckpointSchedule: &servicepb.SetQueryCheckpointScheduleRequest{
+func setQueryCheckpointScheduleAction(cron string) *clusterpb.Request {
+	return &clusterpb.Request{
+		Type: &clusterpb.Request_SetQueryCheckpointSchedule{
+			SetQueryCheckpointSchedule: &clusterpb.SetQueryCheckpointScheduleRequest{
 				Cron: cron,
 			},
 		},
@@ -32,10 +30,10 @@ func setQueryCheckpointScheduleAction(cron string) *servicepb.Request {
 }
 
 // deleteQueryCheckpointScheduleAction creates a DeleteQueryCheckpointSchedule request.
-func deleteQueryCheckpointScheduleAction() *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_DeleteQueryCheckpointSchedule{
-			DeleteQueryCheckpointSchedule: &servicepb.DeleteQueryCheckpointScheduleRequest{},
+func deleteQueryCheckpointScheduleAction() *clusterpb.Request {
+	return &clusterpb.Request{
+		Type: &clusterpb.Request_DeleteQueryCheckpointSchedule{
+			DeleteQueryCheckpointSchedule: &clusterpb.DeleteQueryCheckpointScheduleRequest{},
 		},
 	}
 }
@@ -45,7 +43,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 	Context("CRUD operations", Ordered, func() {
 		var (
 			ctx           context.Context
-			client        servicepb.BucketServiceClient
+			client        clusterpb.BucketServiceClient
 			clusterClient clusterpb.ClusterServiceClient
 		)
 
@@ -60,7 +58,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 			clusterClient = node.ClusterClient
 
 			// Create a ledger so the cluster is fully bootstrapped.
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -71,7 +69,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 		})
 
 		It("should accept a valid cron expression", func() {
-			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", setQueryCheckpointScheduleAction("0 0 1 * *")))
+			resp, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", setQueryCheckpointScheduleAction("0 0 1 * *")))
 			Expect(err).To(Succeed())
 			Expect(resp.GetLogs()).To(HaveLen(1))
 		})
@@ -83,7 +81,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 		})
 
 		It("should reject an invalid cron expression", func() {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", setQueryCheckpointScheduleAction("not-a-cron")))
+			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", setQueryCheckpointScheduleAction("not-a-cron")))
 			Expect(err).To(HaveOccurred())
 
 			st, ok := status.FromError(err)
@@ -96,7 +94,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 		})
 
 		It("should reject an empty cron expression", func() {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", setQueryCheckpointScheduleAction("")))
+			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", setQueryCheckpointScheduleAction("")))
 			Expect(err).To(HaveOccurred())
 
 			st, ok := status.FromError(err)
@@ -105,7 +103,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 		})
 
 		It("should delete the schedule", func() {
-			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", deleteQueryCheckpointScheduleAction()))
+			resp, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", deleteQueryCheckpointScheduleAction()))
 			Expect(err).To(Succeed())
 			Expect(resp.GetLogs()).To(HaveLen(1))
 		})
@@ -120,7 +118,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 	Context("Automatic checkpoint creation", Ordered, func() {
 		var (
 			ctx           context.Context
-			client        servicepb.BucketServiceClient
+			client        clusterpb.BucketServiceClient
 			clusterClient clusterpb.ClusterServiceClient
 		)
 
@@ -137,7 +135,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 			clusterClient = node.ClusterClient
 
 			// Create a ledger so there is data to checkpoint.
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -149,7 +147,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 
 		It("should set a fast cron schedule", func() {
 			// Every 5 seconds (6-field format with leading seconds)
-			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", setQueryCheckpointScheduleAction("*/5 * * * * *")))
+			resp, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", setQueryCheckpointScheduleAction("*/5 * * * * *")))
 			Expect(err).To(Succeed())
 			Expect(resp.GetLogs()).To(HaveLen(1))
 		})
@@ -170,9 +168,9 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 			cpID := resp.GetCheckpoints()[0].GetCheckpointId()
 
 			// The checkpoint should contain the ledger we created.
-			stream, err := client.ListLedgers(ctx, &servicepb.ListLedgersRequest{
-				Options: &commonpb.ListOptions{
-					Read: &commonpb.ReadOptions{CheckpointId: cpID},
+			stream, err := client.ListLedgers(ctx, &clusterpb.ListLedgersRequest{
+				Options: &clusterpb.ListOptions{
+					Read: &clusterpb.ReadOptions{CheckpointId: cpID},
 				},
 			})
 			Expect(err).To(Succeed())
@@ -183,7 +181,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 		})
 
 		It("should disable the schedule after the test", func() {
-			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", deleteQueryCheckpointScheduleAction()))
+			resp, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", deleteQueryCheckpointScheduleAction()))
 			Expect(err).To(Succeed())
 			Expect(resp.GetLogs()).To(HaveLen(1))
 		})
@@ -192,7 +190,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 	Context("Schedule update takes effect", Ordered, func() {
 		var (
 			ctx           context.Context
-			client        servicepb.BucketServiceClient
+			client        clusterpb.BucketServiceClient
 			clusterClient clusterpb.ClusterServiceClient
 		)
 
@@ -206,13 +204,13 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 			client = node.Client
 			clusterClient = node.ClusterClient
 
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
 		It("should update the schedule from monthly to per-second", func() {
 			// Set a monthly schedule (won't fire during test)
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", setQueryCheckpointScheduleAction("0 0 1 * *")))
+			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", setQueryCheckpointScheduleAction("0 0 1 * *")))
 			Expect(err).To(Succeed())
 
 			resp, err := clusterClient.GetQueryCheckpointSchedule(ctx, &clusterpb.GetQueryCheckpointScheduleRequest{})
@@ -220,7 +218,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 			Expect(resp.GetCron()).To(Equal("0 0 1 * *"))
 
 			// Update to a fast schedule
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", setQueryCheckpointScheduleAction("*/5 * * * * *")))
+			_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("", setQueryCheckpointScheduleAction("*/5 * * * * *")))
 			Expect(err).To(Succeed())
 
 			resp, err = clusterClient.GetQueryCheckpointSchedule(ctx, &clusterpb.GetQueryCheckpointScheduleRequest{})
@@ -238,7 +236,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 
 		It("should stop creating checkpoints after deleting the schedule", func() {
 			// Delete the schedule
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", deleteQueryCheckpointScheduleAction()))
+			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", deleteQueryCheckpointScheduleAction()))
 			Expect(err).To(Succeed())
 
 			// Record the current count
@@ -258,7 +256,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 	Context("Checkpoints created by schedule capture progressive state", Ordered, func() {
 		var (
 			ctx           context.Context
-			client        servicepb.BucketServiceClient
+			client        clusterpb.BucketServiceClient
 			clusterClient clusterpb.ClusterServiceClient
 		)
 
@@ -272,7 +270,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 			client = node.Client
 			clusterClient = node.ClusterClient
 
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -280,7 +278,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 
 		It("should create a checkpoint, add a transaction, then create another checkpoint", func() {
 			// Create first checkpoint via schedule
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", setQueryCheckpointScheduleAction("*/3 * * * * *")))
+			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", setQueryCheckpointScheduleAction("*/3 * * * * *")))
 			Expect(err).To(Succeed())
 
 			// Wait for first checkpoint
@@ -296,7 +294,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 			firstCheckpointMaxSeq = resp.GetCheckpoints()[0].GetMaxSequence()
 
 			// Create a transaction (this happens after the first checkpoint)
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*clusterpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(1000), "USD"),
 			}, nil)))
 			Expect(err).To(Succeed())
@@ -313,7 +311,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 		})
 
 		It("should disable schedule", func() {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", deleteQueryCheckpointScheduleAction()))
+			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", deleteQueryCheckpointScheduleAction()))
 			Expect(err).To(Succeed())
 		})
 	})

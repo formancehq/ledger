@@ -8,8 +8,10 @@ import (
 	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/proto"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -83,7 +85,7 @@ func TestProcessOrdersBareMetadataKeysPolicyChange(t *testing.T) {
 				if missing {
 					stored = map[string]*commonpb.MetadataValue{}
 				}
-				transaction := &commonpb.TransactionState{Metadata: stored}
+				transaction := &internalcommonpb.TransactionState{Metadata: stored}
 				originalTransaction := proto.Clone(transaction)
 				switch kind {
 				case "account":
@@ -99,10 +101,13 @@ func TestProcessOrdersBareMetadataKeysPolicyChange(t *testing.T) {
 					stub.onDelete(func(key domain.MetadataKey) { recordWrite(); delete(stored, key.Key) })
 				case "transaction":
 					stub, _ := stubsFor(scope).transactionStatesStubFor(scope)
-					stub.onGet(func(domain.TransactionKey) (commonpb.TransactionStateReader, error) {
+					stub.onGet(func(domain.TransactionKey) (internalcommonpb.TransactionStateReader, error) {
 						return transaction.AsReader(), nil
 					})
-					stub.onPut(func(_ domain.TransactionKey, value *commonpb.TransactionState) { recordWrite(); transaction = value })
+					stub.onPut(func(_ domain.TransactionKey, value *internalcommonpb.TransactionState) {
+						recordWrite()
+						transaction = value
+					})
 				case "ledger":
 					stub := &kindStub[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]{}
 					scope.EXPECT().LedgerMetadata().Return(stub).AnyTimes()

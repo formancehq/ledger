@@ -6,8 +6,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // handleSaveNumscript handles PUT /{ledgerName}/numscripts/{name} to save a numscript.

@@ -22,7 +22,8 @@ Each index is described by a `common.Index` proto, persisted in the `SubAttrInde
 | `ledger` | Empty for bucket-scoped indexes (e.g. address ranges); set for ledger-scoped indexes. |
 | `forward_encoding_version` | **Cluster-wide** version bumped on every audit event that requires the indexer to rewrite the forward index (`CreateIndex`, `SetMetadataFieldType`). |
 
-Source: `internal/proto/commonpb/common.pb.go:2527-2550`.
+Source: `misc/proto/common.proto` (`Index`); generated public Go type in
+`pkg/client/v3/grpc/common.pb.go`.
 
 Build progress is deliberately absent from the registry row: it is a per-replica concern. Queries consult the per-replica `IndexVersionState.CurrentVersion`, and the status API derives its display from that state next to the row's cluster-wide `forward_encoding_version`.
 

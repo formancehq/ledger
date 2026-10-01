@@ -11,9 +11,8 @@ import (
 	"os"
 	"path/filepath"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -34,7 +33,7 @@ var _ = Describe("Response Signing", func() {
 	Context("Server with response signing enabled", Ordered, func() {
 		var (
 			ctx       context.Context
-			client    servicepb.BucketServiceClient
+			client    commonpb.BucketServiceClient
 			seed      []byte
 			publicKey ed25519.PublicKey
 		)
@@ -61,13 +60,13 @@ var _ = Describe("Response Signing", func() {
 			client = node.Client
 
 			// Create a test ledger
-			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 		})
 
 		It("should include response signature in Apply response logs", func() {
-			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -81,7 +80,7 @@ var _ = Describe("Response Signing", func() {
 		})
 
 		It("should produce verifiable response signatures", func() {
-			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -94,7 +93,7 @@ var _ = Describe("Response Signing", func() {
 		})
 
 		It("should fail verification with a wrong public key", func() {
-			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "charlie", big.NewInt(50), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -111,7 +110,7 @@ var _ = Describe("Response Signing", func() {
 		})
 
 		It("should sign all logs in bulk Apply response", func() {
-			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "bulk-1", big.NewInt(100), "USD"),
 			}, nil, nil),
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
@@ -127,7 +126,7 @@ var _ = Describe("Response Signing", func() {
 		})
 
 		It("should expose public key via Discovery RPC", func() {
-			discoveryResp, err := client.Discovery(ctx, &servicepb.DiscoveryRequest{})
+			discoveryResp, err := client.Discovery(ctx, &commonpb.DiscoveryRequest{})
 			Expect(err).To(Succeed())
 			Expect(discoveryResp.ResponseSigning).NotTo(BeNil())
 			Expect(discoveryResp.ResponseSigning.PublicKey).To(Equal([]byte(publicKey)))
@@ -135,7 +134,7 @@ var _ = Describe("Response Signing", func() {
 		})
 
 		It("should include ledger creation log in response signatures", func() {
-			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("response-signing-create-test", nil)))
+			resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction("response-signing-create-test", nil)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 
@@ -148,7 +147,7 @@ var _ = Describe("Response Signing", func() {
 	Context("Server without response signing", Ordered, func() {
 		var (
 			ctx    context.Context
-			client servicepb.BucketServiceClient
+			client commonpb.BucketServiceClient
 		)
 
 		const (
@@ -161,13 +160,13 @@ var _ = Describe("Response Signing", func() {
 			client = node.Client
 
 			// Create a test ledger
-			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 		})
 
 		It("should not include response signature in Apply response logs", func() {
-			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -176,7 +175,7 @@ var _ = Describe("Response Signing", func() {
 		})
 
 		It("should return nil response_signing in Discovery RPC", func() {
-			discoveryResp, err := client.Discovery(ctx, &servicepb.DiscoveryRequest{})
+			discoveryResp, err := client.Discovery(ctx, &commonpb.DiscoveryRequest{})
 			Expect(err).To(Succeed())
 			Expect(discoveryResp.ResponseSigning).To(BeNil())
 		})

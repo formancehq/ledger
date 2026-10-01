@@ -11,11 +11,11 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/accounttypes"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
@@ -73,7 +73,7 @@ func runConfiguration(cmd *cobra.Command, args []string) error {
 	// Fetch ledger info (metadata schema, account types). Indexes are fetched
 	// separately via BucketService.ListIndexes since they no longer live in
 	// LedgerInfo.
-	ledger, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
+	ledger, err := client.GetLedger(ctx, &commonpb.GetLedgerRequest{Ledger: ledgerName})
 	if err != nil {
 		spinner.Fail("Failed to get ledger")
 
@@ -81,8 +81,8 @@ func runConfiguration(cmd *cobra.Command, args []string) error {
 	}
 
 	// Fetch indexes for this ledger from the bucket index registry.
-	idxStream, err := client.ListIndexes(ctx, &servicepb.ListIndexesRequest{
-		Scope:  servicepb.ListIndexesRequest_SCOPE_LEDGER,
+	idxStream, err := client.ListIndexes(ctx, &commonpb.ListIndexesRequest{
+		Scope:  commonpb.ListIndexesRequest_SCOPE_LEDGER,
 		Ledger: ledgerName,
 	})
 	if err != nil {
@@ -108,7 +108,7 @@ func runConfiguration(cmd *cobra.Command, args []string) error {
 	}
 
 	// Fetch prepared queries
-	pqResp, err := client.ListPreparedQueries(ctx, &servicepb.ListPreparedQueriesRequest{Ledger: ledgerName})
+	pqResp, err := client.ListPreparedQueries(ctx, &commonpb.ListPreparedQueriesRequest{Ledger: ledgerName})
 	if err != nil {
 		spinner.Fail("Failed to list prepared queries")
 

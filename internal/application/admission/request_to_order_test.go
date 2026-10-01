@@ -8,13 +8,13 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // TestRequestToOrder_WrapsEveryRequestVariant pins the contract that every
-// servicepb.Request variant gets converted to an Order with the matching
+// commonpb.Request variant gets converted to an Order with the matching
 // wrapper (LedgerScopedOrder for ledger-scoped commands, SystemScopedOrder
 // for cluster-global ones) and that the ledger name is propagated to the
 // wrapper envelope rather than leaking into the payload sub-message.
@@ -60,13 +60,13 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 
 	cases := []struct {
 		name   string
-		req    *servicepb.Request
+		req    *commonpb.Request
 		expect expect
 	}{
 		{
 			name: "create_ledger",
-			req: &servicepb.Request{Type: &servicepb.Request_CreateLedger{
-				CreateLedger: &servicepb.CreateLedgerRequest{Name: ledger},
+			req: &commonpb.Request{Type: &commonpb.Request_CreateLedger{
+				CreateLedger: &commonpb.CreateLedgerRequest{Name: ledger},
 			}},
 			expect: expect{
 				kind:   wrapLedger,
@@ -78,8 +78,8 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		},
 		{
 			name: "delete_ledger",
-			req: &servicepb.Request{Type: &servicepb.Request_DeleteLedger{
-				DeleteLedger: &servicepb.DeleteLedgerRequest{Name: ledger},
+			req: &commonpb.Request{Type: &commonpb.Request_DeleteLedger{
+				DeleteLedger: &commonpb.DeleteLedgerRequest{Name: ledger},
 			}},
 			expect: expect{
 				kind:   wrapLedger,
@@ -91,8 +91,8 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		},
 		{
 			name: "promote_ledger",
-			req: &servicepb.Request{Type: &servicepb.Request_PromoteLedger{
-				PromoteLedger: &servicepb.PromoteLedgerRequest{Ledger: ledger},
+			req: &commonpb.Request{Type: &commonpb.Request_PromoteLedger{
+				PromoteLedger: &commonpb.PromoteLedgerRequest{Ledger: ledger},
 			}},
 			expect: expect{
 				kind:   wrapLedger,
@@ -104,8 +104,8 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		},
 		{
 			name: "save_ledger_metadata",
-			req: &servicepb.Request{Type: &servicepb.Request_SaveLedgerMetadata{
-				SaveLedgerMetadata: &servicepb.SaveLedgerMetadataRequest{
+			req: &commonpb.Request{Type: &commonpb.Request_SaveLedgerMetadata{
+				SaveLedgerMetadata: &commonpb.SaveLedgerMetadataRequest{
 					Ledger: ledger,
 					Metadata: map[string]*commonpb.MetadataValue{
 						"owner": {Type: &commonpb.MetadataValue_StringValue{StringValue: "team"}},
@@ -124,8 +124,8 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		},
 		{
 			name: "delete_ledger_metadata",
-			req: &servicepb.Request{Type: &servicepb.Request_DeleteLedgerMetadata{
-				DeleteLedgerMetadata: &servicepb.DeleteLedgerMetadataRequest{
+			req: &commonpb.Request{Type: &commonpb.Request_DeleteLedgerMetadata{
+				DeleteLedgerMetadata: &commonpb.DeleteLedgerMetadataRequest{
 					Ledger: ledger,
 					Key:    "owner",
 				},
@@ -142,8 +142,8 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		},
 		{
 			name: "create_prepared_query",
-			req: &servicepb.Request{Type: &servicepb.Request_CreatePreparedQuery{
-				CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+			req: &commonpb.Request{Type: &commonpb.Request_CreatePreparedQuery{
+				CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
 					Ledger: ledger,
 					Query:  &commonpb.PreparedQuery{Name: "q"},
 				},
@@ -158,8 +158,8 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		},
 		{
 			name: "update_prepared_query",
-			req: &servicepb.Request{Type: &servicepb.Request_UpdatePreparedQuery{
-				UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{Ledger: ledger, Name: "q"},
+			req: &commonpb.Request{Type: &commonpb.Request_UpdatePreparedQuery{
+				UpdatePreparedQuery: &commonpb.UpdatePreparedQueryRequest{Ledger: ledger, Name: "q"},
 			}},
 			expect: expect{
 				kind:   wrapLedger,
@@ -173,8 +173,8 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		},
 		{
 			name: "delete_prepared_query",
-			req: &servicepb.Request{Type: &servicepb.Request_DeletePreparedQuery{
-				DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{Ledger: ledger, Name: "q"},
+			req: &commonpb.Request{Type: &commonpb.Request_DeletePreparedQuery{
+				DeletePreparedQuery: &commonpb.DeletePreparedQueryRequest{Ledger: ledger, Name: "q"},
 			}},
 			expect: expect{
 				kind:   wrapLedger,
@@ -188,8 +188,8 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		},
 		{
 			name: "save_numscript",
-			req: &servicepb.Request{Type: &servicepb.Request_SaveNumscript{
-				SaveNumscript: &servicepb.SaveNumscriptRequest{
+			req: &commonpb.Request{Type: &commonpb.Request_SaveNumscript{
+				SaveNumscript: &commonpb.SaveNumscriptRequest{
 					Ledger:  ledger,
 					Name:    "tx",
 					Content: "x",
@@ -209,8 +209,8 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		},
 		{
 			name: "apply/set_metadata_field_type",
-			req: &servicepb.Request{Type: &servicepb.Request_SetMetadataFieldType{
-				SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
+			req: &commonpb.Request{Type: &commonpb.Request_SetMetadataFieldType{
+				SetMetadataFieldType: &commonpb.SetMetadataFieldTypeRequest{
 					Ledger:     ledger,
 					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "age",
@@ -229,8 +229,8 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		},
 		{
 			name: "apply/remove_metadata_field_type",
-			req: &servicepb.Request{Type: &servicepb.Request_RemoveMetadataFieldType{
-				RemoveMetadataFieldType: &servicepb.RemoveMetadataFieldTypeRequest{
+			req: &commonpb.Request{Type: &commonpb.Request_RemoveMetadataFieldType{
+				RemoveMetadataFieldType: &commonpb.RemoveMetadataFieldTypeRequest{
 					Ledger:     ledger,
 					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "age",
@@ -248,8 +248,8 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		},
 		{
 			name: "apply/create_index",
-			req: &servicepb.Request{Type: &servicepb.Request_CreateIndex{
-				CreateIndex: &servicepb.CreateIndexRequest{
+			req: &commonpb.Request{Type: &commonpb.Request_CreateIndex{
+				CreateIndex: &commonpb.CreateIndexRequest{
 					Ledger: ledger,
 					// Must be a builder-supported IndexID: validateOrderCreateIndex
 					// (run by requestToOrder→validateOrder) rejects unsupported
@@ -267,8 +267,8 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		},
 		{
 			name: "apply/drop_index",
-			req: &servicepb.Request{Type: &servicepb.Request_DropIndex{
-				DropIndex: &servicepb.DropIndexRequest{
+			req: &commonpb.Request{Type: &commonpb.Request_DropIndex{
+				DropIndex: &commonpb.DropIndexRequest{
 					Ledger: ledger,
 					Id:     &commonpb.IndexID{Kind: &commonpb.IndexID_AccountBuiltin{AccountBuiltin: commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED}},
 				},
@@ -283,8 +283,8 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		},
 		{
 			name: "apply/add_account_type",
-			req: &servicepb.Request{Type: &servicepb.Request_AddAccountType{
-				AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
+			req: &commonpb.Request{Type: &commonpb.Request_AddAccountType{
+				AddAccountType: &commonpb.AddAccountTypeLedgerRequest{
 					Ledger:      ledger,
 					AccountType: &commonpb.AccountType{Name: "user"},
 				},
@@ -299,8 +299,8 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		},
 		{
 			name: "apply/remove_account_type",
-			req: &servicepb.Request{Type: &servicepb.Request_RemoveAccountType{
-				RemoveAccountType: &servicepb.RemoveAccountTypeLedgerRequest{
+			req: &commonpb.Request{Type: &commonpb.Request_RemoveAccountType{
+				RemoveAccountType: &commonpb.RemoveAccountTypeLedgerRequest{
 					Ledger: ledger,
 					Name:   "user",
 				},
@@ -315,8 +315,8 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		},
 		{
 			name: "apply/set_default_enforcement_mode",
-			req: &servicepb.Request{Type: &servicepb.Request_SetDefaultEnforcementMode{
-				SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeLedgerRequest{
+			req: &commonpb.Request{Type: &commonpb.Request_SetDefaultEnforcementMode{
+				SetDefaultEnforcementMode: &commonpb.SetDefaultEnforcementModeLedgerRequest{
 					Ledger:          ledger,
 					EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT,
 				},
@@ -333,8 +333,8 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		// System-scoped variants.
 		{
 			name: "register_signing_key",
-			req: &servicepb.Request{Type: &servicepb.Request_RegisterSigningKey{
-				RegisterSigningKey: &servicepb.RegisterSigningKeyRequest{KeyId: "k1", PublicKey: bytes.Repeat([]byte{0x11}, ed25519.PublicKeySize)},
+			req: &commonpb.Request{Type: &commonpb.Request_RegisterSigningKey{
+				RegisterSigningKey: &commonpb.RegisterSigningKeyRequest{KeyId: "k1", PublicKey: bytes.Repeat([]byte{0x11}, ed25519.PublicKeySize)},
 			}},
 			expect: expect{
 				kind: wrapSystem,
@@ -345,8 +345,8 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		},
 		{
 			name: "revoke_signing_key",
-			req: &servicepb.Request{Type: &servicepb.Request_RevokeSigningKey{
-				RevokeSigningKey: &servicepb.RevokeSigningKeyRequest{KeyId: "k1"},
+			req: &commonpb.Request{Type: &commonpb.Request_RevokeSigningKey{
+				RevokeSigningKey: &commonpb.RevokeSigningKeyRequest{KeyId: "k1"},
 			}},
 			expect: expect{
 				kind: wrapSystem,
@@ -357,8 +357,8 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		},
 		{
 			name: "set_signing_config",
-			req: &servicepb.Request{Type: &servicepb.Request_SetSigningConfig{
-				SetSigningConfig: &servicepb.SetSigningConfigRequest{RequireSignatures: true},
+			req: &commonpb.Request{Type: &commonpb.Request_SetSigningConfig{
+				SetSigningConfig: &commonpb.SetSigningConfigRequest{RequireSignatures: true},
 			}},
 			expect: expect{
 				kind: wrapSystem,
@@ -369,8 +369,8 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		},
 		{
 			name: "add_events_sink",
-			req: &servicepb.Request{Type: &servicepb.Request_AddEventsSink{
-				AddEventsSink: &servicepb.AddEventsSinkRequest{Config: &commonpb.SinkConfig{Name: "s"}},
+			req: &commonpb.Request{Type: &commonpb.Request_AddEventsSink{
+				AddEventsSink: &commonpb.AddEventsSinkRequest{Config: &commonpb.SinkConfig{Name: "s"}},
 			}},
 			expect: expect{
 				kind: wrapSystem,
@@ -381,8 +381,8 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		},
 		{
 			name: "remove_events_sink",
-			req: &servicepb.Request{Type: &servicepb.Request_RemoveEventsSink{
-				RemoveEventsSink: &servicepb.RemoveEventsSinkRequest{Name: "s", ControllerId: "uid-1"},
+			req: &commonpb.Request{Type: &commonpb.Request_RemoveEventsSink{
+				RemoveEventsSink: &commonpb.RemoveEventsSinkRequest{Name: "s", ControllerId: "uid-1"},
 			}},
 			expect: expect{
 				kind: wrapSystem,
@@ -393,8 +393,8 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		},
 		{
 			name: "set_maintenance_mode",
-			req: &servicepb.Request{Type: &servicepb.Request_SetMaintenanceMode{
-				SetMaintenanceMode: &servicepb.SetMaintenanceModeRequest{Enabled: true},
+			req: &commonpb.Request{Type: &commonpb.Request_SetMaintenanceMode{
+				SetMaintenanceMode: &commonpb.SetMaintenanceModeRequest{Enabled: true},
 			}},
 			expect: expect{
 				kind: wrapSystem,
@@ -405,8 +405,8 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		},
 		{
 			name: "create_query_checkpoint",
-			req: &servicepb.Request{Type: &servicepb.Request_CreateQueryCheckpoint{
-				CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{},
+			req: &commonpb.Request{Type: &commonpb.Request_CreateQueryCheckpoint{
+				CreateQueryCheckpoint: &commonpb.CreateQueryCheckpointRequest{},
 			}},
 			expect: expect{
 				kind: wrapSystem,
@@ -417,8 +417,8 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		},
 		{
 			name: "delete_query_checkpoint",
-			req: &servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpoint{
-				DeleteQueryCheckpoint: &servicepb.DeleteQueryCheckpointRequest{CheckpointId: 1},
+			req: &commonpb.Request{Type: &commonpb.Request_DeleteQueryCheckpoint{
+				DeleteQueryCheckpoint: &commonpb.DeleteQueryCheckpointRequest{CheckpointId: 1},
 			}},
 			expect: expect{
 				kind: wrapSystem,
@@ -429,8 +429,8 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		},
 		{
 			name: "set_query_checkpoint_schedule",
-			req: &servicepb.Request{Type: &servicepb.Request_SetQueryCheckpointSchedule{
-				SetQueryCheckpointSchedule: &servicepb.SetQueryCheckpointScheduleRequest{Cron: "0 0 1 * *"},
+			req: &commonpb.Request{Type: &commonpb.Request_SetQueryCheckpointSchedule{
+				SetQueryCheckpointSchedule: &commonpb.SetQueryCheckpointScheduleRequest{Cron: "0 0 1 * *"},
 			}},
 			expect: expect{
 				kind: wrapSystem,
@@ -441,8 +441,8 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		},
 		{
 			name: "delete_query_checkpoint_schedule",
-			req: &servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpointSchedule{
-				DeleteQueryCheckpointSchedule: &servicepb.DeleteQueryCheckpointScheduleRequest{},
+			req: &commonpb.Request{Type: &commonpb.Request_DeleteQueryCheckpointSchedule{
+				DeleteQueryCheckpointSchedule: &commonpb.DeleteQueryCheckpointScheduleRequest{},
 			}},
 			expect: expect{
 				kind: wrapSystem,

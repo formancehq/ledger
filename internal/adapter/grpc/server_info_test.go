@@ -6,9 +6,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 )
 
@@ -24,7 +24,7 @@ func TestDiscoveryReturnsServerInfo(t *testing.T) {
 		},
 	}
 
-	resp, err := impl.Discovery(context.Background(), &servicepb.DiscoveryRequest{})
+	resp, err := impl.Discovery(context.Background(), &clusterpb.DiscoveryRequest{})
 	require.NoError(t, err)
 	require.NotNil(t, resp.GetServerInfo())
 	require.Equal(t, "v3.1.0", resp.GetServerInfo().GetVersion())

@@ -9,6 +9,7 @@ Client-facing transport layers (`internal/adapter/grpc`, `internal/adapter/http`
 | [grpc-api.md](grpc-api.md) | gRPC service, methods, request/response types, type-owned public error details, unary peer-close normalization and its attribution limit, client examples, and restore-mode service lifetime. |
 | [grpc-connections.md](grpc-connections.md) | gRPC connection mechanics, reconnection, and rolling deployment optimizations. |
 | [protocol-compatibility.md](protocol-compatibility.md) | Mandatory service protocol revision, client/server rejection behavior, diagnostics, and revision maintenance (EN-1851). |
+| [public-client.md](public-client.md) | Versioned public Go module, immutable Protobuf artifact, regeneration and release order (EN-2476). |
 | [http-api.md](http-api.md) | HTTP endpoint lifecycle and failure shutdown, REST API endpoints, single-decoding metadata key paths, response formats, exact metadata number decoding, ledger-log JSON output and discriminators, error handling, and the `apierr`/`grpcerr` error boundary crossed by a forwarded write. |
 | [auth.md](auth.md) | Client JWT authentication (OIDC + Ed25519), scope-based authorization, and the Raft inter-node cluster-secret auth layer. |
 

@@ -8,11 +8,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
+	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -31,7 +31,7 @@ func TestDeleteLedgerData_RemovesLedgerMetadata(t *testing.T) {
 	for _, ledger := range []string{"doomed", "kept"} {
 		_, err := attrs.LedgerMetadata.Set(batch,
 			domain.LedgerMetadataKey{LedgerName: ledger, Key: "team"}.Bytes(),
-			commonpb.NewStringValue("payments"))
+			auditpb.NewStringValue("payments"))
 		require.NoError(t, err)
 	}
 	require.NoError(t, batch.Commit())
@@ -87,12 +87,12 @@ func TestSaveSinkConfig(t *testing.T) {
 
 	s := newTestStore(t)
 
-	attr := attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig)
+	attr := attributes.NewAttribute[*auditpb.SinkConfig](dal.SubAttrSinkConfig)
 
 	// Save a sink config via attribute
-	config := &commonpb.SinkConfig{
+	config := &auditpb.SinkConfig{
 		Name: "my-sink",
-		Type: &commonpb.SinkConfig_Http{Http: &commonpb.HttpSinkConfig{Endpoint: "http://example.com"}},
+		Type: &auditpb.SinkConfig_Http{Http: &auditpb.HttpSinkConfig{Endpoint: "http://example.com"}},
 	}
 	batch := s.OpenWriteSession()
 	_, err := attr.Set(batch, domain.SinkConfigKey{Name: "my-sink"}.Bytes(), config)
@@ -110,13 +110,13 @@ func TestDeleteSinkConfig(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
-	attr := attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig)
+	attr := attributes.NewAttribute[*auditpb.SinkConfig](dal.SubAttrSinkConfig)
 
 	// Save a config
 	batch := s.OpenWriteSession()
-	_, err := attr.Set(batch, domain.SinkConfigKey{Name: "sink-to-delete"}.Bytes(), &commonpb.SinkConfig{
+	_, err := attr.Set(batch, domain.SinkConfigKey{Name: "sink-to-delete"}.Bytes(), &auditpb.SinkConfig{
 		Name: "sink-to-delete",
-		Type: &commonpb.SinkConfig_Http{Http: &commonpb.HttpSinkConfig{Endpoint: "http://example.com"}},
+		Type: &auditpb.SinkConfig_Http{Http: &auditpb.HttpSinkConfig{Endpoint: "http://example.com"}},
 	})
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
@@ -157,7 +157,7 @@ func TestSetSinkStatus(t *testing.T) {
 
 	s := newTestStore(t)
 
-	status := &commonpb.SinkStatus{
+	status := &auditpb.SinkStatus{
 		SinkName: "test-sink",
 		Cursor:   42,
 	}
@@ -183,7 +183,7 @@ func TestClearSinkStatus(t *testing.T) {
 
 	// Set a status
 	batch := s.OpenWriteSession()
-	require.NoError(t, SetSinkStatus(batch, &commonpb.SinkStatus{
+	require.NoError(t, SetSinkStatus(batch, &auditpb.SinkStatus{
 		SinkName: "clear-me",
 		Cursor:   10,
 	}))
@@ -207,9 +207,9 @@ func Test_appendAuditEntries(t *testing.T) {
 	s := newTestStore(t)
 
 	entries := []*auditpb.AuditEntry{
-		{Sequence: 1, ProposalId: 10, Timestamp: commonpb.NewTimestamp(libtime.Now())},
-		{Sequence: 2, ProposalId: 20, Timestamp: commonpb.NewTimestamp(libtime.Now())},
-		{Sequence: 3, ProposalId: 30, Timestamp: commonpb.NewTimestamp(libtime.Now())},
+		{Sequence: 1, ProposalId: 10, Timestamp: auditpb.NewTimestamp(libtime.Now())},
+		{Sequence: 2, ProposalId: 20, Timestamp: auditpb.NewTimestamp(libtime.Now())},
+		{Sequence: 3, ProposalId: 30, Timestamp: auditpb.NewTimestamp(libtime.Now())},
 	}
 
 	batch := s.OpenWriteSession()
@@ -259,18 +259,18 @@ func TestReadTransactionState(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
-	txAttr := attributes.NewAttribute[*commonpb.TransactionState](dal.SubAttrTransaction)
+	txAttr := attributes.NewAttribute[*internalcommonpb.TransactionState](dal.SubAttrTransaction)
 
 	// Store state for two different transactions
 	batch := s.OpenWriteSession()
 	_, err := txAttr.Set(batch,
 		domain.TransactionKey{LedgerName: "test", ID: 100}.Bytes(),
-		&commonpb.TransactionState{CreatedByLog: 1},
+		&internalcommonpb.TransactionState{CreatedByLog: 1},
 	)
 	require.NoError(t, err)
 	_, err = txAttr.Set(batch,
 		domain.TransactionKey{LedgerName: "test", ID: 200}.Bytes(),
-		&commonpb.TransactionState{CreatedByLog: 2},
+		&internalcommonpb.TransactionState{CreatedByLog: 2},
 	)
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
@@ -310,9 +310,9 @@ func TestReadLastAuditSequence(t *testing.T) {
 	// Add audit entries
 	batch := s.OpenWriteSession()
 	require.NoError(t, appendAuditEntries(batch,
-		&auditpb.AuditEntry{Sequence: 10, Timestamp: commonpb.NewTimestamp(libtime.Now())},
-		&auditpb.AuditEntry{Sequence: 20, Timestamp: commonpb.NewTimestamp(libtime.Now())},
-		&auditpb.AuditEntry{Sequence: 30, Timestamp: commonpb.NewTimestamp(libtime.Now())},
+		&auditpb.AuditEntry{Sequence: 10, Timestamp: auditpb.NewTimestamp(libtime.Now())},
+		&auditpb.AuditEntry{Sequence: 20, Timestamp: auditpb.NewTimestamp(libtime.Now())},
+		&auditpb.AuditEntry{Sequence: 30, Timestamp: auditpb.NewTimestamp(libtime.Now())},
 	))
 	require.NoError(t, batch.Commit())
 
@@ -334,7 +334,7 @@ func TestReadSigningKeysCursorFunc(t *testing.T) {
 	cursor, err := query.ReadSigningKeysCursor(context.Background(), handle)
 	require.NoError(t, err)
 
-	var keys []*commonpb.SigningKey
+	var keys []*auditpb.SigningKey
 
 	for {
 		key, curErr := cursor.Next()
@@ -382,7 +382,7 @@ func TestReadSigningKeysCursorFunc(t *testing.T) {
 	require.Len(t, keys, 2)
 
 	// Find the child key
-	var childKey *commonpb.SigningKey
+	var childKey *auditpb.SigningKey
 
 	for _, k := range keys {
 		if k.GetKeyId() == "child-key" {
@@ -411,7 +411,7 @@ func TestReadAuditEntry(t *testing.T) {
 		&auditpb.AuditEntry{
 			Sequence:   42,
 			ProposalId: 100,
-			Timestamp:  commonpb.NewTimestamp(libtime.Now()),
+			Timestamp:  auditpb.NewTimestamp(libtime.Now()),
 		},
 	))
 	require.NoError(t, batch.Commit())

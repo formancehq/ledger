@@ -15,11 +15,11 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
+	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/health"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 func TestAdmitRejectsMissingAttributionBeforeDependencies(t *testing.T) {

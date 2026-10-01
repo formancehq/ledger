@@ -12,9 +12,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 
@@ -187,12 +186,12 @@ func TestIndexedQueryOutcomeLegal_MismatchAndAbsentCoexist(t *testing.T) {
 // node of PerNodeConns. Every other client method panics via the embedded nil
 // interface — the poller must not call anything else.
 type fakeStatusClient struct {
-	servicepb.BucketServiceClient
+	commonpb.BucketServiceClient
 
-	resp *servicepb.GetIndexStatusResponse
+	resp *commonpb.GetIndexStatusResponse
 }
 
-func (f fakeStatusClient) GetIndexStatus(context.Context, *servicepb.GetIndexStatusRequest, ...grpc.CallOption) (*servicepb.GetIndexStatusResponse, error) {
+func (f fakeStatusClient) GetIndexStatus(context.Context, *commonpb.GetIndexStatusRequest, ...grpc.CallOption) (*commonpb.GetIndexStatusResponse, error) {
 	return f.resp, nil
 }
 
@@ -211,21 +210,21 @@ func TestReconcileIndexes_IncarnationGuard(t *testing.T) {
 
 	newTracked := func(createSeq uint64) *Checker {
 		c := NewChecker([]string{"L"}, nil)
-		res := c.modelState.Apply(oracle.Bulk{Requests: []*servicepb.Request{oracletest.CreateIndexReq(id)}})
+		res := c.modelState.Apply(oracle.Bulk{Requests: []*commonpb.Request{oracletest.CreateIndexReq(id)}})
 		require.True(t, res.OK)
 		c.modelState = res.State
 		c.recordIndexCreates(
-			oracle.Bulk{Requests: []*servicepb.Request{oracletest.CreateIndexReq(id)}},
-			&servicepb.ApplyResponse{Logs: []*commonpb.Log{{Sequence: createSeq}}},
+			oracle.Bulk{Requests: []*commonpb.Request{oracletest.CreateIndexReq(id)}},
+			&commonpb.ApplyResponse{Logs: []*commonpb.Log{{Sequence: createSeq}}},
 		)
 
 		return c
 	}
 
 	statusConns := func(lastIndexed uint64, version uint32) internal.PerNodeConns {
-		return internal.PerNodeConns{{Bucket: fakeStatusClient{resp: &servicepb.GetIndexStatusResponse{
+		return internal.PerNodeConns{{Bucket: fakeStatusClient{resp: &commonpb.GetIndexStatusResponse{
 			LastIndexedSequence: lastIndexed,
-			Indexes:             []*servicepb.IndexEntry{{Ledger: "L", Index: &commonpb.Index{Id: id}, CurrentVersion: version}},
+			Indexes:             []*commonpb.IndexEntry{{Ledger: "L", Index: &commonpb.Index{Id: id}, CurrentVersion: version}},
 		}}}}
 	}
 
@@ -265,7 +264,7 @@ func TestTrackedIndexesExcludesDeletedLedgers(t *testing.T) {
 	t.Parallel()
 
 	c := NewChecker([]string{"deleted", "live"}, nil)
-	created := c.modelState.Apply(oracle.Bulk{Requests: []*servicepb.Request{
+	created := c.modelState.Apply(oracle.Bulk{Requests: []*commonpb.Request{
 		createIndexReq("deleted", assetIndexID()),
 		createIndexReq("live", assetIndexID()),
 	}})
@@ -273,8 +272,8 @@ func TestTrackedIndexesExcludesDeletedLedgers(t *testing.T) {
 	c.modelState = created.State
 	require.Len(t, c.trackedIndexes(), 2)
 
-	deleted := c.modelState.Apply(oracle.Bulk{Requests: []*servicepb.Request{{
-		Type: &servicepb.Request_DeleteLedger{DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "deleted"}},
+	deleted := c.modelState.Apply(oracle.Bulk{Requests: []*commonpb.Request{{
+		Type: &commonpb.Request_DeleteLedger{DeleteLedger: &commonpb.DeleteLedgerRequest{Name: "deleted"}},
 	}}})
 	require.True(t, deleted.OK)
 	c.modelState = deleted.State
@@ -449,7 +448,7 @@ func TestGenerateIndexOp_UndeclaredFieldsOnBothTargets(t *testing.T) {
 			continue
 		}
 		seen[field.GetTarget()] = true
-		res := gs.Apply(oracle.Bulk{Requests: []*servicepb.Request{req}})
+		res := gs.Apply(oracle.Bulk{Requests: []*commonpb.Request{req}})
 		require.False(t, res.OK)
 		require.Equal(t, "METADATA_FIELD_NOT_IN_SCHEMA", res.Reason)
 	}

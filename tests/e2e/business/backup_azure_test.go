@@ -16,10 +16,8 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 )
@@ -66,7 +64,7 @@ func azureBlobExists(ctx context.Context, client *azblob.Client, key string) boo
 var _ = Describe("Azure Blob Backup", Ordered, func() {
 	var (
 		ctx           context.Context
-		client        servicepb.BucketServiceClient
+		client        clusterpb.BucketServiceClient
 		clusterClient clusterpb.ClusterServiceClient
 		azureClient   *azblob.Client
 		azureEndpoint string
@@ -116,8 +114,8 @@ var _ = Describe("Azure Blob Backup", Ordered, func() {
 		clusterClient = node.ClusterClient
 	})
 
-	azureStorage := func() *commonpb.BackupStorage {
-		return testutil.AzureBackupStorage(&commonpb.AzureStorageConfig{
+	azureStorage := func() *clusterpb.BackupStorage {
+		return testutil.AzureBackupStorage(&clusterpb.AzureStorageConfig{
 			AccountName: azuriteAccountName,
 			AccountKey:  azuriteAccountKey,
 			Container:   backupAzureContainer,
@@ -126,11 +124,11 @@ var _ = Describe("Azure Blob Backup", Ordered, func() {
 	}
 
 	It("should create a full backup on Azure with checkpoint manifest", func() {
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("azure-backup-test", nil)))
+		_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction("azure-backup-test", nil)))
 		Expect(err).To(Succeed())
 
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("azure-backup-test",
-			[]*commonpb.Posting{
+		_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("azure-backup-test",
+			[]*clusterpb.Posting{
 				actions.NewPosting("world", "users:alice", big.NewInt(1000), "USD"),
 			},
 			nil,
@@ -167,8 +165,8 @@ var _ = Describe("Azure Blob Backup", Ordered, func() {
 		Expect(err).To(Succeed())
 		checkpointLogSeq := fullResp.GetLastLogSequence()
 
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("azure-backup-test",
-			[]*commonpb.Posting{
+		_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("azure-backup-test",
+			[]*clusterpb.Posting{
 				actions.NewPosting("world", "users:charlie", big.NewInt(500), "GBP"),
 			},
 			nil,

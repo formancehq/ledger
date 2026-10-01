@@ -10,8 +10,9 @@ package processing
 import (
 	reflect "reflect"
 
+	grpc "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	domain "github.com/formancehq/ledger/v3/internal/domain"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	raftcmdpb "github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -101,10 +102,10 @@ func (m *MockScope) EXPECT() *MockScopeMockRecorder {
 }
 
 // AccountMetadata mocks base method.
-func (m *MockScope) AccountMetadata() Accessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader] {
+func (m *MockScope) AccountMetadata() Accessor[domain.MetadataKey, *grpc.MetadataValue, grpc.MetadataValueReader] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AccountMetadata")
-	ret0, _ := ret[0].(Accessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader])
+	ret0, _ := ret[0].(Accessor[domain.MetadataKey, *grpc.MetadataValue, grpc.MetadataValueReader])
 	return ret0
 }
 
@@ -121,19 +122,19 @@ type MockScopeAccountMetadataCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockScopeAccountMetadataCall) Return(arg0 Accessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]) *MockScopeAccountMetadataCall {
+func (c *MockScopeAccountMetadataCall) Return(arg0 Accessor[domain.MetadataKey, *grpc.MetadataValue, grpc.MetadataValueReader]) *MockScopeAccountMetadataCall {
 	c.Call = c.Call.Return(arg0)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockScopeAccountMetadataCall) Do(f func() Accessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]) *MockScopeAccountMetadataCall {
+func (c *MockScopeAccountMetadataCall) Do(f func() Accessor[domain.MetadataKey, *grpc.MetadataValue, grpc.MetadataValueReader]) *MockScopeAccountMetadataCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeAccountMetadataCall) DoAndReturn(f func() Accessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]) *MockScopeAccountMetadataCall {
+func (c *MockScopeAccountMetadataCall) DoAndReturn(f func() Accessor[domain.MetadataKey, *grpc.MetadataValue, grpc.MetadataValueReader]) *MockScopeAccountMetadataCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -287,10 +288,10 @@ func (c *MockScopeDeleteQueryCheckpointCall) DoAndReturn(f func(uint64)) *MockSc
 }
 
 // GetClusterPolicy mocks base method.
-func (m *MockScope) GetClusterPolicy() *commonpb.ClusterPolicy {
+func (m *MockScope) GetClusterPolicy() *grpc.ClusterPolicy {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetClusterPolicy")
-	ret0, _ := ret[0].(*commonpb.ClusterPolicy)
+	ret0, _ := ret[0].(*grpc.ClusterPolicy)
 	return ret0
 }
 
@@ -307,28 +308,28 @@ type MockScopeGetClusterPolicyCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockScopeGetClusterPolicyCall) Return(arg0 *commonpb.ClusterPolicy) *MockScopeGetClusterPolicyCall {
+func (c *MockScopeGetClusterPolicyCall) Return(arg0 *grpc.ClusterPolicy) *MockScopeGetClusterPolicyCall {
 	c.Call = c.Call.Return(arg0)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockScopeGetClusterPolicyCall) Do(f func() *commonpb.ClusterPolicy) *MockScopeGetClusterPolicyCall {
+func (c *MockScopeGetClusterPolicyCall) Do(f func() *grpc.ClusterPolicy) *MockScopeGetClusterPolicyCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeGetClusterPolicyCall) DoAndReturn(f func() *commonpb.ClusterPolicy) *MockScopeGetClusterPolicyCall {
+func (c *MockScopeGetClusterPolicyCall) DoAndReturn(f func() *grpc.ClusterPolicy) *MockScopeGetClusterPolicyCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // GetDate mocks base method.
-func (m *MockScope) GetDate() commonpb.TimestampReader {
+func (m *MockScope) GetDate() grpc.TimestampReader {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetDate")
-	ret0, _ := ret[0].(commonpb.TimestampReader)
+	ret0, _ := ret[0].(grpc.TimestampReader)
 	return ret0
 }
 
@@ -345,19 +346,19 @@ type MockScopeGetDateCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockScopeGetDateCall) Return(arg0 commonpb.TimestampReader) *MockScopeGetDateCall {
+func (c *MockScopeGetDateCall) Return(arg0 grpc.TimestampReader) *MockScopeGetDateCall {
 	c.Call = c.Call.Return(arg0)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockScopeGetDateCall) Do(f func() commonpb.TimestampReader) *MockScopeGetDateCall {
+func (c *MockScopeGetDateCall) Do(f func() grpc.TimestampReader) *MockScopeGetDateCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeGetDateCall) DoAndReturn(f func() commonpb.TimestampReader) *MockScopeGetDateCall {
+func (c *MockScopeGetDateCall) DoAndReturn(f func() grpc.TimestampReader) *MockScopeGetDateCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -707,10 +708,10 @@ func (c *MockScopeGetSigningKeyChildrenCall) DoAndReturn(f func(string) []string
 }
 
 // GetSinkConfig mocks base method.
-func (m *MockScope) GetSinkConfig(name string) (commonpb.SinkConfigReader, error) {
+func (m *MockScope) GetSinkConfig(name string) (grpc.SinkConfigReader, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetSinkConfig", name)
-	ret0, _ := ret[0].(commonpb.SinkConfigReader)
+	ret0, _ := ret[0].(grpc.SinkConfigReader)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -728,19 +729,19 @@ type MockScopeGetSinkConfigCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockScopeGetSinkConfigCall) Return(arg0 commonpb.SinkConfigReader, arg1 error) *MockScopeGetSinkConfigCall {
+func (c *MockScopeGetSinkConfigCall) Return(arg0 grpc.SinkConfigReader, arg1 error) *MockScopeGetSinkConfigCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockScopeGetSinkConfigCall) Do(f func(string) (commonpb.SinkConfigReader, error)) *MockScopeGetSinkConfigCall {
+func (c *MockScopeGetSinkConfigCall) Do(f func(string) (grpc.SinkConfigReader, error)) *MockScopeGetSinkConfigCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeGetSinkConfigCall) DoAndReturn(f func(string) (commonpb.SinkConfigReader, error)) *MockScopeGetSinkConfigCall {
+func (c *MockScopeGetSinkConfigCall) DoAndReturn(f func(string) (grpc.SinkConfigReader, error)) *MockScopeGetSinkConfigCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -861,10 +862,10 @@ func (c *MockScopeIncrementNextSequenceIDCall) DoAndReturn(f func() (uint64, dom
 }
 
 // Indexes mocks base method.
-func (m *MockScope) Indexes() Accessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader] {
+func (m *MockScope) Indexes() Accessor[domain.IndexKey, *grpc.Index, grpc.IndexReader] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Indexes")
-	ret0, _ := ret[0].(Accessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader])
+	ret0, _ := ret[0].(Accessor[domain.IndexKey, *grpc.Index, grpc.IndexReader])
 	return ret0
 }
 
@@ -881,28 +882,28 @@ type MockScopeIndexesCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockScopeIndexesCall) Return(arg0 Accessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]) *MockScopeIndexesCall {
+func (c *MockScopeIndexesCall) Return(arg0 Accessor[domain.IndexKey, *grpc.Index, grpc.IndexReader]) *MockScopeIndexesCall {
 	c.Call = c.Call.Return(arg0)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockScopeIndexesCall) Do(f func() Accessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]) *MockScopeIndexesCall {
+func (c *MockScopeIndexesCall) Do(f func() Accessor[domain.IndexKey, *grpc.Index, grpc.IndexReader]) *MockScopeIndexesCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeIndexesCall) DoAndReturn(f func() Accessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]) *MockScopeIndexesCall {
+func (c *MockScopeIndexesCall) DoAndReturn(f func() Accessor[domain.IndexKey, *grpc.Index, grpc.IndexReader]) *MockScopeIndexesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // LedgerMetadata mocks base method.
-func (m *MockScope) LedgerMetadata() Accessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader] {
+func (m *MockScope) LedgerMetadata() Accessor[domain.LedgerMetadataKey, *grpc.MetadataValue, grpc.MetadataValueReader] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "LedgerMetadata")
-	ret0, _ := ret[0].(Accessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader])
+	ret0, _ := ret[0].(Accessor[domain.LedgerMetadataKey, *grpc.MetadataValue, grpc.MetadataValueReader])
 	return ret0
 }
 
@@ -919,28 +920,28 @@ type MockScopeLedgerMetadataCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockScopeLedgerMetadataCall) Return(arg0 Accessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]) *MockScopeLedgerMetadataCall {
+func (c *MockScopeLedgerMetadataCall) Return(arg0 Accessor[domain.LedgerMetadataKey, *grpc.MetadataValue, grpc.MetadataValueReader]) *MockScopeLedgerMetadataCall {
 	c.Call = c.Call.Return(arg0)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockScopeLedgerMetadataCall) Do(f func() Accessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]) *MockScopeLedgerMetadataCall {
+func (c *MockScopeLedgerMetadataCall) Do(f func() Accessor[domain.LedgerMetadataKey, *grpc.MetadataValue, grpc.MetadataValueReader]) *MockScopeLedgerMetadataCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeLedgerMetadataCall) DoAndReturn(f func() Accessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]) *MockScopeLedgerMetadataCall {
+func (c *MockScopeLedgerMetadataCall) DoAndReturn(f func() Accessor[domain.LedgerMetadataKey, *grpc.MetadataValue, grpc.MetadataValueReader]) *MockScopeLedgerMetadataCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // Ledgers mocks base method.
-func (m *MockScope) Ledgers() Accessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader] {
+func (m *MockScope) Ledgers() Accessor[domain.LedgerKey, *grpc.LedgerInfo, grpc.LedgerInfoReader] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Ledgers")
-	ret0, _ := ret[0].(Accessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader])
+	ret0, _ := ret[0].(Accessor[domain.LedgerKey, *grpc.LedgerInfo, grpc.LedgerInfoReader])
 	return ret0
 }
 
@@ -957,19 +958,19 @@ type MockScopeLedgersCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockScopeLedgersCall) Return(arg0 Accessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader]) *MockScopeLedgersCall {
+func (c *MockScopeLedgersCall) Return(arg0 Accessor[domain.LedgerKey, *grpc.LedgerInfo, grpc.LedgerInfoReader]) *MockScopeLedgersCall {
 	c.Call = c.Call.Return(arg0)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockScopeLedgersCall) Do(f func() Accessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader]) *MockScopeLedgersCall {
+func (c *MockScopeLedgersCall) Do(f func() Accessor[domain.LedgerKey, *grpc.LedgerInfo, grpc.LedgerInfoReader]) *MockScopeLedgersCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeLedgersCall) DoAndReturn(f func() Accessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader]) *MockScopeLedgersCall {
+func (c *MockScopeLedgersCall) DoAndReturn(f func() Accessor[domain.LedgerKey, *grpc.LedgerInfo, grpc.LedgerInfoReader]) *MockScopeLedgersCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -1052,10 +1053,10 @@ func (c *MockScopeNumscriptVersionExistsCall) DoAndReturn(f func(string, string,
 }
 
 // PreparedQueries mocks base method.
-func (m *MockScope) PreparedQueries() Accessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader] {
+func (m *MockScope) PreparedQueries() Accessor[domain.PreparedQueryKey, *grpc.PreparedQuery, grpc.PreparedQueryReader] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "PreparedQueries")
-	ret0, _ := ret[0].(Accessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader])
+	ret0, _ := ret[0].(Accessor[domain.PreparedQueryKey, *grpc.PreparedQuery, grpc.PreparedQueryReader])
 	return ret0
 }
 
@@ -1072,25 +1073,25 @@ type MockScopePreparedQueriesCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockScopePreparedQueriesCall) Return(arg0 Accessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader]) *MockScopePreparedQueriesCall {
+func (c *MockScopePreparedQueriesCall) Return(arg0 Accessor[domain.PreparedQueryKey, *grpc.PreparedQuery, grpc.PreparedQueryReader]) *MockScopePreparedQueriesCall {
 	c.Call = c.Call.Return(arg0)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockScopePreparedQueriesCall) Do(f func() Accessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader]) *MockScopePreparedQueriesCall {
+func (c *MockScopePreparedQueriesCall) Do(f func() Accessor[domain.PreparedQueryKey, *grpc.PreparedQuery, grpc.PreparedQueryReader]) *MockScopePreparedQueriesCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopePreparedQueriesCall) DoAndReturn(f func() Accessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader]) *MockScopePreparedQueriesCall {
+func (c *MockScopePreparedQueriesCall) DoAndReturn(f func() Accessor[domain.PreparedQueryKey, *grpc.PreparedQuery, grpc.PreparedQueryReader]) *MockScopePreparedQueriesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // PutNumscript mocks base method.
-func (m *MockScope) PutNumscript(ledgerName string, info *commonpb.NumscriptInfo) {
+func (m *MockScope) PutNumscript(ledgerName string, info *grpc.NumscriptInfo) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "PutNumscript", ledgerName, info)
 }
@@ -1114,13 +1115,13 @@ func (c *MockScopePutNumscriptCall) Return() *MockScopePutNumscriptCall {
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockScopePutNumscriptCall) Do(f func(string, *commonpb.NumscriptInfo)) *MockScopePutNumscriptCall {
+func (c *MockScopePutNumscriptCall) Do(f func(string, *grpc.NumscriptInfo)) *MockScopePutNumscriptCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopePutNumscriptCall) DoAndReturn(f func(string, *commonpb.NumscriptInfo)) *MockScopePutNumscriptCall {
+func (c *MockScopePutNumscriptCall) DoAndReturn(f func(string, *grpc.NumscriptInfo)) *MockScopePutNumscriptCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -1236,10 +1237,10 @@ func (c *MockScopeRemoveSigningKeyCall) DoAndReturn(f func(string)) *MockScopeRe
 }
 
 // ResolveNumscriptContent mocks base method.
-func (m *MockScope) ResolveNumscriptContent(ledgerName, name, version string) (commonpb.NumscriptInfoReader, error) {
+func (m *MockScope) ResolveNumscriptContent(ledgerName, name, version string) (grpc.NumscriptInfoReader, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ResolveNumscriptContent", ledgerName, name, version)
-	ret0, _ := ret[0].(commonpb.NumscriptInfoReader)
+	ret0, _ := ret[0].(grpc.NumscriptInfoReader)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -1257,19 +1258,19 @@ type MockScopeResolveNumscriptContentCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockScopeResolveNumscriptContentCall) Return(arg0 commonpb.NumscriptInfoReader, arg1 error) *MockScopeResolveNumscriptContentCall {
+func (c *MockScopeResolveNumscriptContentCall) Return(arg0 grpc.NumscriptInfoReader, arg1 error) *MockScopeResolveNumscriptContentCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockScopeResolveNumscriptContentCall) Do(f func(string, string, string) (commonpb.NumscriptInfoReader, error)) *MockScopeResolveNumscriptContentCall {
+func (c *MockScopeResolveNumscriptContentCall) Do(f func(string, string, string) (grpc.NumscriptInfoReader, error)) *MockScopeResolveNumscriptContentCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeResolveNumscriptContentCall) DoAndReturn(f func(string, string, string) (commonpb.NumscriptInfoReader, error)) *MockScopeResolveNumscriptContentCall {
+func (c *MockScopeResolveNumscriptContentCall) DoAndReturn(f func(string, string, string) (grpc.NumscriptInfoReader, error)) *MockScopeResolveNumscriptContentCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -1311,7 +1312,7 @@ func (c *MockScopeSaveQueryCheckpointCall) DoAndReturn(f func(*raftcmdpb.QueryCh
 }
 
 // SetClusterPolicy mocks base method.
-func (m *MockScope) SetClusterPolicy(policy *commonpb.ClusterPolicy) {
+func (m *MockScope) SetClusterPolicy(policy *grpc.ClusterPolicy) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "SetClusterPolicy", policy)
 }
@@ -1335,13 +1336,13 @@ func (c *MockScopeSetClusterPolicyCall) Return() *MockScopeSetClusterPolicyCall 
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockScopeSetClusterPolicyCall) Do(f func(*commonpb.ClusterPolicy)) *MockScopeSetClusterPolicyCall {
+func (c *MockScopeSetClusterPolicyCall) Do(f func(*grpc.ClusterPolicy)) *MockScopeSetClusterPolicyCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeSetClusterPolicyCall) DoAndReturn(f func(*commonpb.ClusterPolicy)) *MockScopeSetClusterPolicyCall {
+func (c *MockScopeSetClusterPolicyCall) DoAndReturn(f func(*grpc.ClusterPolicy)) *MockScopeSetClusterPolicyCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -1455,10 +1456,10 @@ func (c *MockScopeSetRequireSignaturesCall) DoAndReturn(f func(bool)) *MockScope
 }
 
 // TransactionReferences mocks base method.
-func (m *MockScope) TransactionReferences() Accessor[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader] {
+func (m *MockScope) TransactionReferences() Accessor[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "TransactionReferences")
-	ret0, _ := ret[0].(Accessor[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader])
+	ret0, _ := ret[0].(Accessor[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader])
 	return ret0
 }
 
@@ -1475,28 +1476,28 @@ type MockScopeTransactionReferencesCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockScopeTransactionReferencesCall) Return(arg0 Accessor[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader]) *MockScopeTransactionReferencesCall {
+func (c *MockScopeTransactionReferencesCall) Return(arg0 Accessor[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader]) *MockScopeTransactionReferencesCall {
 	c.Call = c.Call.Return(arg0)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockScopeTransactionReferencesCall) Do(f func() Accessor[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader]) *MockScopeTransactionReferencesCall {
+func (c *MockScopeTransactionReferencesCall) Do(f func() Accessor[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader]) *MockScopeTransactionReferencesCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeTransactionReferencesCall) DoAndReturn(f func() Accessor[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader]) *MockScopeTransactionReferencesCall {
+func (c *MockScopeTransactionReferencesCall) DoAndReturn(f func() Accessor[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader]) *MockScopeTransactionReferencesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // TransactionStates mocks base method.
-func (m *MockScope) TransactionStates() Accessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader] {
+func (m *MockScope) TransactionStates() Accessor[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "TransactionStates")
-	ret0, _ := ret[0].(Accessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader])
+	ret0, _ := ret[0].(Accessor[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader])
 	return ret0
 }
 
@@ -1513,19 +1514,19 @@ type MockScopeTransactionStatesCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockScopeTransactionStatesCall) Return(arg0 Accessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]) *MockScopeTransactionStatesCall {
+func (c *MockScopeTransactionStatesCall) Return(arg0 Accessor[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader]) *MockScopeTransactionStatesCall {
 	c.Call = c.Call.Return(arg0)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockScopeTransactionStatesCall) Do(f func() Accessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]) *MockScopeTransactionStatesCall {
+func (c *MockScopeTransactionStatesCall) Do(f func() Accessor[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader]) *MockScopeTransactionStatesCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeTransactionStatesCall) DoAndReturn(f func() Accessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]) *MockScopeTransactionStatesCall {
+func (c *MockScopeTransactionStatesCall) DoAndReturn(f func() Accessor[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader]) *MockScopeTransactionStatesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -1757,7 +1758,7 @@ func (m *MockSignalSink) EXPECT() *MockSignalSinkMockRecorder {
 }
 
 // Absorb mocks base method.
-func (m *MockSignalSink) Absorb(order *raftcmdpb.Order, log *commonpb.Log) {
+func (m *MockSignalSink) Absorb(order *raftcmdpb.Order, log *grpc.Log) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "Absorb", order, log)
 }
@@ -1781,13 +1782,13 @@ func (c *MockSignalSinkAbsorbCall) Return() *MockSignalSinkAbsorbCall {
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockSignalSinkAbsorbCall) Do(f func(*raftcmdpb.Order, *commonpb.Log)) *MockSignalSinkAbsorbCall {
+func (c *MockSignalSinkAbsorbCall) Do(f func(*raftcmdpb.Order, *grpc.Log)) *MockSignalSinkAbsorbCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockSignalSinkAbsorbCall) DoAndReturn(f func(*raftcmdpb.Order, *commonpb.Log)) *MockSignalSinkAbsorbCall {
+func (c *MockSignalSinkAbsorbCall) DoAndReturn(f func(*raftcmdpb.Order, *grpc.Log)) *MockSignalSinkAbsorbCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

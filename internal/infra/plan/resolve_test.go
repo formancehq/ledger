@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -16,12 +16,12 @@ import (
 func TestBuildPreloadPayload_RoundTrip(t *testing.T) {
 	t.Parallel()
 
-	source := &commonpb.TransactionReferenceValue{TransactionId: 123}
+	source := &internalcommonpb.TransactionReferenceValue{TransactionId: 123}
 
 	attrValue, err := buildPreloadPayload(dal.SubAttrReference, source)
 	require.NoError(t, err)
 
-	got := &commonpb.TransactionReferenceValue{}
+	got := &internalcommonpb.TransactionReferenceValue{}
 	require.NoError(t, got.UnmarshalVT(attrValue.GetRawValue()))
 	require.Equal(t, source.GetTransactionId(), got.GetTransactionId())
 }
@@ -34,13 +34,13 @@ func TestBuildPreloadPayload_RoundTrip(t *testing.T) {
 func TestBuildPreloadPayload_NilValue(t *testing.T) {
 	t.Parallel()
 
-	var nilRef *commonpb.TransactionReferenceValue
+	var nilRef *internalcommonpb.TransactionReferenceValue
 
 	attrValue, err := buildPreloadPayload(dal.SubAttrReference, nilRef)
 	require.NoError(t, err)
 	require.Empty(t, attrValue.GetRawValue())
 
-	got := &commonpb.TransactionReferenceValue{}
+	got := &internalcommonpb.TransactionReferenceValue{}
 	require.NoError(t, got.UnmarshalVT(attrValue.GetRawValue()))
 	require.Equal(t, uint64(0), got.GetTransactionId())
 }

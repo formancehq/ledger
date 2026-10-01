@@ -11,11 +11,10 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -46,7 +45,7 @@ type fakeAdmission struct {
 	err   error
 }
 
-func (f *fakeAdmission) Admit(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+func (f *fakeAdmission) Admit(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls++

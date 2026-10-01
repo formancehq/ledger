@@ -9,10 +9,10 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // NewAddSinkCommand creates the events add-sink command.
@@ -337,10 +337,10 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 
 	spinner := cmdutil.StartSpinner(fmt.Sprintf("Adding event sink %s...", name))
 
-	requests := []*servicepb.Request{
+	requests := []*commonpb.Request{
 		{
-			Type: &servicepb.Request_AddEventsSink{
-				AddEventsSink: &servicepb.AddEventsSinkRequest{
+			Type: &commonpb.Request_AddEventsSink{
+				AddEventsSink: &commonpb.AddEventsSinkRequest{
 					Config: config,
 				},
 			},

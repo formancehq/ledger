@@ -167,7 +167,6 @@ func runGeneratorWithCluster(t *testing.T, serviceProto string, includeCluster b
 	protocArgs := []string{
 		"--plugin=protoc-gen-rpcauth=" + plugin,
 		"--rpcauth_out=" + dir,
-		"--rpcauth_opt=module=example",
 		"-I", dir,
 		"-I", googleInclude,
 		filepath.Join(dir, "common.proto"),
@@ -183,7 +182,7 @@ func runGeneratorWithCluster(t *testing.T, serviceProto string, includeCluster b
 		return "", fmt.Errorf("protoc: %w: %s", err, stderr.String())
 	}
 
-	generated, err := os.ReadFile(filepath.Join(dir, "internal/proto/commonpb/common_rpc_auth_policy.pb.go"))
+	generated, err := os.ReadFile(filepath.Join(dir, "internal/proto/publicpolicy/common_rpc_auth_policy.pb.go"))
 	if err != nil {
 		return "", err
 	}

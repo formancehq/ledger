@@ -14,7 +14,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -63,7 +63,7 @@ func TestIdempotencyEviction_SameTimestampSiblingsNeverOrphaned(t *testing.T) {
 			ts = earlierTs
 		}
 
-		value := &commonpb.IdempotencyKeyValue{ExpiresAt: ts}
+		value := &internalcommonpb.IdempotencyKeyValue{ExpiresAt: ts}
 		require.NoError(t, SaveIdempotencyKey(batch, k, value))
 		// Mirror the in-memory map: production paths always Put alongside
 		// the Pebble write, and RestoreFromStore rebuilds the map from
@@ -157,7 +157,7 @@ func TestIdempotencyEviction_LastScannedKeyExcludesSiblingsLexically(t *testing.
 
 	for i := range 4 {
 		key := []byte{byte('a' + i)}
-		value := &commonpb.IdempotencyKeyValue{ExpiresAt: ts}
+		value := &internalcommonpb.IdempotencyKeyValue{ExpiresAt: ts}
 		require.NoError(t, SaveIdempotencyKey(batch, string(key), value))
 		idemp.Put(string(key), value)
 	}
@@ -222,7 +222,7 @@ func TestIdempotencyEviction_DoubleApplyIsNoOp(t *testing.T) {
 
 	batch := store.OpenWriteSession()
 	for _, k := range keys {
-		value := &commonpb.IdempotencyKeyValue{ExpiresAt: ts}
+		value := &internalcommonpb.IdempotencyKeyValue{ExpiresAt: ts}
 		require.NoError(t, SaveIdempotencyKey(batch, k, value))
 		idemp.Put(k, value)
 	}
@@ -284,7 +284,7 @@ func TestIdempotencyEviction_MultiBatchConvergence(t *testing.T) {
 	// (and the bounded scan) deterministic.
 	for i := range 4 {
 		key := []byte{byte('a' + i)}
-		value := &commonpb.IdempotencyKeyValue{ExpiresAt: ts + uint64(i)}
+		value := &internalcommonpb.IdempotencyKeyValue{ExpiresAt: ts + uint64(i)}
 		require.NoError(t, SaveIdempotencyKey(batch, string(key), value))
 		idemp.Put(string(key), value)
 	}
@@ -390,7 +390,7 @@ func TestIdempotencyEvictionScheduler_StopCancelsProposeFn(t *testing.T) {
 
 	idemp := NewIdempotencyStore()
 	batch := store.OpenWriteSession()
-	value := &commonpb.IdempotencyKeyValue{ExpiresAt: expiredTs}
+	value := &internalcommonpb.IdempotencyKeyValue{ExpiresAt: expiredTs}
 	require.NoError(t, SaveIdempotencyKey(batch, "stop-test", value))
 	idemp.Put("stop-test", value)
 	require.NoError(t, batch.Commit())
@@ -499,7 +499,7 @@ func TestEviction_ReusedKeyLifecycleThroughCompaction(t *testing.T) {
 
 	keyHash := HashIdempotencyKey(key)
 
-	writeIdem := func(v *commonpb.IdempotencyKeyValue) {
+	writeIdem := func(v *internalcommonpb.IdempotencyKeyValue) {
 		b := store.OpenWriteSession()
 		require.NoError(t, SaveIdempotencyKey(b, key, v))
 		require.NoError(t, b.Commit())
@@ -509,11 +509,11 @@ func TestEviction_ReusedKeyLifecycleThroughCompaction(t *testing.T) {
 
 	// A, then reuse with B — a second Set on the same main key, flushed into
 	// separate SSTs (the shape under which a SingleDelete could resurrect A).
-	writeIdem(&commonpb.IdempotencyKeyValue{FirstLogSequence: 1, LogCount: 1, CreatedAt: 1, ExpiresAt: expA})
+	writeIdem(&internalcommonpb.IdempotencyKeyValue{FirstLogSequence: 1, LogCount: 1, CreatedAt: 1, ExpiresAt: expA})
 	// Compact A to a lower level before the reuse: with A and B in the same level a
 	// single SingleDelete would merge them away, hiding the resurrection this guards.
 	require.NoError(t, store.CompactAll())
-	writeIdem(&commonpb.IdempotencyKeyValue{FirstLogSequence: 2, LogCount: 1, CreatedAt: 2, ExpiresAt: expB})
+	writeIdem(&internalcommonpb.IdempotencyKeyValue{FirstLogSequence: 2, LogCount: 1, CreatedAt: 2, ExpiresAt: expB})
 
 	// Precondition: exactly two expiry-index rows for the reused hash (A and B).
 	pre, err := store.NewDirectReadHandle()

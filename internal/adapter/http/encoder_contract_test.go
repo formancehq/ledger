@@ -13,8 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // protojsonRoutes lists every HTTP route whose 200 body is serialized by
@@ -43,11 +42,11 @@ var protojsonRoutes = []struct {
 	{"GET /v3/{ledgerName}/indexes/{canonicalId}", "handlers_get_index.go", &commonpb.Index{}},
 	{"GET /v3/_/indexes", "handlers_list_bucket_indexes.go", &commonpb.Index{}},
 	{"GET /v3/_/indexes/{canonicalId}", "handlers_get_bucket_index.go", &commonpb.Index{}},
-	{"GET /v3/{ledgerName}/indexes/{canonicalId}/status", "handlers_get_index_entry_status.go", &servicepb.IndexEntry{}},
-	{"GET /v3/_/indexes/{canonicalId}/status", "handlers_get_bucket_index_entry_status.go", &servicepb.IndexEntry{}},
-	{"GET /v3/_/indexes/status", "handlers_get_index_status.go", &servicepb.GetIndexStatusResponse{}},
+	{"GET /v3/{ledgerName}/indexes/{canonicalId}/status", "handlers_get_index_entry_status.go", &commonpb.IndexEntry{}},
+	{"GET /v3/_/indexes/{canonicalId}/status", "handlers_get_bucket_index_entry_status.go", &commonpb.IndexEntry{}},
+	{"GET /v3/_/indexes/status", "handlers_get_index_status.go", &commonpb.GetIndexStatusResponse{}},
 	{"GET /v3/_/signing-keys", "handlers_list_signing_keys.go", &commonpb.SigningKey{}},
-	{"GET /v3/_/events-sinks", "handlers_get_events_sinks.go", &servicepb.GetEventsSinksResponse{}},
+	{"GET /v3/_/events-sinks", "handlers_get_events_sinks.go", &commonpb.GetEventsSinksResponse{}},
 }
 
 func TestProtojsonRoutes_PayloadHasNoCustomMarshalJSON(t *testing.T) {

@@ -10,11 +10,12 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/indexes"
 	domainindexes "github.com/formancehq/ledger/v3/internal/domain/indexes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 // NewCreateCommand creates the ledgers create command.
@@ -129,10 +130,10 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 
 	spinner := cmdutil.StartSpinner(fmt.Sprintf("Creating %s ledger %s...", modeStr, name))
 
-	requests := []*servicepb.Request{
+	requests := []*commonpb.Request{
 		{
-			Type: &servicepb.Request_CreateLedger{
-				CreateLedger: &servicepb.CreateLedgerRequest{
+			Type: &commonpb.Request_CreateLedger{
+				CreateLedger: &commonpb.CreateLedgerRequest{
 					Name:                   name,
 					InitialSchema:          initialSchema,
 					Mode:                   mode,
@@ -146,8 +147,8 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 	// Keep index declarations in the creation proposal so the mirror worker
 	// cannot commit history before its initial query indexes exist (EN-2070).
 	for _, id := range initialIndexes {
-		requests = append(requests, &servicepb.Request{Type: &servicepb.Request_CreateIndex{
-			CreateIndex: &servicepb.CreateIndexRequest{Ledger: name, Id: id},
+		requests = append(requests, &commonpb.Request{Type: &commonpb.Request_CreateIndex{
+			CreateIndex: &commonpb.CreateIndexRequest{Ledger: name, Id: id},
 		}})
 	}
 
@@ -186,7 +187,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		return cmdutil.Displayed(errors.New("unexpected response type"))
 	}
 
-	ledger := createLedgerLog.ToLedgerInfo()
+	ledger := protohelpers.ToLedgerInfo(createLedgerLog)
 
 	spinner.Success("Created")
 

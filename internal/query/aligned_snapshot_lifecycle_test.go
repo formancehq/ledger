@@ -7,11 +7,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -175,7 +175,7 @@ func TestExecute_LogsQueryRejectsLedgerDeletedAfterPin(t *testing.T) {
 
 			resp, err := query.Execute(
 				t.Context(), rs, opener, attrs.Volume, attrs.PreparedQuery, attrs.Index,
-				&servicepb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q", Mode: commonpb.QueryMode_QUERY_MODE_LIST},
+				&commonpb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q", Mode: commonpb.QueryMode_QUERY_MODE_LIST},
 				nil, nil,
 			)
 

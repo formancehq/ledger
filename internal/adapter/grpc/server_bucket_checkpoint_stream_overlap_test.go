@@ -11,12 +11,13 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -35,7 +36,7 @@ func TestListTransactionsServesOverlappingCheckpointStreams(t *testing.T) {
 		// cursor while the request itself returns exactly twelve rows.
 		for id := uint64(1); id <= 13; id++ {
 			key := domain.TransactionKey{LedgerName: ledger, ID: id}
-			_, err := attrs.Transaction.Set(batch, key.Bytes(), &commonpb.TransactionState{CreatedByLog: id})
+			_, err := attrs.Transaction.Set(batch, key.Bytes(), &internalcommonpb.TransactionState{CreatedByLog: id})
 			require.NoError(t, err)
 			require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{
 				Sequence: id,
@@ -52,7 +53,7 @@ func TestListTransactionsServesOverlappingCheckpointStreams(t *testing.T) {
 		require.NoError(t, batch.Commit())
 	})
 	impl.localCtrl = ctrl.NewDefaultController(nil, impl.store, impl.logger, attrs, impl.readStore, nil, noop.NewMeterProvider().Meter("test"))
-	req := &servicepb.ListTransactionsRequest{
+	req := &commonpb.ListTransactionsRequest{
 		Ledger: ledger,
 		Options: &commonpb.ListOptions{
 			PageSize: 12,

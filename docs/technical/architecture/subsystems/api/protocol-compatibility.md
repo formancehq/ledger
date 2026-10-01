@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"15"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"16"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 15:
+leader. For example, with a schema implementing revision 16:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 15' \
+grpcurl -plaintext -H 'ledger-protocol-version: 16' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -215,6 +215,19 @@ protobuf schema is unchanged: revision-14 clients may interpret the structured
 reason and metadata differently. The revision increments from the target
 branch's 14 to 15, and all communicating service clients and servers must be
 rebuilt with the matching revision. HTTP missing-ledger responses remain 404.
+
+## Disk-usage sample validity (revision 16)
+
+Revision 16 includes the `VolumeUsage` sample validity and age fields added by
+the volume auto-expansion work. The health checker now requires `valid` and
+`observed_at_us` from each peer before accepting its disk sample. A server built
+at revision 15 before the auto-expansion change omits those fields, so a new
+peer would interpret its response as invalid even when `used_bytes` and
+`total_bytes` are present.
+This is an incompatible `ClusterService.GetDiskUsage` response semantic change,
+despite the new Protobuf fields being additive. Clients and servers must use
+revision 16 together; the public client descriptor and release manifests carry
+the same revision.
 
 ## Maintaining the revision
 

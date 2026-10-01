@@ -5,10 +5,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 func requireCollectExpectedSkippable(
@@ -34,7 +33,7 @@ func TestVerifySkippedOrder_AllowedReasonEmitsNothing(t *testing.T) {
 
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			reasons:   []auditpb.ErrorReason{auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 			ledger:    "L",
 			reference: "ref-x",
 		},
@@ -43,10 +42,10 @@ func TestVerifySkippedOrder_AllowedReasonEmitsNothing(t *testing.T) {
 		"L": {"ref-x": 3},
 	}
 
-	payload := &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
-			OrderSkipped: &commonpb.OrderSkippedLog{
-				Reason:  commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+	payload := &auditpb.LedgerLogPayload{
+		Payload: &auditpb.LedgerLogPayload_OrderSkipped{
+			OrderSkipped: &auditpb.OrderSkippedLog{
+				Reason:  auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 				Context: map[string]string{"ledger": "L", "reference": "ref-x"},
 			},
 		},
@@ -67,7 +66,7 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsStrippedContext(t *testing.T
 
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			reasons:   []auditpb.ErrorReason{auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 			ledger:    "L",
 			reference: "ref",
 		},
@@ -77,15 +76,15 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsStrippedContext(t *testing.T
 	}
 
 	// Context entirely missing.
-	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
+	payload := skippedPayload(auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
 	events := captureEvents(t, "L", 7, payload, expected, refs)
 	requireInvalidSkipEvent(t, events, 7)
 
 	// Only one field stripped.
-	payload = &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
-			OrderSkipped: &commonpb.OrderSkippedLog{
-				Reason:  commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+	payload = &auditpb.LedgerLogPayload{
+		Payload: &auditpb.LedgerLogPayload_OrderSkipped{
+			OrderSkipped: &auditpb.OrderSkippedLog{
+				Reason:  auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 				Context: map[string]string{"ledger": "L"}, // reference missing
 			},
 		},
@@ -100,10 +99,10 @@ func TestVerifySkippedOrder_RejectsKindInternal(t *testing.T) {
 	t.Parallel()
 
 	expected := map[uint64]*expectedSkippableOrder{
-		7: {reasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_INVALID_EXECUTION_PLAN}},
+		7: {reasons: []auditpb.ErrorReason{auditpb.ErrorReason_ERROR_REASON_INVALID_EXECUTION_PLAN}},
 	}
 
-	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_INVALID_EXECUTION_PLAN)
+	payload := skippedPayload(auditpb.ErrorReason_ERROR_REASON_INVALID_EXECUTION_PLAN)
 	events := captureEvents(t, "L", 7, payload, expected, nil)
 	requireInvalidSkipEvent(t, events, 7)
 }
@@ -113,10 +112,10 @@ func TestVerifySkippedOrder_RejectsUnspecified(t *testing.T) {
 	t.Parallel()
 
 	expected := map[uint64]*expectedSkippableOrder{
-		7: {reasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT}},
+		7: {reasons: []auditpb.ErrorReason{auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT}},
 	}
 
-	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED)
+	payload := skippedPayload(auditpb.ErrorReason_ERROR_REASON_UNSPECIFIED)
 	events := captureEvents(t, "L", 7, payload, expected, nil)
 	requireInvalidSkipEvent(t, events, 7)
 }
@@ -126,10 +125,10 @@ func TestVerifySkippedOrder_RejectsReasonOutsideWhitelist(t *testing.T) {
 	t.Parallel()
 
 	expected := map[uint64]*expectedSkippableOrder{
-		7: {reasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT}},
+		7: {reasons: []auditpb.ErrorReason{auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT}},
 	}
 
-	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS)
+	payload := skippedPayload(auditpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS)
 	events := captureEvents(t, "L", 7, payload, expected, nil)
 	requireInvalidSkipEvent(t, events, 7)
 }
@@ -151,10 +150,10 @@ func TestVerifySkippedOrder_RejectsReasonOutsideWhitelist(t *testing.T) {
 func TestVerifySkippedOrder_RejectsWhitelistedReasonWithoutReplayBranch(t *testing.T) {
 	t.Parallel()
 
-	reason := commonpb.ErrorReason_ERROR_REASON_LEDGER_ALREADY_EXISTS
+	reason := auditpb.ErrorReason_ERROR_REASON_LEDGER_ALREADY_EXISTS
 
 	expected := map[uint64]*expectedSkippableOrder{
-		7: {reasons: []commonpb.ErrorReason{reason}, ledger: "L"},
+		7: {reasons: []auditpb.ErrorReason{reason}, ledger: "L"},
 	}
 
 	payload := skippedPayload(reason)
@@ -166,7 +165,7 @@ func TestVerifySkippedOrder_RejectsWhitelistedReasonWithoutReplayBranch(t *testi
 func TestVerifySkippedOrder_RejectsMissingExpectedEntry(t *testing.T) {
 	t.Parallel()
 
-	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
+	payload := skippedPayload(auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
 	events := captureEvents(t, "L", 7, payload, nil, nil)
 	requireInvalidSkipEvent(t, events, 7)
 }
@@ -175,9 +174,9 @@ func TestVerifySkippedOrder_RejectsMissingExpectedEntry(t *testing.T) {
 func TestVerifySkippedOrder_IgnoresNonSkipPayloads(t *testing.T) {
 	t.Parallel()
 
-	payload := &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-			CreatedTransaction: &commonpb.CreatedTransaction{},
+	payload := &auditpb.LedgerLogPayload{
+		Payload: &auditpb.LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &auditpb.CreatedTransaction{},
 		},
 	}
 	events := captureEvents(t, "L", 7, payload, nil, nil)
@@ -196,7 +195,7 @@ func TestVerifyExpectedSkipNotElided_RejectsTamperedCreatedTransaction(t *testin
 
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			reasons:   []auditpb.ErrorReason{auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 			ledger:    "L",
 			reference: "ref-claimed-earlier",
 		},
@@ -205,9 +204,9 @@ func TestVerifyExpectedSkipNotElided_RejectsTamperedCreatedTransaction(t *testin
 		"L": {"ref-claimed-earlier": 3},
 	}
 
-	payload := &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-			CreatedTransaction: &commonpb.CreatedTransaction{},
+	payload := &auditpb.LedgerLogPayload{
+		Payload: &auditpb.LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &auditpb.CreatedTransaction{},
 		},
 	}
 
@@ -224,7 +223,7 @@ func TestVerifyExpectedSkipNotElided_AcceptsLegitimateCreatedTransaction(t *test
 
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			reasons:   []auditpb.ErrorReason{auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 			ledger:    "L",
 			reference: "ref-first-claim",
 		},
@@ -234,9 +233,9 @@ func TestVerifyExpectedSkipNotElided_AcceptsLegitimateCreatedTransaction(t *test
 		"L": {"ref-first-claim": 7},
 	}
 
-	payload := &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-			CreatedTransaction: &commonpb.CreatedTransaction{},
+	payload := &auditpb.LedgerLogPayload{
+		Payload: &auditpb.LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &auditpb.CreatedTransaction{},
 		},
 	}
 
@@ -250,9 +249,9 @@ func TestVerifyExpectedSkipNotElided_AcceptsLegitimateCreatedTransaction(t *test
 func TestVerifyExpectedSkipNotElided_NoExpectedEntryStaysSilent(t *testing.T) {
 	t.Parallel()
 
-	payload := &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-			CreatedTransaction: &commonpb.CreatedTransaction{},
+	payload := &auditpb.LedgerLogPayload{
+		Payload: &auditpb.LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &auditpb.CreatedTransaction{},
 		},
 	}
 
@@ -271,7 +270,7 @@ func TestVerifyExpectedSkipNotElided_FiresOnChainProvenClaim(t *testing.T) {
 
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			reasons:   []auditpb.ErrorReason{auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 			ledger:    "L",
 			reference: "ref-claimed-earlier",
 		},
@@ -280,9 +279,9 @@ func TestVerifyExpectedSkipNotElided_FiresOnChainProvenClaim(t *testing.T) {
 		"L": {"ref-claimed-earlier": 3},
 	}
 
-	payload := &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-			CreatedTransaction: &commonpb.CreatedTransaction{},
+	payload := &auditpb.LedgerLogPayload{
+		Payload: &auditpb.LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &auditpb.CreatedTransaction{},
 		},
 	}
 
@@ -301,15 +300,15 @@ func TestVerifyExpectedSkipNotElided_PermissiveWhenReferenceUnknown(t *testing.T
 
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			reasons:   []auditpb.ErrorReason{auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 			ledger:    "L",
 			reference: "ref-unclaimed",
 		},
 	}
 
-	payload := &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-			CreatedTransaction: &commonpb.CreatedTransaction{},
+	payload := &auditpb.LedgerLogPayload{
+		Payload: &auditpb.LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &auditpb.CreatedTransaction{},
 		},
 	}
 
@@ -324,10 +323,10 @@ func TestVerifyExpectedSkipNotElided_PermissiveWhenReferenceUnknown(t *testing.T
 func TestVerifyExpectedSkipNotElided_MetadataAbsenceIsDefinitive(t *testing.T) {
 	t.Parallel()
 
-	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	reason := auditpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:        []commonpb.ErrorReason{reason},
+			reasons:        []auditpb.ErrorReason{reason},
 			ledger:         "L",
 			metadataTarget: "alice",
 			metadataKey:    "role",
@@ -338,8 +337,8 @@ func TestVerifyExpectedSkipNotElided_MetadataAbsenceIsDefinitive(t *testing.T) {
 	// range (mutationStateWithWitness → present=false).
 	chainBound := newChainBoundState()
 
-	var strict []*servicepb.CheckStoreEvent
-	verifyExpectedSkipNotElided("L", 7, expected, chainBound, func(e *servicepb.CheckStoreEvent) {
+	var strict []*auditpb.CheckStoreEvent
+	verifyExpectedSkipNotElided("L", 7, expected, chainBound, func(e *auditpb.CheckStoreEvent) {
 		strict = append(strict, e)
 	})
 	requireInvalidSkipEvent(t, strict, 7)
@@ -351,10 +350,10 @@ func TestVerifyExpectedSkipNotElided_MetadataAbsenceIsDefinitive(t *testing.T) {
 func TestVerifyExpectedSkipNotElided_AccountTypeAbsenceIsDefinitive(t *testing.T) {
 	t.Parallel()
 
-	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
+	reason := auditpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:            []commonpb.ErrorReason{reason},
+			reasons:            []auditpb.ErrorReason{reason},
 			ledger:             "L",
 			accountTypeName:    "customer",
 			isAccountTypeOrder: true,
@@ -365,8 +364,8 @@ func TestVerifyExpectedSkipNotElided_AccountTypeAbsenceIsDefinitive(t *testing.T
 	// absent (mustBePresent=false), which the empty timeline satisfies.
 	chainBound := newChainBoundState()
 
-	var strict []*servicepb.CheckStoreEvent
-	verifyExpectedSkipNotElided("L", 7, expected, chainBound, func(e *servicepb.CheckStoreEvent) {
+	var strict []*auditpb.CheckStoreEvent
+	verifyExpectedSkipNotElided("L", 7, expected, chainBound, func(e *auditpb.CheckStoreEvent) {
 		strict = append(strict, e)
 	})
 	requireInvalidSkipEvent(t, strict, 7)
@@ -380,8 +379,8 @@ func TestVerifyExpectedSkipNotElided_AccountTypeAbsenceIsDefinitive(t *testing.T
 func TestVerifySkippedOrder_RejectsNilInnerOrderSkipped(t *testing.T) {
 	t.Parallel()
 
-	payload := &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
+	payload := &auditpb.LedgerLogPayload{
+		Payload: &auditpb.LedgerLogPayload_OrderSkipped{
 			OrderSkipped: nil,
 		},
 	}
@@ -393,7 +392,7 @@ func TestVerifySkippedOrder_RejectsNilInnerOrderSkipped(t *testing.T) {
 
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			reasons:   []auditpb.ErrorReason{auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 			ledger:    "L",
 			reference: "ref-x",
 		},
@@ -415,7 +414,7 @@ func TestDispatchElisionCheck_FiresOnMalformedPayloadShapes(t *testing.T) {
 
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			reasons:   []auditpb.ErrorReason{auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 			ledger:    "L",
 			reference: "ref-claimed-earlier",
 		},
@@ -424,21 +423,21 @@ func TestDispatchElisionCheck_FiresOnMalformedPayloadShapes(t *testing.T) {
 		"L": {"ref-claimed-earlier": 3},
 	}
 
-	dispatchWithLog := func(log *commonpb.Log) []*servicepb.CheckStoreEvent {
-		events := []*servicepb.CheckStoreEvent{}
-		dispatchElisionCheck(7, log, expected, chainBoundStateFromRefs(refs), func(e *servicepb.CheckStoreEvent) {
+	dispatchWithLog := func(log *auditpb.Log) []*auditpb.CheckStoreEvent {
+		events := []*auditpb.CheckStoreEvent{}
+		dispatchElisionCheck(7, log, expected, chainBoundStateFromRefs(refs), func(e *auditpb.CheckStoreEvent) {
 			events = append(events, e)
 		})
 
 		return events
 	}
 
-	tampers := map[string]*commonpb.Log{
+	tampers := map[string]*auditpb.Log{
 		"nil payload":       {Sequence: 7},
-		"non-Apply payload": {Sequence: 7, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_DeleteLedger{DeleteLedger: &commonpb.DeletedLedgerLog{Name: "L"}}}},
-		"nil Apply":         {Sequence: 7, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{}}},
-		"nil Apply.Log":     {Sequence: 7, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{LedgerName: "L"}}}},
-		"nil Log.Data":      {Sequence: 7, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{LedgerName: "L", Log: &commonpb.LedgerLog{}}}}},
+		"non-Apply payload": {Sequence: 7, Payload: &auditpb.LogPayload{Type: &auditpb.LogPayload_DeleteLedger{DeleteLedger: &auditpb.DeletedLedgerLog{Name: "L"}}}},
+		"nil Apply":         {Sequence: 7, Payload: &auditpb.LogPayload{Type: &auditpb.LogPayload_Apply{}}},
+		"nil Apply.Log":     {Sequence: 7, Payload: &auditpb.LogPayload{Type: &auditpb.LogPayload_Apply{Apply: &auditpb.ApplyLedgerLog{LedgerName: "L"}}}},
+		"nil Log.Data":      {Sequence: 7, Payload: &auditpb.LogPayload{Type: &auditpb.LogPayload_Apply{Apply: &auditpb.ApplyLedgerLog{LedgerName: "L", Log: &auditpb.LedgerLog{}}}}},
 	}
 
 	for name, log := range tampers {
@@ -460,7 +459,7 @@ func TestDispatchElisionCheck_SilentOnValidSkip(t *testing.T) {
 
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			reasons:   []auditpb.ErrorReason{auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 			ledger:    "L",
 			reference: "ref-claimed-earlier",
 		},
@@ -469,16 +468,16 @@ func TestDispatchElisionCheck_SilentOnValidSkip(t *testing.T) {
 		"L": {"ref-claimed-earlier": 3},
 	}
 
-	log := &commonpb.Log{
+	log := &auditpb.Log{
 		Sequence: 7,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_Apply{
-				Apply: &commonpb.ApplyLedgerLog{
+		Payload: &auditpb.LogPayload{
+			Type: &auditpb.LogPayload_Apply{
+				Apply: &auditpb.ApplyLedgerLog{
 					LedgerName: "L",
-					Log: &commonpb.LedgerLog{
-						Data: &commonpb.LedgerLogPayload{
-							Payload: &commonpb.LedgerLogPayload_OrderSkipped{
-								OrderSkipped: &commonpb.OrderSkippedLog{Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+					Log: &auditpb.LedgerLog{
+						Data: &auditpb.LedgerLogPayload{
+							Payload: &auditpb.LedgerLogPayload_OrderSkipped{
+								OrderSkipped: &auditpb.OrderSkippedLog{Reason: auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 							},
 						},
 					},
@@ -487,8 +486,8 @@ func TestDispatchElisionCheck_SilentOnValidSkip(t *testing.T) {
 		},
 	}
 
-	events := []*servicepb.CheckStoreEvent{}
-	dispatchElisionCheck(7, log, expected, chainBoundStateFromRefs(refs), func(e *servicepb.CheckStoreEvent) {
+	events := []*auditpb.CheckStoreEvent{}
+	dispatchElisionCheck(7, log, expected, chainBoundStateFromRefs(refs), func(e *auditpb.CheckStoreEvent) {
 		events = append(events, e)
 	})
 
@@ -505,13 +504,13 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsUnclaimedReference(t *testin
 
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			reasons:   []auditpb.ErrorReason{auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 			ledger:    "L",
 			reference: "ref-not-claimed",
 		},
 	}
 
-	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
+	payload := skippedPayload(auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
 	events := captureEvents(t, "L", 7, payload, expected, nil)
 	requireInvalidSkipEvent(t, events, 7)
 }
@@ -524,7 +523,7 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsLaterClaim(t *testing.T) {
 
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			reasons:   []auditpb.ErrorReason{auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 			ledger:    "L",
 			reference: "ref-late",
 		},
@@ -533,7 +532,7 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsLaterClaim(t *testing.T) {
 		"L": {"ref-late": 7}, // first claimed at same seq → not "before"
 	}
 
-	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
+	payload := skippedPayload(auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
 	events := captureEvents(t, "L", 7, payload, expected, refs)
 	requireInvalidSkipEvent(t, events, 7)
 }
@@ -546,12 +545,12 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsEmptyReference(t *testing.T)
 
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			reasons: []auditpb.ErrorReason{auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 			ledger:  "L",
 		},
 	}
 
-	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
+	payload := skippedPayload(auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
 	events := captureEvents(t, "L", 7, payload, expected, nil)
 	requireInvalidSkipEvent(t, events, 7)
 }
@@ -564,7 +563,7 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsLedgerMismatch(t *testing.T)
 
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			reasons:   []auditpb.ErrorReason{auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 			ledger:    "L-audit",
 			reference: "ref-mix",
 		},
@@ -573,7 +572,7 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsLedgerMismatch(t *testing.T)
 		"L-projection": {"ref-mix": 3},
 	}
 
-	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
+	payload := skippedPayload(auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
 	events := captureEvents(t, "L-projection", 7, payload, expected, refs)
 	requireInvalidSkipEvent(t, events, 7)
 }
@@ -588,7 +587,7 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsTamperedContextReference(t *
 
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			reasons:   []auditpb.ErrorReason{auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 			ledger:    "L",
 			reference: "ref-chain",
 		},
@@ -597,10 +596,10 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsTamperedContextReference(t *
 		"L": {"ref-chain": 3},
 	}
 
-	payload := &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
-			OrderSkipped: &commonpb.OrderSkippedLog{
-				Reason:  commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+	payload := &auditpb.LedgerLogPayload{
+		Payload: &auditpb.LedgerLogPayload_OrderSkipped{
+			OrderSkipped: &auditpb.OrderSkippedLog{
+				Reason:  auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 				Context: map[string]string{"reference": "ref-tampered"},
 			},
 		},
@@ -617,7 +616,7 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsTamperedContextLedger(t *tes
 
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			reasons:   []auditpb.ErrorReason{auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 			ledger:    "L",
 			reference: "ref",
 		},
@@ -626,10 +625,10 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsTamperedContextLedger(t *tes
 		"L": {"ref": 3},
 	}
 
-	payload := &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
-			OrderSkipped: &commonpb.OrderSkippedLog{
-				Reason:  commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+	payload := &auditpb.LedgerLogPayload{
+		Payload: &auditpb.LedgerLogPayload_OrderSkipped{
+			OrderSkipped: &auditpb.OrderSkippedLog{
+				Reason:  auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 				Context: map[string]string{"ledger": "L-tampered"},
 			},
 		},
@@ -648,7 +647,7 @@ func TestVerifySkippedOrder_ReferenceConflictAcceptsMatchingContext(t *testing.T
 
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			reasons:   []auditpb.ErrorReason{auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 			ledger:    "L",
 			reference: "ref",
 		},
@@ -660,10 +659,10 @@ func TestVerifySkippedOrder_ReferenceConflictAcceptsMatchingContext(t *testing.T
 		map[string]map[string]uint64{"L": {"ref": 42}},
 	)
 
-	payload := &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
-			OrderSkipped: &commonpb.OrderSkippedLog{
-				Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+	payload := &auditpb.LedgerLogPayload{
+		Payload: &auditpb.LedgerLogPayload_OrderSkipped{
+			OrderSkipped: &auditpb.OrderSkippedLog{
+				Reason: auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 				Context: map[string]string{
 					"ledger":                "L",
 					"reference":             "ref",
@@ -689,7 +688,7 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsTamperedExistingTxID(t *test
 
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			reasons:   []auditpb.ErrorReason{auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 			ledger:    "L",
 			reference: "ref",
 		},
@@ -699,10 +698,10 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsTamperedExistingTxID(t *test
 		map[string]map[string]uint64{"L": {"ref": 42}},
 	)
 
-	payload := &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
-			OrderSkipped: &commonpb.OrderSkippedLog{
-				Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+	payload := &auditpb.LedgerLogPayload{
+		Payload: &auditpb.LedgerLogPayload_OrderSkipped{
+			OrderSkipped: &auditpb.OrderSkippedLog{
+				Reason: auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 				Context: map[string]string{
 					"ledger":                "L",
 					"reference":             "ref",
@@ -727,7 +726,7 @@ func TestVerifySkippedOrder_ReferenceConflictPermissiveWhenOwnerUnknown(t *testi
 
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			reasons:   []auditpb.ErrorReason{auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 			ledger:    "L",
 			reference: "ref",
 		},
@@ -739,10 +738,10 @@ func TestVerifySkippedOrder_ReferenceConflictPermissiveWhenOwnerUnknown(t *testi
 		nil,
 	)
 
-	payload := &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
-			OrderSkipped: &commonpb.OrderSkippedLog{
-				Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+	payload := &auditpb.LedgerLogPayload{
+		Payload: &auditpb.LedgerLogPayload_OrderSkipped{
+			OrderSkipped: &auditpb.OrderSkippedLog{
+				Reason: auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 				Context: map[string]string{
 					"ledger":                "L",
 					"reference":             "ref",
@@ -768,7 +767,7 @@ func TestVerifySkippedOrder_ReferenceConflictPermissiveWhenOwnerUnknown(t *testi
 func TestVerifySkippedOrder_HandlesNilExpectedMaps(t *testing.T) {
 	t.Parallel()
 
-	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
+	payload := skippedPayload(auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
 
 	require.NotPanics(t, func() {
 		captureEvents(t, "L", 7, payload, nil, nil)
@@ -784,7 +783,7 @@ func TestVerifySkippedOrder_HandlesNilExpectedMaps(t *testing.T) {
 func TestCollectExpectedSkippable_RecordsReferencesFromChain(t *testing.T) {
 	t.Parallel()
 
-	order := func(ref string, skipReasons ...commonpb.ErrorReason) *raftcmdpb.Order {
+	order := func(ref string, skipReasons ...auditpb.ErrorReason) *raftcmdpb.Order {
 		return &raftcmdpb.Order{
 			Type: &raftcmdpb.Order_LedgerScoped{
 				LedgerScoped: &raftcmdpb.LedgerScopedOrder{
@@ -811,10 +810,10 @@ func TestCollectExpectedSkippable_RecordsReferencesFromChain(t *testing.T) {
 
 	items := []*auditpb.AuditItem{
 		item(order("ref-A"), 100), // strict CreateTransaction at log 100
-		item(order("ref-B", commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT), 101), // skip-tolerant at log 101
+		item(order("ref-B", auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT), 101), // skip-tolerant at log 101
 		item(order("ref-A"), 102), // duplicate ref-A at log 102 → must NOT shift the first claim
-		item(order("", commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT), 103),    // empty reference → not tracked
-		item(order("ref-C", commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT), 0), // failure-side (LogSequence=0) → ignored
+		item(order("", auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT), 103),    // empty reference → not tracked
+		item(order("ref-C", auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT), 0), // failure-side (LogSequence=0) → ignored
 	}
 
 	expectedSkip := make(map[uint64]*expectedSkippableOrder)
@@ -961,14 +960,14 @@ func TestCollectExpectedSkippable_TracksMirrorIngestedReferences(t *testing.T) {
 func TestCollectExpectedSkippable_RemoveAccountTypeEmptyNameFlagsKind(t *testing.T) {
 	t.Parallel()
 
-	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
+	reason := auditpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "L",
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{
-						SkippableReasons: []commonpb.ErrorReason{reason},
+						SkippableReasons: []auditpb.ErrorReason{reason},
 						Data: &raftcmdpb.LedgerApplyOrder_RemoveAccountType{
 							RemoveAccountType: &raftcmdpb.RemoveAccountTypeOrder{Name: ""},
 						},
@@ -1020,12 +1019,12 @@ func buildCreateTxWithRefAndAccountMetaItem(t *testing.T, ledger, reference, acc
 						// skip-uncertain suppression only applies to conflict-
 						// skippable creates (a non-skippable create hard-fails on a
 						// prior claim, never reaching a success item).
-						SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+						SkippableReasons: []auditpb.ErrorReason{auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
 								Reference: reference,
-								AccountMetadata: map[string]*commonpb.MetadataMap{
-									account: {Values: map[string]*commonpb.MetadataValue{key: commonpb.NewStringValue("v")}},
+								AccountMetadata: map[string]*auditpb.MetadataMap{
+									account: {Values: map[string]*auditpb.MetadataValue{key: auditpb.NewStringValue("v")}},
 								},
 							},
 						},
@@ -1069,10 +1068,10 @@ func TestRecordChainBoundMutations_UncertainConflictDoesNotSeedAccountMetadata(t
 
 	// A forged METADATA_NOT_FOUND skip at a later seq therefore stays
 	// permissive (the key is not asserted present).
-	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	reason := auditpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
 		60: {
-			reasons:        []commonpb.ErrorReason{reason},
+			reasons:        []auditpb.ErrorReason{reason},
 			ledger:         "L",
 			metadataTarget: "alice",
 			metadataKey:    "role",
@@ -1114,10 +1113,10 @@ func TestRecordChainBoundMutations_AnchoredCreateSeedsAccountMetadata(t *testing
 	require.NotEmpty(t, chainBound.metadata["L"][metadataTimelineTarget(false, "alice")]["role"],
 		"anchored create with an unclaimed reference provably applied → account metadata seeded")
 
-	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	reason := auditpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
 		60: {
-			reasons:        []commonpb.ErrorReason{reason},
+			reasons:        []auditpb.ErrorReason{reason},
 			ledger:         "L",
 			metadataTarget: "alice",
 			metadataKey:    "role",
@@ -1171,11 +1170,11 @@ func TestVerifySkippedOrder_MirrorCreatedTxMetadataSeedsTimeline(t *testing.T) {
 	mct := &raftcmdpb.MirrorCreatedTransaction{
 		TransactionId: 7,
 		Reference:     "mirror-ref",
-		Metadata: map[string]*commonpb.MetadataValue{
-			"txkey": commonpb.NewStringValue("v"),
+		Metadata: map[string]*auditpb.MetadataValue{
+			"txkey": auditpb.NewStringValue("v"),
 		},
-		AccountMetadata: map[string]*commonpb.MetadataMap{
-			"alice": {Values: map[string]*commonpb.MetadataValue{"acckey": commonpb.NewStringValue("v")}},
+		AccountMetadata: map[string]*auditpb.MetadataMap{
+			"alice": {Values: map[string]*auditpb.MetadataValue{"acckey": auditpb.NewStringValue("v")}},
 		},
 	}
 
@@ -1202,10 +1201,10 @@ func TestVerifySkippedOrder_MirrorCreatedTxMetadataSeedsTimeline(t *testing.T) {
 			expectedSkip := make(map[uint64]*expectedSkippableOrder)
 			requireCollectExpectedSkippable(t, items, 1, ^uint64(0), expectedSkip, chainBound)
 
-			reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+			reason := auditpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
 			expected := map[uint64]*expectedSkippableOrder{
 				60: {
-					reasons:            []commonpb.ErrorReason{reason},
+					reasons:            []auditpb.ErrorReason{reason},
 					ledger:             "L",
 					metadataTarget:     tc.target,
 					metadataKey:        tc.key,
@@ -1233,8 +1232,8 @@ func TestVerifySkippedOrder_MirrorCreatedTxUnrelatedKeyStillSkippable(t *testing
 	mct := &raftcmdpb.MirrorCreatedTransaction{
 		TransactionId: 7,
 		Reference:     "mirror-ref",
-		AccountMetadata: map[string]*commonpb.MetadataMap{
-			"alice": {Values: map[string]*commonpb.MetadataValue{"acckey": commonpb.NewStringValue("v")}},
+		AccountMetadata: map[string]*auditpb.MetadataMap{
+			"alice": {Values: map[string]*auditpb.MetadataValue{"acckey": auditpb.NewStringValue("v")}},
 		},
 	}
 
@@ -1244,12 +1243,12 @@ func TestVerifySkippedOrder_MirrorCreatedTxUnrelatedKeyStillSkippable(t *testing
 	expectedSkip := make(map[uint64]*expectedSkippableOrder)
 	requireCollectExpectedSkippable(t, items, 1, ^uint64(0), expectedSkip, chainBound)
 
-	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	reason := auditpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
 	// Different key ("other") on the same account — never applied by the
 	// mirror ingest, so the delete legitimately skips NOT_FOUND.
 	expected := map[uint64]*expectedSkippableOrder{
 		60: {
-			reasons:        []commonpb.ErrorReason{reason},
+			reasons:        []auditpb.ErrorReason{reason},
 			ledger:         "L",
 			metadataTarget: "alice",
 			metadataKey:    "other",
@@ -1283,7 +1282,7 @@ func TestCollectExpectedSkippable_HonoursItemLogSequence(t *testing.T) {
 							Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{Reference: "r"},
 							},
-							SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+							SkippableReasons: []auditpb.ErrorReason{auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 						},
 					},
 				},
@@ -1345,8 +1344,8 @@ func buildCreateTxWithTxMetadataItem(t *testing.T, ledger, reference, key string
 						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
 								Reference: reference,
-								Metadata: map[string]*commonpb.MetadataValue{
-									key: commonpb.NewStringValue("v"),
+								Metadata: map[string]*auditpb.MetadataValue{
+									key: auditpb.NewStringValue("v"),
 								},
 							},
 						},
@@ -1389,10 +1388,10 @@ func TestRecordChainBoundMutations_LiveCreateTxSeedsTxMetadataNamespace(t *testi
 	// A forged METADATA_NOT_FOUND skip on the tx-scoped key must now be
 	// flagged: the transaction really wrote it, so the delete could not have
 	// legitimately skipped NOT_FOUND.
-	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	reason := auditpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
 		60: {
-			reasons:            []commonpb.ErrorReason{reason},
+			reasons:            []auditpb.ErrorReason{reason},
 			ledger:             "L",
 			metadataTarget:     "1",
 			metadataKey:        "txkey",
@@ -1450,10 +1449,10 @@ func TestCollectExpectedSkippable_DedupesFoldOfLegacyDupKeyReplay(t *testing.T) 
 	require.NotEmpty(t, chainBound.metadata["L"][metadataTimelineTarget(true, "1")]["txkey"],
 		"the real tx:1 metadata timeline must remain seeded exactly once")
 
-	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	reason := auditpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
 		60: {
-			reasons:            []commonpb.ErrorReason{reason},
+			reasons:            []auditpb.ErrorReason{reason},
 			ledger:             "L",
 			metadataTarget:     "1",
 			metadataKey:        "txkey",
@@ -1465,10 +1464,10 @@ func TestCollectExpectedSkippable_DedupesFoldOfLegacyDupKeyReplay(t *testing.T) 
 	requireInvalidSkipEvent(t, events, 60)
 }
 
-func skippedPayload(reason commonpb.ErrorReason) *commonpb.LedgerLogPayload {
-	return &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
-			OrderSkipped: &commonpb.OrderSkippedLog{Reason: reason},
+func skippedPayload(reason auditpb.ErrorReason) *auditpb.LedgerLogPayload {
+	return &auditpb.LedgerLogPayload{
+		Payload: &auditpb.LedgerLogPayload_OrderSkipped{
+			OrderSkipped: &auditpb.OrderSkippedLog{Reason: reason},
 		},
 	}
 }
@@ -1477,10 +1476,10 @@ func captureEvents(
 	t *testing.T,
 	ledger string,
 	seq uint64,
-	payload *commonpb.LedgerLogPayload,
+	payload *auditpb.LedgerLogPayload,
 	expected map[uint64]*expectedSkippableOrder,
 	refs map[string]map[string]uint64,
-) []*servicepb.CheckStoreEvent {
+) []*auditpb.CheckStoreEvent {
 	t.Helper()
 
 	return captureEventsState(t, ledger, seq, payload, expected, chainBoundStateFromRefs(refs))
@@ -1494,15 +1493,15 @@ func captureEventsState(
 	t *testing.T,
 	ledger string,
 	seq uint64,
-	payload *commonpb.LedgerLogPayload,
+	payload *auditpb.LedgerLogPayload,
 	expected map[uint64]*expectedSkippableOrder,
 	chainBound *chainBoundState,
-) []*servicepb.CheckStoreEvent {
+) []*auditpb.CheckStoreEvent {
 	t.Helper()
 
-	events := []*servicepb.CheckStoreEvent{}
+	events := []*auditpb.CheckStoreEvent{}
 
-	verifySkippedOrder(ledger, seq, payload, expected, chainBound, func(e *servicepb.CheckStoreEvent) {
+	verifySkippedOrder(ledger, seq, payload, expected, chainBound, func(e *auditpb.CheckStoreEvent) {
 		events = append(events, e)
 	})
 
@@ -1542,25 +1541,25 @@ func chainBoundStateFromRefsAndTxIDs(
 // captureDispatchEvents wraps dispatchElisionCheck with a canonical Apply-
 // shaped Log so tests can exercise the outer-scope elision guard against a
 // LedgerLogPayload (the same input verifySkippedOrder receives). Tests that
-// need to model non-Apply / malformed log shapes construct the *commonpb.Log
+// need to model non-Apply / malformed log shapes construct the *auditpb.Log
 // directly and call dispatchElisionCheck.
 func captureDispatchEvents(
 	t *testing.T,
 	ledger string,
 	seq uint64,
-	payload *commonpb.LedgerLogPayload,
+	payload *auditpb.LedgerLogPayload,
 	expected map[uint64]*expectedSkippableOrder,
 	refs map[string]map[string]uint64,
-) []*servicepb.CheckStoreEvent {
+) []*auditpb.CheckStoreEvent {
 	t.Helper()
 
-	log := &commonpb.Log{
+	log := &auditpb.Log{
 		Sequence: seq,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_Apply{
-				Apply: &commonpb.ApplyLedgerLog{
+		Payload: &auditpb.LogPayload{
+			Type: &auditpb.LogPayload_Apply{
+				Apply: &auditpb.ApplyLedgerLog{
 					LedgerName: ledger,
-					Log: &commonpb.LedgerLog{
+					Log: &auditpb.LedgerLog{
 						Data: payload,
 					},
 				},
@@ -1568,22 +1567,22 @@ func captureDispatchEvents(
 		},
 	}
 
-	events := []*servicepb.CheckStoreEvent{}
+	events := []*auditpb.CheckStoreEvent{}
 
-	dispatchElisionCheck(seq, log, expected, chainBoundStateFromRefs(refs), func(e *servicepb.CheckStoreEvent) {
+	dispatchElisionCheck(seq, log, expected, chainBoundStateFromRefs(refs), func(e *auditpb.CheckStoreEvent) {
 		events = append(events, e)
 	})
 
 	return events
 }
 
-func requireInvalidSkipEvent(t *testing.T, events []*servicepb.CheckStoreEvent, seq uint64) {
+func requireInvalidSkipEvent(t *testing.T, events []*auditpb.CheckStoreEvent, seq uint64) {
 	t.Helper()
 	require.Len(t, events, 1)
 
 	got := events[0].GetError()
 	require.NotNil(t, got, "expected a CheckStoreError event")
-	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP, got.GetErrorType())
+	require.Equal(t, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP, got.GetErrorType())
 	require.Equal(t, seq, got.GetLogSequence())
 }
 
@@ -1591,10 +1590,10 @@ func requireInvalidSkipEvent(t *testing.T, events []*servicepb.CheckStoreEvent, 
 // reason and a fully-populated context map — used by the new-reason
 // verifier tests to exercise both the accept and tamper paths without
 // duplicating the payload constructor per case.
-func skippedPayloadWithContext(reason commonpb.ErrorReason, ctx map[string]string) *commonpb.LedgerLogPayload {
-	return &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
-			OrderSkipped: &commonpb.OrderSkippedLog{
+func skippedPayloadWithContext(reason auditpb.ErrorReason, ctx map[string]string) *auditpb.LedgerLogPayload {
+	return &auditpb.LedgerLogPayload{
+		Payload: &auditpb.LedgerLogPayload_OrderSkipped{
+			OrderSkipped: &auditpb.OrderSkippedLog{
 				Reason:  reason,
 				Context: ctx,
 			},
@@ -1610,10 +1609,10 @@ func skippedPayloadWithContext(reason commonpb.ErrorReason, ctx map[string]strin
 func TestVerifySkippedOrder_RevertAlreadyRevertedAcceptsMatchingContext(t *testing.T) {
 	t.Parallel()
 
-	reason := commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED
+	reason := auditpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:       []commonpb.ErrorReason{reason},
+			reasons:       []auditpb.ErrorReason{reason},
 			ledger:        "L",
 			transactionID: 42,
 		},
@@ -1634,10 +1633,10 @@ func TestVerifySkippedOrder_RevertAlreadyRevertedAcceptsMatchingContext(t *testi
 func TestVerifySkippedOrder_RevertAlreadyRevertedRejectsWithoutEarlierRevert(t *testing.T) {
 	t.Parallel()
 
-	reason := commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED
+	reason := auditpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:       []commonpb.ErrorReason{reason},
+			reasons:       []auditpb.ErrorReason{reason},
 			ledger:        "L",
 			transactionID: 42,
 		},
@@ -1655,9 +1654,9 @@ func TestVerifySkippedOrder_RevertAlreadyRevertedRejectsWithoutEarlierRevert(t *
 func TestVerifySkippedOrder_RevertAlreadyRevertedRejectsMissingCorrelator(t *testing.T) {
 	t.Parallel()
 
-	reason := commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED
+	reason := auditpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED
 	expected := map[uint64]*expectedSkippableOrder{
-		7: {reasons: []commonpb.ErrorReason{reason}, ledger: "L"},
+		7: {reasons: []auditpb.ErrorReason{reason}, ledger: "L"},
 	}
 
 	payload := skippedPayloadWithContext(reason, map[string]string{"transactionId": "42"})
@@ -1671,10 +1670,10 @@ func TestVerifySkippedOrder_RevertAlreadyRevertedRejectsMissingCorrelator(t *tes
 func TestVerifySkippedOrder_RevertAlreadyRevertedRejectsTamperedTxID(t *testing.T) {
 	t.Parallel()
 
-	reason := commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED
+	reason := auditpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:       []commonpb.ErrorReason{reason},
+			reasons:       []auditpb.ErrorReason{reason},
 			ledger:        "L",
 			transactionID: 42,
 		},
@@ -1693,10 +1692,10 @@ func TestVerifySkippedOrder_RevertAlreadyRevertedRejectsTamperedTxID(t *testing.
 func TestVerifySkippedOrder_MetadataNotFoundAcceptsMatchingContext(t *testing.T) {
 	t.Parallel()
 
-	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	reason := auditpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:        []commonpb.ErrorReason{reason},
+			reasons:        []auditpb.ErrorReason{reason},
 			ledger:         "L",
 			metadataTarget: "alice",
 			metadataKey:    "role",
@@ -1720,10 +1719,10 @@ func TestVerifySkippedOrder_MetadataNotFoundAcceptsMatchingContext(t *testing.T)
 func TestVerifySkippedOrder_MetadataNotFoundRejectsWhenKeyWasPresent(t *testing.T) {
 	t.Parallel()
 
-	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	reason := auditpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:        []commonpb.ErrorReason{reason},
+			reasons:        []auditpb.ErrorReason{reason},
 			ledger:         "L",
 			metadataTarget: "alice",
 			metadataKey:    "role",
@@ -1750,10 +1749,10 @@ func TestVerifySkippedOrder_MetadataNotFoundRejectsWhenKeyWasPresent(t *testing.
 func TestVerifySkippedOrder_MetadataNotFoundRejectsTamperedKey(t *testing.T) {
 	t.Parallel()
 
-	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	reason := auditpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:        []commonpb.ErrorReason{reason},
+			reasons:        []auditpb.ErrorReason{reason},
 			ledger:         "L",
 			metadataTarget: "alice",
 			metadataKey:    "role",
@@ -1774,10 +1773,10 @@ func TestVerifySkippedOrder_MetadataNotFoundRejectsTamperedKey(t *testing.T) {
 func TestVerifySkippedOrder_MetadataNotFoundRejectsTamperedTarget(t *testing.T) {
 	t.Parallel()
 
-	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	reason := auditpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:        []commonpb.ErrorReason{reason},
+			reasons:        []auditpb.ErrorReason{reason},
 			ledger:         "L",
 			metadataTarget: "alice",
 			metadataKey:    "role",
@@ -1798,9 +1797,9 @@ func TestVerifySkippedOrder_MetadataNotFoundRejectsTamperedTarget(t *testing.T) 
 func TestVerifySkippedOrder_MetadataNotFoundRejectsMissingCorrelator(t *testing.T) {
 	t.Parallel()
 
-	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	reason := auditpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
-		7: {reasons: []commonpb.ErrorReason{reason}, ledger: "L"},
+		7: {reasons: []auditpb.ErrorReason{reason}, ledger: "L"},
 	}
 
 	payload := skippedPayloadWithContext(reason, map[string]string{"target": "alice", "key": "role"})
@@ -1814,10 +1813,10 @@ func TestVerifySkippedOrder_MetadataNotFoundRejectsMissingCorrelator(t *testing.
 func TestVerifySkippedOrder_AccountTypeAlreadyExistsAcceptsMatchingContext(t *testing.T) {
 	t.Parallel()
 
-	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
+	reason := auditpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:            []commonpb.ErrorReason{reason},
+			reasons:            []auditpb.ErrorReason{reason},
 			ledger:             "L",
 			accountTypeName:    "customer",
 			isAccountTypeOrder: true,
@@ -1840,10 +1839,10 @@ func TestVerifySkippedOrder_AccountTypeAlreadyExistsAcceptsMatchingContext(t *te
 func TestVerifySkippedOrder_AccountTypeAlreadyExistsRejectsWhenAbsent(t *testing.T) {
 	t.Parallel()
 
-	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
+	reason := auditpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:            []commonpb.ErrorReason{reason},
+			reasons:            []auditpb.ErrorReason{reason},
 			ledger:             "L",
 			accountTypeName:    "customer",
 			isAccountTypeOrder: true,
@@ -1860,10 +1859,10 @@ func TestVerifySkippedOrder_AccountTypeAlreadyExistsRejectsWhenAbsent(t *testing
 func TestVerifySkippedOrder_AccountTypeAlreadyExistsRejectsTamperedName(t *testing.T) {
 	t.Parallel()
 
-	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
+	reason := auditpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:            []commonpb.ErrorReason{reason},
+			reasons:            []auditpb.ErrorReason{reason},
 			ledger:             "L",
 			accountTypeName:    "customer",
 			isAccountTypeOrder: true,
@@ -1882,10 +1881,10 @@ func TestVerifySkippedOrder_AccountTypeAlreadyExistsRejectsTamperedName(t *testi
 func TestVerifySkippedOrder_AccountTypeNotFoundAcceptsMatchingContext(t *testing.T) {
 	t.Parallel()
 
-	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
+	reason := auditpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:            []commonpb.ErrorReason{reason},
+			reasons:            []auditpb.ErrorReason{reason},
 			ledger:             "L",
 			accountTypeName:    "customer",
 			isAccountTypeOrder: true,
@@ -1905,10 +1904,10 @@ func TestVerifySkippedOrder_AccountTypeNotFoundAcceptsMatchingContext(t *testing
 func TestVerifySkippedOrder_AccountTypeNotFoundRejectsWhenPresent(t *testing.T) {
 	t.Parallel()
 
-	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
+	reason := auditpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:            []commonpb.ErrorReason{reason},
+			reasons:            []auditpb.ErrorReason{reason},
 			ledger:             "L",
 			accountTypeName:    "customer",
 			isAccountTypeOrder: true,
@@ -1930,9 +1929,9 @@ func TestVerifySkippedOrder_AccountTypeNotFoundRejectsWhenPresent(t *testing.T) 
 func TestVerifySkippedOrder_AccountTypeNotFoundRejectsMissingCorrelator(t *testing.T) {
 	t.Parallel()
 
-	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
+	reason := auditpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
-		7: {reasons: []commonpb.ErrorReason{reason}, ledger: "L"},
+		7: {reasons: []auditpb.ErrorReason{reason}, ledger: "L"},
 	}
 
 	payload := skippedPayloadWithContext(reason, map[string]string{"name": "customer"})
@@ -1979,7 +1978,7 @@ func TestCollectExpectedSkippable_TracksTransactionScopedMetadata(t *testing.T) 
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 						CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-							Metadata: map[string]*commonpb.MetadataValue{"foo": commonpb.NewStringValue("bar")},
+							Metadata: map[string]*auditpb.MetadataValue{"foo": auditpb.NewStringValue("bar")},
 						},
 					}},
 				},
@@ -2004,13 +2003,13 @@ func TestCollectExpectedSkippable_TracksTransactionScopedMetadata(t *testing.T) 
 							Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
 									Reference: "ref-A",
-									Metadata:  map[string]*commonpb.MetadataValue{"skipped": commonpb.NewStringValue("y")},
-									AccountMetadata: map[string]*commonpb.MetadataMap{
-										"alice": {Values: map[string]*commonpb.MetadataValue{"skipped-acct": commonpb.NewStringValue("z")}},
+									Metadata:  map[string]*auditpb.MetadataValue{"skipped": auditpb.NewStringValue("y")},
+									AccountMetadata: map[string]*auditpb.MetadataMap{
+										"alice": {Values: map[string]*auditpb.MetadataValue{"skipped-acct": auditpb.NewStringValue("z")}},
 									},
 								},
 							},
-							SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+							SkippableReasons: []auditpb.ErrorReason{auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 						},
 					},
 				},
@@ -2023,7 +2022,7 @@ func TestCollectExpectedSkippable_TracksTransactionScopedMetadata(t *testing.T) 
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
 						RevertTransaction: &raftcmdpb.RevertTransactionOrder{
 							TransactionId: 1,
-							Metadata:      map[string]*commonpb.MetadataValue{"note": commonpb.NewStringValue("reverted")},
+							Metadata:      map[string]*auditpb.MetadataValue{"note": auditpb.NewStringValue("reverted")},
 						},
 					}},
 				},
@@ -2093,16 +2092,16 @@ func TestVerifySkippedOrder_LedgerMismatchAcrossReasons(t *testing.T) {
 	// across the switch — before the fix, only CONFLICT would fire.
 	cases := []struct {
 		name       string
-		reason     commonpb.ErrorReason
+		reason     auditpb.ErrorReason
 		expected   *expectedSkippableOrder
 		context    map[string]string
 		buildBound func(*chainBoundState)
 	}{
 		{
 			name:   "revert_already_reverted",
-			reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED,
+			reason: auditpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED,
 			expected: &expectedSkippableOrder{
-				reasons:       []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED},
+				reasons:       []auditpb.ErrorReason{auditpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED},
 				ledger:        "audit-L",
 				transactionID: 42,
 			},
@@ -2113,9 +2112,9 @@ func TestVerifySkippedOrder_LedgerMismatchAcrossReasons(t *testing.T) {
 		},
 		{
 			name:   "metadata_not_found",
-			reason: commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND,
+			reason: auditpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND,
 			expected: &expectedSkippableOrder{
-				reasons:        []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND},
+				reasons:        []auditpb.ErrorReason{auditpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND},
 				ledger:         "audit-L",
 				metadataTarget: "alice",
 				metadataKey:    "role",
@@ -2124,9 +2123,9 @@ func TestVerifySkippedOrder_LedgerMismatchAcrossReasons(t *testing.T) {
 		},
 		{
 			name:   "account_type_already_exists",
-			reason: commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS,
+			reason: auditpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS,
 			expected: &expectedSkippableOrder{
-				reasons:            []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS},
+				reasons:            []auditpb.ErrorReason{auditpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS},
 				ledger:             "audit-L",
 				accountTypeName:    "customer",
 				isAccountTypeOrder: true,
@@ -2167,10 +2166,10 @@ func TestVerifySkippedOrder_LedgerMismatchAcrossReasons(t *testing.T) {
 func TestVerifySkippedOrder_AccountTypeAlreadyExistsRejectsWhenLiveRemoved(t *testing.T) {
 	t.Parallel()
 
-	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
+	reason := auditpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:            []commonpb.ErrorReason{reason},
+			reasons:            []auditpb.ErrorReason{reason},
 			ledger:             "L",
 			accountTypeName:    "customer",
 			isAccountTypeOrder: true,
@@ -2233,9 +2232,9 @@ func TestCollectExpectedSkippable_LegacyReplayReferenceFoldedOnce(t *testing.T) 
 
 	// A forged METADATA_NOT_FOUND on (alice, role) — the real key the create
 	// set — is rejected: the single seeded presence witness fires INVALID_SKIP.
-	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	reason := auditpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
-		20: {reasons: []commonpb.ErrorReason{reason}, ledger: "L", metadataTarget: "alice", metadataKey: "role"},
+		20: {reasons: []auditpb.ErrorReason{reason}, ledger: "L", metadataTarget: "alice", metadataKey: "role"},
 	}
 	payload := skippedPayloadWithContext(reason, map[string]string{"target": "alice", "key": "role"})
 	events := captureEventsState(t, "L", 20, payload, expected, chainBound)
@@ -2260,8 +2259,8 @@ func buildCreateTxNonSkippableWithAccountMeta(t *testing.T, ledger, reference, a
 						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
 								Reference: reference,
-								AccountMetadata: map[string]*commonpb.MetadataMap{
-									account: {Values: map[string]*commonpb.MetadataValue{key: commonpb.NewStringValue("v")}},
+								AccountMetadata: map[string]*auditpb.MetadataMap{
+									account: {Values: map[string]*auditpb.MetadataValue{key: auditpb.NewStringValue("v")}},
 								},
 							},
 						},
@@ -2304,9 +2303,9 @@ func TestRecordChainBoundMutations_NonConflictSkippableCreateSeedsUnconditionall
 		"a non-conflict-skippable create present in a success item provably applied → seed its account metadata")
 
 	// A forged METADATA_NOT_FOUND on (alice, role) is therefore rejected.
-	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	reason := auditpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
-		60: {reasons: []commonpb.ErrorReason{reason}, ledger: "L", metadataTarget: "alice", metadataKey: "role"},
+		60: {reasons: []auditpb.ErrorReason{reason}, ledger: "L", metadataTarget: "alice", metadataKey: "role"},
 	}
 	payload := skippedPayloadWithContext(reason, map[string]string{"target": "alice", "key": "role"})
 	events := captureEventsState(t, "L", 60, payload, expected, chainBound)

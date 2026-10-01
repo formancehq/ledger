@@ -8,15 +8,14 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_account_type_violations", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
+	internal.RunDriver("parallel_driver_account_type_violations", func(ctx context.Context, client commonpb.BucketServiceClient, _ string) {
 		r := internal.Rand()
 
 		// Use a dedicated ledger with strict enforcement.
@@ -30,9 +29,9 @@ func main() {
 		details := internal.Details{"ledger": ledger, "typeName": typeName, "pattern": pattern}
 
 		// 1. Add an account type with a pattern.
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_AddAccountType{
-				AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
+		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_AddAccountType{
+				AddAccountType: &commonpb.AddAccountTypeLedgerRequest{
 					Ledger: ledger,
 					AccountType: &commonpb.AccountType{
 						Name:    typeName,
@@ -53,9 +52,9 @@ func main() {
 		}
 
 		// 2. Set strict enforcement mode.
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_SetDefaultEnforcementMode{
-				SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeLedgerRequest{
+		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_SetDefaultEnforcementMode{
+				SetDefaultEnforcementMode: &commonpb.SetDefaultEnforcementModeLedgerRequest{
 					Ledger:          ledger,
 					EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT,
 				},
@@ -67,12 +66,12 @@ func main() {
 
 		// 3. Transaction with a valid address — should succeed.
 		validAddr := fmt.Sprintf("%s:%d", typeName, r.Uint64()%1000)
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_Apply{
+				Apply: &commonpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-						CreateTransaction: &servicepb.CreateTransactionPayload{
+					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &commonpb.CreateTransactionPayload{
 							Postings: []*commonpb.Posting{{
 								Source:      "world",
 								Destination: validAddr,
@@ -92,12 +91,12 @@ func main() {
 
 		// 4. Transaction with an invalid address — should fail with ACCOUNT_NOT_MATCHING_TYPE.
 		invalidAddr := fmt.Sprintf("invalid-prefix:%d", r.Uint64()%1000)
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_Apply{
+				Apply: &commonpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-						CreateTransaction: &servicepb.CreateTransactionPayload{
+					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &commonpb.CreateTransactionPayload{
 							Postings: []*commonpb.Posting{{
 								Source:      "world",
 								Destination: invalidAddr,
@@ -132,9 +131,9 @@ func main() {
 		}
 
 		// 5. Switch to AUDIT mode — same invalid address should now succeed.
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_SetDefaultEnforcementMode{
-				SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeLedgerRequest{
+		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_SetDefaultEnforcementMode{
+				SetDefaultEnforcementMode: &commonpb.SetDefaultEnforcementModeLedgerRequest{
 					Ledger:          ledger,
 					EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
 				},
@@ -144,12 +143,12 @@ func main() {
 			return
 		}
 
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_Apply{
+				Apply: &commonpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-						CreateTransaction: &servicepb.CreateTransactionPayload{
+					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &commonpb.CreateTransactionPayload{
 							Postings: []*commonpb.Posting{{
 								Source:      "world",
 								Destination: invalidAddr,

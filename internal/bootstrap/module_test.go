@@ -12,7 +12,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 )
 
 func TestLoadScopeMapping_FromFile(t *testing.T) {
@@ -210,7 +210,7 @@ func TestPersistConfig_SaveAndLoad(t *testing.T) {
 
 	store := newTestStore(t)
 
-	cfg := &commonpb.PersistedConfig{
+	cfg := &internalcommonpb.PersistedConfig{
 		NodeId:    42,
 		ClusterId: "my-cluster",
 	}
@@ -231,14 +231,14 @@ func TestPersistConfig_Overwrite(t *testing.T) {
 	store := newTestStore(t)
 
 	// First write
-	err := persistConfig(store, &commonpb.PersistedConfig{
+	err := persistConfig(store, &internalcommonpb.PersistedConfig{
 		NodeId:    1,
 		ClusterId: "cluster-a",
 	})
 	require.NoError(t, err)
 
 	// Overwrite
-	err = persistConfig(store, &commonpb.PersistedConfig{
+	err = persistConfig(store, &internalcommonpb.PersistedConfig{
 		NodeId:    2,
 		ClusterId: "cluster-b",
 	})

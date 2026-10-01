@@ -21,8 +21,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -55,7 +54,7 @@ func isDefinitiveCode(c codes.Code) bool {
 // conclusive is false when the read fails before or during the stream.
 func referenceFilterCheck(
 	ctx context.Context,
-	client servicepb.BucketServiceClient,
+	client commonpb.BucketServiceClient,
 	ledger, ref string,
 ) (bool, uint64, bool) {
 	ids, err := internal.ReadOracleTransactions(ctx, client, ledger, actions.ReferenceFilter(ref))
@@ -70,7 +69,7 @@ func referenceFilterCheck(
 }
 
 func main() {
-	internal.RunDriver("parallel_driver_definitive_errors", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
+	internal.RunDriver("parallel_driver_definitive_errors", func(ctx context.Context, client commonpb.BucketServiceClient, _ string) {
 		r := internal.Rand()
 
 		// Dedicated ledger + dedicated account prefix: nothing ever funds
@@ -106,12 +105,12 @@ func main() {
 				asset = "!!not a valid asset!!"
 			}
 
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
+			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+				Type: &commonpb.Request_Apply{
+					Apply: &commonpb.LedgerApplyRequest{
 						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
+						Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+							CreateTransaction: &commonpb.CreateTransactionPayload{
 								Postings: []*commonpb.Posting{{
 									Source:      source,
 									Destination: "deferr-sink",
@@ -162,12 +161,12 @@ func main() {
 		// past the window where a committed-but-rejected write could
 		// hide. Transparent UNAVAILABLE retries of the marker are harmless
 		// (no reference, idempotent for this purpose).
-		markerResp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+		markerResp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_Apply{
+				Apply: &commonpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-						CreateTransaction: &servicepb.CreateTransactionPayload{
+					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &commonpb.CreateTransactionPayload{
 							Postings: []*commonpb.Posting{{
 								Source:      "world",
 								Destination: "deferr-marker",
@@ -194,7 +193,7 @@ func main() {
 	})
 }
 
-func assertRejectedWritesAbsent(ctx context.Context, client servicepb.BucketServiceClient, ledger string, rejected []rejection, details internal.Details) {
+func assertRejectedWritesAbsent(ctx context.Context, client commonpb.BucketServiceClient, ledger string, rejected []rejection, details internal.Details) {
 	for _, rej := range rejected {
 		found, foundID, conclusive := referenceFilterCheck(ctx, client, ledger, rej.reference)
 		if !conclusive {

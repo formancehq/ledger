@@ -7,6 +7,11 @@ internals; configuration and operator domains cover value wiring and rollout,
 not the resulting per-request authorization decision. This domain fills that
 gap using the existing native runner and schema.
 
+Public service method descriptors and the generated `MethodAuthPolicy` table
+now live in `pkg/client/v3/grpc/**`. The manifest follows that single
+descriptor registry; authentication and authorization enforcement remain in
+the server adapters, so a public client import is never proof of authorization.
+
 ## Preparation and execution gate
 
 This change prepares the domain only. **Do not run the product audit as part of

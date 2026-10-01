@@ -9,13 +9,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -49,7 +48,7 @@ type reverseMapFixture struct {
 // run drives the pass on the absence-based oracle only — no replayed
 // RemovedMetadataFieldType or DeleteLedger evidence — and collects every emitted
 // event, preserving order.
-func (f reverseMapFixture) run(lastSequence uint64, live map[string]struct{}) []*servicepb.CheckStoreEvent {
+func (f reverseMapFixture) run(lastSequence uint64, live map[string]struct{}) []*commonpb.CheckStoreEvent {
 	return f.runScope(reverseMapOrphanScope{
 		lastSequence: lastSequence,
 		liveLedgers:  live,
@@ -59,8 +58,8 @@ func (f reverseMapFixture) run(lastSequence uint64, live map[string]struct{}) []
 // runScope drives the pass with a caller-built scope, for the cases that need
 // the positive-evidence oracle terms or a deliberately misaligned peer cursor.
 // reader, peer and replayedSchemas always come from the fixture.
-func (f reverseMapFixture) runScope(scope reverseMapOrphanScope) []*servicepb.CheckStoreEvent {
-	var events []*servicepb.CheckStoreEvent
+func (f reverseMapFixture) runScope(scope reverseMapOrphanScope) []*commonpb.CheckStoreEvent {
+	var events []*commonpb.CheckStoreEvent
 
 	scope.reader = f.reader
 	scope.replayedSchemas = f.schemas
@@ -70,7 +69,7 @@ func (f reverseMapFixture) runScope(scope reverseMapOrphanScope) []*servicepb.Ch
 		defer func() { _ = scope.peer.Close() }()
 	}
 
-	f.checker.compareReverseMapOrphans(scope, func(e *servicepb.CheckStoreEvent) {
+	f.checker.compareReverseMapOrphans(scope, func(e *commonpb.CheckStoreEvent) {
 		events = append(events, e)
 	})
 
@@ -258,7 +257,7 @@ func TestCompareReverseMapOrphans_AccountOrphan(t *testing.T) {
 	require.Len(t, events, 1)
 	err := events[0].GetError()
 	require.Equal(t,
-		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
+		commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
 		err.GetErrorType())
 	require.Equal(t, "L1", err.GetLedger())
 	require.Contains(t, err.GetMessage(), `"dropped"`)
@@ -405,7 +404,7 @@ func TestCompareReverseMapOrphans_RemovedFieldTypeResidueFlagged(t *testing.T) {
 	require.Len(t, events, 1)
 	err := events[0].GetError()
 	require.Equal(t,
-		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
+		commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
 		err.GetErrorType())
 	require.Equal(t, "L1", err.GetLedger())
 	require.Contains(t, err.GetMessage(), `"removed"`)
@@ -450,17 +449,17 @@ func TestCompareReverseMapOrphans_StaleRegistryCannotMaskOrphans(t *testing.T) {
 	// entry the replay never touched. Check() is therefore NOT
 	// clean on this store: the two corrupted projections can no longer mask each
 	// other, which is what the review required.
-	var events []*servicepb.CheckStoreEvent
+	var events []*commonpb.CheckStoreEvent
 
 	fixture.checker.compareIndexes(compareIndexesScope{
 		reader:   fixture.reader,
 		expected: map[domain.IndexKey]*commonpb.Index{},
-	}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
+	}, func(e *commonpb.CheckStoreEvent) { events = append(events, e) })
 
 	require.Len(t, events, 1,
 		"the stale registry row that suppressed the orphan verdict must itself be reported")
 	require.Equal(t,
-		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
+		commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
 		events[0].GetError().GetErrorType())
 	require.Equal(t, "L1", events[0].GetError().GetLedger())
 }
@@ -536,7 +535,7 @@ func TestCompareReverseMapOrphans_MalformedKeys(t *testing.T) {
 			require.Len(t, events, 1)
 			err := events[0].GetError()
 			require.Equal(t,
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
+				commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
 				err.GetErrorType())
 			require.Equal(t, test.expectedLedger, err.GetLedger())
 			require.Contains(t, err.GetMessage(), "do not decode")
@@ -594,7 +593,7 @@ func TestCompareReverseMapOrphans_ZeroVersionCannotHideBehindRegisteredField(t *
 
 			events := fixture.run(3, ledgerNameSet("L1"))
 			require.Len(t, events, 1)
-			require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN, events[0].GetError().GetErrorType())
+			require.Equal(t, commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN, events[0].GetError().GetErrorType())
 			require.Contains(t, events[0].GetError().GetMessage(), "do not decode")
 			require.Contains(t, events[0].GetError().GetMessage(), readstore.ErrReverseMapKeyVersion.Error())
 		})
@@ -658,11 +657,11 @@ func TestCompareReverseMapOrphans_LagGate(t *testing.T) {
 // caller to judge. An ahead cursor is reported because no runtime path
 // produces it, but it must never turn healthy rows into orphan findings — the
 // oracles simply cannot speak about them.
-func withoutAheadDiagnostic(t *testing.T, events []*servicepb.CheckStoreEvent) []*servicepb.CheckStoreEvent {
+func withoutAheadDiagnostic(t *testing.T, events []*commonpb.CheckStoreEvent) []*commonpb.CheckStoreEvent {
 	t.Helper()
 
 	ahead := 0
-	rest := make([]*servicepb.CheckStoreEvent, 0, len(events))
+	rest := make([]*commonpb.CheckStoreEvent, 0, len(events))
 
 	for _, e := range events {
 		if strings.Contains(e.GetError().GetMessage(), "ahead of the verified log range") {
@@ -858,7 +857,7 @@ func TestCheck_ReverseMapOrphans_EmptyAuditWiring(t *testing.T) {
 	logger := logging.FromContext(logging.TestingContext())
 	kb := dal.NewKeyBuilder()
 
-	runCheck := func(t *testing.T, seed bool) []*servicepb.CheckStoreEvent {
+	runCheck := func(t *testing.T, seed bool) []*commonpb.CheckStoreEvent {
 		t.Helper()
 
 		peer, err := readstore.New(t.TempDir(), logger, readstore.DefaultConfig())
@@ -873,8 +872,8 @@ func TestCheck_ReverseMapOrphans_EmptyAuditWiring(t *testing.T) {
 
 		checker := NewChecker(createTestStore(t), attributes.New(), peer, logger)
 
-		var events []*servicepb.CheckStoreEvent
-		require.NoError(t, checker.Check(context.Background(), func(e *servicepb.CheckStoreEvent) {
+		var events []*commonpb.CheckStoreEvent
+		require.NoError(t, checker.Check(context.Background(), func(e *commonpb.CheckStoreEvent) {
 			if e.GetError() != nil {
 				events = append(events, e)
 			}
@@ -944,7 +943,7 @@ func TestCompareReverseMapOrphans_DeterministicOrdering(t *testing.T) {
 }
 
 // setMetadataFieldTypeOrder builds a real SetMetadataFieldType order, mirroring
-// the shape admission.go produces for servicepb.Request_SetMetadataFieldType.
+// the shape admission.go produces for commonpb.Request_SetMetadataFieldType.
 func setMetadataFieldTypeOrder(ledger string, target commonpb.TargetType, key string, typ commonpb.MetadataType) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -966,7 +965,7 @@ func setMetadataFieldTypeOrder(ledger string, target commonpb.TargetType, key st
 
 // removeMetadataFieldTypeOrder builds a real RemoveMetadataFieldType order,
 // mirroring the shape admission.go produces for
-// servicepb.Request_RemoveMetadataFieldType. This is the log EN-1458 targets:
+// commonpb.Request_RemoveMetadataFieldType. This is the log EN-1458 targets:
 // processRemoveMetadataFieldType both drops the schema field AND (in
 // production) triggers the indexbuilder's field-bounded
 // purgeReverseMapForKey DeleteRange over the reverse map.
@@ -1014,7 +1013,7 @@ func TestCheck_ReverseMapOrphans_EndToEnd(t *testing.T) {
 	// runCheck seeds a peer read index holding one orphaned row, sets its fold
 	// cursor via aheadBy relative to the store's own verified sequence, and runs a
 	// full Check().
-	runCheck := func(t *testing.T, aheadBy uint64) []*servicepb.CheckStoreEvent {
+	runCheck := func(t *testing.T, aheadBy uint64) []*commonpb.CheckStoreEvent {
 		t.Helper()
 
 		engine := newTestEngine(t)
@@ -1050,8 +1049,8 @@ func TestCheck_ReverseMapOrphans_EndToEnd(t *testing.T) {
 
 		checker := NewChecker(engine.store, engine.attrs, peer, logger)
 
-		var events []*servicepb.CheckStoreEvent
-		require.NoError(t, checker.Check(context.Background(), func(e *servicepb.CheckStoreEvent) {
+		var events []*commonpb.CheckStoreEvent
+		require.NoError(t, checker.Check(context.Background(), func(e *commonpb.CheckStoreEvent) {
 			if e.GetError() != nil {
 				events = append(events, e)
 			}
@@ -1067,7 +1066,7 @@ func TestCheck_ReverseMapOrphans_EndToEnd(t *testing.T) {
 		require.Len(t, events, 1, "the only integrity error in this store must be the reverse-map orphan")
 
 		err0 := events[0].GetError()
-		require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN, err0.GetErrorType())
+		require.Equal(t, commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN, err0.GetErrorType())
 		require.Equal(t, ledger, err0.GetLedger())
 		require.Contains(t, err0.GetMessage(), `"role"`)
 	})

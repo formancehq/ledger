@@ -15,8 +15,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -37,7 +37,7 @@ import (
 // runListPreparedQueries reads a ledger's whole registry and checks it against
 // the model. The RPC has no pagination and no ordering contract, so the check
 // is a set comparison on (name, target, filter).
-func runListPreparedQueries(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+func runListPreparedQueries(ctx context.Context, client commonpb.BucketServiceClient, c *Checker) {
 	ledger, _ := pickLedgerReadTarget(c.liveLedgerNamesSnapshot(), 0)
 
 	c.mu.Lock()
@@ -49,7 +49,7 @@ func runListPreparedQueries(ctx context.Context, client servicepb.BucketServiceC
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 
 	responseFrontier := c.beginResponseFrontier()
-	resp, err := client.ListPreparedQueries(readCtx, &servicepb.ListPreparedQueriesRequest{Ledger: ledger})
+	resp, err := client.ListPreparedQueries(readCtx, &commonpb.ListPreparedQueriesRequest{Ledger: ledger})
 	maxTicket := responseFrontier()
 
 	if err != nil {
@@ -195,7 +195,7 @@ func asIndexedErrKind(kind pqErrKind) indexedErrKind {
 // against the model. The stored definition is snapshotted only to SHAPE the
 // call (which parameters to bind, which mode is applicable); validation reads
 // the definition from each candidate base.
-func runExecutePreparedQuery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+func runExecutePreparedQuery(ctx context.Context, client commonpb.BucketServiceClient, c *Checker) {
 	ledger, _ := pickLedgerReadTarget(c.liveLedgerNamesSnapshot(), 0)
 	name := preparedQueryName()
 
@@ -228,7 +228,7 @@ func runExecutePreparedQuery(ctx context.Context, client servicepb.BucketService
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 
 	responseFrontier := c.beginResponseFrontier()
-	resp, err := client.ExecutePreparedQuery(readCtx, &servicepb.ExecutePreparedQueryRequest{
+	resp, err := client.ExecutePreparedQuery(readCtx, &commonpb.ExecutePreparedQueryRequest{
 		Ledger:     ledger,
 		QueryName:  name,
 		Parameters: params,
@@ -260,7 +260,7 @@ func runExecutePreparedQuery(ctx context.Context, client servicepb.BucketService
 	}
 
 	if mode == commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES {
-		_, aggregateResult := resp.GetResult().(*servicepb.ExecutePreparedQueryResponse_Aggregate)
+		_, aggregateResult := resp.GetResult().(*commonpb.ExecutePreparedQueryResponse_Aggregate)
 		call.wrongResult = err == nil && !aggregateResult
 		c.validateExecuteAggregate(maxTicket, call, resp.GetAggregate())
 
@@ -268,7 +268,7 @@ func runExecutePreparedQuery(ctx context.Context, client servicepb.BucketService
 	}
 
 	cursor := resp.GetCursor()
-	_, cursorResult := resp.GetResult().(*servicepb.ExecutePreparedQueryResponse_Cursor)
+	_, cursorResult := resp.GetResult().(*commonpb.ExecutePreparedQueryResponse_Cursor)
 	call.wrongResult = err == nil && !cursorResult
 	c.validateExecuteList(maxTicket, call, nil, cursor)
 
@@ -300,7 +300,7 @@ type preparedCall struct {
 // the after-key derived from prev's last row.
 func (c *Checker) runExecuteNextPage(
 	ctx context.Context,
-	client servicepb.BucketServiceClient,
+	client commonpb.BucketServiceClient,
 	call preparedCall,
 	prev *commonpb.PreparedQueryCursor,
 ) {
@@ -318,7 +318,7 @@ func (c *Checker) runExecuteNextPage(
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 
 	responseFrontier := c.beginResponseFrontier()
-	resp, err := client.ExecutePreparedQuery(readCtx, &servicepb.ExecutePreparedQueryRequest{
+	resp, err := client.ExecutePreparedQuery(readCtx, &commonpb.ExecutePreparedQueryRequest{
 		Ledger:     call.ledger,
 		QueryName:  call.name,
 		Parameters: call.params,
@@ -336,7 +336,7 @@ func (c *Checker) runExecuteNextPage(
 	call.errKind = classifyPreparedExecError(err)
 	call.err = err
 	call.cursor = prev.GetNext()
-	_, cursorResult := resp.GetResult().(*servicepb.ExecutePreparedQueryResponse_Cursor)
+	_, cursorResult := resp.GetResult().(*commonpb.ExecutePreparedQueryResponse_Cursor)
 	call.wrongResult = err == nil && !cursorResult
 
 	c.validateExecuteList(maxTicket, call, after, resp.GetCursor())
@@ -389,7 +389,7 @@ func uint64EntityKey(v uint64) []byte {
 // to reword.
 func runAggregateTargetMisuse(
 	ctx context.Context,
-	client servicepb.BucketServiceClient,
+	client commonpb.BucketServiceClient,
 	c *Checker,
 	ledger, name string,
 	params preparedParams,
@@ -404,7 +404,7 @@ func runAggregateTargetMisuse(
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 
 	responseFrontier := c.beginResponseFrontier()
-	resp, err := client.ExecutePreparedQuery(readCtx, &servicepb.ExecutePreparedQueryRequest{
+	resp, err := client.ExecutePreparedQuery(readCtx, &commonpb.ExecutePreparedQueryRequest{
 		Ledger:     ledger,
 		QueryName:  name,
 		Parameters: params,
@@ -428,7 +428,7 @@ func runAggregateTargetMisuse(
 		ledger: ledger, name: name, params: params, complete: complete,
 		errKind: classifyPreparedExecError(err), err: err,
 	}
-	_, aggregateResult := resp.GetResult().(*servicepb.ExecutePreparedQueryResponse_Aggregate)
+	_, aggregateResult := resp.GetResult().(*commonpb.ExecutePreparedQueryResponse_Aggregate)
 	call.wrongResult = err == nil && !aggregateResult
 	c.validateExecuteAggregate(maxTicket, call, resp.GetAggregate())
 }
@@ -848,8 +848,8 @@ func aggregateMatches(ls oracle.LedgerState, bound *commonpb.QueryFilter, agg *c
 		}
 
 		var pair oracle.VolumePair
-		v.GetInput().IntoUint256(&pair.Input)
-		v.GetOutput().IntoUint256(&pair.Output)
+		protohelpers.IntoUint256(v.GetInput(), &pair.Input)
+		protohelpers.IntoUint256(v.GetOutput(), &pair.Output)
 		got[key] = pair
 	}
 
@@ -916,8 +916,8 @@ func describeAggregate(agg *commonpb.AggregateResult) string {
 	parts := make([]string, 0, len(agg.GetVolumes()))
 	for _, v := range agg.GetVolumes() {
 		var in, out uint256.Int
-		v.GetInput().IntoUint256(&in)
-		v.GetOutput().IntoUint256(&out)
+		protohelpers.IntoUint256(v.GetInput(), &in)
+		protohelpers.IntoUint256(v.GetOutput(), &out)
 
 		parts = append(parts, fmt.Sprintf("%s/%s=%s:%s", v.GetAsset(), v.GetColor(), in.Dec(), out.Dec()))
 	}

@@ -12,9 +12,8 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
@@ -30,7 +29,7 @@ type ScenarioCluster struct {
 	ctx     context.Context
 	server  *testservice.Service
 	conn    *grpc.ClientConn
-	Client  servicepb.BucketServiceClient
+	Client  clusterpb.BucketServiceClient
 	Cluster clusterpb.ClusterServiceClient
 
 	// Config captured at setup time, reused on restart. Keeping the same lease
@@ -99,7 +98,7 @@ func (sc *ScenarioCluster) startServer() {
 	require.NoError(sc.t, err)
 
 	sc.conn = conn
-	sc.Client = servicepb.NewBucketServiceClient(conn)
+	sc.Client = clusterpb.NewBucketServiceClient(conn)
 	sc.Cluster = clusterpb.NewClusterServiceClient(conn)
 
 	// Wait for leader election.
@@ -110,6 +109,11 @@ func (sc *ScenarioCluster) startServer() {
 		}
 		return state.Leader != 0
 	}, 10*time.Second, 100*time.Millisecond, "leader election timed out")
+
+	// Health admission is intentionally fail-closed until the leader has
+	// published a fresh disk verdict. Wait for that verdict before the first
+	// scenario write so setup does not race the health worker after election.
+	testserver.WaitForWriteAdmission(sc.t, sc.ctx, sc.Client)
 }
 
 // SetupSingleNode creates a single-node cluster for scenario tests.
@@ -145,7 +149,7 @@ func SetupSingleNode(t *testing.T, extra ...testservice.Instrumentation) *Scenar
 // ---------------------------------------------------------------------------
 
 // CheckStoreIntegrity runs CheckStore and requires no integrity errors.
-func CheckStoreIntegrity(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient) {
+func CheckStoreIntegrity(t *testing.T, ctx context.Context, client clusterpb.BucketServiceClient) {
 	t.Helper()
 
 	result, err := actions.CollectCheckStoreEvents(ctx, client)
@@ -163,7 +167,7 @@ func CheckStoreIntegrity(t *testing.T, ctx context.Context, client servicepb.Buc
 // StoreCheck -> RestartAndVerify.
 // The verifyFn callback runs the scenario-specific invariant checks; it receives
 // the current client (which may change after restart).
-func RunPostTestPhases(t *testing.T, sc *ScenarioCluster, verifyFn func(t *testing.T, client servicepb.BucketServiceClient)) {
+func RunPostTestPhases(t *testing.T, sc *ScenarioCluster, verifyFn func(t *testing.T, client clusterpb.BucketServiceClient)) {
 	t.Helper()
 
 	ctx := sc.ctx
@@ -186,7 +190,7 @@ func RunPostTestPhases(t *testing.T, sc *ScenarioCluster, verifyFn func(t *testi
 
 // CheckPositiveBalance verifies that the uncolored balance of an account
 // for a given asset is strictly positive.
-func CheckPositiveBalance(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, ledgerName, address, asset string) {
+func CheckPositiveBalance(t *testing.T, ctx context.Context, client clusterpb.BucketServiceClient, ledgerName, address, asset string) {
 	t.Helper()
 
 	acct, err := actions.GetAccount(ctx, client, ledgerName, address)
@@ -204,7 +208,7 @@ func CheckPositiveBalance(t *testing.T, ctx context.Context, client servicepb.Bu
 // CheckDoubleEntryBalance verifies that for every (asset, color) tuple, the
 // sum of all account balances equals zero (double-entry invariant). Each
 // (asset, color) bucket is its own segregated double-entry universe.
-func CheckDoubleEntryBalance(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, ledgerName string) {
+func CheckDoubleEntryBalance(t *testing.T, ctx context.Context, client clusterpb.BucketServiceClient, ledgerName string) {
 	t.Helper()
 
 	accounts, err := actions.ListAllAccounts(ctx, client, ledgerName)
@@ -237,14 +241,14 @@ func CheckDoubleEntryBalance(t *testing.T, ctx context.Context, client servicepb
 // CheckAccountBalance verifies the uncolored balance of an account for a
 // given asset matches the expected amount. For colored buckets, use
 // CheckColoredAccountBalance.
-func CheckAccountBalance(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, ledgerName, address, asset string, expected *big.Int) {
+func CheckAccountBalance(t *testing.T, ctx context.Context, client clusterpb.BucketServiceClient, ledgerName, address, asset string, expected *big.Int) {
 	t.Helper()
 	CheckColoredAccountBalance(t, ctx, client, ledgerName, address, asset, "", expected)
 }
 
 // CheckColoredAccountBalance verifies the balance for a specific
 // (account, asset, color) bucket. Color "" is the uncolored bucket.
-func CheckColoredAccountBalance(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, ledgerName, address, asset, color string, expected *big.Int) {
+func CheckColoredAccountBalance(t *testing.T, ctx context.Context, client clusterpb.BucketServiceClient, ledgerName, address, asset, color string, expected *big.Int) {
 	t.Helper()
 
 	acct, err := actions.GetAccount(ctx, client, ledgerName, address)
@@ -265,7 +269,7 @@ func CheckColoredAccountBalance(t *testing.T, ctx context.Context, client servic
 // CheckNoNegativeBalances verifies no (account, asset, color) bucket has a
 // negative balance, except for explicitly listed exceptions (e.g., @world,
 // overdraft accounts).
-func CheckNoNegativeBalances(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, ledgerName string, exceptions []string) {
+func CheckNoNegativeBalances(t *testing.T, ctx context.Context, client clusterpb.BucketServiceClient, ledgerName string, exceptions []string) {
 	t.Helper()
 
 	exceptionSet := make(map[string]bool, len(exceptions))
@@ -304,7 +308,7 @@ type AuditExpectation struct {
 }
 
 // CheckAuditTrail verifies the integrity of the log chain and transaction audit trail.
-func CheckAuditTrail(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, expectations []AuditExpectation) {
+func CheckAuditTrail(t *testing.T, ctx context.Context, client clusterpb.BucketServiceClient, expectations []AuditExpectation) {
 	t.Helper()
 
 	// 1. Verify log chain integrity for the first ledger.
@@ -361,16 +365,16 @@ func CheckAuditTrail(t *testing.T, ctx context.Context, client servicepb.BucketS
 // ---------------------------------------------------------------------------
 
 // ApplyActions is a helper to apply a batch of actions and require success.
-func ApplyActions(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, actions ...*servicepb.Request) *servicepb.ApplyResponse {
+func ApplyActions(t *testing.T, ctx context.Context, client clusterpb.BucketServiceClient, actions ...*clusterpb.Request) *clusterpb.ApplyResponse {
 	t.Helper()
 
-	resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions...))
+	resp, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions...))
 	require.NoError(t, err, "Apply failed")
 	return resp
 }
 
 // ApplyBatch applies a pre-built ApplyRequest (signed or unsigned) and requires success.
-func ApplyBatch(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, req *servicepb.ApplyRequest) *servicepb.ApplyResponse {
+func ApplyBatch(t *testing.T, ctx context.Context, client clusterpb.BucketServiceClient, req *clusterpb.ApplyRequest) *clusterpb.ApplyResponse {
 	t.Helper()
 
 	resp, err := client.Apply(ctx, req)
@@ -379,13 +383,13 @@ func ApplyBatch(t *testing.T, ctx context.Context, client servicepb.BucketServic
 }
 
 // ApplyActionsExpectError applies actions and returns the error (nil if success).
-func ApplyActionsExpectError(ctx context.Context, client servicepb.BucketServiceClient, actions ...*servicepb.Request) error {
-	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions...))
+func ApplyActionsExpectError(ctx context.Context, client clusterpb.BucketServiceClient, actions ...*clusterpb.Request) error {
+	_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions...))
 	return err
 }
 
 // GetCreatedTransactionID extracts the transaction ID from the first log entry of an Apply response.
-func GetCreatedTransactionID(t *testing.T, resp *servicepb.ApplyResponse) uint64 {
+func GetCreatedTransactionID(t *testing.T, resp *clusterpb.ApplyResponse) uint64 {
 	t.Helper()
 	require.NotEmpty(t, resp.Logs, "expected at least one log entry")
 	applyLog := resp.Logs[0].Payload.GetApply()

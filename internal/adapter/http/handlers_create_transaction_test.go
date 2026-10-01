@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 func TestHandleCreateTransaction_Success(t *testing.T) {
@@ -20,7 +20,7 @@ func TestHandleCreateTransaction_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return &domain.ApplyResult{Logs: []*commonpb.Log{
 				{
 					Payload: &commonpb.LogPayload{
@@ -141,7 +141,7 @@ func TestHandleCreateTransaction_InsufficientFunds(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, &domain.ErrInsufficientFunds{
 				Account: "users:001",
 				Asset:   "USD",
@@ -193,12 +193,12 @@ func TestHandleCreateTransaction_CamelCaseFields(t *testing.T) {
 	cases := []struct {
 		name   string
 		body   string
-		verify func(t *testing.T, ct *servicepb.CreateTransactionPayload)
+		verify func(t *testing.T, ct *commonpb.CreateTransactionPayload)
 	}{
 		{
 			name: "scriptReference",
 			body: `{"scriptReference":{"name":"payment","version":"1.0.0","vars":{"amt":"USD 5","src":"users:alice","dst":"users:bob"}}}`,
-			verify: func(t *testing.T, ct *servicepb.CreateTransactionPayload) {
+			verify: func(t *testing.T, ct *commonpb.CreateTransactionPayload) {
 				t.Helper()
 				ref := ct.GetScriptReference()
 				require.NotNil(t, ref, "scriptReference must reach the backend")
@@ -214,7 +214,7 @@ func TestHandleCreateTransaction_CamelCaseFields(t *testing.T) {
 		{
 			name: "accountMetadata",
 			body: `{"postings":[{"source":"world","destination":"users:alice","amount":1,"asset":"USD"}],"accountMetadata":{"users:alice":{"vip":"yes"}}}`,
-			verify: func(t *testing.T, ct *servicepb.CreateTransactionPayload) {
+			verify: func(t *testing.T, ct *commonpb.CreateTransactionPayload) {
 				t.Helper()
 				am := ct.GetAccountMetadata()
 				require.Contains(t, am, "users:alice")
@@ -228,11 +228,11 @@ func TestHandleCreateTransaction_CamelCaseFields(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			var captured *servicepb.CreateTransactionPayload
+			var captured *commonpb.CreateTransactionPayload
 
 			backend := NewMockBackend(gomock.NewController(t))
 			backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-				func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+				func(_ context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 					captured = req.GetUnsigned().GetRequests()[0].GetApply().GetAction().GetCreateTransaction()
 
 					return &domain.ApplyResult{Logs: []*commonpb.Log{
@@ -269,11 +269,11 @@ func TestHandleCreateTransaction_CamelCaseFields(t *testing.T) {
 func TestHandleCreateTransaction_PostingsAndScriptConflict(t *testing.T) {
 	t.Parallel()
 
-	var captured *servicepb.CreateTransactionPayload
+	var captured *commonpb.CreateTransactionPayload
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			captured = req.GetUnsigned().GetRequests()[0].GetApply().GetAction().GetCreateTransaction()
 
 			return nil, &domain.BusinessError{Err: domain.ErrPostingsAndScriptConflict}
@@ -305,7 +305,7 @@ func TestHandleCreateTransaction_UnknownFieldsAreLenient(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return &domain.ApplyResult{Logs: []*commonpb.Log{
 				{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
 					Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{

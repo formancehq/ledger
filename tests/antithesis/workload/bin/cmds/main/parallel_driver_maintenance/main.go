@@ -8,14 +8,14 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_maintenance", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
+	internal.RunDriver("parallel_driver_maintenance", func(ctx context.Context, client commonpb.BucketServiceClient, _ string) {
 		// Create a dedicated ledger so we don't depend on a shared ledger
 		// that may be deleted by another concurrent driver.
 		ledger := internal.PrefixMaintenance.New()
@@ -24,9 +24,9 @@ func main() {
 		}
 
 		// Enable maintenance mode.
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_SetMaintenanceMode{
-				SetMaintenanceMode: &servicepb.SetMaintenanceModeRequest{
+		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_SetMaintenanceMode{
+				SetMaintenanceMode: &commonpb.SetMaintenanceModeRequest{
 					Enabled: true,
 				},
 			},
@@ -38,14 +38,14 @@ func main() {
 		}
 
 		// Writes should be rejected while in maintenance mode.
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_Apply{
+				Apply: &commonpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-						CreateTransaction: &servicepb.CreateTransactionPayload{
+					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &commonpb.CreateTransactionPayload{
 							Postings: []*commonpb.Posting{
-								commonpb.NewPosting("world", "users:0", "USD/2", internal.RandomBigInt()),
+								protohelpers.NewPosting("world", "users:0", "USD/2", internal.RandomBigInt()),
 							},
 							Force: true,
 						},
@@ -63,9 +63,9 @@ func main() {
 		}
 
 		// Disable maintenance mode.
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_SetMaintenanceMode{
-				SetMaintenanceMode: &servicepb.SetMaintenanceModeRequest{
+		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_SetMaintenanceMode{
+				SetMaintenanceMode: &commonpb.SetMaintenanceModeRequest{
 					Enabled: false,
 				},
 			},
@@ -77,14 +77,14 @@ func main() {
 		}
 
 		// Writes should work again.
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_Apply{
+				Apply: &commonpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-						CreateTransaction: &servicepb.CreateTransactionPayload{
+					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &commonpb.CreateTransactionPayload{
 							Postings: []*commonpb.Posting{
-								commonpb.NewPosting("world", "users:0", "USD/2", internal.RandomBigInt()),
+								protohelpers.NewPosting("world", "users:0", "USD/2", internal.RandomBigInt()),
 							},
 							Force: true,
 						},

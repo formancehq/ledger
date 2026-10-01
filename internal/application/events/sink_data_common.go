@@ -7,9 +7,11 @@ import (
 	"math/big"
 	"time"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 // ---------- Common time type for analytical sinks ----------
@@ -184,11 +186,11 @@ func sinkConvertTransaction(tx *commonpb.Transaction) *sinkTransaction {
 	}
 
 	if tx.GetTimestamp() != nil {
-		result.Timestamp = sinkTime(tx.GetTimestamp().AsTime().Time)
+		result.Timestamp = sinkTime(tx.GetTimestamp().AsTime())
 	}
 
 	if tx.GetInsertedAt() != nil {
-		result.InsertedAt = sinkTime(tx.GetInsertedAt().AsTime().Time)
+		result.InsertedAt = sinkTime(tx.GetInsertedAt().AsTime())
 	}
 
 	result.Postings = make([]sinkPosting, len(tx.GetPostings()))
@@ -215,7 +217,7 @@ func sinkConvertMetadata(m map[string]*commonpb.MetadataValue) map[string]string
 	result := make(map[string]string, len(m))
 	for key, value := range m {
 		if value != nil {
-			result[key] = commonpb.MetadataValueToString(value)
+			result[key] = protohelpers.MetadataValueToString(value)
 		}
 	}
 

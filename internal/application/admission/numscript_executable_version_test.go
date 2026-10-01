@@ -6,10 +6,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // worldSendScript resolves without consulting any mutable state: @world is an
@@ -74,16 +74,16 @@ func TestExecutableReferenceVersionSelector(t *testing.T) {
 // skippableRefRequest builds an Apply request whose CreateTransaction references
 // a numscript, claims a transaction reference, and opts into the
 // TRANSACTION_REFERENCE_CONFLICT skip.
-func skippableRefRequest(ledger, txRef, scriptName, version string) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+func skippableRefRequest(ledger, txRef, scriptName, version string) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: ledger,
-				Action: &servicepb.LedgerAction{
-					Data: &servicepb.LedgerAction_CreateTransaction{
-						CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{
+					Data: &commonpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &commonpb.CreateTransactionPayload{
 							Reference:       txRef,
-							ScriptReference: &servicepb.ScriptReference{Name: scriptName, Version: version},
+							ScriptReference: &commonpb.ScriptReference{Name: scriptName, Version: version},
 						},
 					},
 				},
@@ -97,14 +97,14 @@ func skippableRefRequest(ledger, txRef, scriptName, version string) *servicepb.R
 
 // postingsRequest builds an Apply request that claims a transaction reference
 // with a plain postings transaction.
-func postingsRequest(ledger, txRef string) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+func postingsRequest(ledger, txRef string) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: ledger,
-				Action: &servicepb.LedgerAction{
-					Data: &servicepb.LedgerAction_CreateTransaction{
-						CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{
+					Data: &commonpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &commonpb.CreateTransactionPayload{
 							Reference: txRef,
 							Postings: []*commonpb.Posting{{
 								Source:      "world",
@@ -137,7 +137,7 @@ func TestExecutableReferenceVersionSelector_SkippedOrder(t *testing.T) {
 			admission, _ := createTestAdmissionWithReader(t, store, nil)
 			writeReference(t, admission, testLedgerName, "dup-ref", 1)
 
-			_, err := admission.Admit(attributedTestContext(context.Background()), servicepb.UnsignedApplyRequest("",
+			_, err := admission.Admit(attributedTestContext(context.Background()), commonpb.UnsignedApplyRequest("",
 				skippableRefRequest(testLedgerName, "dup-ref", "pay", version)))
 
 			var invalid *domain.ErrNumscriptInvalidVersion
@@ -153,7 +153,7 @@ func TestExecutableReferenceVersionSelector_SkippedOrder(t *testing.T) {
 
 			// The first entry claims the reference, so the second is predicted
 			// to skip on the intra-batch conflict with nothing persisted.
-			_, err := admission.Admit(attributedTestContext(context.Background()), servicepb.UnsignedApplyRequest("",
+			_, err := admission.Admit(attributedTestContext(context.Background()), commonpb.UnsignedApplyRequest("",
 				postingsRequest(testLedgerName, "r1"),
 				skippableRefRequest(testLedgerName, "r1", "pay", version)))
 

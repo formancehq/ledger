@@ -6,8 +6,8 @@ import (
 	"math/big"
 	"strconv"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
@@ -28,7 +28,7 @@ func MultiLedgerPayrollBlocks() *BlockGroup {
 	}
 }
 
-func payrollFundClearing(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func payrollFundClearing(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
 	departments := MultiLedgerPayrollDepartments()
 	var totalNeeded int64
 	for _, dept := range departments {
@@ -42,7 +42,7 @@ func payrollFundClearing(ctx context.Context, client servicepb.BucketServiceClie
 	)
 }
 
-func payrollDistribute(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func payrollDistribute(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
 	departments := MultiLedgerPayrollDepartments()
 	dept := departments[RandIntN(r, len(departments))]
 	amount := int64(dept.Employees) * MultiLedgerPayrollBaseSalary
@@ -60,7 +60,7 @@ func payrollDistribute(ctx context.Context, client servicepb.BucketServiceClient
 	)
 }
 
-func payrollPaySalary(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func payrollPaySalary(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
 	departments := MultiLedgerPayrollDepartments()
 	dept := departments[RandIntN(r, len(departments))]
 	empID := 1 + RandIntN(r, dept.Employees)
@@ -77,7 +77,7 @@ func payrollPaySalary(ctx context.Context, client servicepb.BucketServiceClient,
 	)
 }
 
-func payrollCostAlloc(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func payrollCostAlloc(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
 	type allocation struct {
 		from   string
 		to     string
@@ -124,10 +124,10 @@ func MultiLedgerPayrollDepartments() []MultiLedgerPayrollDepartment {
 
 // MultiLedgerPayrollSetupActions returns all setup requests for the multi-ledger payroll scenario:
 // clearing ledger + department ledgers, account types, and numscripts.
-func MultiLedgerPayrollSetupActions() []*servicepb.Request {
+func MultiLedgerPayrollSetupActions() []*commonpb.Request {
 	departments := MultiLedgerPayrollDepartments()
 
-	reqs := []*servicepb.Request{
+	reqs := []*commonpb.Request{
 		actions.CreateLedgerAction("clearing", nil),
 		actions.AddAccountTypeAction("clearing", "company", "company:{type}"),
 		actions.AddAccountTypeAction("clearing", "dept", "dept:{name}"),
@@ -218,7 +218,7 @@ func RunMultiLedgerPayroll(r *Runner) error {
 		}
 
 		// Step 2: Distribute to department accounts in clearing ledger
-		var deptReqs []*servicepb.Request
+		var deptReqs []*commonpb.Request
 		for _, dept := range departments {
 			amount := int64(dept.Employees) * baseSalary
 			deptReqs = append(deptReqs,
@@ -235,7 +235,7 @@ func RunMultiLedgerPayroll(r *Runner) error {
 		// Step 3: Fund payroll pools and pay employees (same batch so payroll:pool nets to zero).
 		for _, dept := range departments {
 			amount := int64(dept.Employees) * baseSalary
-			var payrollReqs []*servicepb.Request
+			var payrollReqs []*commonpb.Request
 			payrollReqs = append(payrollReqs,
 				actions.CreateScriptRefTransactionAction(dept.Ledger, "fund_payroll", "1.0.0", map[string]string{
 					"amount": fmt.Sprintf("USD/2 %d", amount),
@@ -264,7 +264,7 @@ func RunMultiLedgerPayroll(r *Runner) error {
 		bonusAmount := int64(baseSalary * bonusPercent / 100)
 		totalBonus := bonusAmount * int64(dept.Employees)
 
-		bonusReqs := []*servicepb.Request{
+		bonusReqs := []*commonpb.Request{
 			actions.CreateScriptRefTransactionAction(dept.Ledger, "fund_payroll", "1.0.0", map[string]string{
 				"amount": fmt.Sprintf("USD/2 %d", totalBonus),
 			}, map[string]string{"type": "bonus-funding"}),
@@ -295,7 +295,7 @@ func RunMultiLedgerPayroll(r *Runner) error {
 	}
 
 	{
-		var allocReqs []*servicepb.Request
+		var allocReqs []*commonpb.Request
 		for _, alloc := range allocations {
 			allocReqs = append(allocReqs,
 				actions.CreateScriptRefTransactionAction("clearing", "cost_allocation", "1.0.0", map[string]string{

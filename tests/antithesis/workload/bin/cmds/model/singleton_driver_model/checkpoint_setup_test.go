@@ -5,12 +5,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestCheckpointBaselineUsesProbeAllocationFrontier(t *testing.T) {
 	t.Parallel()
-	listed := &clusterpb.ListQueryCheckpointsResponse{Checkpoints: []*clusterpb.QueryCheckpointInfo{{CheckpointId: 3}, {CheckpointId: 7}}}
+	listed := &commonpb.ListQueryCheckpointsResponse{Checkpoints: []*commonpb.QueryCheckpointInfo{{CheckpointId: 3}, {CheckpointId: 7}}}
 	ids, next, err := checkpointBaseline(listed, 12)
 	require.NoError(t, err)
 	require.Equal(t, []uint64{3, 7, 12}, ids)
@@ -21,7 +21,7 @@ func TestCheckpointBaselineRejectsInvalidRegistry(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name    string
-		listed  *clusterpb.ListQueryCheckpointsResponse
+		listed  *commonpb.ListQueryCheckpointsResponse
 		probeID uint64
 	}{
 		{name: "zero probe", probeID: 0},
@@ -38,10 +38,10 @@ func TestCheckpointBaselineRejectsInvalidRegistry(t *testing.T) {
 	}
 }
 
-func checkpointRegistry(ids ...uint64) *clusterpb.ListQueryCheckpointsResponse {
-	response := &clusterpb.ListQueryCheckpointsResponse{}
+func checkpointRegistry(ids ...uint64) *commonpb.ListQueryCheckpointsResponse {
+	response := &commonpb.ListQueryCheckpointsResponse{}
 	for _, id := range ids {
-		response.Checkpoints = append(response.Checkpoints, &clusterpb.QueryCheckpointInfo{CheckpointId: id})
+		response.Checkpoints = append(response.Checkpoints, &commonpb.QueryCheckpointInfo{CheckpointId: id})
 	}
 
 	return response

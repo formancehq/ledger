@@ -6,8 +6,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // dropWorkerRewriter drops the ":worker:<n>" lock-avoidance segment from every

@@ -12,12 +12,11 @@ import (
 	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // Exercise registered routes, including unknown-length revert bodies, and compare native
@@ -47,7 +46,7 @@ func TestMetadataIntegers_Routes(t *testing.T) {
 				t.Parallel()
 				backend := NewMockBackend(gomock.NewController(t))
 				if tc.want != nil {
-					backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+					backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 						requests := req.GetUnsigned().GetRequests()
 						require.Len(t, requests, 1)
 						require.Equal(t, "ledger1", requests[0].GetApply().GetLedger())

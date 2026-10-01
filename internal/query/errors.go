@@ -3,8 +3,10 @@ package query
 import (
 	"fmt"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/publicpolicy"
 )
 
 // ErrAggregateOverflow signals that summing colored or precision-rescaled
@@ -62,7 +64,7 @@ type ErrPreparedQueryAggregateTarget struct {
 }
 
 func (e *ErrPreparedQueryAggregateTarget) Error() string {
-	return "AGGREGATE_VOLUMES mode is only valid for ACCOUNTS target queries, this query targets " + commonpb.TargetHumanName(e.Target)
+	return "AGGREGATE_VOLUMES mode is only valid for ACCOUNTS target queries, this query targets " + publicpolicy.TargetHumanName(e.Target)
 }
 
 func (*ErrPreparedQueryAggregateTarget) Kind() domain.ErrorKind { return domain.KindValidation }

@@ -6,9 +6,9 @@ import (
 	"github.com/pterm/pterm"
 
 	"github.com/formancehq/invariants"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // renderPostCommitVolumes displays a PostCommitVolumes table in the CLI output.

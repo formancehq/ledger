@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
@@ -47,7 +47,7 @@ func SubscriptionBlocks() *BlockGroup {
 	}
 }
 
-func subscriptionFund(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func subscriptionFund(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
 	subID := 1 + RandIntN(r, SubscriptionNumSubscribers)
 	tiers := SubscriptionTiers()
 	tier := tiers[RandIntN(r, len(tiers))]
@@ -61,7 +61,7 @@ func subscriptionFund(ctx context.Context, client servicepb.BucketServiceClient,
 	)
 }
 
-func subscriptionCharge(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func subscriptionCharge(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
 	subID := 1 + RandIntN(r, SubscriptionNumSubscribers)
 	tiers := SubscriptionTiers()
 	tier := tiers[(subID-1)%len(tiers)]
@@ -80,7 +80,7 @@ func subscriptionCharge(ctx context.Context, client servicepb.BucketServiceClien
 	)
 }
 
-func subscriptionRecognize(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func subscriptionRecognize(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
 	bal, ok := GetAccountBalance(ctx, client, SubscriptionLedger, "revenue:deferred", "USD/2")
 	if !ok || bal.Sign() <= 0 {
 		return nil, ErrSkip
@@ -100,7 +100,7 @@ func subscriptionRecognize(ctx context.Context, client servicepb.BucketServiceCl
 	)
 }
 
-func subscriptionCredit(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func subscriptionCredit(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
 	subID := 1 + RandIntN(r, SubscriptionNumSubscribers)
 	amount := int64(100 + RandIntN(r, 500))
 	address := fmt.Sprintf("subscriber:%d", subID)
@@ -115,8 +115,8 @@ func subscriptionCredit(ctx context.Context, client servicepb.BucketServiceClien
 
 // SubscriptionSetupActions returns the Apply requests that create the ledger,
 // schema, account types, and numscript library for the subscription scenario.
-func SubscriptionSetupActions() []*servicepb.Request {
-	return []*servicepb.Request{
+func SubscriptionSetupActions() []*commonpb.Request {
+	return []*commonpb.Request{
 		actions.CreateLedgerWithSchemaAction(SubscriptionLedger, nil, []*commonpb.SetMetadataFieldTypeCommand{
 			{
 				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
@@ -248,7 +248,7 @@ func RunSubscription(r *Runner) error {
 	// --- Billing Cycles ---
 	for cycle := 1; cycle <= numCycles; cycle++ {
 		// Fund wallets
-		fundReqs := make([]*servicepb.Request, 0, numSubscribers)
+		fundReqs := make([]*commonpb.Request, 0, numSubscribers)
 		for _, sub := range subscribers {
 			fundReqs = append(fundReqs, actions.CreateScriptRefTransactionAction(SubscriptionLedger, "fund_wallet", "1.0.0", map[string]string{
 				"subscriber": fmt.Sprintf("subscriber:%d", sub.id),
@@ -260,7 +260,7 @@ func RunSubscription(r *Runner) error {
 		}
 
 		// Billing: charge only successfully funded subscribers
-		var billingReqs []*servicepb.Request
+		var billingReqs []*commonpb.Request
 		for _, sub := range subscribers {
 			if sub.fundedAt < sub.amount {
 				continue // skip under-funded

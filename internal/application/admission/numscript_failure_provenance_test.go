@@ -8,10 +8,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript/numscriptmock"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -52,7 +54,7 @@ func writeNumscriptRef(t *testing.T, admission *Admission, ledger, name, version
 	_, err = admission.attrs.NumscriptVersion.Set(
 		batch,
 		domain.NumscriptVersionKey{LedgerName: ledger, Name: name}.Bytes(),
-		&commonpb.NumscriptVersionValue{Version: version},
+		&internalcommonpb.NumscriptVersionValue{Version: version},
 	)
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())

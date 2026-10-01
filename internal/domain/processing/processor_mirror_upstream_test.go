@@ -8,9 +8,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -61,9 +63,9 @@ func TestMirrorIngest_UpstreamRevertPreservesOriginalIdentity(t *testing.T) {
 	})
 	boundaryStub.onPut(func(_ domain.LedgerKey, value *raftcmdpb.LedgerBoundaries) { boundaries = value.CloneVT() })
 
-	states := make(map[domain.TransactionKey]*commonpb.TransactionState)
+	states := make(map[domain.TransactionKey]*internalcommonpb.TransactionState)
 	stateStub, _ := stubsFor(store).transactionStatesStubFor(store)
-	stateStub.onPut(func(key domain.TransactionKey, value *commonpb.TransactionState) {
+	stateStub.onPut(func(key domain.TransactionKey, value *internalcommonpb.TransactionState) {
 		states[key] = value.CloneVT()
 		stateStub.expectGet(key, states[key].AsReader(), nil)
 	})

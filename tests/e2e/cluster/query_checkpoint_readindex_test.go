@@ -12,8 +12,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -55,17 +54,17 @@ var _ = Describe("Query Checkpoints (frozen read index completeness)", Ordered, 
 		ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(countInstances)
 		leader := servers[*leaderID-1].Client
 
-		_, err := leader.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+		_, err := leader.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())
 
 		// The account→transaction index is opt-in; declaring it before any
 		// posting keeps the builder on its inline path (no backfill).
-		_, err = leader.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS)))
+		_, err = leader.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS)))
 		Expect(err).To(Succeed())
 		Expect(actions.WaitForBuiltinIndexReady(ctx, leader, ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS)).To(Succeed())
 
 		for i := range txCount {
-			_, err := leader.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err := leader.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", fmt.Sprintf("acc-%d", i%8), big.NewInt(int64(i+1)), "USD"),
 			}, nil)))
 			Expect(err).To(Succeed())
@@ -135,7 +134,7 @@ var _ = Describe("Query Checkpoints (frozen read index completeness)", Ordered, 
 	})
 
 	It("keeps serving the same pages after a post-checkpoint write", func() {
-		_, err := servers[*leaderID-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+		_, err := servers[*leaderID-1].Client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 			actions.NewPosting("world", filteredAccount, big.NewInt(1), "USD"),
 		}, nil)))
 		Expect(err).To(Succeed())
@@ -178,8 +177,8 @@ func awaitCheckpointRead[T any](read func() (T, error)) T {
 }
 
 // listLogs drains one ledger log page (live when read is nil).
-func listLogs(ctx context.Context, client servicepb.BucketServiceClient, ledgerName string, read *commonpb.ReadOptions) ([]*commonpb.Log, error) {
-	stream, err := client.ListLogs(ctx, &servicepb.ListLogsRequest{
+func listLogs(ctx context.Context, client commonpb.BucketServiceClient, ledgerName string, read *commonpb.ReadOptions) ([]*commonpb.Log, error) {
+	stream, err := client.ListLogs(ctx, &commonpb.ListLogsRequest{
 		Ledger:  ledgerName,
 		Options: &commonpb.ListOptions{PageSize: 1000, Read: read},
 	})

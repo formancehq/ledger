@@ -12,9 +12,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
@@ -22,15 +21,15 @@ import (
 // successful mutations still reach the real Ledger node. This is not a model
 // of the cap or checkpoint lifecycle.
 type checkpointProxy struct {
-	servicepb.UnimplementedBucketServiceServer
+	clusterpb.UnimplementedBucketServiceServer
 	clusterpb.UnimplementedClusterServiceServer
 
-	apply func(context.Context, *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error)
+	apply func(context.Context, *clusterpb.ApplyRequest) (*clusterpb.ApplyResponse, error)
 	list  func(context.Context, *clusterpb.ListQueryCheckpointsRequest) (*clusterpb.ListQueryCheckpointsResponse, error)
 	info  func(context.Context, *clusterpb.GetQueryCheckpointInfoRequest) (*clusterpb.QueryCheckpointInfo, error)
 }
 
-func (p *checkpointProxy) Apply(ctx context.Context, req *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
+func (p *checkpointProxy) Apply(ctx context.Context, req *clusterpb.ApplyRequest) (*clusterpb.ApplyResponse, error) {
 	return p.apply(ctx, req)
 }
 
@@ -47,7 +46,7 @@ func serveCheckpointProxy(t *testing.T, proxy *checkpointProxy) string {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	server := grpc.NewServer()
-	servicepb.RegisterBucketServiceServer(server, proxy)
+	clusterpb.RegisterBucketServiceServer(server, proxy)
 	clusterpb.RegisterClusterServiceServer(server, proxy)
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(listener) }()
@@ -92,7 +91,7 @@ func TestQueryCheckpointDriverRejectsOtherErrors(t *testing.T) {
 				require.NoError(t, err)
 			}
 			var calls atomic.Int32
-			address := serveCheckpointProxy(t, &checkpointProxy{apply: func(context.Context, *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
+			address := serveCheckpointProxy(t, &checkpointProxy{apply: func(context.Context, *clusterpb.ApplyRequest) (*clusterpb.ApplyResponse, error) {
 				calls.Add(1)
 
 				return nil, response.Err()
@@ -135,7 +134,7 @@ func TestQueryCheckpointDriverCleansOwnedCheckpointAfterReadFailure(t *testing.T
 			var createdID atomic.Uint64
 			var deletes atomic.Int32
 			proxy := &checkpointProxy{
-				apply: func(callCtx context.Context, req *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
+				apply: func(callCtx context.Context, req *clusterpb.ApplyRequest) (*clusterpb.ApplyResponse, error) {
 					for _, request := range req.GetUnsigned().GetRequests() {
 						if deleted := request.GetDeleteQueryCheckpoint(); deleted != nil {
 							deletes.Add(1)
@@ -214,7 +213,7 @@ func TestQueryCheckpointDriversCompeteForLastSlot(t *testing.T) {
 	var creates, successes, rejections atomic.Int32
 	createsFinished := make(chan struct{})
 	proxyAddress := serveCheckpointProxy(t, &checkpointProxy{
-		apply: func(callCtx context.Context, req *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
+		apply: func(callCtx context.Context, req *clusterpb.ApplyRequest) (*clusterpb.ApplyResponse, error) {
 			resp, err := client.Apply(callCtx, req)
 			for _, request := range req.GetUnsigned().GetRequests() {
 				if request.GetCreateQueryCheckpoint() != nil && creates.Add(1) == 2 {

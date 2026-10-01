@@ -14,11 +14,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -70,8 +67,8 @@ var _ = Describe("Restore reversion bitset", Ordered, func() {
 
 	// expectAlreadyReverted asserts a second revert of revertedTxID is
 	// rejected by the already-reverted gate.
-	expectAlreadyReverted := func(client servicepb.BucketServiceClient, phase string) {
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+	expectAlreadyReverted := func(client clusterpb.BucketServiceClient, phase string) {
+		_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("",
 			actions.RevertTransactionAction(ledgerName, revertedTxID, false, false, nil),
 		))
 		Expect(err).To(HaveOccurred(), "%s: double revert of tx %d must be rejected", phase, revertedTxID)
@@ -80,7 +77,7 @@ var _ = Describe("Restore reversion bitset", Ordered, func() {
 
 	// expectAccountVolumes asserts the account's USD volumes: 600 in
 	// (100 + 500 funding), 100 out (the single legitimate revert).
-	expectAccountVolumes := func(client servicepb.BucketServiceClient, phase string) {
+	expectAccountVolumes := func(client clusterpb.BucketServiceClient, phase string) {
 		acct, err := actions.GetAccount(ctx, client, ledgerName, account)
 		Expect(err).To(Succeed())
 
@@ -90,8 +87,8 @@ var _ = Describe("Restore reversion bitset", Ordered, func() {
 		Expect(vol.GetOutput()).To(Equal("100"), "%s: %s USD output", phase, account)
 	}
 
-	storage := func() *commonpb.BackupStorage {
-		return testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+	storage := func() *clusterpb.BackupStorage {
+		return testutil.S3BackupStorage(&clusterpb.S3StorageConfig{
 			Bucket:   s3Bucket,
 			Region:   restoreS3Region,
 			Endpoint: minioEndpoint,
@@ -145,7 +142,7 @@ var _ = Describe("Restore reversion bitset", Ordered, func() {
 	Describe("Phase 1: a reverted transaction in the exported delta", Ordered, func() {
 		var (
 			sourceServer  *testservice.Service
-			client        servicepb.BucketServiceClient
+			client        clusterpb.BucketServiceClient
 			clusterClient clusterpb.ClusterServiceClient
 			grpcConn      *grpc.ClientConn
 		)
@@ -196,14 +193,14 @@ var _ = Describe("Restore reversion bitset", Ordered, func() {
 		})
 
 		It("creates, funds, and reverts a transaction", func() {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("",
 				actions.CreateLedgerAction(ledgerName, nil),
 			))
 			Expect(err).To(Succeed())
 
 			// tx 1: the transaction that gets reverted.
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("",
+				actions.CreateTransactionAction(ledgerName, []*clusterpb.Posting{
 					actions.NewPosting("world", account, big.NewInt(100), "USD"),
 				}, nil, nil),
 			))
@@ -211,15 +208,15 @@ var _ = Describe("Restore reversion bitset", Ordered, func() {
 
 			// tx 2: independent funding, so the account stays solvent after
 			// the revert and a double revert would not trip the balance check.
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("",
+				actions.CreateTransactionAction(ledgerName, []*clusterpb.Posting{
 					actions.NewPosting("world", account, big.NewInt(500), "USD"),
 				}, nil, nil),
 			))
 			Expect(err).To(Succeed())
 
 			// Revert tx 1 (creates tx 3, moving the 100 back to world).
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+			_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("",
 				actions.RevertTransactionAction(ledgerName, revertedTxID, false, false, nil),
 			))
 			Expect(err).To(Succeed())
@@ -241,7 +238,7 @@ var _ = Describe("Restore reversion bitset", Ordered, func() {
 
 	Describe("Phase 2: restore", Ordered, func() {
 		var (
-			restoreClient restorepb.RestoreServiceClient
+			restoreClient clusterpb.RestoreServiceClient
 			grpcConn      *grpc.ClientConn
 			server        *testservice.Service
 		)
@@ -276,25 +273,25 @@ var _ = Describe("Restore reversion bitset", Ordered, func() {
 		})
 
 		It("downloads and finalizes the backup", func() {
-			startResp, err := restoreClient.StartDownloadBackup(ctx, &restorepb.StartDownloadBackupRequest{Storage: storage()})
+			startResp, err := restoreClient.StartDownloadBackup(ctx, &clusterpb.StartDownloadBackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
 
-			Eventually(func() restorepb.DownloadState {
-				resp, statusErr := restoreClient.GetDownloadStatus(ctx, &restorepb.GetDownloadStatusRequest{JobId: startResp.GetJobId()})
+			Eventually(func() clusterpb.DownloadState {
+				resp, statusErr := restoreClient.GetDownloadStatus(ctx, &clusterpb.GetDownloadStatusRequest{JobId: startResp.GetJobId()})
 				Expect(statusErr).To(Succeed())
 				return resp.GetState()
-			}, 2*time.Minute, 500*time.Millisecond).Should(Equal(restorepb.DownloadState_DOWNLOAD_STATE_SUCCEEDED))
+			}, 2*time.Minute, 500*time.Millisecond).Should(Equal(clusterpb.DownloadState_DOWNLOAD_STATE_SUCCEEDED))
 
 			Expect(validateRestoreWithoutErrors(ctx, restoreClient)).To(Succeed())
 
-			_, err = restoreClient.FinalizeRestore(ctx, &restorepb.FinalizeRestoreRequest{})
+			_, err = restoreClient.FinalizeRestore(ctx, &clusterpb.FinalizeRestoreRequest{})
 			Expect(err).To(Succeed())
 		})
 	})
 
 	Describe("Phase 3: verify the restored reversion state", Ordered, func() {
 		var (
-			client   servicepb.BucketServiceClient
+			client   clusterpb.BucketServiceClient
 			grpcConn *grpc.ClientConn
 			server   *testservice.Service
 		)

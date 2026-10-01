@@ -16,6 +16,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
@@ -32,9 +33,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -91,8 +90,8 @@ func TestWorker_MalformedURLDoesNotDisclosePassword(t *testing.T) {
 			BaseUrl: "https://audit-user:" + password + "@localhost/%zz",
 		}},
 	}
-	_, err = adm.Admit(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-		Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{Name: ledgerName, Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR, MirrorSource: config}},
+	_, err = adm.Admit(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+		Type: &commonpb.Request_CreateLedger{CreateLedger: &commonpb.CreateLedgerRequest{Name: ledgerName, Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR, MirrorSource: config}},
 	}))
 	require.ErrorIs(t, err, admission.ErrMirrorHTTPURLInvalid)
 	require.Equal(t, uint64(1), tracker.Next(), "rejection must not propose to Raft")

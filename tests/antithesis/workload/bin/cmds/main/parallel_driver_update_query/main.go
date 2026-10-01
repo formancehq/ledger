@@ -8,23 +8,22 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_update_query", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+	internal.RunDriver("parallel_driver_update_query", func(ctx context.Context, client commonpb.BucketServiceClient, ledger string) {
 		r := internal.Rand()
 		queryName := fmt.Sprintf("upd-q-%d", r.Uint64())
 
 		details := internal.Details{"ledger": ledger, "queryName": queryName}
 
 		// 1. Create a prepared query filtering by "users:" prefix.
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_CreatePreparedQuery{
-				CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_CreatePreparedQuery{
+				CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
 					Ledger: ledger,
 
 					Query: &commonpb.PreparedQuery{
@@ -58,9 +57,9 @@ func main() {
 		}
 
 		// 2. Update the query filter to "world" prefix.
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_UpdatePreparedQuery{
-				UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
+		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_UpdatePreparedQuery{
+				UpdatePreparedQuery: &commonpb.UpdatePreparedQueryRequest{
 					Ledger: ledger,
 					Name:   queryName,
 					Filter: &commonpb.QueryFilter{
@@ -84,7 +83,7 @@ func main() {
 		}
 
 		// 3. Execute the updated query — should only return accounts matching "world".
-		execResp, err := client.ExecutePreparedQuery(ctx, &servicepb.ExecutePreparedQueryRequest{
+		execResp, err := client.ExecutePreparedQuery(ctx, &commonpb.ExecutePreparedQueryRequest{
 			Ledger:    ledger,
 			QueryName: queryName,
 			PageSize:  100,
@@ -98,9 +97,9 @@ func main() {
 		assert.AlwaysOrUnreachable(execResp != nil, "updated query should return a response", details)
 
 		// 4. Cleanup.
-		if _, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_DeletePreparedQuery{
-				DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{
+		if _, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_DeletePreparedQuery{
+				DeletePreparedQuery: &commonpb.DeletePreparedQueryRequest{
 					Ledger: ledger,
 					Name:   queryName,
 				},

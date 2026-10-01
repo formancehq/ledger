@@ -1,7 +1,8 @@
 package main
 
 import (
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -86,8 +87,8 @@ func matchFieldCondition(declared oracle.Map[string, commonpb.MetadataType], loo
 	}
 
 	coerced := stored
-	if !commonpb.TypeMatches(stored, declaredType) {
-		coerced = commonpb.ConvertMetadataValue(stored, declaredType)
+	if !protohelpers.TypeMatches(stored, declaredType) {
+		coerced = protohelpers.ConvertMetadataValue(stored, declaredType)
 	}
 
 	switch c := fc.GetCondition().(type) {
@@ -189,18 +190,18 @@ func fieldKindMismatch(ls oracle.LedgerState, f *commonpb.QueryFilter, target co
 		case *commonpb.FieldCondition_IntCond:
 			// Signed and datetime verbatim; unsigned via coerceIntToUint,
 			// which rejects negative bounds.
-			if commonpb.IsSignedType(declaredType) || commonpb.IsDatetimeType(declaredType) {
+			if protohelpers.IsSignedType(declaredType) || protohelpers.IsDatetimeType(declaredType) {
 				return false
 			}
 
-			if commonpb.IsUnsignedType(declaredType) {
+			if protohelpers.IsUnsignedType(declaredType) {
 				return (cond.IntCond.Min != nil && cond.IntCond.GetMin() < 0) ||
 					(cond.IntCond.Max != nil && cond.IntCond.GetMax() < 0)
 			}
 
 			return true
 		case *commonpb.FieldCondition_UintCond:
-			return !commonpb.IsUnsignedType(declaredType)
+			return !protohelpers.IsUnsignedType(declaredType)
 		case *commonpb.FieldCondition_StringCond:
 			return declaredType != commonpb.MetadataType_METADATA_TYPE_STRING
 		case *commonpb.FieldCondition_BoolCond:
@@ -278,8 +279,8 @@ func genFieldLeaf(seeds []fieldSeed) *commonpb.QueryFilter {
 	var coerced *commonpb.MetadataValue
 	if seed.sample != nil {
 		coerced = seed.sample
-		if !commonpb.TypeMatches(coerced, seed.declaredType) {
-			coerced = commonpb.ConvertMetadataValue(coerced, seed.declaredType)
+		if !protohelpers.TypeMatches(coerced, seed.declaredType) {
+			coerced = protohelpers.ConvertMetadataValue(coerced, seed.declaredType)
 		}
 	}
 
@@ -296,7 +297,7 @@ func genFieldLeaf(seeds []fieldSeed) *commonpb.QueryFilter {
 		return filterFieldString(seed.key, "absent-value")
 	case seed.declaredType == commonpb.MetadataType_METADATA_TYPE_BOOL:
 		return filterFieldBool(seed.key, oneIn(2))
-	case commonpb.IsUnsignedType(seed.declaredType):
+	case protohelpers.IsUnsignedType(seed.declaredType):
 		center := internal.Rand().Uint64() % 1024
 		if uv, ok := coerced.GetType().(*commonpb.MetadataValue_UintValue); ok && !oneIn(4) {
 			center = uv.UintValue
@@ -337,7 +338,7 @@ func genMismatchedFieldLeaf(seeds []fieldSeed) *commonpb.QueryFilter {
 		lo := int64(0)
 
 		return filterFieldInt(seed.key, &lo, nil)
-	case commonpb.IsUnsignedType(seed.declaredType):
+	case protohelpers.IsUnsignedType(seed.declaredType):
 		return filterFieldString(seed.key, "x")
 	default:
 		return filterFieldString(seed.key, "x")

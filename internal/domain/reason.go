@@ -3,7 +3,7 @@ package domain
 import (
 	"strings"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // errorReasonPrefix is the common prefix of every commonpb.ErrorReason enum
@@ -147,8 +147,7 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_MIRROR_V2_LOG_ID_GAP,
 		commonpb.ErrorReason_ERROR_REASON_MIRROR_V2_LOG_ID_INVALID,
 		commonpb.ErrorReason_ERROR_REASON_VOLUME_NOT_MATERIALIZED,
-		commonpb.ErrorReason_ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT,
-		commonpb.ErrorReason_ERROR_REASON_INVALID_CALLER_ATTRIBUTION:
+		commonpb.ErrorReason_ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT:
 		return KindInternal
 	default:
 		return KindInternal

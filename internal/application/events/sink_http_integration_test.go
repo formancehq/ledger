@@ -17,10 +17,11 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/application/events"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
 
@@ -100,15 +101,13 @@ func TestHTTPSinkIntegration_PublishAndReceive(t *testing.T) {
 				Type: &commonpb.LogPayload_Apply{
 					Apply: &commonpb.ApplyLedgerLog{
 						LedgerName: "orders",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+						Log: protohelpers.WithLedgerLogDate(protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&commonpb.LedgerLogPayload{
 							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 								CreatedTransaction: &commonpb.CreatedTransaction{
-									Transaction: commonpb.NewTransaction().
-										WithPostings(commonpb.NewPosting("world", "bank", "USD", big.NewInt(1000))).
-										WithID(1).WithTimestamp(now),
+									Transaction: protohelpers.WithTransactionTimestamp(protohelpers.WithTransactionID(protohelpers.WithTransactionPostings(protohelpers.NewTransaction(), protohelpers.NewPosting("world", "bank", "USD", big.NewInt(1000))), 1), now),
 								},
 							},
-						}).WithID(1).WithDate(now),
+						}), 1), now),
 					},
 				},
 			},
@@ -185,15 +184,13 @@ func TestHTTPSinkIntegration_HMACSignature(t *testing.T) {
 				Type: &commonpb.LogPayload_Apply{
 					Apply: &commonpb.ApplyLedgerLog{
 						LedgerName: "payments",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+						Log: protohelpers.WithLedgerLogDate(protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&commonpb.LedgerLogPayload{
 							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 								CreatedTransaction: &commonpb.CreatedTransaction{
-									Transaction: commonpb.NewTransaction().
-										WithPostings(commonpb.NewPosting("world", "merchant", "EUR", big.NewInt(500))).
-										WithID(1).WithTimestamp(now),
+									Transaction: protohelpers.WithTransactionTimestamp(protohelpers.WithTransactionID(protohelpers.WithTransactionPostings(protohelpers.NewTransaction(), protohelpers.NewPosting("world", "merchant", "EUR", big.NewInt(500))), 1), now),
 								},
 							},
-						}).WithID(1).WithDate(now),
+						}), 1), now),
 					},
 				},
 			},
@@ -254,15 +251,13 @@ func TestHTTPSinkIntegration_ProtobufFormat(t *testing.T) {
 				Type: &commonpb.LogPayload_Apply{
 					Apply: &commonpb.ApplyLedgerLog{
 						LedgerName: "payments",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+						Log: protohelpers.WithLedgerLogDate(protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&commonpb.LedgerLogPayload{
 							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 								CreatedTransaction: &commonpb.CreatedTransaction{
-									Transaction: commonpb.NewTransaction().
-										WithPostings(commonpb.NewPosting("world", "merchant", "EUR", big.NewInt(500))).
-										WithID(1).WithTimestamp(now),
+									Transaction: protohelpers.WithTransactionTimestamp(protohelpers.WithTransactionID(protohelpers.WithTransactionPostings(protohelpers.NewTransaction(), protohelpers.NewPosting("world", "merchant", "EUR", big.NewInt(500))), 1), now),
 								},
 							},
-						}).WithID(1).WithDate(now),
+						}), 1), now),
 					},
 				},
 			},

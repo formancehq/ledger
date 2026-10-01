@@ -12,13 +12,12 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
+	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -100,7 +99,7 @@ func writeRawLogRows(t *testing.T, store *dal.Store, from, to uint64) {
 	// math.MaxUint64 — the top-of-key-space case the bound must now cover —
 	// would wrap that condition to 0 and never terminate.
 	for sequence := from; ; sequence++ {
-		require.NoError(t, batch.SetProto(logRowKey(sequence), &commonpb.Log{Sequence: sequence}))
+		require.NoError(t, batch.SetProto(logRowKey(sequence), &auditpb.Log{Sequence: sequence}))
 
 		if sequence == to {
 			break
@@ -125,7 +124,7 @@ func writeRawLogRows(t *testing.T, store *dal.Store, from, to uint64) {
 func persistSuccessAuditEntries(t *testing.T, store *dal.Store, ranges [][2]uint64) {
 	t.Helper()
 
-	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
+	gen := processing.NewHashGenerator(auditpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
 
 	var (
 		lastHash    []byte
@@ -138,9 +137,9 @@ func persistSuccessAuditEntries(t *testing.T, store *dal.Store, ranges [][2]uint
 
 		entry := &auditpb.AuditEntry{
 			Sequence:       sequence,
-			Timestamp:      &commonpb.Timestamp{Data: 1700000000 + sequence},
+			Timestamp:      &auditpb.Timestamp{Data: 1700000000 + sequence},
 			ProposalId:     sequence,
-			HashVersion:    uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+			HashVersion:    uint32(auditpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
 			OrderCount:     uint32(len(items)),
 			CallerSnapshot: testCallerSnapshot(),
 			Outcome: &auditpb.AuditEntry_Success{
@@ -229,13 +228,13 @@ func appendEngineAuditEntry(t *testing.T, in engineAuditEntry) {
 	engine := in.engine
 
 	in.entry.Sequence = engine.nextAuditSequenceID
-	in.entry.Timestamp = &commonpb.Timestamp{Data: 1700000000 + engine.raftIndex}
+	in.entry.Timestamp = &auditpb.Timestamp{Data: 1700000000 + engine.raftIndex}
 	in.entry.ProposalId = engine.raftIndex
-	in.entry.HashVersion = uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3)
+	in.entry.HashVersion = uint32(auditpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3)
 	in.entry.OrderCount = uint32(len(in.items))
 	in.entry.CallerSnapshot = testCallerSnapshot()
 
-	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, engine.clusterID)
+	gen := processing.NewHashGenerator(auditpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, engine.clusterID)
 
 	headerPayload, err := state.BuildHashedHeaderPayload(in.entry)
 	require.NoError(t, err)
@@ -257,8 +256,8 @@ func appendEngineAuditEntry(t *testing.T, in engineAuditEntry) {
 }
 
 // errorsOfType returns every collected event carrying the given type.
-func errorsOfType(errs []*servicepb.CheckStoreError, want servicepb.CheckStoreErrorType) []*servicepb.CheckStoreError {
-	var out []*servicepb.CheckStoreError
+func errorsOfType(errs []*auditpb.CheckStoreError, want auditpb.CheckStoreErrorType) []*auditpb.CheckStoreError {
+	var out []*auditpb.CheckStoreError
 
 	for _, e := range errs {
 		if e.GetErrorType() == want {
@@ -274,10 +273,10 @@ func errorsOfType(errs []*servicepb.CheckStoreError, want servicepb.CheckStoreEr
 // same reference and the skip declared is converted to an OrderSkipped log by
 // the real processor, which is the second of the two log-sequence producing
 // call sites (internal/domain/processing/processor.go).
-func referenceTransactionOrder(ledger, reference string, skippable bool, postings ...*commonpb.Posting) *raftcmdpb.Order {
-	var reasons []commonpb.ErrorReason
+func referenceTransactionOrder(ledger, reference string, skippable bool, postings ...*auditpb.Posting) *raftcmdpb.Order {
+	var reasons []auditpb.ErrorReason
 	if skippable {
-		reasons = []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT}
+		reasons = []auditpb.ErrorReason{auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT}
 	}
 
 	return &raftcmdpb.Order{
@@ -304,15 +303,15 @@ func referenceTransactionOrder(ledger, reference string, skippable bool, posting
 // requireNoLogBoundFindings asserts the three bound-pass classes are silent.
 // The tail-gap event is distinguished from the interior per-sequence scan by
 // its message, which names a range rather than a single sequence.
-func requireNoLogBoundFindings(t *testing.T, errs []*servicepb.CheckStoreError) {
+func requireNoLogBoundFindings(t *testing.T, errs []*auditpb.CheckStoreError) {
 	t.Helper()
 
-	require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE),
+	require.Empty(t, errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE),
 		"the log bound must be derivable over a healthy history, got %v", errs)
-	require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED),
+	require.Empty(t, errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED),
 		"no stored log may sit above the audited bound, got %v", errs)
 
-	for _, e := range errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP) {
+	for _, e := range errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP) {
 		require.NotContains(t, e.GetMessage(), "the audit chain accounts for logs up to",
 			"the bounds pass must report no tail gap, got %q", e.GetMessage())
 	}
@@ -485,7 +484,7 @@ func TestCheck_LogBounds_DeletedTailReportsOneGap(t *testing.T) {
 
 			errs := collectCheckErrors(t, engine.store, engine.attrs)
 
-			gaps := errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP)
+			gaps := errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP)
 			require.Len(t, gaps, 1,
 				"a deleted tail must be reported once, not once per missing sequence, got %v", errs)
 			require.Equal(t, tc.keep+1, gaps[0].GetLogSequence(),
@@ -497,8 +496,8 @@ func TestCheck_LogBounds_DeletedTailReportsOneGap(t *testing.T) {
 			require.Contains(t, message, fmt.Sprintf("(%d logs)", tc.missing),
 				"the message must count the missing rows, got %q", message)
 
-			require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED))
-			require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE),
+			require.Empty(t, errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED))
+			require.Empty(t, errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE),
 				"the chain is intact, so the bound is derivable, got %v", errs)
 		})
 	}
@@ -551,7 +550,7 @@ func TestCheck_LogBounds_RestoreLostTailIsOtherwiseInvisible(t *testing.T) {
 	require.Len(t, errs, 1,
 		"the lost tail must be reported, and by this pass alone: every other projection agrees "+
 			"with the surviving logs, got %v", errs)
-	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP, errs[0].GetErrorType())
+	require.Equal(t, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP, errs[0].GetErrorType())
 	require.EqualValues(t, 4, errs[0].GetLogSequence())
 	require.Contains(t, errs[0].GetMessage(), "log sequences 4..6 are missing")
 	require.Contains(t, errs[0].GetMessage(), "(3 logs)")
@@ -594,7 +593,7 @@ func TestCheck_LogBounds_InjectedLogAboveAuditedRange(t *testing.T) {
 
 			errs := collectCheckErrors(t, engine.store, engine.attrs)
 
-			unaudited := errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED)
+			unaudited := errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED)
 			require.Len(t, unaudited, 1,
 				"an injected tail must be reported once for the whole range, got %v", errs)
 			require.Equal(t, audited+1, unaudited[0].GetLogSequence())
@@ -603,11 +602,11 @@ func TestCheck_LogBounds_InjectedLogAboveAuditedRange(t *testing.T) {
 			require.Contains(t, unaudited[0].GetMessage(),
 				fmt.Sprintf("(%d logs)", tc.injected-audited))
 
-			require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP),
+			require.Empty(t, errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP),
 				"the injected rows are contiguous with the audited prefix, got %v", errs)
-			require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH),
+			require.Empty(t, errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH),
 				"the injected rows agree with their keys, got %v", errs)
-			require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE))
+			require.Empty(t, errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE))
 		})
 	}
 }
@@ -652,19 +651,19 @@ func TestCheck_LogBounds_ChainBreakAboveTruncationSuppressesGap(t *testing.T) {
 
 	errs := collectCheckErrors(t, engine.store, engine.attrs)
 
-	require.Len(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH), 1,
+	require.Len(t, errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH), 1,
 		"the walk stops at the first break, got %v", errs)
 
-	incomplete := errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE)
+	incomplete := errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE)
 	require.Len(t, incomplete, 1, "exactly one coverage finding, never one per sequence, got %v", errs)
 	require.Contains(t, incomplete[0].GetMessage(), "cut short by a hash chain break")
 
-	for _, e := range errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP) {
+	for _, e := range errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP) {
 		require.LessOrEqual(t, e.GetLogSequence(), uint64(3),
 			"no gap may be derived above the surviving head from a partial bound, got %q", e.GetMessage())
 	}
 
-	require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED),
+	require.Empty(t, errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED),
 		"a partial bound must not report surviving logs as injected, got %v", errs)
 }
 
@@ -749,18 +748,18 @@ func TestCheck_LogBounds_ReservedSequenceZeroIsUnaudited(t *testing.T) {
 
 			require.Len(t, errs, 1, "the forged row is the only divergence in either fixture, got %v", errs)
 
-			unaudited := errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED)
+			unaudited := errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED)
 			require.Len(t, unaudited, 1,
 				"a log row at reserved sequence 0 must be reported exactly once, got %v", errs)
 			require.Zero(t, unaudited[0].GetLogSequence())
 			require.Contains(t, unaudited[0].GetMessage(), "log sequence 0 has no audited origin",
 				"the single-position message must be distinguishable from compare()'s range message")
 
-			require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP),
+			require.Empty(t, errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP),
 				"sequence 0 sits below the audited interval, it is not a hole inside it, got %v", errs)
-			require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH),
+			require.Empty(t, errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH),
 				"the forged row agrees with its key, so only the reserved position can catch it, got %v", errs)
-			require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE),
+			require.Empty(t, errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE),
 				"the audit chain is intact in both fixtures, got %v", errs)
 		})
 	}
@@ -806,10 +805,10 @@ func TestCheck_LogBounds_DiscontinuousSuccessRangesFailLoudly(t *testing.T) {
 
 	errs := collectCheckErrors(t, store, attributes.New())
 
-	require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH),
+	require.Empty(t, errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH),
 		"the fixture's chain is valid, got %v", errs)
 
-	incomplete := errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE)
+	incomplete := errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE)
 	require.Len(t, incomplete, 1, "exactly one invariant finding, got %v", errs)
 	require.True(t, strings.HasPrefix(incomplete[0].GetMessage(), "invariant:"),
 		"an unreachable-by-contract branch must be loud, got %q", incomplete[0].GetMessage())
@@ -818,13 +817,13 @@ func TestCheck_LogBounds_DiscontinuousSuccessRangesFailLoudly(t *testing.T) {
 
 	// The interior scan's own finding: sequence 3 has no row, and a surviving
 	// row above it makes the hole visible without any audit oracle.
-	gaps := errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP)
+	gaps := errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP)
 	require.Len(t, gaps, 1, "only the interior scan may report here, got %v", errs)
 	require.EqualValues(t, 3, gaps[0].GetLogSequence())
 	require.Equal(t, "log sequence 3 is missing", gaps[0].GetMessage(),
 		"the bounds pass must contribute no gap event on a suppressed bound")
 
-	require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED),
+	require.Empty(t, errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED),
 		"nothing may be derived from a premise that just failed, got %v", errs)
 }
 
@@ -878,10 +877,10 @@ func TestCheck_LogBounds_InvertedSuccessRangeFailsLoudly(t *testing.T) {
 
 			errs := collectCheckErrors(t, store, attributes.New())
 
-			require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH),
+			require.Empty(t, errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH),
 				"the fixture's chain is valid, got %v", errs)
 
-			incomplete := errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE)
+			incomplete := errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE)
 			require.Len(t, incomplete, 1, "exactly one invariant finding, got %v", errs)
 			require.True(t, strings.HasPrefix(incomplete[0].GetMessage(), "invariant:"),
 				"an unreachable-by-contract branch must be loud, got %q", incomplete[0].GetMessage())
@@ -891,9 +890,9 @@ func TestCheck_LogBounds_InvertedSuccessRangeFailsLoudly(t *testing.T) {
 
 			// Logs 1..2 are exactly what the healthy range accounts for. The
 			// suppressed bound may report them in neither direction.
-			require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED),
+			require.Empty(t, errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED),
 				"nothing may be derived from a premise that just failed, got %v", errs)
-			require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP),
+			require.Empty(t, errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP),
 				"the stored logs are contiguous and audited, got %v", errs)
 		})
 	}
@@ -928,15 +927,15 @@ func TestCheck_LogBounds_LargeTruncationStaysBounded(t *testing.T) {
 
 	errs := collectCheckErrors(t, store, attributes.New())
 
-	gaps := errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP)
+	gaps := errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP)
 	require.Len(t, gaps, 1, "%d missing rows must still be one event, got %d", total-keep, len(gaps))
 	require.EqualValues(t, keep+1, gaps[0].GetLogSequence())
 	require.Contains(t, gaps[0].GetMessage(),
 		fmt.Sprintf("log sequences %d..%d are missing", keep+1, total))
 	require.Contains(t, gaps[0].GetMessage(), fmt.Sprintf("(%d logs)", total-keep))
 
-	require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED))
-	require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE))
+	require.Empty(t, errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED))
+	require.Empty(t, errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE))
 }
 
 // persistItemlessSuccessAuditEntry writes ONE chain-valid SUCCESS audit entry
@@ -947,13 +946,13 @@ func TestCheck_LogBounds_LargeTruncationStaysBounded(t *testing.T) {
 func persistItemlessSuccessAuditEntry(t *testing.T, store *dal.Store, minSeq, maxSeq uint64) {
 	t.Helper()
 
-	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
+	gen := processing.NewHashGenerator(auditpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
 
 	entry := &auditpb.AuditEntry{
 		Sequence:       1,
-		Timestamp:      &commonpb.Timestamp{Data: 1700000001},
+		Timestamp:      &auditpb.Timestamp{Data: 1700000001},
 		ProposalId:     1,
-		HashVersion:    uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		HashVersion:    uint32(auditpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
 		CallerSnapshot: testCallerSnapshot(),
 		Outcome: &auditpb.AuditEntry_Success{
 			Success: &auditpb.AuditSuccess{MinLogSequence: minSeq, MaxLogSequence: maxSeq},
@@ -999,7 +998,7 @@ func TestCheck_LogBounds_SparseInjectedTailCountsRowsNotWidth(t *testing.T) {
 
 	errs := collectCheckErrors(t, engine.store, engine.attrs)
 
-	unaudited := errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED)
+	unaudited := errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED)
 	require.Len(t, unaudited, 1, "the injected row must be reported once, got %v", errs)
 	require.EqualValues(t, 5, unaudited[0].GetLogSequence())
 	require.Contains(t, unaudited[0].GetMessage(), "(1 logs)",
@@ -1012,7 +1011,7 @@ func TestCheck_LogBounds_SparseInjectedTailCountsRowsNotWidth(t *testing.T) {
 	// Reporting them as missing alongside a range described as unaudited was the
 	// contradiction this fixture exists to rule out — the same two positions
 	// called lost by one pass and planted by another.
-	require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP),
+	require.Empty(t, errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP),
 		"positions above the audited bound were never allocated, so they are not missing rows, got %v", errs)
 }
 
@@ -1054,13 +1053,13 @@ func TestCheck_LogBounds_MaxUint64KeyIsVerified(t *testing.T) {
 	require.Less(t, len(errs), 10,
 		"the run must stay bounded: one row near the top of the key space must not enumerate the range beneath it, got %d events", len(errs))
 
-	unaudited := errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED)
+	unaudited := errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED)
 	require.Len(t, unaudited, 1, "the forged row must be reported, got %v", errs)
 	require.EqualValues(t, audited+1, unaudited[0].GetLogSequence())
 	require.Contains(t, unaudited[0].GetMessage(), fmt.Sprintf("the store holds logs up to %d", uint64(math.MaxUint64)))
 	require.Contains(t, unaudited[0].GetMessage(), "(1 logs)")
 
-	require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP),
+	require.Empty(t, errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP),
 		"positions above the audited bound were never allocated, so they are not missing rows, got %v", errs)
 }
 
@@ -1104,13 +1103,13 @@ func TestCheck_LogBounds_InjectedMaxUint64DoesNotEraseLostTail(t *testing.T) {
 
 	errs := collectCheckErrors(t, engine.store, engine.attrs)
 
-	gaps := errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP)
+	gaps := errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP)
 	require.Len(t, gaps, 1, "the lost tail must still be reported, got %v", errs)
 	require.EqualValues(t, 4, gaps[0].GetLogSequence())
 	require.Contains(t, gaps[0].GetMessage(), "log sequences 4..6 are missing")
 	require.Contains(t, gaps[0].GetMessage(), "(3 logs)")
 
-	unaudited := errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED)
+	unaudited := errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED)
 	require.Len(t, unaudited, 1, "the planted row must also be reported, got %v", errs)
 	require.EqualValues(t, 7, unaudited[0].GetLogSequence())
 	require.Contains(t, unaudited[0].GetMessage(), "(1 logs)")
@@ -1165,13 +1164,13 @@ func TestCheck_LogBounds_SuccessRangeWithoutItemsIsNotAnOracle(t *testing.T) {
 			store := createTestStore(t)
 			writeRawLogRows(t, store, 1, 4)
 
-			gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
+			gen := processing.NewHashGenerator(auditpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
 
 			entry := &auditpb.AuditEntry{
 				Sequence:       1,
-				Timestamp:      &commonpb.Timestamp{Data: 1700000001},
+				Timestamp:      &auditpb.Timestamp{Data: 1700000001},
 				ProposalId:     1,
-				HashVersion:    uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+				HashVersion:    uint32(auditpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
 				OrderCount:     uint32(len(tc.items)),
 				CallerSnapshot: testCallerSnapshot(),
 				Outcome: &auditpb.AuditEntry_Success{
@@ -1195,15 +1194,15 @@ func TestCheck_LogBounds_SuccessRangeWithoutItemsIsNotAnOracle(t *testing.T) {
 
 			errs := collectCheckErrors(t, store, attributes.New())
 
-			require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH),
+			require.Empty(t, errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH),
 				"the fixture's chain must be valid, or the finding under test is not the one being pinned: %v", errs)
 
-			incomplete := errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE)
+			incomplete := errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE)
 			require.Len(t, incomplete, 1,
 				"a range its own items do not account for must suppress the bound, got %v", errs)
 			require.Contains(t, incomplete[0].GetMessage(), tc.want)
 
-			require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED),
+			require.Empty(t, errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED),
 				"a suppressed bound must not also be compared, got %v", errs)
 		})
 	}
@@ -1222,7 +1221,7 @@ func TestCheck_LogBounds_ItemlessRangeAloneIsRejected(t *testing.T) {
 	errs := collectCheckErrors(t, store, attributes.New())
 
 	require.NotEmpty(t, errs, "an itemless success range must not read as a clean store")
-	require.Len(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE), 1,
+	require.Len(t, errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE), 1,
 		"got %v", errs)
 }
 
@@ -1276,7 +1275,7 @@ func TestCheck_LogBounds_HeadIsKeyDerived(t *testing.T) {
 			// row is replayed under its key sequence, so no projection diverges.
 			errs := collectCheckErrors(t, engine.store, engine.attrs)
 			require.Len(t, errs, 1, "the edited field must be the only finding, got %v", errs)
-			require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH,
+			require.Equal(t, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH,
 				errs[0].GetErrorType())
 
 			requireNoLogBoundFindings(t, errs)
@@ -1303,7 +1302,7 @@ func TestCheck_LogBounds_WideInteriorGapStaysBounded(t *testing.T) {
 
 	errs := collectCheckErrors(t, store, attributes.New())
 
-	gaps := errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP)
+	gaps := errorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP)
 	require.Len(t, gaps, 1,
 		"a hole of %d positions must be one event, not one per position", forged-3)
 	require.EqualValues(t, 3, gaps[0].GetLogSequence())

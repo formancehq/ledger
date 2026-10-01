@@ -4,10 +4,10 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // NewListCommand creates the queries list command.
@@ -50,7 +50,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	resp, err := client.ListPreparedQueries(ctx, &servicepb.ListPreparedQueriesRequest{
+	resp, err := client.ListPreparedQueries(ctx, &commonpb.ListPreparedQueriesRequest{
 		Ledger: ledgerName,
 	})
 	if err != nil {

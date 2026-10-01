@@ -7,7 +7,7 @@
 package eventspb
 
 import (
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	grpc "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -25,11 +25,11 @@ const (
 // Event represents a domain event derived from a committed global log entry.
 type Event struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Type          commonpb.EventType     `protobuf:"varint,1,opt,name=type,proto3,enum=common.EventType" json:"type,omitempty"`
+	Type          grpc.EventType         `protobuf:"varint,1,opt,name=type,proto3,enum=common.EventType" json:"type,omitempty"`
 	Ledger        string                 `protobuf:"bytes,2,opt,name=ledger,proto3" json:"ledger,omitempty"`
-	Date          *commonpb.Timestamp    `protobuf:"bytes,3,opt,name=date,proto3" json:"date,omitempty"`
+	Date          *grpc.Timestamp        `protobuf:"bytes,3,opt,name=date,proto3" json:"date,omitempty"`
 	LogSequence   uint64                 `protobuf:"fixed64,4,opt,name=log_sequence,json=logSequence,proto3" json:"log_sequence,omitempty"`
-	Log           *commonpb.Log          `protobuf:"bytes,5,opt,name=log,proto3" json:"log,omitempty"`
+	Log           *grpc.Log              `protobuf:"bytes,5,opt,name=log,proto3" json:"log,omitempty"`
 	App           string                 `protobuf:"bytes,6,opt,name=app,proto3" json:"app,omitempty"`         // Stable producer identifier ("ledger").
 	Version       string                 `protobuf:"bytes,7,opt,name=version,proto3" json:"version,omitempty"` // Event envelope generation ("v3").
 	unknownFields protoimpl.UnknownFields
@@ -66,11 +66,11 @@ func (*Event) Descriptor() ([]byte, []int) {
 	return file_events_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *Event) GetType() commonpb.EventType {
+func (x *Event) GetType() grpc.EventType {
 	if x != nil {
 		return x.Type
 	}
-	return commonpb.EventType(0)
+	return grpc.EventType(0)
 }
 
 func (x *Event) GetLedger() string {
@@ -80,7 +80,7 @@ func (x *Event) GetLedger() string {
 	return ""
 }
 
-func (x *Event) GetDate() *commonpb.Timestamp {
+func (x *Event) GetDate() *grpc.Timestamp {
 	if x != nil {
 		return x.Date
 	}
@@ -94,7 +94,7 @@ func (x *Event) GetLogSequence() uint64 {
 	return 0
 }
 
-func (x *Event) GetLog() *commonpb.Log {
+func (x *Event) GetLog() *grpc.Log {
 	if x != nil {
 		return x.Log
 	}
@@ -143,10 +143,10 @@ func file_events_proto_rawDescGZIP() []byte {
 
 var file_events_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_events_proto_goTypes = []any{
-	(*Event)(nil),              // 0: events.Event
-	(commonpb.EventType)(0),    // 1: common.EventType
-	(*commonpb.Timestamp)(nil), // 2: common.Timestamp
-	(*commonpb.Log)(nil),       // 3: common.Log
+	(*Event)(nil),          // 0: events.Event
+	(grpc.EventType)(0),    // 1: common.EventType
+	(*grpc.Timestamp)(nil), // 2: common.Timestamp
+	(*grpc.Log)(nil),       // 3: common.Log
 }
 var file_events_proto_depIdxs = []int32{
 	1, // 0: events.Event.type:type_name -> common.EventType

@@ -19,7 +19,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 type Event struct {

@@ -10,9 +10,11 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/adapter/apierr"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	protoerr "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // buildGRPCError creates a gRPC status error with an ErrorInfo detail,
@@ -482,7 +484,7 @@ func TestFromStatusError_ReconstructedErrorIsNotItselfDescribable(t *testing.T) 
 	require.IsType(t, &apierr.Remote{}, d, "errors.AsType must unwrap to the decoded remote failure")
 }
 
-// TestFromStatusError_BareNotFound covers the ~20 commonpb.NewNotFoundError
+// TestFromStatusError_BareNotFound covers the ~20 protoerr.NewNotFoundError
 // sites, which send a bare codes.NotFound with no ErrorInfo. Without this the
 // forwarded lookup miss degrades to a 500.
 func TestFromStatusError_BareNotFound(t *testing.T) {
@@ -490,8 +492,8 @@ func TestFromStatusError_BareNotFound(t *testing.T) {
 
 	converted := FromStatusError(status.Error(codes.NotFound, "ledger foo not found"))
 
-	notFound, ok := errors.AsType[*commonpb.NotFoundError](converted)
-	require.True(t, ok, "handleError dispatches on *commonpb.NotFoundError for its 404 branch")
+	notFound, ok := errors.AsType[*protoerr.NotFoundError](converted)
+	require.True(t, ok, "handleError dispatches on *protoerr.NotFoundError for its 404 branch")
 	require.Equal(t, "ledger foo not found", notFound.Error())
 	require.Equal(t, codes.NotFound, status.Code(converted), "the code must survive")
 }
@@ -543,9 +545,9 @@ func TestFromStatusError_NonStatusErrors(t *testing.T) {
 // service is not ours to reinterpret.
 //
 // codes.NotFound is the row that matters. The bare-NotFound fallback exists
-// for the ~20 commonpb.NewNotFoundError sites, which carry no detail at all;
+// for the ~20 protoerr.NewNotFoundError sites, which carry no detail at all;
 // applied to a foreign typed failure it rewrote that service's contract into a
-// ledger *commonpb.NotFoundError, which is exactly what the domain check
+// ledger *protoerr.NotFoundError, which is exactly what the domain check
 // upstream of it declined to do.
 func TestFromStatusError_ForeignErrorDomain(t *testing.T) {
 	t.Parallel()
@@ -578,7 +580,7 @@ func TestFromStatusError_ForeignErrorDomain(t *testing.T) {
 			original := detailed.Err()
 			require.Equal(t, original, FromStatusError(original))
 
-			_, isNotFound := errors.AsType[*commonpb.NotFoundError](FromStatusError(original))
+			_, isNotFound := errors.AsType[*protoerr.NotFoundError](FromStatusError(original))
 			require.False(t, isNotFound,
 				"a foreign service's typed failure must not become a ledger NotFoundError")
 		})

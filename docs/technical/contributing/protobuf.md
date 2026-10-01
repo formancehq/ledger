@@ -1,6 +1,6 @@
 # Protocol Buffers and gRPC
 
-The Raft transport layer and ledger service use gRPC for communication. Protocol buffer definitions are stored in `misc/proto/`, and generated Go code is placed in internal packages.
+The Raft transport layer and ledger service use gRPC for communication. Protocol buffer definitions are stored in `misc/proto/`. The six public service schemas generate into the nested `pkg/client/v3/grpc` module; internal protocols remain under `internal/proto/`.
 
 ## File Locations
 
@@ -18,20 +18,20 @@ The Raft transport layer and ledger service use gRPC for communication. Protocol
 | `signature.proto` | Request signature types |
 | `events.proto` | Domain event types |
 | `restore.proto` | Restore service |
+| `internal_common.proto` | Persisted-only common messages (not public) |
 
-### Generated Code (`internal/proto/`)
+### Generated Code
 
 | Package | Contents |
 |---------|----------|
-| `commonpb/` | Common types |
+| `pkg/client/v3/grpc/` | Public common, signature, audit, bucket, cluster, and restore descriptors, messages, stubs, and wire JSON helpers |
+| `internal/proto/publicpolicy/` | Generated query-filter validity, log-category, and RPC authorization tables used by the server |
+| `internal/protohelpers/`, `internal/protosql/` | Server-side conversion, builders, SQL, and schema adapters for public messages |
 | `raftcmdpb/` | FSM command types |
-| `servicepb/` | gRPC service |
-| `clusterpb/` | Cluster state |
-| `signaturepb/` | Signature types |
+| `internalcommonpb/` | Persisted-only common messages |
 | `snapshotpb/` | Snapshot service |
-| `auditpb/` | Audit log types |
 | `eventspb/` | Domain event types |
-| `restorepb/` | Restore service |
+| `rafttransportpb/` | Internal Raft transport |
 
 Raft transport generated code lives in `internal/proto/rafttransportpb/` (`raft_transport.pb.go`, `raft_transport_grpc.pb.go`).
 
@@ -42,14 +42,20 @@ just generate-proto
 ```
 
 This reads `.proto` files, generates Go code using `protoc-gen-go`, `protoc-gen-go-grpc`, `protoc-gen-go-vtproto`, and the custom plugins under `tools/` — `protoc-gen-dethash`, `protoc-gen-reader`, `protoc-gen-queryfilter-validity`, `protoc-gen-ledger-log-category`, and `protoc-gen-rpcauth` — and places files according to the `go_package` option.
+It also copies the six public `.proto` sources into the client module, writes a
+deterministic descriptor set, tidies the nested module, and refreshes its
+descriptor digest and protocol revision. `bash scripts/check-public-client.sh`
+checks regeneration, nested tests, an external-module import, and a real
+same-process `pkg/testserver` call. The client has no server or internal-protocol
+imports. See [public client distribution](../architecture/subsystems/api/public-client.md).
 
 ### Custom plugins
 
 - **`protoc-gen-dethash`** — deterministic (sorted-map) VT marshalers.
 - **`protoc-gen-reader`** — read-only interface / wrapper views.
-- **`protoc-gen-queryfilter-validity`** — emits `common_queryfilter_validity.pb.go`, the single source of truth for per-target `QueryFilter` condition validity (EN-1504). It reads the `common.allowed_query_targets` field-option extension annotating each arm of the `QueryFilter.filter` oneof with the `QueryTarget`s the condition is valid on, and generates the `ConditionKind` enum, `ConditionKindOf`, and the `ConditionValidForTarget` table. Both `internal/query` (compile + audit compilers) and `internal/adapter/http` (REST decode) consume the generated table, so validity rules cannot drift. To change what a condition is valid on, edit the annotation in `misc/proto/common.proto` and re-run `just generate-proto` — never edit the generated file. **Every oneof arm MUST carry an explicit declaration**: one or more `[(common.allowed_query_targets) = QUERY_TARGET_...]`, or `[(common.valid_on_no_query_target) = true]` for an arm deliberately valid on no target. An arm with neither (a forgotten annotation) makes `just generate-proto` **fail** with a clear message — it is a build error, not a silent all-false row — which is what makes the anti-drift gate real. Declaring both is rejected as contradictory.
-- **`protoc-gen-ledger-log-category`** — emits `common_ledger_log_category.pb.go`, the exhaustive EN-1771 classifier used by the indexbuilder's durable ledger-history tracker. Every `LedgerLogPayload.payload` oneof arm must explicitly set `[(common.ledger_log_is_history) = true]` for HISTORY or `false` for CONTROL. The plugin checks option presence separately from its boolean value, so an omitted annotation is a generation error rather than an accidental CONTROL default.
-- **`protoc-gen-rpcauth`** — validates the `common.auth_policy` method option on every BucketService and ClusterService RPC and emits `common_rpc_auth_policy.pb.go`. Each method must explicitly select `public: true`, a non-unspecified fixed scope, or a non-unspecified dynamic resolver. Missing and unknown policies fail generation. The generated lookup rejects unknown full method names and is also checked against the registered public gRPC services before the server binds its listener.
+- **`protoc-gen-queryfilter-validity`** — emits `internal/proto/publicpolicy/common_queryfilter_validity.pb.go`, the single source of truth for per-target `QueryFilter` condition validity (EN-1504). It reads the `common.allowed_query_targets` field-option extension annotating each arm of the `QueryFilter.filter` oneof with the `QueryTarget`s the condition is valid on, and generates the `ConditionKind` enum, `ConditionKindOf`, and the `ConditionValidForTarget` table. Both `internal/query` (compile + audit compilers) and `internal/adapter/http` (REST decode) consume the generated table, so validity rules cannot drift. To change what a condition is valid on, edit the annotation in `misc/proto/common.proto` and re-run `just generate-proto` — never edit the generated file. **Every oneof arm MUST carry an explicit declaration**: one or more `[(common.allowed_query_targets) = QUERY_TARGET_...]`, or `[(common.valid_on_no_query_target) = true]` for an arm deliberately valid on no target. An arm with neither (a forgotten annotation) makes `just generate-proto` **fail** with a clear message — it is a build error, not a silent all-false row — which is what makes the anti-drift gate real. Declaring both is rejected as contradictory.
+- **`protoc-gen-ledger-log-category`** — emits `internal/proto/publicpolicy/common_ledger_log_category_gen.go`, the exhaustive EN-1771 classifier used by the indexbuilder's durable ledger-history tracker. Every `LedgerLogPayload.payload` oneof arm must explicitly set `[(common.ledger_log_is_history) = true]` for HISTORY or `false` for CONTROL. The plugin checks option presence separately from its boolean value, so an omitted annotation is a generation error rather than an accidental CONTROL default.
+- **`protoc-gen-rpcauth`** — validates the `common.auth_policy` method option on every BucketService and ClusterService RPC and emits `internal/proto/publicpolicy/common_rpc_auth_policy.pb.go`. Each method must explicitly select `public: true`, a non-unspecified fixed scope, or a non-unspecified dynamic resolver. Missing and unknown policies fail generation. The generated lookup rejects unknown full method names and is also checked against the registered public gRPC services before the server binds its listener.
 
 ### Prerequisites
 
@@ -140,7 +146,7 @@ All monetary amounts use the `Uint256` protobuf message - a fixed-size 4 x `fixe
 - All amounts are non-negative: the sign byte in BigInt was wasted
 - 2^256 range (1.16 x 10^77) covers any real-world monetary quantity
 
-**Key file**: `internal/proto/commonpb/uint256.go` (`IntoUint256()`, `SetFromUint256()`, `ToBigInt()`, `IsZero()`, `Dec()`)
+**Key files**: `pkg/client/v3/grpc/commonpb_uint256.go` (`ToBigInt()`, `IsZero()`, `Dec()`) for client-facing decimal and JSON behavior; `internal/protohelpers/uint256.go` for zero-allocation `holiman/uint256.Int` conversion on the server.
 
 See [architecture/uint256-wire-format.md](../architecture/primitives/uint256-wire-format.md) for the full design rationale.
 

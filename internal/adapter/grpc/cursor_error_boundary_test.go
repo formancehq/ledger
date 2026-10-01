@@ -17,12 +17,12 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/adapter/apierr"
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 func TestForwardedCursorPreservesCanceledLedgerStatus(t *testing.T) {
@@ -54,7 +54,7 @@ func TestForwardedCursorPreservesCanceledLedgerStatus(t *testing.T) {
 				client := dialCursorBoundaryServer(t, &endingBucketServer{rows: 2, endErr: upstream.Err()})
 				ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 				t.Cleanup(cancel)
-				stream, err := client.ListAccounts(ctx, &servicepb.ListAccountsRequest{Ledger: "ledger"})
+				stream, err := client.ListAccounts(ctx, &commonpb.ListAccountsRequest{Ledger: "ledger"})
 				require.NoError(t, err)
 				cur := constructor.new(ctx, stream)
 				t.Cleanup(func() { require.NoError(t, cur.Close()) })
@@ -100,11 +100,11 @@ func TestForwardedCursorPreservesCanceledLedgerStatus(t *testing.T) {
 	}
 }
 
-func dialCursorBoundaryServer(t *testing.T, srv servicepb.BucketServiceServer) servicepb.BucketServiceClient {
+func dialCursorBoundaryServer(t *testing.T, srv commonpb.BucketServiceServer) commonpb.BucketServiceClient {
 	t.Helper()
 	listener := bufconn.Listen(1 << 20)
 	server := ggrpc.NewServer()
-	servicepb.RegisterBucketServiceServer(server, srv)
+	commonpb.RegisterBucketServiceServer(server, srv)
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- server.Serve(listener) }()
 	t.Cleanup(func() {
@@ -120,5 +120,5 @@ func dialCursorBoundaryServer(t *testing.T, srv servicepb.BucketServiceServer) s
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
 
-	return servicepb.NewBucketServiceClient(grpcerr.NewConn(conn))
+	return commonpb.NewBucketServiceClient(grpcerr.NewConn(conn))
 }

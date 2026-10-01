@@ -20,9 +20,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
@@ -35,7 +34,7 @@ func CheckDriver(t *testing.T, main func(), messages ...string) {
 	t.Helper()
 	CheckEmissions(t, func() {
 		ctx, client := StartServer(t)
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("seed", actions.CreateLedgerAction("default", nil)))
+		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("seed", actions.CreateLedgerAction("default", nil)))
 		require.NoError(t, err)
 		main()
 	}, func(records []Assertion) {
@@ -112,7 +111,7 @@ func CheckEmissions(t *testing.T, scenario func(), check func([]Assertion)) {
 
 // StartServer uses leased ports and the same server bootstrap as the nested
 // model integration tests. It also points command entry points at this server.
-func StartServer(t *testing.T) (context.Context, servicepb.BucketServiceClient) {
+func StartServer(t *testing.T) (context.Context, commonpb.BucketServiceClient) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
 	t.Cleanup(cancel)
@@ -135,13 +134,13 @@ func StartServer(t *testing.T) (context.Context, servicepb.BucketServiceClient) 
 	conn, err := grpc.NewClient(address, grpcprotocol.ClientOption(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
-	cluster := clusterpb.NewClusterServiceClient(conn)
+	cluster := commonpb.NewClusterServiceClient(conn)
 	require.Eventually(t, func() bool {
-		state, err := cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+		state, err := cluster.GetClusterState(ctx, &commonpb.GetClusterStateRequest{})
 
 		return err == nil && state.GetLeader() != 0
 	}, 5*time.Second, 10*time.Millisecond)
-	client := servicepb.NewBucketServiceClient(conn)
+	client := commonpb.NewBucketServiceClient(conn)
 	testserver.WaitForWriteAdmission(t, ctx, client)
 
 	return ctx, client

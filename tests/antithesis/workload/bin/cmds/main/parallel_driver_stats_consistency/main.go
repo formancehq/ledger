@@ -19,17 +19,16 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_stats_consistency", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+	internal.RunDriver("parallel_driver_stats_consistency", func(ctx context.Context, client commonpb.BucketServiceClient, ledger string) {
 		details := internal.Details{"ledger": ledger}
 
-		stats, err := client.GetLedgerStats(ctx, &servicepb.GetLedgerStatsRequest{Ledger: ledger})
+		stats, err := client.GetLedgerStats(ctx, &commonpb.GetLedgerStatsRequest{Ledger: ledger})
 		if err != nil {
 			if internal.IsTransient(err) {
 				return
@@ -52,7 +51,7 @@ func main() {
 			"log count must be >= transaction count (logs include metadata, reverts, etc.)", statsDetails)
 
 		// Aggregate volumes must sum to zero (double-entry invariant).
-		aggResp, err := client.AggregateVolumes(ctx, &servicepb.AggregateVolumesRequest{
+		aggResp, err := client.AggregateVolumes(ctx, &commonpb.AggregateVolumesRequest{
 			Ledger: ledger,
 		})
 		if err != nil {

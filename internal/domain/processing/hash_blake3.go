@@ -3,7 +3,7 @@ package processing
 import (
 	"github.com/zeebo/blake3"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // blake3AuditKeyContext domain-separates the BLAKE3 audit-hash key from

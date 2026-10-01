@@ -6,8 +6,7 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/sdktest"
@@ -33,8 +32,8 @@ func applyLog(created *commonpb.CreatedTransaction) *commonpb.Log {
 	}
 }
 
-func applyResponse(created *commonpb.CreatedTransaction) *servicepb.ApplyResponse {
-	return &servicepb.ApplyResponse{Logs: []*commonpb.Log{applyLog(created)}}
+func applyResponse(created *commonpb.CreatedTransaction) *commonpb.ApplyResponse {
+	return &commonpb.ApplyResponse{Logs: []*commonpb.Log{applyLog(created)}}
 }
 
 // A wrapper whose Transaction is absent must not reach a caller: callers read

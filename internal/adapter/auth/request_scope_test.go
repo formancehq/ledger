@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestRequiredScopeForRequest_CreateLedger(t *testing.T) {

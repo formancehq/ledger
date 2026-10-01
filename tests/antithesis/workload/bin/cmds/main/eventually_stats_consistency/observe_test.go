@@ -12,8 +12,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestAwaitUsageIndependentWitnessAndExactCounters(t *testing.T) {
@@ -38,7 +37,7 @@ func TestAwaitUsageIndependentWitnessAndExactCounters(t *testing.T) {
 			var targetReads atomic.Int64
 			var wrongConsistency atomic.Bool
 			server := &oracleTestServer{
-				getLedgerFn: func(ctx context.Context, req *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
+				getLedgerFn: func(ctx context.Context, req *commonpb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
 					md, _ := metadata.FromIncomingContext(ctx)
 					if values := md.Get("x-consistency"); len(values) != 1 || values[0] != "stale" {
 						wrongConsistency.Store(true)
@@ -46,7 +45,7 @@ func TestAwaitUsageIndependentWitnessAndExactCounters(t *testing.T) {
 
 					return &commonpb.LedgerInfo{Name: req.GetLedger(), Id: 7}, nil
 				},
-				statsFn: func(ctx context.Context, req *servicepb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
+				statsFn: func(ctx context.Context, req *commonpb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
 					if req.GetLedger() == "witness" {
 						return &commonpb.LedgerStats{ReferenceCount: tt.marker}, nil
 					}
@@ -92,10 +91,10 @@ func TestAwaitUsageRecoversFromLagAndTransientError(t *testing.T) {
 			var released atomic.Bool
 			var targetReads atomic.Int64
 			client := newSourceTestClient(t, &oracleTestServer{
-				getLedgerFn: func(_ context.Context, req *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
+				getLedgerFn: func(_ context.Context, req *commonpb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
 					return &commonpb.LedgerInfo{Name: req.GetLedger(), Id: 1}, nil
 				},
-				statsFn: func(_ context.Context, req *servicepb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
+				statsFn: func(_ context.Context, req *commonpb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
 					if !released.Load() {
 						if transient {
 							return nil, status.Error(codes.Unavailable, "replica restarting")
@@ -127,10 +126,10 @@ func TestAwaitUsageRejectsDisappearingWitness(t *testing.T) {
 	t.Parallel()
 	var markerReads atomic.Int64
 	client := newSourceTestClient(t, &oracleTestServer{
-		getLedgerFn: func(_ context.Context, req *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
+		getLedgerFn: func(_ context.Context, req *commonpb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
 			return &commonpb.LedgerInfo{Name: req.GetLedger(), Id: 1}, nil
 		},
-		statsFn: func(_ context.Context, req *servicepb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
+		statsFn: func(_ context.Context, req *commonpb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
 			if req.GetLedger() == "witness" {
 				if markerReads.Add(1)%2 == 1 {
 					return &commonpb.LedgerStats{ReferenceCount: 1}, nil
@@ -154,7 +153,7 @@ func TestAwaitUsageRetainsErrorsAndIncarnationMismatch(t *testing.T) {
 		t.Run(scenario, func(t *testing.T) {
 			t.Parallel()
 			client := newSourceTestClient(t, &oracleTestServer{
-				getLedgerFn: func(_ context.Context, req *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
+				getLedgerFn: func(_ context.Context, req *commonpb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
 					id := uint32(1)
 					if scenario == req.GetLedger()+" incarnation" {
 						id = 2
@@ -162,7 +161,7 @@ func TestAwaitUsageRetainsErrorsAndIncarnationMismatch(t *testing.T) {
 
 					return &commonpb.LedgerInfo{Name: req.GetLedger(), Id: id}, nil
 				},
-				statsFn: func(_ context.Context, req *servicepb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
+				statsFn: func(_ context.Context, req *commonpb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
 					if req.GetLedger() == "witness" {
 						return &commonpb.LedgerStats{ReferenceCount: 1}, nil
 					}
@@ -191,14 +190,14 @@ func TestAwaitUsageRetainsMismatchWhenLaterRPCFails(t *testing.T) {
 	t.Parallel()
 	var unavailable atomic.Bool
 	client := newSourceTestClient(t, &oracleTestServer{
-		getLedgerFn: func(_ context.Context, req *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
+		getLedgerFn: func(_ context.Context, req *commonpb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
 			if unavailable.Load() {
 				return nil, status.Error(codes.Unavailable, "replica stopped responding")
 			}
 
 			return &commonpb.LedgerInfo{Name: req.GetLedger(), Id: 1}, nil
 		},
-		statsFn: func(_ context.Context, req *servicepb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
+		statsFn: func(_ context.Context, req *commonpb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
 			if req.GetLedger() == "witness" {
 				return &commonpb.LedgerStats{ReferenceCount: 1}, nil
 			}
@@ -225,7 +224,7 @@ func TestAwaitUsageAllowsAFullSweepWithinConvergenceWindow(t *testing.T) {
 	// deadline. Check the budget reaching the server without sleeping in tests.
 	var truncatedBudget atomic.Bool
 	client := newSourceTestClient(t, &oracleTestServer{
-		getLedgerFn: func(ctx context.Context, req *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
+		getLedgerFn: func(ctx context.Context, req *commonpb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
 			deadline, ok := ctx.Deadline()
 			if !ok || time.Until(deadline) < 30*time.Second {
 				truncatedBudget.Store(true)
@@ -233,7 +232,7 @@ func TestAwaitUsageAllowsAFullSweepWithinConvergenceWindow(t *testing.T) {
 
 			return &commonpb.LedgerInfo{Name: req.GetLedger(), Id: 1}, nil
 		},
-		statsFn: func(_ context.Context, req *servicepb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
+		statsFn: func(_ context.Context, req *commonpb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
 			return &commonpb.LedgerStats{ReferenceCount: 1}, nil
 		},
 	})

@@ -5,8 +5,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 )
 
 // NewBackupCommand creates the store backup command.

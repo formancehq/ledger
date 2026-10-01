@@ -14,19 +14,19 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 type aggregateVolumesOutputServer struct {
-	servicepb.UnimplementedBucketServiceServer
+	commonpb.UnimplementedBucketServiceServer
 
 	asset string
 }
 
-func (s *aggregateVolumesOutputServer) AggregateVolumes(ctx context.Context, _ *servicepb.AggregateVolumesRequest) (*commonpb.AggregateResult, error) {
-	profile, err := proto.Marshal(&servicepb.QueryProfile{BarrierDurationUs: 1})
+func (s *aggregateVolumesOutputServer) AggregateVolumes(ctx context.Context, _ *commonpb.AggregateVolumesRequest) (*commonpb.AggregateResult, error) {
+	profile, err := proto.Marshal(&commonpb.QueryProfile{BarrierDurationUs: 1})
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +72,7 @@ func TestAccountsAggregateVolumesRescaleInvalidAssetPrintsNothing(t *testing.T) 
 			listener, err := net.Listen("tcp", "127.0.0.1:0")
 			require.NoError(t, err)
 			server := grpc.NewServer()
-			servicepb.RegisterBucketServiceServer(server, &aggregateVolumesOutputServer{asset: tc.asset})
+			commonpb.RegisterBucketServiceServer(server, &aggregateVolumesOutputServer{asset: tc.asset})
 			serveResult := make(chan error, 1)
 			go func() { serveResult <- server.Serve(listener) }()
 			t.Cleanup(func() {

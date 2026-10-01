@@ -1,8 +1,9 @@
 package commands
 
 import (
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain/attribution"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // System component identifiers recorded on system/internal proposals, so their

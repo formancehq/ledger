@@ -6,8 +6,10 @@ import (
 
 	"github.com/google/cel-go/cel"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 // valueProducer is a per-action closure that yields the string value to write
@@ -165,7 +167,7 @@ func parseOptionalMetadataType(token string) (commonpb.MetadataType, bool, error
 		return commonpb.MetadataType_METADATA_TYPE_STRING, false, nil
 	}
 
-	t, err := commonpb.ParseMetadataType(token)
+	t, err := protohelpers.ParseMetadataType(token)
 	if err != nil {
 		return 0, false, err
 	}
@@ -184,7 +186,7 @@ func coerceValue(value string, typ commonpb.MetadataType, typed bool) *commonpb.
 		return sv
 	}
 
-	return commonpb.ConvertMetadataValue(sv, typ)
+	return protohelpers.ConvertMetadataValue(sv, typ)
 }
 
 // variantForEnv returns the entry's current variant as the value CEL should

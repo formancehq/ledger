@@ -46,9 +46,8 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
@@ -100,14 +99,14 @@ func main() {
 	defer func() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if _, err := client.Apply(cleanupCtx, servicepb.UnsignedApplyRequest(idempotencyKey(), actions.SetMaintenanceModeAction(false))); err != nil {
+		if _, err := client.Apply(cleanupCtx, commonpb.UnsignedApplyRequest(idempotencyKey(), actions.SetMaintenanceModeAction(false))); err != nil {
 			log.Printf("disable maintenance during shutdown: %v", err)
 		}
 	}()
 
 	// A previous driver may have died after enabling the cluster-wide gate.
 	// Recover before setup so CreateLedger cannot wait behind maintenance forever.
-	if _, err := client.Apply(ctx, servicepb.UnsignedApplyRequest(idempotencyKey(), actions.SetMaintenanceModeAction(false))); err != nil {
+	if _, err := client.Apply(ctx, commonpb.UnsignedApplyRequest(idempotencyKey(), actions.SetMaintenanceModeAction(false))); err != nil {
 		log.Printf("disable maintenance during startup: %v", err)
 
 		return
@@ -212,7 +211,7 @@ func main() {
 // the Apply round-trip run lock-free, then the observation goes to the processor.
 func runWorker(
 	ctx context.Context,
-	client servicepb.BucketServiceClient,
+	client commonpb.BucketServiceClient,
 	checkpointNodes internal.PerNodeConns,
 	c *Checker,
 ) {
@@ -300,7 +299,7 @@ func runWorker(
 // dispatchBulk sends every generated request through the same inflight and
 // processor path. Maintenance enable schedules a modeled disable independently,
 // so a write-blocked worker fleet cannot stall the run permanently.
-func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, checkpointNodes internal.PerNodeConns, c *Checker, bulk oracle.Bulk) {
+func dispatchBulk(ctx context.Context, client commonpb.BucketServiceClient, checkpointNodes internal.PerNodeConns, c *Checker, bulk oracle.Bulk) {
 	defer c.releaseLedgerCreate(bulk)
 	checkpointCreate := isCheckpointCreate(bulk)
 	if checkpointCreate {
@@ -341,7 +340,7 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 	}
 
 	req := applyRequest(bulk)
-	var resp *servicepb.ApplyResponse
+	var resp *commonpb.ApplyResponse
 	var err error
 	hadAmbiguousAttempt := false
 	provisionalMaintenanceRecoveryScheduled := false
@@ -412,7 +411,7 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 	}
 }
 
-func scheduleMaintenanceRecovery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) uint64 {
+func scheduleMaintenanceRecovery(ctx context.Context, client commonpb.BucketServiceClient, c *Checker) uint64 {
 	c.mu.Lock()
 	if c.maintenanceRecoveryActive {
 		if c.maintenanceRecoveryTicket != 0 {
@@ -479,9 +478,9 @@ func scheduleMaintenanceRecovery(ctx context.Context, client servicepb.BucketSer
 // remains blocked without preventing the disable observation from draining. A
 // fresh key prevents deliberate conflict injection from turning a temporary
 // maintenance window into a permanent stall.
-func dispatchMaintenanceRecovery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker, recoveryID, recoverySeq uint64) {
+func dispatchMaintenanceRecovery(ctx context.Context, client commonpb.BucketServiceClient, c *Checker, recoveryID, recoverySeq uint64) {
 	bulk := oracle.Bulk{
-		Requests:       []*servicepb.Request{actions.SetMaintenanceModeAction(false)},
+		Requests:       []*commonpb.Request{actions.SetMaintenanceModeAction(false)},
 		IdempotencyKey: idempotencyKey(),
 	}
 
@@ -495,7 +494,7 @@ func dispatchMaintenanceRecovery(ctx context.Context, client servicepb.BucketSer
 	c.dispatchMu.Unlock()
 
 	req := applyRequest(bulk)
-	var resp *servicepb.ApplyResponse
+	var resp *commonpb.ApplyResponse
 	var err error
 	for {
 		resp, err = client.Apply(ctx, req)
@@ -614,7 +613,7 @@ func envInt(key string, def int) int {
 // missing ledger, so it asserts Unreachable. Shutdown (ctx cancelled) is teardown,
 // not a finding. Returns false to stop the run; the chart is left empty for
 // workers to fill.
-func setupLedgers(ctx context.Context, client servicepb.BucketServiceClient, names []string, schemas map[string][]*commonpb.SetMetadataFieldTypeCommand) bool {
+func setupLedgers(ctx context.Context, client commonpb.BucketServiceClient, names []string, schemas map[string][]*commonpb.SetMetadataFieldTypeCommand) bool {
 	for _, name := range names {
 		err := internal.CreateLedger(ctx, client, name, schemas[name]...)
 		if err == nil {

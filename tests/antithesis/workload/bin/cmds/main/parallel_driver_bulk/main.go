@@ -6,14 +6,14 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_bulk", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+	internal.RunDriver("parallel_driver_bulk", func(ctx context.Context, client commonpb.BucketServiceClient, ledger string) {
 		r := internal.Rand()
 		addr1 := internal.GetRandomAddress()
 		addr2 := internal.GetRandomAddress()
@@ -25,13 +25,13 @@ func main() {
 		// Send a batch of operations in a single Apply call:
 		// - Two transactions
 		// - One metadata save
-		resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
-			&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
+		resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("",
+			&commonpb.Request{
+				Type: &commonpb.Request_Apply{
+					Apply: &commonpb.LedgerApplyRequest{
 						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
+						Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+							CreateTransaction: &commonpb.CreateTransactionPayload{
 								Postings: []*commonpb.Posting{{
 									Source:      "world",
 									Destination: addr1,
@@ -44,12 +44,12 @@ func main() {
 					},
 				},
 			},
-			&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
+			&commonpb.Request{
+				Type: &commonpb.Request_Apply{
+					Apply: &commonpb.LedgerApplyRequest{
 						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
+						Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+							CreateTransaction: &commonpb.CreateTransactionPayload{
 								Postings: []*commonpb.Posting{{
 									Source:      "world",
 									Destination: addr2,
@@ -62,18 +62,18 @@ func main() {
 					},
 				},
 			},
-			&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
+			&commonpb.Request{
+				Type: &commonpb.Request_Apply{
+					Apply: &commonpb.LedgerApplyRequest{
 						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
+						Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_AddMetadata{
 							AddMetadata: &commonpb.SaveMetadataCommand{
 								Target: &commonpb.Target{
 									Target: &commonpb.Target_Account{
 										Account: &commonpb.TargetAccount{Addr: addr1},
 									},
 								},
-								Metadata: commonpb.MetadataFromGoMap(map[string]string{metaKey: metaValue}),
+								Metadata: protohelpers.MetadataFromGoMap(map[string]string{metaKey: metaValue}),
 							},
 						}},
 					},
@@ -96,7 +96,7 @@ func main() {
 		internal.CheckCreatedTransaction(resp, details)
 
 		// Verify read-after-write for the metadata.
-		acct, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
+		acct, err := client.GetAccount(ctx, &commonpb.GetAccountRequest{
 			Ledger:  ledger,
 			Address: addr1,
 		})

@@ -8,12 +8,11 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -62,7 +61,7 @@ func TestExecute_LedgerNotFound(t *testing.T) {
 			const ledger = "missing-ledger"
 			tc.seed(t, s, ledger)
 
-			req := &servicepb.ExecutePreparedQueryRequest{
+			req := &commonpb.ExecutePreparedQueryRequest{
 				Ledger:    ledger,
 				QueryName: "q",
 			}

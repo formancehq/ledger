@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 func TestHandleAddAccountType_Success(t *testing.T) {
@@ -20,7 +20,7 @@ func TestHandleAddAccountType_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -102,7 +102,7 @@ func TestHandleAddAccountType_FullModel(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			reqs := req.GetUnsigned().GetRequests()
 			require.Len(t, reqs, 1)
 			captured = reqs[0].GetAddAccountType().GetAccountType()
@@ -145,7 +145,7 @@ func TestHandleAddAccountType_RegexSegmentConstraint(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			captured = req.GetUnsigned().GetRequests()[0].GetAddAccountType().GetAccountType()
 
 			return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
@@ -215,7 +215,7 @@ func TestHandleAddAccountType_AlreadyExists(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, &domain.ErrAccountTypeAlreadyExists{Name: "users"}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)

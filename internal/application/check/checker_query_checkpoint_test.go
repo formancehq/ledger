@@ -7,11 +7,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -54,7 +53,7 @@ func derivedLog(id uint64) *commonpb.CreatedQueryCheckpointLog {
 // collectQueryCheckpointEvents runs compareQueryCheckpoints against the store's
 // live checkpoint rows with the given audit-derived set and returns only the
 // QUERY_CHECKPOINT_MISMATCH errors.
-func collectQueryCheckpointEvents(t *testing.T, store *dal.Store, derived map[uint64]*commonpb.CreatedQueryCheckpointLog) []*servicepb.CheckStoreError {
+func collectQueryCheckpointEvents(t *testing.T, store *dal.Store, derived map[uint64]*commonpb.CreatedQueryCheckpointLog) []*commonpb.CheckStoreError {
 	t.Helper()
 
 	checker := NewChecker(store, attributes.New(), nil, logging.Testing())
@@ -64,11 +63,11 @@ func collectQueryCheckpointEvents(t *testing.T, store *dal.Store, derived map[ui
 
 	defer func() { _ = handle.Close() }()
 
-	var got []*servicepb.CheckStoreError
+	var got []*commonpb.CheckStoreError
 
-	require.NoError(t, checker.compareQueryCheckpoints(handle, derived, func(event *servicepb.CheckStoreEvent) {
-		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok &&
-			e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH {
+	require.NoError(t, checker.compareQueryCheckpoints(handle, derived, func(event *commonpb.CheckStoreEvent) {
+		if e, ok := event.GetType().(*commonpb.CheckStoreEvent_Error); ok &&
+			e.Error.GetErrorType() == commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH {
 			got = append(got, e.Error)
 		}
 	}))
@@ -205,14 +204,14 @@ func TestCheck_QueryCheckpointProjection_EmptyAuditWiring(t *testing.T) {
 
 	checker := NewChecker(store, attributes.New(), nil, logging.Testing())
 
-	var got []*servicepb.CheckStoreError
-	require.NoError(t, checker.Check(context.Background(), func(event *servicepb.CheckStoreEvent) {
-		if errEvent, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
+	var got []*commonpb.CheckStoreError
+	require.NoError(t, checker.Check(context.Background(), func(event *commonpb.CheckStoreEvent) {
+		if errEvent, ok := event.GetType().(*commonpb.CheckStoreEvent_Error); ok {
 			got = append(got, errEvent.Error)
 		}
 	}))
 
 	require.Len(t, got, 1, "a stored query checkpoint with no audited creation must be reported")
-	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH, got[0].GetErrorType())
+	require.Equal(t, commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH, got[0].GetErrorType())
 	require.Contains(t, got[0].GetMessage(), "not justified by the audit chain")
 }

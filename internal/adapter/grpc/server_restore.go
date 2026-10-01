@@ -15,12 +15,11 @@ import (
 	"google.golang.org/grpc/status"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	restorepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/application/check"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
-	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -328,18 +327,18 @@ func (s *RestoreServiceServerImpl) ValidateRestore(_ *restorepb.ValidateRestoreR
 
 	validationErrors := 0
 	var sendErr error
-	checkErr := checker.Check(stream.Context(), func(event *servicepb.CheckStoreEvent) {
+	checkErr := checker.Check(stream.Context(), func(event *restorepb.CheckStoreEvent) {
 		var restoreEvent restorepb.ValidateRestoreEvent
 
 		switch t := event.GetType().(type) {
-		case *servicepb.CheckStoreEvent_Progress:
+		case *restorepb.CheckStoreEvent_Progress:
 			restoreEvent.Type = &restorepb.ValidateRestoreEvent_Progress{
 				Progress: &restorepb.ValidateRestoreProgress{
 					LogsChecked: t.Progress.GetLogsChecked(),
 					TotalLogs:   t.Progress.GetTotalLogs(),
 				},
 			}
-		case *servicepb.CheckStoreEvent_Error:
+		case *restorepb.CheckStoreEvent_Error:
 			validationErrors++
 			restoreEvent.Type = &restorepb.ValidateRestoreEvent_Error{
 				Error: &restorepb.ValidateRestoreError{

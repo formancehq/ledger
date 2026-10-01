@@ -30,9 +30,8 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	antirandom "github.com/antithesishq/antithesis-sdk-go/random"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -41,15 +40,15 @@ import (
 // createWithReference attempts a single CreateTransaction carrying ref.
 func createWithReference(
 	ctx context.Context,
-	client servicepb.BucketServiceClient,
+	client commonpb.BucketServiceClient,
 	ledger, ref, destination string,
-) (*servicepb.ApplyResponse, error) {
-	return client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+) (*commonpb.ApplyResponse, error) {
+	return client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: ledger,
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Postings: []*commonpb.Posting{{
 							Source:      "world",
 							Destination: destination,
@@ -70,13 +69,13 @@ func createWithReference(
 // received, so a subsequent linearizable read covers any write those responses
 // could correspond to. Returns
 // (0, false) when the barrier could not be established (inconclusive).
-func writeMarker(ctx context.Context, client servicepb.BucketServiceClient, ledger string) bool {
-	resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+func writeMarker(ctx context.Context, client commonpb.BucketServiceClient, ledger string) bool {
+	resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: ledger,
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Postings: []*commonpb.Posting{{
 							Source:      "world",
 							Destination: "refrace-marker",
@@ -102,7 +101,7 @@ func writeMarker(ctx context.Context, client servicepb.BucketServiceClient, ledg
 // before returning inconclusive.
 func countTransactionsWithReference(
 	ctx context.Context,
-	client servicepb.BucketServiceClient,
+	client commonpb.BucketServiceClient,
 	ledger, ref string,
 ) ([]uint64, bool) {
 	ids, err := internal.ReadOracleTransactions(ctx, client, ledger, actions.ReferenceFilter(ref))
@@ -115,7 +114,7 @@ func countTransactionsWithReference(
 // committed transaction. Single call site per assertion message.
 func assertReferenceUnique(
 	ctx context.Context,
-	client servicepb.BucketServiceClient,
+	client commonpb.BucketServiceClient,
 	ledger, ref string,
 	details internal.Details,
 ) {
@@ -134,7 +133,7 @@ func assertReferenceUnique(
 }
 
 func main() {
-	internal.RunDriver("parallel_driver_reference_race", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
+	internal.RunDriver("parallel_driver_reference_race", func(ctx context.Context, client commonpb.BucketServiceClient, _ string) {
 		r := internal.Rand()
 
 		run := r.Uint64()

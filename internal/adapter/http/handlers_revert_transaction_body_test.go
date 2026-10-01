@@ -13,12 +13,11 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // Exercise the registered route with both explicit lengths and actual HTTP/1.1
@@ -30,19 +29,19 @@ func TestHandleRevertTransaction_BodyFraming(t *testing.T) {
 		"reason": "duplicate", "count": uint64(42), "negative": int64(-7), "active": true,
 	})
 	require.NoError(t, err)
-	options := &servicepb.RevertTransactionPayload{
+	options := &commonpb.RevertTransactionPayload{
 		TransactionId: 1, Force: true, AtEffectiveDate: true, Metadata: metadata,
 	}
-	defaults := &servicepb.RevertTransactionPayload{TransactionId: 1}
+	defaults := &commonpb.RevertTransactionPayload{TransactionId: 1}
 	controlMetadata, err := commonpb.MetadataFromAnyMap(map[string]any{"reason": "a\x00b"})
 	require.NoError(t, err)
-	escapedControl := &servicepb.RevertTransactionPayload{TransactionId: 1, Metadata: controlMetadata}
+	escapedControl := &commonpb.RevertTransactionPayload{TransactionId: 1, Metadata: controlMetadata}
 
 	for _, tc := range []struct {
 		name   string
 		body   string
 		status int
-		want   *servicepb.RevertTransactionPayload
+		want   *commonpb.RevertTransactionPayload
 	}{
 		{"options", `{"force":true,"atEffectiveDate":true,"metadata":{"reason":"duplicate","count":42,"negative":-7,"active":true}}`, http.StatusCreated, options},
 		{"empty", "", http.StatusCreated, defaults},
@@ -64,10 +63,10 @@ func TestHandleRevertTransaction_BodyFraming(t *testing.T) {
 			t.Run(tc.name+"/"+framing, func(t *testing.T) {
 				t.Parallel()
 
-				calls := make(chan *servicepb.ApplyRequest, 1)
+				calls := make(chan *commonpb.ApplyRequest, 1)
 				backend := NewMockBackend(gomock.NewController(t))
 				backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-					func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+					func(_ context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 						calls <- req
 
 						return &domain.ApplyResult{Logs: []*commonpb.Log{{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{

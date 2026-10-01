@@ -26,7 +26,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	protoerr "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // testLogger is the silent logger used by convertToGRPCError tests.
@@ -69,6 +69,17 @@ func TestHandlePanic_DoesNotLeakStackToClient(t *testing.T) {
 	require.Len(t, ended, 1)
 	require.NotEmpty(t, grpcSpanAttribute(ended[0], "correlation_id"))
 	require.NotEmpty(t, ended[0].Events())
+}
+
+func TestInvalidCallerAttributionHasNoPublicReasonOrDiagnostic(t *testing.T) {
+	t.Parallel()
+
+	err := &domain.ErrInvalidCallerAttribution{Detail: "principal from internal trust boundary"}
+	st := status.Convert(convertToGRPCError(err, testLogger()))
+
+	require.Equal(t, codes.Internal, st.Code())
+	require.Equal(t, "internal error", st.Message())
+	require.Empty(t, st.Details())
 }
 
 func TestBusinessErrorToGRPCStatus_LedgerAlreadyExists(t *testing.T) {
@@ -882,7 +893,7 @@ func TestConvertToGRPCError_MaintenanceMode(t *testing.T) {
 func TestConvertToGRPCError_NoLeader(t *testing.T) {
 	t.Parallel()
 
-	grpcErr := convertToGRPCError(commonpb.ErrNoLeader, testLogger())
+	grpcErr := convertToGRPCError(protoerr.ErrNoLeader, testLogger())
 	st, ok := status.FromError(grpcErr)
 	require.True(t, ok)
 	require.Equal(t, codes.Unavailable, st.Code())
@@ -907,7 +918,7 @@ func TestConvertToGRPCError_LeadershipLost(t *testing.T) {
 func TestConvertToGRPCError_NotFoundError(t *testing.T) {
 	t.Parallel()
 
-	grpcErr := convertToGRPCError(commonpb.NewNotFoundError("ledger %s not found", "test"), testLogger())
+	grpcErr := convertToGRPCError(protoerr.NewNotFoundError("ledger %s not found", "test"), testLogger())
 	st, ok := status.FromError(grpcErr)
 	require.True(t, ok)
 	require.Equal(t, codes.NotFound, st.Code())

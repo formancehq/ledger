@@ -9,8 +9,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/random"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -56,21 +55,21 @@ var preparedQueryTargets = []commonpb.QueryTarget{
 	commonpb.QueryTarget_QUERY_TARGET_LOGS,
 }
 
-func createPreparedQueryReq(ledger string, q *commonpb.PreparedQuery) *servicepb.Request {
-	return &servicepb.Request{Type: &servicepb.Request_CreatePreparedQuery{
-		CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{Ledger: ledger, Query: q},
+func createPreparedQueryReq(ledger string, q *commonpb.PreparedQuery) *commonpb.Request {
+	return &commonpb.Request{Type: &commonpb.Request_CreatePreparedQuery{
+		CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{Ledger: ledger, Query: q},
 	}}
 }
 
-func updatePreparedQueryReq(ledger, name string, filter *commonpb.QueryFilter) *servicepb.Request {
-	return &servicepb.Request{Type: &servicepb.Request_UpdatePreparedQuery{
-		UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{Ledger: ledger, Name: name, Filter: filter},
+func updatePreparedQueryReq(ledger, name string, filter *commonpb.QueryFilter) *commonpb.Request {
+	return &commonpb.Request{Type: &commonpb.Request_UpdatePreparedQuery{
+		UpdatePreparedQuery: &commonpb.UpdatePreparedQueryRequest{Ledger: ledger, Name: name, Filter: filter},
 	}}
 }
 
-func deletePreparedQueryReq(ledger, name string) *servicepb.Request {
-	return &servicepb.Request{Type: &servicepb.Request_DeletePreparedQuery{
-		DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{Ledger: ledger, Name: name},
+func deletePreparedQueryReq(ledger, name string) *commonpb.Request {
+	return &commonpb.Request{Type: &commonpb.Request_DeletePreparedQuery{
+		DeletePreparedQuery: &commonpb.DeletePreparedQueryRequest{Ledger: ledger, Name: name},
 	}}
 }
 
@@ -88,7 +87,7 @@ func rollPreparedQueryOp() bool {
 // The rolls deliberately also produce the rejected cases the model predicts:
 // a create on a name already present (ALREADY_EXISTS) and an update or delete
 // on one that is absent (NOT_FOUND).
-func generatePreparedQueryOp(g oracle.GlobalState, ledger string) *servicepb.Request {
+func generatePreparedQueryOp(g oracle.GlobalState, ledger string) *commonpb.Request {
 	ls := g.Ledger(ledger)
 	name := preparedQueryName()
 

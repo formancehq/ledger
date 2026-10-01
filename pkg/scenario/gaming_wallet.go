@@ -6,8 +6,8 @@ import (
 	"math/big"
 	"strconv"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
@@ -33,7 +33,7 @@ func GamingWalletBlocks() *BlockGroup {
 	}
 }
 
-func gamingTopUp(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func gamingTopUp(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
 	playerID := 1 + RandIntN(r, GamingWalletNumPlayers)
 	usdAmount := int64(1000 + RandIntN(r, 10000))
 	coinAmount := usdAmount
@@ -48,7 +48,7 @@ func gamingTopUp(ctx context.Context, client servicepb.BucketServiceClient, r Ra
 	)
 }
 
-func gamingBuyItem(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func gamingBuyItem(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
 	playerID := 1 + RandIntN(r, GamingWalletNumPlayers)
 	playerCoins := fmt.Sprintf("player:%d:coins", playerID)
 
@@ -74,7 +74,7 @@ func gamingBuyItem(ctx context.Context, client servicepb.BucketServiceClient, r 
 	)
 }
 
-func gamingP2PTrade(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func gamingP2PTrade(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
 	fromID := 1 + RandIntN(r, GamingWalletNumPlayers)
 	toID := 1 + RandIntN(r, GamingWalletNumPlayers)
 	if fromID == toID {
@@ -100,7 +100,7 @@ func gamingP2PTrade(ctx context.Context, client servicepb.BucketServiceClient, r
 	)
 }
 
-func gamingPromotion(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func gamingPromotion(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
 	playerID := 1 + RandIntN(r, GamingWalletNumPlayers)
 	promoCoins := int64(100 + RandIntN(r, 1000))
 	playerAddr := fmt.Sprintf("player:%d:coins", playerID)
@@ -112,7 +112,7 @@ func gamingPromotion(ctx context.Context, client servicepb.BucketServiceClient, 
 	)
 }
 
-func gamingClawback(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func gamingClawback(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
 	playerID := 1 + RandIntN(r, GamingWalletNumPlayers)
 	playerCoins := fmt.Sprintf("player:%d:coins", playerID)
 
@@ -133,8 +133,8 @@ func gamingClawback(ctx context.Context, client servicepb.BucketServiceClient, r
 
 // GamingWalletSetupActions returns the Apply requests that create the ledger,
 // account types, and numscript library for the gaming wallet scenario.
-func GamingWalletSetupActions() []*servicepb.Request {
-	return []*servicepb.Request{
+func GamingWalletSetupActions() []*commonpb.Request {
+	return []*commonpb.Request{
 		actions.CreateLedgerWithSchemaAction(GamingWalletLedger, nil, []*commonpb.SetMetadataFieldTypeCommand{
 			{
 				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
@@ -233,7 +233,7 @@ func RunGamingWallet(r *Runner) error {
 
 	// --- Top-Ups ---
 	{
-		var reqs []*servicepb.Request
+		var reqs []*commonpb.Request
 		for i := 1; i <= numPlayers; i++ {
 			action := actions.CreateScriptRefTransactionAction(ledger, "top_up", "1.0.0", map[string]string{
 				"player_usd":   fmt.Sprintf("player:%d:usd", i),
@@ -252,7 +252,7 @@ func RunGamingWallet(r *Runner) error {
 
 	// --- Promotions (free coins to first 10 players) ---
 	{
-		var reqs []*servicepb.Request
+		var reqs []*commonpb.Request
 		for i := 1; i <= 10; i++ {
 			reqs = append(reqs,
 				actions.CreateForceTransactionAction(ledger, []*commonpb.Posting{
@@ -272,7 +272,7 @@ func RunGamingWallet(r *Runner) error {
 	// --- Item Purchases (3 rounds) ---
 	itemCosts := []int64{100, 250, 500}
 	for round, cost := range itemCosts {
-		var reqs []*servicepb.Request
+		var reqs []*commonpb.Request
 		for i := 1; i <= numPlayers; i++ {
 			if playerCoins[i].Cmp(big.NewInt(cost)) < 0 {
 				continue
@@ -295,7 +295,7 @@ func RunGamingWallet(r *Runner) error {
 	// --- P2P Trades ---
 	numTrades := r.Iterations(10)
 	{
-		var reqs []*servicepb.Request
+		var reqs []*commonpb.Request
 		for t := range numTrades {
 			trade := [3]int{1 + t%numPlayers, 1 + (t+1)%numPlayers, 30 + t*10}
 			from, to, amount := trade[0], trade[1], int64(trade[2])
@@ -321,7 +321,7 @@ func RunGamingWallet(r *Runner) error {
 
 	// --- Promo Clawback (players 8-10) ---
 	{
-		var reqs []*servicepb.Request
+		var reqs []*commonpb.Request
 		for i := 8; i <= 10; i++ {
 			clawAmount := big.NewInt(promoCoins)
 			if playerCoins[i].Cmp(clawAmount) < 0 {

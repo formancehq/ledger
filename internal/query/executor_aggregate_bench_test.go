@@ -12,13 +12,12 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -127,7 +126,7 @@ type aggBenchFixture struct {
 	rs     *readstore.Store
 	attrs  *attributes.Attributes
 	handle *dal.ReadHandle
-	req    *servicepb.ExecutePreparedQueryRequest
+	req    *commonpb.ExecutePreparedQueryRequest
 }
 
 // newAggBenchFixture seeds a ledger with `accounts` accounts, each holding a
@@ -198,7 +197,7 @@ func newAggBenchFixture(b *testing.B, accounts int) *aggBenchFixture {
 		rs:     rs,
 		attrs:  attrs,
 		handle: handle,
-		req: &servicepb.ExecutePreparedQueryRequest{
+		req: &commonpb.ExecutePreparedQueryRequest{
 			Ledger:    "l",
 			QueryName: "q",
 			Mode:      commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES,

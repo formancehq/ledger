@@ -11,8 +11,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -31,7 +30,7 @@ var _ = Describe("PreparedQuery REST shape (EN-1465)", Ordered, func() {
 	}
 
 	BeforeAll(func() {
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())
 	})
 
@@ -112,7 +111,7 @@ var _ = Describe("PreparedQuery REST shape (EN-1465)", Ordered, func() {
 
 	It("creates and executes a LOGS-target prepared query over REST (EN-1503)", func() {
 		// Produce a couple of logs on this ledger.
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 			actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "logs-rest-a", big.NewInt(10), "USD"),
 			}, nil),

@@ -17,9 +17,9 @@ import (
 	"google.golang.org/grpc/resolver/manual"
 	"google.golang.org/grpc/status"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 )
 
@@ -591,11 +591,11 @@ func IsClassified(err error) bool {
 }
 
 // NewClient creates a BucketServiceClient connected to the ledger service.
-func NewClient() (servicepb.BucketServiceClient, *grpc.ClientConn, error) {
+func NewClient() (commonpb.BucketServiceClient, *grpc.ClientConn, error) {
 	conn, err := NewGRPCConn()
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return servicepb.NewBucketServiceClient(conn), conn, nil
+	return commonpb.NewBucketServiceClient(conn), conn, nil
 }

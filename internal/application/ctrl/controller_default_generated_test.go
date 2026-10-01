@@ -11,8 +11,8 @@ import (
 	context "context"
 	reflect "reflect"
 
+	grpc "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	domain "github.com/formancehq/ledger/v3/internal/domain"
-	servicepb "github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -41,7 +41,7 @@ func (m *MockAdmission) EXPECT() *MockAdmissionMockRecorder {
 }
 
 // Admit mocks base method.
-func (m *MockAdmission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+func (m *MockAdmission) Admit(ctx context.Context, req *grpc.ApplyRequest) (*domain.ApplyResult, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Admit", ctx, req)
 	ret0, _ := ret[0].(*domain.ApplyResult)

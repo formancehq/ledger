@@ -8,10 +8,10 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/invariants"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 // NewGetCommand creates the accounts get command.
@@ -83,7 +83,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 
 	checkpointID, _ := cmd.Flags().GetUint64("checkpoint-id")
 
-	account, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
+	account, err := client.GetAccount(ctx, &commonpb.GetAccountRequest{
 		Ledger:       ledgerName,
 		Address:      address,
 		CheckpointId: checkpointID,
@@ -140,7 +140,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 		for key, value := range account.GetMetadata() {
 			metadataTable = append(metadataTable, []string{
 				key,
-				commonpb.MetadataValueToString(value),
+				protohelpers.MetadataValueToString(value),
 			})
 		}
 

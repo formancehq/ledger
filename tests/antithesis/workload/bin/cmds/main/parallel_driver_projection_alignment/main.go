@@ -18,9 +18,8 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -38,7 +37,7 @@ func isInconclusiveProjectionRead(err error) bool {
 }
 
 func main() {
-	internal.RunDriver("parallel_driver_projection_alignment", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
+	internal.RunDriver("parallel_driver_projection_alignment", func(ctx context.Context, client commonpb.BucketServiceClient, _ string) {
 		r := internal.Rand()
 
 		run := r.Uint64()
@@ -57,7 +56,7 @@ func main() {
 		// with a stable idempotency key so a timed-out setup call can be retried
 		// safely by a later driver run, then wait for this replica to switch the
 		// freshly built keyspace before exercising projection alignment.
-		if _, err := client.Apply(ctx, servicepb.UnsignedApplyRequest(
+		if _, err := client.Apply(ctx, commonpb.UnsignedApplyRequest(
 			indexIdempotencyKey,
 			actions.CreateAccountAssetIndexAction(ledger),
 		)); err != nil {
@@ -77,9 +76,9 @@ func main() {
 			return
 		}
 
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest(queryIdempotencyKey, &servicepb.Request{
-			Type: &servicepb.Request_CreatePreparedQuery{
-				CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest(queryIdempotencyKey, &commonpb.Request{
+			Type: &commonpb.Request_CreatePreparedQuery{
+				CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
 					Ledger: ledger,
 					Query: &commonpb.PreparedQuery{
 						Name:   queryName,
@@ -109,12 +108,12 @@ func main() {
 			return
 		}
 
-		resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest(probeIdempotencyKey, &servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+		resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest(probeIdempotencyKey, &commonpb.Request{
+			Type: &commonpb.Request_Apply{
+				Apply: &commonpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-						CreateTransaction: &servicepb.CreateTransactionPayload{
+					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &commonpb.CreateTransactionPayload{
 							Postings: []*commonpb.Posting{{
 								Source:      "world",
 								Destination: probeAccount,
@@ -143,7 +142,7 @@ func main() {
 		}
 		details = details.With(internal.Details{"ackedSeq": resp.GetLogs()[len(resp.GetLogs())-1].GetSequence()})
 
-		execResp, err := client.ExecutePreparedQuery(ctx, &servicepb.ExecutePreparedQueryRequest{
+		execResp, err := client.ExecutePreparedQuery(ctx, &commonpb.ExecutePreparedQueryRequest{
 			Ledger:    ledger,
 			QueryName: queryName,
 			PageSize:  100,

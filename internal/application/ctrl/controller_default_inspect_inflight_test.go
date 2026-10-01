@@ -8,13 +8,12 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -70,7 +69,7 @@ func TestDefaultController_InspectIndex_RefusesAPromotionInFlight(t *testing.T) 
 	require.NoError(t, rsBatch.Commit())
 
 	c := NewDefaultController(nil, store, logger, attrs, rs, nil, meter)
-	req := &servicepb.InspectIndexRequest{
+	req := &commonpb.InspectIndexRequest{
 		Ledger:      ledger,
 		TargetType:  commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 		MetadataKey: key,

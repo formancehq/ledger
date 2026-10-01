@@ -14,10 +14,13 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/holiman/uint256"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	domainreplay "github.com/formancehq/ledger/v3/internal/domain/replay"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -174,8 +177,8 @@ func (s *replayStore) AddVolumeDelta(canonicalKey []byte, inputDelta, outputDelt
 	u256Output.SetFromBig(outputDelta)
 
 	pair := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256(&u256Input),
-		Output: commonpb.NewUint256(&u256Output),
+		Input:  protohelpers.NewUint256(&u256Input),
+		Output: protohelpers.NewUint256(&u256Output),
 	}
 
 	data, err := pair.MarshalVT()
@@ -673,8 +676,8 @@ func (m *volumeMerger) Finish(_ bool) ([]byte, io.Closer, error) {
 	u256Out.SetFromBig(&m.output)
 
 	result := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256(&u256In),
-		Output: commonpb.NewUint256(&u256Out),
+		Input:  protohelpers.NewUint256(&u256In),
+		Output: protohelpers.NewUint256(&u256Out),
 	}
 
 	data, err := result.MarshalVT()
@@ -732,7 +735,7 @@ func (m *txMerger) Finish(includesBase bool) ([]byte, io.Closer, error) {
 		return batch, nil, nil
 	}
 
-	state := &commonpb.TransactionState{}
+	state := &internalcommonpb.TransactionState{}
 
 	for _, op := range ops {
 		switch op[0] {

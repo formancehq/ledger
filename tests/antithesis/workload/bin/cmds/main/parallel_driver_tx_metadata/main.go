@@ -6,25 +6,25 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_tx_metadata", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+	internal.RunDriver("parallel_driver_tx_metadata", func(ctx context.Context, client commonpb.BucketServiceClient, ledger string) {
 		r := internal.Rand()
 		key := fmt.Sprintf("tx-meta-%d", r.Uint64())
 		value := fmt.Sprintf("val-%d", r.Uint64())
 
 		// 1. Create a transaction to attach metadata to.
-		resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+		resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_Apply{
+				Apply: &commonpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-						CreateTransaction: &servicepb.CreateTransactionPayload{
+					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &commonpb.CreateTransactionPayload{
 							Postings: internal.RandomPostings(),
 							Force:    true,
 						},
@@ -47,16 +47,16 @@ func main() {
 		details := internal.Details{"ledger": ledger, "txId": txID, "key": key}
 
 		// 2. Save metadata on the transaction.
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_Apply{
+				Apply: &commonpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
+					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_AddMetadata{
 						AddMetadata: &commonpb.SaveMetadataCommand{
 							Target: &commonpb.Target{
 								Target: &commonpb.Target_TransactionId{TransactionId: txID},
 							},
-							Metadata: commonpb.MetadataFromGoMap(map[string]string{key: value}),
+							Metadata: protohelpers.MetadataFromGoMap(map[string]string{key: value}),
 						},
 					}},
 				},
@@ -69,7 +69,7 @@ func main() {
 		}
 
 		// 3. Read-after-write: verify the key is present on the transaction.
-		getTx, err := client.GetTransaction(ctx, &servicepb.GetTransactionRequest{
+		getTx, err := client.GetTransaction(ctx, &commonpb.GetTransactionRequest{
 			Ledger:        ledger,
 			TransactionId: txID,
 		})
@@ -86,11 +86,11 @@ func main() {
 		)
 
 		// 4. Delete the metadata key.
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_Apply{
+				Apply: &commonpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_DeleteMetadata{
+					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_DeleteMetadata{
 						DeleteMetadata: &commonpb.DeleteMetadataCommand{
 							Target: &commonpb.Target{
 								Target: &commonpb.Target_TransactionId{TransactionId: txID},
@@ -108,7 +108,7 @@ func main() {
 		}
 
 		// 5. Read-after-delete: verify the key is gone.
-		getTx, err = client.GetTransaction(ctx, &servicepb.GetTransactionRequest{
+		getTx, err = client.GetTransaction(ctx, &commonpb.GetTransactionRequest{
 			Ledger:        ledger,
 			TransactionId: txID,
 		})

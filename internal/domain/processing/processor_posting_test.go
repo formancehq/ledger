@@ -7,9 +7,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 func TestApplyPosting_WorldAccount_SkipsBalanceCheck(t *testing.T) {
@@ -362,7 +364,7 @@ func TestApplyPosting_DestinationInputOverflow_Rejects(t *testing.T) {
 	// Destination Input already at 2^256-1, so any positive amount
 	// overflows on Input.
 	destVol := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256(uint256Max()),
+		Input:  protohelpers.NewUint256(uint256Max()),
 		Output: commonpb.NewUint256FromUint64(0),
 	}
 
@@ -407,7 +409,7 @@ func TestApplyPosting_SourceOutputOverflow_Rejects(t *testing.T) {
 
 	worldVol := &raftcmdpb.VolumePair{
 		Input:  commonpb.NewUint256FromUint64(0),
-		Output: commonpb.NewUint256(uint256Max()),
+		Output: protohelpers.NewUint256(uint256Max()),
 	}
 
 	expectGetVolume(mockStore, sourceKey, worldVol.AsReader(), nil)

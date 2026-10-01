@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 func TestHandleExecutePreparedQuery_Success(t *testing.T) {
@@ -20,8 +20,8 @@ func TestHandleExecutePreparedQuery_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
-			return &servicepb.ExecutePreparedQueryResponse{}, nil
+		func(_ context.Context, _ *commonpb.ExecutePreparedQueryRequest) (*commonpb.ExecutePreparedQueryResponse, error) {
+			return &commonpb.ExecutePreparedQueryResponse{}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -90,7 +90,7 @@ func TestHandleExecutePreparedQuery_NotFound(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+		func(_ context.Context, _ *commonpb.ExecutePreparedQueryRequest) (*commonpb.ExecutePreparedQueryResponse, error) {
 			return nil, &domain.ErrPreparedQueryNotFound{Ledger: "ledger1", Name: "missing"}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -111,8 +111,8 @@ func TestHandleExecutePreparedQuery_NoBody(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
-			return &servicepb.ExecutePreparedQueryResponse{}, nil
+		func(_ context.Context, _ *commonpb.ExecutePreparedQueryRequest) (*commonpb.ExecutePreparedQueryResponse, error) {
+			return &commonpb.ExecutePreparedQueryResponse{}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -132,10 +132,10 @@ func TestHandleExecutePreparedQuery_WithParameters(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+		func(_ context.Context, req *commonpb.ExecutePreparedQueryRequest) (*commonpb.ExecutePreparedQueryResponse, error) {
 			require.NotNil(t, req.GetParameters())
 
-			return &servicepb.ExecutePreparedQueryResponse{}, nil
+			return &commonpb.ExecutePreparedQueryResponse{}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -159,10 +159,10 @@ func TestHandleExecutePreparedQuery_ChunkedBody(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+		func(_ context.Context, req *commonpb.ExecutePreparedQueryRequest) (*commonpb.ExecutePreparedQueryResponse, error) {
 			capturedPageSize = req.GetPageSize()
 
-			return &servicepb.ExecutePreparedQueryResponse{}, nil
+			return &commonpb.ExecutePreparedQueryResponse{}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -231,9 +231,9 @@ func TestHandleExecutePreparedQuery_AggregateEmitsColor(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
-			return &servicepb.ExecutePreparedQueryResponse{
-				Result: &servicepb.ExecutePreparedQueryResponse_Aggregate{
+		func(_ context.Context, _ *commonpb.ExecutePreparedQueryRequest) (*commonpb.ExecutePreparedQueryResponse, error) {
+			return &commonpb.ExecutePreparedQueryResponse{
+				Result: &commonpb.ExecutePreparedQueryResponse_Aggregate{
 					Aggregate: &commonpb.AggregateResult{
 						Volumes: []*commonpb.AggregatedVolume{
 							{Asset: "USD", Color: "", Input: commonpb.NewUint256FromUint64(100), Output: commonpb.NewUint256FromUint64(30)},
@@ -293,9 +293,9 @@ func TestHandleExecutePreparedQuery_CursorShapeIsCamelCase(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
-			return &servicepb.ExecutePreparedQueryResponse{
-				Result: &servicepb.ExecutePreparedQueryResponse_Cursor{
+		func(_ context.Context, _ *commonpb.ExecutePreparedQueryRequest) (*commonpb.ExecutePreparedQueryResponse, error) {
+			return &commonpb.ExecutePreparedQueryResponse{
+				Result: &commonpb.ExecutePreparedQueryResponse_Cursor{
 					Cursor: &commonpb.PreparedQueryCursor{
 						PageSize: 15,
 						HasMore:  true,

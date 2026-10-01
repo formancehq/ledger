@@ -7,12 +7,11 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
@@ -26,15 +25,15 @@ func TestInspectIndexEmptyIndexAnswersRequestedArm(t *testing.T) {
 
 	for _, tc := range []struct {
 		name   string
-		mode   servicepb.InspectIndexMode
-		assert func(t *testing.T, resp *servicepb.InspectIndexResponse)
+		mode   auditpb.InspectIndexMode
+		assert func(t *testing.T, resp *auditpb.InspectIndexResponse)
 	}{
 		{
 			name: "distinct values",
-			mode: servicepb.InspectIndexMode_INSPECT_INDEX_MODE_DISTINCT_VALUES,
-			assert: func(t *testing.T, resp *servicepb.InspectIndexResponse) {
+			mode: auditpb.InspectIndexMode_INSPECT_INDEX_MODE_DISTINCT_VALUES,
+			assert: func(t *testing.T, resp *auditpb.InspectIndexResponse) {
 				t.Helper()
-				require.IsType(t, &servicepb.InspectIndexResponse_DistinctValues{}, resp.GetResult())
+				require.IsType(t, &auditpb.InspectIndexResponse_DistinctValues{}, resp.GetResult())
 				require.Empty(t, resp.GetDistinctValues().GetValues())
 				require.False(t, resp.GetDistinctValues().GetHasMore())
 				require.Empty(t, resp.GetDistinctValues().GetNextCursor())
@@ -42,10 +41,10 @@ func TestInspectIndexEmptyIndexAnswersRequestedArm(t *testing.T) {
 		},
 		{
 			name: "facets",
-			mode: servicepb.InspectIndexMode_INSPECT_INDEX_MODE_FACETS,
-			assert: func(t *testing.T, resp *servicepb.InspectIndexResponse) {
+			mode: auditpb.InspectIndexMode_INSPECT_INDEX_MODE_FACETS,
+			assert: func(t *testing.T, resp *auditpb.InspectIndexResponse) {
 				t.Helper()
-				require.IsType(t, &servicepb.InspectIndexResponse_Facets{}, resp.GetResult())
+				require.IsType(t, &auditpb.InspectIndexResponse_Facets{}, resp.GetResult())
 				require.Empty(t, resp.GetFacets().GetFacets())
 				require.False(t, resp.GetFacets().GetHasMore())
 				require.Empty(t, resp.GetFacets().GetNextCursor())
@@ -53,10 +52,10 @@ func TestInspectIndexEmptyIndexAnswersRequestedArm(t *testing.T) {
 		},
 		{
 			name: "summary",
-			mode: servicepb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY,
-			assert: func(t *testing.T, resp *servicepb.InspectIndexResponse) {
+			mode: auditpb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY,
+			assert: func(t *testing.T, resp *auditpb.InspectIndexResponse) {
 				t.Helper()
-				require.IsType(t, &servicepb.InspectIndexResponse_Summary{}, resp.GetResult())
+				require.IsType(t, &auditpb.InspectIndexResponse_Summary{}, resp.GetResult())
 				require.Zero(t, resp.GetSummary().GetCardinality())
 				require.Zero(t, resp.GetSummary().GetEntitiesWithKey())
 			},
@@ -67,9 +66,9 @@ func TestInspectIndexEmptyIndexAnswersRequestedArm(t *testing.T) {
 
 			ctrl, ledger, metadataKey, horizon := newEmptyIndexController(t)
 
-			resp, err := ctrl.InspectIndex(query.WithReadBarrierHorizon(t.Context(), horizon), &servicepb.InspectIndexRequest{
+			resp, err := ctrl.InspectIndex(query.WithReadBarrierHorizon(t.Context(), horizon), &auditpb.InspectIndexRequest{
 				Ledger:      ledger,
-				TargetType:  commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+				TargetType:  auditpb.TargetType_TARGET_TYPE_TRANSACTION,
 				MetadataKey: metadataKey,
 				Mode:        tc.mode,
 				PageSize:    100,
@@ -97,22 +96,22 @@ func newEmptyIndexController(t *testing.T) (*DefaultController, string, string, 
 	meter := noop.NewMeterProvider().Meter("test")
 	store := newCtrlTestStore(t)
 	attrs := attributes.New()
-	indexID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, metadataKey)
+	indexID := indexes.MetadataID(auditpb.TargetType_TARGET_TYPE_TRANSACTION, metadataKey)
 
 	mainBatch := store.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(mainBatch, ledger, &commonpb.LedgerInfo{
+	require.NoError(t, state.SaveLedger(mainBatch, ledger, &auditpb.LedgerInfo{
 		Name: ledger,
-		MetadataSchema: &commonpb.MetadataSchema{TransactionFields: map[string]*commonpb.MetadataFieldSchema{
-			metadataKey: {Type: commonpb.MetadataType_METADATA_TYPE_UINT32},
+		MetadataSchema: &auditpb.MetadataSchema{TransactionFields: map[string]*auditpb.MetadataFieldSchema{
+			metadataKey: {Type: auditpb.MetadataType_METADATA_TYPE_UINT32},
 		}},
 	}))
-	_, err := attrs.Index.Set(mainBatch, indexes.KeyFor(ledger, indexID).Bytes(), &commonpb.Index{
+	_, err := attrs.Index.Set(mainBatch, indexes.KeyFor(ledger, indexID).Bytes(), &auditpb.Index{
 		Id:                     indexID,
 		Ledger:                 ledger,
 		ForwardEncodingVersion: 1,
 	})
 	require.NoError(t, err)
-	require.NoError(t, state.AppendLogs(mainBatch, []*commonpb.Log{{Sequence: mainSequence}}))
+	require.NoError(t, state.AppendLogs(mainBatch, []*auditpb.Log{{Sequence: mainSequence}}))
 	require.NoError(t, state.SetAppliedIndex(mainBatch, raftHorizon))
 	require.NoError(t, mainBatch.Commit())
 

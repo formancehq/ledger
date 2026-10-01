@@ -12,6 +12,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/types/time"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -24,9 +25,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -368,18 +368,18 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 		}
 
 		batch := store.OpenWriteSession()
-		_, err := attrs.Transaction.Set(batch, domain.TransactionKey{LedgerName: testLedgerName, ID: 1}.Bytes(), &commonpb.TransactionState{
+		_, err := attrs.Transaction.Set(batch, domain.TransactionKey{LedgerName: testLedgerName, ID: 1}.Bytes(), &internalcommonpb.TransactionState{
 			CreatedByLog: 1,
 			Postings:     expectedPostings,
 		})
 		require.NoError(t, err)
 		require.NoError(t, batch.Commit())
 
-		applyRequest := &servicepb.LedgerApplyRequest{
+		applyRequest := &commonpb.LedgerApplyRequest{
 			Ledger: testLedgerName,
-			Action: &servicepb.LedgerAction{
-				Data: &servicepb.LedgerAction_RevertTransaction{
-					RevertTransaction: &servicepb.RevertTransactionPayload{
+			Action: &commonpb.LedgerAction{
+				Data: &commonpb.LedgerAction_RevertTransaction{
+					RevertTransaction: &commonpb.RevertTransactionPayload{
 						TransactionId:   1,
 						Force:           false,
 						AtEffectiveDate: true,
@@ -413,11 +413,11 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 		store := createTestStore(t)
 		admission, _ := createTestAdmission(t, store)
 
-		applyRequest := &servicepb.LedgerApplyRequest{
+		applyRequest := &commonpb.LedgerApplyRequest{
 			Ledger: testLedgerName,
-			Action: &servicepb.LedgerAction{
-				Data: &servicepb.LedgerAction_RevertTransaction{
-					RevertTransaction: &servicepb.RevertTransactionPayload{
+			Action: &commonpb.LedgerAction{
+				Data: &commonpb.LedgerAction_RevertTransaction{
+					RevertTransaction: &commonpb.RevertTransactionPayload{
 						TransactionId: 999,
 					},
 				},
@@ -454,11 +454,11 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 		store := createTestStore(t)
 		admission, _ := createTestAdmission(t, store)
 
-		applyRequest := &servicepb.LedgerApplyRequest{
+		applyRequest := &commonpb.LedgerApplyRequest{
 			Ledger: testLedgerName,
-			Action: &servicepb.LedgerAction{
-				Data: &servicepb.LedgerAction_RevertTransaction{
-					RevertTransaction: &servicepb.RevertTransactionPayload{},
+			Action: &commonpb.LedgerAction{
+				Data: &commonpb.LedgerAction_RevertTransaction{
+					RevertTransaction: &commonpb.RevertTransactionPayload{},
 				},
 			},
 		}
@@ -813,11 +813,11 @@ func TestConvertApplyRequest_CreateTransaction_Force(t *testing.T) {
 		store := createTestStore(t)
 		admission, _ := createTestAdmission(t, store)
 
-		applyRequest := &servicepb.LedgerApplyRequest{
+		applyRequest := &commonpb.LedgerApplyRequest{
 			Ledger: testLedgerName,
-			Action: &servicepb.LedgerAction{
-				Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+			Action: &commonpb.LedgerAction{
+				Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Force: true,
 						Postings: []*commonpb.Posting{
 							{
@@ -851,13 +851,13 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 
 		// The wire order carries only caller intent; the FSM reads
 		// TxState.Postings authoritatively at apply time.
-		request := &servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+		request := &commonpb.Request{
+			Type: &commonpb.Request_Apply{
+				Apply: &commonpb.LedgerApplyRequest{
 					Ledger: testLedgerName,
-					Action: &servicepb.LedgerAction{
-						Data: &servicepb.LedgerAction_RevertTransaction{
-							RevertTransaction: &servicepb.RevertTransactionPayload{
+					Action: &commonpb.LedgerAction{
+						Data: &commonpb.LedgerAction_RevertTransaction{
+							RevertTransaction: &commonpb.RevertTransactionPayload{
 								TransactionId: 42,
 								Force:         true,
 							},
@@ -891,13 +891,13 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 		// here, so it declares no volume coverage and binds what it saw. The FSM
 		// re-derives the digest from the state it reads through the coverage
 		// gate and rejects the order before reading an undeclared volume.
-		request := &servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+		request := &commonpb.Request{
+			Type: &commonpb.Request_Apply{
+				Apply: &commonpb.LedgerApplyRequest{
 					Ledger: testLedgerName,
-					Action: &servicepb.LedgerAction{
-						Data: &servicepb.LedgerAction_RevertTransaction{
-							RevertTransaction: &servicepb.RevertTransactionPayload{TransactionId: 42},
+					Action: &commonpb.LedgerAction{
+						Data: &commonpb.LedgerAction_RevertTransaction{
+							RevertTransaction: &commonpb.RevertTransactionPayload{TransactionId: 42},
 						},
 					},
 				},
@@ -918,13 +918,13 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 		store := createTestStore(t)
 		admission, _ := createTestAdmission(t, store)
 
-		request := &servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+		request := &commonpb.Request{
+			Type: &commonpb.Request_Apply{
+				Apply: &commonpb.LedgerApplyRequest{
 					Ledger: testLedgerName,
-					Action: &servicepb.LedgerAction{
-						Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
+					Action: &commonpb.LedgerAction{
+						Data: &commonpb.LedgerAction_CreateTransaction{
+							CreateTransaction: &commonpb.CreateTransactionPayload{
 								Postings: []*commonpb.Posting{{
 									Source:      "world",
 									Destination: "user:alice",
@@ -1416,32 +1416,32 @@ func TestValidateIdempotencyKey(t *testing.T) {
 func TestRequestsToOrders_CheckpointOrderPosition(t *testing.T) {
 	t.Parallel()
 
-	applyReq := func() *servicepb.Request {
-		return &servicepb.Request{
-			Type: &servicepb.Request_CreateLedger{
-				CreateLedger: &servicepb.CreateLedgerRequest{Name: "ledger-" + t.Name()},
+	applyReq := func() *commonpb.Request {
+		return &commonpb.Request{
+			Type: &commonpb.Request_CreateLedger{
+				CreateLedger: &commonpb.CreateLedgerRequest{Name: "ledger-" + t.Name()},
 			},
 		}
 	}
-	checkpointReq := func() *servicepb.Request {
-		return &servicepb.Request{
-			Type: &servicepb.Request_CreateQueryCheckpoint{
-				CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{},
+	checkpointReq := func() *commonpb.Request {
+		return &commonpb.Request{
+			Type: &commonpb.Request_CreateQueryCheckpoint{
+				CreateQueryCheckpoint: &commonpb.CreateQueryCheckpointRequest{},
 			},
 		}
 	}
 
 	cases := []struct {
 		name    string
-		reqs    []*servicepb.Request
+		reqs    []*commonpb.Request
 		wantErr error
 	}{
 		{"empty batch", nil, nil},
-		{"single apply", []*servicepb.Request{applyReq()}, nil},
-		{"checkpoint alone", []*servicepb.Request{checkpointReq()}, nil},
-		{"apply then checkpoint", []*servicepb.Request{applyReq(), checkpointReq()}, nil},
-		{"checkpoint then apply", []*servicepb.Request{checkpointReq(), applyReq()}, ErrCheckpointOrderNotLast},
-		{"checkpoint mid-batch", []*servicepb.Request{applyReq(), checkpointReq(), applyReq()}, ErrCheckpointOrderNotLast},
+		{"single apply", []*commonpb.Request{applyReq()}, nil},
+		{"checkpoint alone", []*commonpb.Request{checkpointReq()}, nil},
+		{"apply then checkpoint", []*commonpb.Request{applyReq(), checkpointReq()}, nil},
+		{"checkpoint then apply", []*commonpb.Request{checkpointReq(), applyReq()}, ErrCheckpointOrderNotLast},
+		{"checkpoint mid-batch", []*commonpb.Request{applyReq(), checkpointReq(), applyReq()}, ErrCheckpointOrderNotLast},
 	}
 
 	for _, tc := range cases {
@@ -1472,13 +1472,13 @@ func generateTestKeyPair(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {
 
 // signedBatchRequest signs a single-request ApplyBatch and wraps it into the
 // signed ApplyRequest the Admit RPC carries.
-func signedBatchRequest(t *testing.T, req *servicepb.Request, keyID string, privKey ed25519.PrivateKey) *servicepb.ApplyRequest {
+func signedBatchRequest(t *testing.T, req *commonpb.Request, keyID string, privKey ed25519.PrivateKey) *commonpb.ApplyRequest {
 	t.Helper()
 
-	sb, err := signing.Sign(&servicepb.ApplyBatch{Requests: []*servicepb.Request{req}}, keyID, privKey)
+	sb, err := signing.Sign(&commonpb.ApplyBatch{Requests: []*commonpb.Request{req}}, keyID, privKey)
 	require.NoError(t, err)
 
-	return servicepb.SignedApplyRequest(sb)
+	return commonpb.SignedApplyRequest(sb)
 }
 
 func TestResolveBatch(t *testing.T) {
@@ -1491,9 +1491,9 @@ func TestResolveBatch(t *testing.T) {
 
 		pubKey, _ := generateTestKeyPair(t)
 
-		req := servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_RegisterSigningKey{
-				RegisterSigningKey: &servicepb.RegisterSigningKeyRequest{
+		req := commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_RegisterSigningKey{
+				RegisterSigningKey: &commonpb.RegisterSigningKeyRequest{
 					KeyId:     "first-key",
 					PublicKey: []byte(pubKey),
 				},
@@ -1516,9 +1516,9 @@ func TestResolveBatch(t *testing.T) {
 
 		newPubKey, _ := generateTestKeyPair(t)
 
-		req := servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_RegisterSigningKey{
-				RegisterSigningKey: &servicepb.RegisterSigningKeyRequest{
+		req := commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_RegisterSigningKey{
+				RegisterSigningKey: &commonpb.RegisterSigningKeyRequest{
 					KeyId:     "new-key",
 					PublicKey: []byte(newPubKey),
 				},
@@ -1537,9 +1537,9 @@ func TestResolveBatch(t *testing.T) {
 		pubKey, _ := generateTestKeyPair(t)
 		adm.keyStore.AddPublicKey("my-key", pubKey, "")
 
-		req := servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_RevokeSigningKey{
-				RevokeSigningKey: &servicepb.RevokeSigningKeyRequest{
+		req := commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_RevokeSigningKey{
+				RevokeSigningKey: &commonpb.RevokeSigningKeyRequest{
 					KeyId: "my-key",
 				},
 			},
@@ -1557,9 +1557,9 @@ func TestResolveBatch(t *testing.T) {
 		pubKey, _ := generateTestKeyPair(t)
 		adm.keyStore.AddPublicKey("my-key", pubKey, "")
 
-		req := servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_SetSigningConfig{
-				SetSigningConfig: &servicepb.SetSigningConfigRequest{
+		req := commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_SetSigningConfig{
+				SetSigningConfig: &commonpb.SetSigningConfigRequest{
 					RequireSignatures: true,
 				},
 			},
@@ -1579,9 +1579,9 @@ func TestResolveBatch(t *testing.T) {
 
 		newPubKey, _ := generateTestKeyPair(t)
 
-		req := &servicepb.Request{
-			Type: &servicepb.Request_RegisterSigningKey{
-				RegisterSigningKey: &servicepb.RegisterSigningKeyRequest{
+		req := &commonpb.Request{
+			Type: &commonpb.Request_RegisterSigningKey{
+				RegisterSigningKey: &commonpb.RegisterSigningKeyRequest{
 					KeyId:     "new-key",
 					PublicKey: []byte(newPubKey),
 				},
@@ -1599,9 +1599,9 @@ func TestResolveBatch(t *testing.T) {
 		store := createTestStore(t)
 		adm, _ := createTestAdmission(t, store)
 
-		req := servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_CreateLedger{
-				CreateLedger: &servicepb.CreateLedgerRequest{
+		req := commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_CreateLedger{
+				CreateLedger: &commonpb.CreateLedgerRequest{
 					Name: "test-ledger",
 				},
 			},
@@ -1619,9 +1619,9 @@ func TestResolveBatch(t *testing.T) {
 
 		adm.sharedState.SetRequireSignatures(true)
 
-		req := servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_CreateLedger{
-				CreateLedger: &servicepb.CreateLedgerRequest{
+		req := commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_CreateLedger{
+				CreateLedger: &commonpb.CreateLedgerRequest{
 					Name: "test-ledger",
 				},
 			},
@@ -1640,9 +1640,9 @@ func TestResolveBatch(t *testing.T) {
 		adm.keyStore.AddPublicKey("my-key", pubKey, "")
 		adm.sharedState.SetRequireSignatures(true)
 
-		req := &servicepb.Request{
-			Type: &servicepb.Request_CreateLedger{
-				CreateLedger: &servicepb.CreateLedgerRequest{
+		req := &commonpb.Request{
+			Type: &commonpb.Request_CreateLedger{
+				CreateLedger: &commonpb.CreateLedgerRequest{
 					Name: "signed-ledger",
 				},
 			},
@@ -1661,9 +1661,9 @@ func TestResolveBatch(t *testing.T) {
 
 		_, privKey := generateTestKeyPair(t)
 
-		req := &servicepb.Request{
-			Type: &servicepb.Request_CreateLedger{
-				CreateLedger: &servicepb.CreateLedgerRequest{
+		req := &commonpb.Request{
+			Type: &commonpb.Request_CreateLedger{
+				CreateLedger: &commonpb.CreateLedgerRequest{
 					Name: "test",
 				},
 			},
@@ -1683,9 +1683,9 @@ func TestResolveBatch(t *testing.T) {
 
 		adm.keyStore.AddPublicKey("my-key", pubKey, "")
 
-		req := &servicepb.Request{
-			Type: &servicepb.Request_CreateLedger{
-				CreateLedger: &servicepb.CreateLedgerRequest{
+		req := &commonpb.Request{
+			Type: &commonpb.Request_CreateLedger{
+				CreateLedger: &commonpb.CreateLedgerRequest{
 					Name: "test",
 				},
 			},
@@ -1715,9 +1715,9 @@ func TestResolveBatch(t *testing.T) {
 
 		adm.keyStore.AddPublicKey("P", parentPubKey, "")
 
-		req := &servicepb.Request{
-			Type: &servicepb.Request_RevokeSigningKey{
-				RevokeSigningKey: &servicepb.RevokeSigningKeyRequest{KeyId: "P", Cascade: true},
+		req := &commonpb.Request{
+			Type: &commonpb.Request_RevokeSigningKey{
+				RevokeSigningKey: &commonpb.RevokeSigningKeyRequest{KeyId: "P", Cascade: true},
 			},
 		}
 

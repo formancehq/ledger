@@ -10,8 +10,9 @@ import (
 	"github.com/pterm/pterm/putils"
 	"github.com/spf13/cobra"
 
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 )
 
 // NewStatusCommand creates the cluster status command.

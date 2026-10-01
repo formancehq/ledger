@@ -9,23 +9,22 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestHandleInspectIndex_Success(t *testing.T) {
 	t.Parallel()
 
-	var capturedReq *servicepb.InspectIndexRequest
+	var capturedReq *commonpb.InspectIndexRequest
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().InspectIndex(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.InspectIndexRequest) (*servicepb.InspectIndexResponse, error) {
+		func(_ context.Context, req *commonpb.InspectIndexRequest) (*commonpb.InspectIndexResponse, error) {
 			capturedReq = req
 
-			return &servicepb.InspectIndexResponse{
-				Result: &servicepb.InspectIndexResponse_Summary{
-					Summary: &servicepb.InspectSummary{Cardinality: 3},
+			return &commonpb.InspectIndexResponse{
+				Result: &commonpb.InspectIndexResponse_Summary{
+					Summary: &commonpb.InspectSummary{Cardinality: 3},
 				},
 			}, nil
 		}).AnyTimes()
@@ -57,11 +56,11 @@ func TestHandleInspectIndex_TransactionTarget(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().InspectIndex(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.InspectIndexRequest) (*servicepb.InspectIndexResponse, error) {
+		func(_ context.Context, req *commonpb.InspectIndexRequest) (*commonpb.InspectIndexResponse, error) {
 			capturedTarget = req.GetTargetType()
 
-			return &servicepb.InspectIndexResponse{
-				Result: &servicepb.InspectIndexResponse_Summary{Summary: &servicepb.InspectSummary{}},
+			return &commonpb.InspectIndexResponse{
+				Result: &commonpb.InspectIndexResponse_Summary{Summary: &commonpb.InspectSummary{}},
 			}, nil
 		}).AnyTimes()
 	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(

@@ -11,8 +11,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestResponseSigner(t *testing.T) {
@@ -135,7 +134,7 @@ func TestVerifyResponseSignature_EmptyPayload(t *testing.T) {
 
 	signer := NewResponseSigner(seed)
 
-	sig := &signaturepb.SignedLog{
+	sig := &commonpb.SignedLog{
 		KeyId:     signer.KeyID(),
 		Signature: make([]byte, ed25519.SignatureSize),
 		Payload:   nil,
@@ -155,7 +154,7 @@ func TestVerifyResponseSignature_InvalidSignatureLength(t *testing.T) {
 
 	signer := NewResponseSigner(seed)
 
-	sig := &signaturepb.SignedLog{
+	sig := &commonpb.SignedLog{
 		KeyId:     signer.KeyID(),
 		Signature: []byte("bad"),
 		Payload:   []byte("some payload"),

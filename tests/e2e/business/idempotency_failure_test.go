@@ -6,8 +6,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -33,7 +32,7 @@ var _ = Describe("Idempotency replays failures", Ordered, func() {
 	// A transaction whose destination matches no declared account type — rejected
 	// with ACCOUNT_NOT_MATCHING_TYPE while the chart has no "bank" type, accepted
 	// once one is added. Identical bytes on every call so the idempotency hashes match.
-	failingTx := func() *servicepb.ApplyRequest {
+	failingTx := func() *commonpb.ApplyRequest {
 		return actions.WithIdempotencyKey(
 			idemKey,
 			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
@@ -43,12 +42,12 @@ var _ = Describe("Idempotency replays failures", Ordered, func() {
 	}
 
 	BeforeAll(func() {
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())
 
 		// One unrelated type makes the chart enforced (strict by default), so an
 		// account matching no type is rejected.
-		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.AddAccountTypeAction(ledgerName, "wallet", "wallet:{id}")))
+		_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.AddAccountTypeAction(ledgerName, "wallet", "wallet:{id}")))
 		Expect(err).To(Succeed())
 	})
 
@@ -60,7 +59,7 @@ var _ = Describe("Idempotency replays failures", Ordered, func() {
 		firstMessage := status.Convert(err).Message()
 
 		// 2. Change state so the identical request would now succeed.
-		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.AddAccountTypeAction(ledgerName, "bank", "bank:{id}")))
+		_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.AddAccountTypeAction(ledgerName, "bank", "bank:{id}")))
 		Expect(err).To(Succeed())
 
 		// 3. Retry with the SAME idempotency key + identical payload. Exactly-once:
@@ -76,7 +75,7 @@ var _ = Describe("Idempotency replays failures", Ordered, func() {
 		// bank:1 must stay untouched: the only writes for it were the replayed
 		// failures. On the buggy path the retry committed 100 USD here.
 		Consistently(func(g Gomega) {
-			acct, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+			acct, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "bank:1",
 			})
@@ -100,7 +99,7 @@ var _ = Describe("Idempotency preserves committed outcomes", Ordered, func() {
 		idemKey    = "committed-success-key"
 	)
 
-	okTx := func() *servicepb.ApplyRequest {
+	okTx := func() *commonpb.ApplyRequest {
 		return actions.WithIdempotencyKey(
 			idemKey,
 			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
@@ -119,10 +118,10 @@ var _ = Describe("Idempotency preserves committed outcomes", Ordered, func() {
 	)
 
 	BeforeAll(func() {
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())
 
-		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.AddAccountTypeAction(ledgerName, "wallet", "wallet:{id}")))
+		_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.AddAccountTypeAction(ledgerName, "wallet", "wallet:{id}")))
 		Expect(err).To(Succeed())
 	})
 
@@ -147,7 +146,7 @@ var _ = Describe("Idempotency preserves committed outcomes", Ordered, func() {
 	It("commits the original transaction exactly once", func() {
 		// Only the first apply committed; the conflict rolled back and the replay
 		// returned the original log without re-executing, so wallet:1 holds 50.
-		acct, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+		acct, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 			Ledger:  ledgerName,
 			Address: "wallet:1",
 		})

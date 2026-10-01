@@ -10,12 +10,12 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
@@ -37,10 +37,10 @@ func Execute(
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
 	preparedQueryAttr *attributes.Attribute[*commonpb.PreparedQuery],
 	indexAttr *attributes.Attribute[*commonpb.Index],
-	req *servicepb.ExecutePreparedQueryRequest,
+	req *commonpb.ExecutePreparedQueryRequest,
 	profile *QueryProfile,
 	enricher *EntityEnricher,
-) (*servicepb.ExecutePreparedQueryResponse, error) {
+) (*commonpb.ExecutePreparedQueryResponse, error) {
 	ctx, span := queryTracer.Start(ctx, "query.execute_prepared",
 		trace.WithAttributes(
 			attribute.String("ledger", req.GetLedger()),
@@ -112,8 +112,8 @@ func Execute(
 			return nil, aggErr
 		}
 
-		return &servicepb.ExecutePreparedQueryResponse{
-			Result: &servicepb.ExecutePreparedQueryResponse_Aggregate{
+		return &commonpb.ExecutePreparedQueryResponse{
+			Result: &commonpb.ExecutePreparedQueryResponse_Aggregate{
 				Aggregate: aggResult,
 			},
 		}, nil
@@ -189,8 +189,8 @@ func Execute(
 		return nil, aggErr
 	}
 
-	return &servicepb.ExecutePreparedQueryResponse{
-		Result: &servicepb.ExecutePreparedQueryResponse_Aggregate{
+	return &commonpb.ExecutePreparedQueryResponse{
+		Result: &commonpb.ExecutePreparedQueryResponse_Aggregate{
 			Aggregate: aggResult,
 		},
 	}, nil
@@ -202,13 +202,13 @@ func executeList(
 	ctx context.Context,
 	iter readstore.EntityIterator,
 	target commonpb.QueryTarget,
-	req *servicepb.ExecutePreparedQueryRequest,
+	req *commonpb.ExecutePreparedQueryRequest,
 	profile *QueryProfile,
 	reader dal.PebbleReader,
 	indexReader dal.PebbleReader,
 	ledgerName string,
 	enricher *EntityEnricher,
-) (*servicepb.ExecutePreparedQueryResponse, error) {
+) (*commonpb.ExecutePreparedQueryResponse, error) {
 	pageSize := req.GetPageSize()
 	if pageSize == 0 {
 		pageSize = defaultPageSize
@@ -283,8 +283,8 @@ func executeList(
 		cursor.Previous = req.GetCursor()
 	}
 
-	return &servicepb.ExecutePreparedQueryResponse{
-		Result: &servicepb.ExecutePreparedQueryResponse_Cursor{
+	return &commonpb.ExecutePreparedQueryResponse{
+		Result: &commonpb.ExecutePreparedQueryResponse_Cursor{
 			Cursor: cursor,
 		},
 	}, nil
@@ -343,9 +343,9 @@ func EnrichLogs(ctx context.Context, pebbleReader dal.PebbleReader, indexReader 
 	return logs, nil
 }
 
-func emptyListResponse(pageSize uint32) *servicepb.ExecutePreparedQueryResponse {
-	return &servicepb.ExecutePreparedQueryResponse{
-		Result: &servicepb.ExecutePreparedQueryResponse_Cursor{
+func emptyListResponse(pageSize uint32) *commonpb.ExecutePreparedQueryResponse {
+	return &commonpb.ExecutePreparedQueryResponse{
+		Result: &commonpb.ExecutePreparedQueryResponse_Cursor{
 			Cursor: &commonpb.PreparedQueryCursor{
 				PageSize: pageSize,
 			},

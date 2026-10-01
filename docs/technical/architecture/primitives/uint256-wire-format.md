@@ -57,7 +57,7 @@ For typical ledger amounts (fitting in 64 bits), the wire size is comparable. Fo
 
 ## Code structure
 
-### Helper methods (`internal/proto/commonpb/uint256.go`)
+### Helper methods (`pkg/client/v3/grpc/commonpb_uint256.go`)
 
 ```go
 // Zero-allocation: direct limb copy from proto → uint256.Int

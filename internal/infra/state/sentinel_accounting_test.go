@@ -8,11 +8,13 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/pkg/kv"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 func sentinelVolume(account, asset, color string, oldInput, oldOutput, input, output uint64) attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] {
@@ -26,20 +28,20 @@ func sentinelVolume(account, asset, color string, oldInput, oldOutput, input, ou
 }
 
 func sentinelPosting(source, destination, asset, color string, amount int64) *commonpb.Posting {
-	posting := commonpb.NewPosting(source, destination, asset, big.NewInt(amount))
+	posting := protohelpers.NewPosting(source, destination, asset, big.NewInt(amount))
 	posting.Color = color
 
 	return posting
 }
 
 func sentinelLog(revert bool, postings ...*commonpb.Posting) *commonpb.Log {
-	transaction := commonpb.NewTransaction().WithPostings(postings...).WithID(1)
+	transaction := protohelpers.WithTransactionID(protohelpers.WithTransactionPostings(protohelpers.NewTransaction(), postings...), 1)
 	payload := &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{Transaction: transaction}}}
 	if revert {
 		payload.Payload = &commonpb.LedgerLogPayload_RevertedTransaction{RevertedTransaction: &commonpb.RevertedTransaction{RevertedTransactionId: 0, RevertTransaction: transaction}}
 	}
 
-	return &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{LedgerName: "test", Log: commonpb.NewLedgerLog(payload)}}}}
+	return &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{LedgerName: "test", Log: protohelpers.NewLedgerLog(payload)}}}}
 }
 
 func TestVerifyVolumeDeltasMatchPostingsRejectsCorruption(t *testing.T) {

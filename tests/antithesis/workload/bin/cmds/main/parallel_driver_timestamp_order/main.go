@@ -37,8 +37,7 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	antirandom "github.com/antithesishq/antithesis-sdk-go/random"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -51,7 +50,7 @@ import (
 const backdatedEpochMicros = 1
 
 func main() {
-	internal.RunDriver("parallel_driver_timestamp_order", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
+	internal.RunDriver("parallel_driver_timestamp_order", func(ctx context.Context, client commonpb.BucketServiceClient, _ string) {
 		r := internal.Rand()
 
 		run := r.Uint64()
@@ -69,7 +68,7 @@ func main() {
 		)
 
 		for i := range txCount {
-			payload := &servicepb.CreateTransactionPayload{
+			payload := &commonpb.CreateTransactionPayload{
 				Postings: []*commonpb.Posting{{
 					Source:      "world",
 					Destination: "tsorder-dst:probe",
@@ -86,11 +85,11 @@ func main() {
 				payload.Timestamp = &commonpb.Timestamp{Data: backdatedEpochMicros}
 			}
 
-			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
+			resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+				Type: &commonpb.Request_Apply{
+					Apply: &commonpb.LedgerApplyRequest{
 						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+						Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
 							CreateTransaction: payload,
 						}},
 					},
@@ -140,7 +139,7 @@ func main() {
 			if afterLocalID > 0 {
 				cursor = strconv.FormatUint(afterLocalID, 10) // ledger-local log ID, exclusive
 			}
-			stream, err := client.ListLogs(ctx, &servicepb.ListLogsRequest{
+			stream, err := client.ListLogs(ctx, &commonpb.ListLogsRequest{
 				Ledger: ledger,
 				Options: &commonpb.ListOptions{
 					PageSize: pageSize,

@@ -19,13 +19,12 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
@@ -36,17 +35,17 @@ import (
 // The backend is a real single-node Ledger (admission, Raft, FSM and Pebble).
 // This proxy only delays delivery of the first acknowledged commit's response.
 type lostApplyResponseServer struct {
-	servicepb.UnimplementedBucketServiceServer
+	commonpb.UnimplementedBucketServiceServer
 
-	client    servicepb.BucketServiceClient
-	committed chan *servicepb.ApplyResponse
-	requests  chan *servicepb.ApplyRequest
+	client    commonpb.BucketServiceClient
+	committed chan *commonpb.ApplyResponse
+	requests  chan *commonpb.ApplyRequest
 	attempts  atomic.Int32
 }
 
-func (s *lostApplyResponseServer) Apply(ctx context.Context, req *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
+func (s *lostApplyResponseServer) Apply(ctx context.Context, req *commonpb.ApplyRequest) (*commonpb.ApplyResponse, error) {
 	attempt := s.attempts.Add(1)
-	s.requests <- proto.Clone(req).(*servicepb.ApplyRequest)
+	s.requests <- proto.Clone(req).(*commonpb.ApplyRequest)
 	var trailers metadata.MD
 	response, err := s.client.Apply(ctx, req, grpc.Trailer(&trailers))
 	if err != nil {
@@ -68,14 +67,14 @@ func (s *lostApplyResponseServer) Apply(ctx context.Context, req *servicepb.Appl
 // Resolve the current pooled connection on every external attempt, as the
 // RoutedController does. The decorator under test is the production boundary.
 type forwardingApplyServer struct {
-	servicepb.UnimplementedBucketServiceServer
+	commonpb.UnimplementedBucketServiceServer
 
 	pool        *transport.ConnectionPool
 	interrupted chan error
 }
 
-func (s *forwardingApplyServer) Apply(ctx context.Context, req *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
-	client := servicepb.NewBucketServiceClient(grpcerr.NewConn(s.pool.GetConnection(1)))
+func (s *forwardingApplyServer) Apply(ctx context.Context, req *commonpb.ApplyRequest) (*commonpb.ApplyResponse, error) {
+	client := commonpb.NewBucketServiceClient(grpcerr.NewConn(s.pool.GetConnection(1)))
 	var trailers metadata.MD
 	response, err := client.Apply(ctx, req, grpc.Trailer(&trailers))
 	if err != nil {
@@ -90,12 +89,12 @@ func (s *forwardingApplyServer) Apply(ctx context.Context, req *servicepb.ApplyR
 	return response, nil
 }
 
-func serveApplyProxy(t *testing.T, handler servicepb.BucketServiceServer) string {
+func serveApplyProxy(t *testing.T, handler commonpb.BucketServiceServer) string {
 	t.Helper()
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	require.NoError(t, err)
 	server := grpc.NewServer()
-	servicepb.RegisterBucketServiceServer(server, handler)
+	commonpb.RegisterBucketServiceServer(server, handler)
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(server.Stop)
 
@@ -153,18 +152,18 @@ func testLostCommittedResponse(t *testing.T, mode string) {
 	leaderConn, err := grpc.NewClient(fmt.Sprintf("localhost:%d", lease.Ports().GRPC()), grpcprotocol.ClientOption(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, leaderConn.Close()) })
-	cluster := clusterpb.NewClusterServiceClient(leaderConn)
+	cluster := commonpb.NewClusterServiceClient(leaderConn)
 	require.Eventually(t, func() bool {
-		state, err := cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+		state, err := cluster.GetClusterState(ctx, &commonpb.GetClusterStateRequest{})
 
 		return err == nil && state.GetLeader() != 0
 	}, 5*time.Second, 10*time.Millisecond)
-	leader := servicepb.NewBucketServiceClient(leaderConn)
+	leader := commonpb.NewBucketServiceClient(leaderConn)
 	testserver.WaitForWriteAdmission(t, ctx, leader)
 	_, err = leader.Apply(ctx, actions.WithIdempotencyKey("setup", actions.CreateLedgerAction("L", nil)))
 	require.NoError(t, err)
 
-	loss := &lostApplyResponseServer{client: leader, committed: make(chan *servicepb.ApplyResponse, 1), requests: make(chan *servicepb.ApplyRequest, 4)}
+	loss := &lostApplyResponseServer{client: leader, committed: make(chan *commonpb.ApplyResponse, 1), requests: make(chan *commonpb.ApplyRequest, 4)}
 	peerAddr := serveApplyProxy(t, loss)
 	pool := transport.NewConnectionPool(transport.TLSPolicy{}, transport.PoolConfig{})
 	t.Cleanup(func() { require.NoError(t, pool.Close()) })
@@ -179,19 +178,19 @@ func testLostCommittedResponse(t *testing.T, mode string) {
 	}
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, callerConn.Close()) })
-	request := actions.WithIdempotencyKey("one-logical-transaction", actions.CreateTransactionAction("L", []*commonpb.Posting{commonpb.NewPosting("world", "user", "USD", big.NewInt(10))}, nil, nil))
+	request := actions.WithIdempotencyKey("one-logical-transaction", actions.CreateTransactionAction("L", []*commonpb.Posting{protohelpers.NewPosting("world", "user", "USD", big.NewInt(10))}, nil, nil))
 	type result struct {
-		response *servicepb.ApplyResponse
+		response *commonpb.ApplyResponse
 		err      error
 		trailers metadata.MD
 	}
 	finished := make(chan result, 1)
 	go func() {
 		var trailers metadata.MD
-		response, err := servicepb.NewBucketServiceClient(callerConn).Apply(ctx, request, grpc.Trailer(&trailers))
+		response, err := commonpb.NewBucketServiceClient(callerConn).Apply(ctx, request, grpc.Trailer(&trailers))
 		finished <- result{response, err, trailers}
 	}()
-	var committed *servicepb.ApplyResponse
+	var committed *commonpb.ApplyResponse
 	select {
 	case committed = <-loss.committed:
 	case <-ctx.Done():
@@ -223,7 +222,7 @@ func testLostCommittedResponse(t *testing.T, mode string) {
 		require.Equal(t, int32(1), loss.attempts.Load(), "LEDGER_NO_RETRY must prevent automatic replay")
 		require.Equal(t, codes.Unavailable, status.Code(outcome.err))
 		// The caller can still explicitly recover the same keyed outcome.
-		outcome.response, outcome.err = servicepb.NewBucketServiceClient(callerConn).Apply(ctx, request, grpc.Trailer(&outcome.trailers))
+		outcome.response, outcome.err = commonpb.NewBucketServiceClient(callerConn).Apply(ctx, request, grpc.Trailer(&outcome.trailers))
 	case "maintenance":
 		require.Equal(t, int32(2), loss.attempts.Load(), "maintenance must escape the retry loop")
 		require.True(t, internal.HasErrorReason(outcome.err, domain.ErrReasonMaintenanceMode))
@@ -232,7 +231,7 @@ func testLostCommittedResponse(t *testing.T, mode string) {
 		require.True(t, proto.Equal(status.Convert(maintenance).Proto(), status.Convert(outcome.err).Proto()), "ambiguity wrapper must preserve the structured maintenance status")
 		_, err = leader.Apply(ctx, actions.WithIdempotencyKey("disable-maintenance", actions.SetMaintenanceModeAction(false)))
 		require.NoError(t, err)
-		outcome.response, outcome.err = servicepb.NewBucketServiceClient(callerConn).Apply(ctx, request, grpc.Trailer(&outcome.trailers))
+		outcome.response, outcome.err = commonpb.NewBucketServiceClient(callerConn).Apply(ctx, request, grpc.Trailer(&outcome.trailers))
 		wantAttempts = 3
 	}
 	require.NoError(t, outcome.err)
@@ -246,7 +245,7 @@ func testLostCommittedResponse(t *testing.T, mode string) {
 	transactions, err := actions.ListAllTransactions(ctx, leader, "L")
 	require.NoError(t, err)
 	require.Len(t, transactions, 1, "lost response must not duplicate the committed transaction")
-	account, err := leader.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: "L", Address: "user"})
+	account, err := leader.GetAccount(ctx, &commonpb.GetAccountRequest{Ledger: "L", Address: "user"})
 	require.NoError(t, err)
 	require.Len(t, account.GetVolumes(), 1)
 	require.Equal(t, "10", account.GetVolumes()[0].GetVolumes().GetBalance())

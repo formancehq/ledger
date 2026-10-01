@@ -18,11 +18,10 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	ledgergrpc "github.com/formancehq/ledger/v3/internal/adapter/grpc"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl/ctrlmock"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // Exercise the production list handler and real gRPC trailers, rather than
@@ -44,7 +43,7 @@ func TestNumscriptIsListedBeyondDefaultPage(t *testing.T) {
 
 	// Control: the service returns exactly the default 100 items and provides
 	// the continuation token that the old workload discarded.
-	stream, err := client.ListNumscripts(ctx, &servicepb.ListNumscriptsRequest{Ledger: "default"})
+	stream, err := client.ListNumscripts(ctx, &commonpb.ListNumscriptsRequest{Ledger: "default"})
 	require.NoError(t, err)
 	var count int
 	for {
@@ -64,11 +63,11 @@ func TestNumscriptIsListedBeyondDefaultPage(t *testing.T) {
 	require.True(t, found, "saved numscript should appear in ListNumscripts: rank 102 of 105, default page 100")
 }
 
-func dialNumscriptServer(t *testing.T, service servicepb.BucketServiceServer, options ...grpc.ServerOption) servicepb.BucketServiceClient {
+func dialNumscriptServer(t *testing.T, service commonpb.BucketServiceServer, options ...grpc.ServerOption) commonpb.BucketServiceClient {
 	t.Helper()
 	listener := bufconn.Listen(1 << 20)
 	server := grpc.NewServer(options...)
-	servicepb.RegisterBucketServiceServer(server, service)
+	commonpb.RegisterBucketServiceServer(server, service)
 	serveDone := make(chan error, 1)
 	go func() { serveDone <- server.Serve(listener) }()
 	t.Cleanup(func() {
@@ -83,7 +82,7 @@ func dialNumscriptServer(t *testing.T, service servicepb.BucketServiceServer, op
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
 
-	return servicepb.NewBucketServiceClient(conn)
+	return commonpb.NewBucketServiceClient(conn)
 }
 
 func TestNumscriptIsListedPagination(t *testing.T) {
@@ -204,7 +203,7 @@ func numscriptNames(count int) []*commonpb.NumscriptInfo {
 	return scripts
 }
 
-func numscriptServer(controller *ctrlmock.MockController) servicepb.BucketServiceServer {
+func numscriptServer(controller *ctrlmock.MockController) commonpb.BucketServiceServer {
 	return ledgergrpc.NewBucketServiceServer(logging.Testing(), controller, nil, nil, nil, nil, nil, nil,
 		0, "", noop.NewMeterProvider(), nil, nil, version.Info{})
 }

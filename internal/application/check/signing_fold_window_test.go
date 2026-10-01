@@ -7,14 +7,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -44,12 +42,13 @@ func writeSigningAuditEntry(
 	items []*auditpb.AuditItem,
 ) []byte {
 	t.Helper()
+	_ = clusterID
 
 	entry := &auditpb.AuditEntry{
 		Sequence:       seq,
-		Timestamp:      &commonpb.Timestamp{Data: 1700000000 + seq},
+		Timestamp:      &auditpb.Timestamp{Data: 1700000000 + seq},
 		OrderCount:     uint32(len(items)),
-		HashVersion:    uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		HashVersion:    uint32(auditpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
 		CallerSnapshot: testCallerSnapshot(),
 		Outcome: &auditpb.AuditEntry_Success{
 			Success: &auditpb.AuditSuccess{MinLogSequence: minLog, MaxLogSequence: maxLog},
@@ -66,7 +65,7 @@ func writeSigningAuditEntry(
 		hashSlices = append(hashSlices, state.BuildPerItemPayload(item))
 	}
 
-	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
+	gen := processing.NewHashGenerator(auditpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
 	_, entry.Hash = gen.Compute(nil, prevHash, hashSlices)
 
 	rewriteAuditEntry(t, store, entry, items)
@@ -142,7 +141,7 @@ func TestVerifyAuditHashChain_SigningFoldIgnoresLegacyReplayReferences(t *testin
 	folds := newChainVerifierFolds()
 	folds.signing = verifier
 
-	_, err = checker.verifyAuditHashChain(context.Background(), handle, checkerTestAuditKey, newChainBoundState(), folds, func(*servicepb.CheckStoreEvent) {})
+	_, err = checker.verifyAuditHashChain(context.Background(), handle, checkerTestAuditKey, newChainBoundState(), folds, func(*auditpb.CheckStoreEvent) {})
 	require.NoError(t, err)
 
 	require.NotContains(t, verifier.keys, "legacy-key",

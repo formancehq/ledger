@@ -10,8 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
@@ -44,7 +43,7 @@ var _ = Describe("GetLedger snapshot consistency", Ordered, func() {
 
 	var (
 		ctx    context.Context
-		client servicepb.BucketServiceClient
+		client commonpb.BucketServiceClient
 	)
 
 	BeforeAll(func() {
@@ -52,11 +51,11 @@ var _ = Describe("GetLedger snapshot consistency", Ordered, func() {
 		ctx, node = testutil.SetupSingleNode()
 		client = node.Client
 
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())
 
 		// Initial committed state: collapsed — zero account types, count=0.
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("",
 			actions.SaveLedgerMetadataAction(ledgerName, map[string]string{"count": "0"})))
 		Expect(err).To(Succeed())
 	})
@@ -94,7 +93,7 @@ var _ = Describe("GetLedger snapshot consistency", Ordered, func() {
 
 			expanded := false
 			for i := 0; i < writerToggles && runCtx.Err() == nil; i++ {
-				var toggle *servicepb.Request
+				var toggle *commonpb.Request
 				var count string
 				if expanded {
 					toggle = actions.RemoveAccountTypeAction(ledgerName, toggleType)
@@ -104,7 +103,7 @@ var _ = Describe("GetLedger snapshot consistency", Ordered, func() {
 					count = "1"
 				}
 
-				_, err := client.Apply(runCtx, servicepb.UnsignedApplyRequest("",
+				_, err := client.Apply(runCtx, commonpb.UnsignedApplyRequest("",
 					toggle,
 					actions.SaveLedgerMetadataAction(ledgerName, map[string]string{"count": count})))
 				if err != nil {
@@ -192,7 +191,7 @@ var _ = Describe("GetLedger snapshot consistency", Ordered, func() {
 		for range getReaders {
 			wg.Add(1)
 			go runReader(func() (*commonpb.LedgerInfo, error) {
-				return client.GetLedger(runCtx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
+				return client.GetLedger(runCtx, &commonpb.GetLedgerRequest{Ledger: ledgerName})
 			}, "GetLedger", &validatedGetReads)
 		}
 

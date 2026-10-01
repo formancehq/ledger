@@ -6,10 +6,11 @@ import (
 
 	"go.uber.org/mock/gomock"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // noopSink drops every absorbed (order, log) pair. Used by
@@ -227,9 +228,9 @@ type mockStubs struct {
 	boundariesCall            *gomock.Call
 	accountMetadata           *kindStub[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]
 	accountMetadataCall       *gomock.Call
-	transactionStates         *kindStub[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]
+	transactionStates         *kindStub[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader]
 	transactionStatesCall     *gomock.Call
-	transactionReferences     *kindStub[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader]
+	transactionReferences     *kindStub[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader]
 	transactionReferencesCall *gomock.Call
 	indexes                   *kindStub[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]
 	indexesCall               *gomock.Call
@@ -302,22 +303,22 @@ func (m *mockStubs) accountMetadataStubFor(mockStore *MockScope) (*kindStub[doma
 	return m.accountMetadata, m.accountMetadataCall
 }
 
-func (m *mockStubs) transactionStatesStubFor(mockStore *MockScope) (*kindStub[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader], *gomock.Call) {
+func (m *mockStubs) transactionStatesStubFor(mockStore *MockScope) (*kindStub[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader], *gomock.Call) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.transactionStates == nil {
-		m.transactionStates = &kindStub[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]{}
+		m.transactionStates = &kindStub[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader]{}
 		m.transactionStatesCall = mockStore.EXPECT().TransactionStates().Return(m.transactionStates).AnyTimes()
 	}
 
 	return m.transactionStates, m.transactionStatesCall
 }
 
-func (m *mockStubs) transactionReferencesStubFor(mockStore *MockScope) (*kindStub[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader], *gomock.Call) {
+func (m *mockStubs) transactionReferencesStubFor(mockStore *MockScope) (*kindStub[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader], *gomock.Call) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.transactionReferences == nil {
-		m.transactionReferences = &kindStub[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader]{}
+		m.transactionReferences = &kindStub[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader]{}
 		m.transactionReferencesCall = mockStore.EXPECT().TransactionReferences().Return(m.transactionReferences).AnyTimes()
 	}
 
@@ -427,17 +428,17 @@ func expectDeleteAccountMetadata(t *testing.T, mockStore *MockScope, key domain.
 	return call
 }
 
-func expectGetTransactionState(mockStore *MockScope, key domain.TransactionKey, value commonpb.TransactionStateReader, err error) *gomock.Call {
+func expectGetTransactionState(mockStore *MockScope, key domain.TransactionKey, value internalcommonpb.TransactionStateReader, err error) *gomock.Call {
 	stub, call := stubsFor(mockStore).transactionStatesStubFor(mockStore)
 	stub.expectGet(key, value, err)
 
 	return call
 }
 
-func expectPutTransactionState(t *testing.T, mockStore *MockScope, key domain.TransactionKey, _ *commonpb.TransactionState, hooks ...func(domain.TransactionKey, *commonpb.TransactionState)) *gomock.Call {
+func expectPutTransactionState(t *testing.T, mockStore *MockScope, key domain.TransactionKey, _ *internalcommonpb.TransactionState, hooks ...func(domain.TransactionKey, *internalcommonpb.TransactionState)) *gomock.Call {
 	t.Helper()
 	stub, call := stubsFor(mockStore).transactionStatesStubFor(mockStore)
-	var hook func(domain.TransactionKey, *commonpb.TransactionState)
+	var hook func(domain.TransactionKey, *internalcommonpb.TransactionState)
 	if len(hooks) > 0 {
 		hook = hooks[0]
 	}
@@ -446,10 +447,10 @@ func expectPutTransactionState(t *testing.T, mockStore *MockScope, key domain.Tr
 	return call
 }
 
-func expectPutTransactionReference(t *testing.T, mockStore *MockScope, key domain.TransactionReferenceKey, _ *commonpb.TransactionReferenceValue, hooks ...func(domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue)) *gomock.Call {
+func expectPutTransactionReference(t *testing.T, mockStore *MockScope, key domain.TransactionReferenceKey, _ *internalcommonpb.TransactionReferenceValue, hooks ...func(domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue)) *gomock.Call {
 	t.Helper()
 	stub, call := stubsFor(mockStore).transactionReferencesStubFor(mockStore)
-	var hook func(domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue)
+	var hook func(domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue)
 	if len(hooks) > 0 {
 		hook = hooks[0]
 	}
@@ -485,12 +486,12 @@ func expectDeleteIndex(t *testing.T, mockStore *MockScope, key domain.IndexKey) 
 	return call
 }
 
-// requestToOrder converts a servicepb.Request to a raftcmdpb.Order for test purposes.
-func requestToOrder(req *servicepb.Request) *raftcmdpb.Order {
+// requestToOrder converts a commonpb.Request to a raftcmdpb.Order for test purposes.
+func requestToOrder(req *commonpb.Request) *raftcmdpb.Order {
 	order := &raftcmdpb.Order{}
 
 	switch reqType := req.GetType().(type) {
-	case *servicepb.Request_CreateLedger:
+	case *commonpb.Request_CreateLedger:
 		order.Type = &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: reqType.CreateLedger.GetName(),
@@ -499,7 +500,7 @@ func requestToOrder(req *servicepb.Request) *raftcmdpb.Order {
 				},
 			},
 		}
-	case *servicepb.Request_DeleteLedger:
+	case *commonpb.Request_DeleteLedger:
 		order.Type = &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: reqType.DeleteLedger.GetName(),
@@ -508,10 +509,10 @@ func requestToOrder(req *servicepb.Request) *raftcmdpb.Order {
 				},
 			},
 		}
-	case *servicepb.Request_Apply:
+	case *commonpb.Request_Apply:
 		applyOrder := &raftcmdpb.LedgerApplyOrder{}
 		switch data := reqType.Apply.GetAction().GetData().(type) {
-		case *servicepb.LedgerAction_CreateTransaction:
+		case *commonpb.LedgerAction_CreateTransaction:
 			applyOrder.Data = &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 				CreateTransaction: &raftcmdpb.CreateTransactionOrder{
 					Postings:        data.CreateTransaction.GetPostings(),
@@ -523,21 +524,21 @@ func requestToOrder(req *servicepb.Request) *raftcmdpb.Order {
 					Force:           data.CreateTransaction.GetForce(),
 				},
 			}
-		case *servicepb.LedgerAction_AddMetadata:
+		case *commonpb.LedgerAction_AddMetadata:
 			applyOrder.Data = &raftcmdpb.LedgerApplyOrder_AddMetadata{
 				AddMetadata: &raftcmdpb.SaveMetadataOrder{
 					Target:   data.AddMetadata.GetTarget(),
 					Metadata: data.AddMetadata.GetMetadata(),
 				},
 			}
-		case *servicepb.LedgerAction_DeleteMetadata:
+		case *commonpb.LedgerAction_DeleteMetadata:
 			applyOrder.Data = &raftcmdpb.LedgerApplyOrder_DeleteMetadata{
 				DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
 					Target: data.DeleteMetadata.GetTarget(),
 					Key:    data.DeleteMetadata.GetKey(),
 				},
 			}
-		case *servicepb.LedgerAction_RevertTransaction:
+		case *commonpb.LedgerAction_RevertTransaction:
 			applyOrder.Data = &raftcmdpb.LedgerApplyOrder_RevertTransaction{
 				RevertTransaction: &raftcmdpb.RevertTransactionOrder{
 					TransactionId:   data.RevertTransaction.GetTransactionId(),

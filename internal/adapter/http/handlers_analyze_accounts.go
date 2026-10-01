@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // analyzeAccountsResponseJSON is the camelCase JSON DTO for AnalyzeAccountsResponse.

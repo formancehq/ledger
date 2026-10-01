@@ -10,8 +10,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -381,8 +383,8 @@ func TestCleanupToken_Release(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = loaders.References.LoadOrWait(key4, 100, testCacheEpoch, func() (*commonpb.TransactionReferenceValue, error) {
-		return &commonpb.TransactionReferenceValue{TransactionId: 1}, nil
+	_, err = loaders.References.LoadOrWait(key4, 100, testCacheEpoch, func() (*internalcommonpb.TransactionReferenceValue, error) {
+		return &internalcommonpb.TransactionReferenceValue{TransactionId: 1}, nil
 	})
 	require.NoError(t, err)
 
@@ -417,10 +419,10 @@ func TestCleanupToken_Release(t *testing.T) {
 	assert.Equal(t, 1, volumeLoadCount2, "Volumes key2 should reload after Release")
 
 	refLoadCount := 0
-	_, err = loaders.References.LoadOrWait(key4, 100, testCacheEpoch, func() (*commonpb.TransactionReferenceValue, error) {
+	_, err = loaders.References.LoadOrWait(key4, 100, testCacheEpoch, func() (*internalcommonpb.TransactionReferenceValue, error) {
 		refLoadCount++
 
-		return &commonpb.TransactionReferenceValue{TransactionId: 2}, nil
+		return &internalcommonpb.TransactionReferenceValue{TransactionId: 2}, nil
 	})
 	require.NoError(t, err)
 	assert.Equal(t, 1, refLoadCount, "References should reload after Release")

@@ -16,18 +16,17 @@ import (
 	"go.yaml.in/yaml/v3"
 	"google.golang.org/grpc"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 type transactionOutputServer struct {
-	servicepb.UnimplementedBucketServiceServer
+	commonpb.UnimplementedBucketServiceServer
 
-	response *servicepb.GetTransactionResponse
-	requests chan *servicepb.GetTransactionRequest
+	response *commonpb.GetTransactionResponse
+	requests chan *commonpb.GetTransactionRequest
 }
 
-func (s *transactionOutputServer) GetTransaction(_ context.Context, request *servicepb.GetTransactionRequest) (*servicepb.GetTransactionResponse, error) {
+func (s *transactionOutputServer) GetTransaction(_ context.Context, request *commonpb.GetTransactionRequest) (*commonpb.GetTransactionResponse, error) {
 	s.requests <- request
 
 	return s.response, nil
@@ -42,7 +41,7 @@ func TestTransactionsGetStructuredOutputPreservesIntegers(t *testing.T) {
 	// Seed the transport fixture with typed protobuf values. Passing through
 	// HTTP/JSON on the way in could round the input before this CLI regression.
 	fixture := &transactionOutputServer{
-		response: &servicepb.GetTransactionResponse{
+		response: &commonpb.GetTransactionResponse{
 			Transaction: &commonpb.Transaction{
 				Id: positive,
 				Metadata: map[string]*commonpb.MetadataValue{
@@ -51,12 +50,12 @@ func TestTransactionsGetStructuredOutputPreservesIntegers(t *testing.T) {
 				},
 			},
 		},
-		requests: make(chan *servicepb.GetTransactionRequest, 2),
+		requests: make(chan *commonpb.GetTransactionRequest, 2),
 	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	server := grpc.NewServer()
-	servicepb.RegisterBucketServiceServer(server, fixture)
+	commonpb.RegisterBucketServiceServer(server, fixture)
 	serveResult := make(chan error, 1)
 	go func() { serveResult <- server.Serve(listener) }()
 	t.Cleanup(func() {

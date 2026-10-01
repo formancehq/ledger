@@ -1,7 +1,7 @@
 package readstore
 
 import (
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // GetMetrics returns the current Pebble metrics for the read index as a proto message.

@@ -7,7 +7,7 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -28,14 +28,14 @@ func (e *ConfigMismatchError) Error() string {
 
 // LoadPersistedConfig reads the persisted configuration from Pebble.
 // Returns nil if no configuration has been persisted yet (first boot).
-func LoadPersistedConfig(reader dal.PebbleGetter) (*commonpb.PersistedConfig, error) {
+func LoadPersistedConfig(reader dal.PebbleGetter) (*internalcommonpb.PersistedConfig, error) {
 	// Earlier development layouts stored this anchor in ZoneGlobal. Reject it
 	// even if a current anchor also exists: a mixed layout is not a first
 	// boot and must never be interpreted as a valid current store.
 	legacy, legacyCloser, legacyErr := reader.Get([]byte{dal.ZoneGlobal, dal.SubGlobPersistedConfig})
 	if legacyErr == nil {
 		defer func() { _ = legacyCloser.Close() }()
-		old := &commonpb.PersistedConfig{}
+		old := &internalcommonpb.PersistedConfig{}
 		if unmarshalErr := proto.Unmarshal(legacy, old); unmarshalErr != nil {
 			return nil, fmt.Errorf("unmarshaling prior-schema persisted config: %w", unmarshalErr)
 		}
@@ -57,7 +57,7 @@ func LoadPersistedConfig(reader dal.PebbleGetter) (*commonpb.PersistedConfig, er
 
 	defer func() { _ = closer.Close() }()
 
-	cfg := &commonpb.PersistedConfig{}
+	cfg := &internalcommonpb.PersistedConfig{}
 	if err := proto.Unmarshal(value, cfg); err != nil {
 		return nil, fmt.Errorf("unmarshaling persisted config: %w", err)
 	}
@@ -66,7 +66,7 @@ func LoadPersistedConfig(reader dal.PebbleGetter) (*commonpb.PersistedConfig, er
 }
 
 // SavePersistedConfig writes the persisted configuration to the batch.
-func SavePersistedConfig(b *dal.WriteSession, cfg *commonpb.PersistedConfig) error {
+func SavePersistedConfig(b *dal.WriteSession, cfg *internalcommonpb.PersistedConfig) error {
 	value, err := proto.Marshal(cfg)
 	if err != nil {
 		return fmt.Errorf("marshaling persisted config: %w", err)

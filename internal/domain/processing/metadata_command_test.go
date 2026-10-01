@@ -6,16 +6,16 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 func metadataScriptOrder(script string) *raftcmdpb.Order {
-	return requestToOrder(&servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
+	return requestToOrder(&commonpb.Request{Type: &commonpb.Request_Apply{Apply: &commonpb.LedgerApplyRequest{
 		Ledger: "test-ledger",
-		Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{CreateTransaction: &servicepb.CreateTransactionPayload{
+		Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{CreateTransaction: &commonpb.CreateTransactionPayload{
 			Script: &commonpb.Script{Plain: script + `
     send [USD/2 100] (source = @world destination = @users:alice)
    `},
@@ -65,8 +65,8 @@ func TestProcessOrders_NumscriptCommandMetadataCeiling(t *testing.T) {
 			return []*raftcmdpb.Order{metadataScriptOrder(`set_tx_meta("k", "12345")`), metadataScriptOrder(`set_tx_meta("k", "12345")`)}
 		}},
 		{name: "later caller metadata", orders: func() []*raftcmdpb.Order {
-			later := requestToOrder(&servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
-				Ledger: "test-ledger", Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{AddMetadata: &commonpb.SaveMetadataCommand{
+			later := requestToOrder(&commonpb.Request{Type: &commonpb.Request_Apply{Apply: &commonpb.LedgerApplyRequest{
+				Ledger: "test-ledger", Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_AddMetadata{AddMetadata: &commonpb.SaveMetadataCommand{
 					Target:   &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: "users:bob"}}},
 					Metadata: map[string]*commonpb.MetadataValue{"k": commonpb.NewStringValue("12345")},
 				}}},

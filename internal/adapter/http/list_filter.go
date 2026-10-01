@@ -5,8 +5,9 @@ import (
 	"net/http"
 	"time"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // parseFilterDateMicros parses the RFC3339 startDate/endDate convenience query

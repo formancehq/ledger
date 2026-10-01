@@ -88,6 +88,20 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+  Tests-Public-Client:
+    runs-on: namespace-profile-linux-amd64-4vcpu
+    env:
+      GOPATH: /tmp/go
+    steps:
+      - uses: namespacelabs/nscloud-checkout-action@445c25d7009680597d73eb03c4e1cd5be522ed73 # v9
+        with:
+          fetch-depth: 0
+          dissociate: true
+      - name: Setup Env
+        uses: ./.github/actions/default
+      - name: Check public Protobuf generation and external import
+        run: nix develop --command bash scripts/check-public-client.sh
+
   Tests-Operator:
     runs-on: namespace-profile-linux-amd64-4vcpu
     env:
@@ -272,6 +286,8 @@ jobs:
         uses: ./.github/actions/default
       - run: >
           nix develop --command go build ./...
+      - name: Build public client module
+        run: nix develop --command bash -c 'GOWORK=off go -C pkg/client/v3 build ./...'
       - name: Cross-compile ledgerctl for Windows
         run: >
           nix develop --command bash -c "mkdir -p build &&
@@ -310,6 +326,7 @@ jobs:
       [
         Dirty,
         Tests,
+        Tests-Public-Client,
         Tests-Operator,
         Tests-E2E-Business,
         Tests-E2E-Cluster,
@@ -368,6 +385,7 @@ jobs:
       [
         Dirty,
         Tests,
+        Tests-Public-Client,
         Tests-Operator,
         Tests-E2E-Business,
         Tests-E2E-Cluster,

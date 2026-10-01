@@ -2,7 +2,7 @@ package state
 
 import (
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -10,19 +10,19 @@ import (
 // Writes go to pending and are flushed to the parent store + Pebble on Merge.
 type DerivedIdempotencyStore struct {
 	parent  *IdempotencyStore
-	pending map[string]*commonpb.IdempotencyKeyValue
+	pending map[string]*internalcommonpb.IdempotencyKeyValue
 }
 
 // NewDerivedIdempotencyStore creates a DerivedIdempotencyStore from a parent store.
 func NewDerivedIdempotencyStore(parent *IdempotencyStore) *DerivedIdempotencyStore {
 	return &DerivedIdempotencyStore{
 		parent:  parent,
-		pending: make(map[string]*commonpb.IdempotencyKeyValue),
+		pending: make(map[string]*internalcommonpb.IdempotencyKeyValue),
 	}
 }
 
 // Get checks pending first, then the parent in-memory map.
-func (d *DerivedIdempotencyStore) Get(key string) (*commonpb.IdempotencyKeyValue, error) {
+func (d *DerivedIdempotencyStore) Get(key string) (*internalcommonpb.IdempotencyKeyValue, error) {
 	if v, ok := d.pending[key]; ok {
 		return v, nil
 	}
@@ -36,7 +36,7 @@ func (d *DerivedIdempotencyStore) Get(key string) (*commonpb.IdempotencyKeyValue
 }
 
 // Put writes a value to the pending overlay.
-func (d *DerivedIdempotencyStore) Put(key string, value *commonpb.IdempotencyKeyValue) {
+func (d *DerivedIdempotencyStore) Put(key string, value *internalcommonpb.IdempotencyKeyValue) {
 	d.pending[key] = value
 }
 

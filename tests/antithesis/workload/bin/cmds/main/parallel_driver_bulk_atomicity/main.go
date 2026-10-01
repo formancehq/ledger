@@ -39,8 +39,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -71,7 +70,7 @@ func isDefinitiveBulkRejection(err error) bool {
 // aligned to the marker's Raft horizon; read errors are inconclusive.
 func listIsEmpty(
 	ctx context.Context,
-	client servicepb.BucketServiceClient,
+	client commonpb.BucketServiceClient,
 	ledger string,
 	filter *commonpb.QueryFilter,
 ) (bool, []uint64, bool) {
@@ -81,7 +80,7 @@ func listIsEmpty(
 }
 
 func main() {
-	internal.RunDriver("parallel_driver_bulk_atomicity", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
+	internal.RunDriver("parallel_driver_bulk_atomicity", func(ctx context.Context, client commonpb.BucketServiceClient, _ string) {
 		r := internal.Rand()
 
 		run := r.Uint64()
@@ -95,7 +94,7 @@ func main() {
 		bulkSize := antirandom.RandomChoice([]int{2, 5, 10})
 
 		var (
-			requests []*servicepb.Request
+			requests []*commonpb.Request
 			refs     []string
 			accounts []string
 		)
@@ -106,12 +105,12 @@ func main() {
 			refs = append(refs, ref)
 			accounts = append(accounts, account)
 
-			requests = append(requests, &servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
+			requests = append(requests, &commonpb.Request{
+				Type: &commonpb.Request_Apply{
+					Apply: &commonpb.LedgerApplyRequest{
 						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
+						Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+							CreateTransaction: &commonpb.CreateTransactionPayload{
 								Postings: []*commonpb.Posting{{
 									Source:      "world",
 									Destination: account,
@@ -129,12 +128,12 @@ func main() {
 
 		// Last order: overdraft from a never-funded, driver-owned source
 		// without Force — deterministically rejected with INSUFFICIENT_FUNDS.
-		requests = append(requests, &servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+		requests = append(requests, &commonpb.Request{
+			Type: &commonpb.Request_Apply{
+				Apply: &commonpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-						CreateTransaction: &servicepb.CreateTransactionPayload{
+					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &commonpb.CreateTransactionPayload{
 							Postings: []*commonpb.Posting{{
 								Source:      fmt.Sprintf("bulkatom-void:%d", run%1_000_000),
 								Destination: "bulkatom-sink",
@@ -147,7 +146,7 @@ func main() {
 			},
 		})
 
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", requests...))
+		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", requests...))
 
 		details := internal.Details{"ledger": ledger, "bulkSize": bulkSize}
 
@@ -171,12 +170,12 @@ func main() {
 			return
 		}
 
-		markerResp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+		markerResp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_Apply{
+				Apply: &commonpb.LedgerApplyRequest{
 					Ledger: helper,
-					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-						CreateTransaction: &servicepb.CreateTransactionPayload{
+					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &commonpb.CreateTransactionPayload{
 							Postings: []*commonpb.Posting{{
 								Source:      "world",
 								Destination: "bulkatom-marker",
@@ -205,7 +204,7 @@ func main() {
 		// create fails AlreadyExists and cannot add a second), and Failure
 		// entries must be unique per ProposalId (a failed proposal writes
 		// exactly one Failure entry by design, machine.go:1163-1204).
-		auditStream, err := client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
+		auditStream, err := client.ListAuditEntries(ctx, &commonpb.ListAuditEntriesRequest{
 			Options: &commonpb.ListOptions{
 				// Audit has no dedicated ledger field — scope via the generic filter.
 				Filter: &commonpb.QueryFilter{
@@ -287,7 +286,7 @@ func main() {
 	})
 }
 
-func assertBulkEffectsAbsent(ctx context.Context, client servicepb.BucketServiceClient, ledger string, refs, accounts []string, details internal.Details) {
+func assertBulkEffectsAbsent(ctx context.Context, client commonpb.BucketServiceClient, ledger string, refs, accounts []string, details internal.Details) {
 	for i, ref := range refs {
 		empty, ids, conclusive := listIsEmpty(ctx, client, ledger, actions.ReferenceFilter(ref))
 		if conclusive {

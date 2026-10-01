@@ -9,7 +9,8 @@ import (
 
 	antirandom "github.com/antithesishq/antithesis-sdk-go/random"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 // GeometricBulkSize returns a value in [low, high] drawn from a Geometric(p) distribution
@@ -54,7 +55,7 @@ func RandomPostings() []*commonpb.Posting {
 		destination := GetRandomAddress()
 		amount := RandomBigInt()
 		asset := antirandom.RandomChoice([]string{"USD/2", "EUR/2", "COIN"})
-		postings = append(postings, commonpb.NewPosting(source, destination, asset, amount))
+		postings = append(postings, protohelpers.NewPosting(source, destination, asset, amount))
 	}
 
 	return postings

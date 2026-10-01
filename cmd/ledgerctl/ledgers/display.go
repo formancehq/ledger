@@ -11,8 +11,9 @@ import (
 	"go.yaml.in/yaml/v3"
 	"google.golang.org/protobuf/encoding/protojson"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // ledgerModeString returns a user-friendly string for a LedgerMode.

@@ -9,8 +9,7 @@ import (
 	"math/big"
 	"net/http"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -40,10 +39,10 @@ var _ = Describe("TestTransactionsListShape: list/detail item parity (EN-1622)",
 	var createdTxID uint64
 
 	BeforeAll(func() {
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())
 
-		logs, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.WithReference(
+		logs, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.WithReference(
 			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "list-shape-dest", big.NewInt(12345), "USD"),
 			}, map[string]string{"category": "list-shape-test"}, nil),
@@ -58,7 +57,7 @@ var _ = Describe("TestTransactionsListShape: list/detail item parity (EN-1622)",
 		// revertedByTransactionId, revertsTransactionId) are populated on the
 		// original — those are exactly the fields the pre-fix protojson writer
 		// rendered under snake_case/wrapped shapes on the list route only.
-		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.RevertTransactionAction(ledgerName, createdTxID, false, false, nil)))
+		_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.RevertTransactionAction(ledgerName, createdTxID, false, false, nil)))
 		Expect(err).To(Succeed())
 	})
 

@@ -7,13 +7,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -53,11 +53,11 @@ func TestVerifyAuditHashChain_KeyedNumscriptTxBindsAcceptedOrder(t *testing.T) {
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 						CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-							Metadata: map[string]*commonpb.MetadataValue{
-								"type":        commonpb.NewStringValue("caller-wins"),
-								"caller-only": commonpb.NewStringValue("kept"),
+							Metadata: map[string]*auditpb.MetadataValue{
+								"type":        auditpb.NewStringValue("caller-wins"),
+								"caller-only": auditpb.NewStringValue("kept"),
 							},
-							Script: &commonpb.Script{Plain: `
+							Script: &auditpb.Script{Plain: `
 								set_tx_meta("type", "payment")
 								set_tx_meta("category", "purchase")
 								send [USD/2 100] (
@@ -82,7 +82,7 @@ func TestVerifyAuditHashChain_KeyedNumscriptTxBindsAcceptedOrder(t *testing.T) {
 
 	createdTx := logs[0].GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction()
 	require.NotNil(t, createdTx)
-	txMeta := commonpb.MetadataToGoMap(createdTx.GetTransaction().GetMetadata())
+	txMeta := protohelpers.MetadataToGoMap(createdTx.GetTransaction().GetMetadata())
 	require.Equal(t, "caller-wins", txMeta["type"], "caller metadata must win collisions")
 	require.Equal(t, "purchase", txMeta["category"], "script metadata must be merged into the transaction")
 	require.Equal(t, "kept", txMeta["caller-only"], "caller-only metadata must be preserved")
@@ -105,11 +105,11 @@ func TestVerifyAuditHashChain_KeyedNumscriptTxBindsAcceptedOrder(t *testing.T) {
 
 	entry := &auditpb.AuditEntry{
 		Sequence:    1,
-		Timestamp:   &commonpb.Timestamp{Data: createdAt},
+		Timestamp:   &auditpb.Timestamp{Data: createdAt},
 		ProposalId:  2,
 		OrderCount:  1,
-		HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
-		Idempotency: &commonpb.Idempotency{Key: idemKey},
+		HashVersion: uint32(auditpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		Idempotency: &auditpb.Idempotency{Key: idemKey},
 		Outcome: &auditpb.AuditEntry_Success{
 			Success: &auditpb.AuditSuccess{MinLogSequence: logSeq, MaxLogSequence: logSeq},
 		},
@@ -117,7 +117,7 @@ func TestVerifyAuditHashChain_KeyedNumscriptTxBindsAcceptedOrder(t *testing.T) {
 	items := []*auditpb.AuditItem{{OrderIndex: 0, SerializedOrder: serialized, LogSequence: logSeq}}
 	persistAuditEntry(t, store, entry, items, clusterID)
 
-	writeIdempotencyEntry(t, store, idemKey, &commonpb.IdempotencyKeyValue{
+	writeIdempotencyEntry(t, store, idemKey, &internalcommonpb.IdempotencyKeyValue{
 		CreatedAt:        createdAt,
 		Hash:             frozenHash,
 		FirstLogSequence: logSeq,
@@ -130,7 +130,7 @@ func TestVerifyAuditHashChain_KeyedNumscriptTxBindsAcceptedOrder(t *testing.T) {
 
 // collectIdempotencyMismatches runs the audit-chain verifier and returns only
 // the idempotency-mismatch events, isolating the projection check under test.
-func collectIdempotencyMismatches(t *testing.T, store *dal.Store, clusterID string) []*servicepb.CheckStoreError {
+func collectIdempotencyMismatches(t *testing.T, store *dal.Store, clusterID string) []*auditpb.CheckStoreError {
 	t.Helper()
 
 	checker := NewChecker(store, attributes.New(), nil, logging.Testing())
@@ -140,12 +140,12 @@ func collectIdempotencyMismatches(t *testing.T, store *dal.Store, clusterID stri
 
 	defer func() { _ = handle.Close() }()
 
-	var got []*servicepb.CheckStoreError
+	var got []*auditpb.CheckStoreError
 
 	_, err = checker.verifyAuditHashChain(context.Background(), handle, checkerTestAuditKey, newChainBoundState(), newChainVerifierFolds(),
-		func(event *servicepb.CheckStoreEvent) {
-			if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok &&
-				e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH {
+		func(event *auditpb.CheckStoreEvent) {
+			if e, ok := event.GetType().(*auditpb.CheckStoreEvent_Error); ok &&
+				e.Error.GetErrorType() == auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH {
 				got = append(got, e.Error)
 			}
 		})

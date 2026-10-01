@@ -5,8 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
@@ -56,8 +55,8 @@ func replayApplyLog(ledger string, id uint64, data *commonpb.LedgerLogPayload) *
 
 func TestReplayRejectsChangedNestedChartOutcomes(t *testing.T) {
 	t.Parallel()
-	add := &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{Ledger: "L", Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddAccountType{AddAccountType: &servicepb.AddAccountTypeRequest{AccountType: &commonpb.AccountType{Name: "known", Pattern: "known:{id}"}}}}}}}
-	remove := &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{Ledger: "L", Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RemoveAccountType{RemoveAccountType: &servicepb.RemoveAccountTypeRequest{Name: "known"}}}}}}
+	add := &commonpb.Request{Type: &commonpb.Request_Apply{Apply: &commonpb.LedgerApplyRequest{Ledger: "L", Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_AddAccountType{AddAccountType: &commonpb.AddAccountTypeRequest{AccountType: &commonpb.AccountType{Name: "known", Pattern: "known:{id}"}}}}}}}
+	remove := &commonpb.Request{Type: &commonpb.Request_Apply{Apply: &commonpb.LedgerApplyRequest{Ledger: "L", Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_RemoveAccountType{RemoveAccountType: &commonpb.RemoveAccountTypeRequest{Name: "known"}}}}}}
 	bulk := bulkOf(add, remove)
 	result := oracle.NewGlobalState().Apply(bulk)
 	require.True(t, result.OK)

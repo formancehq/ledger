@@ -7,9 +7,10 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 // NewRevertCommand creates the transactions revert command.
@@ -141,18 +142,18 @@ func runRevert(cmd *cobra.Command, args []string) error {
 	spinner := cmdutil.StartSpinner(fmt.Sprintf("Reverting transaction #%d...", txID))
 
 	// Build revert request
-	requests := []*servicepb.Request{
+	requests := []*commonpb.Request{
 		{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+			Type: &commonpb.Request_Apply{
+				Apply: &commonpb.LedgerApplyRequest{
 					Ledger: ledgerName,
-					Action: &servicepb.LedgerAction{
-						Data: &servicepb.LedgerAction_RevertTransaction{
-							RevertTransaction: &servicepb.RevertTransactionPayload{
+					Action: &commonpb.LedgerAction{
+						Data: &commonpb.LedgerAction_RevertTransaction{
+							RevertTransaction: &commonpb.RevertTransactionPayload{
 								TransactionId:   txID,
 								Force:           force,
 								AtEffectiveDate: atEffectiveDate,
-								Metadata:        commonpb.MetadataFromGoMap(metadata),
+								Metadata:        protohelpers.MetadataFromGoMap(metadata),
 							},
 						},
 					},

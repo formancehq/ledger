@@ -9,11 +9,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/publicpolicy"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -801,7 +802,7 @@ func TestDescendingParity_EveryTargetIsCovered(t *testing.T) {
 	} {
 		require.GreaterOrEqual(t, seen[target], 4,
 			"target %s needs paged descending parity cases, not fewer than four",
-			commonpb.TargetHumanName(target))
+			publicpolicy.TargetHumanName(target))
 	}
 }
 

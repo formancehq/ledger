@@ -8,8 +8,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 var errSourceChanged = errors.New("source horizon changed")
@@ -69,8 +68,8 @@ func readPages[T any](ctx context.Context, open func(context.Context, string) (g
 	}
 }
 
-func barrier(ctx context.Context, client servicepb.BucketServiceClient) (uint64, error) {
-	response, err := client.Barrier(ctx, &servicepb.BarrierRequest{})
+func barrier(ctx context.Context, client commonpb.BucketServiceClient) (uint64, error) {
+	response, err := client.Barrier(ctx, &commonpb.BarrierRequest{})
 	if err != nil {
 		return 0, err
 	}
@@ -81,7 +80,7 @@ func barrier(ctx context.Context, client servicepb.BucketServiceClient) (uint64,
 	return response.GetCommitIndex(), nil
 }
 
-func confirmSource(ctx context.Context, client servicepb.BucketServiceClient, expected uint64) error {
+func confirmSource(ctx context.Context, client commonpb.BucketServiceClient, expected uint64) error {
 	after, err := barrier(ctx, client)
 	if err != nil {
 		return err
@@ -96,7 +95,7 @@ func confirmSource(ctx context.Context, client servicepb.BucketServiceClient, ex
 // captureSource uses default linearizable reads, then checks that no proposal
 // except its closing barrier was committed during the complete paginated fold.
 // No usage value is used to derive expectations or qualify source completeness.
-func captureSource(ctx context.Context, client servicepb.BucketServiceClient) (map[string]expectedLedger, uint64, error) {
+func captureSource(ctx context.Context, client commonpb.BucketServiceClient) (map[string]expectedLedger, uint64, error) {
 	before, err := barrier(ctx, client)
 	if err != nil {
 		return nil, 0, err
@@ -116,10 +115,10 @@ func captureSource(ctx context.Context, client servicepb.BucketServiceClient) (m
 	return ledgers, after, nil
 }
 
-func collectSource(ctx context.Context, client servicepb.BucketServiceClient) (map[string]expectedLedger, error) {
+func collectSource(ctx context.Context, client commonpb.BucketServiceClient) (map[string]expectedLedger, error) {
 	ledgers := make(map[string]expectedLedger)
 	err := readPages(ctx, func(ctx context.Context, cursor string) (grpc.ServerStreamingClient[commonpb.LedgerInfo], error) {
-		return client.ListLedgers(ctx, &servicepb.ListLedgersRequest{Options: &commonpb.ListOptions{PageSize: 100, Cursor: cursor}})
+		return client.ListLedgers(ctx, &commonpb.ListLedgersRequest{Options: &commonpb.ListOptions{PageSize: 100, Cursor: cursor}})
 	}, func(info *commonpb.LedgerInfo) error {
 		if info.GetName() == "" || info.GetId() == 0 {
 			return errors.New("invalid ledger identity")
@@ -141,7 +140,7 @@ func collectSource(ctx context.Context, client servicepb.BucketServiceClient) (m
 		}
 		// Boundaries are a separate main-store completeness check: a clean but
 		// truncated stream must not become the expected value for usage.
-		stats, err := client.GetLedgerStats(ctx, &servicepb.GetLedgerStatsRequest{Ledger: name})
+		stats, err := client.GetLedgerStats(ctx, &commonpb.GetLedgerStatsRequest{Ledger: name})
 		if err != nil {
 			return nil, err
 		}
@@ -154,11 +153,11 @@ func collectSource(ctx context.Context, client servicepb.BucketServiceClient) (m
 	return ledgers, nil
 }
 
-func foldLogs(ctx context.Context, client servicepb.BucketServiceClient, ledger string) (counts, error) {
+func foldLogs(ctx context.Context, client commonpb.BucketServiceClient, ledger string) (counts, error) {
 	var result counts
 	var lastID uint64
 	err := readPages(ctx, func(ctx context.Context, cursor string) (grpc.ServerStreamingClient[commonpb.Log], error) {
-		return client.ListLogs(ctx, &servicepb.ListLogsRequest{Ledger: ledger, Options: &commonpb.ListOptions{PageSize: 100, Cursor: cursor}})
+		return client.ListLogs(ctx, &commonpb.ListLogsRequest{Ledger: ledger, Options: &commonpb.ListOptions{PageSize: 100, Cursor: cursor}})
 	}, func(entry *commonpb.Log) error {
 		apply := entry.GetPayload().GetApply()
 		if apply == nil || apply.GetLedgerName() != ledger || apply.GetLog().GetId() != lastID+1 {
@@ -190,11 +189,11 @@ func foldLogs(ctx context.Context, client servicepb.BucketServiceClient, ledger 
 	return result, err
 }
 
-func createWitness(ctx context.Context, client servicepb.BucketServiceClient, name string) (*commonpb.LedgerInfo, error) {
-	if _, err := client.Apply(ctx, servicepb.UnsignedApplyRequest(name+"-create", &servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{Name: name}}})); err != nil {
+func createWitness(ctx context.Context, client commonpb.BucketServiceClient, name string) (*commonpb.LedgerInfo, error) {
+	if _, err := client.Apply(ctx, commonpb.UnsignedApplyRequest(name+"-create", &commonpb.Request{Type: &commonpb.Request_CreateLedger{CreateLedger: &commonpb.CreateLedgerRequest{Name: name}}})); err != nil {
 		return nil, err
 	}
-	info, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: name})
+	info, err := client.GetLedger(ctx, &commonpb.GetLedgerRequest{Ledger: name})
 	if err != nil {
 		return nil, err
 	}
@@ -208,9 +207,9 @@ func createWitness(ctx context.Context, client servicepb.BucketServiceClient, na
 // The new reference is an independent usage witness. Its audit entry follows
 // every source log. Every replica's sequential usage fold must consume those
 // entries before it can expose this reference, regardless of source ledger mode.
-func writeWitness(ctx context.Context, client servicepb.BucketServiceClient, ledger string, horizon uint64) (uint64, error) {
-	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest(ledger,
-		&servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{Ledger: ledger, Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{CreateTransaction: &servicepb.CreateTransactionPayload{
+func writeWitness(ctx context.Context, client commonpb.BucketServiceClient, ledger string, horizon uint64) (uint64, error) {
+	_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest(ledger,
+		&commonpb.Request{Type: &commonpb.Request_Apply{Apply: &commonpb.LedgerApplyRequest{Ledger: ledger, Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{CreateTransaction: &commonpb.CreateTransactionPayload{
 			Reference: ledger, Force: true, Postings: []*commonpb.Posting{{Source: "world", Destination: "witness", Asset: "USD", Amount: commonpb.NewUint256FromUint64(1)}},
 		}}}}}},
 	))

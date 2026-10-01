@@ -12,9 +12,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -487,7 +486,7 @@ func logWindow(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilte
 }
 
 // runLogQuery drives one ListLogs page and checks it against the model.
-func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+func runLogQuery(ctx context.Context, client commonpb.BucketServiceClient, c *Checker) {
 	ledger, _ := pickLedgerReadTarget(c.liveLedgerNamesSnapshot(), 0)
 
 	var filter *commonpb.QueryFilter
@@ -519,7 +518,7 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 	// candidate base.
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 	responseFrontier := c.beginResponseFrontier()
-	stream, err := client.ListLogs(readCtx, &servicepb.ListLogsRequest{
+	stream, err := client.ListLogs(readCtx, &commonpb.ListLogsRequest{
 		Ledger: ledger,
 		Options: &commonpb.ListOptions{
 			PageSize: uint32(pageSize),
@@ -595,7 +594,7 @@ func serverLogIDs(logs []*commonpb.Log) []uint64 {
 //   - a not-ready refusal is legal iff some needed index is not active on the
 //     base — so a refusal of a filter needing no index is a finding, and so is
 //     a page served for an index no base holds.
-func (c *Checker) validateLogQuery(ctx context.Context, client servicepb.BucketServiceClient, maxTicket uint64, ledger string, filter *commonpb.QueryFilter, afterSeq uint64, pageSize int, serverLogs []*commonpb.Log, needed map[string]struct{}, errKind indexedErrKind, err error) {
+func (c *Checker) validateLogQuery(ctx context.Context, client commonpb.BucketServiceClient, maxTicket uint64, ledger string, filter *commonpb.QueryFilter, afterSeq uint64, pageSize int, serverLogs []*commonpb.Log, needed map[string]struct{}, errKind indexedErrKind, err error) {
 	page := serverLogRows(serverLogs)
 	ids := serverLogIDs(serverLogs)
 
@@ -764,8 +763,8 @@ func (c *Checker) modelLogWindow(ledger string, filter *commonpb.QueryFilter, af
 // later horizon. It separates "not yet visible at the first read's horizon"
 // from "never visible": if the ids the model expected show up here, the page
 // was a visibility question; if they never appear, the logs are absent.
-func recheckLogIDs(ctx context.Context, client servicepb.BucketServiceClient, ledger string) ([]uint64, error) {
-	stream, err := client.ListLogs(ctx, &servicepb.ListLogsRequest{
+func recheckLogIDs(ctx context.Context, client commonpb.BucketServiceClient, ledger string) ([]uint64, error) {
+	stream, err := client.ListLogs(ctx, &commonpb.ListLogsRequest{
 		Ledger:  ledger,
 		Options: &commonpb.ListOptions{PageSize: 200},
 	})
@@ -790,8 +789,8 @@ func (c *Checker) modelLogKinds(ledger string) []string {
 
 // recheckLogKinds names the payload arm of each log the server actually holds,
 // so a surplus in the model can be attributed to a request kind.
-func recheckLogKinds(ctx context.Context, client servicepb.BucketServiceClient, ledger string) ([]string, error) {
-	stream, err := client.ListLogs(ctx, &servicepb.ListLogsRequest{
+func recheckLogKinds(ctx context.Context, client commonpb.BucketServiceClient, ledger string) ([]string, error) {
+	stream, err := client.ListLogs(ctx, &commonpb.ListLogsRequest{
 		Ledger:  ledger,
 		Options: &commonpb.ListOptions{PageSize: 200},
 	})

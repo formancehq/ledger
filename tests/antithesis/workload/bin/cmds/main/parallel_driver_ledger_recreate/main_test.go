@@ -22,10 +22,8 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
@@ -47,14 +45,14 @@ func TestLedgerDeletionScenarioContract(t *testing.T) {
 			require.True(t, injected.Load(), "sensitivity trigger was not exercised: %s", mode)
 		}
 		if mode == "healthy" || mode == "stream-recv" || mode == "cleanup-failure" {
-			_, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: fmt.Sprintf("lrecreate-other-%016x", uint64(174236))})
+			_, err := client.GetLedger(ctx, &clusterpb.GetLedgerRequest{Ledger: fmt.Sprintf("lrecreate-other-%016x", uint64(174236))})
 			if mode == "cleanup-failure" {
 				require.NoError(t, err, "failed cleanup must leave the isolation ledger visible")
 			} else {
 				require.Equal(t, codes.NotFound, status.Code(err), "isolation ledger must be cleaned up on success and early return")
 			}
 		}
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("probe-tombstone", actions.CreateLedgerAction("lrecreate-174236", nil)))
+		_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("probe-tombstone", actions.CreateLedgerAction("lrecreate-174236", nil)))
 		require.Equal(t, codes.FailedPrecondition, status.Code(err))
 		require.True(t, workloadinternal.IsLedgerDeleted(err), "%v", err)
 		t.Logf("real-server same-name create: %v; reason=%s", err, workloadinternal.ErrorReason(err))
@@ -182,7 +180,7 @@ func runScenarioProcess(t *testing.T, mode string) map[string][]bool {
 // Intercept only the selected response or add real ledger state at a precise
 // stage. All setup, deletion, reads and reference conflicts use the real service.
 func scenarioInterceptor(t *testing.T, mode string, injected *atomic.Bool) grpc.UnaryClientInterceptor {
-	var predecessor *commonpb.Transaction
+	var predecessor *clusterpb.Transaction
 
 	return func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoke grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		if mode == "deleted-read" && strings.HasSuffix(method, "/GetLedger") {
@@ -192,24 +190,24 @@ func scenarioInterceptor(t *testing.T, mode string, injected *atomic.Bool) grpc.
 		}
 		if mode == "deleted-transaction-point" && strings.HasSuffix(method, "/GetTransaction") {
 			require.NotNil(t, predecessor)
-			read := req.(*servicepb.GetTransactionRequest)
+			read := req.(*clusterpb.GetTransactionRequest)
 			require.Equal(t, "lrecreate-174236", read.GetLedger())
 			require.Equal(t, predecessor.GetId(), read.GetTransactionId())
-			reply.(*servicepb.GetTransactionResponse).Transaction = predecessor
+			reply.(*clusterpb.GetTransactionResponse).Transaction = predecessor
 			injected.Store(true)
 
 			return nil
 		}
 		if mode == "deleted-account-point" && strings.HasSuffix(method, "/GetAccount") {
-			read := req.(*servicepb.GetAccountRequest)
+			read := req.(*clusterpb.GetAccountRequest)
 			require.Equal(t, "lrecreate-174236", read.GetLedger())
 			require.Equal(t, "lrec-old:174236:0", read.GetAddress())
-			reply.(*commonpb.Account).Address = read.GetAddress()
+			reply.(*clusterpb.Account).Address = read.GetAddress()
 			injected.Store(true)
 
 			return nil
 		}
-		apply, ok := req.(*servicepb.ApplyRequest)
+		apply, ok := req.(*clusterpb.ApplyRequest)
 		if !ok {
 			return invoke(ctx, method, req, reply, cc, opts...)
 		}
@@ -245,7 +243,7 @@ func scenarioInterceptor(t *testing.T, mode string, injected *atomic.Bool) grpc.
 				return status.Error(codes.InvalidArgument, "injected permanent reuse failure")
 			}
 			if mode == "reuse-conflict" {
-				_, err := createTx(ctx, servicepb.NewBucketServiceClient(cc), "inject-conflict", fmt.Sprintf("lrecreate-other-%016x", uint64(174236)), "lrec-174236-0", "conflict-writer")
+				_, err := createTx(ctx, clusterpb.NewBucketServiceClient(cc), "inject-conflict", fmt.Sprintf("lrecreate-other-%016x", uint64(174236)), "lrec-174236-0", "conflict-writer")
 				require.NoError(t, err)
 				injected.Store(true)
 			}
@@ -255,10 +253,10 @@ func scenarioInterceptor(t *testing.T, mode string, injected *atomic.Bool) grpc.
 			return err
 		}
 		if strings.HasSuffix(key, "-seed-0") {
-			predecessor = workloadinternal.ExtractCreatedTransaction(reply.(*servicepb.ApplyResponse)).GetTransaction()
+			predecessor = workloadinternal.ExtractCreatedTransaction(reply.(*clusterpb.ApplyResponse)).GetTransaction()
 		}
 		if mode == "missing-marker-log" && strings.HasSuffix(key, "-marker") {
-			reply.(*servicepb.ApplyResponse).Logs = nil
+			reply.(*clusterpb.ApplyResponse).Logs = nil
 			injected.Store(true)
 		}
 		if mode == "ambiguous-delete" && strings.HasSuffix(key, "-delete") {
@@ -271,7 +269,7 @@ func scenarioInterceptor(t *testing.T, mode string, injected *atomic.Bool) grpc.
 			if mode == "reference-leak" {
 				ref, account = "lrec-174236-0", "unrelated-account"
 			}
-			_, err := createTx(ctx, servicepb.NewBucketServiceClient(cc), "inject-leak", fmt.Sprintf("lrecreate-other-%016x", uint64(174236)), ref, account)
+			_, err := createTx(ctx, clusterpb.NewBucketServiceClient(cc), "inject-leak", fmt.Sprintf("lrecreate-other-%016x", uint64(174236)), ref, account)
 			require.NoError(t, err)
 			injected.Store(true)
 		}
@@ -300,11 +298,11 @@ type scenarioStream struct {
 }
 
 func (s *scenarioStream) SendMsg(message any) error {
-	if req, ok := message.(*servicepb.ListTransactionsRequest); ok {
+	if req, ok := message.(*clusterpb.ListTransactionsRequest); ok {
 		s.target = strings.HasPrefix(req.GetLedger(), "lrecreate-other-")
 		s.deletedTarget = req.GetLedger() == "lrecreate-174236" && strings.HasPrefix(s.mode, "deleted-transactions-")
 	}
-	if req, ok := message.(*servicepb.ListAccountsRequest); ok {
+	if req, ok := message.(*clusterpb.ListAccountsRequest); ok {
 		s.deletedTarget = req.GetLedger() == "lrecreate-174236" && strings.HasPrefix(s.mode, "deleted-accounts-")
 	}
 	if s.target && s.mode == "stream-initial" {
@@ -323,9 +321,9 @@ func (s *scenarioStream) RecvMsg(message any) error {
 			return io.EOF
 		}
 		switch row := message.(type) {
-		case *commonpb.Transaction:
+		case *clusterpb.Transaction:
 			row.Reference = "lrec-174236-0"
-		case *commonpb.Account:
+		case *clusterpb.Account:
 			row.Address = "lrec-old:174236:0"
 		}
 
@@ -344,7 +342,7 @@ func (s *scenarioStream) RecvMsg(message any) error {
 	return err
 }
 
-func deletionTestServer(t *testing.T, unary grpc.UnaryClientInterceptor, stream grpc.StreamClientInterceptor) (context.Context, servicepb.BucketServiceClient) {
+func deletionTestServer(t *testing.T, unary grpc.UnaryClientInterceptor, stream grpc.StreamClientInterceptor) (context.Context, clusterpb.BucketServiceClient) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
@@ -367,7 +365,7 @@ func deletionTestServer(t *testing.T, unary grpc.UnaryClientInterceptor, stream 
 
 		return err == nil && state.GetLeader() != 0
 	}, 5*time.Second, 10*time.Millisecond)
-	client := servicepb.NewBucketServiceClient(conn)
+	client := clusterpb.NewBucketServiceClient(conn)
 	testserver.WaitForWriteAdmission(t, ctx, client)
 
 	return ctx, client

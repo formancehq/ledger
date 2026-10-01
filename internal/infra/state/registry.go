@@ -1,11 +1,13 @@
 package state
 
 import (
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -26,12 +28,12 @@ type StateRegistry struct {
 	Volumes           *CacheAwareEntry[domain.VolumeKey, *raftcmdpb.VolumePair]
 	AccountMetadata   *CacheAwareEntry[domain.MetadataKey, *commonpb.MetadataValue]
 	Idempotency       *IdempotencyStore
-	References        *CacheAwareEntry[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
+	References        *CacheAwareEntry[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue]
 	Ledgers           *CacheAwareEntry[domain.LedgerKey, *commonpb.LedgerInfo]
 	Boundaries        *CacheAwareEntry[domain.LedgerKey, *raftcmdpb.LedgerBoundaries]
 	SinkConfigs       *CacheAwareEntry[domain.SinkConfigKey, *commonpb.SinkConfig]
-	NumscriptVersions *CacheAwareEntry[domain.NumscriptVersionKey, *commonpb.NumscriptVersionValue]
-	Transactions      *CacheAwareEntry[domain.TransactionKey, *commonpb.TransactionState]
+	NumscriptVersions *CacheAwareEntry[domain.NumscriptVersionKey, *internalcommonpb.NumscriptVersionValue]
+	Transactions      *CacheAwareEntry[domain.TransactionKey, *internalcommonpb.TransactionState]
 	NumscriptContents *CacheAwareEntry[domain.NumscriptEntryKey, *commonpb.NumscriptInfo]
 	PreparedQueries   *CacheAwareEntry[domain.PreparedQueryKey, *commonpb.PreparedQuery]
 	LedgerMetadata    *CacheAwareEntry[domain.LedgerMetadataKey, *commonpb.MetadataValue]
@@ -70,7 +72,7 @@ func NewStateRegistry(c *cache.Cache, attrs *attributes.Attributes) *StateRegist
 		),
 		Idempotency: NewIdempotencyStore(),
 		References: NewCacheAwareEntry(
-			attributes.NewKeyStore[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue](c.References),
+			attributes.NewKeyStore[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue](c.References),
 			attrs.References,
 			dal.SubAttrReference,
 		),
@@ -90,12 +92,12 @@ func NewStateRegistry(c *cache.Cache, attrs *attributes.Attributes) *StateRegist
 			dal.SubAttrSinkConfig,
 		),
 		NumscriptVersions: NewCacheAwareEntry(
-			attributes.NewKeyStore[domain.NumscriptVersionKey, *commonpb.NumscriptVersionValue](c.NumscriptVersions),
+			attributes.NewKeyStore[domain.NumscriptVersionKey, *internalcommonpb.NumscriptVersionValue](c.NumscriptVersions),
 			attrs.NumscriptVersion,
 			dal.SubAttrNumscriptVersion,
 		),
 		Transactions: NewCacheAwareEntry(
-			attributes.NewKeyStore[domain.TransactionKey, *commonpb.TransactionState](c.Transactions),
+			attributes.NewKeyStore[domain.TransactionKey, *internalcommonpb.TransactionState](c.Transactions),
 			attrs.Transaction,
 			dal.SubAttrTransaction,
 		),

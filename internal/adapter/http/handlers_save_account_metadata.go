@@ -6,8 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // handleSaveAccountMetadata handles POST /{ledgerName}/accounts/{address}/metadata to save account metadata.
@@ -29,12 +28,12 @@ func (s *Server) handleSaveAccountMetadata(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	_, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+	_, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Action: &servicepb.LedgerAction{
-					Data: &servicepb.LedgerAction_AddMetadata{
+				Action: &commonpb.LedgerAction{
+					Data: &commonpb.LedgerAction_AddMetadata{
 						AddMetadata: &commonpb.SaveMetadataCommand{
 							Target: &commonpb.Target{
 								Target: &commonpb.Target_Account{

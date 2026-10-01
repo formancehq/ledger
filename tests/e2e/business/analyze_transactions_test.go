@@ -9,8 +9,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
@@ -18,7 +17,7 @@ import (
 )
 
 // analyzeTransactions calls the streaming AnalyzeTransactions RPC and returns the final result.
-func analyzeTransactions(ctx context.Context, client servicepb.BucketServiceClient, req *servicepb.AnalyzeTransactionsRequest) (*servicepb.AnalyzeTransactionsResponse, error) {
+func analyzeTransactions(ctx context.Context, client commonpb.BucketServiceClient, req *commonpb.AnalyzeTransactionsRequest) (*commonpb.AnalyzeTransactionsResponse, error) {
 	return actions.AnalyzeTransactions(ctx, client, req.GetLedger())
 }
 
@@ -28,12 +27,12 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 		var ledgerName = "analyze-tx-empty"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should return zero transactions and no patterns", func() {
-			resp, err := analyzeTransactions(sharedCtx, sharedClient, &servicepb.AnalyzeTransactionsRequest{
+			resp, err := analyzeTransactions(sharedCtx, sharedClient, &commonpb.AnalyzeTransactionsRequest{
 				Ledger: ledgerName,
 			})
 			Expect(err).To(Succeed())
@@ -47,10 +46,10 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 		var ledgerName = "analyze-tx-simple"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "bank:main", big.NewInt(1000), "USD"),
 			}, nil, nil),
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
@@ -61,13 +60,13 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 
 		It("Should discover a single SIMPLE pattern", func() {
 			Eventually(func(g Gomega) {
-				resp, err := analyzeTransactions(sharedCtx, sharedClient, &servicepb.AnalyzeTransactionsRequest{
+				resp, err := analyzeTransactions(sharedCtx, sharedClient, &commonpb.AnalyzeTransactionsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(resp.TotalTransactions).To(Equal(uint64(2)))
 				g.Expect(resp.FlowPatterns).To(HaveLen(1))
-				g.Expect(resp.FlowPatterns[0].Structure).To(Equal(servicepb.PostingStructure_POSTING_STRUCTURE_SIMPLE))
+				g.Expect(resp.FlowPatterns[0].Structure).To(Equal(commonpb.PostingStructure_POSTING_STRUCTURE_SIMPLE))
 				g.Expect(resp.FlowPatterns[0].TransactionCount).To(Equal(uint64(2)))
 			}).Should(Succeed())
 		})
@@ -77,10 +76,10 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 		var ledgerName = "analyze-tx-multidest"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "bank:main", big.NewInt(10000), "USD"),
 			}, nil, nil),
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
@@ -92,14 +91,14 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 
 		It("Should discover a MULTI_DESTINATION pattern", func() {
 			Eventually(func(g Gomega) {
-				resp, err := analyzeTransactions(sharedCtx, sharedClient, &servicepb.AnalyzeTransactionsRequest{
+				resp, err := analyzeTransactions(sharedCtx, sharedClient, &commonpb.AnalyzeTransactionsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
 
 				var found bool
 				for _, fp := range resp.FlowPatterns {
-					if fp.Structure == servicepb.PostingStructure_POSTING_STRUCTURE_MULTI_DESTINATION {
+					if fp.Structure == commonpb.PostingStructure_POSTING_STRUCTURE_MULTI_DESTINATION {
 						found = true
 						break
 					}
@@ -113,11 +112,11 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 		var ledgerName = "analyze-tx-variable"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// Fund world first, then create 12 user transactions
-			requests := make([]*servicepb.Request, 0, 13)
+			requests := make([]*commonpb.Request, 0, 13)
 			requests = append(requests, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "bank:main", big.NewInt(1000000), "USD"),
 			}, nil, nil))
@@ -129,20 +128,20 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 				}, nil, nil))
 			}
 
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", requests...))
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", requests...))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should normalize variable user addresses in flow signatures", func() {
 			Eventually(func(g Gomega) {
-				resp, err := analyzeTransactions(sharedCtx, sharedClient, &servicepb.AnalyzeTransactionsRequest{
+				resp, err := analyzeTransactions(sharedCtx, sharedClient, &commonpb.AnalyzeTransactionsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(resp.TotalTransactions).To(Equal(uint64(13)))
 
 				// The 12 user transactions should be grouped into a single pattern
-				var userPattern *servicepb.FlowPattern
+				var userPattern *commonpb.FlowPattern
 				for _, fp := range resp.FlowPatterns {
 					if fp.TransactionCount == 12 {
 						userPattern = fp
@@ -160,10 +159,10 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 		var ledgerName = "analyze-tx-volumes"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "bank:main", big.NewInt(100), "USD"),
 			}, nil, nil),
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
@@ -174,7 +173,7 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 
 		It("Should have coherent volume stats (total = sum of postings)", func() {
 			Eventually(func(g Gomega) {
-				resp, err := analyzeTransactions(sharedCtx, sharedClient, &servicepb.AnalyzeTransactionsRequest{
+				resp, err := analyzeTransactions(sharedCtx, sharedClient, &commonpb.AnalyzeTransactionsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -190,7 +189,7 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 
 	Context("When analyzing a non-existent ledger", func() {
 		It("Should return a NotFound error", func() {
-			_, err := analyzeTransactions(sharedCtx, sharedClient, &servicepb.AnalyzeTransactionsRequest{
+			_, err := analyzeTransactions(sharedCtx, sharedClient, &commonpb.AnalyzeTransactionsRequest{
 				Ledger: "non-existent-tx-ledger",
 			})
 			Expect(err).To(HaveOccurred())
@@ -205,10 +204,10 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 		var ledgerName = "analyze-tx-realistic"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
-			requests := make([]*servicepb.Request, 0)
+			requests := make([]*commonpb.Request, 0)
 
 			// Funding flow: world -> bank:main
 			requests = append(requests,
@@ -230,13 +229,13 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 				)
 			}
 
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", requests...))
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", requests...))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should discover multiple distinct flow patterns", func() {
 			Eventually(func(g Gomega) {
-				resp, err := analyzeTransactions(sharedCtx, sharedClient, &servicepb.AnalyzeTransactionsRequest{
+				resp, err := analyzeTransactions(sharedCtx, sharedClient, &commonpb.AnalyzeTransactionsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())

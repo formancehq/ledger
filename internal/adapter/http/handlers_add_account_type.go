@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"net/http"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // accountTypeBody is the camelCase JSON representation of an account type,
@@ -86,9 +86,9 @@ func (s *Server) handleAddAccountType(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = s.applyUnsigned(r.Context(), "", &servicepb.Request{
-		Type: &servicepb.Request_AddAccountType{
-			AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
+	_, err = s.applyUnsigned(r.Context(), "", &commonpb.Request{
+		Type: &commonpb.Request_AddAccountType{
+			AddAccountType: &commonpb.AddAccountTypeLedgerRequest{
 				Ledger:      ledgerName,
 				AccountType: accountType,
 			},

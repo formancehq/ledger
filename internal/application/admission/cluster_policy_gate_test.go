@@ -9,24 +9,24 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
-func businessWrite(name string) *servicepb.ApplyRequest {
-	return servicepb.UnsignedApplyRequest("", &servicepb.Request{
-		Type: &servicepb.Request_CreateLedger{
-			CreateLedger: &servicepb.CreateLedgerRequest{Name: name},
+func businessWrite(name string) *commonpb.ApplyRequest {
+	return commonpb.UnsignedApplyRequest("", &commonpb.Request{
+		Type: &commonpb.Request_CreateLedger{
+			CreateLedger: &commonpb.CreateLedgerRequest{Name: name},
 		},
 	})
 }
 
-func setClusterPolicyWrite(revision, limit uint64) *servicepb.ApplyRequest {
-	return servicepb.UnsignedApplyRequest("", &servicepb.Request{
-		Type: &servicepb.Request_SetClusterPolicy{
-			SetClusterPolicy: &servicepb.SetClusterPolicyRequest{
+func setClusterPolicyWrite(revision, limit uint64) *commonpb.ApplyRequest {
+	return commonpb.UnsignedApplyRequest("", &commonpb.Request{
+		Type: &commonpb.Request_SetClusterPolicy{
+			SetClusterPolicy: &commonpb.SetClusterPolicyRequest{
 				Policy: &commonpb.ClusterPolicy{Revision: revision, QueryCheckpointLimit: limit},
 			},
 		},
@@ -36,16 +36,16 @@ func setClusterPolicyWrite(revision, limit uint64) *servicepb.ApplyRequest {
 func TestAllRequestsAreClusterPolicy(t *testing.T) {
 	t.Parallel()
 
-	policyReq := &servicepb.Request{Type: &servicepb.Request_SetClusterPolicy{
-		SetClusterPolicy: &servicepb.SetClusterPolicyRequest{Policy: &commonpb.ClusterPolicy{Revision: 1}},
+	policyReq := &commonpb.Request{Type: &commonpb.Request_SetClusterPolicy{
+		SetClusterPolicy: &commonpb.SetClusterPolicyRequest{Policy: &commonpb.ClusterPolicy{Revision: 1}},
 	}}
-	businessReq := &servicepb.Request{Type: &servicepb.Request_CreateLedger{
-		CreateLedger: &servicepb.CreateLedgerRequest{Name: "l"},
+	businessReq := &commonpb.Request{Type: &commonpb.Request_CreateLedger{
+		CreateLedger: &commonpb.CreateLedgerRequest{Name: "l"},
 	}}
 
-	require.True(t, allRequestsAreClusterPolicy([]*servicepb.Request{policyReq}))
-	require.False(t, allRequestsAreClusterPolicy([]*servicepb.Request{businessReq}))
-	require.False(t, allRequestsAreClusterPolicy([]*servicepb.Request{policyReq, businessReq}))
+	require.True(t, allRequestsAreClusterPolicy([]*commonpb.Request{policyReq}))
+	require.False(t, allRequestsAreClusterPolicy([]*commonpb.Request{businessReq}))
+	require.False(t, allRequestsAreClusterPolicy([]*commonpb.Request{policyReq, businessReq}))
 }
 
 // TestWaitClusterPolicyReady covers the gate mechanism: it blocks while no

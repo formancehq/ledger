@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"io"
 	"math/big"
 	"os"
@@ -17,14 +18,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
@@ -72,7 +69,7 @@ func readS3Manifest(ctx context.Context, client *s3.Client) (*backup.Manifest, e
 }
 
 // newRestoreGRPCClient creates a gRPC connection with a RestoreServiceClient.
-func newRestoreGRPCClient(grpcPort int) (restorepb.RestoreServiceClient, *grpc.ClientConn, error) {
+func newRestoreGRPCClient(grpcPort int) (auditpb.RestoreServiceClient, *grpc.ClientConn, error) {
 	conn, err := grpc.NewClient(
 		fmt.Sprintf("localhost:%d", grpcPort),
 		grpcprotocol.ClientOption(),
@@ -81,11 +78,11 @@ func newRestoreGRPCClient(grpcPort int) (restorepb.RestoreServiceClient, *grpc.C
 	if err != nil {
 		return nil, nil, err
 	}
-	return restorepb.NewRestoreServiceClient(conn), conn, nil
+	return auditpb.NewRestoreServiceClient(conn), conn, nil
 }
 
-func validateRestoreWithoutErrors(ctx context.Context, client restorepb.RestoreServiceClient) error {
-	stream, err := client.ValidateRestore(ctx, &restorepb.ValidateRestoreRequest{})
+func validateRestoreWithoutErrors(ctx context.Context, client auditpb.RestoreServiceClient) error {
+	stream, err := client.ValidateRestore(ctx, &auditpb.ValidateRestoreRequest{})
 	if err != nil {
 		return fmt.Errorf("starting restore validation: %w", err)
 	}
@@ -137,17 +134,17 @@ var _ = Describe("Restore", Ordered, func() {
 		scheduleDeletionLogSequence uint64
 	)
 
-	checkpointAuditByCaller := func(client servicepb.BucketServiceClient, checkpointID uint64, filtered bool) ([]*auditpb.AuditEntry, error) {
-		options := &commonpb.ListOptions{Read: &commonpb.ReadOptions{CheckpointId: checkpointID}}
+	checkpointAuditByCaller := func(client auditpb.BucketServiceClient, checkpointID uint64, filtered bool) ([]*auditpb.AuditEntry, error) {
+		options := &auditpb.ListOptions{Read: &auditpb.ReadOptions{CheckpointId: checkpointID}}
 		if filtered {
-			options.Filter = &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Audit{
-				Audit: &commonpb.AuditCondition{
-					Field:     commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY,
-					Condition: &commonpb.AuditCondition_StringPrefix{StringPrefix: deltaCallerKey},
+			options.Filter = &auditpb.QueryFilter{Filter: &auditpb.QueryFilter_Audit{
+				Audit: &auditpb.AuditCondition{
+					Field:     auditpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY,
+					Condition: &auditpb.AuditCondition_StringPrefix{StringPrefix: deltaCallerKey},
 				},
 			}}
 		}
-		return actions.ListAuditEntriesWithRequest(ctx, client, &servicepb.ListAuditEntriesRequest{Options: options})
+		return actions.ListAuditEntriesWithRequest(ctx, client, &auditpb.ListAuditEntriesRequest{Options: options})
 	}
 
 	BeforeAll(func() {
@@ -205,8 +202,8 @@ var _ = Describe("Restore", Ordered, func() {
 	Describe("Phase 1: Create data and backup", Ordered, func() {
 		var (
 			sourceServer  *testservice.Service
-			client        servicepb.BucketServiceClient
-			clusterClient clusterpb.ClusterServiceClient
+			client        auditpb.BucketServiceClient
+			clusterClient auditpb.ClusterServiceClient
 			grpcConn      *grpc.ClientConn
 		)
 
@@ -246,40 +243,40 @@ var _ = Describe("Restore", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) bool {
-				state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+				state, err := clusterClient.GetClusterState(ctx, &auditpb.GetClusterStateRequest{})
 				g.Expect(err).To(Succeed())
 				return state.Leader != 0
 			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
 
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, map[string]string{"env": "test"})))
+			_, err = client.Apply(ctx, auditpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, map[string]string{"env": "test"})))
 			Expect(err).To(Succeed())
 
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = client.Apply(ctx, auditpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*auditpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(10000), "USD"),
 			}, map[string]string{"type": "funding"}, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = client.Apply(ctx, auditpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*auditpb.Posting{
 				actions.NewPosting("bank", "alice", big.NewInt(3000), "USD"),
 				actions.NewPosting("bank", "bob", big.NewInt(2000), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "customer"})))
+			_, err = client.Apply(ctx, auditpb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "customer"})))
 			Expect(err).To(Succeed())
 
 			// eve is funded BEFORE the checkpoint (input=1000, output=0). Its 0xFF
 			// cache entry is captured in the checkpoint; the drain below (post
 			// checkpoint) makes that cache entry stale. Phase 3 exercises it via apply.
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = client.Apply(ctx, auditpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*auditpb.Posting{
 				actions.NewPosting("world", "eve", big.NewInt(1000), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledger2, nil)))
+			_, err = client.Apply(ctx, auditpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledger2, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledger2, []*commonpb.Posting{
+			_, err = client.Apply(ctx, auditpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledger2, []*auditpb.Posting{
 				actions.NewPosting("world", "treasury", big.NewInt(50000), "EUR"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -289,11 +286,11 @@ var _ = Describe("Restore", Ordered, func() {
 			// added after the checkpoint (below), so Phase 3 can check the apply path
 			// enforces the FULL chart — pre- and post-checkpoint types — on a restored
 			// node, reading LedgerInfo.AccountTypes from the cache.
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(chartLedger, nil)))
+			_, err = client.Apply(ctx, auditpb.UnsignedApplyRequest("", actions.CreateLedgerAction(chartLedger, nil)))
 			Expect(err).To(Succeed())
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.AddAccountTypeAction(chartLedger, "main", "main:{id}")))
+			_, err = client.Apply(ctx, auditpb.UnsignedApplyRequest("", actions.AddAccountTypeAction(chartLedger, "main", "main:{id}")))
 			Expect(err).To(Succeed())
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(chartLedger, []*commonpb.Posting{
+			_, err = client.Apply(ctx, auditpb.UnsignedApplyRequest("", actions.CreateTransactionAction(chartLedger, []*auditpb.Posting{
 				actions.NewPosting("world", "main:1", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -310,12 +307,12 @@ var _ = Describe("Restore", Ordered, func() {
 			// Seed the full checkpoint with an enabled schedule. Its deletion is
 			// deliberately committed only after this checkpoint, so restore must
 			// fold the deletion from a non-empty incremental export.
-			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", setQueryCheckpointScheduleAction("* * * * * *")))
+			resp, err := client.Apply(ctx, auditpb.UnsignedApplyRequest("", setQueryCheckpointScheduleAction("* * * * * *")))
 			Expect(err).To(Succeed())
 			Expect(resp.GetLogs()).To(HaveLen(1))
 
-			backupResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
-				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+			backupResp, err := clusterClient.Backup(ctx, &auditpb.BackupRequest{
+				Storage: testutil.S3BackupStorage(&auditpb.S3StorageConfig{
 					Bucket:   restoreS3Bucket,
 					Region:   restoreS3Region,
 					Endpoint: minioEndpoint,
@@ -326,7 +323,7 @@ var _ = Describe("Restore", Ordered, func() {
 		})
 
 		It("should write post-checkpoint data and take an incremental backup", func() {
-			deleteResp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", deleteQueryCheckpointScheduleAction()))
+			deleteResp, err := client.Apply(ctx, auditpb.UnsignedApplyRequest("", deleteQueryCheckpointScheduleAction()))
 			Expect(err).To(Succeed())
 			Expect(deleteResp.GetLogs()).To(HaveLen(1))
 			scheduleDeletionLogSequence = deleteResp.GetLogs()[0].GetSequence()
@@ -334,7 +331,7 @@ var _ = Describe("Restore", Ordered, func() {
 			// This transaction is written AFTER the full checkpoint, so it
 			// lives only in incremental export segments — never in the
 			// checkpoint files. A restore that ignores exports loses it.
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest(deltaCallerKey, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = client.Apply(ctx, auditpb.UnsignedApplyRequest(deltaCallerKey, actions.CreateTransactionAction(ledgerName, []*auditpb.Posting{
 				actions.NewPosting("world", "dave", big.NewInt(1500), "USD"),
 			}, map[string]string{"type": "post-checkpoint"}, nil)))
 			Expect(err).To(Succeed())
@@ -343,7 +340,7 @@ var _ = Describe("Restore", Ordered, func() {
 			// ranges span many sequences; with the 1-byte segment cap the export
 			// splits into several segments per type.
 			for i := range 8 {
-				_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				_, err := client.Apply(ctx, auditpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*auditpb.Posting{
 					actions.NewPosting("world", fmt.Sprintf("split-acct-%d", i), big.NewInt(100), "USD"),
 				}, nil, nil)))
 				Expect(err).To(Succeed())
@@ -352,14 +349,14 @@ var _ = Describe("Restore", Ordered, func() {
 			// Drain eve (a PRE-checkpoint account) AFTER the checkpoint: its volume
 			// changes only in the delta (output 0 → 1000, balance → 0). eve's 0xFF
 			// cache entry is now checkpoint-era stale while 0xF1 is rebuilt fresh.
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = client.Apply(ctx, auditpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*auditpb.Posting{
 				actions.NewPosting("eve", "world", big.NewInt(1000), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 
 			// Add an account type AFTER the checkpoint, so the chart-ledger's chart
 			// changes only in the delta. Phase 3 checks the apply path enforces it.
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.AddAccountTypeAction(chartLedger, "wallet", "wallet:{id}")))
+			_, err = client.Apply(ctx, auditpb.UnsignedApplyRequest("", actions.AddAccountTypeAction(chartLedger, "wallet", "wallet:{id}")))
 			Expect(err).To(Succeed())
 
 			// A ledger created AFTER the full checkpoint lives only in the
@@ -367,23 +364,23 @@ var _ = Describe("Restore", Ordered, func() {
 			// rebuilt into the 0xF1 attribute zone the apply-path preload reads,
 			// or a later write to it fails ErrLedgerNotFound. The funding tx
 			// carries a reference so Phase 3 can check reference idempotency.
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(deltaLedger, nil)))
+			_, err = client.Apply(ctx, auditpb.UnsignedApplyRequest("", actions.CreateLedgerAction(deltaLedger, nil)))
 			Expect(err).To(Succeed())
-			fundDelta := actions.CreateTransactionAction(deltaLedger, []*commonpb.Posting{
+			fundDelta := actions.CreateTransactionAction(deltaLedger, []*auditpb.Posting{
 				actions.NewPosting("world", "founder", big.NewInt(9000), "USD"),
 			}, nil, nil)
 			fundDelta.GetApply().GetAction().GetCreateTransaction().Reference = deltaRef
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", fundDelta))
+			_, err = client.Apply(ctx, auditpb.UnsignedApplyRequest("", fundDelta))
 			Expect(err).To(Succeed())
 
 			// Declare metadata field types AFTER the full checkpoint, so they live
 			// only in the incremental export segments — the RebuildDelta replay
 			// path, not the raw checkpoint copy. Phase 3 reads them back.
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier", commonpb.MetadataType_METADATA_TYPE_STRING)))
+			_, err = client.Apply(ctx, auditpb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName, auditpb.TargetType_TARGET_TYPE_ACCOUNT, "tier", auditpb.MetadataType_METADATA_TYPE_STRING)))
 			Expect(err).To(Succeed())
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_LEDGER, "region", commonpb.MetadataType_METADATA_TYPE_STRING)))
+			_, err = client.Apply(ctx, auditpb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName, auditpb.TargetType_TARGET_TYPE_LEDGER, "region", auditpb.MetadataType_METADATA_TYPE_STRING)))
 			Expect(err).To(Succeed())
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "category", commonpb.MetadataType_METADATA_TYPE_INT64)))
+			_, err = client.Apply(ctx, auditpb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName, auditpb.TargetType_TARGET_TYPE_TRANSACTION, "category", auditpb.MetadataType_METADATA_TYPE_INT64)))
 			Expect(err).To(Succeed())
 
 			// This checkpoint is created only after the full backup. Its metadata
@@ -405,8 +402,8 @@ var _ = Describe("Restore", Ordered, func() {
 			Expect(unfiltered).To(ContainElement(HaveField("Sequence", deltaCallerAuditSequence)),
 				"the source checkpoint's authoritative audit zone must contain the filtered entry")
 
-			resp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
-				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+			resp, err := clusterClient.IncrementalBackup(ctx, &auditpb.IncrementalBackupRequest{
+				Storage: testutil.S3BackupStorage(&auditpb.S3StorageConfig{
 					Bucket:   restoreS3Bucket,
 					Region:   restoreS3Region,
 					Endpoint: minioEndpoint,
@@ -456,13 +453,13 @@ var _ = Describe("Restore", Ordered, func() {
 			Expect(err).To(Succeed())
 			segCountBefore := len(exportsBefore.Exports)
 
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = client.Apply(ctx, auditpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*auditpb.Posting{
 				actions.NewPosting("world", "erin", big.NewInt(2500), "USD"),
 			}, map[string]string{"type": "second-incremental"}, nil)))
 			Expect(err).To(Succeed())
 
-			resp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
-				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+			resp, err := clusterClient.IncrementalBackup(ctx, &auditpb.IncrementalBackupRequest{
+				Storage: testutil.S3BackupStorage(&auditpb.S3StorageConfig{
 					Bucket:   restoreS3Bucket,
 					Region:   restoreS3Region,
 					Endpoint: minioEndpoint,
@@ -484,8 +481,8 @@ var _ = Describe("Restore", Ordered, func() {
 			// (internal/infra/state/backup_jobs_test.go). This documents the
 			// sequential idempotency of a repeated incremental: with no new
 			// data, it exports nothing and does not disturb the manifest.
-			req := &clusterpb.IncrementalBackupRequest{
-				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+			req := &auditpb.IncrementalBackupRequest{
+				Storage: testutil.S3BackupStorage(&auditpb.S3StorageConfig{
 					Bucket:   restoreS3Bucket,
 					Region:   restoreS3Region,
 					Endpoint: minioEndpoint,
@@ -502,7 +499,7 @@ var _ = Describe("Restore", Ordered, func() {
 	// Phase 2: Start a restore-mode server, download from S3, validate, preview, finalize, then stop.
 	Describe("Phase 2: Restore from backup", Ordered, func() {
 		var (
-			restoreClient restorepb.RestoreServiceClient
+			restoreClient auditpb.RestoreServiceClient
 			grpcConn      *grpc.ClientConn
 			server        *testservice.Service
 		)
@@ -537,8 +534,8 @@ var _ = Describe("Restore", Ordered, func() {
 		})
 
 		It("should download the backup from S3", func() {
-			startResp, err := restoreClient.StartDownloadBackup(ctx, &restorepb.StartDownloadBackupRequest{
-				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+			startResp, err := restoreClient.StartDownloadBackup(ctx, &auditpb.StartDownloadBackupRequest{
+				Storage: testutil.S3BackupStorage(&auditpb.S3StorageConfig{
 					Bucket:   restoreS3Bucket,
 					Region:   restoreS3Region,
 					Endpoint: minioEndpoint,
@@ -547,15 +544,15 @@ var _ = Describe("Restore", Ordered, func() {
 			Expect(err).To(Succeed())
 			Expect(startResp.GetJobId()).NotTo(BeEmpty())
 
-			var final *restorepb.GetDownloadStatusResponse
-			Eventually(func() restorepb.DownloadState {
-				resp, statusErr := restoreClient.GetDownloadStatus(ctx, &restorepb.GetDownloadStatusRequest{
+			var final *auditpb.GetDownloadStatusResponse
+			Eventually(func() auditpb.DownloadState {
+				resp, statusErr := restoreClient.GetDownloadStatus(ctx, &auditpb.GetDownloadStatusRequest{
 					JobId: startResp.GetJobId(),
 				})
 				Expect(statusErr).To(Succeed())
 				final = resp
 				return resp.GetState()
-			}, 2*time.Minute, 500*time.Millisecond).Should(Equal(restorepb.DownloadState_DOWNLOAD_STATE_SUCCEEDED),
+			}, 2*time.Minute, 500*time.Millisecond).Should(Equal(auditpb.DownloadState_DOWNLOAD_STATE_SUCCEEDED),
 				"download must reach SUCCEEDED before timeout (last error: %q)",
 				func() string {
 					if final == nil {
@@ -570,8 +567,8 @@ var _ = Describe("Restore", Ordered, func() {
 		})
 
 		It("should reject a duplicate download", func() {
-			_, err := restoreClient.StartDownloadBackup(ctx, &restorepb.StartDownloadBackupRequest{
-				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+			_, err := restoreClient.StartDownloadBackup(ctx, &auditpb.StartDownloadBackupRequest{
+				Storage: testutil.S3BackupStorage(&auditpb.S3StorageConfig{
 					Bucket:   restoreS3Bucket,
 					Region:   restoreS3Region,
 					Endpoint: minioEndpoint,
@@ -586,7 +583,7 @@ var _ = Describe("Restore", Ordered, func() {
 		})
 
 		It("should preview the backup", func() {
-			resp, err := restoreClient.PreviewRestore(ctx, &restorepb.PreviewRestoreRequest{})
+			resp, err := restoreClient.PreviewRestore(ctx, &auditpb.PreviewRestoreRequest{})
 			Expect(err).To(Succeed())
 
 			Expect(resp.LedgerCount).To(Equal(uint32(4)))
@@ -597,7 +594,7 @@ var _ = Describe("Restore", Ordered, func() {
 		})
 
 		It("should finalize the restore", func() {
-			resp, err := restoreClient.FinalizeRestore(ctx, &restorepb.FinalizeRestoreRequest{})
+			resp, err := restoreClient.FinalizeRestore(ctx, &auditpb.FinalizeRestoreRequest{})
 			Expect(err).To(Succeed())
 			Expect(resp.Message).To(ContainSubstring("Restore finalized"))
 		})
@@ -636,8 +633,8 @@ var _ = Describe("Restore", Ordered, func() {
 	// Phase 3: Restart a normal server on the restored data and verify all data.
 	Describe("Phase 3: Bootstrap from restored data", Ordered, func() {
 		var (
-			client        servicepb.BucketServiceClient
-			clusterClient clusterpb.ClusterServiceClient
+			client        auditpb.BucketServiceClient
+			clusterClient auditpb.ClusterServiceClient
 			grpcConn      *grpc.ClientConn
 			server        *testservice.Service
 		)
@@ -683,7 +680,7 @@ var _ = Describe("Restore", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) bool {
-				state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+				state, err := clusterClient.GetClusterState(ctx, &auditpb.GetClusterStateRequest{})
 				g.Expect(err).To(Succeed())
 				return state.Leader != 0
 			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
@@ -711,24 +708,24 @@ var _ = Describe("Restore", Ordered, func() {
 		})
 
 		It("should have the correct account balances on ledger 1", func() {
-			aliceResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "alice"})
+			aliceResp, err := client.GetAccount(ctx, &auditpb.GetAccountRequest{Ledger: ledgerName, Address: "alice"})
 			Expect(err).To(Succeed())
 			Expect(aliceResp.FindVolume("USD", "").Input).To(Equal("3000"))
 
-			bobResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "bob"})
+			bobResp, err := client.GetAccount(ctx, &auditpb.GetAccountRequest{Ledger: ledgerName, Address: "bob"})
 			Expect(err).To(Succeed())
 			Expect(bobResp.FindVolume("USD", "").Input).To(Equal("2000"))
 
-			bankResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "bank"})
+			bankResp, err := client.GetAccount(ctx, &auditpb.GetAccountRequest{Ledger: ledgerName, Address: "bank"})
 			Expect(err).To(Succeed())
 			Expect(bankResp.FindVolume("USD", "").Input).To(Equal("10000"))
 			Expect(bankResp.FindVolume("USD", "").Output).To(Equal("5000"))
 		})
 
 		It("should have the correct account metadata", func() {
-			aliceResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "alice"})
+			aliceResp, err := client.GetAccount(ctx, &auditpb.GetAccountRequest{Ledger: ledgerName, Address: "alice"})
 			Expect(err).To(Succeed())
-			Expect(commonpb.MetadataToGoMap(aliceResp.Metadata)).To(HaveKeyWithValue("role", "customer"))
+			Expect(protohelpers.MetadataToGoMap(aliceResp.Metadata)).To(HaveKeyWithValue("role", "customer"))
 		})
 
 		It("should preserve the metadata schema declared after the checkpoint", func() {
@@ -736,18 +733,18 @@ var _ = Describe("Restore", Ordered, func() {
 			// the incremental exports and must be reconstructed by the RebuildDelta
 			// replay. RebuildDelta currently rebuilds only volumes/metadata/tx state
 			// and drops the schema, so this fails on a restored node.
-			resp, err := client.GetMetadataSchemaStatus(ctx, &servicepb.GetMetadataSchemaStatusRequest{Ledger: ledgerName})
+			resp, err := client.GetMetadataSchemaStatus(ctx, &auditpb.GetMetadataSchemaStatusRequest{Ledger: ledgerName})
 			Expect(err).To(Succeed())
 
 			Expect(resp.GetAccountFields()).To(HaveKey("tier"))
-			Expect(resp.GetAccountFields()["tier"].GetDeclaredType()).To(Equal(commonpb.MetadataType_METADATA_TYPE_STRING))
+			Expect(resp.GetAccountFields()["tier"].GetDeclaredType()).To(Equal(auditpb.MetadataType_METADATA_TYPE_STRING))
 			Expect(resp.GetLedgerFields()).To(HaveKey("region"))
 			Expect(resp.GetTransactionFields()).To(HaveKey("category"))
-			Expect(resp.GetTransactionFields()["category"].GetDeclaredType()).To(Equal(commonpb.MetadataType_METADATA_TYPE_INT64))
+			Expect(resp.GetTransactionFields()["category"].GetDeclaredType()).To(Equal(auditpb.MetadataType_METADATA_TYPE_INT64))
 		})
 
 		It("should have the correct data on ledger 2", func() {
-			treasuryResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledger2, Address: "treasury"})
+			treasuryResp, err := client.GetAccount(ctx, &auditpb.GetAccountRequest{Ledger: ledger2, Address: "treasury"})
 			Expect(err).To(Succeed())
 			Expect(treasuryResp.FindVolume("EUR", "").Input).To(Equal("50000"))
 		})
@@ -755,7 +752,7 @@ var _ = Describe("Restore", Ordered, func() {
 		It("should have post-checkpoint data restored from export segments", func() {
 			// dave was funded after the full checkpoint, so this balance can
 			// only be present if the restore applied the incremental exports.
-			daveResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "dave"})
+			daveResp, err := client.GetAccount(ctx, &auditpb.GetAccountRequest{Ledger: ledgerName, Address: "dave"})
 			Expect(err).To(Succeed())
 			Expect(daveResp.FindVolume("USD", "").Input).To(Equal("1500"),
 				"transaction written after the checkpoint must be restored from export segments")
@@ -765,14 +762,14 @@ var _ = Describe("Restore", Ordered, func() {
 			// erin was funded in the second incremental round, so this balance
 			// is present only if the restore applied the FULL checkpoint plus
 			// BOTH incrementals — the full + multiple incrementals chain.
-			erinResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "erin"})
+			erinResp, err := client.GetAccount(ctx, &auditpb.GetAccountRequest{Ledger: ledgerName, Address: "erin"})
 			Expect(err).To(Succeed())
 			Expect(erinResp.FindVolume("USD", "").Input).To(Equal("2500"),
 				"transaction written in the second incremental must be restored from the full + multi-incremental chain")
 		})
 
 		It("should rebuild the post-checkpoint query checkpoint and pass CheckStore", func() {
-			info, err := clusterClient.GetQueryCheckpointInfo(ctx, &clusterpb.GetQueryCheckpointInfoRequest{
+			info, err := clusterClient.GetQueryCheckpointInfo(ctx, &auditpb.GetQueryCheckpointInfoRequest{
 				CheckpointId: deltaCheckpointID,
 			})
 			Expect(err).To(Succeed())
@@ -834,17 +831,17 @@ var _ = Describe("Restore", Ordered, func() {
 		})
 
 		It("should keep the deleted checkpoint schedule disabled", func() {
-			resp, err := clusterClient.GetQueryCheckpointSchedule(ctx, &clusterpb.GetQueryCheckpointScheduleRequest{})
+			resp, err := clusterClient.GetQueryCheckpointSchedule(ctx, &auditpb.GetQueryCheckpointScheduleRequest{})
 			Expect(err).To(Succeed())
 			Expect(resp.GetCron()).To(BeEmpty(),
 				"the restored schedule must reflect the deletion in the incremental delta")
 
-			checkpoints, err := clusterClient.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
+			checkpoints, err := clusterClient.ListQueryCheckpoints(ctx, &auditpb.ListQueryCheckpointsRequest{})
 			Expect(err).To(Succeed())
 			countAfterRestore := len(checkpoints.GetCheckpoints())
 
 			Consistently(func(g Gomega) {
-				current, err := clusterClient.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
+				current, err := clusterClient.ListQueryCheckpoints(ctx, &auditpb.ListQueryCheckpointsRequest{})
 				g.Expect(err).To(Succeed())
 				g.Expect(current.GetCheckpoints()).To(HaveLen(countAfterRestore))
 			}).Within(2*time.Second).ProbeEvery(100*time.Millisecond).Should(Succeed(),
@@ -860,12 +857,12 @@ var _ = Describe("Restore", Ordered, func() {
 			// bloom-false-negatived and seen as {0,0} by apply. Funding dave
 			// again and reading back exposes it: a cache-aware apply yields
 			// 1500+500=2000; a cache-blind apply overwrites 0xF1 with 500.
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err := client.Apply(ctx, auditpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*auditpb.Posting{
 				actions.NewPosting("world", "dave", big.NewInt(500), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 
-			daveResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "dave"})
+			daveResp, err := client.GetAccount(ctx, &auditpb.GetAccountRequest{Ledger: ledgerName, Address: "dave"})
 			Expect(err).To(Succeed())
 			Expect(daveResp.FindVolume("USD", "").Input).To(Equal("2000"),
 				"apply must see dave's restored balance via the cache; a cache/bloom-blind apply yields 500")
@@ -879,12 +876,12 @@ var _ = Describe("Restore", Ordered, func() {
 			// restore adds to the stale (1000,0) and writes it back to 0xF1,
 			// clobbering the drain; a cache-aware restore refreshes 0xFF so apply
 			// sees (1000,1000). GetAccount below reads 0xF1 and exposes the clobber.
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err := client.Apply(ctx, auditpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*auditpb.Posting{
 				actions.NewPosting("world", "eve", big.NewInt(500), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 
-			eveResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "eve"})
+			eveResp, err := client.GetAccount(ctx, &auditpb.GetAccountRequest{Ledger: ledgerName, Address: "eve"})
 			Expect(err).To(Succeed())
 			Expect(eveResp.FindVolume("USD", "").GetInput()).To(Equal("1500"))
 			Expect(eveResp.FindVolume("USD", "").GetOutput()).To(Equal("1000"),
@@ -900,13 +897,13 @@ var _ = Describe("Restore", Ordered, func() {
 			// sees rebuilt LedgerInfo — with #1554's 0xF1-only writes.
 
 			// Pre-checkpoint type survived restore and is still enforced.
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(chartLedger, []*commonpb.Posting{
+			_, err := client.Apply(ctx, auditpb.UnsignedApplyRequest("", actions.CreateTransactionAction(chartLedger, []*auditpb.Posting{
 				actions.NewPosting("world", "main:2", big.NewInt(10), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed(), "pre-checkpoint account type must survive restore and match on the apply path")
 
 			// Post-checkpoint type is present in the apply-path cache after restore.
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(chartLedger, []*commonpb.Posting{
+			_, err = client.Apply(ctx, auditpb.UnsignedApplyRequest("", actions.CreateTransactionAction(chartLedger, []*auditpb.Posting{
 				actions.NewPosting("world", "wallet:1", big.NewInt(10), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed(), "post-checkpoint account type must be applied on the restored node's apply path")
@@ -914,14 +911,14 @@ var _ = Describe("Restore", Ordered, func() {
 			// The chart is genuinely restrictive — an account matching neither type
 			// is rejected. This guards that the two Succeeds above aren't passing
 			// merely because enforcement is off / the chart was lost on restore.
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(chartLedger, []*commonpb.Posting{
+			_, err = client.Apply(ctx, auditpb.UnsignedApplyRequest("", actions.CreateTransactionAction(chartLedger, []*auditpb.Posting{
 				actions.NewPosting("world", "random:1", big.NewInt(10), "USD"),
 			}, nil, nil)))
 			Expect(err).To(HaveOccurred(), "under strict enforcement, an account matching no declared type must be rejected")
 		})
 
 		It("should have the delta ledger's data restored from export segments", func() {
-			founderResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: deltaLedger, Address: "founder"})
+			founderResp, err := client.GetAccount(ctx, &auditpb.GetAccountRequest{Ledger: deltaLedger, Address: "founder"})
 			Expect(err).To(Succeed())
 			Expect(founderResp.FindVolume("USD", "").GetInput()).To(Equal("9000"))
 		})
@@ -944,12 +941,12 @@ var _ = Describe("Restore", Ordered, func() {
 			// The delta funding tx carried deltaRef. RebuildDelta must rebuild
 			// the reference index into the 0xF1 attribute zone, or reusing the
 			// reference is wrongly accepted after restore.
-			dup := actions.CreateTransactionAction(deltaLedger, []*commonpb.Posting{
+			dup := actions.CreateTransactionAction(deltaLedger, []*auditpb.Posting{
 				actions.NewPosting("founder", "someone", big.NewInt(1), "USD"),
 			}, nil, nil)
 			dup.GetApply().GetAction().GetCreateTransaction().Reference = deltaRef
 
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", dup))
+			_, err := client.Apply(ctx, auditpb.UnsignedApplyRequest("", dup))
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("already exists"))
 		})
@@ -962,12 +959,12 @@ var _ = Describe("Restore", Ordered, func() {
 			// boundaries from the 0xF1 attribute zone: RebuildDelta must rebuild
 			// both there, or loadLedger/loadBoundaries return ErrLedgerNotFound
 			// and this write fails.
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(deltaLedger, []*commonpb.Posting{
+			_, err := client.Apply(ctx, auditpb.UnsignedApplyRequest("", actions.CreateTransactionAction(deltaLedger, []*auditpb.Posting{
 				actions.NewPosting("founder", "employee", big.NewInt(1200), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 
-			employeeResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: deltaLedger, Address: "employee"})
+			employeeResp, err := client.GetAccount(ctx, &auditpb.GetAccountRequest{Ledger: deltaLedger, Address: "employee"})
 			Expect(err).To(Succeed())
 			Expect(employeeResp.FindVolume("USD", "").GetInput()).To(Equal("1200"))
 		})
@@ -978,16 +975,16 @@ var _ = Describe("Restore", Ordered, func() {
 				secondPostRestoreLedger = "post-restore-ledger-b"
 			)
 
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(firstPostRestoreLedger, nil)))
+			_, err := client.Apply(ctx, auditpb.UnsignedApplyRequest("", actions.CreateLedgerAction(firstPostRestoreLedger, nil)))
 			Expect(err).To(Succeed())
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(secondPostRestoreLedger, nil)))
+			_, err = client.Apply(ctx, auditpb.UnsignedApplyRequest("", actions.CreateLedgerAction(secondPostRestoreLedger, nil)))
 			Expect(err).To(Succeed())
 
-			deltaInfo, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: deltaLedger})
+			deltaInfo, err := client.GetLedger(ctx, &auditpb.GetLedgerRequest{Ledger: deltaLedger})
 			Expect(err).To(Succeed())
-			firstInfo, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: firstPostRestoreLedger})
+			firstInfo, err := client.GetLedger(ctx, &auditpb.GetLedgerRequest{Ledger: firstPostRestoreLedger})
 			Expect(err).To(Succeed())
-			secondInfo, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: secondPostRestoreLedger})
+			secondInfo, err := client.GetLedger(ctx, &auditpb.GetLedgerRequest{Ledger: secondPostRestoreLedger})
 			Expect(err).To(Succeed())
 
 			ids := []uint32{
@@ -1002,12 +999,12 @@ var _ = Describe("Restore", Ordered, func() {
 		})
 
 		It("should accept new transactions after restore", func() {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err := client.Apply(ctx, auditpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*auditpb.Posting{
 				actions.NewPosting("bank", "charlie", big.NewInt(1000), "USD"),
 			}, map[string]string{"type": "post-restore"}, nil)))
 			Expect(err).To(Succeed())
 
-			charlieResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "charlie"})
+			charlieResp, err := client.GetAccount(ctx, &auditpb.GetAccountRequest{Ledger: ledgerName, Address: "charlie"})
 			Expect(err).To(Succeed())
 			Expect(charlieResp.FindVolume("USD", "").Input).To(Equal("1000"))
 		})
@@ -1030,7 +1027,7 @@ var _ = Describe("Restore", Ordered, func() {
 			// join — every proposal ships its cache preload, so entries
 			// re-materialize the rows they touch even on a hollow store.
 			// That masking is exactly why alice below is the real check.
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err := client.Apply(ctx, auditpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*auditpb.Posting{
 				actions.NewPosting("world", "join-fence", big.NewInt(42), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -1070,7 +1067,7 @@ var _ = Describe("Restore", Ordered, func() {
 			// This converges only once the learner itself applied the fence
 			// entry.
 			Eventually(func(g Gomega) {
-				resp, err := joinerClient.GetAccount(staleCtx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "join-fence"})
+				resp, err := joinerClient.GetAccount(staleCtx, &auditpb.GetAccountRequest{Ledger: ledgerName, Address: "join-fence"})
 				g.Expect(err).To(Succeed())
 				g.Expect(resp.FindVolume("USD", "").GetInput()).To(Equal("42"))
 			}).Within(60*time.Second).ProbeEvery(500*time.Millisecond).Should(Succeed(),
@@ -1079,13 +1076,13 @@ var _ = Describe("Restore", Ordered, func() {
 			// alice was written only BEFORE the backup, so no post-restore
 			// entry (and no preload) can re-materialize her: she is on the
 			// learner iff the restored store itself was transferred.
-			aliceResp, err := joinerClient.GetAccount(staleCtx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "alice"})
+			aliceResp, err := joinerClient.GetAccount(staleCtx, &auditpb.GetAccountRequest{Ledger: ledgerName, Address: "alice"})
 			Expect(err).To(Succeed())
 			Expect(aliceResp.FindVolume("USD", "")).ToNot(BeNil(),
 				"learner caught up by log replay alone: the restored state never reached it")
 			Expect(aliceResp.FindVolume("USD", "").GetInput()).To(Equal("3000"))
 
-			treasuryResp, err := joinerClient.GetAccount(staleCtx, &servicepb.GetAccountRequest{Ledger: ledger2, Address: "treasury"})
+			treasuryResp, err := joinerClient.GetAccount(staleCtx, &auditpb.GetAccountRequest{Ledger: ledger2, Address: "treasury"})
 			Expect(err).To(Succeed())
 			Expect(treasuryResp.FindVolume("EUR", "")).ToNot(BeNil(),
 				"ledger untouched since the restore must still reach the learner")

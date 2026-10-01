@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -17,7 +19,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -75,7 +77,7 @@ func TestBootInitPreservesAddressQueryPinnedBeforeDrop(t *testing.T) {
 	commitBootQueryState(t, b, 3, []*commonpb.Log{
 		bootQueryApplyLog(ledger, 3, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{Transaction: tx}}}),
 	}, func(batch *dal.WriteSession) {
-		_, err := b.attrs.Transaction.Set(batch, (domain.TransactionKey{LedgerName: ledger, ID: 162}).Bytes(), &commonpb.TransactionState{CreatedByLog: 3})
+		_, err := b.attrs.Transaction.Set(batch, (domain.TransactionKey{LedgerName: ledger, ID: 162}).Bytes(), &internalcommonpb.TransactionState{CreatedByLog: 3})
 		require.NoError(t, err)
 		_, err = b.attrs.Volume.Set(batch, domain.NewVolumeKey(ledger, account, "USD", "").Bytes(), &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(1)})
 		require.NoError(t, err)

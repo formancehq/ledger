@@ -5,8 +5,7 @@ package cluster
 import (
 	"context"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -54,7 +53,7 @@ var _ = Describe("Prepared query and numscript work after ledger cache eviction"
 
 	var (
 		ctx    context.Context
-		client servicepb.BucketServiceClient
+		client commonpb.BucketServiceClient
 	)
 
 	BeforeAll(func() {
@@ -66,7 +65,7 @@ var _ = Describe("Prepared query and numscript work after ledger cache eviction"
 
 		// 1. Create the ledger — populates LedgerInfo in Pebble (Global +
 		//    attributes) and in the FSM's in-memory cache (current gen0).
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())
 
 		// 2. Advance the Raft commit index past 2 * rotationThreshold using
@@ -74,7 +73,7 @@ var _ = Describe("Prepared query and numscript work after ledger cache eviction"
 		//    so it does NOT refresh the LedgerInfo in the cache. After two
 		//    rotations the entry is dropped from both gen0 and gen1.
 		for i := 0; i < barrierCount; i++ {
-			_, err := client.Barrier(ctx, &servicepb.BarrierRequest{})
+			_, err := client.Barrier(ctx, &commonpb.BarrierRequest{})
 			Expect(err).To(Succeed())
 		}
 
@@ -86,8 +85,8 @@ var _ = Describe("Prepared query and numscript work after ledger cache eviction"
 	})
 
 	It("CreatePreparedQuery must succeed after the LedgerInfo is evicted from cache", func() {
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_CreatePreparedQuery{CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_CreatePreparedQuery{CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
 				Ledger: ledgerName,
 
 				Query: &commonpb.PreparedQuery{
@@ -106,12 +105,12 @@ var _ = Describe("Prepared query and numscript work after ledger cache eviction"
 		// preload alone keeps PreparedQuery in cache, not LedgerInfo —
 		// but even without that, this is defence in depth for the test).
 		for i := 0; i < barrierCount; i++ {
-			_, err := client.Barrier(ctx, &servicepb.BarrierRequest{})
+			_, err := client.Barrier(ctx, &commonpb.BarrierRequest{})
 			Expect(err).To(Succeed())
 		}
 
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_UpdatePreparedQuery{UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
+		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_UpdatePreparedQuery{UpdatePreparedQuery: &commonpb.UpdatePreparedQueryRequest{
 				Ledger: ledgerName,
 				Name:   "after-rotation",
 				Filter: actions.AddressPrefixFilter("admins:"),
@@ -122,12 +121,12 @@ var _ = Describe("Prepared query and numscript work after ledger cache eviction"
 
 	It("DeletePreparedQuery must succeed after the LedgerInfo is evicted from cache", func() {
 		for i := 0; i < barrierCount; i++ {
-			_, err := client.Barrier(ctx, &servicepb.BarrierRequest{})
+			_, err := client.Barrier(ctx, &commonpb.BarrierRequest{})
 			Expect(err).To(Succeed())
 		}
 
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_DeletePreparedQuery{DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{
+		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_DeletePreparedQuery{DeletePreparedQuery: &commonpb.DeletePreparedQueryRequest{
 				Ledger: ledgerName,
 				Name:   "after-rotation",
 			}},
@@ -137,13 +136,13 @@ var _ = Describe("Prepared query and numscript work after ledger cache eviction"
 
 	It("SaveNumscript must succeed after the LedgerInfo is evicted from cache", func() {
 		for i := 0; i < barrierCount; i++ {
-			_, err := client.Barrier(ctx, &servicepb.BarrierRequest{})
+			_, err := client.Barrier(ctx, &commonpb.BarrierRequest{})
 			Expect(err).To(Succeed())
 		}
 
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_SaveNumscript{
-				SaveNumscript: &servicepb.SaveNumscriptRequest{
+		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_SaveNumscript{
+				SaveNumscript: &commonpb.SaveNumscriptRequest{
 					Name:    "transfer",
 					Content: numscriptTransfer,
 					Version: "1.0.0",

@@ -7,9 +7,10 @@ import (
 
 	"google.golang.org/protobuf/encoding/protojson"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 // createLedgerBody holds optional fields for ledger creation.
@@ -34,12 +35,12 @@ type metadataFieldTypeBody struct {
 // toProto converts the metadata field type body to its proto command, reusing
 // the shared commonpb enum parsers.
 func (b metadataFieldTypeBody) toProto() (*commonpb.SetMetadataFieldTypeCommand, error) {
-	targetType, err := commonpb.ParseTargetType(b.TargetType)
+	targetType, err := protohelpers.ParseTargetType(b.TargetType)
 	if err != nil {
 		return nil, err
 	}
 
-	metadataType, err := commonpb.ParseMetadataType(b.Type)
+	metadataType, err := protohelpers.ParseMetadataType(b.Type)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +78,7 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	createReq := &servicepb.CreateLedgerRequest{
+	createReq := &commonpb.CreateLedgerRequest{
 		Name: ledgerName,
 	}
 
@@ -145,8 +146,8 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	logs, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{
-		Type: &servicepb.Request_CreateLedger{
+	logs, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &commonpb.Request{
+		Type: &commonpb.Request_CreateLedger{
 			CreateLedger: createReq,
 		},
 	})
@@ -165,7 +166,7 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 		panic(unexpectedLogPayload("create-ledger", logEntry, details))
 	}
 
-	writeCreated(w, createLedgerLog.ToLedgerInfo())
+	writeCreated(w, protohelpers.ToLedgerInfo(createLedgerLog))
 }
 
 // mirrorSourceToProto converts the HTTP body to the proto MirrorSourceConfig.

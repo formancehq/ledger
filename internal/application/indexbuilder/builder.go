@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -18,7 +19,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/pkg/tailworker"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -601,11 +602,11 @@ func (b *Builder) coerceForVersion(ledger string, target commonpb.TargetType, ke
 // coerceToBound is CoerceToDeclaredType with the version-bound type standing
 // in for the schema lookup.
 func coerceToBound(v *commonpb.MetadataValue, t commonpb.MetadataType, declared bool) *commonpb.MetadataValue {
-	if !declared || v == nil || commonpb.TypeMatches(v, t) {
+	if !declared || v == nil || protohelpers.TypeMatches(v, t) {
 		return v
 	}
 
-	return commonpb.ConvertMetadataValue(v, t)
+	return protohelpers.ConvertMetadataValue(v, t)
 }
 
 // writeMetadataIndexAtVersion resolves the version-scoped reverse-map

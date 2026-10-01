@@ -9,10 +9,10 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/holiman/uint256"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -26,7 +26,7 @@ import (
 
 // validateBulkSuccess records a committed bulk and cross-checks it against the
 // forward model. Caller holds c.mu.
-func (c *Checker) validateBulkSuccess(bulk oracle.Bulk, resp *servicepb.ApplyResponse) {
+func (c *Checker) validateBulkSuccess(bulk oracle.Bulk, resp *commonpb.ApplyResponse) {
 	dbgf("BULK OK: ledgers=%s reqKinds=%s logSeqs=%s typeOps=%s meta=%s", bulkLedgers(bulk), requestKinds(bulk), logSeqs(resp.GetLogs()), typeOps(bulk), bulkMeta(bulk))
 
 	c.crossCheckCommit(bulk, resp)
@@ -64,17 +64,17 @@ func (c *Checker) validateBulkSuccess(bulk oracle.Bulk, resp *servicepb.ApplyRes
 // isSuccessfulBusinessWrite reports whether a committed Apply proved that a
 // promoted ledger accepts ordinary business traffic. Mirror-safe configuration
 // actions and skipped orders do not establish that property.
-func isSuccessfulBusinessWrite(req *servicepb.Request, log *commonpb.Log) bool {
+func isSuccessfulBusinessWrite(req *commonpb.Request, log *commonpb.Log) bool {
 	action := req.GetApply().GetAction()
 	if action == nil || log.GetPayload().GetApply().GetLog().GetData().GetOrderSkipped() != nil {
 		return false
 	}
 
 	switch action.GetData().(type) {
-	case *servicepb.LedgerAction_CreateTransaction,
-		*servicepb.LedgerAction_RevertTransaction,
-		*servicepb.LedgerAction_AddMetadata,
-		*servicepb.LedgerAction_DeleteMetadata:
+	case *commonpb.LedgerAction_CreateTransaction,
+		*commonpb.LedgerAction_RevertTransaction,
+		*commonpb.LedgerAction_AddMetadata,
+		*commonpb.LedgerAction_DeleteMetadata:
 		return true
 	default:
 		return false
@@ -86,7 +86,7 @@ func isSuccessfulBusinessWrite(req *servicepb.Request, log *commonpb.Log) bool {
 // the readiness poller must prove each replica has folded before crediting a
 // status report to it. The response log at index i pairs with
 // bulk.Requests[i]. Caller holds c.mu.
-func (c *Checker) recordIndexCreates(bulk oracle.Bulk, resp *servicepb.ApplyResponse) {
+func (c *Checker) recordIndexCreates(bulk oracle.Bulk, resp *commonpb.ApplyResponse) {
 	logs := resp.GetLogs()
 	for i, req := range bulk.Requests {
 		if i >= len(logs) {
@@ -114,7 +114,7 @@ func (c *Checker) recordIndexCreates(bulk oracle.Bulk, resp *servicepb.ApplyResp
 // post-commit volumes. A disagreement is a finding — the server accepted
 // something the model rejects, or the volumes diverged. modelState advances
 // only on agreement. Caller holds c.mu.
-func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyResponse) {
+func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *commonpb.ApplyResponse) {
 	res := c.modelState.Apply(bulk)
 
 	if !res.OK {
@@ -171,7 +171,7 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 		if err := validateLifecycleLog(req, res.Orders[i].PreparedQueryLog, payload); err != nil {
 			assert.Unreachable("singleton_driver_model: lifecycle response mismatch", internal.Details{
 				"ledger": oracle.LedgerOf(req),
-				"kind":   requestKinds(oracle.Bulk{Requests: []*servicepb.Request{req}}),
+				"kind":   requestKinds(oracle.Bulk{Requests: []*commonpb.Request{req}}),
 				"error":  err.Error(),
 			})
 
@@ -366,7 +366,7 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 			return
 		}
 		switch r := req.GetType().(type) {
-		case *servicepb.Request_SetMetadataFieldType:
+		case *commonpb.Request_SetMetadataFieldType:
 			lg, rq := data.GetSetMetadataFieldType(), r.SetMetadataFieldType
 			if lg.GetTargetType() != rq.GetTargetType() || lg.GetKey() != rq.GetKey() || lg.GetType() != rq.GetType() {
 				assert.Unreachable("singleton_driver_model: set-field-type response mismatch", internal.Details{
@@ -378,7 +378,7 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 				return
 			}
 
-		case *servicepb.Request_RemoveMetadataFieldType:
+		case *commonpb.Request_RemoveMetadataFieldType:
 			lg, rq := data.GetRemovedMetadataFieldType(), r.RemoveMetadataFieldType
 			if lg.GetTargetType() != rq.GetTargetType() || lg.GetKey() != rq.GetKey() {
 				assert.Unreachable("singleton_driver_model: remove-field-type response mismatch", internal.Details{
@@ -843,7 +843,7 @@ func (c *Checker) validateTransactionRead(maxTicket uint64, ledger string, id ui
 // SetMetadataFieldType and by initial_schema at ledger creation, both tracked by
 // the model, so this is the read-back that verifies the declared-schema
 // projection rather than just the per-op response echo.
-func (c *Checker) validateSchemaRead(maxTicket uint64, ledger string, acct, txn, ldg map[string]*servicepb.MetadataFieldStatus) {
+func (c *Checker) validateSchemaRead(maxTicket uint64, ledger string, acct, txn, ldg map[string]*commonpb.MetadataFieldStatus) {
 	if c.matchesModel(maxTicket, "SCHEMA", func(base oracle.GlobalState) bool {
 		ls, live := liveLedgerState(base, ledger)
 		if !live {
@@ -868,7 +868,7 @@ func (c *Checker) validateSchemaRead(maxTicket uint64, ledger string, acct, txn,
 
 // fieldTypesMatch reports whether the model's declared field types equal the
 // server's for one target — same keys, same declared type.
-func fieldTypesMatch(model oracle.Map[string, commonpb.MetadataType], server map[string]*servicepb.MetadataFieldStatus) bool {
+func fieldTypesMatch(model oracle.Map[string, commonpb.MetadataType], server map[string]*commonpb.MetadataFieldStatus) bool {
 	if model.Len() != len(server) {
 		return false
 	}
@@ -887,17 +887,17 @@ func fieldTypesMatch(model oracle.Map[string, commonpb.MetadataType], server map
 // committed metadata write from its response log, dispatching on the request
 // type. Returns nil for non-metadata requests and for deletes, whose log carries
 // only the target and key (validated through subsequent reads).
-func responseMetaEffect(req *servicepb.Request, log *commonpb.Log) (saved map[string]*commonpb.MetadataValue) {
+func responseMetaEffect(req *commonpb.Request, log *commonpb.Log) (saved map[string]*commonpb.MetadataValue) {
 	switch r := req.GetType().(type) {
-	case *servicepb.Request_Apply:
+	case *commonpb.Request_Apply:
 		data := log.GetPayload().GetApply().GetLog().GetData()
 		switch r.Apply.GetAction().GetData().(type) {
-		case *servicepb.LedgerAction_CreateTransaction:
+		case *commonpb.LedgerAction_CreateTransaction:
 			return data.GetCreatedTransaction().GetTransaction().GetMetadata()
-		case *servicepb.LedgerAction_AddMetadata:
+		case *commonpb.LedgerAction_AddMetadata:
 			return data.GetSavedMetadata().GetMetadata()
 		}
-	case *servicepb.Request_SaveLedgerMetadata:
+	case *commonpb.Request_SaveLedgerMetadata:
 		return log.GetPayload().GetSavedLedgerMetadata().GetMetadata()
 	}
 
@@ -913,8 +913,8 @@ func postingsEqual(a, b []*commonpb.Posting) bool {
 
 	for i := range a {
 		var x, y uint256.Int
-		a[i].GetAmount().IntoUint256(&x)
-		b[i].GetAmount().IntoUint256(&y)
+		protohelpers.IntoUint256(a[i].GetAmount(), &x)
+		protohelpers.IntoUint256(b[i].GetAmount(), &y)
 
 		if a[i].GetSource() != b[i].GetSource() ||
 			a[i].GetDestination() != b[i].GetDestination() ||
@@ -933,7 +933,7 @@ func renderPostings(ps []*commonpb.Posting) string {
 	out := ""
 	for _, p := range ps {
 		var amt uint256.Int
-		p.GetAmount().IntoUint256(&amt)
+		protohelpers.IntoUint256(p.GetAmount(), &amt)
 		if out != "" {
 			out += ","
 		}

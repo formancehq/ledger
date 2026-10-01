@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 func TestHandleRevertTransaction_Success(t *testing.T) {
@@ -20,7 +20,7 @@ func TestHandleRevertTransaction_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return &domain.ApplyResult{Logs: []*commonpb.Log{
 				{
 					Payload: &commonpb.LogPayload{
@@ -125,7 +125,7 @@ func TestHandleRevertTransaction_AlreadyReverted(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, &domain.ErrTransactionAlreadyReverted{TransactionID: 1}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -164,7 +164,7 @@ func TestHandleRevertTransaction_WithBody(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return &domain.ApplyResult{Logs: []*commonpb.Log{
 				{
 					Payload: &commonpb.LogPayload{
@@ -204,25 +204,25 @@ func TestHandleRevertTransaction_WithBody(t *testing.T) {
 
 // revertPayloadFromApply extracts the RevertTransactionPayload that the handler
 // forwarded to the backend, so tests can assert the metadata mapping.
-func revertPayloadFromApply(t *testing.T, req *servicepb.ApplyRequest) *servicepb.RevertTransactionPayload {
+func revertPayloadFromApply(t *testing.T, req *commonpb.ApplyRequest) *commonpb.RevertTransactionPayload {
 	t.Helper()
 
 	requests := req.GetUnsigned().GetRequests()
 	require.Len(t, requests, 1)
 
 	action := requests[0].GetApply().GetAction()
-	rt, ok := action.GetData().(*servicepb.LedgerAction_RevertTransaction)
+	rt, ok := action.GetData().(*commonpb.LedgerAction_RevertTransaction)
 	require.True(t, ok, "expected a revert-transaction action")
 
 	return rt.RevertTransaction
 }
 
-func revertBackendReturningLog(t *testing.T, captured **servicepb.RevertTransactionPayload) *MockBackend {
+func revertBackendReturningLog(t *testing.T, captured **commonpb.RevertTransactionPayload) *MockBackend {
 	t.Helper()
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			if captured != nil {
 				*captured = revertPayloadFromApply(t, req)
 			}
@@ -257,7 +257,7 @@ func revertBackendReturningLog(t *testing.T, captured **servicepb.RevertTransact
 func TestHandleRevertTransaction_TypedMetadata(t *testing.T) {
 	t.Parallel()
 
-	var captured *servicepb.RevertTransactionPayload
+	var captured *commonpb.RevertTransactionPayload
 	backend := revertBackendReturningLog(t, &captured)
 	srv := newTestServer(t, backend)
 
@@ -287,7 +287,7 @@ func TestHandleRevertTransaction_TypedMetadata(t *testing.T) {
 func TestHandleRevertTransaction_StringMetadata(t *testing.T) {
 	t.Parallel()
 
-	var captured *servicepb.RevertTransactionPayload
+	var captured *commonpb.RevertTransactionPayload
 	backend := revertBackendReturningLog(t, &captured)
 	srv := newTestServer(t, backend)
 

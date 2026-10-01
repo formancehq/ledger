@@ -8,12 +8,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -94,7 +95,7 @@ func TestExecute_NilFilterAggregateMatchesDirectLedgerWideScan(t *testing.T) {
 			}
 			seedPreparedQuery(t, store, attrs, "l", "q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, nil)
 
-			req := &servicepb.ExecutePreparedQueryRequest{
+			req := &commonpb.ExecutePreparedQueryRequest{
 				Ledger:    "l",
 				QueryName: "q",
 				Mode:      commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES,
@@ -155,7 +156,7 @@ func TestExecute_ParameterizedFilterAggregateStillUsesAccountIterator(t *testing
 	}}
 	seedPreparedQuery(t, store, attrs, "l", "q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter)
 
-	req := &servicepb.ExecutePreparedQueryRequest{
+	req := &commonpb.ExecutePreparedQueryRequest{
 		Ledger:    "l",
 		QueryName: "q",
 		Mode:      commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES,
@@ -177,7 +178,7 @@ func TestExecute_ParameterizedFilterAggregateStillUsesAccountIterator(t *testing
 	require.Equal(t, "USD/2", got.GetVolumes()[0].GetAsset())
 
 	var input uint256.Int
-	got.GetVolumes()[0].GetInput().IntoUint256(&input)
+	protohelpers.IntoUint256(got.GetVolumes()[0].GetInput(), &input)
 	require.Equal(t, uint256.NewInt(10), &input,
 		"only the matched account's volumes may be aggregated")
 }
@@ -197,9 +198,9 @@ func TestExecute_NilFilterAggregateOverflow(t *testing.T) {
 			for i, amount := range []*uint256.Int{new(uint256.Int).SetAllOne(), uint256.NewInt(1)} {
 				pair := &raftcmdpb.VolumePair{}
 				if side == "input" {
-					pair.Input = commonpb.NewUint256(amount)
+					pair.Input = protohelpers.NewUint256(amount)
 				} else {
-					pair.Output = commonpb.NewUint256(amount)
+					pair.Output = protohelpers.NewUint256(amount)
 				}
 				_, err := attrs.Volume.Set(batch, domain.NewVolumeKey("l", []string{"a", "b"}[i], "USD/2", "").Bytes(), pair)
 				require.NoError(t, err)
@@ -209,7 +210,7 @@ func TestExecute_NilFilterAggregateOverflow(t *testing.T) {
 
 			profile := &query.QueryProfile{}
 			resp, err := query.Execute(context.Background(), rs, store, attrs.Volume, attrs.PreparedQuery, attrs.Index,
-				&servicepb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q", Mode: commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES}, profile, nil)
+				&commonpb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q", Mode: commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES}, profile, nil)
 			require.Nil(t, resp)
 			var overflow *query.ErrAggregateOverflow
 			require.ErrorAs(t, err, &overflow)
@@ -317,7 +318,7 @@ func TestExecute_NilFilterAggregateUsesPinnedSnapshot(t *testing.T) {
 			}}
 			profile := &query.QueryProfile{}
 			resp, err := query.Execute(t.Context(), rs, opener, attrs.Volume, attrs.PreparedQuery, attrs.Index,
-				&servicepb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q", Mode: commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES}, profile, nil)
+				&commonpb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q", Mode: commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES}, profile, nil)
 			require.NoError(t, err)
 			require.Len(t, resp.GetAggregate().GetVolumes(), 1)
 			volume := resp.GetAggregate().GetVolumes()[0]
@@ -340,7 +341,7 @@ func TestExecute_NilFilterAggregateValidatesPinnedTarget(t *testing.T) {
 		seedPreparedQuery(t, store, attrs, "l", "q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, nil)
 	}}
 	resp, err := query.Execute(t.Context(), rs, opener, attrs.Volume, attrs.PreparedQuery, attrs.Index,
-		&servicepb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q", Mode: commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES}, nil, nil)
+		&commonpb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q", Mode: commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES}, nil, nil)
 	require.Nil(t, resp)
 
 	var targetErr *query.ErrPreparedQueryAggregateTarget
@@ -375,7 +376,7 @@ func TestExecute_UnsupportedModeWinsOverFilterCompilation(t *testing.T) {
 	seedPreparedQuery(t, store, attrs, "l", "q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter)
 
 	resp, err := query.Execute(t.Context(), rs, store, attrs.Volume, attrs.PreparedQuery, attrs.Index,
-		&servicepb.ExecutePreparedQueryRequest{
+		&commonpb.ExecutePreparedQueryRequest{
 			Ledger:    "l",
 			QueryName: "q",
 			Mode:      commonpb.QueryMode(999), // unsupported

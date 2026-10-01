@@ -3,7 +3,7 @@ package domain
 import (
 	"encoding/binary"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // RevertTargetDigest binds what a producer observed of a revert's target

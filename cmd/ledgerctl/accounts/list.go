@@ -11,10 +11,9 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/formancehq/invariants"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // NewListCommand creates the accounts list command.
@@ -92,7 +91,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	return fetchAccountsWithPager(cmd, client, ledgerName, pgn, filter, cns, showProfile, rescale)
 }
 
-func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, filter *commonpb.QueryFilter, initialCursor string, reverse bool, cns cmdutil.ConsistencyFlags, showProfile bool, rescale *uint8) error {
+func fetchAllAccounts(cmd *cobra.Command, client commonpb.BucketServiceClient, ledgerName string, filter *commonpb.QueryFilter, initialCursor string, reverse bool, cns cmdutil.ConsistencyFlags, showProfile bool, rescale *uint8) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
@@ -105,7 +104,7 @@ func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, 
 	var lastTrailer metadata.MD
 
 	accounts, err := cmdutil.DrainAllPages(initialCursor, func(cur string) ([]*commonpb.Account, metadata.MD, error) {
-		stream, err := client.ListAccounts(ctx, &servicepb.ListAccountsRequest{
+		stream, err := client.ListAccounts(ctx, &commonpb.ListAccountsRequest{
 			Ledger:  ledgerName,
 			Options: cmdutil.BuildListOptions(cmdutil.PaginationFlags{Cursor: cur, Reverse: reverse}, cns, filter),
 		})
@@ -153,7 +152,7 @@ func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, 
 	return nil
 }
 
-func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, pgn cmdutil.PaginationFlags, filter *commonpb.QueryFilter, cns cmdutil.ConsistencyFlags, showProfile bool, rescale *uint8) error {
+func fetchAccountsWithPager(cmd *cobra.Command, client commonpb.BucketServiceClient, ledgerName string, pgn cmdutil.PaginationFlags, filter *commonpb.QueryFilter, cns cmdutil.ConsistencyFlags, showProfile bool, rescale *uint8) error {
 	page := pgn
 	pageNum := 1
 
@@ -165,7 +164,7 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 
 		spinner := cmdutil.StartSpinner(fmt.Sprintf("Fetching page %d...", pageNum))
 
-		stream, err := client.ListAccounts(ctx, &servicepb.ListAccountsRequest{
+		stream, err := client.ListAccounts(ctx, &commonpb.ListAccountsRequest{
 			Ledger:  ledgerName,
 			Options: cmdutil.BuildListOptions(page, cns, filter),
 		})

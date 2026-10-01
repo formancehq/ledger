@@ -11,14 +11,14 @@ import (
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/application/check"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -46,10 +46,10 @@ func restoreAuditKeyCheckpoint(t *testing.T, storage Storage, manifest *Manifest
 
 func auditKeyCheckerClean(t *testing.T, store *dal.Store) {
 	t.Helper()
-	var findings []*servicepb.CheckStoreError
+	var findings []*commonpb.CheckStoreError
 	checker := check.NewChecker(store, attributes.New(), nil, testLogger())
-	require.NoError(t, checker.Check(context.Background(), func(event *servicepb.CheckStoreEvent) {
-		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
+	require.NoError(t, checker.Check(context.Background(), func(event *commonpb.CheckStoreEvent) {
+		if e, ok := event.GetType().(*commonpb.CheckStoreEvent_Error); ok {
 			findings = append(findings, e.Error)
 		}
 	}))
@@ -71,7 +71,7 @@ func recoveredAuditKeyMachine(t *testing.T, store *dal.Store) *state.Machine {
 	return m
 }
 
-func lastAuditForKeyTest(t *testing.T, store *dal.Store) *auditpb.AuditEntry {
+func lastAuditForKeyTest(t *testing.T, store *dal.Store) *commonpb.AuditEntry {
 	t.Helper()
 	handle, err := store.NewDirectReadHandle()
 	require.NoError(t, err)
@@ -118,7 +118,7 @@ func TestAuditKeyFullIncrementalRestoreAcrossClusterIDs(t *testing.T) {
 		}
 	}
 	require.NoError(t, attributes.PrepareForBackup(restored))
-	config := &commonpb.PersistedConfig{NodeId: 1, ClusterId: "cluster-b", StorageSchemaVersion: 2}
+	config := &internalcommonpb.PersistedConfig{NodeId: 1, ClusterId: "cluster-b", StorageSchemaVersion: 2}
 	batch := restored.OpenWriteSession()
 	require.NoError(t, batch.SetProto([]byte{dal.ZoneClusterPersistent, dal.SubGlobPersistedConfig}, config))
 	require.NoError(t, batch.Commit())

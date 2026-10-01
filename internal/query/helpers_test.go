@@ -12,10 +12,11 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -110,25 +111,18 @@ func createTestLogsForLedger(ledgerName string, startSequence uint64) []*commonp
 			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
 				Apply: &commonpb.ApplyLedgerLog{
 					LedgerName: ledgerName,
-					Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+					Log: protohelpers.WithLedgerLogDate(protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&commonpb.LedgerLogPayload{
 						Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 							CreatedTransaction: &commonpb.CreatedTransaction{
-								Transaction: commonpb.NewTransaction().
-									WithPostings(
-										commonpb.NewPosting("world", "bank", "USD", big.NewInt(100)),
-									).
-									WithID(1).
-									WithTimestamp(now),
+								Transaction: protohelpers.WithTransactionTimestamp(protohelpers.WithTransactionID(protohelpers.WithTransactionPostings(protohelpers.NewTransaction(), protohelpers.NewPosting("world", "bank", "USD", big.NewInt(100))), 1), now),
 								AccountMetadata: map[string]*commonpb.MetadataMap{
-									"bank": commonpb.MetadataMapFromGoMap(metadata.Metadata{
+									"bank": protohelpers.MetadataMapFromGoMap(metadata.Metadata{
 										"account_type": "asset",
 									}),
 								},
 							},
 						},
-					}).
-						WithID(1).
-						WithDate(now),
+					}), 1), now),
 				},
 			}},
 		},
@@ -137,20 +131,13 @@ func createTestLogsForLedger(ledgerName string, startSequence uint64) []*commonp
 			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
 				Apply: &commonpb.ApplyLedgerLog{
 					LedgerName: ledgerName,
-					Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+					Log: protohelpers.WithLedgerLogDate(protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&commonpb.LedgerLogPayload{
 						Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 							CreatedTransaction: &commonpb.CreatedTransaction{
-								Transaction: commonpb.NewTransaction().
-									WithPostings(
-										commonpb.NewPosting("bank", "user", "USD", big.NewInt(50)),
-									).
-									WithID(2).
-									WithTimestamp(now),
+								Transaction: protohelpers.WithTransactionTimestamp(protohelpers.WithTransactionID(protohelpers.WithTransactionPostings(protohelpers.NewTransaction(), protohelpers.NewPosting("bank", "user", "USD", big.NewInt(50))), 2), now),
 							},
 						},
-					}).
-						WithID(2).
-						WithDate(now.Add(libtime.Second)),
+					}), 2), now.Add(libtime.Second)),
 				},
 			}},
 		},
@@ -159,7 +146,7 @@ func createTestLogsForLedger(ledgerName string, startSequence uint64) []*commonp
 			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
 				Apply: &commonpb.ApplyLedgerLog{
 					LedgerName: ledgerName,
-					Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+					Log: protohelpers.WithLedgerLogDate(protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&commonpb.LedgerLogPayload{
 						Payload: &commonpb.LedgerLogPayload_SavedMetadata{
 							SavedMetadata: &commonpb.SavedMetadata{
 								Target: &commonpb.Target{
@@ -167,14 +154,12 @@ func createTestLogsForLedger(ledgerName string, startSequence uint64) []*commonp
 										Addr: "bank",
 									}},
 								},
-								Metadata: commonpb.MetadataFromGoMap(metadata.Metadata{
+								Metadata: protohelpers.MetadataFromGoMap(metadata.Metadata{
 									"label": "Bank Account",
 								}),
 							},
 						},
-					}).
-						WithID(3).
-						WithDate(now.Add(2 * libtime.Second)),
+					}), 3), now.Add(2*libtime.Second)),
 				},
 			}},
 		},
@@ -183,7 +168,7 @@ func createTestLogsForLedger(ledgerName string, startSequence uint64) []*commonp
 			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
 				Apply: &commonpb.ApplyLedgerLog{
 					LedgerName: ledgerName,
-					Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+					Log: protohelpers.WithLedgerLogDate(protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&commonpb.LedgerLogPayload{
 						Payload: &commonpb.LedgerLogPayload_DeletedMetadata{
 							DeletedMetadata: &commonpb.DeletedMetadata{
 								Target: &commonpb.Target{
@@ -194,9 +179,7 @@ func createTestLogsForLedger(ledgerName string, startSequence uint64) []*commonp
 								Key: "old_key",
 							},
 						},
-					}).
-						WithID(4).
-						WithDate(now.Add(3 * libtime.Second)),
+					}), 4), now.Add(3*libtime.Second)),
 				},
 			}},
 		},

@@ -6,8 +6,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -33,13 +32,13 @@ var _ = Describe("AccountHasAssetIndex", Ordered, func() {
 		}
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// alice & bob touch USD/2; carol touches only EUR. The asset
 			// cell key carries (base, precision), so "EUR" (precision 0) is
 			// distinct from "USD/2" and carol must never match has-asset USD/2.
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "accounts:alice", big.NewInt(100), "USD/2"),
 			}, nil, nil),
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
@@ -62,7 +61,7 @@ var _ = Describe("AccountHasAssetIndex", Ordered, func() {
 		})
 
 		It("Should return exactly the accounts that touched USD/2 once the index is READY", func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateAccountAssetIndexAction(ledgerName)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateAccountAssetIndexAction(ledgerName)))
 			Expect(err).To(Succeed())
 
 			Expect(actions.WaitForAccountAssetIndexReady(sharedCtx, sharedClient, ledgerName)).To(Succeed())
@@ -106,7 +105,7 @@ var _ = Describe("AccountHasAssetIndex", Ordered, func() {
 				},
 			}
 
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "accounts:dave", big.NewInt(400), "CHF/2"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())

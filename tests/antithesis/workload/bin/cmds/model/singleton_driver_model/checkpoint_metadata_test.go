@@ -11,8 +11,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -22,7 +21,7 @@ func TestCheckpointMetadataReadsFenceSameNode(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	server, bucket, cluster := checkpointMetadataClients(t)
-	stale, err := cluster.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
+	stale, err := cluster.ListQueryCheckpoints(ctx, &commonpb.ListQueryCheckpointsRequest{})
 	require.NoError(t, err)
 	require.Empty(t, stale.GetCheckpoints())
 	registry, err := readCheckpointRegistry(ctx, checkpointTestNode(bucket, cluster))
@@ -30,7 +29,7 @@ func TestCheckpointMetadataReadsFenceSameNode(t *testing.T) {
 	require.Len(t, registry.GetCheckpoints(), 1)
 	require.Equal(t, uint64(7), registry.GetCheckpoints()[0].GetCheckpointId())
 	server.fenced.Store(false)
-	staleSchedule, err := cluster.GetQueryCheckpointSchedule(ctx, &clusterpb.GetQueryCheckpointScheduleRequest{})
+	staleSchedule, err := cluster.GetQueryCheckpointSchedule(ctx, &commonpb.GetQueryCheckpointScheduleRequest{})
 	require.NoError(t, err)
 	require.Empty(t, staleSchedule.GetCron())
 	schedule, err := readCheckpointSchedule(ctx, checkpointTestNode(bucket, cluster))
@@ -51,7 +50,7 @@ func TestCheckpointMetadataFenceFailureStopsRead(t *testing.T) {
 	require.Zero(t, server.metadataReads.Load())
 }
 
-func checkpointMetadataClients(t *testing.T) (*checkpointMetadataServer, servicepb.BucketServiceClient, clusterpb.ClusterServiceClient) {
+func checkpointMetadataClients(t *testing.T) (*checkpointMetadataServer, commonpb.BucketServiceClient, commonpb.ClusterServiceClient) {
 	t.Helper()
 	handler := &checkpointMetadataServer{addr: "node"}
 	bucket, cluster := serveCheckpointMetadata(t, handler, handler)
@@ -60,8 +59,8 @@ func checkpointMetadataClients(t *testing.T) (*checkpointMetadataServer, service
 }
 
 type checkpointMetadataServer struct {
-	servicepb.UnimplementedBucketServiceServer
-	clusterpb.UnimplementedClusterServiceServer
+	commonpb.UnimplementedBucketServiceServer
+	commonpb.UnimplementedClusterServiceServer
 
 	addr                   string
 	denied                 bool
@@ -73,7 +72,7 @@ type checkpointMetadataServer struct {
 	metadataReads          atomic.Int32
 }
 
-func (s *checkpointMetadataServer) Barrier(context.Context, *servicepb.BarrierRequest) (*servicepb.BarrierResponse, error) {
+func (s *checkpointMetadataServer) Barrier(context.Context, *commonpb.BarrierRequest) (*commonpb.BarrierResponse, error) {
 	for remaining := s.remainingFenceFailures.Load(); remaining > 0; remaining = s.remainingFenceFailures.Load() {
 		if s.remainingFenceFailures.CompareAndSwap(remaining, remaining-1) {
 			return nil, status.Error(codes.Unavailable, "fence temporarily unavailable")
@@ -86,45 +85,45 @@ func (s *checkpointMetadataServer) Barrier(context.Context, *servicepb.BarrierRe
 		return nil, status.Error(codes.PermissionDenied, "fence denied")
 	}
 
-	return &servicepb.BarrierResponse{CommitIndex: 42}, nil
+	return &commonpb.BarrierResponse{CommitIndex: 42}, nil
 }
 
-func (s *checkpointMetadataServer) GetClusterState(_ context.Context, req *clusterpb.GetClusterStateRequest) (*clusterpb.ClusterState, error) {
+func (s *checkpointMetadataServer) GetClusterState(_ context.Context, req *commonpb.GetClusterStateRequest) (*commonpb.ClusterState, error) {
 	if req.GetNodeId() == 0 {
 		if s.remainingDemotions.CompareAndSwap(1, 0) {
-			return &clusterpb.ClusterState{State: "Follower", LocalNode: 1}, nil
+			return &commonpb.ClusterState{State: "Follower", LocalNode: 1}, nil
 		}
 		if s.failDiscovery {
 			return nil, status.Error(codes.Unavailable, "node unavailable during identity discovery")
 		}
 
-		return &clusterpb.ClusterState{State: "Leader", LocalNode: 1, Nodes: []*clusterpb.NodeInfo{{Id: 2, ServiceAddress: s.addr}}}, nil
+		return &commonpb.ClusterState{State: "Leader", LocalNode: 1, Nodes: []*commonpb.NodeInfo{{Id: 2, ServiceAddress: s.addr}}}, nil
 	}
 	if req.GetNodeId() != 2 {
 		return nil, status.Error(codes.InvalidArgument, "expected pinned node ID")
 	}
 	s.fenced.Store(true)
 
-	return &clusterpb.ClusterState{LocalNode: 2, RaftStatus: &clusterpb.RaftStatus{LastPersistedIndex: 42}}, nil
+	return &commonpb.ClusterState{LocalNode: 2, RaftStatus: &commonpb.RaftStatus{LastPersistedIndex: 42}}, nil
 }
 
-func checkpointTestNode(bucket servicepb.BucketServiceClient, cluster clusterpb.ClusterServiceClient) *internal.PerNodeConn {
+func checkpointTestNode(bucket commonpb.BucketServiceClient, cluster commonpb.ClusterServiceClient) *internal.PerNodeConn {
 	return &internal.PerNodeConn{Addr: "node", NodeID: 2, Bucket: bucket, Cluster: cluster}
 }
 
-func (s *checkpointMetadataServer) ListQueryCheckpoints(context.Context, *clusterpb.ListQueryCheckpointsRequest) (*clusterpb.ListQueryCheckpointsResponse, error) {
+func (s *checkpointMetadataServer) ListQueryCheckpoints(context.Context, *commonpb.ListQueryCheckpointsRequest) (*commonpb.ListQueryCheckpointsResponse, error) {
 	s.metadataReads.Add(1)
-	response := &clusterpb.ListQueryCheckpointsResponse{}
+	response := &commonpb.ListQueryCheckpointsResponse{}
 	if s.fenced.Load() {
-		response.Checkpoints = []*clusterpb.QueryCheckpointInfo{{CheckpointId: 7}}
+		response.Checkpoints = []*commonpb.QueryCheckpointInfo{{CheckpointId: 7}}
 	}
 
 	return response, nil
 }
 
-func (s *checkpointMetadataServer) GetQueryCheckpointSchedule(context.Context, *clusterpb.GetQueryCheckpointScheduleRequest) (*clusterpb.GetQueryCheckpointScheduleResponse, error) {
+func (s *checkpointMetadataServer) GetQueryCheckpointSchedule(context.Context, *commonpb.GetQueryCheckpointScheduleRequest) (*commonpb.GetQueryCheckpointScheduleResponse, error) {
 	s.metadataReads.Add(1)
-	response := &clusterpb.GetQueryCheckpointScheduleResponse{}
+	response := &commonpb.GetQueryCheckpointScheduleResponse{}
 	if s.fenced.Load() {
 		response.Cron = modelCheckpointCrons[0]
 	}

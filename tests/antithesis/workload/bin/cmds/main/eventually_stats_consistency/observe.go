@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -28,7 +26,7 @@ type observation struct {
 // source PostingCount/RevertCount. All reads are local to this single target.
 // Mismatches remain visible at timeout; a usage reset/replay between RPCs is
 // allowed to recover rather than causing an immediate safety false positive.
-func awaitUsage(ctx context.Context, client servicepb.BucketServiceClient, witness *commonpb.LedgerInfo, expected map[string]expectedLedger, wait func(context.Context) error) observation {
+func awaitUsage(ctx context.Context, client clusterpb.BucketServiceClient, witness *clusterpb.LedgerInfo, expected map[string]expectedLedger, wait func(context.Context) error) observation {
 	var result observation
 	for {
 		result.Attempts++
@@ -56,16 +54,16 @@ func awaitUsage(ctx context.Context, client servicepb.BucketServiceClient, witne
 	}
 }
 
-func sampleUsage(ctx context.Context, client servicepb.BucketServiceClient, witness *commonpb.LedgerInfo, expected map[string]expectedLedger, result *observation) (bool, error) {
+func sampleUsage(ctx context.Context, client clusterpb.BucketServiceClient, witness *clusterpb.LedgerInfo, expected map[string]expectedLedger, result *observation) (bool, error) {
 	mismatches := make(map[string]counts)
-	witnessInfo, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: witness.GetName()})
+	witnessInfo, err := client.GetLedger(ctx, &clusterpb.GetLedgerRequest{Ledger: witness.GetName()})
 	if err != nil {
 		return false, err
 	}
 	if witnessInfo.GetId() != witness.GetId() {
 		return false, errors.New("usage witness incarnation changed")
 	}
-	marker, err := client.GetLedgerStats(ctx, &servicepb.GetLedgerStatsRequest{Ledger: witness.GetName()})
+	marker, err := client.GetLedgerStats(ctx, &clusterpb.GetLedgerStatsRequest{Ledger: witness.GetName()})
 	if err != nil {
 		return false, err
 	}
@@ -74,14 +72,14 @@ func sampleUsage(ctx context.Context, client servicepb.BucketServiceClient, witn
 		return false, nil
 	}
 	for name, want := range expected {
-		info, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: name})
+		info, err := client.GetLedger(ctx, &clusterpb.GetLedgerRequest{Ledger: name})
 		if err != nil {
 			return false, err
 		}
 		if info.GetId() != want.ID {
 			return false, fmt.Errorf("ledger %s incarnation changed: %d -> %d", name, want.ID, info.GetId())
 		}
-		stats, err := client.GetLedgerStats(ctx, &servicepb.GetLedgerStatsRequest{Ledger: name})
+		stats, err := client.GetLedgerStats(ctx, &clusterpb.GetLedgerStatsRequest{Ledger: name})
 		if err != nil {
 			return false, err
 		}
@@ -95,7 +93,7 @@ func sampleUsage(ctx context.Context, client servicepb.BucketServiceClient, witn
 	result.Mismatches = mismatches
 	// A restart can rewind the WAL-less usage store. Do not accept a sweep if
 	// its independent witness disappeared while collecting counter snapshots.
-	marker, err = client.GetLedgerStats(ctx, &servicepb.GetLedgerStatsRequest{Ledger: witness.GetName()})
+	marker, err = client.GetLedgerStats(ctx, &clusterpb.GetLedgerStatsRequest{Ledger: witness.GetName()})
 	if err != nil {
 		return false, err
 	}
@@ -105,7 +103,7 @@ func sampleUsage(ctx context.Context, client servicepb.BucketServiceClient, witn
 }
 
 // FSM persistence qualifies node identity and source visibility, not usage.
-func awaitReplica(ctx context.Context, conn *internal.PerNodeConn, horizon uint64, witness *commonpb.LedgerInfo, expected map[string]expectedLedger, wait func(context.Context) error) observation {
+func awaitReplica(ctx context.Context, conn *internal.PerNodeConn, horizon uint64, witness *clusterpb.LedgerInfo, expected map[string]expectedLedger, wait func(context.Context) error) observation {
 	if conn.NodeID == 0 {
 		return observation{Error: "replica node ID could not be resolved"}
 	}

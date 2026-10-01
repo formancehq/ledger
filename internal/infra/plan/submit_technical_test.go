@@ -17,7 +17,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -243,7 +243,7 @@ func referencePreloadNeeds(t *testing.T, builder *Builder) (*Coverage, attribute
 func requireReferenceReloads(t *testing.T, builder *Builder, expectedID attributes.U128) {
 	t.Helper()
 
-	reload, err := builder.loaders.References.LoadOrWait(expectedID, 0, 1, func() (*commonpb.TransactionReferenceValue, error) {
+	reload, err := builder.loaders.References.LoadOrWait(expectedID, 0, 1, func() (*internalcommonpb.TransactionReferenceValue, error) {
 		return nil, nil
 	})
 	require.NoError(t, err)

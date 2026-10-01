@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"strings"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // indexTypeOptions is the canonical set of --type values accepted by the

@@ -7,16 +7,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -45,7 +43,7 @@ func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 		// AuditEntry header — top-level scalar fields.
 		{"sequence", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.Sequence = 999 }},
 		{"timestamp", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
-			e.Timestamp = &commonpb.Timestamp{Data: 1999999999}
+			e.Timestamp = &auditpb.Timestamp{Data: 1999999999}
 		}},
 		{"proposal_id", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.ProposalId++ }},
 		{"order_count", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.OrderCount++ }},
@@ -57,7 +55,7 @@ func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 
 		// Outcome flips — same `hash` field, different outcome semantics.
 		{"outcome_flip_success_to_failure", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
-			e.Outcome = &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{Reason: commonpb.ErrorReason_ERROR_REASON_VALIDATION, Message: "fake"}}
+			e.Outcome = &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{Reason: auditpb.ErrorReason_ERROR_REASON_VALIDATION, Message: "fake"}}
 		}},
 		{"outcome_flip_failure_to_success", "failure", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
 			e.Outcome = &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{MinLogSequence: 1, MaxLogSequence: 1}}
@@ -68,7 +66,7 @@ func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 		{"success_max_log_sequence", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.GetSuccess().MaxLogSequence++ }},
 		// AuditFailure sub-fields.
 		{"failure_reason", "failure", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
-			e.GetFailure().Reason = commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND
+			e.GetFailure().Reason = auditpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND
 		}},
 		{"failure_message", "failure", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.GetFailure().Message = "tampered" }},
 		{"failure_context_add", "failure", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
@@ -83,7 +81,7 @@ func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 			e.CallerSnapshot.GetAuthenticated().Identity.Subject = "attacker"
 		}},
 		{"caller_source_swap_to_issuer", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
-			e.CallerSnapshot.GetAuthenticated().Identity.Source = &commonpb.CallerIdentity_Issuer{Issuer: "https://evil.example.com"}
+			e.CallerSnapshot.GetAuthenticated().Identity.Source = &auditpb.CallerIdentity_Issuer{Issuer: "https://evil.example.com"}
 		}},
 		// Empty-string oneof variants must be distinguishable from
 		// absent. These two cases pin that the source TAG (not just
@@ -92,7 +90,7 @@ func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 			e.CallerSnapshot.GetAuthenticated().Identity.Source = nil
 		}},
 		{"caller_source_swap_to_empty_issuer", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
-			e.CallerSnapshot.GetAuthenticated().Identity.Source = &commonpb.CallerIdentity_Issuer{Issuer: ""}
+			e.CallerSnapshot.GetAuthenticated().Identity.Source = &auditpb.CallerIdentity_Issuer{Issuer: ""}
 		}},
 		{"caller_god", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
 			caller := e.GetCallerSnapshot().GetAuthenticated()
@@ -103,8 +101,8 @@ func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 			caller.Scopes = append(caller.GetScopes(), "admin")
 		}},
 		{"caller_principal_swap", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
-			e.CallerSnapshot.Principal = &commonpb.CallerSnapshot_Anonymous{
-				Anonymous: &commonpb.AnonymousCaller{Scopes: []string{"read", "write"}},
+			e.CallerSnapshot.Principal = &auditpb.CallerSnapshot_Anonymous{
+				Anonymous: &auditpb.AnonymousCaller{Scopes: []string{"read", "write"}},
 			}
 		}},
 
@@ -175,7 +173,7 @@ func TestVerifyAuditHashChain_RejectsValidHashWithInvalidAttribution(t *testing.
 	const clusterID = "invalid-attribution-cluster"
 
 	entry, items := newRichAuditEntry("success")
-	entry.CallerSnapshot = &commonpb.CallerSnapshot{}
+	entry.CallerSnapshot = &auditpb.CallerSnapshot{}
 	// Compute a legitimate hash over the malformed replicated value. This pins
 	// the semantic validation used by restore/check independently of tamper
 	// detection: possession of a matching hash cannot legitimize attribution.
@@ -193,7 +191,7 @@ func TestVerifyAuditHashChain_InvalidAttributionPreservesHashChain(t *testing.T)
 	const clusterID = "invalid-attribution-chain-cluster"
 
 	first, firstItems := newRichAuditEntry("success")
-	first.CallerSnapshot = &commonpb.CallerSnapshot{}
+	first.CallerSnapshot = &auditpb.CallerSnapshot{}
 	persistAuditEntry(t, store, first, firstItems, clusterID)
 
 	second, secondItems := newRichAuditEntry("success")
@@ -219,25 +217,25 @@ func TestVerifyAuditHashChain_InvalidAttributionPreservesHashChain(t *testing.T)
 func newRichAuditEntry(outcomeKind string) (*auditpb.AuditEntry, []*auditpb.AuditItem) {
 	entry := &auditpb.AuditEntry{
 		Sequence:    1,
-		Timestamp:   &commonpb.Timestamp{Data: 1700000000},
+		Timestamp:   &auditpb.Timestamp{Data: 1700000000},
 		ProposalId:  77,
 		OrderCount:  2,
 		Ledgers:     []string{"ledger-a", "ledger-b"},
-		HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
-		CallerSnapshot: &commonpb.CallerSnapshot{
-			Principal: &commonpb.CallerSnapshot_Authenticated{
-				Authenticated: &commonpb.AuthenticatedCaller{
-					Identity: &commonpb.CallerIdentity{
+		HashVersion: uint32(auditpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		CallerSnapshot: &auditpb.CallerSnapshot{
+			Principal: &auditpb.CallerSnapshot_Authenticated{
+				Authenticated: &auditpb.AuthenticatedCaller{
+					Identity: &auditpb.CallerIdentity{
 						Subject: "alice",
-						Source:  &commonpb.CallerIdentity_KeyId{KeyId: "kid-1"},
+						Source:  &auditpb.CallerIdentity_KeyId{KeyId: "kid-1"},
 					},
 					Scopes: []string{"read", "write"},
 					God:    false,
 				},
 			},
 		},
-		Idempotency: &commonpb.Idempotency{Key: "batch-key-1"},
-		Signature: &signaturepb.SignedApplyBatch{
+		Idempotency: &auditpb.Idempotency{Key: "batch-key-1"},
+		Signature: &auditpb.SignedApplyBatch{
 			KeyId:     "sign-kid",
 			Signature: []byte("sig-bytes"),
 			Payload:   []byte("batch-payload"),
@@ -261,7 +259,7 @@ func newRichAuditEntry(outcomeKind string) (*auditpb.AuditEntry, []*auditpb.Audi
 	case "failure":
 		entry.Outcome = &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
-				Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+				Reason:  auditpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
 				Message: "balance too low",
 				Context: map[string]string{
 					"original-key": "original-value",
@@ -319,7 +317,7 @@ func persistAuditEntryAfter(t *testing.T, store *dal.Store, entry *auditpb.Audit
 		entry.CallerSnapshot = testCallerSnapshot()
 	}
 
-	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
+	gen := processing.NewHashGenerator(auditpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
 
 	headerPayload, err := state.BuildHashedHeaderPayload(entry)
 	require.NoError(t, err)
@@ -336,7 +334,7 @@ func persistAuditEntryAfter(t *testing.T, store *dal.Store, entry *auditpb.Audit
 	rewriteAuditEntry(t, store, entry, items)
 }
 
-func testCallerSnapshot() *commonpb.CallerSnapshot {
+func testCallerSnapshot() *auditpb.CallerSnapshot {
 	return commands.SystemCallerSnapshot(commands.ComponentClusterPolicy)
 }
 
@@ -378,7 +376,7 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 		createdAt = 1700000000
 	)
 
-	collectIdempotencyMismatches := func(store *dal.Store) []*servicepb.CheckStoreError {
+	collectIdempotencyMismatches := func(store *dal.Store) []*auditpb.CheckStoreError {
 		attrs := attributes.New()
 		checker := NewChecker(store, attrs, nil, logging.Testing())
 
@@ -387,11 +385,11 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 
 		defer func() { _ = handle.Close() }()
 
-		var got []*servicepb.CheckStoreError
+		var got []*auditpb.CheckStoreError
 
-		_, err = checker.verifyAuditHashChain(context.Background(), handle, checkerTestAuditKey, newChainBoundState(), newChainVerifierFolds(), func(event *servicepb.CheckStoreEvent) {
-			if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok &&
-				e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH {
+		_, err = checker.verifyAuditHashChain(context.Background(), handle, checkerTestAuditKey, newChainBoundState(), newChainVerifierFolds(), func(event *auditpb.CheckStoreEvent) {
+			if e, ok := event.GetType().(*auditpb.CheckStoreEvent_Error); ok &&
+				e.Error.GetErrorType() == auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH {
 				got = append(got, e.Error)
 			}
 		})
@@ -410,14 +408,14 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 
 	entry := &auditpb.AuditEntry{
 		Sequence:    1,
-		Timestamp:   &commonpb.Timestamp{Data: createdAt},
+		Timestamp:   &auditpb.Timestamp{Data: createdAt},
 		ProposalId:  7,
 		OrderCount:  1,
-		HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
-		Idempotency: &commonpb.Idempotency{Key: idemKey},
+		HashVersion: uint32(auditpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		Idempotency: &auditpb.Idempotency{Key: idemKey},
 		Outcome: &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
-				Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+				Reason:  auditpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
 				Message: "balance too low",
 				Context: map[string]string{"account": "bank"},
 			},
@@ -426,11 +424,11 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 	items := []*auditpb.AuditItem{{OrderIndex: 0, SerializedOrder: serialized}}
 	persistAuditEntry(t, store, entry, items, clusterID)
 
-	faithful := &commonpb.IdempotencyKeyValue{
+	faithful := &internalcommonpb.IdempotencyKeyValue{
 		CreatedAt: createdAt,
 		Hash:      proposalHash,
-		Failure: &commonpb.IdempotencyFailure{
-			Reason:   commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+		Failure: &internalcommonpb.IdempotencyFailure{
+			Reason:   auditpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
 			Message:  "balance too low",
 			Metadata: map[string]string{"account": "bank"},
 		},
@@ -447,7 +445,7 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 		"a tampered frozen failure message must be flagged")
 
 	tampered = faithful.CloneVT()
-	tampered.Failure.Reason = commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND
+	tampered.Failure.Reason = auditpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND
 	writeIdempotencyEntry(t, store, idemKey, tampered)
 	require.NotEmpty(t, collectIdempotencyMismatches(store),
 		"a tampered frozen failure reason must be flagged")
@@ -486,7 +484,7 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 
 // writeIdempotencyEntry persists a frozen idempotency value at its canonical
 // SubIdempKeys location (the layout state.SaveIdempotencyKey uses).
-func writeIdempotencyEntry(t *testing.T, store *dal.Store, key string, value *commonpb.IdempotencyKeyValue) {
+func writeIdempotencyEntry(t *testing.T, store *dal.Store, key string, value *internalcommonpb.IdempotencyKeyValue) {
 	t.Helper()
 
 	keyHash := state.HashIdempotencyKey(key)
@@ -507,7 +505,7 @@ func writeIdempotencyEntry(t *testing.T, store *dal.Store, key string, value *co
 // runChainVerifier calls verifyAuditHashChain directly (package-private)
 // and returns only the HASH_MISMATCH events. Other check phases are not
 // exercised — this isolates the chain property under test.
-func runChainVerifier(t *testing.T, store *dal.Store, clusterID string) []*servicepb.CheckStoreError {
+func runChainVerifier(t *testing.T, store *dal.Store, clusterID string) []*auditpb.CheckStoreError {
 	t.Helper()
 
 	mismatches, _ := runChainVerifierWithFolds(t, store, clusterID)
@@ -522,8 +520,9 @@ func runChainVerifierWithFolds(
 	t *testing.T,
 	store *dal.Store,
 	clusterID string,
-) ([]*servicepb.CheckStoreError, chainVerifierFolds) {
+) ([]*auditpb.CheckStoreError, chainVerifierFolds) {
 	t.Helper()
+	_ = clusterID
 
 	attrs := attributes.New()
 	checker := NewChecker(store, attrs, nil, logging.Testing())
@@ -532,13 +531,13 @@ func runChainVerifierWithFolds(
 	require.NoError(t, err)
 	defer func() { _ = handle.Close() }()
 
-	var mismatches []*servicepb.CheckStoreError
+	var mismatches []*auditpb.CheckStoreError
 
 	folds := newChainVerifierFolds()
 
 	// This test isolates HASH_MISMATCH; the idempotency TTL is irrelevant.
-	_, err = checker.verifyAuditHashChain(context.Background(), handle, checkerTestAuditKey, newChainBoundState(), folds, func(event *servicepb.CheckStoreEvent) {
-		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok && e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH {
+	_, err = checker.verifyAuditHashChain(context.Background(), handle, checkerTestAuditKey, newChainBoundState(), folds, func(event *auditpb.CheckStoreEvent) {
+		if e, ok := event.GetType().(*auditpb.CheckStoreEvent_Error); ok && e.Error.GetErrorType() == auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH {
 			mismatches = append(mismatches, e.Error)
 		}
 	})

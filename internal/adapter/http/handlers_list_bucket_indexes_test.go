@@ -9,19 +9,19 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 func TestHandleListBucketIndexes_DefaultScopeAll(t *testing.T) {
 	t.Parallel()
 
-	var capturedScope servicepb.ListIndexesRequest_Scope
+	var capturedScope commonpb.ListIndexesRequest_Scope
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListIndexes(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ListIndexesRequest) (cursor.Cursor[*commonpb.Index], error) {
+		func(_ context.Context, req *commonpb.ListIndexesRequest) (cursor.Cursor[*commonpb.Index], error) {
 			capturedScope = req.GetScope()
 
 			return cursor.NewSliceCursor([]*commonpb.Index{
@@ -36,7 +36,7 @@ func TestHandleListBucketIndexes_DefaultScopeAll(t *testing.T) {
 	srv.handleListBucketIndexes(w, r)
 
 	require.Equal(t, http.StatusOK, w.Code)
-	require.Equal(t, servicepb.ListIndexesRequest_SCOPE_ALL, capturedScope)
+	require.Equal(t, commonpb.ListIndexesRequest_SCOPE_ALL, capturedScope)
 
 	// Each list element must serialize in protobuf-JSON camelCase
 	// (forwardEncodingVersion) inside the {data:[...]} envelope, not the
@@ -50,11 +50,11 @@ func TestHandleListBucketIndexes_DefaultScopeAll(t *testing.T) {
 func TestHandleListBucketIndexes_ExplicitBucketScope(t *testing.T) {
 	t.Parallel()
 
-	var capturedScope servicepb.ListIndexesRequest_Scope
+	var capturedScope commonpb.ListIndexesRequest_Scope
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListIndexes(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ListIndexesRequest) (cursor.Cursor[*commonpb.Index], error) {
+		func(_ context.Context, req *commonpb.ListIndexesRequest) (cursor.Cursor[*commonpb.Index], error) {
 			capturedScope = req.GetScope()
 
 			return cursor.NewSliceCursor[*commonpb.Index](nil), nil
@@ -67,7 +67,7 @@ func TestHandleListBucketIndexes_ExplicitBucketScope(t *testing.T) {
 	srv.handleListBucketIndexes(w, r)
 
 	require.Equal(t, http.StatusOK, w.Code)
-	require.Equal(t, servicepb.ListIndexesRequest_SCOPE_BUCKET, capturedScope)
+	require.Equal(t, commonpb.ListIndexesRequest_SCOPE_BUCKET, capturedScope)
 }
 
 func TestHandleListBucketIndexes_LedgerScopeRejected(t *testing.T) {

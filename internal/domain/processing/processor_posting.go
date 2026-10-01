@@ -6,9 +6,11 @@ import (
 
 	"github.com/holiman/uint256"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 // zeroVolumePair is the canonical "fresh (account, asset)" balance. It is
@@ -89,7 +91,7 @@ func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBal
 
 	// Decode posting amount into stack variable to avoid heap allocation
 	var amount uint256.Int
-	posting.GetAmount().IntoUint256(&amount)
+	protohelpers.IntoUint256(posting.GetAmount(), &amount)
 
 	// Get current volume pair for source as a mutable *VolumePair. Clone
 	// once up-front so the balance check reads from the mutable pointer
@@ -119,10 +121,10 @@ func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBal
 	// Balance check (skip for "world" account and when skipBalanceCheck is true)
 	if !skipBalanceCheck && posting.GetSource() != "world" {
 		var inputValue uint256.Int
-		sourceVol.GetInput().IntoUint256(&inputValue)
+		protohelpers.IntoUint256(sourceVol.GetInput(), &inputValue)
 
 		var outputValue, outputPlusAmount uint256.Int
-		sourceVol.GetOutput().IntoUint256(&outputValue)
+		protohelpers.IntoUint256(sourceVol.GetOutput(), &outputValue)
 
 		sum, overflow := outputPlusAmount.AddOverflow(&outputValue, &amount)
 		if overflow || inputValue.Lt(sum) {
@@ -148,9 +150,8 @@ func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBal
 	// apply path discards the WriteSet atomically on error, so erroring
 	// is safe.
 	var scratch, sum uint256.Int
-
 	// Increase Output for source (money going out).
-	sourceVol.GetOutput().IntoUint256(&scratch)
+	protohelpers.IntoUint256(sourceVol.GetOutput(), &scratch)
 
 	if _, overflow := sum.AddOverflow(&scratch, &amount); overflow {
 		return &domain.ErrVolumeOverflow{
@@ -162,8 +163,7 @@ func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBal
 			Current: scratch.Dec(),
 		}
 	}
-
-	sourceVol.GetOutput().SetFromUint256(&sum)
+	protohelpers.SetFromUint256(sourceVol.GetOutput(), &sum)
 	s.Volumes().Put(sourceKey, sourceVol)
 
 	// Destination receives credit - increase Input
@@ -181,8 +181,7 @@ func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBal
 	if destVol.GetInput() == nil || destVol.GetOutput() == nil {
 		return &domain.ErrBalanceNotPreloaded{Account: posting.GetDestination(), Asset: posting.GetAsset(), Color: color}
 	}
-
-	destVol.GetInput().IntoUint256(&scratch)
+	protohelpers.IntoUint256(destVol.GetInput(), &scratch)
 
 	if _, overflow := sum.AddOverflow(&scratch, &amount); overflow {
 		return &domain.ErrVolumeOverflow{
@@ -194,8 +193,7 @@ func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBal
 			Current: scratch.Dec(),
 		}
 	}
-
-	destVol.GetInput().SetFromUint256(&sum)
+	protohelpers.SetFromUint256(destVol.GetInput(), &sum)
 	s.Volumes().Put(destKey, destVol)
 
 	return nil

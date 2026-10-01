@@ -7,6 +7,11 @@ whether a corrupted projection can pass verification, not whether every possible
 transaction or restore operation is correct. It introduces no runner, schema,
 product guarantee or authorization to run an audit.
 
+Audit and service message descriptors now live in `pkg/client/v3/grpc/**`.
+The manifest covers their checker-facing types at that path; the checker and
+persisted projections remain root-owned. A generated type move is not evidence
+that verification coverage or corruption behavior changed.
+
 ## Evidence contract
 
 For each candidate record the exact audited SHA, production entry point, primary

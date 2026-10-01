@@ -29,6 +29,7 @@ import (
 	otlppyroscopetraces "github.com/formancehq/go-libs/v5/pkg/observe/pyroscopetraces"
 	otlptraces "github.com/formancehq/go-libs/v5/pkg/observe/traces"
 	"github.com/formancehq/go-libs/v5/pkg/service"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/bootstrap"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -40,7 +41,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/network"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterbootstrappb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/pebblecfg"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"

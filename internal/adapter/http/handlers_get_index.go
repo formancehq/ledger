@@ -3,8 +3,9 @@ package http
 import (
 	"net/http"
 
+	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // handleGetIndex handles GET /{ledgerName}/indexes/{canonicalId} to fetch

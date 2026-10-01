@@ -6,8 +6,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // AddBackupStorageFlags registers the shared backup storage flags (driver +

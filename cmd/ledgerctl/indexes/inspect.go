@@ -10,9 +10,10 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 // NewInspectCommand creates the indexes inspect command.
@@ -79,20 +80,20 @@ func runInspectIndex(cmd *cobra.Command, _ []string) error {
 		targetType = commonpb.TargetType_TARGET_TYPE_TRANSACTION
 	}
 
-	var inspectMode servicepb.InspectIndexMode
+	var inspectMode commonpb.InspectIndexMode
 	switch mode {
 	case "distinct-values", "distinctValues":
-		inspectMode = servicepb.InspectIndexMode_INSPECT_INDEX_MODE_DISTINCT_VALUES
+		inspectMode = commonpb.InspectIndexMode_INSPECT_INDEX_MODE_DISTINCT_VALUES
 	case "facets":
-		inspectMode = servicepb.InspectIndexMode_INSPECT_INDEX_MODE_FACETS
+		inspectMode = commonpb.InspectIndexMode_INSPECT_INDEX_MODE_FACETS
 	default:
-		inspectMode = servicepb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY
+		inspectMode = commonpb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY
 	}
 
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	resp, err := client.InspectIndex(ctx, &servicepb.InspectIndexRequest{
+	resp, err := client.InspectIndex(ctx, &commonpb.InspectIndexRequest{
 		Ledger:      ledgerName,
 		TargetType:  targetType,
 		MetadataKey: key,
@@ -115,11 +116,11 @@ func runInspectIndex(cmd *cobra.Command, _ []string) error {
 	pterm.Println(pterm.Gray("─────────────────────────────────"))
 
 	switch result := resp.GetResult().(type) {
-	case *servicepb.InspectIndexResponse_Summary:
+	case *commonpb.InspectIndexResponse_Summary:
 		printSummary(result.Summary, declaredType)
-	case *servicepb.InspectIndexResponse_DistinctValues:
+	case *commonpb.InspectIndexResponse_DistinctValues:
 		printDistinctValues(result.DistinctValues, declaredType)
-	case *servicepb.InspectIndexResponse_Facets:
+	case *commonpb.InspectIndexResponse_Facets:
 		printFacets(result.Facets, declaredType)
 	}
 
@@ -135,22 +136,22 @@ func runInspectIndex(cmd *cobra.Command, _ []string) error {
 // degrades to the default integer rendering rather than erroring.
 func declaredMetadataType(
 	ctx context.Context,
-	client servicepb.BucketServiceClient,
+	client commonpb.BucketServiceClient,
 	ledgerName string,
 	targetType commonpb.TargetType,
 	key string,
 ) commonpb.MetadataType {
-	ledger, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
+	ledger, err := client.GetLedger(ctx, &commonpb.GetLedgerRequest{Ledger: ledgerName})
 	if err != nil {
 		return commonpb.MetadataType_METADATA_TYPE_STRING
 	}
 
-	_, fs := commonpb.SchemaFieldForTarget(ledger.GetMetadataSchema(), targetType, key)
+	_, fs := protohelpers.SchemaFieldForTarget(ledger.GetMetadataSchema(), targetType, key)
 
 	return fs.GetType()
 }
 
-func printSummary(s *servicepb.InspectSummary, declaredType commonpb.MetadataType) {
+func printSummary(s *commonpb.InspectSummary, declaredType commonpb.MetadataType) {
 	pterm.Printf("Cardinality:       %d\n", s.GetCardinality())
 	pterm.Printf("Min:               %s\n", formatMetadataValue(s.GetMin(), declaredType))
 	pterm.Printf("Max:               %s\n", formatMetadataValue(s.GetMax(), declaredType))
@@ -158,7 +159,7 @@ func printSummary(s *servicepb.InspectSummary, declaredType commonpb.MetadataTyp
 	pterm.Printf("Entities null:     %d\n", s.GetEntitiesWithNull())
 }
 
-func printDistinctValues(dv *servicepb.InspectDistinctValues, declaredType commonpb.MetadataType) {
+func printDistinctValues(dv *commonpb.InspectDistinctValues, declaredType commonpb.MetadataType) {
 	table := pterm.TableData{{"VALUE"}}
 	for _, v := range dv.GetValues() {
 		table = append(table, []string{formatMetadataValue(v, declaredType)})
@@ -172,8 +173,8 @@ func printDistinctValues(dv *servicepb.InspectDistinctValues, declaredType commo
 	}
 }
 
-func printFacets(f *servicepb.InspectFacets, declaredType commonpb.MetadataType) {
-	facets := make([]*servicepb.InspectFacet, len(f.GetFacets()))
+func printFacets(f *commonpb.InspectFacets, declaredType commonpb.MetadataType) {
+	facets := make([]*commonpb.InspectFacet, len(f.GetFacets()))
 	copy(facets, f.GetFacets())
 
 	sort.Slice(facets, func(i, j int) bool {
@@ -207,7 +208,7 @@ func formatMetadataValue(v *commonpb.MetadataValue, declaredType commonpb.Metada
 	case *commonpb.MetadataValue_IntValue:
 		// Datetime index keys share the int64 encoding, so the server returns an
 		// int_value for them; render as RFC3339 when the field is declared datetime.
-		if commonpb.IsDatetimeType(declaredType) {
+		if protohelpers.IsDatetimeType(declaredType) {
 			return time.UnixMicro(t.IntValue).UTC().Format(time.RFC3339Nano)
 		}
 
@@ -215,7 +216,7 @@ func formatMetadataValue(v *commonpb.MetadataValue, declaredType commonpb.Metada
 	case *commonpb.MetadataValue_UintValue:
 		return strconv.FormatUint(t.UintValue, 10)
 	case *commonpb.MetadataValue_DatetimeValue:
-		return commonpb.MetadataValueToString(v)
+		return protohelpers.MetadataValueToString(v)
 	case *commonpb.MetadataValue_BoolValue:
 		return strconv.FormatBool(t.BoolValue)
 	case *commonpb.MetadataValue_NullValue:

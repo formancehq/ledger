@@ -8,8 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // Global checkpoint metadata remains observable after the last ledger is
@@ -29,8 +28,8 @@ func TestCheckpointMetadataReadsKeepResponseFrontierWithoutLiveLedgers(t *testin
 				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 				defer cancel()
 				c := NewChecker([]string{"L"}, nil)
-				deleted := c.modelState.Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_DeleteLedger{
-					DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "L"},
+				deleted := c.modelState.Apply(bulkOf(&clusterpb.Request{Type: &clusterpb.Request_DeleteLedger{
+					DeleteLedger: &clusterpb.DeleteLedgerRequest{Name: "L"},
 				}}))
 				require.True(t, deleted.OK)
 				c.modelState = deleted.State
@@ -64,7 +63,7 @@ func TestCheckpointMetadataReadsKeepResponseFrontierWithoutLiveLedgers(t *testin
 				} else {
 					runCheckpointScheduleRead(ctx, node, c)
 				}
-				wantCalls := []string{clusterpb.ClusterService_GetClusterState_FullMethodName, servicepb.BucketService_Barrier_FullMethodName}
+				wantCalls := []string{clusterpb.ClusterService_GetClusterState_FullMethodName, clusterpb.BucketService_Barrier_FullMethodName}
 				if failFence {
 					require.Zero(t, handler.metadataReads.Load())
 				} else {

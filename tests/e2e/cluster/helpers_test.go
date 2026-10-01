@@ -5,16 +5,15 @@ package cluster
 import (
 	"context"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 // addEventsSinkAction creates a request to add a named sink configuration.
-func addEventsSinkAction(config *commonpb.SinkConfig) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_AddEventsSink{
-			AddEventsSink: &servicepb.AddEventsSinkRequest{
+func addEventsSinkAction(config *commonpb.SinkConfig) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_AddEventsSink{
+			AddEventsSink: &commonpb.AddEventsSinkRequest{
 				Config: config,
 			},
 		},
@@ -22,7 +21,7 @@ func addEventsSinkAction(config *commonpb.SinkConfig) *servicepb.Request {
 }
 
 // listAllTransactions collects all transactions from the streaming RPC into a slice.
-func listAllTransactions(ctx context.Context, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, afterTxID uint64, filters ...*commonpb.QueryFilter) ([]*commonpb.Transaction, error) {
+func listAllTransactions(ctx context.Context, client commonpb.BucketServiceClient, ledgerName string, pageSize uint32, afterTxID uint64, filters ...*commonpb.QueryFilter) ([]*commonpb.Transaction, error) {
 	var filter *commonpb.QueryFilter
 	if len(filters) > 0 {
 		filter = filters[0]

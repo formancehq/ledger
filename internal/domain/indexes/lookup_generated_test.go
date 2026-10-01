@@ -10,8 +10,8 @@ package indexes_test
 import (
 	reflect "reflect"
 
+	grpc "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	domain "github.com/formancehq/ledger/v3/internal/domain"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -40,10 +40,10 @@ func (m *MockLookup) EXPECT() *MockLookupMockRecorder {
 }
 
 // Get mocks base method.
-func (m *MockLookup) Get(key domain.IndexKey) (commonpb.IndexReader, error) {
+func (m *MockLookup) Get(key domain.IndexKey) (grpc.IndexReader, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Get", key)
-	ret0, _ := ret[0].(commonpb.IndexReader)
+	ret0, _ := ret[0].(grpc.IndexReader)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -61,19 +61,19 @@ type MockLookupGetCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockLookupGetCall) Return(arg0 commonpb.IndexReader, arg1 error) *MockLookupGetCall {
+func (c *MockLookupGetCall) Return(arg0 grpc.IndexReader, arg1 error) *MockLookupGetCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockLookupGetCall) Do(f func(domain.IndexKey) (commonpb.IndexReader, error)) *MockLookupGetCall {
+func (c *MockLookupGetCall) Do(f func(domain.IndexKey) (grpc.IndexReader, error)) *MockLookupGetCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockLookupGetCall) DoAndReturn(f func(domain.IndexKey) (commonpb.IndexReader, error)) *MockLookupGetCall {
+func (c *MockLookupGetCall) DoAndReturn(f func(domain.IndexKey) (grpc.IndexReader, error)) *MockLookupGetCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -141,7 +141,7 @@ func (c *MockIndexWriterDeleteCall) DoAndReturn(f func(domain.IndexKey) error) *
 }
 
 // Put mocks base method.
-func (m *MockIndexWriter) Put(key domain.IndexKey, idx *commonpb.Index) {
+func (m *MockIndexWriter) Put(key domain.IndexKey, idx *grpc.Index) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "Put", key, idx)
 }
@@ -165,13 +165,13 @@ func (c *MockIndexWriterPutCall) Return() *MockIndexWriterPutCall {
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockIndexWriterPutCall) Do(f func(domain.IndexKey, *commonpb.Index)) *MockIndexWriterPutCall {
+func (c *MockIndexWriterPutCall) Do(f func(domain.IndexKey, *grpc.Index)) *MockIndexWriterPutCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockIndexWriterPutCall) DoAndReturn(f func(domain.IndexKey, *commonpb.Index)) *MockIndexWriterPutCall {
+func (c *MockIndexWriterPutCall) DoAndReturn(f func(domain.IndexKey, *grpc.Index)) *MockIndexWriterPutCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

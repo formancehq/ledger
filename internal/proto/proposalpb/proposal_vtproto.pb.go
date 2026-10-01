@@ -7,7 +7,7 @@ package proposalpb
 import (
 	binary "encoding/binary"
 	fmt "fmt"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	grpc "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
 	proto "google.golang.org/protobuf/proto"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -54,7 +54,7 @@ func (m *TouchedVolumeList) CloneVT() *TouchedVolumeList {
 	}
 	r := new(TouchedVolumeList)
 	if rhs := m.Volumes; rhs != nil {
-		tmpContainer := make([]*commonpb.TouchedVolume, len(rhs))
+		tmpContainer := make([]*grpc.TouchedVolume, len(rhs))
 		for k, v := range rhs {
 			tmpContainer[k] = v.CloneVT()
 		}
@@ -129,10 +129,10 @@ func (this *TouchedVolumeList) EqualVT(that *TouchedVolumeList) bool {
 		vy := that.Volumes[i]
 		if p, q := vx, vy; p != q {
 			if p == nil {
-				p = &commonpb.TouchedVolume{}
+				p = &grpc.TouchedVolume{}
 			}
 			if q == nil {
-				q = &commonpb.TouchedVolume{}
+				q = &grpc.TouchedVolume{}
 			}
 			if !p.EqualVT(q) {
 				return false
@@ -603,7 +603,7 @@ func (m *TouchedVolumeList) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Volumes = append(m.Volumes, &commonpb.TouchedVolume{})
+			m.Volumes = append(m.Volumes, &grpc.TouchedVolume{})
 			if err := m.Volumes[len(m.Volumes)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}

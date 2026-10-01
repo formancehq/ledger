@@ -6,8 +6,7 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -71,7 +70,7 @@ func (c *Checker) rememberReplayable(bulk oracle.Bulk, logs []*commonpb.Log) {
 // sequences) and produces no fresh log, so it must NOT flow through the
 // log-sequence re-order buffer — it registers as a read and validates against
 // the candidate states, exactly like GetAccount/GetTransaction.
-func runReplay(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+func runReplay(ctx context.Context, client commonpb.BucketServiceClient, c *Checker) {
 	c.mu.Lock()
 	if len(c.replayable) == 0 {
 		c.mu.Unlock()
@@ -111,7 +110,7 @@ func runReplay(ctx context.Context, client servicepb.BucketServiceClient, c *Che
 // re-executed, not replayed — an exactly-once violation), and its content must
 // match the model's frozen outcome under some candidate base (Apply replays the
 // bulk because the base holds the key, folded from modelState).
-func (c *Checker) validateReplay(maxTicket uint64, entry replayEntry, resp *servicepb.ApplyResponse) {
+func (c *Checker) validateReplay(maxTicket uint64, entry replayEntry, resp *commonpb.ApplyResponse) {
 	if !sequencesEqual(logSequences(resp.GetLogs()), entry.logSeqs) {
 		assert.Unreachable("singleton_driver_model: idempotency replay produced new log sequences", internal.Details{
 			"ledgers":  bulkLedgers(entry.bulk),
@@ -283,20 +282,20 @@ func serverPCV(data *commonpb.LedgerLogPayload) *commonpb.PostCommitVolumes {
 // chartResponseMatches validates both chart request forms against their echoed
 // payloads, including normal outcomes of requests that opted into skipping.
 // Non-chart requests match by definition so callers can use it uniformly.
-func chartResponseMatches(req *servicepb.Request, data *commonpb.LedgerLogPayload) bool {
+func chartResponseMatches(req *commonpb.Request, data *commonpb.LedgerLogPayload) bool {
 	var added *commonpb.AccountType
 	var removed *string
 	switch r := req.GetType().(type) {
-	case *servicepb.Request_AddAccountType:
+	case *commonpb.Request_AddAccountType:
 		added = r.AddAccountType.GetAccountType()
-	case *servicepb.Request_RemoveAccountType:
+	case *commonpb.Request_RemoveAccountType:
 		name := r.RemoveAccountType.GetName()
 		removed = &name
-	case *servicepb.Request_Apply:
+	case *commonpb.Request_Apply:
 		switch action := r.Apply.GetAction().GetData().(type) {
-		case *servicepb.LedgerAction_AddAccountType:
+		case *commonpb.LedgerAction_AddAccountType:
 			added = action.AddAccountType.GetAccountType()
-		case *servicepb.LedgerAction_RemoveAccountType:
+		case *commonpb.LedgerAction_RemoveAccountType:
 			name := action.RemoveAccountType.GetName()
 			removed = &name
 		}

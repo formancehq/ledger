@@ -6,8 +6,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -32,9 +31,9 @@ func main() {
 	details := internal.Details{"sinkName": sinkName, "topic": topic}
 
 	// 1. Add a NATS event sink.
-	_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-		Type: &servicepb.Request_AddEventsSink{
-			AddEventsSink: &servicepb.AddEventsSinkRequest{
+	_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+		Type: &commonpb.Request_AddEventsSink{
+			AddEventsSink: &commonpb.AddEventsSinkRequest{
 				Config: &commonpb.SinkConfig{
 					Name: sinkName,
 					Type: &commonpb.SinkConfig_Nats{
@@ -57,7 +56,7 @@ func main() {
 	}
 
 	// 2. Verify the sink appears in GetEventsSinks.
-	sinksResp, err := client.GetEventsSinks(ctx, &servicepb.GetEventsSinksRequest{})
+	sinksResp, err := client.GetEventsSinks(ctx, &commonpb.GetEventsSinksRequest{})
 	if err != nil {
 		internal.LogCleanupError("get events sinks after add", err)
 
@@ -82,12 +81,12 @@ func main() {
 		return
 	}
 
-	_, _ = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+	_, _ = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: ledger,
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Postings: internal.RandomPostings(),
 						Force:    true,
 					},
@@ -98,9 +97,9 @@ func main() {
 	// Transaction creation is best-effort here; the sink test is what matters.
 
 	// 4. Remove the event sink.
-	_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-		Type: &servicepb.Request_RemoveEventsSink{
-			RemoveEventsSink: &servicepb.RemoveEventsSinkRequest{
+	_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+		Type: &commonpb.Request_RemoveEventsSink{
+			RemoveEventsSink: &commonpb.RemoveEventsSinkRequest{
 				Name: sinkName,
 			},
 		},
@@ -113,7 +112,7 @@ func main() {
 	}
 
 	// 5. Verify the sink is gone.
-	sinksResp, err = client.GetEventsSinks(ctx, &servicepb.GetEventsSinksRequest{})
+	sinksResp, err = client.GetEventsSinks(ctx, &commonpb.GetEventsSinksRequest{})
 	if err != nil {
 		internal.LogCleanupError("get events sinks after remove", err)
 

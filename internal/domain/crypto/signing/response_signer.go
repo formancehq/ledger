@@ -9,8 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // ResponseSigner signs Log messages with an Ed25519 key for server-side response signing.
@@ -39,7 +38,7 @@ func NewResponseSigner(seed []byte) *ResponseSigner {
 // SignLog signs a Log message and returns a SignedLog envelope.
 // It clones the log, clears response_signature (node-local),
 // serializes it, signs the bytes, and returns the signature envelope.
-func (s *ResponseSigner) SignLog(log *commonpb.Log) *signaturepb.SignedLog {
+func (s *ResponseSigner) SignLog(log *commonpb.Log) *commonpb.SignedLog {
 	// Clone and clear non-deterministic/node-local fields
 	logCopy := log.CloneVT()
 	logCopy.ResponseSignature = nil
@@ -49,7 +48,7 @@ func (s *ResponseSigner) SignLog(log *commonpb.Log) *signaturepb.SignedLog {
 		return nil
 	}
 
-	return &signaturepb.SignedLog{
+	return &commonpb.SignedLog{
 		KeyId:     s.keyID,
 		Signature: ed25519.Sign(s.privateKey, payload),
 		Payload:   payload,
@@ -67,7 +66,7 @@ func (s *ResponseSigner) KeyID() string {
 }
 
 // VerifyResponseSignature verifies a SignedLog envelope against a known public key.
-func VerifyResponseSignature(sr *signaturepb.SignedLog, publicKey ed25519.PublicKey) error {
+func VerifyResponseSignature(sr *commonpb.SignedLog, publicKey ed25519.PublicKey) error {
 	if sr == nil {
 		return errors.New("missing response signature")
 	}

@@ -4,13 +4,11 @@ import (
 	"context"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 type Server struct {
@@ -33,8 +31,8 @@ func NewServer(logger logging.Logger, backend Backend, authCfg internalauth.Auth
 // applyUnsigned wraps Requests into unsigned Envelopes and forwards to the
 // backend. The HTTP API never signs requests itself — signing flows through
 // gRPC where the caller controls the envelope construction.
-func (s *Server) applyUnsigned(ctx context.Context, idempotencyKey string, reqs ...*servicepb.Request) ([]*commonpb.Log, error) {
-	result, err := s.backend.Apply(ctx, servicepb.UnsignedApplyRequest(idempotencyKey, reqs...))
+func (s *Server) applyUnsigned(ctx context.Context, idempotencyKey string, reqs ...*clusterpb.Request) ([]*clusterpb.Log, error) {
+	result, err := s.backend.Apply(ctx, clusterpb.UnsignedApplyRequest(idempotencyKey, reqs...))
 	if err != nil {
 		return nil, err
 	}

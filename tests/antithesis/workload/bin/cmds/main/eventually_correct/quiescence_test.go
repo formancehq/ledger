@@ -21,11 +21,9 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/pkg/antithesistest"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
@@ -142,11 +140,11 @@ func TestQuiescenceServerProcess(t *testing.T) {
 		t.Skip("subprocess only")
 	}
 	ctx, client, target := quiescenceTestServer(t)
-	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("L", nil), oracletest.TxReqRefL("L", "seed", "world", "users:0", "USD", 10)))
+	_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction("L", nil), oracletest.TxReqRefL("L", "seed", "world", "users:0", "USD", 10)))
 	require.NoError(t, err)
 	var indices []uint64
 	for range 4 {
-		barrier, err := client.Barrier(ctx, &servicepb.BarrierRequest{})
+		barrier, err := client.Barrier(ctx, &clusterpb.BarrierRequest{})
 		require.NoError(t, err)
 		indices = append(indices, barrier.GetCommitIndex())
 	}
@@ -192,7 +190,7 @@ func TestQuiescenceServerProcess(t *testing.T) {
 				// ListAccounts has fully completed before GetAccount. Apply a real
 				// transaction in this interval, once or on every full comparison.
 				if (scenario == "late_write" && writes.Load() == 0) || (scenario == "busy" && writes.Load() < lists.Load()) {
-					_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", oracletest.TxReqRefL("L", fmt.Sprintf("late-%d", writes.Load()), "world", "users:0", "USD", 1)))
+					_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", oracletest.TxReqRefL("L", fmt.Sprintf("late-%d", writes.Load()), "world", "users:0", "USD", 1)))
 					if err != nil {
 						return err
 					}
@@ -203,7 +201,7 @@ func TestQuiescenceServerProcess(t *testing.T) {
 				return err
 			}
 			if strings.HasSuffix(method, "/GetAccount") && (scenario == "divergence" || scenario == "unavailable" || scenario == "expired" || (scenario == "ambiguous_barrier" && lists.Load() == 1)) {
-				account := reply.(*commonpb.Account)
+				account := reply.(*clusterpb.Account)
 				require.NotEmpty(t, account.GetVolumes())
 				account.Volumes[0].Volumes.Balance = "999"
 			}
@@ -212,9 +210,9 @@ func TestQuiescenceServerProcess(t *testing.T) {
 		}))
 	require.NoError(t, err)
 	defer func() { _ = conn.Close() }()
-	checkVolumesConsistent(checkCtx, servicepb.NewBucketServiceClient(conn), "L", q)
+	checkVolumesConsistent(checkCtx, clusterpb.NewBucketServiceClient(conn), "L", q)
 	// Server state remains correct even when its observed response was changed.
-	account, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: "L", Address: "users:0"})
+	account, err := client.GetAccount(ctx, &clusterpb.GetAccountRequest{Ledger: "L", Address: "users:0"})
 	require.NoError(t, err)
 	require.Equal(t, strconv.FormatInt(10+writes.Load(), 10), account.FindVolume("USD", "").GetBalance())
 	result, err := json.Marshal(struct {
@@ -228,7 +226,7 @@ func TestQuiescenceServerProcess(t *testing.T) {
 	t.Logf("result: %s", result)
 }
 
-func quiescenceTestServer(t *testing.T) (context.Context, servicepb.BucketServiceClient, string) {
+func quiescenceTestServer(t *testing.T) (context.Context, clusterpb.BucketServiceClient, string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	t.Cleanup(cancel)
@@ -252,7 +250,7 @@ func quiescenceTestServer(t *testing.T) (context.Context, servicepb.BucketServic
 
 		return err == nil && state.GetLeader() != 0
 	}, 5*time.Second, 10*time.Millisecond)
-	client := servicepb.NewBucketServiceClient(conn)
+	client := clusterpb.NewBucketServiceClient(conn)
 	testserver.WaitForWriteAdmission(t, ctx, client)
 
 	return ctx, client, target

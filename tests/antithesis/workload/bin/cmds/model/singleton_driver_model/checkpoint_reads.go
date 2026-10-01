@@ -11,8 +11,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -38,8 +37,8 @@ func checkpointTransactionReadMatches(state oracle.GlobalState, ledger string, i
 	return found && transaction != nil && txRecordMatches(txs.Get(int(id-1)), transaction)
 }
 
-// The server maps commonpb.NotFoundError to a typed gRPC status without
-// ErrorInfo details (server.go). Text containing "not found" is never evidence.
+// The gRPC server maps NotFoundError to a bare codes.NotFound status
+// (server.go). Text containing "not found" is never evidence.
 func checkpointNotFound(err error) bool {
 	statusValue, ok := status.FromError(err)
 
@@ -90,7 +89,7 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 			return
 		}
 		var account *commonpb.Account
-		account, err = bucket.GetAccount(readCtx, &servicepb.GetAccountRequest{Ledger: ledger, Address: address, CheckpointId: id})
+		account, err = bucket.GetAccount(readCtx, &commonpb.GetAccountRequest{Ledger: ledger, Address: address, CheckpointId: id})
 		maxTicket = c.ticketSeq.Load()
 		details["ledger"], details["address"], details["returned"] = ledger, address, account
 		matches = checkpointAccountReadMatches(frozen, ledger, address, account, err == nil)
@@ -102,8 +101,8 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 		if !ok {
 			return
 		}
-		var response *servicepb.GetTransactionResponse
-		response, err = bucket.GetTransaction(readCtx, &servicepb.GetTransactionRequest{Ledger: ledger, TransactionId: txID, CheckpointId: id})
+		var response *commonpb.GetTransactionResponse
+		response, err = bucket.GetTransaction(readCtx, &commonpb.GetTransactionRequest{Ledger: ledger, TransactionId: txID, CheckpointId: id})
 		maxTicket = c.ticketSeq.Load()
 		details["ledger"], details["transactionId"], details["returned"] = ledger, txID, response.GetTransaction()
 		matches = checkpointTransactionReadMatches(frozen, ledger, txID, response.GetTransaction(), err == nil)
@@ -120,7 +119,7 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 		// Nil filters deliberately avoid asynchronous index readiness: every row
 		// in this page is required by the frozen primary-store state.
 		if choice == 4 {
-			stream, streamErr := bucket.ListAccounts(readCtx, &servicepb.ListAccountsRequest{Ledger: ledger, Options: options})
+			stream, streamErr := bucket.ListAccounts(readCtx, &commonpb.ListAccountsRequest{Ledger: ledger, Options: options})
 			err = streamErr
 			var rows []*commonpb.Account
 			if err == nil {
@@ -141,7 +140,7 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 				}
 			}
 		} else {
-			stream, streamErr := bucket.ListTransactions(readCtx, &servicepb.ListTransactionsRequest{Ledger: ledger, Options: options})
+			stream, streamErr := bucket.ListTransactions(readCtx, &commonpb.ListTransactionsRequest{Ledger: ledger, Options: options})
 			err = streamErr
 			var rows []*commonpb.Transaction
 			if err == nil {
@@ -177,7 +176,7 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 // runPredictedCheckpointRead targets the ID assigned by the matching in-flight
 // create. NotFound is valid before commit; success must expose the exact model
 // state immediately before that create in a legal serialization.
-func runPredictedCheckpointRead(ctx context.Context, bucket servicepb.BucketServiceClient, c *Checker, checkpointID uint64, start <-chan struct{}, registered chan<- struct{}) {
+func runPredictedCheckpointRead(ctx context.Context, bucket commonpb.BucketServiceClient, c *Checker, checkpointID uint64, start <-chan struct{}, registered chan<- struct{}) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	c.mu.Lock()
@@ -198,7 +197,7 @@ func runPredictedCheckpointRead(ctx context.Context, bucket servicepb.BucketServ
 	}
 	ledger := ledgerNames[0]
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
-	info, err := bucket.GetLedger(readCtx, &servicepb.GetLedgerRequest{
+	info, err := bucket.GetLedger(readCtx, &commonpb.GetLedgerRequest{
 		Ledger: ledger,
 		Read:   &commonpb.ReadOptions{CheckpointId: checkpointID},
 	})

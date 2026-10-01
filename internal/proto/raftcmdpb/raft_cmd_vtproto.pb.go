@@ -7,8 +7,8 @@ package raftcmdpb
 import (
 	binary "encoding/binary"
 	fmt "fmt"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	signaturepb "github.com/formancehq/ledger/v3/internal/proto/signaturepb"
+	grpc "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
 	proto "google.golang.org/protobuf/proto"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -628,14 +628,14 @@ func (m *CreateLedgerOrder) CloneVT() *CreateLedgerOrder {
 	r.MirrorSource = m.MirrorSource.CloneVT()
 	r.DefaultEnforcementMode = m.DefaultEnforcementMode
 	if rhs := m.InitialSchema; rhs != nil {
-		tmpContainer := make([]*commonpb.SetMetadataFieldTypeCommand, len(rhs))
+		tmpContainer := make([]*grpc.SetMetadataFieldTypeCommand, len(rhs))
 		for k, v := range rhs {
 			tmpContainer[k] = v.CloneVT()
 		}
 		r.InitialSchema = tmpContainer
 	}
 	if rhs := m.AccountTypes; rhs != nil {
-		tmpContainer := make(map[string]*commonpb.AccountType, len(rhs))
+		tmpContainer := make(map[string]*grpc.AccountType, len(rhs))
 		for k, v := range rhs {
 			tmpContainer[k] = v.CloneVT()
 		}
@@ -765,21 +765,21 @@ func (m *MirrorCreatedTransaction) CloneVT() *MirrorCreatedTransaction {
 	r.Timestamp = m.Timestamp.CloneVT()
 	r.Reference = m.Reference
 	if rhs := m.Postings; rhs != nil {
-		tmpContainer := make([]*commonpb.Posting, len(rhs))
+		tmpContainer := make([]*grpc.Posting, len(rhs))
 		for k, v := range rhs {
 			tmpContainer[k] = v.CloneVT()
 		}
 		r.Postings = tmpContainer
 	}
 	if rhs := m.Metadata; rhs != nil {
-		tmpContainer := make(map[string]*commonpb.MetadataValue, len(rhs))
+		tmpContainer := make(map[string]*grpc.MetadataValue, len(rhs))
 		for k, v := range rhs {
 			tmpContainer[k] = v.CloneVT()
 		}
 		r.Metadata = tmpContainer
 	}
 	if rhs := m.AccountMetadata; rhs != nil {
-		tmpContainer := make(map[string]*commonpb.MetadataMap, len(rhs))
+		tmpContainer := make(map[string]*grpc.MetadataMap, len(rhs))
 		for k, v := range rhs {
 			tmpContainer[k] = v.CloneVT()
 		}
@@ -803,7 +803,7 @@ func (m *MirrorSavedMetadata) CloneVT() *MirrorSavedMetadata {
 	r := new(MirrorSavedMetadata)
 	r.Target = m.Target.CloneVT()
 	if rhs := m.Metadata; rhs != nil {
-		tmpContainer := make(map[string]*commonpb.MetadataValue, len(rhs))
+		tmpContainer := make(map[string]*grpc.MetadataValue, len(rhs))
 		for k, v := range rhs {
 			tmpContainer[k] = v.CloneVT()
 		}
@@ -829,14 +829,14 @@ func (m *MirrorRevertedTransaction) CloneVT() *MirrorRevertedTransaction {
 	r.NewTransactionId = m.NewTransactionId
 	r.Timestamp = m.Timestamp.CloneVT()
 	if rhs := m.ReversePostings; rhs != nil {
-		tmpContainer := make([]*commonpb.Posting, len(rhs))
+		tmpContainer := make([]*grpc.Posting, len(rhs))
 		for k, v := range rhs {
 			tmpContainer[k] = v.CloneVT()
 		}
 		r.ReversePostings = tmpContainer
 	}
 	if rhs := m.Metadata; rhs != nil {
-		tmpContainer := make(map[string]*commonpb.MetadataValue, len(rhs))
+		tmpContainer := make(map[string]*grpc.MetadataValue, len(rhs))
 		for k, v := range rhs {
 			tmpContainer[k] = v.CloneVT()
 		}
@@ -914,7 +914,7 @@ func (m *LedgerApplyOrder) CloneVT() *LedgerApplyOrder {
 		}).CloneVT()
 	}
 	if rhs := m.SkippableReasons; rhs != nil {
-		tmpContainer := make([]commonpb.ErrorReason, len(rhs))
+		tmpContainer := make([]grpc.ErrorReason, len(rhs))
 		copy(tmpContainer, rhs)
 		r.SkippableReasons = tmpContainer
 	}
@@ -1161,21 +1161,21 @@ func (m *CreateTransactionOrder) CloneVT() *CreateTransactionOrder {
 	r.Force = m.Force
 	r.NumscriptReference = m.NumscriptReference.CloneVT()
 	if rhs := m.Postings; rhs != nil {
-		tmpContainer := make([]*commonpb.Posting, len(rhs))
+		tmpContainer := make([]*grpc.Posting, len(rhs))
 		for k, v := range rhs {
 			tmpContainer[k] = v.CloneVT()
 		}
 		r.Postings = tmpContainer
 	}
 	if rhs := m.Metadata; rhs != nil {
-		tmpContainer := make(map[string]*commonpb.MetadataValue, len(rhs))
+		tmpContainer := make(map[string]*grpc.MetadataValue, len(rhs))
 		for k, v := range rhs {
 			tmpContainer[k] = v.CloneVT()
 		}
 		r.Metadata = tmpContainer
 	}
 	if rhs := m.AccountMetadata; rhs != nil {
-		tmpContainer := make(map[string]*commonpb.MetadataMap, len(rhs))
+		tmpContainer := make(map[string]*grpc.MetadataMap, len(rhs))
 		for k, v := range rhs {
 			tmpContainer[k] = v.CloneVT()
 		}
@@ -1224,7 +1224,7 @@ func (m *SaveMetadataOrder) CloneVT() *SaveMetadataOrder {
 	r := new(SaveMetadataOrder)
 	r.Target = m.Target.CloneVT()
 	if rhs := m.Metadata; rhs != nil {
-		tmpContainer := make(map[string]*commonpb.MetadataValue, len(rhs))
+		tmpContainer := make(map[string]*grpc.MetadataValue, len(rhs))
 		for k, v := range rhs {
 			tmpContainer[k] = v.CloneVT()
 		}
@@ -1250,7 +1250,7 @@ func (m *RevertTransactionOrder) CloneVT() *RevertTransactionOrder {
 	r.Force = m.Force
 	r.AtEffectiveDate = m.AtEffectiveDate
 	if rhs := m.Metadata; rhs != nil {
-		tmpContainer := make(map[string]*commonpb.MetadataValue, len(rhs))
+		tmpContainer := make(map[string]*grpc.MetadataValue, len(rhs))
 		for k, v := range rhs {
 			tmpContainer[k] = v.CloneVT()
 		}
@@ -1291,7 +1291,7 @@ func (m *SaveLedgerMetadataOrder) CloneVT() *SaveLedgerMetadataOrder {
 	}
 	r := new(SaveLedgerMetadataOrder)
 	if rhs := m.Metadata; rhs != nil {
-		tmpContainer := make(map[string]*commonpb.MetadataValue, len(rhs))
+		tmpContainer := make(map[string]*grpc.MetadataValue, len(rhs))
 		for k, v := range rhs {
 			tmpContainer[k] = v.CloneVT()
 		}
@@ -1336,13 +1336,19 @@ func (m *Proposal) CloneVT() *Proposal {
 	r.PredictedIndex = m.PredictedIndex
 	r.CallerSnapshot = m.CallerSnapshot.CloneVT()
 	r.Idempotency = m.Idempotency.CloneVT()
-	r.Signature = m.Signature.CloneVT()
 	if rhs := m.Orders; rhs != nil {
 		tmpContainer := make([]*Order, len(rhs))
 		for k, v := range rhs {
 			tmpContainer[k] = v.CloneVT()
 		}
 		r.Orders = tmpContainer
+	}
+	if rhs := m.Signature; rhs != nil {
+		if vtpb, ok := interface{}(rhs).(interface{ CloneVT() *grpc.SignedApplyBatch }); ok {
+			r.Signature = vtpb.CloneVT()
+		} else {
+			r.Signature = proto.Clone(rhs).(*grpc.SignedApplyBatch)
+		}
 	}
 	if rhs := m.TechnicalUpdates; rhs != nil {
 		tmpContainer := make([]*TechnicalUpdate, len(rhs))
@@ -3127,10 +3133,10 @@ func (this *CreateLedgerOrder) EqualVT(that *CreateLedgerOrder) bool {
 		vy := that.InitialSchema[i]
 		if p, q := vx, vy; p != q {
 			if p == nil {
-				p = &commonpb.SetMetadataFieldTypeCommand{}
+				p = &grpc.SetMetadataFieldTypeCommand{}
 			}
 			if q == nil {
-				q = &commonpb.SetMetadataFieldTypeCommand{}
+				q = &grpc.SetMetadataFieldTypeCommand{}
 			}
 			if !p.EqualVT(q) {
 				return false
@@ -3153,10 +3159,10 @@ func (this *CreateLedgerOrder) EqualVT(that *CreateLedgerOrder) bool {
 		}
 		if p, q := vx, vy; p != q {
 			if p == nil {
-				p = &commonpb.AccountType{}
+				p = &grpc.AccountType{}
 			}
 			if q == nil {
-				q = &commonpb.AccountType{}
+				q = &grpc.AccountType{}
 			}
 			if !p.EqualVT(q) {
 				return false
@@ -3395,10 +3401,10 @@ func (this *MirrorCreatedTransaction) EqualVT(that *MirrorCreatedTransaction) bo
 		vy := that.Postings[i]
 		if p, q := vx, vy; p != q {
 			if p == nil {
-				p = &commonpb.Posting{}
+				p = &grpc.Posting{}
 			}
 			if q == nil {
-				q = &commonpb.Posting{}
+				q = &grpc.Posting{}
 			}
 			if !p.EqualVT(q) {
 				return false
@@ -3415,10 +3421,10 @@ func (this *MirrorCreatedTransaction) EqualVT(that *MirrorCreatedTransaction) bo
 		}
 		if p, q := vx, vy; p != q {
 			if p == nil {
-				p = &commonpb.MetadataValue{}
+				p = &grpc.MetadataValue{}
 			}
 			if q == nil {
-				q = &commonpb.MetadataValue{}
+				q = &grpc.MetadataValue{}
 			}
 			if !p.EqualVT(q) {
 				return false
@@ -3441,10 +3447,10 @@ func (this *MirrorCreatedTransaction) EqualVT(that *MirrorCreatedTransaction) bo
 		}
 		if p, q := vx, vy; p != q {
 			if p == nil {
-				p = &commonpb.MetadataMap{}
+				p = &grpc.MetadataMap{}
 			}
 			if q == nil {
-				q = &commonpb.MetadataMap{}
+				q = &grpc.MetadataMap{}
 			}
 			if !p.EqualVT(q) {
 				return false
@@ -3480,10 +3486,10 @@ func (this *MirrorSavedMetadata) EqualVT(that *MirrorSavedMetadata) bool {
 		}
 		if p, q := vx, vy; p != q {
 			if p == nil {
-				p = &commonpb.MetadataValue{}
+				p = &grpc.MetadataValue{}
 			}
 			if q == nil {
-				q = &commonpb.MetadataValue{}
+				q = &grpc.MetadataValue{}
 			}
 			if !p.EqualVT(q) {
 				return false
@@ -3519,10 +3525,10 @@ func (this *MirrorRevertedTransaction) EqualVT(that *MirrorRevertedTransaction) 
 		vy := that.ReversePostings[i]
 		if p, q := vx, vy; p != q {
 			if p == nil {
-				p = &commonpb.Posting{}
+				p = &grpc.Posting{}
 			}
 			if q == nil {
-				q = &commonpb.Posting{}
+				q = &grpc.Posting{}
 			}
 			if !p.EqualVT(q) {
 				return false
@@ -3539,10 +3545,10 @@ func (this *MirrorRevertedTransaction) EqualVT(that *MirrorRevertedTransaction) 
 		}
 		if p, q := vx, vy; p != q {
 			if p == nil {
-				p = &commonpb.MetadataValue{}
+				p = &grpc.MetadataValue{}
 			}
 			if q == nil {
-				q = &commonpb.MetadataValue{}
+				q = &grpc.MetadataValue{}
 			}
 			if !p.EqualVT(q) {
 				return false
@@ -4083,10 +4089,10 @@ func (this *CreateTransactionOrder) EqualVT(that *CreateTransactionOrder) bool {
 		vy := that.Postings[i]
 		if p, q := vx, vy; p != q {
 			if p == nil {
-				p = &commonpb.Posting{}
+				p = &grpc.Posting{}
 			}
 			if q == nil {
-				q = &commonpb.Posting{}
+				q = &grpc.Posting{}
 			}
 			if !p.EqualVT(q) {
 				return false
@@ -4112,10 +4118,10 @@ func (this *CreateTransactionOrder) EqualVT(that *CreateTransactionOrder) bool {
 		}
 		if p, q := vx, vy; p != q {
 			if p == nil {
-				p = &commonpb.MetadataValue{}
+				p = &grpc.MetadataValue{}
 			}
 			if q == nil {
-				q = &commonpb.MetadataValue{}
+				q = &grpc.MetadataValue{}
 			}
 			if !p.EqualVT(q) {
 				return false
@@ -4132,10 +4138,10 @@ func (this *CreateTransactionOrder) EqualVT(that *CreateTransactionOrder) bool {
 		}
 		if p, q := vx, vy; p != q {
 			if p == nil {
-				p = &commonpb.MetadataMap{}
+				p = &grpc.MetadataMap{}
 			}
 			if q == nil {
-				q = &commonpb.MetadataMap{}
+				q = &grpc.MetadataMap{}
 			}
 			if !p.EqualVT(q) {
 				return false
@@ -4211,10 +4217,10 @@ func (this *SaveMetadataOrder) EqualVT(that *SaveMetadataOrder) bool {
 		}
 		if p, q := vx, vy; p != q {
 			if p == nil {
-				p = &commonpb.MetadataValue{}
+				p = &grpc.MetadataValue{}
 			}
 			if q == nil {
-				q = &commonpb.MetadataValue{}
+				q = &grpc.MetadataValue{}
 			}
 			if !p.EqualVT(q) {
 				return false
@@ -4256,10 +4262,10 @@ func (this *RevertTransactionOrder) EqualVT(that *RevertTransactionOrder) bool {
 		}
 		if p, q := vx, vy; p != q {
 			if p == nil {
-				p = &commonpb.MetadataValue{}
+				p = &grpc.MetadataValue{}
 			}
 			if q == nil {
-				q = &commonpb.MetadataValue{}
+				q = &grpc.MetadataValue{}
 			}
 			if !p.EqualVT(q) {
 				return false
@@ -4314,10 +4320,10 @@ func (this *SaveLedgerMetadataOrder) EqualVT(that *SaveLedgerMetadataOrder) bool
 		}
 		if p, q := vx, vy; p != q {
 			if p == nil {
-				p = &commonpb.MetadataValue{}
+				p = &grpc.MetadataValue{}
 			}
 			if q == nil {
-				q = &commonpb.MetadataValue{}
+				q = &grpc.MetadataValue{}
 			}
 			if !p.EqualVT(q) {
 				return false
@@ -4394,7 +4400,13 @@ func (this *Proposal) EqualVT(that *Proposal) bool {
 	if !this.Idempotency.EqualVT(that.Idempotency) {
 		return false
 	}
-	if !this.Signature.EqualVT(that.Signature) {
+	if equal, ok := interface{}(this.Signature).(interface {
+		EqualVT(*grpc.SignedApplyBatch) bool
+	}); ok {
+		if !equal.EqualVT(that.Signature) {
+			return false
+		}
+	} else if !proto.Equal(this.Signature, that.Signature) {
 		return false
 	}
 	if len(this.TechnicalUpdates) != len(that.TechnicalUpdates) {
@@ -4543,10 +4555,10 @@ func (this *TechnicalUpdate_ClusterConfig) EqualVT(thatIface isTechnicalUpdate_K
 	}
 	if p, q := this.ClusterConfig, that.ClusterConfig; p != q {
 		if p == nil {
-			p = &commonpb.ClusterConfig{}
+			p = &grpc.ClusterConfig{}
 		}
 		if q == nil {
-			q = &commonpb.ClusterConfig{}
+			q = &grpc.ClusterConfig{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -5227,10 +5239,10 @@ func (this *CreatedLogOrReference_CreatedLog) EqualVT(thatIface isCreatedLogOrRe
 	}
 	if p, q := this.CreatedLog, that.CreatedLog; p != q {
 		if p == nil {
-			p = &commonpb.Log{}
+			p = &grpc.Log{}
 		}
 		if q == nil {
-			q = &commonpb.Log{}
+			q = &grpc.Log{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -8756,12 +8768,24 @@ func (m *Proposal) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		}
 	}
 	if m.Signature != nil {
-		size, err := m.Signature.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
+		if vtmsg, ok := interface{}(m.Signature).(interface {
+			MarshalToSizedBufferVT([]byte) (int, error)
+		}); ok {
+			size, err := vtmsg.MarshalToSizedBufferVT(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		} else {
+			encoded, err := proto.Marshal(m.Signature)
+			if err != nil {
+				return 0, err
+			}
+			i -= len(encoded)
+			copy(dAtA[i:], encoded)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(encoded)))
 		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
 		dAtA[i] = 0x42
 	}
@@ -12121,7 +12145,13 @@ func (m *Proposal) SizeVT() (n int) {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	if m.Signature != nil {
-		l = m.Signature.SizeVT()
+		if size, ok := interface{}(m.Signature).(interface {
+			SizeVT() int
+		}); ok {
+			l = size.SizeVT()
+		} else {
+			l = proto.Size(m.Signature)
+		}
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	if len(m.TechnicalUpdates) > 0 {
@@ -14302,7 +14332,7 @@ func (m *CreatePreparedQueryOrder) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Query == nil {
-				m.Query = &commonpb.PreparedQuery{}
+				m.Query = &grpc.PreparedQuery{}
 			}
 			if err := m.Query.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -14421,7 +14451,7 @@ func (m *UpdatePreparedQueryOrder) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Filter == nil {
-				m.Filter = &commonpb.QueryFilter{}
+				m.Filter = &grpc.QueryFilter{}
 			}
 			if err := m.Filter.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -14591,7 +14621,7 @@ func (m *AddEventsSinkOrder) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Config == nil {
-				m.Config = &commonpb.SinkConfig{}
+				m.Config = &grpc.SinkConfig{}
 			}
 			if err := m.Config.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -15187,7 +15217,7 @@ func (m *SetClusterPolicyOrder) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Policy == nil {
-				m.Policy = &commonpb.ClusterPolicy{}
+				m.Policy = &grpc.ClusterPolicy{}
 			}
 			if err := m.Policy.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -15553,7 +15583,7 @@ func (m *QueryCheckpointState) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.CreatedAt == nil {
-				m.CreatedAt = &commonpb.Timestamp{}
+				m.CreatedAt = &grpc.Timestamp{}
 			}
 			if err := m.CreatedAt.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -15803,7 +15833,7 @@ func (m *CreateLedgerOrder) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.InitialSchema = append(m.InitialSchema, &commonpb.SetMetadataFieldTypeCommand{})
+			m.InitialSchema = append(m.InitialSchema, &grpc.SetMetadataFieldTypeCommand{})
 			if err := m.InitialSchema[len(m.InitialSchema)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -15822,7 +15852,7 @@ func (m *CreateLedgerOrder) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Mode |= commonpb.LedgerMode(b&0x7F) << shift
+				m.Mode |= grpc.LedgerMode(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -15857,7 +15887,7 @@ func (m *CreateLedgerOrder) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.MirrorSource == nil {
-				m.MirrorSource = &commonpb.MirrorSourceConfig{}
+				m.MirrorSource = &grpc.MirrorSourceConfig{}
 			}
 			if err := m.MirrorSource.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -15893,10 +15923,10 @@ func (m *CreateLedgerOrder) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.AccountTypes == nil {
-				m.AccountTypes = make(map[string]*commonpb.AccountType)
+				m.AccountTypes = make(map[string]*grpc.AccountType)
 			}
 			var mapkey string
-			var mapvalue *commonpb.AccountType
+			var mapvalue *grpc.AccountType
 			for iNdEx < postIndex {
 				entryPreIndex := iNdEx
 				var wire uint64
@@ -15970,7 +16000,7 @@ func (m *CreateLedgerOrder) UnmarshalVT(dAtA []byte) error {
 					if postmsgIndex > l {
 						return io.ErrUnexpectedEOF
 					}
-					mapvalue = &commonpb.AccountType{}
+					mapvalue = &grpc.AccountType{}
 					if err := mapvalue.UnmarshalVT(dAtA[iNdEx:postmsgIndex]); err != nil {
 						return err
 					}
@@ -16006,7 +16036,7 @@ func (m *CreateLedgerOrder) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.DefaultEnforcementMode |= commonpb.ChartEnforcementMode(b&0x7F) << shift
+				m.DefaultEnforcementMode |= grpc.ChartEnforcementMode(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -16189,7 +16219,7 @@ func (m *MirrorLogEntry) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Date == nil {
-				m.Date = &commonpb.Timestamp{}
+				m.Date = &grpc.Timestamp{}
 			}
 			if err := m.Date.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -16593,7 +16623,7 @@ func (m *MirrorCreatedTransaction) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Postings = append(m.Postings, &commonpb.Posting{})
+			m.Postings = append(m.Postings, &grpc.Posting{})
 			if err := m.Postings[len(m.Postings)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -16628,10 +16658,10 @@ func (m *MirrorCreatedTransaction) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Metadata == nil {
-				m.Metadata = make(map[string]*commonpb.MetadataValue)
+				m.Metadata = make(map[string]*grpc.MetadataValue)
 			}
 			var mapkey string
-			var mapvalue *commonpb.MetadataValue
+			var mapvalue *grpc.MetadataValue
 			for iNdEx < postIndex {
 				entryPreIndex := iNdEx
 				var wire uint64
@@ -16705,7 +16735,7 @@ func (m *MirrorCreatedTransaction) UnmarshalVT(dAtA []byte) error {
 					if postmsgIndex > l {
 						return io.ErrUnexpectedEOF
 					}
-					mapvalue = &commonpb.MetadataValue{}
+					mapvalue = &grpc.MetadataValue{}
 					if err := mapvalue.UnmarshalVT(dAtA[iNdEx:postmsgIndex]); err != nil {
 						return err
 					}
@@ -16757,7 +16787,7 @@ func (m *MirrorCreatedTransaction) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Timestamp == nil {
-				m.Timestamp = &commonpb.Timestamp{}
+				m.Timestamp = &grpc.Timestamp{}
 			}
 			if err := m.Timestamp.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -16825,10 +16855,10 @@ func (m *MirrorCreatedTransaction) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.AccountMetadata == nil {
-				m.AccountMetadata = make(map[string]*commonpb.MetadataMap)
+				m.AccountMetadata = make(map[string]*grpc.MetadataMap)
 			}
 			var mapkey string
-			var mapvalue *commonpb.MetadataMap
+			var mapvalue *grpc.MetadataMap
 			for iNdEx < postIndex {
 				entryPreIndex := iNdEx
 				var wire uint64
@@ -16902,7 +16932,7 @@ func (m *MirrorCreatedTransaction) UnmarshalVT(dAtA []byte) error {
 					if postmsgIndex > l {
 						return io.ErrUnexpectedEOF
 					}
-					mapvalue = &commonpb.MetadataMap{}
+					mapvalue = &grpc.MetadataMap{}
 					if err := mapvalue.UnmarshalVT(dAtA[iNdEx:postmsgIndex]); err != nil {
 						return err
 					}
@@ -17005,7 +17035,7 @@ func (m *MirrorSavedMetadata) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Target == nil {
-				m.Target = &commonpb.Target{}
+				m.Target = &grpc.Target{}
 			}
 			if err := m.Target.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -17041,10 +17071,10 @@ func (m *MirrorSavedMetadata) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Metadata == nil {
-				m.Metadata = make(map[string]*commonpb.MetadataValue)
+				m.Metadata = make(map[string]*grpc.MetadataValue)
 			}
 			var mapkey string
-			var mapvalue *commonpb.MetadataValue
+			var mapvalue *grpc.MetadataValue
 			for iNdEx < postIndex {
 				entryPreIndex := iNdEx
 				var wire uint64
@@ -17118,7 +17148,7 @@ func (m *MirrorSavedMetadata) UnmarshalVT(dAtA []byte) error {
 					if postmsgIndex > l {
 						return io.ErrUnexpectedEOF
 					}
-					mapvalue = &commonpb.MetadataValue{}
+					mapvalue = &grpc.MetadataValue{}
 					if err := mapvalue.UnmarshalVT(dAtA[iNdEx:postmsgIndex]); err != nil {
 						return err
 					}
@@ -17240,7 +17270,7 @@ func (m *MirrorRevertedTransaction) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.ReversePostings = append(m.ReversePostings, &commonpb.Posting{})
+			m.ReversePostings = append(m.ReversePostings, &grpc.Posting{})
 			if err := m.ReversePostings[len(m.ReversePostings)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -17275,10 +17305,10 @@ func (m *MirrorRevertedTransaction) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Metadata == nil {
-				m.Metadata = make(map[string]*commonpb.MetadataValue)
+				m.Metadata = make(map[string]*grpc.MetadataValue)
 			}
 			var mapkey string
-			var mapvalue *commonpb.MetadataValue
+			var mapvalue *grpc.MetadataValue
 			for iNdEx < postIndex {
 				entryPreIndex := iNdEx
 				var wire uint64
@@ -17352,7 +17382,7 @@ func (m *MirrorRevertedTransaction) UnmarshalVT(dAtA []byte) error {
 					if postmsgIndex > l {
 						return io.ErrUnexpectedEOF
 					}
-					mapvalue = &commonpb.MetadataValue{}
+					mapvalue = &grpc.MetadataValue{}
 					if err := mapvalue.UnmarshalVT(dAtA[iNdEx:postmsgIndex]); err != nil {
 						return err
 					}
@@ -17404,7 +17434,7 @@ func (m *MirrorRevertedTransaction) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Timestamp == nil {
-				m.Timestamp = &commonpb.Timestamp{}
+				m.Timestamp = &grpc.Timestamp{}
 			}
 			if err := m.Timestamp.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -17491,7 +17521,7 @@ func (m *MirrorDeletedMetadata) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Target == nil {
-				m.Target = &commonpb.Target{}
+				m.Target = &grpc.Target{}
 			}
 			if err := m.Target.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -18135,7 +18165,7 @@ func (m *LedgerApplyOrder) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 12:
 			if wireType == 0 {
-				var v commonpb.ErrorReason
+				var v grpc.ErrorReason
 				for shift := uint(0); ; shift += 7 {
 					if shift >= 64 {
 						return protohelpers.ErrIntOverflow
@@ -18145,7 +18175,7 @@ func (m *LedgerApplyOrder) UnmarshalVT(dAtA []byte) error {
 					}
 					b := dAtA[iNdEx]
 					iNdEx++
-					v |= commonpb.ErrorReason(b&0x7F) << shift
+					v |= grpc.ErrorReason(b&0x7F) << shift
 					if b < 0x80 {
 						break
 					}
@@ -18179,10 +18209,10 @@ func (m *LedgerApplyOrder) UnmarshalVT(dAtA []byte) error {
 				}
 				var elementCount int
 				if elementCount != 0 && len(m.SkippableReasons) == 0 {
-					m.SkippableReasons = make([]commonpb.ErrorReason, 0, elementCount)
+					m.SkippableReasons = make([]grpc.ErrorReason, 0, elementCount)
 				}
 				for iNdEx < postIndex {
-					var v commonpb.ErrorReason
+					var v grpc.ErrorReason
 					for shift := uint(0); ; shift += 7 {
 						if shift >= 64 {
 							return protohelpers.ErrIntOverflow
@@ -18192,7 +18222,7 @@ func (m *LedgerApplyOrder) UnmarshalVT(dAtA []byte) error {
 						}
 						b := dAtA[iNdEx]
 						iNdEx++
-						v |= commonpb.ErrorReason(b&0x7F) << shift
+						v |= grpc.ErrorReason(b&0x7F) << shift
 						if b < 0x80 {
 							break
 						}
@@ -18283,7 +18313,7 @@ func (m *CreateIndexOrder) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Id == nil {
-				m.Id = &commonpb.IndexID{}
+				m.Id = &grpc.IndexID{}
 			}
 			if err := m.Id.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -18370,7 +18400,7 @@ func (m *DropIndexOrder) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Id == nil {
-				m.Id = &commonpb.IndexID{}
+				m.Id = &grpc.IndexID{}
 			}
 			if err := m.Id.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -18457,7 +18487,7 @@ func (m *AddAccountTypeOrder) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.AccountType == nil {
-				m.AccountType = &commonpb.AccountType{}
+				m.AccountType = &grpc.AccountType{}
 			}
 			if err := m.AccountType.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -18611,7 +18641,7 @@ func (m *UpdateDefaultEnforcementModeOrder) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.EnforcementMode |= commonpb.ChartEnforcementMode(b&0x7F) << shift
+				m.EnforcementMode |= grpc.ChartEnforcementMode(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -18681,7 +18711,7 @@ func (m *SetMetadataFieldTypeOrder) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.TargetType |= commonpb.TargetType(b&0x7F) << shift
+				m.TargetType |= grpc.TargetType(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -18732,7 +18762,7 @@ func (m *SetMetadataFieldTypeOrder) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Type |= commonpb.MetadataType(b&0x7F) << shift
+				m.Type |= grpc.MetadataType(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -18802,7 +18832,7 @@ func (m *RemoveMetadataFieldTypeOrder) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.TargetType |= commonpb.TargetType(b&0x7F) << shift
+				m.TargetType |= grpc.TargetType(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -18919,7 +18949,7 @@ func (m *CreateTransactionOrder) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Postings = append(m.Postings, &commonpb.Posting{})
+			m.Postings = append(m.Postings, &grpc.Posting{})
 			if err := m.Postings[len(m.Postings)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -18954,7 +18984,7 @@ func (m *CreateTransactionOrder) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Script == nil {
-				m.Script = &commonpb.Script{}
+				m.Script = &grpc.Script{}
 			}
 			if err := m.Script.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -18990,7 +19020,7 @@ func (m *CreateTransactionOrder) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Timestamp == nil {
-				m.Timestamp = &commonpb.Timestamp{}
+				m.Timestamp = &grpc.Timestamp{}
 			}
 			if err := m.Timestamp.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -19058,10 +19088,10 @@ func (m *CreateTransactionOrder) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Metadata == nil {
-				m.Metadata = make(map[string]*commonpb.MetadataValue)
+				m.Metadata = make(map[string]*grpc.MetadataValue)
 			}
 			var mapkey string
-			var mapvalue *commonpb.MetadataValue
+			var mapvalue *grpc.MetadataValue
 			for iNdEx < postIndex {
 				entryPreIndex := iNdEx
 				var wire uint64
@@ -19135,7 +19165,7 @@ func (m *CreateTransactionOrder) UnmarshalVT(dAtA []byte) error {
 					if postmsgIndex > l {
 						return io.ErrUnexpectedEOF
 					}
-					mapvalue = &commonpb.MetadataValue{}
+					mapvalue = &grpc.MetadataValue{}
 					if err := mapvalue.UnmarshalVT(dAtA[iNdEx:postmsgIndex]); err != nil {
 						return err
 					}
@@ -19187,10 +19217,10 @@ func (m *CreateTransactionOrder) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.AccountMetadata == nil {
-				m.AccountMetadata = make(map[string]*commonpb.MetadataMap)
+				m.AccountMetadata = make(map[string]*grpc.MetadataMap)
 			}
 			var mapkey string
-			var mapvalue *commonpb.MetadataMap
+			var mapvalue *grpc.MetadataMap
 			for iNdEx < postIndex {
 				entryPreIndex := iNdEx
 				var wire uint64
@@ -19264,7 +19294,7 @@ func (m *CreateTransactionOrder) UnmarshalVT(dAtA []byte) error {
 					if postmsgIndex > l {
 						return io.ErrUnexpectedEOF
 					}
-					mapvalue = &commonpb.MetadataMap{}
+					mapvalue = &grpc.MetadataMap{}
 					if err := mapvalue.UnmarshalVT(dAtA[iNdEx:postmsgIndex]); err != nil {
 						return err
 					}
@@ -19665,7 +19695,7 @@ func (m *SaveMetadataOrder) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Target == nil {
-				m.Target = &commonpb.Target{}
+				m.Target = &grpc.Target{}
 			}
 			if err := m.Target.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -19701,10 +19731,10 @@ func (m *SaveMetadataOrder) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Metadata == nil {
-				m.Metadata = make(map[string]*commonpb.MetadataValue)
+				m.Metadata = make(map[string]*grpc.MetadataValue)
 			}
 			var mapkey string
-			var mapvalue *commonpb.MetadataValue
+			var mapvalue *grpc.MetadataValue
 			for iNdEx < postIndex {
 				entryPreIndex := iNdEx
 				var wire uint64
@@ -19778,7 +19808,7 @@ func (m *SaveMetadataOrder) UnmarshalVT(dAtA []byte) error {
 					if postmsgIndex > l {
 						return io.ErrUnexpectedEOF
 					}
-					mapvalue = &commonpb.MetadataValue{}
+					mapvalue = &grpc.MetadataValue{}
 					if err := mapvalue.UnmarshalVT(dAtA[iNdEx:postmsgIndex]); err != nil {
 						return err
 					}
@@ -19931,10 +19961,10 @@ func (m *RevertTransactionOrder) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Metadata == nil {
-				m.Metadata = make(map[string]*commonpb.MetadataValue)
+				m.Metadata = make(map[string]*grpc.MetadataValue)
 			}
 			var mapkey string
-			var mapvalue *commonpb.MetadataValue
+			var mapvalue *grpc.MetadataValue
 			for iNdEx < postIndex {
 				entryPreIndex := iNdEx
 				var wire uint64
@@ -20008,7 +20038,7 @@ func (m *RevertTransactionOrder) UnmarshalVT(dAtA []byte) error {
 					if postmsgIndex > l {
 						return io.ErrUnexpectedEOF
 					}
-					mapvalue = &commonpb.MetadataValue{}
+					mapvalue = &grpc.MetadataValue{}
 					if err := mapvalue.UnmarshalVT(dAtA[iNdEx:postmsgIndex]); err != nil {
 						return err
 					}
@@ -20111,7 +20141,7 @@ func (m *DeleteMetadataOrder) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Target == nil {
-				m.Target = &commonpb.Target{}
+				m.Target = &grpc.Target{}
 			}
 			if err := m.Target.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -20230,10 +20260,10 @@ func (m *SaveLedgerMetadataOrder) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Metadata == nil {
-				m.Metadata = make(map[string]*commonpb.MetadataValue)
+				m.Metadata = make(map[string]*grpc.MetadataValue)
 			}
 			var mapkey string
-			var mapvalue *commonpb.MetadataValue
+			var mapvalue *grpc.MetadataValue
 			for iNdEx < postIndex {
 				entryPreIndex := iNdEx
 				var wire uint64
@@ -20307,7 +20337,7 @@ func (m *SaveLedgerMetadataOrder) UnmarshalVT(dAtA []byte) error {
 					if postmsgIndex > l {
 						return io.ErrUnexpectedEOF
 					}
-					mapvalue = &commonpb.MetadataValue{}
+					mapvalue = &grpc.MetadataValue{}
 					if err := mapvalue.UnmarshalVT(dAtA[iNdEx:postmsgIndex]); err != nil {
 						return err
 					}
@@ -20544,7 +20574,7 @@ func (m *Proposal) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Date == nil {
-				m.Date = &commonpb.Timestamp{}
+				m.Date = &grpc.Timestamp{}
 			}
 			if err := m.Date.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -20626,7 +20656,7 @@ func (m *Proposal) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.CallerSnapshot == nil {
-				m.CallerSnapshot = &commonpb.CallerSnapshot{}
+				m.CallerSnapshot = &grpc.CallerSnapshot{}
 			}
 			if err := m.CallerSnapshot.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -20662,7 +20692,7 @@ func (m *Proposal) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Idempotency == nil {
-				m.Idempotency = &commonpb.Idempotency{}
+				m.Idempotency = &grpc.Idempotency{}
 			}
 			if err := m.Idempotency.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -20698,10 +20728,18 @@ func (m *Proposal) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Signature == nil {
-				m.Signature = &signaturepb.SignedApplyBatch{}
+				m.Signature = &grpc.SignedApplyBatch{}
 			}
-			if err := m.Signature.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
+			if unmarshal, ok := interface{}(m.Signature).(interface {
+				UnmarshalVT([]byte) error
+			}); ok {
+				if err := unmarshal.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				if err := proto.Unmarshal(dAtA[iNdEx:postIndex], m.Signature); err != nil {
+					return err
+				}
 			}
 			iNdEx = postIndex
 		case 9:
@@ -20987,7 +21025,7 @@ func (m *TechnicalUpdate) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 			} else {
-				v := &commonpb.ClusterConfig{}
+				v := &grpc.ClusterConfig{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
@@ -22906,7 +22944,7 @@ func (m *MirrorSyncUpdate) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Error == nil {
-				m.Error = &commonpb.MirrorSyncError{}
+				m.Error = &grpc.MirrorSyncError{}
 			}
 			if err := m.Error.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -23065,7 +23103,7 @@ func (m *EventsSinkUpdate) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Error == nil {
-				m.Error = &commonpb.SinkError{}
+				m.Error = &grpc.SinkError{}
 			}
 			if err := m.Error.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -23176,7 +23214,7 @@ func (m *CreatedLogOrReference) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 			} else {
-				v := &commonpb.Log{}
+				v := &grpc.Log{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
@@ -23356,7 +23394,7 @@ func (m *VolumePair) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Input == nil {
-				m.Input = &commonpb.Uint256{}
+				m.Input = &grpc.Uint256{}
 			}
 			if err := m.Input.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -23392,7 +23430,7 @@ func (m *VolumePair) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Output == nil {
-				m.Output = &commonpb.Uint256{}
+				m.Output = &grpc.Uint256{}
 			}
 			if err := m.Output.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -23965,7 +24003,7 @@ func (m *ReloadIdempotencyKey) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Value == nil {
-				m.Value = &commonpb.IdempotencyKeyValue{}
+				m.Value = &internalcommonpb.IdempotencyKeyValue{}
 			}
 			if err := m.Value.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err

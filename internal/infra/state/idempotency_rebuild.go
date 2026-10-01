@@ -1,10 +1,11 @@
 package state
 
 import (
+	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -20,7 +21,7 @@ import (
 // Shared by the integrity checker (which compares it against the stored
 // projection) and the backup restore path (which persists it via
 // SaveIdempotencyKey), so the two never diverge.
-func IdempotencyValueFromAudit(entry *auditpb.AuditEntry, items []*auditpb.AuditItem) (*commonpb.IdempotencyKeyValue, bool) {
+func IdempotencyValueFromAudit(entry *auditpb.AuditEntry, items []*auditpb.AuditItem) (*internalcommonpb.IdempotencyKeyValue, bool) {
 	switch out := entry.GetOutcome().(type) {
 	case *auditpb.AuditEntry_Failure:
 		reason := out.Failure.GetReason()
@@ -32,7 +33,7 @@ func IdempotencyValueFromAudit(entry *auditpb.AuditEntry, items []*auditpb.Audit
 		// records whether a reuse hit a live prior (conflict) or executed fresh
 		// (a normal reason), so no expiry re-derivation is needed to tell them
 		// apart.
-		if reason == commonpb.ErrorReason_ERROR_REASON_IDEMPOTENCY_KEY_CONFLICT {
+		if reason == auditpb.ErrorReason_ERROR_REASON_IDEMPOTENCY_KEY_CONFLICT {
 			return nil, false
 		}
 
@@ -40,11 +41,11 @@ func IdempotencyValueFromAudit(entry *auditpb.AuditEntry, items []*auditpb.Audit
 			return nil, false
 		}
 
-		return &commonpb.IdempotencyKeyValue{
+		return &internalcommonpb.IdempotencyKeyValue{
 			Hash:      recomputeProposalHash(items),
 			CreatedAt: entry.GetTimestamp().GetData(),
 			ExpiresAt: entry.GetIdempotency().GetExpiresAt(),
-			Failure: &commonpb.IdempotencyFailure{
+			Failure: &internalcommonpb.IdempotencyFailure{
 				Reason:   reason,
 				Message:  out.Failure.GetMessage(),
 				Metadata: out.Failure.GetContext(),
@@ -59,7 +60,7 @@ func IdempotencyValueFromAudit(entry *auditpb.AuditEntry, items []*auditpb.Audit
 
 		minSeq := out.Success.GetMinLogSequence()
 
-		return &commonpb.IdempotencyKeyValue{
+		return &internalcommonpb.IdempotencyKeyValue{
 			Hash:             recomputeProposalHash(items),
 			FirstLogSequence: minSeq,
 			LogCount:         uint32(maxSeq - minSeq + 1),

@@ -1,8 +1,10 @@
 package processing
 
 import (
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -53,8 +55,8 @@ type Scope interface {
 	Volumes() Accessor[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader]
 	AccountMetadata() Accessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]
 	LedgerMetadata() Accessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]
-	TransactionReferences() Accessor[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader]
-	TransactionStates() Accessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]
+	TransactionReferences() Accessor[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader]
+	TransactionStates() Accessor[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader]
 	PreparedQueries() Accessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader]
 	Indexes() Accessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]
 

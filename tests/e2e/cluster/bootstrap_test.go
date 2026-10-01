@@ -4,6 +4,7 @@ package cluster
 
 import (
 	"context"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -16,11 +17,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/store"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -131,7 +130,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 	Describe("Phase 1: Create data and backup", Ordered, func() {
 		var (
 			sourceServer  *testservice.Service
-			client        servicepb.BucketServiceClient
+			client        clusterpb.BucketServiceClient
 			clusterClient clusterpb.ClusterServiceClient
 			grpcConn      *grpc.ClientConn
 		)
@@ -166,27 +165,27 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 				return state.Leader != 0
 			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
 
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, map[string]string{"env": "test"})))
+			_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, map[string]string{"env": "test"})))
 			Expect(err).To(Succeed())
 
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*clusterpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(bankFunding), "USD"),
 			}, map[string]string{"type": "funding"}, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*clusterpb.Posting{
 				actions.NewPosting("bank", "alice", big.NewInt(aliceTransfer), "USD"),
 				actions.NewPosting("bank", "bob", big.NewInt(bobTransfer), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "customer"})))
+			_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "customer"})))
 			Expect(err).To(Succeed())
 
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledger2, nil)))
+			_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledger2, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledger2, []*commonpb.Posting{
+			_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledger2, []*clusterpb.Posting{
 				actions.NewPosting("world", "treasury", big.NewInt(50000), "EUR"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -201,7 +200,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 
 		It("should take a backup to S3 with sequence metadata", func() {
 			resp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
-				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+				Storage: testutil.S3BackupStorage(&clusterpb.S3StorageConfig{
 					Bucket:   bootstrapS3Bucket,
 					Region:   bootstrapS3Region,
 					Endpoint: minioEndpoint,
@@ -217,14 +216,14 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 
 		It("should run incremental backup after adding more data", func() {
 			// Add more data after the full backup
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*clusterpb.Posting{
 				actions.NewPosting("bank", "eve", big.NewInt(eveTransfer), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 
 			// Run incremental backup
 			incrResp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
-				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+				Storage: testutil.S3BackupStorage(&clusterpb.S3StorageConfig{
 					Bucket:   bootstrapS3Bucket,
 					Region:   bootstrapS3Region,
 					Endpoint: minioEndpoint,
@@ -237,7 +236,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 
 			// Take a new full backup to include all data (clears exports)
 			fullResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
-				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+				Storage: testutil.S3BackupStorage(&clusterpb.S3StorageConfig{
 					Bucket:   bootstrapS3Bucket,
 					Region:   bootstrapS3Region,
 					Endpoint: minioEndpoint,
@@ -305,7 +304,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 	// Phase 3: Start server on bootstrapped data, verify everything.
 	Describe("Phase 3: Server bootstrap from offline-prepared data", Ordered, func() {
 		var (
-			client        servicepb.BucketServiceClient
+			client        clusterpb.BucketServiceClient
 			clusterClient clusterpb.ClusterServiceClient
 			grpcConn      *grpc.ClientConn
 			server        *testservice.Service
@@ -359,35 +358,35 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 		})
 
 		It("should have the correct account balances", func() {
-			aliceResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "alice"})
+			aliceResp, err := client.GetAccount(ctx, &clusterpb.GetAccountRequest{Ledger: ledgerName, Address: "alice"})
 			Expect(err).To(Succeed())
 			Expect(aliceResp.FindVolume("USD", "").Input).To(Equal(strconv.Itoa(aliceTransfer)))
 
-			bankResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "bank"})
+			bankResp, err := client.GetAccount(ctx, &clusterpb.GetAccountRequest{Ledger: ledgerName, Address: "bank"})
 			Expect(err).To(Succeed())
 			Expect(bankResp.FindVolume("USD", "").Input).To(Equal(strconv.Itoa(bankFunding)))
 			Expect(bankResp.FindVolume("USD", "").Output).To(Equal(strconv.Itoa(bankOutput)))
 		})
 
 		It("should have the correct account metadata", func() {
-			aliceResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "alice"})
+			aliceResp, err := client.GetAccount(ctx, &clusterpb.GetAccountRequest{Ledger: ledgerName, Address: "alice"})
 			Expect(err).To(Succeed())
-			Expect(commonpb.MetadataToGoMap(aliceResp.Metadata)).To(HaveKeyWithValue("role", "customer"))
+			Expect(protohelpers.MetadataToGoMap(aliceResp.Metadata)).To(HaveKeyWithValue("role", "customer"))
 		})
 
 		It("should have the data added after the first backup (via second full backup)", func() {
-			eveResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "eve"})
+			eveResp, err := client.GetAccount(ctx, &clusterpb.GetAccountRequest{Ledger: ledgerName, Address: "eve"})
 			Expect(err).To(Succeed())
 			Expect(eveResp.FindVolume("USD", "").Input).To(Equal(strconv.Itoa(eveTransfer)))
 		})
 
 		It("should accept new transactions after bootstrap", func() {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*clusterpb.Posting{
 				actions.NewPosting("bank", "charlie", big.NewInt(charlieTransfer), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 
-			charlieResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "charlie"})
+			charlieResp, err := client.GetAccount(ctx, &clusterpb.GetAccountRequest{Ledger: ledgerName, Address: "charlie"})
 			Expect(err).To(Succeed())
 			Expect(charlieResp.FindVolume("USD", "").Input).To(Equal(strconv.Itoa(charlieTransfer)))
 		})

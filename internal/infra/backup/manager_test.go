@@ -16,9 +16,8 @@ import (
 	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -636,7 +635,7 @@ func writeFailureAuditEntry(t *testing.T, store *dal.Store, seq uint64) {
 	entry := &auditpb.AuditEntry{
 		Sequence: seq,
 		Outcome: &auditpb.AuditEntry_Failure{
-			Failure: &auditpb.AuditFailure{Reason: commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS},
+			Failure: &auditpb.AuditFailure{Reason: auditpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS},
 		},
 	}
 

@@ -15,8 +15,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	restorepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
-	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
 )
 
 func TestClampParallelism(t *testing.T) {

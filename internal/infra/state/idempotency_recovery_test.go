@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 )
 
 // TestIdempotencyStore_RestoreFromStore_RebuildsMapFromPebble is the
@@ -22,7 +22,7 @@ func TestIdempotencyStore_RestoreFromStore_RebuildsMapFromPebble(t *testing.T) {
 	// Persist three idempotency entries via the normal batch write path.
 	batch := store.OpenWriteSession()
 
-	values := map[string]*commonpb.IdempotencyKeyValue{
+	values := map[string]*internalcommonpb.IdempotencyKeyValue{
 		"alpha": {FirstLogSequence: 1, LogCount: 1, CreatedAt: 1_000_000, ExpiresAt: 61_000_000},
 		"beta":  {FirstLogSequence: 2, LogCount: 2, CreatedAt: 2_000_000}, // ExpiresAt 0: never expires
 		"gamma": {FirstLogSequence: 3, LogCount: 1, CreatedAt: 3_000_000, ExpiresAt: 63_000_000},
@@ -81,13 +81,13 @@ func TestIdempotencyStore_RestoreFromStore_LoadsAllEntriesRegardlessOfAge(t *tes
 
 	batch := store.OpenWriteSession()
 
-	require.NoError(t, SaveIdempotencyKey(batch, "ancient", &commonpb.IdempotencyKeyValue{
+	require.NoError(t, SaveIdempotencyKey(batch, "ancient", &internalcommonpb.IdempotencyKeyValue{
 		FirstLogSequence: 1,
 		LogCount:         1,
 		CreatedAt:        ancientCreatedAt,
 		ExpiresAt:        ancientExpiresAt,
 	}))
-	require.NoError(t, SaveIdempotencyKey(batch, "fresh", &commonpb.IdempotencyKeyValue{
+	require.NoError(t, SaveIdempotencyKey(batch, "fresh", &internalcommonpb.IdempotencyKeyValue{
 		FirstLogSequence: 2,
 		LogCount:         1,
 		CreatedAt:        freshCreatedAt,
@@ -146,7 +146,7 @@ func TestIdempotencyStore_RestoreFromStore_OverwritesPriorEntries(t *testing.T) 
 	store := newTestStore(t)
 
 	batch := store.OpenWriteSession()
-	require.NoError(t, SaveIdempotencyKey(batch, "persisted", &commonpb.IdempotencyKeyValue{
+	require.NoError(t, SaveIdempotencyKey(batch, "persisted", &internalcommonpb.IdempotencyKeyValue{
 		FirstLogSequence: 42,
 		LogCount:         1,
 		CreatedAt:        1_000,
@@ -155,7 +155,7 @@ func TestIdempotencyStore_RestoreFromStore_OverwritesPriorEntries(t *testing.T) 
 
 	idemp := NewIdempotencyStore()
 	// Pre-populate with a value that ONLY lives in memory.
-	idemp.Put("memory-only", &commonpb.IdempotencyKeyValue{FirstLogSequence: 99, LogCount: 1})
+	idemp.Put("memory-only", &internalcommonpb.IdempotencyKeyValue{FirstLogSequence: 99, LogCount: 1})
 
 	handle, err := store.NewReadHandle()
 	require.NoError(t, err)

@@ -7,12 +7,13 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // TestAuthorizeUnsignedBatch_BootstrapExceptionClosesOnUndecodableRows pins the

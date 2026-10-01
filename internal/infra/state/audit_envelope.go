@@ -5,9 +5,7 @@ import (
 	"errors"
 	"slices"
 
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
+	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // ErrAuditEntryMissingOutcome is returned by BuildHashedHeaderPayload when the
@@ -157,7 +155,7 @@ func BuildHashedHeaderPayload(entry *auditpb.AuditEntry) ([]byte, error) {
 // payload, each length-prefixed. Returns nil for an unsigned (nil) batch, which
 // the caller length-prefixes to a bare 0x00000000 — bytes-equal to an empty
 // signature, matching the envelope's absent/empty conflation.
-func buildSignaturePayload(sb *signaturepb.SignedApplyBatch) []byte {
+func buildSignaturePayload(sb *auditpb.SignedApplyBatch) []byte {
 	if sb == nil {
 		return nil
 	}
@@ -203,20 +201,20 @@ func buildAuditFailurePayload(f *auditpb.AuditFailure) []byte {
 	return buf
 }
 
-func buildCallerSnapshotPayload(snap *commonpb.CallerSnapshot) []byte {
+func buildCallerSnapshotPayload(snap *auditpb.CallerSnapshot) []byte {
 	buf := make([]byte, 0, 64)
 
 	switch principal := snap.GetPrincipal().(type) {
-	case *commonpb.CallerSnapshot_Authenticated:
+	case *auditpb.CallerSnapshot_Authenticated:
 		buf = appendU8(buf, callerPrincipalAuthenticated)
 		buf = appendAuthenticatedCallerPayload(buf, principal.Authenticated)
-	case *commonpb.CallerSnapshot_Anonymous:
+	case *auditpb.CallerSnapshot_Anonymous:
 		buf = appendU8(buf, callerPrincipalAnonymous)
 		buf = appendScopes(buf, principal.Anonymous.GetScopes())
-	case *commonpb.CallerSnapshot_System:
+	case *auditpb.CallerSnapshot_System:
 		buf = appendU8(buf, callerPrincipalSystem)
 		buf = appendLenString(buf, principal.System.GetComponent())
-	case *commonpb.CallerSnapshot_AuthDisabled:
+	case *auditpb.CallerSnapshot_AuthDisabled:
 		buf = appendU8(buf, callerPrincipalAuthDisabled)
 	default:
 		buf = appendU8(buf, callerPrincipalNone)
@@ -225,15 +223,15 @@ func buildCallerSnapshotPayload(snap *commonpb.CallerSnapshot) []byte {
 	return buf
 }
 
-func appendAuthenticatedCallerPayload(buf []byte, caller *commonpb.AuthenticatedCaller) []byte {
+func appendAuthenticatedCallerPayload(buf []byte, caller *auditpb.AuthenticatedCaller) []byte {
 	id := caller.GetIdentity()
 	buf = appendLenString(buf, id.GetSubject())
 
 	switch src := id.GetSource().(type) {
-	case *commonpb.CallerIdentity_Issuer:
+	case *auditpb.CallerIdentity_Issuer:
 		buf = appendU8(buf, callerSourceIssuer)
 		buf = appendLenString(buf, src.Issuer)
-	case *commonpb.CallerIdentity_KeyId:
+	case *auditpb.CallerIdentity_KeyId:
 		buf = appendU8(buf, callerSourceKeyID)
 		buf = appendLenString(buf, src.KeyId)
 	default:

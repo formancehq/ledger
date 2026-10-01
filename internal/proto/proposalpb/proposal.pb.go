@@ -7,7 +7,7 @@
 package proposalpb
 
 import (
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	grpc "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -118,8 +118,8 @@ func (x *AppliedProposal) GetTransientVolumes() map[string]*TouchedVolumeList {
 // TouchedVolumeList wraps a list of common.TouchedVolume entries (proto3 does
 // not allow map<string, repeated common.TouchedVolume>).
 type TouchedVolumeList struct {
-	state         protoimpl.MessageState    `protogen:"open.v1"`
-	Volumes       []*commonpb.TouchedVolume `protobuf:"bytes,1,rep,name=volumes,proto3" json:"volumes,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Volumes       []*grpc.TouchedVolume  `protobuf:"bytes,1,rep,name=volumes,proto3" json:"volumes,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -154,7 +154,7 @@ func (*TouchedVolumeList) Descriptor() ([]byte, []int) {
 	return file_proposal_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *TouchedVolumeList) GetVolumes() []*commonpb.TouchedVolume {
+func (x *TouchedVolumeList) GetVolumes() []*grpc.TouchedVolume {
 	if x != nil {
 		return x.Volumes
 	}
@@ -191,10 +191,10 @@ func file_proposal_proto_rawDescGZIP() []byte {
 
 var file_proposal_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_proposal_proto_goTypes = []any{
-	(*AppliedProposal)(nil),        // 0: proposal.AppliedProposal
-	(*TouchedVolumeList)(nil),      // 1: proposal.TouchedVolumeList
-	nil,                            // 2: proposal.AppliedProposal.TransientVolumesEntry
-	(*commonpb.TouchedVolume)(nil), // 3: common.TouchedVolume
+	(*AppliedProposal)(nil),    // 0: proposal.AppliedProposal
+	(*TouchedVolumeList)(nil),  // 1: proposal.TouchedVolumeList
+	nil,                        // 2: proposal.AppliedProposal.TransientVolumesEntry
+	(*grpc.TouchedVolume)(nil), // 3: common.TouchedVolume
 }
 var file_proposal_proto_depIdxs = []int32{
 	2, // 0: proposal.AppliedProposal.transient_volumes:type_name -> proposal.AppliedProposal.TransientVolumesEntry

@@ -15,9 +15,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -59,7 +57,7 @@ func newOracleLifecycleFixture(changesRemaining int, incorrectUsage bool) *oracl
 
 func (f *oracleLifecycleFixture) bucket(addr string) *oracleTestServer {
 	return &oracleTestServer{
-		barrierFn: func(ctx context.Context, req *servicepb.BarrierRequest) (*servicepb.BarrierResponse, error) {
+		barrierFn: func(ctx context.Context, req *clusterpb.BarrierRequest) (*clusterpb.BarrierResponse, error) {
 			f.mu.Lock()
 			_, member := f.members[addr]
 			unavailable := f.unavailable[addr]
@@ -80,7 +78,7 @@ func (f *oracleLifecycleFixture) bucket(addr string) *oracleTestServer {
 	}
 }
 
-func (f *oracleLifecycleFixture) barrier(context.Context, *servicepb.BarrierRequest) (*servicepb.BarrierResponse, error) {
+func (f *oracleLifecycleFixture) barrier(context.Context, *clusterpb.BarrierRequest) (*clusterpb.BarrierResponse, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.barriers++
@@ -99,10 +97,10 @@ func (f *oracleLifecycleFixture) barrier(context.Context, *servicepb.BarrierRequ
 	}
 	f.index++
 
-	return &servicepb.BarrierResponse{CommitIndex: f.index}, nil
+	return &clusterpb.BarrierResponse{CommitIndex: f.index}, nil
 }
 
-func (f *oracleLifecycleFixture) apply(_ context.Context, req *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
+func (f *oracleLifecycleFixture) apply(_ context.Context, req *clusterpb.ApplyRequest) (*clusterpb.ApplyResponse, error) {
 	batch := req.GetUnsigned()
 	if len(batch.GetRequests()) != 1 {
 		return nil, status.Error(codes.InvalidArgument, "fixture requires one atomic witness request")
@@ -118,7 +116,7 @@ func (f *oracleLifecycleFixture) apply(_ context.Context, req *servicepb.ApplyRe
 		f.barriers = 0
 		f.index++
 
-		return &servicepb.ApplyResponse{}, nil
+		return &clusterpb.ApplyResponse{}, nil
 	}
 	apply := request.GetApply()
 	witness, exists := f.witnesses[apply.GetLedger()]
@@ -132,14 +130,14 @@ func (f *oracleLifecycleFixture) apply(_ context.Context, req *servicepb.ApplyRe
 	f.witnesses[apply.GetLedger()] = witness
 	f.index++
 
-	return &servicepb.ApplyResponse{}, nil
+	return &clusterpb.ApplyResponse{}, nil
 }
 
-func (f *oracleLifecycleFixture) listLedgers(_ *servicepb.ListLedgersRequest, stream servicepb.BucketService_ListLedgersServer) error {
+func (f *oracleLifecycleFixture) listLedgers(_ *clusterpb.ListLedgersRequest, stream clusterpb.BucketService_ListLedgersServer) error {
 	f.mu.Lock()
-	ledgers := []*commonpb.LedgerInfo{{Name: "target", Id: 1}}
+	ledgers := []*clusterpb.LedgerInfo{{Name: "target", Id: 1}}
 	for name, witness := range f.witnesses {
-		ledgers = append(ledgers, &commonpb.LedgerInfo{Name: name, Id: witness.id})
+		ledgers = append(ledgers, &clusterpb.LedgerInfo{Name: name, Id: witness.id})
 	}
 	f.mu.Unlock()
 	sort.Slice(ledgers, func(i, j int) bool { return ledgers[i].GetName() < ledgers[j].GetName() })
@@ -152,9 +150,9 @@ func (f *oracleLifecycleFixture) listLedgers(_ *servicepb.ListLedgersRequest, st
 	return nil
 }
 
-func (f *oracleLifecycleFixture) listLogs(req *servicepb.ListLogsRequest, stream servicepb.BucketService_ListLogsServer) error {
+func (f *oracleLifecycleFixture) listLogs(req *clusterpb.ListLogsRequest, stream clusterpb.BucketService_ListLogsServer) error {
 	f.mu.Lock()
-	var logs []*commonpb.Log
+	var logs []*clusterpb.Log
 	if req.GetLedger() == "target" {
 		for id := 1; id <= f.targetLogs; id++ {
 			logs = append(logs, sourceTestCreatedLog("target", uint64(id), uint64(id), id))
@@ -176,21 +174,21 @@ func (f *oracleLifecycleFixture) listLogs(req *servicepb.ListLogsRequest, stream
 	return nil
 }
 
-func (f *oracleLifecycleFixture) getLedger(_ context.Context, req *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
+func (f *oracleLifecycleFixture) getLedger(_ context.Context, req *clusterpb.GetLedgerRequest) (*clusterpb.LedgerInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if req.GetLedger() == "target" {
-		return &commonpb.LedgerInfo{Name: "target", Id: 1}, nil
+		return &clusterpb.LedgerInfo{Name: "target", Id: 1}, nil
 	}
 	witness, exists := f.witnesses[req.GetLedger()]
 	if !exists {
 		return nil, status.Error(codes.NotFound, "unknown ledger")
 	}
 
-	return &commonpb.LedgerInfo{Name: req.GetLedger(), Id: witness.id}, nil
+	return &clusterpb.LedgerInfo{Name: req.GetLedger(), Id: witness.id}, nil
 }
 
-func (f *oracleLifecycleFixture) stats(ctx context.Context, req *servicepb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
+func (f *oracleLifecycleFixture) stats(ctx context.Context, req *clusterpb.GetLedgerStatsRequest) (*clusterpb.LedgerStats, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if req.GetLedger() == "target" {
@@ -203,17 +201,17 @@ func (f *oracleLifecycleFixture) stats(ctx context.Context, req *servicepb.GetLe
 			postings--
 		}
 
-		return &commonpb.LedgerStats{LogCount: uint64(f.targetLogs), TransactionCount: uint64(f.targetLogs), PostingCount: postings}, nil
+		return &clusterpb.LedgerStats{LogCount: uint64(f.targetLogs), TransactionCount: uint64(f.targetLogs), PostingCount: postings}, nil
 	}
 	witness, exists := f.witnesses[req.GetLedger()]
 	if !exists {
 		return nil, status.Error(codes.NotFound, "unknown stats ledger")
 	}
 	if !witness.written {
-		return &commonpb.LedgerStats{}, nil
+		return &clusterpb.LedgerStats{}, nil
 	}
 
-	return &commonpb.LedgerStats{LogCount: 1, TransactionCount: 1, PostingCount: 1, ReferenceCount: 1}, nil
+	return &clusterpb.LedgerStats{LogCount: 1, TransactionCount: 1, PostingCount: 1, ReferenceCount: 1}, nil
 }
 
 func (f *oracleLifecycleFixture) clusterState(_ context.Context, req *clusterpb.GetClusterStateRequest, addr string) (*clusterpb.ClusterState, error) {
@@ -261,17 +259,17 @@ func (s *oracleLifecycleClusterServer) GetClusterState(ctx context.Context, req 
 	return s.fixture.clusterState(ctx, req, s.addr)
 }
 
-func newOracleLifecycleClients(t *testing.T, fixture *oracleLifecycleFixture) (servicepb.BucketServiceClient, internal.PerNodeConns) {
+func newOracleLifecycleClients(t *testing.T, fixture *oracleLifecycleFixture) (clusterpb.BucketServiceClient, internal.PerNodeConns) {
 	t.Helper()
 	conn := newOracleTestConn(t, fixture.bucket("replica-1"), &oracleLifecycleClusterServer{fixture: fixture, addr: "replica-1"})
-	client := servicepb.NewBucketServiceClient(conn)
+	client := clusterpb.NewBucketServiceClient(conn)
 
 	return client, internal.PerNodeConns{&internal.PerNodeConn{
 		Addr: "replica-1", NodeID: 1, Bucket: client, Cluster: clusterpb.NewClusterServiceClient(conn),
 	}}
 }
 
-func newOracleLifecycleFleet(t *testing.T, fixture *oracleLifecycleFixture, candidates int) (servicepb.BucketServiceClient, internal.PerNodeConns) {
+func newOracleLifecycleFleet(t *testing.T, fixture *oracleLifecycleFixture, candidates int) (clusterpb.BucketServiceClient, internal.PerNodeConns) {
 	t.Helper()
 	var conns internal.PerNodeConns
 	for i := 1; i <= candidates; i++ {
@@ -279,7 +277,7 @@ func newOracleLifecycleFleet(t *testing.T, fixture *oracleLifecycleFixture, cand
 		conn := newOracleTestConn(t, fixture.bucket(addr), &oracleLifecycleClusterServer{fixture: fixture, addr: addr})
 		conns = append(conns, &internal.PerNodeConn{
 			// Candidate addresses are not proof of membership or node ID.
-			Addr: addr, Bucket: servicepb.NewBucketServiceClient(conn), Cluster: clusterpb.NewClusterServiceClient(conn),
+			Addr: addr, Bucket: clusterpb.NewBucketServiceClient(conn), Cluster: clusterpb.NewClusterServiceClient(conn),
 		})
 	}
 
@@ -540,12 +538,12 @@ func TestRunOracleWitnessIsExcludedFromGenericLedgerSelection(t *testing.T) {
 		t.Run("shared="+shared, func(t *testing.T) {
 			t.Parallel()
 			client := newSourceTestClient(t, &oracleTestServer{
-				listLedgersFn: func(_ *servicepb.ListLedgersRequest, stream servicepb.BucketService_ListLedgersServer) error {
-					if err := stream.Send(&commonpb.LedgerInfo{Name: witness}); err != nil {
+				listLedgersFn: func(_ *clusterpb.ListLedgersRequest, stream clusterpb.BucketService_ListLedgersServer) error {
+					if err := stream.Send(&clusterpb.LedgerInfo{Name: witness}); err != nil {
 						return err
 					}
 					if shared != "" {
-						return stream.Send(&commonpb.LedgerInfo{Name: shared})
+						return stream.Send(&clusterpb.LedgerInfo{Name: shared})
 					}
 
 					return nil
