@@ -27,6 +27,21 @@ Candidates remain hypotheses until independently challenged under the native
 source-to-enforcement path and preserve the concrete missed protection and
 integration event in severity decisions.
 
+## Schemathesis execution errors
+
+The Schemathesis reporter fails the run for every execution error, including
+transport errors. A later successful execution, even for the same method and
+path, does not prove that the failed request and its conformance checks were
+retried. Preserve the runner's errored count and report each execution error
+with its operation identity.
+
+Exercise this boundary through the reporting regressions in
+`tests/schemathesis/test_reporting.py`: an error followed by success on another
+path, another method, or the same operation must still fail. Successful checks
+without errors must pass; zero successful checks or a missing `Finished` event
+must fail. `tests/schemathesis/run.sh` runs these regressions before the API
+suite and preserves the reporter's exit status through `pipefail`.
+
 ## Antithesis source and build boundary
 
 The Antithesis workload is a nested Go module under
