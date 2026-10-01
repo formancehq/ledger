@@ -673,10 +673,6 @@ func TestProcessCreateTransaction_Numscript_UnboundedOverdraft(t *testing.T) {
 	require.Equal(t, int64(100000), posting.GetAmount().ToBigInt().Int64())
 }
 
-// TestProcessCreateTransaction_Numscript_WithoutArtifactIsLoud: admission
-// rejects a script the VM cannot run (here, one that does not even parse), so
-// a scripted order reaching the FSM without a compiled artifact is an
-// admission bug — surfaced loudly (invariant #7), never executed some other way.
 func TestProcessCreateTransaction_Numscript_EmptyScript(t *testing.T) {
 	t.Parallel()
 
