@@ -225,3 +225,39 @@ func TestValidateFilterForTarget_RejectsDeeplyNestedFilter(t *testing.T) {
 	require.Contains(t, atCap.Error(), "nesting depth")
 	require.ErrorIs(t, atCap, domain.ErrFilterTooDeep)
 }
+
+// TestValidateFilterForTarget_RejectsHasAssetPrecisionOverflow pins the
+// write-time half of the account-by-asset precision bound: a prepared query
+// whose has-asset precision does not fit the index's one-byte cell can never
+// compile, so it must be rejected before it is stored.
+func TestValidateFilterForTarget_RejectsHasAssetPrecisionOverflow(t *testing.T) {
+	t.Parallel()
+
+	hasAsset := func(precision uint32) *commonpb.QueryFilter {
+		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_AccountHasAsset{
+			AccountHasAsset: &commonpb.AccountHasAssetCondition{AssetBase: "USD", Precision: precision},
+		}}
+	}
+	notWrap := func(child *commonpb.QueryFilter) *commonpb.QueryFilter {
+		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Not{Not: &commonpb.NotFilter{Filter: child}}}
+	}
+	accounts := commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS
+
+	require.Nil(t, domain.ValidateFilterForTarget(hasAsset(domain.MaxHasAssetPrecision), accounts))
+
+	for name, f := range map[string]*commonpb.QueryFilter{
+		"bare":   hasAsset(domain.MaxHasAssetPrecision + 1),
+		"nested": notWrap(hasAsset(1038)),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			err := domain.ValidateFilterForTarget(f, accounts)
+			require.NotNil(t, err)
+
+			var compileErr *domain.ErrFilterCompilation
+			require.ErrorAs(t, err, &compileErr)
+			require.Contains(t, err.Error(), "has asset precision")
+		})
+	}
+}

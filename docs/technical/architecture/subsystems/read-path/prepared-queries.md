@@ -70,6 +70,7 @@ Two layers, following the project-wide pattern (see [admission / validation.md](
 - Ledger must exist (rejects `ErrLedgerNotFound` otherwise).
 - Name must not already be in use (rejects on duplicate — there is no implicit upsert; clients must explicitly `Update`).
 - A non-nil filter must compile against the ledger's current declared-metadata schema (`Compile()` with the standard `MaxFilterDepth=100` guard). Nil is the match-all definition; an empty filter object or empty textual expression is invalid.
+- A `has asset BASE/PRECISION` condition must have a precision ≤ 255 (`domain.MaxHasAssetPrecision`), the bound the compiler applies at execute time.
 
 HTTP creation treats an omitted `filter` and explicit JSON `null` as match-all.
 HTTP update treats omission as no change and JSON `null` as an explicit request
