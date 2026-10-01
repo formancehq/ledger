@@ -230,7 +230,7 @@ servers, and every Raft replica must agree on revision 16 semantics.
 
 ## Numscript metadata rendering and VM execution (revision 16)
 
-Revision 15 stores and returns an account-typed Numscript metadata value
+Revision 16 stores and returns an account-typed Numscript metadata value
 (`set_tx_meta("k", @merchants:acme)` and its `set_account_meta` counterpart) as
 the bare account name, `merchants:acme`, where revision 15 returned
 `@merchants:acme`. The rendering now comes from the Numscript library itself,
@@ -242,7 +242,7 @@ stays `ASSET amount`, portions and assets keep their canonical forms. The
 is invisible to a schema comparison; a revision-15 client would read the same
 Apply request back with different metadata bytes.
 
-Revision 15 also changes apply semantics: admission compiles each resolvable
+Revision 16 also changes apply semantics: admission compiles each resolvable
 script to Numscript VM bytecode and binds it to the order's technical
 sub-message, and the FSM executes that artifact instead of re-interpreting the
 script text. The VM is the only engine: a script it cannot compile is rejected
@@ -260,7 +260,7 @@ Numscript runtime error, so a log entry replayed across a later major bump, or
 after a rollback past a minor bump, is rejected rather than run as foreign
 bytecode — the text is never interpreted in the artifact's place.
 
-Revision 15 also moves where and how a statically invalid script fails.
+Revision 16 also moves where and how a statically invalid script fails.
 `Parse` checks syntax only; the Numscript typechecker runs inside the
 compiler. Every static-semantics failure the compiler catches — a type
 mismatch, an undeclared variable, an unknown function or var type, `oneof` or
