@@ -30,6 +30,18 @@
 //   - reads.go: GetAccount + chart read execution.
 //   - main.go: workers + entry point.
 //
+// Generator and validator roles: the generator (actions.go, the pick*
+// functions) makes NO expectations. It emits bulks and read targets, and it may
+// emit anything at all — valid or not; a rejection is just another server
+// answer for the validator to explain. Its only concern is reaching interesting
+// server state. The oracle holds every piece of state the server can return,
+// and the validator (validate.go, the *Matches functions) is the sole place
+// expectations exist: it asks whether the server's answer is consistent with
+// the oracle on some candidate state. So a finding that fires on a correct
+// server answer is never "the generator picked badly": it is either an oracle
+// bug or a validator bug. Fix it there, never by narrowing the generator or
+// freezing an expectation at pick time.
+//
 // Invariant: every observed response is consistent with some serialization of
 // the in-flight bulks (see candidateBases).
 //

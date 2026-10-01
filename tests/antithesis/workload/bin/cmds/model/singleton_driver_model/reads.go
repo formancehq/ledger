@@ -123,7 +123,8 @@ func percentChance(pct uint64) bool {
 // so GetAccount is otherwise structurally blind to server state the model lacks
 // (a retained cell, or an account in a ledger the model never created). Falls
 // back to pickCell when no absent account is found. Runs lock-free on a state
-// snapshot.
+// snapshot. A choice, not an expectation — see the package doc on generator and
+// validator roles.
 func pickReadTarget(g oracle.GlobalState, ledgers []string) (ledger, addr, asset string, absentAccount, absentLedger, ok bool) {
 	if len(ledgers) > 0 && percentChance(2) {
 		return absentLedgerName(ledgers), poolAddress(), random.RandomChoice(assets), false, true, true

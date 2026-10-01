@@ -31,7 +31,8 @@ type committedLogTarget struct {
 
 // pickLogSequence chooses a sequence to read back: usually one the state's
 // global log stream holds, one in eight a sequence far past every one handed
-// out. ok=false before any sequence has been learned.
+// out. ok=false before any sequence has been learned. A choice, not an
+// expectation — see the package doc on generator and validator roles.
 func pickLogSequence(state oracle.GlobalState) (target committedLogTarget, learned, ok bool) {
 	var (
 		known  []committedLogTarget
