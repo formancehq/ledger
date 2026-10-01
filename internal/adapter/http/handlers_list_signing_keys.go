@@ -7,7 +7,8 @@ import (
 // handleListSigningKeys handles GET /signing-keys to list registered
 // Ed25519 signing keys.
 //
-// This route performs a live linearizable read and drains the full cursor. It
+// This route performs a live read (linearizable unless the caller sends
+// `X-Consistency: stale`, see readConsistency) and drains the full cursor. It
 // does not expose the gRPC bidirectional cursor; signing-key reads are
 // live-only on both transports.
 func (s *Server) handleListSigningKeys(w http.ResponseWriter, r *http.Request) {

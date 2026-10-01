@@ -14,7 +14,7 @@ stale. A response body without these coordinates is insufficient evidence.
 
 | Coordinate | Meaning and production anchor |
 |---|---|
-| Mode and route | Default reads pass through `internal/bootstrap/controller_routed.go` and `internal/infra/node/read_index.go`; stale reads omit the quorum barrier. Record entry point, node role, forwarding decision, and whether `ReadIndexAndWait` ran. |
+| Mode and route | The mode is selected by gRPC `x-consistency` metadata (`internal/adapter/grpc/consistency.go`, where an unknown value is ignored) or the HTTP `X-Consistency` header (`internal/adapter/http/middleware_consistency.go`, where an unknown or repeated value returns `400`). Both store it through `internal/query/consistency.go`. Default reads pass through `internal/bootstrap/controller_routed.go` and `internal/infra/node/read_index.go`; stale reads omit the quorum barrier and are never forwarded. Record transport, entry point, node role, forwarding decision, and whether `ReadIndexAndWait` ran. |
 | Raft barrier `R` | The commit index returned by `ReadIndex` and awaited by the FSM. It is an admission floor, not a projection cursor. |
 | Main horizon `H` | `internal/query/aligned_snapshot.go` reads `LastAppliedIndex` from the `dal.ReadHandle` used for main-store leaves and enrichment. It must satisfy `H >= R` when `R` exists and remain fixed while projections catch up. |
 | Native sequence | The main handle's log/audit sequence used for target-specific trimming and history leases. It differs from the Raft index because an entry may emit no native item. |

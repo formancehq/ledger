@@ -6,38 +6,17 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
+
+	"github.com/formancehq/ledger/v3/internal/query"
 )
-
-func TestWithConsistency(t *testing.T) {
-	t.Parallel()
-
-	ctx := WithConsistency(context.Background(), ConsistencyStale)
-	level := ConsistencyFromContext(ctx)
-	require.Equal(t, ConsistencyStale, level)
-}
-
-func TestConsistencyFromContext_Default(t *testing.T) {
-	t.Parallel()
-
-	level := ConsistencyFromContext(context.Background())
-	require.Equal(t, ConsistencyLinearizable, level)
-}
-
-func TestConsistencyFromContext_EmptyString(t *testing.T) {
-	t.Parallel()
-
-	ctx := WithConsistency(context.Background(), "")
-	level := ConsistencyFromContext(ctx)
-	require.Equal(t, ConsistencyLinearizable, level)
-}
 
 func TestExtractConsistency_NoMetadata(t *testing.T) {
 	t.Parallel()
 
 	// Context with no incoming metadata at all
 	ctx := extractConsistency(context.Background())
-	level := ConsistencyFromContext(ctx)
-	require.Equal(t, ConsistencyLinearizable, level)
+	level := query.ConsistencyFromContext(ctx)
+	require.Equal(t, query.ConsistencyLinearizable, level)
 }
 
 func TestExtractConsistency_MissingHeader(t *testing.T) {
@@ -48,8 +27,8 @@ func TestExtractConsistency_MissingHeader(t *testing.T) {
 	ctx := metadata.NewIncomingContext(context.Background(), md)
 
 	ctx = extractConsistency(ctx)
-	level := ConsistencyFromContext(ctx)
-	require.Equal(t, ConsistencyLinearizable, level)
+	level := query.ConsistencyFromContext(ctx)
+	require.Equal(t, query.ConsistencyLinearizable, level)
 }
 
 func TestExtractConsistency_InvalidValue(t *testing.T) {
@@ -59,8 +38,8 @@ func TestExtractConsistency_InvalidValue(t *testing.T) {
 	ctx := metadata.NewIncomingContext(context.Background(), md)
 
 	ctx = extractConsistency(ctx)
-	level := ConsistencyFromContext(ctx)
-	require.Equal(t, ConsistencyLinearizable, level)
+	level := query.ConsistencyFromContext(ctx)
+	require.Equal(t, query.ConsistencyLinearizable, level)
 }
 
 func TestExtractConsistency_Stale(t *testing.T) {
@@ -70,8 +49,8 @@ func TestExtractConsistency_Stale(t *testing.T) {
 	ctx := metadata.NewIncomingContext(context.Background(), md)
 
 	ctx = extractConsistency(ctx)
-	level := ConsistencyFromContext(ctx)
-	require.Equal(t, ConsistencyStale, level)
+	level := query.ConsistencyFromContext(ctx)
+	require.Equal(t, query.ConsistencyStale, level)
 }
 
 func TestExtractConsistency_LeaderIsNotSupported(t *testing.T) {
@@ -81,8 +60,8 @@ func TestExtractConsistency_LeaderIsNotSupported(t *testing.T) {
 	ctx := metadata.NewIncomingContext(context.Background(), md)
 
 	ctx = extractConsistency(ctx)
-	level := ConsistencyFromContext(ctx)
-	require.Equal(t, ConsistencyLinearizable, level)
+	level := query.ConsistencyFromContext(ctx)
+	require.Equal(t, query.ConsistencyLinearizable, level)
 }
 
 func TestExtractConsistency_CaseInsensitive(t *testing.T) {
@@ -92,8 +71,8 @@ func TestExtractConsistency_CaseInsensitive(t *testing.T) {
 	ctx := metadata.NewIncomingContext(context.Background(), md)
 
 	ctx = extractConsistency(ctx)
-	level := ConsistencyFromContext(ctx)
-	require.Equal(t, ConsistencyStale, level)
+	level := query.ConsistencyFromContext(ctx)
+	require.Equal(t, query.ConsistencyStale, level)
 }
 
 func TestExtractConsistency_Linearizable(t *testing.T) {
@@ -104,8 +83,8 @@ func TestExtractConsistency_Linearizable(t *testing.T) {
 	ctx := metadata.NewIncomingContext(context.Background(), md)
 
 	ctx = extractConsistency(ctx)
-	level := ConsistencyFromContext(ctx)
-	require.Equal(t, ConsistencyLinearizable, level)
+	level := query.ConsistencyFromContext(ctx)
+	require.Equal(t, query.ConsistencyLinearizable, level)
 }
 
 func TestExtractConsistency_WhitespaceHandling(t *testing.T) {
@@ -115,6 +94,6 @@ func TestExtractConsistency_WhitespaceHandling(t *testing.T) {
 	ctx := metadata.NewIncomingContext(context.Background(), md)
 
 	ctx = extractConsistency(ctx)
-	level := ConsistencyFromContext(ctx)
-	require.Equal(t, ConsistencyStale, level)
+	level := query.ConsistencyFromContext(ctx)
+	require.Equal(t, query.ConsistencyStale, level)
 }

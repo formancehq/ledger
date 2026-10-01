@@ -1038,6 +1038,14 @@ Read endpoints comparison with the original ledger:
 | `POST /v3/{ledgerName}/bulk` | ✅ | ❌ | Bulk operations (alternate path without underscore) |
 | `GET /_info` | ✅ | ❌ | Server build info (`version`, `commit`, `buildDate`, `goVersion`); unauthenticated, flat JSON (no `data` envelope) |
 
+**Read consistency selector.** Every `/v3` read accepts `X-Consistency:
+stale` over HTTP, matching the gRPC `x-consistency: stale` metadata. The
+receiving node serves the read from its own store, with no ReadIndex barrier
+and no forwarding. The default and `linearizable` keep the barrier. HTTP rejects
+an unknown or repeated value with `400 INVALID_REQUEST`; gRPC ignores unknown
+values. The original ledger has no equivalent. See
+[HTTP API: Read consistency](../architecture/subsystems/api/http-api.md#read-consistency).
+
 ---
 
 ## Priority Recommendations
