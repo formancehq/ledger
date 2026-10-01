@@ -2,6 +2,7 @@ package vm
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 
 	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
@@ -29,7 +30,7 @@ type ScriptV1 struct {
 	Vars map[string]any `json:"vars"`
 }
 
-func (s ScriptV1) ToCore() Script {
+func (s ScriptV1) ToCore() (Script, error) {
 	s.Script.Vars = map[string]string{}
 	for k, v := range s.Vars {
 		switch v := v.(type) {
@@ -40,13 +41,16 @@ func (s ScriptV1) ToCore() Script {
 			case string:
 				s.Script.Vars[k] = fmt.Sprintf("%s %s", v["asset"], amount)
 			case float64:
+				if amount != math.Trunc(amount) {
+					return Script{}, fmt.Errorf("invalid monetary variable %q: amount must be an integer", k)
+				}
 				s.Script.Vars[k] = fmt.Sprintf("%s %d", v["asset"], int(amount))
 			}
 		default:
 			s.Script.Vars[k] = fmt.Sprint(v)
 		}
 	}
-	return s.Script
+	return s.Script, nil
 }
 
 type Result struct {
