@@ -54,6 +54,7 @@ func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 		}},
 		{"ledgers_swap", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.Ledgers = []string{"different-ledger"} }},
 		{"hash_version", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.HashVersion = 99 }},
+		{"failure_projection_version", "failure", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.FailureProjectionVersion = 1 }},
 
 		// Outcome flips — same `hash` field, different outcome semantics.
 		{"outcome_flip_success_to_failure", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
@@ -208,6 +209,37 @@ func TestVerifyAuditHashChain_InvalidAttributionPreservesHashChain(t *testing.T)
 	mismatches := runChainVerifier(t, store, clusterID)
 	require.Len(t, mismatches, 1)
 	require.Contains(t, mismatches[0].GetMessage(), "invalid caller attribution")
+}
+
+func TestVerifyAuditHashChainAcrossFailureProjectionFlip(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
+	var previous []byte
+
+	for _, version := range []uint32{0, state.FailureProjectionVersionV1} {
+		entry := &auditpb.AuditEntry{
+			Sequence:                 uint64(version) + 1,
+			Timestamp:                &commonpb.Timestamp{Data: 1700000000 + uint64(version)},
+			ProposalId:               uint64(version) + 10,
+			HashVersion:              uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+			FailureProjectionVersion: version,
+			CallerSnapshot:           testCallerSnapshot(),
+			Outcome: &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{
+				Reason:  commonpb.ErrorReason_ERROR_REASON_VALIDATION,
+				Message: "invalid order",
+			}},
+		}
+		header, err := state.BuildHashedHeaderPayload(entry)
+		require.NoError(t, err)
+		_, entry.Hash = gen.Compute(nil, previous, [][]byte{header})
+		rewriteAuditEntry(t, store, entry, nil)
+		previous = entry.GetHash()
+	}
+
+	require.Empty(t, runChainVerifier(t, store, checkerTestAuditKey),
+		"the checker must use each entry's stored version across the flip")
 }
 
 // newRichAuditEntry returns a fully-populated AuditEntry (sequence 1,

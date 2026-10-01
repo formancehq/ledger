@@ -395,8 +395,12 @@ purely technical and must be redesigned as business-impacting state.
 ## Cluster Configuration
 
 Cluster configuration is Raft-replicated technical state. Most fields tune
-runtime behavior, such as cache rotation and bloom configuration. `hash_algorithm`
-is more sensitive: it changes how future audit entries are hashed and therefore
+runtime behavior, such as cache rotation and bloom configuration. The
+`failure_projection_version` is Raft-replicated technical governance state: it
+selects failure bytes and the hash header for later entries. Each entry carries
+its applied version, so the checker verifies history across a flip without
+trusting the current config row. The row itself shares the integrity gap below.
+`hash_algorithm` changes how future audit entries are hashed and therefore
 changes the trust model for business evidence.
 
 Changing the hash algorithm does not rewrite historical business truth, but it is

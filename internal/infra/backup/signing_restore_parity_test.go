@@ -234,6 +234,76 @@ func signingRevokeOrder(keyID string, cascade bool) *raftcmdpb.Order {
 	}
 }
 
+func TestBackupFailureProjectionFlipAfterCheckpoint(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	storage := newInMemoryBackupStorage()
+	src, srcStore, _ := newSigningParityMachine(t)
+	applySigningEntry(t, src, srcStore, 1, signingRegisterOrder("before", bytes.Repeat([]byte{0x11}, 32), ""))
+	require.NoError(t, srcStore.Flush())
+	_, err := RunBackup(ctx, testLogger(), srcStore, storage, "bucket", "bk-full")
+	require.NoError(t, err)
+
+	// A Raft technical update flips the source after the checkpoint. It is
+	// deliberately absent from the exported audit/log delta.
+	proposal := &raftcmdpb.Proposal{
+		Id: 2, Date: &commonpb.Timestamp{Data: 1700000002},
+		ExecutionPlan:  &raftcmdpb.ExecutionPlan{},
+		CallerSnapshot: commands.SystemCallerSnapshot(commands.ComponentClusterConfig),
+		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{Kind: &raftcmdpb.TechnicalUpdate_ClusterConfig{
+			ClusterConfig: &commonpb.ClusterConfig{RotationThreshold: 1000,
+				FailureProjectionVersion: state.FailureProjectionVersionV1},
+		}}},
+	}
+	data, err := proto.Marshal(proposal)
+	require.NoError(t, err)
+	_, err = src.ApplyEntries(ctx, srcStore, &raftpb.Entry{
+		Index: proto.Uint64(2), Term: proto.Uint64(1), Type: new(raftpb.EntryNormal), Data: data,
+	})
+	require.NoError(t, err)
+	applySigningEntry(t, src, srcStore, 3, signingRegisterOrder("after", bytes.Repeat([]byte{0x22}, 32), ""))
+	require.NoError(t, srcStore.Flush())
+
+	inc, err := RunIncrementalBackup(ctx, testLogger(), srcStore, storage, "bucket", 0)
+	require.NoError(t, err)
+	require.Positive(t, inc.LogEntriesExported)
+	manifest, err := ReadManifest(ctx, storage, ManifestKey("bucket"))
+	require.NoError(t, err)
+	require.NotEmpty(t, manifest.Exports)
+
+	dst, dstStore, dstAttrs := newSigningParityMachine(t)
+	applySigningEntry(t, dst, dstStore, 1, signingRegisterOrder("before", bytes.Repeat([]byte{0x11}, 32), ""))
+	require.NoError(t, dstStore.Flush())
+	require.NoError(t, ApplyExportsAndRebuild(ctx, testLogger(), storage, dstStore, manifest))
+	require.ElementsMatch(t, signingKeyIDs(t, srcStore), signingKeyIDs(t, dstStore))
+
+	srcConfig, err := query.ReadClusterState(srcStore)
+	require.NoError(t, err)
+	dstConfig, err := query.ReadClusterState(dstStore)
+	require.NoError(t, err)
+	require.Equal(t, state.FailureProjectionVersionV1, srcConfig.GetConfig().GetFailureProjectionVersion())
+	require.Zero(t, dstConfig.GetConfig().GetFailureProjectionVersion(),
+		"post-checkpoint technical config is intentionally not exported")
+
+	handle, err := dstStore.NewDirectReadHandle()
+	require.NoError(t, err)
+	last, err := query.ReadLastAuditEntry(handle)
+	require.NoError(t, handle.Close())
+	require.NoError(t, err)
+	require.Equal(t, state.FailureProjectionVersionV1, last.GetFailureProjectionVersion(),
+		"the exported entry retains its source projection version")
+
+	var findings []*servicepb.CheckStoreError
+	checker := check.NewChecker(dstStore, dstAttrs, nil, testLogger())
+	require.NoError(t, checker.Check(ctx, func(event *servicepb.CheckStoreEvent) {
+		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
+			findings = append(findings, e.Error)
+		}
+	}))
+	require.Empty(t, findings)
+}
+
 func purgeParityCreateLedgerOrder() *raftcmdpb.Order {
 	return &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{
 		LedgerScoped: &raftcmdpb.LedgerScopedOrder{

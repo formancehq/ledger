@@ -15,6 +15,10 @@ authoritative audit failure (including its message and context), so selection
 must not depend on Go map iteration. A failed order discards its posting and
 metadata writes while preserving the failure audit entry.
 
+The Raft-applied `ClusterConfig.failure_projection_version` selects audited
+failure bytes. The apply path never uses a node-local flag for this decision;
+see [deterministic-fsm.md](deterministic-fsm.md#versioned-audit-failures).
+
 ## Documents
 
 | Document | Description |

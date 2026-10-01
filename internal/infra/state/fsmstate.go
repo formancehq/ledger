@@ -277,6 +277,9 @@ func LoadFSMStateFromStore(reader dal.RecoveryReader, handle *dal.ReadHandle) (*
 	}
 
 	if clusterState != nil {
+		if version := clusterState.GetConfig().GetFailureProjectionVersion(); version > FailureProjectionVersionV1 {
+			return nil, fmt.Errorf("recovering cluster state: unsupported failure projection version %d", version)
+		}
 		s.LastClusterConfig = clusterState.GetConfig()
 		if s.HashGenerator != nil {
 			s.HashGenerator = processing.NewHashGenerator(clusterState.GetConfig().GetHashAlgorithm(), s.AuditKey)

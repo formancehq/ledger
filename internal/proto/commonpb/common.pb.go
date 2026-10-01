@@ -4138,8 +4138,11 @@ type ClusterConfig struct {
 	BloomLedgerMetadata    *BloomTypeConfig       `protobuf:"bytes,12,opt,name=bloom_ledger_metadata,json=bloomLedgerMetadata,proto3" json:"bloom_ledger_metadata,omitempty"`
 	BloomPreparedQueries   *BloomTypeConfig       `protobuf:"bytes,13,opt,name=bloom_prepared_queries,json=bloomPreparedQueries,proto3" json:"bloom_prepared_queries,omitempty"`
 	BloomIndexes           *BloomTypeConfig       `protobuf:"bytes,14,opt,name=bloom_indexes,json=bloomIndexes,proto3" json:"bloom_indexes,omitempty"`
-	unknownFields          protoimpl.UnknownFields
-	sizeCache              protoimpl.SizeCache
+	// 0 preserves the failure bytes emitted before projection versioning.
+	// Change only after every replica understands the selected version.
+	FailureProjectionVersion uint32 `protobuf:"varint,15,opt,name=failure_projection_version,json=failureProjectionVersion,proto3" json:"failure_projection_version,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *ClusterConfig) Reset() {
@@ -4268,6 +4271,13 @@ func (x *ClusterConfig) GetBloomIndexes() *BloomTypeConfig {
 		return x.BloomIndexes
 	}
 	return nil
+}
+
+func (x *ClusterConfig) GetFailureProjectionVersion() uint32 {
+	if x != nil {
+		return x.FailureProjectionVersion
+	}
+	return 0
 }
 
 // PersistedClusterState wraps ClusterConfig with internal FSM state that must
@@ -13215,7 +13225,7 @@ const file_common_proto_rawDesc = "" +
 	"\x06policy\x18\x01 \x01(\v2\x15.common.ClusterPolicyR\x06policy\"O\n" +
 	"\x0fBloomTypeConfig\x12#\n" +
 	"\rexpected_keys\x18\x01 \x01(\x04R\fexpectedKeys\x12\x17\n" +
-	"\afp_rate\x18\x02 \x01(\x01R\x06fpRate\"\xcf\a\n" +
+	"\afp_rate\x18\x02 \x01(\x01R\x06fpRate\"\x8d\b\n" +
 	"\rClusterConfig\x12-\n" +
 	"\x12rotation_threshold\x18\x01 \x01(\x04R\x11rotationThreshold\x12<\n" +
 	"\rbloom_volumes\x18\x02 \x01(\v2\x17.common.BloomTypeConfigR\fbloomVolumes\x12>\n" +
@@ -13231,7 +13241,8 @@ const file_common_proto_rawDesc = "" +
 	"\x0ehash_algorithm\x18\v \x01(\x0e2\x15.common.HashAlgorithmR\rhashAlgorithm\x12K\n" +
 	"\x15bloom_ledger_metadata\x18\f \x01(\v2\x17.common.BloomTypeConfigR\x13bloomLedgerMetadata\x12M\n" +
 	"\x16bloom_prepared_queries\x18\r \x01(\v2\x17.common.BloomTypeConfigR\x14bloomPreparedQueries\x12<\n" +
-	"\rbloom_indexes\x18\x0e \x01(\v2\x17.common.BloomTypeConfigR\fbloomIndexes\"g\n" +
+	"\rbloom_indexes\x18\x0e \x01(\v2\x17.common.BloomTypeConfigR\fbloomIndexes\x12<\n" +
+	"\x1afailure_projection_version\x18\x0f \x01(\rR\x18failureProjectionVersion\"g\n" +
 	"\x15PersistedClusterState\x12-\n" +
 	"\x06config\x18\x01 \x01(\v2\x15.common.ClusterConfigR\x06config\x12\x1f\n" +
 	"\vcache_epoch\x18\x02 \x01(\x06R\n" +

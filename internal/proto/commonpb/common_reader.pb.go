@@ -3111,6 +3111,7 @@ type ClusterConfigReader interface {
 	GetBloomLedgerMetadata() BloomTypeConfigReader
 	GetBloomPreparedQueries() BloomTypeConfigReader
 	GetBloomIndexes() BloomTypeConfigReader
+	GetFailureProjectionVersion() uint32
 	Mutate() *ClusterConfig
 }
 
@@ -3218,6 +3219,10 @@ func (r *clusterConfigReadonly) GetBloomIndexes() BloomTypeConfigReader {
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *clusterConfigReadonly) GetFailureProjectionVersion() uint32 {
+	return (*ClusterConfig)(r).GetFailureProjectionVersion()
 }
 
 func (r *clusterConfigReadonly) Mutate() *ClusterConfig {

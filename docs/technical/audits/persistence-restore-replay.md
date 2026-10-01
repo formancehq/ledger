@@ -14,6 +14,15 @@ operation being tested. This domain adds scope and evidence requirements to the
 native audit workflow; it does not run an audit, add a restore guarantee, or
 authorize code changes, Jira publication, or live-store mutation.
 
+`ClusterConfig` has a narrower technical lifetime than audited business
+history. A full checkpoint retains it, but the incremental delta exports
+audit entries and not later technical config proposals. The audit entries
+carry their own algorithm and failure projection versions, so historical hash
+verification is independent of the restored checkpoint config. A post-checkpoint
+flip needs an explicit destination leader re-proposal before later writes use
+the desired technical setting. Test this boundary with a non-empty delta;
+otherwise a checker pass can conceal the omitted config transition.
+
 ## Reachability and proof
 
 For every candidate, establish all of the following at the audited SHA:

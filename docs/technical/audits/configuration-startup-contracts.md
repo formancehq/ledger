@@ -1,5 +1,11 @@
 # Configuration startup contracts audit
 
+Audit failure projection is a two-stage configuration contract. The local
+`--failure-projection-version` value is only the leader's desired proposal;
+the applied `ClusterConfig` determines audit bytes. Compare CLI defaults and
+invalid values with persisted recovery, then exercise leadership changes while
+desired flags differ to expose an accidental reversal.
+
 This domain follows a server parameter from supported input to the component
 that consumes it. Its reusable delta is value semantics: provenance, precedence,
 parsing, defaults, validation, wiring and local versus replicated authority.

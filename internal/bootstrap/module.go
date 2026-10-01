@@ -1471,6 +1471,7 @@ func proposeClusterConfigIfNeeded(n *node.Node, builder *plan.Builder, store *da
 
 		if persistedCfg.GetRotationThreshold() == desiredCfg.GetRotationThreshold() &&
 			persistedCfg.GetHashAlgorithm() == desiredCfg.GetHashAlgorithm() &&
+			persistedCfg.GetFailureProjectionVersion() == desiredCfg.GetFailureProjectionVersion() &&
 			bloom.BloomConfigEqual(persistedCfg, desiredCfg) {
 			return
 		}

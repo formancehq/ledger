@@ -14,6 +14,13 @@ audit before this contract has been reviewed and merged.
 
 ## Equivalence oracle
 
+The failure-projection version is committed state, not a process setting.
+Compare old and new binary failure bytes before a flip, then replay the same
+failure after a Raft-ordered config update and compare the audit version stamp,
+reason, message, context, idempotency outcome and hash. A test that merely
+changes a local flag without committing a config update does not exercise this
+boundary.
+
 Evaluate one transition as a tuple:
 
 ```text

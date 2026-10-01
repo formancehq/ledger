@@ -27,9 +27,7 @@ import (
 // audit side of the divergence is inside the hash chain, so it cannot be
 // corrected afterwards.
 //
-// Both sites derive those two fields from describeFailure, so on that half the
-// test is a forcing function against a future re-split of the derivation, not
-// an independent oracle. The independent half is the round trip through
+// Both sites now share one projected AuditFailure. The independent half is the round trip through
 // state.IdempotencyValueFromAudit — the same derivation
 // check.expectedIdempotencyOutcome builds its expectation with — which crosses
 // the auditpb.AuditFailure to commonpb.IdempotencyFailure field mapping
@@ -60,9 +58,8 @@ func TestIdempotencyFailureMessageMatchesAudit(t *testing.T) {
 			},
 		},
 		{
-			// Metadata() is nil here, the only shape that exercises the
-			// nil-vs-empty asymmetry: buildAuditFailure emits a non-nil empty
-			// Context while recordIdempotencyFailure stores nil.
+			// Metadata() is nil here; the projected AuditFailure owns an
+			// empty Context and both persisted proto maps decode as nil.
 			name: "nil metadata",
 			err:  domain.NewValidationSentinel("EN-1772 fixture: value must not be empty"),
 		},
@@ -94,7 +91,7 @@ func TestIdempotencyFailureMessageMatchesAudit(t *testing.T) {
 			// serialization the checker walks is covered.
 			batch := dataStore.OpenWriteSession()
 			require.NoError(t, machine.recordIdempotencyFailure(
-				batch, idempotencyKey, []byte("proposal-hash"), tc.err, proposalCreatedAt, 0))
+				batch, idempotencyKey, []byte("proposal-hash"), tc.err, buildAuditFailure(tc.err), proposalCreatedAt, 0))
 			require.NoError(t, batch.Commit())
 
 			handle, err := dataStore.NewDirectReadHandle()

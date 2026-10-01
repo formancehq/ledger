@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -1500,6 +1501,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		entry.OrderCount = uint32(len(orders))
 		entry.Ledgers = extractLedgers(orders)
 		entry.HashVersion = uint32(fsm.State.HashGenerator.Algorithm())
+		entry.FailureProjectionVersion = fsm.State.LastClusterConfig.GetFailureProjectionVersion()
 		entry.CallerSnapshot = proposal.GetCallerSnapshot()
 		// Batch identity, bound into the hash chain. For a keyed batch a fresh
 		// Idempotency carries the client key plus the server-derived expires_at
@@ -1574,14 +1576,18 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		// produced by processor.ProcessOrders which now returns Describable
 		// directly — no boundary cast, no fallback path.
 		failureEntry := auditpb.AuditEntryFromVTPool()
-		failureEntry.Outcome = &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(err)}
+		failure := buildAuditFailureForVersion(err, fsm.State.LastClusterConfig.GetFailureProjectionVersion())
+		failureEntry.Outcome = &auditpb.AuditEntry_Failure{Failure: failure}
 		appendErr := writeAuditEntry(failureEntry, nil, "failure")
-		failureEntry.ReturnToVTPool()
 		if appendErr != nil {
+			failureEntry.ReturnToVTPool()
+
 			return nil, appendErr
 		}
 
-		if recErr := fsm.recordIdempotencyFailure(batch, idempotencyKey, proposalHash, err, effectiveDate.GetData(), idempotencyExpiresAt); recErr != nil {
+		recErr := fsm.recordIdempotencyFailure(batch, idempotencyKey, proposalHash, err, failure, effectiveDate.GetData(), idempotencyExpiresAt)
+		failureEntry.ReturnToVTPool()
+		if recErr != nil {
 			return nil, recErr
 		}
 
@@ -1623,14 +1629,18 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 	if err := transientErr; err != nil {
 		transientFailureEntry := auditpb.AuditEntryFromVTPool()
-		transientFailureEntry.Outcome = &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(err)}
+		failure := buildAuditFailureForVersion(err, fsm.State.LastClusterConfig.GetFailureProjectionVersion())
+		transientFailureEntry.Outcome = &auditpb.AuditEntry_Failure{Failure: failure}
 		appendErr := writeAuditEntry(transientFailureEntry, nil, "transient validation failure")
-		transientFailureEntry.ReturnToVTPool()
 		if appendErr != nil {
+			transientFailureEntry.ReturnToVTPool()
+
 			return nil, appendErr
 		}
 
-		if recErr := fsm.recordIdempotencyFailure(batch, idempotencyKey, proposalHash, err, effectiveDate.GetData(), idempotencyExpiresAt); recErr != nil {
+		recErr := fsm.recordIdempotencyFailure(batch, idempotencyKey, proposalHash, err, failure, effectiveDate.GetData(), idempotencyExpiresAt)
+		transientFailureEntry.ReturnToVTPool()
+		if recErr != nil {
 			return nil, recErr
 		}
 
@@ -1791,7 +1801,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 // No-op when there is no key, for non-business / retryable failures, for an
 // already-replayed failure (re-recording would reset its expiry), and over a
 // live (non-expired) prior outcome.
-func (fsm *Machine) recordIdempotencyFailure(batch *dal.WriteSession, key string, proposalHash []byte, bizErr error, createdAt, expiresAt uint64) error {
+func (fsm *Machine) recordIdempotencyFailure(batch *dal.WriteSession, key string, proposalHash []byte, bizErr error, failure *auditpb.AuditFailure, createdAt, expiresAt uint64) error {
 	if key == "" {
 		return nil
 	}
@@ -1814,16 +1824,19 @@ func (fsm *Machine) recordIdempotencyFailure(batch *dal.WriteSession, key string
 		return nil
 	}
 
-	reason, message := describeFailure(d)
+	var metadata map[string]string
+	if len(failure.GetContext()) > 0 {
+		metadata = maps.Clone(failure.GetContext())
+	}
 
 	value := &commonpb.IdempotencyKeyValue{
 		Hash:      proposalHash,
 		CreatedAt: createdAt,
 		ExpiresAt: expiresAt,
 		Failure: &commonpb.IdempotencyFailure{
-			Reason:   reason,
-			Message:  message,
-			Metadata: d.Metadata(),
+			Reason:   failure.GetReason(),
+			Message:  failure.GetMessage(),
+			Metadata: metadata,
 		},
 	}
 

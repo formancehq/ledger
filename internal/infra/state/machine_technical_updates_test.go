@@ -72,3 +72,33 @@ func TestApplyMirrorSyncUpdate_KeysOffEnvelopeNotProjection(t *testing.T) {
 	require.Equal(t, envelope, buffer.pendingMirrorSyncs[0].LedgerName,
 		"mirror-sync write must key off the envelope, not the divergent projection name")
 }
+
+func TestApplyClusterConfigFailureProjectionFlip(t *testing.T) {
+	t.Parallel()
+
+	fsm, dataStore, _ := newTestMachine(t)
+	require.Zero(t, fsm.State.LastClusterConfig.GetFailureProjectionVersion())
+
+	// The committed technical update is the only source of the projection
+	// version. A later failure will read this applied value, never a local flag.
+	batch := dataStore.OpenWriteSession()
+	require.NoError(t, fsm.applyClusterConfig(batch, 42, &commonpb.ClusterConfig{
+		RotationThreshold:        fsm.Registry.Cache.GenerationThreshold(),
+		FailureProjectionVersion: FailureProjectionVersionV1,
+	}))
+	require.NoError(t, batch.Commit())
+	require.Equal(t, FailureProjectionVersionV1, fsm.State.LastClusterConfig.GetFailureProjectionVersion())
+	handle, err := dataStore.NewReadHandle()
+	require.NoError(t, err)
+	recovered, err := LoadFSMStateFromStore(dataStore, handle)
+	require.NoError(t, handle.Close())
+	require.NoError(t, err)
+	require.Equal(t, FailureProjectionVersionV1, recovered.LastClusterConfig.GetFailureProjectionVersion())
+
+	invalid := dataStore.OpenWriteSession()
+	require.ErrorContains(t, fsm.applyClusterConfig(invalid, 43, &commonpb.ClusterConfig{
+		FailureProjectionVersion: FailureProjectionVersionV1 + 1,
+	}), "unsupported failure projection version")
+	require.NoError(t, invalid.Cancel())
+	require.Equal(t, FailureProjectionVersionV1, fsm.State.LastClusterConfig.GetFailureProjectionVersion())
+}

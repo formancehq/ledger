@@ -98,6 +98,10 @@ func (fsm *Machine) applyTechnicalUpdates(scopeFactory processing.ScopeFactory, 
 // skips. Reset the cache and purge 0xFF entirely — the preloader falls back to
 // Pebble reads (0xF1) and the cache rebuilds naturally.
 func (fsm *Machine) applyClusterConfig(batch *dal.WriteSession, raftIndex uint64, cfg *commonpb.ClusterConfig) error {
+	if cfg.GetFailureProjectionVersion() > FailureProjectionVersionV1 {
+		return fmt.Errorf("unsupported failure projection version %d", cfg.GetFailureProjectionVersion())
+	}
+
 	oldThreshold := fsm.Registry.Cache.GenerationThreshold()
 	newThreshold := cfg.GetRotationThreshold()
 

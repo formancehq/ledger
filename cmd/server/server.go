@@ -239,6 +239,7 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 
 	// Hash algorithm for log chain integrity
 	runCmd.Flags().String("hash-algorithm", "blake3", "Hash algorithm for log chain (blake3 or xxh3)")
+	runCmd.Flags().Uint64("failure-projection-version", 0, "Raft-replicated audited failure projection version (0 or 1; set 1 only after every node is upgraded)")
 
 	// Read index configuration
 	runCmd.Flags().String("read-index-dir", "", "Directory for the Pebble read index (default: <data-dir>/read-indexes/)")
@@ -682,6 +683,11 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 	default:
 		cfg.BloomConfig.HashAlgorithm = commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3
 	}
+	projectionVersion := getUint64("failure-projection-version", 0)
+	if projectionVersion > 1 {
+		return nil, fmt.Errorf("unsupported failure projection version %d", projectionVersion)
+	}
+	cfg.BloomConfig.FailureProjectionVersion = uint32(projectionVersion)
 
 	// Read index configuration
 	cfg.ReadIndexConfig = bootstrap.ReadIndexConfig{

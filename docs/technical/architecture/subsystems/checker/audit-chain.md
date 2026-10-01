@@ -32,8 +32,22 @@ Built by `state.BuildHashedHeaderPayload(entry)` (`internal/infra/state/audit_en
 | `IdempotencyKey` | length-prefixed bytes |
 | `IdempotencyExpiresAt` | `uint64` BE |
 | `Signature` | length-prefixed bytes (Ed25519 from the originator) |
+| `FailureProjectionVersion` | `uint32` BE for every version |
 
-Every field is hashed — none is "informational and excluded". `IdempotencyExpiresAt` is the server-derived retention deadline computed once from the committed policy TTL at apply time (HLC microseconds; `0` = never expires). It is stamped on every keyed proposal — including ones that freeze no outcome (an `IDEMPOTENCY_KEY_CONFLICT`, or a non-freezable failure), where it is the deadline the freeze *would* have taken; the checker derives no expectation from those entries (`IdempotencyValueFromAudit` returns `ok=false`), so the stamped value is inert for them. Binding it into the chain lets restore and the checker read the expiry back from the audit entry without consulting any node-local TTL configuration.
+Every field remains hashed. Both version 0 and version 1 append their number
+after the signature encoding in this unreleased v3 format. The
+checker reads the persisted entry's version, not current cluster config;
+unsupported versions report a hash mismatch. Success entries carry the stamp
+too, showing the boundary even without a failure. `IdempotencyExpiresAt` is
+the server-derived retention deadline computed once from the committed policy
+TTL at apply time (HLC microseconds; `0` = never expires). It is stamped on
+every keyed proposal — including ones that freeze no outcome (an
+`IDEMPOTENCY_KEY_CONFLICT`, or a non-freezable failure), where it is the
+deadline the freeze *would* have taken; the checker derives no expectation
+from those entries (`IdempotencyValueFromAudit` returns `ok=false`), so the
+stamped value is inert for them. Binding it into the chain lets restore and
+the checker read the expiry back from the audit entry without consulting any
+node-local TTL configuration.
 
 ### `CallerSnapshot` sub-payload
 

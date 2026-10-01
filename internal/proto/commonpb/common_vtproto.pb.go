@@ -1192,6 +1192,7 @@ func (m *ClusterConfig) CloneVT() *ClusterConfig {
 	r.BloomLedgerMetadata = m.BloomLedgerMetadata.CloneVT()
 	r.BloomPreparedQueries = m.BloomPreparedQueries.CloneVT()
 	r.BloomIndexes = m.BloomIndexes.CloneVT()
+	r.FailureProjectionVersion = m.FailureProjectionVersion
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -6555,6 +6556,9 @@ func (this *ClusterConfig) EqualVT(that *ClusterConfig) bool {
 		return false
 	}
 	if !this.BloomIndexes.EqualVT(that.BloomIndexes) {
+		return false
+	}
+	if this.FailureProjectionVersion != that.FailureProjectionVersion {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -14956,6 +14960,11 @@ func (m *ClusterConfig) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.FailureProjectionVersion != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.FailureProjectionVersion))
+		i--
+		dAtA[i] = 0x78
 	}
 	if m.BloomIndexes != nil {
 		size, err := m.BloomIndexes.MarshalToSizedBufferVT(dAtA[:i])
@@ -24492,6 +24501,9 @@ func (m *ClusterConfig) SizeVT() (n int) {
 	if m.BloomIndexes != nil {
 		l = m.BloomIndexes.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.FailureProjectionVersion != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.FailureProjectionVersion))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -34845,6 +34857,25 @@ func (m *ClusterConfig) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 15:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field FailureProjectionVersion", wireType)
+			}
+			m.FailureProjectionVersion = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.FailureProjectionVersion |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
