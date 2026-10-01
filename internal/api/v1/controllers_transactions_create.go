@@ -30,7 +30,7 @@ func (s Script) ToCore() (*ledgercontroller.Script, error) {
 		if err := json.Unmarshal(v, &m); err != nil {
 			var rawValue string
 			if err := json.Unmarshal(v, &rawValue); err != nil {
-				panic(err)
+				return nil, fmt.Errorf("invalid value for variable %q: %w", k, err)
 			}
 			s.Script.Vars[k] = rawValue
 			continue
