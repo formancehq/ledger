@@ -157,6 +157,29 @@ occur after that commit, so a failed check leaves the writes durable and
 propagates a fatal error. This domain owns the expectation reduction; durable
 WAL layout and checkpoint reconstruction remain with the recovery domain.
 
+### Lifecycle coverage is a closed set
+
+Lifecycle cleanup is correct only when the proposal declares the complete set
+of current-state keys that the FSM may inspect or delete. The declaration must
+cover every affected current-state key while preserving immutable history.
+
+Review the boundary between the producer and apply for each lifecycle path:
+ordinary writes, metadata-only orders, state transitions, skipped orders,
+idempotent replays, and mirror ingestion. A producer must expose the trigger
+and expected cost of any state-dependent enumeration, and apply must not widen
+the read horizon to compensate for an incomplete plan. A candidate set may
+depend on persisted state, but its cardinality, cost shape, and validation
+evidence must be explicit. Admission must release every lifecycle lock before
+waiting for the proposal future and must never retain one through FSM
+application.
+
+The minimum evidence is a deterministic matrix that compares the declared
+keys, proposal bytes, and durable deletion set for the same request with
+unrelated persisted rows added. Add separate rows for type transitions and
+for a delayed or cancelled proposal. If the candidate set or cost changes,
+record the trigger and cardinality that explain it. A functional cleanup test
+alone does not prove that the enumeration cost or lock lifetime is safe.
+
 ## Hot-path capability proof
 
 Do not stop at names such as `WriteSession` or `Scope`. Inspect concrete fields,
