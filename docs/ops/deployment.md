@@ -815,9 +815,19 @@ across an FSM outcome change" above:
   all nodes before deploying the new binary. The Kubernetes operator performs a
   *rolling* update by default, so this constraint has to be applied
   deliberately.
-- **No data wipe is required.** No persisted key layout or value encoding
-  changes and `storage-schema-version` is unaffected; existing entries stay
-  verifiable.
+- **Wipe the data unless the history contains no affected script.** No
+  persisted key layout or value encoding changes and `storage-schema-version`
+  is unaffected, so the new binary boots on existing data — but that history
+  is not fully re-verifiable. `ledgerctl check` replays every audited order on
+  the running binary, recompiling its script with the new library, and
+  compares the result with the stored log. An entry the old binary applied
+  with an affected script therefore fails the check on every replica: an
+  account-typed metadata value (stored `@merchants:acme`, reconstructed
+  `merchants:acme`) is reported as `LOG_PAYLOAD_MISMATCH`, and an edge-case
+  allotment listed above, which committed then and is rejected now, stops the
+  check with a replay error. Resynchronising from the leader does not clear
+  either. As for any unreleased v3 upgrade, wiping the data avoids this;
+  keeping it is sound only for a history with none of these scripts.
 - **Stopping all nodes does not remove every exposure.** A scripted entry
   committed before the stop but applied by a node only after it restarts on
   the new binary — the entries it replays above its last snapshot — runs on
@@ -829,11 +839,13 @@ across an FSM outcome change" above:
   library update that changes the bytecode major version fails such entries
   instead (see the next point). Such a replica must be resynchronised from the
   leader.
-- **`ledgerctl check` does not detect a straddled window** for the usual
-  reason: each replica's audit chain stays internally consistent. Detecting a
-  divergence means comparing transaction metadata and audit entries across
-  replicas; a replica that applied entries inside the window must be
-  resynchronised from the leader.
+- **`ledgerctl check` cannot single out a straddled replica.** Each replica's
+  audit chain stays internally consistent, and the check's replay on the new
+  binary already reports every affected entry the old library applied, on
+  healthy replicas too (see the previous points). Detecting a divergence means
+  comparing transaction metadata and audit entries across replicas; a replica
+  that applied entries inside the window must be resynchronised from the
+  leader.
 - **An artifact this binary cannot read is rejected, never executed.** The
   FSM runs an artifact when both its halves carry a bytecode version
   (major.minor) the bundled Numscript library can read: the same major and a
