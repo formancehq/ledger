@@ -1090,6 +1090,12 @@ func (s *Store) checkpointQueryTemp(tmpDir string) error {
 		return ErrStoreClosed
 	}
 
+	// Keep the checkpoint's WAL small: replaying a large live WAL into many
+	// memtables makes historical scans repeatedly seek through all of them.
+	if err := db.Flush(); err != nil {
+		return fmt.Errorf("flushing main store before query checkpoint: %w", err)
+	}
+
 	if err := db.Checkpoint(tmpDir, pebble.WithFlushedWAL()); err != nil {
 		return fmt.Errorf("creating query checkpoint: %w", err)
 	}
