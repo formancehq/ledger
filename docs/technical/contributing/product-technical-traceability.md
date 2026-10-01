@@ -74,17 +74,19 @@ Define how we know the original requirement is satisfied. Prefer tests, model ch
 When a decision changes admission, preload coverage, cache state, proposal
 encoding, storage scans, locking, or a projection boundary, the traceability
 chain must also state its operational budget. Record the expected complexity,
-the cardinality that drives it, the maximum lock scope, and any proposal, WAL,
-cache, or storage amplification. Validate the budget with a deterministic
-cost-shape test and representative benchmark evidence. A green functional test
-does not prove that a new admission path is safe under production cardinality
-or concurrency.
+the cardinality that drives it, and any proposal, WAL, cache, or storage
+amplification. Validate the budget with a deterministic cost-shape test and
+representative benchmark evidence. A green functional test does not prove that
+a new admission path is safe under production cardinality or concurrency.
 
 The PR must name the trigger that causes the extra work and the path that does
 not. If the cost cannot be bounded by request size, state the operational
-cardinality limit, backpressure or rejection strategy, and review trigger. If a
-lock crosses a proposal or FSM boundary, explain why a snapshot, revision, or
-ordered validation cannot replace it.
+cardinality limit, backpressure or rejection strategy, and review trigger.
+
+Admission must release every lifecycle lock before waiting for the proposal
+future. A lifecycle lock must never remain held through FSM application. A PR
+that retains a lifecycle lock while a proposal is pending requires an explicit
+architecture decision before implementation.
 
 ## Where the evidence lives
 

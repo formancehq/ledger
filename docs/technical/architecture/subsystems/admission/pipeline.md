@@ -131,23 +131,29 @@ persisted state or expand coverage when the semantics require that information.
 The design must state whether the work scales with the request, with persisted
 state, or with both, and why that trade-off is acceptable.
 
-Before implementation, a wider read or a lock that crosses proposal boundaries
-must state all of the following:
+Admission must release every lifecycle lock before it waits for the proposal
+future. A lifecycle lock must never remain held through FSM application. The
+FSM owns the committed lifecycle transition; admission prepares and validates
+the proposal only.
 
-- the product or operational need that requires the wider read or lock;
+The proposal guard is not a lifecycle lock. It protects cache-generation
+correctness and loader lifetime until `Propose` returns. Release it before
+`proposal.Wait(ctx)` and never reuse it to serialize lifecycle state.
+
+Before implementation, a state-dependent read or coverage expansion must state
+all of the following:
+
+- the product or operational need that requires the read or expansion;
 - the complexity and the cardinality that bound it;
-- the lock owner, cancellation rule, and maximum hold time;
 - the proposal, WAL, cache, and storage amplification;
 - the alternatives considered, including a bounded or asynchronous design;
 - the deterministic cost-shape test and the representative throughput and
   latency evidence that validate the budget;
-- the reason a lock must cross the proposal boundary, its fairness and
-  cancellation behavior, and the proof that unrelated requests are not
-  serialized unnecessarily.
+- the trigger that causes the extra work and the path that does not.
 
-The proposal guard protects cache-generation correctness. It is not an implicit
-ownership mechanism for unrelated lifecycle state. If a design cannot state
-its cost or lock boundary, raise an architecture question before merging it.
+If a proposal needs a lifecycle lock while it is pending, raise an architecture
+decision before implementation. Do not introduce that lock through an ordinary
+PR.
 
 ## Idempotency
 

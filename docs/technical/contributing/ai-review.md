@@ -91,10 +91,12 @@ proposal encoding, review the operational cost boundary as part of correctness.
 Identify the request-sized work, any work proportional to persisted state, lock
 scope, cancellation behavior, proposal/WAL amplification, and the validation
 that proves the difference. Functional tests do not cover this review point by
-themselves. An unbounded state-dependent operation is not automatically wrong,
-but it needs an explicit operational limit and failure strategy. If the cost or
-lock lifetime is unexplained, request the traceability and benchmark evidence
-before approval.
+themselves. State-dependent work is allowed when the semantics require it, but
+its trigger, cardinality, cost shape, and failure strategy must be explicit.
+Admission must release every lifecycle lock before waiting for the proposal
+future and must never retain one through FSM application. Treat a violation as
+a blocking finding. If the cost or lock lifetime is unexplained, request the
+traceability and benchmark evidence before approval.
 
 When a test is intentionally probabilistic or stress-based, state that clearly and verify that its failure signal corresponds to the invariant being tested.
 
