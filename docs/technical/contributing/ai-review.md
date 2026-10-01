@@ -91,8 +91,10 @@ proposal encoding, review the operational cost boundary as part of correctness.
 Identify the request-sized work, any work proportional to persisted state, lock
 scope, cancellation behavior, proposal/WAL amplification, and the validation
 that proves the difference. Functional tests do not cover this review point by
-themselves. If the cost is not bounded or the evidence is absent, request the
-traceability and benchmark evidence before approval.
+themselves. An unbounded state-dependent operation is not automatically wrong,
+but it needs an explicit operational limit and failure strategy. If the cost or
+lock lifetime is unexplained, request the traceability and benchmark evidence
+before approval.
 
 When a test is intentionally probabilistic or stress-based, state that clearly and verify that its failure signal corresponds to the invariant being tested.
 

@@ -165,17 +165,17 @@ cover every affected current-state key while preserving immutable history.
 
 Review the boundary between the producer and apply for each lifecycle path:
 ordinary writes, metadata-only orders, state transitions, skipped orders,
-idempotent replays, and mirror ingestion. A producer must not hide an
-unbounded historical scan behind ordinary admission, and apply must not widen
-the read horizon to compensate for an incomplete plan. If the candidate set
-cannot be bounded by the request and its declared dependencies, the design is
-an architecture question rather than a local coverage change.
+idempotent replays, and mirror ingestion. A producer must expose the trigger
+and expected cost of any state-dependent enumeration, and apply must not widen
+the read horizon to compensate for an incomplete plan. A candidate set may
+depend on persisted state, but its cardinality, synchronization boundary, and
+validation evidence must be explicit.
 
 The minimum evidence is a deterministic matrix that compares the declared
 keys, proposal bytes, and durable deletion set for the same request with
 unrelated persisted rows added. Add separate rows for type transitions and
-for a delayed or cancelled proposal. A functional purge test alone does not
-prove that ordinary admission remains bounded.
+for a delayed or cancelled proposal. A functional cleanup test alone does not
+prove that the enumeration cost or lock lifetime is safe.
 
 ## Hot-path capability proof
 

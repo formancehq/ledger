@@ -81,8 +81,10 @@ does not prove that a new admission path is safe under production cardinality
 or concurrency.
 
 The PR must name the trigger that causes the extra work and the path that does
-not. If the cost cannot be bounded, the decision is an architecture question,
-not an implementation detail.
+not. If the cost cannot be bounded by request size, state the operational
+cardinality limit, backpressure or rejection strategy, and review trigger. If a
+lock crosses a proposal or FSM boundary, explain why a snapshot, revision, or
+ordered validation cannot replace it.
 
 ## Where the evidence lives
 

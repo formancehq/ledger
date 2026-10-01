@@ -126,14 +126,13 @@ A response signature (`SignedLog`) is attached at the gRPC layer on the way out 
 
 ## Admission cost boundary
 
-Admission may read the local store to build a proposal, but ordinary admission
-must remain bounded by the request and its declared dependencies. A new path
-must not enumerate an unbounded historical prefix, expand every persisted row
-owned by a touched entity, or hold a lifecycle lock until FSM application
-completes unless the owning architecture document records an explicit
-exception.
+Admission may read the local store to build a proposal. It may enumerate
+persisted state or expand coverage when the semantics require that information.
+The design must state whether the work scales with the request, with persisted
+state, or with both, and why that trade-off is acceptable.
 
-An exception must state all of the following before implementation:
+Before implementation, a wider read or a lock that crosses proposal boundaries
+must state all of the following:
 
 - the product or operational need that requires the wider read or lock;
 - the complexity and the cardinality that bound it;
@@ -141,12 +140,14 @@ An exception must state all of the following before implementation:
 - the proposal, WAL, cache, and storage amplification;
 - the alternatives considered, including a bounded or asynchronous design;
 - the deterministic cost-shape test and the representative throughput and
-  latency evidence that validate the budget.
+  latency evidence that validate the budget;
+- the reason a lock must cross the proposal boundary, its fairness and
+  cancellation behavior, and the proof that unrelated requests are not
+  serialized unnecessarily.
 
-The proposal guard protects cache-generation correctness. It is not a license
-to move unrelated enumeration or serialization work into the admission
-critical path. If a design cannot state a cost boundary, keep it out of the
-ordinary write path and raise an architecture question first.
+The proposal guard protects cache-generation correctness. It is not an implicit
+ownership mechanism for unrelated lifecycle state. If a design cannot state
+its cost or lock boundary, raise an architecture question before merging it.
 
 ## Idempotency
 
