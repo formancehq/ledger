@@ -228,16 +228,18 @@ servers, and every Raft replica must agree on revision 16 semantics.
 
 ## Numscript metadata rendering and VM execution (revision 15)
 
+## Numscript metadata rendering and VM execution (revision 16)
+
 Revision 15 stores and returns an account-typed Numscript metadata value
 (`set_tx_meta("k", @merchants:acme)` and its `set_account_meta` counterpart) as
-the bare account name, `merchants:acme`, where revision 14 returned
+the bare account name, `merchants:acme`, where revision 15 returned
 `@merchants:acme`. The rendering now comes from the Numscript library itself,
 identically on both of its engines, and the bare name is the form a later
 `meta()` read can resolve as an account again — the `@`-prefixed form could
 not. Scalar values are unchanged: strings and numbers stay verbatim, monetary
 stays `ASSET amount`, portions and assets keep their canonical forms. The
 `.proto` text of the exposed metadata messages is unchanged, so the difference
-is invisible to a schema comparison; a revision-14 client would read the same
+is invisible to a schema comparison; a revision-15 client would read the same
 Apply request back with different metadata bytes.
 
 Revision 15 also changes apply semantics: admission compiles each resolvable
@@ -250,7 +252,7 @@ a binary predating these fields silently drops them and interprets with the
 older Numscript library, so a mixed-binary cluster applying the same committed
 entry writes divergent transaction and audit bytes. Deploy this revision with
 all nodes stopped — see
-[Upgrading across the Numscript VM execution change](../../../../ops/deployment.md#upgrading-across-the-numscript-vm-execution-change-revision-15).
+[Upgrading across the Numscript VM execution change](../../../../ops/deployment.md#upgrading-across-the-numscript-vm-execution-change-revision-16).
 The artifact itself carries the Numscript library's bytecode version
 (major.minor): the FSM executes it when the bundled library can read that
 version (same major, minor no newer) and otherwise fails the order with a
@@ -273,8 +275,8 @@ an idempotency key: admission forwards it as preload-unavailable (see
 [admission idempotency](../admission/idempotency.md)), so the FSM replays the
 key's frozen outcome or rejects with `ERROR_REASON_PRELOAD_UNAVAILABLE`.
 Neither revision freezes the compile failure itself under an idempotency key:
-revision 14's apply failure was `KindInternal`, which is not freezable, and
-revision 15's rejection happens before apply.
+revision 15's apply failure was `KindInternal`, which is not freezable, and
+revision 16's rejection happens before apply.
 
 ## Maintaining the revision
 

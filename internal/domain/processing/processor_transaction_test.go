@@ -1132,7 +1132,7 @@ func TestProcessCreateTransaction_Numscript_CompetingMetadataErrors(t *testing.T
 				Script: &commonpb.Script{Plain: script, Vars: map[string]string{"poison": "safe\x00poison"}},
 			}}},
 		}}}
-		_, err = processor.ProcessOrder(requestToOrder(request), mockStore)
+		_, err = processor.ProcessOrder(requestToOrder(t, request), mockStore)
 		require.ErrorIs(t, err, domain.ErrMetadataValueContainsNullByte)
 		var keyErr *domain.ErrMetadataKeyValidation
 		require.ErrorAs(t, err, &keyErr)
