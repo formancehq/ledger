@@ -300,11 +300,13 @@ type OrderTechnical struct {
 	// (invariant #2) — provided every replica runs a binary that knows these
 	// fields. A binary predating them silently drops the artifact and interprets
 	// with its own bundled library, so this change is a stop-all-nodes
-	// deployment boundary (service protocol revision 15; see
+	// deployment boundary (service protocol revision 16; see
 	// docs/ops/deployment.md, "Upgrading across the Numscript VM execution
 	// change"). Every scripted order admission proposes carries one: a script
-	// the VM cannot run is rejected at admission, and a scripted order reaching
-	// the FSM without an artifact fails loudly as an admission bug.
+	// the VM cannot run is rejected at admission. A scripted order reaching the
+	// FSM without an artifact is recompiled from its script text with the same
+	// outcome; outside the store checker's audit replay (whose orders never
+	// carry one) that is an admission bug, flagged with assert.Unreachable.
 	CompiledProgram []byte `protobuf:"bytes,5,opt,name=compiled_program,json=compiledProgram,proto3" json:"compiled_program,omitempty"`
 	// compiled_vars is the order's runtime vars encoded against
 	// compiled_program's variable layout (numscript VarsEncoder + Vars.Encode).
