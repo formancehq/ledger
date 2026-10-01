@@ -103,10 +103,41 @@ type queryMutationSignatureServer struct {
 
 	response *servicepb.ApplyResponse
 	calls    atomic.Int32
+	request  *servicepb.ApplyRequest
 }
 
-func (s *queryMutationSignatureServer) Apply(context.Context, *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
+func (s *queryMutationSignatureServer) Apply(_ context.Context, request *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
 	s.calls.Add(1)
+	s.request = request
 
 	return s.response, nil
+}
+
+func TestQueryUpdateWithoutFilterClearsIt(t *testing.T) {
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	require.NoError(t, err)
+	server := grpc.NewServer()
+	fixture := &queryMutationSignatureServer{response: &servicepb.ApplyResponse{}}
+	servicepb.RegisterBucketServiceServer(server, fixture)
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(server.Stop)
+
+	cmd := &cobra.Command{Use: "ledgerctl", SilenceUsage: true, SilenceErrors: true}
+	cmd.PersistentFlags().String("server", listener.Addr().String(), "")
+	cmd.PersistentFlags().Bool("insecure", true, "")
+	cmd.PersistentFlags().String("auth-token", "test-token", "")
+	cmd.PersistentFlags().String("response-verify-key", "", "")
+	cmd.AddCommand(queries.NewCommand())
+	cmd.SetArgs([]string{"queries", "update", "all-accounts", "--ledger", "test"})
+
+	require.NoError(t, cmd.Execute())
+	require.EqualValues(t, 1, fixture.calls.Load())
+	require.NotNil(t, fixture.request)
+	requests := fixture.request.GetUnsigned().GetRequests()
+	require.Len(t, requests, 1)
+	update := requests[0].GetUpdatePreparedQuery()
+	require.NotNil(t, update)
+	require.Equal(t, "test", update.GetLedger())
+	require.Equal(t, "all-accounts", update.GetName())
+	require.Nil(t, update.GetFilter(), "omitting --filter must send nil to clear the stored filter")
 }

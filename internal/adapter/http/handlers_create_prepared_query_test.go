@@ -148,20 +148,63 @@ func TestHandleCreatePreparedQuery_InvalidBody(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-func TestHandleCreatePreparedQuery_MissingFilter(t *testing.T) {
+func TestHandleCreatePreparedQuery_Filterless(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "omitted", body: `{"name":"my-query","target":"ACCOUNTS"}`},
+		{name: "null", body: `{"name":"my-query","target":"ACCOUNTS","filter":null}`},
+	}
 
-	w := httptest.NewRecorder()
-	r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries",
-		strings.NewReader(`{"name":"my-query","target":"ACCOUNTS"}`),
-		map[string]string{"ledgerName": "ledger1"})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	srv.handleCreatePreparedQuery(w, r)
+			var captured *servicepb.Request
+			backend := NewMockBackend(gomock.NewController(t))
+			backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, reqs *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+					captured = reqs.GetUnsigned().GetRequests()[0]
 
-	require.Equal(t, http.StatusBadRequest, w.Code)
-	require.Contains(t, w.Body.String(), "filter is required")
+					return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
+				})
+			srv := newTestServer(t, backend)
+
+			w := httptest.NewRecorder()
+			r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries",
+				strings.NewReader(tt.body), map[string]string{"ledgerName": "ledger1"})
+
+			srv.handleCreatePreparedQuery(w, r)
+
+			require.Equal(t, http.StatusNoContent, w.Code)
+			require.NotNil(t, captured)
+			require.Nil(t, captured.GetCreatePreparedQuery().GetQuery().GetFilter())
+		})
+	}
+}
+
+func TestHandleCreatePreparedQuery_EmptyTextFilter(t *testing.T) {
+	t.Parallel()
+
+	for _, filter := range []string{`""`, `"   "`} {
+		t.Run(filter, func(t *testing.T) {
+			t.Parallel()
+
+			srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
+
+			w := httptest.NewRecorder()
+			r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries",
+				strings.NewReader(`{"name":"my-query","target":"ACCOUNTS","filter":`+filter+`}`),
+				map[string]string{"ledgerName": "ledger1"})
+
+			srv.handleCreatePreparedQuery(w, r)
+
+			require.Equal(t, http.StatusBadRequest, w.Code)
+		})
+	}
 }
 
 func TestHandleCreatePreparedQuery_EmptyFilter(t *testing.T) {

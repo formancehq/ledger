@@ -1210,6 +1210,8 @@ message CreatePreparedQueryRequest {
 message UpdatePreparedQueryRequest {
   string ledger = 1;
   string name = 2;
+  // Nil explicitly removes the stored filter and makes the query match all
+  // entities in its immutable target.
   common.QueryFilter filter = 3;
 }
 

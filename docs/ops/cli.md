@@ -3640,10 +3640,12 @@ Displays each query's name, target, and filter in human-readable DSL format.
 
 #### queries update
 
-Update the filter of an existing prepared query.
+Update the filter of an existing prepared query. Omit `--filter` to remove the
+stored filter and make the query match all entities in its target. Supplying an
+empty or whitespace-only `--filter` is invalid.
 
 ```bash
-ledgerctl queries update <name> --ledger <ledger-name> --filter "<new-filter>" [flags]
+ledgerctl queries update <name> --ledger <ledger-name> [--filter "<new-filter>"] [flags]
 ```
 
 #### queries delete

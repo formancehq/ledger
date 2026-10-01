@@ -495,7 +495,14 @@ aliases (EN-1540) — is documented once in
 
 ### 10. Prepared Queries and User-Configurable Indexes
 
-Prepared queries are reusable, named filter queries stored per-ledger. They can be executed in two modes: `LIST` (returns matching entity IDs with cursor pagination) and `AGGREGATE_VOLUMES` (returns aggregated volumes per asset for matched accounts).
+Prepared queries are reusable, named queries stored per-ledger. A nil filter is
+a match-all definition for the selected target. HTTP create accepts omitted or
+null `filter`; HTTP update treats omission as no change and null as filter
+removal. `Apply(UpdatePreparedQuery)` uses a nil protobuf filter for removal.
+Empty objects and empty textual expressions are invalid. Queries can be
+executed in two modes: `LIST` (returns matching entity IDs with cursor
+pagination) and `AGGREGATE_VOLUMES` (returns aggregated volumes per asset for
+matched accounts).
 
 **Endpoints:**
 - `POST /v3/{ledgerName}/prepared-queries` — Create

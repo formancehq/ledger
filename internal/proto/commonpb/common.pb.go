@@ -11646,10 +11646,12 @@ func (*AddressMatch_ParamExact) isAddressMatch_Match() {}
 // (where the query is being created or invoked) on the surrounding request /
 // LedgerScopedOrder; it is intentionally NOT a field on the value itself.
 type PreparedQuery struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Filter        *QueryFilter           `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
-	Target        QueryTarget            `protobuf:"varint,3,opt,name=target,proto3,enum=common.QueryTarget" json:"target,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Name  string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// Nil means match all entities in target. Empty/conditionless messages are
+	// invalid and must not be used as a match-all representation.
+	Filter        *QueryFilter `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
+	Target        QueryTarget  `protobuf:"varint,3,opt,name=target,proto3,enum=common.QueryTarget" json:"target,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
