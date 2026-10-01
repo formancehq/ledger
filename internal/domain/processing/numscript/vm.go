@@ -17,7 +17,8 @@ import (
 // bytecode, the runtime vars encoded against that program's variable layout,
 // and the BLAKE3 hash of the exact script text it was compiled from. The VM is
 // the only execution engine: the FSM decodes and executes this artifact on
-// every node, and an order without one never reaches execution.
+// every node, and recompiles it from the script text (CompileForReplay) for a
+// scripted order that arrives without one.
 //
 // program and vars are the decoded forms of Program and Vars, kept for
 // admission's own effects run so it need not decode what it just encoded.

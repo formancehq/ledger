@@ -63,7 +63,8 @@ type Context struct {
 	// CompiledProgram/CompiledVars/CompiledScriptHash are the Numscript VM
 	// artifact admission compiled for THIS order (from OrderTechnical), staged
 	// here like the fields above. Every scripted order admission proposes
-	// carries one; the numscript producer fails a scripted order without it.
+	// carries one; the numscript producer recompiles a missing one from the
+	// script text, flagging it as an admission bug outside audit replay.
 	CompiledProgram    []byte
 	CompiledVars       []byte
 	CompiledScriptHash []byte
