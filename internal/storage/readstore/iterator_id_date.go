@@ -19,6 +19,7 @@ type IDDateRangeIterator[D Direction] struct {
 	reader               dal.PebbleReader
 	iter                 *pebble.Iterator
 	idPrefix             []byte
+	seekKey              []byte // immutable prefix plus reusable 8-byte ID suffix
 	dateLower, dateUpper []byte
 	dateEntityOffset     int
 	lowerDate, upperDate uint64
@@ -54,8 +55,11 @@ func NewIDDateRangeIterator[D Direction](
 	}
 	var direction D
 	_, reverse := any(direction).(Desc)
+	idPrefix = copyBytes(idPrefix)
+	seekKey := make([]byte, len(idPrefix)+8)
+	copy(seekKey, idPrefix)
 
-	return &IDDateRangeIterator[D]{reader: reader, iter: iter, idPrefix: copyBytes(idPrefix), dateLower: copyBytes(dateLower), dateUpper: copyBytes(dateUpper), dateEntityOffset: dateEntityOffset, lowerDate: lowerDate, upperDate: upperDate, hasMin: hasMin, hasMax: hasMax, stamped: stamped, stampPin: stampPin, reverse: reverse}, nil
+	return &IDDateRangeIterator[D]{reader: reader, iter: iter, idPrefix: idPrefix, seekKey: seekKey, dateLower: copyBytes(dateLower), dateUpper: copyBytes(dateUpper), dateEntityOffset: dateEntityOffset, lowerDate: lowerDate, upperDate: upperDate, hasMin: hasMin, hasMax: hasMax, stamped: stamped, stampPin: stampPin, reverse: reverse}, nil
 }
 
 func (*IDDateRangeIterator[D]) Direction() (d D)   { return }
@@ -124,11 +128,9 @@ func (it *IDDateRangeIterator[D]) Seek(target []byte) bool {
 }
 
 func (it *IDDateRangeIterator[D]) seekID(id []byte) {
-	key := make([]byte, len(it.idPrefix)+8)
-	copy(key, it.idPrefix)
-	copy(key[len(it.idPrefix):], id)
-	if it.iter.SeekGE(key) {
-		if it.reverse && bytes.Compare(it.iter.Key(), key) > 0 {
+	copy(it.seekKey[len(it.idPrefix):], id)
+	if it.iter.SeekGE(it.seekKey) {
+		if it.reverse && bytes.Compare(it.iter.Key(), it.seekKey) > 0 {
 			it.iter.Prev()
 		}
 	} else if it.reverse {

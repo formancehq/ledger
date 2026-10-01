@@ -206,7 +206,7 @@ func seedParityAccountVolumes(t *testing.T, batch *dal.WriteSession, kb *dal.Key
 
 // seedParityTransactions writes the main-store transaction rows the
 // TRANSACTIONS universe and the id-range leaf scan, plus the timestamp index
-// rows the value-ordered fallback needs. The key is assembled from the
+// rows the ID-ordered date range needs. The key is assembled from the
 // canonical pieces (domain.TransactionKey under the attributes zone) rather
 // than a hand-spelled layout, so a change to that layout breaks the build
 // here instead of silently seeding rows no iterator can see.
@@ -220,16 +220,15 @@ func seedParityTransactions(t *testing.T, batch *dal.WriteSession, kb *dal.KeyBu
 			Build()
 		require.NoError(t, batch.SetBytes(txKey, []byte{1}))
 
-		// Timestamps ascend with the id, so (timestamp, entity) order and
-		// entity order agree; the fallback is still exercised because the
-		// scan spans several value buckets.
+		// Timestamps ascend with the id here, while the separate pagination
+		// oracle covers inverted dates. This fixture exercises both index views.
 		require.NoError(t, batch.SetBytes(readstore.TransactionTimestampKey(
 			dal.NewKeyBuilder(), parityLedger, uint64(1_000+i), id), nil))
 		var timestamp [8]byte
 		binary.BigEndian.PutUint64(timestamp[:], uint64(1_000+i))
 		require.NoError(t, batch.SetBytes(readstore.IDDateKey(kb, readstore.PrefixTransactionTimestampByID, parityLedger, id), timestamp[:]))
 
-		// inserted_at is the same fallback class over a different prefix, so
+		// inserted_at uses the same iterator with a different prefix, so
 		// a bound built against the wrong index shows up here and not in the
 		// timestamp case.
 		require.NoError(t, batch.SetBytes(readstore.TransactionInsertedAtKey(
@@ -240,8 +239,7 @@ func seedParityTransactions(t *testing.T, batch *dal.WriteSession, kb *dal.KeyBu
 }
 
 // seedParityLogs writes the ledger-log rows behind the LOGS universe and the
-// log-id leaves, plus the log-date index rows the value-ordered fallback
-// scans.
+// log-id leaves, plus both log-date index views.
 func seedParityLogs(t *testing.T, batch *dal.WriteSession, kb *dal.KeyBuilder) {
 	t.Helper()
 
@@ -655,23 +653,23 @@ func parityCases() []parityCase {
 		{"tx id range (streaming leaf)", txIDRangeFilter(lo+2, hi-2)},
 		{"tx id range open above", txIDRangeFilter(lo+5, ^uint64(0))},
 		{"tx id equality", txIDEqualFilter(lo + 3)},
-		{"tx timestamp range (materializing fallback)", txTimestampRangeFilter(1_002, 1_008)},
+		{"tx timestamp range (ID-ordered)", txTimestampRangeFilter(1_002, 1_008)},
 		{"and of two id ranges", andFilter(txIDRangeFilter(lo, hi-1), txIDRangeFilter(lo+4, hi))},
 		{"or of two id equalities", orFilter(txIDEqualFilter(lo+1), txIDEqualFilter(hi-1))},
 		{"not of an id equality", notFilter(txIDEqualFilter(lo + 6))},
-		{"and containing a materializing range", andFilter(txIDRangeFilter(lo, hi), txTimestampRangeFilter(1_003, 1_009))},
+		{"and containing an ID-ordered date range", andFilter(txIDRangeFilter(lo, hi), txTimestampRangeFilter(1_003, 1_009))},
 		{"empty result", txIDEqualFilter(999_999)},
 		// The remaining leaf classes reachable on TRANSACTIONS: the
 		// account→tx union (both match forms and a role bucket), the txref
 		// reverse prefix, the reversion bitset and its complement, and the
-		// inserted_at arm of the timestamp fallback.
+		// inserted_at arm of the ID-ordered date iterator.
 		{"address prefix (materializing union)", addressPrefixFilter(parityAddressPrefix, commonpb.AddressRole_ADDRESS_ROLE_ANY)},
 		{"address exact (materializing union)", addressExactFilter(parityAddressExact, commonpb.AddressRole_ADDRESS_ROLE_ANY)},
 		{"address prefix on the source role bucket", addressPrefixFilter(parityAddressPrefix, commonpb.AddressRole_ADDRESS_ROLE_SOURCE)},
 		{"reference (streaming prefix leaf)", referenceFilter(parityReferenceA)},
 		{"reverted true (bitset leaf)", revertedFilter(true)},
 		{"reverted false (not over the bitset)", revertedFilter(false)},
-		{"inserted_at range (materializing fallback)", txInsertedAtRangeFilter(2_002, 2_008)},
+		{"inserted_at range (ID-ordered)", txInsertedAtRangeFilter(2_002, 2_008)},
 		{"and of address prefix and id range", andFilter(
 			addressPrefixFilter(parityAddressPrefix, commonpb.AddressRole_ADDRESS_ROLE_ANY),
 			txIDRangeFilter(lo+3, hi),
@@ -699,9 +697,9 @@ func parityCases() []parityCase {
 		{"or of two id equalities", orFilter(logIDEqualFilter(logLo+1), logIDEqualFilter(logHi-1))},
 		{"and of two id ranges", andFilter(logIDRangeFilter(logLo, logHi-1), logIDRangeFilter(logLo+3, logHi))},
 		{"empty result", logIDEqualFilter(999_999)},
-		// The log-date arm of the timestamp fallback: a different prefix and
+		// The log-date arm of the ID-ordered date iterator: a different prefix and
 		// no stamp gate, so it cannot ride on the transaction cases.
-		{"log date range (materializing fallback)", logDateRangeFilter(3_002, 3_008)},
+		{"log date range (ID-ordered)", logDateRangeFilter(3_002, 3_008)},
 		{"and of log date and id range", andFilter(
 			logDateRangeFilter(3_001, 3_010), logIDRangeFilter(logLo+4, logHi),
 		)},

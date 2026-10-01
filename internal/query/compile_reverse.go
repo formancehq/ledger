@@ -26,12 +26,12 @@ import (
 // rejectInvalidCondition. A filter that compiles one way therefore compiles
 // the other way with the same verdict, and a semantic change lands in both.
 //
-// Two leaf classes cannot stream backwards and keep the materialization the
-// ascending path already pays:
+// Three leaf classes still materialize for descending traversal:
 //
-//   - value-ordered ranges (int/uint metadata ranges, timestamp and log-date
-//     ranges, log-id ranges): the scan surfaces rows in (value, entity) order,
-//     so "the next entity below X" is undefined without the sorted result;
+//   - value-ordered int/uint metadata ranges: the scan surfaces rows in
+//     (value, entity) order, so entity order requires sorting;
+//   - log-ID ranges: the key is ID-ordered, but this range leaf has no reverse
+//     iterator yet;
 //   - the account→transaction address union: its members come from N per-account
 //     scans that are each ascending but collectively unordered.
 //
@@ -887,7 +887,7 @@ func compileTimestampRangeConditionRev(
 		return emptyReverse(), nil
 	}
 
-	lower, upper, entityOffset, _ := timestampRangeBounds(arm.prefix, bounds)
+	lower, upper, entityOffset := timestampRangeBounds(arm.prefix, bounds)
 	idPrefix := readstore.IDDatePrefix(ctx.kb, arm.idPrefix, ctx.ledgerName)
 	iter, rErr := readstore.NewIDDateRangeIterator[readstore.Desc](ctx.indexReader, idPrefix, lower, upper, entityOffset, bounds.min, bounds.max, bounds.hasMin, bounds.hasMax, arm.stamped, arm.stampPin)
 	if rErr != nil {

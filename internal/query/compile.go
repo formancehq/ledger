@@ -1401,7 +1401,7 @@ func compileTimestampRangeCondition(
 		return readstore.NewSliceIterator(nil), nil
 	}
 
-	lower, upper, entityOffset, _ := timestampRangeBounds(arm.prefix, bounds)
+	lower, upper, entityOffset := timestampRangeBounds(arm.prefix, bounds)
 	idPrefix := readstore.IDDatePrefix(ctx.kb, arm.idPrefix, ctx.ledgerName)
 	iter, rErr := readstore.NewIDDateRangeIterator[readstore.Asc](ctx.indexReader, idPrefix, lower, upper, entityOffset, bounds.min, bounds.max, bounds.hasMin, bounds.hasMax, arm.stamped, arm.stampPin)
 	if rErr != nil {
@@ -2012,9 +2012,8 @@ func uintRangeBounds(mc *metadataCtx, bounds resolvedUintBounds) (lower, upper [
 // timestampRangeBounds builds the scan range and entity extraction offsets for
 // the timestamp-keyed indexes, whose layout is
 // [prefix_byte][ledger\x00][timestamp_BE(8B)][entityID_BE(8B)].
-func timestampRangeBounds(ledgerPrefix []byte, bounds resolvedUintBounds) (lower, upper []byte, entityOffset, entityLen int) {
+func timestampRangeBounds(ledgerPrefix []byte, bounds resolvedUintBounds) (lower, upper []byte, entityOffset int) {
 	entityOffset = len(ledgerPrefix) + 8
-	entityLen = 8
 
 	lower = make([]byte, 0, len(ledgerPrefix)+8)
 	lower = append(lower, ledgerPrefix...)
@@ -2039,7 +2038,7 @@ func timestampRangeBounds(ledgerPrefix []byte, bounds resolvedUintBounds) (lower
 		lower = ledgerPrefix
 	}
 
-	return lower, upper, entityOffset, entityLen
+	return lower, upper, entityOffset
 }
 
 // logIDRangeBounds builds the scan range for the ledger logs index, whose
