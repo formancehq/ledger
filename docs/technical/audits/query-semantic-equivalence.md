@@ -14,6 +14,9 @@ directions and every exclusive ID-cursor page against sorted expected IDs.
 Include equal dates, excluded bounds, and a widening-window memory/visit
 measurement. Atomic publication of its date-first and ID-first projections
 belongs to read-consistency-projections.
+For sparse cursor pages, the ID-first iterator may scan the bounded date
+window once to find the next match or prove exhaustion. Verify that later
+sparse gaps do not trigger another date-window scan on the same iterator.
 
 ## Comparison preconditions and production anchors
 

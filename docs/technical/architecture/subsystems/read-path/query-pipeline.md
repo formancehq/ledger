@@ -174,7 +174,7 @@ applies to the `ListAccounts` and `ListTransactions` paths.
 |----------|------|---------|
 | `PebbleAccountIterator`, `PebbleReverseTxIterator`, `LedgerLogIterator`, `PrefixIterator`/`ReversePrefixIterator`, … | `iterator_*.go` | Leaf scans over one read-store prefix. Direction-specific: a Pebble cursor walked `First`/`Next` is not the one walked `Last`/`Prev`. |
 | `BoundedEntityIterator` with `LedgerLogRangeIterator`/`PebbleTxRangeIterator` wrappers | `iterator_bounded_entity.go` | Streams fixed-width entity ranges without materialization, enforcing key shape and half-open bounds. |
-| `IDDateRangeIterator[D]` | `iterator_id_date.go` | Serves builtin transaction/log date ranges in entity-ID order from an ID-first companion index; cursor seeks do not drain the date range. |
+| `IDDateRangeIterator[D]` | `iterator_id_date.go` | Serves builtin transaction/log date ranges in entity-ID order from an ID-first companion index; a sparse cursor seek may scan the bounded date range once per iterator. |
 | `AndIterator[D]` | `combinator_and.go` | Merge-intersect of sorted child iterators. |
 | `OrIterator[D]` | `combinator_or.go` | Merge-union. |
 | `NotIterator[D]` | `combinator_not.go` | Difference against the entity-existence index (`0x02`). |
