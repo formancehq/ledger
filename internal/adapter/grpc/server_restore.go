@@ -324,7 +324,7 @@ func (s *RestoreServiceServerImpl) ValidateRestore(_ *restorepb.ValidateRestoreR
 	attrs := attributes.New()
 	// No cold reader on this path: it validates a staged backup store, so the
 	// idempotency pass verifies against the full audit history.
-	checker := check.NewChecker(store, attrs, nil, s.logger)
+	checker := check.NewChecker(store, attrs, s.clusterID, nil, s.logger)
 
 	validationErrors := 0
 	var sendErr error

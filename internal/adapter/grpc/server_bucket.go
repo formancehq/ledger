@@ -730,7 +730,7 @@ func (impl *BucketServiceServerImpl) ListIndexes(req *servicepb.ListIndexesReque
 }
 
 func (impl *BucketServiceServerImpl) CheckStore(_ *servicepb.CheckStoreRequest, stream servicepb.BucketService_CheckStoreServer) error {
-	checker := check.NewChecker(impl.store, impl.attrs, impl.readStore, impl.logger)
+	checker := check.NewChecker(impl.store, impl.attrs, impl.clusterID, impl.readStore, impl.logger)
 
 	return checker.Check(stream.Context(), func(event *servicepb.CheckStoreEvent) {
 		_ = stream.Send(event)
