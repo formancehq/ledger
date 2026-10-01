@@ -109,6 +109,11 @@ func (sc *ScenarioCluster) startServer() {
 		}
 		return state.Leader != 0
 	}, 10*time.Second, 100*time.Millisecond, "leader election timed out")
+
+	// Health admission is intentionally fail-closed until the leader has
+	// published a fresh disk verdict. Wait for that verdict before the first
+	// scenario write so setup does not race the health worker after election.
+	testserver.WaitForWriteAdmission(sc.t, sc.ctx, sc.Client)
 }
 
 // SetupSingleNode creates a single-node cluster for scenario tests.
