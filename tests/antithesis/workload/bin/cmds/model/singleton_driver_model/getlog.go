@@ -29,27 +29,18 @@ type committedLogTarget struct {
 	sequence uint64
 }
 
-// pickLogSequence chooses a sequence to read back: usually one the committed
-// model learned for a log, one in eight a sequence far past every one handed
-// out. ok=false before any sequence has been learned. Acquires c.mu.
-func (c *Checker) pickLogSequence() (target committedLogTarget, learned, ok bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
+// pickLogSequence chooses a sequence to read back: usually one the state's
+// global log stream holds, one in eight a sequence far past every one handed
+// out. ok=false before any sequence has been learned.
+func pickLogSequence(state oracle.GlobalState) (target committedLogTarget, learned, ok bool) {
 	var (
 		known  []committedLogTarget
 		maxSeq uint64
 	)
 
-	for _, ledger := range c.ledgerNames {
-		for _, row := range c.modelState.Ledger(ledger).LogRows() {
-			if row.Sequence == 0 {
-				continue
-			}
-
-			known = append(known, committedLogTarget{ledger: ledger, id: row.ID, sequence: row.Sequence})
-			maxSeq = max(maxSeq, row.Sequence)
-		}
+	for seq, entry := range state.Logs() {
+		known = append(known, committedLogTarget{ledger: entry.Ledger, id: entry.ID, sequence: seq})
+		maxSeq = max(maxSeq, seq)
 	}
 
 	if len(known) == 0 {
@@ -71,15 +62,20 @@ func (c *Checker) pickLogSequence() (target committedLogTarget, learned, ok bool
 // is a lost log rather than staleness. The reverse direction is checked too: a
 // sequence past every one handed out must resolve to nothing.
 func runGetLog(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	target, learned, ok := c.pickLogSequence()
-	if !ok {
-		return
-	}
-
 	c.mu.Lock()
+	state := c.modelState
 	readID := c.registerRead()
 	c.mu.Unlock()
 	defer c.finishRead(readID)
+
+	// Picking runs lock-free on the snapshot. The ticket is taken in the same
+	// critical section the snapshot comes from, so no bulk observed from here on
+	// — a DeleteLedger among them, which retires the ledger's whole log stream
+	// from the model — can drain between the pick and the comparison.
+	target, learned, ok := pickLogSequence(state)
+	if !ok {
+		return
+	}
 
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 
@@ -134,7 +130,7 @@ func runGetLog(ctx context.Context, client servicepb.BucketServiceClient, c *Che
 	got := serverLogRows([]*commonpb.Log{log})[0]
 
 	if !c.matchesModel(maxTicket, "GETLOG", func(base oracle.GlobalState) bool {
-		return committedLogMatches(base.Ledger(target.ledger), target, got)
+		return committedLogMatches(base, target, got)
 	}) {
 		assert.Unreachable("singleton_driver_model: GetLog answered with another log", internal.Details{
 			"sequence":     target.sequence,
@@ -158,20 +154,37 @@ func runGetLog(ctx context.Context, client servicepb.BucketServiceClient, c *Che
 	})
 }
 
-// committedLogMatches reports whether got is the base's log target names, with
-// the sequence the model learned for it.
-func committedLogMatches(ls oracle.LedgerState, target committedLogTarget, got serverLogRow) bool {
-	rows := ls.LogRows()
-	if target.id == 0 || target.id > uint64(len(rows)) {
+// committedLogMatches reports whether got is the log the base's global stream
+// holds at target's sequence: the same owner, the same id, and the same row.
+// The stream outlives its ledgers, so a deleted ledger's log still resolves.
+func committedLogMatches(base oracle.GlobalState, target committedLogTarget, got serverLogRow) bool {
+	entry, ok := base.Log(target.sequence)
+	if !ok || entry.Ledger != target.ledger || entry.ID != target.id {
 		return false
 	}
 
-	row := rows[target.id-1]
-	if row.Sequence != target.sequence || got.sequence != target.sequence {
+	if got.sequence != target.sequence || got.id != target.id {
 		return false
 	}
 
-	return logRowMatches(target.ledger, logWindowRowOf(ls, row, true), got)
+	return logRowMatches(target.ledger, globalLogWindowRow(entry), got)
+}
+
+// globalLogWindowRow is one entry of the global log stream as a comparable row.
+func globalLogWindowRow(entry oracle.GlobalLogRow) logWindowRow {
+	row := logWindowRow{
+		id: entry.Row.ID, kind: entry.Row.Kind, payload: entry.Row.Payload,
+		date: entry.Row.Date, sequence: entry.Row.Sequence,
+		purged: entry.Row.PurgedVolumes, newKept: entry.Row.NewKeptVolumes, ephemeral: entry.Row.EphemeralVolumes,
+		required: true,
+	}
+
+	if entry.Tx != nil {
+		row.tx = entry.Tx
+		row.revertsID = entry.Tx.RevertsTransaction()
+	}
+
+	return row
 }
 
 // describeCommittedLog renders the committed model's row for a finding's
@@ -180,12 +193,10 @@ func (c *Checker) describeCommittedLog(target committedLogTarget) string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	rows := c.modelState.Ledger(target.ledger).LogRows()
-	if target.id == 0 || target.id > uint64(len(rows)) {
+	entry, ok := c.modelState.Log(target.sequence)
+	if !ok {
 		return "absent"
 	}
 
-	row := rows[target.id-1]
-
-	return row.Kind + "@seq" + strconv.FormatUint(row.Sequence, 10) + "[" + row.Payload + "]"
+	return entry.Ledger + "/" + strconv.FormatUint(entry.ID, 10) + ":" + entry.Row.Kind + "@seq" + strconv.FormatUint(entry.Row.Sequence, 10) + "[" + entry.Row.Payload + "]"
 }

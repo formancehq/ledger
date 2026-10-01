@@ -563,6 +563,34 @@ type GlobalState struct {
 	// Entries are immutable once frozen (infinite TTL — the model never evicts),
 	// so forks share the pointers.
 	idempotency Map[string, *frozenOutcome]
+	// logs is the global log stream the server keeps in its log zone, keyed by
+	// the cluster-wide sequence: every ledger's logs in commit order. It outlives
+	// the ledgers it indexes — a deleted ledger's rows stay readable by sequence
+	// — so it is filled as sequences are learned (LearnLogSequence) and never
+	// pruned by Apply.
+	logs Map[uint64, *globalLog]
+}
+
+// globalLog is one entry of the global log stream: the ledger and ledger-local
+// id that own it, the row as the ledger stream holds it, and the transaction it
+// announces, frozen at the moment the sequence was learned (tx records are
+// copy-on-write, so the pointer never sees later metadata or revert updates).
+type globalLog struct {
+	ledger string
+	id     uint64
+	rec    *logRecord
+	tx     *txRecord
+}
+
+// globalLogTerm fingerprints an entry by identity only. The stream is filled
+// by LearnLogSequence, never by Apply, so every base forked from one committed
+// state shares it verbatim and the row's content is already in logTerm.
+func globalLogTerm(seq uint64, l *globalLog) Digest {
+	t := newTerm("GLOG")
+	t.u64(seq, l.id)
+	t.str(l.ledger)
+
+	return t.sum()
 }
 
 // frozenOutcome is a keyed bulk's recorded outcome: the exact requests it
@@ -602,6 +630,7 @@ func NewGlobalState() GlobalState {
 		nextCheckpointID: 1,
 		lifecycle:        NewMap[string, LedgerLifecycle](stringComparer{}, lifecycleTerm),
 		idempotency:      NewMap[string, *frozenOutcome](stringComparer{}, frozenOutcomeTerm),
+		logs:             NewMap[uint64, *globalLog](uint64Comparer{}, globalLogTerm),
 	}
 }
 
@@ -664,7 +693,7 @@ func (g GlobalState) Fingerprint() Digest {
 		maintenance.u64(1)
 	}
 
-	return d.add(g.idempotency.Fingerprint()).add(g.lifecycle.Fingerprint()).add(t.sum()).add(maintenance.sum())
+	return d.add(g.idempotency.Fingerprint()).add(g.lifecycle.Fingerprint()).add(g.logs.Fingerprint()).add(t.sum()).add(maintenance.sum())
 }
 
 // OrderResult is the predicted outcome of one request in a bulk. PCV holds the

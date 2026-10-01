@@ -1012,9 +1012,10 @@ func (c *Checker) genAuditFilter() (*commonpb.QueryFilter, auditProbe) {
 	if len(c.auditSamples) > 0 {
 		sample = c.auditSamples[internal.Rand().Intn(len(c.auditSamples))]
 	}
+	state := c.modelState
 	c.mu.Unlock()
 
-	logSeq, _, _ := c.pickLogSequence()
+	logSeq, _, _ := pickLogSequence(state)
 
 	leaf := func() *commonpb.QueryFilter { return genAuditLeaf(c.ledgerNames, sample, logSeq.sequence) }
 	indexed := func() *commonpb.QueryFilter {
