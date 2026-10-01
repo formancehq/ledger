@@ -103,7 +103,9 @@ limit. The server's ordinary default remains 80%. Insufficient free space is
 reported before compilation or k6 startup.
 
 Results and the server log are saved to `build/bench/summary.json` and
-`build/bench/ledger.log`. The node and its temporary storage are cleaned up
+`build/bench/ledger.log`. Each invocation clears previous results before
+startup checks, so a preflight failure cannot expose an earlier measurement.
+The node and its temporary storage are cleaned up
 on completion, failure, or interruption. Ports 17777 (Raft), 18888 (gRPC), and
 19000 (HTTP) must be available. This is a local throughput check; compare
 versions on the same machine and configuration. The 100k floor is an initial

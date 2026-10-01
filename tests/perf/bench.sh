@@ -9,11 +9,14 @@ if [[ "${1:-}" == "exec" ]]; then
 fi
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
+mkdir -p build/bench
+# A startup failure must not expose a previous run's measurements or server log.
+rm -f build/bench/summary.json
+: > build/bench/ledger.log
 for tool in go k6 python3; do
     command -v "$tool" >/dev/null || { echo "Missing $tool; run inside nix develop." >&2; exit 1; }
 done
 
-mkdir -p build/bench
 export BENCH_DISK_THRESHOLD="${BENCH_DISK_THRESHOLD:-0.99}"
 # Check the shared local volume and refuse ports occupied by another service.
 python3 - <<'PY'
@@ -37,13 +40,18 @@ print(f'Local disk: {used:.1%} used, {free_gib:.1f} GiB free; benchmark limit {t
 sockets = [socket.socket() for _ in range(3)]
 for listener, port in zip(sockets, (17777, 18888, 19000)):
     try:
+        # macOS can allow a wildcard bind beside an existing loopback listener.
+        with socket.socket() as probe:
+            probe.settimeout(0.2)
+            if probe.connect_ex(("127.0.0.1", port)) == 0:
+                raise OSError("another service is already listening")
         listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         listener.bind(("0.0.0.0", port))
+        listener.listen()
     except OSError as error:
         raise SystemExit(f"Benchmark port {port} is unavailable: {error}")
 PY
 
-rm -f build/bench/summary.json
 export BENCH_RUNTIME_DIR
 BENCH_RUNTIME_DIR=$(mktemp -d "$PWD/build/bench/run.XXXXXX")
 go_pid=""
