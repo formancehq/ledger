@@ -30,6 +30,9 @@ func ParseTextStream(scanner *bufio.Scanner) (*BulkElement, error) {
 					parts2 := strings.Split(part, "=")
 					switch parts2[0] {
 					case "ik":
+						if len(parts2) < 2 {
+							return nil, errors.New("invalid header, idempotency key must use key=value format")
+						}
 						if bulkElement.IdempotencyKey != "" {
 							return nil, errors.New("invalid header, idempotency key already set")
 						}
@@ -48,7 +51,7 @@ func ParseTextStream(scanner *bufio.Scanner) (*BulkElement, error) {
 					bulkElement.Data = TransactionRequest{
 						Script: ledgercontroller.ScriptV1{
 							Script: vm.Script{
-								Plain: plain[:len(plain)-1], // remove last \n
+								Plain: strings.TrimSuffix(plain, "\n"),
 							},
 						},
 					}
@@ -65,7 +68,7 @@ func ParseTextStream(scanner *bufio.Scanner) (*BulkElement, error) {
 				bulkElement.Data = TransactionRequest{
 					Script: ledgercontroller.ScriptV1{
 						Script: vm.Script{
-							Plain: plain[:len(plain)-1], // remove last \n
+							Plain: strings.TrimSuffix(plain, "\n"),
 						},
 					},
 				}
