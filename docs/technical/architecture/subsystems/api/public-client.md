@@ -10,6 +10,11 @@ replication, bootstrap, snapshot, and storage protocols remain private.
 
 The nested Go module at `pkg/client/v3` contains generated bindings, the six
 source `.proto` files, `proto/ledger-public.protoset`, and `contract.json`.
+The Protobuf sources and descriptor are the normative, language-neutral
+contract; the Go package is the maintained generated convenience client. A
+hand-written method attached to a public message is part of the public API, so
+it must describe supported wire/JSON behavior rather than server construction
+or persistence behavior.
 Caller-attribution trust-boundary violations have no public `ErrorReason`:
 admission rejects them before proposing, and the FSM rejects malformed
 committed entries before audit or business-state mutation. The server reports
@@ -65,7 +70,10 @@ tests the nested module, verifies an external Go module can import it through
 a local replacement, and starts a real server with the public package in the
 same process. CI runs this check in `Tests-Public-Client`; the normal root
 build and tests remain separate gates. The external local replacement proves
-the proposed source; fetching a pinned published tag is a release gate.
+the proposed source; fetching a pinned published tag is a release gate. The
+surface check also scans every client source file for server-only imports, so a
+future generated or build-tagged file cannot silently pull storage, consensus,
+schema, or server-toolkit dependencies into the published module.
 
 `pkg/grpcprotocol.Version` remains the server's authoritative revision rule.
 The generator copies its current value into the client package and contract

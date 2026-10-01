@@ -3,6 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 python3 scripts/check-client-generation.py
+python3 scripts/check-public-client-surface.py
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_verify_client_release_contract.py
 server_version=$(jq -er '.serverVersion' misc/release/public-client.json)
 client_version=$(jq -er '.clientVersion' misc/release/public-client.json)
