@@ -22,9 +22,9 @@ import (
 // files.
 //
 // So between the MANIFEST write and the WAL copy the directory opens cleanly
-// and serves a state missing every memtable-resident write. This test stages
-// that state by removing the copied WALs and shows the open still succeeds,
-// silently, with the data gone.
+// and serves a state missing every memtable-resident write. The production
+// path flushes first, but other writers can still append after that flush.
+// This test uses Pebble directly to stage that residual-WAL window.
 func TestQueryCheckpointIsOpenableBeforeItIsComplete(t *testing.T) {
 	t.Parallel()
 
@@ -36,14 +36,15 @@ func TestQueryCheckpointIsOpenableBeforeItIsComplete(t *testing.T) {
 	require.NoError(t, batch.SetBytes([]byte("committed-key"), []byte("committed-value")))
 	require.NoError(t, batch.Commit())
 
-	dir, err := s.CreateQueryCheckpoint(1)
+	dir := filepath.Join(t.TempDir(), "raw-checkpoint")
+	err := s.getDB().Checkpoint(dir, pebble.WithFlushedWAL())
 	require.NoError(t, err)
 
 	logger := logging.FromContext(logging.TestingContext())
 
-	// A completed checkpoint vouches for itself, so readers have a signal that
-	// does not depend on the open succeeding.
-	require.True(t, CheckpointDirReady(dir), "a completed checkpoint must be marked ready")
+	// Pebble's completed directory is still unmarked; only the Store's final
+	// publication step may mark a checkpoint ready for readers.
+	require.False(t, CheckpointDirReady(dir))
 
 	// Control: the complete checkpoint carries the write.
 	complete, err := OpenReadOnly(dir, logger)
@@ -72,6 +73,35 @@ func TestQueryCheckpointIsOpenableBeforeItIsComplete(t *testing.T) {
 
 	_, _, err = partial.Get([]byte("committed-key"))
 	require.ErrorIs(t, err, pebble.ErrNotFound, "the staged checkpoint serves the write as absent, not as a read failure")
+}
+
+func TestCreateQueryCheckpointFlushesMainStore(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	batch := s.OpenWriteSession()
+	require.NoError(t, batch.SetBytes([]byte("committed-key"), []byte("committed-value")))
+	require.NoError(t, batch.Commit())
+
+	dir, err := s.CreateQueryCheckpoint(1)
+	require.NoError(t, err)
+	require.True(t, CheckpointDirReady(dir))
+
+	// Removing copied WALs proves the committed value was flushed into an SST
+	// before Pebble captured this otherwise idle main store.
+	wals, err := filepath.Glob(filepath.Join(dir, "*.log"))
+	require.NoError(t, err)
+	for _, wal := range wals {
+		require.NoError(t, os.Remove(wal))
+	}
+
+	checkpoint, err := OpenReadOnly(dir, logging.FromContext(logging.TestingContext()))
+	require.NoError(t, err)
+	defer func() { require.NoError(t, checkpoint.Close()) }()
+	value, closer, err := checkpoint.Get([]byte("committed-key"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("committed-value"), value)
+	require.NoError(t, closer.Close())
 }
 
 // TestCreateQueryCheckpointRedundantCallIsNoOp pins that a second checkpoint for
