@@ -30,7 +30,7 @@ const resolveParallelism = 16
 // pure declarations: they contribute to coverage_bits (invariant #9) so
 // the scope admits their key in the FSM apply path, but they do NOT
 // mutate the cache — AttributeCache.Get's gen0→gen1 fallback and
-// KeyStore.Tombstone's gen1→gen0 tombstone write cover the
+// AttributeCache.Del's lazy gen1→gen0 tombstone fabrication cover the
 // read and delete cases without a preemptive promote pass.
 //
 // Idempotency keys live on the parallel idempotencyKeys slice — they are
@@ -70,7 +70,7 @@ func newEntrySlab(capHint int) *entrySlab {
 // appendCoverage carves a coverage-only entry out of the slab and
 // returns a pointer to it. Must be called under the caller's mu.Lock
 // since the underlying slabs are shared across resolver goroutines.
-func (s *entrySlab) appendCoverage(id attributes.U128, tag uint64, attrCode byte, entry CoverageEntry) *raftcmdpb.AttributeCoverage {
+func (s *entrySlab) appendCoverage(id attributes.U128, tag uint64, attrCode byte) *raftcmdpb.AttributeCoverage {
 	start := len(s.idPtr)
 	s.idPtr = append(s.idPtr, id[:]...)
 
@@ -80,11 +80,8 @@ func (s *entrySlab) appendCoverage(id attributes.U128, tag uint64, attrCode byte
 	})
 
 	s.covs = append(s.covs, raftcmdpb.AttributeCoverage{
-		Id:                 &s.ids[len(s.ids)-1],
-		AttrCode:           uint32(attrCode),
-		CanonicalKey:       lifecycleCanonicalKey(attrCode, entry.Canonical),
-		Persisted:          entry.Persisted,
-		LifecycleCandidate: entry.LifecycleCandidate,
+		Id:       &s.ids[len(s.ids)-1],
+		AttrCode: uint32(attrCode),
 	})
 
 	return &s.covs[len(s.covs)-1]
@@ -94,7 +91,7 @@ func (s *entrySlab) appendCoverage(id attributes.U128, tag uint64, attrCode byte
 // of the slab and attaches the pre-marshaled value. The AttributeValue
 // wrapper is still individually allocated by buildPreloadPayload — a
 // small fixed cost per Pebble hit.
-func (s *entrySlab) appendSeed(id attributes.U128, tag uint64, attrCode byte, entry CoverageEntry, value *raftcmdpb.AttributeValue) *raftcmdpb.AttributeCoverage {
+func (s *entrySlab) appendSeed(id attributes.U128, tag uint64, attrCode byte, value *raftcmdpb.AttributeValue) *raftcmdpb.AttributeCoverage {
 	start := len(s.idPtr)
 	s.idPtr = append(s.idPtr, id[:]...)
 
@@ -104,23 +101,12 @@ func (s *entrySlab) appendSeed(id attributes.U128, tag uint64, attrCode byte, en
 	})
 
 	s.covs = append(s.covs, raftcmdpb.AttributeCoverage{
-		Id:                 &s.ids[len(s.ids)-1],
-		AttrCode:           uint32(attrCode),
-		Value:              value,
-		CanonicalKey:       lifecycleCanonicalKey(attrCode, entry.Canonical),
-		Persisted:          entry.Persisted,
-		LifecycleCandidate: entry.LifecycleCandidate,
+		Id:       &s.ids[len(s.ids)-1],
+		AttrCode: uint32(attrCode),
+		Value:    value,
 	})
 
 	return &s.covs[len(s.covs)-1]
-}
-
-func lifecycleCanonicalKey(attrCode byte, canonical []byte) []byte {
-	if attrCode != dal.SubAttrVolume && attrCode != dal.SubAttrMetadata {
-		return nil
-	}
-
-	return append([]byte(nil), canonical...)
 }
 
 // resolveCoverage resolves one attribute cache for the plan pipeline.
@@ -135,8 +121,8 @@ func lifecycleCanonicalKey(attrCode byte, canonical []byte) []byte {
 //
 //   - CacheUnreachable → ErrCacheHorizonExceeded (admission rejection).
 //   - CacheHit → coverage-only (value nil); AttributeCache.Get's gen0→gen1
-//     fallback surfaces the entry on read, and KeyStore.Tombstone writes
-//     the gen0 tombstone if the handler deletes.
+//     fallback surfaces the entry on read, and AttributeCache.Del's lazy
+//     promote fabricates the gen0 tombstone if the handler deletes.
 //   - CacheMiss + bloom/Pebble-absent → coverage-only.
 //   - CacheMiss + Pebble-load-hit → seeded (value = the loaded payload;
 //     MirrorPreload writes gen0+gen1).
@@ -190,7 +176,7 @@ func resolveCoverage[T interface {
 			// reads it, so reject at admission and let the client retry
 			// against a fresher snapshot. Bounded to at most 1 rotation
 			// between admission and apply, which the gen0→gen1 read
-			// fallback and lazy tombstone write handle correctly.
+			// fallback and lazy Del promote handle correctly.
 			//
 			// Continue processing so wg.Wait() below drains any CacheMiss
 			// loader goroutine earlier iterations already launched.
@@ -215,10 +201,10 @@ func resolveCoverage[T interface {
 			// Cache has the key somewhere (gen0 or gen1). Emit a
 			// coverage-only entry — no cache mutation is needed at
 			// Preload: Get's gen0→gen1 fallback surfaces the value on
-			// read and KeyStore.Tombstone writes a gen0 tombstone
+			// read and Del's lazy promote fabricates a gen0 tombstone
 			// on delete. No Pebble read required.
 			mu.Lock()
-			plans = append(plans, slab.appendCoverage(id, tag, attrCode, entry))
+			plans = append(plans, slab.appendCoverage(id, tag, attrCode))
 			mu.Unlock()
 
 			continue
@@ -229,7 +215,7 @@ func resolveCoverage[T interface {
 			// (coverage-only, no value to seed).
 			if bloomFilter != nil && !bloomFilter.MayContain(id) {
 				mu.Lock()
-				plans = append(plans, slab.appendCoverage(id, tag, attrCode, entry))
+				plans = append(plans, slab.appendCoverage(id, tag, attrCode))
 				mu.Unlock()
 
 				continue
@@ -291,7 +277,7 @@ func resolveCoverage[T interface {
 						return
 					}
 
-					plans = append(plans, slab.appendSeed(id, tag, attrCode, entry, attrValue))
+					plans = append(plans, slab.appendSeed(id, tag, attrCode, attrValue))
 
 					return
 				}
@@ -300,7 +286,7 @@ func resolveCoverage[T interface {
 				// concurrent write populated the cache between admission
 				// and apply, Get's gen0→gen1 fallback will surface it at
 				// apply time (bounded by CacheUnreachable at ≥2 rotations).
-				plans = append(plans, slab.appendCoverage(id, tag, attrCode, entry))
+				plans = append(plans, slab.appendCoverage(id, tag, attrCode))
 			})
 		}
 	}

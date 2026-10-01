@@ -13,12 +13,10 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/application/check"
-	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -26,7 +24,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-const signingParityAuditKey = "0123456789abcdef0123456789abcdef"
+const signingParityClusterID = "signing-parity-cluster"
 
 // signingParityNotifier satisfies state.Notifier for a machine driven straight
 // through ApplyEntries, where nothing consumes the notifications.
@@ -48,7 +46,6 @@ func newSigningParityMachine(t *testing.T) (*state.Machine, *dal.Store, *attribu
 	store, err := dal.NewStore(t.TempDir(), logger, meterProvider.Meter("test"), dal.DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
-	seedBackupTestAuditKey(t, store)
 
 	attrs := attributes.New()
 
@@ -68,18 +65,11 @@ func newSigningParityMachine(t *testing.T) (*state.Machine, *dal.Store, *attribu
 		state.NewSharedState(),
 		signingParityNotifier{},
 		nil,
-		signingParityAuditKey,
+		signingParityClusterID,
 		0,
 		func(*raftpb.Entry, *dal.WriteSession) error { return nil },
 	)
 	require.NoError(t, err)
-	policy := &commonpb.ClusterPolicy{
-		Revision: 1, QueryCheckpointLimit: 10,
-		MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
-		MetadataMaxKeyBytes:         domain.DefaultMetadataMaxKeyBytes, MetadataMaxValueBytes: domain.DefaultMetadataMaxValueBytes,
-		MetadataMaxEntityBytes: domain.DefaultMetadataMaxEntityBytes, MetadataMaxCommandBytes: domain.DefaultMetadataMaxCommandBytes,
-	}
-	machine.State.UpdateClusterPolicy(policy)
 
 	return machine, store, attrs
 }
@@ -91,11 +81,10 @@ func applySigningEntry(t *testing.T, machine *state.Machine, store *dal.Store, i
 	t.Helper()
 
 	proposal := &raftcmdpb.Proposal{
-		Id:             index,
-		Orders:         orders,
-		Date:           &commonpb.Timestamp{Data: 1700000000 + index},
-		ExecutionPlan:  &raftcmdpb.ExecutionPlan{},
-		CallerSnapshot: commands.SystemCallerSnapshot(commands.ComponentClusterConfig),
+		Id:            index,
+		Orders:        orders,
+		Date:          &commonpb.Timestamp{Data: 1700000000 + index},
+		ExecutionPlan: &raftcmdpb.ExecutionPlan{},
 	}
 
 	data, err := proto.Marshal(proposal)
@@ -112,95 +101,6 @@ func applySigningEntry(t *testing.T, machine *state.Machine, store *dal.Store, i
 	for _, r := range result.Results {
 		require.NoError(t, r.Error)
 	}
-}
-
-func applyPurgeParityEntry(t *testing.T, machine *state.Machine, store *dal.Store, attrs *attributes.Attributes, index uint64, order *raftcmdpb.Order) {
-	t.Helper()
-
-	ledger := order.GetLedgerScoped().GetLedger()
-	canonicals := []struct {
-		code byte
-		key  []byte
-	}{
-		{dal.SubAttrLedger, domain.LedgerKey{Name: ledger}.Bytes()},
-		{dal.SubAttrBoundary, domain.LedgerKey{Name: ledger}.Bytes()},
-	}
-	if create := order.GetLedgerScoped().GetApply().GetCreateTransaction(); create != nil {
-		if create.GetReference() != "" {
-			canonicals = append(canonicals, struct {
-				code byte
-				key  []byte
-			}{dal.SubAttrReference, domain.TransactionReferenceKey{LedgerName: ledger, Reference: create.GetReference()}.Bytes()})
-		}
-		for _, posting := range create.GetPostings() {
-			for _, account := range []string{posting.GetSource(), posting.GetDestination()} {
-				canonicals = append(canonicals, struct {
-					code byte
-					key  []byte
-				}{dal.SubAttrVolume, domain.NewVolumeKey(ledger, account, posting.GetAsset(), "").Bytes()})
-			}
-		}
-	}
-
-	handle, err := store.NewDirectReadHandle()
-	require.NoError(t, err)
-	plans := make([]*raftcmdpb.AttributeCoverage, 0, len(canonicals))
-	for _, item := range canonicals {
-		id, tag := attributes.MakeKey(item.key)
-		plan := &raftcmdpb.AttributeCoverage{Id: &raftcmdpb.AttributeID{Id: id[:], Tag: tag}, AttrCode: uint32(item.code), CanonicalKey: item.key}
-		var raw []byte
-		switch item.code {
-		case dal.SubAttrLedger:
-			value, getErr := attrs.Ledger.Get(handle, item.key)
-			require.NoError(t, getErr)
-			if value != nil {
-				raw, err = value.MarshalVT()
-			}
-		case dal.SubAttrBoundary:
-			value, getErr := attrs.Boundary.Get(handle, item.key)
-			require.NoError(t, getErr)
-			if value != nil {
-				raw, err = value.MarshalVT()
-			}
-		case dal.SubAttrVolume:
-			value, getErr := attrs.Volume.Get(handle, item.key)
-			require.NoError(t, getErr)
-			if value == nil {
-				value = &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(0), Output: commonpb.NewUint256FromUint64(0)}
-			}
-			raw, err = value.MarshalVT()
-		case dal.SubAttrReference:
-			value, getErr := attrs.References.Get(handle, item.key)
-			require.NoError(t, getErr)
-			if value != nil {
-				raw, err = value.MarshalVT()
-			}
-		}
-		require.NoError(t, err)
-		if raw != nil {
-			plan.Value = &raftcmdpb.AttributeValue{RawValue: raw}
-		}
-		plans = append(plans, plan)
-	}
-	require.NoError(t, handle.Close())
-
-	bits := make([]byte, (len(plans)+7)/8)
-	for i := range plans {
-		bits[i/8] |= 1 << (i % 8)
-	}
-	order.Technical = &raftcmdpb.OrderTechnical{CoverageBits: bits}
-	proposal := &raftcmdpb.Proposal{
-		Id:             index,
-		Orders:         []*raftcmdpb.Order{order},
-		Date:           &commonpb.Timestamp{Data: 1700000000 + index},
-		ExecutionPlan:  &raftcmdpb.ExecutionPlan{Attributes: plans},
-		CallerSnapshot: commands.SystemCallerSnapshot(commands.ComponentClusterConfig),
-	}
-	data, err := proto.Marshal(proposal)
-	require.NoError(t, err)
-	result, err := machine.ApplyEntries(context.Background(), store, &raftpb.Entry{Index: new(index), Term: proto.Uint64(1), Type: new(raftpb.EntryNormal), Data: data})
-	require.NoError(t, err)
-	require.NoError(t, result.Results[0].Error)
 }
 
 func signingRegisterOrder(keyID string, publicKey []byte, parentKeyID string) *raftcmdpb.Order {
@@ -232,79 +132,6 @@ func signingRevokeOrder(keyID string, cascade bool) *raftcmdpb.Order {
 			},
 		},
 	}
-}
-
-func purgeParityCreateLedgerOrder() *raftcmdpb.Order {
-	return &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{
-		LedgerScoped: &raftcmdpb.LedgerScopedOrder{
-			Ledger: "ledger",
-			Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{
-				AccountTypes: map[string]*commonpb.AccountType{
-					"orders": {Name: "orders", Pattern: "orders:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL},
-				},
-			}},
-		},
-	}}
-}
-
-func purgeParityTransactionOrder(source, destination, reference string) *raftcmdpb.Order {
-	return &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{
-		LedgerScoped: &raftcmdpb.LedgerScopedOrder{
-			Ledger: "ledger",
-			Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
-				Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-					Reference: reference,
-					Postings:  []*commonpb.Posting{{Source: source, Destination: destination, Asset: "USD", Amount: commonpb.NewUint256FromUint64(5)}},
-				}},
-			}},
-		},
-	}}
-}
-
-func TestBackup_EphemeralPurgeRestoreParity(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	storage := newInMemoryBackupStorage()
-	src, srcStore, srcAttrs := newSigningParityMachine(t)
-	applyPurgeParityEntry(t, src, srcStore, srcAttrs, 1, purgeParityCreateLedgerOrder())
-	applyPurgeParityEntry(t, src, srcStore, srcAttrs, 2, purgeParityTransactionOrder("world", "orders:1", "fund"))
-	require.NoError(t, srcStore.Flush())
-	_, err := RunBackup(ctx, testLogger(), srcStore, storage, "bucket", "bk-full")
-	require.NoError(t, err)
-
-	applyPurgeParityEntry(t, src, srcStore, srcAttrs, 3, purgeParityTransactionOrder("orders:1", "world", "drain"))
-	require.NoError(t, srcStore.Flush())
-	inc, err := RunIncrementalBackup(ctx, testLogger(), srcStore, storage, "bucket", 0)
-	require.NoError(t, err)
-	require.Positive(t, inc.LogEntriesExported)
-	manifest, err := ReadManifest(ctx, storage, ManifestKey("bucket"))
-	require.NoError(t, err)
-
-	dst, dstStore, dstAttrs := newSigningParityMachine(t)
-	applyPurgeParityEntry(t, dst, dstStore, dstAttrs, 1, purgeParityCreateLedgerOrder())
-	applyPurgeParityEntry(t, dst, dstStore, dstAttrs, 2, purgeParityTransactionOrder("world", "orders:1", "fund"))
-	require.NoError(t, dstStore.Flush())
-	require.NoError(t, ApplyExportsAndRebuild(ctx, testLogger(), storage, dstStore, manifest))
-
-	handle, err := dstStore.NewDirectReadHandle()
-	require.NoError(t, err)
-	volume, err := dstAttrs.Volume.Get(handle, domain.NewVolumeKey("ledger", "orders:1", "USD", "").Bytes())
-	require.NoError(t, err)
-	require.Nil(t, volume, "restored checkpoint-era ephemeral state must be purged")
-	tx, err := dstAttrs.Transaction.Get(handle, domain.TransactionKey{LedgerName: "ledger", ID: 2}.Bytes())
-	require.NoError(t, err)
-	require.NotNil(t, tx, "the draining transaction mapping must survive restore")
-	require.NoError(t, handle.Close())
-
-	var findings []*servicepb.CheckStoreError
-	checker := check.NewChecker(dstStore, dstAttrs, nil, testLogger())
-	require.NoError(t, checker.Check(ctx, func(event *servicepb.CheckStoreEvent) {
-		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
-			findings = append(findings, e.Error)
-		}
-	}))
-	require.Empty(t, findings)
 }
 
 func signingKeyIDs(t *testing.T, store *dal.Store) []string {
@@ -408,7 +235,7 @@ func TestBackup_SigningCascadeRestoreParity(t *testing.T) {
 	// the restored rows, so agreement here is the audit side of the same claim.
 	var findings []*servicepb.CheckStoreError
 
-	checker := check.NewChecker(dstStore, dstAttrs, nil, testLogger())
+	checker := check.NewChecker(dstStore, dstAttrs, signingParityClusterID, nil, testLogger())
 	require.NoError(t, checker.Check(ctx, func(event *servicepb.CheckStoreEvent) {
 		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
 			findings = append(findings, e.Error)

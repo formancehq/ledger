@@ -1836,11 +1836,6 @@ func (m *LedgerLog) CloneVT() *LedgerLog {
 		}
 		r.EphemeralVolumes = tmpContainer
 	}
-	if rhs := m.PurgedAccounts; rhs != nil {
-		tmpContainer := make([]string, len(rhs))
-		copy(tmpContainer, rhs)
-		r.PurgedAccounts = tmpContainer
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -7541,15 +7536,6 @@ func (this *LedgerLog) EqualVT(that *LedgerLog) bool {
 			if !p.EqualVT(q) {
 				return false
 			}
-		}
-	}
-	if len(this.PurgedAccounts) != len(that.PurgedAccounts) {
-		return false
-	}
-	for i, vx := range this.PurgedAccounts {
-		vy := that.PurgedAccounts[i]
-		if vx != vy {
-			return false
 		}
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -16794,15 +16780,6 @@ func (m *LedgerLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.PurgedAccounts) > 0 {
-		for iNdEx := len(m.PurgedAccounts) - 1; iNdEx >= 0; iNdEx-- {
-			i -= len(m.PurgedAccounts[iNdEx])
-			copy(dAtA[i:], m.PurgedAccounts[iNdEx])
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.PurgedAccounts[iNdEx])))
-			i--
-			dAtA[i] = 0x3a
-		}
-	}
 	if len(m.EphemeralVolumes) > 0 {
 		for iNdEx := len(m.EphemeralVolumes) - 1; iNdEx >= 0; iNdEx-- {
 			size, err := m.EphemeralVolumes[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
@@ -25212,12 +25189,6 @@ func (m *LedgerLog) SizeVT() (n int) {
 	if len(m.EphemeralVolumes) > 0 {
 		for _, e := range m.EphemeralVolumes {
 			l = e.SizeVT()
-			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-		}
-	}
-	if len(m.PurgedAccounts) > 0 {
-		for _, s := range m.PurgedAccounts {
-			l = len(s)
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
 	}
@@ -39201,38 +39172,6 @@ func (m *LedgerLog) UnmarshalVT(dAtA []byte) error {
 			if err := m.EphemeralVolumes[len(m.EphemeralVolumes)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
-			iNdEx = postIndex
-		case 7:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field PurgedAccounts", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.PurgedAccounts = append(m.PurgedAccounts, string(dAtA[iNdEx:postIndex]))
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
