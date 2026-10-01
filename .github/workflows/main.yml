@@ -88,6 +88,33 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+  Benchmark:
+    runs-on: namespace-profile-linux-amd64-4vcpu
+    continue-on-error: true
+    timeout-minutes: 20
+    env:
+      GOPATH: /tmp/go
+    steps:
+      - uses: namespacelabs/nscloud-checkout-action@445c25d7009680597d73eb03c4e1cd5be522ed73 # v9
+        with:
+          fetch-depth: 0
+          dissociate: true
+      - name: Setup Env
+        uses: ./.github/actions/default
+      - name: Run local write benchmark
+        run: >
+          nix develop --command just bench
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: benchmark-results
+          path: |
+            build/bench/summary.json
+            build/bench/ledger.log
+          retention-days: 7
+          if-no-files-found: ignore
+
   Tests-Operator:
     runs-on: namespace-profile-linux-amd64-4vcpu
     env:

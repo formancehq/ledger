@@ -89,6 +89,11 @@ config:
 
 ## Local Usage
 
+From the repository root, run `just bench` to start a fresh single-node Ledger
+and exercise the existing `world_to_bank` scenario with k6. See the
+[local benchmark guide](../../docs/technical/contributing/getting-started.md#local-benchmark)
+for the threshold, configuration, and result files.
+
 Run tests locally without Kubernetes:
 
 ```bash
