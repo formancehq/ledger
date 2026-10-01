@@ -61,6 +61,7 @@ For cluster deployment and Kubernetes, see the [Deployment Guide](./docs/ops/dep
 just build           # Build the application
 just test            # Run tests
 just test-e2e        # Run end-to-end tests
+just bench           # Benchmark a fresh local node for 60s (100k TPS minimum)
 just generate-proto  # Generate protobuf code
 just pre-commit      # Run all checks (generate, tidy, lint)
 ```

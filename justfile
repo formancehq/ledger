@@ -72,6 +72,10 @@ build-client:
 run:
     go run . run --node-id 1 --cluster-id local-dev --bootstrap --bind-addr 127.0.0.1:7777 --grpc-port 8888 --wal-dir ./wal/node-1 --data-dir ./data/node-1
 
+# Benchmark a fresh local node for 60 seconds (requires k6)
+bench:
+    bash tests/perf/bench.sh
+
 # Run the client application
 run-client *ARGS:
     go run ./cmd/ledgerctl {{ARGS}}
