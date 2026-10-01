@@ -13,10 +13,12 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/application/check"
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -24,7 +26,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-const signingParityClusterID = "signing-parity-cluster"
+const signingParityAuditKey = "0123456789abcdef0123456789abcdef"
 
 // signingParityNotifier satisfies state.Notifier for a machine driven straight
 // through ApplyEntries, where nothing consumes the notifications.
@@ -46,6 +48,7 @@ func newSigningParityMachine(t *testing.T) (*state.Machine, *dal.Store, *attribu
 	store, err := dal.NewStore(t.TempDir(), logger, meterProvider.Meter("test"), dal.DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
+	seedBackupTestAuditKey(t, store)
 
 	attrs := attributes.New()
 
@@ -65,11 +68,18 @@ func newSigningParityMachine(t *testing.T) (*state.Machine, *dal.Store, *attribu
 		state.NewSharedState(),
 		signingParityNotifier{},
 		nil,
-		signingParityClusterID,
+		signingParityAuditKey,
 		0,
 		func(*raftpb.Entry, *dal.WriteSession) error { return nil },
 	)
 	require.NoError(t, err)
+	policy := &commonpb.ClusterPolicy{
+		Revision: 1, QueryCheckpointLimit: 10,
+		MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
+		MetadataMaxKeyBytes:         domain.DefaultMetadataMaxKeyBytes, MetadataMaxValueBytes: domain.DefaultMetadataMaxValueBytes,
+		MetadataMaxEntityBytes: domain.DefaultMetadataMaxEntityBytes, MetadataMaxCommandBytes: domain.DefaultMetadataMaxCommandBytes,
+	}
+	machine.State.UpdateClusterPolicy(policy)
 
 	return machine, store, attrs
 }
@@ -81,10 +91,11 @@ func applySigningEntry(t *testing.T, machine *state.Machine, store *dal.Store, i
 	t.Helper()
 
 	proposal := &raftcmdpb.Proposal{
-		Id:            index,
-		Orders:        orders,
-		Date:          &commonpb.Timestamp{Data: 1700000000 + index},
-		ExecutionPlan: &raftcmdpb.ExecutionPlan{},
+		Id:             index,
+		Orders:         orders,
+		Date:           &commonpb.Timestamp{Data: 1700000000 + index},
+		ExecutionPlan:  &raftcmdpb.ExecutionPlan{},
+		CallerSnapshot: commands.SystemCallerSnapshot(commands.ComponentClusterConfig),
 	}
 
 	data, err := proto.Marshal(proposal)
@@ -235,7 +246,7 @@ func TestBackup_SigningCascadeRestoreParity(t *testing.T) {
 	// the restored rows, so agreement here is the audit side of the same claim.
 	var findings []*servicepb.CheckStoreError
 
-	checker := check.NewChecker(dstStore, dstAttrs, signingParityClusterID, nil, testLogger())
+	checker := check.NewChecker(dstStore, dstAttrs, nil, testLogger())
 	require.NoError(t, checker.Check(ctx, func(event *servicepb.CheckStoreEvent) {
 		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
 			findings = append(findings, e.Error)
