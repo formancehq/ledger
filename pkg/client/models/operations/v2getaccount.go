@@ -9,6 +9,11 @@ import (
 )
 
 type V2GetAccountRequest struct {
+	// When set to `true`, all bigint values in the response will be serialized
+	// as strings instead of JSON numbers.
+	// Useful for clients that cannot handle large numbers natively (e.g. JavaScript).
+	//
+	FormanceBigintAsString *bool `default:"false" header:"style=simple,explode=false,name=Formance-Bigint-As-String"`
 	// Name of the ledger.
 	Ledger string `pathParam:"style=simple,explode=false,name=ledger"`
 	// Exact address of the account. It must match the following regular expressions pattern:
@@ -30,6 +35,13 @@ func (v *V2GetAccountRequest) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	return nil
+}
+
+func (v *V2GetAccountRequest) GetFormanceBigintAsString() *bool {
+	if v == nil {
+		return nil
+	}
+	return v.FormanceBigintAsString
 }
 
 func (v *V2GetAccountRequest) GetLedger() string {

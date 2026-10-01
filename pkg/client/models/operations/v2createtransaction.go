@@ -3,10 +3,16 @@
 package operations
 
 import (
+	"github.com/formancehq/ledger/pkg/client/internal/utils"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 )
 
 type V2CreateTransactionRequest struct {
+	// When set to `true`, all bigint values in the response will be serialized
+	// as strings instead of JSON numbers.
+	// Useful for clients that cannot handle large numbers natively (e.g. JavaScript).
+	//
+	FormanceBigintAsString *bool `default:"false" header:"style=simple,explode=false,name=Formance-Bigint-As-String"`
 	// Name of the ledger.
 	Ledger string `pathParam:"style=simple,explode=false,name=ledger"`
 	// Set the dryRun mode. dry run mode doesn't add the logs to the database or publish a message to the message broker.
@@ -22,6 +28,24 @@ type V2CreateTransactionRequest struct {
 	//   - `script`: enabling more complex transactions with Numscript
 	//
 	V2PostTransaction components.V2PostTransaction `request:"mediaType=application/json"`
+}
+
+func (v V2CreateTransactionRequest) MarshalJSON() ([]byte, error) {
+	return utils.MarshalJSON(v, "", false)
+}
+
+func (v *V2CreateTransactionRequest) UnmarshalJSON(data []byte) error {
+	if err := utils.UnmarshalJSON(data, &v, "", false, nil); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (v *V2CreateTransactionRequest) GetFormanceBigintAsString() *bool {
+	if v == nil {
+		return nil
+	}
+	return v.FormanceBigintAsString
 }
 
 func (v *V2CreateTransactionRequest) GetLedger() string {

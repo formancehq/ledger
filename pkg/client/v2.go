@@ -2391,6 +2391,8 @@ func (s *V2) ListAccounts(ctx context.Context, request operations.V2ListAccounts
 		req.Header.Set("Content-Type", reqContentType)
 	}
 
+	utils.PopulateHeaders(ctx, req, request, nil)
+
 	if err := utils.PopulateQueryParams(ctx, req, request, nil, nil); err != nil {
 		return nil, fmt.Errorf("error populating query params: %w", err)
 	}
@@ -2602,6 +2604,8 @@ func (s *V2) GetAccount(ctx context.Context, request operations.V2GetAccountRequ
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", s.sdkConfiguration.UserAgent)
+
+	utils.PopulateHeaders(ctx, req, request, nil)
 
 	if err := utils.PopulateQueryParams(ctx, req, request, nil, nil); err != nil {
 		return nil, fmt.Errorf("error populating query params: %w", err)
@@ -3632,6 +3636,8 @@ func (s *V2) ListTransactions(ctx context.Context, request operations.V2ListTran
 		req.Header.Set("Content-Type", reqContentType)
 	}
 
+	utils.PopulateHeaders(ctx, req, request, nil)
+
 	if err := utils.PopulateQueryParams(ctx, req, request, nil, nil); err != nil {
 		return nil, fmt.Errorf("error populating query params: %w", err)
 	}
@@ -4066,6 +4072,8 @@ func (s *V2) GetTransaction(ctx context.Context, request operations.V2GetTransac
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", s.sdkConfiguration.UserAgent)
+
+	utils.PopulateHeaders(ctx, req, request, nil)
 
 	if err := utils.PopulateQueryParams(ctx, req, request, nil, nil); err != nil {
 		return nil, fmt.Errorf("error populating query params: %w", err)
@@ -4907,6 +4915,8 @@ func (s *V2) GetBalancesAggregated(ctx context.Context, request operations.V2Get
 		req.Header.Set("Content-Type", reqContentType)
 	}
 
+	utils.PopulateHeaders(ctx, req, request, nil)
+
 	if err := utils.PopulateQueryParams(ctx, req, request, nil, nil); err != nil {
 		return nil, fmt.Errorf("error populating query params: %w", err)
 	}
@@ -5125,6 +5135,8 @@ func (s *V2) GetVolumesWithBalances(ctx context.Context, request operations.V2Ge
 	if reqContentType != "" {
 		req.Header.Set("Content-Type", reqContentType)
 	}
+
+	utils.PopulateHeaders(ctx, req, request, nil)
 
 	if err := utils.PopulateQueryParams(ctx, req, request, nil, nil); err != nil {
 		return nil, fmt.Errorf("error populating query params: %w", err)
@@ -5345,6 +5357,8 @@ func (s *V2) ListLogs(ctx context.Context, request operations.V2ListLogsRequest,
 	if reqContentType != "" {
 		req.Header.Set("Content-Type", reqContentType)
 	}
+
+	utils.PopulateHeaders(ctx, req, request, nil)
 
 	if err := utils.PopulateQueryParams(ctx, req, request, nil, nil); err != nil {
 		return nil, fmt.Errorf("error populating query params: %w", err)
@@ -5960,6 +5974,8 @@ func (s *V2) RunQuery(ctx context.Context, request operations.V2RunQueryRequest,
 	if reqContentType != "" {
 		req.Header.Set("Content-Type", reqContentType)
 	}
+
+	utils.PopulateHeaders(ctx, req, request, nil)
 
 	if err := utils.PopulateQueryParams(ctx, req, request, nil, nil); err != nil {
 		return nil, fmt.Errorf("error populating query params: %w", err)
