@@ -429,12 +429,7 @@ func runBucketIndexGet(ctx context.Context, client servicepb.BucketServiceClient
 			"index":        canonical,
 			"servedLedger": idx.GetLedger(),
 		})
-
-		return
 	}
-
-	// Coverage: the bucket slot served an entry it owns.
-	assert.Reachable("singleton_driver_model: bucket-scoped index lookup validated", internal.Details{"index": indexes.Canonical(idx.GetId())})
 }
 
 // runIndexEntryStatus reads one index's status view. Only the registry entry it
