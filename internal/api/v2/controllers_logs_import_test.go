@@ -93,3 +93,31 @@ func TestLogsImport(t *testing.T) {
 		})
 	}
 }
+
+func TestLogsImportClosesStreamOnMalformedInput(t *testing.T) {
+	t.Parallel()
+
+	streamClosed := make(chan struct{})
+	systemController, ledgerController := newTestingSystemController(t, true)
+	ledgerController.EXPECT().
+		Import(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, stream chan ledger.Log) error {
+			for range stream {
+			}
+			close(streamClosed)
+			return nil
+		})
+
+	router := NewRouter(systemController, jwt.NewNoAuth(), "develop")
+	req := httptest.NewRequest(http.MethodPost, "/xxx/logs/import", bytes.NewBufferString("{"))
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusInternalServerError, rec.Code)
+	select {
+	case <-streamClosed:
+	case <-time.After(time.Second):
+		t.Fatal("import stream was not closed after malformed input")
+	}
+}

@@ -48,6 +48,7 @@ func importLogs(w http.ResponseWriter, r *http.Request) {
 				api.NoContent(w)
 				return
 			} else {
+				close(stream)
 				common.InternalServerError(w, r, fmt.Errorf("reading input stream: %w", err))
 				return
 			}
@@ -56,9 +57,11 @@ func importLogs(w http.ResponseWriter, r *http.Request) {
 		select {
 		case stream <- l:
 		case <-r.Context().Done():
+			close(stream)
 			common.InternalServerError(w, r, fmt.Errorf("request context done: %w", r.Context().Err()))
 			return
 		case err := <-errChan:
+			close(stream)
 			if err != nil {
 				handleError(err)
 				return
