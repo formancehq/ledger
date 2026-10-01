@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -102,8 +102,8 @@ func New(dir string, logger logging.Logger, cfg pebblecfg.Config) (*Store, error
 	m := db.Metrics()
 	logger.WithFields(map[string]any{
 		"duration":        time.Since(openStart).String(),
-		"l0FileCount":     m.Levels[0].TablesCount,
-		"l0Size":          m.Levels[0].TablesSize,
+		"l0FileCount":     m.Levels[0].Tables.Count,
+		"l0Size":          m.Levels[0].Tables.Bytes,
 		"memTableCount":   m.MemTable.Count,
 		"memTableSize":    m.MemTable.Size,
 		"totalLevelsSize": m.DiskSpaceUsage(),

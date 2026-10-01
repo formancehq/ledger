@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cockroachdb/pebble/v2"
-	"github.com/cockroachdb/pebble/v2/bloom"
-	"github.com/cockroachdb/pebble/v2/sstable"
-	"github.com/cockroachdb/pebble/v2/sstable/block"
+	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/tablefilters/bloom"
 )
 
 // NumLevels is the number of Pebble LSM levels.
@@ -177,7 +177,7 @@ func (cfg Config) BuildLevels() [NumLevels]pebble.LevelOptions {
 	for i := range levels {
 		profile := cfg.Compression[i].ToPebble()
 		levels[i] = pebble.LevelOptions{
-			FilterPolicy: bloom.FilterPolicy(10),
+			TableFilterPolicy: func() pebble.TableFilterPolicy { return bloom.FilterPolicy(10) },
 			Compression: func() *sstable.CompressionProfile {
 				return profile
 			},

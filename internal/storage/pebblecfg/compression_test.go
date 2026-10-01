@@ -3,7 +3,7 @@ package pebblecfg
 import (
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/stretchr/testify/require"
 )
 

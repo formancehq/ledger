@@ -7,7 +7,7 @@ import (
 	"os"
 	"sync/atomic"
 
-	"github.com/cockroachdb/pebble/v2/vfs"
+	"github.com/cockroachdb/pebble/vfs"
 	"go.opentelemetry.io/otel/metric"
 )
 

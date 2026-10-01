@@ -7,7 +7,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble"
 )
 
 // PebbleGetter provides point-lookup access to Pebble.

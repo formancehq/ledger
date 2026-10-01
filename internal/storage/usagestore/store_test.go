@@ -62,8 +62,8 @@ func BenchmarkStoreFlushCadence(b *testing.B) {
 
 			after := s.DB().Metrics()
 			b.ReportMetric(float64(after.Flush.Count-before.Flush.Count)/float64(b.N), "flushes/op")
-			b.ReportMetric(float64(after.Levels[0].TablesFlushed-before.Levels[0].TablesFlushed)/float64(b.N), "l0_tables/op")
-			b.ReportMetric(float64(after.Levels[0].TableBytesFlushed-before.Levels[0].TableBytesFlushed)/float64(b.N), "l0_bytes/op")
+			b.ReportMetric(float64(after.Levels[0].TablesFlushed.Count-before.Levels[0].TablesFlushed.Count)/float64(b.N), "l0_tables/op")
+			b.ReportMetric(float64(after.Levels[0].TablesFlushed.Bytes-before.Levels[0].TablesFlushed.Bytes)/float64(b.N), "l0_bytes/op")
 			b.ReportMetric(float64(after.Compact.Count-before.Compact.Count)/float64(b.N), "compactions/op")
 		})
 	}

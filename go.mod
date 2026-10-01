@@ -22,7 +22,6 @@ require (
 	github.com/aws/smithy-go v1.27.10
 	github.com/benbjohnson/immutable v0.4.3
 	github.com/bytedance/sonic v1.15.3
-	github.com/cockroachdb/pebble/v2 v2.1.7
 	github.com/databricks/databricks-sql-go v1.10.0
 	github.com/dustin/go-humanize v1.0.1
 	github.com/formancehq/go-libs/v5 v5.9.0
@@ -91,6 +90,13 @@ require (
 require go.opentelemetry.io/proto/otlp v1.11.0
 
 require (
+	github.com/FastFilter/xorfilter v0.4.2-0.20260120015552-4e5a4d9df65a // indirect
+	github.com/RaduBerinde/axisds/v2 v2.0.0 // indirect
+	github.com/RaduBerinde/tdigest v0.0.0-20251022152254-90e030c3a314 // indirect
+	github.com/google/btree v1.1.3 // indirect
+)
+
+require (
 	al.essio.dev/pkg/shellescape v1.5.1 // indirect
 	atomicgo.dev/cursor v0.2.0 // indirect
 	atomicgo.dev/keyboard v0.2.9 // indirect
@@ -104,8 +110,7 @@ require (
 	github.com/ClickHouse/ch-go v0.71.0 // indirect
 	github.com/DataDog/zstd v1.5.7 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/RaduBerinde/axisds v0.1.0 // indirect
-	github.com/RaduBerinde/btreemap v0.0.0-20250419174037-3d62b7205d54 // indirect
+	github.com/RaduBerinde/btreemap v0.0.0-20260105202824-d3184786f603 // indirect
 	github.com/ThreeDotsLabs/watermill v1.5.1 // indirect
 	github.com/ThreeDotsLabs/watermill-aws v1.0.1 // indirect
 	github.com/ThreeDotsLabs/watermill-http/v2 v2.3.1 // indirect
@@ -140,9 +145,10 @@ require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
-	github.com/cockroachdb/crlib v0.0.0-20241112164430-1264a2edc35b // indirect
+	github.com/cockroachdb/crlib v0.0.0-20251122031428-fe658a2dbda1 // indirect
 	github.com/cockroachdb/errors v1.11.3 // indirect
 	github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b // indirect
+	github.com/cockroachdb/pebble v0.0.0-20260924135503-652a081db94b
 	github.com/cockroachdb/redact v1.1.5 // indirect
 	github.com/cockroachdb/swiss v0.0.0-20260820225851-333444432258 // indirect
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
@@ -232,7 +238,7 @@ require (
 	github.com/minio/asm2plan9s v0.0.0-20200509001527-cdd76441f9d8 // indirect
 	github.com/minio/c2goasm v0.0.0-20190812172519-36a3d3bbc4f3 // indirect
 	github.com/minio/highwayhash v1.0.4-0.20251030100505-070ab1a87a76 // indirect
-	github.com/minio/minlz v1.0.1-0.20250507153514-87eb42fe8882 // indirect
+	github.com/minio/minlz v1.0.2-0.20260119185444-845e64f85661 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/go-archive v0.1.0 // indirect
 	github.com/moby/patternmatcher v0.6.0 // indirect
@@ -322,4 +328,4 @@ require (
 
 replace github.com/antithesishq/antithesis-sdk-go => github.com/formancehq/antithesis-sdk-go v0.0.0-20260915065804-1c9afdaf8204
 
-replace github.com/cockroachdb/pebble/v2 => github.com/formancehq/pebble/v2 v2.1.7
+replace github.com/cockroachdb/pebble => github.com/formancehq/pebble v0.0.0-20260924135503-652a081db94b

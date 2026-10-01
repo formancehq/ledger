@@ -53,13 +53,14 @@ func (s *Store) RegisterMetrics(m metric.Meter) (metric.Registration, error) {
 		metrics := s.db.Metrics()
 
 		for i, level := range metrics.Levels {
-			o.ObserveInt64(levelBytes, level.TablesSize,
+			o.ObserveInt64(levelBytes, int64(level.Tables.Bytes),
 				metric.WithAttributes(attribute.Int("level", i)))
 		}
 
 		o.ObserveInt64(memtableBytes, int64(metrics.MemTable.Size))
-		o.ObserveInt64(cacheHits, metrics.BlockCache.Hits)
-		o.ObserveInt64(cacheMisses, metrics.BlockCache.Misses)
+		hits, misses := metrics.BlockCache.HitsAndMisses.Aggregate()
+		o.ObserveInt64(cacheHits, hits)
+		o.ObserveInt64(cacheMisses, misses)
 
 		return nil
 	}, levelBytes, memtableBytes, cacheHits, cacheMisses)

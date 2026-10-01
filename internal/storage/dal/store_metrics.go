@@ -16,13 +16,15 @@ func (s *Store) GetMetrics() any {
 	}
 
 	m := db.Metrics()
+	cacheHits, cacheMisses := m.BlockCache.HitsAndMisses.Aggregate()
+	tableZombie := m.Table.Physical.Zombie.Total()
 
 	result := &servicepb.PebbleMetrics{
 		BlockCache: &servicepb.BlockCacheMetrics{
 			Size:   m.BlockCache.Size,
 			Count:  m.BlockCache.Count,
-			Hits:   m.BlockCache.Hits,
-			Misses: m.BlockCache.Misses,
+			Hits:   cacheHits,
+			Misses: cacheMisses,
 		},
 		Compact: &servicepb.CompactMetrics{
 			Count:            m.Compact.Count,
@@ -58,8 +60,8 @@ func (s *Store) GetMetrics() any {
 			PinnedSize:     m.Snapshots.PinnedSize,
 		},
 		Table: &servicepb.TableMetrics{
-			ZombieSize:  m.Table.ZombieSize,
-			ZombieCount: m.Table.ZombieCount,
+			ZombieSize:  tableZombie.Bytes,
+			ZombieCount: int64(tableZombie.Count),
 		},
 		TableCache: &servicepb.TableCacheMetrics{
 			Size:   m.FileCache.Size,
@@ -85,19 +87,19 @@ func (s *Store) GetMetrics() any {
 	for i, level := range m.Levels {
 		result.Levels = append(result.Levels, &servicepb.LevelMetrics{
 			Level:           int32(i),
-			NumFiles:        level.TablesCount,
-			Size:            level.TablesSize,
+			NumFiles:        int64(level.Tables.Count),
+			Size:            int64(level.Tables.Bytes),
 			Score:           level.Score,
 			BytesIn:         level.TableBytesIn,
-			BytesIngested:   level.TableBytesIngested,
-			BytesMoved:      level.TableBytesMoved,
+			BytesIngested:   level.TablesIngested.Bytes,
+			BytesMoved:      level.TablesMoved.Bytes,
 			BytesRead:       level.TableBytesRead,
-			BytesCompacted:  level.TableBytesCompacted,
-			BytesFlushed:    level.TableBytesFlushed,
-			TablesCompacted: level.TablesCompacted,
-			TablesFlushed:   level.TablesFlushed,
-			TablesIngested:  level.TablesIngested,
-			TablesMoved:     level.TablesMoved,
+			BytesCompacted:  level.TablesCompacted.Bytes,
+			BytesFlushed:    level.TablesFlushed.Bytes,
+			TablesCompacted: level.TablesCompacted.Count,
+			TablesFlushed:   level.TablesFlushed.Count,
+			TablesIngested:  level.TablesIngested.Count,
+			TablesMoved:     level.TablesMoved.Count,
 		})
 	}
 
