@@ -359,6 +359,11 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 
 					return cursor, err
 				}
+				if err := readstore.DeleteLedgerIndexPrefix(batch, readstore.PrefixLedgerLogDateByID, ledgerName); err != nil {
+					_ = batch.Cancel()
+
+					return cursor, err
+				}
 			} else if logDateActive || wasEmpty {
 				if err := b.wb.WriteLedgerLogDateIndex(b.kb, ledgerName, ledgerLog.GetDate().GetData(), ledgerLog.GetId()); err != nil {
 					_ = batch.Cancel()

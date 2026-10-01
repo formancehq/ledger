@@ -1593,10 +1593,22 @@ func (b *Builder) purgeBackfillTaskGeneration(task *backfillTask) error {
 		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE:
 			return deletePrefix(readstore.PrefixTransactionReference)
 		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
+			if err := deletePrefix(readstore.PrefixTransactionTimestampByID); err != nil {
+				return err
+			}
+
 			return deletePrefix(readstore.PrefixTransactionTimestamp)
 		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
+			if err := deletePrefix(readstore.PrefixTransactionInsertedAtByID); err != nil {
+				return err
+			}
+
 			return deletePrefix(readstore.PrefixTransactionInsertedAt)
 		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
+			if err := deletePrefix(readstore.PrefixTransactionRevertedAtByID); err != nil {
+				return err
+			}
+
 			return deletePrefix(readstore.PrefixTransactionRevertedAt)
 		default:
 			return fmt.Errorf("invariant: unsupported transaction backfill index %v", kind.TxBuiltin)
@@ -1614,6 +1626,10 @@ func (b *Builder) purgeBackfillTaskGeneration(task *backfillTask) error {
 	case *commonpb.IndexID_LogBuiltin:
 		if kind.LogBuiltin != commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE {
 			return fmt.Errorf("invariant: unsupported log backfill index %v", kind.LogBuiltin)
+		}
+
+		if err := deletePrefix(readstore.PrefixLedgerLogDateByID); err != nil {
+			return err
 		}
 
 		return deletePrefix(readstore.PrefixLedgerLogDate)

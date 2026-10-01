@@ -26,12 +26,12 @@ import (
 // rejectInvalidCondition. A filter that compiles one way therefore compiles
 // the other way with the same verdict, and a semantic change lands in both.
 //
-// Two leaf classes cannot stream backwards and keep the materialization the
-// ascending path already pays:
+// Three leaf classes still materialize for descending traversal:
 //
-//   - value-ordered ranges (int/uint metadata ranges, timestamp and log-date
-//     ranges, log-id ranges): the scan surfaces rows in (value, entity) order,
-//     so "the next entity below X" is undefined without the sorted result;
+//   - value-ordered int/uint metadata ranges: the scan surfaces rows in
+//     (value, entity) order, so entity order requires sorting;
+//   - log-ID ranges: the key is ID-ordered, but this range leaf has no reverse
+//     iterator yet;
 //   - the account→transaction address union: its members come from N per-account
 //     scans that are each ascending but collectively unordered.
 //
@@ -810,7 +810,7 @@ func compileBuiltinUintConditionRev(ctx *compileCtx, cond *commonpb.BuiltinUintC
 		return nil, err
 	}
 
-	return compileTimestampRangeConditionRev(ctx, cond.GetCond(), arm.prefix, arm.bucket, arm.stampPin)
+	return compileTimestampRangeConditionRev(ctx, cond.GetCond(), arm)
 }
 
 func compileTxIDConditionRev(ctx *compileCtx, cond *commonpb.UintCondition) (readstore.ReverseIterator, error) {
@@ -871,15 +871,12 @@ func compileTxIDConditionRev(ctx *compileCtx, cond *commonpb.UintCondition) (rea
 	}), nil
 }
 
-// compileTimestampRangeConditionRev is the value-ordered fallback: the scan
-// surfaces rows in (timestamp, entity) order, so the sorted result is
-// unavoidable. Descending reuses it rather than building another one.
+// compileTimestampRangeConditionRev scans the ID-first companion in descending
+// entity order, using the date-first index only to find the initial ID.
 func compileTimestampRangeConditionRev(
 	ctx *compileCtx,
 	cond *commonpb.UintCondition,
-	ledgerPrefix []byte,
-	bucketLabel string,
-	stampPin uint64,
+	arm timestampArm,
 ) (readstore.ReverseIterator, error) {
 	bounds, err := resolveUintBounds(cond, ctx.params)
 	if err != nil {
@@ -890,25 +887,20 @@ func compileTimestampRangeConditionRev(
 		return emptyReverse(), nil
 	}
 
-	lower, upper, entityOffset, entityLen := timestampRangeBounds(ledgerPrefix, bounds)
-
-	iter, rErr := readstore.NewStampGatedRangeIterator(ctx.indexReader, lower, upper, entityOffset, entityLen, stampPin)
+	lower, upper, entityOffset := timestampRangeBounds(arm.prefix, bounds)
+	idPrefix := readstore.IDDatePrefix(ctx.kb, arm.idPrefix, ctx.ledgerName)
+	iter, rErr := readstore.NewIDDateRangeIterator[readstore.Desc](ctx.indexReader, idPrefix, lower, upper, entityOffset, bounds.min, bounds.max, bounds.hasMin, bounds.hasMax, arm.stamped, arm.stampPin)
 	if rErr != nil {
-		return nil, fmt.Errorf("creating timestamp range iterator: %w", rErr)
+		return nil, fmt.Errorf("creating ID-ordered timestamp range iterator: %w", rErr)
 	}
 
 	stats := &IteratorStats{
-		Label:  fmt.Sprintf("ReverseSliceIterator(%s:%s range)", bucketLabel, ctx.ledgerName),
+		Label:  fmt.Sprintf("ReverseIDDateRangeIterator(%s:%s range)", arm.bucket, ctx.ledgerName),
 		Kind:   "Range",
-		Prefix: bucketLabel,
+		Prefix: arm.bucket,
 	}
 
-	matIter, err := materializeReverse(iter, ctx.profile, stats)
-	if err != nil {
-		return nil, err
-	}
-
-	return trackReverse(matIter, ctx.profile, stats), nil
+	return trackReverse(iter, ctx.profile, stats), nil
 }
 
 func compileLogBuiltinUintConditionRev(ctx *compileCtx, cond *commonpb.LogBuiltinUintCondition) (readstore.ReverseIterator, error) {
@@ -925,7 +917,7 @@ func compileLogBuiltinUintConditionRev(ctx *compileCtx, cond *commonpb.LogBuilti
 		return nil, err
 	}
 
-	return compileTimestampRangeConditionRev(ctx, cond.GetCond(), arm.prefix, arm.bucket, arm.stampPin)
+	return compileTimestampRangeConditionRev(ctx, cond.GetCond(), arm)
 }
 
 func compileLogIdConditionRev(ctx *compileCtx, cond *commonpb.UintCondition) (readstore.ReverseIterator, error) {

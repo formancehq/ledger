@@ -14,20 +14,24 @@ import (
 // Pebble key prefix bytes for the separate read index database.
 // Each prefix replaces a former Pebble bucket.
 const (
-	PrefixMetadataIndex         byte = 0x01 // midx — inverted index for metadata
-	PrefixEntityExists          byte = 0x02 // eidx — entity-ordered existence index
-	PrefixReverseMap            byte = 0x03 // rmap — reverse metadata map
-	PrefixAccountTx             byte = 0x04 // atxm — account→tx (any role)
-	PrefixSourceAccountTx       byte = 0x05 // satx — source account→tx
-	PrefixDestinationAccountTx  byte = 0x06 // datx — destination account→tx
-	PrefixTransactionReference  byte = 0x07 // txref — transaction reference
-	PrefixTransactionTimestamp  byte = 0x08 // tstmp — transaction timestamp
-	PrefixLedgerLogs            byte = 0x09 // llog — ledger log mapping
-	PrefixLedgerLogDate         byte = 0x0A // lldt — ledger log date
-	PrefixTransactionInsertedAt byte = 0x0B // txiat — transaction inserted_at
-	PrefixAccountByAsset        byte = 0x0C // abya — account-by-asset inverted index (asset→account)
-	PrefixTransactionRevertedAt byte = 0x0D // rvat — transaction reverted_at
-	PrefixAssetsByAccount       byte = 0x0E // abya reverse membership (account→asset)
+	PrefixMetadataIndex             byte = 0x01 // midx — inverted index for metadata
+	PrefixEntityExists              byte = 0x02 // eidx — entity-ordered existence index
+	PrefixReverseMap                byte = 0x03 // rmap — reverse metadata map
+	PrefixAccountTx                 byte = 0x04 // atxm — account→tx (any role)
+	PrefixSourceAccountTx           byte = 0x05 // satx — source account→tx
+	PrefixDestinationAccountTx      byte = 0x06 // datx — destination account→tx
+	PrefixTransactionReference      byte = 0x07 // txref — transaction reference
+	PrefixTransactionTimestamp      byte = 0x08 // tstmp — transaction timestamp
+	PrefixLedgerLogs                byte = 0x09 // llog — ledger log mapping
+	PrefixLedgerLogDate             byte = 0x0A // lldt — ledger log date
+	PrefixTransactionInsertedAt     byte = 0x0B // txiat — transaction inserted_at
+	PrefixAccountByAsset            byte = 0x0C // abya — account-by-asset inverted index (asset→account)
+	PrefixTransactionRevertedAt     byte = 0x0D // rvat — transaction reverted_at
+	PrefixAssetsByAccount           byte = 0x0E // abya reverse membership (account→asset)
+	PrefixTransactionTimestampByID  byte = 0x0F // transaction timestamp, ordered by transaction ID
+	PrefixTransactionInsertedAtByID byte = 0x10 // transaction inserted_at, ordered by transaction ID
+	PrefixTransactionRevertedAtByID byte = 0x11 // transaction reverted_at, ordered by transaction ID
+	PrefixLedgerLogDateByID         byte = 0x12 // ledger log date, ordered by log ID
 
 	// PrefixInternal groups all non-ledger-scoped keys under a single prefix
 	// so that Comparer.Split can treat them uniformly (full key = prefix).
@@ -528,6 +532,16 @@ func TransactionTimestampRangePrefix(kb *dal.KeyBuilder, ledgerName string) []by
 		PutByte(PrefixTransactionTimestamp).
 		PutLedgerNameFixed(ledgerName).
 		Snapshot()
+}
+
+// IDDateKey stores one immutable builtin date under the public entity order.
+// Its value carries the date and, for reverted_at, the fold stamp.
+func IDDateKey(kb *dal.KeyBuilder, prefix byte, ledgerName string, id uint64) []byte {
+	return kb.Reset().PutByte(prefix).PutLedgerNameFixed(ledgerName).PutUint64(id).Consume()
+}
+
+func IDDatePrefix(kb *dal.KeyBuilder, prefix byte, ledgerName string) []byte {
+	return kb.Reset().PutByte(prefix).PutLedgerNameFixed(ledgerName).Snapshot()
 }
 
 // TransactionInsertedAtKey builds a full key in the transaction inserted_at index.

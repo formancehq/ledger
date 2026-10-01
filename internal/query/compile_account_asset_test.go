@@ -230,6 +230,10 @@ func TestCompile_RevertedAt_PinExcludesLaterRevert(t *testing.T) {
 		stamp := make([]byte, 8)
 		binary.BigEndian.PutUint64(stamp, seed.seq)
 		require.NoError(t, batch.SetBytes(key, stamp))
+		value := make([]byte, 16)
+		binary.BigEndian.PutUint64(value[:8], seed.ts)
+		copy(value[8:], stamp)
+		require.NoError(t, batch.SetBytes(readstore.IDDateKey(kb, readstore.PrefixTransactionRevertedAtByID, ledgerName, seed.txID), value))
 	}
 	require.NoError(t, batch.Commit())
 
@@ -273,4 +277,22 @@ func TestCompile_RevertedAt_PinExcludesLaterRevert(t *testing.T) {
 		"a revert folded past the pin must be invisible to the pinned read")
 	require.Equal(t, []uint64{7, 8}, scan(9),
 		"a pin covering both stamps serves both reverts")
+
+	scanReverse := func(pin uint64) []uint64 {
+		iter, cErr := query.CompileReverse(
+			reader, dal.NewKeyBuilder(), filter,
+			commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, ledgerName,
+			nil, nil, info, registry, resolverReady, nil, reader, pin)
+		require.NoError(t, cErr)
+		defer iter.Close()
+		var got []uint64
+		for iter.Next() {
+			got = append(got, binary.BigEndian.Uint64(iter.Current()))
+		}
+		require.NoError(t, iter.Err())
+
+		return got
+	}
+	require.Equal(t, []uint64{7}, scanReverse(7))
+	require.Equal(t, []uint64{8, 7}, scanReverse(9))
 }
