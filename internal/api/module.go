@@ -6,6 +6,7 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/go-chi/chi/v5"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
 
@@ -57,6 +58,7 @@ func Module(cfg Config) fx.Option {
 			backend system.Controller,
 			authenticator jwt.Authenticator,
 			publisher message.Publisher,
+			meterProvider metric.MeterProvider,
 			tracerProvider trace.TracerProvider,
 		) chi.Router {
 			auditOptions := []httpaudit.HTTPOption{
@@ -93,6 +95,7 @@ func Module(cfg Config) fx.Option {
 				publisher,
 				cfg.Version,
 				cfg.Debug,
+				WithMeterProvider(meterProvider),
 				WithTracer(tracerProvider.Tracer("api")),
 				WithBulkMaxSize(cfg.Bulk.MaxSize),
 				WithBulkerFactory(bulking.NewDefaultBulkerFactory(
