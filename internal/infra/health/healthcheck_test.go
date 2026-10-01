@@ -17,7 +17,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/diskusage"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 type diskUsageTestServer struct {

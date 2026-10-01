@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestDiskUsageVolumeRow(t *testing.T) {
