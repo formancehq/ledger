@@ -1084,9 +1084,11 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 				ls.annotateLog(ot.logIdx, ot.cells, ann)
 			}
 		}
+		// Covered purges land on the bulk's last fresh log in this ledger,
+		// whatever its kind — an order_skipped tail included.
 		if len(coveredPurged) > 0 {
 			for _, orderTouche := range slices.Backward(orderTouches) {
-				if orderTouche.ledger == name && ls.logs.Get(orderTouche.logIdx).kind != "order_skipped" {
+				if orderTouche.ledger == name {
 					ls.annotateCoveredPurges(orderTouche.logIdx, coveredPurged)
 
 					break

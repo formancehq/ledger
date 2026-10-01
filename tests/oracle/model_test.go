@@ -1057,3 +1057,29 @@ func TestGlobalState_AccountTypeTransitionPurgesMetadataOnlyEphemeralAccount(t *
 	reclassifiedLedger := reclassified.State.Ledger("L")
 	require.Empty(t, reclassifiedLedger.AccountMetadata("users:alice"))
 }
+
+func TestGlobalState_CoveredPurgeLandsOnSkippedTail(t *testing.T) {
+	t.Parallel()
+
+	seeded := NewGlobalState().Apply(bulkOf(
+		oracletest.TxReqRefL("L", "ref", "world", "a", "USD", 1),
+		oracletest.TxReq("world", "e:1", "USD", 5),
+		oracletest.TxReq("e:1", "world", "USD", 5),
+	))
+	require.True(t, seeded.OK, seeded.Reason)
+
+	// The new EPHEMERAL type exposes e:1's untouched balanced row; the bulk's
+	// last log is the skipped reference conflict.
+	got := seeded.State.Apply(bulkOf(
+		oracletest.AddTypeReqP("e", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL),
+		skipRequest(oracletest.TxReqRefL("L", "ref", "world", "a", "USD", 9), commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT),
+	))
+	require.True(t, got.OK, got.Reason)
+
+	rows := got.State.Ledger("L").LogRows()
+	require.Len(t, rows, 5)
+	require.Equal(t, "added_account_type", rows[3].Kind)
+	require.Empty(t, rows[3].PurgedVolumes)
+	require.Equal(t, "order_skipped", rows[4].Kind)
+	require.Equal(t, "e:1:USD:", rows[4].PurgedVolumes)
+}
