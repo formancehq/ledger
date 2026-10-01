@@ -21,7 +21,7 @@ func TestTransactionCreateParserDiagnostics(t *testing.T) {
 	// Parse an incomplete transaction script to obtain real parser errors.
 	source := "send [USD 100] ("
 	parserErrors := numscript.Parse(source).GetParsingErrors()
-	require.NotEmpty(t, parserErrors)
+	require.Len(t, parserErrors, 1)
 
 	parseErr := ledgercontroller.ErrParsing{
 		Source: source,
@@ -52,7 +52,6 @@ func TestTransactionCreateParserDiagnostics(t *testing.T) {
 	router.ServeHTTP(recorder, request)
 
 	require.Equal(t, http.StatusBadRequest, recorder.Code)
-	t.Logf("HTTP response: %s", recorder.Body.String())
 
 	// Define the expected public JSON contract independently of implementation.
 	type position struct {
@@ -75,17 +74,8 @@ func TestTransactionCreateParserDiagnostics(t *testing.T) {
 	require.Equal(t, common.ErrInterpreterParse, response.ErrorCode)
 	require.Equal(t, parseErr.Error(), response.ErrorMessage)
 
-	// Every parser error must retain its message and source positions.
-	require.Len(t, response.Diagnostics, len(parserErrors))
-	for i, parserError := range parserErrors {
-		require.Equal(t, parserError.Msg, response.Diagnostics[i].Message)
-		require.Equal(t, position{
-			Line:      parserError.Start.Line,
-			Character: parserError.Start.Character,
-		}, response.Diagnostics[i].Start)
-		require.Equal(t, position{
-			Line:      parserError.End.Line,
-			Character: parserError.End.Character,
-		}, response.Diagnostics[i].End)
-	}
+	require.Len(t, response.Diagnostics, 1)
+	require.Equal(t, parserErrors[0].Msg, response.Diagnostics[0].Message)
+	require.Equal(t, position{Line: 0, Character: 16}, response.Diagnostics[0].Start)
+	require.Equal(t, position{Line: 0, Character: 16}, response.Diagnostics[0].End)
 }

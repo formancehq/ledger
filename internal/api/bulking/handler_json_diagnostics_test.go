@@ -18,7 +18,7 @@ import (
 func TestBulkParserDiagnostics(t *testing.T) {
 	source := "send [USD 100] ("
 	parserErrors := numscript.Parse(source).GetParsingErrors()
-	require.NotEmpty(t, parserErrors)
+	require.Len(t, parserErrors, 1)
 
 	parseErr := ledgercontroller.ErrParsing{
 		Source: source,
@@ -82,19 +82,16 @@ func TestBulkParserDiagnostics(t *testing.T) {
 				End     map[string]int `json:"end"`
 			}
 			require.NoError(t, json.Unmarshal(item["diagnostics"], &diagnostics))
-			require.Len(t, diagnostics, len(parserErrors))
-
-			for i, parserError := range parserErrors {
-				require.Equal(t, parserError.Msg, diagnostics[i].Message)
-				require.Equal(t, map[string]int{
-					"line":      parserError.Start.Line,
-					"character": parserError.Start.Character,
-				}, diagnostics[i].Start)
-				require.Equal(t, map[string]int{
-					"line":      parserError.End.Line,
-					"character": parserError.End.Character,
-				}, diagnostics[i].End)
-			}
+			require.Len(t, diagnostics, 1)
+			require.Equal(t, parserErrors[0].Msg, diagnostics[0].Message)
+			require.Equal(t, map[string]int{
+				"line":      0,
+				"character": 16,
+			}, diagnostics[0].Start)
+			require.Equal(t, map[string]int{
+				"line":      0,
+				"character": 16,
+			}, diagnostics[0].End)
 		})
 	}
 }

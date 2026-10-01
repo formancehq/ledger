@@ -13,7 +13,10 @@ import (
 )
 
 func TestParserDiagnostics(t *testing.T) {
-	// Distinct positions ensure we preserve every error in order.
+	source := "abcdefghij\nsecond line\n0123456789abcdef"
+
+	// Distinct single-line positions; Numscript parser errors are always single-line.
+	// Inclusive parser ends become exclusive public ends after normalization.
 	first := numscript.ParserError{Msg: "first error"}
 	first.Start.Line = 0
 	first.Start.Character = 2
@@ -21,12 +24,13 @@ func TestParserDiagnostics(t *testing.T) {
 	first.End.Character = 5
 
 	second := numscript.ParserError{Msg: "second error"}
-	second.Start.Line = 3
+	second.Start.Line = 2
 	second.Start.Character = 4
-	second.End.Line = 4
-	second.End.Character = 1
+	second.End.Line = 2
+	second.End.Character = 8
 
 	parseErr := ledgercontroller.ErrParsing{
+		Source: source,
 		Errors: []numscript.ParserError{first, second},
 	}
 
@@ -34,12 +38,12 @@ func TestParserDiagnostics(t *testing.T) {
 		{
 			Message: "first error",
 			Start:   DiagnosticPosition{Line: 0, Character: 2},
-			End:     DiagnosticPosition{Line: 0, Character: 5},
+			End:     DiagnosticPosition{Line: 0, Character: 6},
 		},
 		{
 			Message: "second error",
-			Start:   DiagnosticPosition{Line: 3, Character: 4},
-			End:     DiagnosticPosition{Line: 4, Character: 1},
+			Start:   DiagnosticPosition{Line: 2, Character: 4},
+			End:     DiagnosticPosition{Line: 2, Character: 9},
 		},
 	}
 
@@ -66,10 +70,10 @@ func TestParserDiagnostics(t *testing.T) {
 	})
 }
 
-func TestParserDiagnosticsPreservesNonASCIIParserRange(t *testing.T) {
-	source := `"café"`
+func TestParserDiagnosticsNormalizesNonASCIIParserRange(t *testing.T) {
+	source := `"café☕"`
 	parserErrors := numscript.Parse(source).GetParsingErrors()
-	require.NotEmpty(t, parserErrors)
+	require.Len(t, parserErrors, 1)
 
 	parseErr := ledgercontroller.ErrParsing{
 		Source: source,
@@ -78,17 +82,12 @@ func TestParserDiagnosticsPreservesNonASCIIParserRange(t *testing.T) {
 	diagnostics := ParserDiagnostics(parseErr)
 
 	require.Len(t, diagnostics, len(parserErrors))
-	require.Equal(t, parserErrors[0].Start.Character, diagnostics[0].Start.Character)
-	require.Equal(t, parserErrors[0].End.Character, diagnostics[0].End.Character)
-
-	// Numscript reports the inclusive end using the token's UTF-8 byte length.
-	// The non-ASCII é occupies two bytes, so the parser-native end extends one
-	// position beyond the final Unicode code point in the physical source.
 	require.Equal(t, 0, diagnostics[0].Start.Character)
-	require.Equal(t, len(source)-1, diagnostics[0].End.Character)
-	require.Greater(
-		t,
-		diagnostics[0].End.Character,
-		utf8.RuneCountInString(source)-1,
-	)
+
+	normalizedEnd := utf8.RuneCountInString(source)
+	require.Equal(t, normalizedEnd, diagnostics[0].End.Character)
+
+	// Numscript reports an inclusive end using the token's UTF-8 byte length,
+	// so the raw parser end is not a code-point-exclusive public position.
+	require.NotEqual(t, parserErrors[0].End.Character, diagnostics[0].End.Character)
 }

@@ -5699,7 +5699,7 @@ A zero-based source position reported by the Numscript parser.
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |line|integer|true|none|Zero-based line index.|
-|character|integer|true|none|Zero-based parser column within the line.|
+|character|integer|true|none|Zero-based offset in Unicode code points.|
 
 <h2 id="tocS_V2ParserDiagnostic">V2ParserDiagnostic</h2>
 <!-- backwards compatibility -->
@@ -5723,7 +5723,7 @@ A zero-based source position reported by the Numscript parser.
 
 ```
 
-A Numscript parsing error and its parser-native source range. start.character is a zero-based Unicode code-point offset. The end position is inclusive and is derived from the UTF-8 byte length of the offending token. Consequently, non-ASCII and virtual tokens such as EOF can place either boundary at or beyond the physical source line. Clients should clamp both positions before slicing or highlighting source text.
+A Numscript parsing error and its source range. Positions are zero-based and count Unicode code points; end is exclusive. Ranges always fall within the submitted source; an error at end of input is a zero-width range at the end of the source.
 
 ### Properties
 
