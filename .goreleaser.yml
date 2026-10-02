@@ -75,6 +75,7 @@ release:
   prerelease: auto
   extra_files:
   - glob: openapi.yml
+  - glob: misc/operator/config/crd/schemas/*.json
 
 archives:
 - id: ledger-unix
