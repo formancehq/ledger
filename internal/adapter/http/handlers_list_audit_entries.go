@@ -34,7 +34,8 @@ import (
 //
 // It is NOT a full parity of the gRPC ListOptions contract: the gRPC surface
 // additionally honors `checkpointId` for a pinned checkpoint read. This HTTP
-// endpoint always performs a live linearizable read. For indexed filters, the
+// endpoint always performs a live read, linearizable unless the caller sends
+// `X-Consistency: stale` (see readConsistency). For indexed filters, the
 // shared controller path automatically waits for the audit projection to
 // certify the fixed main-store horizon before serving the result; unfiltered
 // and seq-only reads do not depend on that projection. If checkpoint selection

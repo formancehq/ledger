@@ -94,6 +94,35 @@ the request reaches the endpoint — so the test asserts the matched pattern on 
 The gRPC analogue is `internal/adapter/auth/request_scope_exhaustiveness_test.go`, which gives the
 same guarantee for the `Request` oneof.
 
+### Read consistency
+
+Every `/v3` route accepts an optional `X-Consistency` request header, the HTTP
+twin of the gRPC `x-consistency` metadata. Both transports store the selector
+in the request context (`internal/query/consistency.go`), and
+`RoutedController.readCtrl` is the single place that routes on it:
+
+- absent, empty or `linearizable` (the default): ReadIndex barrier plus local
+  `WaitForApplied`, with the usual leader fallback for a syncing follower;
+- `stale`: read the receiving node's local store directly. No ReadIndex, no
+  `WaitForApplied` and **no forwarding**, so the answer reflects that node's own
+  state and may lag the leader. Projection alignment still applies: a read that
+  consults an index or the audit projection waits for that local projection to
+  reach the fixed main-store horizon (`AlignedIndexSnapshot`), up to the
+  caller's deadline. A caller that addresses a specific node directly (not
+  through a load balancer, since no response header names the serving node)
+  can gate on that node's `last_persisted_index` (gRPC
+  `ClusterService.GetClusterState{node_id}`) to know how far it has caught up.
+
+Matching ignores case and surrounding whitespace. A valid level has no effect
+on writes. The transports differ on invalid input on purpose. HTTP rejects an
+unknown value (including the `leader` selector EN-1946 removed), a repeated
+header, or a comma-joined value with `400 INVALID_REQUEST` on every `/v3` route,
+writes included, and never calls the backend. gRPC keeps its existing
+contract: it silently ignores an unknown value and uses only the first metadata
+value. Ops routes (`/health`, `/readyz`, `/clusterz`, …) do not parse the
+header. `TestReadConsistency_InstalledOnEveryBusinessRoute` requires the
+middleware on every `/v3` route and forbids it on ops routes.
+
 ### Optional transaction revert body
 
 `POST /v3/{ledgerName}/transactions/{transactionId}/revert` accepts an absent
