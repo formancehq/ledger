@@ -233,6 +233,39 @@ func TestAccountWindow(t *testing.T) {
 		accountWindow(ls, filterAddrPrefix("acc:"), "", 10, false))
 }
 
+// The page a base predicts comes with the resume token that base implies: one
+// naming the last row served when a row is still waiting, none when the page
+// exhausted the window.
+func TestAccountPageMatches_JudgesTheResumeToken(t *testing.T) {
+	t.Parallel()
+
+	served := func(addr, input, output string) *commonpb.Account {
+		return &commonpb.Account{
+			Address: addr,
+			Volumes: []*commonpb.AccountVolume{{
+				Asset:   "USD",
+				Volumes: &commonpb.VolumesWithBalance{Input: input, Output: output},
+			}},
+		}
+	}
+
+	ls := buildLedger(t,
+		oracletest.TxReq("world", "acc:1", "USD", 5),
+		oracletest.TxReq("world", "acc:2", "USD", 5),
+		oracletest.TxReq("world", "acc:3", "USD", 5),
+	)
+	// Universe: acc:1, acc:2, acc:3, world.
+
+	cut := []*commonpb.Account{served("acc:1", "5", "0"), served("acc:2", "5", "0")}
+	require.True(t, accountPageMatches(ls, nil, "", 2, false, cut, "acc:2"))
+	require.False(t, accountPageMatches(ls, nil, "", 2, false, cut, ""), "two accounts are still waiting")
+	require.False(t, accountPageMatches(ls, nil, "", 2, false, cut, "acc:3"), "the token names the last row sent, not the peeked one")
+
+	whole := append(append([]*commonpb.Account{}, cut...), served("acc:3", "5", "0"), served("world", "0", "15"))
+	require.True(t, accountPageMatches(ls, nil, "", 10, false, whole, ""))
+	require.False(t, accountPageMatches(ls, nil, "", 10, false, whole, "world"), "a token promises a page that does not exist")
+}
+
 func TestTransactionWindow(t *testing.T) {
 	t.Parallel()
 
@@ -453,14 +486,15 @@ func TestTxWindowMatches_OptionalRows(t *testing.T) {
 		return out
 	}
 
-	require.True(t, txWindowMatches(ls, filter, 0, 10, true, page(1, 3)), "optional row absent")
-	require.True(t, txWindowMatches(ls, filter, 0, 10, true, page(1, 2, 3)), "optional row present")
-	require.False(t, txWindowMatches(ls, filter, 0, 10, true, page(3, 1)), "order violation")
-	require.False(t, txWindowMatches(ls, filter, 0, 10, true, page(1)), "required row missing with page room")
-	require.True(t, txWindowMatches(ls, filter, 0, 1, true, page(1)), "full page truncates the rest")
-	require.False(t, txWindowMatches(ls, filter, 0, 10, true, page(2, 3)), "required first row missing")
-	require.True(t, txWindowMatches(ls, filter, 1, 10, true, page(2, 3)), "cursor drops tx 1; optional 2 present")
-	require.True(t, txWindowMatches(ls, filter, 1, 10, true, page(3)), "cursor drops tx 1; optional 2 absent")
+	require.True(t, txWindowMatches(ls, filter, 0, 10, true, page(1, 3), ""), "optional row absent")
+	require.True(t, txWindowMatches(ls, filter, 0, 10, true, page(1, 2, 3), ""), "optional row present")
+	require.False(t, txWindowMatches(ls, filter, 0, 10, true, page(3, 1), ""), "order violation")
+	require.False(t, txWindowMatches(ls, filter, 0, 10, true, page(1), ""), "required row missing with page room")
+	require.True(t, txWindowMatches(ls, filter, 0, 1, true, page(1), "1"), "full page truncates the rest, naming its last row")
+	require.False(t, txWindowMatches(ls, filter, 0, 1, true, page(1), ""), "a truncated page must hand back a resume token")
+	require.False(t, txWindowMatches(ls, filter, 0, 10, true, page(2, 3), ""), "required first row missing")
+	require.True(t, txWindowMatches(ls, filter, 1, 10, true, page(2, 3), ""), "cursor drops tx 1; optional 2 present")
+	require.True(t, txWindowMatches(ls, filter, 1, 10, true, page(3), ""), "cursor drops tx 1; optional 2 absent")
 }
 
 // --- Phase 4: address-on-transactions ---------------------------------------

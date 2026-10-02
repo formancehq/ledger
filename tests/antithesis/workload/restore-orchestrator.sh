@@ -10,8 +10,8 @@
 #   1. incremental backup at the quiesce point (exec ledgerctl in a ledger pod)
 #   2. tear the cluster down: delete the Cluster CR and every PVC
 #   3. re-create the Cluster in restore mode (1 replica), exec
-#      `ledgerctl restore download` + `restore finalize` (RebuildDelta runs
-#      inside bootstrap-from-backup on the restored store)
+#      `ledgerctl restore download` + `restore validate` + `restore finalize`
+#      (RebuildDelta runs inside bootstrap-from-backup on the restored store)
 #   4. flip the Cluster back to normal mode: pod 0 self-bootstraps from the
 #      restored store (RESTORED marker), the other replicas join fresh and
 #      snapshot-install the restored state
@@ -137,6 +137,14 @@ teardown_cluster() {
 	done
 }
 
+# step_failure OUTPUT -- the CLI's own ERROR lines when it printed any (its
+# trailing output is a rendered table or a progress bar), else the tail.
+step_failure() {
+	local errs
+	errs=$(printf '%s' "$1" | grep 'ERROR' | tail -c 400)
+	if [ -n "$errs" ]; then printf '%s' "$errs"; else printf '%s' "$1" | tail -c 200; fi
+}
+
 # The exec's response can be lost mid-step (network partition, bounded client)
 # while the server-side operation completed, so the download/finalize retries
 # must recognise the FailedPrecondition a repeat then hits as prior success:
@@ -147,7 +155,18 @@ download_step() {
 	local out
 	out=$(exec_ledgerctl "$POD_PREFIX-0" "restore download" "${S3_ARGS[*]}" 2>&1) && return 0
 	case "$out" in *"already downloaded"*) return 0 ;; esac
-	log "download attempt failed: $(printf '%s' "$out" | tail -c 200)"
+	log "download attempt failed: $(step_failure "$out")"
+	return 1
+}
+
+# Finalize refuses a staged backup that has not passed validation. Success is
+# read from the CLI's verdict line rather than its exit status: the
+# race-instrumented ledgerctl can exit non-zero after a clean validation.
+validate_step() {
+	local out
+	out=$(exec_ledgerctl "$POD_PREFIX-0" "restore validate" 2>&1)
+	case "$out" in *"Backup is valid"*) return 0 ;; esac
+	log "validate attempt failed: $(step_failure "$out")"
 	return 1
 }
 
@@ -155,7 +174,7 @@ finalize_step() {
 	local out
 	out=$(exec_ledgerctl "$POD_PREFIX-0" "restore finalize --yes" 2>&1) && return 0
 	case "$out" in *"no backup downloaded"*) return 0 ;; esac
-	log "finalize attempt failed: $(printf '%s' "$out" | tail -c 200)"
+	log "finalize attempt failed: $(step_failure "$out")"
 	return 1
 }
 
@@ -166,6 +185,7 @@ restore_from_backup() {
 	wait_pod_running "$POD_PREFIX-0" || { log "restore-mode pod never ran"; return 1; }
 
 	retry 5 download_step || { log "restore download failed"; return 1; }
+	retry 5 validate_step || { log "restore validate failed"; return 1; }
 	retry 5 finalize_step || { log "restore finalize failed"; return 1; }
 
 	k apply -f "$NORMAL_SPEC" || { log "applying normal-mode cluster failed"; return 1; }

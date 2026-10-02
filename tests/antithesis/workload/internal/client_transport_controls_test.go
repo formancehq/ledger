@@ -15,8 +15,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 type terminalApplyServer struct {
@@ -92,7 +90,6 @@ func TestNewGRPCConn_ServerStatusesAreNotRetried(t *testing.T) {
 		{"unknown close lookalike", status.New(codes.Unknown, closeMessage)},
 		{"structured canceled", structured(codes.Canceled, closeMessage, "FUTURE_REASON")},
 		{"business rejection", structured(codes.FailedPrecondition, "already reverted", domain.ErrReasonTransactionAlreadyReverted)},
-		{"immediate maintenance", structured(codes.Unavailable, "maintenance", domain.ErrReasonMaintenanceMode)},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			server := &terminalApplyServer{err: test.st.Err()}
@@ -103,7 +100,6 @@ func TestNewGRPCConn_ServerStatusesAreNotRetried(t *testing.T) {
 			require.NoError(t, ctx.Err())
 			require.True(t, proto.Equal(test.st.Proto(), status.Convert(err).Proto()))
 			require.Equal(t, int32(1), server.attempts.Load())
-			require.False(t, internal.IsMaintenanceAfterAmbiguousCommit(err))
 		})
 	}
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -58,6 +59,46 @@ type Checker struct {
 	// (see tryDrain), so reads need no drain-race skip.
 	reads map[uint64]struct{}
 
+	// rejections is the set of rejection shapes the model explained, as the
+	// audit trail records a rejected bulk: the distinct ledgers it touched, its
+	// order count and the reason. The oracle keeps no rejected history of its
+	// own, since a rejection leaves its state untouched. Guarded by mu.
+	rejections map[rejectedBulk]struct{}
+
+	// ledgerLogSeqs maps the global sequence of each committed log that carries
+	// no ledger-local id — a ledger-metadata log — to its ledger and kind. The
+	// oracle keeps no row for those, so both are learned here at drain. Guarded
+	// by mu.
+	ledgerLogSeqs map[uint64]ledgerLogRecord
+
+	// committedLogs maps the global sequence of every committed log to what the
+	// model knows about it. The audit trail is permanent while a deleted ledger's
+	// rows leave the state, so the trail keeps naming sequences the live model no
+	// longer holds. Guarded by mu.
+	committedLogs map[uint64]committedLog
+
+	// committedBulks maps the first log sequence of each committed bulk to its
+	// boundaries. One bulk is one audit entry, so these are the only log ranges a
+	// success entry may name: without them a fabricated entry merging two adjacent
+	// bulks, or naming part of one, satisfies every other check. Guarded by mu.
+	committedBulks map[uint64]committedBulk
+
+	// ledgerIdentities maps each ledger to the id and creation timestamp its
+	// creation log reported. The model assigns neither, so this is the only
+	// record a read of those two fields can be held to. Guarded by mu.
+	ledgerIdentities map[string]ledgerIdentity
+
+	// knownAudit is a lower bound on the audit trail: entries the server served
+	// on a page that validated. Audit history is permanent, so a remembered entry
+	// still exists on every later read. The set is never complete — the trail also
+	// holds proposals this driver never made — so it can only ever prove that MORE
+	// entries match, never that none do. Guarded by mu.
+	knownAudit map[uint64]auditEntry
+
+	// auditSamples holds indexed fields of served audit entries, for aiming
+	// audit filters at values the trail holds. Guarded by mu.
+	auditSamples []auditSample
+
 	// Worker → processor channel.
 	incoming chan observation
 
@@ -105,9 +146,11 @@ type Checker struct {
 	// create an unbounded fleet of delayed disable RPCs. Guarded by mu.
 	maintenanceEnableSeq      uint64
 	maintenanceRecoveryActive bool
+
+	// maintenanceRecoveryTicket is the in-flight ticket the recovery disable
+	// holds, so the restore pause stays blocked across the handoff from the
+	// recovery read to that write.
 	maintenanceRecoveryTicket uint64
-	ambiguousBulks            map[uint64]oracle.Bulk
-	ambiguousEnableClearSeq   uint64
 	recoveries                sync.WaitGroup
 }
 
@@ -115,14 +158,12 @@ type Checker struct {
 // when the response was received; the drain gate uses it to tell which
 // outstanding ops were dispatched after this bulk was observed.
 type observation struct {
-	ticket          uint64
-	bulk            oracle.Bulk
-	resp            *servicepb.ApplyResponse
-	err             error
-	ambiguousEnable bool
-	recoverySeq     uint64
-	observeTicket   uint64
-	processed       chan struct{}
+	ticket        uint64
+	bulk          oracle.Bulk
+	resp          *servicepb.ApplyResponse
+	err           error
+	observeTicket uint64
+	processed     chan struct{}
 }
 
 func isCheckpointCreate(bulk oracle.Bulk) bool {
@@ -191,8 +232,13 @@ func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadata
 		retypeObs:                  map[string]*retypeObservation{},
 		pendingDeleted:             map[string]struct{}{},
 		pendingPromoted:            map[string]struct{}{},
-		ambiguousBulks:             map[uint64]oracle.Bulk{},
 		reservedLedgerCreates:      map[string]uint64{},
+		ledgerLogSeqs:              map[uint64]ledgerLogRecord{},
+		ledgerIdentities:           map[string]ledgerIdentity{},
+		knownAudit:                 map[uint64]auditEntry{},
+		committedBulks:             map[uint64]committedBulk{},
+		committedLogs:              map[uint64]committedLog{},
+		rejections:                 map[rejectedBulk]struct{}{},
 
 		indexCreateSeq: map[string]map[string]uint64{},
 	}
@@ -366,4 +412,175 @@ func (c *Checker) noteRetypeCommit(ledger, canonical string, seq uint64) {
 	obs.foldSeen = map[int]bool{}
 	obs.pendClear = map[int]bool{}
 	obs.confirmedAt = 0
+}
+
+// rejectedBulk is the shape of one model-explained rejection as the audit trail
+// records it. Every audit page from the start of the trail can name any past
+// rejection, so the set is never pruned; it is bounded by the distinct shapes,
+// not by the number of rejections.
+type rejectedBulk struct {
+	ledgers string // distinct ledgers, ascending, comma-joined
+	orders  uint32
+	reason  string // domain reason name, e.g. INSUFFICIENT_FUNDS
+}
+
+// recordRejection remembers a rejection the model explained. Caller holds c.mu.
+func (c *Checker) recordRejection(bulk oracle.Bulk, reason string) {
+	c.rejections[rejectedBulk{
+		ledgers: strings.Join(distinctLedgers(bulk), ","),
+		orders:  uint32(len(bulk.Requests)),
+		reason:  reason,
+	}] = struct{}{}
+}
+
+// distinctLedgers lists the ledgers a bulk's requests name, ascending.
+func distinctLedgers(bulk oracle.Bulk) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, r := range bulk.Requests {
+		if l := oracle.LedgerOf(r); l != "" && !seen[l] {
+			seen[l] = true
+			out = append(out, l)
+		}
+	}
+	slices.Sort(out)
+
+	return out
+}
+
+// committedBulk is the log range one committed bulk produced, with the number
+// of orders that produced it.
+type committedBulk struct {
+	minSeq, maxSeq uint64
+	orders         uint32
+}
+
+// recordCommittedBulk remembers the boundaries a bulk committed at. Caller holds
+// c.mu.
+func (c *Checker) recordCommittedBulk(bulk oracle.Bulk, logs []*commonpb.Log) {
+	var minSeq, maxSeq uint64
+
+	for _, l := range logs {
+		seq := l.GetSequence()
+		if seq == 0 {
+			continue
+		}
+
+		if minSeq == 0 || seq < minSeq {
+			minSeq = seq
+		}
+
+		maxSeq = max(maxSeq, seq)
+	}
+
+	if minSeq == 0 {
+		return
+	}
+
+	c.committedBulks[minSeq] = committedBulk{minSeq: minSeq, maxSeq: maxSeq, orders: uint32(len(bulk.Requests))}
+
+	for i, req := range bulk.Requests {
+		if i >= len(logs) {
+			break
+		}
+
+		seq := logs[i].GetSequence()
+		if seq == 0 {
+			continue
+		}
+
+		apply := logs[i].GetPayload().GetApply()
+		c.committedLogs[seq] = committedLog{
+			ledger: apply.GetLedgerName(),
+			id:     apply.GetLog().GetId(),
+			kind:   requestLogKind(req),
+		}
+
+		if created := logs[i].GetPayload().GetCreateLedger(); created != nil {
+			c.ledgerIdentities[created.GetName()] = ledgerIdentity{
+				id:        created.GetId(),
+				createdAt: created.GetCreatedAt(),
+			}
+		}
+	}
+}
+
+// requestLogKind names the order a request carries, the way the audit index
+// keys it: the accepted intent's payload variant. An order apply skipped is
+// still the order that was accepted, so the skip does not change its kind.
+func requestLogKind(req *servicepb.Request) string {
+	switch r := req.GetType().(type) {
+	case *servicepb.Request_Apply:
+		switch r.Apply.GetAction().GetData().(type) {
+		case *servicepb.LedgerAction_CreateTransaction:
+			return "created_transaction"
+		case *servicepb.LedgerAction_RevertTransaction:
+			return "reverted_transaction"
+		case *servicepb.LedgerAction_AddMetadata:
+			return "saved_metadata"
+		case *servicepb.LedgerAction_DeleteMetadata:
+			return "deleted_metadata"
+		case *servicepb.LedgerAction_AddAccountType:
+			return "added_account_type"
+		case *servicepb.LedgerAction_RemoveAccountType:
+			return "removed_account_type"
+		case *servicepb.LedgerAction_SetDefaultEnforcementMode:
+			return "updated_default_enforcement_mode"
+		default:
+			return ""
+		}
+	case *servicepb.Request_SetMetadataFieldType:
+		return "set_metadata_field_type"
+	case *servicepb.Request_RemoveMetadataFieldType:
+		return "removed_metadata_field_type"
+	case *servicepb.Request_CreateIndex:
+		return "create_index"
+	case *servicepb.Request_DropIndex:
+		return "drop_index"
+	case *servicepb.Request_AddAccountType:
+		return "added_account_type"
+	case *servicepb.Request_RemoveAccountType:
+		return "removed_account_type"
+	case *servicepb.Request_SetDefaultEnforcementMode:
+		return "updated_default_enforcement_mode"
+	default:
+		return ledgerLogKindOf(req)
+	}
+}
+
+// learnLedgerLogSequences records the sequences of a committed bulk's logs
+// that carry no ledger-local id. Caller holds c.mu.
+func (c *Checker) learnLedgerLogSequences(bulk oracle.Bulk, logs []*commonpb.Log) {
+	for i, req := range bulk.Requests {
+		if i >= len(logs) {
+			break
+		}
+
+		seq := logs[i].GetSequence()
+		if seq == 0 || logs[i].GetPayload().GetApply().GetLog().GetId() != 0 {
+			continue
+		}
+
+		c.ledgerLogSeqs[seq] = ledgerLogRecord{ledger: oracle.LedgerOf(req), kind: ledgerLogKindOf(req)}
+	}
+}
+
+// ledgerLogRecord is a committed ledger-metadata log: the ledger it targets and
+// the order that produced it.
+type ledgerLogRecord struct {
+	ledger string
+	kind   string
+}
+
+// ledgerLogKindOf names the order behind a ledger-metadata log, empty for a
+// request that produces none.
+func ledgerLogKindOf(req *servicepb.Request) string {
+	switch req.GetType().(type) {
+	case *servicepb.Request_SaveLedgerMetadata:
+		return "saved_ledger_metadata"
+	case *servicepb.Request_DeleteLedgerMetadata:
+		return "deleted_ledger_metadata"
+	default:
+		return ""
+	}
 }

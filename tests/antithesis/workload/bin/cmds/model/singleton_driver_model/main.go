@@ -30,8 +30,39 @@
 //   - reads.go: GetAccount + chart read execution.
 //   - main.go: workers + entry point.
 //
+// Generator and validator roles: the generator (actions.go, the pick*
+// functions) makes NO expectations. It emits bulks and read targets, and it may
+// emit anything at all — valid or not; a rejection is just another server
+// answer for the validator to explain. Its only concern is reaching interesting
+// server state. The oracle holds every piece of state the server can return,
+// and the validator (validate.go, the *Matches functions) is the sole place
+// expectations exist: it asks whether the server's answer is consistent with
+// the oracle on some candidate state. So a finding that fires on a correct
+// server answer is never "the generator picked badly": it is either an oracle
+// bug or a validator bug. Fix it there, never by narrowing the generator or
+// freezing an expectation at pick time.
+//
 // Invariant: every observed response is consistent with some serialization of
 // the in-flight bulks (see candidateBases).
+//
+// Consistency: every read this driver issues carries
+// `x-consistency: linearizable`, and that is the point of the test, not an
+// omission. candidateBases enumerates states FORWARD from the drained committed
+// prefix, so it can only explain a response that reflects that prefix or a
+// serialization of the bulks still in flight over it. A `stale` read
+// (adapter/grpc/consistency.go) skips the ReadIndex barrier and answers from the
+// local store, which may sit BEHIND that prefix — a state the model has already
+// drained past and no longer holds. Such a response is unfalsifiable here, so
+// stale reads are deliberately out of scope: adding them would not widen
+// coverage, it would remove the oracle's ability to reject anything. Verifying
+// staleness bounds is a different test with a different oracle.
+//
+// Leader routing is still exercised under linearizable: the client load-balances
+// round-robin across every node, so reads land on followers, and a follower whose
+// ReadIndex barrier fails (ErrNodeSyncing / ErrNotLeader, see
+// bootstrap/controller_routed.go) transparently forwards to the leader — which is
+// what drives the cursor-forwarding path (adapter/grpc/cursor.go,
+// upstreamPeekCursor).
 package main
 
 import (
@@ -46,7 +77,6 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
 
-	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
@@ -137,6 +167,7 @@ func main() {
 	dialCtx, cancelDial := context.WithTimeout(ctx, 5*time.Second)
 	checkpointNodes, _ := internal.DialPerNode(dialCtx)
 	cancelDial()
+	checkpointNodes = clusterNodes(checkpointNodes)
 	if len(checkpointNodes) == 0 {
 		assert.Unreachable("singleton_driver_model: checkpoint node connections unavailable", nil)
 
@@ -239,7 +270,7 @@ func runWorker(
 		// transaction queries receive extra slots because together they must
 		// exercise every builtin and declared metadata index.
 		if random.RandomChoice([]uint8{0, 1, 2, 3, 4}) == 0 {
-			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13}) {
+			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}) {
 			case 0:
 				runLedgerRead(ctx, client, c)
 			case 1:
@@ -261,8 +292,14 @@ func runWorker(
 			case 12:
 				node := random.RandomChoice(checkpointNodes)
 				runCheckpointRead(ctx, node, c)
-			default:
+			case 13, 14:
+				runSecondaryRead(ctx, client, c)
+			case 15:
 				runRead(ctx, client, c)
+			default:
+				// Every slot the roll can produce has an arm; a fall-through means
+				// the two lists drifted and a read kind stopped being dispatched.
+				assert.Unreachable("singleton_driver_model: read dispatch has an unreachable slot", nil)
 			}
 
 			continue
@@ -341,37 +378,25 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 	}
 
 	req := applyRequest(bulk)
-	var resp *servicepb.ApplyResponse
-	var err error
-	hadAmbiguousAttempt := false
-	provisionalMaintenanceRecoveryScheduled := false
-	var provisionalMaintenanceRecoverySeq uint64
+
+	var (
+		resp *servicepb.ApplyResponse
+		err  error
+	)
+
+	// Retry until the answer is definitive. A maintenance rejection is not one
+	// (see internal.retryableRPCError): breaking there would record a committed
+	// bulk as one that never happened.
 	for {
 		resp, err = client.Apply(ctx, req)
 		if err == nil || ctx.Err() != nil {
 			break
 		}
-		if internal.IsMaintenanceAfterAmbiguousCommit(err) {
-			hadAmbiguousAttempt = true
-		}
-		maintenanceRejected := internal.HasErrorReason(err, domain.ErrReasonMaintenanceMode)
-		if shouldScheduleMaintenanceRecovery(bulk, err, hadAmbiguousAttempt) && !provisionalMaintenanceRecoveryScheduled {
-			provisionalMaintenanceRecoverySeq = scheduleMaintenanceRecovery(ctx, client, c)
-			provisionalMaintenanceRecoveryScheduled = true
-		}
-		if maintenanceRejected {
-			if !hadAmbiguousAttempt || bulkEnablesMaintenance(bulk) {
-				break
-			}
-		}
+
 		if !internal.IsTransient(err) && !internal.IsCanceled(err) {
 			break
 		}
-		// A transport cancellation while the driver context remains live can
-		// arrive after the server committed the request. Preserve that ambiguity
-		// so a maintenance rejection on the retry schedules recovery instead of
-		// being treated as a definitive failure.
-		hadAmbiguousAttempt = hadAmbiguousAttempt || internal.IsAmbiguousCommit(err) || internal.IsCanceled(err)
+
 		select {
 		case <-ctx.Done():
 		case <-time.After(200 * time.Millisecond):
@@ -386,14 +411,12 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 	// backpressure when the processor falls behind, this makes maxWorkers a real
 	// bound on the candidate search's independently committable bulks.
 	obs := observation{
-		ticket:          ticket,
-		bulk:            bulk,
-		resp:            resp,
-		err:             err,
-		ambiguousEnable: bulkEnablesMaintenance(bulk) && hadAmbiguousAttempt && internal.HasErrorReason(err, domain.ErrReasonMaintenanceMode),
-		recoverySeq:     provisionalMaintenanceRecoverySeq,
-		observeTicket:   c.ticketSeq.Load(),
-		processed:       make(chan struct{}),
+		ticket:        ticket,
+		bulk:          bulk,
+		resp:          resp,
+		err:           err,
+		observeTicket: c.ticketSeq.Load(),
+		processed:     make(chan struct{}),
 	}
 	// Register the disable recovery before publishing the successful enable.
 	// The processor may otherwise make that enable visible to restore, which can
@@ -412,19 +435,17 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 	}
 }
 
-func scheduleMaintenanceRecovery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) uint64 {
+func scheduleMaintenanceRecovery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
 	c.mu.Lock()
 	if c.maintenanceRecoveryActive {
 		if c.maintenanceRecoveryTicket != 0 {
 			c.maintenanceEnableSeq++
 		}
-		recoverySeq := c.maintenanceEnableSeq
 		c.mu.Unlock()
 
-		return recoverySeq
+		return
 	}
 	c.maintenanceEnableSeq++
-	recoverySeq := c.maintenanceEnableSeq
 	c.maintenanceRecoveryActive = true
 	recoveryID := c.registerRead()
 	c.recoveries.Add(1)
@@ -454,7 +475,7 @@ func scheduleMaintenanceRecovery(ctx context.Context, client servicepb.BucketSer
 				return
 			case <-time.After(delay):
 			}
-			dispatchMaintenanceRecovery(ctx, client, c, recoveryID, enableSeq)
+			dispatchMaintenanceRecovery(ctx, client, c, recoveryID)
 			readRegistered = false
 
 			c.mu.Lock()
@@ -469,8 +490,6 @@ func scheduleMaintenanceRecovery(ctx context.Context, client servicepb.BucketSer
 			c.mu.Unlock()
 		}
 	}()
-
-	return recoverySeq
 }
 
 // dispatchMaintenanceRecovery bypasses the restore pause because the recovery
@@ -479,7 +498,7 @@ func scheduleMaintenanceRecovery(ctx context.Context, client servicepb.BucketSer
 // remains blocked without preventing the disable observation from draining. A
 // fresh key prevents deliberate conflict injection from turning a temporary
 // maintenance window into a permanent stall.
-func dispatchMaintenanceRecovery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker, recoveryID, recoverySeq uint64) {
+func dispatchMaintenanceRecovery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker, recoveryID uint64) {
 	bulk := oracle.Bulk{
 		Requests:       []*servicepb.Request{actions.SetMaintenanceModeAction(false)},
 		IdempotencyKey: idempotencyKey(),
@@ -514,7 +533,6 @@ func dispatchMaintenanceRecovery(ctx context.Context, client servicepb.BucketSer
 		bulk:          bulk,
 		resp:          resp,
 		err:           err,
-		recoverySeq:   recoverySeq,
 		observeTicket: c.ticketSeq.Load(),
 		processed:     make(chan struct{}),
 	}
@@ -543,20 +561,32 @@ func bulkEnablesMaintenance(bulk oracle.Bulk) bool {
 	return false
 }
 
-func bulkDisablesMaintenance(bulk oracle.Bulk) bool {
-	for _, req := range bulk.Requests {
-		if toggle := req.GetSetMaintenanceMode(); toggle != nil && !toggle.GetEnabled() {
-			return true
-		}
+// runSecondaryRead dispatches one of the read surfaces that share a single
+// slot of the read mix, so the entity queries the coverage sondes depend on
+// keep their share of the worker's reads.
+func runSecondaryRead(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+	switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7}) {
+	case 0:
+		runAggregateQuery(ctx, client, c)
+	case 1:
+		runAuditQuery(ctx, client, c)
+	case 2:
+		runLedgersList(ctx, client, c)
+	case 3:
+		runLedgerStats(ctx, client, c)
+	case 4:
+		runIndexIntrospection(ctx, client, c)
+	case 5:
+		runGetLog(ctx, client, c)
+	case 6:
+		runAuditEntryRead(ctx, client, c)
+	case 7:
+		runInspectIndex(ctx, client, c)
+	default:
+		// Every slot the roll can produce has an arm; a fall-through means the
+		// two lists drifted and a read surface stopped being dispatched.
+		assert.Unreachable("singleton_driver_model: secondary read dispatch has an unreachable slot", nil)
 	}
-
-	return false
-}
-
-func shouldScheduleMaintenanceRecovery(bulk oracle.Bulk, err error, hadAmbiguousAttempt bool) bool {
-	return hadAmbiguousAttempt &&
-		bulkEnablesMaintenance(bulk) &&
-		internal.HasErrorReason(err, domain.ErrReasonMaintenanceMode)
 }
 
 // initialSchema generates a small, random metadata schema declared at ledger
@@ -588,6 +618,22 @@ func ledgerNames(runID string, n int) []string {
 	}
 
 	return out
+}
+
+// clusterNodes keeps the connections to the EXPECTED_VOTERS nodes the cluster
+// runs, closing the rest. The k8s per-node address list is sized for the main
+// template's scaling drivers; the model never resizes the cluster, and the
+// readiness poller requires every connection to answer, so an address with no
+// node behind it would keep every index ambiguous and every retype window open.
+func clusterNodes(conns internal.PerNodeConns) internal.PerNodeConns {
+	voters := envInt("EXPECTED_VOTERS", len(conns))
+	if voters >= len(conns) {
+		return conns
+	}
+
+	conns[voters:].Close()
+
+	return conns[:voters]
 }
 
 // envInt reads an int from env, defaulting on missing or invalid.

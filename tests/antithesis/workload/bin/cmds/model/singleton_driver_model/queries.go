@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -46,11 +48,59 @@ import (
 // address-on-accounts, reverted, the tx-id builtin, and boolean compositions
 // of these — always return the window the model computes.
 
-// queryPageSize is the page size a query read requests. Kept well under
-// MaxPageSize (1000) so the server never clamps it — the model uses the same
-// value to size its window, and a clamp would desync the two.
-func queryPageSize() int {
-	return int(random.RandomChoice([]uint8{1, 2, 3, 5, 10, 50}))
+// serverDefaultPageSize and serverMaxPageSize mirror ctrl.DefaultPageSize and
+// ctrl.MaxPageSize, the bounds the server's own ClampPageSize applies. Mirrored
+// rather than imported so the driver binary does not link the controller;
+// TestEffectivePageSize_MirrorsTheServerClamp pins the two together.
+const (
+	serverDefaultPageSize = 100
+	serverMaxPageSize     = 1000
+)
+
+// queryPageSize rolls the page size a query read asks for, with the size the
+// server will actually use. Most rolls stay small so pages truncate often and
+// the resume token is exercised; one in sixteen leaves the size to the server
+// (0) and one in thirty-two asks past the maximum — the two requests the server
+// answers with a size of its own choosing.
+func queryPageSize() (requested, effective int) {
+	switch {
+	case oneIn(32):
+		requested = serverMaxPageSize + 1 + int(internal.Rand().Uint64()%64)
+	case oneIn(16):
+		requested = 0
+	default:
+		requested = int(random.RandomChoice([]uint8{1, 2, 3, 5, 10, 50}))
+	}
+
+	return requested, effectivePageSize(requested)
+}
+
+// effectivePageSize is the size the server serves a request of this size with,
+// mirroring ctrl.ClampPageSize. The model must size its window with this, never
+// with what the driver asked for: a page the server capped at its own maximum is
+// not a short page, and one it defaulted is not an empty request.
+func effectivePageSize(requested int) int {
+	if requested == 0 {
+		return serverDefaultPageSize
+	}
+
+	if requested > serverMaxPageSize {
+		return serverMaxPageSize
+	}
+
+	return requested
+}
+
+// noteClampedPageSize records the reads where the server, not the driver, chose
+// the page size. One literal per substitution — Antithesis catalogues assertions
+// by literal, and the two paths are different branches of ClampPageSize.
+func noteClampedPageSize(requested, effective int) {
+	switch {
+	case requested == 0:
+		assert.Reachable("singleton_driver_model: page size left to the server default", internal.Details{"effective": effective})
+	case requested > effective:
+		assert.Reachable("singleton_driver_model: page size clamped to the server maximum", internal.Details{"requested": requested})
+	}
 }
 
 // runAccountQuery issues a linearizable ListAccounts and checks the streamed
@@ -62,8 +112,10 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 	needed := map[string]struct{}{}
 	neededIndexCanonicals(filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, needed)
 	_, _, bareAsset := hasAssetTarget(filter)
+	precisionOverflow := hasAssetPrecisionOverflow(filter)
 	invalidTarget := filterInvalidForTarget(filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
-	pageSize := queryPageSize()
+	requestedPageSize, pageSize := queryPageSize()
+	noteClampedPageSize(requestedPageSize, pageSize)
 	reverse := random.RandomChoice([]uint8{0, 1}) == 1
 
 	var cursor string
@@ -88,16 +140,24 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 	stream, err := client.ListAccounts(readCtx, &servicepb.ListAccountsRequest{
 		Ledger: ledger,
 		Options: &commonpb.ListOptions{
-			PageSize: uint32(pageSize),
+			PageSize: uint32(requestedPageSize),
 			Cursor:   cursor,
 			Reverse:  reverse,
 			Filter:   filter,
 		},
 	})
 
-	var accounts []*commonpb.Account
+	var (
+		accounts []*commonpb.Account
+		next     string
+	)
+
 	if err == nil {
 		accounts, err = drainStream(stream)
+	}
+
+	if err == nil {
+		next = nextCursorOf(stream)
 	}
 
 	// High-water at the read's completion: only bulks dispatched by now could be
@@ -117,15 +177,23 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 		if handleInvalidTargetError(invalidTarget, "account", ledger, filter, err) {
 			return
 		}
+		if precisionOverflow && status.Code(err) == codes.InvalidArgument && internal.HasErrorReason(err, "FILTER_COMPILATION_ERROR") {
+			// Coverage: the one-byte precision cell is enforced at compile time.
+			assert.Reachable("singleton_driver_model: has-asset precision overflow rejected", internal.Details{"ledger": ledger})
+
+			return
+		}
 		if bareAsset {
 			// The account-by-asset index governs this filter's outcome; a not-ready
-			// error is legal while the index is absent or ambiguous.
-			c.validateAssetAccountQuery(maxTicket, ledger, filter, cursor, pageSize, reverse, nil, err)
+			// error is legal while the index is absent or ambiguous. The compiler
+			// checks readiness before the precision, so an overflow probe reaches
+			// here only through a not-ready error.
+			c.validateAssetAccountQuery(maxTicket, ledger, filter, cursor, pageSize, reverse, nil, next, err)
 
 			return
 		}
 		if len(needed) > 0 {
-			c.validateIndexedAccountQuery(maxTicket, ledger, filter, needed, cursor, pageSize, reverse, nil, err)
+			c.validateIndexedAccountQuery(maxTicket, ledger, filter, needed, cursor, pageSize, reverse, nil, next, err)
 
 			return
 		}
@@ -151,19 +219,29 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 		return
 	}
 
+	if precisionOverflow {
+		assert.Unreachable("singleton_driver_model: has-asset precision overflow returned results", internal.Details{
+			"ledger": ledger,
+			"filter": describeFilter(filter),
+			"rows":   len(accounts),
+		})
+
+		return
+	}
+
 	if bareAsset {
-		c.validateAssetAccountQuery(maxTicket, ledger, filter, cursor, pageSize, reverse, accounts, nil)
+		c.validateAssetAccountQuery(maxTicket, ledger, filter, cursor, pageSize, reverse, accounts, next, nil)
 
 		return
 	}
 
 	if len(needed) > 0 {
-		c.validateIndexedAccountQuery(maxTicket, ledger, filter, needed, cursor, pageSize, reverse, accounts, nil)
+		c.validateIndexedAccountQuery(maxTicket, ledger, filter, needed, cursor, pageSize, reverse, accounts, next, nil)
 
 		return
 	}
 
-	c.validateAccountQuery(maxTicket, ledger, filter, cursor, pageSize, reverse, accounts)
+	c.validateAccountQuery(maxTicket, ledger, filter, cursor, pageSize, reverse, accounts, next)
 }
 
 // sampleAccountFieldSeeds snapshots the ledger's declared account fields plus
@@ -181,17 +259,27 @@ func (c *Checker) sampleAccountFieldSeeds(ledger string) []fieldSeed {
 func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
 	ledger, _ := pickLedgerReadTarget(c.liveLedgerNamesSnapshot(), 0)
 	filter := genTransactionFilter(c.sampleTxFilterSeeds(ledger))
+	unsupportedBuiltin := false
+	if probe, rolledProbe := rollUnsupportedBuiltinField(); rolledProbe {
+		filter, unsupportedBuiltin = probe, true
+	}
 	needed := map[string]struct{}{}
 	neededIndexCanonicals(filter, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, needed)
 	invalidTarget := filterInvalidForTarget(filter, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
-	pageSize := queryPageSize()
+	requestedPageSize, pageSize := queryPageSize()
+	noteClampedPageSize(requestedPageSize, pageSize)
 	reverse := random.RandomChoice([]uint8{0, 1}) == 1
 
 	var (
 		cursor  string
 		afterID uint64
 	)
-	if random.RandomChoice([]uint8{0, 1}) == 0 {
+
+	malformed, rolled := rollMalformedCursor()
+	switch {
+	case rolled:
+		cursor = malformed
+	case random.RandomChoice([]uint8{0, 1}) == 0:
 		afterID = 1 + internal.Rand().Uint64()%256
 		cursor = strconv.FormatUint(afterID, 10)
 	}
@@ -213,16 +301,24 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 	stream, err := client.ListTransactions(readCtx, &servicepb.ListTransactionsRequest{
 		Ledger: ledger,
 		Options: &commonpb.ListOptions{
-			PageSize: uint32(pageSize),
+			PageSize: uint32(requestedPageSize),
 			Cursor:   cursor,
 			Reverse:  reverse,
 			Filter:   filter,
 		},
 	})
 
-	var txs []*commonpb.Transaction
+	var (
+		txs  []*commonpb.Transaction
+		next string
+	)
+
 	if err == nil {
 		txs, err = drainStream(stream)
+	}
+
+	if err == nil {
+		next = nextCursorOf(stream)
 	}
 
 	maxTicket := responseFrontier()
@@ -231,16 +327,22 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 		if (internal.IsTransient(err) && !isIndexNotReady(err)) || isShutdownError(err) {
 			return
 		}
+		if handleMalformedCursorError(rolled, "transaction", cursor, err) {
+			return
+		}
 		if status.Code(err) == codes.NotFound {
 			c.validateLedgerNotFound(maxTicket, ledger, "ListTransactions")
 
+			return
+		}
+		if handleUnsupportedBuiltinError(unsupportedBuiltin, ledger, filter, err) {
 			return
 		}
 		if handleInvalidTargetError(invalidTarget, "transaction", ledger, filter, err) {
 			return
 		}
 		if len(needed) > 0 {
-			c.validateIndexedTransactionQuery(maxTicket, ledger, filter, needed, afterID, pageSize, reverse, nil, err)
+			c.validateIndexedTransactionQuery(maxTicket, ledger, filter, needed, afterID, pageSize, reverse, nil, next, err)
 
 			return
 		}
@@ -249,6 +351,25 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 			"ledger": ledger,
 			"filter": describeFilter(filter),
 			"error":  err.Error(),
+		})
+
+		return
+	}
+
+	if rolled {
+		assert.Unreachable("singleton_driver_model: malformed transaction cursor returned results", internal.Details{
+			"cursor": cursor,
+			"rows":   len(txs),
+		})
+
+		return
+	}
+
+	if unsupportedBuiltin {
+		assert.Unreachable("singleton_driver_model: unsupported builtin uint field returned results", internal.Details{
+			"ledger": ledger,
+			"filter": describeFilter(filter),
+			"rows":   len(txs),
 		})
 
 		return
@@ -265,12 +386,12 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 	}
 
 	if len(needed) > 0 {
-		c.validateIndexedTransactionQuery(maxTicket, ledger, filter, needed, afterID, pageSize, reverse, txs, nil)
+		c.validateIndexedTransactionQuery(maxTicket, ledger, filter, needed, afterID, pageSize, reverse, txs, next, nil)
 
 		return
 	}
 
-	c.validateTransactionQuery(maxTicket, ledger, filter, afterID, pageSize, reverse, txs)
+	c.validateTransactionQuery(maxTicket, ledger, filter, afterID, pageSize, reverse, txs, next)
 }
 
 // handleInvalidTargetError validates the error of a filter carrying a condition
@@ -307,6 +428,55 @@ func handleInvalidTargetError(invalidTarget bool, kind, ledger string, filter *c
 	return true
 }
 
+// unsupportedBuiltinFields are the TransactionBuiltinIndex values that name a
+// real index but not a uint64 one, so a BuiltinUintCondition cannot be built
+// over them. resolveTxTimestampArm refuses them; nothing may serve a page.
+var unsupportedBuiltinFields = []commonpb.TransactionBuiltinIndex{
+	commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
+	commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS,
+	commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS,
+	commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS,
+}
+
+// rollUnsupportedBuiltinField returns a range filter over a builtin field that
+// carries no uint64 order, one read in twenty-four.
+func rollUnsupportedBuiltinField() (*commonpb.QueryFilter, bool) {
+	if !oneIn(24) {
+		return nil, false
+	}
+
+	lo, hi := uint64(1), uint64(1_000_000)
+
+	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{BuiltinUint: &commonpb.BuiltinUintCondition{
+		Field: random.RandomChoice(unsupportedBuiltinFields),
+		Cond:  &commonpb.UintCondition{Min: &lo, Max: &hi},
+	}}}, true
+}
+
+// handleUnsupportedBuiltinError validates the answer to a range over a builtin
+// field with no uint64 order: a compilation rejection, never a page. Returns
+// true when it has fully handled err.
+func handleUnsupportedBuiltinError(unsupported bool, ledger string, filter *commonpb.QueryFilter, err error) bool {
+	if !unsupported {
+		return false
+	}
+
+	if status.Code(err) == codes.InvalidArgument {
+		// Coverage: a builtin range the compiler has no index arm for is refused.
+		assert.Reachable("singleton_driver_model: unsupported builtin uint field rejected", internal.Details{"ledger": ledger})
+
+		return true
+	}
+
+	assert.Unreachable("singleton_driver_model: unsupported builtin uint field returned unexpected error", internal.Details{
+		"ledger": ledger,
+		"filter": describeFilter(filter),
+		"error":  fmt.Sprint(err),
+	})
+
+	return true
+}
+
 // drainStream reads a server stream to exhaustion, returning every item in
 // stream order. io.EOF is clean end-of-stream; any other error (a compile
 // rejection surfaces on the first Recv) is returned alongside what was read.
@@ -328,25 +498,16 @@ func drainStream[T any](stream grpc.ServerStreamingClient[T]) ([]*T, error) {
 // validateAccountQuery checks a ListAccounts page against the model: legal iff
 // some candidate base's ordered window — filtered, sorted, cursor-skipped,
 // page-capped — equals the streamed accounts position-for-position, each row's
-// address AND its whole volumes/metadata snapshot matching on that same base.
-func (c *Checker) validateAccountQuery(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, cursor string, pageSize int, reverse bool, serverAccts []*commonpb.Account) {
+// address AND its whole volumes/metadata snapshot matching on that same base,
+// and the resume token that base's own window implies rides with it.
+func (c *Checker) validateAccountQuery(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, cursor string, pageSize int, reverse bool, serverAccts []*commonpb.Account, next string) {
 	if c.matchesModel(maxTicket, "AQUERY", func(base oracle.GlobalState) bool {
 		ls, live := liveLedgerState(base, ledger)
 		if !live {
 			return false
 		}
-		want := accountWindow(ls, filter, cursor, pageSize, reverse)
-		if len(want) != len(serverAccts) {
-			return false
-		}
 
-		for i, addr := range want {
-			if serverAccts[i].GetAddress() != addr || !accountMatches(ls, addr, serverAccts[i]) {
-				return false
-			}
-		}
-
-		return true
+		return accountPageMatches(ls, filter, cursor, pageSize, reverse, serverAccts, next)
 	}) {
 		return
 	}
@@ -360,12 +521,49 @@ func (c *Checker) validateAccountQuery(maxTicket uint64, ledger string, filter *
 		"ledger":      ledger,
 		"filter":      describeFilter(filter),
 		"cursor":      cursor,
+		"nextCursor":  next,
 		"pageSize":    pageSize,
 		"reverse":     reverse,
 		"rows":        len(serverAccts),
 		"serverAddrs": strings.Join(serverAddrs, ","),
 		"modelAddrs":  strings.Join(c.modelAccountWindow(ledger, filter, cursor, pageSize, reverse), ","),
 	})
+}
+
+// accountPageMatches reports whether the served page is ls's ordered window and
+// the resume token published with it is the one that window implies. The window
+// is computed one row long so the model sees the same peek the handler did: a
+// row past the page is what makes a token mandatory.
+func accountPageMatches(ls oracle.LedgerState, filter *commonpb.QueryFilter, cursor string, pageSize int, reverse bool, serverAccts []*commonpb.Account, next string) bool {
+	want := accountWindow(ls, filter, cursor, pageSize+1, reverse)
+
+	more := cursorForbidden
+	if len(want) > pageSize {
+		want = want[:pageSize]
+		more = cursorRequired
+	}
+
+	if len(want) != len(serverAccts) {
+		return false
+	}
+
+	for i, addr := range want {
+		if serverAccts[i].GetAddress() != addr || !accountMatches(ls, addr, serverAccts[i]) {
+			return false
+		}
+	}
+
+	return nextCursorLegal(next, more, lastAccountKey(serverAccts), len(serverAccts), pageSize)
+}
+
+// lastAccountKey is the cursor an accounts page implies: the address of its last
+// row (accountCursorOf), empty for a page that showed none.
+func lastAccountKey(accounts []*commonpb.Account) string {
+	if len(accounts) == 0 {
+		return ""
+	}
+
+	return accounts[len(accounts)-1].GetAddress()
 }
 
 // modelAccountWindow returns the account window on the committed modelState — the
@@ -381,14 +579,14 @@ func (c *Checker) modelAccountWindow(ledger string, filter *commonpb.QueryFilter
 // legal iff some candidate base's ordered window equals the streamed
 // transactions position-for-position, each row matching the model record at its
 // id (see txRecordMatches) on that same base.
-func (c *Checker) validateTransactionQuery(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, afterID uint64, pageSize int, reverse bool, serverTxs []*commonpb.Transaction) {
+func (c *Checker) validateTransactionQuery(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, afterID uint64, pageSize int, reverse bool, serverTxs []*commonpb.Transaction, next string) {
 	if c.matchesModel(maxTicket, "TXQUERY", func(base oracle.GlobalState) bool {
 		ls, live := liveLedgerState(base, ledger)
 		if !live {
 			return false
 		}
 
-		return txWindowMatches(ls, filter, afterID, pageSize, reverse, serverTxs)
+		return txWindowMatches(ls, filter, afterID, pageSize, reverse, serverTxs, next)
 	}) {
 		return
 	}
@@ -399,14 +597,15 @@ func (c *Checker) validateTransactionQuery(maxTicket uint64, ledger string, filt
 	}
 
 	assert.Unreachable("singleton_driver_model: transaction query outside model", internal.Details{
-		"ledger":    ledger,
-		"filter":    describeFilter(filter),
-		"afterId":   afterID,
-		"pageSize":  pageSize,
-		"reverse":   reverse,
-		"rows":      len(serverTxs),
-		"serverIds": joinUint64(serverIds),
-		"modelIds":  joinUint64(c.modelTransactionWindow(ledger, filter, afterID, pageSize, reverse)),
+		"ledger":     ledger,
+		"filter":     describeFilter(filter),
+		"nextCursor": next,
+		"afterId":    afterID,
+		"pageSize":   pageSize,
+		"reverse":    reverse,
+		"rows":       len(serverTxs),
+		"serverIds":  joinUint64(serverIds),
+		"modelIds":   joinUint64(c.modelTransactionWindow(ledger, filter, afterID, pageSize, reverse)),
 	})
 }
 
@@ -529,10 +728,16 @@ func transactionWindowRows(ls oracle.LedgerState, filter *commonpb.QueryFilter, 
 
 // txWindowMatches reports whether the server page is exactly a legal window
 // over the candidate's row sequence: required rows appear in order (each
-// content-matching its model record), optional rows may, nothing else does, and
-// a required row may only be missing past a full (truncated) page.
-func txWindowMatches(ls oracle.LedgerState, filter *commonpb.QueryFilter, afterID uint64, pageSize int, reverse bool, serverTxs []*commonpb.Transaction) bool {
-	return txRowsMatch(ls, transactionWindowRows(ls, filter, afterID, reverse), pageSize, serverTxs)
+// content-matching its model record), optional rows may, nothing else does, a
+// required row may only be missing past a full (truncated) page, and the resume
+// token published with the page is the one the leftover rows imply.
+func txWindowMatches(ls oracle.LedgerState, filter *commonpb.QueryFilter, afterID uint64, pageSize int, reverse bool, serverTxs []*commonpb.Transaction, next string) bool {
+	rows := transactionWindowRows(ls, filter, afterID, reverse)
+	if !txRowsMatch(ls, rows, pageSize, serverTxs) {
+		return false
+	}
+
+	return nextCursorLegal(next, rowsLeftoverMore(leftoverTxRows(rows, serverTxs)), lastTransactionKey(serverTxs), len(serverTxs), pageSize)
 }
 
 func txRowsMatch(ls oracle.LedgerState, rows []txWindowRow, pageSize int, serverTxs []*commonpb.Transaction) bool {
@@ -559,6 +764,7 @@ func txRowsMatch(ls oracle.LedgerState, rows []txWindowRow, pageSize int, server
 			if !txRecordMatches(txs.Get(int(row.id-1)), serverTxs[j]) {
 				return false
 			}
+
 			j++
 		} else if row.required {
 			return false
@@ -566,6 +772,44 @@ func txRowsMatch(ls oracle.LedgerState, rows []txWindowRow, pageSize int, server
 	}
 
 	return j == len(serverTxs)
+}
+
+// leftoverTxRows is the tail of rows the page did not consume.
+func leftoverTxRows(rows []txWindowRow, serverTxs []*commonpb.Transaction) []txWindowRow {
+	j, i := 0, 0
+	for ; i < len(rows) && j < len(serverTxs); i++ {
+		if serverTxs[j].GetId() == rows[i].id {
+			j++
+		}
+	}
+
+	return rows[i:]
+}
+
+// rowsLeftoverMore turns the rows a page left behind into the verdict on
+// whether a resume cursor was owed: a required row certainly follows, rows whose
+// filter verdict hinges on a stamp the model has not learned may or may not.
+func rowsLeftoverMore(leftover []txWindowRow) cursorMore {
+	more := cursorForbidden
+	for _, row := range leftover {
+		if row.required {
+			return cursorRequired
+		}
+
+		more = cursorEither
+	}
+
+	return more
+}
+
+// lastTransactionKey is the cursor a transactions page implies: the id of its
+// last row in decimal (txCursorOf), empty for a page that showed none.
+func lastTransactionKey(txs []*commonpb.Transaction) string {
+	if len(txs) == 0 {
+		return ""
+	}
+
+	return strconv.FormatUint(txs[len(txs)-1].GetId(), 10)
 }
 
 // accountUniverse returns ls's account addresses — every address carrying a
@@ -595,6 +839,13 @@ func accountUniverse(ls oracle.LedgerState) []string {
 // and the same metadata. metadataMatches is shared with the single GetAccount
 // read.
 func accountMatches(ls oracle.LedgerState, addr string, serverAcct *commonpb.Account) bool {
+	return accountMatchesCollapsed(ls, addr, serverAcct, false)
+}
+
+// accountMatchesCollapsed is accountMatches for a read that asked the server to
+// collapse colours: every colour of an asset is then summed into the uncolored
+// bucket, so the model folds the same way before comparing.
+func accountMatchesCollapsed(ls oracle.LedgerState, addr string, serverAcct *commonpb.Account, collapsed bool) bool {
 	if !metadataMatches(ls, addr, serverAcct.GetMetadata()) {
 		return false
 	}
@@ -612,16 +863,6 @@ func accountMatches(ls oracle.LedgerState, addr string, serverAcct *commonpb.Acc
 		return false
 	}
 
-	model := map[assetColor]oracle.VolumePair{}
-	for k, vp := range ls.Volumes().All() {
-		if k.Address == addr {
-			model[assetColor{Asset: k.Asset, Color: k.Color}] = vp
-		}
-	}
-
-	// One entry per (asset, color), per the list's contract. A repeat would
-	// collapse into this map and be counted once, so the exact comparison below
-	// would never see it.
 	server := map[assetColor]struct{ in, out uint256.Int }{}
 	for _, av := range serverAcct.GetVolumes() {
 		var in, out uint256.Int
@@ -640,18 +881,12 @@ func accountMatches(ls oracle.LedgerState, addr string, serverAcct *commonpb.Acc
 		server[key] = struct{ in, out uint256.Int }{in, out}
 	}
 
-	if len(model) != len(server) {
-		return false
+	got := make(map[assetColor]oracle.VolumePair, len(server))
+	for key, v := range server {
+		got[key] = oracle.VolumePair{Input: v.in, Output: v.out}
 	}
 
-	for key, vp := range model {
-		sv, ok := server[key]
-		if !ok || vp.Input.Cmp(&sv.in) != 0 || vp.Output.Cmp(&sv.out) != 0 {
-			return false
-		}
-	}
-
-	return true
+	return accountVolumesMatch(ls, addr, got, collapsed)
 }
 
 // txRecordView is the subset of oracle's (unexported) transaction record that
@@ -843,11 +1078,19 @@ func genAccountFilterIndexed(seeds []fieldSeed, depth int) *commonpb.QueryFilter
 // a repeated And/Or field marshals as an empty condition the compiler rejects).
 func genAccountFilterFree(depth int) *commonpb.QueryFilter {
 	if depth >= maxQueryGenDepth || random.RandomChoice([]uint8{0, 1}) == 0 {
+		// The role only selects an index on the transactions target; accounts
+		// resolve the address the same way under any of the three.
+		role := random.RandomChoice([]commonpb.AddressRole{
+			commonpb.AddressRole_ADDRESS_ROLE_ANY,
+			commonpb.AddressRole_ADDRESS_ROLE_SOURCE,
+			commonpb.AddressRole_ADDRESS_ROLE_DESTINATION,
+		})
+
 		if random.RandomChoice([]uint8{0, 1}) == 0 {
-			return filterAddrPrefix(poolName() + ":")
+			return filterAddrPrefixRole(poolName()+":", role)
 		}
 
-		return filterAddrExact(poolAddress())
+		return filterAddrExactRole(poolAddress(), role)
 	}
 
 	return genBoolean(depth, genAccountFilterFree)
@@ -1032,19 +1275,45 @@ func genDateLeaf(seeds txFilterSeeds) *commonpb.QueryFilter {
 	}
 
 	f := filterDateRange(field, a, b)
-	cond := f.GetBuiltinUint().GetCond()
+	rollOpenOrExclusive(f.GetBuiltinUint().GetCond())
+
+	return f
+}
+
+// rollOpenOrExclusive opens each side of a two-sided range one time in four
+// and otherwise makes it exclusive one time in four.
+func rollOpenOrExclusive(cond *commonpb.UintCondition) {
 	if oneIn(4) {
 		cond.Min = nil
 	} else {
 		cond.MinExclusive = oneIn(4)
+		if oneIn(16) {
+			cond.Min = uintExtremum()
+		}
 	}
+
 	if oneIn(4) {
 		cond.Max = nil
 	} else {
 		cond.MaxExclusive = oneIn(4)
+		if oneIn(16) {
+			cond.Max = uintExtremum()
+		}
+	}
+}
+
+// uintExtremum returns 0 or MaxUint64, the two values where the server's
+// half-open [min, max+1) normalisation has nowhere to go: `> MaxUint64` collapses
+// to the empty range and `<= MaxUint64` drops the bound entirely, while `< 0` is
+// empty and `>= 0` is no bound at all (see resolveUintBounds, applyMinExclusiveUint
+// and applyMaxInclusiveUint).
+func uintExtremum() *uint64 {
+	v := uint64(math.MaxUint64)
+	if oneIn(2) {
+		v = 0
 	}
 
-	return f
+	return &v
 }
 
 // genTransactionFilterFree rolls a non-nil index-free transactions filter: a
@@ -1059,26 +1328,42 @@ func genTransactionFilterFree(depth int) *commonpb.QueryFilter {
 			return filterReverted(false)
 		default:
 			lo := internal.Rand().Uint64() % 256
+			f := filterTxIDRange(lo, lo+internal.Rand().Uint64()%256)
+			rollOpenOrExclusive(f.GetBuiltinUint().GetCond())
 
-			return filterTxIDRange(lo, lo+internal.Rand().Uint64()%256)
+			return f
 		}
 	}
 
 	return genBoolean(depth, genTransactionFilterFree)
 }
 
-// genBoolean wraps two (And/Or) or one (Not) recursively-generated children in a
-// boolean combinator. gen never returns nil, so no combinator carries a nil
-// child (which would marshal as an empty condition the compiler rejects).
+// genBoolean wraps one to three (And/Or) or one (Not) recursively-generated
+// children in a boolean combinator. gen never returns nil, so no combinator
+// carries a nil child (which would marshal as an empty condition the compiler
+// rejects).
 func genBoolean(depth int, gen func(int) *commonpb.QueryFilter) *commonpb.QueryFilter {
 	switch random.RandomChoice([]uint8{0, 1, 2}) {
 	case 0:
-		return filterAnd(gen(depth+1), gen(depth+1))
+		return filterAnd(genChildren(depth, gen)...)
 	case 1:
-		return filterOr(gen(depth+1), gen(depth+1))
+		return filterOr(genChildren(depth, gen)...)
 	default:
 		return filterNot(gen(depth + 1))
 	}
+}
+
+// genChildren rolls the operands of an And/Or: usually two, sometimes none,
+// one or three, so the empty combinator (an And is the universe, an Or is
+// empty), the compiler's single-child pass-through and its n-ary merge all run.
+func genChildren(depth int, gen func(int) *commonpb.QueryFilter) []*commonpb.QueryFilter {
+	n := int(random.RandomChoice([]uint8{0, 1, 2, 2, 3}))
+	children := make([]*commonpb.QueryFilter, 0, n)
+	for range n {
+		children = append(children, gen(depth+1))
+	}
+
+	return children
 }
 
 // --- Filter constructors ------------------------------------------------
@@ -1514,13 +1799,28 @@ func describeFilter(f *commonpb.QueryFilter) string {
 			case *commonpb.QueryFilter_Field:
 				return "field:" + x.Field.GetField().GetMetadata() + describeFieldCondition(x.Field)
 			case *commonpb.QueryFilter_AccountHasAsset:
-				return "hasAsset:" + x.AccountHasAsset.GetAssetBase()
+				return "hasAsset:" + x.AccountHasAsset.GetAssetBase() + "/" + strconv.FormatUint(uint64(x.AccountHasAsset.GetPrecision()), 10)
 			case *commonpb.QueryFilter_Ledger:
 				return "ledger=" + x.Ledger.GetCond().GetHardcoded()
 			case *commonpb.QueryFilter_LogId:
 				return "logId" + describeUintBounds(x.LogId.GetCond())
 			case *commonpb.QueryFilter_LogBuiltinUint:
 				return "logDate" + describeUintBounds(x.LogBuiltinUint.GetCond())
+			case *commonpb.QueryFilter_Audit:
+				field := "audit:" + strings.TrimPrefix(x.Audit.GetField().String(), "AUDIT_FIELD_")
+				if uc := x.Audit.GetUintCond(); uc != nil {
+					return field + describeUintBounds(uc)
+				}
+
+				if p, isPrefix := x.Audit.GetCondition().(*commonpb.AuditCondition_StringPrefix); isPrefix {
+					return field + "^=" + p.StringPrefix
+				}
+
+				if param := x.Audit.GetStringCond().GetParam(); param != "" {
+					return field + "=$" + param
+				}
+
+				return field + "=" + x.Audit.GetStringCond().GetHardcoded()
 			default:
 				return "?"
 			}

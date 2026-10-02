@@ -55,6 +55,8 @@ func (c *Checker) pauseAndDrain(ctx context.Context) bool {
 	}
 	c.mu.Unlock()
 
+	waited := time.Duration(0)
+
 	for {
 		c.mu.Lock()
 		_, empty := c.earliestOutstanding()
@@ -64,18 +66,30 @@ func (c *Checker) pauseAndDrain(ctx context.Context) bool {
 			c.tryDrain()
 		}
 		idle := empty && len(c.pending) == 0
+		inflight, reads, pending := len(c.inflight), len(c.reads), len(c.pending)
 		c.mu.Unlock()
 		if idle {
 			return true
+		}
+
+		// A quiesce that never completes parks every worker for the rest of the
+		// run, so name what is holding it rather than stalling silently.
+		if waited > 0 && waited%quiesceReportEvery == 0 {
+			log.Printf("restore cycle: still draining after %s (inflight=%d reads=%d pending=%d)", waited, inflight, reads, pending)
 		}
 
 		select {
 		case <-ctx.Done():
 			return false
 		case <-time.After(quiescePoll):
+			waited += quiescePoll
 		}
 	}
 }
+
+// quiesceReportEvery is how often a quiesce that has not completed names its
+// blockers.
+const quiesceReportEvery = 10 * time.Second
 
 // resume releases workers parked in awaitResume.
 func (c *Checker) resume() {

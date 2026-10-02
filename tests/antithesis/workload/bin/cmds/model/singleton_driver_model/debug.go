@@ -422,6 +422,24 @@ func (c *Checker) modelSchemaDump(ledger string) string {
 		" " + render("l", ls.LedgerFieldTypes()) + "]"
 }
 
+// renderSchema renders a served MetadataSchema the same way as modelSchemaDump,
+// so the two can be diffed directly in a finding.
+func renderSchema(schema *commonpb.MetadataSchema) string {
+	render := func(tag string, m map[string]*commonpb.MetadataFieldSchema) string {
+		parts := make([]string, 0, len(m))
+		for k, field := range m {
+			parts = append(parts, fmt.Sprintf("%s/%s=%d", tag, k, field.GetType()))
+		}
+		sort.Strings(parts)
+
+		return strings.Join(parts, ",")
+	}
+
+	return "[" + render("a", schema.GetAccountFields()) +
+		" " + render("t", schema.GetTransactionFields()) +
+		" " + render("l", schema.GetLedgerFields()) + "]"
+}
+
 // Server log sequences — for verifying drain order vs commit order.
 func logSeqs(logs []*commonpb.Log) string {
 	ids := make([]string, len(logs))

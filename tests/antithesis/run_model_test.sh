@@ -104,9 +104,10 @@ RECOVER_TIMEOUT="${RECOVER_TIMEOUT:-90}"
 DEAD_TIME="${DEAD_TIME:-30}"
 COMPACTION_MARGIN="${COMPACTION_MARGIN:-200}"
 MAINTENANCE_INTERVAL="${MAINTENANCE_INTERVAL:-10s}"
-# WAL/data disk-usage guard (fraction). Default matches the server; raise it when
-# the host filesystem is already above 80% used (the guard blocks writes then).
-HEALTH_THRESHOLD="${HEALTH_THRESHOLD:-0.8}"
+# WAL/data disk-usage guard (fraction). A blocked write is retried forever, so a
+# host above the guard wedges the whole run; the guard is a production concern,
+# not this runner's.
+HEALTH_THRESHOLD="${HEALTH_THRESHOLD:-0.95}"
 CLUSTER_ID="model-test-cluster"
 # Fail-fast (on by default): stop the run the moment a finding appears instead
 # of running out the clock. Set to 0/off to run the full duration, or to a
@@ -484,7 +485,7 @@ log "waiting for node 1 leadership..."
 wait_leader 0 || exit 2
 
 if [ "$NODES" -gt 1 ]; then
-	for i in $(seq 1 $(( NODES - 1 ))); do
+	for (( i = 1; i < NODES; i++ )); do
 		log "joining node $(( i + 1 )) (grpc :${GRPC_PORTS[$i]})..."
 		start_node "$i" join
 	done
@@ -522,7 +523,9 @@ fi
 # Run the driver against all node(s).
 # ---------------------------------------------------------------------------
 ADDR_LIST="127.0.0.1:${GRPC_PORTS[0]}"
-for i in $(seq 1 $(( NODES - 1 ))); do ADDR_LIST="$ADDR_LIST,127.0.0.1:${GRPC_PORTS[$i]}"; done
+# A C-style loop, not `seq 1 $((NODES-1))`: BSD seq counts DOWN on an inverted
+# range, so a single-node run would index a port that does not exist.
+for (( i = 1; i < NODES; i++ )); do ADDR_LIST="$ADDR_LIST,127.0.0.1:${GRPC_PORTS[$i]}"; done
 
 log "running driver for ${DURATION}s against $ADDR_LIST ..."
 # MODEL_MAX_SECONDS makes the driver self-terminate even if this script never
