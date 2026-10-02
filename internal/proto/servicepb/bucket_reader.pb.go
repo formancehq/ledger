@@ -3173,6 +3173,7 @@ func NewServerInfoListReader(s []*ServerInfo) ServerInfoListReader { return serv
 type DiscoveryResponseReader interface {
 	GetResponseSigning() ResponseSigningInfoReader
 	GetServerInfo() ServerInfoReader
+	GetClusterPolicy() commonpb.ClusterPolicyReader
 	Mutate() *DiscoveryResponse
 }
 
@@ -3188,6 +3189,14 @@ func (r *discoveryResponseReadonly) GetResponseSigning() ResponseSigningInfoRead
 
 func (r *discoveryResponseReadonly) GetServerInfo() ServerInfoReader {
 	v := (*DiscoveryResponse)(r).GetServerInfo()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *discoveryResponseReadonly) GetClusterPolicy() commonpb.ClusterPolicyReader {
+	v := (*DiscoveryResponse)(r).GetClusterPolicy()
 	if v == nil {
 		return nil
 	}

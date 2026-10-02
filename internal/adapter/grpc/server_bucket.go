@@ -1152,7 +1152,18 @@ func (impl *BucketServiceServerImpl) Barrier(ctx context.Context, _ *servicepb.B
 }
 
 func (impl *BucketServiceServerImpl) Discovery(_ context.Context, _ *servicepb.DiscoveryRequest) (*servicepb.DiscoveryResponse, error) {
+	// Read the committed policy, rather than server flags: policy reconciliation
+	// requires a revision bump and may not have applied the configured values.
+	var policy *commonpb.ClusterPolicy
+	if impl.store != nil {
+		var err error
+		policy, err = query.ReadClusterPolicy(impl.store)
+		if err != nil {
+			return nil, err
+		}
+	}
 	resp := &servicepb.DiscoveryResponse{
+		ClusterPolicy: policy,
 		ServerInfo: &servicepb.ServerInfo{
 			Version:         impl.info.Version,
 			Commit:          impl.info.Commit,

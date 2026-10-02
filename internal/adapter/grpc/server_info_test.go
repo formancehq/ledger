@@ -5,10 +5,14 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
 
+	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 )
 
@@ -32,6 +36,27 @@ func TestDiscoveryReturnsServerInfo(t *testing.T) {
 	require.Equal(t, "2026-06-19T00:00:00Z", resp.GetServerInfo().GetBuildDate())
 	require.Equal(t, "go1.24", resp.GetServerInfo().GetGoVersion())
 	require.Equal(t, grpcprotocol.Version, resp.GetServerInfo().GetProtocolVersion())
+}
+
+func TestDiscoveryReturnsCommittedClusterPolicy(t *testing.T) {
+	t.Parallel()
+	store, err := dal.NewStore(t.TempDir(), testLogger(), noop.NewMeterProvider().Meter("test"), dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, store.Close()) })
+
+	impl := &BucketServiceServerImpl{store: store}
+	resp, err := impl.Discovery(context.Background(), &servicepb.DiscoveryRequest{})
+	require.NoError(t, err)
+	require.Nil(t, resp.GetClusterPolicy(), "no committed policy must not look like default policy")
+
+	policy := &commonpb.ClusterPolicy{Revision: 7, MetadataMaxValueBytes: 32768, MetadataMaxCommandBytes: 1048576}
+	batch := store.OpenWriteSession()
+	require.NoError(t, state.SaveClusterPolicy(batch, policy))
+	require.NoError(t, batch.Commit())
+
+	resp, err = impl.Discovery(context.Background(), &servicepb.DiscoveryRequest{})
+	require.NoError(t, err)
+	require.Equal(t, policy, resp.GetClusterPolicy())
 }
 
 func TestGetClusterStateMapsPeerVersion(t *testing.T) {
