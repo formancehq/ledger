@@ -167,6 +167,7 @@ func main() {
 	dialCtx, cancelDial := context.WithTimeout(ctx, 5*time.Second)
 	checkpointNodes, _ := internal.DialPerNode(dialCtx)
 	cancelDial()
+	checkpointNodes = clusterNodes(checkpointNodes)
 	if len(checkpointNodes) == 0 {
 		assert.Unreachable("singleton_driver_model: checkpoint node connections unavailable", nil)
 
@@ -617,6 +618,22 @@ func ledgerNames(runID string, n int) []string {
 	}
 
 	return out
+}
+
+// clusterNodes keeps the connections to the EXPECTED_VOTERS nodes the cluster
+// runs, closing the rest. The k8s per-node address list is sized for the main
+// template's scaling drivers; the model never resizes the cluster, and the
+// readiness poller requires every connection to answer, so an address with no
+// node behind it would keep every index ambiguous and every retype window open.
+func clusterNodes(conns internal.PerNodeConns) internal.PerNodeConns {
+	voters := envInt("EXPECTED_VOTERS", len(conns))
+	if voters >= len(conns) {
+		return conns
+	}
+
+	conns[voters:].Close()
+
+	return conns[:voters]
 }
 
 // envInt reads an int from env, defaulting on missing or invalid.
