@@ -293,7 +293,6 @@ type preparedCall struct {
 	errKind     pqErrKind
 	err         error
 	wrongResult bool
-	cursor      string
 }
 
 // runExecuteNextPage issues the follow-on page for prev and validates it with
@@ -335,7 +334,6 @@ func (c *Checker) runExecuteNextPage(
 
 	call.errKind = classifyPreparedExecError(err)
 	call.err = err
-	call.cursor = prev.GetNext()
 	_, cursorResult := resp.GetResult().(*servicepb.ExecutePreparedQueryResponse_Cursor)
 	call.wrongResult = err == nil && !cursorResult
 
@@ -453,10 +451,10 @@ func (c *Checker) validateExecuteList(maxTicket uint64, call preparedCall, after
 
 		return
 	}
-	if call.errKind == pqErrNone && !preparedCursorMetadataMatches(call, cur) {
-		assert.Unreachable("singleton_driver_model: prepared query cursor metadata mismatch", internal.Details{
-			"ledger": call.ledger, "query": call.name, "pageSize": cur.GetPageSize(),
-			"previous": cur.GetPrevious(), "expectedPrevious": call.cursor,
+	if call.errKind == pqErrNone && cur.GetPageSize() != uint32(call.pageSize) {
+		assert.Unreachable("singleton_driver_model: prepared query cursor page size mismatch", internal.Details{
+			"ledger": call.ledger, "query": call.name,
+			"pageSize": cur.GetPageSize(), "expectedPageSize": call.pageSize,
 		})
 
 		return
@@ -617,10 +615,6 @@ func preparedWindowMatches(
 	default:
 		return false
 	}
-}
-
-func preparedCursorMetadataMatches(call preparedCall, cur *commonpb.PreparedQueryCursor) bool {
-	return cur.GetPageSize() == uint32(call.pageSize) && cur.GetPrevious() == call.cursor
 }
 
 // preparedAccountPageMatches checks the rows, their content, and has_more. The

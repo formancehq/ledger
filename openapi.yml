@@ -5424,8 +5424,6 @@ components:
               type: integer
             hasMore:
               type: boolean
-            previous:
-              type: string
             next:
               type: string
             accountData:
