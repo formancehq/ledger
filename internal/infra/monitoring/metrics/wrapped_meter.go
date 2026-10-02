@@ -15,10 +15,11 @@ type renamingMeter struct {
 	metric.Meter
 
 	naming Naming
+	prefix string
 }
 
 func (m *renamingMeter) rewrite(name string) string {
-	return transformName(name, m.naming)
+	return transformName(name, m.naming, m.prefix)
 }
 
 func (m *renamingMeter) Int64Counter(name string, opts ...metric.Int64CounterOption) (metric.Int64Counter, error) {

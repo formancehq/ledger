@@ -213,7 +213,7 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 	}
 
 	preloadMissCounter, err := raftMeter.Int64Counter(
-		"ledger.preload.coverage_miss",
+		"raft.fsm.preload.coverage_miss",
 		metric.WithDescription("Reads on the FSM hot path of keys not declared in the proposal's ExecutionPlan. Labeled by attribute kind. The order observing the miss is rejected with a business error."),
 		metric.WithUnit("1"),
 	)

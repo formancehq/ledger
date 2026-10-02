@@ -4412,38 +4412,53 @@ ledger run --health-clock-skew-threshold 0 [other flags...]
 
 ---
 
-### Server Metrics Naming Flag
+### Server Metrics Naming Flags
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--metrics-naming` | string | `otel` | Application metrics naming convention (`otel` or `prom`) |
+| `--metrics-prefix` | string | `formance.ledger` | Namespace prepended to application metric names (`none` to disable) |
 
 Controls how the application's own metric names are emitted. Every
 instrument the server creates (admission, cache, wal, raft, pebble,
 …) is subject to the policy. OpenTelemetry semantic-convention
-auto-instrumentation (`http.*`, `go.*`, `process.*`, `system.*`)
-goes through the *global* MeterProvider and bypasses this flag, so
-those names always keep their canonical upstream form.
+auto-instrumentation (`http.*`, `rpc.*`, `go.*`, `process.*`,
+`system.*`) goes through the *global* MeterProvider and bypasses
+these flags, so those names always keep their canonical upstream
+form and are never prefixed.
 
-- `otel` (default): preserves dot-notation names —
-  `admission.command.duration`, `raft.fsm.logs_appended`. Use this
-  when your OTLP→Prometheus collector preserves dots, or when you
-  query directly through OpenTelemetry tooling.
-- `prom`: rewrites our metric names to the Prometheus convention.
-  Names get the `ledger_` prefix and every dot becomes an
-  underscore, so `admission.command.duration` is emitted as
-  `ledger_admission_command_duration` and `raft.fsm.logs_appended`
-  as `ledger_raft_fsm_logs_appended`. Use this when the collector
-  in front of Prometheus sanitises dots (the default for recent OTel
-  collectors and most cloud Prometheus offerings).
+`--metrics-prefix` follows the OpenTelemetry recommendation to
+namespace application-specific names. It is joined to the
+instrument name with a `.`: `raft.fsm.logs_appended` is emitted as
+`formance.ledger.raft.fsm.logs_appended`. The value is at most 64
+characters of dot-separated segments made of letters, digits and
+underscores, each starting with a letter and ending with a letter or
+digit. Set it to `none` (`--metrics-prefix=none`, `METRICS_PREFIX=none`
+or the operator's `spec.metricsPrefix: none`) to emit unprefixed names.
+An explicit empty flag value (`--metrics-prefix=""`) has the same
+effect, but an empty `METRICS_PREFIX` environment variable is ignored.
 
-The two pre-built Grafana dashboards under
-`misc/devenv/monitoring-dashboards/config/dashboards/` match these
-two modes — pick `ledger-metrics-prom.json` if you run with
-`--metrics-naming=prom`.
+- `otel` (default): keeps dot-notation names —
+  `formance.ledger.admission.command.duration`,
+  `formance.ledger.raft.fsm.logs_appended`. Use this when your
+  OTLP→Prometheus collector preserves dots, when it sanitises them
+  itself, or when you query directly through OpenTelemetry tooling.
+- `prom`: rewrites the prefixed name to the Prometheus convention by
+  turning every dot into an underscore, so
+  `admission.command.duration` is emitted as
+  `formance_ledger_admission_command_duration`. Use this when the
+  path to Prometheus preserves dots but you want Prometheus-style
+  names.
+
+After a collector that sanitises dots, both modes produce the same
+`formance_ledger_…` names. The pre-built Grafana dashboards under
+`misc/devenv/monitoring-dashboards/config/dashboards/` cover the
+default prefix and `none`; see
+[Monitoring](monitoring.md#naming-convention) for the matrix.
 
 ```bash
 ledger run --metrics-naming=prom [other flags...]
+ledger run --metrics-prefix=acme.ledger [other flags...]
 ```
 
 ---

@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 
+	ledgermetrics "github.com/formancehq/ledger/v3/internal/infra/monitoring/metrics"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
@@ -76,6 +77,17 @@ func TestLoadConfig_ZeroPreservedForSentinelFlags(t *testing.T) {
 			},
 		},
 		{
+			name:  "metrics-prefix empty disables the namespace",
+			flag:  "metrics-prefix",
+			value: "",
+			check: func(t *testing.T, cmd *cobra.Command) {
+				cfg, err := LoadConfig(context.Background(), cmd)
+				require.NoError(t, err)
+				require.Empty(t, cfg.MetricsPrefix,
+					"--metrics-prefix= must propagate as empty (no prefix), not the formance.ledger default")
+			},
+		},
+		{
 			name:  "query-profile-threshold=0 disables profiling",
 			flag:  "query-profile-threshold",
 			value: "0s",
@@ -120,6 +132,7 @@ func TestLoadConfig_DefaultsApplyWhenFlagUnset(t *testing.T) {
 	require.Equal(t, uint64(100), cfg.RaftConfig.AutoPromoteThreshold)
 	require.Equal(t, 500*time.Millisecond, cfg.HealthConfig.ClockSkewThreshold)
 	require.Equal(t, 10*time.Millisecond, cfg.QueryProfileThreshold)
+	require.Equal(t, ledgermetrics.DefaultPrefix, cfg.MetricsPrefix)
 	// Regression: --cache-rotation-threshold (cobra default 1000) used to
 	// regress to 0 when the call site's local fallback (0) was preferred
 	// to cobra's registered default. Zero rotation threshold triggers a

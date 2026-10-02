@@ -189,6 +189,42 @@ func TestValidateClusterPolicyFields(t *testing.T) {
 	})
 }
 
+func TestValidateMetricsPrefix(t *testing.T) {
+	t.Parallel()
+
+	t.Run("default prefix accepted", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := validBaseConfig()
+		cfg.MetricsPrefix = "formance.ledger"
+		require.NoError(t, cfg.Validate())
+	})
+
+	t.Run("none disables the prefix", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := validBaseConfig()
+		cfg.MetricsPrefix = "none"
+		require.NoError(t, cfg.Validate())
+	})
+
+	t.Run("empty prefix accepted", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := validBaseConfig()
+		cfg.MetricsPrefix = ""
+		require.NoError(t, cfg.Validate())
+	})
+
+	t.Run("trailing separator rejected", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := validBaseConfig()
+		cfg.MetricsPrefix = "formance.ledger."
+		require.ErrorContains(t, cfg.Validate(), "--metrics-prefix: invalid metrics prefix")
+	})
+}
+
 func TestValidateTLSConfig(t *testing.T) {
 	t.Parallel()
 
