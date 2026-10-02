@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"16"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"17"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 16:
+leader. For example, with a schema implementing revision 17:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 16' \
+grpcurl -plaintext -H 'ledger-protocol-version: 17' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -212,9 +212,8 @@ and the ledger `name` metadata; revision 14 returned `NotFound` without
 
 This is an incompatible response-semantic change even though the service
 protobuf schema is unchanged: revision-14 clients may interpret the structured
-reason and metadata differently. The revision increments from the target
-branch's 14 to 15, and all communicating service clients and servers must be
-rebuilt with the matching revision. HTTP missing-ledger responses remain 404.
+reason and metadata differently. All communicating service clients and servers
+must be rebuilt with the matching revision. HTTP missing-ledger responses remain 404.
 
 ## Filterless prepared-query updates (revision 16)
 
@@ -223,6 +222,17 @@ failure into an explicit removal of the stored filter. The query then matches
 every entity in its immutable target. The protobuf wire shape is unchanged, but
 a revision-15 peer interprets the identical request differently, so clients,
 servers, and every Raft replica must agree on revision 16 semantics.
+
+## Typed arbitrary-precision volumes (revision 17)
+
+Revision 17 replaces the decimal `string` fields in `Volumes` and
+`VolumesWithBalance` with typed arbitrary-precision integers. Non-negative
+input/output totals use a canonical minimal unsigned big-endian magnitude;
+balances use a sign plus that magnitude and reject negative zero. The HTTP JSON
+projection remains exact decimal strings, while protobuf clients must implement
+the new typed messages. The representation is unbounded because account color
+collapse may sum several independently bounded `Uint256` buckets beyond 256
+bits.
 
 ## Maintaining the revision
 

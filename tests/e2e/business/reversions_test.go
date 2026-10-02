@@ -242,7 +242,7 @@ var _ = Describe("Reversions", Ordered, func() {
 				Address: "account-1",
 			})
 			Expect(err).To(Succeed())
-			Expect(account1.FindVolume("USD", "").Balance).To(Equal("100"))
+			Expect(account1.FindVolume("USD", "").GetBalance().DecimalString()).To(Equal("100"))
 
 			// Revert the transaction
 			log := createResp.Logs[0]
@@ -258,7 +258,10 @@ var _ = Describe("Reversions", Ordered, func() {
 				Address: "account-1",
 			})
 			Expect(err).To(Succeed())
-			Expect(account1After.FindVolume("USD", "").Balance).To(Equal("0"))
+			account1AfterVol := account1After.FindVolume("USD", "")
+			Expect(account1AfterVol).NotTo(BeNil(), "expected USD entry on account-1 after reversion")
+			Expect(account1AfterVol.GetBalance()).NotTo(BeNil(), "balance field must be present after reversion")
+			Expect(account1AfterVol.GetBalance().DecimalString()).To(Equal("0"))
 		})
 
 		It("Should restore balances for multi-posting transaction", func() {
@@ -275,14 +278,14 @@ var _ = Describe("Reversions", Ordered, func() {
 				Address: "account-a",
 			})
 			Expect(err).To(Succeed())
-			Expect(accountA.FindVolume("USD", "").Balance).To(Equal("100"))
+			Expect(accountA.FindVolume("USD", "").GetBalance().DecimalString()).To(Equal("100"))
 
 			accountB, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "account-b",
 			})
 			Expect(err).To(Succeed())
-			Expect(accountB.FindVolume("USD", "").Balance).To(Equal("200"))
+			Expect(accountB.FindVolume("USD", "").GetBalance().DecimalString()).To(Equal("200"))
 
 			// Revert the transaction
 			log := createResp.Logs[0]
@@ -298,14 +301,14 @@ var _ = Describe("Reversions", Ordered, func() {
 				Address: "account-a",
 			})
 			Expect(err).To(Succeed())
-			Expect(accountAAfter.FindVolume("USD", "").Balance).To(Equal("0"))
+			Expect(accountAAfter.FindVolume("USD", "").GetBalance().DecimalString()).To(Equal("0"))
 
 			accountBAfter, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "account-b",
 			})
 			Expect(err).To(Succeed())
-			Expect(accountBAfter.FindVolume("USD", "").Balance).To(Equal("0"))
+			Expect(accountBAfter.FindVolume("USD", "").GetBalance().DecimalString()).To(Equal("0"))
 		})
 
 		It("Should correctly track volumes after revert", func() {
@@ -329,9 +332,9 @@ var _ = Describe("Reversions", Ordered, func() {
 				Address: "volume-account",
 			})
 			Expect(err).To(Succeed())
-			Expect(account.FindVolume("USD", "").Input).To(Equal("100"))
-			Expect(account.FindVolume("USD", "").Output).To(Equal("100"))
-			Expect(account.FindVolume("USD", "").Balance).To(Equal("0"))
+			Expect(account.FindVolume("USD", "").GetInput().DecimalString()).To(Equal("100"))
+			Expect(account.FindVolume("USD", "").GetOutput().DecimalString()).To(Equal("100"))
+			Expect(account.FindVolume("USD", "").GetBalance().DecimalString()).To(Equal("0"))
 		})
 	})
 
@@ -467,7 +470,7 @@ var _ = Describe("Reversions", Ordered, func() {
 				Address: "account-1",
 			})
 			Expect(err).To(Succeed())
-			Expect(account1.FindVolume("USD", "").Balance).To(Equal("-100"))
+			Expect(account1.FindVolume("USD", "").GetBalance().DecimalString()).To(Equal("-100"))
 		})
 	})
 
@@ -510,8 +513,8 @@ var _ = Describe("Reversions", Ordered, func() {
 			pcv := revertPCV(revertResp)
 			// After revert: ev-rv-expand sent 100 back to world -> input=100, output=100
 			Expect(pcv).To(HaveKey("ev-rv-expand"))
-			Expect(pcv["ev-rv-expand"].FindVolume("USD", "").Input).To(Equal("100"))
-			Expect(pcv["ev-rv-expand"].FindVolume("USD", "").Output).To(Equal("100"))
+			Expect(pcv["ev-rv-expand"].FindVolume("USD", "").GetInput().DecimalString()).To(Equal("100"))
+			Expect(pcv["ev-rv-expand"].FindVolume("USD", "").GetOutput().DecimalString()).To(Equal("100"))
 
 			Expect(pcv).To(HaveKey("world"))
 		})
@@ -539,8 +542,8 @@ var _ = Describe("Reversions", Ordered, func() {
 
 				original := tx.GetPostCommitVolumes().GetVolumesByAccount()["ev-rv-original"].FindVolume("USD", "")
 				g.Expect(original).NotTo(BeNil())
-				g.Expect(original.GetInput()).To(Equal("250"))
-				g.Expect(original.GetOutput()).To(Equal("0"))
+				g.Expect(original.GetInput().DecimalString()).To(Equal("250"))
+				g.Expect(original.GetOutput().DecimalString()).To(Equal("0"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
@@ -566,8 +569,8 @@ var _ = Describe("Reversions", Ordered, func() {
 			pcv := revertPCV(revertResp)
 			// ev-rv-force: input=100 (original), output=200 (100 spent + 100 reverted)
 			Expect(pcv).To(HaveKey("ev-rv-force"))
-			Expect(pcv["ev-rv-force"].FindVolume("USD", "").Input).To(Equal("100"))
-			Expect(pcv["ev-rv-force"].FindVolume("USD", "").Output).To(Equal("200"))
+			Expect(pcv["ev-rv-force"].FindVolume("USD", "").GetInput().DecimalString()).To(Equal("100"))
+			Expect(pcv["ev-rv-force"].FindVolume("USD", "").GetOutput().DecimalString()).To(Equal("200"))
 		})
 	})
 })
