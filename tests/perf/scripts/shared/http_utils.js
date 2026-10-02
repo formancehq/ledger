@@ -30,6 +30,7 @@ export function scriptBulkElement(script, vars, metadata) {
 
 const defaultParams = {
   headers: { 'Content-Type': 'application/json' },
+  responseType: 'text',
 };
 
 /**
@@ -40,10 +41,24 @@ export function sendBulk(url, elements) {
 }
 
 /**
- * Check that a bulk response is successful (HTTP 200).
+ * Check HTTP success and, when a count is supplied, every created transaction.
  */
-export function checkBulkSuccess(response) {
+export function checkBulkSuccess(response, expectedTransactions) {
+  let results = null;
+  if (response.status === 200 && expectedTransactions !== undefined) {
+    try {
+      results = response.json().data;
+    } catch {
+      // Invalid JSON is a failed response, not a successful write.
+    }
+  }
   return check(response, {
     'HTTP status is 200': (r) => r.status === 200,
+    ...(expectedTransactions === undefined ? {} : {
+      'all transactions were created': () => Array.isArray(results)
+        && results.length === expectedTransactions
+        && results.every((result) => result?.responseType === 'CREATE_TRANSACTION'
+          && typeof result.data?.id === 'number' && result.data.skipped !== true),
+    }),
   });
 }

@@ -71,6 +71,52 @@ go run . run \
   --data-dir ./data/node-1
 ```
 
+## Local Benchmark
+
+Run inside the Nix development environment:
+
+```bash
+just bench
+# Short run to check the harness on your machine:
+BENCH_DURATION=5 BENCH_MIN_TPS=1000 just bench
+```
+
+The command starts `go run . run` with fresh storage, waits for `/clusterz`,
+creates a ledger, and warms up for 5 seconds. It then runs the existing
+`world_to_bank` Numscript workload for 60 seconds, using 100 concurrent k6
+clients and atomic bulks of 50 transactions. A run passes only with no write
+errors and at least 100,000 successfully created transactions per second.
+Each bulk result is checked; HTTP 200 alone is insufficient. Warmup and
+unfinished requests at the measurement deadline are excluded from the count.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `BENCH_DURATION` | `60` | Measurement duration in seconds |
+| `BENCH_MIN_TPS` | `100000` | Minimum successful transactions per second |
+| `BENCH_VUS` | `100` | Concurrent k6 clients |
+| `BENCH_DISK_THRESHOLD` | `0.99` | Disk occupation limit for the temporary benchmark node; must be between 0 and 1, exclusive |
+
+The benchmark uses a 99% disk occupation limit for both WAL and data because
+its temporary storage shares the workstation volume. It checks that volume
+before starting and retains Ledger's disk write protection at the configured
+limit. The server's ordinary default remains 80%. Insufficient free space is
+reported before compilation or k6 startup.
+
+Results and the server log are saved to `build/bench/summary.json` and
+`build/bench/ledger.log`. Each invocation clears previous results before
+startup checks, so a preflight failure cannot expose an earlier measurement.
+The node and its temporary storage are cleaned up
+on completion, failure, or interruption. Ports 17777 (Raft), 18888 (gRPC), and
+19000 (HTTP) must be available. This is a local throughput check; compare
+versions on the same machine and configuration. The 100k floor is an initial
+target, and single-node results do not establish replicated-cluster capacity.
+
+The default CI workflow runs the same command in the `Benchmark` job on a
+Namespace runner with 4 vCPUs. The job is non-blocking while the throughput
+target is calibrated on that runner. Its `benchmark-results` artifact retains
+the measurement summary and Ledger log for 7 days, including on failure when
+those files are available.
+
 ## Run Tests
 
 ```bash

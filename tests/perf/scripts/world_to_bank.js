@@ -50,7 +50,7 @@ export default function () {
 
   bulkLatency.add(latency);
 
-  if (!checkBulkSuccess(response)) {
+  if (!checkBulkSuccess(response, BULK_SIZE)) {
     errorRate.add(1);
     logError(response);
   } else {
