@@ -3,7 +3,6 @@ package query
 import (
 	"encoding/binary"
 	"fmt"
-	"math"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -779,8 +778,8 @@ func compileAccountHasAssetConditionRev(ctx *compileCtx, c *commonpb.AccountHasA
 		return nil, err
 	}
 
-	if c.GetPrecision() > math.MaxUint8 {
-		return nil, domain.NewFilterCompilationError("has asset precision %d exceeds maximum %d", c.GetPrecision(), math.MaxUint8)
+	if err := domain.ValidateHasAssetPrecision(c.GetPrecision()); err != nil {
+		return nil, &domain.BusinessError{Err: err}
 	}
 
 	prefix := readstore.AccountByAssetPrefix(ctx.kb, ctx.ledgerName, c.GetAssetBase(), uint8(c.GetPrecision()))

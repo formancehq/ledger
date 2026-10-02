@@ -1187,8 +1187,8 @@ func compileAccountHasAssetCondition(ctx *compileCtx, c *commonpb.AccountHasAsse
 		return nil, err
 	}
 
-	if c.GetPrecision() > math.MaxUint8 {
-		return nil, domain.NewFilterCompilationError("has asset precision %d exceeds maximum %d", c.GetPrecision(), math.MaxUint8)
+	if err := domain.ValidateHasAssetPrecision(c.GetPrecision()); err != nil {
+		return nil, &domain.BusinessError{Err: err}
 	}
 
 	// Key layout: [0x0C][ledger 64B][assetBase\x00][precision 1B][account].
