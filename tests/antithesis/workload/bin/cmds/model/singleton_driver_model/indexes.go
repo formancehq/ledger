@@ -663,7 +663,9 @@ func (c *Checker) trackedIndexes() map[string]map[string]uint64 {
 // incarnation it sampled: a moved create frontier means a drop+recreate reused
 // the canonical while the RPCs were in flight, and an all-replicas-ready
 // snapshot of the dead incarnation must not promote its successor — skip both
-// directions, the poll says nothing about the current entry. Caller holds c.mu.
+// directions, the poll says nothing about the current entry. A ready verdict
+// promotes only once the operations ticketed before it have finished (see
+// indexPromotion); a not-ready one demotes at once. Caller holds c.mu.
 func (c *Checker) applyIndexReadiness(ledger string, canons map[string]uint64, readyAll map[string]bool) {
 	for canon, createSeq := range canons {
 		exists, wasActive := c.modelState.Ledger(ledger).IndexState(canon)
@@ -675,32 +677,58 @@ func (c *Checker) applyIndexReadiness(ledger string, canons map[string]uint64, r
 			continue // recreated between the snapshot and now
 		}
 
-		if readyAll[canon] {
-			c.modelState.SetIndexActive(ledger, canon)
-			if !wasActive {
-				// Coverage: the poller confirmed the index READY on every replica
-				// and promoted it — after which its queries must return results.
-				assert.Reachable("singleton_driver_model: index promoted to active", internal.Details{"ledger": ledger, "index": canon})
-			}
-		} else {
+		if !readyAll[canon] {
+			delete(c.indexPromotions[ledger], canon)
 			c.modelState.SetIndexAmbiguous(ledger, canon)
 			if wasActive {
 				// Coverage: a replica reported the index not-ready again (node
 				// down / restored node rebuilding), demoting it back to ambiguous.
 				assert.Reachable("singleton_driver_model: index demoted to ambiguous", internal.Details{"ledger": ledger, "index": canon})
 			}
+
+			continue
 		}
+
+		if wasActive {
+			continue
+		}
+
+		p, ok := c.indexPromotions[ledger][canon]
+		if !ok || p.createSeq != createSeq {
+			p = indexPromotion{createSeq: createSeq, confirmedAt: c.ticketSeq.Load()}
+			if c.indexPromotions[ledger] == nil {
+				c.indexPromotions[ledger] = map[string]indexPromotion{}
+			}
+			c.indexPromotions[ledger][canon] = p
+		}
+
+		if minTicket, empty := c.earliestOutstanding(); !empty && minTicket <= p.confirmedAt {
+			// Coverage: an index confirmed ready waited for a read that may
+			// have been served by a replica still building it.
+			assert.Reachable("singleton_driver_model: index promotion deferred behind an earlier operation", internal.Details{"ledger": ledger, "index": canon})
+
+			continue
+		}
+
+		delete(c.indexPromotions[ledger], canon)
+		c.modelState.SetIndexActive(ledger, canon)
+		// Coverage: the poller confirmed the index READY on every replica
+		// and promoted it — after which its queries must return results.
+		assert.Reachable("singleton_driver_model: index promoted to active", internal.Details{"ledger": ledger, "index": canon})
 	}
 }
 
-// demoteAllIndexes flips every tracked index back to ambiguous. Called around a
-// restore cycle: the restored node rebuilds its read-store from the log, so its
-// indexes re-enter BUILDING (CurrentVersion 0) until the backfill catches up —
-// the model must tolerate a not-ready rejection again until the poller reconfirms
-// readiness. Demotion only widens tolerance, so it can never cause a finding.
+// demoteAllIndexes flips every tracked index back to ambiguous and drops every
+// pending promotion. Called around a restore cycle: the restored node rebuilds
+// its read-store from the log, so its indexes re-enter BUILDING (CurrentVersion
+// 0) until the backfill catches up — the model must tolerate a not-ready
+// rejection again until the poller reconfirms readiness. Demotion only widens
+// tolerance, so it can never cause a finding.
 func (c *Checker) demoteAllIndexes() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	clear(c.indexPromotions)
 
 	for _, ledger := range c.ledgerNamesSnapshot() {
 		for canon := range c.modelState.Ledger(ledger).Indexes().All() {

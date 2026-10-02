@@ -126,6 +126,11 @@ type Checker struct {
 	// verdict once the frontier moved under it. Guarded by mu.
 	indexCreateSeq map[string]map[string]uint64
 
+	// indexPromotions holds each index the poller confirmed ready on every
+	// replica but has not yet promoted (ledger → canonical) — see
+	// indexPromotion. Guarded by mu.
+	indexPromotions map[string]map[string]indexPromotion
+
 	// replayable holds committed bulks that carried a tracked idempotency key —
 	// the originals runReplay re-sends to exercise the server's idempotency
 	// replay. Populated at commit (rememberReplayable), capped at
@@ -240,7 +245,8 @@ func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadata
 		committedLogs:              map[uint64]committedLog{},
 		rejections:                 map[rejectedBulk]struct{}{},
 
-		indexCreateSeq: map[string]map[string]uint64{},
+		indexCreateSeq:  map[string]map[string]uint64{},
+		indexPromotions: map[string]map[string]indexPromotion{},
 	}
 	c.ledgerSeq.Store(uint64(len(ledgerNames)))
 
@@ -373,6 +379,17 @@ type retypeObservation struct {
 	// from a pre-switch snapshot is validated against the model AFTER its
 	// response arrives, and closing under it would judge a legitimately
 	// old-typed answer by post-switch rules.
+	confirmedAt uint64
+}
+
+// indexPromotion is a confirmed-ready index awaiting promotion to active. A
+// read is validated against the model AFTER its response arrives, so one
+// dispatched before the confirmation may have been served by a replica still
+// building the index: promotion waits until every operation ticketed at or
+// before confirmedAt has finished. createSeq binds it to the incarnation the
+// poll confirmed.
+type indexPromotion struct {
+	createSeq   uint64
 	confirmedAt uint64
 }
 

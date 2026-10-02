@@ -261,6 +261,69 @@ func TestReconcileIndexes_IncarnationGuard(t *testing.T) {
 	require.False(t, active(c), "a moved create frontier discards the verdict")
 }
 
+// TestReconcileIndexes_PromotionWaitsForEarlierReads pins that a ready
+// verdict does not promote under a read ticketed before it: that read may have
+// been served by a replica still building the index, and is validated against
+// the model only after its response arrives.
+func TestReconcileIndexes_PromotionWaitsForEarlierReads(t *testing.T) {
+	t.Parallel()
+
+	id := assetIndexID()
+	canon := assetIndexCanonical
+
+	c := NewChecker([]string{"L"}, nil)
+	res := c.modelState.Apply(oracle.Bulk{Requests: []*servicepb.Request{oracletest.CreateIndexReq(id)}})
+	require.True(t, res.OK)
+	c.modelState = res.State
+	c.recordIndexCreates(
+		oracle.Bulk{Requests: []*servicepb.Request{oracletest.CreateIndexReq(id)}},
+		&servicepb.ApplyResponse{Logs: []*commonpb.Log{{Sequence: 10}}},
+	)
+
+	ready := internal.PerNodeConns{{Bucket: fakeStatusClient{resp: &servicepb.GetIndexStatusResponse{
+		LastIndexedSequence: 12,
+		Indexes:             []*servicepb.IndexEntry{{Ledger: "L", Index: &commonpb.Index{Id: id}, CurrentVersion: 1}},
+	}}}}
+	notReady := internal.PerNodeConns{{Bucket: fakeStatusClient{resp: &servicepb.GetIndexStatusResponse{
+		LastIndexedSequence: 12,
+		Indexes:             []*servicepb.IndexEntry{{Ledger: "L", Index: &commonpb.Index{Id: id}}},
+	}}}}
+
+	active := func() bool {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		_, a := c.modelState.Ledger("L").IndexState(canon)
+
+		return a
+	}
+
+	c.mu.Lock()
+	earlier := c.registerRead()
+	c.mu.Unlock()
+
+	reconcileIndexes(context.Background(), c, ready)
+	require.False(t, active(), "an earlier read is still outstanding")
+
+	// A read ticketed after the confirmation does not hold the promotion back.
+	c.mu.Lock()
+	later := c.registerRead()
+	c.mu.Unlock()
+	defer c.finishRead(later)
+
+	c.finishRead(earlier)
+	reconcileIndexes(context.Background(), c, ready)
+	require.True(t, active(), "every read ticketed before the confirmation finished")
+
+	// A not-ready verdict drops a pending promotion: the next ready verdict
+	// confirms afresh, behind the reads outstanding at that point.
+	c.mu.Lock()
+	c.modelState.SetIndexAmbiguous("L", canon)
+	c.mu.Unlock()
+	reconcileIndexes(context.Background(), c, notReady)
+	reconcileIndexes(context.Background(), c, ready)
+	require.False(t, active(), "the re-confirmation waits for the read outstanding at it")
+}
+
 func TestTrackedIndexesExcludesDeletedLedgers(t *testing.T) {
 	t.Parallel()
 

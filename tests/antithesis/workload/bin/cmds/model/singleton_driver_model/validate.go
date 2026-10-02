@@ -43,6 +43,7 @@ func (c *Checker) validateBulkSuccess(bulk oracle.Bulk, resp *servicepb.ApplyRes
 		case req.GetDeleteLedger() != nil:
 			name := req.GetDeleteLedger().GetName()
 			delete(c.indexCreateSeq, name)
+			delete(c.indexPromotions, name)
 			for key, obs := range c.retypeObs {
 				if obs.ledger == name {
 					delete(c.retypeObs, key)
