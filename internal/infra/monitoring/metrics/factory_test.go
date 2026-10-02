@@ -17,7 +17,7 @@ import (
 // manual reader, drives the wrapping factory under test, registers
 // instruments and returns the set of names actually exported by the
 // SDK.
-func collectInstrumentNames(t *testing.T, naming metrics.Naming, register func(otelmetric.MeterProvider)) []string {
+func collectInstrumentNames(t *testing.T, naming metrics.Naming, prefix string, register func(otelmetric.MeterProvider)) []string {
 	t.Helper()
 
 	reader := sdkmetric.NewManualReader()
@@ -26,7 +26,7 @@ func collectInstrumentNames(t *testing.T, naming metrics.Naming, register func(o
 		_ = provider.Shutdown(context.Background())
 	})
 
-	factory := metrics.NewFactory(provider, naming)
+	factory := metrics.NewFactory(provider, naming, prefix)
 	register(factory)
 
 	var rm metricdata.ResourceMetrics
@@ -42,36 +42,16 @@ func collectInstrumentNames(t *testing.T, naming metrics.Naming, register func(o
 	return names
 }
 
-func TestFactory_OTelNamingPreservesNames(t *testing.T) {
-	t.Parallel()
+// registerSampleInstruments creates one counter per meter our code
+// owns (admission, wal, …) and per meter whose name hints at library
+// code we wrap ourselves (raft, pebble, numscript). Any instrument
+// created via the factory is subject to the policy. The OTel
+// auto-instrumentation that targets the *global* MeterProvider
+// bypasses the factory and is not exercised here.
+func registerSampleInstruments(t *testing.T) func(otelmetric.MeterProvider) {
+	t.Helper()
 
-	names := collectInstrumentNames(t, metrics.NamingOTel, func(mp otelmetric.MeterProvider) {
-		c, err := mp.Meter("admission").Int64Counter("admission.preload.total")
-		require.NoError(t, err)
-		c.Add(context.Background(), 1)
-
-		// Library-style meter names (raft, pebble) are equally
-		// preserved in OTel mode — the policy only triggers in prom.
-		c2, err := mp.Meter("raft.node").Int64Counter("raft.fsm.logs_appended")
-		require.NoError(t, err)
-		c2.Add(context.Background(), 1)
-	})
-
-	require.ElementsMatch(t, []string{
-		"admission.preload.total",
-		"raft.fsm.logs_appended",
-	}, names)
-}
-
-func TestFactory_PromNamingPrefixesEveryInstrument(t *testing.T) {
-	t.Parallel()
-
-	// Any instrument created via the factory is prefixed — meters
-	// our code owns (admission, wal, …) and meters whose names hint
-	// at library code we wrap ourselves (raft, pebble, numscript)
-	// alike. The OTel auto-instrumentation that targets the *global*
-	// MeterProvider bypasses the factory and is not exercised here.
-	names := collectInstrumentNames(t, metrics.NamingProm, func(mp otelmetric.MeterProvider) {
+	return func(mp otelmetric.MeterProvider) {
 		register := func(meter, instrument string) {
 			c, err := mp.Meter(meter).Int64Counter(instrument)
 			require.NoError(t, err)
@@ -82,30 +62,78 @@ func TestFactory_PromNamingPrefixesEveryInstrument(t *testing.T) {
 		register("raft.node", "raft.fsm.logs_appended")
 		register("pebble.runtime_store", "pebble.flush.total")
 		register("numscript", "numscript.cache.size")
-	})
+	}
+}
+
+func TestFactory_OTelNamingWithoutPrefixPreservesNames(t *testing.T) {
+	t.Parallel()
+
+	names := collectInstrumentNames(t, metrics.NamingOTel, "", registerSampleInstruments(t))
 
 	require.ElementsMatch(t, []string{
-		"ledger_admission_preload_total",
-		"ledger_wal_append_save_duration",
-		"ledger_raft_fsm_logs_appended",
-		"ledger_pebble_flush_total",
-		"ledger_numscript_cache_size",
+		"admission.preload.total",
+		"wal.append.save.duration",
+		"raft.fsm.logs_appended",
+		"pebble.flush.total",
+		"numscript.cache.size",
 	}, names)
 }
 
-func TestFactory_PromNamingDoesNotDoublePrefix(t *testing.T) {
+func TestFactory_OTelNamingPrefixesEveryInstrument(t *testing.T) {
 	t.Parallel()
 
-	// Call sites that hand-rolled the application namespace
-	// (`ledger.preload.coverage_miss`) must keep a single `ledger_`
-	// prefix in prom mode rather than getting `ledger_ledger_…`.
-	names := collectInstrumentNames(t, metrics.NamingProm, func(mp otelmetric.MeterProvider) {
-		c, err := mp.Meter("raft.node").Int64Counter("ledger.preload.coverage_miss")
+	names := collectInstrumentNames(t, metrics.NamingOTel, metrics.DefaultPrefix, registerSampleInstruments(t))
+
+	require.ElementsMatch(t, []string{
+		"formance.ledger.admission.preload.total",
+		"formance.ledger.wal.append.save.duration",
+		"formance.ledger.raft.fsm.logs_appended",
+		"formance.ledger.pebble.flush.total",
+		"formance.ledger.numscript.cache.size",
+	}, names)
+}
+
+func TestFactory_PromNamingPrefixesEveryInstrument(t *testing.T) {
+	t.Parallel()
+
+	names := collectInstrumentNames(t, metrics.NamingProm, metrics.DefaultPrefix, registerSampleInstruments(t))
+
+	require.ElementsMatch(t, []string{
+		"formance_ledger_admission_preload_total",
+		"formance_ledger_wal_append_save_duration",
+		"formance_ledger_raft_fsm_logs_appended",
+		"formance_ledger_pebble_flush_total",
+		"formance_ledger_numscript_cache_size",
+	}, names)
+}
+
+func TestFactory_PromNamingWithoutPrefixOnlyReplacesDots(t *testing.T) {
+	t.Parallel()
+
+	names := collectInstrumentNames(t, metrics.NamingProm, "", registerSampleInstruments(t))
+
+	require.ElementsMatch(t, []string{
+		"admission_preload_total",
+		"wal_append_save_duration",
+		"raft_fsm_logs_appended",
+		"pebble_flush_total",
+		"numscript_cache_size",
+	}, names)
+}
+
+func TestFactory_CustomPrefix(t *testing.T) {
+	t.Parallel()
+
+	register := func(mp otelmetric.MeterProvider) {
+		c, err := mp.Meter("admission").Int64Counter("admission.preload.total")
 		require.NoError(t, err)
 		c.Add(context.Background(), 1)
-	})
+	}
 
-	require.Equal(t, []string{"ledger_preload_coverage_miss"}, names)
+	require.Equal(t, []string{"acme.payments_ledger.admission.preload.total"},
+		collectInstrumentNames(t, metrics.NamingOTel, "acme.payments_ledger", register))
+	require.Equal(t, []string{"acme_payments_ledger_admission_preload_total"},
+		collectInstrumentNames(t, metrics.NamingProm, "acme.payments_ledger", register))
 }
 
 func TestFactory_PromNamingCoversEveryInstrumentKind(t *testing.T) {
@@ -114,7 +142,7 @@ func TestFactory_PromNamingCoversEveryInstrumentKind(t *testing.T) {
 	// Smoke-test every constructor on metric.Meter to make sure the
 	// wrapper doesn't drop any kind. The exact name choice doesn't
 	// matter — we only check that it comes out prefixed.
-	names := collectInstrumentNames(t, metrics.NamingProm, func(mp otelmetric.MeterProvider) {
+	names := collectInstrumentNames(t, metrics.NamingProm, metrics.DefaultPrefix, func(mp otelmetric.MeterProvider) {
 		m := mp.Meter("admission")
 		ctx := context.Background()
 
@@ -154,7 +182,7 @@ func TestFactory_PromNamingCoversEveryInstrumentKind(t *testing.T) {
 	// Every collected name should be prefixed.
 	require.NotEmpty(t, names)
 	for _, n := range names {
-		require.True(t, strings.HasPrefix(n, "ledger_"),
+		require.True(t, strings.HasPrefix(n, "formance_ledger_"),
 			"instrument %q is not prefixed", n)
 	}
 }
@@ -180,6 +208,48 @@ func TestParseNaming(t *testing.T) {
 		t.Run(tc.in, func(t *testing.T) {
 			t.Parallel()
 			got, err := metrics.ParseNaming(tc.in)
+			if tc.err {
+				require.Error(t, err)
+
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestParsePrefix(t *testing.T) {
+	t.Parallel()
+
+	long := strings.Repeat("a", metrics.MaxPrefixLength)
+	tests := []struct {
+		in   string
+		want string
+		err  bool
+	}{
+		{in: metrics.NoPrefix, want: ""}, // disables the namespace
+		{in: "", want: ""},               // explicit empty flag value
+		{in: metrics.DefaultPrefix, want: metrics.DefaultPrefix},
+		{in: "ledger", want: "ledger"},
+		{in: "acme.payments_ledger2", want: "acme.payments_ledger2"},
+		{in: long, want: long},
+		{in: long + "a", err: true},
+		{in: "formance.ledger.", err: true}, // trailing separator would yield ".."
+		{in: "formance..ledger", err: true},
+		{in: "formance_.ledger", err: true},
+		{in: "formance._ledger", err: true},
+		{in: ".formance", err: true},
+		{in: "formance_", err: true},
+		{in: "1formance", err: true},
+		{in: "formance-ledger", err: true}, // "-" is invalid in Prometheus names
+		{in: "formance ledger", err: true},
+		{in: "formance/ledger", err: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.in, func(t *testing.T) {
+			t.Parallel()
+			got, err := metrics.ParsePrefix(tc.in)
 			if tc.err {
 				require.Error(t, err)
 

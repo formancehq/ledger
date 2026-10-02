@@ -12,7 +12,7 @@ misc/devenv/monitoring-dashboards/
 │   ├── main.jsonnet                  # generator entry point
 │   ├── jsonnetfile.json              # grafonnet dependency manifest
 │   ├── lib/
-│   │   ├── naming.libsonnet          # otel ↔ prom rename policy
+│   │   ├── naming.libsonnet          # prefix + otel ↔ prom rename policy
 │   │   ├── metrics.libsonnet         # registry of applicative metric names
 │   │   ├── panels.libsonnet          # panel constructors (timeseries, heatmap, …)
 │   │   ├── queries.libsonnet         # PromQL helpers (rate, p50/p95, …)
@@ -36,7 +36,8 @@ misc/devenv/monitoring-dashboards/
 ├── config/
 │   └── dashboards/                   # generated artifacts (committed)
 │       ├── ledger-metrics-otel.json  # OTel dot-notation variant
-│       └── ledger-metrics-prom.json  # Prometheus underscore variant
+│       ├── ledger-metrics-prom.json  # Prometheus underscore variant
+│       └── …                         # remaining variants (see below)
 ├── main.go                           # Pulumi program — reads config/dashboards/
 └── README.md                         # this file
 ```
@@ -55,8 +56,8 @@ just generate-dashboards
 ```
 
 The recipe runs `jb install` once to vendor `grafonnet`, then
-`jsonnet -m config/dashboards jsonnet/main.jsonnet`. The output is seven
-JSON files under `config/dashboards/`. All seven are committed so Pulumi
+`jsonnet -m config/dashboards jsonnet/main.jsonnet`. The output is eight
+JSON files under `config/dashboards/`. All eight are committed so Pulumi
 can deploy without invoking Jsonnet.
 
 `generate-dashboards` is part of `just pre-commit`; CI fails if the
@@ -64,7 +65,7 @@ generated files have drifted from the source. `just test-dashboards`
 regenerates those files and then runs the nested Go module's semantic tests;
 it is also part of `pre-commit` and therefore runs in the Default CI workflow.
 
-## Seven variants
+## Eight variants
 
 The OTLP→Prometheus collector deployed in front of Grafana converts
 dots to underscores in metric and label names — a property of every
@@ -75,22 +76,29 @@ that vary by environment. The generator emits one variant per
 combination so the same source produces a dashboard that works for
 each.
 
-Pick the file matching your *(server flag, collector behaviour,
+Pick the file matching your *(server prefix, collector behaviour,
 histogram representation)* combination — the "Server" column is
-what the ledger emits, the "Collector" column is what the OTel→Prom
+the ledger's `--metrics-prefix`, the "Collector" column is what the OTel→Prom
 translator on top of it does (`pkg.translator.prometheus.NormalizeName`
 in the contrib collector, or `otlp.translation_strategy` in
 Prometheus 3.x's built-in OTLP receiver).
 
 | File | Server | Collector | Histograms | Examples |
 | ---- | ------ | --------- | ---------- | -------- |
-| `ledger-metrics-otel.json`                            | `--metrics-naming=otel` | preserves dots                       | classic | `raft.fsm.logs_appended`, `service.cluster` |
-| `ledger-metrics-prom.json`                            | `--metrics-naming=prom` | de-dots only (`NormalizeName=false`) | classic | `ledger_raft_fsm_logs_appended`, `ledger_admission_command_duration_bucket` |
-| `ledger-metrics-prom-normalized.json`                 | `--metrics-naming=prom` | full normalisation (default)         | classic | `ledger_raft_fsm_logs_appended_total`, `ledger_admission_command_duration_microseconds_bucket` |
-| `ledger-metrics-prom-normalized-native.json`          | `--metrics-naming=prom` | full normalisation (default)         | native  | `ledger_admission_command_duration_microseconds`, queried via `histogram_quantile(0.95, rate(metric[5m]))` directly |
-| `ledger-metrics-prom-noprefix.json`                   | `--metrics-naming=otel` | de-dots only (`NormalizeName=false`) | classic | `raft_fsm_logs_appended`, `admission_command_duration_bucket` |
-| `ledger-metrics-prom-noprefix-normalized.json`        | `--metrics-naming=otel` | full normalisation (default)         | classic | `raft_fsm_logs_appended_total`, `admission_command_duration_microseconds_bucket` |
-| `ledger-metrics-prom-noprefix-normalized-native.json` | `--metrics-naming=otel` | full normalisation (default)         | native  | `admission_command_duration_microseconds`, queried via `histogram_quantile(0.95, rate(metric[5m]))` directly |
+| `ledger-metrics-otel.json`                            | `formance.ledger` (default) | preserves dots (`--metrics-naming=otel`) | classic | `formance.ledger.raft.fsm.logs_appended`, `service.cluster` |
+| `ledger-metrics-prom.json`                            | `formance.ledger` (default) | de-dots only (`NormalizeName=false`) | classic | `formance_ledger_raft_fsm_logs_appended`, `formance_ledger_admission_command_duration_bucket` |
+| `ledger-metrics-prom-normalized.json`                 | `formance.ledger` (default) | full normalisation (default)         | classic | `formance_ledger_raft_fsm_logs_appended_total`, `formance_ledger_admission_command_duration_microseconds_bucket` |
+| `ledger-metrics-prom-normalized-native.json`          | `formance.ledger` (default) | full normalisation (default)         | native  | `formance_ledger_admission_command_duration_microseconds`, queried via `histogram_quantile(0.95, rate(metric[5m]))` directly |
+| `ledger-metrics-otel-noprefix.json`                   | `none`                      | preserves dots (`--metrics-naming=otel`) | classic | `raft.fsm.logs_appended`, `service.cluster` |
+| `ledger-metrics-prom-noprefix.json`                   | `none`                      | de-dots only (`NormalizeName=false`) | classic | `raft_fsm_logs_appended`, `admission_command_duration_bucket` |
+| `ledger-metrics-prom-noprefix-normalized.json`        | `none`                      | full normalisation (default)         | classic | `raft_fsm_logs_appended_total`, `admission_command_duration_microseconds_bucket` |
+| `ledger-metrics-prom-noprefix-normalized-native.json` | `none`                      | full normalisation (default)         | native  | `admission_command_duration_microseconds`, queried via `histogram_quantile(0.95, rate(metric[5m]))` directly |
+
+The `prom*` variants work with either `--metrics-naming` value: a
+de-dotting collector turns `formance.ledger.raft.fsm.logs_appended`
+into the same `formance_ledger_raft_fsm_logs_appended` that
+`--metrics-naming=prom` emits directly. A custom `--metrics-prefix`
+has no pre-built variant.
 
 The `-native` variants target Prometheus 3.x with the OTLP receiver
 in its default mode (or an OTel collector with
@@ -125,7 +133,7 @@ series for classic histograms and to `histogram_sum`/
 The generated datasource default follows the histogram mode:
 classic variants select `Prometheus`, while native variants select
 `Prometheus Native`. In the standard devenv monitoring stack use
-`ledger-metrics-prom-noprefix-normalized-native.json`.
+`ledger-metrics-prom-normalized-native.json`.
 
 The "**normalised**" variants assume the standard OTel→Prom
 transformation: dots → underscores, the UCUM unit suffix (`By` →
@@ -137,13 +145,14 @@ this category.
 
 Every metric the server emits — `admission.*`, `cache.*`, `wal.*`,
 `raft.*` (our instrumentation of etcd-raft), `pebble.*` (our
-instrumentation of Pebble) — gains a `ledger_` prefix in the `prom`
-variant. See [../../../docs/ops/monitoring.md](../../../docs/ops/monitoring.md)
+instrumentation of Pebble) — gains the `formance.ledger` prefix
+(`formance_ledger_` once de-dotted) in every variant without
+`-noprefix`. See [../../../docs/ops/monitoring.md](../../../docs/ops/monitoring.md)
 for the rationale. OTel semantic-convention auto-instrumentation
-(`go.*`, `process.*`, `system.*`, `http.*`) is emitted via the
-global MeterProvider in the server and bypasses the renaming policy
-entirely; in the `prom` variant those names are merely de-dotted by
-the collector, never prefixed. Attribute names (`service.cluster`,
+(`go.*`, `process.*`, `system.*`, `http.*`, `rpc.*`) is emitted via
+the global MeterProvider in the server and bypasses the naming
+policy entirely; in the `prom*` variants those names are merely
+de-dotted by the collector, never prefixed. Attribute names (`service.cluster`,
 `network.io.direction`, …) are de-dotted too but never prefixed
 either.
 
@@ -153,8 +162,8 @@ factory in `internal/infra/monitoring/metrics`) and in Jsonnet
 Go-side test `registry_test.go` cross-checks **name coverage**
 only: every metric listed in `lib/metrics.libsonnet` must be
 emitted by a call site, and every emitted name must be listed.
-It does **not** assert that `transformName(name, NamingProm)` in
-Go and `transformMetric(name, 'prom')` in Jsonnet produce
+It does **not** assert that `transformName(name, naming, prefix)`
+in Go and `transformMetric(name, mode)` in Jsonnet produce
 identical output — keeping the two transformations algorithmically
 in sync is a contributor responsibility, and any divergence in the
 prefix or the unit table will silently break dashboards.
@@ -163,8 +172,8 @@ prefix or the unit table will silently break dashboards.
 
 1. Create the instrument in Go on any meter obtained from the
    injected `metric.MeterProvider`. There is no per-meter allowlist:
-   the naming factory rewrites every instrument it sees in `prom`
-   mode. If the new metric uses an OTel semantic-convention prefix
+   the naming factory prefixes (and, in `prom` mode, de-dots) every
+   instrument it sees. If the new metric uses an OTel semantic-convention prefix
    (`go.*`, `process.*`, `system.*`, `http.*`, …) add that prefix to
    `naming.libsonnet#semconvPrefixes` so the dashboard transform
    skips it.

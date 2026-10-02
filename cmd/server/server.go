@@ -35,6 +35,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/bootstrap"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/flightrecorder"
+	ledgermetrics "github.com/formancehq/ledger/v3/internal/infra/monitoring/metrics"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/pyroscope"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
@@ -165,15 +166,18 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 	// Admission metrics (disabled by default to avoid contention under high concurrency)
 	runCmd.Flags().Bool("admission-metrics", false, "Enable admission metrics (histograms/counters in the admission hot path)")
 
-	// Naming convention for metrics emitted by the server. "otel" preserves
-	// dot-notation names (the OpenTelemetry default); "prom" prefixes every
-	// metric the server emits with "ledger_" and converts dots to underscores
-	// so the names are unambiguous after an OTLP→Prometheus collector that
-	// sanitizes "." into "_". OpenTelemetry semantic-convention
-	// auto-instrumentation (go.*, process.*, system.*, http.*) targets the
-	// global MeterProvider, bypasses the ledger factory, and is therefore
-	// never touched by this flag.
+	// Naming convention and namespace for metrics emitted by the
+	// server's own instrumentation. "otel" keeps dot-notation names
+	// (the OpenTelemetry default); "prom" converts dots to underscores.
+	// The prefix (default "formance.ledger", "none" to disable) is
+	// prepended to every name so the ledger metrics are grouped and
+	// unambiguous in a backend shared with other services.
+	// OpenTelemetry semantic-convention auto-instrumentation (go.*,
+	// process.*, system.*, http.*, rpc.*) targets the global
+	// MeterProvider, bypasses the ledger factory, and is therefore
+	// never touched by these flags.
 	runCmd.Flags().String("metrics-naming", "otel", "Application metrics naming convention (otel|prom)")
+	runCmd.Flags().String("metrics-prefix", ledgermetrics.DefaultPrefix, "Namespace prepended to application metric names (\"none\" to disable)")
 
 	// Response signing key for Ed25519 response signatures
 	runCmd.Flags().String("response-signing-key", "", "Path to Ed25519 seed file for response signing (empty = disabled)")
@@ -601,6 +605,11 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 
 	// Metrics naming convention
 	cfg.MetricsNaming = getString("metrics-naming", "otel")
+	// Read the flag directly rather than through getString: an explicit
+	// empty value disables the prefix (like "none") and must not be
+	// replaced by the default. The error is ignored because the
+	// flag is registered as a string on this command.
+	cfg.MetricsPrefix, _ = cmd.Flags().GetString("metrics-prefix")
 
 	// Response signing key
 	cfg.ResponseSigningKeyFile = getString("response-signing-key", "")

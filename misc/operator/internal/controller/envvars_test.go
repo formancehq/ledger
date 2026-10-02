@@ -186,6 +186,30 @@ func TestBuildEnvVars_ThresholdsOmittedWhenEmpty(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Metrics naming & prefix
+// ---------------------------------------------------------------------------
+
+func TestBuildEnvVars_MetricsNamingAndPrefix(t *testing.T) {
+	t.Parallel()
+
+	ls := newMinimalCluster()
+	ls.Spec.MetricsNaming = "prom"
+	ls.Spec.MetricsPrefix = "acme.ledger"
+	envs := buildEnvVars(ls, "disabled", nil)
+	assertEnv(t, envs, "METRICS_NAMING", "prom")
+	assertEnv(t, envs, "METRICS_PREFIX", "acme.ledger")
+}
+
+func TestBuildEnvVars_MetricsNamingAndPrefixOmittedWhenEmpty(t *testing.T) {
+	t.Parallel()
+
+	ls := newMinimalCluster()
+	envs := buildEnvVars(ls, "disabled", nil)
+	assertNoEnv(t, envs, "METRICS_NAMING")
+	assertNoEnv(t, envs, "METRICS_PREFIX")
+}
+
+// ---------------------------------------------------------------------------
 // Numscript cache size & mirror max batch size
 // ---------------------------------------------------------------------------
 

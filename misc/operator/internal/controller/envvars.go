@@ -172,6 +172,7 @@ func buildEnvVars(ledger *ledgerv1alpha1.Cluster, targetTLSMode string, credenti
 
 	envs = appendIfBool(envs, "ADMISSION_METRICS", spec.AdmissionMetrics)
 	envs = appendIfStr(envs, "METRICS_NAMING", spec.MetricsNaming)
+	envs = appendIfStr(envs, "METRICS_PREFIX", spec.MetricsPrefix)
 	envs = appendIfBool(envs, "SENTINEL_MODE", spec.SentinelMode)
 	envs = appendIfBool(envs, "GRPC_COMPRESSION", spec.GrpcCompression)
 	envs = appendIfStr(envs, "QUERY_PROFILE_THRESHOLD", spec.QueryProfileThreshold)

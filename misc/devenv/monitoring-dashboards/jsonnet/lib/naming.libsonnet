@@ -10,18 +10,19 @@
 // test: `registry_test.go` only verifies metric-name coverage (every
 // name listed in `lib/metrics.libsonnet` has a Go call site and
 // vice versa). Algorithmic equivalence between
-// `transformName(name, NamingProm)` in Go and
-// `transformMetric(name, 'prom')` here is a contributor
+// `transformName(name, naming, prefix)` in Go and
+// `transformMetric(name, mode)` here is a contributor
 // responsibility — diverging on the prefix or the unit map breaks
 // dashboards silently.
 //
-// Seven modes are emitted (one JSON file per mode) covering the
-// cross product of three orthogonal collector behaviours:
+// Eight modes are emitted (one JSON file per mode) covering the
+// cross product of the server prefix and three orthogonal collector
+// behaviours:
 //
-//   * otel — preserves dots end-to-end (Prom 3.x with
+//   * otel[-noprefix] — preserves dots end-to-end (server in
+//     `--metrics-naming=otel`, Prom 3.x with
 //     `otlp.translation_strategy: NoTranslation`).
-//   * prom[-noprefix] — underscores; `ledger_` prefix when the
-//     server runs in `--metrics-naming=prom`. No unit suffix and no
+//   * prom[-noprefix] — underscores. No unit suffix and no
 //     automatic `_total` (collector with `NormalizeName=false`).
 //   * prom[-noprefix]-normalized — same plus the OTel→Prometheus
 //     unit suffix (`us` → `microseconds`, `By` → `bytes`, …),
@@ -31,6 +32,10 @@
 //   * prom[-noprefix]-normalized-native — same as -normalized but
 //     histograms are stored as native (single time series, no
 //     `_bucket` / `_count` / `_sum` split, no `le` label).
+//
+// Modes without `-noprefix` assume the server runs with the default
+// `--metrics-prefix=formance.ledger`; `-noprefix` modes assume
+// `--metrics-prefix=none`. A custom prefix is not generated.
 //
 // Scope of the policy: every metric our code emits is subject to
 // the rename. OpenTelemetry semantic-convention auto-instrumentation
@@ -43,9 +48,10 @@
 local metadata = import 'metric_metadata.libsonnet';
 
 {
-  // prefix is prepended (with an underscore separator in `prom`
-  // modes) to every metric our code emits.
-  prefix:: 'ledger',
+  // prefix is prepended to every metric our code emits, with a `.`
+  // separator in `otel` modes and with dots replaced by underscores
+  // in `prom` modes. Must match `metrics.DefaultPrefix` in Go.
+  prefix:: 'formance.ledger',
 
   // semconvPrefixes are the metric-name prefixes that come from
   // OpenTelemetry semantic-convention auto-instrumentation (the SDK
@@ -164,9 +170,10 @@ local metadata = import 'metric_metadata.libsonnet';
         else match(suffixes[1:]);
     match($.histogramSuffixes),
 
-  // modeConfig returns the policy knobs for a given mode name. Three
-  // orthogonal choices:
-  //   prefix    — add the `ledger_` namespace to our metrics?
+  // modeConfig returns the policy knobs for a given mode name:
+  //   otel      — collector preserved dots (no `.` → `_` rewrite)?
+  //   prefix    — server added the `formance.ledger` namespace to
+  //               our metrics?
   //   normalize — apply the OTel→Prom unit-suffix and `_total` rules?
   //   native    — Prometheus 3.x stored OTel histograms as native
   //               histograms (one time series carrying the bucket
@@ -177,7 +184,8 @@ local metadata = import 'metric_metadata.libsonnet';
   //
   // Semconv metric names are never prefixed regardless of `prefix`.
   modeConfig(mode)::
-    if mode == 'otel' then { otel: true, prefix: false, normalize: false, native: false }
+    if mode == 'otel' then { otel: true, prefix: true, normalize: false, native: false }
+    else if mode == 'otel-noprefix' then { otel: true, prefix: false, normalize: false, native: false }
     else if mode == 'prom' then { otel: false, prefix: true, normalize: false, native: false }
     else if mode == 'prom-normalized' then { otel: false, prefix: true, normalize: true, native: false }
     else if mode == 'prom-normalized-native' then { otel: false, prefix: true, normalize: true, native: true }
@@ -199,31 +207,24 @@ local metadata = import 'metric_metadata.libsonnet';
   // invalid in native mode.
   transformMetric(name, mode):: (
     local cfg = $.modeConfig(mode);
-    if cfg.otel then name
+    local stripped = $.stripHistogramSuffix(name);
+    local origSfx = stripped[0];
+    local base = stripped[1];
+    local effectiveSfx =
+      if cfg.native && origSfx == '_bucket' then ''
+      else origSfx;
+    local prefixed =
+      if $.isSemconv(base) || !cfg.prefix then base
+      else $.prefix + '.' + base;
+    if cfg.otel then prefixed + origSfx
     else
-      local stripped = $.stripHistogramSuffix(name);
-      local origSfx = stripped[0];
-      local base = stripped[1];
-      local effectiveSfx =
-        if cfg.native && origSfx == '_bucket' then ''
-        else origSfx;
-      local isSC = $.isSemconv(base);
-      local underscored = $.dotsToUnderscores(base);
-      // Skip the application prefix when the name already carries
-      // it (an existing `ledger.…` instrument from call sites that
-      // hand-rolled the namespace) — otherwise we'd emit
-      // `ledger_ledger_…`. Mirrors the same check in Go's
-      // `transformName`.
-      local alreadyPrefixed = std.startsWith(underscored, $.prefix + '_');
-      local prefixed =
-        if isSC || !cfg.prefix || alreadyPrefixed then underscored
-        else $.prefix + '_' + underscored;
+      local underscored = $.dotsToUnderscores(prefixed);
       local transformed =
         if cfg.normalize then
           local meta = $.metadataOf(base);
-          if meta == null then prefixed
-          else $.normalizeName(prefixed, meta.kind, meta.unit)
-        else prefixed;
+          if meta == null then underscored
+          else $.normalizeName(underscored, meta.kind, meta.unit)
+        else underscored;
       transformed + effectiveSfx
   ),
 
@@ -231,7 +232,7 @@ local metadata = import 'metric_metadata.libsonnet';
   // never prefixed; the collector simply replaces dots with
   // underscores, so we mirror that here.
   transformLabel(name, mode)::
-    if mode == 'otel' then name
+    if $.modeConfig(mode).otel then name
     else $.dotsToUnderscores(name),
 
   // The output modes — the dashboard generator iterates over this
@@ -240,6 +241,7 @@ local metadata = import 'metric_metadata.libsonnet';
   // misc/devenv/monitoring-dashboards/README.md for the matrix.
   modes:: [
     'otel',
+    'otel-noprefix',
     'prom',
     'prom-normalized',
     'prom-normalized-native',

@@ -157,6 +157,7 @@ type Config struct {
 	ClusterID              string
 	AdmissionMetrics       bool
 	MetricsNaming          string
+	MetricsPrefix          string
 	ResponseSigningKeyFile string
 	PoolConfig             transport.PoolConfig
 	TLSConfig              TLSConfig
@@ -315,6 +316,10 @@ func (c Config) Validate() error {
 
 	if _, err := metrics.ParseNaming(c.MetricsNaming); err != nil {
 		return fmt.Errorf("--metrics-naming: %w", err)
+	}
+
+	if _, err := metrics.ParsePrefix(c.MetricsPrefix); err != nil {
+		return fmt.Errorf("--metrics-prefix: %w", err)
 	}
 
 	if err := c.SnapshotSyncConfig.Validate(); err != nil {
