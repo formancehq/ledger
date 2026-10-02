@@ -19,9 +19,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/auth"
-	"github.com/formancehq/ledger/v3/internal/application/accountlifecycle"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -104,7 +102,6 @@ type Admission struct {
 	ordersPreparationDurationHistogram  metric.Int64Histogram
 	scriptsDurationHistogram            metric.Int64Histogram
 	responseResolutionDurationHistogram metric.Int64Histogram
-	lifecycleSerializer                 *accountlifecycle.Serializer
 }
 
 // phaseBucketBoundaries are the explicit bucket boundaries for the µs-scale
@@ -138,12 +135,6 @@ func WithAuditProjectionState(state func() (disabled, rebuilding bool)) func(*Ad
 	}
 }
 
-func WithLifecycleSerializer(serializer *accountlifecycle.Serializer) func(*Admission) {
-	return func(a *Admission) {
-		a.lifecycleSerializer = serializer
-	}
-}
-
 func NewAdmission(
 	store *dal.Store,
 	logger logging.Logger,
@@ -159,17 +150,16 @@ func NewAdmission(
 	opts ...func(*Admission),
 ) *Admission {
 	a := &Admission{
-		store:               store,
-		logger:              logger,
-		proposer:            proposer,
-		builder:             builder,
-		writeGate:           writeGate,
-		keyStore:            keyStore,
-		sharedState:         sharedState,
-		attrs:               attrs,
-		numscriptCache:      numscriptCache,
-		waitLeaderReady:     waitLeaderReady,
-		lifecycleSerializer: accountlifecycle.NewSerializer(),
+		store:           store,
+		logger:          logger,
+		proposer:        proposer,
+		builder:         builder,
+		writeGate:       writeGate,
+		keyStore:        keyStore,
+		sharedState:     sharedState,
+		attrs:           attrs,
+		numscriptCache:  numscriptCache,
+		waitLeaderReady: waitLeaderReady,
 	}
 	for _, opt := range opts {
 		opt(a)
@@ -646,11 +636,6 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (res
 	if err := a.resolveScriptsAndEnrichNeeds(ctx, orders, overlay, needs, perOrder, batch.key != ""); err != nil {
 		return nil, err
 	}
-	releaseLifecycle, err := a.expandAccountLifecycleCoverage(ctx, needs, perOrder, orders)
-	if err != nil {
-		return nil, fmt.Errorf("expanding account lifecycle coverage: %w", err)
-	}
-	defer func() { releaseLifecycle() }()
 	stopScripts()
 
 	// Step 3-5: Build preloads via shared Builder (no lock)
@@ -803,14 +788,6 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (res
 		proposeSpan.End()
 		guard.ReleaseLoaders()
 		a.proposeQueueInflight.Add(-1)
-		if ctx.Err() != nil {
-			// Propose already queued the command. Cancellation only stops this
-			// caller's acceptance wait; the FSM can still apply it later. Keep
-			// lifecycle serialization until that definitive completion.
-			release := releaseLifecycle
-			releaseLifecycle = func() {}
-			releaseLifecycleWhenFSMCompletes(fsmFuture, release)
-		}
 
 		return nil, err
 	}
@@ -834,15 +811,6 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (res
 	defer stopFSMWait()
 
 	result, err := fsmFuture.Wait(ctx)
-	if err != nil && ctx.Err() != nil {
-		// The proposal was accepted by Raft, so caller cancellation only stops
-		// this request's wait; it does not mean apply has finished. Transfer the
-		// lifecycle-lock release to an uncancellable waiter so a concurrent
-		// admission cannot enumerate the same account against pre-apply state.
-		release := releaseLifecycle
-		releaseLifecycle = func() {}
-		releaseLifecycleWhenFSMCompletes(fsmFuture, release)
-	}
 
 	// Observe caller attribution only when the FSM actually wrote an audit
 	// entry for this proposal — a success or a committed business-rule failure.
@@ -909,214 +877,6 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (res
 	}
 
 	return &domain.ApplyResult{Logs: logs, Replayed: result.Replayed}, nil
-}
-
-func releaseLifecycleWhenFSMCompletes(fsmFuture *futures.Future[state.ApplyResult], release func()) {
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		_, _ = fsmFuture.Wait(ctx)
-		release()
-	}()
-}
-
-// expandAccountLifecycleCoverage enumerates every persisted volume and metadata
-// key owned by an account already mentioned by an order's coverage. The FSM
-// uses this closed key set to decide and apply an account-wide EPHEMERAL purge
-// without scanning Pebble or bypassing the coverage gate.
-func (a *Admission) expandAccountLifecycleCoverage(ctx context.Context, aggregate *plan.Coverage, perOrder []*plan.Coverage, orders []*raftcmdpb.Order) (func(), error) {
-	accountsToLock := make(map[domain.AccountKey]struct{})
-	lockAll := false
-	perOrderAccounts := make([]map[domain.AccountKey]struct{}, len(perOrder))
-
-	// Lock every touched account before reading account-type snapshots. Type
-	// mutations take every stripe because a pattern can change the persistence
-	// class of any address in the ledger. This makes the type snapshot and the
-	// subsequent key enumeration one serialized lifecycle operation.
-	for orderIndex, coverage := range perOrder {
-		accounts, err := accountlifecycle.Accounts(coverage)
-		if err != nil {
-			return nil, err
-		}
-		for account := range accounts {
-			accountsToLock[account] = struct{}{}
-		}
-		perOrderAccounts[orderIndex] = accounts
-	}
-	for _, order := range orders {
-		apply := order.GetLedgerScoped().GetApply()
-		if apply == nil {
-			continue
-		}
-		switch apply.GetData().(type) {
-		case *raftcmdpb.LedgerApplyOrder_AddAccountType, *raftcmdpb.LedgerApplyOrder_RemoveAccountType:
-			lockAll = true
-		}
-	}
-	release, err := a.lifecycleSerializer.Acquire(ctx, accountsToLock, lockAll)
-	if err != nil {
-		return nil, err
-	}
-	success := false
-	defer func() {
-		if !success {
-			release()
-		}
-	}()
-	compiledByLedger, err := a.accountLifecycleTypeSnapshots(orders)
-	if err != nil {
-		return nil, err
-	}
-	handle, err := a.store.NewReadHandle()
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = handle.Close() }()
-
-	// Account-type mutations can reclassify accounts without directly touching
-	// any account row. Enumerate persisted ledger-scoped rows while all lifecycle
-	// stripes are held so newly EPHEMERAL accounts enter both coverage and the
-	// FSM purge candidate set.
-	for orderIndex, order := range orders {
-		ledgerOrder := order.GetLedgerScoped()
-		apply := ledgerOrder.GetApply()
-		if apply == nil {
-			continue
-		}
-		switch apply.GetData().(type) {
-		case *raftcmdpb.LedgerApplyOrder_AddAccountType, *raftcmdpb.LedgerApplyOrder_RemoveAccountType:
-		default:
-			continue
-		}
-		ledger := ledgerOrder.GetLedger()
-		for _, spec := range []struct{ attrCode byte }{
-			{dal.SubAttrVolume},
-			{dal.SubAttrMetadata},
-		} {
-			canonicalPrefix := domain.LedgerScopedPrefix(ledger)
-			lower := append([]byte{dal.ZoneAttributes, spec.attrCode}, canonicalPrefix...)
-			upper := append([]byte(nil), lower...)
-			upper[len(upper)-1]++
-			iter, iterErr := dal.NewBoundedIter(handle, lower, upper)
-			if iterErr != nil {
-				return nil, iterErr
-			}
-			for iter.First(); iter.Valid(); iter.Next() {
-				canonical := append([]byte(nil), iter.Key()[2:]...)
-				var account domain.AccountKey
-				if spec.attrCode == dal.SubAttrVolume {
-					var key domain.VolumeKey
-					if err := key.Unmarshal(canonical); err != nil {
-						_ = iter.Close()
-
-						return nil, err
-					}
-					account = key.AccountKey
-				} else {
-					var key domain.MetadataKey
-					if err := key.Unmarshal(canonical); err != nil {
-						_ = iter.Close()
-
-						return nil, err
-					}
-					account = key.AccountKey
-				}
-				if accountMatchesEphemeralSnapshot(account.Account, compiledByLedger[ledger]) {
-					perOrder[orderIndex].AddLifecycleCandidate(spec.attrCode, canonical)
-					aggregate.AddLifecycleCandidate(spec.attrCode, append([]byte(nil), canonical...))
-				}
-			}
-			if err := iter.Error(); err != nil {
-				_ = iter.Close()
-
-				return nil, err
-			}
-			if err := iter.Close(); err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	for orderIndex, coverage := range perOrder {
-		accounts := perOrderAccounts[orderIndex]
-		for account := range accounts {
-			if !accountMatchesEphemeralSnapshot(account.Account, compiledByLedger[account.LedgerName]) {
-				continue
-			}
-			if err := accountlifecycle.AddPersistedRows(handle, account, coverage, aggregate); err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	success = true
-
-	return release, nil
-}
-
-// accountLifecycleTypeSnapshots returns every account-type view that can be
-// observed while the proposal is processed. Keeping the intermediate views is
-// deliberately conservative: a skipped add/remove may leave either side of a
-// transition effective, and coverage must be sufficient for both outcomes.
-func (a *Admission) accountLifecycleTypeSnapshots(orders []*raftcmdpb.Order) (map[string][][]accounttype.CompiledType, error) {
-	typesByLedger := make(map[string]map[string]*commonpb.AccountType)
-	snapshots := make(map[string][][]accounttype.CompiledType)
-	load := func(ledger string) (map[string]*commonpb.AccountType, error) {
-		if types, ok := typesByLedger[ledger]; ok {
-			return types, nil
-		}
-		info, err := a.attrs.Ledger.Get(a.store, domain.LedgerKey{Name: ledger}.Bytes())
-		if err != nil {
-			return nil, err
-		}
-		types := make(map[string]*commonpb.AccountType)
-		if info != nil {
-			for name, accountType := range info.GetAccountTypes() {
-				types[name] = accountType.CloneVT()
-			}
-		}
-		typesByLedger[ledger] = types
-		snapshots[ledger] = append(snapshots[ledger], accounttype.CompileTypes(types))
-
-		return types, nil
-	}
-
-	for _, order := range orders {
-		ledgerOrder := order.GetLedgerScoped()
-		if ledgerOrder == nil || ledgerOrder.GetApply() == nil {
-			continue
-		}
-		ledger := ledgerOrder.GetLedger()
-		types, err := load(ledger)
-		if err != nil {
-			return nil, err
-		}
-		switch data := ledgerOrder.GetApply().GetData().(type) {
-		case *raftcmdpb.LedgerApplyOrder_AddAccountType:
-			if accountType := data.AddAccountType.GetAccountType(); accountType != nil {
-				if _, exists := types[accountType.GetName()]; !exists {
-					types[accountType.GetName()] = accountType.CloneVT()
-					snapshots[ledger] = append(snapshots[ledger], accounttype.CompileTypes(types))
-				}
-			}
-		case *raftcmdpb.LedgerApplyOrder_RemoveAccountType:
-			delete(types, data.RemoveAccountType.GetName())
-			snapshots[ledger] = append(snapshots[ledger], accounttype.CompileTypes(types))
-		}
-	}
-
-	return snapshots, nil
-}
-
-func accountMatchesEphemeralSnapshot(account string, snapshots [][]accounttype.CompiledType) bool {
-	for _, compiled := range snapshots {
-		matched := accounttype.FindMatchingType(account, compiled)
-		if matched != nil && matched.GetPersistence() == commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL {
-			return true
-		}
-	}
-
-	return false
 }
 
 func (a *Admission) checkQueryCheckpointProjectionReady(reqs []*servicepb.Request) error {
@@ -1543,7 +1303,7 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 		// so this SubAttrBoundary declaration is consumed on the gated
 		// path and the coverage gate IS enforced on the cascade
 		// (invariants #6 and #9). The delete flushes at Merge to
-		// KeyStore.Tombstone, which still
+		// KeyStore.Delete → AttributeCache.Del, which still
 		// lazy-fabricates a Gen0 tombstone from Gen1's tag if a concurrent
 		// write raced with the rotation.
 		p.Add(dal.SubAttrBoundary, ledgerBytes)
@@ -1599,7 +1359,7 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 			case *commonpb.Target_Account:
 				// Mirror-ingested v2 DELETE_METADATA log applies via
 				// processMirrorDeletedMetadata → AccountMetadata.Delete
-				// → KeyStore.Tombstone. Declare coverage; Tombstone
+				// → AttributeCache.Del. Declare coverage; Del itself
 				// lazy-fabricates a Gen0 tombstone from Gen1's tag when
 				// only Gen1 has the entry.
 				p.Add(dal.SubAttrMetadata, domain.MetadataKey{
@@ -1608,7 +1368,7 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 				}.Bytes())
 			case *commonpb.Target_TransactionId:
 				// Transaction metadata lives inside the TransactionState
-				// map — no strict-tombstone path, no extra coverage needed.
+				// map — no strict-Del path, no extra coverage needed.
 				addTransactionTargetNeeds(p, ledgerName, target.TransactionId)
 			}
 		}
@@ -1625,7 +1385,7 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 	case *raftcmdpb.LedgerScopedOrder_DeletePreparedQuery:
 		p.Add(dal.SubAttrLedger, ledgerBytes)
 		// processDeletePreparedQuery calls PreparedQueries.Delete →
-		// KeyStore.Tombstone. Declare coverage; Tombstone lazy-
+		// AttributeCache.Del. Declare coverage; Del itself lazy-
 		// fabricates a Gen0 tombstone from Gen1's tag if a concurrent
 		// Create + rotation raced with admission.
 		p.Add(dal.SubAttrPreparedQuery, domain.PreparedQueryKey{LedgerName: ledgerName, Name: payload.DeletePreparedQuery.GetName()}.Bytes())
@@ -1643,8 +1403,8 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 		}
 	case *raftcmdpb.LedgerScopedOrder_DeleteLedgerMetadata:
 		p.Add(dal.SubAttrLedger, ledgerBytes)
-		// Delete's apply calls KeyStore.Tombstone.
-		// Declare coverage (invariant #6 / #9); Tombstone lazy-
+		// Delete's apply calls KeyStore.Delete → AttributeCache.Del.
+		// Declare coverage (invariant #6 / #9); Del itself lazy-
 		// fabricates a Gen0 tombstone from Gen1's tag if a concurrent
 		// Save + rotation raced with admission.
 		p.Add(dal.SubAttrLedgerMetadata, domain.LedgerMetadataKey{LedgerName: ledgerName, Key: payload.DeleteLedgerMetadata.GetKey()}.Bytes())
@@ -1730,8 +1490,8 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 		case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
 			if target, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
 				// Account-metadata Delete's apply routes through
-				// KeyStore.Tombstone. Declare
-				// coverage (invariant #6 / #9); Tombstone lazy-
+				// KeyStore.Delete → AttributeCache.Del. Declare
+				// coverage (invariant #6 / #9); Del itself lazy-
 				// fabricates a Gen0 tombstone from Gen1's tag if a
 				// concurrent Save + rotation raced with admission.
 				p.Add(dal.SubAttrMetadata, domain.MetadataKey{
@@ -1743,7 +1503,7 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 			if tx, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_TransactionId); ok {
 				// Transaction metadata lives inside the transaction state
 				// (a TransactionState.Metadata map, not a separate cache
-				// attribute), so strict-tombstone does not apply.
+				// attribute), so strict-Del does not apply.
 				addTransactionTargetNeeds(p, ledgerName, tx.TransactionId)
 			}
 
@@ -1755,8 +1515,8 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 
 		case *raftcmdpb.LedgerApplyOrder_DropIndex:
 			// processDropIndex calls DeleteIndex unconditionally.
-			// indexes.Remove → w.Delete → KeyStore.Tombstone.
-			// Declare coverage; Tombstone lazy-fabricates a Gen0
+			// indexes.Remove → w.Delete → AttributeCache.Del.
+			// Declare coverage; Del itself lazy-fabricates a Gen0
 			// tombstone from Gen1's tag across a
 			// CreateIndex→DropIndex race.
 			p.Add(dal.SubAttrIndex, domain.IndexKey{
@@ -1776,8 +1536,8 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 		case *raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType:
 			// Removing a schema field cascades into dropping the index;
 			// processRemoveMetadataFieldType probes the registry first.
-			// The cascade Find→indexes.Remove reaches Tombstone on hit.
-			// Declare coverage; Tombstone lazy-fabricates a Gen0
+			// The cascade Find→indexes.Remove reaches Del on hit.
+			// Declare coverage; Del itself lazy-fabricates a Gen0
 			// tombstone from Gen1's tag across a
 			// CreateIndex→RemoveMetadataFieldType race.
 			p.Add(dal.SubAttrIndex, domain.IndexKey{
@@ -1815,11 +1575,11 @@ func extractSystemScopedNeeds(p *plan.Coverage, ss *raftcmdpb.SystemScopedOrder)
 		// LogPayload_RemovedEventsSink cascades via WriteSet.Absorb into
 		// b.Derived.SinkConfigs.Delete(...) directly (NOT via
 		// gatedAccessor.Delete — the Absorb path calls the concrete
-		// DerivedKeyStore), then flushes at Merge to KeyStore.Tombstone →
-		// DerivedKeyStore.Merge → KeyStore.Tombstone. The coverage gate is therefore NOT enforced
+		// DerivedKeyStore), then flushes at Merge to KeyStore.Delete →
+		// AttributeCache.Del. The coverage gate is therefore NOT enforced
 		// on this cascade; the SinkConfig preload declared here is what
 		// makes the FSM's cache read horizon match admission's intent
-		// under invariant #6. Tombstone lazy-fabricates a Gen0 tombstone
+		// under invariant #6. Del itself lazy-fabricates a Gen0 tombstone
 		// from Gen1's tag across an Add→Remove race.
 		p.Add(dal.SubAttrSinkConfig, domain.SinkConfigKey{Name: payload.RemoveEventsSink.GetName()}.Bytes())
 

@@ -290,14 +290,6 @@ func declareTestPlan(id attributes.U128, attrCode byte) *raftcmdpb.AttributeCove
 	}
 }
 
-func declareCanonicalTestPlan(canonical []byte, attrCode byte) *raftcmdpb.AttributeCoverage {
-	id, _ := attributes.MakeKey(canonical)
-	plan := declareTestPlan(id, attrCode)
-	plan.CanonicalKey = canonical
-
-	return plan
-}
-
 // preloadTestPlan wraps an AttributeValue payload into a seeded
 // AttributeCoverage. attrID carries the canonical U128 + xxh3 collision
 // tag; attrCode (dal.SubAttrXxx) drives the unmarshal dispatch.
@@ -405,16 +397,17 @@ func buildOrderDeclarations(orders []*raftcmdpb.Order) []*raftcmdpb.AttributeCov
 	var declared []*raftcmdpb.AttributeCoverage
 
 	for name := range ledgers {
-		ledgerCanonical := (domain.LedgerKey{Name: name}).Bytes()
+		ledgerKeyID, _ := attributes.MakeKey(domain.LedgerKey{Name: name}.Bytes())
 		declared = append(declared,
-			declareCanonicalTestPlan(ledgerCanonical, dal.SubAttrLedger),
-			declareCanonicalTestPlan(ledgerCanonical, dal.SubAttrBoundary),
+			declareTestPlan(ledgerKeyID, dal.SubAttrLedger),
+			declareTestPlan(ledgerKeyID, dal.SubAttrBoundary),
 		)
 	}
 
 	for tk := range txs {
 		txKey := domain.TransactionKey{LedgerName: tk.ledgerName, ID: tk.id}
-		declared = append(declared, declareCanonicalTestPlan(txKey.Bytes(), dal.SubAttrTransaction))
+		txID, _ := attributes.MakeKey(txKey.Bytes())
+		declared = append(declared, declareTestPlan(txID, dal.SubAttrTransaction))
 	}
 
 	for k := range accMeta {
@@ -422,7 +415,8 @@ func buildOrderDeclarations(orders []*raftcmdpb.Order) []*raftcmdpb.AttributeCov
 			AccountKey: domain.AccountKey{LedgerName: k.ledgerName, Account: k.account},
 			Key:        k.key,
 		}.Bytes()
-		declared = append(declared, declareCanonicalTestPlan(mkBytes, dal.SubAttrMetadata))
+		mkID, _ := attributes.MakeKey(mkBytes)
+		declared = append(declared, declareTestPlan(mkID, dal.SubAttrMetadata))
 	}
 
 	return declared
@@ -479,10 +473,8 @@ func buildVolumePreloads(orders []*raftcmdpb.Order) []*raftcmdpb.AttributeCovera
 				id, tag := attributes.MakeKey(canonicalKey.Bytes())
 
 				attrID := &raftcmdpb.AttributeID{Id: id[:], Tag: tag}
-				plan := preloadTestPlan(attrID, dal.SubAttrVolume,
-					rawPreloadNoT(dal.SubAttrVolume, &raftcmdpb.VolumePair{Input: zero, Output: zero}))
-				plan.CanonicalKey = canonicalKey.Bytes()
-				plans = append(plans, plan)
+				plans = append(plans, preloadTestPlan(attrID, dal.SubAttrVolume,
+					rawPreloadNoT(dal.SubAttrVolume, &raftcmdpb.VolumePair{Input: zero, Output: zero})))
 			}
 		}
 	}

@@ -127,7 +127,6 @@ func auditComparableLog(log *commonpb.Log, sequence uint64) *commonpb.Log {
 		apply.Log.PurgedVolumes = nil
 		apply.Log.NewKeptVolumes = nil
 		apply.Log.EphemeralVolumes = nil
-		apply.Log.PurgedAccounts = nil
 	}
 	if cp := ret.GetPayload().GetCreatedQueryCheckpoint(); cp != nil {
 		cp.AppliedIndex = 0
@@ -361,8 +360,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// indirectly relies on, so a tampered cache cannot make a corrupted
 	// state look consistent.
 	stored := excludedVolumesSet{}
-	storedPurgedAccounts := make(map[domain.AccountKey]uint64)
-	lastFreshLogByLedger := make(map[string]uint64)
 	addStored := func(ledger, account, asset, color string) {
 		set, exists := stored[ledger]
 		if !exists {
@@ -383,18 +380,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	}
 
 	var replayWriter domainreplay.Writer = replay
-	flushEphemeralPurges := func(boundary uint64) error {
-		if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
-			return err
-		}
-		pendingPurges := replay.takePendingPurgedAccounts()
-		comparePurgedAccountProjections(storedPurgedAccounts, pendingPurges, lastFreshLogByLedger, boundary, callback)
-		clear(storedPurgedAccounts)
-		clear(lastFreshLogByLedger)
-
-		return nil
-	}
-
 	// Pass 1: Single forward iterator over all logs.
 	logIter, err := snap.NewIter(&pebble.IterOptions{
 		LowerBound: []byte{dal.ZoneHistory, dal.SubHistoryLog},
@@ -477,7 +462,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		}
 
 		for ephemeralPurgeBuffer != nil && hasProposalEnd && seq > nextProposalEnd {
-			if err := flushEphemeralPurges(nextProposalEnd); err != nil {
+			if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
 				return fmt.Errorf("flushing replay ephemeral purge at missing log boundary %d: %w", nextProposalEnd, err)
 			}
 
@@ -585,15 +570,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			for _, v := range apply.GetLog().GetEphemeralVolumes() {
 				addStored(ledgerName, v.GetAccount(), v.GetAsset(), v.GetColor())
 			}
-			for _, account := range apply.GetLog().GetPurgedAccounts() {
-				key := domain.AccountKey{LedgerName: ledgerName, Account: account}
-				if prior, exists := storedPurgedAccounts[key]; exists {
-					callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
-						fmt.Sprintf("stored account-purge annotation for %q occurs more than once in proposal (logs %d and %d)", account, prior, seq),
-						seq, ledgerName, account, ""))
-				}
-				storedPurgedAccounts[key] = seq
-			}
 		}
 
 		// Hash chain verification is now done via audit entries (see audit hash pass below).
@@ -692,13 +668,9 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					}
 
 					if payload.Apply.GetLog() != nil && payload.Apply.GetLog().GetData() != nil {
-						lastFreshLogByLedger[ledgerName] = seq
 						verifySavedMetadataAgainstAuditedOrder(ledgerName, seq, payload.Apply.GetLog().GetData(), chainBound, callback)
 
-						// purged_accounts is an unhashed projection. Checker expectations
-						// are derived independently from audit-bound effects at the proposal
-						// boundary; trusting this field would let tampering hide stale rows.
-						if err := domainreplay.ReplayLedgerLog(ledgerName, seq, payload.Apply.GetLog().GetData(), nil, payload.Apply.GetLog().GetDate(), replayWriter, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
+						if err := domainreplay.ReplayLedgerLog(ledgerName, seq, payload.Apply.GetLog().GetData(), payload.Apply.GetLog().GetDate(), replayWriter, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
 							return fmt.Errorf("replaying log %d: %w", seq, err)
 						}
 
@@ -801,7 +773,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		dispatchElisionCheck(seq, log, expectedSkippable, chainBound, callback)
 
 		if ephemeralPurgeBuffer != nil && hasProposalEnd && seq == nextProposalEnd {
-			if err := flushEphemeralPurges(nextProposalEnd); err != nil {
+			if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
 				return fmt.Errorf("flushing replay ephemeral purge at log %d: %w", seq, err)
 			}
 
@@ -852,7 +824,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	}
 
 	if ephemeralPurgeBuffer != nil {
-		if err := flushEphemeralPurges(storedMaxLogSeq); err != nil {
+		if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
 			return fmt.Errorf("flushing final replay ephemeral purge: %w", err)
 		}
 	}
@@ -884,7 +856,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// on otherwise-purged accounts).
 
 	// Comparison passes: expected = replayed state.
-	c.comparePurgedAccountAbsence(ctx, snap, replay.replayDerivedPurgedAccounts(), replay.replayDerivedPurgedVolumes(), callback)
 	c.compareVolumes(ctx, snap, replay, excluded, callback)
 	c.compareMetadata(ctx, snap, replay, excluded, callback)
 	c.compareTransactions(ctx, snap, replay, callback)
@@ -984,98 +955,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	return nil
 }
 
-// comparePurgedAccountAbsence verifies the physical current-state cascade for
-// account-wide EPHEMERAL purges. The ordinary comparison passes deliberately
-// exclude purged cells, so this independent assertion must run before those
-// filters can hide a surviving primary row.
-func (c *Checker) comparePurgedAccountAbsence(
-	ctx context.Context,
-	reader dal.PebbleReader,
-	purged map[domain.AccountKey]struct{},
-	purgedVolumes map[domain.VolumeKey]struct{},
-	callback func(*servicepb.CheckStoreEvent),
-) {
-	if len(purged) == 0 && len(purgedVolumes) == 0 {
-		return
-	}
-
-	volumes, err := c.attrs.Volume.NewStreamingIter(reader, nil)
-	if err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
-			fmt.Sprintf("failed to scan purged-account volumes: %v", err), 0, "", "", ""))
-
-		return
-	}
-	for volumes.Next() {
-		if ctx.Err() != nil {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
-				fmt.Sprintf("purged-account volume scan canceled: %v", ctx.Err()), 0, "", "", ""))
-
-			break
-		}
-		entry := volumes.Entry()
-		var key domain.VolumeKey
-		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
-				fmt.Sprintf("decoding volume key during purged-account scan: %v", err), 0, "", "", ""))
-
-			continue
-		}
-		_, accountPurged := purged[key.AccountKey]
-		_, volumePurged := purgedVolumes[key]
-		if accountPurged || volumePurged {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
-				fmt.Sprintf("volume row survives replay-derived account purge for %s/%s", key.Account, key.Asset),
-				0, key.LedgerName, key.Account, key.Asset))
-		}
-	}
-	if err := volumes.Err(); err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
-			fmt.Sprintf("scanning purged-account volumes: %v", err), 0, "", "", ""))
-	}
-	if err := volumes.Close(); err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
-			fmt.Sprintf("closing purged-account volume scan: %v", err), 0, "", "", ""))
-	}
-
-	metadata, err := c.attrs.Metadata.NewStreamingIter(reader, nil)
-	if err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
-			fmt.Sprintf("failed to scan purged-account metadata: %v", err), 0, "", "", ""))
-
-		return
-	}
-	for metadata.Next() {
-		if ctx.Err() != nil {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
-				fmt.Sprintf("purged-account metadata scan canceled: %v", ctx.Err()), 0, "", "", ""))
-
-			break
-		}
-		entry := metadata.Entry()
-		var key domain.MetadataKey
-		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
-				fmt.Sprintf("decoding metadata key during purged-account scan: %v", err), 0, "", "", ""))
-
-			continue
-		}
-		if _, ok := purged[key.AccountKey]; ok {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
-				fmt.Sprintf("metadata row survives replay-derived account purge for %s/%s", key.Account, key.Key),
-				0, key.LedgerName, key.Account, key.Key))
-		}
-	}
-	if err := metadata.Err(); err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
-			fmt.Sprintf("scanning purged-account metadata: %v", err), 0, "", "", ""))
-	}
-	if err := metadata.Close(); err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
-			fmt.Sprintf("closing purged-account metadata scan: %v", err), 0, "", "", ""))
-	}
-}
-
 // collectStoredTransientVolumes walks the AppliedProposal stream and feeds
 // every (ledger, account, asset, color) declared in TransientVolumes into
 // the addStored callback. Paired with the LedgerLog.PurgedVolumes captured
@@ -1154,32 +1033,6 @@ func compareExclusionProjections(stored, derived excludedVolumesSet, callback fu
 				0, ledger, vk.Account, vk.Asset,
 			))
 		}
-	}
-}
-
-func comparePurgedAccountProjections(stored map[domain.AccountKey]uint64, derived map[domain.AccountKey]struct{}, lastFreshLogByLedger map[string]uint64, boundary uint64, callback func(*servicepb.CheckStoreEvent)) {
-	for account, sequence := range stored {
-		if _, ok := derived[account]; ok {
-			if sequence == lastFreshLogByLedger[account.LedgerName] {
-				continue
-			}
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
-				fmt.Sprintf("stored account-purge annotation for %q is on log %d instead of terminal ledger log %d at proposal boundary %d", account.Account, sequence, lastFreshLogByLedger[account.LedgerName], boundary),
-				sequence, account.LedgerName, account.Account, ""))
-
-			continue
-		}
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
-			fmt.Sprintf("stored account-purge annotation for %q is not audit-derived at proposal boundary %d", account.Account, boundary),
-			boundary, account.LedgerName, account.Account, ""))
-	}
-	for account := range derived {
-		if _, ok := stored[account]; ok {
-			continue
-		}
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
-			fmt.Sprintf("audit-derived account purge for %q is missing from stored annotations at proposal boundary %d", account.Account, boundary),
-			boundary, account.LedgerName, account.Account, ""))
 	}
 }
 

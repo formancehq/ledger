@@ -57,23 +57,8 @@ Index creation and retyping add a second state machine. Queries serve
 `CurrentVersion` until the pending version is complete and its switch commits.
 Certification alone does not promote a rewrite. Drops, field removal, and
 ledger deletion must remove versioned keyspaces without invalidating readers
-holding leases; a reader whose pin predates a folded ledger deletion is
-rejected (`ErrLedgerNotFound`), never served the wiped keyspace as empty.
-Findings must locate the defect in row folding, certification, activation,
-or reclamation.
-
-Startup dispatch must describe the durable read-store cursor, not the newer
-main registry. Recover the cursor, ledger history, and active index versions
-from one read-store snapshot, and apply later drops or ledger deletions only
-when their logs are folded. An intermediate query-checkpoint certificate can
-wake a live read while checkpoint materialization waits for audit progress;
-it therefore claims complete pre-drop membership even before startup catch-up
-finishes. The regression witness closes and reopens both stores, starts a new
-live read pinned before the drop, and checks a non-empty result at that
-intermediate certificate. Record the actual startup read-admission path and
-audit notification, rather than assuming requests survive a process restart.
-Generic recovery coverage must also preserve backfill/rewrite ownership,
-tombstone high-water marks, and ledger-delete replay obligations after rollback.
+holding leases. Findings must locate the defect in row folding, certification,
+activation, or reclamation.
 
 An aligned read-index snapshot may legally be ahead of the main handle only
 when target-specific gates project it back to the main pin:
@@ -81,19 +66,8 @@ when target-specific gates project it back to the main pin:
 - transaction and log membership use `query.MainHorizonKeep`;
 - account metadata resolves event history at the pin and has-asset rows use
   first-touch stamps;
-- folded account membership applies an account-wide ephemeral purge to current
-  has-asset membership in the same batch as aligned progress, while metadata
-  history and account-to-transaction mappings remain queryable at older pins;
-- schema and `IndexVersionState` come from their owning pinned views;
-- ledger liveness is re-read as a live point lookup issued once the projection
-  snapshot is open (`requireLedgerLive`), so a folded deletion rejects the read.
-
-Account-wide ephemeral purge is an explicit exception to projection-ahead
-reads. If the main handle is pinned before a purge while the aligned index
-snapshot is acquired after it, the physically deleted current has-asset
-membership cannot be reconstructed at the older main pin. Callers
-that require that pre-purge membership must use a checkpoint whose main and
-index snapshots are aligned at the same applied horizon.
+- folded account membership retains the documented purged-address exception;
+- schema and `IndexVersionState` come from their owning pinned views.
 
 ### Audit and usage projections
 

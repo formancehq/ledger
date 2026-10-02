@@ -11,7 +11,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/kv"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // gatedTypesFor builds the gatedLedgerTypes map partitionVolumes consumes,
@@ -159,14 +158,9 @@ func TestPartitionEphemeralVolumes(t *testing.T) {
 			},
 		},
 		{
-			// A persisted normal zero row must be kept but not classified as
-			// newly created again on a later commit (EN-2051).
+			// Non-ephemeral + zero balance → should be kept
 			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "users:alice"}, Asset: "USD"},
 			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "users:alice"}, Asset: "USD"}).Bytes(),
-			Old: kv.Some(&raftcmdpb.VolumePair{
-				Input:  commonpb.NewUint256FromUint64(0),
-				Output: commonpb.NewUint256FromUint64(0),
-			}),
 			New: &raftcmdpb.VolumePair{
 				Input:  commonpb.NewUint256FromUint64(0),
 				Output: commonpb.NewUint256FromUint64(0),
@@ -190,11 +184,6 @@ func TestPartitionEphemeralVolumes(t *testing.T) {
 	require.Equal(t, "clearing:tx1", result.purged[0].Key.Account)
 
 	require.Len(t, result.kept, 3)
-	newKeptAccounts := make([]string, 0, len(result.newKept))
-	for _, update := range result.newKept {
-		newKeptAccounts = append(newKeptAccounts, update.Key.Account)
-	}
-	require.ElementsMatch(t, []string{"clearing:tx2", "unknown:addr"}, newKeptAccounts)
 	require.Empty(t, result.transient)
 }
 
@@ -339,28 +328,17 @@ func TestPartitionVolumesTransient_PreExistingBalance(t *testing.T) {
 			},
 		},
 		{
-			// TRANSIENT + undefined Old (fresh or tombstoned after purge)
+			// TRANSIENT + Old all-zero (post-purge placeholder / preload seed)
 			// → steady-state transient.
 			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:steady"}, Asset: "USD"},
 			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:steady"}, Asset: "USD"}).Bytes(),
-			New: &raftcmdpb.VolumePair{
-				Input:  commonpb.NewUint256FromUint64(42),
-				Output: commonpb.NewUint256FromUint64(42),
-			},
-		},
-		{
-			// TRANSIENT + persisted all-zero Old means the account changed from
-			// normal persistence; it must be purged rather than mistaken for an
-			// absence placeholder (EN-2051).
-			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:zero-persisted"}, Asset: "USD"},
-			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:zero-persisted"}, Asset: "USD"}).Bytes(),
 			Old: kv.Some(&raftcmdpb.VolumePair{
 				Input:  commonpb.NewUint256FromUint64(0),
 				Output: commonpb.NewUint256FromUint64(0),
 			}),
 			New: &raftcmdpb.VolumePair{
-				Input:  commonpb.NewUint256FromUint64(1),
-				Output: commonpb.NewUint256FromUint64(1),
+				Input:  commonpb.NewUint256FromUint64(42),
+				Output: commonpb.NewUint256FromUint64(42),
 			},
 		},
 		{
@@ -387,24 +365,21 @@ func TestPartitionVolumesTransient_PreExistingBalance(t *testing.T) {
 	require.Len(t, result.kept, 1)
 	require.Equal(t, "staging:draining", result.kept[0].Key.Account)
 
-	require.Len(t, result.purged, 3)
+	require.Len(t, result.purged, 2)
 	require.Equal(t, "staging:rebalanced", result.purged[0].Key.Account)
-	require.Equal(t, "staging:zero-persisted", result.purged[1].Key.Account)
-	require.Equal(t, "staging:stranded", result.purged[2].Key.Account)
-	require.Len(t, result.transientPurge, 3)
-	require.Equal(t, "staging:rebalanced", result.transientPurge[0].Key.Account)
-	require.Equal(t, "staging:zero-persisted", result.transientPurge[1].Key.Account)
-	require.Equal(t, "staging:stranded", result.transientPurge[2].Key.Account)
+	require.Equal(t, "staging:stranded", result.purged[1].Key.Account)
 
 	require.Len(t, result.transient, 1)
 	require.Equal(t, "staging:steady", result.transient[0].Key.Account)
 }
 
-// TestTombstoneVolumeCache_MarksKeyStoreAbsent guards the invariant that a
-// purged/transient cell remains a cache hit but reads as absent. That both
-// prevents cumulative values leaking into later batches and lets a later
-// default-normal write be classified as newly persisted after a policy change.
-func TestTombstoneVolumeCache_MarksKeyStoreAbsent(t *testing.T) {
+// TestZeroVolumeCache_OverwritesKeyStore guards the invariant that the in-memory
+// KeyStore (b.fsm.Registry.Volumes) ends up with {0, 0} after zeroVolumeCache,
+// regardless of the cumulative value that was Put before it ran. Without this
+// behaviour, a transient cell would silently carry its prior cumulative value
+// into the next batch's GetVolume → PCV, drifting away from the documented
+// "never persisted, must be zero at end of batch" semantic.
+func TestZeroVolumeCache_OverwritesKeyStore(t *testing.T) {
 	t.Parallel()
 
 	buf, machine, dataStore := newTestBuffer(t)
@@ -449,30 +424,28 @@ func TestTombstoneVolumeCache_MarksKeyStoreAbsent(t *testing.T) {
 	}
 
 	batch := dataStore.OpenWriteSession()
-	require.NoError(t, buf.tombstoneVolumeCache(batch, 0, updates))
+	require.NoError(t, buf.zeroVolumeCache(batch, 0, updates))
 	require.NoError(t, batch.Commit())
 
-	// After the call, both keys remain cache-resident tombstones and read as
-	// absent; readVolumeOrZero is the layer that synthesizes {0, 0}.
+	// After the call, both keys must read {0, 0} from the in-memory KeyStore.
 	for _, key := range []domain.VolumeKey{keyA, keyB} {
-		_, _, err := machine.Registry.Volumes.GetKey(key)
-		require.ErrorIs(t, err, domain.ErrNotFound)
-
-		entry, ok := machine.Registry.Volumes.KeyStore().GetEntry(key.Bytes())
-		require.True(t, ok)
-		require.True(t, entry.Deleted, "expected cache tombstone for %s", key.Account)
+		v, _, err := machine.Registry.Volumes.GetKey(key)
+		require.NoError(t, err)
+		require.True(t, isVolumeZeroBalance(v), "expected zero-balance KeyStore entry for %s", key.Account)
+		require.Equal(t, uint64(0), v.GetInput().GetV0())
+		require.Equal(t, uint64(0), v.GetOutput().GetV0())
 	}
 }
 
-// TestTombstoneVolumeCache_Empty is a no-op early-return guard so callers can hand
+// TestZeroVolumeCache_Empty is a no-op early-return guard so callers can hand
 // it an empty slice without an allocated batch write.
-func TestTombstoneVolumeCache_Empty(t *testing.T) {
+func TestZeroVolumeCache_Empty(t *testing.T) {
 	t.Parallel()
 
 	buf, _, dataStore := newTestBuffer(t)
 	batch := dataStore.OpenWriteSession()
 
-	require.NoError(t, buf.tombstoneVolumeCache(batch, 0, nil))
+	require.NoError(t, buf.zeroVolumeCache(batch, 0, nil))
 	require.NoError(t, batch.Commit())
 }
 
@@ -529,162 +502,4 @@ func TestBuildPurgedByLog_KeepsAssetDimension(t *testing.T) {
 	require.Len(t, out[1], 1)
 	require.Equal(t, account, out[1][0].GetAccount())
 	require.Equal(t, "USD", out[1][0].GetAsset())
-}
-
-func TestPrepareEphemeralAccountPurgeRequiresLastLiveVolume(t *testing.T) {
-	t.Parallel()
-
-	machine, _, _ := newTestMachine(t)
-	ledger := &commonpb.LedgerInfo{Name: "test", AccountTypes: map[string]*commonpb.AccountType{
-		"hold": {Name: "hold", Pattern: "hold:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL},
-	}}
-	ledgerKey := domain.LedgerKey{Name: "test"}
-	_, _, err := machine.Registry.Ledgers.KeyStore().Put(ledgerKey.Bytes(), ledger)
-	require.NoError(t, err)
-
-	usd := domain.NewVolumeKey("test", "hold:1", "USD", "")
-	eur := domain.NewVolumeKey("test", "hold:1", "EUR", "RED")
-	meta := domain.MetadataKey{AccountKey: usd.AccountKey, Key: "holdId"}
-	nonZero := &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(10), Output: commonpb.NewUint256FromUint64(0)}
-	zero := &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(10), Output: commonpb.NewUint256FromUint64(10)}
-	_, _, err = machine.Registry.Volumes.KeyStore().Put(eur.Bytes(), nonZero)
-	require.NoError(t, err)
-	_, _, err = machine.Registry.AccountMetadata.KeyStore().Put(meta.Bytes(), &commonpb.MetadataValue{})
-	require.NoError(t, err)
-
-	buf := NewWriteSet(machine)
-	buf.Derived.Volumes.Put(usd, zero)
-	plans := []*raftcmdpb.AttributeCoverage{
-		declareCanonicalTestPlan(ledgerKey.Bytes(), dal.SubAttrLedger),
-		declareCanonicalTestPlan(usd.Bytes(), dal.SubAttrVolume),
-		declareCanonicalTestPlan(eur.Bytes(), dal.SubAttrVolume),
-		declareCanonicalTestPlan(meta.Bytes(), dal.SubAttrMetadata),
-	}
-	scope, err := NewScopeFactory(buf, &raftcmdpb.ExecutionPlan{Attributes: plans}, machine.logger, machine.preloadMissCounter, 1).NewProposalScope()
-	require.NoError(t, err)
-	require.Nil(t, buf.ValidateTransientVolumes(scope))
-	require.NoError(t, buf.PrepareEphemeralAccountPurge(scope, plans))
-	require.Empty(t, buf.purgedAccounts, "another color/asset is still live")
-
-	buf.Derived.Volumes.Put(eur, zero)
-	require.NoError(t, buf.PrepareEphemeralAccountPurge(scope, plans))
-	require.Contains(t, buf.purgedAccounts, usd.AccountKey)
-	require.NoError(t, buf.stagePurgedAccountRows())
-	_, err = buf.Derived.AccountMetadata.Get(meta)
-	require.ErrorIs(t, err, domain.ErrNotFound)
-}
-
-func TestPrepareEphemeralAccountPurgeDeletesPersistedExplicitZeroVolume(t *testing.T) {
-	t.Parallel()
-
-	machine, _, _ := newTestMachine(t)
-	ledger := &commonpb.LedgerInfo{Name: "test", AccountTypes: map[string]*commonpb.AccountType{
-		"hold": {Name: "hold", Pattern: "hold:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL},
-	}}
-	ledgerKey := domain.LedgerKey{Name: "test"}
-	_, _, err := machine.Registry.Ledgers.KeyStore().Put(ledgerKey.Bytes(), ledger)
-	require.NoError(t, err)
-	volume := domain.NewVolumeKey("test", "hold:1", "USD", "")
-	_, _, err = machine.Registry.Volumes.KeyStore().Put(volume.Bytes(), &raftcmdpb.VolumePair{
-		Input: commonpb.NewUint256FromUint64(0), Output: commonpb.NewUint256FromUint64(0),
-	})
-	require.NoError(t, err)
-
-	buf := NewWriteSet(machine)
-	plans := []*raftcmdpb.AttributeCoverage{
-		declareCanonicalTestPlan(ledgerKey.Bytes(), dal.SubAttrLedger),
-		declareCanonicalTestPlan(volume.Bytes(), dal.SubAttrVolume),
-	}
-	plans[1].Persisted = true
-	plans[1].LifecycleCandidate = true
-	scope, err := NewScopeFactory(buf, &raftcmdpb.ExecutionPlan{Attributes: plans}, machine.logger, machine.preloadMissCounter, 1).NewProposalScope()
-	require.NoError(t, err)
-	require.Nil(t, buf.ValidateTransientVolumes(scope))
-	require.NoError(t, buf.PrepareEphemeralAccountPurge(scope, plans))
-	require.Contains(t, buf.purgedAccounts, volume.AccountKey)
-	require.Contains(t, buf.purgedAccountVolumeKeys, volume)
-	require.NoError(t, buf.stagePurgedAccountRows())
-	_, err = buf.Derived.Volumes.Get(volume)
-	require.ErrorIs(t, err, domain.ErrNotFound)
-}
-
-func TestPrepareEphemeralAccountPurgeOnMetadataOnlyWrite(t *testing.T) {
-	t.Parallel()
-
-	machine, _, _ := newTestMachine(t)
-	ledger := &commonpb.LedgerInfo{Name: "test", AccountTypes: map[string]*commonpb.AccountType{
-		"hold": {Name: "hold", Pattern: "hold:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL},
-	}}
-	ledgerKey := domain.LedgerKey{Name: "test"}
-	_, _, err := machine.Registry.Ledgers.KeyStore().Put(ledgerKey.Bytes(), ledger)
-	require.NoError(t, err)
-
-	meta := domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "hold:1"}, Key: "note"}
-	buf := NewWriteSet(machine)
-	buf.Derived.AccountMetadata.Put(meta, commonpb.NewStringValue("ignored"))
-	plans := []*raftcmdpb.AttributeCoverage{
-		declareCanonicalTestPlan(ledgerKey.Bytes(), dal.SubAttrLedger),
-		declareCanonicalTestPlan(meta.Bytes(), dal.SubAttrMetadata),
-	}
-	scope, err := NewScopeFactory(buf, &raftcmdpb.ExecutionPlan{Attributes: plans}, machine.logger, machine.preloadMissCounter, 1).NewProposalScope()
-	require.NoError(t, err)
-	require.Nil(t, buf.ValidateTransientVolumes(scope))
-	require.NoError(t, buf.PrepareEphemeralAccountPurge(scope, plans))
-	require.Contains(t, buf.purgedAccounts, meta.AccountKey)
-	require.NoError(t, buf.stagePurgedAccountRows())
-	_, err = buf.Derived.AccountMetadata.Get(meta)
-	require.ErrorIs(t, err, domain.ErrNotFound)
-}
-
-func TestPrepareEphemeralAccountPurgeOnMetadataOnlyDelete(t *testing.T) {
-	t.Parallel()
-
-	machine, _, _ := newTestMachine(t)
-	ledger := &commonpb.LedgerInfo{Name: "test", AccountTypes: map[string]*commonpb.AccountType{
-		"hold": {Name: "hold", Pattern: "hold:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL},
-	}}
-	ledgerKey := domain.LedgerKey{Name: "test"}
-	_, _, err := machine.Registry.Ledgers.KeyStore().Put(ledgerKey.Bytes(), ledger)
-	require.NoError(t, err)
-
-	account := domain.AccountKey{LedgerName: "test", Account: "hold:1"}
-	deleted := domain.MetadataKey{AccountKey: account, Key: "deleted"}
-	remaining := domain.MetadataKey{AccountKey: account, Key: "remaining"}
-	_, _, err = machine.Registry.AccountMetadata.KeyStore().Put(deleted.Bytes(), commonpb.NewStringValue("one"))
-	require.NoError(t, err)
-	_, _, err = machine.Registry.AccountMetadata.KeyStore().Put(remaining.Bytes(), commonpb.NewStringValue("two"))
-	require.NoError(t, err)
-
-	buf := NewWriteSet(machine)
-	buf.Derived.AccountMetadata.Delete(deleted)
-	plans := []*raftcmdpb.AttributeCoverage{
-		declareCanonicalTestPlan(ledgerKey.Bytes(), dal.SubAttrLedger),
-		declareCanonicalTestPlan(deleted.Bytes(), dal.SubAttrMetadata),
-		declareCanonicalTestPlan(remaining.Bytes(), dal.SubAttrMetadata),
-	}
-	scope, err := NewScopeFactory(buf, &raftcmdpb.ExecutionPlan{Attributes: plans}, machine.logger, machine.preloadMissCounter, 1).NewProposalScope()
-	require.NoError(t, err)
-	require.Nil(t, buf.ValidateTransientVolumes(scope))
-	require.NoError(t, buf.PrepareEphemeralAccountPurge(scope, plans))
-	require.Contains(t, buf.purgedAccounts, account)
-	require.NoError(t, buf.stagePurgedAccountRows())
-	_, err = buf.Derived.AccountMetadata.Get(remaining)
-	require.ErrorIs(t, err, domain.ErrNotFound)
-}
-
-func TestWriteSetResetClearsEphemeralAccountPurgeState(t *testing.T) {
-	t.Parallel()
-
-	machine, _, _ := newTestMachine(t)
-	buf := NewWriteSet(machine)
-	account := domain.AccountKey{LedgerName: "test", Account: "hold:1"}
-	buf.purgedAccounts = map[domain.AccountKey]struct{}{account: {}}
-	buf.purgedAccountVolumeKeys = append(buf.purgedAccountVolumeKeys, domain.VolumeKey{AccountKey: account, Asset: "USD"})
-	buf.purgedAccountMetadataKeys = append(buf.purgedAccountMetadataKeys, domain.MetadataKey{AccountKey: account, Key: "note"})
-
-	buf.Reset(&commonpb.Timestamp{Data: 1})
-
-	require.Nil(t, buf.purgedAccounts)
-	require.Empty(t, buf.purgedAccountVolumeKeys)
-	require.Empty(t, buf.purgedAccountMetadataKeys)
 }

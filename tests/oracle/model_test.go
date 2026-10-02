@@ -720,27 +720,6 @@ func TestGlobalState_Apply_VolumeAnnotations(t *testing.T) {
 	}, have)
 }
 
-// A persisted {0, 0} row remains an existing cell in later bulks. Numeric zero
-// is not an absence marker, so only the first write belongs to NewKeptVolumes.
-func TestGlobalState_Apply_PersistedZeroVolumeIsNotNewAgain(t *testing.T) {
-	t.Parallel()
-
-	first := NewGlobalState().Apply(bulkOf(
-		oracletest.TxReq("world", "a:zero", "USD", 0),
-	))
-	require.True(t, first.OK)
-
-	second := first.State.Apply(bulkOf(
-		oracletest.TxReq("world", "a:zero", "USD", 1),
-	))
-	require.True(t, second.OK)
-
-	logs := second.State.Ledger("L").LogRows()
-	require.Len(t, logs, 2)
-	require.Equal(t, "a:zero:USD:,world:USD:", logs[0].NewKeptVolumes)
-	require.Empty(t, logs[1].NewKeptVolumes)
-}
-
 // The volume annotations are part of a state's identity: the same transactions
 // grouped into different bulks leave identical volumes and identical logs, yet
 // the FSM annotates them differently. A fingerprint that collapsed the two
@@ -1043,27 +1022,4 @@ func TestGlobalState_Apply_PreparedQueryNoAliasing(t *testing.T) {
 	stored, ok := created.State.Ledger("L").PreparedQuery("q")
 	require.True(t, ok)
 	require.Equal(t, "a:", stored.GetFilter().GetAddress().GetHardcodedPrefix())
-}
-
-func TestGlobalState_AccountTypeTransitionPurgesMetadataOnlyEphemeralAccount(t *testing.T) {
-	t.Parallel()
-
-	addType := func(name, pattern string, persistence commonpb.AccountTypePersistence) *servicepb.Request {
-		return &servicepb.Request{Type: &servicepb.Request_AddAccountType{AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
-			Ledger: "L", AccountType: &commonpb.AccountType{Name: name, Pattern: pattern, Persistence: persistence},
-		}}}
-	}
-	seeded := NewGlobalState().Apply(bulkOf(
-		addType("fallback", "users:{id}", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL),
-		addType("specific", "users:alice", commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL),
-		oracletest.AddAccountMetaReq("users:alice", "note", commonpb.NewStringValue("value")),
-	))
-	require.True(t, seeded.OK)
-	seededLedger := seeded.State.Ledger("L")
-	require.Contains(t, seededLedger.AccountMetadata("users:alice"), "note")
-
-	reclassified := seeded.State.Apply(bulkOf(oracletest.RemoveTypeReq("specific")))
-	require.True(t, reclassified.OK)
-	reclassifiedLedger := reclassified.State.Ledger("L")
-	require.Empty(t, reclassifiedLedger.AccountMetadata("users:alice"))
 }
