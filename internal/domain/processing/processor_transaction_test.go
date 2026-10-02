@@ -232,7 +232,7 @@ func TestProcessCreateTransaction(t *testing.T) {
 		},
 	}
 
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -290,7 +290,7 @@ func TestProcessCreateTransaction_InsufficientFunds(t *testing.T) {
 		},
 	}
 
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.Error(t, err)
 	require.Nil(t, result)
 	require.Contains(t, err.Error(), "insufficient funds")
@@ -354,7 +354,7 @@ func TestProcessCreateTransaction_WorldSource(t *testing.T) {
 		},
 	}
 
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 }
@@ -391,7 +391,7 @@ func TestProcessApply_LedgerNotFound(t *testing.T) {
 		},
 	}
 
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.Error(t, err)
 	require.Nil(t, result)
 	require.Contains(t, err.Error(), "ledger does not exist")
@@ -458,7 +458,7 @@ func TestProcessCreateTransaction_Numscript_WorldSource(t *testing.T) {
 		},
 	}
 
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -527,7 +527,7 @@ func TestProcessCreateTransaction_Numscript_WithVariables(t *testing.T) {
 		},
 	}
 
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -591,7 +591,7 @@ func TestProcessCreateTransaction_Numscript_MultiplePostings(t *testing.T) {
 		},
 	}
 
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -656,7 +656,7 @@ func TestProcessCreateTransaction_Numscript_UnboundedOverdraft(t *testing.T) {
 		},
 	}
 
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -671,48 +671,6 @@ func TestProcessCreateTransaction_Numscript_UnboundedOverdraft(t *testing.T) {
 	require.Equal(t, "bank:main", posting.GetSource())
 	require.Equal(t, "users:alice", posting.GetDestination())
 	require.Equal(t, int64(100000), posting.GetAmount().ToBigInt().Int64())
-}
-
-func TestProcessCreateTransaction_Numscript_ParseError(t *testing.T) {
-	t.Parallel()
-
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockStore := NewMockScope(ctrl)
-	expectDefaultMetadataLimits(mockStore)
-	processor, err := NewRequestProcessor(nil, 0)
-	require.NoError(t, err)
-
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
-
-	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
-
-	request := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
-				Ledger: "test-ledger",
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Script: &commonpb.Script{
-							Plain: `
-								send [USD/2 invalid] (
-									source = @world
-									destination = @users:alice
-								)
-							`,
-						},
-					},
-				}},
-			},
-		},
-	}
-
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
-	require.Error(t, err)
-	require.Nil(t, result)
-	require.Contains(t, err.Error(), "numscript parse error")
 }
 
 func TestProcessCreateTransaction_Numscript_EmptyScript(t *testing.T) {
@@ -752,7 +710,7 @@ func TestProcessCreateTransaction_Numscript_EmptyScript(t *testing.T) {
 		},
 	}
 
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.Nil(t, result)
 	require.ErrorIs(t, err, domain.ErrEmptyTransaction)
 }
@@ -794,7 +752,7 @@ func TestProcessCreateTransaction_Numscript_NoSendStillRejected(t *testing.T) {
 		},
 	}
 
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.Nil(t, result)
 	require.ErrorIs(t, err, domain.ErrEmptyTransaction)
 }
@@ -845,7 +803,7 @@ func TestProcessCreateTransaction_Numscript_SendToMultipleDestinations(t *testin
 		},
 	}
 
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -915,7 +873,7 @@ func TestProcessCreateTransaction_Numscript_SetTxMeta(t *testing.T) {
 		},
 	}
 
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -988,7 +946,7 @@ func TestProcessCreateTransaction_Numscript_DoesNotMutateOrderMetadata(t *testin
 		},
 	}
 
-	order := requestToOrder(request)
+	order := requestToOrder(t, request)
 
 	// Snapshot the deterministic order bytes before processing. The idempotency
 	// hash and AuditItem.SerializedOrder are both derived from these bytes.
@@ -1056,7 +1014,7 @@ func TestProcessCreateTransaction_Numscript_RejectsEmptyMetadataKey(t *testing.T
 		},
 	}
 
-	_, err = processor.ProcessOrder(requestToOrder(request), mockStore)
+	_, err = processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.Error(t, err)
 	require.ErrorIs(t, err, domain.ErrMetadataKeyEmpty,
 		"empty metadata key produced by Numscript must surface ErrMetadataKeyEmpty (#322)")
@@ -1135,7 +1093,7 @@ func TestProcessCreateTransaction_Numscript_RejectsNullByteMetadataValue(t *test
 				},
 			}
 
-			_, err = processor.ProcessOrder(requestToOrder(request), mockStore)
+			_, err = processor.ProcessOrder(requestToOrder(t, request), mockStore)
 			require.Error(t, err)
 			require.ErrorIs(t, err, domain.ErrMetadataValueContainsNullByte)
 		})
@@ -1170,7 +1128,7 @@ func TestProcessCreateTransaction_Numscript_CompetingMetadataErrors(t *testing.T
 				Script: &commonpb.Script{Plain: script, Vars: map[string]string{"poison": "safe\x00poison"}},
 			}}},
 		}}}
-		_, err = processor.ProcessOrder(requestToOrder(request), mockStore)
+		_, err = processor.ProcessOrder(requestToOrder(t, request), mockStore)
 		require.ErrorIs(t, err, domain.ErrMetadataValueContainsNullByte)
 		var keyErr *domain.ErrMetadataKeyValidation
 		require.ErrorAs(t, err, &keyErr)
@@ -1240,7 +1198,7 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 		},
 	}
 
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -1319,7 +1277,7 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta_WritesOnce(t *testing
 		},
 	}
 
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.NoError(t, err)
 	createdTx := result.GetApply().GetLog().GetData().GetCreatedTransaction()
 	require.NotNil(t, createdTx)
@@ -1397,7 +1355,7 @@ func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 	}
 
 	// With force=true, the transaction should succeed despite insufficient funds
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -1468,7 +1426,7 @@ func TestProcessCreateTransaction_Force_ZeroBalance(t *testing.T) {
 		},
 	}
 
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 }
@@ -1520,7 +1478,7 @@ func TestProcessCreateTransaction_Numscript_Force_InsufficientFunds(t *testing.T
 	}
 
 	// With force=true, Numscript should succeed even though users:broke has 0 balance
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -1584,7 +1542,7 @@ func TestProcessCreateTransaction_Numscript_OverflowUint256(t *testing.T) {
 		},
 	}
 
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.Error(t, err)
 	require.Nil(t, result)
 	require.Contains(t, err.Error(), "exceeds 256 bits")
@@ -1633,7 +1591,7 @@ func TestProcessCreateTransaction_Numscript_NegativeAmount(t *testing.T) {
 		},
 	}
 
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.Error(t, err)
 	require.Nil(t, result)
 }
@@ -1709,6 +1667,6 @@ func TestProcessCreateTransaction_StoresAccountMetadataVerbatim(t *testing.T) {
 		},
 	}
 
-	_, err = processor.ProcessOrder(requestToOrder(request), mockStore)
+	_, err = processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.NoError(t, err)
 }

@@ -370,6 +370,7 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 		"ErrInvalidPattern":                &ErrInvalidPattern{},
 		"ErrAccountTypeHasAccounts":        &ErrAccountTypeHasAccounts{},
 		"ErrNumscriptParse":                &ErrNumscriptParse{},
+		"ErrNumscriptCompile":              &ErrNumscriptCompile{},
 		"ErrDependencyDiscoveryFailed":     &ErrDependencyDiscoveryFailed{},
 		"ErrBalanceNotPreloaded":           &ErrBalanceNotPreloaded{},
 		"ErrTransientAccountNonZero":       &ErrTransientAccountNonZero{},

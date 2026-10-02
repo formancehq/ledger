@@ -128,6 +128,7 @@ ledgerctl numscripts versions payment-with-fees
 | Invalid version | `NUMSCRIPT_INVALID_VERSION` | 400 | INVALID_ARGUMENT | Save version is not a full semver |
 | Version exists | `NUMSCRIPT_VERSION_ALREADY_EXISTS` | 409 | ALREADY_EXISTS | The `(name, version)` is already stored (immutable) |
 | Not found | `NUMSCRIPT_NOT_FOUND` | 404 | NOT_FOUND | Get a non-existent numscript or version |
+| Not runnable on the VM | `NUMSCRIPT_COMPILE_ERROR` | 400 | INVALID_ARGUMENT | A transaction's script parses and resolves but does not compile (static-semantics error caught by the compiler's typechecker, feature used without its flag, unsupported construct, VM capacity exceeded, var value that does not bind) — `ErrNumscriptCompile` |
 
 ## Script References in Transactions
 
@@ -189,6 +190,97 @@ FSM Apply: processCreateTransaction
     ▼
 Normal transaction processing (parse, execute, postings...)
 ```
+
+### Execution — admission compiles, the FSM executes on the VM
+
+The Numscript VM is the only engine that executes a script. The library's
+tree-walking interpreter code is still used, but only to analyze scripts, never
+to execute them: dependency resolution at admission and the FSM's stale-inputs
+re-resolution walk the parsed AST (`numscript.SafeResolveDependencies`).
+
+Admission compiles each script it resolved to VM bytecode
+(`numscript.compileScript`, on the leader's parallel path) — once per cached
+script: the compile and its bytecode encoding hang off the script's
+`NumscriptCache` parse entry (`lruEntry.compileParsed`), so every order of a
+script shares one program and only its vars are encoded per order. It binds
+the artifact to the order's technical sub-message: `compiled_program`,
+`compiled_vars` (the order's vars encoded against that program's variable
+layout) and `compiled_script_hash` (BLAKE3 of the exact text compiled).
+Admission also runs that artifact on a fresh VM instance to predict the
+script's effects for later orders in the same atomic batch.
+
+A script the VM cannot run is rejected at admission with
+`ErrNumscriptCompile` (`NUMSCRIPT_COMPILE_ERROR`, `KindValidation`, freezable,
+detail in the `details` metadata key): the compiler's typechecker rejects the
+script (`Parse` checks syntax only), a feature is used without its flag, the
+compiler does not support a construct, the program exceeds the VM's capacity (register banks, program
+size), or a var value does not bind to the program's variable layout. Compile
+runs after dependency resolution, so a script resolution already rejects keeps
+its specific error — asset scaling, for instance, still fails with
+`ErrNumscriptScalingUnsupported`. A compiler panic surfaces loudly as
+`ErrNumscriptRuntime`.
+
+The FSM decodes and verifies the program once per artifact — `NumscriptCache`
+keeps one warm VM instance per script, keyed by `compiled_script_hash`
+(already checked against the resolved text), and serves it only when the
+order's program bytes are identical to the ones it verified. Compilation is not
+assumed to be deterministic: every compilation of a script must mean the same
+thing, but two of them (a new leader, a rolling upgrade, the leader's parse
+cache evicting the script) may produce different bytes. On a mismatch the
+order's bytes are decoded, verified and replace the entry, so a node always
+runs the committed bytes and only redoes that work when the bytes change. The
+leader compiles a script once and reuses it, so in steady state every order of
+a script hits. A rejected artifact is never cached, and the cache is in-memory,
+so an upgrade restarts it empty. It then executes the artifact per apply
+(`numscript.SafeExecCompiled`). The verifier is what entitles the VM to run
+wire-supplied bytecode without per-instruction checks.
+
+Every scripted order admission proposes carries an artifact; an order it
+forwards without one is marked `preload_unavailable` and rejected before any
+read. The artifact is an optimization derivable from the script text, not
+part of the order's meaning, so a scripted order reaching execution without
+one is recompiled from its text (`numscript.CompileForReplay`, the same
+compile admission runs) and executed on the VM: it costs a compile and never
+changes the outcome. Outside audit replay (below) a missing artifact is still
+an admission bug, so it is flagged with an Antithesis `assert.Unreachable`
+(invariant #7), which never feeds the outcome (invariant #2).
+
+The FSM rejects an artifact — failing the order with `ErrNumscriptRuntime`
+(invariant #7), identically on every node running the binary — when: either
+half carries a bytecode version (major.minor) the bundled library cannot read
+(`numscriptlib.CurrentBytecodeVersion.CanRead`: another major, or a newer
+minor); either half does not decode; the
+program fails verification; or `compiled_script_hash` does not match the
+resolved text. The version check keeps foreign bytecode out: another major
+changes the meaning of existing encodings, and a newer minor may use opcodes this build does not know.
+An older minor of the same major runs: a minor bump is additive by the
+library's contract, so that bytecode keeps its meaning. This is what lets a
+node that restarts on a newer binary still apply the entries committed before
+the upgrade, with the same outcome as the replicas that applied them on the
+old binary. The other three cannot happen by construction:
+inline scripts travel in the order, exact library versions are immutable, an
+advanced `"latest"` is stale-rejected first, and our own compiler produced the
+bytecode in this very format.
+
+The outcome is a function of the committed entry and the running binary
+alone, so every replica on one binary applies the entry identically
+(invariant #2). Technical fields are excluded from business-intent hashing
+(invariant #10), so the artifact never reaches the audit chain. Client
+requests cannot carry technical fields: `ApplyBatch` is made of `Request`
+messages and admission builds the `raftcmdpb.Order` itself.
+
+Because the audit never holds the artifact, the store checker, which re-runs
+audited orders to rebuild state, takes the same recompile path for every
+scripted order. Under the same bundled library, every compilation of a script
+means the same thing, so this gives the order its original outcome. Across a
+library change that alters execution semantics it does not: replaying history
+applied by another library can rebuild different bytes or reject an order
+that committed, as with the interpreter-to-VM change (see
+[Upgrading across the Numscript VM execution change](../../../../ops/deployment.md#upgrading-across-the-numscript-vm-execution-change-revision-17)).
+Missing artifacts are expected there, so
+`state.AuditReplayer` turns on `RequestProcessor.CompileMissingNumscript`,
+which only skips the `assert.Unreachable`; the cluster's own processor never
+calls it.
 
 ### Version Pinning Examples
 

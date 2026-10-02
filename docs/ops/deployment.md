@@ -786,6 +786,84 @@ Changes in this release line that fall under this rule:
 |--------|--------------------|----------|
 | EN-2045 | `SaveLedgerMetadata`, `DeleteLedgerMetadata`, `SaveNumscript`, the prepared-query create/update/delete and `PromoteLedger` applied to a soft-deleted ledger stop succeeding and become an `ERROR_REASON_LEDGER_DELETED` failure | writes aimed at a tombstoned ledger, which a healthy client does not issue |
 
+### Upgrading across the Numscript VM execution change (revision 17)
+
+Service protocol revision 17 (#2126) makes admission compile each resolvable
+Numscript to VM bytecode carried in the order's technical sub-message, which
+the FSM executes instead of re-interpreting the script text; the bundled
+Numscript library also changes how an account-typed metadata value is rendered
+(`merchants:acme` instead of `@merchants:acme`). The VM is the new binary's
+only execution engine: admission rejects a script it cannot compile, and the
+FSM runs a scripted order that carries no artifact by recompiling its text for
+the VM, never by interpreting it.
+
+The technical fields are additive protobuf, so a binary predating them decodes
+the same committed entry without the artifact and takes the interpreter path
+with the older library. For a script writing account-typed metadata, an old
+and a new replica applying the same entry then persist different transaction
+and audit bytes — replicated-state divergence, not just a label difference.
+The library bump also changes the outcome of some edge-case scripts, so a
+mixed window can flip a whole order's outcome, the same class as "Upgrading
+across an FSM outcome change" above:
+
+- allotment portions summing past 100% next to `remaining` used to commit and
+  now reject;
+- an allotment with two `remaining` clauses used to commit, silently giving
+  nothing to the second one, and now rejects.
+
+- **Mixed-binary rolling upgrades are not supported across this change.** Stop
+  all nodes before deploying the new binary. The Kubernetes operator performs a
+  *rolling* update by default, so this constraint has to be applied
+  deliberately.
+- **Wipe the data unless the history contains no affected script.** No
+  persisted key layout or value encoding changes and `storage-schema-version`
+  is unaffected, so the new binary boots on existing data — but that history
+  is not fully re-verifiable. `ledgerctl check` replays every audited order on
+  the running binary, recompiling its script with the new library, and
+  compares the result with the stored log. An entry the old binary applied
+  with an affected script therefore fails the check on every replica: an
+  account-typed metadata value (stored `@merchants:acme`, reconstructed
+  `merchants:acme`) is reported as `LOG_PAYLOAD_MISMATCH`, and an edge-case
+  allotment listed above, which committed then and is rejected now, stops the
+  check with a replay error. Resynchronising from the leader does not clear
+  either. As for any unreleased v3 upgrade, wiping the data avoids this;
+  keeping it is sound only for a history with none of these scripts.
+- **Stopping all nodes does not remove every exposure.** A scripted entry
+  committed before the stop but applied by a node only after it restarts on
+  the new binary — the entries it replays above its last snapshot — runs on
+  the new binary. An entry the old binary committed carries no artifact, so
+  the new binary recompiles its script with the new library and runs it on
+  the VM, while the replicas that applied it before the stop interpreted it
+  with the old library: for the scripts listed above the outcome differs. A
+  rollback exposes the same window in the other direction, and a later
+  library update that changes the bytecode major version fails such entries
+  instead (see the next point). Such a replica must be resynchronised from the
+  leader.
+- **`ledgerctl check` cannot single out a straddled replica.** Each replica's
+  audit chain stays internally consistent, and the check's replay on the new
+  binary already reports every affected entry the old library applied, on
+  healthy replicas too (see the previous points). Detecting a divergence means
+  comparing transaction metadata and audit entries across replicas; a replica
+  that applied entries inside the window must be resynchronised from the
+  leader.
+- **An artifact this binary cannot read is rejected, never executed.** The
+  FSM runs an artifact when both its halves carry a bytecode version
+  (major.minor) the bundled Numscript library can read: the same major and a
+  minor no newer than its own. An older minor is additive by the library's
+  contract and runs, so a library update that only bumps the minor does not
+  break replay after an upgrade. Anything else — another major, a newer minor,
+  or bytes it cannot read — fails the order with a Numscript runtime error,
+  identically on every node running that binary, and the script text is never
+  interpreted in the artifact's place. The operational consequence: after a
+  library update that bumps the bytecode major, the Raft entries a node
+  replays above its last snapshot after restarting on the new binary fail on
+  replay although they succeeded on the binary that admitted them; so does
+  every scripted entry compiled with a newer minor that a node applies after a
+  rollback. A replica that applied such
+  entries before the stop therefore diverges from one that replays them and
+  must be resynchronised from the leader — the same repair as a straddled
+  window, which `ledgerctl check` likewise does not detect.
+
 ### Audit hash keying — threat model
 
 The audit hash chain (`processing.HashGenerator`) is keyed by a value derived from the immutable `cluster-id`. This is **defense in depth against offline grinding from outside the cluster boundary**, not a tamper-evidence guarantee against an attacker with persisted-store access.

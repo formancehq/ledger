@@ -382,9 +382,11 @@ send [USD/2 300] (
 
 		It("Should store set_tx_meta values as their unquoted string representation", func() {
 			// set_tx_meta with string, number, monetary, account and asset
-			// values. Ledger stores the raw client-facing string: string/number
-			// unquoted (no JSON quotes), monetary as "ASSET amount", account with
-			// a leading @, asset verbatim. This guards ValueToString.
+			// values. Ledger stores the string the numscript library renders
+			// (identically on the interpreter and the VM): string/number unquoted
+			// (no JSON quotes), monetary as "ASSET amount", account as its bare
+			// name — the form meta() can read back as an account, which the old
+			// @-prefixed rendering could not — and asset verbatim.
 			script := `
 set_tx_meta("label", "gold-tier")
 set_tx_meta("count", 42)
@@ -403,11 +405,11 @@ send [USD/2 100] (
 			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
 			meta := commonpb.MetadataToGoMap(createdTx.Transaction.Metadata)
 
-			Expect(meta["label"]).To(Equal("gold-tier"))             // string: unquoted
-			Expect(meta["count"]).To(Equal("42"))                    // number: unquoted
-			Expect(meta["fee"]).To(Equal("USD/2 150"))               // monetary: canonical
-			Expect(meta["beneficiary"]).To(Equal("@merchants:acme")) // account: @-prefixed
-			Expect(meta["currency"]).To(Equal("USD/2"))              // asset: verbatim
+			Expect(meta["label"]).To(Equal("gold-tier"))            // string: unquoted
+			Expect(meta["count"]).To(Equal("42"))                   // number: unquoted
+			Expect(meta["fee"]).To(Equal("USD/2 150"))              // monetary: canonical
+			Expect(meta["beneficiary"]).To(Equal("merchants:acme")) // account: bare name
+			Expect(meta["currency"]).To(Equal("USD/2"))             // asset: verbatim
 		})
 
 		It("Should store set_account_meta values as their unquoted string representation", func() {

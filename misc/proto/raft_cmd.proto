@@ -84,6 +84,37 @@ message OrderTechnical {
   // checks, so a target that is unknown or already reverted keeps returning
   // those reasons. Empty for every non-revert order.
   bytes revert_target_digest = 4;
+  // compiled_program is the Numscript VM bytecode admission compiled from this
+  // order's script on the leader's parallel path (numscript Compile + Encode).
+  // The VM is the only execution engine: the FSM decodes, verifies and
+  // executes this artifact on every node, so compilation happens once per
+  // proposal and the outcome is a function of the committed entry alone
+  // (invariant #2) — provided every replica runs a binary that knows these
+  // fields. A binary predating them silently drops the artifact and interprets
+  // with its own bundled library, so this change is a stop-all-nodes
+  // deployment boundary (service protocol revision 17; see
+  // docs/ops/deployment.md, "Upgrading across the Numscript VM execution
+  // change"). Every scripted order admission proposes carries one: a script
+  // the VM cannot run is rejected at admission. A scripted order reaching the
+  // FSM without an artifact is recompiled from its script text, which keeps
+  // its outcome only while the bundled Numscript library keeps the script's
+  // execution semantics (history applied by another library can replay
+  // differently; see docs/ops/deployment.md). Outside the store checker's
+  // audit replay (whose orders never carry one) a missing artifact is an
+  // admission bug, flagged with assert.Unreachable.
+  bytes compiled_program = 5;
+  // compiled_vars is the order's runtime vars encoded against
+  // compiled_program's variable layout (numscript VarsEncoder + Vars.Encode).
+  // Only meaningful next to compiled_program.
+  bytes compiled_vars = 6;
+  // compiled_script_hash is the BLAKE3-256 of the exact script text
+  // compiled_program was compiled from. The FSM refuses to run the artifact
+  // against a different resolved text — inline scripts travel in the order,
+  // exact library versions are immutable, and an advanced "latest" is
+  // stale-rejected before execution, so a mismatch is a "should not happen"
+  // surfaced loudly (invariant #7) rather than silently executing the wrong
+  // program.
+  bytes compiled_script_hash = 7;
 }
 
 // LedgerScopedOrder is the wrapper for every Order variant that targets a

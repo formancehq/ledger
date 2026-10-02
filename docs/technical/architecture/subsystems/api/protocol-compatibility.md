@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"16"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"17"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 16:
+leader. For example, with a schema implementing revision 17:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 16' \
+grpcurl -plaintext -H 'ledger-protocol-version: 17' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -223,6 +223,56 @@ failure into an explicit removal of the stored filter. The query then matches
 every entity in its immutable target. The protobuf wire shape is unchanged, but
 a revision-15 peer interprets the identical request differently, so clients,
 servers, and every Raft replica must agree on revision 16 semantics.
+
+## Numscript metadata rendering and VM execution (revision 17)
+
+Revision 17 stores and returns an account-typed Numscript metadata value
+(`set_tx_meta("k", @merchants:acme)` and its `set_account_meta` counterpart) as
+the bare account name, `merchants:acme`, where revision 16 returned
+`@merchants:acme`. The rendering now comes from the Numscript library itself,
+identically on both of its engines, and the bare name is the form a later
+`meta()` read can resolve as an account again — the `@`-prefixed form could
+not. Scalar values are unchanged: strings and numbers stay verbatim, monetary
+stays `ASSET amount`, portions and assets keep their canonical forms. The
+`.proto` text of the exposed metadata messages is unchanged, so the difference
+is invisible to a schema comparison; a revision-16 client would read the same
+Apply request back with different metadata bytes.
+
+Revision 17 also changes apply semantics: admission compiles each resolvable
+script to Numscript VM bytecode and binds it to the order's technical
+sub-message, and the FSM executes that artifact instead of re-interpreting the
+script text. The VM is the only engine: a script it cannot compile is rejected
+at admission, and a scripted order reaching the FSM without an artifact is
+recompiled from its text rather than interpreted. Like revision 6, apply semantics must agree across every replica:
+a binary predating these fields silently drops them and interprets with the
+older Numscript library, so a mixed-binary cluster applying the same committed
+entry writes divergent transaction and audit bytes. Deploy this revision with
+all nodes stopped — see
+[Upgrading across the Numscript VM execution change](../../../../ops/deployment.md#upgrading-across-the-numscript-vm-execution-change-revision-17).
+The artifact itself carries the Numscript library's bytecode version
+(major.minor): the FSM executes it when the bundled library can read that
+version (same major, minor no newer) and otherwise fails the order with a
+Numscript runtime error, so a log entry replayed across a later major bump, or
+after a rollback past a minor bump, is rejected rather than run as foreign
+bytecode — the text is never interpreted in the artifact's place.
+
+Revision 17 also moves where and how a statically invalid script fails.
+`Parse` checks syntax only; the Numscript typechecker runs inside the
+compiler. Every static-semantics failure the compiler catches — a type
+mismatch, an undeclared variable, an unknown function or var type, `oneof` or
+a mid-script `balance()` without its feature flag, a send-all from an
+unbounded-overdraft source — used to pass admission, reach apply, and fail
+there as `ERROR_REASON_NUMSCRIPT_RUNTIME` (`KindInternal`). It now fails
+at admission as `ErrNumscriptCompile` with the new
+`ERROR_REASON_NUMSCRIPT_COMPILE_ERROR` (`KindValidation`, detail in the
+`details` metadata key, like `NUMSCRIPT_PARSE_ERROR`), and such an order no longer produces a proposal, a failure
+log, or an audit entry. The one exception is a `latest` script reference under
+an idempotency key: admission forwards it as preload-unavailable (see
+[admission idempotency](../admission/idempotency.md)), so the FSM replays the
+key's frozen outcome or rejects with `ERROR_REASON_PRELOAD_UNAVAILABLE`.
+Neither revision freezes the compile failure itself under an idempotency key:
+revision 16's apply failure was `KindInternal`, which is not freezable, and
+revision 17's rejection happens before apply.
 
 ## Maintaining the revision
 

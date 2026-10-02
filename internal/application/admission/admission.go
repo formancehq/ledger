@@ -2081,6 +2081,15 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			// shared with the coverage-bits pass (order-independent).
 			orderTechnical(order).InputsResolutionHash = discovered.InputsHash
 
+			// Bind the VM artifact compiled here on the parallel path: the VM is
+			// the only execution engine, and the FSM decodes and executes it on
+			// every node. Discovery always returns one on success — a script the
+			// VM cannot run already failed discovery with ErrNumscriptCompile.
+			technical := orderTechnical(order)
+			technical.CompiledProgram = discovered.Compiled.Program
+			technical.CompiledVars = discovered.Compiled.Vars
+			technical.CompiledScriptHash = discovered.Compiled.ScriptHash
+
 			// Fold this script's effects into the batch accumulator so a later
 			// order in the same atomic batch resolves against them (EN-1406 P1-1).
 			effects.mergeDiscovery(discovered.NetBalanceDeltas, discovered.MetadataWrites)

@@ -63,7 +63,7 @@ func TestProcessCreateTransactionRejectsAccountOutsideConfiguredTypes(t *testing
 		},
 	}
 
-	result, processErr := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, processErr := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.Nil(t, result)
 
 	var notMatching *domain.ErrAccountNotMatchingType

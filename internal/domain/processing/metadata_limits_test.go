@@ -79,7 +79,7 @@ func TestProcessCreateTransaction_NumscriptMergedMetadataOverEntityCeiling(t *te
 		},
 	}
 
-	_, procErr := processor.ProcessOrder(requestToOrder(request), mockStore)
+	_, procErr := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.NotNil(t, procErr, "the merged metadata must be rejected inside apply")
 	require.Equal(t, domain.ErrReasonMetadataLimitExceeded, procErr.Reason())
 	require.Equal(t, domain.MetadataLimitDimensionEntity, procErr.Metadata()["dimension"])
@@ -136,7 +136,7 @@ func TestProcessCreateTransaction_NumscriptAccountMetadataOverCeiling(t *testing
 		},
 	}
 
-	_, procErr := processor.ProcessOrder(requestToOrder(request), mockStore)
+	_, procErr := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.NotNil(t, procErr)
 	require.Equal(t, domain.ErrReasonMetadataLimitExceeded, procErr.Reason())
 	require.Equal(t, "users:alice", procErr.Metadata()["account"])
