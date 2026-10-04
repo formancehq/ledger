@@ -2,6 +2,7 @@ package vm
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"math/big"
 	"testing"
@@ -490,6 +491,30 @@ func TestConvertScriptV1(t *testing.T) {
 				"amount": "USD 9999999999999999999999999999999999999999",
 			},
 		},
+		{
+			name: "json number beyond float safe range",
+			inputVars: map[string]any{
+				"amount": map[string]any{
+					"asset":  "USD",
+					"amount": json.Number("9007199254740993"),
+				},
+			},
+			expected: map[string]string{
+				"amount": "USD 9007199254740993",
+			},
+		},
+		{
+			name: "exponent integer conversion",
+			inputVars: map[string]any{
+				"amount": map[string]any{
+					"asset":  "USD",
+					"amount": json.Number("1e3"),
+				},
+			},
+			expected: map[string]string{
+				"amount": "USD 1000",
+			},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -507,5 +532,28 @@ func TestConvertScriptV1(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, converted.Vars)
 		})
+	}
+}
+
+func TestScriptV1PreservesJSONNumberPrecision(t *testing.T) {
+	t.Parallel()
+
+	var script ScriptV1
+	require.NoError(t, json.Unmarshal([]byte(`{"vars":{"amount":{"asset":"USD","amount":9007199254740993}}}`), &script))
+
+	converted, err := script.ToCore()
+	require.NoError(t, err)
+	require.Equal(t, "USD 9007199254740993", converted.Vars["amount"])
+}
+
+func TestScriptV1RejectsNonIntegerAndUnsafeFloatAmounts(t *testing.T) {
+	t.Parallel()
+
+	for _, amount := range []any{json.Number("1.25"), float64(1.25), float64(1 << 53)} {
+		script := ScriptV1{Vars: map[string]any{
+			"amount": map[string]any{"asset": "USD", "amount": amount},
+		}}
+		_, err := script.ToCore()
+		require.ErrorIs(t, err, ErrInvalidMonetaryAmount)
 	}
 }

@@ -14,6 +14,7 @@ import (
 
 	"github.com/formancehq/ledger/internal/api/common"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/formancehq/ledger/internal/machine/vm"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 )
 
@@ -157,6 +158,8 @@ func mapBulkElementError(err error) string {
 	case errors.Is(err, ledgercontroller.ErrAlreadyReverted{}):
 		return common.ErrAlreadyRevert
 	case errors.Is(err, ledgercontroller.ErrInvalidIdempotencyInput{}), errors.Is(err, ledgercontroller.ErrSchemaValidationError{}):
+		return common.ErrValidation
+	case errors.Is(err, vm.ErrInvalidMonetaryAmount):
 		return common.ErrValidation
 	case errors.Is(err, ledgercontroller.ErrSchemaNotSpecified{}):
 		return common.ErrSchemaNotSpecified
