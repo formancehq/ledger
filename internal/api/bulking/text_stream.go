@@ -25,21 +25,32 @@ func ParseTextStream(scanner *bufio.Scanner) (*BulkElement, error) {
 			text = strings.TrimSpace(text)
 
 			if len(text) > 0 {
-				parts := strings.Split(text, ",")
-				for _, part := range parts {
-					parts2 := strings.Split(part, "=")
-					switch parts2[0] {
+				idempotencyKeySeen := false
+				emptyIdempotencyKey := false
+				for _, part := range strings.Split(text, ",") {
+					key, value, hasValue := strings.Cut(strings.TrimSpace(part), "=")
+					key = strings.TrimSpace(key)
+					value = strings.TrimSpace(value)
+					switch key {
 					case "ik":
-						if len(parts2) < 2 {
+						if !hasValue {
 							return nil, errors.New("invalid header, idempotency key must use key=value format")
 						}
-						if bulkElement.IdempotencyKey != "" {
+						if idempotencyKeySeen {
 							return nil, errors.New("invalid header, idempotency key already set")
 						}
-						bulkElement.IdempotencyKey = parts2[1]
+						idempotencyKeySeen = true
+						if value == "" {
+							emptyIdempotencyKey = true
+							continue
+						}
+						bulkElement.IdempotencyKey = value
 					default:
-						return nil, errors.New("invalid header, key '" + parts2[0] + "' not recognized")
+						return nil, errors.New("invalid header, key '" + key + "' not recognized")
 					}
+				}
+				if emptyIdempotencyKey {
+					return nil, errors.New("invalid header, idempotency key must not be empty")
 				}
 			}
 
