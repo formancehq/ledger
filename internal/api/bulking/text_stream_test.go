@@ -168,6 +168,35 @@ send [USD 100] (
 //end`,
 		},
 		{
+			name:          "script with empty ik",
+			expectedError: true,
+			stream: `
+//script ik=
+//end`,
+		},
+		{
+			name:          "duplicate ik after empty ik",
+			expectedError: true,
+			stream: `
+//script ik=,ik=foo
+//end`,
+		},
+		{
+			name: "ik preserves equals in value",
+			expectedElements: []BulkElement{{
+				Action:         ActionCreateTransaction,
+				IdempotencyKey: "foo=bar",
+				Data: TransactionRequest{
+					Script: ledgercontroller.ScriptV1{
+						Script: ledgercontroller.Script{},
+					},
+				},
+			}},
+			stream: `
+//script ik=foo=bar
+//end`,
+		},
+		{
 			name: "empty script",
 			expectedElements: []BulkElement{
 				{
@@ -182,6 +211,18 @@ send [USD 100] (
 			stream: `
 //script
 //end`,
+		},
+		{
+			name: "empty script at EOF",
+			expectedElements: []BulkElement{{
+				Action: ActionCreateTransaction,
+				Data: TransactionRequest{
+					Script: ledgercontroller.ScriptV1{
+						Script: ledgercontroller.Script{},
+					},
+				},
+			}},
+			stream: "\n//script",
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -202,4 +243,11 @@ send [USD 100] (
 			}
 		})
 	}
+}
+
+func TestParseStreamRejectsDuplicateIdempotencyKeyAfterEmptyValue(t *testing.T) {
+	t.Parallel()
+
+	_, err := ParseTextStream(bufio.NewScanner(bytes.NewBufferString("//script ik=,ik=foo\n//end")))
+	require.ErrorContains(t, err, "idempotency key already set")
 }
