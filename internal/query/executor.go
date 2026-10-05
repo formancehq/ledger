@@ -310,10 +310,6 @@ func executeList(
 		cursor.Next = encodeCursor(entities[len(entities)-1])
 	}
 
-	if req.GetCursor() != "" {
-		cursor.Previous = req.GetCursor()
-	}
-
 	return &servicepb.ExecutePreparedQueryResponse{
 		Result: &servicepb.ExecutePreparedQueryResponse_Cursor{
 			Cursor: cursor,

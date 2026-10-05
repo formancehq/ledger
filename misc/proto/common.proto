@@ -1764,11 +1764,10 @@ message GroupedAggregateResult {
 message PreparedQueryCursor {
   uint32 page_size = 1;
   bool has_more = 2;
-  string previous = 3;
-  string next = 4;
-  repeated Account account_data = 5;
-  repeated Transaction transaction_data = 6;
-  repeated Log log_data = 7;
+  string next = 3;
+  repeated Account account_data = 4;
+  repeated Transaction transaction_data = 5;
+  repeated Log log_data = 6;
 }
 
 // LedgerStats contains aggregate statistics for a ledger.
