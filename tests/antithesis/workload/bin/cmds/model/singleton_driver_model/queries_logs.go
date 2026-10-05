@@ -870,7 +870,13 @@ func (c *Checker) modelLogDateSample(ledger string) []uint64 {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	rows := c.modelState.Ledger(ledger).LogDates()
+	return logDateSample(c.modelState.Ledger(ledger))
+}
+
+// logDateSample lists the dates ls's logs carry, the pool log-date bounds are
+// drawn from.
+func logDateSample(ls oracle.LedgerState) []uint64 {
+	rows := ls.LogDates()
 
 	out := make([]uint64, 0, len(rows))
 

@@ -443,3 +443,25 @@ func TestPreparedReverseWindowsDescend(t *testing.T) {
 	require.True(t, txPage(uint64EntityKey(second.GetId()), first, false), "a reverse continuation resumes below the cursor")
 	require.False(t, txPage(uint64EntityKey(first.GetId()), second, false), "a reverse continuation cannot climb above the cursor")
 }
+
+func TestPreparedCursorResumesInEitherDirection(t *testing.T) {
+	t.Parallel()
+
+	ls := buildLedger(t,
+		oracletest.TxReq("world", "acc:1", "USD/2", 1),
+		oracletest.TxReq("world", "acc:2", "USD/2", 1),
+		oracletest.TxReq("world", "acc:3", "USD/2", 1),
+	)
+	tx := func(i int) *commonpb.Transaction { return serverTxFromRec(ls.Txs().Get(i)) }
+	page := func(reverse bool, after *commonpb.Transaction, txs ...*commonpb.Transaction) bool {
+		call := preparedCall{ledger: "L", pageSize: 10, reverse: reverse}
+		cur := &commonpb.PreparedQueryCursor{TransactionData: txs}
+
+		return preparedWindowMatches(ls, call, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, nil, uint64EntityKey(after.GetId()), cur)
+	}
+
+	require.True(t, page(true, tx(1), tx(0)), "a forward cursor resumed in reverse runs back below its row")
+	require.False(t, page(true, tx(1), tx(2)), "a forward cursor resumed in reverse never climbs past its row")
+	require.True(t, page(false, tx(1), tx(2)), "a reverse cursor resumed forward runs up above its row")
+	require.False(t, page(false, tx(1), tx(0)), "a reverse cursor resumed forward never drops below its row")
+}

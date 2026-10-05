@@ -146,7 +146,7 @@ func genPreparedQueryFilter(ls oracle.LedgerState, ledger string, target commonp
 	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
 		concrete = genTransactionFilter(txFilterSeedsOf(ls))
 	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
-		concrete = genLogFilter(ledger, nil, 0)
+		concrete = genLogFilter(ledger, logDateSample(ls), 0)
 	default:
 		panic(fmt.Sprintf("genPreparedQueryFilter: non-executable target %v", target))
 	}

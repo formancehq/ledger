@@ -308,8 +308,10 @@ type preparedCall struct {
 	wrongResult bool
 }
 
-// runExecuteNextPage issues the follow-on page for prev, in prev's direction,
-// and validates it with the after-key derived from prev's last row.
+// runExecuteNextPage issues the follow-on page for prev and validates it with
+// the after-key derived from prev's last row. The cursor carries a position and
+// no direction, so one page in four resumes in the opposite direction: the
+// window then runs from that row back the way the first page came.
 func (c *Checker) runExecuteNextPage(
 	ctx context.Context,
 	client servicepb.BucketServiceClient,
@@ -319,6 +321,11 @@ func (c *Checker) runExecuteNextPage(
 	after := lastPageKey(prev)
 	if len(after) == 0 {
 		return
+	}
+
+	flipped := oneIn(4)
+	if flipped {
+		call.reverse = !call.reverse
 	}
 
 	c.mu.Lock()
@@ -351,7 +358,14 @@ func (c *Checker) runExecuteNextPage(
 	_, cursorResult := resp.GetResult().(*servicepb.ExecutePreparedQueryResponse_Cursor)
 	call.wrongResult = err == nil && !cursorResult
 
-	c.validateExecuteList(maxTicket, call, after, resp.GetCursor())
+	if c.validateExecuteList(maxTicket, call, after, resp.GetCursor()) && flipped && call.errKind == pqErrNone {
+		// Coverage: a cursor from one direction resumed the other way, and the
+		// window back from its row matched the model.
+		assert.Reachable("singleton_driver_model: prepared query page resumed in the opposite direction", internal.Details{
+			"ledger":  call.ledger,
+			"reverse": call.reverse,
+		})
+	}
 }
 
 // preparedQuerySnapshot returns the committed stored definition for (ledger,
@@ -495,8 +509,9 @@ func runAggregateReverseMisuse(
 // lifecycle verdict, and the ordered window itself — all on the same base.
 //
 // after is the model-side cursor: "" for a first page, else the previous
-// page's last key (address, transaction id, or log id).
-func (c *Checker) validateExecuteList(maxTicket uint64, call preparedCall, after []byte, cur *commonpb.PreparedQueryCursor) {
+// page's last key (address, transaction id, or log id). Reports whether the
+// outcome matched the model.
+func (c *Checker) validateExecuteList(maxTicket uint64, call preparedCall, after []byte, cur *commonpb.PreparedQueryCursor) bool {
 	if call.errKind == pqErrOther || call.errKind == pqErrAggregateTarget {
 		assert.Unreachable("singleton_driver_model: prepared query execution returned unexpected error", internal.Details{
 			"ledger": call.ledger,
@@ -505,7 +520,7 @@ func (c *Checker) validateExecuteList(maxTicket uint64, call preparedCall, after
 			"error":  call.err.Error(),
 		})
 
-		return
+		return false
 	}
 	if call.errKind == pqErrNone && cur.GetPageSize() != uint32(call.pageSize) {
 		assert.Unreachable("singleton_driver_model: prepared query cursor page size mismatch", internal.Details{
@@ -513,7 +528,7 @@ func (c *Checker) validateExecuteList(maxTicket uint64, call preparedCall, after
 			"pageSize": cur.GetPageSize(), "expectedPageSize": call.pageSize,
 		})
 
-		return
+		return false
 	}
 
 	if c.matchesModel(maxTicket, "PQEXEC", func(base oracle.GlobalState) bool {
@@ -523,7 +538,7 @@ func (c *Checker) validateExecuteList(maxTicket uint64, call preparedCall, after
 
 		return preparedListOutcomeLegal(base.Ledger(call.ledger), call, after, cur)
 	}) {
-		return
+		return true
 	}
 
 	serverRows, modelRows := c.preparedPageDiag(call, after, cur)
@@ -545,6 +560,8 @@ func (c *Checker) validateExecuteList(maxTicket uint64, call preparedCall, after
 		"modelRows":    modelRows,
 		"modelQueries": c.modelPreparedQueries(call.ledger),
 	})
+
+	return false
 }
 
 // preparedLedgerOutcomeLegal handles lifecycle outcomes before validators read
