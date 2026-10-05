@@ -232,7 +232,10 @@ runs the committed bytes and only redoes that work when the bytes change. The
 leader compiles a script once and reuses it, so in steady state every order of
 a script hits. A rejected artifact is never cached, and the cache is in-memory,
 so an upgrade restarts it empty. It then executes the artifact per apply
-(`numscript.SafeExecCompiled`). The verifier is what entitles the VM to run
+(`numscript.SafeExecCompiled`). The apply store reaches the proposal's Scope
+and coverage plan; the library's `Exec` releases its store on every exit
+(success, error or panic), so a cached instance never pins an old proposal.
+The verifier is what entitles the VM to run
 wire-supplied bytecode without per-instruction checks.
 
 Every scripted order admission proposes carries an artifact; an order it

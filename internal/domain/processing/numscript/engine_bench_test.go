@@ -68,11 +68,35 @@ func benchCase(b *testing.B, script string, vars map[string]string) {
 
 	source := benchSource()
 
-	b.Run("vm_decode_verify_exec", func(b *testing.B) {
+	// warm_vm vs fresh_vm is the A/B for reusing the cached VM instance: both
+	// decode the vars and hit the decode+verify cache exactly as apply does,
+	// and differ only in executing on the entry's warm instance or on a new
+	// one built from the same verified program.
+	b.Run("warm_vm", func(b *testing.B) {
 		store := NewVMStore(source, false)
 		b.ReportAllocs()
 		for b.Loop() {
 			if _, err := SafeExecCompiled(cache, compiled.ScriptHash, compiled.Program, compiled.Vars, store); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+
+	b.Run("fresh_vm", func(b *testing.B) {
+		store := NewVMStore(source, false)
+		b.ReportAllocs()
+		for b.Loop() {
+			vars, decErr := numscriptlib.DecodeVars(compiled.Vars)
+			if decErr != nil {
+				b.Fatal(decErr)
+			}
+
+			entry, err := cache.getOrDecodeCompiled(compiled.ScriptHash, compiled.Program, &vars)
+			if err != nil {
+				b.Fatal(err)
+			}
+
+			if _, err := safeExecVM(numscriptlib.NewVm(entry.vm.Program), &vars, store); err != nil {
 				b.Fatal(err)
 			}
 		}

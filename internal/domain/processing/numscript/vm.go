@@ -181,7 +181,9 @@ func (s *VMStore) GetMetadata(_ context.Context, account, scope, key string) (st
 // it checks LoadVar indices against are fixed by the program's own variable
 // layout, not by the per-order values). Execution reuses the entry's single warm VM instance
 // (see compiledLruEntry for the reuse contract: always safe sequentially,
-// never concurrently). Cache and warm instance alike only move work, never
+// never concurrently); the library releases store when the run returns, so the
+// cached instance never keeps it, nor the apply Scope it reaches. Cache and
+// warm instance alike only move work, never
 // results, so apply stays deterministic: a cached entry serves only the exact
 // program bytes it verified, so the node always runs the committed artifact.
 // scriptHash is the cache key: the order's HashScript(text), which the caller

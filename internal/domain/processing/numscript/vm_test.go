@@ -5,7 +5,10 @@ import (
 	"context"
 	"encoding/binary"
 	"math/big"
+	"runtime"
 	"testing"
+	"time"
+	"weak"
 
 	"github.com/stretchr/testify/require"
 
@@ -361,6 +364,118 @@ func TestSafeExecCompiled_PanicLeavesInstanceReusable(t *testing.T) {
 	require.Nil(t, err)
 	require.Len(t, result.Postings, 1)
 	require.Equal(t, int64(30), result.Postings[0].Amount.Int64())
+}
+
+// panickingValueSource is panicValueSource with a heap identity, so a weak
+// pointer can observe whether a run retains it. The pointer field keeps it off
+// the tiny allocator: a pointer-free object under 16 bytes shares its block
+// with unrelated allocations and stays alive as long as any of them does.
+type panickingValueSource struct {
+	_ *byte
+}
+
+func (*panickingValueSource) Balance(string, string, string) (*big.Int, error) {
+	panic("store panic mid-run")
+}
+
+func (*panickingValueSource) Metadata(string, string) (string, bool, error) {
+	return "", false, nil
+}
+
+// weakSource returns source with a liveness probe that holds it only weakly.
+func weakSource[T any, P interface {
+	*T
+	ValueSource
+}](source P) (ValueSource, func() bool) {
+	ref := weak.Make((*T)(source))
+
+	return source, func() bool { return ref.Value() != nil }
+}
+
+// TestSafeExecCompiled_WarmInstanceReleasesSource: the cached warm instance
+// outlives the run. On the apply path the source reaches the Scope and the
+// proposal's whole coverage plan, so once SafeExecCompiled returns — on
+// success, a normal failure or a recovered panic — the source must be
+// collectable while the cache entry, and its instance, stay alive. The library
+// releases the store when Exec returns; this pins that contract.
+func TestSafeExecCompiled_WarmInstanceReleasesSource(t *testing.T) {
+	t.Parallel()
+
+	script := `send [COIN 30] (
+  source = @src
+  destination = @dst
+)`
+	compiled := mustCompile(t, mustEntry(t, script), nil)
+
+	for _, tc := range []struct {
+		name string
+		// source returns a fresh source and reports whether it is still alive.
+		source func() (ValueSource, func() bool)
+		check  func(t *testing.T, err domain.SerializableError)
+	}{
+		{
+			name: "success",
+			source: func() (ValueSource, func() bool) {
+				return weakSource(&mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}})
+			},
+			check: func(t *testing.T, err domain.SerializableError) {
+				t.Helper()
+				require.Nil(t, err)
+			},
+		},
+		{
+			name: "missing funds",
+			source: func() (ValueSource, func() bool) {
+				return weakSource(&mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(10)}})
+			},
+			check: func(t *testing.T, err domain.SerializableError) {
+				t.Helper()
+				var insufficientFunds *domain.ErrInsufficientFunds
+				require.ErrorAs(t, err, &insufficientFunds)
+			},
+		},
+		{
+			name:   "panic",
+			source: func() (ValueSource, func() bool) { return weakSource(&panickingValueSource{}) },
+			check: func(t *testing.T, err domain.SerializableError) {
+				t.Helper()
+				require.True(t, IsPanic(err))
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			cache := NewNumscriptCache(16)
+
+			// Run in its own frame so no local of this test keeps the source
+			// reachable; only what the run left behind can.
+			alive := func() func() bool {
+				source, alive := tc.source()
+
+				_, err := SafeExecCompiled(cache, compiled.ScriptHash, compiled.Program, compiled.Vars, NewVMStore(source, false))
+				tc.check(t, err)
+
+				return alive
+			}()
+
+			hash := [32]byte(compiled.ScriptHash)
+			cache.compiledMu.RLock()
+			_, cached := cache.compiledCache[hash]
+			cache.compiledMu.RUnlock()
+			require.True(t, cached, "the warm instance must stay cached")
+
+			// Collect until the source is released; a reference the cached
+			// instance holds never releases it.
+			require.Eventually(t, func() bool {
+				runtime.GC()
+
+				return !alive()
+			}, 5*time.Second, 10*time.Millisecond, "the cached warm instance still retains the run's source")
+
+			runtime.KeepAlive(cache)
+		})
+	}
 }
 
 // TestSafeExecCompiled_ForeignBytecodeVersionRejected: an artifact whose
