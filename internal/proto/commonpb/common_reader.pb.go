@@ -11648,7 +11648,6 @@ func NewGroupedAggregateResultListReader(s []*GroupedAggregateResult) GroupedAgg
 type PreparedQueryCursorReader interface {
 	GetPageSize() uint32
 	GetHasMore() bool
-	GetPrevious() string
 	GetNext() string
 	GetAccountData() AccountListReader
 	GetTransactionData() TransactionListReader
@@ -11664,10 +11663,6 @@ func (r *preparedQueryCursorReadonly) GetPageSize() uint32 {
 
 func (r *preparedQueryCursorReadonly) GetHasMore() bool {
 	return (*PreparedQueryCursor)(r).GetHasMore()
-}
-
-func (r *preparedQueryCursorReadonly) GetPrevious() string {
-	return (*PreparedQueryCursor)(r).GetPrevious()
 }
 
 func (r *preparedQueryCursorReadonly) GetNext() string {

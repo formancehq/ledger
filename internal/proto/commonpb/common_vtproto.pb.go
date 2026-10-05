@@ -4169,7 +4169,6 @@ func (m *PreparedQueryCursor) CloneVT() *PreparedQueryCursor {
 	r := new(PreparedQueryCursor)
 	r.PageSize = m.PageSize
 	r.HasMore = m.HasMore
-	r.Previous = m.Previous
 	r.Next = m.Next
 	if rhs := m.AccountData; rhs != nil {
 		tmpContainer := make([]*Account, len(rhs))
@@ -11579,9 +11578,6 @@ func (this *PreparedQueryCursor) EqualVT(that *PreparedQueryCursor) bool {
 		return false
 	}
 	if this.HasMore != that.HasMore {
-		return false
-	}
-	if this.Previous != that.Previous {
 		return false
 	}
 	if this.Next != that.Next {
@@ -22308,7 +22304,7 @@ func (m *PreparedQueryCursor) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x3a
+			dAtA[i] = 0x32
 		}
 	}
 	if len(m.TransactionData) > 0 {
@@ -22320,7 +22316,7 @@ func (m *PreparedQueryCursor) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x32
+			dAtA[i] = 0x2a
 		}
 	}
 	if len(m.AccountData) > 0 {
@@ -22332,20 +22328,13 @@ func (m *PreparedQueryCursor) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x2a
+			dAtA[i] = 0x22
 		}
 	}
 	if len(m.Next) > 0 {
 		i -= len(m.Next)
 		copy(dAtA[i:], m.Next)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Next)))
-		i--
-		dAtA[i] = 0x22
-	}
-	if len(m.Previous) > 0 {
-		i -= len(m.Previous)
-		copy(dAtA[i:], m.Previous)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Previous)))
 		i--
 		dAtA[i] = 0x1a
 	}
@@ -27583,10 +27572,6 @@ func (m *PreparedQueryCursor) SizeVT() (n int) {
 	}
 	if m.HasMore {
 		n += 2
-	}
-	l = len(m.Previous)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	l = len(m.Next)
 	if l > 0 {
@@ -51412,38 +51397,6 @@ func (m *PreparedQueryCursor) UnmarshalVT(dAtA []byte) error {
 			m.HasMore = bool(v != 0)
 		case 3:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Previous", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Previous = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 4:
-			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Next", wireType)
 			}
 			var stringLen uint64
@@ -51474,7 +51427,7 @@ func (m *PreparedQueryCursor) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Next = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 5:
+		case 4:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field AccountData", wireType)
 			}
@@ -51508,7 +51461,7 @@ func (m *PreparedQueryCursor) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 6:
+		case 5:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field TransactionData", wireType)
 			}
@@ -51542,7 +51495,7 @@ func (m *PreparedQueryCursor) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 7:
+		case 6:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field LogData", wireType)
 			}

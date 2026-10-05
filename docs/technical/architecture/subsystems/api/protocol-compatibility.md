@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"16"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"17"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 16:
+leader. For example, with a schema implementing revision 17:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 16' \
+grpcurl -plaintext -H 'ledger-protocol-version: 17' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -223,6 +223,13 @@ failure into an explicit removal of the stored filter. The query then matches
 every entity in its immutable target. The protobuf wire shape is unchanged, but
 a revision-15 peer interprets the identical request differently, so clients,
 servers, and every Raft replica must agree on revision 16 semantics.
+
+## Prepared-query cursor without `previous` (revision 17)
+
+Revision 17 removes `PreparedQueryCursor.previous`, which only echoed the
+request cursor, and renumbers `next`, `account_data`, `transaction_data` and
+`log_data` to 3–6. A revision-16 peer decodes those fields under the wrong
+numbers, so clients and servers must agree on revision 17.
 
 ## Maintaining the revision
 
