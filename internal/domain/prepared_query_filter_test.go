@@ -261,3 +261,183 @@ func TestValidateFilterForTarget_RejectsHasAssetPrecisionOverflow(t *testing.T) 
 		})
 	}
 }
+
+// TestValidateFilterForTarget_RejectsMalformedLeaves pins the write-time half of
+// domain.ValidateFilterLeaf: each leaf shape below fails query.Compile whatever
+// the schema, parameters or index state, so a prepared query carrying one must
+// be rejected before it is stored. The well-formed twin of each case passes.
+func TestValidateFilterForTarget_RejectsMalformedLeaves(t *testing.T) {
+	t.Parallel()
+
+	accounts := commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS
+	transactions := commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS
+	logs := commonpb.QueryTarget_QUERY_TARGET_LOGS
+	one := uint64(1)
+	uintCond := &commonpb.UintCondition{Min: &one}
+	stringCond := &commonpb.StringCondition{Value: &commonpb.StringCondition_Hardcoded{Hardcoded: "x"}}
+
+	field := func(fc *commonpb.FieldCondition) *commonpb.QueryFilter {
+		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Field{Field: fc}}
+	}
+	ref := &commonpb.FieldRef{Metadata: "colour"}
+	reference := func(c *commonpb.StringCondition) *commonpb.QueryFilter {
+		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reference{Reference: &commonpb.ReferenceCondition{Cond: c}}}
+	}
+	ledger := func(c *commonpb.StringCondition) *commonpb.QueryFilter {
+		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Ledger{Ledger: &commonpb.LedgerCondition{Cond: c}}}
+	}
+	builtinUint := func(f commonpb.TransactionBuiltinIndex, c *commonpb.UintCondition) *commonpb.QueryFilter {
+		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{BuiltinUint: &commonpb.BuiltinUintCondition{Field: f, Cond: c}}}
+	}
+	logBuiltinUint := func(f commonpb.LogBuiltinIndex, c *commonpb.UintCondition) *commonpb.QueryFilter {
+		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogBuiltinUint{LogBuiltinUint: &commonpb.LogBuiltinUintCondition{Field: f, Cond: c}}}
+	}
+	address := func(m *commonpb.AddressMatch) *commonpb.QueryFilter {
+		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{Address: m}}
+	}
+
+	for _, tc := range []struct {
+		name      string
+		target    commonpb.QueryTarget
+		malformed *commonpb.QueryFilter
+		valid     *commonpb.QueryFilter
+		want      string
+	}{
+		{
+			name:      "reference without condition",
+			target:    transactions,
+			malformed: reference(nil),
+			valid:     reference(stringCond),
+			want:      "reference condition has no value",
+		},
+		{
+			name:      "reference with empty string condition",
+			target:    transactions,
+			malformed: reference(&commonpb.StringCondition{}),
+			valid:     reference(stringCond),
+			want:      "string condition has no value",
+		},
+		{
+			name:      "ledger without condition",
+			target:    logs,
+			malformed: ledger(nil),
+			valid:     ledger(stringCond),
+			want:      "ledger condition has no value",
+		},
+		{
+			name:      "ledger with empty string condition",
+			target:    logs,
+			malformed: ledger(&commonpb.StringCondition{}),
+			valid:     ledger(stringCond),
+			want:      "string condition has no value",
+		},
+		{
+			name:      "builtin uint without condition",
+			target:    transactions,
+			malformed: builtinUint(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID, nil),
+			valid:     builtinUint(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID, uintCond),
+			want:      "builtin uint condition has no value",
+		},
+		{
+			name:      "builtin uint on the reference field",
+			target:    transactions,
+			malformed: builtinUint(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE, uintCond),
+			valid:     builtinUint(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP, uintCond),
+			want:      "unsupported builtin uint field: TX_BUILTIN_INDEX_REFERENCE",
+		},
+		{
+			name:      "builtin uint on the address field",
+			target:    transactions,
+			malformed: builtinUint(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS, uintCond),
+			valid:     builtinUint(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT, uintCond),
+			want:      "unsupported builtin uint field: TX_BUILTIN_INDEX_ADDRESS",
+		},
+		{
+			name:      "log builtin uint without condition",
+			target:    logs,
+			malformed: logBuiltinUint(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE, nil),
+			valid:     logBuiltinUint(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE, uintCond),
+			want:      "log builtin uint condition has no value",
+		},
+		{
+			name:      "log builtin uint with unspecified field",
+			target:    logs,
+			malformed: logBuiltinUint(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_UNSPECIFIED, uintCond),
+			valid:     logBuiltinUint(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE, uintCond),
+			want:      "unsupported log builtin uint field: LOG_BUILTIN_INDEX_UNSPECIFIED",
+		},
+		{
+			name:      "address without match",
+			target:    accounts,
+			malformed: address(&commonpb.AddressMatch{}),
+			valid:     address(&commonpb.AddressMatch{Match: &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: "users:"}}),
+			want:      "address condition has no match",
+		},
+		{
+			name:   "field without field reference",
+			target: accounts,
+			malformed: field(&commonpb.FieldCondition{
+				Condition: &commonpb.FieldCondition_StringCond{StringCond: stringCond},
+			}),
+			valid: field(&commonpb.FieldCondition{
+				Field:     ref,
+				Condition: &commonpb.FieldCondition_StringCond{StringCond: stringCond},
+			}),
+			want: "field condition has no field reference",
+		},
+		{
+			name:      "field without condition",
+			target:    accounts,
+			malformed: field(&commonpb.FieldCondition{Field: ref}),
+			valid: field(&commonpb.FieldCondition{
+				Field:     ref,
+				Condition: &commonpb.FieldCondition_ExistsCond{ExistsCond: &commonpb.ExistsCondition{}},
+			}),
+			want: "field condition has no condition",
+		},
+		{
+			name:   "field with empty string condition",
+			target: accounts,
+			malformed: field(&commonpb.FieldCondition{
+				Field:     ref,
+				Condition: &commonpb.FieldCondition_StringCond{StringCond: &commonpb.StringCondition{}},
+			}),
+			valid: field(&commonpb.FieldCondition{
+				Field:     ref,
+				Condition: &commonpb.FieldCondition_StringCond{StringCond: stringCond},
+			}),
+			want: "string condition has no value",
+		},
+		{
+			name:   "field with empty bool condition",
+			target: accounts,
+			malformed: field(&commonpb.FieldCondition{
+				Field:     ref,
+				Condition: &commonpb.FieldCondition_BoolCond{BoolCond: &commonpb.BoolCondition{}},
+			}),
+			valid: field(&commonpb.FieldCondition{
+				Field:     ref,
+				Condition: &commonpb.FieldCondition_BoolCond{BoolCond: &commonpb.BoolCondition{Value: &commonpb.BoolCondition_Param{Param: "flag"}}},
+			}),
+			want: "bool condition has no value",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Nil(t, domain.ValidateFilterForTarget(tc.valid, tc.target))
+
+			for name, f := range map[string]*commonpb.QueryFilter{
+				"bare":   tc.malformed,
+				"nested": {Filter: &commonpb.QueryFilter_And{And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{tc.valid, tc.malformed}}}},
+			} {
+				err := domain.ValidateFilterForTarget(f, tc.target)
+				require.NotNil(t, err, name)
+
+				var compileErr *domain.ErrFilterCompilation
+				require.ErrorAs(t, err, &compileErr, name)
+				require.Equal(t, tc.want, compileErr.Detail, name)
+			}
+		})
+	}
+}

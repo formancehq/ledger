@@ -1060,6 +1060,45 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 			Expect(err).To(HaveOccurred())
 		})
 
+		It("Should reject filter shapes that can never compile", func() {
+			for _, tc := range []struct {
+				target commonpb.QueryTarget
+				filter *commonpb.QueryFilter
+				want   string
+			}{
+				{
+					target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+					filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reference{Reference: &commonpb.ReferenceCondition{}}},
+					want:   "reference condition has no value",
+				},
+				{
+					target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
+					filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogBuiltinUint{LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
+						Cond: &commonpb.UintCondition{},
+					}}},
+					want: "unsupported log builtin uint field",
+				},
+				{
+					target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+					filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{Address: &commonpb.AddressMatch{}}},
+					want:   "address condition has no match",
+				},
+			} {
+				_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+					Type: &servicepb.Request_CreatePreparedQuery{CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+						Ledger: ledgerName,
+						Query: &commonpb.PreparedQuery{
+							Name:   "malformed-shape",
+							Target: tc.target,
+							Filter: tc.filter,
+						},
+					}},
+				}))
+				Expect(status.Code(err)).To(Equal(codes.InvalidArgument), tc.want)
+				Expect(err.Error()).To(ContainSubstring(tc.want))
+			}
+		})
+
 		It("Should reject a has-asset precision the asset index cannot encode", func() {
 			overflow := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_AccountHasAsset{
 				AccountHasAsset: &commonpb.AccountHasAssetCondition{AssetBase: "USD", Precision: 1038},
