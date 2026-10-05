@@ -8046,6 +8046,7 @@ type ExecutePreparedQueryRequestReader interface {
 	GetPageSize() uint32
 	GetCursor() string
 	GetMode() commonpb.QueryMode
+	GetReverse() bool
 	Mutate() *ExecutePreparedQueryRequest
 }
 
@@ -8073,6 +8074,10 @@ func (r *executePreparedQueryRequestReadonly) GetCursor() string {
 
 func (r *executePreparedQueryRequestReadonly) GetMode() commonpb.QueryMode {
 	return (*ExecutePreparedQueryRequest)(r).GetMode()
+}
+
+func (r *executePreparedQueryRequestReadonly) GetReverse() bool {
+	return (*ExecutePreparedQueryRequest)(r).GetReverse()
 }
 
 func (r *executePreparedQueryRequestReadonly) Mutate() *ExecutePreparedQueryRequest {

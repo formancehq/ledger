@@ -289,7 +289,7 @@ means the same thing, so this gives the order its original outcome. Across a
 library change that alters execution semantics it does not: replaying history
 applied by another library can rebuild different bytes or reject an order
 that committed, as with the interpreter-to-VM change (see
-[Upgrading across the Numscript VM execution change](../../../../ops/deployment.md#upgrading-across-the-numscript-vm-execution-change-revision-17)).
+[Upgrading across the Numscript VM execution change](../../../../ops/deployment.md#upgrading-across-the-numscript-vm-execution-change-revision-19)).
 Missing artifacts are expected there, so
 `state.AuditReplayer` turns on `RequestProcessor.CompileMissingNumscript`,
 which only skips the `assert.Unreachable`; the cluster's own processor never

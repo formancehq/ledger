@@ -786,9 +786,9 @@ Changes in this release line that fall under this rule:
 |--------|--------------------|----------|
 | EN-2045 | `SaveLedgerMetadata`, `DeleteLedgerMetadata`, `SaveNumscript`, the prepared-query create/update/delete and `PromoteLedger` applied to a soft-deleted ledger stop succeeding and become an `ERROR_REASON_LEDGER_DELETED` failure | writes aimed at a tombstoned ledger, which a healthy client does not issue |
 
-### Upgrading across the Numscript VM execution change (revision 17)
+### Upgrading across the Numscript VM execution change (revision 19)
 
-Service protocol revision 17 (#2126) makes admission compile each resolvable
+Service protocol revision 19 (#2126) makes admission compile each resolvable
 Numscript to VM bytecode carried in the order's technical sub-message, which
 the FSM executes instead of re-interpreting the script text; the bundled
 Numscript library also changes how an account-typed metadata value is rendered

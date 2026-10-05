@@ -3676,6 +3676,7 @@ ledgerctl queries execute <name> --ledger <ledger-name> [flags]
 | `--param` | | Query parameter as `key=value` (repeatable) |
 | `--page-size` | `10` | Number of results per page |
 | `--mode` | `list` | Query mode: `list` or `aggregate` |
+| `--reverse` | `false` | List results in descending order. Rejected in `aggregate` mode |
 | `--analyze` | `false` | Display the query profile: server-side phase timing (prepare/execute/barrier/deliver) plus iterator stats |
 | `--timeout` | `10s` | Request timeout |
 
@@ -3690,6 +3691,9 @@ ledgerctl queries execute by-tier --ledger my-ledger --param tier=gold
 
 # Aggregate mode (returns per-asset volumes)
 ledgerctl queries execute active-users --ledger my-ledger --mode aggregate
+
+# Newest transactions first
+ledgerctl queries execute big-txns --ledger my-ledger --reverse
 
 # Multiple parameters
 ledgerctl queries execute filtered --ledger my-ledger --param status=active --param region=eu

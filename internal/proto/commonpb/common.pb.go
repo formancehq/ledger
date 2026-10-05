@@ -11888,11 +11888,10 @@ type PreparedQueryCursor struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	PageSize        uint32                 `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	HasMore         bool                   `protobuf:"varint,2,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
-	Previous        string                 `protobuf:"bytes,3,opt,name=previous,proto3" json:"previous,omitempty"`
-	Next            string                 `protobuf:"bytes,4,opt,name=next,proto3" json:"next,omitempty"`
-	AccountData     []*Account             `protobuf:"bytes,5,rep,name=account_data,json=accountData,proto3" json:"account_data,omitempty"`
-	TransactionData []*Transaction         `protobuf:"bytes,6,rep,name=transaction_data,json=transactionData,proto3" json:"transaction_data,omitempty"`
-	LogData         []*Log                 `protobuf:"bytes,7,rep,name=log_data,json=logData,proto3" json:"log_data,omitempty"`
+	Next            string                 `protobuf:"bytes,3,opt,name=next,proto3" json:"next,omitempty"`
+	AccountData     []*Account             `protobuf:"bytes,4,rep,name=account_data,json=accountData,proto3" json:"account_data,omitempty"`
+	TransactionData []*Transaction         `protobuf:"bytes,5,rep,name=transaction_data,json=transactionData,proto3" json:"transaction_data,omitempty"`
+	LogData         []*Log                 `protobuf:"bytes,6,rep,name=log_data,json=logData,proto3" json:"log_data,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -11939,13 +11938,6 @@ func (x *PreparedQueryCursor) GetHasMore() bool {
 		return x.HasMore
 	}
 	return false
-}
-
-func (x *PreparedQueryCursor) GetPrevious() string {
-	if x != nil {
-		return x.Previous
-	}
-	return ""
 }
 
 func (x *PreparedQueryCursor) GetNext() string {
@@ -13759,15 +13751,14 @@ const file_common_proto_rawDesc = "" +
 	"\x06groups\x18\x02 \x03(\v2\x1e.common.GroupedAggregateResultR\x06groups\"d\n" +
 	"\x16GroupedAggregateResult\x12\x16\n" +
 	"\x06prefix\x18\x01 \x01(\tR\x06prefix\x122\n" +
-	"\avolumes\x18\x02 \x03(\v2\x18.common.AggregatedVolumeR\avolumes\"\x99\x02\n" +
+	"\avolumes\x18\x02 \x03(\v2\x18.common.AggregatedVolumeR\avolumes\"\xfd\x01\n" +
 	"\x13PreparedQueryCursor\x12\x1b\n" +
 	"\tpage_size\x18\x01 \x01(\rR\bpageSize\x12\x19\n" +
-	"\bhas_more\x18\x02 \x01(\bR\ahasMore\x12\x1a\n" +
-	"\bprevious\x18\x03 \x01(\tR\bprevious\x12\x12\n" +
-	"\x04next\x18\x04 \x01(\tR\x04next\x122\n" +
-	"\faccount_data\x18\x05 \x03(\v2\x0f.common.AccountR\vaccountData\x12>\n" +
-	"\x10transaction_data\x18\x06 \x03(\v2\x13.common.TransactionR\x0ftransactionData\x12&\n" +
-	"\blog_data\x18\a \x03(\v2\v.common.LogR\alogData\"\x91\x03\n" +
+	"\bhas_more\x18\x02 \x01(\bR\ahasMore\x12\x12\n" +
+	"\x04next\x18\x03 \x01(\tR\x04next\x122\n" +
+	"\faccount_data\x18\x04 \x03(\v2\x0f.common.AccountR\vaccountData\x12>\n" +
+	"\x10transaction_data\x18\x05 \x03(\v2\x13.common.TransactionR\x0ftransactionData\x12&\n" +
+	"\blog_data\x18\x06 \x03(\v2\v.common.LogR\alogData\"\x91\x03\n" +
 	"\vLedgerStats\x12+\n" +
 	"\x11transaction_count\x18\x01 \x01(\x06R\x10transactionCount\x12!\n" +
 	"\fvolume_count\x18\x02 \x01(\x06R\vvolumeCount\x12'\n" +

@@ -81,7 +81,20 @@ func (e *ErrQueryModeUnsupported) Error() string {
 
 func (*ErrQueryModeUnsupported) Kind() domain.ErrorKind { return domain.KindValidation }
 
+// ErrQueryModeReverseUnsupported rejects reverse on a mode that does not page:
+// an aggregate has no order to invert.
+type ErrQueryModeReverseUnsupported struct {
+	Mode commonpb.QueryMode
+}
+
+func (e *ErrQueryModeReverseUnsupported) Error() string {
+	return fmt.Sprintf("reverse is not supported in query mode %v", e.Mode)
+}
+
+func (*ErrQueryModeReverseUnsupported) Kind() domain.ErrorKind { return domain.KindValidation }
+
 var (
 	_ domain.Classifiable = (*ErrPreparedQueryAggregateTarget)(nil)
 	_ domain.Classifiable = (*ErrQueryModeUnsupported)(nil)
+	_ domain.Classifiable = (*ErrQueryModeReverseUnsupported)(nil)
 )

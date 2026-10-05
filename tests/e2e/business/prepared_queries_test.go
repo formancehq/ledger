@@ -1060,6 +1060,47 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 			Expect(err).To(HaveOccurred())
 		})
 
+		It("Should reject a has-asset precision the asset index cannot encode", func() {
+			overflow := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_AccountHasAsset{
+				AccountHasAsset: &commonpb.AccountHasAssetCondition{AssetBase: "USD", Precision: 1038},
+			}}
+
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_CreatePreparedQuery{CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+					Ledger: ledgerName,
+					Query: &commonpb.PreparedQuery{
+						Name:   "has-asset-overflow",
+						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Filter: overflow,
+					},
+				}},
+			}))
+			Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+			Expect(err.Error()).To(ContainSubstring("has asset precision"))
+
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_CreatePreparedQuery{CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+					Ledger: ledgerName,
+					Query: &commonpb.PreparedQuery{
+						Name:   "has-asset-update",
+						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Filter: actions.StringMetadataFilter("role", "admin"),
+					},
+				}},
+			}))
+			Expect(err).To(Succeed())
+
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_UpdatePreparedQuery{UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
+					Ledger: ledgerName,
+					Name:   "has-asset-update",
+					Filter: overflow,
+				}},
+			}))
+			Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+			Expect(err.Error()).To(ContainSubstring("has asset precision"))
+		})
+
 		It("Should return NOT_FOUND when updating a non-existent query", func() {
 			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 				Type: &servicepb.Request_UpdatePreparedQuery{UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
