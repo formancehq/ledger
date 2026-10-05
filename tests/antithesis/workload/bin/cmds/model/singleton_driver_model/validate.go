@@ -556,6 +556,8 @@ func (c *Checker) validateFailure(maxTicket uint64, failedBulk oracle.Bulk, reqE
 			assert.Reachable("singleton_driver_model: validation rejection exercised", internal.Details{})
 		case domain.ErrReasonIdempotencyKeyConflict:
 			assert.Reachable("singleton_driver_model: idempotency-conflict rejection exercised", internal.Details{})
+		case domain.ErrReasonFilterCompilation:
+			assert.Reachable("singleton_driver_model: malformed prepared-query filter refused at save", internal.Details{})
 		}
 
 		dbgf("MODEL FAIL OK: ledgers=%s kinds=%s explained by %s", bulkLedgers(failedBulk), requestKinds(failedBulk), reason)
