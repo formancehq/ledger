@@ -31,12 +31,15 @@ type numscriptPostingProducer struct {
 	// compiledProgram/compiledVars/compiledScriptHash are the Numscript VM
 	// artifact admission compiled on the leader's parallel path (from
 	// OrderTechnical, staged like the hash above). Execution decodes and runs
-	// the bytecode on the VM, the only engine. A missing artifact is recompiled
-	// from the script text; one not encoded in the bundled library's artifact
-	// format (another binary's, e.g. a Raft log replayed across a library
-	// upgrade) fails the order loudly. The
-	// outcome is a function of the committed entry and the running binary
-	// alone, so every node on that binary applies it identically (invariant #2).
+	// the bytecode on the VM, the only engine. An artifact this binary cannot
+	// read — missing, with an invalid header, or of a bytecode version the
+	// bundled library cannot read (another binary's, e.g. a Raft log replayed
+	// across a library upgrade) — is recompiled from the script text; across
+	// changed library semantics that recompile can change a historical outcome
+	// (see numscript.CompileForReplay). A readable artifact that fails decoding
+	// or verification fails the order loudly. The outcome is a function of the
+	// committed entry and the running binary alone, so every node on that
+	// binary applies it identically (invariant #2).
 	compiledProgram    []byte
 	compiledVars       []byte
 	compiledScriptHash []byte
