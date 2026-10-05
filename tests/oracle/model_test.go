@@ -1043,3 +1043,17 @@ func TestGlobalState_Apply_PreparedQueryNoAliasing(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "a:", stored.GetFilter().GetAddress().GetHardcodedPrefix())
 }
+
+func TestGlobalState_MalformedPreparedQueryRefusedAtAdmission(t *testing.T) {
+	t.Parallel()
+
+	seeded := NewGlobalState().Apply(keyedBulk("k", oracletest.TxReq("world", "a:1", "USD", 1)))
+	require.True(t, seeded.OK, seeded.Reason)
+
+	// Admission refuses the malformed filter before the FSM's idempotency
+	// lookup, so the reused key never gets to report a conflict.
+	malformed := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{Address: &commonpb.AddressMatch{}}}
+	got := seeded.State.Apply(keyedBulk("k", pqReq("q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, malformed)))
+	require.False(t, got.OK)
+	require.Equal(t, domain.ErrReasonFilterCompilation, got.Reason)
+}

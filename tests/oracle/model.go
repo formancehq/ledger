@@ -904,6 +904,9 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 		if ct := req.GetApply().GetAction().GetCreateTransaction(); ct != nil && len(ct.GetPostings()) == 0 {
 			return ApplyResult{OK: false, Reason: domain.ErrReasonValidation, State: g}
 		}
+		if reason := preparedQueryAdmissionReason(req); reason != "" {
+			return ApplyResult{OK: false, Reason: reason, State: g}
+		}
 	}
 
 	// Per-batch idempotency, checked after admission's structural and maintenance
@@ -2012,6 +2015,49 @@ func (s *LedgerState) fieldTypes(target commonpb.TargetType) Map[string, commonp
 	}
 }
 
+// preparedQueryPayloadReason is the payload validation a prepared-query create
+// gets at admission and again in the FSM: presence, name, executable target,
+// and the filter's write-time checks. Empty when the payload is valid.
+func preparedQueryPayloadReason(q *commonpb.PreparedQuery) string {
+	if q == nil {
+		return domain.ErrPreparedQueryRequired.Reason()
+	}
+
+	if err := domain.ValidatePreparedQueryName(q.GetName()); err != nil {
+		return err.Reason()
+	}
+
+	if !domain.IsPreparedQueryExecutableTarget(q.GetTarget()) {
+		return domain.ErrPreparedQueryTargetUnsupported.Reason()
+	}
+
+	if err := domain.ValidateFilterForTarget(q.GetFilter(), q.GetTarget()); err != nil {
+		return err.Reason()
+	}
+
+	return ""
+}
+
+// preparedQueryAdmissionReason mirrors admission's validateOrderPreparedQuery:
+// a create's whole payload, and only the name of an update or delete. Empty
+// when admission lets the request through.
+func preparedQueryAdmissionReason(req *servicepb.Request) string {
+	switch r := req.GetType().(type) {
+	case *servicepb.Request_CreatePreparedQuery:
+		return preparedQueryPayloadReason(r.CreatePreparedQuery.GetQuery())
+	case *servicepb.Request_UpdatePreparedQuery:
+		if err := domain.ValidatePreparedQueryName(r.UpdatePreparedQuery.GetName()); err != nil {
+			return err.Reason()
+		}
+	case *servicepb.Request_DeletePreparedQuery:
+		if err := domain.ValidatePreparedQueryName(r.DeletePreparedQuery.GetName()); err != nil {
+			return err.Reason()
+		}
+	}
+
+	return ""
+}
+
 // applyCreatePreparedQuery registers a new prepared query, mirroring
 // processCreatePreparedQuery: payload validation, then ledger load (the caller
 // already routed to an existing ledger), then the duplicate-name check. The
@@ -2025,22 +2071,11 @@ func (s *LedgerState) fieldTypes(target commonpb.TargetType) Map[string, commonp
 // message: a later mutation of the submitted proto must not reach committed
 // state.
 func (s *LedgerState) applyCreatePreparedQuery(req *servicepb.CreatePreparedQueryRequest) OrderResult {
+	if reason := preparedQueryPayloadReason(req.GetQuery()); reason != "" {
+		return OrderResult{Reason: reason}
+	}
+
 	q := req.GetQuery()
-	if q == nil {
-		return OrderResult{Reason: domain.ErrPreparedQueryRequired.Reason()}
-	}
-
-	if err := domain.ValidatePreparedQueryName(q.GetName()); err != nil {
-		return OrderResult{Reason: err.Reason()}
-	}
-
-	if !domain.IsPreparedQueryExecutableTarget(q.GetTarget()) {
-		return OrderResult{Reason: domain.ErrPreparedQueryTargetUnsupported.Reason()}
-	}
-
-	if err := domain.ValidateFilterForTarget(q.GetFilter(), q.GetTarget()); err != nil {
-		return OrderResult{Reason: err.Reason()}
-	}
 
 	if s.preparedQueries.Has(q.GetName()) {
 		return OrderResult{Reason: domain.ErrReasonPreparedQueryAlreadyExists}
