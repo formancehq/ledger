@@ -110,22 +110,25 @@ func NewNumscriptCache(maxSize int) *NumscriptCache {
 	}
 }
 
-// hashScript computes the blake3 hash of the script content.
-// Lock-free: allocates a hasher per call (blake3.New is cheap).
+// HashScript computes the blake3 hash of the script content. It runs on the
+// FSM apply path for every scripted order: the one-shot Sum256 is the same
+// digest as a streaming hasher, without the hasher setup (the conversion does
+// not allocate, Sum256 does not retain its input).
 func HashScript(script string) [32]byte {
-	h := blake3.New()
-	_, _ = h.WriteString(script)
-
-	var result [32]byte
-
-	h.Sum(result[:0])
-
-	return result
+	return blake3.Sum256([]byte(script))
 }
 
 // GetOrParse retrieves a parsed script from the cache or parses it if not found.
 func (c *NumscriptCache) GetOrParse(script string) (numscriptlib.ParseResult, domain.SerializableError) {
-	entry := c.getOrParseEntry(script)
+	return c.GetOrParseHashed(HashScript(script), script)
+}
+
+// GetOrParseHashed is GetOrParse for a caller that already holds
+// HashScript(script), so the text is not hashed twice. hash must be exactly
+// HashScript(script): the cache is keyed by it, and a mismatched hash would
+// cache the parse under another script's key.
+func (c *NumscriptCache) GetOrParseHashed(hash [32]byte, script string) (numscriptlib.ParseResult, domain.SerializableError) {
+	entry := c.getOrParseEntryHashed(hash, script)
 
 	return entry.script.program, entry.script.err
 }
@@ -137,8 +140,12 @@ func (c *NumscriptCache) GetOrParse(script string) (numscriptlib.ParseResult, do
 // On cache miss the script is parsed outside the lock, then inserted with a write lock.
 // LRU ordering is approximate: read hits do not reorder to avoid write contention.
 func (c *NumscriptCache) getOrParseEntry(script string) *lruEntry {
-	hash := HashScript(script)
+	return c.getOrParseEntryHashed(HashScript(script), script)
+}
 
+// getOrParseEntryHashed is getOrParseEntry with hash = HashScript(script)
+// supplied by the caller.
+func (c *NumscriptCache) getOrParseEntryHashed(hash [32]byte, script string) *lruEntry {
 	// Fast path: read lock for cache hits (no contention between readers).
 	c.mu.RLock()
 	if elem, ok := c.cache[hash]; ok {

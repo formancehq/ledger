@@ -51,9 +51,9 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		return nil, domain.ErrScriptRequired
 	}
 
-	// Build variables map from script vars
-	vars := make(numscriptlib.VariablesMap)
-	maps.Copy(vars, script.GetVars())
+	// Hashed once: the stale-inputs parse below is keyed by it, and the
+	// artifact binding check further down compares it to the committed hash.
+	scriptHash := numscript.HashScript(script.GetPlain())
 
 	// Stale-inputs check: admission bound the balance/metadata values its
 	// dependency resolution read into OrderTechnical.inputs_resolution_hash
@@ -67,10 +67,13 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	if expected := p.inputsResolutionHash; len(expected) > 0 {
 		// Parse the script (uses cache to avoid re-parsing): dependency
 		// re-resolution walks the AST; execution below runs the compiled artifact.
-		parsed, err := p.cache.GetOrParse(script.GetPlain())
+		parsed, err := p.cache.GetOrParseHashed(scriptHash, script.GetPlain())
 		if err != nil {
 			return nil, err
 		}
+
+		vars := make(numscriptlib.VariablesMap)
+		maps.Copy(vars, script.GetVars())
 
 		valueSource := &scopeValueSource{store: s, ledgerName: ledgerName}
 		recording := numscript.NewRecordingStore(numscript.NewStore(valueSource, order.GetForce()), order.GetForce())
@@ -183,7 +186,6 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	// library versions are immutable, and an advanced "latest" was
 	// stale-rejected before the producer ran — so a mismatch is a "should not
 	// happen" surfaced loudly (invariant #7), never executing the wrong program.
-	scriptHash := numscript.HashScript(script.GetPlain())
 	if !bytes.Equal(scriptHash[:], compiledScriptHash) {
 		return nil, &domain.ErrNumscriptRuntime{
 			Detail: "compiled numscript artifact does not match the resolved script text",
