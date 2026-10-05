@@ -27,7 +27,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/formancehq/go-libs/v5 v5.9.0
 	github.com/formancehq/invariants v0.11.0
-	github.com/formancehq/numscript v0.0.27-0.20261001120839-af9bc7715f1f // pinned to numscript feat/register-vm-ir @af9bc77 (#199 compiler+VM; #203 bytecode version 1.0; #204 VerifiedVarsInfo; #205 deterministic compile; negative portions rejected; VM posting check; stricter typecheck/IR; static mark-balance verification; scoped account interpolation); repin to a tag once #199 merges
+	github.com/formancehq/numscript v0.0.27-0.20261005075828-ce8340d814e1 // pinned to numscript feat/register-vm-ir @ce8340d (#199 compiler+VM; #203 bytecode version 0.1, 0.x readable only at its exact version; #204 VerifiedVarsInfo; #205 deterministic compile; negative portions rejected; VM posting check; stricter typecheck/IR; static mark-balance verification; scoped account interpolation); repin to a tag once #199 merges
 	github.com/fsnotify/fsnotify v1.5.4
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/go-jose/go-jose/v4 v4.1.4

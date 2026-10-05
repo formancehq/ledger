@@ -138,23 +138,38 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	// Execute the script on the VM, the only execution engine. When Force is
 	// true, the store returns unlimited balances to bypass balance checks.
 	//
-	// The artifact is derivable from the script text, so a missing one is
-	// recompiled here exactly as admission compiles it: it costs a compile and,
-	// under the same bundled library, never changes the outcome (history from
-	// a library with different execution semantics can replay differently, see
-	// numscript.CompileForReplay). Re-running an audited order, which never
-	// carries compiled code, always gets here. Anywhere else it is an admission
-	// bug — admission binds an artifact to every scripted order it proposes,
-	// and one it forwards without is marked preload_unavailable and rejected
-	// before reaching here — so it is flagged under Antithesis (invariant #7).
+	// The artifact is derivable from the script text, so one this binary
+	// cannot run is recompiled here exactly as admission compiles it: it costs
+	// a compile and, under the same bundled library, never changes the outcome
+	// (history from a library with different execution semantics can replay
+	// differently, see numscript.CompileForReplay). The library decides what
+	// it can run: canRead peeks each half's header and applies the bundled
+	// library's CanRead, so the versioning rule stays in the library. That
+	// covers a missing artifact or invalid header (the peek fails) and one of
+	// a bytecode version the bundled library cannot read —
+	// an entry committed by a binary bundling another version, replayed across
+	// a library upgrade or rollback. Both read only the committed bytes and
+	// the binary's bundled version, so apply stays a pure function of
+	// (committed entry, running binary).
+	//
+	// Re-running an audited order, which never carries compiled code, always
+	// recompiles. Anywhere else a missing artifact is an admission bug —
+	// admission binds an artifact to every scripted order it proposes, and one
+	// it forwards without is marked preload_unavailable and rejected before
+	// reaching here — so it is flagged under Antithesis (invariant #7).
 	compiledProgram, compiledVars, compiledScriptHash := p.compiledProgram, p.compiledVars, p.compiledScriptHash
-	if len(compiledProgram) == 0 {
-		if !p.compileMissing {
-			assert.Unreachable("scripted order reached FSM apply without its compiled numscript artifact", map[string]any{
-				"ledger": ledgerName,
-			})
-		}
+	if len(compiledProgram) == 0 && !p.compileMissing {
+		assert.Unreachable("scripted order reached FSM apply without its compiled numscript artifact", map[string]any{
+			"ledger": ledgerName,
+		})
+	}
 
+	canRead := func(version numscriptlib.BytecodeVersion, err error) bool {
+		return err == nil && numscriptlib.CurrentBytecodeVersion.CanRead(version)
+	}
+
+	if !canRead(numscriptlib.PeekCompiledProgramVersion(compiledProgram)) ||
+		!canRead(numscriptlib.PeekVarsVersion(compiledVars)) {
 		compiled, compileErr := numscript.CompileForReplay(p.cache, script.GetPlain(), script.GetVars())
 		if compileErr != nil {
 			return nil, compileErr
@@ -177,9 +192,9 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 
 	vmStore := numscript.NewVMStore(&scopeValueSource{store: s, ledgerName: ledgerName}, order.GetForce())
 
-	// Any failure short of execution — undecodable bytes, another artifact
-	// format version, unverifiable bytecode — is final (see SafeExecCompiled):
-	// the order fails on every node running this binary.
+	// Any failure short of execution — undecodable bytes, unverifiable
+	// bytecode — is final (see SafeExecCompiled): the order fails on every
+	// node running this binary.
 	result, execErr := numscript.SafeExecCompiled(p.cache, scriptHash[:], compiledProgram, compiledVars, vmStore)
 	if execErr != nil {
 		return nil, execErr

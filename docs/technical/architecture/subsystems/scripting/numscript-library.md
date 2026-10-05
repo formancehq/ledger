@@ -245,22 +245,32 @@ changes the outcome. Outside audit replay (below) a missing artifact is still
 an admission bug, so it is flagged with an Antithesis `assert.Unreachable`
 (invariant #7), which never feeds the outcome (invariant #2).
 
-The FSM rejects an artifact — failing the order with `ErrNumscriptRuntime`
-(invariant #7), identically on every node running the binary — when: either
-half carries a bytecode version (major.minor) the bundled library cannot read
-(`numscriptlib.CurrentBytecodeVersion.CanRead`: another major, or a newer
-minor); either half does not decode; the
-program fails verification; or `compiled_script_hash` does not match the
-resolved text. The version check keeps foreign bytecode out: another major
-changes the meaning of existing encodings, and a newer minor may use opcodes this build does not know.
-An older minor of the same major runs: a minor bump is additive by the
-library's contract, so that bytecode keeps its meaning. This is what lets a
-node that restarts on a newer binary still apply the entries committed before
-the upgrade, with the same outcome as the replicas that applied them on the
-old binary. The other three cannot happen by construction:
+Each half of the artifact carries the bytecode version (major.minor) it was
+encoded with. The FSM executes the artifact as-is when the bundled library can
+read both versions (`numscriptlib.CurrentBytecodeVersion.CanRead`). For a
+stable major that means the same major and a minor no newer than the bundled
+one, since a minor bump is additive by the library's contract. An unstable
+`0.x` version reads only itself: any `0.x` change may change the meaning of
+existing encodings. The FSM peeks each half's header
+(`numscriptlib.PeekCompiledProgramVersion` / `PeekVarsVersion`) and asks the
+bundled library whether it can read that version
+(`numscriptlib.CurrentBytecodeVersion.CanRead`), so the versioning rule stays
+in the library. When either answer is
+no, the FSM recompiles the script from its text and executes the result. A
+missing artifact takes the same path. An unreadable version is the expected
+footprint of an entry committed by a binary bundling another bytecode version,
+for example a Raft log replayed after an upgrade or a rollback, so it raises
+no Antithesis assertion. A half without a valid header is also reported
+unreadable and is recompiled the same way.
+
+The FSM rejects an artifact it can read, failing the order with
+`ErrNumscriptRuntime` (invariant #7) identically on every node running the
+binary, when: either half's body does not decode; the program fails
+verification; or `compiled_script_hash` does not match the resolved text. None of these can happen by construction:
 inline scripts travel in the order, exact library versions are immutable, an
 advanced `"latest"` is stale-rejected first, and our own compiler produced the
-bytecode in this very format.
+bytecode. `SafeExecCompiled` also still rejects an unreadable version, as a
+backstop for a caller that skipped the recompile check.
 
 The outcome is a function of the committed entry and the running binary
 alone, so every replica on one binary applies the entry identically

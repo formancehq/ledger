@@ -73,6 +73,38 @@ func withArtifactVersion(t *testing.T, encoded []byte, version numscriptlib.Byte
 	return patched
 }
 
+// unreadableBytecodeVersions returns the bytecode versions around the bundled
+// one that it cannot read: another major or a newer minor always, and under an
+// unstable (0.x) bundled version an older minor too.
+func unreadableBytecodeVersions(t *testing.T) map[string]numscriptlib.BytecodeVersion {
+	t.Helper()
+
+	current := numscriptlib.CurrentBytecodeVersion
+	candidates := map[string]numscriptlib.BytecodeVersion{
+		"newer major": {Major: current.Major + 1},
+		"newer minor": {Major: current.Major, Minor: current.Minor + 1},
+	}
+
+	if current.Major > 0 {
+		candidates["older major"] = numscriptlib.BytecodeVersion{Major: current.Major - 1, Minor: current.Minor}
+	}
+
+	if current.Minor > 0 {
+		candidates["older minor"] = numscriptlib.BytecodeVersion{Major: current.Major, Minor: current.Minor - 1}
+	}
+
+	for name, v := range candidates {
+		if current.CanRead(v) {
+			delete(candidates, name)
+		}
+	}
+
+	require.Contains(t, candidates, "newer major")
+	require.Contains(t, candidates, "newer minor")
+
+	return candidates
+}
+
 // TestCompileScript_ArtifactRoundTrips: a compilable script yields an artifact
 // whose program and vars decode and execute.
 func TestCompileScript_ArtifactRoundTrips(t *testing.T) {
@@ -332,11 +364,12 @@ func TestSafeExecCompiled_PanicLeavesInstanceReusable(t *testing.T) {
 }
 
 // TestSafeExecCompiled_ForeignBytecodeVersionRejected: an artifact whose
-// program or vars carry a bytecode version other than the bundled library's —
-// the footprint of a Raft log replayed across a library upgrade, a rollback,
-// or a mixed-binary window — is rejected loudly (ErrNumscriptRuntime, not a
-// panic) and never cached, for either half: another major or a newer minor.
-// An older minor of the same major runs (TestSafeExecCompiled_OlderMinorRuns).
+// program or vars carry a bytecode version the bundled library cannot read is
+// rejected loudly (ErrNumscriptRuntime, not a panic) and never cached, for
+// either half. The apply path recompiles such an artifact before reaching
+// SafeExecCompiled (peeking each half's version against the bundled CanRead), so
+// this is the backstop for a caller that skipped that check. A readable older minor of a stable major
+// runs (TestSafeExecCompiled_OlderMinorRuns).
 func TestSafeExecCompiled_ForeignBytecodeVersionRejected(t *testing.T) {
 	t.Parallel()
 
@@ -346,36 +379,24 @@ func TestSafeExecCompiled_ForeignBytecodeVersionRejected(t *testing.T) {
 )`
 	compiled := mustCompile(t, mustEntry(t, script), nil)
 
-	current := numscriptlib.CurrentBytecodeVersion
-	require.Positive(t, current.Major)
-
 	program, decErr := numscriptlib.DecodeCompiledProgram(compiled.Program)
 	require.NoError(t, decErr)
-	require.Equal(t, current, program.Version, "a fresh artifact carries the bundled bytecode version")
+	require.Equal(t, numscriptlib.CurrentBytecodeVersion, program.Version, "a fresh artifact carries the bundled bytecode version")
 
 	const libraryRefusal = "not readable by this build" // the decoder's typed error, surfaced as a decode failure
 
-	versions := map[string]struct {
-		v      numscriptlib.BytecodeVersion
-		detail string
-	}{
-		"older major": {numscriptlib.BytecodeVersion{Major: current.Major - 1, Minor: current.Minor}, libraryRefusal},
-		"newer major": {numscriptlib.BytecodeVersion{Major: current.Major + 1}, libraryRefusal},
-		"newer minor": {numscriptlib.BytecodeVersion{Major: current.Major, Minor: current.Minor + 1}, libraryRefusal},
-	}
-
 	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}
 
-	for name, tc := range versions {
+	for name, v := range unreadableBytecodeVersions(t) {
 		for _, half := range []string{"program", "vars"} {
 			t.Run(name+" "+half, func(t *testing.T) {
 				t.Parallel()
 
 				programBytes, varsBytes := compiled.Program, compiled.Vars
 				if half == "program" {
-					programBytes = withArtifactVersion(t, programBytes, tc.v)
+					programBytes = withArtifactVersion(t, programBytes, v)
 				} else {
-					varsBytes = withArtifactVersion(t, varsBytes, tc.v)
+					varsBytes = withArtifactVersion(t, varsBytes, v)
 				}
 
 				cache := NewNumscriptCache(16)
@@ -387,7 +408,7 @@ func TestSafeExecCompiled_ForeignBytecodeVersionRejected(t *testing.T) {
 				var runtimeErr *domain.ErrNumscriptRuntime
 				require.ErrorAs(t, err, &runtimeErr)
 				require.Contains(t, runtimeErr.Detail, "compiled numscript "+half)
-				require.Contains(t, runtimeErr.Detail, tc.detail)
+				require.Contains(t, runtimeErr.Detail, libraryRefusal)
 				require.Zero(t, cache.compiledOrder.Len(), "a rejected artifact must not be cached")
 
 				// The rejection leaves the cache fit for the genuine artifact.
@@ -581,17 +602,18 @@ func TestSafeExecCompiled_SameScriptDifferentBytesRunsCommittedBytes(t *testing.
 	}
 }
 
-// TestSafeExecCompiled_OlderMinorRuns: an artifact of an older minor of the
-// bundled major keeps its meaning (a minor bump is additive), so it executes
-// — a node restarting on a newer binary still applies entries committed before
-// the upgrade, with the same outcome as the replicas that applied them on the
-// old one. Only exercisable once the bundled minor is above zero.
+// TestSafeExecCompiled_OlderMinorRuns: under a stable bundled major, an
+// artifact of an older minor keeps its meaning (a minor bump is additive), so
+// it executes as-is — a node restarting on a newer binary still applies
+// entries committed before the upgrade, with the same outcome as the replicas
+// that applied them on the old one. Only exercisable once the bundled version
+// is stable (an unstable 0.x reads only itself) with a minor above zero.
 func TestSafeExecCompiled_OlderMinorRuns(t *testing.T) {
 	t.Parallel()
 
 	current := numscriptlib.CurrentBytecodeVersion
-	if current.Minor == 0 {
-		t.Skipf("bundled bytecode version %s has no older minor", current)
+	if current.Major == 0 || current.Minor == 0 {
+		t.Skipf("bundled bytecode version %s has no readable older minor", current)
 	}
 
 	compiled := mustCompile(t, mustEntry(t, `send [COIN 30] (

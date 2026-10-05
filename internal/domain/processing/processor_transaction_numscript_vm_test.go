@@ -162,66 +162,114 @@ func TestProduce_CompiledArtifactHashMismatchIsLoud(t *testing.T) {
 	requireNumscriptRuntimeError(t, err, "does not match the resolved script text")
 }
 
-// TestProduce_ForeignBytecodeVersionIsLoud: an artifact carrying a bytecode
-// version other than the bundled library's — a Raft log replayed across a
-// library upgrade, or a rollback — fails the order loudly; the text is never
-// interpreted in its place, even though it would run. Another major or a
-// newer minor, either half; an older minor of the same major runs (see
-// numscript.TestSafeExecCompiled_OlderMinorRuns).
-func TestProduce_ForeignBytecodeVersionIsLoud(t *testing.T) {
+// unreadableBytecodeVersions returns the bytecode versions around the bundled
+// one that it cannot read: another major or a newer minor always, and under an
+// unstable (0.x) bundled version an older minor too.
+func unreadableBytecodeVersions(t *testing.T) map[string]numscriptlib.BytecodeVersion {
+	t.Helper()
+
+	current := numscriptlib.CurrentBytecodeVersion
+	candidates := map[string]numscriptlib.BytecodeVersion{
+		"newer major": {Major: current.Major + 1},
+		"newer minor": {Major: current.Major, Minor: current.Minor + 1},
+	}
+
+	if current.Major > 0 {
+		candidates["older major"] = numscriptlib.BytecodeVersion{Major: current.Major - 1, Minor: current.Minor}
+	}
+
+	if current.Minor > 0 {
+		candidates["older minor"] = numscriptlib.BytecodeVersion{Major: current.Major, Minor: current.Minor - 1}
+	}
+
+	for name, v := range candidates {
+		if current.CanRead(v) {
+			delete(candidates, name)
+		}
+	}
+
+	require.Contains(t, candidates, "newer major")
+	require.Contains(t, candidates, "newer minor")
+
+	return candidates
+}
+
+// TestProduce_UnreadableBytecodeVersionRecompiles: an artifact carrying a
+// bytecode version the bundled library cannot read — a Raft log replayed
+// across a library upgrade or rollback — is recompiled from the script text,
+// like a missing one, and produces exactly what a current artifact produces,
+// for either half.
+func TestProduce_UnreadableBytecodeVersionRecompiles(t *testing.T) {
 	t.Parallel()
 
 	programBytes, varsBytes, scriptHash := compileArtifactForTest(t, vmScript, vmScriptVars)
 
-	current := numscriptlib.CurrentBytecodeVersion
-	require.Positive(t, current.Major)
+	want, err := produceVMScript(t, vmScriptVars, programBytes, varsBytes, scriptHash)
+	require.Nil(t, err)
 
-	const libraryRefusal = "not readable by this build"
-
-	versions := map[string]struct {
-		v      numscriptlib.BytecodeVersion
-		detail string
-	}{
-		"older major": {numscriptlib.BytecodeVersion{Major: current.Major - 1, Minor: current.Minor}, libraryRefusal},
-		"newer major": {numscriptlib.BytecodeVersion{Major: current.Major + 1}, libraryRefusal},
-		"newer minor": {numscriptlib.BytecodeVersion{Major: current.Major, Minor: current.Minor + 1}, libraryRefusal},
-	}
-
-	for name, tc := range versions {
+	for name, v := range unreadableBytecodeVersions(t) {
 		for _, half := range []string{"program", "vars"} {
 			t.Run(name+" "+half, func(t *testing.T) {
 				t.Parallel()
 
 				program, vars := programBytes, varsBytes
 				if half == "program" {
-					program = withArtifactVersion(t, program, tc.v)
+					program = withArtifactVersion(t, program, v)
 				} else {
-					vars = withArtifactVersion(t, vars, tc.v)
+					vars = withArtifactVersion(t, vars, v)
 				}
 
-				_, err := produceVMScript(t, vmScriptVars, program, vars, scriptHash)
-				requireNumscriptRuntimeError(t, err, "compiled numscript "+half)
-				require.Contains(t, err.Error(), tc.detail)
+				got, err := produceVMScript(t, vmScriptVars, program, vars, scriptHash)
+				require.Nil(t, err)
+				require.Equal(t, want, got)
 			})
 		}
 	}
 }
 
-// TestProduce_CorruptedArtifactIsLoud: bytes the bundled library cannot decode
-// at all are an internal error (our own codec wrote them), not a panic, not a
-// client error and never an interpreter fallback.
+// artifactHeaderLen is the library's fixed header: a 4-byte magic, major and
+// minor as two little-endian uint16, then the uint16 section count.
+const artifactHeaderLen = 10
+
+// TestProduce_CorruptedArtifactIsLoud: a program whose header this build reads
+// but whose body the bundled library cannot decode is an internal error (our
+// own codec wrote it), not a panic, not a client error and never a recompile.
 func TestProduce_CorruptedArtifactIsLoud(t *testing.T) {
 	t.Parallel()
 
 	programBytes, varsBytes, scriptHash := compileArtifactForTest(t, vmScript, vmScriptVars)
 
 	corrupted := bytes.Clone(programBytes)
-	for i := range corrupted {
+	for i := artifactHeaderLen; i < len(corrupted); i++ {
 		corrupted[i] ^= 0xA5
 	}
 
+	version, peekErr := numscriptlib.PeekCompiledProgramVersion(corrupted)
+	require.NoError(t, peekErr)
+	require.True(t, numscriptlib.CurrentBytecodeVersion.CanRead(version))
+
 	_, err := produceVMScript(t, vmScriptVars, corrupted, varsBytes, scriptHash)
 	requireNumscriptRuntimeError(t, err, "decoding compiled numscript program")
+}
+
+// TestProduce_InvalidArtifactHeaderRecompiles: a half without a valid header
+// is one the bundled library reports it cannot read, so the order is
+// recompiled from its text like any unreadable artifact and produces exactly
+// what a current artifact produces.
+func TestProduce_InvalidArtifactHeaderRecompiles(t *testing.T) {
+	t.Parallel()
+
+	programBytes, varsBytes, scriptHash := compileArtifactForTest(t, vmScript, vmScriptVars)
+
+	want, err := produceVMScript(t, vmScriptVars, programBytes, varsBytes, scriptHash)
+	require.Nil(t, err)
+
+	garbled := bytes.Clone(programBytes)
+	garbled[0] ^= 0xFF
+
+	got, err := produceVMScript(t, vmScriptVars, garbled, varsBytes, scriptHash)
+	require.Nil(t, err)
+	require.Equal(t, want, got)
 }
 
 // TestProduce_UnverifiableArtifactIsLoud: bytecode in the bundled format that

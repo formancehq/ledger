@@ -250,11 +250,12 @@ entry writes divergent transaction and audit bytes. Deploy this revision with
 all nodes stopped — see
 [Upgrading across the Numscript VM execution change](../../../../ops/deployment.md#upgrading-across-the-numscript-vm-execution-change-revision-17).
 The artifact itself carries the Numscript library's bytecode version
-(major.minor): the FSM executes it when the bundled library can read that
-version (same major, minor no newer) and otherwise fails the order with a
-Numscript runtime error, so a log entry replayed across a later major bump, or
-after a rollback past a minor bump, is rejected rather than run as foreign
-bytecode — the text is never interpreted in the artifact's place.
+(major.minor). The FSM executes it when the bundled library can read that
+version: the same major and a minor no newer for a stable major, or exactly
+the same version for an unstable `0.x`. Otherwise the FSM recompiles the
+script from its text with the bundled library, so a log entry replayed across
+a later bytecode change, or after a rollback, is never run as foreign
+bytecode.
 
 Revision 17 also moves where and how a statically invalid script fails.
 `Parse` checks syntax only; the Numscript typechecker runs inside the

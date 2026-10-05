@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"math/big"
 
 	numscriptlib "github.com/formancehq/numscript"
@@ -18,7 +17,8 @@ import (
 // and the BLAKE3 hash of the exact script text it was compiled from. The VM is
 // the only execution engine: the FSM decodes and executes this artifact on
 // every node, and recompiles it from the script text (CompileForReplay) for a
-// scripted order that arrives without one.
+// scripted order that arrives without one, or with one of a bytecode version
+// the bundled library cannot read (numscriptlib.CurrentBytecodeVersion.CanRead).
 //
 // program and vars are the decoded forms of Program and Vars, kept for
 // admission's own effects run so it need not decode what it just encoded.
@@ -71,8 +71,10 @@ func compileScript(entry *lruEntry, vars map[string]string) (out *CompiledScript
 }
 
 // CompileForReplay compiles script with vars exactly as admission does, for a
-// caller that re-runs an audited order. The audit keeps only the business part
-// of an order, so an audited order never carries the compiled code. Under the
+// caller that re-runs an audited order, or applies a committed order whose
+// artifact carries a bytecode version this binary cannot read. The audit keeps
+// only the business part of an order, so an audited order never carries the
+// compiled code. Under the
 // same bundled library every compilation of a script means the same thing, so
 // running this one gives the order its original outcome; history applied by a
 // library with different execution semantics can replay differently (see
@@ -162,19 +164,13 @@ func (s *VMStore) GetMetadata(_ context.Context, account, scope, key string) (st
 // function of the committed entry and the running binary (invariant #2) and
 // the defect surfaces instead of being papered over (invariant #7).
 //
-//   - Bytecode version: both halves must carry a bytecode version the bundled
-//     library can read (numscriptlib.CurrentBytecodeVersion.CanRead): the same
-//     major and a minor no newer than its own. A minor bump is additive by the
-//     library's contract, so an older minor keeps its meaning and runs — that
-//     is what lets a node that restarts on a newer binary still apply entries
-//     committed before the upgrade, identically to the replicas that applied
-//     them on the old one. Another major (existing encodings changed meaning)
-//     or a newer minor (opcodes this build does not know) is rejected rather
-//     than run as foreign bytecode; the library's decoder refuses both too.
-//     Both versions come out of the committed entry's own bytes, and the
-//     bundled version is a property of the binary exactly like the library's
-//     execution semantics, so apply stays a pure function of (committed
-//     entry, running binary).
+//   - Bytecode version: the apply path never hands this function an artifact
+//     the bundled library cannot read (numscriptlib.CurrentBytecodeVersion.CanRead
+//     on each half's peeked header): it recompiles such an artifact from the
+//     script text first.
+//     The library's decoders still refuse one with
+//     UnsupportedBytecodeVersionError, so a caller that skipped that check
+//     fails loudly here rather than run foreign bytecode.
 //   - Decode and verification: the artifact was produced by our own compiler
 //     from a script that parsed, so malformed bytes mean a codec or compiler
 //     bug, and the verifier is what entitles the VM to execute wire-supplied
@@ -202,15 +198,6 @@ func SafeExecCompiled(cache *NumscriptCache, scriptHash, programBytes, varsBytes
 	if decErr != nil {
 		return numscriptlib.ExecutionResult{}, &domain.ErrNumscriptRuntime{
 			Detail: "decoding compiled numscript vars: " + decErr.Error(),
-		}
-	}
-
-	if !numscriptlib.CurrentBytecodeVersion.CanRead(vars.Version) {
-		return numscriptlib.ExecutionResult{}, &domain.ErrNumscriptRuntime{
-			Detail: fmt.Sprintf(
-				"compiled numscript vars encoded with bytecode version %s; this binary executes %d.0 through %s",
-				vars.Version, numscriptlib.CurrentBytecodeVersion.Major, numscriptlib.CurrentBytecodeVersion,
-			),
 		}
 	}
 
