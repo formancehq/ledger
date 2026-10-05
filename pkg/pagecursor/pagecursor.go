@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"slices"
 	"strconv"
 )
@@ -67,7 +68,7 @@ func Decode(token string) (Cursor, error) {
 		return Cursor{}, fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
 
-	if dec.More() {
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
 		return Cursor{}, fmt.Errorf("%w: trailing data", ErrInvalid)
 	}
 

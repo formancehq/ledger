@@ -40,17 +40,27 @@ func TestDecodeEmptyIsFirstPage(t *testing.T) {
 	require.Equal(t, Cursor{}, c)
 }
 
+func TestDecodeAllowsTrailingWhitespace(t *testing.T) {
+	t.Parallel()
+
+	c, err := Decode(base64.RawURLEncoding.EncodeToString([]byte(`{"key":"1"} `)))
+	require.NoError(t, err)
+	require.Equal(t, Cursor{Key: "1"}, c)
+}
+
 func TestDecodeRejectsMalformed(t *testing.T) {
 	t.Parallel()
 
 	enc := base64.RawURLEncoding.EncodeToString
 
 	for name, token := range map[string]string{
-		"not base64":    "!!!",
-		"not json":      enc([]byte("42")),
-		"unknown field": enc([]byte(`{"after":"42"}`)),
-		"wrong type":    enc([]byte(`{"key":42}`)),
-		"trailing data": enc([]byte(`{"key":"1"}{}`)),
+		"not base64":       "!!!",
+		"not json":         enc([]byte("42")),
+		"unknown field":    enc([]byte(`{"after":"42"}`)),
+		"wrong type":       enc([]byte(`{"key":42}`)),
+		"trailing data":    enc([]byte(`{"key":"1"}{}`)),
+		"trailing brace":   enc([]byte(`{"key":"1"}}`)),
+		"trailing bracket": enc([]byte(`{"key":"1"}]`)),
 	} {
 		_, err := Decode(token)
 		require.ErrorIs(t, err, ErrInvalid, name)

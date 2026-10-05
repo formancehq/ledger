@@ -77,6 +77,7 @@ func runListKeys(cmd *cobra.Command, _ []string) error {
 
 	if len(keys) == 0 {
 		pterm.Info.Println("No signing keys registered.")
+		cmdutil.EmitCursorHints(cmd, cursors)
 
 		return nil
 	}

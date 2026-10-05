@@ -231,25 +231,24 @@ func fetchTransactionsWithPager(cmd *cobra.Command, client servicepb.BucketServi
 			cmdutil.RenderProfile(cmdutil.ExtractProfile(stream.Trailer()))
 		}
 
-		nextCursor := cmdutil.NextCursorFromTrailer(stream.Trailer())
-		if nextCursor == "" {
-			if !structuredOutput {
-				pterm.Info.Println("End of transactions.")
-			}
-
-			return nil
-		}
-
-		page.Cursor = nextCursor
+		cursors := cmdutil.CursorsFromTrailer(stream.Trailer())
 
 		if structuredOutput {
-			// `transactions list --json/--yaml` printed the JSON/YAML payload
-			// on stdout above; surface the resume cursor on stderr so scripts
-			// can pick it up without parsing gRPC trailers.
-			cmdutil.EmitCursorHints(cmd, cmdutil.CursorsFromTrailer(stream.Trailer()))
+			// The JSON/YAML payload went to stdout above; the page tokens go to
+			// stderr so scripts can pick them up without parsing gRPC trailers.
+			cmdutil.EmitCursorHints(cmd, cursors)
 
 			return nil
 		}
+
+		if cursors.Next == "" {
+			pterm.Info.Println("End of transactions.")
+			cmdutil.EmitPreviousCursorHint(cmd, cursors.Previous)
+
+			return nil
+		}
+
+		page.Cursor = cursors.Next
 
 		result, err := pterm.DefaultInteractiveConfirm.
 			WithDefaultText("Load next page?").
