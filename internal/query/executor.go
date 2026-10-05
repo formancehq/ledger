@@ -48,6 +48,12 @@ func Execute(
 		))
 	defer span.End()
 
+	// Only LIST pages; reject before any read so the verdict does not depend on
+	// the ledger or the stored definition.
+	if req.GetReverse() && req.GetMode() != commonpb.QueryMode_QUERY_MODE_LIST {
+		return nil, &ErrQueryModeReverseUnsupported{Mode: req.GetMode()}
+	}
+
 	// The prepared-query definition and ledger schema are request-local query
 	// state. Open the main snapshot before loading them so a concurrent update,
 	// deletion, or schema change cannot be combined with entities from a newer
@@ -164,23 +170,47 @@ func Execute(
 	// partial results.
 	indexVersionFor := rs.PinnedVersionResolver(indexSnap, ledgerInfo.GetName(), mainSeq)
 
+	// Trim to the handle's horizon: the aligned snapshot may hold entities
+	// committed after it, which the handle cannot enrich.
+	// Only an aligned read can hold membership the handle has not caught up
+	// to; an unaligned one drew every row from the handle itself.
+	var keep func([]byte) (bool, error)
+	if aligned {
+		keep = MainHorizonKeep(pq.GetTarget(), handle, indexSnap, ledgerInfo.GetName(), mainSeq)
+	}
+
+	if req.GetReverse() {
+		compiled, compileErr := CompileReverse(indexSnap, kb, pq.GetFilter(), pq.GetTarget(), ledgerInfo.GetName(), req.GetParameters(), schema, ledgerInfo, indexRegistry, indexVersionFor, profile, handle, mainSeq)
+		if compileErr != nil {
+			return nil, domain.WrapCompileError(compileErr)
+		}
+
+		var iter = compiled
+		if keep != nil {
+			iter = readstore.NewFilterReverseIterator(compiled, keep)
+		}
+		defer iter.Close()
+
+		return executeList(ctx, func(pageSize uint32, cursor []byte) ([][]byte, bool, error) {
+			return readstore.PaginateReverse(iter, pageSize, cursor)
+		}, pq.GetTarget(), req, profile, handle, indexSnap, ledgerInfo.GetName(), enricher)
+	}
+
 	compiled, compileErr := Compile(indexSnap, kb, pq.GetFilter(), pq.GetTarget(), ledgerInfo.GetName(), req.GetParameters(), schema, ledgerInfo, indexRegistry, indexVersionFor, profile, handle, mainSeq)
 	if compileErr != nil {
 		return nil, domain.WrapCompileError(compileErr)
 	}
 
-	// Trim to the handle's horizon: the aligned snapshot may hold entities
-	// committed after it, which the handle cannot enrich.
-	// Only an aligned read can hold membership the handle has not caught up
-	// to; an unaligned one drew every row from the handle itself.
 	var iter = compiled
-	if keep := MainHorizonKeep(pq.GetTarget(), handle, indexSnap, ledgerInfo.GetName(), mainSeq); aligned && keep != nil {
+	if keep != nil {
 		iter = readstore.NewFilterIterator(compiled, keep)
 	}
 	defer iter.Close()
 
 	if req.GetMode() == commonpb.QueryMode_QUERY_MODE_LIST {
-		return executeList(ctx, iter, pq.GetTarget(), req, profile, handle, indexSnap, ledgerInfo.GetName(), enricher)
+		return executeList(ctx, func(pageSize uint32, cursor []byte) ([][]byte, bool, error) {
+			return readstore.PaginateForward(iter, pageSize, cursor)
+		}, pq.GetTarget(), req, profile, handle, indexSnap, ledgerInfo.GetName(), enricher)
 	}
 
 	// AGGREGATE_VOLUMES with a non-nil filter (nil-filter path already returned above).
@@ -196,11 +226,12 @@ func Execute(
 	}, nil
 }
 
-// executeList paginates entities from the iterator, enriches them into full
-// objects, and returns a cursor response.
+// executeList paginates entities through paginate, enriches them into full
+// objects, and returns a cursor response. paginate fixes the direction; the
+// cursor is the last entity of the previous page in either direction.
 func executeList(
 	ctx context.Context,
-	iter readstore.EntityIterator,
+	paginate func(pageSize uint32, cursor []byte) ([][]byte, bool, error),
 	target commonpb.QueryTarget,
 	req *servicepb.ExecutePreparedQueryRequest,
 	profile *QueryProfile,
@@ -226,7 +257,7 @@ func executeList(
 		}
 	}
 
-	entities, hasMore, err := readstore.PaginateForward(iter, pageSize, afterEntity)
+	entities, hasMore, err := paginate(pageSize, afterEntity)
 	if err != nil {
 		return nil, fmt.Errorf("paginating prepared query results: %w", err)
 	}

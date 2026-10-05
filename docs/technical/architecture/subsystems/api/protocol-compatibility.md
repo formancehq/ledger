@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"17"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"18"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 17:
+leader. For example, with a schema implementing revision 18:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 17' \
+grpcurl -plaintext -H 'ledger-protocol-version: 18' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -230,6 +230,14 @@ Revision 17 removes `PreparedQueryCursor.previous`, which only echoed the
 request cursor, and renumbers `next`, `account_data`, `transaction_data` and
 `log_data` to 3–6. A revision-16 peer decodes those fields under the wrong
 numbers, so clients and servers must agree on revision 17.
+
+## Reverse prepared-query execution (revision 18)
+
+Revision 18 adds `ExecutePreparedQueryRequest.reverse`, which pages `LIST`
+results in descending entity order and is rejected with `InvalidArgument` in
+`AGGREGATE_VOLUMES` mode. A revision-17 server ignores the unknown field and
+answers in ascending order, so a reverse request would silently return the
+wrong page; clients and servers must use the matching revision.
 
 ## Maintaining the revision
 

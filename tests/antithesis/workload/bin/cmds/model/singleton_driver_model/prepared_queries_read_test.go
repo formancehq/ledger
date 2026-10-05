@@ -252,7 +252,7 @@ func TestPreparedPaginationPreservesRawCursorOrderingAcrossTargets(t *testing.T)
 		"transaction keys sort before an account-address cursor")
 
 	require.Equal(t, []string{"acc:1", "acc:2", "world"},
-		preparedAccountProbe(ls, nil, string(uint64EntityKey(1)), 10),
+		preparedAccountProbe(ls, nil, string(uint64EntityKey(1)), 10, false),
 		"account keys sort after a big-endian transaction cursor")
 }
 
@@ -402,4 +402,49 @@ func TestPreparedLogPageRejectsMissingAndInventedRows(t *testing.T) {
 
 	require.False(t, preparedLogPageMatches(ls, call, nil, nil, &commonpb.PreparedQueryCursor{LogData: []*commonpb.Log{invented}}))
 	require.True(t, preparedLogPageMatches(ls, call, nil, uint64EntityKey(ls.LogRows()[0].ID), &commonpb.PreparedQueryCursor{}))
+}
+
+func TestPreparedReverseWindowsDescend(t *testing.T) {
+	t.Parallel()
+
+	ls := buildLedger(t,
+		oracletest.TxReq("world", "acc:1", "USD/2", 1),
+		oracletest.TxReq("world", "acc:2", "USD/2", 1),
+	)
+
+	require.Equal(t, []string{"world", "acc:2", "acc:1"}, preparedAccountProbe(ls, nil, "", 10, true))
+	require.Equal(t, []string{"acc:1"}, preparedAccountProbe(ls, nil, "acc:2", 10, true))
+
+	logIDs := func(rows []logWindowRow) []uint64 {
+		ids := make([]uint64, len(rows))
+		for i, row := range rows {
+			ids[i] = row.id
+		}
+
+		return ids
+	}
+	forward := logIDs(preparedLogWindowRows(ls, "L", nil, nil, false))
+	require.Len(t, forward, 2)
+
+	backward := logIDs(preparedLogWindowRows(ls, "L", nil, nil, true))
+	require.Equal(t, []uint64{forward[1], forward[0]}, backward)
+	require.Equal(t, []uint64{forward[0]},
+		logIDs(preparedLogWindowRows(ls, "L", nil, uint64EntityKey(forward[1]), true)))
+
+	first := serverTxFromRec(ls.Txs().Get(0))
+	second := serverTxFromRec(ls.Txs().Get(1))
+	call := preparedCall{ledger: "L", pageSize: 1, reverse: true}
+	txPage := func(after []byte, tx *commonpb.Transaction, hasMore bool) bool {
+		cur := &commonpb.PreparedQueryCursor{TransactionData: []*commonpb.Transaction{tx}, HasMore: hasMore}
+		if hasMore {
+			cur.Next = "next"
+		}
+
+		return preparedWindowMatches(ls, call, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, nil, after, cur)
+	}
+
+	require.True(t, txPage(nil, second, true), "a reverse first page starts at the newest transaction")
+	require.False(t, txPage(nil, first, true), "an ascending first page is outside a reverse window")
+	require.True(t, txPage(uint64EntityKey(second.GetId()), first, false), "a reverse continuation resumes below the cursor")
+	require.False(t, txPage(uint64EntityKey(first.GetId()), second, false), "a reverse continuation cannot climb above the cursor")
 }

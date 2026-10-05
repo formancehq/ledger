@@ -39,6 +39,7 @@ func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Reque
 		PageSize   uint32                     `json:"pageSize"`
 		Cursor     string                     `json:"cursor"`
 		Mode       string                     `json:"mode"`
+		Reverse    bool                       `json:"reverse"`
 	}
 	// Decode the body whenever one is present. Don't gate on ContentLength
 	// because chunked / unknown-length requests report ContentLength == -1;
@@ -69,6 +70,10 @@ func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Reque
 		body.Cursor = c
 	}
 
+	if r.URL.Query().Has("reverse") {
+		body.Reverse = queryParamBool(r, "reverse")
+	}
+
 	mode, ok := parseQueryMode(body.Mode)
 	if !ok {
 		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("unknown mode %q", body.Mode))
@@ -90,6 +95,7 @@ func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Reque
 		PageSize:   body.PageSize,
 		Cursor:     body.Cursor,
 		Mode:       mode,
+		Reverse:    body.Reverse,
 	}
 
 	profile.EnterExecute()

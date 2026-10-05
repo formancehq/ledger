@@ -80,23 +80,34 @@ A compile error at FSM time is hash-bound as an `AuditFailure`, so a checker run
 
 ## Execution
 
-`ExecutePreparedQueryRequest` carries the ledger name, the query name, an execution mode (`LIST` or `AGGREGATE_VOLUMES`), and any runtime parameters. The executor:
+`ExecutePreparedQueryRequest` carries the ledger name, the query name, an execution mode (`LIST` or `AGGREGATE_VOLUMES`), any runtime parameters, and the `LIST` paging inputs (`page_size`, `cursor`, `reverse`). The executor:
 
-1. Opens the fixed main-store snapshot, then reads both the ledger schema and prepared query from that snapshot. This prevents a concurrent query/schema update or deletion from being combined with entities from a newer state. Because the stored definition determines whether an index will be used, the executor briefly reserves the event-history floor before opening the snapshot and releases it immediately when the loaded shape needs no index alignment.
-2. Verifies the requested mode is compatible with the query's `target` (e.g. `AGGREGATE_VOLUMES` only makes sense for accounts).
-3. For `AGGREGATE_VOLUMES` with an **exactly nil filter**, releases the
+1. Rejects `reverse` outside `LIST` with InvalidArgument before any read: an aggregate has no order to invert.
+2. Opens the fixed main-store snapshot, then reads both the ledger schema and prepared query from that snapshot. This prevents a concurrent query/schema update or deletion from being combined with entities from a newer state. Because the stored definition determines whether an index will be used, the executor briefly reserves the event-history floor before opening the snapshot and releases it immediately when the loaded shape needs no index alignment.
+3. Verifies the requested mode is compatible with the query's `target` (e.g. `AGGREGATE_VOLUMES` only makes sense for accounts).
+4. For `AGGREGATE_VOLUMES` with an **exactly nil filter**, releases the
    event-history reservation and calls `AggregateAllVolumes` through the same
    main-store handle. This shares the direct unfiltered aggregation's single
    ledger-wide volume scan. It opens no read-index snapshot and skips filter
    compilation and account enumeration. Metadata-only accounts contribute no
    volume rows; uint256 overflow is propagated as an error.
-4. Otherwise, opens the read-index snapshot and waits for alignment only when
+5. Otherwise, opens the read-index snapshot and waits for alignment only when
    `AlignmentOwed` is true: the filter tree contains a read-index leaf or the
    target is LOGS. It then calls `Compile(indexSnap, kb, pq.GetFilter(), ...)`
    and executes the iterator. `LIST` streams matching entities through the
    standard cursor pipeline; `AGGREGATE_VOLUMES` scans volumes per candidate
    account through `AggregateVolumes`. Empty or parameterized non-nil filters
    do not qualify for the shortcut.
+   A `LIST` with `reverse` compiles through `CompileReverse` instead, which
+   also covers a nil filter with the per-target reverse universe, and pages
+   with `PaginateReverse`. An aligned read trims either direction to the
+   main-store horizon (`NewFilterIterator` / `NewFilterReverseIterator`).
+
+**List order and cursor.** `LIST` returns entities in ascending entity order
+(account address, transaction id, log id) and in descending order with
+`reverse`. The cursor encodes the last entity of the page and no direction, so
+each page of a descending walk must repeat `reverse`. Sending a cursor with the
+other direction resumes from that entity in the new direction.
 
 The standard controller read route establishes a `ReadIndexAndWait` horizon
 before execution. `stale` skips that quorum barrier but retains a fixed local
