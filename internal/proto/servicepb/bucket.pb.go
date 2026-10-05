@@ -7177,13 +7177,17 @@ func (x *ListPreparedQueriesResponse) GetQueries() []*commonpb.PreparedQuery {
 }
 
 type ExecutePreparedQueryRequest struct {
-	state         protoimpl.MessageState              `protogen:"open.v1"`
-	Ledger        string                              `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
-	QueryName     string                              `protobuf:"bytes,2,opt,name=query_name,json=queryName,proto3" json:"query_name,omitempty"`
-	Parameters    map[string]*commonpb.ParameterValue `protobuf:"bytes,3,rep,name=parameters,proto3" json:"parameters,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	PageSize      uint32                              `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	Cursor        string                              `protobuf:"bytes,5,opt,name=cursor,proto3" json:"cursor,omitempty"`
-	Mode          commonpb.QueryMode                  `protobuf:"varint,6,opt,name=mode,proto3,enum=common.QueryMode" json:"mode,omitempty"`
+	state      protoimpl.MessageState              `protogen:"open.v1"`
+	Ledger     string                              `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
+	QueryName  string                              `protobuf:"bytes,2,opt,name=query_name,json=queryName,proto3" json:"query_name,omitempty"`
+	Parameters map[string]*commonpb.ParameterValue `protobuf:"bytes,3,rep,name=parameters,proto3" json:"parameters,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	PageSize   uint32                              `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	Cursor     string                              `protobuf:"bytes,5,opt,name=cursor,proto3" json:"cursor,omitempty"`
+	Mode       commonpb.QueryMode                  `protobuf:"varint,6,opt,name=mode,proto3,enum=common.QueryMode" json:"mode,omitempty"`
+	// reverse pages LIST results in descending entity order. The cursor stays a
+	// position, so every page of a descending walk must repeat reverse=true.
+	// AGGREGATE_VOLUMES rejects it with InvalidArgument.
+	Reverse       bool `protobuf:"varint,7,opt,name=reverse,proto3" json:"reverse,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -7258,6 +7262,13 @@ func (x *ExecutePreparedQueryRequest) GetMode() commonpb.QueryMode {
 		return x.Mode
 	}
 	return commonpb.QueryMode(0)
+}
+
+func (x *ExecutePreparedQueryRequest) GetReverse() bool {
+	if x != nil {
+		return x.Reverse
+	}
+	return false
 }
 
 type ExecutePreparedQueryResponse struct {
@@ -9264,7 +9275,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x1aListPreparedQueriesRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\"N\n" +
 	"\x1bListPreparedQueriesResponse\x12/\n" +
-	"\aqueries\x18\x01 \x03(\v2\x15.common.PreparedQueryR\aqueries\"\xdc\x02\n" +
+	"\aqueries\x18\x01 \x03(\v2\x15.common.PreparedQueryR\aqueries\"\xf6\x02\n" +
 	"\x1bExecutePreparedQueryRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x1d\n" +
 	"\n" +
@@ -9274,7 +9285,8 @@ const file_bucket_proto_rawDesc = "" +
 	"parameters\x12\x1b\n" +
 	"\tpage_size\x18\x04 \x01(\rR\bpageSize\x12\x16\n" +
 	"\x06cursor\x18\x05 \x01(\tR\x06cursor\x12%\n" +
-	"\x04mode\x18\x06 \x01(\x0e2\x11.common.QueryModeR\x04mode\x1aU\n" +
+	"\x04mode\x18\x06 \x01(\x0e2\x11.common.QueryModeR\x04mode\x12\x18\n" +
+	"\areverse\x18\a \x01(\bR\areverse\x1aU\n" +
 	"\x0fParametersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12,\n" +
 	"\x05value\x18\x02 \x01(\v2\x16.common.ParameterValueR\x05value:\x028\x01\"\x98\x01\n" +

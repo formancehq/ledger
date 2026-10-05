@@ -80,7 +80,7 @@ including SDKs, automation, `grpcurl`, and internal requests forwarded to a
 leader. For example, with a schema implementing revision 16:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 16' \
+grpcurl -plaintext -H 'ledger-protocol-version: 17' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 

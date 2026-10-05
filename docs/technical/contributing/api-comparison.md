@@ -128,7 +128,7 @@ for client setup, restore behavior, failure limitations, and revision changes.
 | Update prepared query | ✅ | ❌ | |
 | Delete prepared query | ✅ | ❌ | |
 | List prepared queries | ✅ | ❌ | |
-| Execute prepared query (list) | ✅ | ❌ | Returns matching entities with cursor pagination; validates filters against metadata schema |
+| Execute prepared query (list) | ✅ | ❌ | Returns matching entities with cursor pagination, ascending or descending (`reverse`); validates filters against metadata schema |
 | Execute prepared query (aggregate) | ✅ | ❌ | Returns aggregated volumes per asset; validates filters against metadata schema |
 | **User-Configurable Indexes** |
 | Create index | ✅ | ❌ | Opt-in address, metadata, reference, timestamp, inserted-at, or account-asset indexes per ledger. HTTP: `POST /v3/{ledger}/indexes`; gRPC: `Apply(CreateIndex)` |
@@ -501,7 +501,7 @@ null `filter`; HTTP update treats omission as no change and null as filter
 removal. `Apply(UpdatePreparedQuery)` uses a nil protobuf filter for removal.
 Empty objects and empty textual expressions are invalid. Queries can be
 executed in two modes: `LIST` (returns matching entity IDs with cursor
-pagination) and `AGGREGATE_VOLUMES` (returns aggregated volumes per asset for
+pagination, ascending by default and descending with `reverse`) and `AGGREGATE_VOLUMES` (returns aggregated volumes per asset for
 matched accounts).
 
 **Endpoints:**

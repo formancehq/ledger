@@ -2045,8 +2045,8 @@ paths:
       summary: Execute a prepared query
       description: |
         Executes a prepared query with optional parameter substitution. Supports LIST and
-        AGGREGATE_VOLUMES modes with cursor pagination. Also accepts pageSize and cursor
-        as query parameters. Requires `ledger:QueryRead` scope.
+        AGGREGATE_VOLUMES modes with cursor pagination. Also accepts pageSize, cursor and
+        reverse as query parameters. Requires `ledger:QueryRead` scope.
       operationId: executePreparedQuery
       tags:
         - Prepared Queries
@@ -2067,6 +2067,11 @@ paths:
           description: Cursor for pagination (overrides body value)
           schema:
             type: string
+        - name: reverse
+          in: query
+          description: List in descending entity order when true (overrides body value)
+          schema:
+            type: boolean
         - $ref: '#/components/parameters/QueryProfile'
       requestBody:
         required: false
@@ -5208,6 +5213,13 @@ components:
             - LIST
             - AGGREGATE_VOLUMES
           description: Execution mode (default LIST)
+        reverse:
+          type: boolean
+          default: false
+          description: |
+            List in descending entity order (address, transaction id or log id).
+            The cursor carries no direction, so every page of a descending walk
+            must set `reverse`. Rejected with 400 in `AGGREGATE_VOLUMES` mode.
 
     PreparedQueryResponse:
       type: object
