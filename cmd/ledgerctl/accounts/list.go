@@ -210,6 +210,8 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 				cmdutil.RenderProfile(cmdutil.ExtractProfile(stream.Trailer()))
 			}
 
+			cmdutil.EmitCursorHints(cmd, cmdutil.CursorsFromTrailer(stream.Trailer()))
+
 			return nil
 		}
 

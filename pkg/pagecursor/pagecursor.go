@@ -60,11 +60,20 @@ func Decode(token string) (Cursor, error) {
 		return Cursor{}, fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
 
+	if trimmed := bytes.TrimSpace(raw); len(trimmed) == 0 || trimmed[0] != '{' {
+		return Cursor{}, fmt.Errorf("%w: not a JSON object", ErrInvalid)
+	}
+
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 
-	var c Cursor
-	if err := dec.Decode(&c); err != nil {
+	// Fields decode raw first so a null, which encoding/json would accept as
+	// the zero value, is rejected like any other mistyped field.
+	var w struct {
+		Key  json.RawMessage `json:"key"`
+		Back json.RawMessage `json:"back"`
+	}
+	if err := dec.Decode(&w); err != nil {
 		return Cursor{}, fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
 
@@ -72,7 +81,29 @@ func Decode(token string) (Cursor, error) {
 		return Cursor{}, fmt.Errorf("%w: trailing data", ErrInvalid)
 	}
 
+	var c Cursor
+	if err := decodeField(w.Key, &c.Key); err != nil {
+		return Cursor{}, fmt.Errorf("%w: key: %w", ErrInvalid, err)
+	}
+
+	if err := decodeField(w.Back, &c.Back); err != nil {
+		return Cursor{}, fmt.Errorf("%w: back: %w", ErrInvalid, err)
+	}
+
 	return c, nil
+}
+
+// decodeField decodes a present field into v, rejecting null.
+func decodeField(raw json.RawMessage, v any) error {
+	if raw == nil {
+		return nil
+	}
+
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return errors.New("null")
+	}
+
+	return json.Unmarshal(raw, v)
 }
 
 // Uint64 parses the key of an endpoint keyed by a decimal id. The empty key

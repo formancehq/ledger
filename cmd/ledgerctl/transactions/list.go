@@ -209,6 +209,8 @@ func fetchTransactionsWithPager(cmd *cobra.Command, client servicepb.BucketServi
 				cmdutil.RenderProfile(cmdutil.ExtractProfile(stream.Trailer()))
 			}
 
+			cmdutil.EmitCursorHints(cmd, cmdutil.CursorsFromTrailer(stream.Trailer()))
+
 			return nil
 		}
 

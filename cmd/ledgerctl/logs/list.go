@@ -88,6 +88,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 
 	if len(entries) == 0 {
 		pterm.Info.Println("No logs found.")
+		cmdutil.EmitCursorHints(cmd, cursors)
 
 		return nil
 	}

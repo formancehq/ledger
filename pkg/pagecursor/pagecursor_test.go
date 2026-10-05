@@ -61,6 +61,11 @@ func TestDecodeRejectsMalformed(t *testing.T) {
 		"trailing data":    enc([]byte(`{"key":"1"}{}`)),
 		"trailing brace":   enc([]byte(`{"key":"1"}}`)),
 		"trailing bracket": enc([]byte(`{"key":"1"}]`)),
+		"null payload":     enc([]byte(`null`)),
+		"array payload":    enc([]byte(`["1"]`)),
+		"null key":         enc([]byte(`{"key":null}`)),
+		"null back":        enc([]byte(`{"back":null}`)),
+		"empty payload":    enc([]byte(` `)),
 	} {
 		_, err := Decode(token)
 		require.ErrorIs(t, err, ErrInvalid, name)
