@@ -137,7 +137,7 @@ These accelerators are correctness-neutral: turning them off (e.g. by a saturate
 
 **No cross-ledger queries.** A prepared query targets one ledger by construction. Cross-ledger reads are a separate read-path concern handled at the controller level (see [`project_cross_ledger_queries`](../../../../../AGENTS.md)).
 
-**Cursor for `ListPreparedQueries`.** The cursor is the query name itself (printable ASCII, exactly what the name-validator requires). Listing is a single-ledger scan.
+**`ListPreparedQueries` is unpaged.** It takes only the ledger and returns every prepared query of that ledger in one response; it carries no cursor. Listing is a single-ledger scan.
 
 ## Canonical `QueryFilter` JSON shape (REST) — v2-aligned query DSL
 
