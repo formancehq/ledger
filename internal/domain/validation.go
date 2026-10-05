@@ -3,6 +3,7 @@ package domain
 import (
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/formancehq/invariants"
 
@@ -40,6 +41,10 @@ const maxSigningKeyIDLength = 256
 // execution fails with the too-deep error (and the deep write itself reopens the
 // #341 stack-exhaustion path).
 const MaxFilterDepth = 100
+
+// MaxHasAssetPrecision is the largest precision a has-asset condition can
+// match: the account-by-asset index key stores it in a single byte.
+const MaxHasAssetPrecision = math.MaxUint8
 
 // ErrFilterTooDeep is returned when a QueryFilter recursion exceeds
 // MaxFilterDepth. It is an ErrFilterCompilation (Kind=Validation) so the gRPC
@@ -278,13 +283,31 @@ func validateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarge
 	}
 
 	kind := commonpb.ConditionKindOf(f)
-	if commonpb.ConditionValidForTarget(target, kind) {
+	if !commonpb.ConditionValidForTarget(target, kind) {
+		return &ErrFilterCompilation{
+			Detail: fmt.Sprintf("condition %q is not valid on %s queries",
+				kind.String(), commonpb.TargetHumanName(target)),
+		}
+	}
+
+	if c := f.GetAccountHasAsset(); c != nil {
+		return ValidateHasAssetPrecision(c.GetPrecision())
+	}
+
+	return nil
+}
+
+// ValidateHasAssetPrecision rejects a has-asset precision above
+// MaxHasAssetPrecision. query.Compile applies it at execute time and
+// ValidateFilterForTarget at prepared-query write time, so a stored has-asset
+// filter always compiles.
+func ValidateHasAssetPrecision(precision uint32) SerializableError {
+	if precision <= MaxHasAssetPrecision {
 		return nil
 	}
 
 	return &ErrFilterCompilation{
-		Detail: fmt.Sprintf("condition %q is not valid on %s queries",
-			kind.String(), commonpb.TargetHumanName(target)),
+		Detail: fmt.Sprintf("has asset precision %d exceeds maximum %d", precision, MaxHasAssetPrecision),
 	}
 }
 
