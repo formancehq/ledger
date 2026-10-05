@@ -85,6 +85,7 @@ func TestInspectDistinctValues_Pages(t *testing.T) {
 			t.Parallel()
 
 			params := base
+			params.KB = dal.NewKeyBuilder() // a KeyBuilder is not safe for concurrent use
 			params.Mode = InspectDistinctValuesMode
 			params.Backward = tc.backward
 
