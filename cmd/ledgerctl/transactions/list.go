@@ -41,7 +41,7 @@ Examples:
   ledgerctl transactions list --ledger my-ledger --filter 'source ^= "merchants:" and destination ^= "users:"'
   ledgerctl transactions list --reverse   # Oldest first
   ledgerctl transactions list --all   # Fetch all transactions without pagination
-  ledgerctl transactions list --cursor 42   # Resume after tx id 42`,
+  ledgerctl transactions list --cursor eyJrZXkiOiI0MiJ9   # Resume after tx id 42 (page token for {"key":"42"})`,
 		Args:              cobra.ExactArgs(0),
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE:              runList,
@@ -251,6 +251,10 @@ func fetchTransactionsWithPager(cmd *cobra.Command, client servicepb.BucketServi
 		}
 
 		page.Cursor = cursors.Next
+
+		// Declining the prompt below ends the walk, so both tokens are shown
+		// first.
+		cmdutil.EmitCursorHints(cmd, cursors)
 
 		result, err := pterm.DefaultInteractiveConfirm.
 			WithDefaultText("Load next page?").

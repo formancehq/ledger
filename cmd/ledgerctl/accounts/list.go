@@ -39,7 +39,7 @@ Examples:
   ledgerctl accounts list --ledger my-ledger --filter "metadata[active] == true or address ^= users:"
   ledgerctl accounts list --reverse   # Reverse alphabetical (Z→A)
   ledgerctl accounts list --all   # Fetch all accounts without pagination
-  ledgerctl accounts list --cursor users:bob   # Resume after a previous page`,
+  ledgerctl accounts list --cursor eyJrZXkiOiJ1c2Vyczpib2IifQ   # Resume after users:bob (page token for {"key":"users:bob"})`,
 		Args:              cobra.ExactArgs(0),
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE:              runList,
@@ -255,6 +255,10 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 		}
 
 		page.Cursor = cursors.Next
+
+		// Declining the prompt below ends the walk, so both tokens are shown
+		// first.
+		cmdutil.EmitCursorHints(cmd, cursors)
 
 		result, err := pterm.DefaultInteractiveConfirm.
 			WithDefaultText("Load next page?").
