@@ -368,8 +368,10 @@ func (ctrl *DefaultController) importLog(ctx context.Context, store Store, log l
 
 			return nil, nil
 		},
-		trace.WithNewRoot(),
-		trace.WithLinks(trace.LinkFromContext(ctx)),
+		tracing.WithSpanStartOptions(
+			trace.WithNewRoot(),
+			trace.WithLinks(trace.LinkFromContext(ctx)),
+		),
 	)
 	return err
 }
