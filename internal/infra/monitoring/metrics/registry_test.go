@@ -60,11 +60,11 @@ func TestMetricsRegistry(t *testing.T) {
 
 // TestNamingPolicyMatchesDashboards verifies the invariants the
 // dashboard generator in misc/devenv/monitoring-dashboards relies on
-// to mirror the Go naming policy:
+// to mirror the go-libs metrics prefix (metrics.PrefixedName):
 //   - the Jsonnet prefix equals [metrics.DefaultPrefix];
 //   - no instrument our code creates starts with a semantic-convention
 //     prefix listed in `semconvPrefixes`, which the generator never
-//     prefixes while the Go factory always does;
+//     prefixes while the go-libs prefixed provider always does;
 //   - no instrument already carries the default prefix, which would
 //     be emitted twice.
 func TestNamingPolicyMatchesDashboards(t *testing.T) {
@@ -96,12 +96,12 @@ func TestNamingPolicyMatchesDashboards(t *testing.T) {
 
 // TestSemconvInstrumentationKeepsGlobalProvider guards the mechanism that
 // keeps OpenTelemetry semantic-convention metrics (go.*, process.*,
-// system.*, http.*, rpc.*) out of the naming policy: the Go runtime, host,
-// otelhttp and otelgrpc instrumentation record through the global
+// system.*, http.*, rpc.*) out of the metrics prefix: the Go runtime,
+// host, otelhttp and otelgrpc instrumentation record through the global
 // MeterProvider, which go-libs sets to the raw SDK provider, while only
-// the injected provider is decorated. Installing a global provider or
+// the injected provider is prefixed. Installing a global provider or
 // handing a provider to instrumentation libraries in production code
-// could route semconv metrics through the decorator and prefix them.
+// could route semconv metrics through the prefixed provider.
 func TestSemconvInstrumentationKeepsGlobalProvider(t *testing.T) {
 	t.Parallel()
 
@@ -126,7 +126,7 @@ func TestSemconvInstrumentationKeepsGlobalProvider(t *testing.T) {
 			}
 			if loc := forbidden.FindIndex(data); loc != nil {
 				rel, _ := filepath.Rel(repoRoot, path) // best effort: only used in the message
-				t.Errorf("%s: %q routes a MeterProvider into OpenTelemetry instrumentation; semantic-convention metrics must keep using the raw global provider so the ledger naming policy never renames them",
+				t.Errorf("%s: %q routes a MeterProvider into OpenTelemetry instrumentation; semantic-convention metrics must keep using the raw global provider so the metrics prefix never renames them",
 					rel, data[loc[0]:loc[1]])
 			}
 
@@ -199,8 +199,8 @@ var instrumentMethods = []string{
 // collectInstrumentNamesFromCode scans the .go files under root for
 // call sites that create instruments and returns the set of unique
 // instrument names. Anything our code instantiates is in scope —
-// we don't filter by meter name because the naming policy applies
-// uniformly to every meter we hand out.
+// we don't filter by meter name because the metrics prefix applies
+// uniformly to every meter obtained from the injected provider.
 func collectInstrumentNamesFromCode(t *testing.T, root string) []string {
 	t.Helper()
 	pattern := regexp.MustCompile(

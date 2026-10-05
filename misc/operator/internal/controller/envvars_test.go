@@ -186,30 +186,6 @@ func TestBuildEnvVars_ThresholdsOmittedWhenEmpty(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Metrics naming & prefix
-// ---------------------------------------------------------------------------
-
-func TestBuildEnvVars_MetricsNamingAndPrefix(t *testing.T) {
-	t.Parallel()
-
-	ls := newMinimalCluster()
-	ls.Spec.MetricsNaming = "prom"
-	ls.Spec.MetricsPrefix = "acme.ledger"
-	envs := buildEnvVars(ls, "disabled", nil)
-	assertEnv(t, envs, "METRICS_NAMING", "prom")
-	assertEnv(t, envs, "METRICS_PREFIX", "acme.ledger")
-}
-
-func TestBuildEnvVars_MetricsNamingAndPrefixOmittedWhenEmpty(t *testing.T) {
-	t.Parallel()
-
-	ls := newMinimalCluster()
-	envs := buildEnvVars(ls, "disabled", nil)
-	assertNoEnv(t, envs, "METRICS_NAMING")
-	assertNoEnv(t, envs, "METRICS_PREFIX")
-}
-
-// ---------------------------------------------------------------------------
 // Numscript cache size & mirror max batch size
 // ---------------------------------------------------------------------------
 
@@ -588,6 +564,40 @@ func TestBuildEnvVars_IdempotencyEvictionInterval(t *testing.T) {
 // ---------------------------------------------------------------------------
 // Extra env vars
 // ---------------------------------------------------------------------------
+
+func TestBuildEnvVars_MetricsPrefix(t *testing.T) {
+	t.Parallel()
+
+	t.Run("set", func(t *testing.T) {
+		t.Parallel()
+		ls := newMinimalCluster()
+		ls.Spec.Monitoring = &ledgerv1alpha1.MonitoringConfig{
+			Metrics: &ledgerv1alpha1.MetricsConfig{Prefix: "acme.ledger"},
+		}
+		envs := buildEnvVars(ls, "disabled", nil)
+		assertEnv(t, envs, "OTEL_METRICS_PREFIX", "acme.ledger")
+	})
+
+	t.Run("none disables the prefix", func(t *testing.T) {
+		t.Parallel()
+		ls := newMinimalCluster()
+		ls.Spec.Monitoring = &ledgerv1alpha1.MonitoringConfig{
+			Metrics: &ledgerv1alpha1.MetricsConfig{Prefix: "none"},
+		}
+		envs := buildEnvVars(ls, "disabled", nil)
+		assertEnv(t, envs, "OTEL_METRICS_PREFIX", "none")
+	})
+
+	t.Run("omitted when unset", func(t *testing.T) {
+		t.Parallel()
+		ls := newMinimalCluster()
+		ls.Spec.Monitoring = &ledgerv1alpha1.MonitoringConfig{
+			Metrics: &ledgerv1alpha1.MetricsConfig{},
+		}
+		envs := buildEnvVars(ls, "disabled", nil)
+		assertNoEnv(t, envs, "OTEL_METRICS_PREFIX")
+	})
+}
 
 func TestBuildEnvVars_CollectorTraceSampling(t *testing.T) {
 	t.Parallel()

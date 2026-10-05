@@ -135,7 +135,7 @@ func assertDashboardTree(t *testing.T, value any, native bool) {
 // applied to the ledger's own metrics in prefixed variants, absent from
 // -noprefix variants, and never applied to OpenTelemetry
 // semantic-convention metrics (go.*, process.*, system.*, http.*, …),
-// which bypass the ledger's metrics factory.
+// which bypass the go-libs prefixed provider.
 func assertMetricPrefix(t *testing.T, raw, file string) {
 	t.Helper()
 

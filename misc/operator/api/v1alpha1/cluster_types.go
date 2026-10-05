@@ -132,28 +132,6 @@ type ClusterSpec struct {
 	// +optional
 	AdmissionMetrics *bool `json:"admissionMetrics,omitempty"`
 
-	// MetricsNaming selects the convention for metric names emitted
-	// by the server: "otel" (the default) keeps the OpenTelemetry
-	// dot-notation; "prom" converts dots to underscores so the names
-	// follow the Prometheus convention even when the OTLP→Prometheus
-	// path preserves dots. OTel semantic-convention
-	// auto-instrumentation (`go.*`, `process.*`, `system.*`,
-	// `http.*`, `rpc.*`) uses the global MeterProvider and is never
-	// touched by this field.
-	// +kubebuilder:validation:Enum=otel;prom
-	// +optional
-	MetricsNaming string `json:"metricsNaming,omitempty"`
-
-	// MetricsPrefix is the namespace prepended to every metric the
-	// server's own instrumentation emits. When unset the server
-	// default `formance.ledger` applies. OTel semantic-convention
-	// auto-instrumentation is never prefixed. Set to `none` to emit
-	// unprefixed names.
-	// +kubebuilder:validation:Pattern=`^[A-Za-z]([A-Za-z0-9_]*[A-Za-z0-9])?(\.[A-Za-z]([A-Za-z0-9_]*[A-Za-z0-9])?)*$`
-	// +kubebuilder:validation:MaxLength=64
-	// +optional
-	MetricsPrefix string `json:"metricsPrefix,omitempty"`
-
 	// SentinelMode enables runtime volume consistency assertions
 	// (monotonicity, delta/posting cross-check, post-commit cache/Pebble verification).
 	// +optional
@@ -857,6 +835,16 @@ type MetricsConfig struct {
 	// RuntimeMinimumReadMemStatsInterval is the minimum interval for reading mem stats.
 	// +optional
 	RuntimeMinimumReadMemStatsInterval string `json:"runtimeMinimumReadMemStatsInterval,omitempty"`
+
+	// Prefix is the namespace prepended to every metric the server's own
+	// instrumentation emits. When unset the server default
+	// `formance.ledger` applies; `none` emits unprefixed names. OTel
+	// semantic-convention instrumentation (Go runtime, host, HTTP, gRPC)
+	// is never prefixed.
+	// +kubebuilder:validation:Pattern=`^[A-Za-z]([A-Za-z0-9_]*[A-Za-z0-9])?(\.[A-Za-z]([A-Za-z0-9_]*[A-Za-z0-9])?)*$`
+	// +kubebuilder:validation:MaxLength=64
+	// +optional
+	Prefix string `json:"prefix,omitempty"`
 }
 
 // LogsConfig holds logs configuration.

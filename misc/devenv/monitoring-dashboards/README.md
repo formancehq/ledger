@@ -78,27 +78,26 @@ each.
 
 Pick the file matching your *(server prefix, collector behaviour,
 histogram representation)* combination — the "Server" column is
-the ledger's `--metrics-prefix`, the "Collector" column is what the OTel→Prom
+the ledger's `--otel-metrics-prefix`, the "Collector" column is what the OTel→Prom
 translator on top of it does (`pkg.translator.prometheus.NormalizeName`
 in the contrib collector, or `otlp.translation_strategy` in
 Prometheus 3.x's built-in OTLP receiver).
 
 | File | Server | Collector | Histograms | Examples |
 | ---- | ------ | --------- | ---------- | -------- |
-| `ledger-metrics-otel.json`                            | `formance.ledger` (default) | preserves dots (`--metrics-naming=otel`) | classic | `formance.ledger.raft.fsm.logs_appended`, `service.cluster` |
+| `ledger-metrics-otel.json`                            | `formance.ledger` (default) | preserves dots                       | classic | `formance.ledger.raft.fsm.logs_appended`, `service.cluster` |
 | `ledger-metrics-prom.json`                            | `formance.ledger` (default) | de-dots only (`NormalizeName=false`) | classic | `formance_ledger_raft_fsm_logs_appended`, `formance_ledger_admission_command_duration_bucket` |
 | `ledger-metrics-prom-normalized.json`                 | `formance.ledger` (default) | full normalisation (default)         | classic | `formance_ledger_raft_fsm_logs_appended_total`, `formance_ledger_admission_command_duration_microseconds_bucket` |
 | `ledger-metrics-prom-normalized-native.json`          | `formance.ledger` (default) | full normalisation (default)         | native  | `formance_ledger_admission_command_duration_microseconds`, queried via `histogram_quantile(0.95, rate(metric[5m]))` directly |
-| `ledger-metrics-otel-noprefix.json`                   | `none`                      | preserves dots (`--metrics-naming=otel`) | classic | `raft.fsm.logs_appended`, `service.cluster` |
+| `ledger-metrics-otel-noprefix.json`                   | `none`                      | preserves dots                       | classic | `raft.fsm.logs_appended`, `service.cluster` |
 | `ledger-metrics-prom-noprefix.json`                   | `none`                      | de-dots only (`NormalizeName=false`) | classic | `raft_fsm_logs_appended`, `admission_command_duration_bucket` |
 | `ledger-metrics-prom-noprefix-normalized.json`        | `none`                      | full normalisation (default)         | classic | `raft_fsm_logs_appended_total`, `admission_command_duration_microseconds_bucket` |
 | `ledger-metrics-prom-noprefix-normalized-native.json` | `none`                      | full normalisation (default)         | native  | `admission_command_duration_microseconds`, queried via `histogram_quantile(0.95, rate(metric[5m]))` directly |
 
-The `prom*` variants work with either `--metrics-naming` value: a
-de-dotting collector turns `formance.ledger.raft.fsm.logs_appended`
-into the same `formance_ledger_raft_fsm_logs_appended` that
-`--metrics-naming=prom` emits directly. A custom `--metrics-prefix`
-has no pre-built variant.
+The server always emits dot notation; the `prom*` variants assume a
+collector that turns `formance.ledger.raft.fsm.logs_appended` into
+`formance_ledger_raft_fsm_logs_appended`. A custom
+`--otel-metrics-prefix` has no pre-built variant.
 
 The `-native` variants target Prometheus 3.x with the OTLP receiver
 in its default mode (or an OTel collector with
@@ -156,24 +155,23 @@ de-dotted by the collector, never prefixed. Attribute names (`service.cluster`,
 `network.io.direction`, …) are de-dotted too but never prefixed
 either.
 
-The naming policy is implemented twice: in Go (the runtime
-factory in `internal/infra/monitoring/metrics`) and in Jsonnet
-(`lib/naming.libsonnet`, used to generate the dashboards). The
-Go-side test `registry_test.go` cross-checks **name coverage**
-only: every metric listed in `lib/metrics.libsonnet` must be
-emitted by a call site, and every emitted name must be listed.
-It does **not** assert that `transformName(name, naming, prefix)`
-in Go and `transformMetric(name, mode)` in Jsonnet produce
-identical output — keeping the two transformations algorithmically
-in sync is a contributor responsibility, and any divergence in the
-prefix or the unit table will silently break dashboards.
+The prefix is applied at runtime by the go-libs metrics module
+(`metrics.NewPrefixedMeterProvider`, `metrics.PrefixedName`) and
+mirrored in Jsonnet (`lib/naming.libsonnet`, used to generate the
+dashboards). The Go-side tests in
+`internal/infra/monitoring/metrics/registry_test.go` cross-check
+**name coverage** (every metric listed in `lib/metrics.libsonnet`
+must be emitted by a call site, and every emitted name must be
+listed) and that the Jsonnet prefix equals the ledger's default
+`--otel-metrics-prefix`. Keeping the collector-side transformations
+(de-dotting, unit table) in sync with the real collector is a
+contributor responsibility; a divergence silently breaks dashboards.
 
 ## Workflow when adding a metric
 
 1. Create the instrument in Go on any meter obtained from the
    injected `metric.MeterProvider`. There is no per-meter allowlist:
-   the naming factory prefixes (and, in `prom` mode, de-dots) every
-   instrument it sees. If the new metric uses an OTel semantic-convention prefix
+   go-libs prefixes every instrument created through it. If the new metric uses an OTel semantic-convention prefix
    (`go.*`, `process.*`, `system.*`, `http.*`, …) add that prefix to
    `naming.libsonnet#semconvPrefixes` so the dashboard transform
    skips it.

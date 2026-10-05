@@ -1887,30 +1887,6 @@ spec:
                 format: int64
                 minimum: 1
                 type: integer
-              metricsNaming:
-                description: |-
-                  MetricsNaming selects the convention for metric names emitted
-                  by the server: "otel" (the default) keeps the OpenTelemetry
-                  dot-notation; "prom" converts dots to underscores so the names
-                  follow the Prometheus convention even when the OTLP→Prometheus
-                  path preserves dots. OTel semantic-convention
-                  auto-instrumentation (`go.*`, `process.*`, `system.*`,
-                  `http.*`, `rpc.*`) uses the global MeterProvider and is never
-                  touched by this field.
-                enum:
-                - otel
-                - prom
-                type: string
-              metricsPrefix:
-                description: |-
-                  MetricsPrefix is the namespace prepended to every metric the
-                  server's own instrumentation emits. When unset the server
-                  default `formance.ledger` applies. OTel semantic-convention
-                  auto-instrumentation is never prefixed. Set to `none` to emit
-                  unprefixed names.
-                maxLength: 64
-                pattern: ^[A-Za-z]([A-Za-z0-9_]*[A-Za-z0-9])?(\.[A-Za-z]([A-Za-z0-9_]*[A-Za-z0-9])?)*$
-                type: string
               mirrorMaxBatchSize:
                 description: MirrorMaxBatchSize is the maximum allowed batch size
                   for mirror sync.
@@ -1994,6 +1970,16 @@ spec:
                         type: string
                       port:
                         description: Port for the metrics exporter.
+                        type: string
+                      prefix:
+                        description: |-
+                          Prefix is the namespace prepended to every metric the server's own
+                          instrumentation emits. When unset the server default
+                          `formance.ledger` applies; `none` emits unprefixed names. OTel
+                          semantic-convention instrumentation (Go runtime, host, HTTP, gRPC)
+                          is never prefixed.
+                        maxLength: 64
+                        pattern: ^[A-Za-z]([A-Za-z0-9_]*[A-Za-z0-9])?(\.[A-Za-z]([A-Za-z0-9_]*[A-Za-z0-9])?)*$
                         type: string
                       runtime:
                         description: Runtime enables runtime metrics.

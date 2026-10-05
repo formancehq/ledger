@@ -4412,53 +4412,44 @@ ledger run --health-clock-skew-threshold 0 [other flags...]
 
 ---
 
-### Server Metrics Naming Flags
+### Server Metrics Prefix Flag
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--metrics-naming` | string | `otel` | Application metrics naming convention (`otel` or `prom`) |
-| `--metrics-prefix` | string | `formance.ledger` | Namespace prepended to application metric names (`none` to disable) |
+| `--otel-metrics-prefix` | string | `formance.ledger` | Namespace prepended to the server's own metric names (`none` to disable) |
 
-Controls how the application's own metric names are emitted. Every
-instrument the server creates (admission, cache, wal, raft, pebble,
-…) is subject to the policy. OpenTelemetry semantic-convention
-auto-instrumentation (`http.*`, `rpc.*`, `go.*`, `process.*`,
-`system.*`) goes through the *global* MeterProvider and bypasses
-these flags, so those names always keep their canonical upstream
-form and are never prefixed.
+The flag comes from the go-libs metrics module, like the other
+`--otel-metrics-*` flags, and is also read from the
+`OTEL_METRICS_PREFIX` environment variable. The ledger sets its
+default to `formance.ledger`, following the OpenTelemetry
+recommendation to namespace application-specific names.
 
-`--metrics-prefix` follows the OpenTelemetry recommendation to
-namespace application-specific names. It is joined to the
-instrument name with a `.`: `raft.fsm.logs_appended` is emitted as
-`formance.ledger.raft.fsm.logs_appended`. The value is at most 64
-characters of dot-separated segments made of letters, digits and
-underscores, each starting with a letter and ending with a letter or
-digit. Set it to `none` (`--metrics-prefix=none`, `METRICS_PREFIX=none`
-or the operator's `spec.metricsPrefix: none`) to emit unprefixed names.
-An explicit empty flag value (`--metrics-prefix=""`) has the same
-effect, but an empty `METRICS_PREFIX` environment variable is ignored.
+The prefix is joined to every instrument the server's own code creates
+(admission, cache, wal, raft, pebble, …) with a `.`:
+`raft.fsm.logs_appended` is emitted as
+`formance.ledger.raft.fsm.logs_appended`. OpenTelemetry
+semantic-convention instrumentation (`http.*`, `rpc.*`, `go.*`,
+`process.*`, `system.*`) records through the *global* MeterProvider,
+which is never prefixed, so those names keep their canonical upstream
+form.
 
-- `otel` (default): keeps dot-notation names —
-  `formance.ledger.admission.command.duration`,
-  `formance.ledger.raft.fsm.logs_appended`. Use this when your
-  OTLP→Prometheus collector preserves dots, when it sanitises them
-  itself, or when you query directly through OpenTelemetry tooling.
-- `prom`: rewrites the prefixed name to the Prometheus convention by
-  turning every dot into an underscore, so
-  `admission.command.duration` is emitted as
-  `formance_ledger_admission_command_duration`. Use this when the
-  path to Prometheus preserves dots but you want Prometheus-style
-  names.
+The value is at most 64 characters of dot-separated segments made of
+letters, digits and underscores, each starting with a letter and
+ending with a letter or digit; an invalid value fails startup. Set it
+to `none` (`--otel-metrics-prefix=none`, `OTEL_METRICS_PREFIX=none`
+or the operator's `spec.monitoring.metrics.prefix: none`) to emit
+unprefixed names. An explicit empty flag value has the same effect,
+but an empty `OTEL_METRICS_PREFIX` environment variable is ignored.
 
-After a collector that sanitises dots, both modes produce the same
-`formance_ledger_…` names. The pre-built Grafana dashboards under
+Names are always emitted in OpenTelemetry dot notation. An
+OTLP→Prometheus collector that sanitises dots stores them as
+`formance_ledger_…`. The pre-built Grafana dashboards under
 `misc/devenv/monitoring-dashboards/config/dashboards/` cover the
 default prefix and `none`; see
 [Monitoring](monitoring.md#naming-convention) for the matrix.
 
 ```bash
-ledger run --metrics-naming=prom [other flags...]
-ledger run --metrics-prefix=acme.ledger [other flags...]
+ledger run --otel-metrics-prefix=acme.ledger [other flags...]
 ```
 
 ---

@@ -35,7 +35,8 @@ Metric names in this document use the **OpenTelemetry dot-notation**
 without the namespace prefix (`admission.command.duration`,
 `raft.fsm.logs_appended`, `service.cluster`). The server emits
 every metric its own instrumentation creates under the
-`--metrics-prefix` namespace (default `formance.ledger`), so
+`--otel-metrics-prefix` namespace (default `formance.ledger`, env
+`OTEL_METRICS_PREFIX`, `none` to disable), so
 `raft.fsm.logs_appended` is emitted as
 `formance.ledger.raft.fsm.logs_appended`. This includes the metrics
 we name under `raft.*` and `pebble.*` — etcd-raft and Pebble do not
@@ -48,12 +49,11 @@ guidelines recommend for application-specific names.
 The OTLP→Prometheus collector that fronts most cloud Prometheus
 backends sanitises dots in names: `service.cluster` becomes
 `service_cluster`, `formance.ledger.raft.fsm.logs_appended` becomes
-`formance_ledger_raft_fsm_logs_appended`. With
-`--metrics-naming=prom` the server performs the same dot-to-underscore
-rewrite on its own metrics at emission time.
+`formance_ledger_raft_fsm_logs_appended`. The server itself always
+emits dot notation.
 
-| Source | `otel` mode | `prom` mode |
-| ------ | ----------- | ----------- |
+| Source | Emitted by the server | After a dot-sanitising collector |
+| ------ | --------------------- | -------------------------------- |
 | `admission.command.duration` (we emit) | `formance.ledger.admission.command.duration` | `formance_ledger_admission_command_duration` |
 | `raft.fsm.logs_appended` (we emit, instruments etcd-raft) | `formance.ledger.raft.fsm.logs_appended` | `formance_ledger_raft_fsm_logs_appended` |
 | `pebble.flush.total` (we emit, instruments Pebble) | `formance.ledger.pebble.flush.total` | `formance_ledger_pebble_flush_total` |
@@ -63,25 +63,23 @@ rewrite on its own metrics at emission time.
 
 OpenTelemetry semantic-convention auto-instrumentation (`go.*`,
 `process.*`, `system.*`, `http.*`, `rpc.*`) is emitted via the
-global MeterProvider, which is left as the raw SDK provider — those
-metrics bypass the naming policy and are never prefixed. The
-de-dotted form shown in the `prom` column for them is what the
-OTel→Prometheus collector produces on its own; the server itself
-does not touch them.
+global MeterProvider, which go-libs leaves as the raw SDK provider —
+only the MeterProvider injected into the ledger's own components is
+prefixed, so those metrics keep their upstream names.
 
 Eight pre-built Grafana dashboards ship under
 `misc/devenv/monitoring-dashboards/config/dashboards/`. Pick the
-one that matches your combination of *(server `--metrics-prefix`,
+one that matches your combination of *(server `--otel-metrics-prefix`,
 names as stored in Prometheus, histogram representation)*. A custom
 prefix has no pre-built dashboard.
 
 | Server prefix | Stored names | Histograms | File |
 | ------------- | ------------ | ---------- | ---- |
-| `formance.ledger` (default) | dots preserved (`--metrics-naming=otel`)  | classic | `ledger-metrics-otel.json` |
+| `formance.ledger` (default) | dots preserved                       | classic | `ledger-metrics-otel.json` |
 | `formance.ledger` (default) | dots → underscores only              | classic | `ledger-metrics-prom.json` |
 | `formance.ledger` (default) | full normalisation (unit + `_total`) | classic | `ledger-metrics-prom-normalized.json` |
 | `formance.ledger` (default) | full normalisation (unit + `_total`) | native  | `ledger-metrics-prom-normalized-native.json` |
-| `none` | dots preserved (`--metrics-naming=otel`)  | classic | `ledger-metrics-otel-noprefix.json` |
+| `none` | dots preserved                       | classic | `ledger-metrics-otel-noprefix.json` |
 | `none` | dots → underscores only              | classic | `ledger-metrics-prom-noprefix.json` |
 | `none` | full normalisation (unit + `_total`) | classic | `ledger-metrics-prom-noprefix-normalized.json` |
 | `none` | full normalisation (unit + `_total`) | native  | `ledger-metrics-prom-noprefix-normalized-native.json` |

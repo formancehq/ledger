@@ -175,8 +175,8 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 	sentinelMode := sentinel.IsEnabled()
 	// raft.* metrics describe the consensus engine and follow the
 	// upstream etcd-raft naming convention; numscript.* metrics are
-	// application-specific so they live on a separate meter, which
-	// the metric-naming factory may prefix in `prom` mode.
+	// application-specific so they live on a separate meter. Both are
+	// namespaced by --otel-metrics-prefix like every injected meter.
 	raftMeter := meterProvider.Meter("raft.node")
 	numscriptMeter := meterProvider.Meter("numscript")
 	logsAppendedCounter, err := raftMeter.Int64Counter(

@@ -4,23 +4,21 @@
 //
 // This file is the dashboard-side implementation of the transform
 // between the OpenTelemetry dot-notation our code emits and the
-// form Prometheus actually stores after the collector. The Go-side
-// runtime implementation lives in `internal/infra/monitoring/metrics`.
-// The two implementations are NOT cross-checked by any automated
-// test: `registry_test.go` only verifies metric-name coverage (every
-// name listed in `lib/metrics.libsonnet` has a Go call site and
-// vice versa). Algorithmic equivalence between
-// `transformName(name, naming, prefix)` in Go and
-// `transformMetric(name, mode)` here is a contributor
-// responsibility — diverging on the prefix or the unit map breaks
-// dashboards silently.
+// form Prometheus actually stores after the collector. The prefix is
+// applied at runtime by the go-libs metrics module
+// (`metrics.PrefixedName`); `registry_test.go` in
+// `internal/infra/monitoring/metrics` checks that `prefix` below equals
+// the ledger's default `--otel-metrics-prefix` and that every name
+// listed in `lib/metrics.libsonnet` has a Go call site and vice versa.
+// The collector-side transformations (de-dotting, unit map) are not
+// cross-checked — diverging from the real collector breaks dashboards
+// silently.
 //
 // Eight modes are emitted (one JSON file per mode) covering the
 // cross product of the server prefix and three orthogonal collector
 // behaviours:
 //
-//   * otel[-noprefix] — preserves dots end-to-end (server in
-//     `--metrics-naming=otel`, Prom 3.x with
+//   * otel[-noprefix] — preserves dots end-to-end (Prom 3.x with
 //     `otlp.translation_strategy: NoTranslation`).
 //   * prom[-noprefix] — underscores. No unit suffix and no
 //     automatic `_total` (collector with `NormalizeName=false`).
@@ -34,13 +32,13 @@
 //     `_bucket` / `_count` / `_sum` split, no `le` label).
 //
 // Modes without `-noprefix` assume the server runs with the default
-// `--metrics-prefix=formance.ledger`; `-noprefix` modes assume
-// `--metrics-prefix=none`. A custom prefix is not generated.
+// `--otel-metrics-prefix=formance.ledger`; `-noprefix` modes assume
+// `--otel-metrics-prefix=none`. A custom prefix is not generated.
 //
 // Scope of the policy: every metric our code emits is subject to
 // the rename. OpenTelemetry semantic-convention auto-instrumentation
 // (`go.*`, `process.*`, `system.*`, `http.*`) targets the *global*
-// MeterProvider in the Go side and bypasses our factory entirely —
+// MeterProvider, which go-libs never prefixes —
 // in `prom-normalized` mode we still apply the unit/total
 // transformation to those names because the collector does the same
 // thing to them on its way to Prometheus.
@@ -57,7 +55,7 @@ local metadata = import 'metric_metadata.libsonnet';
   // OpenTelemetry semantic-convention auto-instrumentation (the SDK
   // runtime instrumentation, otelhttp, host metrics). Those
   // instruments are emitted via the global MeterProvider — the
-  // ledger factory never sees them — so the dashboard merely
+  // go-libs prefixed provider never sees them — so the dashboard merely
   // de-dots them (which the collector does too) and never prefixes.
   semconvPrefixes:: [
     'go.',

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/infra/monitoring/metrics"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -156,8 +155,6 @@ type Config struct {
 	HealthConfig           HealthConfig
 	ClusterID              string
 	AdmissionMetrics       bool
-	MetricsNaming          string
-	MetricsPrefix          string
 	ResponseSigningKeyFile string
 	PoolConfig             transport.PoolConfig
 	TLSConfig              TLSConfig
@@ -312,14 +309,6 @@ func (c Config) Validate() error {
 
 	if err := c.TransportConfig.Validate(); err != nil {
 		return err
-	}
-
-	if _, err := metrics.ParseNaming(c.MetricsNaming); err != nil {
-		return fmt.Errorf("--metrics-naming: %w", err)
-	}
-
-	if _, err := metrics.ParsePrefix(c.MetricsPrefix); err != nil {
-		return fmt.Errorf("--metrics-prefix: %w", err)
 	}
 
 	if err := c.SnapshotSyncConfig.Validate(); err != nil {

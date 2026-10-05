@@ -1028,7 +1028,7 @@ The environment includes pre-configured Grafana dashboards:
 
 - **Ledger Metrics Dashboard**: Shows Raft metrics, transaction
   rates, latencies. Ships in **eight variants** — one per
-  combination of *(server `--metrics-prefix`, OTel→Prom collector
+  combination of *(server `--otel-metrics-prefix`, OTel→Prom collector
   normalisation, histogram representation)*. The most common pick on
   a default modern stack is `ledger-metrics-prom-normalized.json`
   (default `formance.ledger` prefix + collector with normalisation

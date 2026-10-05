@@ -51,7 +51,6 @@ import (
 	raftmembership "github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/diskusage"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/flightrecorder"
-	ledgermetrics "github.com/formancehq/ledger/v3/internal/infra/monitoring/metrics"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/otlplogs"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
@@ -89,47 +88,10 @@ type nodeProvideResult struct {
 	FreshStart walFreshStart
 }
 
-// decorateMeterProvider wraps the injected metric.MeterProvider so every
-// instrument our code creates follows --metrics-naming and
-// --metrics-prefix. It decorates only the metric.MeterProvider interface
-// handed to ledger components: the concrete *sdkmetric.MeterProvider that
-// go-libs installs as the global provider — used by the Go runtime, host,
-// otelhttp and otelgrpc instrumentation — is left untouched, so
-// semantic-convention metrics are never renamed.
-func decorateMeterProvider(cfg Config, inner metric.MeterProvider) (metric.MeterProvider, error) {
-	naming, err := ledgermetrics.ParseNaming(cfg.MetricsNaming)
-	if err != nil {
-		// Config.Validate() has already rejected invalid values;
-		// fall back to the default so a misconfigured test fixture
-		// doesn't crash the fx graph.
-		naming = ledgermetrics.DefaultNaming
-	}
-
-	prefix, err := ledgermetrics.ParsePrefix(cfg.MetricsPrefix)
-	if err != nil {
-		// Config.Validate() has already rejected invalid values;
-		// reaching this branch is an invariant violation.
-		return nil, fmt.Errorf("--metrics-prefix: %w", err)
-	}
-
-	return ledgermetrics.NewFactory(inner, naming, prefix), nil
-}
-
 func Module() fx.Option {
 	return fx.Options(
 		transport.Module(),
 		attributes.Module(),
-		// Decorate the upstream MeterProvider so every instrument
-		// our code creates is renamed according to --metrics-naming
-		// and --metrics-prefix. The decorator has no per-meter
-		// allowlist: anything the application requests from this
-		// provider (admission, cache, bloom, raft.*, pebble.*,
-		// numscript, …) goes through the rewrite. OTel
-		// semantic-convention auto-instrumentation (go.*, process.*,
-		// system.*, http.*, rpc.*) targets the *global*
-		// MeterProvider, which we leave as the raw SDK provider —
-		// those metrics bypass this decorator entirely.
-		fx.Decorate(decorateMeterProvider),
 		fx.Provide(
 			fx.Annotate(func(
 				cfg Config,

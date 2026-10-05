@@ -8,6 +8,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 
+	otlpmetrics "github.com/formancehq/go-libs/v5/pkg/observe/metrics"
+
 	ledgermetrics "github.com/formancehq/ledger/v3/internal/infra/monitoring/metrics"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -77,17 +79,6 @@ func TestLoadConfig_ZeroPreservedForSentinelFlags(t *testing.T) {
 			},
 		},
 		{
-			name:  "metrics-prefix empty disables the namespace",
-			flag:  "metrics-prefix",
-			value: "",
-			check: func(t *testing.T, cmd *cobra.Command) {
-				cfg, err := LoadConfig(context.Background(), cmd)
-				require.NoError(t, err)
-				require.Empty(t, cfg.MetricsPrefix,
-					"--metrics-prefix= must propagate as empty (no prefix), not the formance.ledger default")
-			},
-		},
-		{
 			name:  "query-profile-threshold=0 disables profiling",
 			flag:  "query-profile-threshold",
 			value: "0s",
@@ -132,7 +123,6 @@ func TestLoadConfig_DefaultsApplyWhenFlagUnset(t *testing.T) {
 	require.Equal(t, uint64(100), cfg.RaftConfig.AutoPromoteThreshold)
 	require.Equal(t, 500*time.Millisecond, cfg.HealthConfig.ClockSkewThreshold)
 	require.Equal(t, 10*time.Millisecond, cfg.QueryProfileThreshold)
-	require.Equal(t, ledgermetrics.DefaultPrefix, cfg.MetricsPrefix)
 	// Regression: --cache-rotation-threshold (cobra default 1000) used to
 	// regress to 0 when the call site's local fallback (0) was preferred
 	// to cobra's registered default. Zero rotation threshold triggers a
@@ -192,4 +182,17 @@ func TestLoadConfig_ResumeThresholdExplicitHonored(t *testing.T) {
 	require.InDelta(t, 0.5, cfg.HealthConfig.WALResumeThreshold, 1e-9)
 	// Data resume, left unset, still derives from its block default.
 	require.InDelta(t, 0.75, cfg.HealthConfig.DataResumeThreshold, 1e-9)
+}
+
+// TestRunCommand_MetricsPrefixDefault pins the ledger's default namespace on
+// the go-libs --otel-metrics-prefix flag, which the metrics module reads to
+// prefix the instruments created through the injected MeterProvider.
+func TestRunCommand_MetricsPrefixDefault(t *testing.T) {
+	t.Parallel()
+
+	cmd := NewRunCommand()
+	require.Equal(t, ledgermetrics.DefaultPrefix, otlpmetrics.ConfigFromFlags(cmd.Flags()).Prefix)
+
+	require.NoError(t, cmd.Flags().Set(otlpmetrics.OtelMetricsPrefixFlag, "none"))
+	require.Equal(t, "none", otlpmetrics.ConfigFromFlags(cmd.Flags()).Prefix)
 }
