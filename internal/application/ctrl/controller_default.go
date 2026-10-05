@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
@@ -31,6 +32,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 	"github.com/formancehq/ledger/v3/internal/storage/usagestore"
+	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 )
 
 const (
@@ -1078,12 +1080,14 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 		}}
 	}
 
-	var cursorBytes []byte
-	if c := req.GetCursor(); c != "" {
-		cursorBytes, err = decodeCursor(c)
-		if err != nil {
-			return nil, fmt.Errorf("invalid cursor: %w", err)
-		}
+	page, err := query.DecodeCursor(req.GetCursor())
+	if err != nil {
+		return nil, err
+	}
+
+	cursorBytes, err := base64Encoding.DecodeString(page.Key)
+	if err != nil {
+		return nil, &query.ErrInvalidCursor{Err: fmt.Errorf("%w: key is not a base64url value encoding", pagecursor.ErrInvalid)}
 	}
 
 	var mode readstore.InspectMode
@@ -1107,32 +1111,41 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 		Mode:            mode,
 		PageSize:        req.GetPageSize(),
 		CursorBytes:     cursorBytes,
+		Backward:        page.Back,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("inspecting index: %w", err)
 	}
 
-	return toInspectIndexResponse(mode, inspectResult), nil
+	return toInspectIndexResponse(mode, page, inspectResult), nil
 }
 
 // toInspectIndexResponse builds the arm the request asked for. The arm is the
 // answer to which question was asked, so it comes from the mode and never from
 // which result slice the scan happened to populate: an index holding no live
-// values answers on its own arm with an empty list.
-func toInspectIndexResponse(mode readstore.InspectMode, r *readstore.InspectResult) *servicepb.InspectIndexResponse {
-	var nextCursor string
-	if r.HasMore && len(r.NextCursor) > 0 {
-		nextCursor = encodeCursor(r.NextCursor)
+// values answers on its own arm with an empty list. A back page was scanned
+// in descending order and is returned ascending.
+func toInspectIndexResponse(mode readstore.InspectMode, page pagecursor.Cursor, r *readstore.InspectResult) *servicepb.InspectIndexResponse {
+	first, last := r.FirstValue, r.LastValue
+	if page.Back {
+		slices.Reverse(r.Values)
+		slices.Reverse(r.Facets)
+		first, last = last, first
 	}
+
+	rows := max(len(r.Values), len(r.Facets))
+	nextCursor, previousCursor := page.Links(valueCursorKey(first), valueCursorKey(last), rows, r.HasMore)
+	hasMore := nextCursor != ""
 
 	switch mode { //exhaustive:enforce
 	case readstore.InspectDistinctValuesMode:
 		return &servicepb.InspectIndexResponse{
 			Result: &servicepb.InspectIndexResponse_DistinctValues{
 				DistinctValues: &servicepb.InspectDistinctValues{
-					Values:     r.Values,
-					HasMore:    r.HasMore,
-					NextCursor: nextCursor,
+					Values:         r.Values,
+					HasMore:        hasMore,
+					NextCursor:     nextCursor,
+					PreviousCursor: previousCursor,
 				},
 			},
 		}
@@ -1149,9 +1162,10 @@ func toInspectIndexResponse(mode readstore.InspectMode, r *readstore.InspectResu
 		return &servicepb.InspectIndexResponse{
 			Result: &servicepb.InspectIndexResponse_Facets{
 				Facets: &servicepb.InspectFacets{
-					Facets:     facets,
-					HasMore:    r.HasMore,
-					NextCursor: nextCursor,
+					Facets:         facets,
+					HasMore:        hasMore,
+					NextCursor:     nextCursor,
+					PreviousCursor: previousCursor,
 				},
 			},
 		}
@@ -1175,20 +1189,23 @@ func toInspectIndexResponse(mode readstore.InspectMode, r *readstore.InspectResu
 	return &servicepb.InspectIndexResponse{
 		Result: &servicepb.InspectIndexResponse_DistinctValues{
 			DistinctValues: &servicepb.InspectDistinctValues{
-				Values:     r.Values,
-				HasMore:    r.HasMore,
-				NextCursor: nextCursor,
+				Values:         r.Values,
+				HasMore:        hasMore,
+				NextCursor:     nextCursor,
+				PreviousCursor: previousCursor,
 			},
 		},
 	}
 }
 
-func decodeCursor(s string) ([]byte, error) {
-	return base64Encoding.DecodeString(s)
-}
+// valueCursorKey renders an encoded index value as an inspection cursor key.
+// A nil value yields no key.
+func valueCursorKey(value []byte) string {
+	if value == nil {
+		return ""
+	}
 
-func encodeCursor(b []byte) string {
-	return base64Encoding.EncodeToString(b)
+	return base64Encoding.EncodeToString(value)
 }
 
 // GetIndexStatus returns the aggregated index registry status (per-index
@@ -1622,10 +1639,11 @@ func indexIDFromBackfillEntry(e readstore.BackfillEntry) *commonpb.IndexID {
 }
 
 // ListLogs returns a cursor over logs for a specific ledger, ordered by
-// ledger-local log ID. The per-ledger log index is unconditionally maintained
-// by the indexbuilder, so every read uses the Compile framework — boolean
+// ledger-local log ID, ascending unless reverse. afterSequence is exclusive
+// in either order. The per-ledger log index is unconditionally maintained by
+// the indexbuilder, so every read uses the Compile framework — boolean
 // filters and date ranges are honored on the single code path.
-func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
+func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Log], error) {
 	handle, releaseHold, err := query.OpenQueryHandle(ctrl.readStore, ctrl.store, filter, commonpb.QueryTarget_QUERY_TARGET_LOGS)
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
@@ -1645,18 +1663,17 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 
 	pageSize = ClampFetchSize(pageSize)
 
-	// Translate afterSequence into a LogId filter so the Compile framework
-	// respects the cursor position. LogId with min=afterSequence, min_exclusive=true
-	// excludes the entry at afterSequence and returns only newer entries.
+	// Translate afterSequence into an exclusive LogId bound so the Compile
+	// framework respects the cursor position in the requested order.
 	if afterSequence > 0 {
+		bound := &commonpb.UintCondition{Min: &afterSequence, MinExclusive: true}
+		if reverse {
+			bound = &commonpb.UintCondition{Max: &afterSequence, MaxExclusive: true}
+		}
+
 		afterFilter := &commonpb.QueryFilter{
 			Filter: &commonpb.QueryFilter_LogId{
-				LogId: &commonpb.LogIdCondition{
-					Cond: &commonpb.UintCondition{
-						Min:          &afterSequence,
-						MinExclusive: true,
-					},
-				},
+				LogId: &commonpb.LogIdCondition{Cond: bound},
 			},
 		}
 		if filter != nil {
@@ -1681,26 +1698,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 	defer releaseLease()
 	defer func() { _ = snap.Close() }()
 
-	kb := dal.NewKeyBuilder()
-
-	compiled, err := query.Compile(
-		snap, kb, filter,
-		commonpb.QueryTarget_QUERY_TARGET_LOGS,
-		ledgerInfo.GetName(), nil, nil,
-		ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), ctrl.readStore.PinnedVersionResolver(snap, ledgerInfo.GetName(), mainSeq), nil, handle, mainSeq,
-	)
-	if err != nil {
-		releaseHold()
-		_ = handle.Close()
-
-		return nil, fmt.Errorf("compiling log filter: %w", err)
-	}
-
-	iter := readstore.NewFilterIterator(compiled,
-		query.MainHorizonKeep(commonpb.QueryTarget_QUERY_TARGET_LOGS, handle, snap, ledgerInfo.GetName(), mainSeq))
-	defer iter.Close()
-
-	logIDs, _, paginateErr := readstore.PaginateForward(iter, pageSize, nil)
+	logIDs, paginateErr := ctrl.paginateLogIDs(handle, snap, mainSeq, ledgerInfo, filter, pageSize, reverse)
 	if paginateErr != nil {
 		releaseHold()
 		_ = handle.Close()
@@ -1717,6 +1715,50 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 	}
 
 	return cursor.NewClosingCursor(c, releasingCloser{handle: handle, release: releaseHold}), nil
+}
+
+// paginateLogIDs compiles filter over the ledger's logs in the requested
+// order, trims to the main snapshot's horizon, and collects one page of
+// ledger-local log ids.
+func (ctrl *DefaultController) paginateLogIDs(handle *dal.ReadHandle, snap *pebble.Snapshot, mainSeq uint64, ledgerInfo *commonpb.LedgerInfo, filter *commonpb.QueryFilter, pageSize uint32, reverse bool) ([][]byte, error) {
+	kb := dal.NewKeyBuilder()
+	indexReader := query.NewPebbleIndexReader(ctrl.attrs.Index, handle)
+	versionFor := ctrl.readStore.PinnedVersionResolver(snap, ledgerInfo.GetName(), mainSeq)
+	keep := query.MainHorizonKeep(commonpb.QueryTarget_QUERY_TARGET_LOGS, handle, snap, ledgerInfo.GetName(), mainSeq)
+
+	if reverse {
+		compiled, err := query.CompileReverse(snap, kb, filter, commonpb.QueryTarget_QUERY_TARGET_LOGS,
+			ledgerInfo.GetName(), nil, nil, ledgerInfo, indexReader, versionFor, nil, handle, mainSeq)
+		if err != nil {
+			return nil, fmt.Errorf("compiling log filter: %w", err)
+		}
+
+		iter := readstore.NewFilterReverseIterator(compiled, keep)
+		defer iter.Close()
+
+		logIDs, _, err := readstore.PaginateReverse(iter, pageSize, nil)
+		if err != nil {
+			return nil, fmt.Errorf("paginating log filter: %w", err)
+		}
+
+		return logIDs, nil
+	}
+
+	compiled, err := query.Compile(snap, kb, filter, commonpb.QueryTarget_QUERY_TARGET_LOGS,
+		ledgerInfo.GetName(), nil, nil, ledgerInfo, indexReader, versionFor, nil, handle, mainSeq)
+	if err != nil {
+		return nil, fmt.Errorf("compiling log filter: %w", err)
+	}
+
+	iter := readstore.NewFilterIterator(compiled, keep)
+	defer iter.Close()
+
+	logIDs, _, err := readstore.PaginateForward(iter, pageSize, nil)
+	if err != nil {
+		return nil, fmt.Errorf("paginating log filter: %w", err)
+	}
+
+	return logIDs, nil
 }
 
 // ListAuditEntries returns a cursor over audit entries against the live store,

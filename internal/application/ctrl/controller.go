@@ -40,7 +40,7 @@ type Controller interface {
 	// ID. afterSequence is the ledger-local log ID to start after; the filter
 	// may add further conditions (e.g. date ranges). Use a LogIdCondition in
 	// the filter for pagination.
-	ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error)
+	ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Log], error)
 	GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error)
 
 	// Audit operations

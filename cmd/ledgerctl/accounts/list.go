@@ -250,7 +250,7 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 			// `accounts list --json/--yaml` printed the JSON/YAML payload on
 			// stdout above; surface the resume cursor on stderr so scripts can
 			// pick it up without parsing gRPC trailers.
-			cmdutil.EmitNextCursorHint(cmd, nextCursor)
+			cmdutil.EmitCursorHints(cmd, cmdutil.CursorsFromTrailer(stream.Trailer()))
 
 			return nil
 		}

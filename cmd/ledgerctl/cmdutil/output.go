@@ -346,17 +346,33 @@ func IsStructuredOutput(cmd *cobra.Command) bool {
 //
 // Pass an empty cursor to skip emission entirely.
 func EmitNextCursorHint(cmd *cobra.Command, nextCursor string) {
-	if nextCursor == "" {
+	emitCursorHint(cmd, "next_cursor", "More results available — resume with --cursor %s", nextCursor)
+}
+
+// EmitPreviousCursorHint is EmitNextCursorHint for the preceding page's
+// token (`previous_cursor=<token>` in structured mode).
+func EmitPreviousCursorHint(cmd *cobra.Command, previousCursor string) {
+	emitCursorHint(cmd, "previous_cursor", "Previous page — go back with --cursor %s", previousCursor)
+}
+
+// EmitCursorHints emits the previous then the next page hint.
+func EmitCursorHints(cmd *cobra.Command, cursors PageCursors) {
+	EmitPreviousCursorHint(cmd, cursors.Previous)
+	EmitNextCursorHint(cmd, cursors.Next)
+}
+
+func emitCursorHint(cmd *cobra.Command, key, human, token string) {
+	if token == "" {
 		return
 	}
 
 	if IsStructuredOutput(cmd) {
 		// Stderr keeps stdout JSON/YAML lossless for downstream parsers.
 		// The hint is best-effort — a closed stderr (rare) is not fatal.
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "next_cursor=%s\n", nextCursor)
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s=%s\n", key, token)
 
 		return
 	}
 
-	pterm.Info.Printfln("More results available — resume with --cursor %s", pterm.Cyan(nextCursor))
+	pterm.Info.Printfln(human, pterm.Cyan(token))
 }

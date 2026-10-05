@@ -40,8 +40,8 @@ sequenceDiagram
     Ctrl->>Ctrl: Compile filter → iterator tree
     Ctrl->>Index: Iterate read store
     Ctrl->>Main: Enrich from main store
-    Ctrl-->>G: Cursor[T] (page + next cursor)
-    G-->>C: Streamed response
+    Ctrl-->>G: Cursor[T] (up to pageSize + 1 rows)
+    G-->>C: Streamed page + x-next-cursor / x-previous-cursor trailers
 ```
 
 ## Entry points
@@ -146,7 +146,7 @@ cursor. The detailed per-target rules live in
 The main handle and reclamation reservation live with the returned cursor; the
 projection snapshot and read lease are released after index iteration.
 
-The cursor carries only the exclusive resume position (for example, an account address or transaction ID); it does not identify or retain the Pebble snapshot. Within one request/page, results are served under the coordinated consistency contract described above: main-store leaves and enrichment reflect that request's single pin, subject to the per-target cross-store exceptions — ACCOUNTS membership is served as folded, so a page may include index members absent from the pinned main store. Because the cursor does not retain that snapshot state, there is no general snapshot-consistency guarantee across separate pages. Inserts, deletes, or updates committed between requests may therefore affect later pages according to the documented cursor ordering and filtering semantics. Duplications or omissions across pages under concurrent writes are not, by themselves, evidence of a product defect unless an API contract explicitly promises a cross-page snapshot.
+The page token carries only the exclusive resume position and its direction (for example, an account address or transaction ID); it does not identify or retain the Pebble snapshot. Within one request/page, results are served under the coordinated consistency contract described above: main-store leaves and enrichment reflect that request's single pin, subject to the per-target cross-store exceptions — ACCOUNTS membership is served as folded, so a page may include index members absent from the pinned main store. Because the cursor does not retain that snapshot state, there is no general snapshot-consistency guarantee across separate pages. Inserts, deletes, or updates committed between requests may therefore affect later pages according to the documented cursor ordering and filtering semantics. Duplications or omissions across pages under concurrent writes are not, by themselves, evidence of a product defect unless an API contract explicitly promises a cross-page snapshot.
 
 Multiple concurrent readers share snapshots cheaply (Pebble's snapshot is a versioned reference, not a copy).
 
@@ -161,10 +161,10 @@ applies to the `ListAccounts` and `ListTransactions` paths.
 1. Resolve the ledger (`query.GetLedgerByName`) and its declared-metadata schema (so filter conditions can be typed).
 2. Compile the filter (if any) into an iterator tree (`internal/query/compile.go:90`).
 3. Build the leaf iterators against the read store at the version returned by `SnapshotVersionResolver` (so an index undergoing rewrite still serves under `v_current`).
-4. Apply the cursor — fast-forward iterators past the resume position.
-5. Read up to `pageSize + 1` entities; the +1 is the *peek* that lets the streamer detect whether more pages exist without leaking a phantom cursor.
+4. Apply the cursor — position iterators strictly past the resume key, in the read direction the transport resolved with `Cursor.ReadReverse`.
+5. Read up to `pageSize + 1` entities; the +1 is the *peek* that lets the streamer detect whether more pages exist without advertising a phantom page.
 6. Enrich each candidate entity with its volumes / metadata / transaction body from the main store.
-7. Return a `Cursor[T]` whose next cursor is derived from the **last sent** entity (not the peeked one).
+7. Return a `Cursor[T]` over the rows in read order; the streamer turns it into a page and derives the adjacent page tokens from the rows it sends, never from the peeked one (see [Pagination](#pagination)).
 
 ## Iterator algebra
 
@@ -219,15 +219,57 @@ Three guards keep the matrix from passing for the wrong reason. `TestDescendingP
 
 ## Pagination
 
-A `Cursor[T]` is opaque to the client. Internally the cursor encodes the position of the *last returned* entity — a transaction ID as a decimal string (cursor.go:508), an account address as-is (`:676`), etc. The streamer (`server_bucket.go` → `sendPagedToStream`, `internal/adapter/grpc/stream_helper.go:44`):
+### Page tokens
 
-1. Reads `pageSize + 1` entities.
-2. If exactly `pageSize` are read, emits them with **no next cursor** (end of stream).
-3. If `pageSize + 1` are read, emits the first `pageSize` and computes the next cursor from the **last sent** (the `+1`th is dropped — it was a peek).
+Every paged list exchanges **page tokens** built by `pkg/pagecursor`. A token is base64url (unpadded, RFC 4648 §5) of the JSON object `{"key": <string>, "back": <bool>}`; both fields are omitted when empty and unknown fields are rejected. `key` is a position in the endpoint's textual form:
 
-This avoids the classic "phantom trailing cursor" bug where a result set of exactly `pageSize` items would advertise a non-existent next page.
+| Endpoint | Key |
+|----------|-----|
+| Transactions | transaction id, decimal |
+| Logs | ledger-local log id, decimal |
+| Audit entries | audit sequence, decimal |
+| Accounts | address |
+| Ledgers, numscripts | name |
+| Signing keys | key id |
+| Prepared queries | decimal id for TRANSACTIONS / LOGS targets, address for ACCOUNTS |
+| Index inspection | base64url of the encoded metadata value |
 
-The cursor is sent back as an `x-next-cursor` gRPC trailer.
+Both directions are exclusive of the key and always return rows in the **requested** order (`reverse` included):
+
+| Token | Page served |
+|-------|-------------|
+| empty / absent, or `{}` (`e30`) | the first page |
+| `{key: K}` (forward) | the rows strictly after K |
+| `{key: K, back: true}` | the page that ends strictly before K |
+| `{back: true}` (empty key) | the last page |
+
+A token that does not decode, or whose key is not a valid position for the endpoint (for example a non-decimal key on transactions), is `InvalidArgument` over gRPC and `400 INVALID_REQUEST` over HTTP (`query.ErrInvalidCursor`). The token carries no snapshot: see the cross-page consistency note [above](#pebble-snapshot).
+
+### Serving a page
+
+`Cursor.ReadReverse(reverse)` gives the order the source is read in: the requested order for a forward token, the opposite order for a back token. Either way the source resumes from the same exclusive key and is sized `pageSize + 1`; the extra row is a *peek* that proves a further page exists without advertising a phantom one on a result of exactly `pageSize` rows. The streamer (`sendPagedToStream`, `internal/adapter/grpc/stream_helper.go`) then:
+
+1. **Forward page:** streams rows as they are read, up to `pageSize`.
+2. **Back page:** buffers at most `pageSize + 1` rows, drops the peek, and sends the page reversed, so it reaches the client in the requested order.
+
+HTTP list handlers do the same through `pagecursor.Page` (`internal/adapter/http/pagination.go`). Ledgers, signing keys and numscripts are small collections: the handler sorts them by key and pages the slice in memory (`pageSorted` over HTTP, `ApplyHandlerPagination` over gRPC).
+
+### Links
+
+`Cursor.Links` derives the adjacent tokens from the page's first and last keys (in requested order), its row count, and whether the peek fired:
+
+| Request | `next` | `previous` |
+|---------|--------|------------|
+| forward, key empty (first page) | `{last row}` if the peek fired | none |
+| forward, key K | `{last row}` if the peek fired | `{first row, back}`; `{back}` (the last page) if the page is empty |
+| back, key K | `{last row}`; the first-page token if the page is empty | `{first row, back}` if the peek fired |
+| back, key empty (last page) | none | `{first row, back}` if the peek fired |
+
+`hasMore` is set iff `next` is. An empty row key (a log without an apply payload) yields no link through that row. gRPC publishes the tokens in the `x-next-cursor` and `x-previous-cursor` trailers; HTTP returns them as `next` / `previous` beside `data`; prepared queries return them in `PreparedQueryCursor.next` / `previous`; index inspection in `next_cursor` / `previous_cursor`.
+
+### Routed reads
+
+A follower that routes a read to the leader (`BucketGrpcClient`) has already resolved the token: it forwards the exclusive position as a forward token, with the read direction it computed as `reverse`, and builds the links itself from the rows it receives. The leader caps its response at its own page limit, so a follower that asked for `MaxPageSize + 1` rows can see a full page end in EOF. The routed cursor (`upstreamPeekCursor`) therefore treats the leader's `x-next-cursor` trailer only as a "more rows exist" signal, exposed through `cursor.MoreReporter` (`internal/pkg/cursor/cursor.go`) and read with `cursor.SourceHasMore`; the leader's token itself is never relayed.
 
 ## Special read paths
 
@@ -265,4 +307,6 @@ snapshot remain unchanged.
 | Filter compile (ascending) | `internal/query/compile.go:90` |
 | Filter compile (descending) | `internal/query/compile_reverse.go` |
 | Iterator algebra | `internal/storage/readstore/iterator_*.go` |
-| Cursor + streamer | `internal/pkg/cursor/cursor.go`, `internal/adapter/grpc/stream_helper.go:44` |
+| Page tokens + links | `pkg/pagecursor/pagecursor.go` |
+| Cursor + streamer | `internal/pkg/cursor/cursor.go`, `internal/adapter/grpc/stream_helper.go` |
+| HTTP paging | `internal/adapter/http/pagination.go` |

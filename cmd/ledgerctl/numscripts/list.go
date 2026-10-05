@@ -78,13 +78,13 @@ func runList(cmd *cobra.Command, _ []string) error {
 		return items, stream.Trailer(), nil
 	}
 
-	scripts, nextCursor, err := cmdutil.FetchSinglePageOrAll(cmd, pgn.Cursor, fetchPage)
+	scripts, cursors, err := cmdutil.FetchSinglePageOrAll(cmd, pgn.Cursor, fetchPage)
 	if err != nil {
 		return err
 	}
 
 	if handled, err := cmdutil.EncodeStructured(cmd, scripts); handled || err != nil {
-		cmdutil.EmitNextCursorHint(cmd, nextCursor)
+		cmdutil.EmitCursorHints(cmd, cursors)
 
 		return err
 	}
@@ -120,7 +120,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 
 	pterm.Println()
 
-	cmdutil.EmitNextCursorHint(cmd, nextCursor)
+	cmdutil.EmitCursorHints(cmd, cursors)
 
 	return nil
 }

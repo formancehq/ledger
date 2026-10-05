@@ -106,9 +106,13 @@ A compile error at FSM time is hash-bound as an `AuditFailure`, so a checker run
 
 **List order and cursor.** `LIST` returns entities in ascending entity order
 (account address, transaction id, log id) and in descending order with
-`reverse`. The cursor encodes the last entity of the page and no direction, so
-each page of a descending walk must repeat `reverse`. Sending a cursor with the
-other direction resumes from that entity in the new direction.
+`reverse`. `cursor` is a page token (`pkg/pagecursor`) whose key is the
+decimal id for TRANSACTIONS and LOGS targets and the address for ACCOUNTS. The
+response's `PreparedQueryCursor` carries the `next` and `previous` tokens, and
+`has_more` is set iff `next` is. A back token is read in the opposite order from
+the same exclusive key and returned in the requested order (see
+[Pagination](query-pipeline.md#pagination)). A token is relative to the
+requested order, so each page of a descending walk must repeat `reverse`.
 
 The standard controller read route establishes a `ReadIndexAndWait` horizon
 before execution. `stale` skips that quorum barrier but retains a fixed local

@@ -17,6 +17,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
+	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 )
 
 // BucketGrpcClient implements Controller by forwarding requests via gRPC to the leader.
@@ -95,16 +96,11 @@ func (g *BucketGrpcClient) GetTransaction(ctx context.Context, ledgerName string
 }
 
 func (g *BucketGrpcClient) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {
-	var cursorStr string
-	if afterTxID > 0 {
-		cursorStr = strconv.FormatUint(afterTxID, 10)
-	}
-
 	stream, err := g.client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
 		Ledger: ledgerName,
 		Options: &commonpb.ListOptions{
 			PageSize: pageSize,
-			Cursor:   cursorStr,
+			Cursor:   uint64ResumeToken(afterTxID),
 			Reverse:  reverse,
 			Filter:   filter,
 		},
@@ -129,7 +125,7 @@ func (g *BucketGrpcClient) ListAccounts(ctx context.Context, ledgerName string, 
 		Ledger: ledgerName,
 		Options: &commonpb.ListOptions{
 			PageSize: pageSize,
-			Cursor:   afterAddress,
+			Cursor:   resumeToken(afterAddress),
 			Reverse:  reverse,
 			Filter:   filter,
 		},
@@ -141,17 +137,13 @@ func (g *BucketGrpcClient) ListAccounts(ctx context.Context, ledgerName string, 
 	return NewUpstreamPeekCursor(ctx, stream), nil
 }
 
-func (g *BucketGrpcClient) ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
-	var cursorStr string
-	if afterSequence > 0 {
-		cursorStr = strconv.FormatUint(afterSequence, 10)
-	}
-
+func (g *BucketGrpcClient) ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Log], error) {
 	stream, err := g.client.ListLogs(ctx, &servicepb.ListLogsRequest{
 		Ledger: ledgerName,
 		Options: &commonpb.ListOptions{
 			PageSize: pageSize,
-			Cursor:   cursorStr,
+			Cursor:   uint64ResumeToken(afterSequence),
+			Reverse:  reverse,
 			Filter:   filter,
 		},
 	})
@@ -211,15 +203,10 @@ func (g *BucketGrpcClient) GetLedgerByName(ctx context.Context, name string) (*c
 }
 
 func (g *BucketGrpcClient) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
-	var cursorStr string
-	if afterSequence > 0 {
-		cursorStr = strconv.FormatUint(afterSequence, 10)
-	}
-
 	stream, err := g.client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
 		Options: &commonpb.ListOptions{
 			PageSize: pageSize,
-			Cursor:   cursorStr,
+			Cursor:   uint64ResumeToken(afterSequence),
 			Reverse:  reverse,
 			Filter:   filter,
 		},
@@ -281,6 +268,27 @@ func (g *BucketGrpcClient) ListSigningKeys(ctx context.Context) (cursor.Cursor[*
 
 		return cursor.NewSliceCursor(keys), nil
 	}
+}
+
+// resumeToken forwards a controller-level exclusive position as a forward
+// page token in the order the caller already resolved. The empty key is no
+// position.
+func resumeToken(after string) string {
+	if after == "" {
+		return ""
+	}
+
+	return pagecursor.Cursor{Key: after}.Encode()
+}
+
+// uint64ResumeToken is resumeToken for endpoints keyed by a decimal id; zero
+// is no position.
+func uint64ResumeToken(after uint64) string {
+	if after == 0 {
+		return ""
+	}
+
+	return resumeToken(strconv.FormatUint(after, 10))
 }
 
 // nextCursorFromTrailer mirrors cmdutil.NextCursorFromTrailer without

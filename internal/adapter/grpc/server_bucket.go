@@ -459,14 +459,21 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 	// another page actually exists.
 	fetchSize := pageSizePlusOne(pageSize)
 
-	afterTxID, err := parseUint64Cursor(opts.GetCursor())
+	page, err := query.DecodeCursor(opts.GetCursor())
 	if err != nil {
 		return err
 	}
 
+	afterTxID, err := query.CursorUint64(page)
+	if err != nil {
+		return err
+	}
+
+	reverse := page.ReadReverse(opts.GetReverse())
+
 	if impl.logger.Enabled(logging.TraceLevel) {
-		impl.logger.Tracef("ListTransactions request received for ledger %s (pageSize=%d, afterTxID=%d, hasFilter=%v, reverse=%v)",
-			req.GetLedger(), pageSize, afterTxID, opts.GetFilter() != nil, opts.GetReverse())
+		impl.logger.Tracef("ListTransactions request received for ledger %s (pageSize=%d, afterTxID=%d, back=%v, hasFilter=%v, reverse=%v)",
+			req.GetLedger(), pageSize, afterTxID, page.Back, opts.GetFilter() != nil, opts.GetReverse())
 	}
 
 	var c cursor.Cursor[*commonpb.Transaction]
@@ -480,11 +487,11 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 		defer cleanup()
 
 		profile.EnterExecute()
-		c, err = impl.localCtrl.ListTransactionsFrom(ctx, mainStore, readIdx, req.GetLedger(), fetchSize, afterTxID, opts.GetFilter(), opts.GetReverse())
+		c, err = impl.localCtrl.ListTransactionsFrom(ctx, mainStore, readIdx, req.GetLedger(), fetchSize, afterTxID, opts.GetFilter(), reverse)
 		profile.LeaveExecute()
 	} else {
 		profile.EnterExecute()
-		c, err = impl.ctrl.ListTransactions(ctx, req.GetLedger(), fetchSize, afterTxID, opts.GetFilter(), opts.GetReverse())
+		c, err = impl.ctrl.ListTransactions(ctx, req.GetLedger(), fetchSize, afterTxID, opts.GetFilter(), reverse)
 		profile.LeaveExecute()
 	}
 
@@ -492,28 +499,12 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 		return fmt.Errorf("listing transactions: %w", err)
 	}
 
-	return sendPagedToStream(ctx, c, stream, "transaction", pageSize, txCursorOf)
+	return sendPagedToStream(ctx, c, stream, "transaction", pageSize, page, txCursorOf)
 }
 
-// txCursorOf returns the opaque next-page cursor for a transaction (its id
-// encoded as decimal).
+// txCursorOf returns a transaction's cursor key: its id in decimal.
 func txCursorOf(tx *commonpb.Transaction) string {
 	return strconv.FormatUint(tx.GetId(), 10)
-}
-
-// parseUint64Cursor decodes the opaque ListOptions.cursor as a uint64. Empty
-// is the canonical "start at the head" marker.
-func parseUint64Cursor(cursor string) (uint64, error) {
-	if cursor == "" {
-		return 0, nil
-	}
-
-	v, err := strconv.ParseUint(cursor, 10, 64)
-	if err != nil {
-		return 0, status.Errorf(codes.InvalidArgument, "invalid cursor %q: %v", cursor, err)
-	}
-
-	return v, nil
 }
 
 func (impl *BucketServiceServerImpl) ListLedgers(req *servicepb.ListLedgersRequest, stream servicepb.BucketService_ListLedgersServer) error {
@@ -538,22 +529,25 @@ func (impl *BucketServiceServerImpl) ListLedgers(req *servicepb.ListLedgersReque
 		return fmt.Errorf("listing ledgers: %w", err)
 	}
 
-	cursorKey := opts.GetCursor()
-	reverse := opts.GetReverse()
+	page, err := query.DecodeCursor(opts.GetCursor())
+	if err != nil {
+		return err
+	}
+
+	reverse := page.ReadReverse(opts.GetReverse())
 	pageSize := ctrl.ClampPageSize(opts.GetPageSize())
 
-	c, err = ApplyHandlerPagination(
-		c,
-		skipByStringKey(cursorKey, reverse, func(item *commonpb.LedgerInfo) string { return item.GetName() }),
-		reverse,
-	)
+	c, err = ApplyHandlerPagination(c, skipByStringKey(page.Key, reverse, ledgerCursorOf), reverse)
 	if err != nil {
 		return fmt.Errorf("paginating ledgers: %w", err)
 	}
 
-	return sendPagedToStream(ctx, c, stream, "ledger", pageSize, func(l *commonpb.LedgerInfo) string {
-		return l.GetName()
-	})
+	return sendPagedToStream(ctx, c, stream, "ledger", pageSize, page, ledgerCursorOf)
+}
+
+// ledgerCursorOf returns a ledger's cursor key: its name.
+func ledgerCursorOf(l *commonpb.LedgerInfo) string {
+	return l.GetName()
 }
 
 func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
@@ -615,25 +609,30 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 	}
 	defer cleanup()
 
+	page, err := query.DecodeCursor(opts.GetCursor())
+	if err != nil {
+		return err
+	}
+
+	reverse := page.ReadReverse(opts.GetReverse())
+
 	if impl.logger.Enabled(logging.TraceLevel) {
-		impl.logger.Tracef("ListAccounts request received for ledger %s (pageSize=%d, cursor=%q, hasFilter=%v, reverse=%v)",
-			req.GetLedger(), pageSize, opts.GetCursor(), opts.GetFilter() != nil, opts.GetReverse())
+		impl.logger.Tracef("ListAccounts request received for ledger %s (pageSize=%d, after=%q, back=%v, hasFilter=%v, reverse=%v)",
+			req.GetLedger(), pageSize, page.Key, page.Back, opts.GetFilter() != nil, opts.GetReverse())
 	}
 
 	profile.EnterExecute()
-	cur, err := c.ListAccounts(ctx, req.GetLedger(), pageSizePlusOne(pageSize), opts.GetCursor(), opts.GetFilter(), opts.GetReverse())
+	cur, err := c.ListAccounts(ctx, req.GetLedger(), pageSizePlusOne(pageSize), page.Key, opts.GetFilter(), reverse)
 	profile.LeaveExecute()
 
 	if err != nil {
 		return fmt.Errorf("listing accounts: %w", err)
 	}
 
-	return sendPagedToStream(ctx, cur, stream, "account", pageSize, accountCursorOf)
+	return sendPagedToStream(ctx, cur, stream, "account", pageSize, page, accountCursorOf)
 }
 
-// accountCursorOf returns the opaque next-page cursor for an account (its
-// address). Used as both ListAccounts cursorOf and exported for use by the
-// Aggregate helper if it ever needs to paginate.
+// accountCursorOf returns an account's cursor key: its address.
 func accountCursorOf(a *commonpb.Account) string {
 	return a.GetAddress()
 }
@@ -753,11 +752,17 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 		return err
 	}
 
-	afterSeq, err := parseUint64Cursor(opts.GetCursor())
+	page, err := query.DecodeCursor(opts.GetCursor())
 	if err != nil {
 		return err
 	}
 
+	afterSeq, err := query.CursorUint64(page)
+	if err != nil {
+		return err
+	}
+
+	reverse := page.ReadReverse(opts.GetReverse())
 	pageSize := ctrl.ClampPageSize(opts.GetPageSize())
 	fetchSize := pageSizePlusOne(pageSize)
 
@@ -776,16 +781,16 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 		// projection may already be ahead of the frozen main store, so the local
 		// controller also trims compiled candidates to the checkpoint's audit
 		// sequence.
-		c, err = impl.localCtrl.ListAuditEntriesFrom(ctx, mainStore, readIdx, fetchSize, afterSeq, opts.GetFilter(), opts.GetReverse())
+		c, err = impl.localCtrl.ListAuditEntriesFrom(ctx, mainStore, readIdx, fetchSize, afterSeq, opts.GetFilter(), reverse)
 	} else {
-		c, err = impl.ctrl.ListAuditEntries(ctx, fetchSize, afterSeq, opts.GetFilter(), opts.GetReverse())
+		c, err = impl.ctrl.ListAuditEntries(ctx, fetchSize, afterSeq, opts.GetFilter(), reverse)
 	}
 
 	if err != nil {
 		return fmt.Errorf("listing audit entries: %w", err)
 	}
 
-	return sendPagedToStream(ctx, c, stream, "audit entry", pageSize, func(e *auditpb.AuditEntry) string {
+	return sendPagedToStream(ctx, c, stream, "audit entry", pageSize, page, func(e *auditpb.AuditEntry) string {
 		return strconv.FormatUint(e.GetSequence(), 10)
 	})
 }
@@ -807,10 +812,7 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 	opts := req.GetOptions()
 	read := opts.GetRead()
 
-	// ListLogs honors filter and checkpoint_id; reverse iteration over the
-	// log zone still needs PaginateBackward — see follow-up tracked in the
-	// PR description.
-	if err := ValidateListOptions(opts, ListOptionsSupport{Filter: true, CheckpointID: true}); err != nil {
+	if err := ValidateListOptions(opts, ListOptionsSupport{Filter: true, Reverse: true, CheckpointID: true}); err != nil {
 		return err
 	}
 
@@ -824,14 +826,19 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 		return domain.ErrLedgerNameRequired
 	}
 
-	afterSequence, err := parseUint64Cursor(opts.GetCursor())
+	page, err := query.DecodeCursor(opts.GetCursor())
+	if err != nil {
+		return err
+	}
+
+	afterSequence, err := query.CursorUint64(page)
 	if err != nil {
 		return err
 	}
 
 	pageSize := ctrl.ClampPageSize(opts.GetPageSize())
 
-	cur, err := c.ListLogs(ctx, req.GetLedger(), afterSequence, pageSizePlusOne(pageSize), opts.GetFilter())
+	cur, err := c.ListLogs(ctx, req.GetLedger(), afterSequence, pageSizePlusOne(pageSize), opts.GetFilter(), page.ReadReverse(opts.GetReverse()))
 	if err != nil {
 		return fmt.Errorf("listing logs: %w", err)
 	}
@@ -845,10 +852,10 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 	// Defensive: if a non-apply payload ever reaches this path (today the
 	// ListLogs filter only yields Apply logs, but the proto leaves room for
 	// future payload kinds), GetApply() returns nil and Id defaults to 0 —
-	// which would publish a bogus `x-next-cursor: "0"` and trap the client
-	// in an infinite resume loop. Return an empty cursor in that case so the
-	// stream signals "no more pages" instead.
-	return sendPagedToStream(ctx, cur, stream, "log", pageSize, func(l *commonpb.Log) string {
+	// which would publish a bogus key "0" and trap the client in an infinite
+	// resume loop. Return an empty key in that case so no link is published
+	// through that log.
+	return sendPagedToStream(ctx, cur, stream, "log", pageSize, page, func(l *commonpb.Log) string {
 		apply := l.GetPayload().GetApply()
 		if apply == nil {
 			return ""
@@ -897,22 +904,22 @@ func (impl *BucketServiceServerImpl) ListSigningKeys(req *servicepb.ListSigningK
 
 	sort.Slice(keys, func(i, j int) bool { return keys[i].GetKeyId() < keys[j].GetKeyId() })
 
-	cursorKey := opts.GetCursor()
-	reverse := opts.GetReverse()
+	page, err := query.DecodeCursor(opts.GetCursor())
+	if err != nil {
+		return err
+	}
+
+	reverse := page.ReadReverse(opts.GetReverse())
 	pageSize := ctrl.ClampPageSize(opts.GetPageSize())
 
-	c, err := ApplyHandlerPagination(
-		cursor.NewSliceCursor(keys),
-		skipByStringKey(cursorKey, reverse, func(item *commonpb.SigningKey) string { return item.GetKeyId() }),
-		reverse,
-	)
+	keyID := func(k *commonpb.SigningKey) string { return k.GetKeyId() }
+
+	c, err := ApplyHandlerPagination(cursor.NewSliceCursor(keys), skipByStringKey(page.Key, reverse, keyID), reverse)
 	if err != nil {
 		return fmt.Errorf("paginating signing keys: %w", err)
 	}
 
-	return sendPagedToStream(ctx, c, stream, "signing key", pageSize, func(k *commonpb.SigningKey) string {
-		return k.GetKeyId()
-	})
+	return sendPagedToStream(ctx, c, stream, "signing key", pageSize, page, keyID)
 }
 
 func (impl *BucketServiceServerImpl) GetMetadataSchemaStatus(ctx context.Context, req *servicepb.GetMetadataSchemaStatusRequest) (*servicepb.GetMetadataSchemaStatusResponse, error) {
@@ -1086,20 +1093,22 @@ func (impl *BucketServiceServerImpl) ListNumscripts(req *servicepb.ListNumscript
 	// underlying store iteration order is not guaranteed.
 	sort.Slice(scripts, func(i, j int) bool { return scripts[i].GetName() < scripts[j].GetName() })
 
+	page, err := query.DecodeCursor(opts.GetCursor())
+	if err != nil {
+		return err
+	}
+
+	reverse := page.ReadReverse(opts.GetReverse())
 	pageSize := ctrl.ClampPageSize(opts.GetPageSize())
 
-	paginated, err := ApplyHandlerPagination(
-		cursor.NewSliceCursor(scripts),
-		skipByStringKey(opts.GetCursor(), opts.GetReverse(), func(item *commonpb.NumscriptInfo) string { return item.GetName() }),
-		opts.GetReverse(),
-	)
+	name := func(n *commonpb.NumscriptInfo) string { return n.GetName() }
+
+	paginated, err := ApplyHandlerPagination(cursor.NewSliceCursor(scripts), skipByStringKey(page.Key, reverse, name), reverse)
 	if err != nil {
 		return fmt.Errorf("paginating numscripts: %w", err)
 	}
 
-	return sendPagedToStream(ctx, paginated, stream, "numscript", pageSize, func(n *commonpb.NumscriptInfo) string {
-		return n.GetName()
-	})
+	return sendPagedToStream(ctx, paginated, stream, "numscript", pageSize, page, name)
 }
 
 func (impl *BucketServiceServerImpl) ListNumscriptVersions(ctx context.Context, req *servicepb.ListNumscriptVersionsRequest) (*servicepb.ListNumscriptVersionsResponse, error) {
