@@ -27,7 +27,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/formancehq/go-libs/v5 v5.9.0
 	github.com/formancehq/invariants v0.11.0
-	github.com/formancehq/numscript v0.0.27-0.20261005133105-7c30f2f4747e // pinned to numscript fix/vm-release-store @7c30f2f (#211 Exec releases the store on return, on top of main: #199 compiler+VM; #203 bytecode version 0.1, 0.x readable only at its exact version; #204 VerifiedVarsInfo; #205 deterministic compile; negative portions rejected; VM posting check; stricter typecheck/IR; static mark-balance verification; scoped account interpolation); repin to main/a tag once #211 merges
+	github.com/formancehq/numscript v0.0.27-0.20261006084331-e0b55a6fdd6f // pinned to numscript main @e0b55a6 (#199 compiler+VM, #211 Exec releases the store on return); repin to a release tag once one is cut
 	github.com/fsnotify/fsnotify v1.5.4
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/go-jose/go-jose/v4 v4.1.4
