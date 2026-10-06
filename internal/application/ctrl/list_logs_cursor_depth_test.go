@@ -17,9 +17,9 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
-// A filter at the maximum accepted depth must stay pageable: the resume
-// position is not part of the client's filter tree and must not consume its
-// depth budget.
+// If a page can be requested, the page at its next cursor can be too. A filter
+// at the maximum accepted depth must therefore stay pageable: the resume
+// position lives outside the client's filter tree and its depth budget.
 func TestListLogs_CursorDoesNotConsumeFilterDepth(t *testing.T) {
 	t.Parallel()
 
