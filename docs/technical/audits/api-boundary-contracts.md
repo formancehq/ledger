@@ -143,3 +143,11 @@ and reproducer/product changes remain separate authorized work. Dynamic checks
 in this manifest are proposals: record which actually ran and their limitations.
 Use existing disposable fixtures and the pinned validation/cache workflow, with
 no live user services or cleanup of another task's artifacts.
+
+## Atomic creation metadata (EN-2686)
+
+Initial creation metadata is one CreateLedger operation, returned in the HTTP 201 ledger envelope; supported scalar values retain exact integer precision, HTTP null entries are omitted, and schema declarations govern query indexing rather than write acceptance.
+
+Does initial metadata survive HTTP decoding, the service request and order unchanged, including integers beyond JSON float precision, omitted/null inputs and a schema type mismatch? Do malformed keys/scalars reject before any ledger is created?
+
+See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.

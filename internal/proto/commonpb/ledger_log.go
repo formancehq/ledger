@@ -1,8 +1,8 @@
 package commonpb
 
-// ToLedgerInfo reconstructs a LedgerInfo from the creation-time fields
-// captured in the log. Useful for HTTP/CLI responses that need a full
-// LedgerInfo after a CreateLedger operation.
+// ToLedgerInfo reconstructs the persisted LedgerInfo projection from creation
+// fields. Initial metadata belongs in its canonical keyspace; response callers
+// that need metadata must attach GetMetadata() separately.
 func (x *CreatedLedgerLog) ToLedgerInfo() *LedgerInfo {
 	if x == nil {
 		return nil

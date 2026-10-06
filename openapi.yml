@@ -3256,7 +3256,7 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
           description: >-
-            Optional metadata for the ledger (supports typed values). Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 1048576 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
+            Initial typed metadata, persisted atomically with creation in NORMAL and MIRROR modes. Creation requires ledger:LedgerWrite, including initial metadata; later metadata saves require ledger:MetadataWrite. JSON null entries are omitted. Schema declarations govern indexing and queries, not write-time value coercion. Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 1048576 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
         mode:
           type: string
           enum:

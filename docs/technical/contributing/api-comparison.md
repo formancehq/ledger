@@ -361,7 +361,7 @@ to 8.
 ### 5. Ledger Management
 
 **Endpoints:**
-- `POST /v3/{ledgerName}` - Create a ledger. Optional body fields: `mode`, `mirrorSource`, `defaultEnforcementMode`, `initialSchema` (metadata field types), and `accountTypes` (full account-type model — name/pattern/persistence/segmentTypes). These mirror the gRPC `CreateLedgerRequest`.
+- `POST /v3/{ledgerName}` - Create a ledger. Optional body fields: `metadata`, `mode`, `mirrorSource`, `defaultEnforcementMode`, `initialSchema` (metadata field types), and `accountTypes` (full account-type model — name/pattern/persistence/segmentTypes). These mirror the gRPC `CreateLedgerRequest`. Initial typed metadata is atomic with creation in normal and mirror modes and requires only `ledger:LedgerWrite`; later saves require `ledger:MetadataWrite`. JSON null entries are omitted. Schema declarations do not enforce write-time value types. See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md).
 - `DELETE /v3/{ledgerName}` - Delete a ledger
 - `GET /v3/{ledgerName}` - Get ledger info (read)
 - `GET /v3/` - List all ledgers (read)

@@ -216,6 +216,7 @@ message CreateLedgerOrder {
   common.MirrorSourceConfig mirror_source = 3;
   map<string, common.AccountType> account_types = 4;  // Initial account types
   common.ChartEnforcementMode default_enforcement_mode = 5;  // Default enforcement for unmatched accounts
+  map<string, common.MetadataValue> metadata = 6; // Initial ledger metadata
 }
 
 message MirrorIngestOrder {

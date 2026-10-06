@@ -5197,6 +5197,7 @@ type CreatedLedgerLogReader interface {
 	GetAccountTypes() CreatedLedgerLog_AccountTypesMapReader
 	GetDefaultEnforcementMode() ChartEnforcementMode
 	GetId() uint32
+	GetMetadata() CreatedLedgerLog_MetadataMapReader
 	Mutate() *CreatedLedgerLog
 }
 
@@ -5244,6 +5245,10 @@ func (r *createdLedgerLogReadonly) GetDefaultEnforcementMode() ChartEnforcementM
 
 func (r *createdLedgerLogReadonly) GetId() uint32 {
 	return (*CreatedLedgerLog)(r).GetId()
+}
+
+func (r *createdLedgerLogReadonly) GetMetadata() CreatedLedgerLog_MetadataMapReader {
+	return createdLedgerLog_metadataMapReadonly((*CreatedLedgerLog)(r).GetMetadata())
 }
 
 func (r *createdLedgerLogReadonly) Mutate() *CreatedLedgerLog {
@@ -5322,6 +5327,37 @@ func (m createdLedgerLog_accountTypesMapReadonly) Get(k string) (AccountTypeRead
 func (m createdLedgerLog_accountTypesMapReadonly) Range(yield func(string, AccountTypeReader) bool) {
 	for k, v := range m {
 		var r AccountTypeReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
+}
+
+// CreatedLedgerLog_MetadataMapReader provides read-only access to CreatedLedgerLog.Metadata.
+type CreatedLedgerLog_MetadataMapReader interface {
+	Len() int
+	Get(k string) (MetadataValueReader, bool)
+	Range(yield func(string, MetadataValueReader) bool)
+}
+
+type createdLedgerLog_metadataMapReadonly map[string]*MetadataValue
+
+func (m createdLedgerLog_metadataMapReadonly) Len() int { return len(m) }
+
+func (m createdLedgerLog_metadataMapReadonly) Get(k string) (MetadataValueReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m createdLedgerLog_metadataMapReadonly) Range(yield func(string, MetadataValueReader) bool) {
+	for k, v := range m {
+		var r MetadataValueReader
 		if v != nil {
 			r = v.AsReader()
 		}

@@ -174,3 +174,11 @@ before allowing new writes. A coordinated rewrite of key and full history is
 outside the checker threat model without an independent anchor. Staged restore
 and CLI consumers must preserve the terminal/error distinction and cannot use
 the source or destination cluster ID as a fallback key.
+
+## Atomic creation metadata (EN-2686)
+
+Ledger metadata expectations fold successful chain-bound audited creation, save, key-delete and ledger-delete orders. Compare against canonical primary metadata on the pinned snapshot; suppress final-projection comparisons when the chain prefix is truncated.
+
+Can missing, injected or altered creation metadata evade detection, or can later saves/deletes produce false mismatches? Does a truncated audit chain cause misleading metadata errors based on an incomplete prefix?
+
+See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.

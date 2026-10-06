@@ -66,13 +66,13 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		{
 			name: "create_ledger",
 			req: &servicepb.Request{Type: &servicepb.Request_CreateLedger{
-				CreateLedger: &servicepb.CreateLedgerRequest{Name: ledger},
+				CreateLedger: &servicepb.CreateLedgerRequest{Name: ledger, Metadata: map[string]*commonpb.MetadataValue{"owner": commonpb.NewStringValue("team")}},
 			}},
 			expect: expect{
 				kind:   wrapLedger,
 				ledger: ledger,
 				payloadAssert: func(t *testing.T, o *raftcmdpb.Order) {
-					require.NotNil(t, mustLedgerScoped(t, o).GetCreateLedger())
+					require.Equal(t, "team", mustLedgerScoped(t, o).GetCreateLedger().GetMetadata()["owner"].GetStringValue())
 				},
 			},
 		},

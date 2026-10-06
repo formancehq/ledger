@@ -122,3 +122,36 @@ func TestCreateLedger_AuditPreservesSubmittedAccountTypeNames(t *testing.T) {
 	require.Len(t, r.Results, 1)
 	require.NoError(t, r.Results[0].Error, "identical keyed replay must not surface an idempotency conflict")
 }
+
+func TestCreateLedger_InitialMetadataIdempotentReplay(t *testing.T) {
+	t.Parallel()
+	machine, store, attrs := newTestMachine(t)
+	order := createLedgerOrder("metadata")
+	order.GetLedgerScoped().GetCreateLedger().Metadata = map[string]*commonpb.MetadataValue{"owner": commonpb.NewStringValue("team")}
+	proposal := makeProposal(1, order)
+	proposal.Idempotency = &commonpb.Idempotency{Key: "creation-with-metadata"}
+	results, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, 1, proposal))
+	require.NoError(t, err)
+	require.NoError(t, results.Results[0].Error)
+	require.True(t, results.Results[0].AuditEntryWritten)
+	handle, err := store.NewReadHandle()
+	require.NoError(t, err)
+	defer func() { require.NoError(t, handle.Close()) }()
+	info, err := query.GetLedgerByName(t.Context(), handle, "metadata")
+	require.NoError(t, err)
+	require.NoError(t, query.EnrichLedgerMetadata(handle, attrs, info))
+	require.Equal(t, "team", info.GetMetadata()["owner"].GetStringValue())
+	replay := makeProposal(2, order.CloneVT())
+	replay.Idempotency = &commonpb.Idempotency{Key: "creation-with-metadata"}
+	results, err = machine.ApplyEntries(t.Context(), store, makeEntry(t, 2, replay))
+	require.NoError(t, err)
+	require.NoError(t, results.Results[0].Error)
+	require.True(t, results.Results[0].Replayed)
+	require.False(t, results.Results[0].AuditEntryWritten)
+	require.EqualValues(t, 2, machine.State.NextLedgerID)
+	items := readAuditItemsForSequence(t, t.Context(), store, 1)
+	require.Len(t, items, 1)
+	audited := &raftcmdpb.Order{}
+	require.NoError(t, audited.UnmarshalVT(items[0].GetSerializedOrder()))
+	require.Equal(t, "team", audited.GetLedgerScoped().GetCreateLedger().GetMetadata()["owner"].GetStringValue())
+}

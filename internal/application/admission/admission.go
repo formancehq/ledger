@@ -2142,6 +2142,7 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 			Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
 				CreateLedger: &raftcmdpb.CreateLedgerOrder{
 					InitialSchema:          reqType.CreateLedger.GetInitialSchema(),
+					Metadata:               reqType.CreateLedger.GetMetadata(),
 					Mode:                   reqType.CreateLedger.GetMode(),
 					MirrorSource:           reqType.CreateLedger.GetMirrorSource(),
 					AccountTypes:           reqType.CreateLedger.GetAccountTypes(),

@@ -224,6 +224,7 @@ message CreateLedgerRequest {
   common.MirrorSourceConfig mirror_source = 4;
   map<string, common.AccountType> account_types = 5;  // Initial account types
   common.ChartEnforcementMode default_enforcement_mode = 6;  // Default enforcement for unmatched accounts
+  map<string, common.MetadataValue> metadata = 7; // Initial ledger metadata, atomic with creation
 }
 
 message DeleteLedgerRequest {
