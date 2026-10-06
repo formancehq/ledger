@@ -37,6 +37,8 @@ func runAggregateQuery(ctx context.Context, client servicepb.BucketServiceClient
 	case oneIn(2):
 		filter = genAccountFilterFree(0)
 	}
+	filter = rollFilterShape(filter)
+	refused := classifyRejectedFilter(filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 
 	needed := map[string]struct{}{}
 	neededIndexCanonicals(filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, needed)
@@ -88,6 +90,10 @@ func runAggregateQuery(ctx context.Context, client servicepb.BucketServiceClient
 			return
 		}
 
+		if c.handleRejectedFilterError(maxTicket, refused, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledger, filter, err) {
+			return
+		}
+
 		if len(needed) > 0 {
 			c.validateAggregate(maxTicket, ledger, filter, opts, needed, nil, err)
 
@@ -107,6 +113,10 @@ func runAggregateQuery(ctx context.Context, client servicepb.BucketServiceClient
 	if absent {
 		assert.Unreachable("singleton_driver_model: aggregate served a ledger outside the fleet", internal.Details{"ledger": ledger})
 
+		return
+	}
+
+	if assertRefusedFilterServedNothing(refused, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledger, filter, len(res.GetVolumes())) {
 		return
 	}
 
