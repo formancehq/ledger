@@ -221,6 +221,65 @@ prove that its branch is contractually impossible or that it leaves a divergent
 or falsely successful result. Assertions must uniquely identify the intended
 failure branch.
 
+## Numscript VM execution state
+
+A scripted order executes the compiled artifact admission bound to its
+`OrderTechnical` (see
+[numscript-library.md](../architecture/subsystems/scripting/numscript-library.md)).
+The FSM keeps two pieces of node-local state across proposals in the
+`RequestProcessor`'s `NumscriptCache`: parsed scripts, and one decoded,
+verified VM instance per script hash, reused by every later apply of the same
+program bytes. Admission owns a separate cache instance; it never shares the
+FSM's warm VMs.
+
+**Inputs.** The committed inputs of one scripted execution are the resolved
+script text, the artifact's program bytes, vars bytes and script hash, the
+order's `force` flag, and the balances and metadata read through the gated
+`Scope`. Everything else is incidental: the cache size (node-local
+`NumscriptCacheSize`), LRU residency and eviction, whether the entry is cold or
+warm, which compiled bytes for the same script hash were cached first, the
+verification record produced by an earlier order's vars, and the registers and
+run state an earlier run left in the instance.
+
+**Ownership.** This domain owns the equivalence of the transition across those
+incidental states and the lifetime of what a cached instance retains: after
+every exit — success, error, or recovered panic — the instance must not keep
+the run's store, and through it the apply `Scope` and the proposal's coverage
+plan, reachable. The Numscript library releases its store when `Exec` returns;
+the ledger pins that contract with a regression test. Numscript arithmetic and
+semantic equivalence with direct postings belong to `accounting-invariants`;
+replaying audited orders, which never carry an artifact, belongs to
+`persistence-restore-replay` and the checker.
+
+**Artifact presence.** Only a fully missing artifact — program, vars, and
+script hash all absent — is recompiled from the script text, with an Antithesis
+`assert.Unreachable` outside audit replay that never feeds the outcome. A
+present artifact that is partial, has an invalid header, carries a bytecode
+version the bundled library cannot read, or fails decoding, verification, or
+the script-hash binding fails the order with `ErrNumscriptRuntime` identically
+on every replica running the binary. Repairing a present artifact from the text
+is a finding: it would let corrupt committed bytes and a correct replica's
+failure diverge.
+
+**Equivalence scenarios.** For the same committed artifact, compare the
+complete result — postings, metadata, error reason, audit bytes — across:
+
+1. a cold entry (decode and verify) and a warm hit;
+2. a cache of size 1 with interleaved scripts forcing eviction between runs;
+3. an entry holding other compiled bytes for the same script hash, which must
+   be replaced so the node runs the committed bytes;
+4. an instance left dirty by a missing-funds failure and by a recovered store
+   panic;
+5. orders of one script with different vars, sharing one verification record;
+6. a missing artifact recompiled in audit replay against the same order applied
+   with its artifact in the cluster.
+
+The focused entry points are `TestSafeExecCompiled_*` and `TestProduce_*`
+(artifact presence, warm reuse, panic recovery, same-script-different-bytes,
+source release). A finding needs a concrete pair of incidental histories that
+yields a different component of `T`; a slower cold path or a cache miss is not
+one.
+
 ## Reachability, evidence, and rejection
 
 Each finding must provide:
