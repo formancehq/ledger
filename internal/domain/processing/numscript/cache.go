@@ -240,10 +240,10 @@ func (e *lruEntry) compileParsed() (*compiledProgram, domain.SerializableError) 
 // from cache. Verification runs once per artifact and its guarantee (ExecVm
 // may assume well-formed bytecode) holds for every later apply.
 //
-// A program that does not decode — including one whose bytecode version the
-// bundled library cannot read, which the decoder refuses and the apply path
-// recompiles before reaching here — is rejected loudly before verification and
-// never inserted, so every cached entry holds a program this binary can run.
+// A program that does not decode — including one with an invalid header or of
+// a bytecode version the bundled library cannot read, which the decoder
+// refuses — is rejected loudly before verification and never inserted, so
+// every cached entry holds a program this binary can run.
 //
 // Entries are keyed by scriptHash — the order's HashScript(text), already
 // checked against the resolved text by the caller — and hold the exact program

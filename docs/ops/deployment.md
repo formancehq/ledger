@@ -835,9 +835,9 @@ across an FSM outcome change" above:
   the new binary recompiles its script with the new library and runs it on
   the VM, while the replicas that applied it before the stop interpreted it
   with the old library: for the scripts listed above the outcome differs. A
-  rollback exposes the same window in the other direction, and so does a
-  later library update that changes the bytecode version (see the next
-  point). Such a replica must be resynchronised from the leader.
+  rollback exposes the same window in the other direction, and a later
+  library update that changes the bytecode version fails such entries instead
+  (see the next point). Such a replica must be resynchronised from the leader.
 - **`ledgerctl check` cannot single out a straddled replica.** Each replica's
   audit chain stays internally consistent, and the check's replay on the new
   binary already reports every affected entry the old library applied, on
@@ -845,25 +845,24 @@ across an FSM outcome change" above:
   comparing transaction metadata and audit entries across replicas; a replica
   that applied entries inside the window must be resynchronised from the
   leader.
-- **An artifact of a bytecode version this binary cannot read is recompiled,
-  never executed.** The FSM runs an artifact as-is when both its halves carry
-  a bytecode version (major.minor) the bundled Numscript library can read. For
-  a stable major that is the same major and a minor no newer than its own. An
-  unstable `0.x` version, which the library uses today, reads only itself.
-  Otherwise the FSM recompiles the script from its text with the bundled
-  library and runs the result, as it does for an entry with no artifact.
-  The library makes that decision, so the ledger never encodes the version
-  rule. An artifact whose header this binary reads but whose body does not
-  decode still fails the order with a Numscript runtime error. The operational consequence: after a library update that changes the
-  bytecode version in a way this binary cannot read (any change while the
-  version is `0.x`), a node that replays Raft entries above its last snapshot
-  after restarting on the new binary recompiles their scripts. A rollback has
-  the same effect in the other direction. The cost is one compile per
-  distinct script per node, during that replay only. If the new library also
-  changes execution semantics, those entries can produce a different outcome
-  than on the replicas that applied them before the stop. Such a replica
-  diverges and must be resynchronised from the leader. This is the same repair
-  as a straddled window, which `ledgerctl check` likewise does not detect.
+- **An artifact this binary cannot read fails the order, never recompiled.**
+  The FSM runs an artifact when both its halves carry a bytecode version
+  (major.minor) the bundled Numscript library can read. For a stable major that
+  is the same major and a minor no newer than its own. An unstable `0.x`
+  version, which the library uses today, reads only itself. Anything else —
+  another version, an invalid header, or bytes that do not decode — fails the
+  order with a Numscript runtime error, identically on every node running that
+  binary; the script is never recompiled or interpreted in the artifact's
+  place. Only an entry that carries no artifact is recompiled. v3 has no
+  cross-version replay contract yet. The operational consequence: after a
+  library update that changes the bytecode version in a way this binary cannot
+  read (any change while the version is `0.x`), the Raft entries a node
+  replays above its last snapshot after restarting on the new binary fail on
+  replay although they succeeded on the binary that admitted them; a rollback
+  has the same effect in the other direction. A replica that applied such
+  entries before the stop therefore diverges from one that replays them and
+  must be resynchronised from the leader — the same repair as a straddled
+  window, which `ledgerctl check` likewise does not detect.
 
 ### Audit hash keying — threat model
 

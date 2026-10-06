@@ -248,32 +248,25 @@ changes the outcome. Outside audit replay (below) a missing artifact is still
 an admission bug, so it is flagged with an Antithesis `assert.Unreachable`
 (invariant #7), which never feeds the outcome (invariant #2).
 
-Each half of the artifact carries the bytecode version (major.minor) it was
-encoded with. The FSM executes the artifact as-is when the bundled library can
-read both versions (`numscriptlib.CurrentBytecodeVersion.CanRead`). For a
-stable major that means the same major and a minor no newer than the bundled
-one, since a minor bump is additive by the library's contract. An unstable
-`0.x` version reads only itself: any `0.x` change may change the meaning of
-existing encodings. The FSM peeks each half's header
-(`numscriptlib.PeekCompiledProgramVersion` / `PeekVarsVersion`) and asks the
-bundled library whether it can read that version
-(`numscriptlib.CurrentBytecodeVersion.CanRead`), so the versioning rule stays
-in the library. When either answer is
-no, the FSM recompiles the script from its text and executes the result. A
-missing artifact takes the same path. An unreadable version is the expected
-footprint of an entry committed by a binary bundling another bytecode version,
-for example a Raft log replayed after an upgrade or a rollback, so it raises
-no Antithesis assertion. A half without a valid header is also reported
-unreadable and is recompiled the same way.
-
-The FSM rejects an artifact it can read, failing the order with
-`ErrNumscriptRuntime` (invariant #7) identically on every node running the
-binary, when: either half's body does not decode; the program fails
-verification; or `compiled_script_hash` does not match the resolved text. None of these can happen by construction:
-inline scripts travel in the order, exact library versions are immutable, an
-advanced `"latest"` is stale-rejected first, and our own compiler produced the
-bytecode. `SafeExecCompiled` also still rejects an unreadable version, as a
-backstop for a caller that skipped the recompile check.
+A present artifact is never repaired from the text. The FSM rejects it —
+failing the order with `ErrNumscriptRuntime` (invariant #7), identically on
+every node running the binary — when: either half lacks a valid header or
+carries a bytecode version (major.minor) the bundled library cannot read
+(`numscriptlib.CurrentBytecodeVersion.CanRead`); either half does not decode;
+the program fails verification; or `compiled_script_hash` does not match the
+resolved text. For a stable major a readable version is the same major and a
+minor no newer than the bundled one, since a minor bump is additive by the
+library's contract; an unstable `0.x` version, which the library uses today,
+reads only itself. The library's decoders apply that rule, so the ledger never
+encodes it. None of these failures can happen by construction: admission
+produces the whole artifact with this very library, inline scripts travel in
+the order, exact library versions are immutable, an advanced `"latest"` is
+stale-rejected first, and our own compiler produced the bytecode. A
+version-mismatched artifact is therefore an impossible state for unreleased v3,
+which has no cross-version replay contract; a future stable contract must let
+a binary execute every artifact version in Ledger's supported recovery window
+with its original semantics, not repair it from the text (see
+[Upgrading across the Numscript VM execution change](../../../../ops/deployment.md#upgrading-across-the-numscript-vm-execution-change-revision-19)).
 
 The outcome is a function of the committed entry and the running binary
 alone, so every replica on one binary applies the entry identically

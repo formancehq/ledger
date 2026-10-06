@@ -194,18 +194,15 @@ func unreadableBytecodeVersions(t *testing.T) map[string]numscriptlib.BytecodeVe
 	return candidates
 }
 
-// TestProduce_UnreadableBytecodeVersionRecompiles: an artifact carrying a
-// bytecode version the bundled library cannot read — a Raft log replayed
-// across a library upgrade or rollback — is recompiled from the script text,
-// like a missing one, and produces exactly what a current artifact produces,
-// for either half.
-func TestProduce_UnreadableBytecodeVersionRecompiles(t *testing.T) {
+// TestProduce_UnreadableBytecodeVersionIsLoud: an artifact carrying a
+// bytecode version the bundled library cannot read fails the order loudly, for
+// either half. Admission produces the artifact with this very library and v3
+// has no cross-version replay contract, so a present artifact is never
+// repaired from the script text.
+func TestProduce_UnreadableBytecodeVersionIsLoud(t *testing.T) {
 	t.Parallel()
 
 	programBytes, varsBytes, scriptHash := compileArtifactForTest(t, vmScript, vmScriptVars)
-
-	want, err := produceVMScript(t, vmScriptVars, programBytes, varsBytes, scriptHash)
-	require.Nil(t, err)
 
 	for name, v := range unreadableBytecodeVersions(t) {
 		for _, half := range []string{"program", "vars"} {
@@ -219,9 +216,9 @@ func TestProduce_UnreadableBytecodeVersionRecompiles(t *testing.T) {
 					vars = withArtifactVersion(t, vars, v)
 				}
 
-				got, err := produceVMScript(t, vmScriptVars, program, vars, scriptHash)
-				require.Nil(t, err)
-				require.Equal(t, want, got)
+				_, err := produceVMScript(t, vmScriptVars, program, vars, scriptHash)
+				requireNumscriptRuntimeError(t, err, "decoding compiled numscript "+half)
+				require.Contains(t, err.Error(), "not readable by this build")
 			})
 		}
 	}
@@ -252,24 +249,56 @@ func TestProduce_CorruptedArtifactIsLoud(t *testing.T) {
 	requireNumscriptRuntimeError(t, err, "decoding compiled numscript program")
 }
 
-// TestProduce_InvalidArtifactHeaderRecompiles: a half without a valid header
-// is one the bundled library reports it cannot read, so the order is
-// recompiled from its text like any unreadable artifact and produces exactly
-// what a current artifact produces.
-func TestProduce_InvalidArtifactHeaderRecompiles(t *testing.T) {
+// TestProduce_InvalidArtifactHeaderIsLoud: a half without a valid header is a
+// corrupt artifact, not a missing one: it fails the order loudly and is never
+// recompiled from the script text, for either half.
+func TestProduce_InvalidArtifactHeaderIsLoud(t *testing.T) {
 	t.Parallel()
 
 	programBytes, varsBytes, scriptHash := compileArtifactForTest(t, vmScript, vmScriptVars)
 
-	want, err := produceVMScript(t, vmScriptVars, programBytes, varsBytes, scriptHash)
-	require.Nil(t, err)
+	for _, half := range []string{"program", "vars"} {
+		t.Run(half, func(t *testing.T) {
+			t.Parallel()
 
-	garbled := bytes.Clone(programBytes)
-	garbled[0] ^= 0xFF
+			program, vars := bytes.Clone(programBytes), bytes.Clone(varsBytes)
+			if half == "program" {
+				program[0] ^= 0xFF
+			} else {
+				vars[0] ^= 0xFF
+			}
 
-	got, err := produceVMScript(t, vmScriptVars, garbled, varsBytes, scriptHash)
-	require.Nil(t, err)
-	require.Equal(t, want, got)
+			_, err := produceVMScript(t, vmScriptVars, program, vars, scriptHash)
+			requireNumscriptRuntimeError(t, err, "decoding compiled numscript "+half)
+			require.Contains(t, err.Error(), "bad magic")
+		})
+	}
+}
+
+// TestProduce_PartialArtifactIsLoud: only an artifact with all three parts
+// absent is missing and recompiled; one with any part present is a corrupt
+// artifact admission never produces, and fails the order loudly.
+func TestProduce_PartialArtifactIsLoud(t *testing.T) {
+	t.Parallel()
+
+	programBytes, varsBytes, scriptHash := compileArtifactForTest(t, vmScript, vmScriptVars)
+
+	for name, tc := range map[string]struct {
+		program, vars, hash []byte
+		detail              string
+	}{
+		"no program": {nil, varsBytes, scriptHash, "decoding compiled numscript program"},
+		"no vars":    {programBytes, nil, scriptHash, "decoding compiled numscript vars"},
+		"no hash":    {programBytes, varsBytes, nil, "does not match the resolved script text"},
+		"hash only":  {nil, nil, scriptHash, "decoding compiled numscript vars"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := produceVMScript(t, vmScriptVars, tc.program, tc.vars, tc.hash)
+			requireNumscriptRuntimeError(t, err, tc.detail)
+		})
+	}
 }
 
 // TestProduce_UnverifiableArtifactIsLoud: bytecode in the bundled format that

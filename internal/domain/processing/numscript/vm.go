@@ -16,9 +16,9 @@ import (
 // bytecode, the runtime vars encoded against that program's variable layout,
 // and the BLAKE3 hash of the exact script text it was compiled from. The VM is
 // the only execution engine: the FSM decodes and executes this artifact on
-// every node, and recompiles it from the script text (CompileForReplay) for a
-// scripted order that arrives without one, or with one of a bytecode version
-// the bundled library cannot read (numscriptlib.CurrentBytecodeVersion.CanRead).
+// every node, and recompiles it from the script text (CompileForReplay) only
+// for a scripted order that arrives without one. A present artifact the FSM
+// cannot run fails the order loudly (see SafeExecCompiled).
 //
 // program and vars are the decoded forms of Program and Vars, kept for
 // admission's own effects run so it need not decode what it just encoded.
@@ -71,11 +71,10 @@ func compileScript(entry *lruEntry, vars map[string]string) (out *CompiledScript
 }
 
 // CompileForReplay compiles script with vars exactly as admission does, for a
-// caller that re-runs an audited order, or applies a committed order whose
-// artifact carries a bytecode version this binary cannot read. The audit keeps
-// only the business part of an order, so an audited order never carries the
-// compiled code. Under the
-// same bundled library every compilation of a script means the same thing, so
+// caller that re-runs an audited order, or applies a committed one that
+// arrived without its artifact. The audit keeps only the business part of an
+// order, so an audited order never carries the compiled code. Under the same
+// bundled library every compilation of a script means the same thing, so
 // running this one gives the order its original outcome; history applied by a
 // library with different execution semantics can replay differently (see
 // docs/ops/deployment.md, "Upgrading across the Numscript VM execution
@@ -164,13 +163,12 @@ func (s *VMStore) GetMetadata(_ context.Context, account, scope, key string) (st
 // function of the committed entry and the running binary (invariant #2) and
 // the defect surfaces instead of being papered over (invariant #7).
 //
-//   - Bytecode version: the apply path never hands this function an artifact
-//     the bundled library cannot read (numscriptlib.CurrentBytecodeVersion.CanRead
-//     on each half's peeked header): it recompiles such an artifact from the
-//     script text first.
-//     The library's decoders still refuse one with
-//     UnsupportedBytecodeVersionError, so a caller that skipped that check
-//     fails loudly here rather than run foreign bytecode.
+//   - Header and bytecode version: the library's decoders refuse a half with
+//     an invalid header, or of a bytecode version the bundled library cannot
+//     read (UnsupportedBytecodeVersionError), so foreign bytecode is never
+//     run. Admission produces the artifact with this very library and v3 has
+//     no cross-version replay contract yet, so neither is repaired from the
+//     script text.
 //   - Decode and verification: the artifact was produced by our own compiler
 //     from a script that parsed, so malformed bytes mean a codec or compiler
 //     bug, and the verifier is what entitles the VM to execute wire-supplied
