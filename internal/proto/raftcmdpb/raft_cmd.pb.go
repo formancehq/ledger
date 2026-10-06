@@ -315,8 +315,10 @@ type OrderTechnical struct {
 	// compiled_program's variable layout (numscript VarsEncoder + Vars.Encode).
 	// Only meaningful next to compiled_program.
 	CompiledVars []byte `protobuf:"bytes,6,opt,name=compiled_vars,json=compiledVars,proto3" json:"compiled_vars,omitempty"`
-	// compiled_script_hash is the BLAKE3-256 of the exact script text
-	// compiled_program was compiled from. The FSM refuses to run the artifact
+	// compiled_script_hash is the XXH3-128 (16 bytes) of the exact script text
+	// compiled_program was compiled from. It is not collision-resistant
+	// against chosen inputs: every writer of a cluster may write every ledger,
+	// so a crafted collision gains nothing a direct write could not. The FSM refuses to run the artifact
 	// against a different resolved text — inline scripts travel in the order,
 	// exact library versions are immutable, and an advanced "latest" is
 	// stale-rejected before execution, so a mismatch is a "should not happen"

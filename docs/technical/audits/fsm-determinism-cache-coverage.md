@@ -261,6 +261,12 @@ on every replica running the binary. Repairing a present artifact from the text
 is a finding: it would let corrupt committed bytes and a correct replica's
 failure diverge.
 
+The script hash is XXH3-128 and is not collision-resistant against chosen
+inputs. A crafted collision is not a finding here while write scopes are
+cluster-wide (see `authentication-authorization-boundaries`); an accidental
+collision, or a path where two different texts sharing a hash yield different
+results for honest orders, still is.
+
 **Equivalence scenarios.** For the same committed artifact, compare the
 complete result — postings, metadata, error reason, audit bytes — across:
 

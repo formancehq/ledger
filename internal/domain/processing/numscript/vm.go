@@ -14,7 +14,7 @@ import (
 // CompiledScript is the Numscript VM artifact admission compiles on the
 // leader's parallel path and binds to the order (OrderTechnical): the encoded
 // bytecode, the runtime vars encoded against that program's variable layout,
-// and the BLAKE3 hash of the exact script text it was compiled from. The VM is
+// and the XXH3-128 hash of the exact script text it was compiled from. The VM is
 // the only execution engine: the FSM decodes and executes this artifact on
 // every node, and recompiles it from the script text (CompileForReplay) only
 // for a scripted order that arrives without one. A present artifact the FSM

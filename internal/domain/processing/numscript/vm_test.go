@@ -459,7 +459,7 @@ func TestSafeExecCompiled_WarmInstanceReleasesSource(t *testing.T) {
 				return alive
 			}()
 
-			hash := [32]byte(compiled.ScriptHash)
+			hash := [16]byte(compiled.ScriptHash)
 			cache.compiledMu.RLock()
 			_, cached := cache.compiledCache[hash]
 			cache.compiledMu.RUnlock()

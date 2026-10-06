@@ -272,6 +272,8 @@ older Numscript library, so a mixed-binary cluster applying the same committed
 entry writes divergent transaction and audit bytes. Deploy this revision with
 all nodes stopped — see
 [Upgrading across the Numscript VM execution change](../../../../ops/deployment.md#upgrading-across-the-numscript-vm-execution-change-revision-20).
+The artifact is bound to its script text by an XXH3-128 hash
+(`compiled_script_hash`), which also keys the FSM's script caches.
 The artifact itself carries the Numscript library's bytecode version
 (major.minor). The FSM executes it when the bundled library can read that
 version: the same major and a minor no newer for a stable major, or exactly

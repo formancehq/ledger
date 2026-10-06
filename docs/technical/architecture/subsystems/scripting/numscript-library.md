@@ -205,7 +205,12 @@ script: the compile and its bytecode encoding hang off the script's
 script shares one program and only its vars are encoded per order. It binds
 the artifact to the order's technical sub-message: `compiled_program`,
 `compiled_vars` (the order's vars encoded against that program's variable
-layout) and `compiled_script_hash` (BLAKE3 of the exact text compiled).
+layout) and `compiled_script_hash` (XXH3-128 of the exact text compiled). The same
+16-byte hash keys the parse and compiled caches. Like the attribute keys, it is
+not collision-resistant against chosen inputs; that is acceptable because write
+scopes are cluster-wide, so a writer able to craft a collision can already
+write any ledger directly. Per-ledger write isolation would invalidate that
+premise and require comparing the script text on a cache hit.
 Admission also runs that artifact on a fresh VM instance to predict the
 script's effects for later orders in the same atomic batch.
 

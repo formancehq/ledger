@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/zeebo/blake3"
+	"github.com/zeebo/xxh3"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
@@ -26,12 +26,12 @@ import (
 // write-locking on the hot path.
 type NumscriptCache struct {
 	mu      sync.RWMutex
-	cache   map[[32]byte]*list.Element
+	cache   map[[16]byte]*list.Element
 	order   *list.List
 	maxSize int
 
 	compiledMu    sync.RWMutex
-	compiledCache map[[32]byte]*list.Element
+	compiledCache map[[16]byte]*list.Element
 	compiledOrder *list.List
 
 	// Metrics (nil if not initialized)
@@ -44,7 +44,7 @@ type NumscriptCache struct {
 // order carrying that script, and evicted together with the parse. See
 // compileParsed.
 type lruEntry struct {
-	hash   [32]byte
+	hash   [16]byte
 	script parsedScript
 
 	compileOnce sync.Once
@@ -88,7 +88,7 @@ type parsedScript struct {
 // requires the order's bytes to be identical, so the node always executes the
 // committed artifact, never another compilation of the same script.
 type compiledLruEntry struct {
-	hash     [32]byte
+	hash     [16]byte
 	program  []byte
 	vm       *numscriptlib.Vm
 	verified numscriptlib.VerifiedVarsInfo
@@ -102,20 +102,23 @@ func NewNumscriptCache(maxSize int) *NumscriptCache {
 	}
 
 	return &NumscriptCache{
-		cache:         make(map[[32]byte]*list.Element, maxSize),
+		cache:         make(map[[16]byte]*list.Element, maxSize),
 		order:         list.New(),
 		maxSize:       maxSize,
-		compiledCache: make(map[[32]byte]*list.Element, maxSize),
+		compiledCache: make(map[[16]byte]*list.Element, maxSize),
 		compiledOrder: list.New(),
 	}
 }
 
-// HashScript computes the blake3 hash of the script content. It runs on the
-// FSM apply path for every scripted order: the one-shot Sum256 is the same
-// digest as a streaming hasher, without the hasher setup (the conversion does
-// not allocate, Sum256 does not retain its input).
-func HashScript(script string) [32]byte {
-	return blake3.Sum256([]byte(script))
+// HashScript computes the XXH3-128 hash of the script content: the cache key
+// for the parsed script and compiled artifact, and the order's
+// compiled_script_hash binding the artifact to its text. It runs on the FSM
+// apply path for every scripted order. Like the attribute keys, it is not
+// collision-resistant against chosen inputs; every writer of a cluster is
+// trusted with every ledger, so a crafted collision gains nothing a direct
+// write could not.
+func HashScript(script string) [16]byte {
+	return xxh3.HashString128(script).Bytes()
 }
 
 // GetOrParse retrieves a parsed script from the cache or parses it if not found.
@@ -127,7 +130,7 @@ func (c *NumscriptCache) GetOrParse(script string) (numscriptlib.ParseResult, do
 // HashScript(script), so the text is not hashed twice. hash must be exactly
 // HashScript(script): the cache is keyed by it, and a mismatched hash would
 // cache the parse under another script's key.
-func (c *NumscriptCache) GetOrParseHashed(hash [32]byte, script string) (numscriptlib.ParseResult, domain.SerializableError) {
+func (c *NumscriptCache) GetOrParseHashed(hash [16]byte, script string) (numscriptlib.ParseResult, domain.SerializableError) {
 	entry := c.getOrParseEntryHashed(hash, script)
 
 	return entry.script.program, entry.script.err
@@ -145,7 +148,7 @@ func (c *NumscriptCache) getOrParseEntry(script string) *lruEntry {
 
 // getOrParseEntryHashed is getOrParseEntry with hash = HashScript(script)
 // supplied by the caller.
-func (c *NumscriptCache) getOrParseEntryHashed(hash [32]byte, script string) *lruEntry {
+func (c *NumscriptCache) getOrParseEntryHashed(hash [16]byte, script string) *lruEntry {
 	// Fast path: read lock for cache hits (no contention between readers).
 	c.mu.RLock()
 	if elem, ok := c.cache[hash]; ok {
@@ -264,13 +267,13 @@ func (e *lruEntry) compileParsed() (*compiledProgram, domain.SerializableError) 
 // compilations (a "should not happen") and is re-verified against the actual
 // vars so it fails with the verifier's own error, loudly.
 func (c *NumscriptCache) getOrDecodeCompiled(scriptHash, programBytes []byte, vars *numscriptlib.Vars) (*compiledLruEntry, domain.SerializableError) {
-	if len(scriptHash) != len([32]byte{}) {
+	if len(scriptHash) != len([16]byte{}) {
 		return nil, &domain.ErrNumscriptRuntime{
-			Detail: fmt.Sprintf("compiled numscript artifact: script hash has %d bytes, want 32", len(scriptHash)),
+			Detail: fmt.Sprintf("compiled numscript artifact: script hash has %d bytes, want 16", len(scriptHash)),
 		}
 	}
 
-	hash := [32]byte(scriptHash)
+	hash := [16]byte(scriptHash)
 
 	c.compiledMu.RLock()
 	elem, ok := c.compiledCache[hash]
