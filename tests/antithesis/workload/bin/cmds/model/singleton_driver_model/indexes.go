@@ -1337,6 +1337,10 @@ func (c *Checker) validateIndexedAccountQuery(maxTicket uint64, ledger string, f
 		switch errKind {
 		case indexedErrNone:
 			assert.Reachable("singleton_driver_model: indexed account query served results", internal.Details{"ledger": ledger})
+			if anyLeaf(filter, func(leaf *commonpb.QueryFilter) bool { return leaf.GetAccountHasAsset() != nil }) {
+				// Coverage: a has-asset leaf composed with other arms matched the model.
+				assert.Reachable("singleton_driver_model: has-asset under a combinator served results", internal.Details{"ledger": ledger})
+			}
 		case indexedErrCompilation:
 			assert.Reachable("singleton_driver_model: kind-mismatched field query rejected on accounts", internal.Details{"ledger": ledger})
 		default:
