@@ -990,7 +990,10 @@ paths:
   /v3/{ledgerName}/metadata:
     post:
       summary: Save ledger metadata
-      description: Saves metadata key-value pairs on the ledger itself. Requires `ledger:write` scope.
+      description: >-
+        Saves metadata key-value pairs on the ledger itself. Requires
+        `ledger:MetadataWrite`; `ledger:write` grants it under the default scope
+        mapping. Custom scope mappings can differ.
       operationId: saveLedgerMetadata
       tags:
         - Ledgers
@@ -2877,9 +2880,12 @@ components:
       required: true
       schema:
         type: string
+        example: formance.com/reviewed
       description: |
-        Metadata key, URL-encoded as one path segment. Encode slashes as %2F
-        (for example, formance.com%2Freviewed). Decoded exactly once; percent
+        Raw metadata key, for example formance.com/reviewed. SDK callers pass
+        the raw key and let the SDK encode it. Direct HTTP clients URL-encode
+        the key as one path segment, encoding slashes as %2F.
+        Decoded exactly once; percent
         characters remaining after decoding, including double-encoded slashes,
         are invalid metadata keys and are rejected with HTTP 400.
 
@@ -3158,6 +3164,7 @@ components:
             - UPDATED_DEFAULT_ENFORCEMENT_MODE
         data:
           type: object
+          additionalProperties: true
           description: |
             Direct operation payload selected by type. NEW_TRANSACTION contains
             transaction and optional accountMetadata. REVERTED_TRANSACTION
@@ -5401,11 +5408,8 @@ components:
         for match-all queries.
       oneOf:
         - $ref: '#/components/schemas/QueryFilter'
-        - type: object
-          nullable: true
-          enum:
-            - null
         - type: string
+          nullable: true
           description: Textual filter expression (filter grammar).
 
     ExecutePreparedQueryResponse:

@@ -52,7 +52,16 @@ index IDs. Double encoding (`formance.com%252Freviewed`) retains a literal
 rejects percent-containing keys, including literal malformed escape sequences,
 with HTTP 400. A raw malformed URL escape is rejected by Go's HTTP parser.
 
+SDK callers supply the raw key, for example `formance.com/reviewed`, and let
+the SDK encode the path segment. Passing a pre-encoded key to an SDK produces
+double encoding and is rejected. Direct HTTP clients encode the raw key as one
+path segment themselves.
+
 ### Authentication
+
+Saving ledger metadata (`POST /v3/{ledgerName}/metadata`) requires the granular
+`ledger:MetadataWrite` scope. The aggregate `ledger:write` grants it under the
+default mapping; custom mappings can differ.
 
 The server supports optional JWT/OIDC authentication with scope-based authorization. When enabled via `--auth-enabled`, all API requests must carry a valid Bearer token in the `Authorization` header. See [Authentication Guide](../../../../ops/authentication.md) for configuration details.
 
@@ -953,6 +962,13 @@ contains the payload directly, without a protobuf oneof field-name wrapper.
 For example, a created transaction has
 `{"type":"NEW_TRANSACTION","data":{"transaction":{...}}}`. The unique `type`
 identifies the payload, so clients need only one discriminator dispatch.
+
+The OpenAPI `LedgerLog.data` object explicitly permits additional properties
+so generated SDK decoders retain the complete operation payload, including
+fields nested under `SystemLog.payload.apply.log`. Without that explicit
+declaration, Speakeasy can generate an empty-object decoder that strips every
+payload field. The payload remains open rather than an exhaustive union of
+typed operation variants (EN-2685).
 
 | `type` | Payload in `data` |
 |--------|-------------------|
