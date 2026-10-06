@@ -1,12 +1,11 @@
 package http
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/query"
 )
 
 // handleListAuditEntries handles GET /v3/_/audit-entries.
@@ -18,8 +17,8 @@ import (
 //
 // Query parameters:
 //   - pageSize: max entries per page (default 100, capped at 1000)
-//   - cursor:   page token from a previous response's next / previous; its
-//     key is the decimal audit sequence
+//   - after:    exclusive lower bound on the audit sequence (opaque cursor from
+//     a previous page; a decimal uint64, matching the gRPC cursor)
 //   - reverse:  iterate newest-first when "true"
 //   - filter:   filterexpr DSL restricted to bare audit fields, e.g.
 //     `outcome == failure`, `ledger == main`,
@@ -42,16 +41,21 @@ import (
 // is added to HTTP later, wire it through the same controller entry points the
 // gRPC path uses (impl.openCheckpointStores / Raft-horizon gating).
 func (s *Server) handleListAuditEntries(w http.ResponseWriter, r *http.Request) {
-	page, ok := parsePageQuery(w, r)
+	pageSize, ok := parsePageSize(w, r)
 	if !ok {
 		return
 	}
 
-	afterSequence, err := query.CursorUint64(page.cursor)
-	if err != nil {
-		writeBadRequest(w, "INVALID_REQUEST", err)
+	var afterSequence uint64
+	if after := r.URL.Query().Get("after"); after != "" {
+		parsed, err := strconv.ParseUint(after, 10, 64)
+		if err != nil {
+			writeBadRequest(w, "INVALID_REQUEST", errors.New("invalid after parameter"))
 
-		return
+			return
+		}
+
+		afterSequence = parsed
 	}
 
 	filter, ok := parseAuditFilter(w, r)
@@ -59,24 +63,24 @@ func (s *Server) handleListAuditEntries(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	cursor, err := s.backend.ListAuditEntries(r.Context(), page.fetchSize(), afterSequence, filter, page.reverse)
+	reverse := queryParamBool(r, "reverse")
+
+	cursor, err := s.backend.ListAuditEntries(r.Context(), pageSize, afterSequence, filter, reverse)
 	if err != nil {
 		handleError(w, r, err)
 
 		return
 	}
 
-	entries, links, ok := drainPage(w, r, page, cursor, func(e *auditpb.AuditEntry) string {
-		return strconv.FormatUint(e.GetSequence(), 10)
-	})
+	entries, ok := drainCursor(w, r, cursor)
 	if !ok {
 		return
 	}
 
-	// Audit DTOs marshal chain-bound submessages via protojson, which can
-	// fail; writePageOK buffers before the header so a marshal failure stays a
-	// clean 500 instead of a truncated 200 body.
-	writePageOK(w, r, entries, links)
+	// writeOKChecked (not writeOK): audit DTOs marshal chain-bound submessages
+	// via protojson, which can fail; buffering before the header keeps a marshal
+	// failure a clean 500 instead of a truncated 200 body.
+	writeOKChecked(w, r, entries)
 }
 
 // parseAuditFilter parses the optional `filter` query parameter into a

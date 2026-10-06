@@ -102,7 +102,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 		return cmdutil.FormatGRPCError("receiving audit entry", err)
 	}
 
-	cursors := cmdutil.CursorsFromTrailer(stream.Trailer())
+	nextCursor := cmdutil.NextCursorFromTrailer(stream.Trailer())
 
 	if expand {
 		for i, entry := range entries {
@@ -120,14 +120,13 @@ func runList(cmd *cobra.Command, _ []string) error {
 	if handled, err := cmdutil.EncodeStructured(cmd, entries); handled || err != nil {
 		// Surface the resume cursor to stderr so --json/--yaml output stays a
 		// pure payload on stdout while scripts can still grep stderr for it.
-		cmdutil.EmitCursorHints(cmd, cursors)
+		cmdutil.EmitNextCursorHint(cmd, nextCursor)
 
 		return err
 	}
 
 	if len(entries) == 0 {
 		pterm.Info.Println("No audit entries found.")
-		cmdutil.EmitCursorHints(cmd, cursors)
 
 		return nil
 	}
@@ -139,7 +138,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	pterm.Println()
 	pterm.Info.Printfln("%d audit entry(ies) displayed", len(entries))
 
-	cmdutil.EmitCursorHints(cmd, cursors)
+	cmdutil.EmitNextCursorHint(cmd, nextCursor)
 
 	return nil
 }

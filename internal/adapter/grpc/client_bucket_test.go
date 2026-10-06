@@ -20,7 +20,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
-	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 )
 
 // newRecvStream returns a generated mock ServerStreamingClient[T] that yields
@@ -269,7 +268,7 @@ func TestListLogs_Success(t *testing.T) {
 		})
 
 	client := NewLedgerGrpcClient(mock)
-	cursor, err := client.ListLogs(context.Background(), "ledger1", 0, 10, nil, false)
+	cursor, err := client.ListLogs(context.Background(), "ledger1", 0, 10, nil)
 	require.NoError(t, err)
 
 	log1, err := cursor.Next()
@@ -297,12 +296,12 @@ func TestListLogs_WithAfterSequence(t *testing.T) {
 		})
 
 	client := NewLedgerGrpcClient(mock)
-	_, err := client.ListLogs(context.Background(), "ledger1", 3, 10, nil, false)
+	_, err := client.ListLogs(context.Background(), "ledger1", 3, 10, nil)
 	require.NoError(t, err)
 
-	// The client forwards the typed afterSequence as a forward page token keyed
-	// by the decimal id — the server decodes it back.
-	require.Equal(t, pagecursor.Cursor{Key: "3"}.Encode(), capturedListLogsReq.GetOptions().GetCursor())
+	// The client converts the typed afterSequence into the opaque ListOptions.cursor
+	// (decimal-encoded uint64) — server decodes it back.
+	require.Equal(t, "3", capturedListLogsReq.GetOptions().GetCursor())
 }
 
 func TestListLogs_StreamError(t *testing.T) {
@@ -313,7 +312,7 @@ func TestListLogs_StreamError(t *testing.T) {
 	mock.EXPECT().ListLogs(gomock.Any(), gomock.Any()).Return(nil, errors.New("list logs failed"))
 
 	client := NewLedgerGrpcClient(mock)
-	_, err := client.ListLogs(context.Background(), "ledger1", 0, 10, nil, false)
+	_, err := client.ListLogs(context.Background(), "ledger1", 0, 10, nil)
 	require.Error(t, err)
 }
 

@@ -15,7 +15,6 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 )
 
 func TestHandleListTransactions_Success(t *testing.T) {
@@ -75,14 +74,14 @@ func TestHandleListTransactions_WithPaginationAndReverse(t *testing.T) {
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
-	r := newRequest(t, http.MethodGet, "/ledger1/transactions?pageSize=25&reverse=true&cursor="+pagecursor.Cursor{Key: "42"}.Encode(), nil, map[string]string{
+	r := newRequest(t, http.MethodGet, "/ledger1/transactions?pageSize=25&after=42&reverse=true", nil, map[string]string{
 		"ledgerName": "ledger1",
 	})
 
 	srv.handleListTransactions(w, r)
 
 	require.Equal(t, http.StatusOK, w.Code)
-	require.Equal(t, uint32(26), capturedPageSize, "one row beyond the page detects a next page")
+	require.Equal(t, uint32(25), capturedPageSize)
 	require.Equal(t, uint64(42), capturedAfter)
 	require.True(t, capturedReverse)
 }
@@ -205,21 +204,19 @@ func TestHandleListTransactions_FilterInvalidForTarget(t *testing.T) {
 	}
 }
 
-func TestHandleListTransactions_InvalidCursor(t *testing.T) {
+func TestHandleListTransactions_InvalidAfter(t *testing.T) {
 	t.Parallel()
 
-	for _, token := range []string{"notacursor", pagecursor.Cursor{Key: "notanumber"}.Encode()} {
-		srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
-		w := httptest.NewRecorder()
-		r := newRequest(t, http.MethodGet, "/ledger1/transactions?cursor="+token, nil, map[string]string{
-			"ledgerName": "ledger1",
-		})
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodGet, "/ledger1/transactions?after=notanumber", nil, map[string]string{
+		"ledgerName": "ledger1",
+	})
 
-		srv.handleListTransactions(w, r)
+	srv.handleListTransactions(w, r)
 
-		require.Equal(t, http.StatusBadRequest, w.Code, token)
-	}
+	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestHandleListTransactions_InvalidDate(t *testing.T) {

@@ -23,7 +23,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 )
 
 // Exercise the production list handler and real gRPC trailers, rather than
@@ -58,7 +57,7 @@ func TestNumscriptIsListedBeyondDefaultPage(t *testing.T) {
 		count++
 	}
 	require.Equal(t, 100, count)
-	require.Equal(t, []string{pagecursor.Cursor{Key: "lifecycle-100"}.Encode()}, stream.Trailer().Get("x-next-cursor"))
+	require.Equal(t, []string{"lifecycle-100"}, stream.Trailer().Get("x-next-cursor"))
 
 	found, err := numscriptIsListed(ctx, client, "default", "lifecycle-102")
 	require.NoError(t, err)

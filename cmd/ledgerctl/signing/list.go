@@ -47,7 +47,7 @@ func runListKeys(cmd *cobra.Command, _ []string) error {
 
 	pgn := cmdutil.GetPaginationFlags(cmd)
 
-	keys, cursors, err := cmdutil.FetchSinglePageOrAll(cmd, pgn.Cursor, func(cur string) ([]*commonpb.SigningKey, metadata.MD, error) {
+	keys, nextCursor, err := cmdutil.FetchSinglePageOrAll(cmd, pgn.Cursor, func(cur string) ([]*commonpb.SigningKey, metadata.MD, error) {
 		page := pgn
 		page.Cursor = cur
 
@@ -70,14 +70,13 @@ func runListKeys(cmd *cobra.Command, _ []string) error {
 	}
 
 	if handled, err := cmdutil.EncodeStructured(cmd, keys); handled || err != nil {
-		cmdutil.EmitCursorHints(cmd, cursors)
+		cmdutil.EmitNextCursorHint(cmd, nextCursor)
 
 		return err
 	}
 
 	if len(keys) == 0 {
 		pterm.Info.Println("No signing keys registered.")
-		cmdutil.EmitCursorHints(cmd, cursors)
 
 		return nil
 	}
@@ -105,7 +104,7 @@ func runListKeys(cmd *cobra.Command, _ []string) error {
 
 	pterm.Println()
 
-	cmdutil.EmitCursorHints(cmd, cursors)
+	cmdutil.EmitNextCursorHint(cmd, nextCursor)
 
 	return nil
 }

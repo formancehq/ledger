@@ -2,21 +2,12 @@ package http
 
 import (
 	"net/http"
-	"slices"
-	"strings"
-
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // handleListNumscripts handles GET /{ledgerName}/numscripts to list the greatest
-// version of every numscript for a ledger, paged by name.
+// version of every numscript for a ledger.
 func (s *Server) handleListNumscripts(w http.ResponseWriter, r *http.Request) {
 	ledgerName, ok := requireLedgerName(w, r)
-	if !ok {
-		return
-	}
-
-	page, ok := parsePageQuery(w, r)
 	if !ok {
 		return
 	}
@@ -28,9 +19,5 @@ func (s *Server) handleListNumscripts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	name := func(n *commonpb.NumscriptInfo) string { return n.GetName() }
-	slices.SortFunc(scripts, func(a, b *commonpb.NumscriptInfo) int { return strings.Compare(name(a), name(b)) })
-
-	scripts, links := pageSorted(page, scripts, name)
-	writePageOK(w, r, scripts, links)
+	writeOK(w, scripts)
 }

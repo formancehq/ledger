@@ -10,7 +10,6 @@ import (
 	"strconv"
 
 	"github.com/formancehq/ledger/v3/pkg/actions"
-	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -223,7 +222,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 		Eventually(func(g Gomega) {
 			afterEntries, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{
 				Options: &commonpb.ListOptions{
-					Cursor: pagecursor.Cursor{Key: strconv.FormatUint(afterSeq, 10)}.Encode(),
+					Cursor: strconv.FormatUint(afterSeq, 10),
 					Filter: auditSequenceMaxFilter(maxSequence),
 				},
 			})

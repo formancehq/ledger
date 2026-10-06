@@ -18,8 +18,7 @@ import (
 )
 
 // protojsonRoutes lists every HTTP route whose 200 body is serialized by
-// protojson — writeProtoOK, writeProtoListOK, protoListJSON, or an inline
-// protojson.Marshal.
+// protojson — writeProtoOK, writeProtoListOK, or an inline protojson.Marshal.
 //
 // protojson works off protobuf reflection and ignores json.Marshaler, so a type
 // that has BOTH is silently rendered by the wrong one. That is the EN-1622
@@ -196,7 +195,7 @@ func TestProtojsonRoutes_TableIsComplete(t *testing.T) {
 			}
 
 			name := calleeName(call.Fun)
-			if name == "writeProtoOK" || name == "writeProtoListOK" || name == "protoListJSON" || name == "protojson.Marshal" {
+			if name == "writeProtoOK" || name == "writeProtoListOK" || name == "protojson.Marshal" {
 				sites = append(sites, filename+": "+name)
 				siteFiles = append(siteFiles, filename)
 			}
@@ -206,16 +205,15 @@ func TestProtojsonRoutes_TableIsComplete(t *testing.T) {
 	}
 
 	// Built from the table so it cannot drift: one entry per route row, plus
-	// response.go three times for the implementation call sites inside
-	// writeProtoOK, protoListJSON, and writeProtoListOK's call to
-	// protoListJSON — those helpers are what every route row calls through,
-	// not routes of their own.
-	expected := make([]string, 0, len(protojsonRoutes)+3)
+	// response.go twice for the two implementation call sites inside
+	// writeProtoOK and writeProtoListOK themselves — those two functions are
+	// what every route row calls through, not routes of their own.
+	expected := make([]string, 0, len(protojsonRoutes)+2)
 	for _, tc := range protojsonRoutes {
 		expected = append(expected, tc.file)
 	}
 
-	expected = append(expected, "response.go", "response.go", "response.go")
+	expected = append(expected, "response.go", "response.go")
 
 	require.ElementsMatchf(t, siteFiles, expected,
 		"protojson call sites %v do not match the expected set %v. If you added a "+

@@ -15,7 +15,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 )
 
 func TestHandleListAuditEntries_Success(t *testing.T) {
@@ -62,16 +61,16 @@ func TestHandleListAuditEntries_Empty(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 
 	// An empty result must serialize as an array, not null (OpenAPI contract).
-	require.JSONEq(t, `{"data":[],"hasMore":false}`, w.Body.String())
+	require.JSONEq(t, `{"data":[]}`, w.Body.String())
 }
 
 func TestHandleListAuditEntries_Pagination(t *testing.T) {
 	t.Parallel()
 
 	backend := NewMockBackend(gomock.NewController(t))
-	backend.EXPECT().ListAuditEntries(gomock.Any(), uint32(11), uint64(42), gomock.Any(), gomock.Any()).DoAndReturn(
+	backend.EXPECT().ListAuditEntries(gomock.Any(), uint32(10), uint64(42), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, pageSize uint32, afterSequence uint64, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
-			require.EqualValues(t, 11, pageSize)
+			require.EqualValues(t, 10, pageSize)
 			require.EqualValues(t, 42, afterSequence)
 
 			return cursor.NewSliceCursor[*auditpb.AuditEntry](nil), nil
@@ -79,7 +78,7 @@ func TestHandleListAuditEntries_Pagination(t *testing.T) {
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
-	r := newRequest(t, http.MethodGet, "/_/audit-entries?pageSize=10&cursor="+pagecursor.Cursor{Key: "42"}.Encode(), nil, nil)
+	r := newRequest(t, http.MethodGet, "/_/audit-entries?pageSize=10&after=42", nil, nil)
 
 	srv.handleListAuditEntries(w, r)
 
@@ -139,19 +138,17 @@ func TestHandleListAuditEntries_MarshalFailureIsClean500(t *testing.T) {
 	require.NotContains(t, w.Body.String(), `"data"`)
 }
 
-func TestHandleListAuditEntries_InvalidCursor(t *testing.T) {
+func TestHandleListAuditEntries_InvalidAfter(t *testing.T) {
 	t.Parallel()
 
-	for _, token := range []string{"notacursor", pagecursor.Cursor{Key: "notanumber"}.Encode()} {
-		srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
-		w := httptest.NewRecorder()
-		r := newRequest(t, http.MethodGet, "/_/audit-entries?cursor="+token, nil, nil)
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodGet, "/_/audit-entries?after=notanumber", nil, nil)
 
-		srv.handleListAuditEntries(w, r)
+	srv.handleListAuditEntries(w, r)
 
-		require.Equal(t, http.StatusBadRequest, w.Code, token)
-	}
+	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestHandleListAuditEntries_InvalidPageSize(t *testing.T) {

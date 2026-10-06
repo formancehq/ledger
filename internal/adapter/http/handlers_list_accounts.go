@@ -17,10 +17,13 @@ func (s *Server) handleListAccounts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	page, ok := parsePageQuery(w, r)
+	// Parse query parameters
+	pageSize, ok := parsePageSize(w, r)
 	if !ok {
 		return
 	}
+
+	afterAddress := r.URL.Query().Get("after")
 
 	// The `filter` query parameter accepts either the textual filterexpr grammar
 	// or the structured v2 JSON DSL (EN-1511). An address-prefix selection is
@@ -31,8 +34,10 @@ func (s *Server) handleListAccounts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	reverse := r.URL.Query().Get("reverse") == "true"
+
 	profile.EnterExecute()
-	cursor, err := s.backend.ListAccounts(ctx, ledgerName, page.fetchSize(), page.cursor.Key, filter, page.reverse)
+	cursor, err := s.backend.ListAccounts(ctx, ledgerName, pageSize, afterAddress, filter, reverse)
 	profile.LeaveExecute()
 
 	if err != nil {
@@ -41,11 +46,11 @@ func (s *Server) handleListAccounts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accounts, links, ok := drainPage(w, r, page, cursor, func(a *commonpb.Account) string { return a.GetAddress() })
+	accounts, ok := drainCursor(w, r, cursor)
 	if !ok {
 		return
 	}
 
 	finishProfile(w, r, profile)
-	writePageOK(w, r, accounts, links)
+	writeOK(w, accounts)
 }

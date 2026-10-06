@@ -40,11 +40,7 @@ type InspectParams struct {
 	HorizonSequence uint64
 	Mode            InspectMode
 	PageSize        uint32
-	// CursorBytes is the encoded value to resume past, exclusive (nil = start).
-	CursorBytes []byte
-	// Backward scans values in descending order, from before CursorBytes (or
-	// from the last value when nil).
-	Backward bool
+	CursorBytes     []byte // decoded opaque cursor (nil = start)
 }
 
 // InspectResult holds the scan results.
@@ -56,21 +52,8 @@ type InspectResult struct {
 	Max              *commonpb.MetadataValue
 	EntitiesWithKey  uint64
 	EntitiesWithNull uint64
-	// HasMore reports a further value beyond the page in scan order.
-	HasMore bool
-	// FirstValue and LastValue are the encodings of the page's first and last
-	// values in scan order, nil when the page is empty.
-	FirstValue []byte
-	LastValue  []byte
-}
-
-// markValue records value as the page's latest in scan order.
-func (r *InspectResult) markValue(value []byte) {
-	if r.FirstValue == nil {
-		r.FirstValue = value
-	}
-
-	r.LastValue = value
+	HasMore          bool
+	NextCursor       []byte
 }
 
 // InspectFacetEntry is a (value, count) pair.
@@ -144,98 +127,6 @@ func forEachLiveGroup(reader dal.PebbleReader, lower, upper []byte, prefixLen in
 	return iter.Error()
 }
 
-// forEachLiveGroupReverse is forEachLiveGroup walking groups in descending
-// key order. Within a group events are met seq-descending, so the first one
-// at or before horizon decides liveness.
-func forEachLiveGroupReverse(reader dal.PebbleReader, lower, upper []byte, prefixLen int, horizon uint64, fn func(group []byte) bool) error {
-	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: lower,
-		UpperBound: upper,
-	})
-	if err != nil {
-		return err
-	}
-
-	defer func() { _ = iter.Close() }()
-
-	suffix := metadataEventSuffixLen + 1
-
-	var (
-		group   []byte
-		started bool
-		decided bool
-		live    bool
-	)
-
-	for iter.Last(); iter.Valid(); iter.Prev() {
-		key := iter.Key()
-
-		tpos := len(key) - suffix
-		if tpos < prefixLen || key[tpos] != metadataEventTerminator {
-			return fmt.Errorf("malformed metadata event key %x", key)
-		}
-
-		g := key[prefixLen:tpos]
-		if !started || !bytes.Equal(g, group) {
-			if started && live && !fn(group) {
-				return iter.Error()
-			}
-
-			group = append(group[:0], g...)
-			started = true
-			decided = false
-			live = false
-		}
-
-		if !validEventOp(key[tpos+9]) {
-			return fmt.Errorf("malformed metadata event key %x", key)
-		}
-		if decided || horizon > 0 && binary.BigEndian.Uint64(key[tpos+1:tpos+9]) > horizon {
-			continue
-		}
-
-		live = key[tpos+9] == MetadataEventAdd
-		decided = true
-	}
-
-	if started && live {
-		_ = fn(group)
-	}
-
-	return iter.Error()
-}
-
-// liveGroupWalker is the signature shared by forEachLiveGroup and
-// forEachLiveGroupReverse.
-type liveGroupWalker func(reader dal.PebbleReader, lower, upper []byte, prefixLen int, horizon uint64, fn func(group []byte) bool) error
-
-// pageScan returns the bounds and walker of a paginated value scan: past
-// CursorBytes in the requested direction, over the whole index otherwise.
-func pageScan(params InspectParams, prefix []byte) (lower, upper []byte, walk liveGroupWalker) {
-	lower, upper = prefix, IncrementBytes(prefix)
-
-	var resume []byte
-	if len(params.CursorBytes) > 0 {
-		resume = make([]byte, len(prefix)+len(params.CursorBytes))
-		copy(resume, prefix)
-		copy(resume[len(prefix):], params.CursorBytes)
-	}
-
-	if params.Backward {
-		if resume != nil {
-			upper = resume
-		}
-
-		return lower, upper, forEachLiveGroupReverse
-	}
-
-	if resume != nil {
-		lower = IncrementBytes(resume)
-	}
-
-	return lower, upper, forEachLiveGroup
-}
-
 // countLiveGroups counts members whose latest event at or before horizon is an add.
 func countLiveGroups(reader dal.PebbleReader, prefix []byte, horizon uint64) (uint64, error) {
 	var n uint64
@@ -266,7 +157,15 @@ func InspectIndex(params InspectParams) (*InspectResult, error) {
 // inspectDistinctValues scans the metadata index and collects unique values with pagination.
 func inspectDistinctValues(params InspectParams) (*InspectResult, error) {
 	prefix := MetadataIndexPrefixV(params.KB, params.LedgerName, params.Namespace, params.MetadataKey, params.Version)
-	lower, upper, walk := pageScan(params, prefix)
+	upper := IncrementBytes(prefix)
+
+	lower := prefix
+	if len(params.CursorBytes) > 0 {
+		seekKey := make([]byte, len(prefix)+len(params.CursorBytes))
+		copy(seekKey, prefix)
+		copy(seekKey[len(prefix):], params.CursorBytes)
+		lower = IncrementBytes(seekKey)
+	}
 
 	pageSize := params.PageSize
 	if pageSize == 0 {
@@ -280,7 +179,7 @@ func inspectDistinctValues(params InspectParams) (*InspectResult, error) {
 		decodeErr      error
 	)
 
-	err := walk(params.Reader, lower, upper, len(prefix), params.HorizonSequence, func(group []byte) bool {
+	err := forEachLiveGroup(params.Reader, lower, upper, len(prefix), params.HorizonSequence, func(group []byte) bool {
 		_, consumed, decErr := DecodeValue(group)
 		if decErr != nil {
 			decodeErr = fmt.Errorf("malformed metadata event group %x: %w", group, decErr)
@@ -303,7 +202,7 @@ func inspectDistinctValues(params InspectParams) (*InspectResult, error) {
 		result.Values = append(result.Values, decoded)
 		prevValueBytes = make([]byte, len(currentValueBytes))
 		copy(prevValueBytes, currentValueBytes)
-		result.markValue(prevValueBytes)
+		result.NextCursor = prevValueBytes
 
 		return true
 	})
@@ -321,7 +220,15 @@ func inspectDistinctValues(params InspectParams) (*InspectResult, error) {
 // inspectFacets scans the metadata index and collects (value, count) pairs with pagination.
 func inspectFacets(params InspectParams) (*InspectResult, error) {
 	prefix := MetadataIndexPrefixV(params.KB, params.LedgerName, params.Namespace, params.MetadataKey, params.Version)
-	lower, upper, walk := pageScan(params, prefix)
+	upper := IncrementBytes(prefix)
+
+	lower := prefix
+	if len(params.CursorBytes) > 0 {
+		seekKey := make([]byte, len(prefix)+len(params.CursorBytes))
+		copy(seekKey, prefix)
+		copy(seekKey[len(prefix):], params.CursorBytes)
+		lower = IncrementBytes(seekKey)
+	}
 
 	pageSize := params.PageSize
 	if pageSize == 0 {
@@ -337,7 +244,7 @@ func inspectFacets(params InspectParams) (*InspectResult, error) {
 		decodeErr      error
 	)
 
-	err := walk(params.Reader, lower, upper, len(prefix), params.HorizonSequence, func(group []byte) bool {
+	err := forEachLiveGroup(params.Reader, lower, upper, len(prefix), params.HorizonSequence, func(group []byte) bool {
 		_, consumed, decErr := DecodeValue(group)
 		if decErr != nil {
 			decodeErr = fmt.Errorf("malformed metadata event group %x: %w", group, decErr)
@@ -362,7 +269,7 @@ func inspectFacets(params InspectParams) (*InspectResult, error) {
 			}
 
 			result.Facets = append(result.Facets, InspectFacetEntry{Value: currentValue, Count: currentCount})
-			result.markValue(prevValueBytes)
+			result.NextCursor = prevValueBytes
 		}
 
 		decoded, _, _ := DecodeValue(group)
@@ -385,7 +292,7 @@ func inspectFacets(params InspectParams) (*InspectResult, error) {
 	if currentValue != nil && !result.HasMore {
 		if uint32(len(result.Facets)) < pageSize {
 			result.Facets = append(result.Facets, InspectFacetEntry{Value: currentValue, Count: currentCount})
-			result.markValue(prevValueBytes)
+			result.NextCursor = prevValueBytes
 		} else {
 			result.HasMore = true
 		}

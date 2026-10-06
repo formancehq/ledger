@@ -11874,18 +11874,15 @@ func (x *GroupedAggregateResult) GetVolumes() []*AggregatedVolume {
 	return nil
 }
 
-// PreparedQueryCursor is one page of a prepared query's LIST results. next
-// and previous are page tokens (see ListOptions.cursor); has_more is set iff
-// next is.
+// PreparedQueryCursor follows the cursor-based pagination pattern.
 type PreparedQueryCursor struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	PageSize        uint32                 `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	HasMore         bool                   `protobuf:"varint,2,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
 	Next            string                 `protobuf:"bytes,3,opt,name=next,proto3" json:"next,omitempty"`
-	Previous        string                 `protobuf:"bytes,4,opt,name=previous,proto3" json:"previous,omitempty"`
-	AccountData     []*Account             `protobuf:"bytes,5,rep,name=account_data,json=accountData,proto3" json:"account_data,omitempty"`
-	TransactionData []*Transaction         `protobuf:"bytes,6,rep,name=transaction_data,json=transactionData,proto3" json:"transaction_data,omitempty"`
-	LogData         []*Log                 `protobuf:"bytes,7,rep,name=log_data,json=logData,proto3" json:"log_data,omitempty"`
+	AccountData     []*Account             `protobuf:"bytes,4,rep,name=account_data,json=accountData,proto3" json:"account_data,omitempty"`
+	TransactionData []*Transaction         `protobuf:"bytes,5,rep,name=transaction_data,json=transactionData,proto3" json:"transaction_data,omitempty"`
+	LogData         []*Log                 `protobuf:"bytes,6,rep,name=log_data,json=logData,proto3" json:"log_data,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -11937,13 +11934,6 @@ func (x *PreparedQueryCursor) GetHasMore() bool {
 func (x *PreparedQueryCursor) GetNext() string {
 	if x != nil {
 		return x.Next
-	}
-	return ""
-}
-
-func (x *PreparedQueryCursor) GetPrevious() string {
-	if x != nil {
-		return x.Previous
 	}
 	return ""
 }
@@ -12837,14 +12827,11 @@ func (x *ReadOptions) GetCheckpointId() uint64 {
 // parameters every streaming read endpoint understands. Embed it as a field
 // on the Request so the contract stays DRY across resources.
 //
-// cursor is a page token: base64url (unpadded) of the JSON object
-// {"key": <string>, "back": <bool>}, built by pkg/pagecursor. Paged responses
-// return the tokens of the adjacent pages in the "x-next-cursor" and
-// "x-previous-cursor" trailers. key is the position, in the endpoint's
-// textual form (decimal id, address, name); a forward token serves the rows
-// strictly after key, a back token the page ending strictly before key, both
-// in the requested order. A back token with an empty key serves the last
-// page.
+// cursor is OPAQUE from the client's POV: the server encodes the next-page
+// resume token internally (entity address, sequence number, …) and the client
+// round-trips whatever value it received as the "x-next-cursor" trailer of
+// the previous response. This lets the server evolve its on-wire cursor
+// format without breaking deployed clients.
 //
 // Not every endpoint honors every option: a reverse-uncapable or filter-less
 // endpoint MUST reject a non-default value with InvalidArgument rather than
@@ -12855,8 +12842,8 @@ type ListOptions struct {
 	// page_size is the maximum number of items per page. 0 lets the server
 	// pick a sane default (currently 100); the server clamps to MaxPageSize.
 	PageSize uint32 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	// cursor is a page token, normally copied from a previous response's
-	// x-next-cursor or x-previous-cursor trailer. Empty starts at the head.
+	// cursor is the opaque resume token from the previous page's
+	// x-next-cursor trailer. Empty starts at the iteration head.
 	Cursor string `protobuf:"bytes,3,opt,name=cursor,proto3" json:"cursor,omitempty"`
 	// reverse inverts the default iteration order for endpoints that support it.
 	Reverse bool `protobuf:"varint,4,opt,name=reverse,proto3" json:"reverse,omitempty"`
@@ -13755,15 +13742,14 @@ const file_common_proto_rawDesc = "" +
 	"\x06groups\x18\x02 \x03(\v2\x1e.common.GroupedAggregateResultR\x06groups\"d\n" +
 	"\x16GroupedAggregateResult\x12\x16\n" +
 	"\x06prefix\x18\x01 \x01(\tR\x06prefix\x122\n" +
-	"\avolumes\x18\x02 \x03(\v2\x18.common.AggregatedVolumeR\avolumes\"\x99\x02\n" +
+	"\avolumes\x18\x02 \x03(\v2\x18.common.AggregatedVolumeR\avolumes\"\xfd\x01\n" +
 	"\x13PreparedQueryCursor\x12\x1b\n" +
 	"\tpage_size\x18\x01 \x01(\rR\bpageSize\x12\x19\n" +
 	"\bhas_more\x18\x02 \x01(\bR\ahasMore\x12\x12\n" +
-	"\x04next\x18\x03 \x01(\tR\x04next\x12\x1a\n" +
-	"\bprevious\x18\x04 \x01(\tR\bprevious\x122\n" +
-	"\faccount_data\x18\x05 \x03(\v2\x0f.common.AccountR\vaccountData\x12>\n" +
-	"\x10transaction_data\x18\x06 \x03(\v2\x13.common.TransactionR\x0ftransactionData\x12&\n" +
-	"\blog_data\x18\a \x03(\v2\v.common.LogR\alogData\"\x91\x03\n" +
+	"\x04next\x18\x03 \x01(\tR\x04next\x122\n" +
+	"\faccount_data\x18\x04 \x03(\v2\x0f.common.AccountR\vaccountData\x12>\n" +
+	"\x10transaction_data\x18\x05 \x03(\v2\x13.common.TransactionR\x0ftransactionData\x12&\n" +
+	"\blog_data\x18\x06 \x03(\v2\v.common.LogR\alogData\"\x91\x03\n" +
 	"\vLedgerStats\x12+\n" +
 	"\x11transaction_count\x18\x01 \x01(\x06R\x10transactionCount\x12!\n" +
 	"\fvolume_count\x18\x02 \x01(\x06R\vvolumeCount\x12'\n" +

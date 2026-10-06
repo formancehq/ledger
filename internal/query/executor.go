@@ -18,7 +18,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
-	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 )
 
 const defaultPageSize = 100
@@ -53,11 +52,6 @@ func Execute(
 	// the ledger or the stored definition.
 	if req.GetReverse() && req.GetMode() != commonpb.QueryMode_QUERY_MODE_LIST {
 		return nil, &ErrQueryModeReverseUnsupported{Mode: req.GetMode()}
-	}
-
-	page, err := DecodeCursor(req.GetCursor())
-	if err != nil {
-		return nil, err
 	}
 
 	// The prepared-query definition and ledger schema are request-local query
@@ -185,7 +179,7 @@ func Execute(
 		keep = MainHorizonKeep(pq.GetTarget(), handle, indexSnap, ledgerInfo.GetName(), mainSeq)
 	}
 
-	if req.GetMode() == commonpb.QueryMode_QUERY_MODE_LIST && page.ReadReverse(req.GetReverse()) {
+	if req.GetReverse() {
 		compiled, compileErr := CompileReverse(indexSnap, kb, pq.GetFilter(), pq.GetTarget(), ledgerInfo.GetName(), req.GetParameters(), schema, ledgerInfo, indexRegistry, indexVersionFor, profile, handle, mainSeq)
 		if compileErr != nil {
 			return nil, domain.WrapCompileError(compileErr)
@@ -199,7 +193,7 @@ func Execute(
 
 		return executeList(ctx, func(pageSize uint32, cursor []byte) ([][]byte, bool, error) {
 			return readstore.PaginateReverse(iter, pageSize, cursor)
-		}, page, pq.GetTarget(), req, profile, handle, indexSnap, ledgerInfo.GetName(), enricher)
+		}, pq.GetTarget(), req, profile, handle, indexSnap, ledgerInfo.GetName(), enricher)
 	}
 
 	compiled, compileErr := Compile(indexSnap, kb, pq.GetFilter(), pq.GetTarget(), ledgerInfo.GetName(), req.GetParameters(), schema, ledgerInfo, indexRegistry, indexVersionFor, profile, handle, mainSeq)
@@ -216,7 +210,7 @@ func Execute(
 	if req.GetMode() == commonpb.QueryMode_QUERY_MODE_LIST {
 		return executeList(ctx, func(pageSize uint32, cursor []byte) ([][]byte, bool, error) {
 			return readstore.PaginateForward(iter, pageSize, cursor)
-		}, page, pq.GetTarget(), req, profile, handle, indexSnap, ledgerInfo.GetName(), enricher)
+		}, pq.GetTarget(), req, profile, handle, indexSnap, ledgerInfo.GetName(), enricher)
 	}
 
 	// AGGREGATE_VOLUMES with a non-nil filter (nil-filter path already returned above).
@@ -233,12 +227,11 @@ func Execute(
 }
 
 // executeList paginates entities through paginate, enriches them into full
-// objects, and returns a cursor response. paginate reads in page's read
-// direction, resuming past page's key.
+// objects, and returns a cursor response. paginate fixes the direction; the
+// cursor is the last entity of the previous page in either direction.
 func executeList(
 	ctx context.Context,
 	paginate func(pageSize uint32, cursor []byte) ([][]byte, bool, error),
-	page pagecursor.Cursor,
 	target commonpb.QueryTarget,
 	req *servicepb.ExecutePreparedQueryRequest,
 	profile *QueryProfile,
@@ -252,35 +245,35 @@ func executeList(
 		pageSize = defaultPageSize
 	}
 
-	afterEntity, err := entityFromCursorKey(target, page)
-	if err != nil {
-		return nil, err
+	// Decode cursor to get the after-entity for pagination
+	var afterEntity []byte
+
+	if req.GetCursor() != "" {
+		var err error
+
+		afterEntity, err = decodeCursor(req.GetCursor())
+		if err != nil {
+			return nil, fmt.Errorf("invalid cursor: %w", err)
+		}
 	}
 
-	read, more, err := paginate(pageSize, afterEntity)
+	entities, hasMore, err := paginate(pageSize, afterEntity)
 	if err != nil {
 		return nil, fmt.Errorf("paginating prepared query results: %w", err)
 	}
-
-	entities, next, previous := pagecursor.Page(page, read, pageSize, more, func(e []byte) string {
-		return entityCursorKey(target, e)
-	})
 
 	if profile != nil {
 		profile.ItemsCollected = len(entities)
 	}
 
-	cursor := &commonpb.PreparedQueryCursor{
-		PageSize: pageSize,
-		HasMore:  next != "",
-		Next:     next,
-		Previous: previous,
+	if len(entities) == 0 {
+		return emptyListResponse(pageSize), nil
 	}
 
-	if len(entities) == 0 {
-		return &servicepb.ExecutePreparedQueryResponse{
-			Result: &servicepb.ExecutePreparedQueryResponse_Cursor{Cursor: cursor},
-		}, nil
+	// Build response cursor
+	cursor := &commonpb.PreparedQueryCursor{
+		PageSize: pageSize,
+		HasMore:  hasMore,
 	}
 
 	switch target {
@@ -311,6 +304,10 @@ func executeList(
 		// Compile without a matching enrichment branch), not a runtime
 		// condition. Fail loudly rather than return an emptily-populated cursor.
 		return nil, fmt.Errorf("invariant: unsupported prepared-query list target %v", target)
+	}
+
+	if hasMore {
+		cursor.Next = encodeCursor(entities[len(entities)-1])
 	}
 
 	return &servicepb.ExecutePreparedQueryResponse{
@@ -371,4 +368,14 @@ func EnrichLogs(ctx context.Context, pebbleReader dal.PebbleReader, indexReader 
 	}
 
 	return logs, nil
+}
+
+func emptyListResponse(pageSize uint32) *servicepb.ExecutePreparedQueryResponse {
+	return &servicepb.ExecutePreparedQueryResponse{
+		Result: &servicepb.ExecutePreparedQueryResponse_Cursor{
+			Cursor: &commonpb.PreparedQueryCursor{
+				PageSize: pageSize,
+			},
+		},
+	}
 }
