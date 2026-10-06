@@ -13,8 +13,12 @@
 Releases publish platform archives on
 [GitHub](https://github.com/formancehq/ledger/releases):
 
-- Linux/macOS: `ledger_linux-amd64.tar.gz`, `ledger_darwin-arm64.tar.gz`, and the corresponding architectures. These archives contain `ledger-server` and `ledgerctl`.
-- Windows: `ledger_windows-amd64.zip` and `ledger_windows-arm64.zip`. These archives contain `ledgerctl.exe` only.
+- Linux/macOS: `ledger_<version>_linux-amd64.tar.gz`, `ledger_<version>_darwin-arm64.tar.gz`, and the corresponding architectures. These archives contain `ledger-server` and `ledgerctl`.
+- Windows: `ledger_<version>_windows-amd64.zip` and `ledger_<version>_windows-arm64.zip`. These archives contain `ledgerctl.exe` only.
+
+`<version>` is the release tag, for example `ledger_v3.0.0-beta.0_darwin-arm64.tar.gz`,
+or `nightly-<short-commit>` for nightly builds. Each archive extracts into a
+directory with the same name, so several versions can sit side by side.
 
 Extract the archive and put `ledgerctl` or `ledgerctl.exe` on your `PATH`. Prefer
 the CLI distributed with the deployed server build. `ledgerctl upgrade` selects
@@ -4416,38 +4420,44 @@ ledger run --health-clock-skew-threshold 0 [other flags...]
 
 ---
 
-### Server Metrics Naming Flag
+### Server Metrics Prefix Flag
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--metrics-naming` | string | `otel` | Application metrics naming convention (`otel` or `prom`) |
+| `--otel-metrics-prefix` | string | `formance.ledger` | Namespace prepended to the server's own metric names (`none` to disable) |
 
-Controls how the application's own metric names are emitted. Every
-instrument the server creates (admission, cache, wal, raft, pebble,
-…) is subject to the policy. OpenTelemetry semantic-convention
-auto-instrumentation (`http.*`, `go.*`, `process.*`, `system.*`)
-goes through the *global* MeterProvider and bypasses this flag, so
-those names always keep their canonical upstream form.
+The flag comes from the go-libs metrics module, like the other
+`--otel-metrics-*` flags, and is also read from the
+`OTEL_METRICS_PREFIX` environment variable. The ledger sets its
+default to `formance.ledger`, following the OpenTelemetry
+recommendation to namespace application-specific names.
 
-- `otel` (default): preserves dot-notation names —
-  `admission.command.duration`, `raft.fsm.logs_appended`. Use this
-  when your OTLP→Prometheus collector preserves dots, or when you
-  query directly through OpenTelemetry tooling.
-- `prom`: rewrites our metric names to the Prometheus convention.
-  Names get the `ledger_` prefix and every dot becomes an
-  underscore, so `admission.command.duration` is emitted as
-  `ledger_admission_command_duration` and `raft.fsm.logs_appended`
-  as `ledger_raft_fsm_logs_appended`. Use this when the collector
-  in front of Prometheus sanitises dots (the default for recent OTel
-  collectors and most cloud Prometheus offerings).
+The prefix is joined to every instrument the server's own code creates
+(admission, cache, wal, raft, pebble, …) with a `.`:
+`raft.fsm.logs_appended` is emitted as
+`formance.ledger.raft.fsm.logs_appended`. OpenTelemetry
+semantic-convention instrumentation (`http.*`, `rpc.*`, `go.*`,
+`process.*`, `system.*`) records through the *global* MeterProvider,
+which is never prefixed, so those names keep their canonical upstream
+form.
 
-The two pre-built Grafana dashboards under
-`misc/devenv/monitoring-dashboards/config/dashboards/` match these
-two modes — pick `ledger-metrics-prom.json` if you run with
-`--metrics-naming=prom`.
+The value is at most 64 characters of dot-separated segments made of
+letters, digits and underscores, each starting with a letter and
+ending with a letter or digit; an invalid value fails startup. Set it
+to `none` (`--otel-metrics-prefix=none`, `OTEL_METRICS_PREFIX=none`
+or the operator's `spec.monitoring.metrics.prefix: none`) to emit
+unprefixed names. An explicit empty flag value has the same effect,
+but an empty `OTEL_METRICS_PREFIX` environment variable is ignored.
+
+Names are always emitted in OpenTelemetry dot notation. An
+OTLP→Prometheus collector that sanitises dots stores them as
+`formance_ledger_…`. The pre-built Grafana dashboards under
+`misc/devenv/monitoring-dashboards/config/dashboards/` cover the
+default prefix and `none`; see
+[Monitoring](monitoring.md#naming-convention) for the matrix.
 
 ```bash
-ledger run --metrics-naming=prom [other flags...]
+ledger run --otel-metrics-prefix=acme.ledger [other flags...]
 ```
 
 ---

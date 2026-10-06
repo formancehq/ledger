@@ -3,8 +3,8 @@
 // Walks an entire Grafana dashboard JSON tree (loaded from
 // `ledger-metrics.json`) and rewrites every PromQL expression,
 // templating query and variable regex according to the configured
-// naming policy. Used by main.jsonnet to emit the otel and prom
-// variants of the dashboard from a single source.
+// naming policy. Used by main.jsonnet to emit every otel and prom
+// variant of the dashboard from a single source.
 //
 // Once individual panels are rewritten into proper Jsonnet modules
 // (see README), they will replace nodes in the loaded tree before
@@ -34,7 +34,7 @@ local naming = import 'naming.libsonnet';
   // to histogram_quantile) are NOT identifiers and must not be
   // collected. Treating them as identifiers caused
   // `histogram_quantile(0.50, …)` to be rewritten as
-  // `histogram_quantile(ledger_0_50, …)`.
+  // `histogram_quantile(formance_ledger_0_50, …)`.
   isIdentStart(c)::
     (c >= 'a' && c <= 'z') ||
     (c >= 'A' && c <= 'Z') ||
@@ -125,7 +125,7 @@ local naming = import 'naming.libsonnet';
   // identifiers inside must be rewritten with transformLabel, not
   // transformMetric. Without this distinction a clause such as
   // `sum by (service.node_id)` would have its label name treated
-  // as a metric and incorrectly gain the `ledger_` prefix.
+  // as a metric and incorrectly gain the `formance_ledger_` prefix.
   labelListKeywords:: {
     by: true,
     without: true,
@@ -251,82 +251,82 @@ local naming = import 'naming.libsonnet';
     // Helpers like queries.histogramAvg leave sentinels in the
     // source expressions; expand them first so the walker sees
     // ordinary PromQL.
+    // The walker also runs in `otel` modes: label names are kept
+    // as-is there, but metric names still gain the prefix.
     local expr = $.preExpandHelpers(rawExpr, mode);
-    if mode == 'otel' then expr
-    else
-      local n = std.length(expr);
-      // State carried by the walker:
-      //   acc             accumulated output
-      //   inSelector      true while inside a { ... } selector
-      //   expectingValue  true after a comparator: the next token is
-      //                   a label value, not a name
-      //   lastLabelName   most recent label name observed inside a
-      //                   { … } selector (used to transform the
-      //                   value of `__name__` selectors as a
-      //                   metric name)
-      //   lastIdent       most recent bare identifier — peeked at on
-      //                   `(` to decide whether the parens introduce
-      //                   a label-list context
-      //   parens          stack of paren kinds (`L` = label list,
-      //                   `N` = normal). Used to detect we're inside
-      //                   `by (…)` / `on (…)` / … so the contained
-      //                   identifiers get the label-name treatment.
-      local step(i, acc, inSelector, expectingValue, lastLabelName, lastIdent, parens) =
-        if i >= n then acc
-        else
-          local c = expr[i];
-          if c == '"' || c == "'" then
-            local sc = $.collectString(expr, i);
-            local end = sc[0];
-            local body = sc[1];
-            local rewrittenBody =
-              if !inSelector then
-                body
-              else if expectingValue then
-                if lastLabelName == '__name__' then
-                  naming.transformMetric(body, mode)
-                else body
-              else if $.followedByComparator(expr, end) then
-                naming.transformLabel(body, mode)
-              else
-                naming.transformMetric(body, mode);
-            local nextLast =
-              if inSelector && !expectingValue && $.followedByComparator(expr, end) then body
-              else lastLabelName;
-            step(end, acc + c + rewrittenBody + c, inSelector, expectingValue, nextLast, lastIdent, parens)
-          else if c == '{' then step(i + 1, acc + c, true, false, '', '', parens)
-          else if c == '}' then step(i + 1, acc + c, false, false, '', '', parens)
-          else if c == '(' then
-            local kind = if std.objectHas($.labelListKeywords, lastIdent) then 'L' else 'N';
-            step(i + 1, acc + c, inSelector, expectingValue, lastLabelName, '', parens + kind)
-          else if c == ')' then
-            local popped = if std.length(parens) > 0 then std.substr(parens, 0, std.length(parens) - 1) else parens;
-            step(i + 1, acc + c, inSelector, expectingValue, lastLabelName, '', popped)
-          else if c == ',' then step(i + 1, acc + c, inSelector, false, '', '', parens)
-          else if c == '=' || c == '!' then
-            step(i + 1, acc + c, inSelector, true, lastLabelName, lastIdent, parens)
-          else if $.isIdentStart(c) then
-            local ic = $.collectIdent(expr, i);
-            local end = ic[0];
-            local ident = ic[1];
-            local isLabelInSelector =
-              inSelector && !expectingValue && $.followedByComparator(expr, end);
-            local isLabelInGrouping = $.inLabelList(parens);
-            local rewritten =
-              if isLabelInSelector || isLabelInGrouping then
-                naming.transformLabel(ident, mode)
-              else if !inSelector && $.shouldRewriteIdent(ident) then
-                $.rewriteIdent(ident, mode)
-              else if inSelector && expectingValue then
-                ident
-              else
-                if $.shouldRewriteIdent(ident) then $.rewriteIdent(ident, mode) else ident;
-            local nextLast = if isLabelInSelector then ident else lastLabelName;
-            step(end, acc + rewritten, inSelector, expectingValue, nextLast, ident, parens)
-          else step(i + 1, acc + c, inSelector, expectingValue, lastLabelName, lastIdent, parens);
-      local walked = step(0, '', false, false, '', '', '');
-      if naming.modeConfig(mode).native then $.dropLeFromGrouping(walked)
-      else walked,
+    local n = std.length(expr);
+    // State carried by the walker:
+    //   acc             accumulated output
+    //   inSelector      true while inside a { ... } selector
+    //   expectingValue  true after a comparator: the next token is
+    //                   a label value, not a name
+    //   lastLabelName   most recent label name observed inside a
+    //                   { … } selector (used to transform the
+    //                   value of `__name__` selectors as a
+    //                   metric name)
+    //   lastIdent       most recent bare identifier — peeked at on
+    //                   `(` to decide whether the parens introduce
+    //                   a label-list context
+    //   parens          stack of paren kinds (`L` = label list,
+    //                   `N` = normal). Used to detect we're inside
+    //                   `by (…)` / `on (…)` / … so the contained
+    //                   identifiers get the label-name treatment.
+    local step(i, acc, inSelector, expectingValue, lastLabelName, lastIdent, parens) =
+      if i >= n then acc
+      else
+        local c = expr[i];
+        if c == '"' || c == "'" then
+          local sc = $.collectString(expr, i);
+          local end = sc[0];
+          local body = sc[1];
+          local rewrittenBody =
+            if !inSelector then
+              body
+            else if expectingValue then
+              if lastLabelName == '__name__' then
+                naming.transformMetric(body, mode)
+              else body
+            else if $.followedByComparator(expr, end) then
+              naming.transformLabel(body, mode)
+            else
+              naming.transformMetric(body, mode);
+          local nextLast =
+            if inSelector && !expectingValue && $.followedByComparator(expr, end) then body
+            else lastLabelName;
+          step(end, acc + c + rewrittenBody + c, inSelector, expectingValue, nextLast, lastIdent, parens)
+        else if c == '{' then step(i + 1, acc + c, true, false, '', '', parens)
+        else if c == '}' then step(i + 1, acc + c, false, false, '', '', parens)
+        else if c == '(' then
+          local kind = if std.objectHas($.labelListKeywords, lastIdent) then 'L' else 'N';
+          step(i + 1, acc + c, inSelector, expectingValue, lastLabelName, '', parens + kind)
+        else if c == ')' then
+          local popped = if std.length(parens) > 0 then std.substr(parens, 0, std.length(parens) - 1) else parens;
+          step(i + 1, acc + c, inSelector, expectingValue, lastLabelName, '', popped)
+        else if c == ',' then step(i + 1, acc + c, inSelector, false, '', '', parens)
+        else if c == '=' || c == '!' then
+          step(i + 1, acc + c, inSelector, true, lastLabelName, lastIdent, parens)
+        else if $.isIdentStart(c) then
+          local ic = $.collectIdent(expr, i);
+          local end = ic[0];
+          local ident = ic[1];
+          local isLabelInSelector =
+            inSelector && !expectingValue && $.followedByComparator(expr, end);
+          local isLabelInGrouping = $.inLabelList(parens);
+          local rewritten =
+            if isLabelInSelector || isLabelInGrouping then
+              naming.transformLabel(ident, mode)
+            else if !inSelector && $.shouldRewriteIdent(ident) then
+              $.rewriteIdent(ident, mode)
+            else if inSelector && expectingValue then
+              ident
+            else
+              if $.shouldRewriteIdent(ident) then $.rewriteIdent(ident, mode) else ident;
+          local nextLast = if isLabelInSelector then ident else lastLabelName;
+          step(end, acc + rewritten, inSelector, expectingValue, nextLast, ident, parens)
+        else step(i + 1, acc + c, inSelector, expectingValue, lastLabelName, lastIdent, parens);
+    local walked = step(0, '', false, false, '', '', '');
+    if naming.modeConfig(mode).native then $.dropLeFromGrouping(walked)
+    else walked,
 
   // walkValue recursively traverses any JSON value and applies the
   // appropriate rewrite to nodes that carry PromQL expressions or
@@ -338,7 +338,7 @@ local naming = import 'naming.libsonnet';
   // collapse every escaped-dot into the underscore the collector
   // emitted. We deliberately do not touch other parts of the regex.
   rewriteRegex(r, mode)::
-    if mode == 'otel' then r
+    if naming.modeConfig(mode).otel then r
     else std.strReplace(r, '\\.', '_'),
 
   // rewriteLegendFormat transforms a Grafana legendFormat string.
@@ -349,7 +349,7 @@ local naming = import 'naming.libsonnet';
   // de-dotted form, otherwise Grafana silently leaves the
   // placeholder empty and every legend entry reads "Node".
   rewriteLegendFormat(s, mode)::
-    if mode == 'otel' then s
+    if naming.modeConfig(mode).otel then s
     else
       local n = std.length(s);
       local step(i, acc) =

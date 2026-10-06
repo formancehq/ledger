@@ -121,7 +121,7 @@
 
   // preload — internal/infra/state/machine.go
   preload:: {
-    coverage_miss: 'ledger.preload.coverage_miss',
+    coverage_miss: 'raft.fsm.preload.coverage_miss',
   },
 
   // raft — internal/infra/state/machine.go (FSM), node.go,

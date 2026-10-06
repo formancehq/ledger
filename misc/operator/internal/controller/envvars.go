@@ -171,7 +171,6 @@ func buildEnvVars(ledger *ledgerv1alpha1.Cluster, targetTLSMode string, credenti
 	}
 
 	envs = appendIfBool(envs, "ADMISSION_METRICS", spec.AdmissionMetrics)
-	envs = appendIfStr(envs, "METRICS_NAMING", spec.MetricsNaming)
 	envs = appendIfBool(envs, "SENTINEL_MODE", spec.SentinelMode)
 	envs = appendIfBool(envs, "GRPC_COMPRESSION", spec.GrpcCompression)
 	envs = appendIfStr(envs, "QUERY_PROFILE_THRESHOLD", spec.QueryProfileThreshold)
@@ -393,6 +392,7 @@ func appendMonitoringEnvVars(envs []corev1.EnvVar, mon *ledgerv1alpha1.Monitorin
 		envs = appendIfStr(envs, "OTEL_METRICS_EXPORTER_PUSH_INTERVAL", mon.Metrics.ExporterPushInterval)
 		envs = appendIfBool(envs, "OTEL_METRICS_RUNTIME", mon.Metrics.Runtime)
 		envs = appendIfStr(envs, "OTEL_METRICS_RUNTIME_MINIMUM_READ_MEM_STATS_INTERVAL", mon.Metrics.RuntimeMinimumReadMemStatsInterval)
+		envs = appendIfStr(envs, "OTEL_METRICS_PREFIX", mon.Metrics.Prefix)
 	}
 
 	// Logs exporter vars

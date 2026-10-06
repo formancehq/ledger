@@ -242,8 +242,8 @@ github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2
 github.com/felixge/httpsnoop v1.0.4/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
 github.com/formancehq/antithesis-sdk-go v0.0.0-20260915065804-1c9afdaf8204 h1:HntfSY2rE1MVqec7AE6CvOyKUmkPv3BdWaLsWjqnXjI=
 github.com/formancehq/antithesis-sdk-go v0.0.0-20260915065804-1c9afdaf8204/go.mod h1:FQyySiasQQM8735Ddel3MRojmy4dA1IqCeyJ5jmPMbI=
-github.com/formancehq/go-libs/v5 v5.9.0 h1:ihfC9Fc5K1F93pOSE1ER9NxzC05+uZnUJGtwGtWtoDQ=
-github.com/formancehq/go-libs/v5 v5.9.0/go.mod h1:8q/WLSMqsGKhivMmYDY5hvx3mDoP+28QDBEn6sNJZ4A=
+github.com/formancehq/go-libs/v5 v5.10.0 h1:GGHx5cAufD6COO2nGDPeLcL8PL/0OE3DlhugBqkAgME=
+github.com/formancehq/go-libs/v5 v5.10.0/go.mod h1:mJ62W0iKkiL1wngMZHkFbaV5ZA60VvCma+ZX0ACucbE=
 github.com/formancehq/invariants v0.11.0 h1:AHFBhK7U8Ak/qoJwgaNU+cAb9w61Ba7dwlcrJTkWBE4=
 github.com/formancehq/invariants v0.11.0/go.mod h1:ywzSexCUdhw2dC9Njiv0t4u2KfPVKj6SecFujPgmXno=
 github.com/formancehq/numscript v0.0.27-0.20261006084331-e0b55a6fdd6f h1:1X4eQSKkdIRV5KiZw+BxAg4Pzr4jh9tCIuO6QnqoLBg=

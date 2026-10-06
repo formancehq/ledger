@@ -46,6 +46,22 @@ LedgerLog JSON loses some typed metadata distinctions by design and is not a
 backup/replay representation. JSON number precision must be assessed using exact
 values, not a test oracle that has already rounded through `float64`.
 
+For generated SDK evidence (EN-2685), bind the specification, generator and
+dependency versions. Exercise actual LedgerLog and nested SystemLog decoders
+with nonempty operation payloads; explicit additional properties must prevent
+empty-object stripping. Exercise actual prepared-query create/update serializers
+with structured, nested, textual, null and omitted filters. A standalone helper
+or OpenAPI lint result alone cannot establish request corruption or preservation.
+The OpenAPI 3.0 filter union uses a QueryFilter reference and an inline nullable
+string, without a dummy null-only object or ignored nullable `$ref` sibling.
+Check `TestOpenAPISpec_NoBareObjects` for inline and component schema coverage:
+opaque ledger metadata, transaction account metadata, audit/signature fields,
+event sinks/statuses, signing keys and index responses explicitly allow
+additional properties. Only the intentionally empty `DropAction` is exempt.
+SDK metadata keys are raw inputs; direct HTTP clients encode a single segment.
+Compare documented write scopes with both the granular route guard and default
+aggregate mapping. Creation metadata remains EN-2686's separate server contract.
+
 ## Boundaries
 
 For unary peer-connection interruption (EN-2212), the observable contract is
