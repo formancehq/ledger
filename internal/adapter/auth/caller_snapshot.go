@@ -153,8 +153,8 @@ func buildCallerSnapshot(ctx context.Context) *commonpb.CallerSnapshot {
 		Identity: identity,
 	}
 
-	if god, ok := claims.Claims["god"].(bool); ok && god {
-		authenticated.God = true
+	if superuser, ok := claims.Claims["superuser"].(bool); ok && superuser {
+		authenticated.Superuser = true
 	}
 
 	authenticated.Scopes = sortedScopeStrings(ExpandedScopesFromContext(ctx))

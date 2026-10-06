@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"18"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"19"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 18:
+leader. For example, with a schema implementing revision 19:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 18' \
+grpcurl -plaintext -H 'ledger-protocol-version: 19' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -238,6 +238,14 @@ results in descending entity order and is rejected with `InvalidArgument` in
 `AGGREGATE_VOLUMES` mode. A revision-17 server ignores the unknown field and
 answers in ascending order, so a reverse request would silently return the
 wrong page; clients and servers must use the matching revision.
+
+## Superuser authentication terminology (revision 19)
+
+Revision 19 renames the privileged JWT claim to `superuser`, the CLI flag to
+`--superuser`, and the authenticated caller field to `superuser`. Authorization
+semantics and protobuf field number 3 are unchanged, but tokens and credential
+configuration must use the new name. Older claims and flags have no aliases;
+update clients, servers, OIDC claim mappings, and operator Credentials together.
 
 ## Maintaining the revision
 

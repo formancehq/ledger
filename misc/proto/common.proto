@@ -1806,7 +1806,7 @@ message PersistedConfig {
 // authenticated identity is a bare subject with no known origin.
 message CallerIdentity {
   string subject = 1;
-  // scopes and god live on AuthenticatedCaller, not here: CallerIdentity is
+  // scopes and superuser live on AuthenticatedCaller, not here: CallerIdentity is
   // identification only and carries no authorization decision.
   oneof source {
     string issuer = 2;  // OIDC token issuer URL
@@ -1817,7 +1817,7 @@ message CallerIdentity {
 message AuthenticatedCaller {
   CallerIdentity identity = 1;
   repeated string scopes = 2;
-  bool god = 3;
+  bool superuser = 3;
 }
 
 message AnonymousCaller {

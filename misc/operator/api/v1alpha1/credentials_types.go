@@ -38,10 +38,10 @@ type CredentialsSpec struct {
 	// +optional
 	Scopes []string `json:"scopes,omitempty"`
 
-	// God enables god mode for this credentials. God-mode credentials receive all scopes
+	// Superuser enables superuser mode for this credentials. Superuser-mode credentials receive all scopes
 	// regardless of the Scopes field and can bypass scope checks entirely.
 	// +optional
-	God bool `json:"god,omitempty"`
+	Superuser bool `json:"superuser,omitempty"`
 
 	// Selector selects which Cluster resources this credentials applies to.
 	Selector metav1.LabelSelector `json:"selector"`
