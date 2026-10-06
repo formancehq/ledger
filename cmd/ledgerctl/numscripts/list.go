@@ -78,13 +78,13 @@ func runList(cmd *cobra.Command, _ []string) error {
 		return items, stream.Trailer(), nil
 	}
 
-	scripts, cursors, err := cmdutil.FetchSinglePageOrAll(cmd, pgn.Cursor, fetchPage)
+	scripts, nextCursor, err := cmdutil.FetchSinglePageOrAll(cmd, pgn.Cursor, fetchPage)
 	if err != nil {
 		return err
 	}
 
 	if handled, err := cmdutil.EncodeStructured(cmd, scripts); handled || err != nil {
-		cmdutil.EmitCursorHints(cmd, cursors)
+		cmdutil.EmitNextCursorHint(cmd, nextCursor)
 
 		return err
 	}
@@ -93,7 +93,6 @@ func runList(cmd *cobra.Command, _ []string) error {
 		pterm.Info.Printfln("No numscripts in library for ledger %s.", ledgerName)
 		pterm.Println(pterm.Gray("Hint: Save a numscript using:"))
 		pterm.FgCyan.Printfln("  ledgerctl numscripts save <name> --ledger %s --file <path> --version 1.0.0", ledgerName)
-		cmdutil.EmitCursorHints(cmd, cursors)
 
 		return nil
 	}
@@ -121,7 +120,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 
 	pterm.Println()
 
-	cmdutil.EmitCursorHints(cmd, cursors)
+	cmdutil.EmitNextCursorHint(cmd, nextCursor)
 
 	return nil
 }

@@ -18,7 +18,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 )
 
 // Exercise the real ListTransactions handler/controller/cursor while its first
@@ -109,7 +108,7 @@ func TestListTransactionsServesOverlappingCheckpointStreams(t *testing.T) {
 		}
 		require.NoError(t, *firstResult)
 		require.Equal(t, []uint64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}, firstRows)
-		require.Equal(t, []string{pagecursor.Cursor{Key: "12"}.Encode()}, firstTrailer.Get(NextCursorTrailerKey))
+		require.Equal(t, []string{"12"}, firstTrailer.Get(NextCursorTrailerKey))
 	}()
 	go func() { firstDone <- impl.ListTransactions(req, first) }()
 	select {
@@ -126,5 +125,5 @@ func TestListTransactionsServesOverlappingCheckpointStreams(t *testing.T) {
 	}
 	require.NoError(t, err, "a second ListTransactions stream must succeed while the first still holds its checkpoint stores")
 	require.Equal(t, []uint64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}, secondRows)
-	require.Equal(t, []string{pagecursor.Cursor{Key: "12"}.Encode()}, secondTrailer.Get(NextCursorTrailerKey))
+	require.Equal(t, []string{"12"}, secondTrailer.Get(NextCursorTrailerKey))
 }

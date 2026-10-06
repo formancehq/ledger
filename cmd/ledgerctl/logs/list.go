@@ -25,7 +25,7 @@ func NewListCommand() *cobra.Command {
 	}
 
 	cmd.Flags().String("ledger", "", "Ledger name (required)")
-	cmdutil.AddPaginationFlags(cmd, cmdutil.PaginationOptions{SupportsReverse: true})
+	cmdutil.AddPaginationFlags(cmd, cmdutil.PaginationOptions{})
 	cmdutil.AddFilterFlags(cmd, cmdutil.FilterOptions{})
 	cmdutil.AddConsistencyFlags(cmd)
 	cmdutil.AddOutputFlags(cmd)
@@ -76,19 +76,18 @@ func runList(cmd *cobra.Command, _ []string) error {
 		return cmdutil.FormatGRPCError("receiving log", err)
 	}
 
-	cursors := cmdutil.CursorsFromTrailer(stream.Trailer())
+	nextCursor := cmdutil.NextCursorFromTrailer(stream.Trailer())
 
 	if handled, err := cmdutil.EncodeStructured(cmd, entries); handled || err != nil {
 		// Surface the resume cursor on stderr so --json/--yaml payloads stay
 		// lossless on stdout while scripts can still pick up the resume hint.
-		cmdutil.EmitCursorHints(cmd, cursors)
+		cmdutil.EmitNextCursorHint(cmd, nextCursor)
 
 		return err
 	}
 
 	if len(entries) == 0 {
 		pterm.Info.Println("No logs found.")
-		cmdutil.EmitCursorHints(cmd, cursors)
 
 		return nil
 	}
@@ -100,7 +99,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	pterm.Println()
 	pterm.Info.Printfln("%d log(s) displayed", len(entries))
 
-	cmdutil.EmitCursorHints(cmd, cursors)
+	cmdutil.EmitNextCursorHint(cmd, nextCursor)
 
 	return nil
 }

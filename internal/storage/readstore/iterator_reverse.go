@@ -56,30 +56,6 @@ func NewReversePrefixIterator(
 	}, nil
 }
 
-// newBoundedReversePrefixIterator is NewReversePrefixIterator restricted to
-// the [lowerBound, upperBound) key range inside prefix.
-func newBoundedReversePrefixIterator(
-	reader dal.PebbleReader,
-	prefix, lowerBound, upperBound []byte,
-	entityOffset int,
-	entityLen int,
-) (*ReversePrefixIterator, error) {
-	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: lowerBound,
-		UpperBound: upperBound,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return &ReversePrefixIterator{
-		iter:         iter,
-		prefix:       prefix,
-		entityOffset: entityOffset,
-		entityLen:    entityLen,
-	}, nil
-}
-
 // NewStampGatedReversePrefixIterator is NewReversePrefixIterator with the
 // fold-sequence gate armed at pin — the descending twin of
 // NewStampGatedPrefixIterator.

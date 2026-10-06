@@ -40,8 +40,8 @@ sequenceDiagram
     Ctrl->>Ctrl: Compile filter → iterator tree
     Ctrl->>Index: Iterate read store
     Ctrl->>Main: Enrich from main store
-    Ctrl-->>G: Cursor[T] (up to pageSize + 1 rows)
-    G-->>C: Streamed page + x-next-cursor / x-previous-cursor trailers
+    Ctrl-->>G: Cursor[T] (page + next cursor)
+    G-->>C: Streamed response
 ```
 
 ## Entry points
@@ -146,7 +146,7 @@ cursor. The detailed per-target rules live in
 The main handle and reclamation reservation live with the returned cursor; the
 projection snapshot and read lease are released after index iteration.
 
-The page token carries only the exclusive resume position and its direction (for example, an account address or transaction ID); it does not identify or retain the Pebble snapshot. Within one request/page, results are served under the coordinated consistency contract described above: main-store leaves and enrichment reflect that request's single pin, subject to the per-target cross-store exceptions — ACCOUNTS membership is served as folded, so a page may include index members absent from the pinned main store. Because the cursor does not retain that snapshot state, there is no general snapshot-consistency guarantee across separate pages. Inserts, deletes, or updates committed between requests may therefore affect later pages according to the documented cursor ordering and filtering semantics. Duplications or omissions across pages under concurrent writes are not, by themselves, evidence of a product defect unless an API contract explicitly promises a cross-page snapshot.
+The cursor carries only the exclusive resume position (for example, an account address or transaction ID); it does not identify or retain the Pebble snapshot. Within one request/page, results are served under the coordinated consistency contract described above: main-store leaves and enrichment reflect that request's single pin, subject to the per-target cross-store exceptions — ACCOUNTS membership is served as folded, so a page may include index members absent from the pinned main store. Because the cursor does not retain that snapshot state, there is no general snapshot-consistency guarantee across separate pages. Inserts, deletes, or updates committed between requests may therefore affect later pages according to the documented cursor ordering and filtering semantics. Duplications or omissions across pages under concurrent writes are not, by themselves, evidence of a product defect unless an API contract explicitly promises a cross-page snapshot.
 
 Multiple concurrent readers share snapshots cheaply (Pebble's snapshot is a versioned reference, not a copy).
 
@@ -161,10 +161,10 @@ applies to the `ListAccounts` and `ListTransactions` paths.
 1. Resolve the ledger (`query.GetLedgerByName`) and its declared-metadata schema (so filter conditions can be typed).
 2. Compile the filter (if any) into an iterator tree (`internal/query/compile.go:90`).
 3. Build the leaf iterators against the read store at the version returned by `SnapshotVersionResolver` (so an index undergoing rewrite still serves under `v_current`).
-4. Apply the cursor — position iterators strictly past the resume key, in the read direction the transport resolved with `Cursor.ReadReverse`.
-5. Read up to `pageSize + 1` entities; the +1 is the *peek* that lets the streamer detect whether more pages exist without advertising a phantom page.
+4. Apply the cursor — fast-forward iterators past the resume position.
+5. Read up to `pageSize + 1` entities; the +1 is the *peek* that lets the streamer detect whether more pages exist without leaking a phantom cursor.
 6. Enrich each candidate entity with its volumes / metadata / transaction body from the main store.
-7. Return a `Cursor[T]` over the rows in read order; the streamer turns it into a page and derives the adjacent page tokens from the rows it sends, never from the peeked one (see [Pagination](#pagination)).
+7. Return a `Cursor[T]` whose next cursor is derived from the **last sent** entity (not the peeked one).
 
 ## Iterator algebra
 
@@ -193,18 +193,21 @@ Before EN-1966 a filtered descending page drained **every** match into a slice, 
 
 Iterator *construction* is what is duplicated between the two entry points — and that is more than the leaves. `compileRev` carries its own recursion shape: the depth guard, the per-target `rejectInvalidCondition` check, the filter-type dispatch switch, and the AND/OR/NOT/universe composition together with its profile-tree wiring. A change to ascending composition semantics does **not** propagate on its own; it has to be mirrored by hand in `compile_reverse.go`.
 
-What *is* shared is what a filter means: predicate resolution, schema validation, index-readiness gating and bound computation are single functions called from both directions (`resolveFieldMetadataCtx`, `resolveIntBounds`/`resolveUintBounds`, `requireIndexReady`, `mergeFieldRanges`, `resolveTxTimestampArm`/`resolveLogDateArm`, `intRangeBounds`/`uintRangeBounds`/`timestampRangeBounds`). So the two directions cannot disagree about which entities a filter selects, nor about accepting or refusing it — only about which way they walk the result. `TestCompileErrorParity` pins the refusal half: for the target guard, the depth guard, the per-target validity table, schema and coercion checks, index readiness and the "condition has no value" arms, both entry points must fail with the *identical* error, and `TestCompileErrorParity_AcceptanceIsAlsoShared` pins the converse — every filter the ascending compiler accepts must compile descending too.
+What *is* shared is what a filter means: predicate resolution, schema validation, index-readiness gating and bound computation are single functions called from both directions (`resolveFieldMetadataCtx`, `resolveIntBounds`/`resolveUintBounds`, `requireIndexReady`, `mergeFieldRanges`, `resolveTxTimestampArm`/`resolveLogDateArm`, `intRangeBounds`/`uintRangeBounds`/`timestampRangeBounds`/`logIDRangeBounds`). So the two directions cannot disagree about which entities a filter selects, nor about accepting or refusing it — only about which way they walk the result. `TestCompileErrorParity` pins the refusal half: for the target guard, the depth guard, the per-target validity table, schema and coercion checks, index readiness and the "condition has no value" arms, both entry points must fail with the *identical* error, and `TestCompileErrorParity_AcceptanceIsAlsoShared` pins the converse — every filter the ascending compiler accepts must compile descending too.
 
-**Two leaf classes stay materializing**, both because their order genuinely forbids streaming:
+**Three leaf classes stay materializing** — two because their order genuinely forbids streaming, one only because the iterator it is built on has no reverse form yet:
 
 | Fallback | Why it does not stream backwards | Descending behaviour |
 |---|---|---|
 | Value-ordered ranges — int/uint metadata ranges, transaction timestamp / inserted-at / reverted-at, log date | Intrinsic. The scan spans several index-value buckets, so rows surface in `(value, entity)` order and "the next entity below X" is undefined without the sorted result | `materializeReverse` reuses the ascending path's single `materializeEntities` drain and hands out a borrowed `SliceIterator[Desc]` over that one slice |
 | `AddressTxIterator[D]` — the account→transaction union, including the exact-address form | Intrinsic. Members come from N per-account scans, each ascending but collectively unordered | Both directions share one `addressTxUnion` and its one sorted slice, walked through a `SliceIterator[D]` |
+| Log-ID ranges | **Temporary, not an ordering property.** The key is `llog:<ledger>` followed directly by the big-endian log ID — `logIDRangeBounds` appends nothing else, and the leaf is built with `entityOffset == len(prefix)`, `entityLen == 8` — so byte order *is* entity order and there is no value bucket. It materializes only because `RangeIterator` has no reverse form yet | Same `materializeReverse` as the value-ordered rows above. The ascending leaf already uses the bounded entity iterator introduced by [#1922](https://github.com/formancehq/ledger/pull/1922) (EN-1967); the descending half still needs the equivalent streaming implementation |
 
-Materializing is also **not** a descending-only cost, and neither is a regression introduced by direction support: the ascending compiler drains the same two leaves through `materializeIterator`. The descending page costs exactly the one materialization the ascending page already pays, with no second complete-result collection for the reversal. Both stay visible in the iterator tree under their own `Kind`, so [query-profile](query-profile.md) still attributes their cost.
+Only the first two are ordering limitations. The log-ID row is an implementation exception that should disappear rather than be designed around; filing it with the value-ordered ranges would misstate why it costs what it costs.
 
-Entity-keyed ranges are *not* in this table. The Pebble transaction zone is keyed by txID, so `compileTxIDConditionRev` builds a `PebbleReverseTxRangeIterator`; the ledger-log index is `llog:<ledger>` followed directly by the big-endian log ID, so `compileLogIdConditionRev` builds a `ReverseLedgerLogRangeIterator`. Both stream, exactly as their ascending twins do, and a descending page over either reads about one page (`TestReverseLogPageIsBoundedByThePage`).
+Materializing is also **not** a descending-only cost, and none of the three is a regression introduced by direction support: the ascending compiler drains the same three leaves through `materializeIterator`, and did so before this work. The descending page costs exactly the one materialization the ascending page already pays, with no second complete-result collection for the reversal. All three stay visible in the iterator tree under their own `Kind`, so [query-profile](query-profile.md) still attributes their cost.
+
+Transaction ID ranges are *not* in this table: the Pebble transaction zone is keyed by txID, so `compileTxIDConditionRev` builds a `PebbleReverseTxRangeIterator` and streams, exactly as its ascending twin does.
 
 A gate that hides rows must hide them in **both** directions. `ReversePrefixIterator` carries the same fold-sequence stamp gate as `PrefixIterator`, and `ReverseEventResolveIterator` resolves each group at the same pin as its ascending twin — walking a group backwards, the *first* event with `seq <= pin` is the latest one at or below it, which is the event the forward pass settles on. A gate present on one side only is a direction-dependent visibility bug that a whole-set parity test cannot see, because both directions are compared against the same pinned view; the registry-driven conformance suite in `internal/storage/readstore/iterator_conformance_test.go` compares each direction against the independently declared set at a pin instead.
 
@@ -216,57 +219,15 @@ Three guards keep the matrix from passing for the wrong reason. `TestDescendingP
 
 ## Pagination
 
-### Page tokens
+A `Cursor[T]` is opaque to the client. Internally the cursor encodes the position of the *last returned* entity — a transaction ID as a decimal string (cursor.go:508), an account address as-is (`:676`), etc. The streamer (`server_bucket.go` → `sendPagedToStream`, `internal/adapter/grpc/stream_helper.go:44`):
 
-Every paged list exchanges **page tokens** built by `pkg/pagecursor`. A token is base64url (unpadded, RFC 4648 §5) of the JSON object `{"key": <string>, "back": <bool>}`; both fields are omitted when empty and unknown fields are rejected. `key` is a position in the endpoint's textual form:
+1. Reads `pageSize + 1` entities.
+2. If exactly `pageSize` are read, emits them with **no next cursor** (end of stream).
+3. If `pageSize + 1` are read, emits the first `pageSize` and computes the next cursor from the **last sent** (the `+1`th is dropped — it was a peek).
 
-| Endpoint | Key |
-|----------|-----|
-| Transactions | transaction id, decimal |
-| Logs | ledger-local log id, decimal |
-| Audit entries | audit sequence, decimal |
-| Accounts | address |
-| Ledgers, numscripts | name |
-| Signing keys | key id |
-| Prepared queries | decimal id for TRANSACTIONS / LOGS targets, address for ACCOUNTS |
-| Index inspection | base64url of the encoded metadata value |
+This avoids the classic "phantom trailing cursor" bug where a result set of exactly `pageSize` items would advertise a non-existent next page.
 
-Both directions are exclusive of the key and always return rows in the **requested** order (`reverse` included):
-
-| Token | Page served |
-|-------|-------------|
-| empty / absent, or `{}` (`e30`) | the first page |
-| `{key: K}` (forward) | the rows strictly after K |
-| `{key: K, back: true}` | the page that ends strictly before K |
-| `{back: true}` (empty key) | the last page |
-
-A token that does not decode, or whose key is not a valid position for the endpoint (for example a non-decimal key on transactions), is `InvalidArgument` over gRPC and `400 INVALID_REQUEST` over HTTP (`query.ErrInvalidCursor`). The token carries no snapshot: see the cross-page consistency note [above](#pebble-snapshot).
-
-### Serving a page
-
-`Cursor.ReadReverse(reverse)` gives the order the source is read in: the requested order for a forward token, the opposite order for a back token. Either way the source resumes from the same exclusive key and is sized `pageSize + 1`; the extra row is a *peek* that proves a further page exists without advertising a phantom one on a result of exactly `pageSize` rows. The streamer (`sendPagedToStream`, `internal/adapter/grpc/stream_helper.go`) then:
-
-1. **Forward page:** streams rows as they are read, up to `pageSize`.
-2. **Back page:** buffers at most `pageSize + 1` rows, drops the peek, and sends the page reversed, so it reaches the client in the requested order.
-
-HTTP list handlers do the same through `pagecursor.Page` (`internal/adapter/http/pagination.go`). Ledgers, signing keys and numscripts are small collections: the handler sorts them by key and pages the slice in memory (`pageSorted` over HTTP, `ApplyHandlerPagination` over gRPC).
-
-### Links
-
-`Cursor.Links` derives the adjacent tokens from the page's first and last keys (in requested order), its row count, and whether the peek fired:
-
-| Request | `next` | `previous` |
-|---------|--------|------------|
-| forward, key empty (first page) | `{last row}` if the peek fired | none |
-| forward, key K | `{last row}` if the peek fired | `{first row, back}`; `{back}` (the last page) if the page is empty |
-| back, key K | `{last row}`; the first-page token if the page is empty | `{first row, back}` if the peek fired |
-| back, key empty (last page) | none | `{first row, back}` if the peek fired |
-
-`hasMore` is set iff `next` is. An empty row key (a log without an apply payload) yields no link through that row. gRPC publishes the tokens in the `x-next-cursor` and `x-previous-cursor` trailers; HTTP returns them as `next` / `previous` beside `data`; prepared queries return them in `PreparedQueryCursor.next` / `previous`; index inspection in `next_cursor` / `previous_cursor`.
-
-### Routed reads
-
-A follower that routes a read to the leader (`BucketGrpcClient`) has already resolved the token: it forwards the exclusive position as a forward token, with the read direction it computed as `reverse`, and builds the links itself from the rows it receives. The leader caps its response at its own page limit, so a follower that asked for `MaxPageSize + 1` rows can see a full page end in EOF. The routed cursor (`upstreamPeekCursor`) therefore treats the leader's `x-next-cursor` trailer only as a "more rows exist" signal, exposed through `cursor.MoreReporter` (`internal/pkg/cursor/cursor.go`) and read with `cursor.SourceHasMore`; the leader's token itself is never relayed.
+The cursor is sent back as an `x-next-cursor` gRPC trailer.
 
 ## Special read paths
 
@@ -304,6 +265,4 @@ snapshot remain unchanged.
 | Filter compile (ascending) | `internal/query/compile.go:90` |
 | Filter compile (descending) | `internal/query/compile_reverse.go` |
 | Iterator algebra | `internal/storage/readstore/iterator_*.go` |
-| Page tokens + links | `pkg/pagecursor/pagecursor.go` |
-| Cursor + streamer | `internal/pkg/cursor/cursor.go`, `internal/adapter/grpc/stream_helper.go` |
-| HTTP paging | `internal/adapter/http/pagination.go` |
+| Cursor + streamer | `internal/pkg/cursor/cursor.go`, `internal/adapter/grpc/stream_helper.go:44` |

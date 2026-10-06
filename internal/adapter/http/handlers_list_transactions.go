@@ -1,18 +1,18 @@
 package http
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/query"
 )
 
 // handleListTransactions handles GET /{ledgerName}/transactions to list a
 // ledger's transactions. Query params:
 //
 //   - pageSize
-//   - cursor             page token (pkg/pagecursor) keyed by the decimal tx id
+//   - after=<txID>       cursor (exclusive)
 //   - reverse=true       reverse the default order — see convention below
 //   - startDate/endDate  RFC3339, filter on transaction timestamp.
 //     Requires the builtin `TX_BUILTIN_INDEX_TIMESTAMP` index to be
@@ -48,17 +48,25 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	page, ok := parsePageQuery(w, r)
+	pageSize, ok := parsePageSize(w, r)
 	if !ok {
 		return
 	}
 
-	afterTxID, err := query.CursorUint64(page.cursor)
-	if err != nil {
-		writeBadRequest(w, "INVALID_REQUEST", err)
+	var afterTxID uint64
 
-		return
+	if after := r.URL.Query().Get("after"); after != "" {
+		parsed, err := strconv.ParseUint(after, 10, 64)
+		if err != nil {
+			writeBadRequest(w, "INVALID_REQUEST", errors.New("invalid after parameter"))
+
+			return
+		}
+
+		afterTxID = parsed
 	}
+
+	reverse := r.URL.Query().Get("reverse") == "true"
 
 	var filters []*commonpb.QueryFilter
 
@@ -110,7 +118,7 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 	filter := combineFilters(filters...)
 
 	profile.EnterExecute()
-	cursor, err := s.backend.ListTransactions(ctx, ledgerName, page.fetchSize(), afterTxID, filter, page.reverse)
+	cursor, err := s.backend.ListTransactions(ctx, ledgerName, pageSize, afterTxID, filter, reverse)
 	profile.LeaveExecute()
 
 	if err != nil {
@@ -119,13 +127,11 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	transactions, links, ok := drainPage(w, r, page, cursor, func(tx *commonpb.Transaction) string {
-		return strconv.FormatUint(tx.GetId(), 10)
-	})
+	transactions, ok := drainCursor(w, r, cursor)
 	if !ok {
 		return
 	}
 
 	finishProfile(w, r, profile)
-	writePageOK(w, r, transactions, links)
+	writeOKChecked(w, r, transactions)
 }

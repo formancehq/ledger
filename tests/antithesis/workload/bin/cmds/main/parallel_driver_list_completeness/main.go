@@ -31,7 +31,6 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -120,7 +119,7 @@ func main() {
 		for range maxPages {
 			var cursor string
 			if afterTxID > 0 {
-				cursor = pagecursor.Cursor{Key: strconv.FormatUint(afterTxID, 10)}.Encode()
+				cursor = strconv.FormatUint(afterTxID, 10)
 			}
 			stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
 				Ledger: ledger,

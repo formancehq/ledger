@@ -11649,7 +11649,6 @@ type PreparedQueryCursorReader interface {
 	GetPageSize() uint32
 	GetHasMore() bool
 	GetNext() string
-	GetPrevious() string
 	GetAccountData() AccountListReader
 	GetTransactionData() TransactionListReader
 	GetLogData() LogListReader
@@ -11668,10 +11667,6 @@ func (r *preparedQueryCursorReadonly) GetHasMore() bool {
 
 func (r *preparedQueryCursorReadonly) GetNext() string {
 	return (*PreparedQueryCursor)(r).GetNext()
-}
-
-func (r *preparedQueryCursorReadonly) GetPrevious() string {
-	return (*PreparedQueryCursor)(r).GetPrevious()
 }
 
 func (r *preparedQueryCursorReadonly) GetAccountData() AccountListReader {

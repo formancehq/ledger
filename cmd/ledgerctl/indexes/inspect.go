@@ -166,7 +166,10 @@ func printDistinctValues(dv *servicepb.InspectDistinctValues, declaredType commo
 
 	_ = pterm.DefaultTable.WithHasHeader().WithData(table).Render()
 
-	printInspectCursors(dv.GetPreviousCursor(), dv.GetNextCursor())
+	if dv.GetHasMore() {
+		pterm.Println()
+		pterm.Printf("More results available. Use --cursor %s\n", pterm.Cyan(dv.GetNextCursor()))
+	}
 }
 
 func printFacets(f *servicepb.InspectFacets, declaredType commonpb.MetadataType) {
@@ -187,22 +190,9 @@ func printFacets(f *servicepb.InspectFacets, declaredType commonpb.MetadataType)
 
 	_ = pterm.DefaultTable.WithHasHeader().WithData(table).Render()
 
-	printInspectCursors(f.GetPreviousCursor(), f.GetNextCursor())
-}
-
-func printInspectCursors(previous, next string) {
-	if previous == "" && next == "" {
-		return
-	}
-
-	pterm.Println()
-
-	if previous != "" {
-		pterm.Printf("Previous page: use --cursor %s\n", pterm.Cyan(previous))
-	}
-
-	if next != "" {
-		pterm.Printf("More results available. Use --cursor %s\n", pterm.Cyan(next))
+	if f.GetHasMore() {
+		pterm.Println()
+		pterm.Printf("More results available. Use --cursor %s\n", pterm.Cyan(f.GetNextCursor()))
 	}
 }
 

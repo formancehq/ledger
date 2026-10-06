@@ -9290,7 +9290,6 @@ type InspectDistinctValuesReader interface {
 	GetValues() commonpb.MetadataValueListReader
 	GetHasMore() bool
 	GetNextCursor() string
-	GetPreviousCursor() string
 	Mutate() *InspectDistinctValues
 }
 
@@ -9306,10 +9305,6 @@ func (r *inspectDistinctValuesReadonly) GetHasMore() bool {
 
 func (r *inspectDistinctValuesReadonly) GetNextCursor() string {
 	return (*InspectDistinctValues)(r).GetNextCursor()
-}
-
-func (r *inspectDistinctValuesReadonly) GetPreviousCursor() string {
-	return (*InspectDistinctValues)(r).GetPreviousCursor()
 }
 
 func (r *inspectDistinctValuesReadonly) Mutate() *InspectDistinctValues {
@@ -9448,7 +9443,6 @@ type InspectFacetsReader interface {
 	GetFacets() InspectFacetListReader
 	GetHasMore() bool
 	GetNextCursor() string
-	GetPreviousCursor() string
 	Mutate() *InspectFacets
 }
 
@@ -9464,10 +9458,6 @@ func (r *inspectFacetsReadonly) GetHasMore() bool {
 
 func (r *inspectFacetsReadonly) GetNextCursor() string {
 	return (*InspectFacets)(r).GetNextCursor()
-}
-
-func (r *inspectFacetsReadonly) GetPreviousCursor() string {
-	return (*InspectFacets)(r).GetPreviousCursor()
 }
 
 func (r *inspectFacetsReadonly) Mutate() *InspectFacets {

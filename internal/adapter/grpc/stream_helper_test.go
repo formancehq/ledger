@@ -12,7 +12,6 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 )
 
 // fakeServerStream stays as a thin wrapper rather than a pure mockgen mock:
@@ -71,67 +70,23 @@ func newFakeServerStream[Res any](t *testing.T) *fakeServerStream[Res] {
 	return f
 }
 
-// next and previous return the page tokens the helper wrote, decoded.
-func (f *fakeServerStream[Res]) next(t *testing.T) (pagecursor.Cursor, bool) {
-	t.Helper()
-
-	return trailerToken(t, f.trailer, NextCursorTrailerKey)
-}
-
-func (f *fakeServerStream[Res]) previous(t *testing.T) (pagecursor.Cursor, bool) {
-	t.Helper()
-
-	return trailerToken(t, f.trailer, PreviousCursorTrailerKey)
-}
-
-// trailerCursor returns the key of the next-page token the helper wrote, or
-// "" when it wrote none.
+// trailerCursor pulls the x-next-cursor token (if any) the helper wrote.
 func (f *fakeServerStream[Res]) trailerCursor() string {
 	v := f.trailer.Get(NextCursorTrailerKey)
 	if len(v) == 0 {
 		return ""
 	}
 
-	c, err := pagecursor.Decode(v[0])
-	if err != nil {
-		return "undecodable:" + v[0]
-	}
-
-	return c.Key
+	return v[0]
 }
 
-func trailerToken(t *testing.T, md metadata.MD, key string) (pagecursor.Cursor, bool) {
-	t.Helper()
-
-	v := md.Get(key)
-	if len(v) == 0 {
-		return pagecursor.Cursor{}, false
-	}
-
-	require.Len(t, v, 1)
-
-	c, err := pagecursor.Decode(v[0])
-	require.NoError(t, err)
-
-	return c, true
-}
-
-func (f *fakeServerStream[Res]) sentNames() []string {
-	names := make([]string, 0, len(f.sent))
-	for _, it := range f.sent {
-		names = append(names, any(it).(*stringItem).name)
-	}
-
-	return names
-}
-
-// upstreamCursor feeds a fixed slice of items, then reports whether its
-// source signaled more rows — emulating a routed gRPC client whose leader
-// capped its response.
+// upstreamCursor is a cursor that satisfies both Cursor and UpstreamTrailer.
+// It feeds a fixed slice of items, then surfaces a fixed next-cursor token at
+// EOF — emulating a routed gRPC client whose leader signaled more pages.
 type upstreamCursor[T any] struct {
-	items   []*T
-	index   int
-	hasMore bool
+	items      []*T
+	index      int
+	nextCursor string
 }
 
 func (u *upstreamCursor[T]) Next() (*T, error) {
@@ -145,8 +100,8 @@ func (u *upstreamCursor[T]) Next() (*T, error) {
 	return out, nil
 }
 
-func (u *upstreamCursor[T]) HasMore() bool { return u.hasMore }
-func (u *upstreamCursor[T]) Close() error  { return nil }
+func (u *upstreamCursor[T]) NextCursor() string { return u.nextCursor }
+func (u *upstreamCursor[T]) Close() error       { return nil }
 
 var errIOEOF = errIO("EOF")
 
@@ -161,197 +116,147 @@ func (e errIO) Is(target error) bool {
 
 type stringItem struct{ name string }
 
-func names(ns ...string) []*stringItem {
-	items := make([]*stringItem, 0, len(ns))
-	for _, n := range ns {
-		items = append(items, &stringItem{name: n})
-	}
-
-	return items
-}
-
-func itemName(it *stringItem) string { return it.name }
-
 func TestSendPagedToStream(t *testing.T) {
 	t.Parallel()
 
-	t.Run("peek fires → next is the last sent item", func(t *testing.T) {
+	t.Run("peek fires → trailer carries last-sent cursor", func(t *testing.T) {
 		t.Parallel()
 
 		// Source has 4 items, pageSize=3 → peek slot fires on item 4. The
-		// helper sends the first 3 and links past the 3rd.
+		// helper sends the first 3 and emits a trailer keyed on the 3rd item.
+		src := cursor.NewSliceCursor([]*stringItem{{name: "a"}, {name: "b"}, {name: "c"}, {name: "d"}})
 		stream := newFakeServerStream[stringItem](t)
 
-		err := sendPagedToStream(context.Background(), cursor.NewSliceCursor(names("a", "b", "c", "d")), stream, "item", 3, pagecursor.Cursor{}, itemName)
+		err := sendPagedToStream(
+			context.Background(), src, stream, "item", 3,
+			func(it *stringItem) string { return it.name },
+		)
 		require.NoError(t, err)
-		require.Equal(t, []string{"a", "b", "c"}, stream.sentNames())
-
-		next, ok := stream.next(t)
-		require.True(t, ok)
-		require.Equal(t, pagecursor.Cursor{Key: "c"}, next,
-			"resume is exclusive: the cursor MUST be the last SENT item, not the peeked one")
-
-		_, ok = stream.previous(t)
-		require.False(t, ok, "the first page has nothing before it")
+		require.Equal(t, []string{"a", "b", "c"},
+			[]string{stream.sent[0].name, stream.sent[1].name, stream.sent[2].name})
+		require.Equal(t, "c", stream.trailerCursor(),
+			"resume-after-cursor is exclusive: the cursor MUST be the last SENT item, not the peeked one")
 	})
 
-	t.Run("count == pageSize → no next (peek does not fire)", func(t *testing.T) {
+	t.Run("count == pageSize → no trailer (peek does not fire)", func(t *testing.T) {
 		t.Parallel()
 
+		src := cursor.NewSliceCursor([]*stringItem{{name: "a"}, {name: "b"}, {name: "c"}})
 		stream := newFakeServerStream[stringItem](t)
 
-		err := sendPagedToStream(context.Background(), cursor.NewSliceCursor(names("a", "b", "c")), stream, "item", 3, pagecursor.Cursor{}, itemName)
+		err := sendPagedToStream(
+			context.Background(), src, stream, "item", 3,
+			func(it *stringItem) string { return it.name },
+		)
 		require.NoError(t, err)
 		require.Len(t, stream.sent, 3)
-
-		_, ok := stream.next(t)
-		require.False(t, ok, "next must NOT fire on an exactly-full page — clients would issue a spurious round-trip")
+		require.Empty(t, stream.trailerCursor(),
+			"trailer must NOT fire on an exactly-full page — clients would issue a spurious round-trip")
 	})
 
-	t.Run("resumed page links back to its first item", func(t *testing.T) {
+	t.Run("empty source → no trailer", func(t *testing.T) {
 		t.Parallel()
 
+		src := cursor.NewSliceCursor([]*stringItem(nil))
 		stream := newFakeServerStream[stringItem](t)
 
-		err := sendPagedToStream(context.Background(), cursor.NewSliceCursor(names("d", "e")), stream, "item", 3, pagecursor.Cursor{Key: "c"}, itemName)
-		require.NoError(t, err)
-
-		previous, ok := stream.previous(t)
-		require.True(t, ok)
-		require.Equal(t, pagecursor.Cursor{Key: "d", Back: true}, previous)
-	})
-
-	t.Run("empty resumed page links back to the last page", func(t *testing.T) {
-		t.Parallel()
-
-		stream := newFakeServerStream[stringItem](t)
-
-		err := sendPagedToStream(context.Background(), cursor.NewSliceCursor([]*stringItem(nil)), stream, "item", 3, pagecursor.Cursor{Key: "z"}, itemName)
+		err := sendPagedToStream(
+			context.Background(), src, stream, "item", 3,
+			func(it *stringItem) string { return it.name },
+		)
 		require.NoError(t, err)
 		require.Empty(t, stream.sent)
-
-		_, ok := stream.next(t)
-		require.False(t, ok)
-
-		previous, ok := stream.previous(t)
-		require.True(t, ok)
-		require.Equal(t, pagecursor.Cursor{Back: true}, previous)
+		require.Empty(t, stream.trailerCursor())
 	})
 
-	t.Run("back page is sent in query order", func(t *testing.T) {
+	t.Run("cursorOf returns empty → no trailer even when peek fires", func(t *testing.T) {
 		t.Parallel()
 
-		// Back from "e": the source reads the opposite order, d c b a.
+		// 4 items, pageSize=3 → peek fires, but the cursorOf is intentionally
+		// blind (mimics ListLogs' defensive empty-string return when the
+		// payload is not Apply). emitTrailer must short-circuit instead of
+		// publishing a bogus token.
+		src := cursor.NewSliceCursor([]*stringItem{{name: "a"}, {name: "b"}, {name: "c"}, {name: "d"}})
 		stream := newFakeServerStream[stringItem](t)
 
-		err := sendPagedToStream(context.Background(), cursor.NewSliceCursor(names("d", "c", "b", "a")), stream, "item", 3, pagecursor.Cursor{Key: "e", Back: true}, itemName)
-		require.NoError(t, err)
-		require.Equal(t, []string{"b", "c", "d"}, stream.sentNames())
-
-		next, ok := stream.next(t)
-		require.True(t, ok)
-		require.Equal(t, pagecursor.Cursor{Key: "d"}, next)
-
-		previous, ok := stream.previous(t)
-		require.True(t, ok, "the extra row proves a page before this one")
-		require.Equal(t, pagecursor.Cursor{Key: "b", Back: true}, previous)
-	})
-
-	t.Run("back page reaching the head has no previous", func(t *testing.T) {
-		t.Parallel()
-
-		stream := newFakeServerStream[stringItem](t)
-
-		err := sendPagedToStream(context.Background(), cursor.NewSliceCursor(names("b", "a")), stream, "item", 3, pagecursor.Cursor{Key: "c", Back: true}, itemName)
-		require.NoError(t, err)
-		require.Equal(t, []string{"a", "b"}, stream.sentNames())
-
-		_, ok := stream.previous(t)
-		require.False(t, ok)
-	})
-
-	t.Run("cursorOf returns empty → no link through that item", func(t *testing.T) {
-		t.Parallel()
-
-		// Mimics ListLogs' defensive empty-string return when the payload is
-		// not Apply: the helper must not publish a bogus token.
-		stream := newFakeServerStream[stringItem](t)
-
-		err := sendPagedToStream(context.Background(), cursor.NewSliceCursor(names("a", "b", "c", "d")), stream, "item", 3, pagecursor.Cursor{Key: "0"},
-			func(_ *stringItem) string { return "" })
+		err := sendPagedToStream(
+			context.Background(), src, stream, "item", 3,
+			func(_ *stringItem) string { return "" },
+		)
 		require.NoError(t, err)
 		require.Len(t, stream.sent, 3)
-		require.Empty(t, stream.trailer)
+		require.Empty(t, stream.trailerCursor())
 	})
 
-	t.Run("upstream more on EOF links past the last sent item", func(t *testing.T) {
+	t.Run("UpstreamTrailer forwarded verbatim on EOF", func(t *testing.T) {
 		t.Parallel()
 
-		// Routed-controller scenario: the leader capped its response, so the
-		// local cursor hits EOF without a peek slot. The leader's own peek is
-		// the proof of a further page.
-		up := &upstreamCursor[stringItem]{items: names("x", "y"), hasMore: true}
+		// Routed-controller scenario: the local cursor has no peek slot
+		// (only N items), so it hits EOF naturally. Upstream advertised a
+		// resume token via its own trailer; sendPagedToStream must forward
+		// that token to the follower's own trailer — using upstream's value
+		// verbatim, NOT re-deriving from lastSent.
+		up := &upstreamCursor[stringItem]{
+			items:      []*stringItem{{name: "x"}, {name: "y"}},
+			nextCursor: "from-upstream",
+		}
 		stream := newFakeServerStream[stringItem](t)
 
-		err := sendPagedToStream(context.Background(), up, stream, "item", 5, pagecursor.Cursor{}, itemName)
+		err := sendPagedToStream(
+			context.Background(), up, stream, "item", 5,
+			func(it *stringItem) string { return it.name },
+		)
 		require.NoError(t, err)
 		require.Len(t, stream.sent, 2)
-
-		next, ok := stream.next(t)
-		require.True(t, ok)
-		require.Equal(t, pagecursor.Cursor{Key: "y"}, next)
+		require.Equal(t, "from-upstream", stream.trailerCursor(),
+			"upstream cursor wins on EOF: re-deriving from lastSent would lose information when zero items were sent this batch")
 	})
 
-	t.Run("upstream more on a back page links further back", func(t *testing.T) {
+	t.Run("UpstreamTrailer empty cursor → no trailer", func(t *testing.T) {
 		t.Parallel()
 
-		up := &upstreamCursor[stringItem]{items: names("y", "x"), hasMore: true}
+		up := &upstreamCursor[stringItem]{
+			items:      []*stringItem{{name: "x"}},
+			nextCursor: "",
+		}
 		stream := newFakeServerStream[stringItem](t)
 
-		err := sendPagedToStream(context.Background(), up, stream, "item", 5, pagecursor.Cursor{Key: "z", Back: true}, itemName)
+		err := sendPagedToStream(
+			context.Background(), up, stream, "item", 5,
+			func(it *stringItem) string { return it.name },
+		)
 		require.NoError(t, err)
-		require.Equal(t, []string{"x", "y"}, stream.sentNames())
-
-		previous, ok := stream.previous(t)
-		require.True(t, ok)
-		require.Equal(t, pagecursor.Cursor{Key: "x", Back: true}, previous)
-	})
-
-	t.Run("upstream without more → no next", func(t *testing.T) {
-		t.Parallel()
-
-		up := &upstreamCursor[stringItem]{items: names("x")}
-		stream := newFakeServerStream[stringItem](t)
-
-		err := sendPagedToStream(context.Background(), up, stream, "item", 5, pagecursor.Cursor{}, itemName)
-		require.NoError(t, err)
-
-		_, ok := stream.next(t)
-		require.False(t, ok)
+		require.Empty(t, stream.trailerCursor())
 	})
 
 	t.Run("pageSize=0 drains without trailer", func(t *testing.T) {
 		t.Parallel()
 
+		src := cursor.NewSliceCursor([]*stringItem{{name: "a"}, {name: "b"}})
 		stream := newFakeServerStream[stringItem](t)
 
-		err := sendPagedToStream(context.Background(), cursor.NewSliceCursor(names("a", "b")), stream, "item", 0, pagecursor.Cursor{Key: "0"}, nil)
+		err := sendPagedToStream(
+			context.Background(), src, stream, "item", 0, nil,
+		)
 		require.NoError(t, err)
 		require.Len(t, stream.sent, 2)
-		require.Empty(t, stream.trailer)
+		require.Empty(t, stream.trailerCursor())
 	})
 
 	t.Run("send error surfaces wrapped", func(t *testing.T) {
 		t.Parallel()
 
-		for _, page := range []pagecursor.Cursor{{}, {Back: true}} {
-			stream := newFakeServerStream[stringItem](t)
-			stream.sendStop = 1
-			stream.sendErr = errors.New("network blew up")
+		src := cursor.NewSliceCursor([]*stringItem{{name: "a"}, {name: "b"}})
+		stream := newFakeServerStream[stringItem](t)
+		stream.sendStop = 1
+		stream.sendErr = errors.New("network blew up")
 
-			err := sendPagedToStream(context.Background(), cursor.NewSliceCursor(names("a", "b")), stream, "widget", 5, page, itemName)
-			require.ErrorContains(t, err, "sending widget")
-		}
+		err := sendPagedToStream(
+			context.Background(), src, stream, "widget", 5,
+			func(it *stringItem) string { return it.name },
+		)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "sending widget")
 	})
 }
 
@@ -360,7 +265,27 @@ func TestSendPagedToStream(t *testing.T) {
 func TestUpstreamPeekCursor(t *testing.T) {
 	t.Parallel()
 
-	t.Run("real NewUpstreamPeekCursor reports the leader's next page", func(t *testing.T) {
+	t.Run("test-fake fixture exposes upstream trailer at EOF", func(t *testing.T) {
+		t.Parallel()
+
+		c := &upstreamCursor[stringItem]{
+			items:      []*stringItem{{name: "1"}, {name: "2"}},
+			nextCursor: "more-pages-here",
+		}
+
+		// Drain.
+		for range 2 {
+			_, err := c.Next()
+			require.NoError(t, err)
+		}
+
+		_, err := c.Next()
+		require.Error(t, err)
+
+		require.Equal(t, "more-pages-here", c.NextCursor())
+	})
+
+	t.Run("real NewUpstreamPeekCursor surfaces the trailer", func(t *testing.T) {
 		t.Parallel()
 
 		// Drive the production upstreamPeekCursor with a mockgen streaming
@@ -390,7 +315,8 @@ func TestUpstreamPeekCursor(t *testing.T) {
 		})
 
 		c := NewUpstreamPeekCursor[stringItem](context.Background(), client)
-		require.False(t, cursor.SourceHasMore(c), "nothing is known before EOF")
+		ut, ok := c.(UpstreamTrailer)
+		require.True(t, ok, "cursor returned by NewUpstreamPeekCursor must satisfy UpstreamTrailer")
 
 		// Drain items.
 		for range 2 {
@@ -398,11 +324,11 @@ func TestUpstreamPeekCursor(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		// EOF reads the leader's trailer.
+		// EOF populates the upstream cursor.
 		_, err := c.Next()
 		require.Error(t, err)
 
-		require.True(t, cursor.SourceHasMore(c))
+		require.Equal(t, "leader-token", ut.NextCursor())
 		require.NoError(t, c.Close(), "Close delegates to the underlying client's CloseSend")
 		require.True(t, closed)
 	})

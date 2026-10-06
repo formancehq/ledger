@@ -16,7 +16,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 )
 
 // newListHandlerHarness wires the minimum fields BucketServiceServerImpl needs
@@ -90,19 +89,6 @@ func TestListLedgers(t *testing.T) {
 		err := impl.ListLedgers(&servicepb.ListLedgersRequest{}, stream)
 		require.ErrorIs(t, err, boom)
 	})
-
-	t.Run("malformed token is rejected before any cursor is opened", func(t *testing.T) {
-		t.Parallel()
-
-		// No ListLedgers expectation: the strict mock fails the test if the
-		// handler opens the storage-backed cursor it would then have to close.
-		impl, _ := newListHandlerHarness(t)
-
-		stream := newFakeServerStream[commonpb.LedgerInfo](t)
-		err := impl.ListLedgers(&servicepb.ListLedgersRequest{Options: &commonpb.ListOptions{Cursor: "not-a-token"}}, stream)
-		require.Equal(t, codes.InvalidArgument, status.Code(convertToGRPCError(err, testLogger())))
-		require.Empty(t, stream.sent)
-	})
 }
 
 // TestListTransactions covers the new plumbing for transactions: peek-ahead
@@ -151,43 +137,7 @@ func TestListTransactions(t *testing.T) {
 		}
 		err := impl.ListTransactions(req, newFakeServerStream[commonpb.Transaction](t))
 		require.Error(t, err)
-		require.Equal(t, codes.InvalidArgument, status.Code(convertToGRPCError(err, testLogger())))
-	})
-
-	t.Run("non-decimal key → InvalidArgument", func(t *testing.T) {
-		t.Parallel()
-
-		impl, _ := newListHandlerHarness(t)
-		req := &servicepb.ListTransactionsRequest{
-			Ledger:  "main",
-			Options: &commonpb.ListOptions{Cursor: pagecursor.Cursor{Key: "users:1"}.Encode()},
-		}
-		err := impl.ListTransactions(req, newFakeServerStream[commonpb.Transaction](t))
-		require.Error(t, err)
-		require.Equal(t, codes.InvalidArgument, status.Code(convertToGRPCError(err, testLogger())))
-	})
-
-	t.Run("back cursor reads the opposite order from its key", func(t *testing.T) {
-		t.Parallel()
-
-		impl, mockCtrl := newListHandlerHarness(t)
-		// The default transaction order is reverse=false at the API; a back
-		// page reads it the other way, then returns the rows flipped back.
-		mockCtrl.EXPECT().ListTransactions(gomock.Any(), "main", uint32(3), uint64(10), gomock.Any(), true).
-			Return(page(&commonpb.Transaction{Id: 9}, &commonpb.Transaction{Id: 8}, &commonpb.Transaction{Id: 7}), nil)
-
-		stream := newFakeServerStream[commonpb.Transaction](t)
-		req := &servicepb.ListTransactionsRequest{
-			Ledger:  "main",
-			Options: &commonpb.ListOptions{PageSize: 2, Cursor: pagecursor.Cursor{Key: "10", Back: true}.Encode()},
-		}
-		require.NoError(t, impl.ListTransactions(req, stream))
-		require.Equal(t, []uint64{8, 9}, []uint64{stream.sent[0].GetId(), stream.sent[1].GetId()})
-
-		previous, ok := stream.previous(t)
-		require.True(t, ok)
-		require.Equal(t, pagecursor.Cursor{Key: "8", Back: true}, previous)
-		require.Equal(t, "9", stream.trailerCursor())
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
 	})
 
 	t.Run("valid cursor parsed and forwarded", func(t *testing.T) {
@@ -199,7 +149,7 @@ func TestListTransactions(t *testing.T) {
 
 		req := &servicepb.ListTransactionsRequest{
 			Ledger:  "main",
-			Options: &commonpb.ListOptions{Cursor: pagecursor.Cursor{Key: "42"}.Encode()},
+			Options: &commonpb.ListOptions{Cursor: "42"},
 		}
 		require.NoError(t, impl.ListTransactions(req, newFakeServerStream[commonpb.Transaction](t)))
 	})
@@ -264,7 +214,7 @@ func TestListLogs(t *testing.T) {
 		t.Parallel()
 
 		impl, mockCtrl := newListHandlerHarness(t)
-		mockCtrl.EXPECT().ListLogs(gomock.Any(), "main", uint64(0), uint32(3), gomock.Any(), false).
+		mockCtrl.EXPECT().ListLogs(gomock.Any(), "main", uint64(0), uint32(3), gomock.Any()).
 			Return(page(applyLog(1), applyLog(2), applyLog(3)), nil)
 
 		stream := newFakeServerStream[commonpb.Log](t)
@@ -282,7 +232,7 @@ func TestListLogs(t *testing.T) {
 
 		impl, mockCtrl := newListHandlerHarness(t)
 		nonApply := &commonpb.Log{Payload: &commonpb.LogPayload{}} // no Apply oneof set
-		mockCtrl.EXPECT().ListLogs(gomock.Any(), "main", gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		mockCtrl.EXPECT().ListLogs(gomock.Any(), "main", gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(page(applyLog(1), nonApply, applyLog(3)), nil)
 
 		stream := newFakeServerStream[commonpb.Log](t)
