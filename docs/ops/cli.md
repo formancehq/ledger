@@ -1953,7 +1953,7 @@ ledgerctl version
 
 The **server** exposes the same build metadata over two unauthenticated channels:
 
-- **HTTP** — `GET /_info` returns flat JSON (no `data` envelope): `{"version":"…","commit":"…","buildDate":"…","goVersion":"…","protocolVersion":"13"}`.
+- **HTTP** — `GET /_info` returns flat JSON (no `data` envelope): `{"version":"…","commit":"…","buildDate":"…","goVersion":"…","protocolVersion":"20"}`.
 - **gRPC** — the `Discovery` RPC's `DiscoveryResponse` carries a `ServerInfo` message with the same information, including `protocol_version`.
 
 This is useful for monitoring deployed nodes and spotting version skew across a cluster (the per-node `version` is also surfaced on each `NodeInfo` in `GetClusterState`).
@@ -2999,7 +2999,7 @@ ledgerctl auth generate-token \
 | `--subject` | yes | | JWT subject claim |
 | `--scopes` | no | | Comma-separated scopes |
 | `--expiration` | no | `1h` | Token validity duration |
-| `--god` | no | `false` | Include god-mode claim (grants all scopes; key must allow it) |
+| `--superuser` | no | `false` | Include superuser-mode claim (grants all scopes; key must allow it) |
 | `--store` | no | `false` | Store the generated token in the OS keychain (keyed by `--server`) |
 
 The token is printed to stdout and can be used with `--auth-token` or the `Authorization: Bearer` header. When `--store` is set, the token is also stored in the OS keychain for the current `--server` address, and a confirmation is printed to stderr.
@@ -3035,7 +3035,7 @@ ledgerctl auth login [flags]
 | `--subject` | * | | JWT subject claim |
 | `--scopes` | no | | Comma-separated scopes |
 | `--expiration` | no | `1h` | Token validity duration |
-| `--god` | no | `false` | Include god-mode claim (grants all scopes; key must allow it) |
+| `--superuser` | no | `false` | Include superuser-mode claim (grants all scopes; key must allow it) |
 | `--bundle` | no | | Path to JSON key bundle file (or `-` for stdin) |
 
 \* Required when not using `--bundle` or stdin pipe. When a bundle is provided, explicit flags override bundle values.

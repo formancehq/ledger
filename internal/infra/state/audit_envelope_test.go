@@ -65,8 +65,8 @@ func TestHashChain_Envelope_Golden(t *testing.T) {
 						Subject: "alice",
 						Source:  &commonpb.CallerIdentity_KeyId{KeyId: "kid-1"},
 					},
-					Scopes: []string{"write", "read"}, // builder must sort
-					God:    false,
+					Scopes:    []string{"write", "read"}, // builder must sort
+					Superuser: false,
 				},
 			},
 		},
@@ -174,8 +174,8 @@ func TestCallerSnapshotPayload_PrincipalVariantsGoldenAndDistinct(t *testing.T) 
 			Scopes:   []string{"write", "read"},
 		}}},
 		"ed25519": {Principal: &commonpb.CallerSnapshot_Authenticated{Authenticated: &commonpb.AuthenticatedCaller{
-			Identity: &commonpb.CallerIdentity{Subject: "service", Source: &commonpb.CallerIdentity_KeyId{KeyId: "key-7"}},
-			God:      true,
+			Identity:  &commonpb.CallerIdentity{Subject: "service", Source: &commonpb.CallerIdentity_KeyId{KeyId: "key-7"}},
+			Superuser: true,
 		}}},
 		"anonymous": {Principal: &commonpb.CallerSnapshot_Anonymous{Anonymous: &commonpb.AnonymousCaller{
 			Scopes: []string{"ledger:read"},
@@ -433,7 +433,7 @@ func goldenBuildSnapshot(s *commonpb.CallerSnapshot) []byte {
 			buf = append(buf, 0x00)
 			buf = goldenLenBytes(buf, nil)
 		}
-		if caller.GetGod() {
+		if caller.GetSuperuser() {
 			buf = append(buf, 0x01)
 		} else {
 			buf = append(buf, 0x00)

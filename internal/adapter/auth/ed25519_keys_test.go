@@ -53,10 +53,10 @@ func TestLoadEd25519KeySet_Valid(t *testing.T) {
 	require.Len(t, result.AllowedScopes, 2)
 	assert.Equal(t, []string{"ledger:read"}, result.AllowedScopes["key1"])
 	assert.Equal(t, []string{"ledger:read", "ledger:write"}, result.AllowedScopes["key2"])
-	assert.Empty(t, result.GodKeys)
+	assert.Empty(t, result.SuperuserKeys)
 }
 
-func TestLoadEd25519KeySet_GodKey(t *testing.T) {
+func TestLoadEd25519KeySet_SuperuserKey(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -66,7 +66,7 @@ func TestLoadEd25519KeySet_GodKey(t *testing.T) {
 	configPath := filepath.Join(dir, "auth-keys.json")
 	config := `{
 		"keys": [
-			{"keyId": "admin", "publicKeyFile": "` + filepath.Join(dir, "admin.pubkey.hex") + `", "scopes": [], "god": true},
+			{"keyId": "admin", "publicKeyFile": "` + filepath.Join(dir, "admin.pubkey.hex") + `", "scopes": [], "superuser": true},
 			{"keyId": "bot", "publicKeyFile": "` + filepath.Join(dir, "bot.pubkey.hex") + `", "scopes": ["ledger:read"]}
 		]
 	}`
@@ -75,8 +75,8 @@ func TestLoadEd25519KeySet_GodKey(t *testing.T) {
 
 	result, err := LoadEd25519KeySet(configPath)
 	require.NoError(t, err)
-	assert.True(t, result.GodKeys["admin"])
-	assert.False(t, result.GodKeys["bot"])
+	assert.True(t, result.SuperuserKeys["admin"])
+	assert.False(t, result.SuperuserKeys["bot"])
 }
 
 func TestLoadEd25519KeySet_MissingFile(t *testing.T) {
@@ -155,34 +155,34 @@ func TestEnforceAllowedScopes_UnknownKey(t *testing.T) {
 	assert.Contains(t, err.Error(), "unknown key ID")
 }
 
-func TestEnforceAllowedScopes_GodKeyBypassesCheck(t *testing.T) {
+func TestEnforceAllowedScopes_SuperuserKeyBypassesCheck(t *testing.T) {
 	t.Parallel()
 
 	allowed := map[string][]string{
 		"admin": {},
 	}
-	godKeys := map[string]bool{"admin": true}
+	superuserKeys := map[string]bool{"admin": true}
 
-	// God key can claim any scope regardless of allowlist.
-	err := enforceAllowedScopes([]string{"ledger:admin", "ledger:write"}, "admin", allowed, godKeys)
+	// Superuser key can claim any scope regardless of allowlist.
+	err := enforceAllowedScopes([]string{"ledger:admin", "ledger:write"}, "admin", allowed, superuserKeys)
 	require.NoError(t, err)
 }
 
-func TestEnforceGodClaim_Allowed(t *testing.T) {
+func TestEnforceSuperuserClaim_Allowed(t *testing.T) {
 	t.Parallel()
 
-	godKeys := map[string]bool{"admin": true}
+	superuserKeys := map[string]bool{"admin": true}
 
-	err := enforceGodClaim("admin", godKeys)
+	err := enforceSuperuserClaim("admin", superuserKeys)
 	require.NoError(t, err)
 }
 
-func TestEnforceGodClaim_NotAllowed(t *testing.T) {
+func TestEnforceSuperuserClaim_NotAllowed(t *testing.T) {
 	t.Parallel()
 
-	godKeys := map[string]bool{"admin": true}
+	superuserKeys := map[string]bool{"admin": true}
 
-	err := enforceGodClaim("bot", godKeys)
+	err := enforceSuperuserClaim("bot", superuserKeys)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not allowed to claim god mode")
+	assert.Contains(t, err.Error(), "not allowed to claim superuser mode")
 }

@@ -12156,7 +12156,7 @@ func (x *PersistedConfig) GetStorageSchemaVersion() uint32 {
 type CallerIdentity struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
 	Subject string                 `protobuf:"bytes,1,opt,name=subject,proto3" json:"subject,omitempty"`
-	// scopes and god live on AuthenticatedCaller, not here: CallerIdentity is
+	// scopes and superuser live on AuthenticatedCaller, not here: CallerIdentity is
 	// identification only and carries no authorization decision.
 	//
 	// Types that are valid to be assigned to Source:
@@ -12250,7 +12250,7 @@ type AuthenticatedCaller struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Identity      *CallerIdentity        `protobuf:"bytes,1,opt,name=identity,proto3" json:"identity,omitempty"`
 	Scopes        []string               `protobuf:"bytes,2,rep,name=scopes,proto3" json:"scopes,omitempty"`
-	God           bool                   `protobuf:"varint,3,opt,name=god,proto3" json:"god,omitempty"`
+	Superuser     bool                   `protobuf:"varint,3,opt,name=superuser,proto3" json:"superuser,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -12299,9 +12299,9 @@ func (x *AuthenticatedCaller) GetScopes() []string {
 	return nil
 }
 
-func (x *AuthenticatedCaller) GetGod() bool {
+func (x *AuthenticatedCaller) GetSuperuser() bool {
 	if x != nil {
-		return x.God
+		return x.Superuser
 	}
 	return false
 }
@@ -13783,11 +13783,11 @@ const file_common_proto_rawDesc = "" +
 	"\asubject\x18\x01 \x01(\tR\asubject\x12\x18\n" +
 	"\x06issuer\x18\x02 \x01(\tH\x00R\x06issuer\x12\x17\n" +
 	"\x06key_id\x18\x03 \x01(\tH\x00R\x05keyIdB\b\n" +
-	"\x06source\"s\n" +
+	"\x06source\"\x7f\n" +
 	"\x13AuthenticatedCaller\x122\n" +
 	"\bidentity\x18\x01 \x01(\v2\x16.common.CallerIdentityR\bidentity\x12\x16\n" +
-	"\x06scopes\x18\x02 \x03(\tR\x06scopes\x12\x10\n" +
-	"\x03god\x18\x03 \x01(\bR\x03god\")\n" +
+	"\x06scopes\x18\x02 \x03(\tR\x06scopes\x12\x1c\n" +
+	"\tsuperuser\x18\x03 \x01(\bR\tsuperuser\")\n" +
 	"\x0fAnonymousCaller\x12\x16\n" +
 	"\x06scopes\x18\x01 \x03(\tR\x06scopes\",\n" +
 	"\fSystemCaller\x12\x1c\n" +

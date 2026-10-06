@@ -12001,7 +12001,7 @@ func NewCallerIdentityListReader(s []*CallerIdentity) CallerIdentityListReader {
 type AuthenticatedCallerReader interface {
 	GetIdentity() CallerIdentityReader
 	GetScopes() []string
-	GetGod() bool
+	GetSuperuser() bool
 	Mutate() *AuthenticatedCaller
 }
 
@@ -12019,8 +12019,8 @@ func (r *authenticatedCallerReadonly) GetScopes() []string {
 	return slices.Clone((*AuthenticatedCaller)(r).GetScopes())
 }
 
-func (r *authenticatedCallerReadonly) GetGod() bool {
-	return (*AuthenticatedCaller)(r).GetGod()
+func (r *authenticatedCallerReadonly) GetSuperuser() bool {
+	return (*AuthenticatedCaller)(r).GetSuperuser()
 }
 
 func (r *authenticatedCallerReadonly) Mutate() *AuthenticatedCaller {

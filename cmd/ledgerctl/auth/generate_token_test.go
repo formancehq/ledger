@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/json"
+	"strconv"
 	"testing"
+	"time"
 
 	jose "github.com/go-jose/go-jose/v4"
 	"github.com/stretchr/testify/assert"
@@ -74,4 +76,33 @@ func TestGenerateToken_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "test-bot", verifiedClaims.GetSubject())
 	assert.Equal(t, oidc.SpaceDelimitedArray{"ledger:read", "ledger:write"}, verifiedClaims.Scopes)
+}
+
+func TestSignToken_SuperuserClaim(t *testing.T) {
+	t.Parallel()
+	for _, enabled := range []bool{false, true} {
+		t.Run(strconv.FormatBool(enabled), func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			keyID, err := signing.GenerateKeyPair(dir)
+			require.NoError(t, err)
+			seed, err := signing.LoadSeedFromFile(dir + "/seed.hex")
+			require.NoError(t, err)
+			publicKey, err := signing.LoadPublicKeyFromFile(dir + "/pubkey.hex")
+			require.NoError(t, err)
+			token, err := signToken(tokenParams{seed: seed, keyID: keyID, subject: "test-bot", expiration: time.Hour, superuser: enabled})
+			require.NoError(t, err)
+			parsed, err := jose.ParseSigned(token, []jose.SignatureAlgorithm{jose.EdDSA})
+			require.NoError(t, err)
+			payload, err := parsed.Verify(publicKey)
+			require.NoError(t, err)
+			var claims map[string]any
+			require.NoError(t, json.Unmarshal(payload, &claims))
+			if enabled {
+				assert.Equal(t, true, claims["superuser"])
+			} else {
+				assert.NotContains(t, claims, "superuser")
+			}
+		})
+	}
 }

@@ -18,7 +18,7 @@ type Ed25519KeyEntry struct {
 	KeyID         string   `json:"keyId"`
 	PublicKeyFile string   `json:"publicKeyFile"`
 	Scopes        []string `json:"scopes"`
-	God           bool     `json:"god"`
+	Superuser     bool     `json:"superuser"`
 }
 
 // Ed25519KeysConfig is the top-level structure for the Ed25519 keys JSON config file.
@@ -30,12 +30,12 @@ type Ed25519KeysConfig struct {
 type Ed25519KeySetResult struct {
 	KeySet        *oidc.StaticKeySet
 	AllowedScopes map[string][]string
-	GodKeys       map[string]bool
+	SuperuserKeys map[string]bool
 }
 
 // LoadEd25519KeySet loads Ed25519 public keys from a JSON config file and returns
 // a StaticKeySet for JWT signature verification, a map of keyID -> allowed scopes,
-// and a set of key IDs that are allowed to emit god-mode tokens.
+// and a set of key IDs that are allowed to emit superuser-mode tokens.
 func LoadEd25519KeySet(configPath string) (Ed25519KeySetResult, error) {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
@@ -54,7 +54,7 @@ func LoadEd25519KeySet(configPath string) (Ed25519KeySetResult, error) {
 	var (
 		jwks          []jose.JSONWebKey
 		allowedScopes = make(map[string][]string, len(cfg.Keys))
-		godKeys       = make(map[string]bool)
+		superuserKeys = make(map[string]bool)
 	)
 
 	for _, entry := range cfg.Keys {
@@ -80,28 +80,28 @@ func LoadEd25519KeySet(configPath string) (Ed25519KeySetResult, error) {
 
 		allowedScopes[entry.KeyID] = entry.Scopes
 
-		if entry.God {
-			godKeys[entry.KeyID] = true
+		if entry.Superuser {
+			superuserKeys[entry.KeyID] = true
 		}
 	}
 
 	return Ed25519KeySetResult{
 		KeySet:        oidc.NewStaticKeySet(jwks...),
 		AllowedScopes: allowedScopes,
-		GodKeys:       godKeys,
+		SuperuserKeys: superuserKeys,
 	}, nil
 }
 
 // enforceAllowedScopes checks that all claimed scopes are permitted by the key's allowed scopes.
 // Returns an error if any claimed scope exceeds the key's allowlist.
-// God-mode keys skip scope enforcement entirely.
-func enforceAllowedScopes(claimed []string, keyID string, allowed map[string][]string, godKeys map[string]bool) error {
+// Superuser-mode keys skip scope enforcement entirely.
+func enforceAllowedScopes(claimed []string, keyID string, allowed map[string][]string, superuserKeys map[string]bool) error {
 	if _, ok := allowed[keyID]; !ok {
 		return fmt.Errorf("unknown key ID %q", keyID)
 	}
 
-	// God-mode keys are allowed to claim any scope.
-	if godKeys[keyID] {
+	// Superuser-mode keys are allowed to claim any scope.
+	if superuserKeys[keyID] {
 		return nil
 	}
 
@@ -120,12 +120,12 @@ func enforceAllowedScopes(claimed []string, keyID string, allowed map[string][]s
 	return nil
 }
 
-// enforceGodClaim checks that a token claiming god mode was signed by a key
-// that is allowed to emit god-mode tokens. Returns an error if the key is not
-// in the godKeys set.
-func enforceGodClaim(keyID string, godKeys map[string]bool) error {
-	if !godKeys[keyID] {
-		return fmt.Errorf("key %q is not allowed to claim god mode", keyID)
+// enforceSuperuserClaim checks that a token claiming superuser mode was signed by a key
+// that is allowed to emit superuser-mode tokens. Returns an error if the key is not
+// in the superuserKeys set.
+func enforceSuperuserClaim(keyID string, superuserKeys map[string]bool) error {
+	if !superuserKeys[keyID] {
+		return fmt.Errorf("key %q is not allowed to claim superuser mode", keyID)
 	}
 
 	return nil

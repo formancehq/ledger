@@ -94,9 +94,9 @@ func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 		{"caller_source_swap_to_empty_issuer", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
 			e.CallerSnapshot.GetAuthenticated().Identity.Source = &commonpb.CallerIdentity_Issuer{Issuer: ""}
 		}},
-		{"caller_god", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
+		{"caller_superuser", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
 			caller := e.GetCallerSnapshot().GetAuthenticated()
-			caller.God = !caller.GetGod()
+			caller.Superuser = !caller.GetSuperuser()
 		}},
 		{"caller_scopes_add", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
 			caller := e.GetCallerSnapshot().GetAuthenticated()
@@ -231,8 +231,8 @@ func newRichAuditEntry(outcomeKind string) (*auditpb.AuditEntry, []*auditpb.Audi
 						Subject: "alice",
 						Source:  &commonpb.CallerIdentity_KeyId{KeyId: "kid-1"},
 					},
-					Scopes: []string{"read", "write"},
-					God:    false,
+					Scopes:    []string{"read", "write"},
+					Superuser: false,
 				},
 			},
 		},

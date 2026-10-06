@@ -557,7 +557,7 @@ func TestRequireScope_EdDSA_MatchingScope(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
-func TestHTTPAuthMiddleware_GodMode_GrantsAllScopes(t *testing.T) {
+func TestHTTPAuthMiddleware_SuperuserMode_GrantsAllScopes(t *testing.T) {
 	t.Parallel()
 
 	privKey, keySet := testKeyPair(t)
@@ -580,7 +580,7 @@ func TestHTTPAuthMiddleware_GodMode_GrantsAllScopes(t *testing.T) {
 	handler := HTTPAuthMiddleware(cfg)(inner)
 
 	claims := newTestClaims()
-	claims.Claims = map[string]any{"god": true}
+	claims.Claims = map[string]any{"superuser": true}
 	token := signToken(t, privKey, claims)
 
 	w := httptest.NewRecorder()
@@ -596,7 +596,7 @@ func TestHTTPAuthMiddleware_GodMode_GrantsAllScopes(t *testing.T) {
 	}
 }
 
-func TestRequireScope_GodMode_PassesAnyScope(t *testing.T) {
+func TestRequireScope_SuperuserMode_PassesAnyScope(t *testing.T) {
 	t.Parallel()
 
 	privKey, keySet := testKeyPair(t)
@@ -608,11 +608,11 @@ func TestRequireScope_GodMode_PassesAnyScope(t *testing.T) {
 		ScopeMapping: DefaultMapping("ledger"),
 	}
 
-	// Token has no scopes but claims god mode — should pass any scope check.
+	// Token has no scopes but claims superuser mode — should pass any scope check.
 	handler := HTTPAuthMiddleware(cfg)(RequireScope(cfg, ScopeClusterWrite)(ok200))
 
 	claims := newTestClaims()
-	claims.Claims = map[string]any{"god": true}
+	claims.Claims = map[string]any{"superuser": true}
 	token := signToken(t, privKey, claims)
 
 	w := httptest.NewRecorder()

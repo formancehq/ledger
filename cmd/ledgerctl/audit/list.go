@@ -188,12 +188,12 @@ func printAuditEntry(entry *auditpb.AuditEntry, verbose bool) {
 				if subject == "" {
 					subject = "(none)"
 				}
-				if caller.GetGod() {
+				if caller.GetSuperuser() {
 					pterm.Printf("    %s authenticated subject=%s %s %s\n",
 						pterm.Gray("caller:"),
 						pterm.Yellow(subject),
 						pterm.Gray(callerSourceString(id)),
-						pterm.Red("god=true"),
+						pterm.Red("superuser=true"),
 					)
 				} else {
 					pterm.Printf("    %s authenticated subject=%s %s scopes=[%s]\n",

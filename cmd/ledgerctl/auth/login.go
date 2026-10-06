@@ -25,7 +25,7 @@ type keyBundle struct {
 	KeyID      string   `json:"keyId"`
 	Scopes     []string `json:"scopes"`
 	Subject    string   `json:"subject"`
-	God        bool     `json:"god"`
+	Superuser  bool     `json:"superuser"`
 }
 
 // NewLoginCommand returns the "auth login" command.
@@ -310,9 +310,9 @@ func resolveLoginParams(cmd *cobra.Command) (tokenParams, error) {
 		return tokenParams{}, errors.New("required flag \"subject\" not set")
 	}
 
-	god, _ := cmd.Flags().GetBool("god")
-	if !cmd.Flags().Changed("god") && bundle != nil {
-		god = bundle.God
+	superuser, _ := cmd.Flags().GetBool("superuser")
+	if !cmd.Flags().Changed("superuser") && bundle != nil {
+		superuser = bundle.Superuser
 	}
 
 	return tokenParams{
@@ -321,7 +321,7 @@ func resolveLoginParams(cmd *cobra.Command) (tokenParams, error) {
 		subject:    subject,
 		scopes:     scopes,
 		expiration: expiration,
-		god:        god,
+		superuser:  superuser,
 	}, nil
 }
 
@@ -400,8 +400,8 @@ func printTokenSummary(tokenStr string) {
 		rows = append(rows, []string{"Scopes", scopes})
 	}
 
-	if god, ok := claims["god"].(bool); ok && god {
-		rows = append(rows, []string{"God mode", pterm.Yellow("enabled")})
+	if superuser, ok := claims["superuser"].(bool); ok && superuser {
+		rows = append(rows, []string{"Superuser mode", pterm.Yellow("enabled")})
 	}
 
 	if exp, _ := claims.GetExpirationTime(); exp != nil {

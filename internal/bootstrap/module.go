@@ -1657,12 +1657,12 @@ func buildAuthConfig(cfg Config, logger logging.Logger, oidcKeySet oidc.KeySet) 
 
 		authCfg.KeySet = internalauth.NewCompositeKeySet(result.KeySet, oidcKeySet)
 		authCfg.Ed25519AllowedScopes = result.AllowedScopes
-		authCfg.Ed25519GodKeys = result.GodKeys
+		authCfg.Ed25519SuperuserKeys = result.SuperuserKeys
 
 		logger.WithFields(map[string]any{
-			"keys_count": len(result.AllowedScopes),
-			"god_keys":   len(result.GodKeys),
-			"enabled":    authCfg.Enabled,
+			"keys_count":     len(result.AllowedScopes),
+			"superuser_keys": len(result.SuperuserKeys),
+			"enabled":        authCfg.Enabled,
 		}).Infof("Ed25519 keys loaded")
 	} else {
 		authCfg.KeySet = oidcKeySet

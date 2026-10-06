@@ -4293,7 +4293,7 @@ func (m *AuthenticatedCaller) CloneVT() *AuthenticatedCaller {
 	}
 	r := new(AuthenticatedCaller)
 	r.Identity = m.Identity.CloneVT()
-	r.God = m.God
+	r.Superuser = m.Superuser
 	if rhs := m.Scopes; rhs != nil {
 		tmpContainer := make([]string, len(rhs))
 		copy(tmpContainer, rhs)
@@ -11799,7 +11799,7 @@ func (this *AuthenticatedCaller) EqualVT(that *AuthenticatedCaller) bool {
 			return false
 		}
 	}
-	if this.God != that.God {
+	if this.Superuser != that.Superuser {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -22611,9 +22611,9 @@ func (m *AuthenticatedCaller) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.God {
+	if m.Superuser {
 		i--
-		if m.God {
+		if m.Superuser {
 			dAtA[i] = 1
 		} else {
 			dAtA[i] = 0
@@ -27724,7 +27724,7 @@ func (m *AuthenticatedCaller) SizeVT() (n int) {
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
 	}
-	if m.God {
+	if m.Superuser {
 		n += 2
 	}
 	n += len(m.unknownFields)
@@ -52106,7 +52106,7 @@ func (m *AuthenticatedCaller) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 3:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field God", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Superuser", wireType)
 			}
 			var v int
 			for shift := uint(0); ; shift += 7 {
@@ -52123,7 +52123,7 @@ func (m *AuthenticatedCaller) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-			m.God = bool(v != 0)
+			m.Superuser = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

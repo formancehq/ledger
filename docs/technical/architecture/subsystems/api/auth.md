@@ -138,7 +138,7 @@ message CallerIdentity {
 message AuthenticatedCaller {
   CallerIdentity identity = 1;
   repeated string scopes = 2;         // effective scopes at admission
-  bool god = 3;
+  bool superuser = 3;
 }
 
 message AnonymousCaller { repeated string scopes = 1; }
@@ -194,7 +194,7 @@ This bound is what prevents a slow IdP from stalling node startup indefinitely.
 
 - **Token cache.** Every request re-validates from scratch. The signature check is cheap (in-memory keyset); for OIDC tokens the JWKS is in memory after discovery, so there is no per-request network call.
 - **Refresh tokens.** Tokens are stateless; clients refresh against the provider directly.
-- **Service accounts** as a first-class concept. Ed25519 self-signed tokens with a `god: true` claim are the practical approximation for scripts and CI today.
+- **Service accounts** as a first-class concept. Ed25519 self-signed tokens with a `superuser: true` claim are the practical approximation for scripts and CI today.
 - **Per-method audit logging of denials.** Authorization decisions are logged but not audit-chain-bound. Only successful proposals carry the `CallerSnapshot` into the chain — denied calls never reached admission and have no `AuditEntry`.
 
 ## Where to look in the code
