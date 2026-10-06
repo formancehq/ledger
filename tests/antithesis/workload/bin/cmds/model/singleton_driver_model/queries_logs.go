@@ -572,6 +572,9 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 	if !oneIn(4) {
 		filter = genLogFilter(ledger, c.modelLogDateSample(ledger), 0)
 	}
+	filter = rollFilterShape(filter)
+
+	refused := classifyRejectedFilter(filter, commonpb.QueryTarget_QUERY_TARGET_LOGS)
 
 	requestedPageSize, pageSize := queryPageSize()
 	noteClampedPageSize(requestedPageSize, pageSize)
@@ -640,6 +643,15 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 		return
 	}
 
+	if err != nil && !internal.IsTransient(err) && !isShutdownError(err) && (reverse || rolled) && status.Code(err) == codes.InvalidArgument {
+		// A refused option or cursor may be reported ahead of a refused filter.
+		refused = rejectedFilter{}
+	}
+	if err != nil && (!internal.IsTransient(err) || isIndexNotReady(err)) && !isShutdownError(err) &&
+		c.handleRejectedFilterError(maxTicket, refused, commonpb.QueryTarget_QUERY_TARGET_LOGS, ledger, filter, err) {
+		return
+	}
+
 	errKind, gated := classifyLogQueryError(err)
 	if !gated {
 		if internal.IsTransient(err) || isShutdownError(err) {
@@ -681,6 +693,10 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 			"rows":   len(logs),
 		})
 
+		return
+	}
+
+	if err == nil && assertRefusedFilterServedNothing(refused, commonpb.QueryTarget_QUERY_TARGET_LOGS, ledger, filter, len(logs)) {
 		return
 	}
 

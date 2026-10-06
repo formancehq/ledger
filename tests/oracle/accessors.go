@@ -145,6 +145,21 @@ func (s LedgerState) HasEverAsset(address, base string, precision uint32) bool {
 	return s.everAsset.Has(assetTouch{address: address, base: base, precision: precision})
 }
 
+// EverAssetAddresses returns, sorted ascending, every account in the
+// account-by-asset index under any asset — the accounts a has-asset leaf can
+// select even after their volume rows are gone.
+func (s LedgerState) EverAssetAddresses() []string {
+	var out []string
+	for k := range s.everAsset.All() {
+		if len(out) == 0 || out[len(out)-1] != k.address {
+			out = append(out, k.address)
+		}
+	}
+
+	// The map iterates in (address, base, precision) order, so out is sorted.
+	return out
+}
+
 // EverAssetAccounts returns, sorted ascending by address, every account that has
 // ever touched (base, precision) — the exact account set a bare has-asset query
 // over (base, precision) returns, in the server's address order.

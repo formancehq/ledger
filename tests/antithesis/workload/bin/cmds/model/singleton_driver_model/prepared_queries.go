@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"math"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -129,15 +128,12 @@ func generatePreparedQueryOp(g oracle.GlobalState, ledger string) *servicepb.Req
 	return updatePreparedQueryReq(ledger, name, filter)
 }
 
-// genPreparedQueryFilter builds a storable filter for target: a concrete filter
+// genPreparedQueryFilter builds a filter to save for target: a concrete filter
 // from the ad-hoc generators, with a random subset of its leaves rewritten into
-// parameter references.
-//
-// Filters carrying a condition invalid on the target are discarded rather than
-// stored — the FSM rejects those at write time (ValidateFilterForTarget), so
-// storing one would only ever exercise the write-side rejection the ad-hoc
-// generators already cover. Returns nil when the roll produced nothing storable;
-// the caller then emits no op this round.
+// parameter references, and occasionally one node rewritten into an arbitrary
+// shape (rollFilterShape). A filter the write-time validation refuses is sent
+// all the same; the model predicts the refusal. Returns nil when the generator
+// produced no concrete filter; the caller then emits no op this round.
 func genPreparedQueryFilter(ls oracle.LedgerState, ledger string, target commonpb.QueryTarget) *commonpb.QueryFilter {
 	var concrete *commonpb.QueryFilter
 
@@ -154,7 +150,7 @@ func genPreparedQueryFilter(ls oracle.LedgerState, ledger string, target commonp
 
 	// Match-all writes are selected explicitly by generatePreparedQueryOp. A nil
 	// here means the ad-hoc generator produced no concrete filter this round.
-	if concrete == nil || filterInvalidForTarget(concrete, target) || !bareOrNoHasAsset(concrete) {
+	if concrete == nil {
 		return nil
 	}
 
@@ -162,73 +158,7 @@ func genPreparedQueryFilter(ls oracle.LedgerState, ledger string, target commonp
 	// stored, and every execution binds fresh values discovered from the stored
 	// filter itself (genPreparedParams). Keeping a driver-side copy would be a
 	// second source of truth that a concurrent update immediately invalidates.
-	stored := parameterizeFilter(concrete, preparedParams{})
-	if oneIn(12) {
-		return withMalformedLeaf(stored, target)
-	}
-
-	return stored
-}
-
-// withMalformedLeaf plants a leaf that no schema, parameter set or index state
-// can compile, bare or under a combinator. The save must be refused with
-// FILTER_COMPILATION_ERROR; the model predicts it through the same write-time
-// validation the FSM runs.
-func withMalformedLeaf(f *commonpb.QueryFilter, target commonpb.QueryTarget) *commonpb.QueryFilter {
-	leaf := genMalformedLeaf(target)
-
-	switch random.RandomChoice([]uint8{0, 1, 2}) {
-	case 0:
-		return leaf
-	case 1:
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Not{Not: &commonpb.NotFilter{Filter: leaf}}}
-	default:
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_And{And: &commonpb.AndFilter{
-			Filters: []*commonpb.QueryFilter{f, leaf},
-		}}}
-	}
-}
-
-// genMalformedLeaf picks one malformed leaf whose condition kind is valid on
-// target, so only the leaf's shape is wrong.
-func genMalformedLeaf(target commonpb.QueryTarget) *commonpb.QueryFilter {
-	key := &commonpb.FieldRef{Metadata: metaKey()}
-	field := func(fc *commonpb.FieldCondition) *commonpb.QueryFilter {
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Field{Field: fc}}
-	}
-	lo := uint64(1)
-
-	candidates := []*commonpb.QueryFilter{
-		field(&commonpb.FieldCondition{Condition: &commonpb.FieldCondition_ExistsCond{ExistsCond: &commonpb.ExistsCondition{}}}),
-		field(&commonpb.FieldCondition{Field: key}),
-		field(&commonpb.FieldCondition{Field: key, Condition: &commonpb.FieldCondition_StringCond{StringCond: &commonpb.StringCondition{}}}),
-		field(&commonpb.FieldCondition{Field: key, Condition: &commonpb.FieldCondition_BoolCond{BoolCond: &commonpb.BoolCondition{}}}),
-		{Filter: &commonpb.QueryFilter_Address{Address: &commonpb.AddressMatch{}}},
-		{Filter: &commonpb.QueryFilter_Reference{Reference: &commonpb.ReferenceCondition{}}},
-		{Filter: &commonpb.QueryFilter_Reference{Reference: &commonpb.ReferenceCondition{Cond: &commonpb.StringCondition{}}}},
-		{Filter: &commonpb.QueryFilter_BuiltinUint{BuiltinUint: &commonpb.BuiltinUintCondition{
-			Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID,
-		}}},
-		{Filter: &commonpb.QueryFilter_BuiltinUint{BuiltinUint: &commonpb.BuiltinUintCondition{
-			Field: random.RandomChoice(unsupportedBuiltinFields),
-			Cond:  &commonpb.UintCondition{Min: &lo},
-		}}},
-		{Filter: &commonpb.QueryFilter_Ledger{Ledger: &commonpb.LedgerCondition{}}},
-		{Filter: &commonpb.QueryFilter_Ledger{Ledger: &commonpb.LedgerCondition{Cond: &commonpb.StringCondition{}}}},
-		{Filter: &commonpb.QueryFilter_LogBuiltinUint{LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
-			Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
-		}}},
-		{Filter: &commonpb.QueryFilter_LogBuiltinUint{LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
-			Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_UNSPECIFIED,
-			Cond:  &commonpb.UintCondition{Min: &lo},
-		}}},
-	}
-
-	valid := slices.DeleteFunc(candidates, func(leaf *commonpb.QueryFilter) bool {
-		return filterInvalidForTarget(leaf, target)
-	})
-
-	return random.RandomChoice(valid)
+	return rollFilterShape(parameterizeFilter(concrete, preparedParams{}))
 }
 
 // --- parameterization ----------------------------------------------------
@@ -935,24 +865,4 @@ func sampleUint(ls oracle.LedgerState) uint64 {
 	}
 
 	return seeds.stamps[internal.Rand().Intn(len(seeds.stamps))]
-}
-
-// bareOrNoHasAsset reports whether f is storable under the has-asset rule the
-// validators rely on: the leaf may appear only as the whole filter, never
-// inside a boolean. The has-asset index serves accounts that may have been
-// purged from the volume table, while every other accounts leaf scans the live
-// universe, so a boolean of the two is the read-store's own iterator
-// intersection — set semantics the model would have to reimplement the
-// read-store to predict. genAccountAssetFilter already emits only bare leaves;
-// this holds the invariant at the storage boundary instead of assuming it.
-func bareOrNoHasAsset(f *commonpb.QueryFilter) bool {
-	if _, _, bare := hasAssetTarget(f); bare {
-		return true
-	}
-
-	return !anyLeaf(f, func(leaf *commonpb.QueryFilter) bool {
-		_, isHasAsset := leaf.GetFilter().(*commonpb.QueryFilter_AccountHasAsset)
-
-		return isHasAsset
-	})
 }

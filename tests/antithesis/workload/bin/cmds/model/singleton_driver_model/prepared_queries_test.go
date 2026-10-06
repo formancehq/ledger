@@ -6,7 +6,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
@@ -208,17 +207,4 @@ func TestSubstituteParamsResolvesEveryValueKind(t *testing.T) {
 	gotStr, ok := substituteParams(strFilter, params)
 	require.True(t, ok)
 	require.Equal(t, "hello", gotStr.GetField().GetStringCond().GetHardcoded())
-}
-
-func TestMalformedLeafRefusedAtSave(t *testing.T) {
-	t.Parallel()
-
-	for _, target := range preparedQueryTargets {
-		for range 200 {
-			f := withMalformedLeaf(nil, target)
-			err := domain.ValidateFilterForTarget(f, target)
-			require.Error(t, err, "target %v filter %v", target, f)
-			require.Equal(t, domain.ErrReasonFilterCompilation, err.Reason(), "target %v filter %v", target, f)
-		}
-	}
 }

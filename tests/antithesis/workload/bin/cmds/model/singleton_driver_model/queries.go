@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -109,12 +110,12 @@ func noteClampedPageSize(requested, effective int) {
 // cover indexed and index-free reads plus missing-index and invalid-kind probes.
 func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
 	ledger, _ := pickLedgerReadTarget(c.liveLedgerNamesSnapshot(), 0)
-	filter := genAccountFilter(c.sampleAccountFieldSeeds(ledger))
+	filter := rollFilterShape(genAccountFilter(c.sampleAccountFieldSeeds(ledger)))
 	needed := map[string]struct{}{}
 	neededIndexCanonicals(filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, needed)
 	_, _, bareAsset := hasAssetTarget(filter)
-	precisionOverflow := hasAssetPrecisionOverflow(filter)
-	invalidTarget := filterInvalidForTarget(filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	invalidTarget := bareLeaf(filter) && filterInvalidForTarget(filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	refused := classifyRejectedFilter(filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	requestedPageSize, pageSize := queryPageSize()
 	noteClampedPageSize(requestedPageSize, pageSize)
 	reverse := random.RandomChoice([]uint8{0, 1}) == 1
@@ -178,17 +179,18 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 		if handleInvalidTargetError(invalidTarget, "account", ledger, filter, err) {
 			return
 		}
-		if precisionOverflow && status.Code(err) == codes.InvalidArgument && internal.HasErrorReason(err, "FILTER_COMPILATION_ERROR") {
-			// Coverage: the one-byte precision cell is enforced at compile time.
+		if hasAssetPrecisionOverflow(filter) && status.Code(err) == codes.InvalidArgument && internal.HasErrorReason(err, "FILTER_COMPILATION_ERROR") {
+			// Coverage: the one-byte precision cell is enforced at dispatch.
 			assert.Reachable("singleton_driver_model: has-asset precision overflow rejected", internal.Details{"ledger": ledger})
 
 			return
 		}
+		if c.handleRejectedFilterError(maxTicket, refused, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledger, filter, err) {
+			return
+		}
 		if bareAsset {
 			// The account-by-asset index governs this filter's outcome; a not-ready
-			// error is legal while the index is absent or ambiguous. The compiler
-			// checks readiness before the precision, so an overflow probe reaches
-			// here only through a not-ready error.
+			// error is legal while the index is absent or ambiguous.
 			c.validateAssetAccountQuery(maxTicket, ledger, filter, cursor, pageSize, reverse, nil, next, err)
 
 			return
@@ -220,13 +222,7 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 		return
 	}
 
-	if precisionOverflow {
-		assert.Unreachable("singleton_driver_model: has-asset precision overflow returned results", internal.Details{
-			"ledger": ledger,
-			"filter": describeFilter(filter),
-			"rows":   len(accounts),
-		})
-
+	if assertRefusedFilterServedNothing(refused, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledger, filter, len(accounts)) {
 		return
 	}
 
@@ -263,10 +259,13 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 	unsupportedBuiltin := false
 	if probe, rolledProbe := rollUnsupportedBuiltinField(); rolledProbe {
 		filter, unsupportedBuiltin = probe, true
+	} else {
+		filter = rollFilterShape(filter)
 	}
 	needed := map[string]struct{}{}
 	neededIndexCanonicals(filter, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, needed)
-	invalidTarget := filterInvalidForTarget(filter, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	invalidTarget := bareLeaf(filter) && filterInvalidForTarget(filter, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	refused := classifyRejectedFilter(filter, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 	requestedPageSize, pageSize := queryPageSize()
 	noteClampedPageSize(requestedPageSize, pageSize)
 	reverse := random.RandomChoice([]uint8{0, 1}) == 1
@@ -342,6 +341,9 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 		if handleInvalidTargetError(invalidTarget, "transaction", ledger, filter, err) {
 			return
 		}
+		if c.handleRejectedFilterError(maxTicket, refused, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, ledger, filter, err) {
+			return
+		}
 		if len(needed) > 0 {
 			c.validateIndexedTransactionQuery(maxTicket, ledger, filter, needed, afterID, pageSize, reverse, nil, next, err)
 
@@ -386,6 +388,10 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 		return
 	}
 
+	if assertRefusedFilterServedNothing(refused, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, ledger, filter, len(txs)) {
+		return
+	}
+
 	if len(needed) > 0 {
 		c.validateIndexedTransactionQuery(maxTicket, ledger, filter, needed, afterID, pageSize, reverse, txs, next, nil)
 
@@ -393,6 +399,17 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 	}
 
 	c.validateTransactionQuery(maxTicket, ledger, filter, afterID, pageSize, reverse, txs, next)
+}
+
+// bareLeaf reports whether f is a single non-empty leaf, the only shape the
+// target-invalid probes take.
+func bareLeaf(f *commonpb.QueryFilter) bool {
+	switch f.GetFilter().(type) {
+	case nil, *commonpb.QueryFilter_And, *commonpb.QueryFilter_Or, *commonpb.QueryFilter_Not:
+		return false
+	default:
+		return true
+	}
 }
 
 // handleInvalidTargetError validates the error of a filter carrying a condition
@@ -634,10 +651,21 @@ func (c *Checker) modelTransactionWindow(ledger string, filter *commonpb.QueryFi
 // accounts matching filter, in address order (reversed when reverse), with the
 // exclusive cursor applied and capped at pageSize. Because the list is sorted,
 // dropping every key past the cursor equals the server's contiguous prefix skip.
+//
+// The candidates are the current accounts plus, when the filter reads the
+// account-by-asset index, every account that index holds: a has-asset leaf can
+// select an account whose volume rows are gone, which no other leaf sees.
 func accountWindow(ls oracle.LedgerState, filter *commonpb.QueryFilter, cursor string, pageSize int, reverse bool) []string {
+	universe := accountUniverse(ls)
+	candidates := universe
+	if anyLeaf(filter, func(leaf *commonpb.QueryFilter) bool { return leaf.GetAccountHasAsset() != nil }) {
+		candidates = mergeSorted(universe, ls.EverAssetAddresses())
+	}
+
 	var window []string
-	for _, addr := range accountUniverse(ls) {
-		if matchAccountFilter(ls, filter, addr) {
+	for _, addr := range candidates {
+		_, inUniverse := slices.BinarySearch(universe, addr)
+		if matchAccountFilterIn(ls, filter, addr, inUniverse) {
 			window = append(window, addr)
 		}
 	}
@@ -1071,12 +1099,13 @@ func genAccountFilter(seeds []fieldSeed) *commonpb.QueryFilter {
 }
 
 // genAccountFilterIndexed rolls an accounts filter mixing metadata Field
-// leaves (on declared keys) with the index-free address leaves. Field results
-// select from the same current V+M universe address leaves scan — an account
-// carrying metadata always has an attributes row — so booleans compose without
-// the ever-touched-universe caveat that keeps has-asset bare.
+// leaves (on declared keys) and has-asset leaves with the index-free address
+// leaves.
 func genAccountFilterIndexed(seeds []fieldSeed, depth int) *commonpb.QueryFilter {
 	if depth >= maxQueryGenDepth || random.RandomChoice([]uint8{0, 1}) == 0 {
+		if oneIn(4) {
+			return genAccountAssetFilter()
+		}
 		if f := genFieldLeaf(seeds); f != nil && random.RandomChoice([]uint8{0, 1, 2}) != 0 {
 			return f
 		}
@@ -1604,34 +1633,40 @@ func filterInvalidForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarget
 	})
 }
 
-// matchAccountFilter evaluates an accounts filter against one address in ls.
-// A combinator over zero operands follows the algebra the compiler implements:
-// an empty And is vacuously true (the universe), an empty Or vacuously false.
-// A nil node is the universe too. The AccountHasAsset arm needs the account's
-// volumes, so ls is threaded through even though the index-free arms depend
-// only on the address.
+// matchAccountFilter evaluates an accounts filter against one current account
+// of ls (see matchAccountFilterIn).
 func matchAccountFilter(ls oracle.LedgerState, f *commonpb.QueryFilter, addr string) bool {
+	return matchAccountFilterIn(ls, f, addr, true)
+}
+
+// matchAccountFilterIn evaluates an accounts filter against one address.
+// inUniverse says whether addr is a current account — one the server's account
+// scan yields. Every arm but has-asset selects from that scan: the universe
+// (a nil node, an empty And), an address leaf, a metadata leaf, and the
+// complement a Not takes. Has-asset reads the account-by-asset index, which
+// holds accounts whose volume rows are gone. An empty Or matches nothing.
+func matchAccountFilterIn(ls oracle.LedgerState, f *commonpb.QueryFilter, addr string, inUniverse bool) bool {
 	return foldFilter(f, filterFold[bool]{
-		and: allOf,
+		and: func(children []bool) bool { return (len(children) > 0 || inUniverse) && allOf(children) },
 		or:  anyOf,
-		not: negate,
+		not: func(child bool) bool { return inUniverse && !child },
 		leaf: func(leaf *commonpb.QueryFilter) bool {
 			switch x := leaf.GetFilter().(type) {
 			case nil:
-				return true
+				return inUniverse
 			case *commonpb.QueryFilter_Address:
 				switch m := x.Address.GetMatch().(type) {
 				case *commonpb.AddressMatch_HardcodedPrefix:
-					return strings.HasPrefix(addr, m.HardcodedPrefix)
+					return inUniverse && strings.HasPrefix(addr, m.HardcodedPrefix)
 				case *commonpb.AddressMatch_HardcodedExact:
-					return addr == m.HardcodedExact
+					return inUniverse && addr == m.HardcodedExact
 				}
 
 				return false
 			case *commonpb.QueryFilter_AccountHasAsset:
 				return accountHasAsset(ls, addr, x.AccountHasAsset.GetAssetBase(), x.AccountHasAsset.GetPrecision())
 			case *commonpb.QueryFilter_Field:
-				return matchFieldCondition(ls.AccountFieldTypes(), func(key string) (*commonpb.MetadataValue, bool) {
+				return inUniverse && matchFieldCondition(ls.AccountFieldTypes(), func(key string) (*commonpb.MetadataValue, bool) {
 					v, ok := ls.Metadata().Get(oracle.MetaKey{Address: addr, Key: key})
 
 					return v, ok
@@ -1641,6 +1676,30 @@ func matchAccountFilter(ls oracle.LedgerState, f *commonpb.QueryFilter, addr str
 			}
 		},
 	})
+}
+
+// mergeSorted unions two ascending, duplicate-free lists into one.
+func mergeSorted(a, b []string) []string {
+	out := make([]string, 0, len(a)+len(b))
+	i, j := 0, 0
+	for i < len(a) && j < len(b) {
+		switch {
+		case a[i] < b[j]:
+			out = append(out, a[i])
+			i++
+		case a[i] > b[j]:
+			out = append(out, b[j])
+			j++
+		default:
+			out = append(out, a[i])
+			i++
+			j++
+		}
+	}
+
+	out = append(out, a[i:]...)
+
+	return append(out, b[j:]...)
 }
 
 // matchTxFilter evaluates f on rec three-valued: known=false means the leaf
@@ -1867,6 +1926,10 @@ func describeBuiltinUint(c *commonpb.BuiltinUintCondition) string {
 // absent ones as "_". A finding must be diagnosable from its details alone, so
 // every generated leaf renders its bounds.
 func describeUintBounds(cond *commonpb.UintCondition) string {
+	if cond == nil {
+		return "[nil]"
+	}
+
 	lo, hi := "_", "_"
 	if cond.Min != nil {
 		lo = strconv.FormatUint(cond.GetMin(), 10)

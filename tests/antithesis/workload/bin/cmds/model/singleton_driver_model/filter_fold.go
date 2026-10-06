@@ -136,7 +136,13 @@ func withinBounds[T cmp.Ordered](v T, lo *T, loExclusive bool, hi *T, hiExclusiv
 	return true
 }
 
+// matchUintBounds reports whether v lies within cond. An absent condition
+// bounds nothing, as the compiler reads it.
 func matchUintBounds(cond *commonpb.UintCondition, v uint64) bool {
+	if cond == nil {
+		return true
+	}
+
 	return withinBounds(v, cond.Min, cond.GetMinExclusive(), cond.Max, cond.GetMaxExclusive())
 }
 

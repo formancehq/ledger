@@ -191,8 +191,6 @@ func assetWindow(ls oracle.LedgerState, base string, precision uint32, cursor st
 }
 
 // hasAssetTarget extracts the (base, precision) of a bare AccountHasAsset filter.
-// genAccountAssetFilter only produces bare has-asset leaves, so this is total for
-// the asset-index path.
 func hasAssetTarget(f *commonpb.QueryFilter) (base string, precision uint32, ok bool) {
 	if ha, isHA := f.GetFilter().(*commonpb.QueryFilter_AccountHasAsset); isHA {
 		return ha.AccountHasAsset.GetAssetBase(), ha.AccountHasAsset.GetPrecision(), true
@@ -203,14 +201,10 @@ func hasAssetTarget(f *commonpb.QueryFilter) (base string, precision uint32, ok 
 
 // --- asset-filter generation ---------------------------------------------
 
-// genAccountAssetFilter rolls a bare AccountHasAsset leaf on a random workload
-// asset — the account-by-asset lifecycle path. It is deliberately NOT composed
-// with other leaves: the has-asset index returns accounts that may have been
-// purged from the volume table ("ever touched"), while an index-free address leaf
-// scans only current accounts, so a boolean of the two matches the server's
-// iterator intersection/union — set semantics the model would have to reproduce
-// the read-store to predict. A bare leaf's result set is exactly
-// EverAssetAccounts(base, precision), which the model tracks directly.
+// genAccountAssetFilter rolls an AccountHasAsset leaf on a random workload
+// asset — the account-by-asset lifecycle path. Bare, its result set is exactly
+// EverAssetAccounts(base, precision); under a combinator, matchAccountFilterIn
+// composes it with the current-account leaves.
 func genAccountAssetFilter() *commonpb.QueryFilter {
 	a := workloadAssets[int(random.RandomChoice([]uint8{0, 1, 2}))]
 
@@ -233,8 +227,7 @@ func genAccountAssetFilter() *commonpb.QueryFilter {
 }
 
 // hasAssetPrecisionOverflow reports whether f is a bare has-asset leaf whose
-// precision exceeds the index cell, which the compiler rejects with
-// FILTER_COMPILATION_ERROR after the index readiness check.
+// precision exceeds the index cell.
 func hasAssetPrecisionOverflow(f *commonpb.QueryFilter) bool {
 	return f.GetAccountHasAsset() != nil && f.GetAccountHasAsset().GetPrecision() > math.MaxUint8
 }
