@@ -18,6 +18,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -89,7 +90,7 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 		Ledger: ledger,
 		Options: &commonpb.ListOptions{
 			PageSize: uint32(pageSize),
-			Cursor:   cursor,
+			Cursor:   pageToken(cursor),
 			Reverse:  reverse,
 			Filter:   filter,
 		},
@@ -214,7 +215,7 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 		Ledger: ledger,
 		Options: &commonpb.ListOptions{
 			PageSize: uint32(pageSize),
-			Cursor:   cursor,
+			Cursor:   pageToken(cursor),
 			Reverse:  reverse,
 			Filter:   filter,
 		},
@@ -305,6 +306,16 @@ func handleInvalidTargetError(invalidTarget bool, kind, ledger string, filter *c
 	})
 
 	return true
+}
+
+// pageToken renders the model's exclusive resume key as a forward page
+// token; the empty key is the first page.
+func pageToken(key string) string {
+	if key == "" {
+		return ""
+	}
+
+	return pagecursor.Cursor{Key: key}.Encode()
 }
 
 // drainStream reads a server stream to exhaustion, returning every item in

@@ -1235,9 +1235,9 @@ message ExecutePreparedQueryRequest {
   uint32 page_size = 4;
   string cursor = 5;
   common.QueryMode mode = 6;
-  // reverse pages LIST results in descending entity order. The cursor stays a
-  // position, so every page of a descending walk must repeat reverse=true.
-  // AGGREGATE_VOLUMES rejects it with InvalidArgument.
+  // reverse pages LIST results in descending entity order. A page token is
+  // relative to the requested order, so every page of a descending walk must
+  // repeat reverse=true. AGGREGATE_VOLUMES rejects it with InvalidArgument.
   bool reverse = 7;
 }
 
@@ -1529,10 +1529,13 @@ message InspectIndexResponse {
   }
 }
 
+// next_cursor and previous_cursor are page tokens (see
+// common.ListOptions.cursor) whose key is the base64url value encoding.
 message InspectDistinctValues {
   repeated common.MetadataValue values = 1;
   bool has_more = 2;
   string next_cursor = 3;
+  string previous_cursor = 4;
 }
 
 message InspectFacet {
@@ -1544,6 +1547,7 @@ message InspectFacets {
   repeated InspectFacet facets = 1;
   bool has_more = 2;
   string next_cursor = 3;
+  string previous_cursor = 4;
 }
 
 message InspectSummary {

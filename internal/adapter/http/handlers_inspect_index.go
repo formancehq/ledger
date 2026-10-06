@@ -13,9 +13,10 @@ import (
 )
 
 type inspectDistinctValuesJSON struct {
-	Values     []any  `json:"values"`
-	HasMore    bool   `json:"hasMore"`
-	NextCursor string `json:"nextCursor,omitempty"`
+	Values         []any  `json:"values"`
+	HasMore        bool   `json:"hasMore"`
+	NextCursor     string `json:"nextCursor,omitempty"`
+	PreviousCursor string `json:"previousCursor,omitempty"`
 }
 
 type inspectFacetJSON struct {
@@ -24,9 +25,10 @@ type inspectFacetJSON struct {
 }
 
 type inspectFacetsJSON struct {
-	Facets     []inspectFacetJSON `json:"facets"`
-	HasMore    bool               `json:"hasMore"`
-	NextCursor string             `json:"nextCursor,omitempty"`
+	Facets         []inspectFacetJSON `json:"facets"`
+	HasMore        bool               `json:"hasMore"`
+	NextCursor     string             `json:"nextCursor,omitempty"`
+	PreviousCursor string             `json:"previousCursor,omitempty"`
 }
 
 type inspectSummaryJSON struct {
@@ -146,9 +148,10 @@ func (s *Server) handleInspectIndex(w http.ResponseWriter, r *http.Request) {
 		}
 
 		writeOK(w, &inspectDistinctValuesJSON{
-			Values:     values,
-			HasMore:    dv.GetHasMore(),
-			NextCursor: dv.GetNextCursor(),
+			Values:         values,
+			HasMore:        dv.GetHasMore(),
+			NextCursor:     dv.GetNextCursor(),
+			PreviousCursor: dv.GetPreviousCursor(),
 		})
 
 	case *servicepb.InspectIndexResponse_Facets:
@@ -163,9 +166,10 @@ func (s *Server) handleInspectIndex(w http.ResponseWriter, r *http.Request) {
 		}
 
 		writeOK(w, &inspectFacetsJSON{
-			Facets:     facets,
-			HasMore:    f.GetHasMore(),
-			NextCursor: f.GetNextCursor(),
+			Facets:         facets,
+			HasMore:        f.GetHasMore(),
+			NextCursor:     f.GetNextCursor(),
+			PreviousCursor: f.GetPreviousCursor(),
 		})
 
 	case *servicepb.InspectIndexResponse_Summary:

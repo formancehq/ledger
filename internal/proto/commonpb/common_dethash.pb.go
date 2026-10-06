@@ -3204,7 +3204,7 @@ func (m *PreparedQueryCursor) MarshalToSizedBufferDeterministicVT(dAtA []byte) (
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x32
+			dAtA[i] = 0x3a
 		}
 	}
 	if len(m.TransactionData) > 0 {
@@ -3213,7 +3213,7 @@ func (m *PreparedQueryCursor) MarshalToSizedBufferDeterministicVT(dAtA []byte) (
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x2a
+			dAtA[i] = 0x32
 		}
 	}
 	if len(m.AccountData) > 0 {
@@ -3222,8 +3222,15 @@ func (m *PreparedQueryCursor) MarshalToSizedBufferDeterministicVT(dAtA []byte) (
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x22
+			dAtA[i] = 0x2a
 		}
+	}
+	if len(m.Previous) > 0 {
+		i -= len(m.Previous)
+		copy(dAtA[i:], m.Previous)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Previous)))
+		i--
+		dAtA[i] = 0x22
 	}
 	if len(m.Next) > 0 {
 		i -= len(m.Next)
