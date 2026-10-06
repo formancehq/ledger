@@ -132,19 +132,6 @@ type ClusterSpec struct {
 	// +optional
 	AdmissionMetrics *bool `json:"admissionMetrics,omitempty"`
 
-	// MetricsNaming selects the convention for metric names emitted
-	// by the server: "otel" (the default, dot-notation) preserves
-	// the OpenTelemetry instrument names; "prom" rewrites every
-	// metric the server emits with a `ledger_` prefix and dots
-	// converted to underscores so the names are unambiguous after
-	// an OTLP→Prometheus collector that sanitises dots. OTel
-	// semantic-convention auto-instrumentation (`go.*`, `process.*`,
-	// `system.*`, `http.*`) uses the global MeterProvider and is
-	// never touched by this flag.
-	// +kubebuilder:validation:Enum=otel;prom
-	// +optional
-	MetricsNaming string `json:"metricsNaming,omitempty"`
-
 	// SentinelMode enables runtime volume consistency assertions
 	// (monotonicity, delta/posting cross-check, post-commit cache/Pebble verification).
 	// +optional
@@ -848,6 +835,16 @@ type MetricsConfig struct {
 	// RuntimeMinimumReadMemStatsInterval is the minimum interval for reading mem stats.
 	// +optional
 	RuntimeMinimumReadMemStatsInterval string `json:"runtimeMinimumReadMemStatsInterval,omitempty"`
+
+	// Prefix is the namespace prepended to every metric the server's own
+	// instrumentation emits. When unset the server default
+	// `formance.ledger` applies; `none` emits unprefixed names. OTel
+	// semantic-convention instrumentation (Go runtime, host, HTTP, gRPC)
+	// is never prefixed.
+	// +kubebuilder:validation:Pattern=`^[A-Za-z]([A-Za-z0-9_]*[A-Za-z0-9])?(\.[A-Za-z]([A-Za-z0-9_]*[A-Za-z0-9])?)*$`
+	// +kubebuilder:validation:MaxLength=64
+	// +optional
+	Prefix string `json:"prefix,omitempty"`
 }
 
 // LogsConfig holds logs configuration.

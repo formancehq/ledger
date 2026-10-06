@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/infra/monitoring/metrics"
 )
 
 // TestMetricsRegistry verifies that the human-maintained registry in
@@ -53,6 +55,84 @@ func TestMetricsRegistry(t *testing.T) {
 		if _, ok := registrySet[n]; !ok {
 			t.Errorf("metric %q is emitted in the code but is missing from metrics.libsonnet — add it to the registry so the dashboard can reference it", n)
 		}
+	}
+}
+
+// TestNamingPolicyMatchesDashboards verifies the invariants the
+// dashboard generator in misc/devenv/monitoring-dashboards relies on
+// to mirror the go-libs metrics prefix (metrics.PrefixedName):
+//   - the Jsonnet prefix equals [metrics.DefaultPrefix];
+//   - no instrument our code creates starts with a semantic-convention
+//     prefix listed in `semconvPrefixes`, which the generator never
+//     prefixes while the go-libs prefixed provider always does;
+//   - no instrument already carries the default prefix, which would
+//     be emitted twice.
+func TestNamingPolicyMatchesDashboards(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := findRepoRoot(t)
+	data, err := os.ReadFile(filepath.Join(repoRoot, "misc", "devenv", "monitoring-dashboards", "jsonnet", "lib", "naming.libsonnet"))
+	require.NoError(t, err)
+
+	prefixMatch := regexp.MustCompile(`(?m)^\s*prefix:: '([^']*)',`).FindSubmatch(data)
+	require.NotNil(t, prefixMatch, "naming.libsonnet must declare `prefix:: '...'`")
+	require.Equal(t, metrics.DefaultPrefix, string(prefixMatch[1]),
+		"naming.libsonnet prefix must match metrics.DefaultPrefix")
+
+	semconvBlock := regexp.MustCompile(`(?s)semconvPrefixes:: \[(.*?)\]`).FindSubmatch(data)
+	require.NotNil(t, semconvBlock, "naming.libsonnet must declare `semconvPrefixes:: [...]`")
+	semconvPrefixes := regexp.MustCompile(`'([^']+)'`).FindAllSubmatch(semconvBlock[1], -1)
+	require.NotEmpty(t, semconvPrefixes)
+
+	for _, name := range collectInstrumentNamesFromCode(t, filepath.Join(repoRoot, "internal")) {
+		for _, sc := range semconvPrefixes {
+			require.False(t, strings.HasPrefix(name, string(sc[1])),
+				"instrument %q starts with semantic-convention prefix %q: the dashboards would not prefix it while the server does", name, sc[1])
+		}
+		require.False(t, strings.HasPrefix(name, metrics.DefaultPrefix+"."),
+			"instrument %q already carries the %q prefix and would be emitted with it twice", name, metrics.DefaultPrefix)
+	}
+}
+
+// TestSemconvInstrumentationKeepsGlobalProvider guards the mechanism that
+// keeps OpenTelemetry semantic-convention metrics (go.*, process.*,
+// system.*, http.*, rpc.*) out of the metrics prefix: the Go runtime,
+// host, otelhttp and otelgrpc instrumentation record through the global
+// MeterProvider, which go-libs sets to the raw SDK provider, while only
+// the injected provider is prefixed. Installing a global provider or
+// handing a provider to instrumentation libraries in production code
+// could route semconv metrics through the prefixed provider.
+func TestSemconvInstrumentationKeepsGlobalProvider(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := findRepoRoot(t)
+	forbidden := regexp.MustCompile(`\botel\.SetMeterProvider\(|\bWithMeterProvider\(`)
+
+	for _, dir := range []string{"internal", "cmd", "pkg"} {
+		root := filepath.Join(repoRoot, dir)
+		if _, err := os.Stat(root); os.IsNotExist(err) {
+			continue
+		}
+		err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if info.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return nil
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			if loc := forbidden.FindIndex(data); loc != nil {
+				rel, _ := filepath.Rel(repoRoot, path) // best effort: only used in the message
+				t.Errorf("%s: %q routes a MeterProvider into OpenTelemetry instrumentation; semantic-convention metrics must keep using the raw global provider so the metrics prefix never renames them",
+					rel, data[loc[0]:loc[1]])
+			}
+
+			return nil
+		})
+		require.NoError(t, err)
 	}
 }
 
@@ -119,8 +199,8 @@ var instrumentMethods = []string{
 // collectInstrumentNamesFromCode scans the .go files under root for
 // call sites that create instruments and returns the set of unique
 // instrument names. Anything our code instantiates is in scope —
-// we don't filter by meter name because the naming policy applies
-// uniformly to every meter we hand out.
+// we don't filter by meter name because the metrics prefix applies
+// uniformly to every meter obtained from the injected provider.
 func collectInstrumentNamesFromCode(t *testing.T, root string) []string {
 	t.Helper()
 	pattern := regexp.MustCompile(

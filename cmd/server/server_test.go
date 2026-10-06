@@ -8,6 +8,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 
+	otlpmetrics "github.com/formancehq/go-libs/v5/pkg/observe/metrics"
+
+	ledgermetrics "github.com/formancehq/ledger/v3/internal/infra/monitoring/metrics"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
@@ -179,4 +182,17 @@ func TestLoadConfig_ResumeThresholdExplicitHonored(t *testing.T) {
 	require.InDelta(t, 0.5, cfg.HealthConfig.WALResumeThreshold, 1e-9)
 	// Data resume, left unset, still derives from its block default.
 	require.InDelta(t, 0.75, cfg.HealthConfig.DataResumeThreshold, 1e-9)
+}
+
+// TestRunCommand_MetricsPrefixDefault pins the ledger's default namespace on
+// the go-libs --otel-metrics-prefix flag, which the metrics module reads to
+// prefix the instruments created through the injected MeterProvider.
+func TestRunCommand_MetricsPrefixDefault(t *testing.T) {
+	t.Parallel()
+
+	cmd := NewRunCommand()
+	require.Equal(t, ledgermetrics.DefaultPrefix, otlpmetrics.ConfigFromFlags(cmd.Flags()).Prefix)
+
+	require.NoError(t, cmd.Flags().Set(otlpmetrics.OtelMetricsPrefixFlag, "none"))
+	require.Equal(t, "none", otlpmetrics.ConfigFromFlags(cmd.Flags()).Prefix)
 }
