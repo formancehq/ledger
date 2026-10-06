@@ -13,8 +13,12 @@
 Releases publish platform archives on
 [GitHub](https://github.com/formancehq/ledger/releases):
 
-- Linux/macOS: `ledger_linux-amd64.tar.gz`, `ledger_darwin-arm64.tar.gz`, and the corresponding architectures. These archives contain `ledger-server` and `ledgerctl`.
-- Windows: `ledger_windows-amd64.zip` and `ledger_windows-arm64.zip`. These archives contain `ledgerctl.exe` only.
+- Linux/macOS: `ledger_<version>_linux-amd64.tar.gz`, `ledger_<version>_darwin-arm64.tar.gz`, and the corresponding architectures. These archives contain `ledger-server` and `ledgerctl`.
+- Windows: `ledger_<version>_windows-amd64.zip` and `ledger_<version>_windows-arm64.zip`. These archives contain `ledgerctl.exe` only.
+
+`<version>` is the release tag, for example `ledger_v3.0.0-beta.0_darwin-arm64.tar.gz`,
+or `nightly-<short-commit>` for nightly builds. Each archive extracts into a
+directory with the same name, so several versions can sit side by side.
 
 Extract the archive and put `ledgerctl` or `ledgerctl.exe` on your `PATH`. Prefer
 the CLI distributed with the deployed server build. `ledgerctl upgrade` selects
