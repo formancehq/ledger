@@ -16,6 +16,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
@@ -587,7 +588,7 @@ var _ = Describe("Query Checkpoints (multi-node readiness)", Ordered, func() {
 func listAllTransactionsFromCheckpoint(ctx context.Context, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, afterTxID uint64, checkpointID uint64, filter *commonpb.QueryFilter) ([]*commonpb.Transaction, error) {
 	var cursor string
 	if afterTxID > 0 {
-		cursor = strconv.FormatUint(afterTxID, 10)
+		cursor = pagecursor.Cursor{Key: strconv.FormatUint(afterTxID, 10)}.Encode()
 	}
 
 	stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{

@@ -40,7 +40,7 @@
       "v3": [
         "GET /v3/{ledgerName}/accounts"
       ],
-      "notes": "`address` and `metadata` conditions move into `filter`. `balance` and `balanceOperator` are not accepted. The cursor is `after`.",
+      "notes": "`address` and `metadata` conditions move into `filter`. `balance` and `balanceOperator` are not accepted. Paginate with `cursor`, which takes a v3 page token; v2 cursors and `after` are not accepted.",
       "docs": "/modules/ledger/querying/filters-and-pagination"
     },
     "GET /{ledger}/accounts/{address}": {
@@ -101,7 +101,7 @@
       "v3": [
         "GET /v3/{ledgerName}/transactions"
       ],
-      "notes": "`reference`, `account`, `source`, `destination` and `metadata` move into `filter`. `startTime` and `endTime` become `startDate` and `endDate`. Each filter needs its own index: `TX_BUILTIN_INDEX_TIMESTAMP` for the dates, `TX_BUILTIN_INDEX_REFERENCE` for `reference`, `TX_BUILTIN_INDEX_ADDRESS`, `TX_BUILTIN_INDEX_SOURCE_ADDRESS` and `TX_BUILTIN_INDEX_DESTINATION_ADDRESS` for `account`, `source` and `destination` respectively, and a metadata index for each `metadata` key. The cursor is `after`.",
+      "notes": "`reference`, `account`, `source`, `destination` and `metadata` move into `filter`. `startTime` and `endTime` become `startDate` and `endDate`. Each filter needs its own index: `TX_BUILTIN_INDEX_TIMESTAMP` for the dates, `TX_BUILTIN_INDEX_REFERENCE` for `reference`, `TX_BUILTIN_INDEX_ADDRESS`, `TX_BUILTIN_INDEX_SOURCE_ADDRESS` and `TX_BUILTIN_INDEX_DESTINATION_ADDRESS` for `account`, `source` and `destination` respectively, and a metadata index for each `metadata` key. Paginate with `cursor`, which takes a v3 page token; v2 cursors and `after` are not accepted.",
       "docs": "/modules/ledger/querying/filters-and-pagination"
     },
     "POST /{ledger}/transactions": {
@@ -167,7 +167,7 @@
       "v3": [
         "GET /v3/{ledgerName}/logs"
       ],
-      "notes": "`startTime` and `endTime` become `startDate` and `endDate`, which require the builtin `LOG_BUILTIN_INDEX_DATE` index. The cursor is `after`."
+      "notes": "`startTime` and `endTime` become `startDate` and `endDate`, which require the builtin `LOG_BUILTIN_INDEX_DATE` index. Paginate with `cursor`, which takes a v3 page token; v2 cursors and `after` are not accepted."
     },
     "GET /_/info": {
       "operationId": "v2GetInfo",
@@ -190,7 +190,7 @@
       "v3": [
         "GET /v3/"
       ],
-      "notes": "Returns every ledger in one response. `pageSize`, `cursor`, `includeDeleted` and `sort` are not accepted."
+      "notes": "Pages by name with `pageSize`, `cursor` (a v3 page token) and `reverse`. `includeDeleted` and `sort` are not accepted."
     },
     "GET /v2/{ledger}": {
       "operationId": "v2GetLedger",
@@ -288,7 +288,7 @@
       "v3": [
         "GET /v3/{ledgerName}/accounts"
       ],
-      "notes": "The JSON query body moves into the `filter` query parameter. `expand`, `pit` and `sort` are not accepted; volumes are always returned. The cursor is `after`. Account date fields are gone.",
+      "notes": "The JSON query body moves into the `filter` query parameter. `expand`, `pit` and `sort` are not accepted; volumes are always returned. Paginate with `cursor`, which takes a v3 page token; v2 cursors and `after` are not accepted. Account date fields are gone.",
       "docs": "/modules/ledger/migration/removed-capabilities#account-date-fields"
     },
     "GET /v2/{ledger}/accounts/{address}": {
@@ -334,7 +334,7 @@
       "v3": [
         "GET /v3/{ledgerName}/transactions"
       ],
-      "notes": "The JSON query body moves into the `filter` query parameter. Each filter needs its own index: `TX_BUILTIN_INDEX_TIMESTAMP` for `timestamp`, `TX_BUILTIN_INDEX_REFERENCE` for `reference`, `TX_BUILTIN_INDEX_ADDRESS`, `TX_BUILTIN_INDEX_SOURCE_ADDRESS` and `TX_BUILTIN_INDEX_DESTINATION_ADDRESS` for `account`, `source` and `destination` respectively, and a metadata index for each `metadata` key. `expand`, `pit`, `order` and `sort` are not accepted; `reverse` is kept. The cursor is `after`.",
+      "notes": "The JSON query body moves into the `filter` query parameter. Each filter needs its own index: `TX_BUILTIN_INDEX_TIMESTAMP` for `timestamp`, `TX_BUILTIN_INDEX_REFERENCE` for `reference`, `TX_BUILTIN_INDEX_ADDRESS`, `TX_BUILTIN_INDEX_SOURCE_ADDRESS` and `TX_BUILTIN_INDEX_DESTINATION_ADDRESS` for `account`, `source` and `destination` respectively, and a metadata index for each `metadata` key. `expand`, `pit`, `order` and `sort` are not accepted; `reverse` is kept. Paginate with `cursor`, which takes a v3 page token; v2 cursors and `after` are not accepted.",
       "docs": "/modules/ledger/querying/filters-and-pagination"
     },
     "POST /v2/{ledger}/transactions": {
@@ -401,7 +401,7 @@
       "v3": [
         "GET /v3/{ledgerName}/logs"
       ],
-      "notes": "`LOG_BUILTIN_INDEX_DATE` is required to filter by date (`startDate`/`endDate`, or `date` in `filter`). `pit` and `sort` are not accepted. The cursor is `after`."
+      "notes": "`LOG_BUILTIN_INDEX_DATE` is required to filter by date (`startDate`/`endDate`, or `date` in `filter`). `pit` and `sort` are not accepted. Paginate with `cursor`, which takes a v3 page token; v2 cursors and `after` are not accepted."
     },
     "POST /v2/{ledger}/logs/import": {
       "operationId": "v2ImportLogs",

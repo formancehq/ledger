@@ -39,7 +39,7 @@ Examples:
   ledgerctl accounts list --ledger my-ledger --filter "metadata[active] == true or address ^= users:"
   ledgerctl accounts list --reverse   # Reverse alphabetical (Z→A)
   ledgerctl accounts list --all   # Fetch all accounts without pagination
-  ledgerctl accounts list --cursor users:bob   # Resume after a previous page`,
+  ledgerctl accounts list --cursor eyJrZXkiOiJ1c2Vyczpib2IifQ   # Resume after users:bob (page token for {"key":"users:bob"})`,
 		Args:              cobra.ExactArgs(0),
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE:              runList,
@@ -210,6 +210,8 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 				cmdutil.RenderProfile(cmdutil.ExtractProfile(stream.Trailer()))
 			}
 
+			cmdutil.EmitCursorHints(cmd, cmdutil.CursorsFromTrailer(stream.Trailer()))
+
 			return nil
 		}
 
@@ -235,25 +237,28 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 			cmdutil.RenderProfile(cmdutil.ExtractProfile(stream.Trailer()))
 		}
 
-		nextCursor := cmdutil.NextCursorFromTrailer(stream.Trailer())
-		if nextCursor == "" {
-			if !structuredOutput {
-				pterm.Info.Println("End of accounts.")
-			}
-
-			return nil
-		}
-
-		page.Cursor = nextCursor
+		cursors := cmdutil.CursorsFromTrailer(stream.Trailer())
 
 		if structuredOutput {
-			// `accounts list --json/--yaml` printed the JSON/YAML payload on
-			// stdout above; surface the resume cursor on stderr so scripts can
-			// pick it up without parsing gRPC trailers.
-			cmdutil.EmitNextCursorHint(cmd, nextCursor)
+			// The JSON/YAML payload went to stdout above; the page tokens go to
+			// stderr so scripts can pick them up without parsing gRPC trailers.
+			cmdutil.EmitCursorHints(cmd, cursors)
 
 			return nil
 		}
+
+		if cursors.Next == "" {
+			pterm.Info.Println("End of accounts.")
+			cmdutil.EmitPreviousCursorHint(cmd, cursors.Previous)
+
+			return nil
+		}
+
+		page.Cursor = cursors.Next
+
+		// Declining the prompt below ends the walk, so both tokens are shown
+		// first.
+		cmdutil.EmitCursorHints(cmd, cursors)
 
 		result, err := pterm.DefaultInteractiveConfirm.
 			WithDefaultText("Load next page?").

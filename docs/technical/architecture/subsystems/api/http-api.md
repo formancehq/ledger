@@ -116,6 +116,32 @@ it returns `413 BODY_TOO_LARGE`, including when only the suffix is oversized.
 }
 ```
 
+#### Paged list
+
+The paged lists (`GET /v3/` for ledgers, `/v3/{ledgerName}/accounts`,
+`/transactions`, `/logs`, `/numscripts`, `/v3/_/audit-entries`,
+`/v3/_/signing-keys`) accept `pageSize` (default 100, clamped to 1000),
+`cursor` and `reverse=true`, and answer:
+
+```json
+{
+  "data": [ ... ],
+  "next": "<page token>",
+  "previous": "<page token>",
+  "hasMore": true
+}
+```
+
+`next` and `previous` are omitted when there is no such page; `hasMore` is
+always present and set iff `next` is. Pass either token back as `cursor`, with
+the same `reverse` and `filter`. A token is base64url of
+`{"key": <string>, "back": <bool>}` (`pkg/pagecursor`); the format, the key of
+each endpoint and the link rules are documented on the `PageToken` schema in
+`openapi.yml` and in
+[the query pipeline](../read-path/query-pipeline.md#pagination). A malformed
+token, or a key that is not a valid position for the endpoint, is
+`400 INVALID_REQUEST`.
+
 #### Error
 
 ```json
@@ -536,12 +562,15 @@ GET /v3/{ledgerName}
 #### List All Ledgers
 
 ```http
-GET /v3/
+GET /v3/?pageSize=100
 ```
+
+Paged by name, ascending unless `reverse=true` (see [Paged list](#paged-list)).
 
 **Response**:
 ```json
 {
+  "hasMore": false,
   "data": [
     {
       "name": "ledger1",
@@ -717,12 +746,14 @@ expressed as a filter condition. Both require the `ledger:AuditRead` scope.
 #### List Audit Entries
 
 ```http
-GET /v3/_/audit-entries?pageSize=100&after=42&reverse=false&filter=outcome%20%3D%3D%20failure
+GET /v3/_/audit-entries?pageSize=100&cursor=eyJrZXkiOiI0MiJ9&reverse=false&filter=outcome%20%3D%3D%20failure
 ```
 
 Query parameters:
 - `pageSize`: max entries (default 100, capped at 1000)
-- `after`: audit sequence to start after (exclusive, opaque cursor)
+- `cursor`: page token from a previous response's `next` or `previous`; its
+  key is the decimal audit sequence (`eyJrZXkiOiI0MiJ9` is `{"key":"42"}`: the
+  entries after sequence 42). See [Paged list](#paged-list)
 - `reverse`: `true` iterates newest-first
 - `filter`: a filter expression restricted to bare audit fields (`outcome`,
   `ledger`, `seq`, `proposal_id`, `timestamp`, `log_seq`, `caller_subject`,
@@ -746,7 +777,7 @@ Query parameters:
   rather than returning a partial page. The consistency guarantee matches the
   gRPC surface.
 
-**Response**: `{ "data": [ AuditEntry, ... ] }` (list omits per-order `items`).
+**Response**: `{ "data": [ AuditEntry, ... ], "next": …, "previous": …, "hasMore": … }` (list omits per-order `items`).
 
 #### Get Audit Entry
 
@@ -805,7 +836,7 @@ Returns the `IndexEntry` — the registry entry joined with the backfill cursor 
 GET /v3/{ledgerName}/indexes/{canonicalId}/inspect?mode=summary
 ```
 
-Scans the index and returns distinct values, facets, or a summary (`mode=distinctValues|facets|summary`). Only metadata indexes are inspectable; builtin canonicals return `400`.
+Scans the index and returns distinct values, facets, or a summary (`mode=distinctValues|facets|summary`). Only metadata indexes are inspectable; builtin canonicals return `400`. The `distinctValues` and `facets` modes page in ascending value order with `pageSize` and `cursor`, and return `nextCursor` / `previousCursor` page tokens whose key is the base64url of the encoded value (see [Paged list](#paged-list)).
 
 #### Drop an index
 

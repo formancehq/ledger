@@ -113,7 +113,7 @@ for client setup, restore behavior, failure limitations, and revision changes.
 | List numscript versions | ✅ | ❌ | Per-ledger, `GET .../numscripts/{name}/versions`, current latest + every stored version |
 | **Audit Log** |
 | Audit log (success + failure) | ✅ | ❌ | Replicated via Raft, stored in Pebble |
-| List audit entries | ✅ | ❌ | `GET /v3/_/audit-entries` (HTTP) + gRPC stream. Bucket-wide; `pageSize`/`after`/`reverse` + a bare-audit-field filter expression (`outcome`, `ledger`, `seq`, `proposal_id`, `timestamp`, `log_seq`, `caller_subject`, `order_type`, `idempotency_key`; the last supports `==`, `in`, and `^=` prefix matching), resolved against the audit query target — EN-1549 replaced the old `audit[...]` namespaced syntax; textual form only, audit has no structured JSON form — see [Filter input formats](#filter-input-formats-dual-format-contract-en-1511) |
+| List audit entries | ✅ | ❌ | `GET /v3/_/audit-entries` (HTTP) + gRPC stream. Bucket-wide; `pageSize`/`cursor`/`reverse` ([pagination](#pagination)) + a bare-audit-field filter expression (`outcome`, `ledger`, `seq`, `proposal_id`, `timestamp`, `log_seq`, `caller_subject`, `order_type`, `idempotency_key`; the last supports `==`, `in`, and `^=` prefix matching), resolved against the audit query target — EN-1549 replaced the old `audit[...]` namespaced syntax; textual form only, audit has no structured JSON form — see [Filter input formats](#filter-input-formats-dual-format-contract-en-1511) |
 | Get audit entry by sequence | ✅ | ❌ | `GET /v3/_/audit-entries/{sequence}` (HTTP) + gRPC. Populates per-order `items` |
 | Audit log disable/enable | ❌ | ❌ | Not implemented |
 | **Error Handling** |
@@ -708,7 +708,7 @@ This works on `GET /v3/{ledgerName}/accounts` and on
 target).
 
 **It replaces date filtering, not date ordering.** `GET /v3/{ledgerName}/accounts`
-takes `pageSize` and `after` — an account *address* — so rows come back
+takes `pageSize` and a `cursor` whose key is an account *address*, so rows come back
 address-ordered and a metadata range only narrows that set. There is no sort
 parameter and no date-keyed cursor, so a v2 client that paginated accounts *in
 date order* has no server-side equivalent: it either sorts a filtered page
@@ -1005,11 +1005,11 @@ Read endpoints comparison with the original ledger:
 | `GET /v3/{ledgerName}/accounts/{address}/balances` | ❌ | ✅ | Get account balances |
 | `GET /v3/{ledgerName}/accounts/{address}/volumes` | ❌ | ✅ | Get account volumes |
 | `GET /v3/{ledgerName}/volumes` | ✅ | ✅ | Aggregate volumes (per-asset, generic account `filter`) |
-| `GET /v3/{ledgerName}/logs` | ✅ | ✅ | List per-ledger logs. Supports `?after=` for pagination. Ledger-scoped read → requires `ledger:read` (granular `ledger:LedgerRead`) on both transports |
+| `GET /v3/{ledgerName}/logs` | ✅ | ✅ | List per-ledger logs, ascending by ledger-local log id unless `reverse=true` ([pagination](#pagination)). Ledger-scoped read → requires `ledger:read` (granular `ledger:LedgerRead`) on both transports |
 | `GET /v3/{ledgerName}/stats` | ✅ | ✅ | Ledger usage statistics (transaction, volume, reference, posting, log, revert, Numscript-execution, ephemeral-evicted and transient-used counts). A missing or deleted ledger returns `404 LEDGER_NOT_FOUND` |
 | `GET /v3/{ledgerName}` | ✅ | ✅ | Get ledger info |
 | `POST /v3/{ledgerName}/promote` | ✅ | ❌ | Promote mirror ledger to normal mode |
-| `GET /v3/` | ✅ | ✅ | List all ledgers |
+| `GET /v3/` | ✅ | ✅ | List ledgers, paged by name ([pagination](#pagination)) |
 | `GET /v3/{ledgerName}/metadata-schema` | ✅ | ❌ | Get declared metadata field types |
 | `GET /v3/{ledgerName}/analyze-accounts` | ✅ | ❌ | Analyze accounts and suggest Chart of Accounts |
 | `GET /v3/{ledgerName}/analyze-transactions` | ✅ | ❌ | Analyze transaction flow patterns |
@@ -1020,7 +1020,7 @@ Read endpoints comparison with the original ledger:
 | `DELETE /v3/{ledgerName}/prepared-queries/{queryName}` | ✅ | ❌ | Delete a prepared query |
 | `GET /v3/{ledgerName}/prepared-queries` | ✅ | ❌ | List prepared queries |
 | `POST /v3/{ledgerName}/prepared-queries/{queryName}/execute` | ✅ | ❌ | Execute a prepared query |
-| `GET /v3/{ledgerName}/numscripts` | ✅ | ❌ | List all numscripts (greatest version of each) |
+| `GET /v3/{ledgerName}/numscripts` | ✅ | ❌ | List numscripts (greatest version of each), paged by name ([pagination](#pagination)) |
 | `GET /v3/{ledgerName}/numscripts/{name}?version=` | ✅ | ❌ | Get numscript (version selector, empty/latest = greatest semver) |
 | `GET /v3/{ledgerName}/numscripts/{name}/usage` | ✅ | ❌ | Get invocation count + last-used timestamp. A missing or deleted ledger returns `404 LEDGER_NOT_FOUND`; a never-invoked template returns a zero-valued `200` response |
 | `GET /v3/{ledgerName}/numscripts/{name}/versions` | ✅ | ❌ | List version history |
@@ -1032,7 +1032,7 @@ Read endpoints comparison with the original ledger:
 | `PUT /v3/{ledgerName}/account-types/default-enforcement-mode` | ✅ | ❌ | Set default enforcement mode (STRICT/AUDIT). Requires `ledger:MetadataWrite` on both the dedicated route and gRPC `Apply` |
 | `GET /v3/_/logs/{sequence}` | ✅ | ❌ | Fetch a single system log by bucket-wide sequence. No ledger identity → requires `ledger` ops-read (granular `ledger:OpsRead`) |
 | `GET /v3/_/events-sinks` | ✅ | ❌ | List configured event sinks with per-sink status (`{sinks, sinkStatuses}`, parity with gRPC `GetEventsSinks`) |
-| `GET /v3/_/signing-keys` | ✅ | ❌ | List registered Ed25519 signing keys |
+| `GET /v3/_/signing-keys` | ✅ | ❌ | List registered Ed25519 signing keys, paged by key id ([pagination](#pagination)) |
 | `GET /v3/{ledgerName}/indexes` | ✅ | ❌ | List indexes registered on a ledger |
 | `GET /v3/{ledgerName}/indexes/{canonicalId}` | ✅ | ❌ | Get a single Index registry entry |
 | `GET /v3/{ledgerName}/indexes/{canonicalId}/status` | ✅ | ❌ | IndexEntry (backfill cursor + per-replica IndexVersionState) |
@@ -1045,6 +1045,32 @@ Read endpoints comparison with the original ledger:
 | `GET /v3/_/indexes/{canonicalId}/status` | ✅ | ❌ | Bucket-scoped IndexEntry |
 | `POST /v3/{ledgerName}/bulk` | ✅ | ❌ | Bulk operations (alternate path without underscore) |
 | `GET /_info` | ✅ | ❌ | Server build info (`version`, `commit`, `buildDate`, `goVersion`); unauthenticated, flat JSON (no `data` envelope) |
+
+### Pagination
+
+Every paged list uses the same page token on both transports
+(`pkg/pagecursor`): base64url (unpadded) of `{"key": <string>, "back": <bool>}`.
+`{key: K}` serves the rows strictly after K, `{key: K, back: true}` the page
+that ends strictly before K, and `{back: true}` the last page; an empty token
+serves the first page. Every page comes back in the requested order. The key
+is the endpoint's position: decimal transaction id, ledger-local log id or
+audit sequence; account address; ledger or numscript name; signing-key id;
+decimal id or address for prepared queries (by target); base64url of the
+encoded metadata value for index inspection. A malformed token, or a key that
+is not a valid position for the endpoint, is `InvalidArgument` over gRPC and
+`400 INVALID_REQUEST` over HTTP. The full format and the link rules are in the
+`PageToken` schema of `openapi.yml` and in
+[the query pipeline](../architecture/subsystems/read-path/query-pipeline.md#pagination).
+
+| Surface | Request | Response |
+|---------|---------|----------|
+| HTTP lists: `GET /v3/` (ledgers), `/v3/{ledgerName}/accounts`, `/transactions`, `/logs`, `/numscripts`, `/v3/_/audit-entries`, `/v3/_/signing-keys` | `pageSize` (default 100, clamped to 1000), `cursor`, `reverse=true` | `{"data": [...], "next": "<token>", "previous": "<token>", "hasMore": <bool>}`; `next` and `previous` omitted when there is no such page, `hasMore` set iff `next` is |
+| gRPC paged list RPCs: `ListLedgers`, `ListAccounts`, `ListTransactions`, `ListLogs`, `ListNumscripts`, `ListAuditEntries`, `ListSigningKeys` | `ListOptions.page_size`, `cursor`, `reverse` | `x-next-cursor` and `x-previous-cursor` trailers |
+| Prepared-query execution (`LIST` mode), both transports | `pageSize`, `cursor`, `reverse` | `cursor.next`, `cursor.previous`, `cursor.hasMore` |
+| Index inspection (`distinctValues` / `facets`), both transports | `pageSize`, `cursor` | `nextCursor` / `previousCursor` (gRPC `next_cursor` / `previous_cursor`), `hasMore` |
+
+A page token is relative to the requested order, so every page of a walk
+repeats the same `reverse` and filter.
 
 ---
 
@@ -1081,11 +1107,14 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 
 ### BucketService Methods
 
+Paged list RPCs follow the shared `ListOptions` contract and publish the
+`x-next-cursor` and `x-previous-cursor` trailers; see [Pagination](#pagination).
+
 | Method | Description | Status |
 |--------|-------------|--------|
 | `CreateLedger` | Create a new ledger | ✅ |
 | `DeleteLedger` | Delete a ledger | ✅ |
-| `ListLedgers` | Get all ledgers info | ✅ |
+| `ListLedgers` | Stream ledgers, paged by name | ✅ |
 | `GetLedger` | Get ledger by name or ID | ✅ |
 | `GetTransaction` | Get transaction by ID | ✅ |
 | `ListTransactions` | Stream transactions for a ledger | ✅ |
@@ -1112,9 +1141,9 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `ListNumscriptVersions` | List the latest pointer and every stored version | ✅ |
 | `ListAuditEntries` | Stream audit log entries (success + failure). Request is `{ options }` only — no dedicated filter fields. Follows the shared `ListOptions` contract: cursor/page_size/reverse/checkpoint_id plus a bare-audit-field `QueryFilter` (outcome, ledger, caller_subject, order_type, idempotency_key, seq, proposal_id, timestamp, log_seq — bare fields resolved against the audit query target, EN-1549 replacing the old `audit[...]` syntax) resolved through the audit secondary index. `idempotency_key` supports equality and prefix matching and may return several historical entries after key reuse. Ledger scope and outcome selection are expressed as filter conditions | ✅ |
 | `GetAuditEntry` | Get a single audit entry by sequence number | ✅ |
-| `ListLogs` | Stream system logs for a ledger (requires `ledger` field; supports `log_id` and date filters for pagination). Ledger-scoped read → requires `ledger:read` (granular `ledger:LedgerRead`), same as the HTTP `GET /v3/{ledgerName}/logs` route | ✅ |
+| `ListLogs` | Stream system logs for a ledger (requires `ledger` field). Follows the shared `ListOptions` contract: cursor/page_size/reverse (descending ledger-local id)/checkpoint_id plus `log_id` and date filters. Ledger-scoped read → requires `ledger:read` (granular `ledger:LedgerRead`), same as the HTTP `GET /v3/{ledgerName}/logs` route | ✅ |
 | `GetLog` | Get a single system log by bucket-wide sequence number. No ledger identity in the request → requires `ledger` ops-read (granular `ledger:OpsRead`), like the HTTP `GET /v3/_/logs/{sequence}` route | ✅ |
-| `ListSigningKeys` | Stream all registered signing keys | ✅ |
+| `ListSigningKeys` | Stream registered signing keys, paged by key id | ✅ |
 | `Discovery` | Return server capabilities (response signing config) and build info (`ServerInfo`: version, commit, build date, Go version) | ✅ |
 | `AnalyzeAccounts` | Analyze accounts and suggest Chart of Accounts | ✅ |
 | `GetIndexStatus` | Read index builder progress (lag, file size) | ✅ |

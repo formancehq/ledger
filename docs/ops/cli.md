@@ -206,7 +206,7 @@ scripting against the CLI predictable across resources.
 | Category | Flag | Type | Notes |
 |---|---|---|---|
 | Pagination | `--page-size` | uint32 | Number of items per page (clamped server-side; default `10`). |
-| Pagination | `--cursor` | string | Opaque cursor returned by the previous page. Parsed per-resource into the appropriate type (string address, uint64 sequence, …). |
+| Pagination | `--cursor` | string | Page token printed by a previous page (`next_cursor` or `previous_cursor`). Pass the same `--reverse` and `--filter` on every page of a walk. See [Page tokens](#page-tokens). |
 | Pagination | `--reverse` | bool | Reverse iteration order. Available on commands whose server endpoint supports it. |
 | Pagination | `--all` | bool | Fetch every page at once (no interactive pagination). Available on `accounts` and `transactions`. |
 | Filter | `--filter` | string | Boolean filter expression — textual `filterexpr` grammar OR the structured JSON `QueryFilter` DSL (dual-format, EN-1511). |
@@ -251,11 +251,32 @@ neither `--page-size` nor `--cursor` is set:
 
 | Group | Commands | Default behaviour |
 |---|---|---|
-| Drain-by-default | `accounts list`, `transactions list`, `ledgers list`, `numscripts list`, `queries list`, `signing keys list` | Follow the trailer chain to the end and print every page in one shot. Set `--page-size` or `--cursor` to switch back to single-page output (and surface the resume cursor on stderr). |
-| Single-page-only | `audit list`, `logs list` | Always print one page and surface the resume cursor on stderr, even with no flags set. Resume with `--cursor <token>`. These resources commonly hold tens of thousands of rows; defaulting to a single page avoids accidentally streaming the whole history. |
+| Drain-by-default | `accounts list`, `transactions list`, `ledgers list`, `numscripts list`, `queries list`, `signing keys list` | Follow the trailer chain to the end and print every page in one shot. Set `--page-size` or `--cursor` to switch back to single-page output (and print the page hints). |
+| Single-page-only | `audit list`, `logs list` | Always print one page and its page hints, even with no flags set. Resume with `--cursor <token>`. These resources commonly hold tens of thousands of rows; defaulting to a single page avoids accidentally streaming the whole history. |
 
 Both groups expose the same `--page-size` / `--cursor` semantics; only the
 flagless default differs.
+
+#### Page tokens
+
+After a single page, a list command prints the tokens of the adjacent pages.
+In human mode:
+
+```
+Previous page — go back with --cursor <token>
+More results available — resume with --cursor <token>
+```
+
+With `--json` or `--yaml`, the hints go to stderr as `previous_cursor=<token>`
+and `next_cursor=<token>` lines, so stdout stays a lossless payload. A hint is
+omitted when there is no such page: the first page has no previous page, and
+the last page has no next page.
+
+A token is the server's page token: base64url of `{"key": …, "back": …}`,
+where `key` is the position (a decimal id, an address, a name, …) and `back`
+selects the page ending before it. Both directions return rows in the
+requested order. Tokens are normally copied from a hint; the full format is
+documented on the `PageToken` schema in `openapi.yml`.
 
 ### Request Signing
 
@@ -911,7 +932,7 @@ ledgerctl indexes inspect [flags]
 | `--target` | Target type: `account` or `transaction` | `account` |
 | `--mode` | Mode: `summary`, `distinct-values`, `facets` | `summary` |
 | `--page-size` | Page size for distinct-values/facets | `20` |
-| `--cursor` | Pagination cursor from previous response | |
+| `--cursor` | Page token printed by a previous page (`Previous page: use --cursor …` or `More results available. Use --cursor …`) | |
 | `--timeout` | Request timeout | `10s` |
 
 **Examples:**
@@ -928,6 +949,9 @@ ledgerctl indexes inspect --ledger my-ledger --key status --mode facets --target
 
 # Paginate through distinct values
 ledgerctl indexes inspect --ledger my-ledger --key category --mode distinct-values --page-size 10
+
+# Next (or previous) page, with a token printed by the previous call
+ledgerctl indexes inspect --ledger my-ledger --key category --mode distinct-values --page-size 10 --cursor <token>
 ```
 
 **Sample output (summary mode):**
@@ -1929,7 +1953,7 @@ ledgerctl version
 
 The **server** exposes the same build metadata over two unauthenticated channels:
 
-- **HTTP** — `GET /_info` returns flat JSON (no `data` envelope): `{"version":"…","commit":"…","buildDate":"…","goVersion":"…","protocolVersion":"19"}`.
+- **HTTP** — `GET /_info` returns flat JSON (no `data` envelope): `{"version":"…","commit":"…","buildDate":"…","goVersion":"…","protocolVersion":"20"}`.
 - **gRPC** — the `Discovery` RPC's `DiscoveryResponse` carries a `ServerInfo` message with the same information, including `protocol_version`.
 
 This is useful for monitoring deployed nodes and spotting version skew across a cluster (the per-node `version` is also surfaced on each `NodeInfo` in `GetClusterState`).
@@ -2472,7 +2496,7 @@ full-chain scan.
   - Signing key ID used (`key=<id>`) or `unsigned` if the order was not signed
   - Consecutive identical orders are grouped compactly (e.g. `MirrorIngest x500`)
 - If audit is disabled on the server, a warning message is displayed instead of an error
-- When `--page-size N` is set and more entries exist, the command prints `More results available — resume with --cursor <token>` so the listing can be chained
+- After the page, the command prints the [page hints](#page-tokens): `Previous page — go back with --cursor <token>` when an earlier page exists and `More results available — resume with --cursor <token>` when a later one does
 
 **Example:**
 
@@ -2504,7 +2528,7 @@ ledgerctl audit list --filter 'seq between 1000 and 2000'
 # Read from a query checkpoint instead of the live store
 ledgerctl audit list --checkpoint-id 7
 
-# Resume after a previous page
+# Next or previous page, with a token printed by the previous call
 ledgerctl audit list --page-size 20 --cursor <token>
 
 # Expand orders within entries
@@ -2590,13 +2614,13 @@ ledgerctl logs list [flags]
 | `--ledger` | (required) | Ledger name to list logs for |
 | `--expand` | `false` | Expand details within each log entry |
 
-Also honors the [Shared Flag Contract](#shared-flag-contract) (`--page-size`, `--cursor`, `--filter`, `--checkpoint-id`, `--json`, `--yaml`, `--timeout`).
+Also honors the [Shared Flag Contract](#shared-flag-contract) (`--page-size`, `--cursor`, `--reverse`, `--filter`, `--checkpoint-id`, `--json`, `--yaml`, `--timeout`).
 
 **Behavior:**
-- Streams system log entries for a specific ledger from the server
+- Streams system log entries for a specific ledger from the server, oldest first (ascending ledger-local log id); `--reverse` lists newest first
 - Each entry shows: sequence number, log type, ledger name, and details
 - The `--ledger` flag is required
-- When `--page-size N` is set and more entries exist, the command prints `More results available — resume with --cursor <token>` so the listing can be chained
+- After the page, the command prints the [page hints](#page-tokens): `Previous page — go back with --cursor <token>` when an earlier page exists and `More results available — resume with --cursor <token>` when a later one does
 
 **Example:**
 
@@ -2604,7 +2628,10 @@ Also honors the [Shared Flag Contract](#shared-flag-contract) (`--page-size`, `-
 # List logs for a ledger
 ledgerctl logs list --ledger my-ledger
 
-# Resume after a previous page
+# Newest first
+ledgerctl logs list --ledger my-ledger --reverse
+
+# Next or previous page, with a token printed by the previous call
 ledgerctl logs list --ledger my-ledger --page-size 20 --cursor <token>
 
 # Filter via the shared filter grammar (only the fields documented under

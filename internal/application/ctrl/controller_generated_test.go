@@ -406,18 +406,18 @@ func (mr *MockControllerMockRecorder) ListLedgers(ctx any) *gomock.Call {
 }
 
 // ListLogs mocks base method.
-func (m *MockController) ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
+func (m *MockController) ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Log], error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListLogs", ctx, ledgerName, afterSequence, pageSize, filter)
+	ret := m.ctrl.Call(m, "ListLogs", ctx, ledgerName, afterSequence, pageSize, filter, reverse)
 	ret0, _ := ret[0].(cursor.Cursor[*commonpb.Log])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListLogs indicates an expected call of ListLogs.
-func (mr *MockControllerMockRecorder) ListLogs(ctx, ledgerName, afterSequence, pageSize, filter any) *gomock.Call {
+func (mr *MockControllerMockRecorder) ListLogs(ctx, ledgerName, afterSequence, pageSize, filter, reverse any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogs", reflect.TypeOf((*MockController)(nil).ListLogs), ctx, ledgerName, afterSequence, pageSize, filter)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogs", reflect.TypeOf((*MockController)(nil).ListLogs), ctx, ledgerName, afterSequence, pageSize, filter, reverse)
 }
 
 // ListNumscriptVersions mocks base method.

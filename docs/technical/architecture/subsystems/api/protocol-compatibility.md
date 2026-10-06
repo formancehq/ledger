@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"19"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"20"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 19:
+leader. For example, with a schema implementing revision 20:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 19' \
+grpcurl -plaintext -H 'ledger-protocol-version: 20' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -246,6 +246,23 @@ Revision 19 renames the privileged JWT claim to `superuser`, the CLI flag to
 semantics and protobuf field number 3 are unchanged, but tokens and credential
 configuration must use the new name. Older claims and flags have no aliases;
 update clients, servers, OIDC claim mappings, and operator Credentials together.
+
+## Two-way page tokens (revision 20)
+
+Revision 20 replaces every list cursor with a page token from
+`pkg/pagecursor`: base64url (unpadded) of `{"key": <string>, "back": <bool>}`.
+A revision-19 cursor was the raw key itself (a decimal id, an address, a
+name, or base64url value bytes for index inspection), which a revision-20
+server rejects with `InvalidArgument`, and a revision-20 token is not a raw
+key a revision-19 server can parse.
+
+Paged list RPCs publish `x-previous-cursor` beside `x-next-cursor`, and
+`PreparedQueryCursor`, `InspectDistinctValues` and `InspectFacets` gain a
+previous token (`previous` is `PreparedQueryCursor` field 4, renumbering its
+data fields to 5–7). `ListLogs` accepts `ListOptions.reverse`. A back token
+serves the page ending strictly before its key in the requested order, so it
+is not meaningful to a peer that does not implement it; clients and servers
+must use the matching revision.
 
 ## Maintaining the revision
 

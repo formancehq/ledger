@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/query"
+	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 )
 
 // spinCursor emits a fixed number of items, burning a measurable amount of
@@ -62,7 +63,7 @@ func TestSendPagedToStream_ProfilePhaseAttribution(t *testing.T) {
 		stream := newFakeServerStream[stringItem](t)
 
 		err := sendPagedToStream(
-			ctx, &spinCursor{remaining: 3, per: spinPerItem}, stream, "item", 0, nil,
+			ctx, &spinCursor{remaining: 3, per: spinPerItem}, stream, "item", 0, pagecursor.Cursor{}, nil,
 		)
 		require.NoError(t, err)
 		require.Len(t, stream.sent, 3)
@@ -96,7 +97,7 @@ func TestSendPagedToStream_ProfilePhaseAttribution(t *testing.T) {
 		stream.sendDelay = spinPerItem
 
 		err := sendPagedToStream(
-			ctx, &spinCursor{remaining: 3, per: 0}, stream, "item", 0, nil,
+			ctx, &spinCursor{remaining: 3, per: 0}, stream, "item", 0, pagecursor.Cursor{}, nil,
 		)
 		require.NoError(t, err)
 
@@ -121,7 +122,7 @@ func TestSendPagedToStream_ProfilePhaseAttribution(t *testing.T) {
 		stream := newFakeServerStream[stringItem](t)
 
 		err := sendPagedToStream(
-			context.Background(), &spinCursor{remaining: 2, per: 0}, stream, "item", 0, nil,
+			context.Background(), &spinCursor{remaining: 2, per: 0}, stream, "item", 0, pagecursor.Cursor{}, nil,
 		)
 		require.NoError(t, err)
 		require.Len(t, stream.sent, 2)

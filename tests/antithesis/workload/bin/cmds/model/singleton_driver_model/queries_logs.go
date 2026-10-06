@@ -504,7 +504,7 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 
 	if oneIn(2) {
 		afterSeq = internal.Rand().Uint64() % 16
-		cursor = strconv.FormatUint(afterSeq, 10)
+		cursor = pageToken(strconv.FormatUint(afterSeq, 10))
 	}
 
 	c.mu.Lock()
