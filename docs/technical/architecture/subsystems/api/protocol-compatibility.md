@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"20"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"21"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 19:
+leader. For example, with a schema implementing revision 21:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 19' \
+grpcurl -plaintext -H 'ledger-protocol-version: 21' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -253,6 +253,15 @@ Revision 20 adds typed initial metadata to CreateLedgerRequest and its creation
 log. A revision-19 server ignores that request field and acknowledges creation
 without the supplied values. Clients, servers and replicas must agree on the
 atomic creation semantics; rebuild communicating service binaries together.
+
+## Prepared-query filter shape validation (revision 21)
+
+Revision 21 rejects `Apply(CreatePreparedQuery)` and `Apply(UpdatePreparedQuery)`
+with `InvalidArgument` / `FILTER_COMPILATION_ERROR` when a filter leaf has a shape
+that never compiles, such as a missing condition value, a missing field reference,
+or a builtin field the condition does not serve. A revision-20 server stores such
+a query and fails every execution, so peers on the same revision must agree on
+which writes are rejected.
 
 ## Maintaining the revision
 
