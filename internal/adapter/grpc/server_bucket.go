@@ -518,6 +518,13 @@ func (impl *BucketServiceServerImpl) ListLedgers(req *servicepb.ListLedgersReque
 		return err
 	}
 
+	// Decoded before any store is opened: a rejected token must not leave a
+	// read handle behind.
+	page, err := query.DecodeCursor(opts.GetCursor())
+	if err != nil {
+		return err
+	}
+
 	listingCtrl, cleanup, err := impl.readController(ctx, read.GetCheckpointId())
 	if err != nil {
 		return err
@@ -527,11 +534,6 @@ func (impl *BucketServiceServerImpl) ListLedgers(req *servicepb.ListLedgersReque
 	c, err := listingCtrl.ListLedgers(ctx)
 	if err != nil {
 		return fmt.Errorf("listing ledgers: %w", err)
-	}
-
-	page, err := query.DecodeCursor(opts.GetCursor())
-	if err != nil {
-		return err
 	}
 
 	reverse := page.ReadReverse(opts.GetReverse())

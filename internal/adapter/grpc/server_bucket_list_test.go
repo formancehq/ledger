@@ -90,6 +90,19 @@ func TestListLedgers(t *testing.T) {
 		err := impl.ListLedgers(&servicepb.ListLedgersRequest{}, stream)
 		require.ErrorIs(t, err, boom)
 	})
+
+	t.Run("malformed token is rejected before any cursor is opened", func(t *testing.T) {
+		t.Parallel()
+
+		// No ListLedgers expectation: the strict mock fails the test if the
+		// handler opens the storage-backed cursor it would then have to close.
+		impl, _ := newListHandlerHarness(t)
+
+		stream := newFakeServerStream[commonpb.LedgerInfo](t)
+		err := impl.ListLedgers(&servicepb.ListLedgersRequest{Options: &commonpb.ListOptions{Cursor: "not-a-token"}}, stream)
+		require.Equal(t, codes.InvalidArgument, status.Code(convertToGRPCError(err, testLogger())))
+		require.Empty(t, stream.sent)
+	})
 }
 
 // TestListTransactions covers the new plumbing for transactions: peek-ahead

@@ -1663,30 +1663,6 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 
 	pageSize = ClampFetchSize(pageSize)
 
-	// Translate afterSequence into an exclusive LogId bound so the Compile
-	// framework respects the cursor position in the requested order.
-	if afterSequence > 0 {
-		bound := &commonpb.UintCondition{Min: &afterSequence, MinExclusive: true}
-		if reverse {
-			bound = &commonpb.UintCondition{Max: &afterSequence, MaxExclusive: true}
-		}
-
-		afterFilter := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_LogId{
-				LogId: &commonpb.LogIdCondition{Cond: bound},
-			},
-		}
-		if filter != nil {
-			filter = &commonpb.QueryFilter{
-				Filter: &commonpb.QueryFilter_And{
-					And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{filter, afterFilter}},
-				},
-			}
-		} else {
-			filter = afterFilter
-		}
-	}
-
 	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(ctx, ctrl.readStore, handle, ledgerInfo.GetName(), releaseHold)
 	if err != nil {
 		releaseHold()
@@ -1698,7 +1674,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 	defer releaseLease()
 	defer func() { _ = snap.Close() }()
 
-	logIDs, paginateErr := ctrl.paginateLogIDs(handle, snap, mainSeq, ledgerInfo, filter, pageSize, reverse)
+	logIDs, paginateErr := ctrl.paginateLogIDs(handle, snap, mainSeq, ledgerInfo, filter, afterSequence, pageSize, reverse)
 	if paginateErr != nil {
 		releaseHold()
 		_ = handle.Close()
@@ -1719,8 +1695,15 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 
 // paginateLogIDs compiles filter over the ledger's logs in the requested
 // order, trims to the main snapshot's horizon, and collects one page of
-// ledger-local log ids.
-func (ctrl *DefaultController) paginateLogIDs(handle *dal.ReadHandle, snap *pebble.Snapshot, mainSeq uint64, ledgerInfo *commonpb.LedgerInfo, filter *commonpb.QueryFilter, pageSize uint32, reverse bool) ([][]byte, error) {
+// ledger-local log ids past afterSequence (exclusive; zero is no position).
+// The position is a paginator seek, so the read stays bounded by the page
+// whatever the filter compiles to.
+func (ctrl *DefaultController) paginateLogIDs(handle *dal.ReadHandle, snap *pebble.Snapshot, mainSeq uint64, ledgerInfo *commonpb.LedgerInfo, filter *commonpb.QueryFilter, afterSequence uint64, pageSize uint32, reverse bool) ([][]byte, error) {
+	var after []byte
+	if afterSequence > 0 {
+		after = binary.BigEndian.AppendUint64(nil, afterSequence)
+	}
+
 	kb := dal.NewKeyBuilder()
 	indexReader := query.NewPebbleIndexReader(ctrl.attrs.Index, handle)
 	versionFor := ctrl.readStore.PinnedVersionResolver(snap, ledgerInfo.GetName(), mainSeq)
@@ -1736,7 +1719,7 @@ func (ctrl *DefaultController) paginateLogIDs(handle *dal.ReadHandle, snap *pebb
 		iter := readstore.NewFilterReverseIterator(compiled, keep)
 		defer iter.Close()
 
-		logIDs, _, err := readstore.PaginateReverse(iter, pageSize, nil)
+		logIDs, _, err := readstore.PaginateReverse(iter, pageSize, after)
 		if err != nil {
 			return nil, fmt.Errorf("paginating log filter: %w", err)
 		}
@@ -1753,7 +1736,7 @@ func (ctrl *DefaultController) paginateLogIDs(handle *dal.ReadHandle, snap *pebb
 	iter := readstore.NewFilterIterator(compiled, keep)
 	defer iter.Close()
 
-	logIDs, _, err := readstore.PaginateForward(iter, pageSize, nil)
+	logIDs, _, err := readstore.PaginateForward(iter, pageSize, after)
 	if err != nil {
 		return nil, fmt.Errorf("paginating log filter: %w", err)
 	}
