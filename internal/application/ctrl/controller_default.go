@@ -1645,31 +1645,6 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 
 	pageSize = ClampFetchSize(pageSize)
 
-	// Translate afterSequence into a LogId filter so the Compile framework
-	// respects the cursor position. LogId with min=afterSequence, min_exclusive=true
-	// excludes the entry at afterSequence and returns only newer entries.
-	if afterSequence > 0 {
-		afterFilter := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_LogId{
-				LogId: &commonpb.LogIdCondition{
-					Cond: &commonpb.UintCondition{
-						Min:          &afterSequence,
-						MinExclusive: true,
-					},
-				},
-			},
-		}
-		if filter != nil {
-			filter = &commonpb.QueryFilter{
-				Filter: &commonpb.QueryFilter_And{
-					And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{filter, afterFilter}},
-				},
-			}
-		} else {
-			filter = afterFilter
-		}
-	}
-
 	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(ctx, ctrl.readStore, handle, ledgerInfo.GetName(), releaseHold)
 	if err != nil {
 		releaseHold()
@@ -1700,7 +1675,14 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 		query.MainHorizonKeep(commonpb.QueryTarget_QUERY_TARGET_LOGS, handle, snap, ledgerInfo.GetName(), mainSeq))
 	defer iter.Close()
 
-	logIDs, _, paginateErr := readstore.PaginateForward(iter, pageSize, nil)
+	// Seeking keeps the resume position out of the filter tree, leaving the
+	// client's filter its whole MaxFilterDepth budget.
+	var after []byte
+	if afterSequence > 0 {
+		after = binary.BigEndian.AppendUint64(nil, afterSequence)
+	}
+
+	logIDs, _, paginateErr := readstore.PaginateForward(iter, pageSize, after)
 	if paginateErr != nil {
 		releaseHold()
 		_ = handle.Close()
