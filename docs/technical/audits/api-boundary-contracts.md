@@ -54,6 +54,10 @@ with structured, nested, textual, null and omitted filters. A standalone helper
 or OpenAPI lint result alone cannot establish request corruption or preservation.
 The OpenAPI 3.0 filter union uses a QueryFilter reference and an inline nullable
 string, without a dummy null-only object or ignored nullable `$ref` sibling.
+Check `TestOpenAPISpec_NoBareObjects` for inline and component schema coverage:
+opaque ledger metadata, transaction account metadata, audit/signature fields,
+event sinks/statuses, signing keys and index responses explicitly allow
+additional properties. Only the intentionally empty `DropAction` is exempt.
 SDK metadata keys are raw inputs; direct HTTP clients encode a single segment.
 Compare documented write scopes with both the granular route guard and default
 aggregate mapping. Creation metadata remains EN-2686's separate server contract.

@@ -1,6 +1,7 @@
 package http
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
@@ -8,6 +9,56 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.yaml.in/yaml/v3"
 )
+
+func TestOpenAPISpec_NoBareObjects(t *testing.T) {
+	t.Parallel()
+
+	spec, err := os.ReadFile("../../../openapi.yml")
+	require.NoError(t, err)
+	var doc map[string]any
+	require.NoError(t, yaml.Unmarshal(spec, &doc))
+
+	var walk func(any, string)
+	walk = func(value any, path string) {
+		switch node := value.(type) {
+		case map[string]any:
+			if node["type"] == "object" && path != "components/schemas/DropAction" {
+				_, hasAdditionalProperties := node["additionalProperties"]
+				hasShape := false
+				for _, key := range []string{"properties", "allOf", "anyOf", "oneOf"} {
+					switch shape := node[key].(type) {
+					case map[string]any:
+						hasShape = hasShape || len(shape) > 0
+					case []any:
+						hasShape = hasShape || len(shape) > 0
+					}
+				}
+				// SDK generators can strip every field from an implicit object.
+				// DropAction intentionally carries no fields; all other objects
+				// must describe their shape or an additional-properties policy.
+				if !hasShape && !hasAdditionalProperties {
+					t.Errorf("%s is a bare object schema", path)
+				}
+			}
+			for key, child := range node {
+				// Example and default values are payloads, not schemas.
+				if key == "example" || key == "examples" || key == "default" || key == "enum" {
+					continue
+				}
+				childPath := key
+				if path != "" {
+					childPath = path + "/" + key
+				}
+				walk(child, childPath)
+			}
+		case []any:
+			for i, child := range node {
+				walk(child, fmt.Sprintf("%s/%d", path, i))
+			}
+		}
+	}
+	walk(doc, "")
+}
 
 // TestOpenAPISpec_DecodesStrictly fails when openapi.yml repeats a mapping key.
 // A duplicate is not a style issue: strict parsers reject the whole document,

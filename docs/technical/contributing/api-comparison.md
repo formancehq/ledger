@@ -184,6 +184,12 @@ Generated SDK decoders must preserve the operation payload both directly and
 inside `SystemLog.payload.apply.log`; the schema does not exhaustively type
 each operation variant.
 
+The same explicit additional-properties policy covers other opaque v3 objects
+(ledger metadata schemas, transaction account metadata, audit/signature fields,
+event sinks/statuses, signing keys and index responses). This changes the SDK
+schema contract without changing server payloads, routes or v2 compatibility.
+The intentionally empty `DropAction` remains exempt.
+
 This replaces the earlier unreleased v3 payload wrappers and shared
 `SET_METADATA` fallback discriminator. This is an output contract; decoding the
 projection back into internal Go log types is not supported by this contract.
@@ -633,7 +639,7 @@ ledgerctl indexes list --ledger my-ledger
 
 These endpoints are documented in Section 3 (Metadata Management) above.
 
-The save route requires `ledger:MetadataWrite`; `ledger:write` grants it under
+Both routes require `ledger:MetadataWrite`; `ledger:write` grants it under
 the default scope mapping. SDK metadata-key parameters take the raw key, such
 as `formance.com/reviewed`, and encode it as one path segment. Direct HTTP
 clients perform that encoding themselves; the server decodes exactly once.

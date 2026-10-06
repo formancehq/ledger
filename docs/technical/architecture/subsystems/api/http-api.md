@@ -59,9 +59,10 @@ path segment themselves.
 
 ### Authentication
 
-Saving ledger metadata (`POST /v3/{ledgerName}/metadata`) requires the granular
-`ledger:MetadataWrite` scope. The aggregate `ledger:write` grants it under the
-default mapping; custom mappings can differ.
+Saving or deleting ledger, account or transaction metadata, and setting or
+removing metadata field types, requires the granular `ledger:MetadataWrite`
+scope. The aggregate `ledger:write` grants it under the default mapping;
+custom mappings can differ.
 
 The server supports optional JWT/OIDC authentication with scope-based authorization. When enabled via `--auth-enabled`, all API requests must carry a valid Bearer token in the `Authorization` header. See [Authentication Guide](../../../../ops/authentication.md) for configuration details.
 
@@ -969,6 +970,12 @@ fields nested under `SystemLog.payload.apply.log`. Without that explicit
 declaration, Speakeasy can generate an empty-object decoder that strips every
 payload field. The payload remains open rather than an exhaustive union of
 typed operation variants (EN-2685).
+
+Other opaque object schemas also explicitly allow additional properties:
+ledger metadata schemas, transaction account-metadata maps, protobuf JSON
+audit/signature fields, event sinks and their statuses, signing keys, and
+index responses. `TestOpenAPISpec_NoBareObjects` checks both inline and
+component schemas; `DropAction` is the sole intentionally empty object.
 
 | `type` | Payload in `data` |
 |--------|-------------------|

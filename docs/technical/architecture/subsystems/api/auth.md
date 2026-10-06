@@ -63,11 +63,6 @@ Tokens may carry either **granular** scopes (used as-is) or **virtual** scopes (
 
 ### Authorization enforcement
 
-Ledger metadata writes require `ledger:MetadataWrite`, including
-`POST /v3/{ledgerName}/metadata`. The default mapping includes this scope in
-`ledger:write`; a custom mapping must grant it explicitly or through its own
-aggregate mapping.
-
 Every BucketService and ClusterService RPC declares a typed `common.auth_policy` method option in its protobuf definition. A policy is exactly one of:
 
 - `public: true` for an intentionally unauthenticated RPC;
