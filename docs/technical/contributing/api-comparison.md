@@ -22,6 +22,14 @@ matching signed negative and unsigned nonnegative metadata values. See
 
 ## Summary
 
+### Superuser authentication
+
+Privileged JWTs use the boolean `superuser` claim. Static Ed25519 keys must
+explicitly allow `superuser` in their key configuration. The CLI exposes
+`--superuser`, operator Credentials expose `spec.superuser`, and audit callers
+report `superuser`. Service protocol revision 19 accompanies this rename;
+all granular-scope authorization behavior is unchanged.
+
 ### Service protocol compatibility (EN-1851)
 
 The v3 gRPC service requires one `ledger-protocol-version` metadata value per

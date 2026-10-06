@@ -60,7 +60,7 @@ func TestResolveCallerSnapshot_FromClaims_OIDC(t *testing.T) {
 	authenticated := got.GetAuthenticated()
 	require.NotNil(t, authenticated)
 	require.Equal(t, "user-1", authenticated.GetIdentity().GetSubject())
-	require.False(t, authenticated.GetGod())
+	require.False(t, authenticated.GetSuperuser())
 	require.Equal(t, "https://issuer.example.com", authenticated.GetIdentity().GetIssuer())
 	// Scopes must be sorted for deterministic Raft serialization.
 	require.Equal(t, []string{string(ScopeTransactionsRead), string(ScopeTransactionsWrite)}, authenticated.GetScopes())
@@ -84,20 +84,20 @@ func TestResolveCallerSnapshot_FromClaims_Ed25519_PrefersKeyID(t *testing.T) {
 	require.Empty(t, got.GetAuthenticated().GetIdentity().GetIssuer())
 }
 
-func TestResolveCallerSnapshot_GodClaim(t *testing.T) {
+func TestResolveCallerSnapshot_SuperuserClaim(t *testing.T) {
 	t.Parallel()
 
 	claims := &oidc.AccessTokenClaims{
 		TokenClaims: oidc.TokenClaims{Subject: "admin"},
-		Claims:      map[string]any{"god": true},
+		Claims:      map[string]any{"superuser": true},
 	}
 	ctx := WithClaims(context.Background(), claims)
 
 	got := ResolveCallerSnapshot(ctx)
 	require.NotNil(t, got)
-	require.True(t, got.GetAuthenticated().GetGod())
-	// God still carries an identity — auditors need to know *who* the
-	// godly caller was.
+	require.True(t, got.GetAuthenticated().GetSuperuser())
+	// Superuser still carries an identity — auditors need to know *who* the
+	// superuser caller was.
 	require.Equal(t, "admin", got.GetAuthenticated().GetIdentity().GetSubject())
 }
 
@@ -252,7 +252,7 @@ func TestWithForwardedAttribution_RoundTripIsIsolated(t *testing.T) {
 }
 
 // CallerIdentity must be free of authorization data. This test fails if
-// anyone re-adds scopes or god to the identity proto, which would
+// anyone re-adds scopes or superuser to the identity proto, which would
 // re-introduce the conceptual mix we just split apart.
 func TestCallerIdentity_DoesNotCarryAuthorizationFields(t *testing.T) {
 	t.Parallel()
@@ -263,6 +263,6 @@ func TestCallerIdentity_DoesNotCarryAuthorizationFields(t *testing.T) {
 	for i := range desc.Fields().Len() {
 		name := string(desc.Fields().Get(i).Name())
 		assert.NotEqual(t, "scopes", name, "CallerIdentity must not carry scopes (belongs to CallerSnapshot)")
-		assert.NotEqual(t, "god", name, "CallerIdentity must not carry god (belongs to CallerSnapshot)")
+		assert.NotEqual(t, "superuser", name, "CallerIdentity must not carry superuser (belongs to CallerSnapshot)")
 	}
 }

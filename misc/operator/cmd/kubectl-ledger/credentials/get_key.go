@@ -97,13 +97,13 @@ func runGetKey(cmd *cobra.Command, opts *cmdutil.Options, f *getKeyFlags, args [
 			KeyID      string   `json:"keyId"`
 			Scopes     []string `json:"scopes"`
 			Subject    string   `json:"subject"`
-			God        bool     `json:"god,omitempty"`
+			Superuser  bool     `json:"superuser,omitempty"`
 		}{
 			SigningKey: seedHex,
 			KeyID:      keyID,
 			Scopes:     credentials.Spec.Scopes,
 			Subject:    name,
-			God:        credentials.Spec.God,
+			Superuser:  credentials.Spec.Superuser,
 		}
 
 		if f.bundle == "-" {

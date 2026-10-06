@@ -466,15 +466,15 @@ func TestAuthenticate_GranularScopePassThrough(t *testing.T) {
 	assert.False(t, HasScope(effective, ScopeLedgersRead))
 }
 
-func TestAuthenticate_GodMode_OIDC(t *testing.T) {
+func TestAuthenticate_SuperuserMode_OIDC(t *testing.T) {
 	t.Parallel()
 
 	privKey, keySet := testKeyPair(t)
 	cfg := testAuthConfig(t, keySet)
 
-	// Token has no scopes but claims god mode — should get all scopes.
+	// Token has no scopes but claims superuser mode — should get all scopes.
 	claims := newTestClaims()
-	claims.Claims = map[string]any{"god": true}
+	claims.Claims = map[string]any{"superuser": true}
 	token := signToken(t, privKey, claims)
 	ctx := ctxWithBearer(token)
 
@@ -487,7 +487,7 @@ func TestAuthenticate_GodMode_OIDC(t *testing.T) {
 	}
 }
 
-func TestAuthenticate_GodMode_EdDSA_Allowed(t *testing.T) {
+func TestAuthenticate_SuperuserMode_EdDSA_Allowed(t *testing.T) {
 	t.Parallel()
 
 	edPriv, edKeySet := ed25519TestKeyPair(t, "admin-key")
@@ -499,12 +499,12 @@ func TestAuthenticate_GodMode_EdDSA_Allowed(t *testing.T) {
 		Ed25519AllowedScopes: map[string][]string{
 			"admin-key": {},
 		},
-		Ed25519GodKeys: map[string]bool{"admin-key": true},
+		Ed25519SuperuserKeys: map[string]bool{"admin-key": true},
 	}
 
 	claims := newTestClaims()
 	claims.Issuer = ""
-	claims.Claims = map[string]any{"god": true}
+	claims.Claims = map[string]any{"superuser": true}
 	token := signEdDSA(t, edPriv, "admin-key", claims)
 	ctx := ctxWithBearer(token)
 
@@ -517,7 +517,7 @@ func TestAuthenticate_GodMode_EdDSA_Allowed(t *testing.T) {
 	}
 }
 
-func TestAuthenticate_GodMode_EdDSA_NotAllowed(t *testing.T) {
+func TestAuthenticate_SuperuserMode_EdDSA_NotAllowed(t *testing.T) {
 	t.Parallel()
 
 	edPriv, edKeySet := ed25519TestKeyPair(t, "bot-key")
@@ -529,13 +529,13 @@ func TestAuthenticate_GodMode_EdDSA_NotAllowed(t *testing.T) {
 		Ed25519AllowedScopes: map[string][]string{
 			"bot-key": {"ledger:read"},
 		},
-		Ed25519GodKeys: map[string]bool{},
+		Ed25519SuperuserKeys: map[string]bool{},
 	}
 
-	// Token claims god mode but the key is not in the god keys list.
+	// Token claims superuser mode but the key is not in the superuser keys list.
 	claims := newTestClaims("ledger:read")
 	claims.Issuer = ""
-	claims.Claims = map[string]any{"god": true}
+	claims.Claims = map[string]any{"superuser": true}
 	token := signEdDSA(t, edPriv, "bot-key", claims)
 	ctx := ctxWithBearer(token)
 
@@ -743,4 +743,21 @@ func TestAuthenticate_UserToken_NotClusterInternal(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, IsClusterInternal(newCtx),
 		"user JWT must not be tagged as cluster-internal")
+}
+
+func TestAuthenticate_SuperuserClaimMustBeBooleanTrue(t *testing.T) {
+	t.Parallel()
+	for name, value := range map[string]any{"false": false, "string": "true", "number": 1, "null": nil} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			privKey, keySet := testKeyPair(t)
+			cfg := testAuthConfig(t, keySet)
+			claims := newTestClaims()
+			claims.Claims = map[string]any{"superuser": value}
+			token := signToken(t, privKey, claims)
+			_, err := authenticate(ctxWithBearer(token), cfg, ScopeClusterWrite)
+			require.Error(t, err)
+			assert.Equal(t, codes.PermissionDenied, status.Code(err))
+		})
+	}
 }

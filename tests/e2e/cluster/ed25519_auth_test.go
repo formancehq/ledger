@@ -446,17 +446,17 @@ var _ = Describe("Ed25519 Auth Scope Restrictions", Ordered, func() {
 	})
 })
 
-// writeEd25519GodKeysConfig generates two Ed25519 keypairs — one god-mode key and one regular key —
+// writeEd25519SuperuserKeysConfig generates two Ed25519 keypairs — one superuser-mode key and one regular key —
 // and writes the auth-keys.json config file. Returns both private keys and the config file path.
-func writeEd25519GodKeysConfig(dir string) (godPriv, regularPriv ed25519.PrivateKey, configPath string, err error) {
-	// God key
-	_, godPriv, err = ed25519.GenerateKey(rand.Reader)
+func writeEd25519SuperuserKeysConfig(dir string) (superuserPriv, regularPriv ed25519.PrivateKey, configPath string, err error) {
+	// Superuser key
+	_, superuserPriv, err = ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		return nil, nil, "", err
 	}
-	godPub := godPriv.Public().(ed25519.PublicKey)
-	godPubFile := filepath.Join(dir, "god-pubkey.hex")
-	if err := os.WriteFile(godPubFile, []byte(fmt.Sprintf("%x\n", godPub)), 0644); err != nil {
+	superuserPub := superuserPriv.Public().(ed25519.PublicKey)
+	superuserPubFile := filepath.Join(dir, "superuser-pubkey.hex")
+	if err := os.WriteFile(superuserPubFile, []byte(fmt.Sprintf("%x\n", superuserPub)), 0644); err != nil {
 		return nil, nil, "", err
 	}
 
@@ -474,10 +474,10 @@ func writeEd25519GodKeysConfig(dir string) (godPriv, regularPriv ed25519.Private
 	cfg := internalauth.Ed25519KeysConfig{
 		Keys: []internalauth.Ed25519KeyEntry{
 			{
-				KeyID:         "god-key",
-				PublicKeyFile: godPubFile,
+				KeyID:         "superuser-key",
+				PublicKeyFile: superuserPubFile,
 				Scopes:        []string{},
-				God:           true,
+				Superuser:     true,
 			},
 			{
 				KeyID:         "regular-key",
@@ -496,17 +496,17 @@ func writeEd25519GodKeysConfig(dir string) (godPriv, regularPriv ed25519.Private
 		return nil, nil, "", err
 	}
 
-	return godPriv, regularPriv, configPath, nil
+	return superuserPriv, regularPriv, configPath, nil
 }
 
-var _ = Describe("Ed25519 Auth God Mode", Ordered, func() {
+var _ = Describe("Ed25519 Auth Superuser Mode", Ordered, func() {
 	var (
-		ctx            context.Context
-		grpcConn       *grpc.ClientConn
-		client         servicepb.BucketServiceClient
-		clusterClient  clusterpb.ClusterServiceClient
-		godPrivKey     ed25519.PrivateKey
-		regularPrivKey ed25519.PrivateKey
+		ctx              context.Context
+		grpcConn         *grpc.ClientConn
+		client           servicepb.BucketServiceClient
+		clusterClient    clusterpb.ClusterServiceClient
+		superuserPrivKey ed25519.PrivateKey
+		regularPrivKey   ed25519.PrivateKey
 	)
 
 	BeforeAll(func() {
@@ -516,7 +516,7 @@ var _ = Describe("Ed25519 Auth God Mode", Ordered, func() {
 
 		var configPath string
 		var err error
-		godPrivKey, regularPrivKey, configPath, err = writeEd25519GodKeysConfig(keysDir)
+		superuserPrivKey, regularPrivKey, configPath, err = writeEd25519SuperuserKeysConfig(keysDir)
 		Expect(err).To(Succeed())
 
 		walTmpDir := GinkgoT().TempDir()
@@ -572,9 +572,9 @@ var _ = Describe("Ed25519 Auth God Mode", Ordered, func() {
 
 		// Wait for leader election
 		Eventually(func(g Gomega) bool {
-			godClaims := makeEdDSAClaims()
-			godClaims.Claims = map[string]any{"god": true}
-			token, err := signEdDSAJWT(godPrivKey, "god-key", godClaims)
+			superuserClaims := makeEdDSAClaims()
+			superuserClaims.Claims = map[string]any{"superuser": true}
+			token, err := signEdDSAJWT(superuserPrivKey, "superuser-key", superuserClaims)
 			g.Expect(err).To(Succeed())
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
@@ -584,11 +584,11 @@ var _ = Describe("Ed25519 Auth God Mode", Ordered, func() {
 		}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(BeTrue())
 	})
 
-	Context("with god-mode key", func() {
+	Context("with superuser-mode key", func() {
 		It("should allow admin operations without any scopes", func() {
 			claims := makeEdDSAClaims() // no scopes at all
-			claims.Claims = map[string]any{"god": true}
-			token, err := signEdDSAJWT(godPrivKey, "god-key", claims)
+			claims.Claims = map[string]any{"superuser": true}
+			token, err := signEdDSAJWT(superuserPrivKey, "superuser-key", claims)
 			Expect(err).To(Succeed())
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
@@ -599,32 +599,32 @@ var _ = Describe("Ed25519 Auth God Mode", Ordered, func() {
 
 		It("should allow write operations without any scopes", func() {
 			claims := makeEdDSAClaims()
-			claims.Claims = map[string]any{"god": true}
-			token, err := signEdDSAJWT(godPrivKey, "god-key", claims)
+			claims.Claims = map[string]any{"superuser": true}
+			token, err := signEdDSAJWT(superuserPrivKey, "superuser-key", claims)
 			Expect(err).To(Succeed())
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
-			resp, err := client.Apply(authCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("god-mode-test-ledger", nil)))
+			resp, err := client.Apply(authCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("superuser-mode-test-ledger", nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 		})
 
 		It("should allow read operations without any scopes", func() {
 			claims := makeEdDSAClaims()
-			claims.Claims = map[string]any{"god": true}
-			token, err := signEdDSAJWT(godPrivKey, "god-key", claims)
+			claims.Claims = map[string]any{"superuser": true}
+			token, err := signEdDSAJWT(superuserPrivKey, "superuser-key", claims)
 			Expect(err).To(Succeed())
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
-			_, err = client.GetLedger(authCtx, &servicepb.GetLedgerRequest{Ledger: "god-mode-test-ledger"})
+			_, err = client.GetLedger(authCtx, &servicepb.GetLedgerRequest{Ledger: "superuser-mode-test-ledger"})
 			Expect(err).To(Succeed())
 		})
 	})
 
-	Context("with regular key claiming god mode", func() {
+	Context("with regular key claiming superuser mode", func() {
 		It("should reject the token", func() {
 			claims := makeEdDSAClaims("ledger:read")
-			claims.Claims = map[string]any{"god": true}
+			claims.Claims = map[string]any{"superuser": true}
 			token, err := signEdDSAJWT(regularPrivKey, "regular-key", claims)
 			Expect(err).To(Succeed())
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)

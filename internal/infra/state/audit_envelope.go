@@ -241,7 +241,7 @@ func appendAuthenticatedCallerPayload(buf []byte, caller *commonpb.Authenticated
 		buf = appendLenBytes(buf, nil)
 	}
 
-	if caller.GetGod() {
+	if caller.GetSuperuser() {
 		buf = appendU8(buf, 1)
 	} else {
 		buf = appendU8(buf, 0)

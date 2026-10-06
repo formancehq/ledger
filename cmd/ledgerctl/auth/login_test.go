@@ -265,7 +265,7 @@ func TestResolveLoginParams_CLISigningKeyIDBeatsProfileValue(t *testing.T) {
 	cmd := newTestCmd(t)
 	cmd.Flags().StringSlice("scopes", nil, "")
 	cmd.Flags().Duration("expiration", 0, "")
-	cmd.Flags().Bool("god", false, "")
+	cmd.Flags().Bool("superuser", false, "")
 	cmd.Flags().String("subject", "", "")
 	cmd.Flags().String("bundle", "", "")
 
@@ -313,7 +313,7 @@ func TestResolveLoginParams_BundleBeatsProfileDerivedKeyID(t *testing.T) {
 	cmd := newTestCmd(t)
 	cmd.Flags().StringSlice("scopes", nil, "")
 	cmd.Flags().Duration("expiration", 0, "")
-	cmd.Flags().Bool("god", false, "")
+	cmd.Flags().Bool("superuser", false, "")
 	cmd.Flags().String("subject", "", "")
 	cmd.Flags().String("bundle", "", "")
 
@@ -350,7 +350,7 @@ func TestResolveLoginParams_FallsBackToSigningKeyIDForKeyID(t *testing.T) {
 	cmd := newTestCmd(t)
 	cmd.Flags().StringSlice("scopes", nil, "")
 	cmd.Flags().Duration("expiration", 0, "")
-	cmd.Flags().Bool("god", false, "")
+	cmd.Flags().Bool("superuser", false, "")
 	cmd.Flags().String("subject", "", "")
 	cmd.Flags().String("bundle", "", "")
 
@@ -394,7 +394,7 @@ func TestResolveLoginParams_ExplicitSigningKeyIDBeatsBundle(t *testing.T) {
 	cmd := newTestCmd(t)
 	cmd.Flags().StringSlice("scopes", nil, "")
 	cmd.Flags().Duration("expiration", 0, "")
-	cmd.Flags().Bool("god", false, "")
+	cmd.Flags().Bool("superuser", false, "")
 	cmd.Flags().String("subject", "", "")
 	cmd.Flags().String("bundle", "", "")
 

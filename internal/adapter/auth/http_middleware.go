@@ -74,12 +74,12 @@ func HTTPAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 			ctx = WithClaims(ctx, claims)
 
 			// Expand scopes through the mapping and store in context.
-			// God-mode tokens get all granular scopes.
-			god := isGodMode(claims)
-			trace.SpanFromContext(ctx).SetAttributes(attribute.Bool("auth.god_mode", god))
+			// Superuser-mode tokens get all granular scopes.
+			superuser := isSuperuserMode(claims)
+			trace.SpanFromContext(ctx).SetAttributes(attribute.Bool("auth.superuser_mode", superuser))
 
 			var effective map[Scope]struct{}
-			if god {
+			if superuser {
 				effective = allScopes()
 			} else {
 				effective = cfg.ScopeMapping.ExpandScopes(claims.Scopes)

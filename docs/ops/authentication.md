@@ -229,15 +229,15 @@ ledgerctl --auth-token @token.txt ledgers list
 | `--subject` | yes | | JWT subject claim |
 | `--scopes` | no | | Comma-separated scopes |
 | `--expiration` | no | `1h` | Token validity duration |
-| `--god` | no | `false` | Include god-mode claim (grants all scopes; key must allow it) |
+| `--superuser` | no | `false` | Include superuser-mode claim (grants all scopes; key must allow it) |
 
 ### Scope Enforcement
 
 Ed25519 keys have a per-key scope allowlist defined in `auth-keys.json`. A token cannot claim scopes beyond what the key allows, even if the JWT payload contains them. This provides defense-in-depth: the server restricts what each key can do, independent of what the client requests.
 
-### God Mode
+### Superuser Mode
 
-A key can be configured with `"god": true` in `auth-keys.json` to allow it to emit tokens that bypass all scope checks. When a JWT contains the custom claim `"god": true` and is signed by a god-enabled key, the token is granted all granular scopes regardless of the `scopes` claim.
+A key can be configured with `"superuser": true` in `auth-keys.json` to allow it to emit tokens that bypass all scope checks. When a JWT contains the custom claim `"superuser": true` and is signed by a superuser-enabled key, the token is granted all granular scopes regardless of the `scopes` claim.
 
 ```json
 {
@@ -246,23 +246,23 @@ A key can be configured with `"god": true` in `auth-keys.json` to allow it to em
       "keyId": "admin-key",
       "publicKeyFile": "./keys/admin-pubkey.hex",
       "scopes": [],
-      "god": true
+      "superuser": true
     }
   ]
 }
 ```
 
-Generate a god-mode token:
+Generate a superuser-mode token:
 
 ```bash
 TOKEN=$(ledgerctl auth generate-token \
   --signing-key ./keys/seed.hex \
   --key-id admin-key \
   --subject admin \
-  --god)
+  --superuser)
 ```
 
-For OIDC tokens, the god claim is trusted if present in the JWT issued by the configured OIDC provider. For Ed25519 tokens, only keys with `"god": true` in the server config are allowed to claim god mode; tokens signed by non-god keys that contain the claim are rejected.
+For OIDC tokens, the superuser claim is trusted if present in the JWT issued by the configured OIDC provider. For Ed25519 tokens, only keys with `"superuser": true` in the server config are allowed to claim superuser mode; tokens signed by non-superuser keys that contain the claim are rejected.
 
 ### Security Notes
 
@@ -365,3 +365,24 @@ ledgerctl --server prod:8888 ledgers list  # uses prod token
 ## Disabling Authentication
 
 By default, authentication is disabled (`--auth-enabled=false`). All requests are accepted without tokens. This is suitable for development, testing, or environments where authentication is handled at the network level (e.g., service mesh).
+
+### Kubernetes Credentials
+
+The operator exposes the same privilege through `Credentials.spec.superuser`:
+
+```yaml
+apiVersion: ledger.formance.com/v1alpha1
+kind: Credentials
+metadata:
+  name: automation
+spec:
+  superuser: true
+  selector:
+    matchLabels:
+      app: ledger
+```
+
+The generated key configuration and `kubectl-ledger credentials get-key` bundle
+use `superuser` as well. Update Credentials manifests, auth key JSON, OIDC claim
+mappings, and token-generation commands together. The previous privileged field,
+claim, and flag have no compatibility aliases in unreleased v3.

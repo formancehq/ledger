@@ -42,7 +42,7 @@ The `CallerSnapshot` bytes begin with a one-byte principal tag:
 | Tag | Principal | Following bytes |
 |-----|--------|---------|
 | `0x00` | unset | no following bytes; invalid application state |
-| `0x01` | authenticated | subject, credential-source tag and value, god flag, sorted effective scopes |
+| `0x01` | authenticated | subject, credential-source tag and value, superuser flag, sorted effective scopes |
 | `0x02` | anonymous | sorted effective anonymous scopes |
 | `0x03` | system | length-prefixed component name |
 | `0x04` | auth disabled | no following bytes |

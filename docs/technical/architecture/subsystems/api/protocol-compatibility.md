@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"19"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"20"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 19:
+leader. For example, with a schema implementing revision 20:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 19' \
+grpcurl -plaintext -H 'ledger-protocol-version: 20' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -239,21 +239,29 @@ results in descending entity order and is rejected with `InvalidArgument` in
 answers in ascending order, so a reverse request would silently return the
 wrong page; clients and servers must use the matching revision.
 
-## Numscript metadata rendering and VM execution (revision 19)
+## Superuser authentication terminology (revision 19)
 
-Revision 19 stores and returns an account-typed Numscript metadata value
+Revision 19 renames the privileged JWT claim to `superuser`, the CLI flag to
+`--superuser`, and the authenticated caller field to `superuser`. Authorization
+semantics and protobuf field number 3 are unchanged, but tokens and credential
+configuration must use the new name. Older claims and flags have no aliases;
+update clients, servers, OIDC claim mappings, and operator Credentials together.
+
+## Numscript metadata rendering and VM execution (revision 20)
+
+Revision 20 stores and returns an account-typed Numscript metadata value
 (`set_tx_meta("k", @merchants:acme)` and its `set_account_meta` counterpart) as
-the bare account name, `merchants:acme`, where revision 18 returned
+the bare account name, `merchants:acme`, where revision 19 returned
 `@merchants:acme`. The rendering now comes from the Numscript library itself,
 identically on both of its engines, and the bare name is the form a later
 `meta()` read can resolve as an account again — the `@`-prefixed form could
 not. Scalar values are unchanged: strings and numbers stay verbatim, monetary
 stays `ASSET amount`, portions and assets keep their canonical forms. The
 `.proto` text of the exposed metadata messages is unchanged, so the difference
-is invisible to a schema comparison; a revision-18 client would read the same
+is invisible to a schema comparison; a revision-19 client would read the same
 Apply request back with different metadata bytes.
 
-Revision 19 also changes apply semantics: admission compiles each resolvable
+Revision 20 also changes apply semantics: admission compiles each resolvable
 script to Numscript VM bytecode and binds it to the order's technical
 sub-message, and the FSM executes that artifact instead of re-interpreting the
 script text. The VM is the only engine: a script it cannot compile is rejected
@@ -263,7 +271,7 @@ a binary predating these fields silently drops them and interprets with the
 older Numscript library, so a mixed-binary cluster applying the same committed
 entry writes divergent transaction and audit bytes. Deploy this revision with
 all nodes stopped — see
-[Upgrading across the Numscript VM execution change](../../../../ops/deployment.md#upgrading-across-the-numscript-vm-execution-change-revision-19).
+[Upgrading across the Numscript VM execution change](../../../../ops/deployment.md#upgrading-across-the-numscript-vm-execution-change-revision-20).
 The artifact itself carries the Numscript library's bytecode version
 (major.minor). The FSM executes it when the bundled library can read that
 version: the same major and a minor no newer for a stable major, or exactly
@@ -272,7 +280,7 @@ malformed — the order fails with a Numscript runtime error; the script is
 recompiled from its text only when the artifact is missing, so foreign
 bytecode is never run and a present artifact is never repaired.
 
-Revision 19 also moves where and how a statically invalid script fails.
+Revision 20 also moves where and how a statically invalid script fails.
 `Parse` checks syntax only; the Numscript typechecker runs inside the
 compiler. Every static-semantics failure the compiler catches — a type
 mismatch, an undeclared variable, an unknown function or var type, `oneof` or
@@ -287,8 +295,8 @@ an idempotency key: admission forwards it as preload-unavailable (see
 [admission idempotency](../admission/idempotency.md)), so the FSM replays the
 key's frozen outcome or rejects with `ERROR_REASON_PRELOAD_UNAVAILABLE`.
 Neither revision freezes the compile failure itself under an idempotency key:
-revision 18's apply failure was `KindInternal`, which is not freezable, and
-revision 19's rejection happens before apply.
+revision 19's apply failure was `KindInternal`, which is not freezable, and
+revision 20's rejection happens before apply.
 
 ## Maintaining the revision
 
