@@ -31,7 +31,7 @@ type AuthConfig struct {
 	Service              string
 	ScopeMapping         ScopeMapping
 	Ed25519AllowedScopes map[string][]string // keyID -> allowed scopes (nil = no Ed25519 auth)
-	Ed25519GodKeys       map[string]bool     // keyID -> true if the key can emit god-mode tokens
+	Ed25519SuperuserKeys map[string]bool     // keyID -> true if the key can emit superuser-mode tokens
 	ClusterSecret        string              // shared secret for inter-node auth bypass (empty = disabled)
 }
 
@@ -105,11 +105,11 @@ func EvaluateGRPCCredentials(ctx context.Context, cfg AuthConfig) (context.Conte
 
 	ctx = WithClaims(ctx, claims)
 
-	god := isGodMode(claims)
-	span.SetAttributes(attribute.Bool("auth.god_mode", god))
+	superuser := isSuperuserMode(claims)
+	span.SetAttributes(attribute.Bool("auth.superuser_mode", superuser))
 
 	var effective map[Scope]struct{}
-	if god {
+	if superuser {
 		effective = allScopes()
 	} else {
 		effective = cfg.ScopeMapping.ExpandScopes(claims.Scopes)
@@ -152,17 +152,17 @@ func AuthorizeGRPC(ctx context.Context, scopes ...Scope) error {
 	return status.Errorf(codes.PermissionDenied, "missing required scope (required: %v)", scopes)
 }
 
-// isGodMode checks whether the token contains the custom "god": true claim,
+// isSuperuserMode checks whether the token contains the custom "superuser": true claim,
 // which grants all granular scopes regardless of what scopes the token carries.
-func isGodMode(claims *oidc.AccessTokenClaims) bool {
-	god, ok := claims.Claims["god"]
+func isSuperuserMode(claims *oidc.AccessTokenClaims) bool {
+	superuser, ok := claims.Claims["superuser"]
 	if !ok {
 		return false
 	}
 
-	godBool, ok := god.(bool)
+	superuserBool, ok := superuser.(bool)
 
-	return ok && godBool
+	return ok && superuserBool
 }
 
 // allScopes returns a set containing every granular scope.
@@ -231,14 +231,14 @@ func validateToken(ctx context.Context, token string, cfg AuthConfig) (*oidc.Acc
 		if cfg.Ed25519AllowedScopes != nil {
 			keyID := extractKeyID(decrypted)
 
-			err := enforceAllowedScopes(claims.Scopes, keyID, cfg.Ed25519AllowedScopes, cfg.Ed25519GodKeys)
+			err := enforceAllowedScopes(claims.Scopes, keyID, cfg.Ed25519AllowedScopes, cfg.Ed25519SuperuserKeys)
 			if err != nil {
 				return nil, err
 			}
 
-			// If the token claims god mode, verify the signing key is allowed.
-			if isGodMode(claims) {
-				if err := enforceGodClaim(keyID, cfg.Ed25519GodKeys); err != nil {
+			// If the token claims superuser mode, verify the signing key is allowed.
+			if isSuperuserMode(claims) {
+				if err := enforceSuperuserClaim(keyID, cfg.Ed25519SuperuserKeys); err != nil {
 					return nil, err
 				}
 			}
