@@ -177,7 +177,7 @@ func TestValidateAuditPageKnownEntriesAreStillOwed(t *testing.T) {
 	c := &Checker{
 		ledgerNames: []string{"L"}, modelState: committedStateWithSequences(t, 42, 43, 44),
 		inflight: map[uint64]oracle.Bulk{}, ledgerLogSeqs: map[uint64]ledgerLogRecord{},
-		rejections: map[rejectedBulk]struct{}{}, knownAudit: map[uint64]auditEntry{},
+		rejections: map[rejectedBulk]struct{}{}, knownAudit: map[uint64]knownAuditEntry{},
 		committedBulks: singleOrderBulks(42, 43, 44), committedLogs: metadataLogs(42, 43, 44),
 	}
 	e42 := auditEntry{seq: 3, ledgers: []string{"L"}, orderCount: 1, minLog: 42, maxLog: 42}
@@ -185,30 +185,35 @@ func TestValidateAuditPageKnownEntriesAreStillOwed(t *testing.T) {
 	e44 := auditEntry{seq: 5, ledgers: []string{"L"}, orderCount: 1, minLog: 44, maxLog: 44}
 
 	// Nothing remembered yet: every shape of page is admissible.
-	require.Empty(t, c.validateAuditPage(0, nil, false, nil, 5, 0, "").finding)
+	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, nil, false, nil, 5, 0, "").finding)
 
+	registered := c.auditLearnSeq
 	c.noteKnownAuditEntries([]auditEntry{e42, e43, e44})
 
+	// A read that registered before the entries were learned may have been
+	// served from a snapshot older than them.
+	require.Empty(t, c.validateAuditPage(0, registered, nil, false, nil, 5, 0, "").finding)
+
 	require.Equal(t, "audit page stopped short of an entry the trail served before",
-		c.validateAuditPage(0, nil, false, nil, 5, 0, "").finding, "an empty page cannot be the answer")
+		c.validateAuditPage(0, c.auditLearnSeq, nil, false, nil, 5, 0, "").finding, "an empty page cannot be the answer")
 	require.Equal(t, "audit page omits an entry the trail served before",
-		c.validateAuditPage(0, []auditEntry{e42, e44}, false, nil, 5, 0, "").finding, "4 sits inside the page's own range")
+		c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{e42, e44}, false, nil, 5, 0, "").finding, "4 sits inside the page's own range")
 	require.Equal(t, "audit page stopped short of an entry the trail served before",
-		c.validateAuditPage(0, []auditEntry{e42, e43}, false, nil, 5, 0, "").finding, "the page had two rows left")
+		c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{e42, e43}, false, nil, 5, 0, "").finding, "the page had two rows left")
 
 	// A full page owes a cursor naming where to resume, not the rows themselves.
 	require.Equal(t, "audit page dropped its resume cursor",
-		c.validateAuditPage(0, []auditEntry{e42, e43}, false, nil, 2, 0, "").finding)
-	full := c.validateAuditPage(0, []auditEntry{e42, e43}, false, nil, 2, 0, "4")
+		c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{e42, e43}, false, nil, 2, 0, "").finding)
+	full := c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{e42, e43}, false, nil, 2, 0, "4")
 	require.Empty(t, full.finding)
 	require.True(t, full.cursorCorroborated, "entry 5 is what proved the cursor was owed")
 	require.Equal(t, 3, full.knownCertified)
 
 	// Entries at or before the cursor are another page's business.
-	require.Empty(t, c.validateAuditPage(0, []auditEntry{e44}, false, nil, 5, 4, "").finding)
-	require.Empty(t, c.validateAuditPage(0, []auditEntry{e43, e42}, true, nil, 5, 5, "").finding)
+	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{e44}, false, nil, 5, 4, "").finding)
+	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{e43, e42}, true, nil, 5, 5, "").finding)
 	require.Equal(t, "audit page stopped short of an entry the trail served before",
-		c.validateAuditPage(0, []auditEntry{e44, e43}, true, nil, 5, 0, "").finding, "3 is still below a descending page")
+		c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{e44, e43}, true, nil, 5, 0, "").finding, "3 is still below a descending page")
 }
 
 // A remembered entry only counts toward the guarantee when the filter certainly
@@ -220,7 +225,7 @@ func TestValidateAuditPageKnownEntriesMustCertainlyMatch(t *testing.T) {
 	c := &Checker{
 		ledgerNames: []string{"L"}, modelState: committedStateWithSequences(t, 42),
 		inflight: map[uint64]oracle.Bulk{}, ledgerLogSeqs: map[uint64]ledgerLogRecord{},
-		rejections: map[rejectedBulk]struct{}{}, knownAudit: map[uint64]auditEntry{},
+		rejections: map[rejectedBulk]struct{}{}, knownAudit: map[uint64]knownAuditEntry{},
 		committedBulks: singleOrderBulks(42), committedLogs: metadataLogs(42),
 	}
 
@@ -229,13 +234,13 @@ func TestValidateAuditPageKnownEntriesMustCertainlyMatch(t *testing.T) {
 	c.noteKnownAuditEntries([]auditEntry{known})
 
 	require.Equal(t, "audit page stopped short of an entry the trail served before",
-		c.validateAuditPage(0, nil, false, filterAuditString(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "add_metadata"), 5, 0, "").finding)
-	require.Empty(t, c.validateAuditPage(0, nil, false, filterAuditString(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "create_transaction"), 5, 0, "").finding)
-	require.Empty(t, c.validateAuditPage(0, nil, false, filterAuditString(commonpb.AuditField_AUDIT_FIELD_LEDGER, "other"), 5, 0, "").finding)
+		c.validateAuditPage(0, c.auditLearnSeq, nil, false, filterAuditString(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "add_metadata"), 5, 0, "").finding)
+	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, nil, false, filterAuditString(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "create_transaction"), 5, 0, "").finding)
+	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, nil, false, filterAuditString(commonpb.AuditField_AUDIT_FIELD_LEDGER, "other"), 5, 0, "").finding)
 
 	// A system-scoped entry names no logs, so no order type can be derived.
 	c.noteKnownAuditEntries([]auditEntry{{seq: 9, orderCount: 1}})
-	require.Empty(t, c.validateAuditPage(0, nil, false, filterAuditString(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "create_transaction"), 5, 0, "").finding)
+	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, nil, false, filterAuditString(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "create_transaction"), 5, 0, "").finding)
 }
 
 // A resumed page starts past its cursor, in the iteration's own direction, and
@@ -358,19 +363,19 @@ func TestValidateAuditPageOrderTypesAndLogCoverage(t *testing.T) {
 
 	addMeta := filterAuditString(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "add_metadata")
 	createTx := filterAuditString(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "create_transaction")
-	require.Empty(t, c.validateAuditPage(0, []auditEntry{e42}, false, addMeta, 50, 0, "").finding)
-	require.Equal(t, "audit entry outside the order-type scope", c.validateAuditPage(0, []auditEntry{e42}, false, createTx, 50, 0, "").finding)
+	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{e42}, false, addMeta, 50, 0, "").finding)
+	require.Equal(t, "audit entry outside the order-type scope", c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{e42}, false, createTx, 50, 0, "").finding)
 
 	c.ledgerLogSeqs[43] = ledgerLogRecord{ledger: "L", kind: "saved_ledger_metadata"}
 	e43 := auditEntry{seq: 4, ledgers: []string{"L"}, orderCount: 1, minLog: 43, maxLog: 43}
-	require.Empty(t, c.validateAuditPage(0, []auditEntry{e43}, false, filterAuditString(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "save_ledger_metadata"), 50, 0, "").finding)
-	require.Equal(t, "audit entry outside the order-type scope", c.validateAuditPage(0, []auditEntry{e43}, false, filterAuditString(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "delete_ledger_metadata"), 50, 0, "").finding, "the order behind a ledger-metadata log is known, so the other token does not hold")
+	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{e43}, false, filterAuditString(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "save_ledger_metadata"), 50, 0, "").finding)
+	require.Equal(t, "audit entry outside the order-type scope", c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{e43}, false, filterAuditString(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "delete_ledger_metadata"), 50, 0, "").finding, "the order behind a ledger-metadata log is known, so the other token does not hold")
 
 	lo, hi := uint64(40), uint64(50)
 	logRange := filterAuditUint(commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, &commonpb.UintCondition{Min: &lo, Max: &hi})
-	require.Empty(t, c.validateAuditPage(0, []auditEntry{e42, e43, e44}, false, logRange, 50, 0, "").finding)
-	require.Equal(t, "audit trail misses a committed log", c.validateAuditPage(0, []auditEntry{e42, e44}, false, logRange, 50, 0, "").finding, "43 is committed and in range")
-	require.Empty(t, c.validateAuditPage(0, []auditEntry{e42, e44}, false, logRange, 2, 0, "").finding, "a full page may have been cut before 43")
+	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{e42, e43, e44}, false, logRange, 50, 0, "").finding)
+	require.Equal(t, "audit trail misses a committed log", c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{e42, e44}, false, logRange, 50, 0, "").finding, "43 is committed and in range")
+	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{e42, e44}, false, logRange, 2, 0, "").finding, "a full page may have been cut before 43")
 }
 
 // A reverse first page must reach the newest committed bulk unless the newest
@@ -387,24 +392,27 @@ func TestValidateAuditPageReverseTail(t *testing.T) {
 	rejected := auditEntry{seq: 6, ledgers: []string{"L"}, orderCount: 1, failed: true, reason: "VALIDATION"}
 	system := auditEntry{seq: 7}
 
-	require.Empty(t, c.validateAuditPage(0, []auditEntry{newest, older}, true, nil, 50, 0, "").finding)
-	require.Equal(t, "audit entry outside model", c.validateAuditPage(0, []auditEntry{hole}, true, nil, 50, 0, "").finding, "43 is no committed log")
+	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{newest, older}, true, nil, 50, 0, "").finding)
+	require.Equal(t, "audit entry outside model", c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{hole}, true, nil, 50, 0, "").finding, "43 is no committed log")
 
-	res := c.validateAuditPage(0, []auditEntry{rejected, newest}, true, nil, 50, 0, "")
+	res := c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{rejected, newest}, true, nil, 50, 0, "")
 	require.Empty(t, res.finding)
 	require.Equal(t, 1, res.rejections)
 
-	require.Equal(t, "audit tail misses the newest committed bulk", c.validateAuditPage(0, []auditEntry{system, older}, true, nil, 50, 0, "").finding)
-	require.Empty(t, c.validateAuditPage(0, []auditEntry{rejected, older}, true, nil, 50, 0, "").finding, "a newest rejection is the real tail")
-	require.Empty(t, c.validateAuditPage(0, []auditEntry{older}, false, nil, 50, 0, "").finding, "only a reverse first page starts at the newest entry")
+	require.Equal(t, "audit tail misses the newest committed bulk", c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{system, older}, true, nil, 50, 0, "").finding)
+	systemAtFrontier := auditEntry{seq: 7, orderCount: 1, minLog: 44, maxLog: 44}
+	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{systemAtFrontier, older}, true, nil, 50, 0, "").finding,
+		"a system order's log is committed too, and its entry covers the tail")
+	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{rejected, older}, true, nil, 50, 0, "").finding, "a newest rejection is the real tail")
+	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{older}, false, nil, 50, 0, "").finding, "only a reverse first page starts at the newest entry")
 
 	// A filtered page selects its own newest entry, so the global frontier says
 	// nothing about it.
 	upTo3 := filterAuditUint(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, &commonpb.UintCondition{Max: &[]uint64{3}[0]})
-	require.Empty(t, c.validateAuditPage(0, []auditEntry{older}, true, upTo3, 50, 0, "").finding, "the newest bulk is outside this filter")
+	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{older}, true, upTo3, 50, 0, "").finding, "the newest bulk is outside this filter")
 
 	c.inflight[1] = oracle.Bulk{}
-	require.Empty(t, c.validateAuditPage(1, []auditEntry{older}, true, nil, 50, 0, "").finding, "an undrained bulk may be the real tail")
+	require.Empty(t, c.validateAuditPage(1, c.auditLearnSeq, []auditEntry{older}, true, nil, 50, 0, "").finding, "an undrained bulk may be the real tail")
 }
 
 // Entries the driver never drained — setup's ledgers and initial schema — are
@@ -415,13 +423,13 @@ func TestValidateAuditPageSetupEraAndLedgerLevelLogs(t *testing.T) {
 	c := &Checker{ledgerNames: []string{"L"}, modelState: committedStateWithSequences(t, 42), inflight: map[uint64]oracle.Bulk{}, ledgerLogSeqs: map[uint64]ledgerLogRecord{}, committedBulks: singleOrderBulks(42, 43), committedLogs: metadataLogs(42)}
 
 	setup := auditEntry{seq: 1, ledgers: []string{"L"}, orderCount: 1, minLog: 2, maxLog: 2}
-	require.Empty(t, c.validateAuditPage(0, []auditEntry{setup}, false, nil, 50, 0, "").finding, "below the first learned sequence is setup")
+	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{setup}, false, nil, 50, 0, "").finding, "below the first learned sequence is setup")
 
 	ledgerLevel := auditEntry{seq: 8, ledgers: []string{"L"}, orderCount: 1, minLog: 43, maxLog: 43}
-	require.Equal(t, "audit entry names logs the model never committed", c.validateAuditPage(0, []auditEntry{ledgerLevel}, false, nil, 50, 0, "").finding)
+	require.Equal(t, "audit entry names logs the model never committed", c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{ledgerLevel}, false, nil, 50, 0, "").finding)
 
 	c.ledgerLogSeqs[43] = ledgerLogRecord{ledger: "L", kind: "saved_ledger_metadata"}
-	require.Empty(t, c.validateAuditPage(0, []auditEntry{ledgerLevel}, false, nil, 50, 0, "").finding, "a learned ledger-level sequence is a committed log")
+	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{ledgerLevel}, false, nil, 50, 0, "").finding, "a learned ledger-level sequence is a committed log")
 }
 
 // The audit trail serves its whole history from the first page on, so a

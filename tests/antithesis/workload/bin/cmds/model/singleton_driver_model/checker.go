@@ -90,10 +90,12 @@ type Checker struct {
 
 	// knownAudit is a lower bound on the audit trail: entries the server served
 	// on a page that validated. Audit history is permanent, so a remembered entry
-	// still exists on every later read. The set is never complete — the trail also
-	// holds proposals this driver never made — so it can only ever prove that MORE
-	// entries match, never that none do. Guarded by mu.
-	knownAudit map[uint64]auditEntry
+	// still exists on every read that starts after it was learned. The set is
+	// never complete — the trail also holds proposals this driver never made — so
+	// it can only ever prove that MORE entries match, never that none do.
+	// auditLearnSeq numbers each batch of entries learned. Guarded by mu.
+	knownAudit    map[uint64]knownAuditEntry
+	auditLearnSeq uint64
 
 	// auditSamples holds indexed fields of served audit entries, for aiming
 	// audit filters at values the trail holds. Guarded by mu.
@@ -240,7 +242,7 @@ func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadata
 		reservedLedgerCreates:      map[string]uint64{},
 		ledgerLogSeqs:              map[uint64]ledgerLogRecord{},
 		ledgerIdentities:           map[string]ledgerIdentity{},
-		knownAudit:                 map[uint64]auditEntry{},
+		knownAudit:                 map[uint64]knownAuditEntry{},
 		committedBulks:             map[uint64]committedBulk{},
 		committedLogs:              map[uint64]committedLog{},
 		rejections:                 map[rejectedBulk]struct{}{},

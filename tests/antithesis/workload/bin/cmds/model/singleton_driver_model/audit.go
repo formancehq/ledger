@@ -45,6 +45,7 @@ func runAuditQuery(ctx context.Context, client servicepb.BucketServiceClient, c 
 
 	c.mu.Lock()
 	readID := c.registerRead()
+	learnedBefore := c.auditLearnSeq
 	c.mu.Unlock()
 	defer c.finishRead(readID)
 
@@ -161,7 +162,7 @@ func runAuditQuery(ctx context.Context, client servicepb.BucketServiceClient, c 
 		return
 	}
 
-	verdict := c.validateAuditPage(maxTicket, entries, reverse, filter, pageSize, afterSeq, next)
+	verdict := c.validateAuditPage(maxTicket, learnedBefore, entries, reverse, filter, pageSize, afterSeq, next)
 	if verdict.finding != "" {
 		details["entry"] = verdict.entry
 		details["why"] = verdict.why
@@ -269,8 +270,8 @@ type auditVerdict struct {
 // learns a log's global sequence only when its bulk drains, so bulks still in
 // flight at the read's high-water have committed logs the model cannot name
 // yet; an entry past the committed frontier is admissible exactly then.
-// Acquires c.mu.
-func (c *Checker) validateAuditPage(maxTicket uint64, entries []auditEntry, reverse bool, filter *commonpb.QueryFilter, pageSize int, afterSeq uint64, next string) auditVerdict {
+// learnedBefore is c.auditLearnSeq when the read registered. Acquires c.mu.
+func (c *Checker) validateAuditPage(maxTicket, learnedBefore uint64, entries []auditEntry, reverse bool, filter *commonpb.QueryFilter, pageSize int, afterSeq uint64, next string) auditVerdict {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -288,7 +289,13 @@ func (c *Checker) validateAuditPage(maxTicket uint64, entries []auditEntry, reve
 	for _, e := range entries {
 		// System-scoped orders (query checkpoints and the like) touch no ledger
 		// and are not modelled; their entries are neither predicted nor denied.
+		// Their logs are committed all the same, so a success one still counts
+		// toward the tail the page covers.
 		if len(e.ledgers) == 0 {
+			if !e.failed {
+				latestSeen = max(latestSeen, e.maxLog)
+			}
+
 			continue
 		}
 
@@ -365,7 +372,7 @@ func (c *Checker) validateAuditPage(maxTicket uint64, entries []auditEntry, reve
 		return auditVerdict{finding: "audit tail misses the newest committed bulk", entry: describeAuditEntry(entries[0]), why: "committed frontier is " + strconv.FormatUint(committedMax, 10) + ", newest covered " + strconv.FormatUint(latestSeen, 10)}
 	}
 
-	known := c.auditKnownMatchViolation(entries, reverse, filter, pageSize, afterSeq, next, logs)
+	known := c.auditKnownMatchViolation(learnedBefore, entries, reverse, filter, pageSize, afterSeq, next, logs)
 	if known.finding != "" {
 		return known
 	}
@@ -384,7 +391,7 @@ func (c *Checker) validateAuditPage(maxTicket uint64, entries []auditEntry, reve
 // The trail cannot lose an entry between reads: audit history is permanent, and
 // a linearizable read takes its barrier at read time, so its snapshot is at or
 // past every entry already committed. Caller holds c.mu.
-func (c *Checker) auditKnownMatchViolation(entries []auditEntry, reverse bool, filter *commonpb.QueryFilter, pageSize int, afterSeq uint64, next string, logs map[uint64]committedLog) auditVerdict {
+func (c *Checker) auditKnownMatchViolation(learnedBefore uint64, entries []auditEntry, reverse bool, filter *commonpb.QueryFilter, pageSize int, afterSeq uint64, next string, logs map[uint64]committedLog) auditVerdict {
 	served := make(map[uint64]bool, len(entries))
 	for _, e := range entries {
 		served[e.seq] = true
@@ -397,7 +404,14 @@ func (c *Checker) auditKnownMatchViolation(entries []auditEntry, reverse bool, f
 
 	var out auditVerdict
 
-	for seq, k := range c.knownAudit {
+	for seq, known := range c.knownAudit {
+		// An entry learned after this read registered may have committed past
+		// the read's snapshot.
+		if known.learned > learnedBefore {
+			continue
+		}
+
+		k := known.entry
 		if afterSeq != 0 && (!reverse && seq <= afterSeq || reverse && seq >= afterSeq) {
 			continue // before the cursor: not this page's business
 		}
@@ -456,6 +470,8 @@ func (c *Checker) noteKnownAuditEntries(entries []auditEntry) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	c.auditLearnSeq++
+
 	for _, e := range entries {
 		if len(c.knownAudit) >= knownAuditCap {
 			if _, held := c.knownAudit[e.seq]; !held {
@@ -467,8 +483,17 @@ func (c *Checker) noteKnownAuditEntries(entries []auditEntry) {
 			}
 		}
 
-		c.knownAudit[e.seq] = e
+		if _, held := c.knownAudit[e.seq]; !held {
+			c.knownAudit[e.seq] = knownAuditEntry{entry: e, learned: c.auditLearnSeq}
+		}
 	}
+}
+
+// knownAuditEntry is a remembered audit entry and the auditLearnSeq batch that
+// first served it.
+type knownAuditEntry struct {
+	entry   auditEntry
+	learned uint64
 }
 
 const knownAuditCap = 4096
