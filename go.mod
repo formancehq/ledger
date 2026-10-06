@@ -88,7 +88,10 @@ require (
 	google.golang.org/protobuf v1.36.11
 )
 
-require go.opentelemetry.io/proto/otlp v1.11.0
+require (
+	github.com/getkin/kin-openapi v0.144.0
+	go.opentelemetry.io/proto/otlp v1.11.0
+)
 
 require (
 	al.essio.dev/pkg/shellescape v1.5.1 // indirect
@@ -168,7 +171,6 @@ require (
 	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
-	github.com/getkin/kin-openapi v0.144.0 // indirect
 	github.com/getsentry/sentry-go v0.43.0 // indirect
 	github.com/go-chi/chi v4.1.2+incompatible // indirect
 	github.com/go-chi/render v1.0.3 // indirect

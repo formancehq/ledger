@@ -990,7 +990,10 @@ paths:
   /v3/{ledgerName}/metadata:
     post:
       summary: Save ledger metadata
-      description: Saves metadata key-value pairs on the ledger itself. Requires `ledger:write` scope.
+      description: >-
+        Saves metadata key-value pairs on the ledger itself. Requires
+        `ledger:MetadataWrite`; `ledger:write` grants it under the default scope
+        mapping. Custom scope mappings can differ.
       operationId: saveLedgerMetadata
       tags:
         - Ledgers
@@ -1036,7 +1039,7 @@ paths:
   /v3/{ledgerName}/metadata/{key}:
     delete:
       summary: Delete ledger metadata
-      description: Deletes a metadata key from the ledger. Requires `ledger:write` scope.
+      description: Deletes a metadata key from the ledger. Requires `ledger:MetadataWrite` scope (included in the default `ledger:write` mapping).
       operationId: deleteLedgerMetadata
       tags:
         - Ledgers
@@ -1070,7 +1073,7 @@ paths:
   /v3/{ledgerName}/accounts/{address}/metadata:
     post:
       summary: Save account metadata
-      description: Saves metadata for a specific account in the ledger. Requires `ledger:write` scope.
+      description: Saves metadata for a specific account in the ledger. Requires `ledger:MetadataWrite` scope (included in the default `ledger:write` mapping).
       operationId: saveAccountMetadata
       tags:
         - Accounts
@@ -1118,7 +1121,7 @@ paths:
   /v3/{ledgerName}/transactions/{transactionId}/metadata:
     post:
       summary: Save transaction metadata
-      description: Saves metadata for a specific transaction in the ledger. Requires `ledger:write` scope.
+      description: Saves metadata for a specific transaction in the ledger. Requires `ledger:MetadataWrite` scope (included in the default `ledger:write` mapping).
       operationId: saveTransactionMetadata
       tags:
         - Transactions
@@ -1165,7 +1168,7 @@ paths:
   /v3/{ledgerName}/accounts/{address}/metadata/{key}:
     delete:
       summary: Delete account metadata
-      description: Deletes a metadata key for a specific account in the ledger. Requires `ledger:write` scope.
+      description: Deletes a metadata key for a specific account in the ledger. Requires `ledger:MetadataWrite` scope (included in the default `ledger:write` mapping).
       operationId: deleteAccountMetadata
       tags:
         - Accounts
@@ -1200,7 +1203,7 @@ paths:
   /v3/{ledgerName}/transactions/{transactionId}/metadata/{key}:
     delete:
       summary: Delete transaction metadata
-      description: Deletes a metadata key for a specific transaction in the ledger. Requires `ledger:write` scope.
+      description: Deletes a metadata key for a specific transaction in the ledger. Requires `ledger:MetadataWrite` scope (included in the default `ledger:write` mapping).
       operationId: deleteTransactionMetadata
       tags:
         - Transactions
@@ -1496,7 +1499,7 @@ paths:
       description: |
         Declares or changes the type used to encode a metadata key in an attached query index.
         Metadata values are neither validated nor converted by this declaration, and existing primary values remain unchanged.
-        Any attached index is rewritten asynchronously. Requires `ledger:write` scope.
+        Any attached index is rewritten asynchronously. Requires `ledger:MetadataWrite` scope (included in the default `ledger:write` mapping).
       operationId: setMetadataFieldType
       tags:
         - Metadata Schema
@@ -1536,7 +1539,7 @@ paths:
       summary: Remove metadata field type
       description: |
         Removes the type declaration for a metadata key on a ledger.
-        Existing metadata values remain unchanged and any attached index is dropped. Requires `ledger:write` scope.
+        Existing metadata values remain unchanged and any attached index is dropped. Requires `ledger:MetadataWrite` scope (included in the default `ledger:write` mapping).
       operationId: removeMetadataFieldType
       tags:
         - Metadata Schema
@@ -2358,11 +2361,13 @@ paths:
                         type: array
                         items:
                           type: object
+                          additionalProperties: true
                           description: SinkConfig (protobuf JSON representation)
                       sinkStatuses:
                         type: array
                         items:
                           type: object
+                          additionalProperties: true
                           description: >
                             SinkStatus (protobuf JSON representation): per-sink
                             error status and last-emitted cursor.
@@ -2403,6 +2408,7 @@ paths:
                     type: array
                     items:
                       type: object
+                      additionalProperties: true
                       description: SigningKey (protobuf JSON representation)
         '401':
           $ref: '#/components/responses/Unauthorized'
@@ -2449,6 +2455,7 @@ paths:
                     type: array
                     items:
                       type: object
+                      additionalProperties: true
                       description: Index (protobuf JSON representation)
         '400':
           $ref: '#/components/responses/BadRequest'
@@ -2494,6 +2501,7 @@ paths:
                 properties:
                   data:
                     type: object
+                    additionalProperties: true
                     description: Index (protobuf JSON representation)
         '400':
           $ref: '#/components/responses/BadRequest'
@@ -2538,6 +2546,7 @@ paths:
                 properties:
                   data:
                     type: object
+                    additionalProperties: true
                     description: IndexEntry (protobuf JSON representation)
         '400':
           $ref: '#/components/responses/BadRequest'
@@ -2583,6 +2592,7 @@ paths:
                 properties:
                   data:
                     type: object
+                    additionalProperties: true
                     description: GetIndexStatusResponse (protobuf JSON representation)
         '401':
           $ref: '#/components/responses/Unauthorized'
@@ -2619,6 +2629,7 @@ paths:
                     type: array
                     items:
                       type: object
+                      additionalProperties: true
                       description: Index (protobuf JSON representation)
         '400':
           $ref: '#/components/responses/BadRequest'
@@ -2734,6 +2745,7 @@ paths:
                 properties:
                   data:
                     type: object
+                    additionalProperties: true
                     description: Index (protobuf JSON representation)
         '400':
           $ref: '#/components/responses/BadRequest'
@@ -2822,6 +2834,7 @@ paths:
                 properties:
                   data:
                     type: object
+                    additionalProperties: true
                     description: IndexEntry (protobuf JSON representation)
         '400':
           $ref: '#/components/responses/BadRequest'
@@ -2877,9 +2890,12 @@ components:
       required: true
       schema:
         type: string
+        example: formance.com/reviewed
       description: |
-        Metadata key, URL-encoded as one path segment. Encode slashes as %2F
-        (for example, formance.com%2Freviewed). Decoded exactly once; percent
+        Raw metadata key, for example formance.com/reviewed. SDK callers pass
+        the raw key and let the SDK encode it. Direct HTTP clients URL-encode
+        the key as one path segment, encoding slashes as %2F.
+        Decoded exactly once; percent
         characters remaining after decoding, including double-encoded slashes,
         are invalid metadata keys and are rejected with HTTP 400.
 
@@ -3126,6 +3142,7 @@ components:
                   $ref: '#/components/schemas/LedgerLog'
         responseSignature:
           type: object
+          additionalProperties: true
 
     LedgerLog:
       type: object
@@ -3158,6 +3175,7 @@ components:
             - UPDATED_DEFAULT_ENFORCEMENT_MODE
         data:
           type: object
+          additionalProperties: true
           description: |
             Direct operation payload selected by type. NEW_TRANSACTION contains
             transaction and optional accountMetadata. REVERTED_TRANSACTION
@@ -3356,6 +3374,7 @@ components:
           nullable: true
         metadata_schema:
           type: object
+          additionalProperties: true
           description: Per-key metadata type declarations
           nullable: true
         mode:
@@ -3767,11 +3786,13 @@ components:
               type: object
               additionalProperties:
                 type: object
+                additionalProperties: true
               description: Metadata for accounts involved in the transaction
             previousAccountMetadata:
               type: object
               additionalProperties:
                 type: object
+                additionalProperties: true
               description: Previous account metadata values (for index replay)
             warnings:
               type: array
@@ -5401,11 +5422,8 @@ components:
         for match-all queries.
       oneOf:
         - $ref: '#/components/schemas/QueryFilter'
-        - type: object
-          nullable: true
-          enum:
-            - null
         - type: string
+          nullable: true
           description: Textual filter expression (filter grammar).
 
     ExecutePreparedQueryResponse:
@@ -5668,12 +5686,15 @@ components:
           description: Hash algorithm version
         callerSnapshot:
           type: object
+          additionalProperties: true
           description: Admission-time auth snapshot (protobuf JSON); absent when auth is disabled or for system proposals
         idempotency:
           type: object
+          additionalProperties: true
           description: Batch identity / idempotency information (protobuf JSON)
         signature:
           type: object
+          additionalProperties: true
           description: Client signature over the ApplyBatch (protobuf JSON); absent for unsigned batches
 
     AuditItem:

@@ -179,6 +179,17 @@ JSON events, and `ledgerctl` JSON/YAML output. Global-log and event envelopes
 remain specific to v3. Protobuf RPCs, persisted data, audit hashing, and the
 separate ClickHouse/Databricks analytical projection are unchanged.
 
+The OpenAPI data object explicitly allows additional properties (EN-2685).
+Generated SDK decoders must preserve the operation payload both directly and
+inside `SystemLog.payload.apply.log`; the schema does not exhaustively type
+each operation variant.
+
+The same explicit additional-properties policy covers other opaque v3 objects
+(ledger metadata schemas, transaction account metadata, audit/signature fields,
+event sinks/statuses, signing keys and index responses). This changes the SDK
+schema contract without changing server payloads, routes or v2 compatibility.
+The intentionally empty `DropAction` remains exempt.
+
 This replaces the earlier unreleased v3 payload wrappers and shared
 `SET_METADATA` fallback discriminator. This is an output contract; decoding the
 projection back into internal Go log types is not supported by this contract.
@@ -512,6 +523,12 @@ executed in two modes: `LIST` (returns matching entity IDs with cursor
 pagination, ascending by default and descending with `reverse`) and `AGGREGATE_VOLUMES` (returns aggregated volumes per asset for
 matched accounts).
 
+`PreparedQueryFilterInput` describes a structured `QueryFilter` or an inline
+nullable string in OpenAPI 3.0 (EN-2685). Null belongs to the string alternative,
+so the union needs no dummy empty-object model and does not rely on ignored
+siblings beside a `$ref`. Generated create/update request serializers must
+preserve structured and textual inputs and distinguish omission from null.
+
 **Endpoints:**
 - `POST /v3/{ledgerName}/prepared-queries` — Create
 - `PUT /v3/{ledgerName}/prepared-queries/{name}` — Update filter
@@ -621,6 +638,11 @@ ledgerctl indexes list --ledger my-ledger
 - `DELETE /v3/{ledgerName}/metadata/{key}` - Delete a metadata key
 
 These endpoints are documented in Section 3 (Metadata Management) above.
+
+Both routes require `ledger:MetadataWrite`; `ledger:write` grants it under
+the default scope mapping. SDK metadata-key parameters take the raw key, such
+as `formance.com/reviewed`, and encode it as one path segment. Direct HTTP
+clients perform that encoding themselves; the server decodes exactly once.
 
 ### 5. ❌ Ledger Configuration Update
 
