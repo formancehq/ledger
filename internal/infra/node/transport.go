@@ -370,7 +370,7 @@ func (t *DefaultTransport) AddPeer(id uint64, addr string) {
 		panic(err)
 	}
 
-	pingLatency, err := meter.Int64Histogram("raft.transport.ping.latency", metric.WithUnit("microseconds"))
+	pingLatency, err := meter.Int64Histogram("raft.transport.ping.latency", metric.WithUnit("us"))
 	if err != nil {
 		panic(err)
 	}

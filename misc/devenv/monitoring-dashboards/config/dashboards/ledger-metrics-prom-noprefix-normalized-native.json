@@ -6302,7 +6302,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_sum(sum(rate(pebble_flush_input_bytes{formance_ledger_cluster_id=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (formance_ledger_node_id))",
+                     "expr": "histogram_sum(sum(rate(pebble_flush_input_size_bytes{formance_ledger_cluster_id=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (formance_ledger_node_id))",
                      "legendFormat": "Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
@@ -7619,7 +7619,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "readindex_level_bytes{formance_ledger_cluster_id=~\"$cluster\", formance_ledger_node_id=~\"$node\"}",
+                     "expr": "readindex_level_size_bytes{formance_ledger_cluster_id=~\"$cluster\", formance_ledger_node_id=~\"$node\"}",
                      "legendFormat": "Node {{formance_ledger_node_id}} — L{{level}}",
                      "range": true,
                      "refId": "A"
@@ -7718,7 +7718,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "readindex_memtable_bytes{formance_ledger_cluster_id=~\"$cluster\", formance_ledger_node_id=~\"$node\"}",
+                     "expr": "readindex_memtable_size_bytes{formance_ledger_cluster_id=~\"$cluster\", formance_ledger_node_id=~\"$node\"}",
                      "legendFormat": "Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
@@ -11819,7 +11819,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "storage_disk_volume_bytes{formance_ledger_cluster_id=~\"$cluster\", formance_ledger_node_id=~\"$node\", volume=\"wal\"}",
+                     "expr": "storage_disk_volume_usage_bytes{formance_ledger_cluster_id=~\"$cluster\", formance_ledger_node_id=~\"$node\", volume=\"wal\"}",
                      "legendFormat": "WAL Volume (Node {{formance_ledger_node_id}})",
                      "range": true,
                      "refId": "A"
@@ -11830,7 +11830,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "storage_disk_volume_bytes{formance_ledger_cluster_id=~\"$cluster\", formance_ledger_node_id=~\"$node\", volume=\"data\"}",
+                     "expr": "storage_disk_volume_usage_bytes{formance_ledger_cluster_id=~\"$cluster\", formance_ledger_node_id=~\"$node\", volume=\"data\"}",
                      "legendFormat": "Data Volume (Node {{formance_ledger_node_id}})",
                      "range": true,
                      "refId": "B"

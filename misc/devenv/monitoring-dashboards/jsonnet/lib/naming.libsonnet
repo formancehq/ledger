@@ -101,11 +101,6 @@ local metadata = import 'metric_metadata.libsonnet';
     W: 'watts',
     g: 'grams',
     m: 'meters',
-    // already-translated forms emitted by some call sites
-    microseconds: 'microseconds',
-    milliseconds: 'milliseconds',
-    seconds: 'seconds',
-    bytes: 'bytes',
   },
 
   // unitSuffix maps an OTel unit string to the Prometheus suffix.
