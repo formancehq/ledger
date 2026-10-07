@@ -65,18 +65,18 @@ type BucketServiceServerImpl struct {
 	queryProfileThreshold time.Duration
 	clusterID             string
 	info                  version.Info
-	applyDuration         metric.Int64Histogram
+	applyDuration         metric.Float64Histogram
 	forwarder             nodeForwarder
 	checkpointStores      checkpointStoreCache
 }
 
 func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, sharedState *state.SharedState, responseSigner *signing.ResponseSigner, queryProfileThreshold time.Duration, clusterID string, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) servicepb.BucketServiceServer {
 	meter := meterProvider.Meter("grpc")
-	applyDuration, _ := meter.Int64Histogram("grpc.apply.duration",
-		metric.WithUnit("us"),
+	applyDuration, _ := meter.Float64Histogram("grpc.apply.duration",
+		metric.WithUnit("s"),
 		metric.WithDescription("Total duration of the gRPC Apply handler (forwarded identity + ctrl.Apply + signing)"),
 		metric.WithExplicitBucketBoundaries(
-			0, 100, 500, 2000, 10000, 50000, 200000, 1000000,
+			0, 0.0001, 0.0005, 0.002, 0.01, 0.05, 0.2, 1,
 		),
 	)
 
@@ -142,7 +142,7 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 		}
 	}
 
-	impl.applyDuration.Record(ctx, time.Since(start).Microseconds(),
+	impl.applyDuration.Record(ctx, time.Since(start).Seconds(),
 		metric.WithAttributes(attribute.Int("batch_size", batchSize)))
 
 	if skipResponse {

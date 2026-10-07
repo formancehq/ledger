@@ -143,7 +143,7 @@ func TestPeerConnectionDetectsSilentTCPBlackhole(t *testing.T) {
 	conn.bufferSize = 1024
 	conn.loopDone = make(chan struct{})
 	conn.logger = tr.logger
-	conn.pingLatency, err = tr.meterProvider.Meter("test").Int64Histogram("ping")
+	conn.pingLatency, err = tr.meterProvider.Meter("test").Float64Histogram("ping")
 	require.NoError(t, err)
 	conn.pendingResponseCounter, err = tr.meterProvider.Meter("test").Float64UpDownCounter("pending")
 	require.NoError(t, err)
@@ -249,7 +249,7 @@ func TestPeerConnectionProbesDuringSustainedTraffic(t *testing.T) {
 	conn.clusterID = "test"
 	conn.bufferSize = 1024
 	conn.logger = tr.logger
-	conn.pingLatency, err = tr.meterProvider.Meter("test").Int64Histogram("ping")
+	conn.pingLatency, err = tr.meterProvider.Meter("test").Float64Histogram("ping")
 	require.NoError(t, err)
 	conn.pendingResponseCounter, err = tr.meterProvider.Meter("test").Float64UpDownCounter("pending")
 	require.NoError(t, err)

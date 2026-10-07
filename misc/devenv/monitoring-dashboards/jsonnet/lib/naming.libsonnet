@@ -23,7 +23,7 @@
 //   * prom[-noprefix] — underscores. No unit suffix and no
 //     automatic `_total` (collector with `NormalizeName=false`).
 //   * prom[-noprefix]-normalized — same plus the OTel→Prometheus
-//     unit suffix (`us` → `microseconds`, `By` → `bytes`, …),
+//     unit suffix (`s` → `seconds`, `By` → `bytes`, …),
 //     `_total` for monotonic counters, and `_ratio` for
 //     dimensionless gauges. This is what the default contrib
 //     collector and the Prometheus 3.x OTLP receiver produce.

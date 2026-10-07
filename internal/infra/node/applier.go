@@ -111,17 +111,17 @@ type Applier struct {
 	responseSink LocalResponses
 
 	// Metrics
-	applyEntriesHistogram           metric.Int64Histogram
+	applyEntriesHistogram           metric.Float64Histogram
 	applyEntriesBatchSizeCounter    metric.Int64Counter
 	applyEntriesBatchSizeHistogram  metric.Int64Histogram
 	unspoolDurationHistogram        metric.Float64Histogram
-	gatingWaitDurationHistogram     metric.Int64Histogram
+	gatingWaitDurationHistogram     metric.Float64Histogram
 	readiesDuringGatingHistogram    metric.Int64Histogram
 	maintenanceSnapshotHistogram    metric.Float64Histogram
 	maintenanceReplaySpoolHistogram metric.Float64Histogram
-	batchWaitDurationHistogram      metric.Int64Histogram
-	commitWaitHistogram             metric.Int64Histogram
-	prepareDurationHistogram        metric.Int64Histogram
+	batchWaitDurationHistogram      metric.Float64Histogram
+	commitWaitHistogram             metric.Float64Histogram
+	prepareDurationHistogram        metric.Float64Histogram
 }
 
 type pendingFuture struct {
@@ -212,11 +212,11 @@ func NewApplier(
 
 	var err error
 
-	a.applyEntriesHistogram, err = meter.Int64Histogram("raft.apply_entries.duration",
+	a.applyEntriesHistogram, err = meter.Float64Histogram("raft.apply_entries.duration",
 		metric.WithDescription("Time spent applying entries to Machine"),
-		metric.WithUnit("us"),
+		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(
-			0, 5000, 10000, 20000, 50000, 100000, 150000, 200000, 300000, 500000,
+			0, 0.005, 0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.3, 0.5,
 		),
 	)
 	if err != nil {
@@ -245,21 +245,21 @@ func NewApplier(
 	a.unspoolDurationHistogram, err = meter.Float64Histogram(
 		"raft.node.unspool.duration",
 		metric.WithDescription("Time spent in unspoolAndResume after a maintenance task (snapshot/checkpoint)"),
-		metric.WithUnit("us"),
+		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(
-			0, 5000, 10000, 20000, 50000, 100000, 250000, 500000, 1000000, 2000000, 5000000, 10000000,
+			0, 0.005, 0.01, 0.02, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10,
 		),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating unspool_duration histogram: %w", err)
 	}
 
-	a.gatingWaitDurationHistogram, err = meter.Int64Histogram(
+	a.gatingWaitDurationHistogram, err = meter.Float64Histogram(
 		"raft.node.gating.wait_duration",
 		metric.WithDescription("Time spent waiting for gatingTerminated (maintenance task completion)"),
-		metric.WithUnit("us"),
+		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(
-			0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000,
+			0, 0.0001, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1,
 		),
 	)
 	if err != nil {
@@ -281,9 +281,9 @@ func NewApplier(
 	a.maintenanceSnapshotHistogram, err = meter.Float64Histogram(
 		"raft.node.maintenance.snapshot_creation.duration",
 		metric.WithDescription("Time spent creating the snapshot during a maintenance task (excluding replay spool)"),
-		metric.WithUnit("us"),
+		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(
-			0, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000, 5000000,
+			0, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 5,
 		),
 	)
 	if err != nil {
@@ -293,45 +293,45 @@ func NewApplier(
 	a.maintenanceReplaySpoolHistogram, err = meter.Float64Histogram(
 		"raft.node.maintenance.replay_spool.duration",
 		metric.WithDescription("Time spent replaying spooled entries after snapshot creation in a maintenance task"),
-		metric.WithUnit("us"),
+		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(
-			0, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000, 5000000,
+			0, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 5,
 		),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating maintenance_replay_spool histogram: %w", err)
 	}
 
-	a.batchWaitDurationHistogram, err = meter.Int64Histogram(
+	a.batchWaitDurationHistogram, err = meter.Float64Histogram(
 		"raft.applier.batch_wait.duration",
 		metric.WithDescription("Time the applier spends idle waiting for the next batch of entries"),
-		metric.WithUnit("us"),
+		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(
-			0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000,
+			0, 0.0001, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5,
 		),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating batch_wait histogram: %w", err)
 	}
 
-	a.commitWaitHistogram, err = meter.Int64Histogram(
+	a.commitWaitHistogram, err = meter.Float64Histogram(
 		"raft.applier.commit_wait.duration",
 		metric.WithDescription("Time spent waiting for the previous batch's commit to finish before starting the next prepare"),
-		metric.WithUnit("us"),
+		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(
-			0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000,
+			0, 0.0001, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1,
 		),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating commit_wait histogram: %w", err)
 	}
 
-	a.prepareDurationHistogram, err = meter.Int64Histogram(
+	a.prepareDurationHistogram, err = meter.Float64Histogram(
 		"raft.fsm.prepare.duration",
 		metric.WithDescription("Time spent in PrepareEntries (processing + merge, without commit)"),
-		metric.WithUnit("us"),
+		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(
-			0, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000,
+			0, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2,
 		),
 	)
 	if err != nil {
@@ -811,7 +811,7 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 			}
 
 			work := dw.work
-			a.batchWaitDurationHistogram.Record(ctx, time.Since(waitStart).Microseconds())
+			a.batchWaitDurationHistogram.Record(ctx, time.Since(waitStart).Seconds())
 
 			if work.barrier != nil {
 				// Drain pending commit before signaling barrier completion.
@@ -946,7 +946,7 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 
 			waitStart = time.Now()
 		case result := <-a.gatingTerminated:
-			a.gatingWaitDurationHistogram.Record(context.Background(), time.Since(gatingStart).Microseconds())
+			a.gatingWaitDurationHistogram.Record(context.Background(), time.Since(gatingStart).Seconds())
 			a.readiesDuringGatingHistogram.Record(context.Background(), readiesDuringGating)
 			readiesDuringGating = 0
 			gatingStart = time.Time{}
@@ -995,7 +995,7 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 				return err
 			}
 
-			a.unspoolDurationHistogram.Record(context.Background(), float64(time.Since(unspoolStart).Microseconds()))
+			a.unspoolDurationHistogram.Record(context.Background(), time.Since(unspoolStart).Seconds())
 			waitStart = time.Now()
 		case <-stop:
 			a.taskExecutor.Interrupt()
@@ -1136,7 +1136,7 @@ func (a *Applier) applyEntriesAndResolveCommands(ctx context.Context, decoded ..
 
 	result := pb.Result
 
-	a.applyEntriesHistogram.Record(ctx, time.Since(start).Microseconds())
+	a.applyEntriesHistogram.Record(ctx, time.Since(start).Seconds())
 	a.applyEntriesBatchSizeCounter.Add(ctx, int64(len(result.Results)))
 	a.applyEntriesBatchSizeHistogram.Record(ctx, int64(len(result.Results)))
 
@@ -1193,7 +1193,7 @@ func (a *Applier) waitPendingCommit(ctx context.Context) error {
 
 	waitStart := time.Now()
 	err := <-a.pending.done
-	a.commitWaitHistogram.Record(ctx, time.Since(waitStart).Microseconds())
+	a.commitWaitHistogram.Record(ctx, time.Since(waitStart).Seconds())
 
 	a.pending = nil
 
@@ -1382,7 +1382,7 @@ func (a *Applier) applyEntriesPipelined(ctx context.Context, responses []*raftpb
 		return nil, fmt.Errorf("preparing entries: %w", err)
 	}
 
-	a.prepareDurationHistogram.Record(ctx, time.Since(prepareStart).Microseconds())
+	a.prepareDurationHistogram.Record(ctx, time.Since(prepareStart).Seconds())
 	a.applyEntriesBatchSizeCounter.Add(ctx, int64(len(pb.Result.Results)))
 	a.applyEntriesBatchSizeHistogram.Record(ctx, int64(len(pb.Result.Results)))
 
@@ -1749,7 +1749,7 @@ func (a *Applier) startMaintenanceTask(
 			return err
 		}
 
-		a.maintenanceSnapshotHistogram.Record(context.Background(), float64(time.Since(snapshotStart).Microseconds()))
+		a.maintenanceSnapshotHistogram.Record(context.Background(), time.Since(snapshotStart).Seconds())
 
 		// If the task failed (e.g. failed sync with leader), signal Run to
 		// mark the node out-of-sync. Don't replay the spool.
@@ -1776,7 +1776,7 @@ func (a *Applier) startMaintenanceTask(
 			a.onSnapshotInstalled()
 		}
 
-		a.maintenanceReplaySpoolHistogram.Record(context.Background(), float64(time.Since(replayStart).Microseconds()))
+		a.maintenanceReplaySpoolHistogram.Record(context.Background(), time.Since(replayStart).Seconds())
 
 		// End gating before post-gating work (e.g. WAL compaction).
 		// Post-gating work doesn't need the FSM to be frozen and would

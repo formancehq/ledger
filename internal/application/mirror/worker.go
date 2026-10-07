@@ -96,12 +96,12 @@ type Worker struct {
 
 	// Metrics
 	ledgerAttr        attribute.KeyValue
-	fetchDuration     metric.Int64Histogram
-	translateDuration metric.Int64Histogram
-	preloadDuration   metric.Int64Histogram
-	proposeDuration   metric.Int64Histogram
-	fsmWaitDuration   metric.Int64Histogram
-	batchDuration     metric.Int64Histogram
+	fetchDuration     metric.Float64Histogram
+	translateDuration metric.Float64Histogram
+	preloadDuration   metric.Float64Histogram
+	proposeDuration   metric.Float64Histogram
+	fsmWaitDuration   metric.Float64Histogram
+	batchDuration     metric.Float64Histogram
 	commandSize       metric.Int64Histogram
 	logsIngested      metric.Int64Counter
 	batchTotal        metric.Int64Counter
@@ -126,24 +126,24 @@ func NewWorker(
 	meter := meterProvider.Meter("mirror")
 
 	durationBuckets := metric.WithExplicitBucketBoundaries(
-		0, 1000, 5000, 20000, 100000, 500000, 2000000,
+		0, 0.001, 0.005, 0.02, 0.1, 0.5, 2,
 	)
 	sizeBuckets := metric.WithExplicitBucketBoundaries(
 		0, 512, 2048, 8192, 32768, 131072, 524288,
 	)
 
-	fetchDuration, _ := meter.Int64Histogram("mirror.fetch.duration",
-		metric.WithUnit("us"), durationBuckets)
-	translateDuration, _ := meter.Int64Histogram("mirror.translate.duration",
-		metric.WithUnit("us"), durationBuckets)
-	preloadDuration, _ := meter.Int64Histogram("mirror.preload.duration",
-		metric.WithUnit("us"), durationBuckets)
-	proposeDuration, _ := meter.Int64Histogram("mirror.propose.duration",
-		metric.WithUnit("us"), durationBuckets)
-	fsmWaitDuration, _ := meter.Int64Histogram("mirror.fsm_wait.duration",
-		metric.WithUnit("us"), durationBuckets)
-	batchDuration, _ := meter.Int64Histogram("mirror.batch.duration",
-		metric.WithUnit("us"), durationBuckets)
+	fetchDuration, _ := meter.Float64Histogram("mirror.fetch.duration",
+		metric.WithUnit("s"), durationBuckets)
+	translateDuration, _ := meter.Float64Histogram("mirror.translate.duration",
+		metric.WithUnit("s"), durationBuckets)
+	preloadDuration, _ := meter.Float64Histogram("mirror.preload.duration",
+		metric.WithUnit("s"), durationBuckets)
+	proposeDuration, _ := meter.Float64Histogram("mirror.propose.duration",
+		metric.WithUnit("s"), durationBuckets)
+	fsmWaitDuration, _ := meter.Float64Histogram("mirror.fsm_wait.duration",
+		metric.WithUnit("s"), durationBuckets)
+	batchDuration, _ := meter.Float64Histogram("mirror.batch.duration",
+		metric.WithUnit("s"), durationBuckets)
 	commandSize, _ := meter.Int64Histogram("mirror.command.size",
 		metric.WithUnit("By"), sizeBuckets)
 	logsIngested, _ := meter.Int64Counter("mirror.logs.ingested",
@@ -341,7 +341,7 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 		fetchDur = time.Since(fetchStart)
 	}
 
-	w.fetchDuration.Record(ctx, fetchDur.Microseconds(), attrs)
+	w.fetchDuration.Record(ctx, fetchDur.Seconds(), attrs)
 
 	if len(v2Logs) == 0 {
 		// Fully caught up: the ingest path (which normally bundles the source
@@ -376,7 +376,7 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 		return false, err
 	}
 
-	w.translateDuration.Record(ctx, time.Since(translateStart).Microseconds(), attrs)
+	w.translateDuration.Record(ctx, time.Since(translateStart).Seconds(), attrs)
 
 	if len(orders) == 0 {
 		return hasMore, nil
@@ -452,7 +452,7 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("building preloads: %w", err)
 	}
 
-	w.preloadDuration.Record(ctx, time.Since(preloadStart).Microseconds(), attrs)
+	w.preloadDuration.Record(ctx, time.Since(preloadStart).Seconds(), attrs)
 
 	// Run preload + propose via the shared runner. Mirror is a
 	// single-shot caller (no concurrent admissions sharing loaders),
@@ -516,14 +516,14 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	// runner exposes the wall-clock instant just before its
 	// proposer.Propose call, so subtracting now gives the Raft
 	// queue-insertion + commit-acceptance duration.
-	w.proposeDuration.Record(ctx, time.Since(runResult.ProposeStartTime).Microseconds(), attrs)
+	w.proposeDuration.Record(ctx, time.Since(runResult.ProposeStartTime).Seconds(), attrs)
 
 	// Wait for FSM application and check for business errors.
 	// Without this, the cursor would advance past entries that failed to process.
 	fsmWaitStart := time.Now()
 	result, fsmErr := fsmFuture.Wait(ctx)
 
-	w.fsmWaitDuration.Record(ctx, time.Since(fsmWaitStart).Microseconds(), attrs)
+	w.fsmWaitDuration.Record(ctx, time.Since(fsmWaitStart).Seconds(), attrs)
 
 	if fsmErr != nil {
 		w.drainPrefetch(nextPrefetchCh)
@@ -540,7 +540,7 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	}
 
 	w.batchTotal.Add(ctx, 1, attrs, metric.WithAttributes(attribute.String("status", "success")))
-	w.batchDuration.Record(ctx, time.Since(batchStart).Microseconds(), attrs)
+	w.batchDuration.Record(ctx, time.Since(batchStart).Seconds(), attrs)
 
 	// Advance the in-memory position so the next batch skips the Pebble read.
 	// Only reached after BOTH Raft acceptance and successful FSM application.

@@ -370,7 +370,7 @@ func (t *DefaultTransport) AddPeer(id uint64, addr string) {
 		panic(err)
 	}
 
-	pingLatency, err := meter.Int64Histogram("raft.transport.ping.latency", metric.WithUnit("us"))
+	pingLatency, err := meter.Float64Histogram("raft.transport.ping.latency", metric.WithUnit("s"))
 	if err != nil {
 		panic(err)
 	}
@@ -758,7 +758,7 @@ type peerConnection struct {
 	clusterID              string
 	bufferSize             int
 	pendingResponseCounter metric.Float64UpDownCounter
-	pingLatency            metric.Int64Histogram
+	pingLatency            metric.Float64Histogram
 	reconnected            chan struct{}
 	messageID              uint64
 	buf                    []byte
@@ -1172,7 +1172,7 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 
 					conn.pingLatency.Record(
 						context.Background(),
-						latency.Microseconds(),
+						latency.Seconds(),
 						metric.WithAttributeSet(conn.peerAttributes),
 					)
 

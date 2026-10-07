@@ -439,13 +439,13 @@ type Node struct {
 	lastCheckpointPersistedIndex uint64
 
 	// Metrics (kept on Node: WAL/transport/orchestrate-related)
-	processEntryHistogram             metric.Int64Histogram
-	appendEntriesHistogram            metric.Int64Histogram
+	processEntryHistogram             metric.Float64Histogram
+	appendEntriesHistogram            metric.Float64Histogram
 	leadMonitorHistogram              metric.Int64Gauge
 	committedEntriesPerReadyHistogram metric.Int64Histogram
-	readyWaitDurationHistogram        metric.Int64Histogram
-	readyTerminatedWaitHistogram      metric.Int64Histogram
-	readIndexDurationHistogram        metric.Int64Histogram
+	readyWaitDurationHistogram        metric.Float64Histogram
+	readyTerminatedWaitHistogram      metric.Float64Histogram
+	readIndexDurationHistogram        metric.Float64Histogram
 }
 
 // NewNode creates a new wrapper around a RawNode.
@@ -710,22 +710,22 @@ func NewNode(
 	node.confState.Store(initialConfState)
 
 	// Initialize node metrics
-	node.appendEntriesHistogram, err = meter.Int64Histogram("raft.append_entries",
+	node.appendEntriesHistogram, err = meter.Float64Histogram("raft.append_entries",
 		metric.WithDescription("Time spending appending entries to wal"),
-		metric.WithUnit("us"),
+		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(
-			0, 200, 400, 700, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 10000, 50000,
+			0, 0.0002, 0.0004, 0.0007, 0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.01, 0.05,
 		),
 	)
 	if err != nil {
 		panic(err)
 	}
 
-	node.processEntryHistogram, err = meter.Int64Histogram("raft.process_entry",
+	node.processEntryHistogram, err = meter.Float64Histogram("raft.process_entry",
 		metric.WithDescription("Time spent processing ready from raft"),
-		metric.WithUnit("us"),
+		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(
-			0, 200, 400, 700, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 10000, 50000,
+			0, 0.0002, 0.0004, 0.0007, 0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.01, 0.05,
 		),
 	)
 	if err != nil {
@@ -748,36 +748,36 @@ func NewNode(
 		panic(err)
 	}
 
-	node.readyWaitDurationHistogram, err = meter.Int64Histogram(
+	node.readyWaitDurationHistogram, err = meter.Float64Histogram(
 		"raft.node.ready.wait_duration",
 		metric.WithDescription("Time spent waiting for a Ready from Raft"),
-		metric.WithUnit("us"),
+		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(
-			0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000,
+			0, 0.0001, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1,
 		),
 	)
 	if err != nil {
 		panic(err)
 	}
 
-	node.readyTerminatedWaitHistogram, err = meter.Int64Histogram(
+	node.readyTerminatedWaitHistogram, err = meter.Float64Histogram(
 		"raft.node.ready_terminated.wait_duration",
 		metric.WithDescription("Time spent waiting for orchestrate to consume readyTerminated"),
-		metric.WithUnit("us"),
+		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(
-			0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000,
+			0, 0.0001, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1,
 		),
 	)
 	if err != nil {
 		panic(err)
 	}
 
-	node.readIndexDurationHistogram, err = meter.Int64Histogram(
+	node.readIndexDurationHistogram, err = meter.Float64Histogram(
 		"raft.read_index.duration",
 		metric.WithDescription("Time spent in ReadIndex+WaitForApplied for linearizable reads"),
-		metric.WithUnit("us"),
+		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(
-			0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000,
+			0, 0.0001, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5,
 		),
 	)
 	if err != nil {
@@ -1214,11 +1214,11 @@ func (node *Node) processReadies(ctx context.Context, stop chan struct{}) error 
 
 		select {
 		case rd := <-node.readies:
-			node.readyWaitDurationHistogram.Record(context.Background(), time.Since(waitStart).Microseconds())
+			node.readyWaitDurationHistogram.Record(context.Background(), time.Since(waitStart).Seconds())
 
 			now := time.Now()
 			result, err := node.processReady(ctx, stop, rd)
-			node.processEntryHistogram.Record(context.Background(), time.Since(now).Microseconds())
+			node.processEntryHistogram.Record(context.Background(), time.Since(now).Seconds())
 
 			if err != nil {
 				return err
@@ -1228,7 +1228,7 @@ func (node *Node) processReadies(ctx context.Context, stop chan struct{}) error 
 
 			select {
 			case node.readyTerminated <- result:
-				node.readyTerminatedWaitHistogram.Record(context.Background(), time.Since(terminatedStart).Microseconds())
+				node.readyTerminatedWaitHistogram.Record(context.Background(), time.Since(terminatedStart).Seconds())
 			case <-stop:
 				return nil
 			}
@@ -1397,7 +1397,7 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		return readyResult{}, fmt.Errorf("appending entries to storage: %w", err)
 	}
 
-	node.appendEntriesHistogram.Record(ctx, time.Since(now).Microseconds())
+	node.appendEntriesHistogram.Record(ctx, time.Since(now).Seconds())
 
 	// Track the highest term observed via HardState so Propose can tag each
 	// future with the proposer's view of the current term (issue #172). Use a

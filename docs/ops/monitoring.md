@@ -64,9 +64,10 @@ without the namespace prefix (`admission.command.duration`,
 `raft.fsm.logs_appended`). Attribute names such as `formance.ledger.node.id`
 are shown as emitted; the metrics prefix never applies to them. Metric names
 carry no unit: the unit is the instrument's unit field (the Unit column below),
-and the Prometheus translation appends it as a suffix. Counters name the
-counted thing in the plural (`pebble.flushes`) and never end in `total`: the
-Prometheus translation adds `_total` itself. The server emits
+and the Prometheus translation appends it as a suffix. Durations are always
+recorded in seconds (`s`). Counters name the counted thing in the plural
+(`pebble.flushes`) and never end in `total`: the Prometheus translation adds
+`_total` itself. The server emits
 every metric its own instrumentation creates under the
 `--otel-metrics-prefix` namespace (default `formance.ledger`, env
 `OTEL_METRICS_PREFIX`, `none` to disable), so
@@ -118,7 +119,7 @@ prefix has no pre-built dashboard.
 | `none` | full normalisation (unit + `_total`) | native  | `ledger-metrics-prom-noprefix-normalized-native.json` |
 
 The **normalised** variants additionally embed the UCUM unit
-suffix the collector appends (`us` → `_microseconds`, `By` →
+suffix the collector appends (`s` → `_seconds`, `By` →
 `_bytes`, …), the `_total` suffix for monotonic counters, and the
 `_ratio` suffix for dimensionless gauges. This is the default
 behaviour of the contrib OTel collector, the Prometheus 3.x OTLP
@@ -195,11 +196,11 @@ HTTP server metrics are provided by `go-libs/httpserver` instrumentation.
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
 | `raft.node.lead` | Gauge | - | Current leader node ID as seen by this node (0 if no leader known) |
-| `raft.apply_entries.duration` | Histogram | µs | Time spent applying committed log entries to the FSM. This is the critical path for transaction processing. |
+| `raft.apply_entries.duration` | Histogram | s | Time spent applying committed log entries to the FSM. This is the critical path for transaction processing. |
 | `raft.apply_entries.batch_size` | Counter | `{entry}` | Total count of entries applied (cumulative). Use `rate()` to get entries/second. |
 | `raft.apply_entries.batch_size_distribution` | Histogram | `{entry}` | Distribution of batch sizes when applying entries. Higher batches indicate better throughput efficiency. |
-| `raft.append_entries` | Histogram | µs | Time spent appending entries to the Write-Ahead Log (WAL) before replication. |
-| `raft.process_entry` | Histogram | µs | Time spent processing a ready state from the Raft library. Includes sending messages, applying entries, and advancing state. |
+| `raft.append_entries` | Histogram | s | Time spent appending entries to the Write-Ahead Log (WAL) before replication. |
+| `raft.process_entry` | Histogram | s | Time spent processing a ready state from the Raft library. Includes sending messages, applying entries, and advancing state. |
 
 ### Gating Metrics
 
@@ -207,7 +208,7 @@ Gating occurs when the node performs a maintenance task (snapshot install, check
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `raft.node.gating.wait_duration` | Histogram | µs | Time spent waiting for gatingTerminated (maintenance task completion) in the processReadies goroutine. High values indicate long snapshot/restore operations stalling the ready pipeline. |
+| `raft.node.gating.wait_duration` | Histogram | s | Time spent waiting for gatingTerminated (maintenance task completion) in the processReadies goroutine. High values indicate long snapshot/restore operations stalling the ready pipeline. |
 | `raft.node.gating.readies_processed` | Histogram | `{ready}` | Number of Raft Readies processed during each gating period. Higher values indicate more Readies were spooled while the maintenance task was running. |
 
 ### WAL Metrics
@@ -216,14 +217,14 @@ The Write-Ahead Log (WAL) metrics track the performance of the WAL append operat
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `wal.append.save.duration` | Histogram | µs | Time spent saving entries to the WAL on disk. This is the actual disk I/O time. |
+| `wal.append.save.duration` | Histogram | s | Time spent saving entries to the WAL on disk. This is the actual disk I/O time. |
 | `wal.append.batch_size` | Histogram | `{entry}` | Number of entries appended at once. Higher values indicate efficient batching under load. |
 
 ### Snapshot Metrics
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `raft.syncer.create_snapshot.duration` | Histogram | ms | Time spent creating a Raft snapshot. Snapshots are taken periodically to compact the log. |
+| `raft.node.maintenance.snapshot_creation.duration` | Histogram | s | Time spent creating the snapshot during a maintenance task, excluding the spool replay. Snapshots are taken periodically to compact the log. |
 
 ### Propose Queue Metrics
 
@@ -242,7 +243,7 @@ Transport metrics track inter-node gRPC communication for Raft consensus.
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `raft.transport.ping.latency` | Histogram | µs | Round-trip latency of ping requests to peer nodes. Useful for detecting network issues. |
+| `raft.transport.ping.latency` | Histogram | s | Round-trip latency of ping requests to peer nodes. Useful for detecting network issues. |
 | `raft.transport.sending.pending_response` | UpDownCounter | 1 | Number of pending responses awaited from peer nodes. High values may indicate slow peers. |
 
 **Attributes**:
@@ -310,7 +311,7 @@ When a value is not guaranteed to be in cache (based on the cache generation), t
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `admission.preload.duration` | Histogram | µs | Time spent loading a preload value from the store. Includes the actual disk read and computation time. High values indicate slow storage or expensive computations. |
+| `admission.preload.duration` | Histogram | s | Time spent loading a preload value from the store. Includes the actual disk read and computation time. High values indicate slow storage or expensive computations. |
 | `admission.preloads` | Counter | `{preload}` | Total number of preload operations from store (cache misses). High rates may indicate cache miss issues or cold startup. |
 | `admission.preload.keys_needed` | Counter | `{key}` | Total number of keys that needed resolving during preload. This is the total demand before cache filtering. |
 | `admission.preload.cache_hits` | Counter | `{key}` | Total number of keys found guaranteed in cache (no store read needed). Use with `keys_needed` to compute cache hit ratio. |
@@ -343,8 +344,8 @@ When a value is not guaranteed to be in cache (based on the cache generation), t
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `admission.command.duration` | Histogram | µs | Total time from Apply call to future resolution. Includes preload, proposal, and FSM application. |
-| `admission.propose.duration` | Histogram | µs | Time waiting for Raft to accept and replicate a proposal (Propose + Wait). |
+| `admission.command.duration` | Histogram | s | Total time from Apply call to future resolution. Includes preload, proposal, and FSM application. |
+| `admission.propose.duration` | Histogram | s | Time waiting for Raft to accept and replicate a proposal (Propose + Wait). |
 | `admission.command.size` | Histogram | By | Size of marshalled Raft commands in bytes. Large commands may indicate many postings or metadata. |
 
 ### Action Metrics
@@ -386,7 +387,7 @@ Flushes write data from memory (memtable) to disk (SSTable).
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
 | `pebble.flushes` | Counter | `{flush}` | Number of Pebble flush operations |
-| `pebble.flush.duration` | Histogram | ms | Duration of Pebble flush operations (CPU + I/O time) |
+| `pebble.flush.duration` | Histogram | s | Duration of Pebble flush operations (CPU + I/O time) |
 | `pebble.flush.input.size` | Histogram | By | Input bytes flushed from memtables to SSTables |
 
 **Attributes**:
@@ -400,7 +401,7 @@ Compactions merge and reorganize SSTables to optimize read performance and recla
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
 | `pebble.compactions` | Counter | `{compaction}` | Number of Pebble compaction operations |
-| `pebble.compaction.duration` | Histogram | ms | Duration of Pebble compactions |
+| `pebble.compaction.duration` | Histogram | s | Duration of Pebble compactions |
 
 **Attributes**:
 - `reason`: Compaction reason (e.g., `elision`, `default`, `move`)
@@ -413,7 +414,7 @@ Write stalls occur when Pebble cannot keep up with write rate due to compaction 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
 | `pebble.write_stalls` | Counter | `{stall}` | Number of Pebble write stalls |
-| `pebble.write_stall.duration` | Histogram | ms | Duration of Pebble write stalls |
+| `pebble.write_stall.duration` | Histogram | s | Duration of Pebble write stalls |
 | `pebble.write_stall.active` | Gauge | 1 | Whether Pebble is currently stalling writes (1/0) |
 
 **Attributes**:
@@ -559,25 +560,32 @@ This exposes standard Go runtime metrics including:
 
 ## Histogram Bucket Boundaries
 
+Every duration histogram records seconds as a float (unit `s`), so
+sub-microsecond phases keep their precision. Each instrument declares its
+own explicit boundaries next to its definition; for example:
+
 ### Apply Entries Duration
 
-Fine-grained buckets for latency analysis (in microseconds):
+`raft.apply_entries.duration` (seconds):
 ```
-0, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000,
-12000, 15000, 18000, 20000, 25000, 30000, 35000, 40000, 45000, 50000,
-60000, 70000, 80000, 90000, 100000,
-125000, 150000, 175000, 200000, 250000, 300000, 350000, 400000, 450000, 500000
+0, 0.005, 0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.3, 0.5
+```
+
+### Admission Phase Durations
+
+`admission.resolve_batch.duration`, `admission.orders_preparation.duration`,
+`admission.scripts.duration` and `admission.response_resolution.duration`
+(seconds, starting at 1µs because the fast phases run in single-digit
+microseconds):
+```
+0, 0.000001, 0.000005, 0.00001, 0.000025, 0.00005, 0.0001, 0.0005, 0.002, 0.01, 0.05, 0.2, 1
 ```
 
 ### Snapshot Creation Duration
 
-Buckets for snapshot timing (in milliseconds):
+`raft.node.maintenance.snapshot_creation.duration` (seconds):
 ```
-0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
-12, 15, 18, 20, 25, 30, 35, 40, 45, 50,
-60, 70, 80, 90, 100,
-125, 150, 175, 200, 250, 300, 350, 400, 450, 500,
-600, 700, 800, 900, 1000, 1500, 2000, 2500, 3000, 4000, 5000
+0, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 5
 ```
 
 ### Queue Load
@@ -644,10 +652,10 @@ The dashboard is organized into the following sections:
 
 **Pebble Section**:
 - Flush / Second
-- Flush Duration (ms)
+- Flush Duration
 - Flush Input Bytes / Second
 - Compactions / Second
-- Compaction Duration (ms)
+- Compaction Duration
 - Compaction Errors / Second
 - Write Stall Active (max)
 - Write Stalls / Second
@@ -671,29 +679,44 @@ The dashboard is organized into the following sections:
 
 ## Alerting Recommendations
 
+The queries use the fully normalised Prometheus names (default
+`formance.ledger` prefix, unit and `_total` suffixes) and thresholds in
+seconds. They group by `formance_ledger_cluster_id` as well as the node,
+because Raft node IDs repeat across clusters.
+
+The server exports histograms with exponential aggregation, which
+Prometheus 3 stores as native histograms (the standard devenv stack). Each
+histogram alert therefore gives the native query first; the classic
+`_bucket` form applies when the pipeline converts histograms to explicit
+buckets.
+
 ### Critical Alerts
 
 1. **No Leader**
    ```promql
-   max(raft_node_lead) == 0
+   max by (formance_ledger_cluster_id) (formance_ledger_raft_node_lead) == 0
    ```
    Duration: 30s
    
 2. **Pebble Write Stall Active**
    ```promql
-   pebble_write_stall_active == 1
+   formance_ledger_pebble_write_stall_active == 1
    ```
    Duration: 10s
 
 3. **High Apply Entries Latency**
    ```promql
-   histogram_quantile(0.99, rate(raft_apply_entries_duration_bucket[5m])) > 100000
+   histogram_quantile(0.99, sum by (formance_ledger_cluster_id, formance_ledger_node_id) (rate(formance_ledger_raft_apply_entries_duration_seconds[5m]))) > 0.1
+   ```
+   Classic histograms:
+   ```promql
+   histogram_quantile(0.99, sum by (formance_ledger_cluster_id, formance_ledger_node_id, le) (rate(formance_ledger_raft_apply_entries_duration_seconds_bucket[5m]))) > 0.1
    ```
    Duration: 5m
 
 4. **Queue Full Events**
    ```promql
-   increase(raft_node_propose_full[5m]) > 0
+   sum by (formance_ledger_cluster_id, formance_ledger_node_id) (increase(formance_ledger_admission_propose_queue_full_total[5m])) > 0
    ```
    Duration: 1m
 
@@ -701,19 +724,31 @@ The dashboard is organized into the following sections:
 
 1. **Queue Near Capacity**
    ```promql
-   histogram_quantile(0.95, rate(raft_node_propose_load_bucket[5m])) > 0.8 * <queue_capacity>
+   histogram_quantile(0.95, sum by (formance_ledger_cluster_id, formance_ledger_node_id) (rate(formance_ledger_admission_propose_queue_load[5m]))) > 0.8 * <queue_capacity>
+   ```
+   Classic histograms:
+   ```promql
+   histogram_quantile(0.95, sum by (formance_ledger_cluster_id, formance_ledger_node_id, le) (rate(formance_ledger_admission_propose_queue_load_bucket[5m]))) > 0.8 * <queue_capacity>
    ```
    Duration: 1m
 
 2. **High Snapshot Duration**
    ```promql
-   histogram_quantile(0.99, rate(raft_syncer_create_snapshot_duration_bucket[5m])) > 1000
+   histogram_quantile(0.99, sum by (formance_ledger_cluster_id, formance_ledger_node_id) (rate(formance_ledger_raft_node_maintenance_snapshot_creation_duration_seconds[5m]))) > 1
+   ```
+   Classic histograms:
+   ```promql
+   histogram_quantile(0.99, sum by (formance_ledger_cluster_id, formance_ledger_node_id, le) (rate(formance_ledger_raft_node_maintenance_snapshot_creation_duration_seconds_bucket[5m]))) > 1
    ```
    Duration: 5m
 
 3. **High Ping Latency**
    ```promql
-   histogram_quantile(0.99, rate(raft_transport_ping_latency_bucket[5m])) > 10000
+   histogram_quantile(0.99, sum by (formance_ledger_cluster_id, formance_ledger_node_id, peer) (rate(formance_ledger_raft_transport_ping_latency_seconds[5m]))) > 0.01
+   ```
+   Classic histograms:
+   ```promql
+   histogram_quantile(0.99, sum by (formance_ledger_cluster_id, formance_ledger_node_id, peer, le) (rate(formance_ledger_raft_transport_ping_latency_seconds_bucket[5m]))) > 0.01
    ```
    Duration: 5m
 

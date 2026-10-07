@@ -188,7 +188,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -3137,7 +3137,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Time spent processing Raft 'Ready' state (in microseconds). The Ready loop is the main Raft processing cycle.\n\nThis includes:\n- Sending messages to peers\n- Persisting entries to WAL\n- Applying committed entries\n- Advancing Raft state\n\nHigh values indicate the Raft loop is slow, which limits throughput.\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#node-metrics\n",
+               "description": "Time spent processing Raft 'Ready' state (in seconds). The Ready loop is the main Raft processing cycle.\n\nThis includes:\n- Sending messages to peers\n- Persisting entries to WAL\n- Applying committed entries\n- Advancing Raft state\n\nHigh values indicate the Raft loop is slow, which limits throughput.\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#node-metrics\n",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -3191,7 +3191,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -3335,7 +3335,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Percentile distribution of time spent processing Raft ready entries (in microseconds).\n\nShows P99, P95, P75 and average latency for processing each ready batch from the Raft consensus layer.\n\nHigh latencies may indicate:\n- Heavy message processing load\n- Slow WAL writes\n- FSM apply bottlenecks\n",
+               "description": "Percentile distribution of time spent processing Raft ready entries (in seconds).\n\nShows P99, P95, P75 and average latency for processing each ready batch from the Raft consensus layer.\n\nHigh latencies may indicate:\n- Heavy message processing load\n- Slow WAL writes\n- FSM apply bottlenecks\n",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -3389,7 +3389,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -3467,7 +3467,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Time spent appending entries to the Write-Ahead Log (WAL) in microseconds.\n\nWAL writes must complete before entries can be committed. High latency indicates:\n- Slow disk I/O\n- Disk saturation\n- Need for faster storage\n\nThis directly impacts transaction latency and throughput.\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#node-metrics\n",
+               "description": "Time spent appending entries to the Write-Ahead Log (WAL) in seconds.\n\nWAL writes must complete before entries can be committed. High latency indicates:\n- Slow disk I/O\n- Disk saturation\n- Need for faster storage\n\nThis directly impacts transaction latency and throughput.\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#node-metrics\n",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -3521,7 +3521,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -3566,7 +3566,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Latency percentiles (P75, P95, P99) for appending entries to the WAL, in microseconds.\n\nThis measures the time spent writing Raft log entries to durable storage:\n- P75: 75% of append operations complete within this time\n- P95: 95% of append operations complete within this time\n- P99: 99% of append operations complete within this time\n\nHigh latencies indicate slow disk I/O or storage bottlenecks.\n",
+               "description": "Latency percentiles (P75, P95, P99) for appending entries to the WAL, in seconds.\n\nThis measures the time spent writing Raft log entries to durable storage:\n- P75: 75% of append operations complete within this time\n- P95: 95% of append operations complete within this time\n- P99: 99% of append operations complete within this time\n\nHigh latencies indicate slow disk I/O or storage bottlenecks.\n",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -3620,7 +3620,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -3830,7 +3830,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Time spent saving entries to the Write-Ahead Log (WAL) on disk, in microseconds.\n\nThis is the actual disk I/O time for persisting entries. High values indicate:\n- Slow disk I/O\n- Disk saturation\n- Need for faster storage (SSD/NVMe)\n\nThis metric directly impacts transaction latency as WAL writes must complete before entries can be committed.\n",
+               "description": "Time spent saving entries to the Write-Ahead Log (WAL) on disk, in seconds.\n\nThis is the actual disk I/O time for persisting entries. High values indicate:\n- Slow disk I/O\n- Disk saturation\n- Need for faster storage (SSD/NVMe)\n\nThis metric directly impacts transaction latency as WAL writes must complete before entries can be committed.\n",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -3884,7 +3884,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -4115,7 +4115,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -4345,7 +4345,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -4390,7 +4390,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Time the processReadies goroutine spends waiting for the orchestrate loop to consume readyTerminated (in microseconds).\n\nHigh values indicate the orchestrate loop is slow to pick up completed Readies, which means the ready processing pipeline is stalled waiting for Advance.\n",
+               "description": "Time the processReadies goroutine spends waiting for the orchestrate loop to consume readyTerminated (in seconds).\n\nHigh values indicate the orchestrate loop is slow to pick up completed Readies, which means the ready processing pipeline is stalled waiting for Advance.\n",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -4444,7 +4444,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -4554,7 +4554,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -4653,7 +4653,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -4872,7 +4872,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -4982,7 +4982,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -5081,7 +5081,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -5151,7 +5151,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Total time spent applying committed entries to the FSM (in microseconds per second).\n\nThis is where transactions are actually processed and balances updated. High values indicate:\n- Complex transactions taking longer\n- Storage (Pebble) write bottlenecks\n- High transaction volume\n\nCorrelate with 'Applying entries rate' and Pebble metrics.\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#node-metrics\n",
+               "description": "Total time spent applying committed entries to the FSM (in seconds per second).\n\nThis is where transactions are actually processed and balances updated. High values indicate:\n- Complex transactions taking longer\n- Storage (Pebble) write bottlenecks\n- High transaction volume\n\nCorrelate with 'Applying entries rate' and Pebble metrics.\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#node-metrics\n",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -5205,7 +5205,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -5381,7 +5381,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Latency percentiles (P75, P95, P99) for applying committed entries to the FSM, in microseconds.\n\nThis is the core transaction processing latency:\n- P75: 75% of batches complete within this time\n- P95: 95% of batches complete within this time\n- P99: 99% of batches complete within this time\n\nHigh P99 values may indicate occasional slow operations (GC pauses, disk flushes).\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#node-metrics\n",
+               "description": "Latency percentiles (P75, P95, P99) for applying committed entries to the FSM, in seconds.\n\nThis is the core transaction processing latency:\n- P75: 75% of batches complete within this time\n- P95: 95% of batches complete within this time\n- P99: 99% of batches complete within this time\n\nHigh P99 values may indicate occasional slow operations (GC pauses, disk flushes).\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#node-metrics\n",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -5435,7 +5435,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -5665,7 +5665,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -5785,7 +5785,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -5906,7 +5906,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -6085,7 +6085,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Pebble flush duration percentiles (P50, P95, P99) in milliseconds.\n\nFlush duration measures how long it takes to write memtable contents to disk. High values indicate:\n- Slow disk I/O\n- Large memtables\n- Disk contention\n\nP99 spikes may correlate with write stalls. Consider NVMe storage for better performance.\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#flush-metrics\n",
+               "description": "Pebble flush duration percentiles (P50, P95, P99) in seconds.\n\nFlush duration measures how long it takes to write memtable contents to disk. High values indicate:\n- Slow disk I/O\n- Large memtables\n- Disk contention\n\nP99 spikes may correlate with write stalls. Consider NVMe storage for better performance.\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#flush-metrics\n",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -6139,7 +6139,7 @@
                            }
                         ]
                      },
-                     "unit": "ms"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -6209,7 +6209,7 @@
                      "refId": "D"
                   }
                ],
-               "title": "Flush duration (ms)",
+               "title": "Flush duration",
                "type": "timeseries"
             },
             {
@@ -6414,7 +6414,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Pebble compaction duration percentiles (P50, P95, P99) in milliseconds.\n\nCompaction duration depends on:\n- Amount of data being compacted\n- Disk I/O speed\n- CPU for decompression/compression\n\nLong compactions may temporarily impact read performance. Very high P99 values warrant investigation.\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#compaction-metrics\n",
+               "description": "Pebble compaction duration percentiles (P50, P95, P99) in seconds.\n\nCompaction duration depends on:\n- Amount of data being compacted\n- Disk I/O speed\n- CPU for decompression/compression\n\nLong compactions may temporarily impact read performance. Very high P99 values warrant investigation.\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#compaction-metrics\n",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -6468,7 +6468,7 @@
                            }
                         ]
                      },
-                     "unit": "ms"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -6538,7 +6538,7 @@
                      "refId": "D"
                   }
                ],
-               "title": "Compaction duration (ms)",
+               "title": "Compaction duration",
                "type": "timeseries"
             },
             {
@@ -6894,7 +6894,7 @@
                            }
                         ]
                      },
-                     "unit": "ms"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -7453,7 +7453,7 @@
                            }
                         ]
                      },
-                     "unit": "ms"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -8910,7 +8910,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -9559,7 +9559,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -9680,7 +9680,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -9801,7 +9801,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -10107,7 +10107,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -10448,7 +10448,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -10569,7 +10569,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -10690,7 +10690,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -10811,7 +10811,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -10946,7 +10946,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -11067,7 +11067,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -11400,7 +11400,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },
@@ -11521,7 +11521,7 @@
                            }
                         ]
                      },
-                     "unit": "µs"
+                     "unit": "s"
                   },
                   "overrides": [ ]
                },

@@ -11,7 +11,7 @@ panels.row('Controller', 170, [
       { expr: 'histogram_quantile(0.50, sum(rate(ctrl.apply.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
       { expr: 'histogram_quantile(0.95, sum(rate(ctrl.apply.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
       { expr: 'histogram_quantile(0.99, sum(rate(ctrl.apply.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
-    ], unit='µs',
+    ], unit='s',
     description='End-to-end duration of a batch Apply call through the controller, including admission, preload, marshal, propose, and FSM wait.',
   ),
 
@@ -22,7 +22,7 @@ panels.row('Controller', 170, [
       { expr: 'histogram_quantile(0.50, sum(rate(grpc.apply.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
       { expr: 'histogram_quantile(0.95, sum(rate(grpc.apply.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
       { expr: 'histogram_quantile(0.99, sum(rate(grpc.apply.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
-    ], unit='µs',
+    ], unit='s',
     description='Total duration of the gRPC Apply handler, including auth, ctrl.Apply, and response signing.',
   ),
 ])

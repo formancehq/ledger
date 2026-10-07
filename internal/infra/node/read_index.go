@@ -147,7 +147,7 @@ func (node *Node) ReadIndexAndWait(ctx context.Context) (*ReadBarrierInfo, error
 	waitSpan.End()
 
 	if node.readIndexDurationHistogram != nil {
-		node.readIndexDurationHistogram.Record(ctx, time.Since(start).Microseconds())
+		node.readIndexDurationHistogram.Record(ctx, time.Since(start).Seconds())
 	}
 
 	return &ReadBarrierInfo{

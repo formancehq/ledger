@@ -20,9 +20,9 @@ func NewMetricsListener(m metric.Meter, stallState *WriteStallState) *pebble.Eve
 		panic(err)
 	}
 
-	diskSlowDurationMilliseconds, err := m.Int64Histogram(
+	diskSlowDuration, err := m.Float64Histogram(
 		"pebble.disk_slow.duration",
-		metric.WithUnit("ms"),
+		metric.WithUnit("s"),
 		metric.WithDescription("Duration of slow disk operations detected by Pebble"),
 	)
 	if err != nil {
@@ -38,9 +38,9 @@ func NewMetricsListener(m metric.Meter, stallState *WriteStallState) *pebble.Eve
 		panic(err)
 	}
 
-	flushDurMilliseconds, err := m.Int64Histogram(
+	flushDuration, err := m.Float64Histogram(
 		"pebble.flush.duration",
-		metric.WithUnit("ms"),
+		metric.WithUnit("s"),
 		metric.WithDescription("Duration of Pebble flush operations"),
 	)
 	if err != nil {
@@ -65,9 +65,9 @@ func NewMetricsListener(m metric.Meter, stallState *WriteStallState) *pebble.Eve
 		panic(err)
 	}
 
-	compactionMilliseconds, err := m.Int64Histogram(
+	compactionDuration, err := m.Float64Histogram(
 		"pebble.compaction.duration",
-		metric.WithUnit("ms"),
+		metric.WithUnit("s"),
 		metric.WithDescription("Duration of Pebble compactions"),
 	)
 	if err != nil {
@@ -83,9 +83,9 @@ func NewMetricsListener(m metric.Meter, stallState *WriteStallState) *pebble.Eve
 		panic(err)
 	}
 
-	stallMilliseconds, err := m.Int64Histogram(
+	stallDuration, err := m.Float64Histogram(
 		"pebble.write_stall.duration",
-		metric.WithUnit("ms"),
+		metric.WithUnit("s"),
 		metric.WithDescription("Duration of Pebble write stalls"),
 	)
 	if err != nil {
@@ -115,7 +115,7 @@ func NewMetricsListener(m metric.Meter, stallState *WriteStallState) *pebble.Eve
 			}
 
 			diskSlowTotal.Add(ctx, 1, metric.WithAttributes(attrs...))
-			diskSlowDurationMilliseconds.Record(ctx, info.Duration.Milliseconds(), metric.WithAttributes(attrs...))
+			diskSlowDuration.Record(ctx, info.Duration.Seconds(), metric.WithAttributes(attrs...))
 		},
 
 		FlushEnd: func(info pebble.FlushInfo) {
@@ -127,7 +127,7 @@ func NewMetricsListener(m metric.Meter, stallState *WriteStallState) *pebble.Eve
 			flushTotal.Add(ctx, 1, metric.WithAttributes(attrs...))
 
 			// Prefer info.Duration (CPU+IO), not TotalDuration, for "work time".
-			flushDurMilliseconds.Record(ctx, info.Duration.Milliseconds(), metric.WithAttributes(attrs...))
+			flushDuration.Record(ctx, info.Duration.Seconds(), metric.WithAttributes(attrs...))
 			flushInputBytes.Record(ctx, int64(info.InputBytes), metric.WithAttributes(attrs...))
 		},
 
@@ -138,7 +138,7 @@ func NewMetricsListener(m metric.Meter, stallState *WriteStallState) *pebble.Eve
 			}
 
 			compactionTotal.Add(ctx, 1, metric.WithAttributes(attrs...))
-			compactionMilliseconds.Record(ctx, info.Duration.Milliseconds(), metric.WithAttributes(attrs...))
+			compactionDuration.Record(ctx, info.Duration.Seconds(), metric.WithAttributes(attrs...))
 		},
 
 		WriteStallBegin: func(info pebble.WriteStallBeginInfo) {
@@ -181,7 +181,7 @@ func NewMetricsListener(m metric.Meter, stallState *WriteStallState) *pebble.Eve
 			mu.Unlock()
 
 			d := time.Since(start)
-			stallMilliseconds.Record(ctx, d.Milliseconds(), metric.WithAttributes(attrs...))
+			stallDuration.Record(ctx, d.Seconds(), metric.WithAttributes(attrs...))
 			// gauge down (same attrs as begin if possible)
 			stallActiveGauge.Record(ctx, 0, metric.WithAttributes(attrs...))
 		},

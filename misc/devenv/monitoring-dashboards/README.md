@@ -87,12 +87,12 @@ Prometheus 3.x's built-in OTLP receiver).
 | ---- | ------ | --------- | ---------- | -------- |
 | `ledger-metrics-otel.json`                            | `formance.ledger` (default) | preserves dots                       | classic | `formance.ledger.raft.fsm.logs_appended`, `formance.ledger.cluster.id` |
 | `ledger-metrics-prom.json`                            | `formance.ledger` (default) | de-dots only (`NormalizeName=false`) | classic | `formance_ledger_raft_fsm_logs_appended`, `formance_ledger_admission_command_duration_bucket` |
-| `ledger-metrics-prom-normalized.json`                 | `formance.ledger` (default) | full normalisation (default)         | classic | `formance_ledger_raft_fsm_logs_appended_total`, `formance_ledger_admission_command_duration_microseconds_bucket` |
-| `ledger-metrics-prom-normalized-native.json`          | `formance.ledger` (default) | full normalisation (default)         | native  | `formance_ledger_admission_command_duration_microseconds`, queried via `histogram_quantile(0.95, rate(metric[5m]))` directly |
+| `ledger-metrics-prom-normalized.json`                 | `formance.ledger` (default) | full normalisation (default)         | classic | `formance_ledger_raft_fsm_logs_appended_total`, `formance_ledger_admission_command_duration_seconds_bucket` |
+| `ledger-metrics-prom-normalized-native.json`          | `formance.ledger` (default) | full normalisation (default)         | native  | `formance_ledger_admission_command_duration_seconds`, queried via `histogram_quantile(0.95, rate(metric[5m]))` directly |
 | `ledger-metrics-otel-noprefix.json`                   | `none`                      | preserves dots                       | classic | `raft.fsm.logs_appended`, `formance.ledger.cluster.id` |
 | `ledger-metrics-prom-noprefix.json`                   | `none`                      | de-dots only (`NormalizeName=false`) | classic | `raft_fsm_logs_appended`, `admission_command_duration_bucket` |
-| `ledger-metrics-prom-noprefix-normalized.json`        | `none`                      | full normalisation (default)         | classic | `raft_fsm_logs_appended_total`, `admission_command_duration_microseconds_bucket` |
-| `ledger-metrics-prom-noprefix-normalized-native.json` | `none`                      | full normalisation (default)         | native  | `admission_command_duration_microseconds`, queried via `histogram_quantile(0.95, rate(metric[5m]))` directly |
+| `ledger-metrics-prom-noprefix-normalized.json`        | `none`                      | full normalisation (default)         | classic | `raft_fsm_logs_appended_total`, `admission_command_duration_seconds_bucket` |
+| `ledger-metrics-prom-noprefix-normalized-native.json` | `none`                      | full normalisation (default)         | native  | `admission_command_duration_seconds`, queried via `histogram_quantile(0.95, rate(metric[5m]))` directly |
 
 The server always emits dot notation; the `prom*` variants assume a
 collector that turns `formance.ledger.raft.fsm.logs_appended` into
