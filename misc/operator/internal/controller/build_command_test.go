@@ -181,7 +181,7 @@ func TestBuildEnvVars_OtelResourceAttributes(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalCluster()
 		envs := buildEnvVars(ls, "disabled", nil)
-		assertEnv(t, envs, "OTEL_RESOURCE_ATTRIBUTES", "service.cluster=test,service.node_id=$(POD_NAME)")
+		assertEnv(t, envs, "OTEL_RESOURCE_ATTRIBUTES", "formance.ledger.cluster.name=test,k8s.pod.name=$(POD_NAME)")
 	})
 
 	t.Run("user attrs prepended when set", func(t *testing.T) {
@@ -189,7 +189,7 @@ func TestBuildEnvVars_OtelResourceAttributes(t *testing.T) {
 		ls := newMinimalCluster()
 		ls.Spec.Monitoring = &ledgerv1alpha1.MonitoringConfig{Attributes: "env=prod,region=us"}
 		envs := buildEnvVars(ls, "disabled", nil)
-		assertEnv(t, envs, "OTEL_RESOURCE_ATTRIBUTES", "env=prod,region=us,service.cluster=test,service.node_id=$(POD_NAME)")
+		assertEnv(t, envs, "OTEL_RESOURCE_ATTRIBUTES", "env=prod,region=us,formance.ledger.cluster.name=test,k8s.pod.name=$(POD_NAME)")
 	})
 
 	t.Run("operator attrs only when user attrs empty", func(t *testing.T) {
@@ -197,7 +197,7 @@ func TestBuildEnvVars_OtelResourceAttributes(t *testing.T) {
 		ls := newMinimalCluster()
 		ls.Spec.Monitoring = &ledgerv1alpha1.MonitoringConfig{}
 		envs := buildEnvVars(ls, "disabled", nil)
-		assertEnv(t, envs, "OTEL_RESOURCE_ATTRIBUTES", "service.cluster=test,service.node_id=$(POD_NAME)")
+		assertEnv(t, envs, "OTEL_RESOURCE_ATTRIBUTES", "formance.ledger.cluster.name=test,k8s.pod.name=$(POD_NAME)")
 	})
 }
 

@@ -17,12 +17,40 @@ For a complete reference, see the [Grafana Dashboard](#grafana-dashboards) secti
 
 ## Shared telemetry resource
 
-Server OTLP logs, traces, and metrics use the same OpenTelemetry resource.
-`service.name` comes from `--otel-service-name` and defaults to
-`ledger-node-<node ID>`. `service.version` contains the build version and commit,
-joined by a hyphen. `--otel-resource-attributes` applies to all three signals;
-explicit attributes take precedence, including overrides of `service.name`
-and `service.version`.
+Server OTLP logs, traces, and metrics use the same OpenTelemetry resource:
+
+| Attribute | Value | Set by |
+| --------- | ----- | ------ |
+| `service.name` | `--otel-service-name`, default `ledger` (identical on every node) | server |
+| `service.version` | build version and commit, joined by a hyphen | server |
+| `service.instance.id` | `<cluster ID>/<node ID>` | server |
+| `formance.ledger.cluster.id` | `--cluster-id` | server |
+| `formance.ledger.node.id` | Raft node ID | server |
+| `formance.ledger.cluster.name` | `Cluster` resource name | operator |
+| `k8s.pod.name` | pod name | operator |
+
+`service.*` and `k8s.*` follow the OpenTelemetry semantic conventions. Nodes
+share one `service.name` and are told apart by `service.instance.id`, which
+the OTLP→Prometheus translation maps to the `instance` label (and
+`service.name` to `job`, prefixed by `<service.namespace>/` when that is set).
+`service.instance.id` embeds the cluster ID because Raft node IDs are only
+unique within a cluster. Ledger-specific attributes use the `formance.ledger`
+namespace rather than extending the reserved semantic convention namespaces.
+
+Other resource attributes are not metric labels by default: OTLP→Prometheus
+translation stores them on `target_info`. The pre-built dashboards filter on
+`formance.ledger.cluster.id` and `formance.ledger.node.id` as series labels, so
+the pipeline must promote them, for example with the collector Prometheus
+exporters' `resource_to_telemetry_conversion` or Prometheus'
+`otlp.promote_resource_attributes`.
+
+`--otel-resource-attributes` applies to all three signals; explicit
+attributes take precedence over every server default above. The operator
+appends its attributes after the user-supplied `spec.monitoring.attributes`,
+so operator values win over user values for the same key. Do not put
+`service.instance.id`, `formance.ledger.cluster.id`, or
+`formance.ledger.node.id` in a cluster-wide attribute list such as
+`spec.monitoring.attributes`: every node would then report the same identity.
 
 The resource is built before the server logger starts and is supplied to the
 trace and metric providers. Invalid resource attributes fail startup before
@@ -33,7 +61,8 @@ are independent of these OTLP resource attributes.
 
 Metric names in this document use the **OpenTelemetry dot-notation**
 without the namespace prefix (`admission.command.duration`,
-`raft.fsm.logs_appended`, `service.cluster`). The server emits
+`raft.fsm.logs_appended`). Attribute names such as `formance.ledger.node.id`
+are shown as emitted; the metrics prefix never applies to them. The server emits
 every metric its own instrumentation creates under the
 `--otel-metrics-prefix` namespace (default `formance.ledger`, env
 `OTEL_METRICS_PREFIX`, `none` to disable), so
@@ -47,8 +76,8 @@ receives other services' metrics, as the OpenTelemetry naming
 guidelines recommend for application-specific names.
 
 The OTLP→Prometheus collector that fronts most cloud Prometheus
-backends sanitises dots in names: `service.cluster` becomes
-`service_cluster`, `formance.ledger.raft.fsm.logs_appended` becomes
+backends sanitises dots in names: `formance.ledger.node.id` becomes
+`formance_ledger_node_id`, `formance.ledger.raft.fsm.logs_appended` becomes
 `formance_ledger_raft_fsm_logs_appended`. The server itself always
 emits dot notation.
 
@@ -59,7 +88,7 @@ emits dot notation.
 | `pebble.flush.total` (we emit, instruments Pebble) | `formance.ledger.pebble.flush.total` | `formance_ledger_pebble_flush_total` |
 | `http.server.request.duration` (OTel auto-instr) | `http.server.request.duration` | `http_server_request_duration` |
 | `go.memory.allocated` (OTel auto-instr) | `go.memory.allocated` | `go_memory_allocated` |
-| `service.cluster` (attribute) | `service.cluster` | `service_cluster` |
+| `formance.ledger.node.id` (attribute, never prefixed) | `formance.ledger.node.id` | `formance_ledger_node_id` |
 
 OpenTelemetry semantic-convention auto-instrumentation (`go.*`,
 `process.*`, `system.*`, `http.*`, `rpc.*`) is emitted via the
@@ -793,6 +822,11 @@ the runtime environment variables above are populated by Kubernetes.
 
 The following tags are automatically added to all profiles:
 - `node_id` - The Raft node ID
+- `cluster_id` - The cluster ID
+
+The application name defaults to the OTel service name, `ledger` unless
+`--otel-service-name` is set, so every node reports under one application and
+these tags tell nodes apart.
 
 ### Best Practices
 

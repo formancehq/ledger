@@ -124,7 +124,7 @@ local naming = import 'naming.libsonnet';
   // argument is a *label* list rather than an expression — the
   // identifiers inside must be rewritten with transformLabel, not
   // transformMetric. Without this distinction a clause such as
-  // `sum by (service.node_id)` would have its label name treated
+  // `sum by (formance.ledger.node.id)` would have its label name treated
   // as a metric and incorrectly gain the `formance_ledger_` prefix.
   labelListKeywords:: {
     by: true,
@@ -234,13 +234,13 @@ local naming = import 'naming.libsonnet';
 
   // rewriteExpr walks a PromQL expression and rewrites:
   //   - bare identifiers that look like metric names (raft.fsm.logs_…)
-  //   - label names inside { … } selectors (service.cluster=…)
+  //   - label names inside { … } selectors (formance.ledger.cluster.id=…)
   //   - label names inside `by (…)` / `on (…)` / `without (…)` /
   //     `ignoring (…)` clauses (idem)
   //   - quoted metric names {"raft.fsm.logs_appended", …}
   //     (the Prometheus 3.x quoted-name syntax used for OTel metrics
   //     whose names contain dots)
-  //   - quoted label names inside selectors {"service.cluster"=~…}
+  //   - quoted label names inside selectors {"formance.ledger.cluster.id"=~…}
   //   - the legacy __name__="metric.name" selector form
   //
   // Label *values* (right-hand side of =, =~, !=, !~) are left
@@ -333,7 +333,7 @@ local naming = import 'naming.libsonnet';
   // metric/label name references.
   // rewriteRegex transforms a Grafana templating regex field.
   // Grafana exports use `\.` to match a literal dot in a label name
-  // (e.g. /service\.cluster="([^"]+)"/). After the collector
+  // (e.g. /formance\.ledger\.cluster\.id="([^"]+)"/). After the collector
   // sanitises the labels there is no dot to match anymore, so we
   // collapse every escaped-dot into the underscore the collector
   // emitted. We deliberately do not touch other parts of the regex.
@@ -344,8 +344,8 @@ local naming = import 'naming.libsonnet';
   // rewriteLegendFormat transforms a Grafana legendFormat string.
   // Grafana resolves `{{label.name}}` placeholders against the
   // labels of the returned time series; if our query's labels have
-  // been de-dotted by the collector (`service.node_id` becomes
-  // `service_node_id`) then the legend template must reference the
+  // been de-dotted by the collector (`formance.ledger.node.id` becomes
+  // `formance_ledger_node_id`) then the legend template must reference the
   // de-dotted form, otherwise Grafana silently leaves the
   // placeholder empty and every legend entry reads "Node".
   rewriteLegendFormat(s, mode)::

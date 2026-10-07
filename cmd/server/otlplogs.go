@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 	flag "github.com/spf13/pflag"
 	"go.opentelemetry.io/otel/sdk/resource"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 
 	otlp "github.com/formancehq/go-libs/v5/pkg/observe"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -23,6 +24,19 @@ const (
 	LogLevelFlag                     = "log-level"
 )
 
+const (
+	// defaultServiceName is the logical service reported by every node. Nodes
+	// are told apart by service.instance.id, not by service.name.
+	defaultServiceName = "ledger"
+
+	// Custom resource attributes live under the formance.ledger namespace, the
+	// same one that prefixes the ledger metrics: OpenTelemetry reserves the
+	// semantic-convention namespaces (service.*, k8s.*, ...) for its own
+	// attributes.
+	resourceAttributeClusterID = "formance.ledger.cluster.id"
+	resourceAttributeNodeID    = "formance.ledger.node.id"
+)
+
 func addOtlpLogsFlags(flags *flag.FlagSet) {
 	otlp.AddFlags(flags)
 
@@ -34,19 +48,28 @@ func addOtlpLogsFlags(flags *flag.FlagSet) {
 }
 
 // resourceFromFlags builds the resource shared by logs, traces, and metrics.
-// Keep go-libs' resource attribute precedence, including explicit overrides of
-// service.name and service.version through --otel-resource-attributes.
-func resourceFromFlags(cmd *cobra.Command, nodeID uint64, info version.Info) (*resource.Resource, error) {
+// The node identity attributes (service.instance.id, formance.ledger.cluster.id,
+// formance.ledger.node.id) are placed before --otel-resource-attributes so
+// go-libs' last-wins precedence keeps explicit overrides authoritative, as it
+// does for service.name and service.version.
+func resourceFromFlags(cmd *cobra.Command, clusterID string, nodeID uint64, info version.Info) (*resource.Resource, error) {
 	// addOtlpLogsFlags registers this flag with its string type before use.
 	serviceName, _ := cmd.Flags().GetString(otlp.OtelServiceNameFlag)
 	if serviceName == "" {
-		serviceName = fmt.Sprintf("ledger-node-%d", nodeID)
+		serviceName = defaultServiceName
 		if err := cmd.Flags().Set(otlp.OtelServiceNameFlag, serviceName); err != nil {
 			return nil, fmt.Errorf("setting default service name: %w", err)
 		}
 	}
 	// addOtlpLogsFlags registers this flag with its string-slice type before use.
-	attributes, _ := cmd.Flags().GetStringSlice(otlp.OtelResourceAttributesFlag)
+	explicit, _ := cmd.Flags().GetStringSlice(otlp.OtelResourceAttributesFlag)
+	attributes := append([]string{
+		// service.instance.id must be unique per service.name, and Raft node
+		// IDs are only unique within a cluster.
+		fmt.Sprintf("%s=%s/%d", semconv.ServiceInstanceIDKey, clusterID, nodeID),
+		fmt.Sprintf("%s=%s", resourceAttributeClusterID, clusterID),
+		fmt.Sprintf("%s=%d", resourceAttributeNodeID, nodeID),
+	}, explicit...)
 
 	return otlp.BuildResource(serviceName, attributes, fmt.Sprintf("%s-%s", info.Version, info.Commit))
 }

@@ -51,7 +51,7 @@ func TestLoggerExportsSharedTraceResource(t *testing.T) {
 		require.NoError(t, <-served)
 	})
 
-	sharedResource, err := observe.BuildResource("ledger-node-42", []string{
+	sharedResource, err := observe.BuildResource("ledger", []string{
 		"service.name=ledger-custom", "service.version=overridden-build", "deployment.environment=regression",
 	}, "3.0.0-build")
 	require.NoError(t, err)

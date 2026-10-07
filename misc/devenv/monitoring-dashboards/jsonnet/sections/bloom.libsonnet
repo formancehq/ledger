@@ -8,7 +8,7 @@ panels.row('Bloom Filter', 168, [
     'Bloom Lookup Rate by Type',
     { h: 8, w: 12, x: 0, y: 1 },
     [
-      { expr: 'sum(rate(bloom.lookups{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (type, service.node_id)', legendFormat: '{{type}} (Node {{service.node_id}})' },
+      { expr: 'sum(rate(bloom.lookups{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (type, formance.ledger.node.id)', legendFormat: '{{type}} (Node {{formance.ledger.node.id}})' },
     ], unit='ops',
     description=|||
       Rate of bloom filter checks per second, broken down by attribute type.
@@ -21,7 +21,7 @@ panels.row('Bloom Filter', 168, [
     'Bloom Filter Efficiency (% Negatives)',
     { h: 8, w: 12, x: 12, y: 1 },
     [
-      { expr: 'sum(rate(bloom.negatives{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (type, service.node_id) / sum(rate(bloom.lookups{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (type, service.node_id) * 100', legendFormat: '{{type}} (Node {{service.node_id}})' },
+      { expr: 'sum(rate(bloom.negatives{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (type, formance.ledger.node.id) / sum(rate(bloom.lookups{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (type, formance.ledger.node.id) * 100', legendFormat: '{{type}} (Node {{formance.ledger.node.id}})' },
     ], unit='percent',
     description=|||
       Percentage of bloom filter lookups that returned definitely-not-present, by type.
@@ -34,7 +34,7 @@ panels.row('Bloom Filter', 168, [
     'Bloom Negatives Rate (Pebble Gets Avoided)',
     { h: 8, w: 12, x: 0, y: 9 },
     [
-      { expr: 'sum(rate(bloom.negatives{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (type, service.node_id)', legendFormat: '{{type}} (Node {{service.node_id}})' },
+      { expr: 'sum(rate(bloom.negatives{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (type, formance.ledger.node.id)', legendFormat: '{{type}} (Node {{formance.ledger.node.id}})' },
     ], unit='ops',
     description=|||
       Rate of bloom filter checks that returned definitely-not-present, by type.
@@ -47,7 +47,7 @@ panels.row('Bloom Filter', 168, [
     'Bloom Adds Rate',
     { h: 8, w: 12, x: 12, y: 9 },
     [
-      { expr: 'sum(rate(bloom.adds{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (type, service.node_id)', legendFormat: '{{type}} (Node {{service.node_id}})' },
+      { expr: 'sum(rate(bloom.adds{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (type, formance.ledger.node.id)', legendFormat: '{{type}} (Node {{formance.ledger.node.id}})' },
     ], unit='ops',
     description=|||
       Rate of keys being added to bloom filters, by type.
@@ -60,7 +60,7 @@ panels.row('Bloom Filter', 168, [
     'Bloom Ready',
     { h: 8, w: 12, x: 0, y: 17 },
     [
-      { expr: 'bloom.ready{service.cluster=~"$cluster", service.node_id=~"$node"}', legendFormat: 'Node {{service.node_id}}' },
+      { expr: 'bloom.ready{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: 'Node {{formance.ledger.node.id}}' },
     ], unit='bool',
     description=|||
       Bloom filter readiness state (1 = ready, 0 = populating).
@@ -73,7 +73,7 @@ panels.row('Bloom Filter', 168, [
     'Bloom False Positive Rate',
     { h: 8, w: 12, x: 0, y: 26 },
     [
-      { expr: 'sum(rate(bloom.false_positives{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (type, service.node_id) / sum(rate(bloom.lookups{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval]) - rate(bloom.negatives{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (type, service.node_id)', legendFormat: '{{type}} (Node {{service.node_id}})' },
+      { expr: 'sum(rate(bloom.false_positives{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (type, formance.ledger.node.id) / sum(rate(bloom.lookups{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval]) - rate(bloom.negatives{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (type, formance.ledger.node.id)', legendFormat: '{{type}} (Node {{formance.ledger.node.id}})' },
     ], unit='percentunit',
     description=|||
       Rate of bloom filter false positives per second, by type.
