@@ -35,16 +35,30 @@ import (
 type ClusterBootstrapServiceServerImpl struct {
 	clusterbootstrappb.UnimplementedClusterBootstrapServiceServer
 
-	node          *node.Node
-	raftTransport *node.DefaultTransport
+	node          BootstrapNode
+	raftTransport LeaderConnections
 	membership    *membership.Service
 	logger        logging.Logger
 	clusterID     string
 }
 
+// BootstrapNode is the part of *node.Node the bootstrap service reads to
+// decide whether to serve a call locally or forward it to the leader.
+type BootstrapNode interface {
+	IsLeader() bool
+	GetLeader() uint64
+	GetNodeID() uint64
+}
+
+// LeaderConnections hands out the Raft transport's shared connection to a
+// peer, used to forward bootstrap calls to the leader.
+type LeaderConnections interface {
+	GetPeerConnection(peerID uint64) *ggrpc.ClientConn
+}
+
 func NewClusterBootstrapServiceServer(
-	n *node.Node,
-	raftTransport *node.DefaultTransport,
+	n BootstrapNode,
+	raftTransport LeaderConnections,
 	membershipSvc *membership.Service,
 	logger logging.Logger,
 	clusterID string,
@@ -100,7 +114,12 @@ func (impl *ClusterBootstrapServiceServerImpl) GetPeers(ctx context.Context, req
 			outCtx = metadata.AppendToOutgoingContext(ctx, node.MetadataKeyClusterID, impl.clusterID)
 		}
 
-		return clusterbootstrappb.NewClusterBootstrapServiceClient(conn).GetPeers(outCtx, req)
+		resp, err := clusterbootstrappb.NewClusterBootstrapServiceClient(conn).GetPeers(outCtx, req)
+		if err != nil {
+			return nil, forwardedCallError(err)
+		}
+
+		return resp, nil
 	}
 
 	peers, err := impl.membership.ListPeers(ctx)
@@ -163,7 +182,12 @@ func (impl *ClusterBootstrapServiceServerImpl) JoinAsLearner(ctx context.Context
 			outCtx = metadata.AppendToOutgoingContext(ctx, node.MetadataKeyClusterID, impl.clusterID)
 		}
 
-		return clusterbootstrappb.NewClusterBootstrapServiceClient(conn).JoinAsLearner(outCtx, req)
+		resp, err := clusterbootstrappb.NewClusterBootstrapServiceClient(conn).JoinAsLearner(outCtx, req)
+		if err != nil {
+			return nil, forwardedCallError(err)
+		}
+
+		return resp, nil
 	}
 
 	// EN-1045: every peer must present its 16-byte instance_id — clients
@@ -267,6 +291,21 @@ func (impl *ClusterBootstrapServiceServerImpl) JoinAsLearner(ctx context.Context
 	}
 
 	return &clusterbootstrappb.JoinAsLearnerResponse{}, nil
+}
+
+// forwardedCallError maps the failure of a call forwarded to the leader.
+// The leader converts its own context errors to Unavailable, so Canceled
+// and DeadlineExceeded can only come from the forwarding hop: the shared
+// Raft transport connection being closed or restarted mid-call. Those are
+// reported as Unavailable so the joining node retries; every status the
+// leader returned is passed through untouched.
+func forwardedCallError(err error) error {
+	switch st := status.Convert(err); st.Code() {
+	case codes.Canceled, codes.DeadlineExceeded:
+		return status.Errorf(codes.Unavailable, "forwarding to leader: %s", st.Message())
+	default:
+		return err
+	}
 }
 
 // leaderRaftConn returns a gRPC connection to the current leader's
