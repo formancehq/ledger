@@ -285,6 +285,75 @@ func TestVMStore_ScopedReadsRejected(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrScopedBalanceUnsupported)
 }
 
+// TestSafeExecIfCached_Miss: an empty cache reports found=false and never
+// touches the store or panics — the caller is expected to recompile and fall
+// back to SafeExecCompiled instead.
+func TestSafeExecIfCached_Miss(t *testing.T) {
+	t.Parallel()
+
+	cache := NewNumscriptCache(16)
+	hash := HashScript(`send [COIN 1] (source = @a destination = @b)`)
+
+	result, err, found := SafeExecIfCached(cache, hash, []byte("irrelevant"), NewVMStore(mapValueSource{}, false))
+	require.False(t, found)
+	require.Nil(t, err)
+	require.Equal(t, numscriptlib.ExecutionResult{}, result)
+}
+
+// TestSafeExecIfCached_Hit: once SafeExecCompiled has warmed the cache for a
+// hash, SafeExecIfCached runs directly from the cached entry — no program
+// bytes of its own are supplied or compared, only vars and a store — and
+// produces exactly the same outcome a full SafeExecCompiled call would.
+func TestSafeExecIfCached_Hit(t *testing.T) {
+	t.Parallel()
+
+	script := `vars {
+  monetary $amt
+}
+
+send $amt (
+  source = @src
+  destination = @dst
+)`
+	entry := mustEntry(t, script)
+	compiled := mustCompile(t, entry, map[string]string{"amt": "COIN 30"})
+
+	cache := NewNumscriptCache(16)
+	store := NewVMStore(mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}, false)
+
+	warm, err := SafeExecCompiled(cache, compiled.ScriptHash, compiled.Program, compiled.Vars, store)
+	require.Nil(t, err)
+
+	cached, cachedErr, found := SafeExecIfCached(cache, [16]byte(compiled.ScriptHash), compiled.Vars, store)
+	require.True(t, found)
+	require.Nil(t, cachedErr)
+	require.Equal(t, warm, cached)
+}
+
+// TestSafeExecIfCached_VarsDecodeErrorIsConclusive: a hit with undecodable
+// vars bytes is a final error (found=true, not a cache miss to paper over by
+// falling back to a recompile) — the committed vars are corrupt, not absent.
+func TestSafeExecIfCached_VarsDecodeErrorIsConclusive(t *testing.T) {
+	t.Parallel()
+
+	script := `send [COIN 1] (source = @a destination = @b)`
+	entry := mustEntry(t, script)
+	compiled := mustCompile(t, entry, nil)
+
+	cache := NewNumscriptCache(16)
+	store := NewVMStore(mapValueSource{}, true) // force: unlimited balance, no setup needed
+
+	_, err := SafeExecCompiled(cache, compiled.ScriptHash, compiled.Program, compiled.Vars, store)
+	require.Nil(t, err)
+
+	corruptVars := bytes.Clone(compiled.Vars)
+	corruptVars[0] ^= 0xFF
+
+	_, cachedErr, found := SafeExecIfCached(cache, [16]byte(compiled.ScriptHash), corruptVars, store)
+	require.True(t, found)
+	require.NotNil(t, cachedErr)
+}
+
 // TestSafeExecCompiled_WarmInstanceReuse: repeated applies of the same artifact
 // through one cache run on the entry's single warm VM instance. Reuse must be
 // invisible in results: each run sees only its own vars and store (no state

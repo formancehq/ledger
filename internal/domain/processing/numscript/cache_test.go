@@ -219,45 +219,6 @@ func TestNumscriptCache_RecordSize_ReportsBothSides(t *testing.T) {
 	require.Equal(t, map[string]int64{cacheSideParsed: 1, cacheSideCompiled: 1}, sizes)
 }
 
-func TestNumscriptCache_PeekCompiledProgram_Miss(t *testing.T) {
-	t.Parallel()
-
-	c := NewNumscriptCache(10)
-
-	program, ok := c.PeekCompiledProgram(HashScript(`send [USD/2 100] (source = @world destination = @users:alice)`))
-	require.False(t, ok)
-	require.Nil(t, program)
-}
-
-func TestNumscriptCache_PeekCompiledProgram_Hit(t *testing.T) {
-	t.Parallel()
-
-	c := NewNumscriptCache(10)
-	script := `send [USD/2 100] (source = @world destination = @users:alice)`
-
-	entry := c.getOrParseEntry(script)
-	require.Nil(t, entry.script.err)
-
-	compiled := mustCompile(t, entry, nil)
-	vars, decErr := numscriptlib.DecodeVars(compiled.Vars)
-	require.NoError(t, decErr)
-
-	_, err := c.getOrDecodeCompiled(compiled.ScriptHash, compiled.Program, &vars)
-	require.Nil(t, err)
-
-	hash := HashScript(script)
-	program, ok := c.PeekCompiledProgram(hash)
-	require.True(t, ok)
-	require.Equal(t, compiled.Program, program)
-
-	// The returned slice is a defensive copy: mutating it must not corrupt the
-	// cache entry a later peek or decode would read.
-	program[0] ^= 0xFF
-	again, ok := c.PeekCompiledProgram(hash)
-	require.True(t, ok)
-	require.Equal(t, compiled.Program, again)
-}
-
 func TestLruEntry_CompileParsed_AlreadyCompiledAcrossEviction(t *testing.T) {
 	t.Parallel()
 

@@ -287,9 +287,9 @@ func TestProduce_InvalidArtifactHeaderIsLoud(t *testing.T) {
 
 // TestProduce_PartialArtifactIsLoud: a program alone may be legitimately
 // absent (vars and hash present) — see
-// TestProduce_OmittedProgramRecompilesToTheSameOutcome — but every other
-// partial shape is a corrupt artifact admission never produces, and fails the
-// order loudly.
+// TestProduce_OmittedProgramRecompilesToTheSameOutcome and
+// TestProduce_HashOnlyRecompilesBothHalves — but every other partial shape is
+// a corrupt artifact admission never produces, and fails the order loudly.
 func TestProduce_PartialArtifactIsLoud(t *testing.T) {
 	t.Parallel()
 
@@ -301,7 +301,6 @@ func TestProduce_PartialArtifactIsLoud(t *testing.T) {
 	}{
 		"no vars":                {programBytes, nil, scriptHash, "decoding compiled numscript vars"},
 		"no hash":                {programBytes, varsBytes, nil, "does not match the resolved script text"},
-		"hash only":              {nil, nil, scriptHash, "decoding compiled numscript vars"},
 		"no program, short hash": {nil, varsBytes, scriptHash[:8], "script hash has 8 bytes, want 16"},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -311,6 +310,24 @@ func TestProduce_PartialArtifactIsLoud(t *testing.T) {
 			requireNumscriptRuntimeError(t, err, tc.detail)
 		})
 	}
+}
+
+// TestProduce_HashOnlyRecompilesBothHalves: vars and program both absent,
+// hash present, is no longer a loud failure. The omitted-program recompile
+// path regenerates vars from the business script fields regardless of what
+// the committed compiledVars held (see
+// TestProduce_OmittedProgramIgnoresStaleCommittedVarsOnRecompile), so an
+// empty or corrupt committed vars field is repaired the same way a missing
+// program is — there is nothing distinctly "corrupt" about this shape
+// anymore now that both halves come from the one fresh compile on a miss.
+func TestProduce_HashOnlyRecompilesBothHalves(t *testing.T) {
+	t.Parallel()
+
+	_, _, scriptHash := compileArtifactForTest(t, vmScript, vmScriptVars)
+
+	result, err := produceVMScript(t, vmScriptVars, nil, nil, scriptHash)
+	require.Nil(t, err)
+	require.Equal(t, uint64(100), result.Postings[0].GetAmount().ToBigInt().Uint64())
 }
 
 // TestProduce_OmittedProgramRecompilesToTheSameOutcome: admission may omit
@@ -334,6 +351,26 @@ func TestProduce_OmittedProgramRecompilesToTheSameOutcome(t *testing.T) {
 	require.Equal(t, withArtifact, omittedProgram)
 }
 
+// TestProduce_OmittedProgramIgnoresStaleCommittedVarsOnRecompile: a cache
+// miss recompiles both the program and the vars from the one fresh compile —
+// it must never pair the freshly recompiled program with the committed
+// compiledVars bytes, which could be a different (if under the same bundled
+// library, still byte-identical in practice, but never assumed so across a
+// recompile the code takes this path to avoid depending on) compilation.
+// compiledVars here deliberately encodes the wrong amount; the business
+// script vars (what the recompile actually binds) carry the right one —
+// only a correct fix produces the right posting.
+func TestProduce_OmittedProgramIgnoresStaleCommittedVarsOnRecompile(t *testing.T) {
+	t.Parallel()
+
+	_, _, scriptHash := compileArtifactForTest(t, vmScript, vmScriptVars)
+	_, staleVarsBytes, _ := compileArtifactForTest(t, vmScript, map[string]string{"amt": "USD/2 999"})
+
+	result, err := produceVMScript(t, vmScriptVars, nil, staleVarsBytes, scriptHash)
+	require.Nil(t, err)
+	require.Equal(t, uint64(100), result.Postings[0].GetAmount().ToBigInt().Uint64())
+}
+
 // TestProduce_OmittedProgramUsesWarmCache: when a prior order on this node's
 // own apply-side cache already decoded and verified this hash's bytes (this
 // node having applied an earlier committed entry that carried the program),
@@ -341,7 +378,7 @@ func TestProduce_OmittedProgramRecompilesToTheSameOutcome(t *testing.T) {
 // recompile — and produces exactly the same outcome. Admission's decision to
 // omit is independent of this (see admission.go's use of
 // CompiledScript.AlreadyCompiled, admission's own separate compile cache) —
-// this test only exercises the FSM apply side's PeekCompiledProgram lookup.
+// this test only exercises the FSM apply side's SafeExecIfCached lookup.
 func TestProduce_OmittedProgramUsesWarmCache(t *testing.T) {
 	t.Parallel()
 

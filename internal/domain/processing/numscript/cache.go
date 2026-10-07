@@ -273,14 +273,16 @@ func (e *lruEntry) compileParsed() (program *compiledProgram, err domain.Seriali
 // Entries are keyed by scriptHash — the order's HashScript(text), already
 // checked against the resolved text by the caller — and hold the exact program
 // bytes they verified. A hit requires those bytes to equal the order's:
-// compilation is not assumed to be deterministic, so two compilations of the
-// same script (another leader, a rolling upgrade, a parse-cache eviction on the
-// leader) may produce different bytes. On mismatch the order's bytes take the
-// cold path and, once verified, replace the entry: the node always executes
-// the committed bytes, and only pays the decode+verify again when the bytes
-// change. A rejected artifact (undecodable, foreign version, unverifiable) is
-// never inserted, so it leaves the current entry in place. The cache itself is
-// in-memory, so a binary upgrade restarts with it empty.
+// compiling the same text under the same bundled library is deterministic —
+// byte-identical, always — but this binary is not the only one that could
+// have produced the committed bytes. A mismatch means two different library
+// versions compiled the same text (a straddled mixed-binary window, not
+// ordinary operation — see docs/ops/deployment.md), so the order's bytes take
+// the cold path and, once verified, replace the entry: the node always
+// executes the committed bytes, and only pays the decode+verify again when
+// the bytes change. A rejected artifact (undecodable, foreign version,
+// unverifiable) is never inserted, so it leaves the current entry in place.
+// The cache itself is in-memory, so a binary upgrade restarts with it empty.
 //
 // vars is only consulted through the entry's VerifiedVarsInfo: the vars shape
 // is fixed by the program's own variable layout, so a cached artifact is valid
@@ -371,31 +373,6 @@ func (c *NumscriptCache) getOrDecodeCompiled(scriptHash, programBytes []byte, va
 	c.recordSize(cacheSideCompiled, int64(c.compiledOrder.Len()))
 
 	return entry, nil
-}
-
-// PeekCompiledProgram returns a copy of the program bytes this node's own
-// decode+verify cache already holds for hash, without decoding, verifying, or
-// touching LRU order. The FSM apply path uses it when an order's
-// compiled_program is omitted (see processor_transaction_numscript.go): a hit
-// serves the cached bytes directly, a miss (restart, LRU eviction, a newly
-// joined replica, or a leadership change before this node ever applied the
-// hash-establishing entry) falls back to recompiling from the script text.
-// This cache is populated only through getOrDecodeCompiled — i.e. only by a
-// node actually executing a scripted order — so it is NOT shared with
-// admission's own NumscriptCache instance (a separate cache; see
-// lruEntry.compiledBefore for admission's own, unrelated signal).
-func (c *NumscriptCache) PeekCompiledProgram(hash [16]byte) ([]byte, bool) {
-	c.compiledMu.RLock()
-	defer c.compiledMu.RUnlock()
-
-	elem, ok := c.compiledCache[hash]
-	if !ok {
-		return nil, false
-	}
-
-	entry, _ := elem.Value.(*compiledLruEntry)
-
-	return bytes.Clone(entry.program), true
 }
 
 // InitCacheMetrics initializes the cache metrics on the NumscriptCache.

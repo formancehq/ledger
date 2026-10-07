@@ -220,6 +220,56 @@ func SafeExecCompiled(cache *NumscriptCache, scriptHash, programBytes, varsBytes
 	return safeExecVM(entry.vm, &vars, store)
 }
 
+// SafeExecIfCached runs scriptHash's bytecode directly from this node's own
+// apply-side cache when present, for a committed entry that carries no
+// program bytes of its own — admission omitted them because its own compile
+// cache already had this hash compiled (see admission.go and
+// docs/technical/architecture/subsystems/scripting/numscript-library.md).
+// Unlike SafeExecCompiled there is no program of the caller's own to verify
+// a hit against, so this never clones or compares program bytes: a hit's
+// cached bytes are used as-is. found is false on a cache miss (restart, LRU
+// eviction, a newly joined replica, or a leadership change before this node
+// ever applied the hash-establishing entry); the caller must then recompile
+// from the script text (CompileForReplay) and execute the ordinary
+// SafeExecCompiled, which also warms this cache for next time.
+func SafeExecIfCached(cache *NumscriptCache, scriptHash [16]byte, varsBytes []byte, store *VMStore) (result numscriptlib.ExecutionResult, err domain.SerializableError, found bool) {
+	defer func() {
+		if panicErr := numscriptPanicToDescribable(recover()); panicErr != nil {
+			result = numscriptlib.ExecutionResult{}
+			err = panicErr
+		}
+	}()
+
+	cache.compiledMu.RLock()
+	elem, ok := cache.compiledCache[scriptHash]
+	cache.compiledMu.RUnlock()
+
+	if !ok {
+		return numscriptlib.ExecutionResult{}, nil, false
+	}
+
+	entry, _ := elem.Value.(*compiledLruEntry)
+
+	vars, decErr := numscriptlib.DecodeVars(varsBytes)
+	if decErr != nil {
+		return numscriptlib.ExecutionResult{}, &domain.ErrNumscriptRuntime{
+			Detail: "decoding compiled numscript vars: " + decErr.Error(),
+		}, true
+	}
+
+	if !entry.verified.CheckVars(&vars) {
+		if _, verifyErr := numscriptlib.VerifyCompiledProgramWithVars(entry.vm.Program, &vars); verifyErr != nil {
+			return numscriptlib.ExecutionResult{}, &domain.ErrNumscriptRuntime{
+				Detail: "verifying compiled numscript program: " + verifyErr.Error(),
+			}, true
+		}
+	}
+
+	result, err = safeExecVM(entry.vm, &vars, store)
+
+	return result, err, true
+}
+
 // convertVMError is convertNumscriptError's counterpart for the VM's error
 // types: the same missing-funds mapping (the VM error carries no account or
 // color either, so ColorKnown stays false), the same typed-failure pass-through

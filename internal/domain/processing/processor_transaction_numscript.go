@@ -158,25 +158,8 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	// scripted order it proposes, and one it forwards without is marked
 	// preload_unavailable and rejected before reaching here — so it is flagged
 	// under Antithesis (invariant #7).
-	//
-	// A present program is never repaired from the text: an invalid header, a
-	// bytecode version the bundled library cannot read, or bytes that fail
-	// decoding or verification are a corrupt or impossible state, and
-	// SafeExecCompiled fails them loudly below. But the program alone — vars
-	// and hash present — may be deliberately omitted: admission skips it when
-	// its own compile cache already had this script hash compiled before
-	// this proposal (CompiledScript.AlreadyCompiled, admission's own cache —
-	// unrelated to this node's apply-side cache; the two are separate
-	// NumscriptCache instances, see cache.go). This node then looks for the
-	// bytes in ITS OWN apply-side cache (PeekCompiledProgram); a miss (the
-	// ordinary case — that cache is never warmed by anything admission does —
-	// or a restart, LRU eviction, new joiner, or leadership change)
-	// recompiles from the script text exactly like the fully-missing case,
-	// rather than asserting unreachable — admission deliberately producing
-	// this shape is the opposite of a bug.
 	compiledProgram, compiledVars, compiledScriptHash := p.compiledProgram, p.compiledVars, p.compiledScriptHash
-	switch {
-	case len(compiledProgram) == 0 && len(compiledVars) == 0 && len(compiledScriptHash) == 0:
+	if len(compiledProgram) == 0 && len(compiledVars) == 0 && len(compiledScriptHash) == 0 {
 		if !p.compileMissing {
 			assert.Unreachable("scripted order reached FSM apply without its compiled numscript artifact", map[string]any{
 				"ledger": ledgerName,
@@ -189,23 +172,13 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		}
 
 		compiledProgram, compiledVars, compiledScriptHash = compiled.Program, compiled.Vars, compiled.ScriptHash
-
-	case len(compiledProgram) == 0:
-		if len(compiledScriptHash) != len([16]byte{}) {
-			return nil, &domain.ErrNumscriptRuntime{
-				Detail: fmt.Sprintf("compiled numscript artifact: script hash has %d bytes, want 16", len(compiledScriptHash)),
-			}
-		}
-
-		if cached, ok := p.cache.PeekCompiledProgram([16]byte(compiledScriptHash)); ok {
-			compiledProgram = cached
-		} else {
-			compiled, compileErr := numscript.CompileForReplay(p.cache, script.GetPlain(), script.GetVars())
-			if compileErr != nil {
-				return nil, compileErr
-			}
-
-			compiledProgram = compiled.Program
+	} else if len(compiledProgram) == 0 && len(compiledScriptHash) != len([16]byte{}) {
+		// Guards the [16]byte conversion the omitted-program path below relies
+		// on. Checked ahead of the hash-binding comparison (which tolerates
+		// any length) so a malformed hash gets this specific detail instead
+		// of the generic mismatch message.
+		return nil, &domain.ErrNumscriptRuntime{
+			Detail: fmt.Sprintf("compiled numscript artifact: script hash has %d bytes, want 16", len(compiledScriptHash)),
 		}
 	}
 
@@ -222,11 +195,51 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 
 	vmStore := numscript.NewVMStore(&scopeValueSource{store: s, ledgerName: ledgerName}, order.GetForce())
 
-	// Any failure short of execution — an invalid header, an unreadable
-	// bytecode version, undecodable bytes, unverifiable bytecode — is final
-	// (see SafeExecCompiled): the order fails on every node running this
-	// binary.
-	result, execErr := numscript.SafeExecCompiled(p.cache, scriptHash[:], compiledProgram, compiledVars, vmStore)
+	var (
+		result  numscriptlib.ExecutionResult
+		execErr domain.SerializableError
+	)
+
+	// A present program is never repaired from the text: an invalid header, a
+	// bytecode version the bundled library cannot read, or bytes that fail
+	// decoding or verification are a corrupt or impossible state, and
+	// SafeExecCompiled fails them loudly below. But the program alone — vars
+	// and hash present — may be deliberately omitted: admission skips it when
+	// its own compile cache already had this script hash compiled before
+	// this proposal (CompiledScript.AlreadyCompiled, admission's own cache —
+	// unrelated to this node's apply-side cache; the two are separate
+	// NumscriptCache instances, see cache.go). This node then tries its own
+	// apply-side cache for that hash (SafeExecIfCached, which runs directly
+	// from the cached entry — there is nothing of the caller's own to verify
+	// it against, so no bytes are cloned or compared). A miss (the ordinary
+	// case — that cache is never warmed by anything admission does — or a
+	// restart, LRU eviction, new joiner, or leadership change) recompiles
+	// from the script text exactly like the fully-missing case, rather than
+	// asserting unreachable — admission deliberately producing this shape is
+	// the opposite of a bug. The recompiled program and vars are a matched
+	// pair from the one fresh compile, never mixed with the committed
+	// (possibly differently-compiled) compiledVars.
+	if len(compiledProgram) == 0 {
+		// compiledScriptHash is already confirmed to be 16 bytes above.
+		var found bool
+
+		result, execErr, found = numscript.SafeExecIfCached(p.cache, [16]byte(compiledScriptHash), compiledVars, vmStore)
+		if !found {
+			compiled, compileErr := numscript.CompileForReplay(p.cache, script.GetPlain(), script.GetVars())
+			if compileErr != nil {
+				return nil, compileErr
+			}
+
+			// Any failure short of execution — an invalid header, an unreadable
+			// bytecode version, undecodable bytes, unverifiable bytecode — is
+			// final (see SafeExecCompiled): the order fails on every node
+			// running this binary.
+			result, execErr = numscript.SafeExecCompiled(p.cache, scriptHash[:], compiled.Program, compiled.Vars, vmStore)
+		}
+	} else {
+		result, execErr = numscript.SafeExecCompiled(p.cache, scriptHash[:], compiledProgram, compiledVars, vmStore)
+	}
+
 	if execErr != nil {
 		return nil, execErr
 	}
