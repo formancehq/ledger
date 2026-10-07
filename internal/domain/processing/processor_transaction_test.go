@@ -673,6 +673,45 @@ func TestProcessCreateTransaction_Numscript_UnboundedOverdraft(t *testing.T) {
 	require.Equal(t, int64(100000), posting.GetAmount().ToBigInt().Int64())
 }
 
+// TestProcessCreateTransaction_Numscript_ParseError pins that a script the
+// parser rejects fails apply with ErrNumscriptParse. Admission never proposes
+// such a script, so the only apply path that parses is the text path taken
+// by an order without an artifact (audit replay); the order is therefore
+// built without one — there is no artifact to stage for a script that does
+// not parse.
+func TestProcessCreateTransaction_Numscript_ParseError(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+
+	order := requestToOrderWithoutArtifact(numscriptSendRequest(`
+		send [USD/2 invalid] (
+			source = @world
+			destination = @users:alice
+		)
+	`))
+
+	result, procErr := processor.ProcessOrder(order, mockStore)
+	require.Nil(t, result)
+	require.NotNil(t, procErr)
+
+	var parseErr *domain.ErrNumscriptParse
+	require.ErrorAs(t, procErr, &parseErr)
+	require.Equal(t, domain.ErrReasonNumscriptParseError, procErr.Reason())
+	require.Contains(t, procErr.Error(), "numscript parse error")
+}
+
 func TestProcessCreateTransaction_Numscript_EmptyScript(t *testing.T) {
 	t.Parallel()
 
