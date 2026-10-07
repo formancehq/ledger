@@ -85,16 +85,69 @@ func TestInstrumentNamesCarryNoUnit(t *testing.T) {
 	}
 }
 
-// TestCountInstrumentsUseAnnotationUnits enforces the OpenTelemetry unit
-// guideline (https://opentelemetry.io/docs/specs/semconv/general/metrics/#instrument-units)
-// that `1` denotes a dimensionless value (a ratio or a utilization), which
-// only a gauge can hold, while integer counts of things use a UCUM
-// annotation such as `{entry}`.
-func TestCountInstrumentsUseAnnotationUnits(t *testing.T) {
+// TestInstrumentUnits enforces the OpenTelemetry unit guidelines
+// (https://opentelemetry.io/docs/specs/semconv/general/metrics/#instrument-units):
+//   - durations are measured in seconds (`s`), on a Float64 instrument so
+//     sub-second values are not truncated;
+//   - `1` denotes a dimensionless value (a ratio or a utilization), which
+//     only a gauge can hold; integer counts of things use a UCUM annotation
+//     such as `{entry}` instead.
+func TestInstrumentUnits(t *testing.T) {
 	t.Parallel()
 
 	call := regexp.MustCompile(`\.(` + strings.Join(instrumentMethods, "|") + `)\(\s*"([^"]+)"`)
 	unit := regexp.MustCompile(`WithUnit\("([^"]*)"\)`)
+	walkSources(t, func(path string, data []byte) {
+		for _, c := range call.FindAllSubmatchIndex(data, -1) {
+			method, name := string(data[c[2]:c[3]]), string(data[c[4]:c[5]])
+			m := unit.FindSubmatch(data[c[3]:callEnd(data, c[3])])
+			if m == nil {
+				continue
+			}
+			switch u := string(m[1]); u {
+			case "1":
+				if !strings.HasSuffix(method, "Gauge") {
+					t.Errorf("%s: %s %q uses unit \"1\", which denotes a ratio; use a UCUM annotation such as \"{entry}\"", path, method, name)
+				}
+			case "ns", "us", "ms", "min", "h", "nanoseconds", "microseconds", "milliseconds", "seconds":
+				// OpenTelemetry: durations SHOULD be measured in seconds.
+				t.Errorf("%s: %s %q measures a duration in %q; use \"s\" with a Float64 instrument and record d.Seconds()", path, method, name, u)
+			case "bytes":
+				t.Errorf("%s: %s %q spells its unit; use the UCUM code \"By\"", path, method, name)
+			case "s":
+				if strings.HasPrefix(method, "Int64") {
+					t.Errorf("%s: %s %q measures seconds with an integer instrument, which truncates sub-second durations; use the Float64 variant", path, method, name)
+				}
+			}
+		}
+	})
+}
+
+// TestRecordedDurationsAreSeconds complements TestInstrumentUnits: every
+// duration instrument declares seconds, so no Record call may pass a
+// time.Duration converted to another unit, even wrapped in float64(...)
+// where the compiler would accept it.
+func TestRecordedDurationsAreSeconds(t *testing.T) {
+	t.Parallel()
+
+	record := regexp.MustCompile(`\.Record\(`)
+	subSecond := regexp.MustCompile(`\.(Nanoseconds|Microseconds|Milliseconds)\(\)`)
+	walkSources(t, func(path string, data []byte) {
+		for _, r := range record.FindAllIndex(data, -1) {
+			open := r[1] - 1
+			if m := subSecond.Find(data[open:callEnd(data, open)]); m != nil {
+				line := 1 + strings.Count(string(data[:r[0]]), "\n")
+				t.Errorf("%s:%d: Record passes a duration as %s; duration instruments use seconds, record d.Seconds()", path, line, m)
+			}
+		}
+	})
+}
+
+// walkSources calls fn with the content of every non-test Go file under
+// internal/.
+func walkSources(t *testing.T, fn func(path string, data []byte)) {
+	t.Helper()
+
 	err := filepath.Walk(filepath.Join(findRepoRoot(t), "internal"), func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -106,23 +159,38 @@ func TestCountInstrumentsUseAnnotationUnits(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		calls := call.FindAllSubmatchIndex(data, -1)
-		for i, c := range calls {
-			// An instrument's options end before the next constructor call.
-			end := len(data)
-			if i+1 < len(calls) {
-				end = calls[i+1][0]
-			}
-			method, name := string(data[c[2]:c[3]]), string(data[c[4]:c[5]])
-			m := unit.FindSubmatch(data[c[1]:end])
-			if m != nil && string(m[1]) == "1" && !strings.HasSuffix(method, "Gauge") {
-				t.Errorf("%s: %s %q uses unit \"1\", which denotes a ratio; use a UCUM annotation such as \"{entry}\"", path, method, name)
-			}
-		}
+		fn(path, data)
 
 		return nil
 	})
 	require.NoError(t, err)
+}
+
+// callEnd returns the index just past the parenthesis that closes the one at
+// data[open], skipping parentheses inside string and rune literals. It
+// returns len(data) when the call is unbalanced.
+func callEnd(data []byte, open int) int {
+	depth := 0
+	for i := open; i < len(data); i++ {
+		switch data[i] {
+		case '"', '\'', '`':
+			quote := data[i]
+			for i++; i < len(data) && data[i] != quote; i++ {
+				if data[i] == '\\' && quote != '`' {
+					i++
+				}
+			}
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i + 1
+			}
+		}
+	}
+
+	return len(data)
 }
 
 // TestNamingPolicyMatchesDashboards verifies the invariants the

@@ -10,9 +10,9 @@ panels.row('Ready Loop', 2, [
     { h: 8, w: 12, x: 0, y: 3 },
     [
       { expr: queries.histogramSumRate('raft.process_entry', by=['formance.ledger.node.id']), legendFormat: 'Node {{formance.ledger.node.id}}' },
-    ], unit='µs',
+    ], unit='s',
     description=|||
-      Time spent processing Raft 'Ready' state (in microseconds). The Ready loop is the main Raft processing cycle.
+      Time spent processing Raft 'Ready' state (in seconds). The Ready loop is the main Raft processing cycle.
       
       This includes:
       - Sending messages to peers
@@ -49,9 +49,9 @@ panels.row('Ready Loop', 2, [
       { expr: 'histogram_quantile(0.95, sum(rate(raft.process_entry_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'Node {{formance.ledger.node.id}}: P95' },
       { expr: 'histogram_quantile(0.75, sum(rate(raft.process_entry_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'Node {{formance.ledger.node.id}}: P75' },
       { expr: queries.histogramAvg('raft.process_entry', by=['formance.ledger.node.id']), legendFormat: 'Node {{formance.ledger.node.id}}: Avg' },
-    ], unit='µs',
+    ], unit='s',
     description=|||
-      Percentile distribution of time spent processing Raft ready entries (in microseconds).
+      Percentile distribution of time spent processing Raft ready entries (in seconds).
       
       Shows P99, P95, P75 and average latency for processing each ready batch from the Raft consensus layer.
       
@@ -67,9 +67,9 @@ panels.row('Ready Loop', 2, [
     { h: 8, w: 12, x: 0, y: 27 },
     [
       { expr: queries.histogramSumRate('raft.append_entries', by=['formance.ledger.node.id']), legendFormat: 'Node {{formance.ledger.node.id}}' },
-    ], unit='µs',
+    ], unit='s',
     description=|||
-      Time spent appending entries to the Write-Ahead Log (WAL) in microseconds.
+      Time spent appending entries to the Write-Ahead Log (WAL) in seconds.
       
       WAL writes must complete before entries can be committed. High latency indicates:
       - Slow disk I/O
@@ -90,9 +90,9 @@ panels.row('Ready Loop', 2, [
       { expr: 'histogram_quantile(0.95, sum(rate(raft.append_entries_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'Node {{formance.ledger.node.id}}: P95' },
       { expr: 'histogram_quantile(0.75, sum(rate(raft.append_entries_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'Node {{formance.ledger.node.id}}: P75' },
       { expr: queries.histogramAvg('raft.append_entries', by=['formance.ledger.node.id']), legendFormat: 'Node {{formance.ledger.node.id}}: Avg' },
-    ], unit='µs',
+    ], unit='s',
     description=|||
-      Latency percentiles (P75, P95, P99) for appending entries to the WAL, in microseconds.
+      Latency percentiles (P75, P95, P99) for appending entries to the WAL, in seconds.
       
       This measures the time spent writing Raft log entries to durable storage:
       - P75: 75% of append operations complete within this time
@@ -126,9 +126,9 @@ panels.row('Ready Loop', 2, [
     { h: 8, w: 12, x: 12, y: 59 },
     [
       { expr: queries.histogramSumRate('wal.append.save.duration', by=['formance.ledger.node.id']), legendFormat: 'Node {{formance.ledger.node.id}}' },
-    ], unit='µs',
+    ], unit='s',
     description=|||
-      Time spent saving entries to the Write-Ahead Log (WAL) on disk, in microseconds.
+      Time spent saving entries to the Write-Ahead Log (WAL) on disk, in seconds.
       
       This is the actual disk I/O time for persisting entries. High values indicate:
       - Slow disk I/O
@@ -167,7 +167,7 @@ panels.row('Ready Loop', 2, [
       { expr: 'histogram_quantile(0.95, sum(rate(raft.node.ready.wait_duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'Node {{formance.ledger.node.id}} p95' },
       { expr: 'histogram_quantile(0.50, sum(rate(raft.node.ready.wait_duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'Node {{formance.ledger.node.id}} p50' },
       { expr: queries.histogramAvg('raft.node.ready.wait_duration', by=['formance.ledger.node.id']), legendFormat: 'Node {{formance.ledger.node.id}} avg' },
-    ], unit='µs',
+    ], unit='s',
     description=|||
       Time spent waiting for a Ready from the Raft state machine. This measures the idle time between processing consecutive Ready batches.
       
@@ -201,7 +201,7 @@ panels.row('Ready Loop', 2, [
     { h: 8, w: 12, x: 12, y: 91 },
     [
       { expr: queries.histogramSumRate('raft.node.ready.wait_duration', by=['formance.ledger.node.id']), legendFormat: 'Node {{formance.ledger.node.id}}' },
-    ], unit='µs', opts={ fillOpacity: 0, showPoints: 'auto' },
+    ], unit='s', opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
   panels.timeseries(
@@ -210,9 +210,9 @@ panels.row('Ready Loop', 2, [
     [
       { expr: 'histogram_quantile(0.99, sum(rate(raft.node.ready_terminated.wait_duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'Node {{formance.ledger.node.id}} p99' },
       { expr: 'histogram_quantile(0.50, sum(rate(raft.node.ready_terminated.wait_duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'Node {{formance.ledger.node.id}} p50' },
-    ], unit='µs',
+    ], unit='s',
     description=|||
-      Time the processReadies goroutine spends waiting for the orchestrate loop to consume readyTerminated (in microseconds).
+      Time the processReadies goroutine spends waiting for the orchestrate loop to consume readyTerminated (in seconds).
       
       High values indicate the orchestrate loop is slow to pick up completed Readies, which means the ready processing pipeline is stalled waiting for Advance.
    |||,
@@ -223,7 +223,7 @@ panels.row('Ready Loop', 2, [
     { h: 7, w: 12, x: 0, y: 115 },
     [
       { expr: queries.histogramSumRate('raft.node.unspool.duration', by=['formance.ledger.node.id']), legendFormat: 'Node {{formance.ledger.node.id}}' },
-    ], unit='µs',
+    ], unit='s',
     description=|||
       Time spent in unspoolAndResume after a maintenance task (snapshot or checkpoint restore). During this time, spooled entries are replayed into the store.
       
@@ -237,7 +237,7 @@ panels.row('Ready Loop', 2, [
     [
       { expr: 'histogram_quantile(0.99, sum(rate(raft.node.gating.wait_duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'Node {{formance.ledger.node.id}} p99' },
       { expr: 'histogram_quantile(0.50, sum(rate(raft.node.gating.wait_duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'Node {{formance.ledger.node.id}} p50' },
-    ], unit='µs',
+    ], unit='s',
     description=|||
       Time spent waiting for gatingTerminated (maintenance task completion) in the processReadies goroutine.
       
@@ -265,7 +265,7 @@ panels.row('Ready Loop', 2, [
     [
       { expr: queries.histogramSumRate('raft.node.maintenance.snapshot_creation.duration', by=['formance.ledger.node.id']), legendFormat: 'Node {{formance.ledger.node.id}}: Snapshot creation' },
       { expr: queries.histogramSumRate('raft.node.maintenance.replay_spool.duration', by=['formance.ledger.node.id']), legendFormat: 'Node {{formance.ledger.node.id}}: Replay spool' },
-    ], unit='µs',
+    ], unit='s',
     description=|||
       Gating timeline breakdown: snapshot creation time vs replay spool time (stacked bars).
       
@@ -284,7 +284,7 @@ panels.row('Ready Loop', 2, [
     { h: 7, w: 8, x: 0, y: 150 },
     [
       { expr: queries.histogramSumRate('raft.fsm.rotation.duration', by=['formance.ledger.node.id']), legendFormat: 'Node {{formance.ledger.node.id}}' },
-    ], unit='µs',
+    ], unit='s',
     description=|||
       Time spent in generation rotation (boundary flush) during ApplyEntries.
       
@@ -298,7 +298,7 @@ panels.row('Ready Loop', 2, [
     [
       { expr: 'histogram_quantile(0.99, sum(rate(raft.fsm.batch_commit.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'Node {{formance.ledger.node.id}}: p99' },
       { expr: 'histogram_quantile(0.50, sum(rate(raft.fsm.batch_commit.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'Node {{formance.ledger.node.id}}: p50' },
-    ], unit='µs',
+    ], unit='s',
     description=|||
       Time spent in PebbleDB batch.Commit() during ApplyEntries (p50 and p99).
       

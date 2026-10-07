@@ -29,7 +29,7 @@ panels.row('Mirror', 171, [
       { expr: 'histogram_quantile(0.50, sum(rate(mirror.batch.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p50' },
       { expr: 'histogram_quantile(0.95, sum(rate(mirror.batch.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p95' },
       { expr: 'histogram_quantile(0.99, sum(rate(mirror.batch.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p99' },
-    ], unit='µs',
+    ], unit='s',
     description='End-to-end batch processing time from cursor read to FSM apply completion.',
   ),
 
@@ -42,7 +42,7 @@ panels.row('Mirror', 171, [
       { expr: 'histogram_quantile(0.95, sum(rate(mirror.preload.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'preload' },
       { expr: 'histogram_quantile(0.95, sum(rate(mirror.propose.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'propose' },
       { expr: 'histogram_quantile(0.95, sum(rate(mirror.fsm_wait.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'fsm_wait' },
-    ], unit='µs',
+    ], unit='s',
     description='p95 duration of each phase within a mirror batch: fetch (HTTP/PG source), translate (v2→v3), preload (Pebble reads), propose (Raft), and fsm_wait (FSM apply).',
   ),
 

@@ -138,7 +138,7 @@ type DefaultController struct {
 	// otherwise historical response would produce a non-deterministic view.
 	historical bool
 
-	applyDuration metric.Int64Histogram
+	applyDuration metric.Float64Histogram
 }
 
 // NewDefaultController creates a new default controller.
@@ -151,12 +151,12 @@ func NewDefaultController(
 	usageStore *usagestore.Store,
 	meter metric.Meter,
 ) *DefaultController {
-	applyDuration, err := meter.Int64Histogram(
+	applyDuration, err := meter.Float64Histogram(
 		"ctrl.apply.duration",
 		metric.WithDescription("End-to-end duration of a batch Apply call"),
-		metric.WithUnit("us"),
+		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(
-			0, 100, 500, 2000, 10000, 50000, 200000, 1000000,
+			0, 0.0001, 0.0005, 0.002, 0.01, 0.05, 0.2, 1,
 		),
 	)
 	if err != nil {
@@ -2174,7 +2174,7 @@ func (ctrl *DefaultController) Apply(ctx context.Context, req *servicepb.ApplyRe
 
 	result, err := ctrl.admission.Admit(ctx, req)
 
-	ctrl.applyDuration.Record(ctx, time.Since(start).Microseconds(),
+	ctrl.applyDuration.Record(ctx, time.Since(start).Seconds(),
 		metric.WithAttributes(attribute.Int("batch_size", batchSize)))
 
 	if err != nil {

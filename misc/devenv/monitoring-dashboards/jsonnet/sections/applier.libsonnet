@@ -10,9 +10,9 @@ panels.row('Applier', 164, [
     { h: 8, w: 12, x: 12, y: 1 },
     [
       { expr: queries.histogramSumRate('raft.apply_entries.duration', by=['formance.ledger.node.id']), legendFormat: 'Node {{formance.ledger.node.id}}' },
-    ], unit='µs',
+    ], unit='s',
     description=|||
-      Total time spent applying committed entries to the FSM (in microseconds per second).
+      Total time spent applying committed entries to the FSM (in seconds per second).
       
       This is where transactions are actually processed and balances updated. High values indicate:
       - Complex transactions taking longer
@@ -55,9 +55,9 @@ panels.row('Applier', 164, [
       { expr: 'histogram_quantile(0.95, sum(rate(raft.apply_entries.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'Node {{formance.ledger.node.id}}: P95' },
       { expr: 'histogram_quantile(0.75, sum(rate(raft.apply_entries.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'Node {{formance.ledger.node.id}}: P75' },
       { expr: queries.histogramAvg('raft.apply_entries.duration', by=['formance.ledger.node.id']), legendFormat: 'Node {{formance.ledger.node.id}}: Avg' },
-    ], unit='µs',
+    ], unit='s',
     description=|||
-      Latency percentiles (P75, P95, P99) for applying committed entries to the FSM, in microseconds.
+      Latency percentiles (P75, P95, P99) for applying committed entries to the FSM, in seconds.
       
       This is the core transaction processing latency:
       - P75: 75% of batches complete within this time
@@ -96,7 +96,7 @@ panels.row('Applier', 164, [
       { expr: 'histogram_quantile(0.50, sum(rate(raft.applier.batch_wait.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
       { expr: 'histogram_quantile(0.95, sum(rate(raft.applier.batch_wait.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
       { expr: 'histogram_quantile(0.99, sum(rate(raft.applier.batch_wait.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
-    ], unit='µs', opts={ showPoints: 'auto' },
+    ], unit='s', opts={ showPoints: 'auto' },
   ),
 
   panels.timeseries(
@@ -106,7 +106,7 @@ panels.row('Applier', 164, [
       { expr: 'histogram_quantile(0.50, sum(rate(raft.fsm.prepare.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p50' },
       { expr: 'histogram_quantile(0.95, sum(rate(raft.fsm.prepare.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p95' },
       { expr: 'histogram_quantile(0.99, sum(rate(raft.fsm.prepare.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p99' },
-    ], unit='µs',
+    ], unit='s',
   ),
 
   panels.timeseries(
@@ -116,7 +116,7 @@ panels.row('Applier', 164, [
       { expr: 'histogram_quantile(0.50, sum(rate(raft.applier.commit_wait.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p50' },
       { expr: 'histogram_quantile(0.95, sum(rate(raft.applier.commit_wait.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p95' },
       { expr: 'histogram_quantile(0.99, sum(rate(raft.applier.commit_wait.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p99' },
-    ], unit='µs',
+    ], unit='s',
     description='Time spent waiting for the previous batch\'s async commit to finish before starting the next prepare. Near zero = pipelining is effective (commit finishes before next batch arrives). Near commit duration = fully I/O-bound, no pipelining benefit.',
   ),
 

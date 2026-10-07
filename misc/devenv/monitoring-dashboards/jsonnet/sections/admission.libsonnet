@@ -12,7 +12,7 @@ panels.row('Admission', 169, [
       { expr: 'histogram_quantile(0.50, sum(rate(admission.preload.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, type))', legendFormat: 'p50 - {{type}}' },
       { expr: 'histogram_quantile(0.95, sum(rate(admission.preload.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, type))', legendFormat: 'p95 - {{type}}' },
       { expr: 'histogram_quantile(0.99, sum(rate(admission.preload.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, type))', legendFormat: 'p99 - {{type}}' },
-    ], unit='µs',
+    ], unit='s',
     description=|||
       Time spent loading preload values from the persistent store during admission. High values indicate slow storage or expensive attribute computations.
       
@@ -106,7 +106,7 @@ panels.row('Admission', 169, [
       { expr: 'histogram_quantile(0.50, sum(rate(admission.command.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
       { expr: 'histogram_quantile(0.95, sum(rate(admission.command.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
       { expr: 'histogram_quantile(0.99, sum(rate(admission.command.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
-    ], unit='µs',
+    ], unit='s',
     description='Total time from Apply call to future resolution. Includes preload time, proposal time, and FSM application time.',
   ),
 
@@ -144,7 +144,7 @@ panels.row('Admission', 169, [
       { expr: 'histogram_quantile(0.50, sum(rate(admission.propose.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
       { expr: 'histogram_quantile(0.95, sum(rate(admission.propose.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
       { expr: 'histogram_quantile(0.99, sum(rate(admission.propose.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
-    ], unit='µs',
+    ], unit='s',
     description='Time waiting for Raft to accept and replicate a proposal (Propose + Wait). Lower is better.',
   ),
 
@@ -155,7 +155,7 @@ panels.row('Admission', 169, [
       { expr: 'histogram_quantile(0.50, sum(rate(admission.fsm_future.wait.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
       { expr: 'histogram_quantile(0.95, sum(rate(admission.fsm_future.wait.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
       { expr: 'histogram_quantile(0.99, sum(rate(admission.fsm_future.wait.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
-    ], unit='µs',
+    ], unit='s',
     description=|||
       Time waiting for the FSM to apply the command after Raft has accepted the proposal.
       
@@ -172,7 +172,7 @@ panels.row('Admission', 169, [
       { expr: 'histogram_quantile(0.50, sum(rate(admission.proposal_guard.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
       { expr: 'histogram_quantile(0.95, sum(rate(admission.proposal_guard.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
       { expr: 'histogram_quantile(0.99, sum(rate(admission.proposal_guard.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
-    ], unit='µs',
+    ], unit='s',
     description='Time spent waiting to acquire the proposal guard lock. High values indicate contention on the proposal mutex, which serializes boundary validation and Propose calls.',
   ),
 
@@ -197,7 +197,7 @@ panels.row('Admission', 169, [
       { expr: 'histogram_quantile(0.50, sum(rate(admission.resolve_batch.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
       { expr: 'histogram_quantile(0.95, sum(rate(admission.resolve_batch.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
       { expr: 'histogram_quantile(0.99, sum(rate(admission.resolve_batch.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
-    ], unit='µs',
+    ], unit='s',
     description='Time spent verifying the batch signature and unmarshaling the trusted ApplyBatch. First phase of the command lifecycle decomposed by admission.command.duration.',
   ),
 
@@ -208,7 +208,7 @@ panels.row('Admission', 169, [
       { expr: 'histogram_quantile(0.50, sum(rate(admission.orders_preparation.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
       { expr: 'histogram_quantile(0.95, sum(rate(admission.orders_preparation.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
       { expr: 'histogram_quantile(0.99, sum(rate(admission.orders_preparation.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
-    ], unit='µs',
+    ], unit='s',
     description='Time spent converting requests to orders and extracting preload needs (excludes script-dependent needs). Phase of admission.command.duration.',
   ),
 
@@ -219,7 +219,7 @@ panels.row('Admission', 169, [
       { expr: 'histogram_quantile(0.50, sum(rate(admission.scripts.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
       { expr: 'histogram_quantile(0.95, sum(rate(admission.scripts.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
       { expr: 'histogram_quantile(0.99, sum(rate(admission.scripts.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
-    ], unit='µs',
+    ], unit='s',
     description='Time spent resolving Numscript references and enriching preload needs with script-discovered volumes/metadata. Phase of admission.command.duration.',
   ),
 
@@ -230,7 +230,7 @@ panels.row('Admission', 169, [
       { expr: 'histogram_quantile(0.50, sum(rate(admission.response_resolution.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
       { expr: 'histogram_quantile(0.95, sum(rate(admission.response_resolution.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
       { expr: 'histogram_quantile(0.99, sum(rate(admission.response_resolution.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
-    ], unit='µs',
+    ], unit='s',
     description='Time spent resolving FSM results into concrete logs after apply, including the ReadLogBySequence reads done for idempotent replays (ReferenceSequence entries). Final phase of admission.command.duration; zero on the common create path.',
   ),
 ])

@@ -539,7 +539,7 @@ type ping struct {
 ```
 
 Metrics exposed:
-- `raft.transport.ping.latency` (microseconds): Histogram of ping round-trip times
+- `raft.transport.ping.latency` (seconds): Histogram of ping round-trip times
 
 ### Pending Response Tracking
 
@@ -578,7 +578,7 @@ The transport exposes several metrics for monitoring:
 | `raft.transport.recv.full` | Counter | `priority`, `priority_name` | Reception queue overflow count per priority |
 | `raft.transport.peer.sending.load` | Histogram | `peer`, `priority`, `priority_name` | Per-peer send queue depth observations |
 | `raft.transport.peer.sending.full` | Counter | `peer`, `priority`, `priority_name` | Per-peer send queue overflow count |
-| `raft.transport.ping.latency` | Histogram | `peer` | Ping round-trip time in microseconds |
+| `raft.transport.ping.latency` | Histogram | `peer` | Ping round-trip time in seconds |
 | `raft.transport.sending.pending_response` | UpDownCounter | `peer` | Messages awaiting response |
 | `raft.transport.unreachable.load` | Histogram | - | Unreachable-report queue depth observations |
 

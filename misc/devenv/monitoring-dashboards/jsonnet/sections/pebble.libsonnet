@@ -26,16 +26,16 @@ panels.row('Pebble', 165, [
   ),
 
   panels.timeseries(
-    'Flush duration (ms)',
+    'Flush duration',
     { h: 8, w: 8, x: 8, y: 88 },
     [
       { expr: 'histogram_quantile(0.50, sum by (le, formance.ledger.node.id) (rate({__name__="pebble.flush.duration_bucket", "formance.ledger.cluster.id"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])))', legendFormat: 'Node {{formance.ledger.node.id}} p50' },
       { expr: 'histogram_quantile(0.95, sum by (le, formance.ledger.node.id) (rate({__name__="pebble.flush.duration_bucket", "formance.ledger.cluster.id"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])))', legendFormat: 'Node {{formance.ledger.node.id}} p95' },
       { expr: 'histogram_quantile(0.99, sum by (le, formance.ledger.node.id) (rate({__name__="pebble.flush.duration_bucket", "formance.ledger.cluster.id"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])))', legendFormat: 'Node {{formance.ledger.node.id}} p99' },
       { expr: queries.histogramAvg('pebble.flush.duration', by=['formance.ledger.node.id']), legendFormat: 'Node {{formance.ledger.node.id}} mean' },
-    ], unit='ms',
+    ], unit='s',
     description=|||
-      Pebble flush duration percentiles (P50, P95, P99) in milliseconds.
+      Pebble flush duration percentiles (P50, P95, P99) in seconds.
       
       Flush duration measures how long it takes to write memtable contents to disk. High values indicate:
       - Slow disk I/O
@@ -90,16 +90,16 @@ panels.row('Pebble', 165, [
   ),
 
   panels.timeseries(
-    'Compaction duration (ms)',
+    'Compaction duration',
     { h: 8, w: 8, x: 8, y: 96 },
     [
       { expr: 'histogram_quantile(0.50, sum by (formance.ledger.node.id, le) (rate({__name__="pebble.compaction.duration_bucket", "formance.ledger.cluster.id"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])))', legendFormat: 'Node {{formance.ledger.node.id}}: p50' },
       { expr: 'histogram_quantile(0.95, sum by (formance.ledger.node.id, le) (rate({__name__="pebble.compaction.duration_bucket", "formance.ledger.cluster.id"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])))', legendFormat: 'Node {{formance.ledger.node.id}}: p95 ' },
       { expr: 'histogram_quantile(0.99, sum by (formance.ledger.node.id, le) (rate({__name__="pebble.compaction.duration_bucket", "formance.ledger.cluster.id"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])))', legendFormat: 'Node {{formance.ledger.node.id}}: p99' },
       { expr: queries.histogramAvg('pebble.compaction.duration', by=['formance.ledger.node.id']), legendFormat: 'Node {{formance.ledger.node.id}}: mean' },
-    ], unit='ms',
+    ], unit='s',
     description=|||
-      Pebble compaction duration percentiles (P50, P95, P99) in milliseconds.
+      Pebble compaction duration percentiles (P50, P95, P99) in seconds.
       
       Compaction duration depends on:
       - Amount of data being compacted
@@ -191,7 +191,7 @@ panels.row('Pebble', 165, [
       { expr: 'histogram_quantile(0.95, sum by (le, formance.ledger.node.id) (rate({__name__="pebble.write_stall.duration_bucket", "formance.ledger.cluster.id"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])))', legendFormat: 'Node {{formance.ledger.node.id}} p95' },
       { expr: 'histogram_quantile(0.99, sum by (le, formance.ledger.node.id) (rate({__name__="pebble.write_stall.duration_bucket", "formance.ledger.cluster.id"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])))', legendFormat: 'Node {{formance.ledger.node.id}} p99' },
       { expr: queries.histogramAvg('pebble.write_stall.duration', by=['formance.ledger.node.id']), legendFormat: 'Node {{formance.ledger.node.id}} mean' },
-    ], unit='ms',
+    ], unit='s',
     description=|||
       Duration of write stalls (P50, P95, P99) in seconds. Shows how long writes are blocked.
       
@@ -266,7 +266,7 @@ panels.row('Pebble', 165, [
       { expr: 'histogram_quantile(0.50, sum by (le, formance.ledger.node.id, op) (rate({__name__="pebble.disk_slow.duration_bucket", "formance.ledger.cluster.id"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])))', legendFormat: 'Node {{formance.ledger.node.id}} p50 {{op}}' },
       { expr: 'histogram_quantile(0.95, sum by (le, formance.ledger.node.id, op) (rate({__name__="pebble.disk_slow.duration_bucket", "formance.ledger.cluster.id"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])))', legendFormat: 'Node {{formance.ledger.node.id}} p95 {{op}}' },
       { expr: 'histogram_quantile(0.99, sum by (le, formance.ledger.node.id, op) (rate({__name__="pebble.disk_slow.duration_bucket", "formance.ledger.cluster.id"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])))', legendFormat: 'Node {{formance.ledger.node.id}} p99 {{op}}' },
-    ], unit='ms',
+    ], unit='s',
     description=|||
       Duration of slow disk operations (P50, P95, P99). Shows how long disk operations have been stalled when Pebble detects slowness.
       
