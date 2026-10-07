@@ -54,14 +54,20 @@
             refId: 'PrometheusVariableQueryEditor-VariableQuery',
           },
           refresh: 1,
-          regex: '/service\\.cluster="([^"]+)"/',
+          // Filter on the server-emitted cluster ID (always present) but
+          // display the operator-injected cluster name when there is one:
+          // Grafana uses the `value` group for the query and the `text`
+          // group for the label, falling back to `value` when `text` does
+          // not match. Prometheus sorts labels, so `cluster.id` precedes
+          // `cluster.name` in the query_result line.
+          regex: '/formance\\.ledger\\.cluster\\.id="(?<value>[^"]+)"(?:.*formance\\.ledger\\.cluster\\.name="(?<text>[^"]+)")?/',
           sort: 1,
           type: 'query',
         },
         {
           allValue: '.*',
           datasource: { type: 'prometheus', uid: '${datasource}' },
-          definition: 'query_result(raft.node.lead{service.cluster=~"$cluster"})',
+          definition: 'query_result(raft.node.lead{formance.ledger.cluster.id=~"$cluster"})',
           description: 'Select a node to filter metrics',
           includeAll: true,
           label: 'Node',
@@ -69,12 +75,13 @@
           options: [],
           query: {
             qryType: 1,
-            query: 'query_result(raft.node.lead{service.cluster=~"$cluster"})',
+            query: 'query_result(raft.node.lead{formance.ledger.cluster.id=~"$cluster"})',
             refId: 'PrometheusVariableQueryEditor-VariableQuery',
           },
           refresh: 1,
-          regex: '/service\\.node_id="([^"]+)"/',
-          sort: 1,
+          regex: '/formance\\.ledger\\.node\\.id="([^"]+)"/',
+          // Raft node IDs are integers: sort numerically (1, 2, 10).
+          sort: 3,
           type: 'query',
         },
       ],

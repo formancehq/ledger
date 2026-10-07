@@ -364,11 +364,12 @@ func buildEnvVars(ledger *ledgerv1alpha1.Cluster, targetTLSMode string, credenti
 
 func appendMonitoringEnvVars(envs []corev1.EnvVar, mon *ledgerv1alpha1.MonitoringConfig, clusterName string) []corev1.EnvVar {
 	// OTEL_RESOURCE_ATTRIBUTES carries operator-injected attributes
-	// (service.cluster, service.node_id) prefixed with the user-supplied
-	// list, if any. $(POD_NAME) is resolved by the kubelet via env var
-	// substitution. This var is emitted even when mon is nil so the
+	// (formance.ledger.cluster.name, k8s.pod.name) prefixed with the
+	// user-supplied list, if any. The server adds the cluster/node IDs and
+	// service.instance.id itself. $(POD_NAME) is resolved by the kubelet via
+	// env var substitution. This var is emitted even when mon is nil so the
 	// cluster attribution is always present.
-	operatorAttrs := "service.cluster=" + clusterName + ",service.node_id=$(POD_NAME)"
+	operatorAttrs := "formance.ledger.cluster.name=" + clusterName + ",k8s.pod.name=$(POD_NAME)"
 	attrs := operatorAttrs
 	if mon != nil && mon.Attributes != "" {
 		attrs = mon.Attributes + "," + operatorAttrs

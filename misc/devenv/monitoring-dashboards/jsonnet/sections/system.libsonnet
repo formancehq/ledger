@@ -9,7 +9,7 @@ panels.row('System', 0, [
     'Logs per Second',
     { h: 8, w: 12, x: 0, y: 1 },
     [
-      { expr: 'sum(rate(raft.fsm.logs_appended{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id)', legendFormat: 'Node {{service.node_id}}' },
+      { expr: 'sum(rate(raft.fsm.logs_appended{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', legendFormat: 'Node {{formance.ledger.node.id}}' },
     ], unit='ops',
     description=|||
       Number of logs appended to the store per second per node. This metric represents the actual throughput of the system - how many logs (transactions, metadata changes, etc.) are being committed.
@@ -27,7 +27,7 @@ panels.row('System', 0, [
     'Ping latency',
     { h: 8, w: 12, x: 12, y: 1 },
     [
-      { expr: queries.histogramAvg('raft.transport.ping.latency', by=['service.node_id', 'peer']), legendFormat: 'Node {{service.node_id}} / Peer {{peer}}' },
+      { expr: queries.histogramAvg('raft.transport.ping.latency', by=['formance.ledger.node.id', 'peer']), legendFormat: 'Node {{formance.ledger.node.id}} / Peer {{peer}}' },
     ], unit='µs',
     description=|||
       Round-trip time (RTT) latency of ping requests between nodes. Measures network health between cluster members.
@@ -47,7 +47,7 @@ panels.row('System', 0, [
     'HTTP requests count',
     { h: 8, w: 12, x: 0, y: 93 },
     [
-      { expr: queries.histogramCountRate('http.server.request.duration', by=['service.node_id', 'http.response.status_code']), legendFormat: 'Node {{service.node_id}} : {{http.response.status_code}}' },
+      { expr: queries.histogramCountRate('http.server.request.duration', by=['formance.ledger.node.id', 'http.response.status_code']), legendFormat: 'Node {{formance.ledger.node.id}} : {{http.response.status_code}}' },
     ], unit='ops',
     description=|||
       HTTP request rate per node, grouped by status code. Shows API traffic and error rates.
@@ -67,8 +67,8 @@ panels.row('System', 0, [
     'Memory utilization',
     { h: 8, w: 12, x: 12, y: 93 },
     [
-      { expr: 'rate({"system.memory.utilization", "system.memory.state"="used", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval])', legendFormat: 'Node {{service.node_id}} : Used' },
-      { expr: 'rate({"system.memory.utilization", "system.memory.state"="free", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval])', legendFormat: 'Node {{service.node_id}} : Free' },
+      { expr: 'rate({"system.memory.utilization", "system.memory.state"="used", "formance.ledger.cluster.id"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])', legendFormat: 'Node {{formance.ledger.node.id}} : Used' },
+      { expr: 'rate({"system.memory.utilization", "system.memory.state"="free", "formance.ledger.cluster.id"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])', legendFormat: 'Node {{formance.ledger.node.id}} : Free' },
     ], unit='percentunit',
     description=|||
       System memory utilization ratio (0-1) showing used vs free memory.
@@ -88,12 +88,12 @@ panels.row('System', 0, [
     'Process CPU time',
     { h: 8, w: 12, x: 0, y: 101 },
     [
-      { expr: 'sum by (service.node_id) (
-  rate(process.cpu.time{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])
-)', legendFormat: 'Node {{service.node_id}}: {{cpu.mode}}' },
-      { expr: 'max by (service.node_id) (
-  go.processor.limit{service.cluster=~"$cluster", service.node_id=~"$node"}
-)', legendFormat: 'Node {{service.node_id}}: Limit' },
+      { expr: 'sum by (formance.ledger.node.id) (
+  rate(process.cpu.time{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])
+)', legendFormat: 'Node {{formance.ledger.node.id}}: {{cpu.mode}}' },
+      { expr: 'max by (formance.ledger.node.id) (
+  go.processor.limit{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}
+)', legendFormat: 'Node {{formance.ledger.node.id}}: Limit' },
     ], unit='percentunit',
     description=|||
       CPU utilization as a ratio of process CPU time to available processor limit. Shows how much CPU capacity the process is using.
@@ -111,8 +111,8 @@ panels.row('System', 0, [
     'System network traffic',
     { h: 8, w: 12, x: 12, y: 101 },
     [
-      { expr: 'rate(system.network.io{network.io.direction="receive", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval])', legendFormat: 'Node {{service.node_id}}: Reception' },
-      { expr: 'rate(system.network.io{network.io.direction="transmit", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval])', legendFormat: 'Node {{service.node_id}}: Transmission' },
+      { expr: 'rate(system.network.io{network.io.direction="receive", "formance.ledger.cluster.id"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])', legendFormat: 'Node {{formance.ledger.node.id}}: Reception' },
+      { expr: 'rate(system.network.io{network.io.direction="transmit", "formance.ledger.cluster.id"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])', legendFormat: 'Node {{formance.ledger.node.id}}: Transmission' },
     ], unit='binBps',
     description=|||
       Network I/O throughput showing bytes received and transmitted per second.
@@ -132,7 +132,7 @@ panels.row('System', 0, [
     'System memory usage',
     { h: 8, w: 8, x: 0, y: 109 },
     [
-      { expr: '{"system.memory.usage", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}', legendFormat: 'Node {{ service.node_id}}: {{system.memory.state}}' },
+      { expr: '{"system.memory.usage", "formance.ledger.cluster.id"=~"$cluster", "formance.ledger.node.id"=~"$node"}', legendFormat: 'Node {{ formance.ledger.node.id}}: {{system.memory.state}}' },
     ], unit='bytes',
     description=|||
       Absolute system memory usage in bytes, broken down by state (used, free, cached, buffered).
@@ -147,7 +147,7 @@ panels.row('System', 0, [
     'Go memory allocated',
     { h: 8, w: 8, x: 8, y: 109 },
     [
-      { expr: 'rate(go.memory.allocated{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])', legendFormat: 'Node {{service.node_id}}: Allocated' },
+      { expr: 'rate(go.memory.allocated{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])', legendFormat: 'Node {{formance.ledger.node.id}}: Allocated' },
     ], unit='binBps',
     description=|||
       Rate of memory allocation by the Go runtime (bytes per second). High allocation rates cause increased GC pressure.
@@ -165,7 +165,7 @@ panels.row('System', 0, [
     'Leadership status',
     { h: 8, w: 8, x: 16, y: 109 },
     [
-      { expr: '{"raft.node.lead", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}', legendFormat: 'Node {{service.node_id}}' },
+      { expr: '{"raft.node.lead", "formance.ledger.cluster.id"=~"$cluster", "formance.ledger.node.id"=~"$node"}', legendFormat: 'Node {{formance.ledger.node.id}}' },
     ],
     description=|||
       Shows which node is recognized as the Raft leader by each node. All nodes should report the same leader ID.
@@ -183,7 +183,7 @@ panels.row('System', 0, [
     'Goroutine count',
     { h: 8, w: 8, x: 0, y: 117 },
     [
-      { expr: 'go.goroutine.count{service.cluster=~"$cluster", service.node_id=~"$node"}', legendFormat: 'Node {{service.node_id}}' },
+      { expr: 'go.goroutine.count{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: 'Node {{formance.ledger.node.id}}' },
     ],
     description=|||
       Number of active goroutines in the Go runtime. A steadily increasing count may indicate goroutine leaks.
@@ -200,7 +200,7 @@ panels.row('System', 0, [
     'Go memory used',
     { h: 8, w: 8, x: 8, y: 117 },
     [
-      { expr: '{"go.memory.used", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}', legendFormat: 'Node {{service.node_id}}: {{go.memory.type}}' },
+      { expr: '{"go.memory.used", "formance.ledger.cluster.id"=~"$cluster", "formance.ledger.node.id"=~"$node"}', legendFormat: 'Node {{formance.ledger.node.id}}: {{go.memory.type}}' },
     ], unit='bytes',
     description=|||
       Memory currently in use by the Go runtime, broken down by type (stack, heap).
@@ -218,7 +218,7 @@ panels.row('System', 0, [
     'Go memory allocations',
     { h: 8, w: 8, x: 16, y: 117 },
     [
-      { expr: 'rate(go.memory.allocations{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])', legendFormat: 'Node {{service.node_id}}: Allocations' },
+      { expr: 'rate(go.memory.allocations{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])', legendFormat: 'Node {{formance.ledger.node.id}}: Allocations' },
     ], unit='ops',
     description=|||
       Rate of memory allocations (objects per second) by the Go runtime.
@@ -233,7 +233,7 @@ panels.row('System', 0, [
     'Go GC goal',
     { h: 8, w: 12, x: 0, y: 125 },
     [
-      { expr: 'go.memory.gc.goal{service.cluster=~"$cluster", service.node_id=~"$node"}', legendFormat: 'Node {{service.node_id}}: Goal' },
+      { expr: 'go.memory.gc.goal{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: 'Node {{formance.ledger.node.id}}: Goal' },
     ], unit='bytes',
     description=|||
       Target heap size for the next GC cycle, set by the Go runtime's pacer.

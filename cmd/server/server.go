@@ -275,7 +275,7 @@ func runServer(cmd *cobra.Command, bindings network.Bindings) error {
 	}
 
 	info := version.Get()
-	telemetryResource, err := resourceFromFlags(cmd, cfg.RaftConfig.NodeID, info)
+	telemetryResource, err := resourceFromFlags(cmd, cfg.ClusterID, cfg.RaftConfig.NodeID, info)
 	if err != nil {
 		return fmt.Errorf("creating telemetry resource: %w", err)
 	}

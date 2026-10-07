@@ -14,6 +14,19 @@ import (
 
 var nativeClassicHistogramSuffix = regexp.MustCompile(`(?:raft|admission|wal|pebble|http)[A-Za-z0-9_]*(?:_sum|_count)(?:\{|\[)`)
 
+// resourceAttributeLabels masks the ledger's own resource-attribute labels.
+// They share the formance.ledger namespace with the metrics prefix but are
+// label names, which --otel-metrics-prefix never touches, so the textual
+// prefix checks must not see them.
+var resourceAttributeLabels = strings.NewReplacer(
+	"formance.ledger.cluster.id", "resource.cluster.id",
+	"formance.ledger.cluster.name", "resource.cluster.name",
+	"formance.ledger.node.id", "resource.node.id",
+	"formance_ledger_cluster_id", "resource_cluster_id",
+	"formance_ledger_cluster_name", "resource_cluster_name",
+	"formance_ledger_node_id", "resource_node_id",
+)
+
 func TestGeneratedDashboards(t *testing.T) {
 	t.Parallel()
 
@@ -44,7 +57,54 @@ func TestGeneratedDashboards(t *testing.T) {
 			assertDatasourceDefault(t, dashboard, strings.Contains(file, "-native"))
 			assertDashboardTree(t, dashboard, strings.Contains(file, "-native"))
 			assertMetricPrefix(t, string(raw), filepath.Base(file))
+			assertClusterVariable(t, dashboard, strings.HasPrefix(filepath.Base(file), "ledger-metrics-otel"))
 		})
+	}
+}
+
+// assertClusterVariable applies the Cluster variable regex the way Grafana
+// does to query_result lines: the `value` group drives the filter and the
+// `text` group the label, with `value` as the fallback label.
+func assertClusterVariable(t *testing.T, dashboard map[string]any, otel bool) {
+	t.Helper()
+
+	cluster := arrayField(t, objectField(t, dashboard, "templating"), "list")[2].(map[string]any)
+	raw, _ := cluster["regex"].(string)
+	pattern, err := regexp.Compile(strings.TrimSuffix(strings.TrimPrefix(raw, "/"), "/"))
+	if err != nil {
+		t.Fatalf("cluster variable regex %q: %v", raw, err)
+	}
+	label := func(name string) string {
+		if otel {
+			return name
+		}
+
+		return strings.ReplaceAll(name, ".", "_")
+	}
+	for _, test := range []struct {
+		line, wantValue, wantText string
+	}{
+		{
+			line:      fmt.Sprintf(`raft.node.lead{%s="c-1", %s="prod", %s="2"} 1 1700000000000`, label("formance.ledger.cluster.id"), label("formance.ledger.cluster.name"), label("formance.ledger.node.id")),
+			wantValue: "c-1", wantText: "prod",
+		},
+		{
+			line:      fmt.Sprintf(`raft.node.lead{%s="c-1", %s="2"} 1 1700000000000`, label("formance.ledger.cluster.id"), label("formance.ledger.node.id")),
+			wantValue: "c-1", wantText: "c-1",
+		},
+	} {
+		match := pattern.FindStringSubmatch(test.line)
+		if match == nil {
+			t.Fatalf("cluster variable regex %q does not match %q", raw, test.line)
+		}
+		value := match[pattern.SubexpIndex("value")]
+		text := match[pattern.SubexpIndex("text")]
+		if text == "" {
+			text = value
+		}
+		if value != test.wantValue || text != test.wantText {
+			t.Errorf("cluster variable on %q: got value=%q text=%q, want value=%q text=%q", test.line, value, text, test.wantValue, test.wantText)
+		}
 	}
 }
 
@@ -144,6 +204,7 @@ func assertMetricPrefix(t *testing.T, raw, file string) {
 		prefix = "formance.ledger."
 	}
 	if strings.Contains(file, "-noprefix") {
+		raw = resourceAttributeLabels.Replace(raw)
 		if strings.Contains(raw, "formance_ledger") || strings.Contains(raw, "formance.ledger") {
 			t.Errorf("-noprefix variant references the metrics prefix")
 		}
@@ -179,7 +240,7 @@ func TestPrefixedVariantsMatchNoPrefixCounterparts(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		content := string(raw)
+		content := resourceAttributeLabels.Replace(string(raw))
 		if stripPrefix {
 			content = strings.ReplaceAll(content, "formance.ledger.", "")
 			content = strings.ReplaceAll(content, "formance_ledger_", "")

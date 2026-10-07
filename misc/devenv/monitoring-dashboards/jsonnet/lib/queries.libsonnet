@@ -9,7 +9,7 @@
   // clusterNode is the standard label-selector applied to every
   // application metric: filter by the operator-selected cluster and
   // node so dashboards work in multi-cluster Grafana setups.
-  clusterNode:: 'service.cluster=~"$cluster", service.node_id=~"$node"',
+  clusterNode:: 'formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"',
 
   // histogramAvg emits a sentinel string that lib/transform.libsonnet
   // expands AT GENERATION TIME, differently per histogram mode:
@@ -28,7 +28,7 @@
   // - `metric` is the OTel dot-notation base name without any
   //   suffix (`admission.command.duration`, not `..._sum`).
   // - `by` is an optional list of OTel label names in dot form
-  //   (`['service.node_id']`). The walker rewrites them per mode.
+  //   (`['formance.ledger.node.id']`). The walker rewrites them per mode.
   // - `selector` is the label filter inside `{…}` minus the braces.
   //   Defaults to the standard cluster/node filter.
   histogramAvg(metric, by=[], selector=null)::
@@ -50,7 +50,7 @@
 
   // cluster filters only by cluster (used for cluster-wide rollups
   // like the leader gauge).
-  cluster:: 'service.cluster=~"$cluster"',
+  cluster:: 'formance.ledger.cluster.id=~"$cluster"',
 
   // selectorWith combines the standard cluster/node filter with
   // extra label selectors.
@@ -70,7 +70,7 @@
   // (where `metric` is the base name; the _bucket suffix is added
   // automatically) using $__rate_interval and aggregating by the
   // standard label set.
-  histogramQuantile(percentile, metric, by=['le', 'service.node_id'], selector=null)::
+  histogramQuantile(percentile, metric, by=['le', 'formance.ledger.node.id'], selector=null)::
     'histogram_quantile(' + percentile + ', sum(rate(' + metric + '_bucket{' +
     (if selector == null then $.clusterNode else selector) + '}[$__rate_interval])) by (' +
     std.join(', ', by) + '))',
