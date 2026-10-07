@@ -7,7 +7,8 @@
 
 {
   // The templating variable list. Two datasources (Prometheus +
-  // Pyroscope) followed by two query variables (cluster and node).
+  // Pyroscope) followed by three query variables (namespace, cluster
+  // and node).
   // Regex fields use the OTel dot-notation form;
   // transform.libsonnet rewrites them for the prom variant.
   templating(uidSuffix='')::
@@ -43,10 +44,10 @@
           allValue: '.*',
           datasource: { type: 'prometheus', uid: '${datasource}' },
           definition: 'query_result(raft.node.lead)',
-          description: 'Select a Ledger cluster to filter metrics',
+          description: 'Select the Kubernetes namespace of the Ledger cluster',
           includeAll: true,
-          label: 'Cluster',
-          name: 'cluster',
+          label: 'Namespace',
+          name: 'namespace',
           options: [],
           query: {
             qryType: 1,
@@ -54,20 +55,41 @@
             refId: 'PrometheusVariableQueryEditor-VariableQuery',
           },
           refresh: 1,
-          // Filter on the server-emitted cluster ID (always present) but
-          // display the operator-injected cluster name when there is one:
-          // Grafana uses the `value` group for the query and the `text`
-          // group for the label, falling back to `value` when `text` does
-          // not match. Prometheus sorts labels, so `cluster.id` precedes
-          // `cluster.name` in the query_result line.
-          regex: '/formance\\.ledger\\.cluster\\.id="(?<value>[^"]+)"(?:.*formance\\.ledger\\.cluster\\.name="(?<text>[^"]+)")?/',
+          // Set by the operator. Clusters are identified by namespace and
+          // cluster name together: a Cluster resource name is only unique
+          // within its namespace. Without the operator the label is absent
+          // and the All value (.*) still matches every series.
+          regex: '/k8s\\.namespace\\.name="([^"]+)"/',
           sort: 1,
           type: 'query',
         },
         {
           allValue: '.*',
           datasource: { type: 'prometheus', uid: '${datasource}' },
-          definition: 'query_result(raft.node.lead{formance.ledger.cluster.id=~"$cluster"})',
+          definition: 'query_result(raft.node.lead{k8s.namespace.name=~"$namespace"})',
+          description: 'Select a Ledger cluster to filter metrics',
+          includeAll: true,
+          label: 'Cluster',
+          name: 'cluster',
+          options: [],
+          query: {
+            qryType: 1,
+            query: 'query_result(raft.node.lead{k8s.namespace.name=~"$namespace"})',
+            refId: 'PrometheusVariableQueryEditor-VariableQuery',
+          },
+          refresh: 1,
+          // Key on the cluster name, not the declared cluster ID: IDs repeat
+          // across clusters (EN-2031). The operator sets the name to the
+          // Cluster resource name; the server defaults it to the cluster ID
+          // otherwise, so every series carries it.
+          regex: '/formance\\.ledger\\.cluster\\.name="([^"]+)"/',
+          sort: 1,
+          type: 'query',
+        },
+        {
+          allValue: '.*',
+          datasource: { type: 'prometheus', uid: '${datasource}' },
+          definition: 'query_result(raft.node.lead{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster"})',
           description: 'Select a node to filter metrics',
           includeAll: true,
           label: 'Node',
@@ -75,7 +97,7 @@
           options: [],
           query: {
             qryType: 1,
-            query: 'query_result(raft.node.lead{formance.ledger.cluster.id=~"$cluster"})',
+            query: 'query_result(raft.node.lead{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster"})',
             refId: 'PrometheusVariableQueryEditor-VariableQuery',
           },
           refresh: 1,

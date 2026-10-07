@@ -29,7 +29,7 @@ panels.row('Transport & Queues', 1, [
   panels.heatmap(
     'Reception channel load (High Priority: Heartbeats)',
     { h: 10, w: 8, x: 0, y: 92 },
-    'sum(rate(raft.transport.recv.load_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node", priority="0"}[$__rate_interval])) by (formance.ledger.node.id, le)',
+    'sum(rate(raft.transport.recv.load_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node", priority="0"}[$__rate_interval])) by (formance.ledger.node.id, le)',
     description=|||
       Heatmap showing queue depth distribution for high-priority received messages (priority 0).
       
@@ -48,7 +48,7 @@ panels.row('Transport & Queues', 1, [
   panels.heatmap(
     'Reception channel load (Medium Priority: Votes/Responses)',
     { h: 10, w: 8, x: 8, y: 92 },
-    'sum(rate(raft.transport.recv.load_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node", priority="1"}[$__rate_interval])) by (formance.ledger.node.id, le)',
+    'sum(rate(raft.transport.recv.load_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node", priority="1"}[$__rate_interval])) by (formance.ledger.node.id, le)',
     description=|||
       Heatmap showing queue depth distribution for medium-priority received messages (priority 1).
       
@@ -62,7 +62,7 @@ panels.row('Transport & Queues', 1, [
   panels.heatmap(
     'Reception channel load (Low Priority: Data)',
     { h: 10, w: 8, x: 16, y: 92 },
-    'sum(rate(raft.transport.recv.load_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node", priority="2"}[$__rate_interval])) by (formance.ledger.node.id, le)',
+    'sum(rate(raft.transport.recv.load_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node", priority="2"}[$__rate_interval])) by (formance.ledger.node.id, le)',
     description=|||
       Heatmap showing queue depth distribution for lower-priority received messages (priority 2).
       
@@ -78,7 +78,7 @@ panels.row('Transport & Queues', 1, [
   panels.gauge(
     'Reception channel full count',
     { h: 4, w: 24, x: 0, y: 102 },
-    'sum(increase(raft.transport.recv.full{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, priority_name)', unit='short',
+    'sum(increase(raft.transport.recv.full{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, priority_name)', unit='short',
     description=|||
       Total number of times the reception channel was full and messages were dropped.
       
@@ -119,7 +119,7 @@ panels.row('Transport & Queues', 1, [
     'Unreachable Channel Load',
     { h: 10, w: 8, x: 8, y: 106 },
     'sum(
-  rate(raft.transport.unreachable.load_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])
+  rate(raft.transport.unreachable.load_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])
 ) by (formance.ledger.node.id, le)',
     description=|||
       Heatmap showing queue depth distribution for the unreachable notification queue.
@@ -134,7 +134,7 @@ panels.row('Transport & Queues', 1, [
   panels.gauge(
     'Unreachable channel full count',
     { h: 10, w: 8, x: 16, y: 106 },
-    'sum(increase(raft.transport.unreachable.full{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', unit='short',
+    'sum(increase(raft.transport.unreachable.full{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', unit='short',
     description=|||
       Total number of times the unreachable notification channel was full.
       
@@ -161,7 +161,7 @@ panels.row('Transport & Queues', 1, [
     'Pending Send Queue Load',
     { h: 10, w: 8, x: 8, y: 116 },
     'sum(
-  rate(raft.send.pending_messages.load_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])
+  rate(raft.send.pending_messages.load_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])
 ) by (formance.ledger.node.id, le)',
     description=|||
       Heatmap showing queue depth distribution for the pending send queue.
@@ -177,7 +177,7 @@ panels.row('Transport & Queues', 1, [
     'Pending Send Queue Full Count',
     { h: 10, w: 8, x: 16, y: 116 },
     [
-      { expr: 'sum(increase(raft.send.pending_messages.full{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', legendFormat: 'Node {{formance.ledger.node.id}}' },
+      { expr: 'sum(increase(raft.send.pending_messages.full{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', legendFormat: 'Node {{formance.ledger.node.id}}' },
     ], unit='short',
     description=|||
       Number of times the pending send queue was full. Alert if non-zero.
@@ -210,7 +210,7 @@ panels.row('Transport & Queues', 1, [
     'Send channel full count',
     { h: 6, w: 12, x: 12, y: 126 },
     [
-      { expr: 'sum(increase(raft.transport.peer.sending.full{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, peer, priority_name)', legendFormat: 'Node {{formance.ledger.node.id}}: Peer {{peer}} / {{priority_name}}' },
+      { expr: 'sum(increase(raft.transport.peer.sending.full{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, peer, priority_name)', legendFormat: 'Node {{formance.ledger.node.id}}: Peer {{peer}} / {{priority_name}}' },
     ], unit='ops',
     description=|||
       Rate of times the per-peer send channel was full and messages were dropped.
@@ -231,7 +231,7 @@ panels.row('Transport & Queues', 1, [
   panels.heatmap(
     'Send channel load (High Priority: Heartbeats)',
     { h: 10, w: 8, x: 0, y: 132 },
-    'sum(rate(raft.transport.peer.sending.load_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node", priority="0"}[$__rate_interval])) by (formance.ledger.node.id, peer, le)',
+    'sum(rate(raft.transport.peer.sending.load_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node", priority="0"}[$__rate_interval])) by (formance.ledger.node.id, peer, le)',
     description=|||
       Heatmap showing per-peer send queue depth for high-priority messages (priority 0).
       
@@ -250,7 +250,7 @@ panels.row('Transport & Queues', 1, [
   panels.heatmap(
     'Send channel load (Medium Priority: Votes/Responses)',
     { h: 10, w: 8, x: 8, y: 132 },
-    'sum(rate(raft.transport.peer.sending.load_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node", priority="1"}[$__rate_interval])) by (formance.ledger.node.id, peer, le)',
+    'sum(rate(raft.transport.peer.sending.load_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node", priority="1"}[$__rate_interval])) by (formance.ledger.node.id, peer, le)',
     description=|||
       Heatmap showing queue depth distribution for medium-priority outgoing messages (priority 1).
       
@@ -264,7 +264,7 @@ panels.row('Transport & Queues', 1, [
   panels.heatmap(
     'Send channel load (Low Priority: Data)',
     { h: 10, w: 8, x: 16, y: 132 },
-    'sum(rate(raft.transport.peer.sending.load_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node", priority="2"}[$__rate_interval])) by (formance.ledger.node.id, peer, le)',
+    'sum(rate(raft.transport.peer.sending.load_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node", priority="2"}[$__rate_interval])) by (formance.ledger.node.id, peer, le)',
     description=|||
       Heatmap showing per-peer send queue depth for lower-priority messages (priority 2).
       
@@ -304,7 +304,7 @@ panels.row('Transport & Queues', 1, [
   panels.heatmap(
     'Propose channel load',
     { h: 8, w: 8, x: 8, y: 142 },
-    'sum(rate(admission.propose_queue.load_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le)',
+    'sum(rate(admission.propose_queue.load_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le)',
     description=|||
       Heatmap showing propose queue depth distribution over time.
       
@@ -326,7 +326,7 @@ panels.row('Transport & Queues', 1, [
     'Propose queue full count',
     { h: 8, w: 8, x: 16, y: 142 },
     [
-      { expr: 'sum(increase(admission.propose_queue.full{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', legendFormat: 'Node {{formance.ledger.node.id}}' },
+      { expr: 'sum(increase(admission.propose_queue.full{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', legendFormat: 'Node {{formance.ledger.node.id}}' },
     ], unit='short',
     description=|||
       Total number of times the propose queue was full and proposals were dropped.
@@ -347,7 +347,7 @@ panels.row('Transport & Queues', 1, [
     'Pending responses',
     { h: 7, w: 12, x: 0, y: 150 },
     [
-      { expr: '{"raft.transport.sending.pending_response", formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: 'Node {{formance.ledger.node.id}} / Peer {{peer}}' },
+      { expr: '{"raft.transport.sending.pending_response", k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: 'Node {{formance.ledger.node.id}} / Peer {{peer}}' },
     ],
     description=|||
       Number of responses awaited from each peer node. Shows in-flight requests to other cluster members.

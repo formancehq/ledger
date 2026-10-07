@@ -23,24 +23,39 @@ Server OTLP logs, traces, and metrics use the same OpenTelemetry resource:
 | --------- | ----- | ------ |
 | `service.name` | `--otel-service-name`, default `ledger` (identical on every node) | server |
 | `service.version` | build version and commit, joined by a hyphen | server |
-| `service.instance.id` | `<cluster ID>/<node ID>` | server |
+| `service.instance.id` | the cluster name (`formance.ledger.cluster.name`) | server |
 | `formance.ledger.cluster.id` | `--cluster-id` | server |
+| `formance.ledger.cluster.name` | `Cluster` resource name; the server defaults it to the cluster ID | operator (server default) |
 | `formance.ledger.node.id` | Raft node ID | server |
-| `formance.ledger.cluster.name` | `Cluster` resource name | operator |
+| `k8s.namespace.name` | pod namespace | operator |
 | `k8s.pod.name` | pod name | operator |
 
-`service.*` and `k8s.*` follow the OpenTelemetry semantic conventions. Nodes
-share one `service.name` and are told apart by `service.instance.id`, which
-the OTLP→Prometheus translation maps to the `instance` label (and
-`service.name` to `job`, prefixed by `<service.namespace>/` when that is set).
-`service.instance.id` embeds the cluster ID because Raft node IDs are only
-unique within a cluster. Ledger-specific attributes use the `formance.ledger`
-namespace rather than extending the reserved semantic convention namespaces.
+`service.*` and `k8s.*` follow the OpenTelemetry semantic conventions. Every
+node shares one `service.name`, which the OTLP→Prometheus translation maps to
+the `job` label (prefixed by `<service.namespace>/` when that is set).
+Ledger-specific attributes use the `formance.ledger` namespace rather than
+extending the reserved semantic convention namespaces.
+
+A cluster is identified by its Kubernetes namespace and its cluster **name**,
+not by the cluster ID: `--cluster-id` is declared per deployment, and separate
+clusters often share one (for example `default`). Dashboards and alerts filter
+and group on `k8s.namespace.name` and `formance.ledger.cluster.name`. Under
+the operator the name is the `Cluster` resource name, unique within its
+namespace; without the operator the namespace is absent and the name falls
+back to the cluster ID, so give each cluster a distinct ID or set
+`formance.ledger.cluster.name` explicitly.
+
+`service.instance.id` is the cluster name, so every node of a cluster reports
+the same Prometheus `instance` label: the cluster is the ledger instance, and
+`formance.ledger.node.id` tells its nodes apart. Node series therefore only
+stay distinct when that attribute is promoted to a label (see below); without
+it, the nodes of a cluster write to the same series.
 
 Other resource attributes are not metric labels by default: OTLP→Prometheus
 translation stores them on `target_info`. The pre-built dashboards filter on
-`formance.ledger.cluster.id` and `formance.ledger.node.id` as series labels, so
-the pipeline must promote them, for example with the collector Prometheus
+`k8s.namespace.name`, `formance.ledger.cluster.name` and
+`formance.ledger.node.id` as series labels, so the pipeline must promote
+them, for example with the collector Prometheus
 exporters' `resource_to_telemetry_conversion` or Prometheus'
 `otlp.promote_resource_attributes`.
 
@@ -48,9 +63,9 @@ exporters' `resource_to_telemetry_conversion` or Prometheus'
 attributes take precedence over every server default above. The operator
 appends its attributes after the user-supplied `spec.monitoring.attributes`,
 so operator values win over user values for the same key. Do not put
-`service.instance.id`, `formance.ledger.cluster.id`, or
-`formance.ledger.node.id` in a cluster-wide attribute list such as
-`spec.monitoring.attributes`: every node would then report the same identity.
+`service.instance.id` or `formance.ledger.node.id` in a cluster-wide attribute
+list such as `spec.monitoring.attributes`: every node would then report the
+same identity.
 
 The resource is built before the server logger starts and is supplied to the
 trace and metric providers. Invalid resource attributes fail startup before
@@ -678,8 +693,8 @@ The dashboard is organized into the following sections:
 
 The queries use the fully normalised Prometheus names (default
 `formance.ledger` prefix, unit and `_total` suffixes) and thresholds in
-seconds. They group by `formance_ledger_cluster_id` as well as the node,
-because Raft node IDs repeat across clusters.
+seconds. They group by namespace and cluster name as well as the node,
+because Raft node IDs repeat across clusters and declared cluster IDs can too.
 
 The server exports histograms with exponential aggregation, which
 Prometheus 3 stores as native histograms (the standard devenv stack). Each
@@ -691,7 +706,7 @@ buckets.
 
 1. **No Leader**
    ```promql
-   max by (formance_ledger_cluster_id) (formance_ledger_raft_node_lead) == 0
+   max by (k8s_namespace_name, formance_ledger_cluster_name) (formance_ledger_raft_node_lead) == 0
    ```
    Duration: 30s
    
@@ -703,17 +718,17 @@ buckets.
 
 3. **High Apply Entries Latency**
    ```promql
-   histogram_quantile(0.99, sum by (formance_ledger_cluster_id, formance_ledger_node_id) (rate(formance_ledger_raft_apply_entries_duration_seconds[5m]))) > 0.1
+   histogram_quantile(0.99, sum by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) (rate(formance_ledger_raft_apply_entries_duration_seconds[5m]))) > 0.1
    ```
    Classic histograms:
    ```promql
-   histogram_quantile(0.99, sum by (formance_ledger_cluster_id, formance_ledger_node_id, le) (rate(formance_ledger_raft_apply_entries_duration_seconds_bucket[5m]))) > 0.1
+   histogram_quantile(0.99, sum by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le) (rate(formance_ledger_raft_apply_entries_duration_seconds_bucket[5m]))) > 0.1
    ```
    Duration: 5m
 
 4. **Queue Full Events**
    ```promql
-   sum by (formance_ledger_cluster_id, formance_ledger_node_id) (increase(formance_ledger_admission_propose_queue_full_total[5m])) > 0
+   sum by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) (increase(formance_ledger_admission_propose_queue_full_total[5m])) > 0
    ```
    Duration: 1m
 
@@ -721,31 +736,31 @@ buckets.
 
 1. **Queue Near Capacity**
    ```promql
-   histogram_quantile(0.95, sum by (formance_ledger_cluster_id, formance_ledger_node_id) (rate(formance_ledger_admission_propose_queue_load[5m]))) > 0.8 * <queue_capacity>
+   histogram_quantile(0.95, sum by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) (rate(formance_ledger_admission_propose_queue_load[5m]))) > 0.8 * <queue_capacity>
    ```
    Classic histograms:
    ```promql
-   histogram_quantile(0.95, sum by (formance_ledger_cluster_id, formance_ledger_node_id, le) (rate(formance_ledger_admission_propose_queue_load_bucket[5m]))) > 0.8 * <queue_capacity>
+   histogram_quantile(0.95, sum by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le) (rate(formance_ledger_admission_propose_queue_load_bucket[5m]))) > 0.8 * <queue_capacity>
    ```
    Duration: 1m
 
 2. **High Snapshot Duration**
    ```promql
-   histogram_quantile(0.99, sum by (formance_ledger_cluster_id, formance_ledger_node_id) (rate(formance_ledger_raft_node_maintenance_snapshot_creation_duration_seconds[5m]))) > 1
+   histogram_quantile(0.99, sum by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) (rate(formance_ledger_raft_node_maintenance_snapshot_creation_duration_seconds[5m]))) > 1
    ```
    Classic histograms:
    ```promql
-   histogram_quantile(0.99, sum by (formance_ledger_cluster_id, formance_ledger_node_id, le) (rate(formance_ledger_raft_node_maintenance_snapshot_creation_duration_seconds_bucket[5m]))) > 1
+   histogram_quantile(0.99, sum by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le) (rate(formance_ledger_raft_node_maintenance_snapshot_creation_duration_seconds_bucket[5m]))) > 1
    ```
    Duration: 5m
 
 3. **High Ping Latency**
    ```promql
-   histogram_quantile(0.99, sum by (formance_ledger_cluster_id, formance_ledger_node_id, peer) (rate(formance_ledger_raft_transport_ping_latency_seconds[5m]))) > 0.01
+   histogram_quantile(0.99, sum by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, peer) (rate(formance_ledger_raft_transport_ping_latency_seconds[5m]))) > 0.01
    ```
    Classic histograms:
    ```promql
-   histogram_quantile(0.99, sum by (formance_ledger_cluster_id, formance_ledger_node_id, peer, le) (rate(formance_ledger_raft_transport_ping_latency_seconds_bucket[5m]))) > 0.01
+   histogram_quantile(0.99, sum by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, peer, le) (rate(formance_ledger_raft_transport_ping_latency_seconds_bucket[5m]))) > 0.01
    ```
    Duration: 5m
 

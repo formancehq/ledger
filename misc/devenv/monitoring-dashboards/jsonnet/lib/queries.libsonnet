@@ -9,7 +9,7 @@
   // clusterNode is the standard label-selector applied to every
   // application metric: filter by the operator-selected cluster and
   // node so dashboards work in multi-cluster Grafana setups.
-  clusterNode:: 'formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"',
+  clusterNode:: 'k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"',
 
   // histogramAvg emits a sentinel string that lib/transform.libsonnet
   // expands AT GENERATION TIME, differently per histogram mode:
@@ -50,7 +50,7 @@
 
   // cluster filters only by cluster (used for cluster-wide rollups
   // like the leader gauge).
-  cluster:: 'formance.ledger.cluster.id=~"$cluster"',
+  cluster:: 'k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster"',
 
   // selectorWith combines the standard cluster/node filter with
   // extra label selectors.

@@ -106,9 +106,10 @@ func TestResolveLogLevel(t *testing.T) {
 func TestResourceFromFlags(t *testing.T) {
 	t.Parallel()
 	defaultIdentity := map[string]string{
-		"service.instance.id":        "cluster-a/42",
-		"formance.ledger.cluster.id": "cluster-a",
-		"formance.ledger.node.id":    "42",
+		"service.instance.id":          "cluster-a",
+		"formance.ledger.cluster.id":   "cluster-a",
+		"formance.ledger.cluster.name": "cluster-a",
+		"formance.ledger.node.id":      "42",
 	}
 	withEnvironment := map[string]string{"deployment.environment": "regression"}
 	maps.Copy(withEnvironment, defaultIdentity)
@@ -123,6 +124,20 @@ func TestResourceFromFlags(t *testing.T) {
 		{name: "defaults and build metadata", wantName: "ledger", wantVersion: "v3.0.0-abc123", wantAttributes: defaultIdentity},
 		{name: "explicit service", serviceName: "ledger-production", wantName: "ledger-production", wantVersion: "v3.0.0-abc123", wantAttributes: defaultIdentity},
 		{name: "resource overrides", serviceName: "ledger-production", attributes: "service.name=override,service.version=override-build,deployment.environment=regression", wantName: "override", wantVersion: "override-build", wantAttributes: withEnvironment},
+		{
+			// The operator's path: OTEL_RESOURCE_ATTRIBUTES is bound to the
+			// flag. The name keys the instance; the declared ID is kept as is.
+			name: "operator cluster name", attributes: "env=prod,formance.ledger.cluster.name=prod-eu,k8s.namespace.name=payments,k8s.pod.name=ledger-prod-eu-1",
+			wantName: "ledger", wantVersion: "v3.0.0-abc123",
+			wantAttributes: map[string]string{
+				"service.instance.id":          "prod-eu",
+				"formance.ledger.cluster.id":   "cluster-a",
+				"formance.ledger.cluster.name": "prod-eu",
+				"formance.ledger.node.id":      "42",
+				"k8s.namespace.name":           "payments",
+				"k8s.pod.name":                 "ledger-prod-eu-1",
+			},
+		},
 		{
 			name: "identity overrides", attributes: "service.instance.id=pod-0,formance.ledger.cluster.id=renamed,formance.ledger.node.id=7",
 			wantName: "ledger", wantVersion: "v3.0.0-abc123",

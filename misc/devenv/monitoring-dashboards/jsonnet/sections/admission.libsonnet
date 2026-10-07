@@ -9,9 +9,9 @@ panels.row('Admission', 169, [
     'Preload Duration (p50, p95, p99)',
     { h: 8, w: 12, x: 0, y: 90 },
     [
-      { expr: 'histogram_quantile(0.50, sum(rate(admission.preload.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, type))', legendFormat: 'p50 - {{type}}' },
-      { expr: 'histogram_quantile(0.95, sum(rate(admission.preload.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, type))', legendFormat: 'p95 - {{type}}' },
-      { expr: 'histogram_quantile(0.99, sum(rate(admission.preload.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, type))', legendFormat: 'p99 - {{type}}' },
+      { expr: 'histogram_quantile(0.50, sum(rate(admission.preload.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, type))', legendFormat: 'p50 - {{type}}' },
+      { expr: 'histogram_quantile(0.95, sum(rate(admission.preload.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, type))', legendFormat: 'p95 - {{type}}' },
+      { expr: 'histogram_quantile(0.99, sum(rate(admission.preload.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, type))', legendFormat: 'p99 - {{type}}' },
     ], unit='s',
     description=|||
       Time spent loading preload values from the persistent store during admission. High values indicate slow storage or expensive attribute computations.
@@ -30,7 +30,7 @@ panels.row('Admission', 169, [
     'Preload Rate (by type)',
     { h: 8, w: 12, x: 12, y: 90 },
     [
-      { expr: 'sum(rate(admission.preloads{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', legendFormat: 'Node {{formance.ledger.node.id}}' },
+      { expr: 'sum(rate(admission.preloads{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', legendFormat: 'Node {{formance.ledger.node.id}}' },
     ], unit='ops',
     description=|||
       Rate of preload operations from the persistent store per second. High rates after warmup may indicate cache efficiency issues.
@@ -49,7 +49,7 @@ panels.row('Admission', 169, [
     'Preload Keys Needed Rate (by type)',
     { h: 8, w: 12, x: 0, y: 98 },
     [
-      { expr: 'sum(rate(admission.preload.keys_needed{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', legendFormat: 'Node {{formance.ledger.node.id}}' },
+      { expr: 'sum(rate(admission.preload.keys_needed{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', legendFormat: 'Node {{formance.ledger.node.id}}' },
     ], unit='ops',
     description=|||
       Rate of keys that need resolving during preload, broken down by attribute type.
@@ -61,7 +61,7 @@ panels.row('Admission', 169, [
     'Preload Cache Hit Ratio (%)',
     { h: 8, w: 12, x: 12, y: 98 },
     [
-      { expr: 'sum(rate(admission.preload.cache_hits{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id) / sum(rate(admission.preload.keys_needed{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id) * 100', legendFormat: 'Node {{formance.ledger.node.id}}' },
+      { expr: 'sum(rate(admission.preload.cache_hits{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id) / sum(rate(admission.preload.keys_needed{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id) * 100', legendFormat: 'Node {{formance.ledger.node.id}}' },
     ], unit='percent',
     description=|||
       Percentage of preload keys found guaranteed in cache (no store read needed).
@@ -76,8 +76,8 @@ panels.row('Admission', 169, [
     'Preload Store Reads vs Cache Hits (by type)',
     { h: 8, w: 12, x: 0, y: 106 },
     [
-      { expr: 'sum(rate(admission.preload.keys_needed{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id) - sum(rate(admission.preload.cache_hits{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', legendFormat: 'store reads - Node {{formance.ledger.node.id}}' },
-      { expr: 'sum(rate(admission.preload.cache_hits{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', legendFormat: 'cache hits - Node {{formance.ledger.node.id}}' },
+      { expr: 'sum(rate(admission.preload.keys_needed{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id) - sum(rate(admission.preload.cache_hits{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', legendFormat: 'store reads - Node {{formance.ledger.node.id}}' },
+      { expr: 'sum(rate(admission.preload.cache_hits{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', legendFormat: 'cache hits - Node {{formance.ledger.node.id}}' },
     ], unit='ops',
     description=|||
       Comparison of store reads (cache misses) vs cache hits by attribute type.
@@ -89,9 +89,9 @@ panels.row('Admission', 169, [
     'Propose Queue Load',
     { h: 8, w: 12, x: 12, y: 106 },
     [
-      { expr: 'histogram_quantile(0.50, sum(rate(admission.propose_queue.load_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p50' },
-      { expr: 'histogram_quantile(0.95, sum(rate(admission.propose_queue.load_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p95' },
-      { expr: 'histogram_quantile(0.99, sum(rate(admission.propose_queue.load_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p99' },
+      { expr: 'histogram_quantile(0.50, sum(rate(admission.propose_queue.load_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p50' },
+      { expr: 'histogram_quantile(0.95, sum(rate(admission.propose_queue.load_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p95' },
+      { expr: 'histogram_quantile(0.99, sum(rate(admission.propose_queue.load_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p99' },
     ], unit='short',
     description=|||
       Current load of the propose queue. High values indicate backpressure from Raft consensus.
@@ -103,9 +103,9 @@ panels.row('Admission', 169, [
     'Command Duration (p50, p95, p99)',
     { h: 8, w: 12, x: 0, y: 114 },
     [
-      { expr: 'histogram_quantile(0.50, sum(rate(admission.command.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
-      { expr: 'histogram_quantile(0.95, sum(rate(admission.command.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
-      { expr: 'histogram_quantile(0.99, sum(rate(admission.command.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.50, sum(rate(admission.command.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.95, sum(rate(admission.command.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.99, sum(rate(admission.command.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
     ], unit='s',
     description='Total time from Apply call to future resolution. Includes preload time, proposal time, and FSM application time.',
   ),
@@ -113,7 +113,7 @@ panels.row('Admission', 169, [
   panels.histogram(
     'Command Size Distribution',
     { h: 8, w: 12, x: 12, y: 114 },
-    'sum(rate(admission.command.size_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le)', unit='ops',
+    'sum(rate(admission.command.size_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le)', unit='ops',
     description='Distribution of Raft command sizes in bytes. Large commands may indicate many postings or large metadata.', opts={ legendFormat: '{{le}}' },
   ),
 
@@ -121,9 +121,9 @@ panels.row('Admission', 169, [
     'Command Size (p50, p95, p99)',
     { h: 8, w: 12, x: 0, y: 122 },
     [
-      { expr: 'histogram_quantile(0.5, rate(admission.command.size_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval]))', legendFormat: 'p50 (Node {{formance.ledger.node.id}})' },
-      { expr: 'histogram_quantile(0.95, rate(admission.command.size_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval]))', legendFormat: 'p95 (Node {{formance.ledger.node.id}})' },
-      { expr: 'histogram_quantile(0.99, rate(admission.command.size_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval]))', legendFormat: 'p99 (Node {{formance.ledger.node.id}})' },
+      { expr: 'histogram_quantile(0.5, rate(admission.command.size_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval]))', legendFormat: 'p50 (Node {{formance.ledger.node.id}})' },
+      { expr: 'histogram_quantile(0.95, rate(admission.command.size_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval]))', legendFormat: 'p95 (Node {{formance.ledger.node.id}})' },
+      { expr: 'histogram_quantile(0.99, rate(admission.command.size_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval]))', legendFormat: 'p99 (Node {{formance.ledger.node.id}})' },
     ], unit='decbytes',
     description='Size of marshalled Raft commands in bytes. Large commands (>50KB) can cause memory issues when many requests are queued.',
   ),
@@ -132,7 +132,7 @@ panels.row('Admission', 169, [
     'Command Size Distribution (stacked)',
     { h: 8, w: 12, x: 12, y: 122 },
     [
-      { expr: 'sum by (le) (rate(admission.command.size_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval]))', legendFormat: '≤ {{le}} bytes' },
+      { expr: 'sum by (le) (rate(admission.command.size_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval]))', legendFormat: '≤ {{le}} bytes' },
     ], unit='ops',
     description='Rate of commands by size bucket. Helps identify the distribution of command sizes.', opts={ stackMode: 'normal' },
   ),
@@ -141,9 +141,9 @@ panels.row('Admission', 169, [
     'Propose Duration (p50, p95, p99)',
     { h: 8, w: 12, x: 0, y: 130 },
     [
-      { expr: 'histogram_quantile(0.50, sum(rate(admission.propose.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
-      { expr: 'histogram_quantile(0.95, sum(rate(admission.propose.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
-      { expr: 'histogram_quantile(0.99, sum(rate(admission.propose.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.50, sum(rate(admission.propose.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.95, sum(rate(admission.propose.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.99, sum(rate(admission.propose.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
     ], unit='s',
     description='Time waiting for Raft to accept and replicate a proposal (Propose + Wait). Lower is better.',
   ),
@@ -152,9 +152,9 @@ panels.row('Admission', 169, [
     'FSM Future Wait Duration (p50, p95, p99)',
     { h: 8, w: 12, x: 0, y: 108 },
     [
-      { expr: 'histogram_quantile(0.50, sum(rate(admission.fsm_future.wait.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
-      { expr: 'histogram_quantile(0.95, sum(rate(admission.fsm_future.wait.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
-      { expr: 'histogram_quantile(0.99, sum(rate(admission.fsm_future.wait.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.50, sum(rate(admission.fsm_future.wait.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.95, sum(rate(admission.fsm_future.wait.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.99, sum(rate(admission.fsm_future.wait.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
     ], unit='s',
     description=|||
       Time waiting for the FSM to apply the command after Raft has accepted the proposal.
@@ -169,9 +169,9 @@ panels.row('Admission', 169, [
     'Proposal Guard Duration (p50, p95, p99)',
     { h: 8, w: 12, x: 12, y: 108 },
     [
-      { expr: 'histogram_quantile(0.50, sum(rate(admission.proposal_guard.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
-      { expr: 'histogram_quantile(0.95, sum(rate(admission.proposal_guard.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
-      { expr: 'histogram_quantile(0.99, sum(rate(admission.proposal_guard.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.50, sum(rate(admission.proposal_guard.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.95, sum(rate(admission.proposal_guard.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.99, sum(rate(admission.proposal_guard.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
     ], unit='s',
     description='Time spent waiting to acquire the proposal guard lock. High values indicate contention on the proposal mutex, which serializes boundary validation and Propose calls.',
   ),
@@ -180,8 +180,8 @@ panels.row('Admission', 169, [
     'Proposal Guard Rebuild Rate & Ratio',
     { h: 8, w: 12, x: 0, y: 116 },
     [
-      { expr: 'sum(rate(admission.proposal_guard.rebuild{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id) / ' + queries.histogramCountRate('admission.proposal_guard.duration', by=['formance.ledger.node.id']), legendFormat: 'Rebuild ratio - Node {{formance.ledger.node.id}}' },
-      { expr: 'sum(rate(admission.proposal_guard.rebuild{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', legendFormat: 'Rebuilds/s - Node {{formance.ledger.node.id}}' },
+      { expr: 'sum(rate(admission.proposal_guard.rebuild{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id) / ' + queries.histogramCountRate('admission.proposal_guard.duration', by=['formance.ledger.node.id']), legendFormat: 'Rebuild ratio - Node {{formance.ledger.node.id}}' },
+      { expr: 'sum(rate(admission.proposal_guard.rebuild{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', legendFormat: 'Rebuilds/s - Node {{formance.ledger.node.id}}' },
     ], unit='percentunit',
     description=|||
       Rate of proposal guard rebuilds (boundary shifted) vs total guard acquisitions. A high ratio means the cache generation boundary is frequently shifting between optimistic preload and proposal, causing expensive re-builds under lock.
@@ -194,9 +194,9 @@ panels.row('Admission', 169, [
     'Resolve Batch Duration (p50, p95, p99)',
     { h: 8, w: 12, x: 12, y: 116 },
     [
-      { expr: 'histogram_quantile(0.50, sum(rate(admission.resolve_batch.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
-      { expr: 'histogram_quantile(0.95, sum(rate(admission.resolve_batch.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
-      { expr: 'histogram_quantile(0.99, sum(rate(admission.resolve_batch.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.50, sum(rate(admission.resolve_batch.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.95, sum(rate(admission.resolve_batch.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.99, sum(rate(admission.resolve_batch.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
     ], unit='s',
     description='Time spent verifying the batch signature and unmarshaling the trusted ApplyBatch. First phase of the command lifecycle decomposed by admission.command.duration.',
   ),
@@ -205,9 +205,9 @@ panels.row('Admission', 169, [
     'Orders Preparation Duration (p50, p95, p99)',
     { h: 8, w: 12, x: 0, y: 124 },
     [
-      { expr: 'histogram_quantile(0.50, sum(rate(admission.orders_preparation.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
-      { expr: 'histogram_quantile(0.95, sum(rate(admission.orders_preparation.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
-      { expr: 'histogram_quantile(0.99, sum(rate(admission.orders_preparation.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.50, sum(rate(admission.orders_preparation.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.95, sum(rate(admission.orders_preparation.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.99, sum(rate(admission.orders_preparation.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
     ], unit='s',
     description='Time spent converting requests to orders and extracting preload needs (excludes script-dependent needs). Phase of admission.command.duration.',
   ),
@@ -216,9 +216,9 @@ panels.row('Admission', 169, [
     'Scripts Duration (p50, p95, p99)',
     { h: 8, w: 12, x: 12, y: 124 },
     [
-      { expr: 'histogram_quantile(0.50, sum(rate(admission.scripts.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
-      { expr: 'histogram_quantile(0.95, sum(rate(admission.scripts.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
-      { expr: 'histogram_quantile(0.99, sum(rate(admission.scripts.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.50, sum(rate(admission.scripts.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.95, sum(rate(admission.scripts.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.99, sum(rate(admission.scripts.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
     ], unit='s',
     description='Time spent resolving Numscript references and enriching preload needs with script-discovered volumes/metadata. Phase of admission.command.duration.',
   ),
@@ -227,9 +227,9 @@ panels.row('Admission', 169, [
     'Response Resolution Duration (p50, p95, p99)',
     { h: 8, w: 12, x: 0, y: 132 },
     [
-      { expr: 'histogram_quantile(0.50, sum(rate(admission.response_resolution.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
-      { expr: 'histogram_quantile(0.95, sum(rate(admission.response_resolution.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
-      { expr: 'histogram_quantile(0.99, sum(rate(admission.response_resolution.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.50, sum(rate(admission.response_resolution.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.95, sum(rate(admission.response_resolution.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.99, sum(rate(admission.response_resolution.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
     ], unit='s',
     description='Time spent resolving FSM results into concrete logs after apply, including the ReadLogBySequence reads done for idempotent replays (ReferenceSequence entries). Final phase of admission.command.duration; zero on the common create path.',
   ),
