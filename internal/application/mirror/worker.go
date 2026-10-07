@@ -147,9 +147,9 @@ func NewWorker(
 	commandSize, _ := meter.Int64Histogram("mirror.command.size",
 		metric.WithUnit("By"), sizeBuckets)
 	logsIngested, _ := meter.Int64Counter("mirror.logs.ingested",
-		metric.WithUnit("1"))
+		metric.WithUnit("{log}"))
 	batchTotal, _ := meter.Int64Counter("mirror.batch.total",
-		metric.WithUnit("1"))
+		metric.WithUnit("{batch}"))
 
 	return &Worker{
 		ledgerName: ledgerName,

@@ -186,7 +186,7 @@ HTTP server metrics are provided by `go-libs/httpserver` instrumentation.
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `raft.fsm.logs_appended` | Counter | 1 | Total number of logs appended to the store. Use `rate()` to get logs per second. This is the primary throughput metric. |
+| `raft.fsm.logs_appended` | Counter | `{log}` | Total number of logs appended to the store. Use `rate()` to get logs per second. This is the primary throughput metric. |
 
 ### Node Metrics
 
@@ -194,8 +194,8 @@ HTTP server metrics are provided by `go-libs/httpserver` instrumentation.
 |--------|------|------|-------------|
 | `raft.node.lead` | Gauge | - | Current leader node ID as seen by this node (0 if no leader known) |
 | `raft.apply_entries.duration` | Histogram | µs | Time spent applying committed log entries to the FSM. This is the critical path for transaction processing. |
-| `raft.apply_entries.batch_size` | Counter | 1 | Total count of entries applied (cumulative). Use `rate()` to get entries/second. |
-| `raft.apply_entries.batch_size_distribution` | Histogram | 1 | Distribution of batch sizes when applying entries. Higher batches indicate better throughput efficiency. |
+| `raft.apply_entries.batch_size` | Counter | `{entry}` | Total count of entries applied (cumulative). Use `rate()` to get entries/second. |
+| `raft.apply_entries.batch_size_distribution` | Histogram | `{entry}` | Distribution of batch sizes when applying entries. Higher batches indicate better throughput efficiency. |
 | `raft.append_entries` | Histogram | µs | Time spent appending entries to the Write-Ahead Log (WAL) before replication. |
 | `raft.process_entry` | Histogram | µs | Time spent processing a ready state from the Raft library. Includes sending messages, applying entries, and advancing state. |
 
@@ -206,7 +206,7 @@ Gating occurs when the node performs a maintenance task (snapshot install, check
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
 | `raft.node.gating.wait_duration` | Histogram | µs | Time spent waiting for gatingTerminated (maintenance task completion) in the processReadies goroutine. High values indicate long snapshot/restore operations stalling the ready pipeline. |
-| `raft.node.gating.readies_processed` | Histogram | 1 | Number of Raft Readies processed during each gating period. Higher values indicate more Readies were spooled while the maintenance task was running. |
+| `raft.node.gating.readies_processed` | Histogram | `{ready}` | Number of Raft Readies processed during each gating period. Higher values indicate more Readies were spooled while the maintenance task was running. |
 
 ### WAL Metrics
 
@@ -215,7 +215,7 @@ The Write-Ahead Log (WAL) metrics track the performance of the WAL append operat
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
 | `wal.append.save.duration` | Histogram | µs | Time spent saving entries to the WAL on disk. This is the actual disk I/O time. |
-| `wal.append.batch_size` | Histogram | 1 | Number of entries appended at once. Higher values indicate efficient batching under load. |
+| `wal.append.batch_size` | Histogram | `{entry}` | Number of entries appended at once. Higher values indicate efficient batching under load. |
 
 ### Snapshot Metrics
 
@@ -252,8 +252,8 @@ Outgoing messages are first queued in a global pending send queue before being d
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `raft.send.pending_messages.load` | Histogram | 1 | Current load of the pending send queue. High values indicate messages are being queued faster than they can be dispatched to peers. |
-| `raft.send.pending_messages.full` | Counter | 1 | Number of times the pending send queue was full. **Alert if non-zero**. |
+| `raft.send.pending_messages.load` | Histogram | `{batch}` | Current load of the pending send queue. High values indicate messages are being queued faster than they can be dispatched to peers. |
+| `raft.send.pending_messages.full` | Counter | `{batch}` | Number of times the pending send queue was full. **Alert if non-zero**. |
 
 ### Reception Channel Metrics
 
@@ -261,8 +261,8 @@ Messages received from other nodes are queued in 3 priority reception channels. 
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `raft.transport.recv.load` | Histogram | 1 | Current load of the reception queue per priority. Measures queue depth over time. |
-| `raft.transport.recv.full` | Counter | 1 | Number of times the reception queue was full. **Alert if non-zero**. |
+| `raft.transport.recv.load` | Histogram | `{batch}` | Current load of the reception queue per priority. Measures queue depth over time. |
+| `raft.transport.recv.full` | Counter | `{batch}` | Number of times the reception queue was full. **Alert if non-zero**. |
 
 **Attributes**:
 - `priority`: Queue priority level (0 = high, 1 = medium, 2 = low)
@@ -281,8 +281,8 @@ Tracks notifications when a peer becomes unreachable.
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `raft.transport.unreachable.load` | Histogram | 1 | Current load of the unreachable notification queue. |
-| `raft.transport.unreachable.full` | Counter | 1 | Number of times the unreachable queue was full. |
+| `raft.transport.unreachable.load` | Histogram | `{peer}` | Current load of the unreachable notification queue. |
+| `raft.transport.unreachable.full` | Counter | `{peer}` | Number of times the unreachable queue was full. |
 
 ### Per-Peer Sending Metrics
 
@@ -290,8 +290,8 @@ Each peer connection has 3 priority queues for sending messages (one per priorit
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `raft.transport.peer.sending.load` | Histogram | 1 | Current load of the per-peer sending queue. |
-| `raft.transport.peer.sending.full` | Counter | 1 | Number of times the per-peer sending queue was full. **Alert if consistently non-zero**. |
+| `raft.transport.peer.sending.load` | Histogram | `{batch}` | Current load of the per-peer sending queue. |
+| `raft.transport.peer.sending.full` | Counter | `{batch}` | Number of times the per-peer sending queue was full. **Alert if consistently non-zero**. |
 
 **Attributes**:
 - `peer`: Peer node ID
@@ -309,9 +309,9 @@ When a value is not guaranteed to be in cache (based on the cache generation), t
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
 | `admission.preload.duration` | Histogram | µs | Time spent loading a preload value from the store. Includes the actual disk read and computation time. High values indicate slow storage or expensive computations. |
-| `admission.preload.total` | Counter | 1 | Total number of preload operations from store (cache misses). High rates may indicate cache miss issues or cold startup. |
-| `admission.preload.keys_needed` | Counter | 1 | Total number of keys that needed resolving during preload. This is the total demand before cache filtering. |
-| `admission.preload.cache_hits` | Counter | 1 | Total number of keys found guaranteed in cache (no store read needed). Use with `keys_needed` to compute cache hit ratio. |
+| `admission.preload.total` | Counter | `{preload}` | Total number of preload operations from store (cache misses). High rates may indicate cache miss issues or cold startup. |
+| `admission.preload.keys_needed` | Counter | `{key}` | Total number of keys that needed resolving during preload. This is the total demand before cache filtering. |
+| `admission.preload.cache_hits` | Counter | `{key}` | Total number of keys found guaranteed in cache (no store read needed). Use with `keys_needed` to compute cache hit ratio. |
 
 **Attributes**:
 - `type`: Attribute type being preloaded (`input`, `output`, `ledgers`, `reversions`, `idempotency_keys`, `references`, `boundaries`)
@@ -351,8 +351,8 @@ An `Admit` call carries one batch = one Raft command, and a batch can hold multi
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `admission.action.total` | Counter | 1 | Number of orders (actions) admission processed, by `order_type`. Counts **every order attempted** in the batch, regardless of outcome — it is not gated on the FSM apply result. |
-| `admission.action.errors.total` | Counter | 1 | Number of orders whose admission batch ended in error, by `order_type`. A **strict subset** of `admission.action.total`. |
+| `admission.action.total` | Counter | `{action}` | Number of orders (actions) admission processed, by `order_type`. Counts **every order attempted** in the batch, regardless of outcome — it is not gated on the FSM apply result. |
+| `admission.action.errors.total` | Counter | `{action}` | Number of orders whose admission batch ended in error, by `order_type`. A **strict subset** of `admission.action.total`. |
 
 **Attributes**:
 - `order_type`: The action kind, e.g. `create_transaction`, `revert_transaction`, `add_metadata`, `create_ledger`, `delete_ledger`, `save_numscript`, `create_index`, `register_signing_key`, … This is the same stable vocabulary used by the audit filter DSL (`domain.AuditOrderType`); it is extended additively and tokens are never renamed.
@@ -370,8 +370,8 @@ An `Admit` call carries one batch = one Raft command, and a batch can hold multi
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `admission.propose_queue.load` | Histogram | 1 | Current number of in-flight proposals. High values indicate backpressure from Raft consensus. |
-| `admission.propose_queue.full` | Counter | 1 | Number of times the propose queue was full and proposals were rejected. **Alert if non-zero**. |
+| `admission.propose_queue.load` | Histogram | `{proposal}` | Current number of in-flight proposals. High values indicate backpressure from Raft consensus. |
+| `admission.propose_queue.full` | Counter | `{proposal}` | Number of times the propose queue was full and proposals were rejected. **Alert if non-zero**. |
 
 ## Pebble Storage Metrics
 

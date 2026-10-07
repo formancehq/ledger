@@ -734,7 +734,7 @@ func NewNode(
 
 	node.committedEntriesPerReadyHistogram, err = meter.Int64Histogram("raft.ready.committed_entries",
 		metric.WithDescription("Number of committed entries per Ready"),
-		metric.WithUnit("1"),
+		metric.WithUnit("{entry}"),
 		metric.WithExplicitBucketBoundaries(
 			0, 1, 2, 3, 4, 5, 10, 20, 50, 100, 200, 500, 1000, 2000,
 		),

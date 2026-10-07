@@ -137,7 +137,7 @@ func newTestPeerConn(t *testing.T, peerID uint64, unreachable func(uint64) bool)
 
 	loadH, err := m.Int64Histogram("noop.load")
 	require.NoError(t, err)
-	fullC, err := m.Float64Counter("noop.full")
+	fullC, err := m.Int64Counter("noop.full")
 	require.NoError(t, err)
 
 	return &peerConnection{
@@ -148,7 +148,7 @@ func newTestPeerConn(t *testing.T, peerID uint64, unreachable func(uint64) bool)
 		peerID:                 peerID,
 		pushUnreachable:        unreachable,
 		sendQueueLoadHistogram: [3]metric.Int64Histogram{loadH, loadH, loadH},
-		sendQueueFullCounter:   [3]metric.Float64Counter{fullC, fullC, fullC},
+		sendQueueFullCounter:   [3]metric.Int64Counter{fullC, fullC, fullC},
 	}
 }
 
@@ -264,7 +264,7 @@ func newTestTransport(t *testing.T, pendingCap int) *DefaultTransport {
 
 	loadH, err := meter.Int64Histogram("noop.load")
 	require.NoError(t, err)
-	fullC, err := meter.Float64Counter("noop.full")
+	fullC, err := meter.Int64Counter("noop.full")
 	require.NoError(t, err)
 
 	return &DefaultTransport{
