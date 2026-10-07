@@ -60,14 +60,17 @@ type Context struct {
 	// Empty for every non-revert order.
 	RevertTargetDigest []byte
 
-	// CompiledProgram/CompiledVars/CompiledScriptHash are the Numscript VM
-	// artifact admission compiled for THIS order (from OrderTechnical), staged
-	// here like the fields above. Every scripted order admission proposes
-	// carries one; the numscript producer recompiles a missing one from the
-	// script text, flagging it as an admission bug outside audit replay.
-	CompiledProgram    []byte
-	CompiledVars       []byte
-	CompiledScriptHash []byte
+	// CompiledProgram/CompiledProgramHash/CompiledVars/CompiledScriptHash are
+	// the Numscript VM artifact admission compiled for THIS order (from
+	// OrderTechnical), staged here like the fields above. Every scripted order
+	// admission proposes carries one, with the program by value or by
+	// reference (exactly one of the first two set); the numscript producer
+	// recompiles a missing one from the script text, flagging it as an
+	// admission bug outside audit replay (see classifyCompiledArtifact).
+	CompiledProgram     []byte
+	CompiledProgramHash []byte
+	CompiledVars        []byte
+	CompiledScriptHash  []byte
 
 	// batchInitialNextTxID is the NextTransactionId each ledger carried before
 	// this batch mutated it, captured by processApply on the first *apply* order
@@ -564,6 +567,7 @@ func (p *RequestProcessor) processOrder(order *raftcmdpb.Order, s Scope, ctx *Co
 	ctx.InputsResolutionHash = order.GetTechnical().GetInputsResolutionHash()
 	ctx.RevertTargetDigest = order.GetTechnical().GetRevertTargetDigest()
 	ctx.CompiledProgram = order.GetTechnical().GetCompiledProgram()
+	ctx.CompiledProgramHash = order.GetTechnical().GetCompiledProgramHash()
 	ctx.CompiledVars = order.GetTechnical().GetCompiledVars()
 	ctx.CompiledScriptHash = order.GetTechnical().GetCompiledScriptHash()
 	// Reset per-apply fields — only processApply/processMirrorIngest set them.

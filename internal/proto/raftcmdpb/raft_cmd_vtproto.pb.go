@@ -97,6 +97,11 @@ func (m *OrderTechnical) CloneVT() *OrderTechnical {
 		copy(tmpBytes, rhs)
 		r.CompiledScriptHash = tmpBytes
 	}
+	if rhs := m.CompiledProgramHash; rhs != nil {
+		tmpBytes := make([]byte, len(rhs))
+		copy(tmpBytes, rhs)
+		r.CompiledProgramHash = tmpBytes
+	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -2186,6 +2191,9 @@ func (this *OrderTechnical) EqualVT(that *OrderTechnical) bool {
 		return false
 	}
 	if string(this.CompiledScriptHash) != string(that.CompiledScriptHash) {
+		return false
+	}
+	if string(this.CompiledProgramHash) != string(that.CompiledProgramHash) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -5704,6 +5712,13 @@ func (m *OrderTechnical) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.CompiledProgramHash) > 0 {
+		i -= len(m.CompiledProgramHash)
+		copy(dAtA[i:], m.CompiledProgramHash)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.CompiledProgramHash)))
+		i--
+		dAtA[i] = 0x42
 	}
 	if len(m.CompiledScriptHash) > 0 {
 		i -= len(m.CompiledScriptHash)
@@ -10837,6 +10852,10 @@ func (m *OrderTechnical) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	l = len(m.CompiledProgramHash)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -13351,6 +13370,40 @@ func (m *OrderTechnical) UnmarshalVT(dAtA []byte) error {
 			m.CompiledScriptHash = append(m.CompiledScriptHash[:0], dAtA[iNdEx:postIndex]...)
 			if m.CompiledScriptHash == nil {
 				m.CompiledScriptHash = []byte{}
+			}
+			iNdEx = postIndex
+		case 8:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CompiledProgramHash", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.CompiledProgramHash = append(m.CompiledProgramHash[:0], dAtA[iNdEx:postIndex]...)
+			if m.CompiledProgramHash == nil {
+				m.CompiledProgramHash = []byte{}
 			}
 			iNdEx = postIndex
 		default:

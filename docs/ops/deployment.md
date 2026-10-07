@@ -864,6 +864,61 @@ across an FSM outcome change" above:
   must be resynchronised from the leader — the same repair as a straddled
   window, which `ledgerctl check` likewise does not detect.
 
+### Omitting already-cached Numscript bytecode (revision 23)
+
+Service protocol revision 23 lets admission send a scripted order's bytecode
+by reference instead of by value: `compiled_program_hash`, the XXH3-128 of
+the bytes, in place of `compiled_program`, next to the `compiled_vars` and
+`compiled_script_hash` every scripted order carries. Admission does so once
+its own compile cache has compiled the script before
+(`CompiledScript.AlreadyCompiled`, backed by `lruEntry.compileParsed` on
+admission's own `NumscriptCache` instance), so the bytes travel once per
+script per admission instance and every later order of that script carries
+16 bytes instead. The signal describes what this instance has sent, not what
+any replica holds: admission and the FSM apply path each construct their own
+`NumscriptCache` instance and share no state. Being wrong either way is
+tolerated — bytes sent again are a plain by-value apply, and a reference a
+replica cannot serve from its cache is recompiled, below. A binary predating
+this revision does not know the new field and treats a by-reference order as
+a partial artifact, which is why the service protocol revision changes.
+
+The FSM runs a committed artifact when its own bundled library can use it,
+and otherwise derives program and vars from the script text with that
+library, exactly as the store checker's audit replay derives every order
+(`numscript.SafeExecCommitted`). A by-value artifact is usable when the
+library reads its bytecode version. A by-reference one is usable when bytes
+with the committed program hash are at hand: in steady state the replica's
+own apply-side cache holds them, because applying the earlier by-value order
+of the same script decoded, verified and cached the bytes on every replica,
+so a reference is served without compiling anything; after a restart or an
+LRU eviction, or on a replica that joined after the bytes were last sent, the
+replica compiles the script text instead — once per script per cache
+lifetime, never once per order — and uses the result when it hashes to the
+committed program hash, caching it for the next reference. Within one library
+version the same text compiles to the same bytes, so a hit and a miss run the
+same bytes with the same committed vars and the outcome is independent of a
+replica's cache (invariant #2).
+
+Replicas need not run the same library version. A replica whose library
+cannot read the artifact's bytecode version, or whose compiler does not
+reproduce the referenced bytes, is a replica on another version — a rolling
+upgrade in progress — and derives both program and vars from the script text
+with its own library; it never fails the order for a version difference, and
+it never runs the committed vars against a program they were not encoded for
+(equal pool sizes with a different variable layout would post wrong amounts
+without any error). Agreement between such a replica and the others then
+rests on the Numscript library keeping a script's semantics stable across
+versions, the same contract audit replay relies on for every scripted order,
+and a library change that alters a script's outcome is an FSM outcome change
+(see "Upgrading across an FSM outcome change" above) whatever the artifact
+shape. What does fail loudly is corruption, not version: an artifact the
+library reads but cannot decode or verify, committed vars a cached program's
+layout does not cover, or any combination of the four fields other than the
+three shapes admission produces, rejected before any cache access.
+`compiled_vars` and `compiled_script_hash` are present in both shapes, so the
+hash-binding check against the resolved script text (see
+protocol-compatibility.md) runs unconditionally.
+
 ### Audit hash keying — threat model
 
 The audit hash chain (`processing.HashGenerator`) is keyed by a value derived from the immutable `cluster-id`. This is **defense in depth against offline grinding from outside the cluster boundary**, not a tamper-evidence guarantee against an attacker with persisted-store access.

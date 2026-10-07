@@ -94,6 +94,7 @@ type OrderTechnicalReader interface {
 	GetCompiledProgram() []byte
 	GetCompiledVars() []byte
 	GetCompiledScriptHash() []byte
+	GetCompiledProgramHash() []byte
 	Mutate() *OrderTechnical
 }
 
@@ -125,6 +126,10 @@ func (r *orderTechnicalReadonly) GetCompiledVars() []byte {
 
 func (r *orderTechnicalReadonly) GetCompiledScriptHash() []byte {
 	return bytes.Clone((*OrderTechnical)(r).GetCompiledScriptHash())
+}
+
+func (r *orderTechnicalReadonly) GetCompiledProgramHash() []byte {
+	return bytes.Clone((*OrderTechnical)(r).GetCompiledProgramHash())
 }
 
 func (r *orderTechnicalReadonly) Mutate() *OrderTechnical {

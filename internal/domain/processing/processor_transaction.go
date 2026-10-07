@@ -95,6 +95,7 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 			assetCache:           ctx.AssetCache,
 			inputsResolutionHash: ctx.InputsResolutionHash,
 			compiledProgram:      ctx.CompiledProgram,
+			compiledProgramHash:  ctx.CompiledProgramHash,
 			compiledVars:         ctx.CompiledVars,
 			compiledScriptHash:   ctx.CompiledScriptHash,
 			compileMissing:       ctx.CompileMissingNumscript,

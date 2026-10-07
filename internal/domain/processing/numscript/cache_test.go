@@ -218,3 +218,27 @@ func TestNumscriptCache_RecordSize_ReportsBothSides(t *testing.T) {
 
 	require.Equal(t, map[string]int64{cacheSideParsed: 1, cacheSideCompiled: 1}, sizes)
 }
+
+func TestLruEntry_CompileParsed_AlreadyCompiledAcrossEviction(t *testing.T) {
+	t.Parallel()
+
+	c := NewNumscriptCache(1)
+	script := `send [USD/2 100] (source = @world destination = @users:alice)`
+	other := `send [USD/2 1] (source = @a destination = @b)`
+
+	entry := c.getOrParseEntry(script)
+	_, err, alreadyCompiled := entry.compileParsed()
+	require.Nil(t, err)
+	require.False(t, alreadyCompiled)
+
+	// Evict the entry by parsing a second script against a cache of size 1.
+	c.getOrParseEntry(other)
+	require.NotSame(t, entry, c.getOrParseEntry(script), "the original entry was evicted")
+
+	// The new entry for the same script text starts cold again: an evicted
+	// incarnation's "already compiled" history does not carry over, which is
+	// the conservative (never-assume-cached) answer.
+	_, err, alreadyCompiled = c.getOrParseEntry(script).compileParsed()
+	require.Nil(t, err)
+	require.False(t, alreadyCompiled)
+}

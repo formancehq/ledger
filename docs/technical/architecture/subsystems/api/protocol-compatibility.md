@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"22"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"23"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 22:
+leader. For example, with a schema implementing revision 23:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 22' \
+grpcurl -plaintext -H 'ledger-protocol-version: 23' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -315,6 +315,34 @@ key's frozen outcome or rejects with `ERROR_REASON_PRELOAD_UNAVAILABLE`.
 Neither revision freezes the compile failure itself under an idempotency key:
 revision 21's apply failure was `KindInternal`, which is not freezable, and
 revision 22's rejection happens before apply.
+
+## Omitting already-cached Numscript bytecode (revision 23)
+
+Revision 23 lets admission send `OrderTechnical.compiled_program` by
+reference: a new field, `compiled_program_hash` (the XXH3-128 of the bytes),
+replaces the bytes once admission's own compile cache has compiled the script
+before (`CompiledScript.AlreadyCompiled`, backed by `lruEntry.compileParsed`
+on admission's own `NumscriptCache` instance), so the bytecode travels once
+per script per admission instance. `compiled_vars` and `compiled_script_hash`
+remain mandatory for every scripted order exactly as before, and exactly one
+of `compiled_program` and `compiled_program_hash` accompanies them; any other
+combination fails the order loudly. The signal describes what this instance
+has sent, never what any replica has cached — admission and the FSM apply
+path each construct their own `NumscriptCache` instance and share no state —
+and the FSM tolerates it being wrong either way.
+
+The FSM runs a committed artifact when its own library can use it — by value
+when it reads the bytecode version, by reference when it holds or reproduces
+bytes with the committed hash — and otherwise derives program and vars from
+the script text with its own library (`numscript.SafeExecCommitted`), so
+replicas on different library versions apply the same entry without failing
+it; see
+[Omitting already-cached Numscript bytecode](../../../../ops/deployment.md#omitting-already-cached-numscript-bytecode-revision-23)
+for the contract that keeps their outcomes equal. A revision-22 binary does
+not know the new field and treats a by-reference order as a partial
+artifact, failing the order a revision-23 binary applies — replicated-state
+divergence, not merely an availability difference — which is why the revision
+changes.
 
 ## Maintaining the revision
 

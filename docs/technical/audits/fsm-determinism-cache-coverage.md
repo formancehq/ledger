@@ -230,16 +230,21 @@ The FSM keeps two pieces of node-local state across proposals in the
 `RequestProcessor`'s `NumscriptCache`: parsed scripts, and one decoded,
 verified VM instance per script hash, reused by every later apply of the same
 program bytes. Admission owns a separate cache instance; it never shares the
-FSM's warm VMs.
+FSM's warm VMs, nor the reverse — admission's instance exposes, from its
+existing parsed-script side, whether it had compiled a script before this
+proposal (`CompiledScript.AlreadyCompiled`, backed by
+`lruEntry.compileParsed`, service protocol revision 23), consulted only by
+admission to send the bytecode by value or by reference; the FSM learns of
+that decision only through the committed shape.
 
 **Inputs.** The committed inputs of one scripted execution are the resolved
-script text, the artifact's program bytes, vars bytes and script hash, the
-order's `force` flag, and the balances and metadata read through the gated
-`Scope`. Everything else is incidental: the cache size (node-local
-`NumscriptCacheSize`), LRU residency and eviction, whether the entry is cold or
-warm, which compiled bytes for the same script hash were cached first, the
-verification record produced by an earlier order's vars, and the registers and
-run state an earlier run left in the instance.
+script text, the artifact's program bytes or program hash, vars bytes and
+script hash, the order's `force` flag, and the balances and metadata read
+through the gated `Scope`. Everything else is incidental: the cache size
+(node-local `NumscriptCacheSize`), LRU residency and eviction, whether the
+entry is cold or warm, which compiled bytes for the same script hash were
+cached first, the verification record produced by an earlier order's vars,
+and the registers and run state an earlier run left in the instance.
 
 **Ownership.** This domain owns the equivalence of the transition across those
 incidental states and the lifetime of what a cached instance retains: after
@@ -251,15 +256,38 @@ semantic equivalence with direct postings belong to `accounting-invariants`;
 replaying audited orders, which never carry an artifact, belongs to
 `persistence-restore-replay` and the checker.
 
-**Artifact presence.** Only a fully missing artifact — program, vars, and
-script hash all absent — is recompiled from the script text, with an Antithesis
-`assert.Unreachable` outside audit replay that never feeds the outcome. A
-present artifact that is partial, has an invalid header, carries a bytecode
-version the bundled library cannot read, or fails decoding, verification, or
-the script-hash binding fails the order with `ErrNumscriptRuntime` identically
-on every replica running the binary. Repairing a present artifact from the text
-is a finding: it would let corrupt committed bytes and a correct replica's
-failure diverge.
+**Artifact presence.** An absent artifact — program, program hash, vars, and
+script hash all absent — is recompiled from the script text, with an
+Antithesis `assert.Unreachable` outside audit replay that never feeds the
+outcome. A program by reference — `compiled_program_hash` in place of the
+bytes, next to a present vars and script hash — is not an admission bug but
+admission deliberately sending the bytecode once per script per instance
+(`CompiledScript.AlreadyCompiled`, backed by `lruEntry.compileParsed` on
+admission's own cache instance: a signal about what that instance has sent,
+never about what any replica's apply-side cache holds — admission and the
+FSM apply path each construct their own `NumscriptCache` and share no state;
+service protocol revision 23). The FSM runs a committed artifact when its own
+library can use it, and otherwise derives program and vars from the script
+text with that library (`numscript.SafeExecCommitted`): by value, when the
+library reads the bytecode version; by reference, when bytes with the
+committed program hash are at hand — its own cache entry when that entry's
+bytes have the hash, otherwise its own compile of the text when that
+reproduces the hash, then cached. The committed vars run only against bytes
+with the committed hash: the hash is what makes the program/vars pairing a
+checked property. An unreadable version or an irreproducible hash means
+another library version produced the artifact (a replica mid rolling upgrade)
+and is never a failure: the replica derives program and vars from the text,
+the path audit replay (`persistence-restore-replay`) takes for every order,
+and cross-version agreement rests on the library keeping script semantics
+stable. Any other combination of the four fields, and a program present but
+truncated, with an invalid header the library reads, or failing decoding,
+verification, or the script-hash binding, fails the order with
+`ErrNumscriptRuntime` identically on every replica running the binary — a
+wrong shape before any cache access. Repairing such a corrupt program from
+the text is a finding: it would let corrupt committed bytes and a correct
+replica's failure diverge. So is running committed vars against bytes whose
+hash was not checked against the committed one, and so is failing an order
+because the artifact came from another library version.
 
 The script hash is XXH3-128 and is not collision-resistant against chosen
 inputs. A crafted collision is not a finding here while write scopes are
@@ -278,13 +306,23 @@ complete result — postings, metadata, error reason, audit bytes — across:
    panic;
 5. orders of one script with different vars, sharing one verification record;
 6. a missing artifact recompiled in audit replay against the same order applied
-   with its artifact in the cluster.
+   with its artifact in the cluster;
+7. a program by reference: a replica whose cache holds bytes with the
+   committed hash (serves them directly) against one that misses and
+   recompiles from the text, and against one whose entry holds other bytes
+   for the same script hash (replaced by the recompile);
+8. an artifact this library cannot use — a bytecode version it cannot read,
+   or a reference its compiler does not reproduce — derived from the text
+   with the business script vars, against the same order applied with a
+   usable artifact: equal under one library version, and never a failure.
 
-The focused entry points are `TestSafeExecCompiled_*` and `TestProduce_*`
-(artifact presence, warm reuse, panic recovery, same-script-different-bytes,
-source release). A finding needs a concrete pair of incidental histories that
-yields a different component of `T`; a slower cold path or a cache miss is not
-one.
+The focused entry points are `TestSafeExecCompiled_*`,
+`TestSafeExecCommitted_*` and `TestProduce_*` (artifact presence and shape,
+warm reuse, panic recovery, same-script-different-bytes, source release,
+by-reference cache hit and recompile, foreign version and irreproducible
+reference derived from the text). A finding needs a concrete pair of
+incidental histories that yields a different component of `T`; a slower cold
+path or a cache miss is not one.
 
 ## Reachability, evidence, and rejection
 

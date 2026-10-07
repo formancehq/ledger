@@ -227,51 +227,88 @@ its specific error — asset scaling, for instance, still fails with
 
 The FSM decodes and verifies the program once per artifact — `NumscriptCache`
 keeps one warm VM instance per script, keyed by `compiled_script_hash`
-(already checked against the resolved text), and serves it only when the
-order's program bytes are identical to the ones it verified. Compilation is not
-assumed to be deterministic: every compilation of a script must mean the same
-thing, but two of them (a new leader, a rolling upgrade, the leader's parse
-cache evicting the script) may produce different bytes. On a mismatch the
-order's bytes are decoded, verified and replace the entry, so a node always
-runs the committed bytes and only redoes that work when the bytes change. The
-leader compiles a script once and reuses it, so in steady state every order of
-a script hits. A rejected artifact is never cached, and the cache is in-memory,
-so an upgrade restarts it empty. It then executes the artifact per apply
-(`numscript.SafeExecCompiled`). The apply store reaches the proposal's Scope
-and coverage plan; the library's `Exec` releases its store on every exit
-(success, error or panic), so a cached instance never pins an old proposal.
-The verifier is what entitles the VM to run
+(already checked against the resolved text), and serves it only for the
+bytes the order commits to: bytes identical to the ones it verified when the
+program travels by value, bytes with the hash the order names when it travels
+by reference (below). Compiling the same text under the same bundled library
+is deterministic — byte-identical, always — but a hit still compares bytes
+because this binary is not the only one that could have produced the
+committed bytes: a mismatch means two different library versions compiled the
+same text (a straddled mixed-binary window, not ordinary operation — see
+"Upgrading across the Numscript VM execution change" below). On a mismatch
+the order's bytes are decoded, verified and replace the entry, so a node
+always runs the committed bytes and only redoes that work when the bytes
+change. The leader compiles a script once and reuses it, so in steady state
+every order of a script hits. A rejected artifact is never cached, and the
+cache is in-memory, so an upgrade restarts it empty. It then executes the
+artifact per apply (`numscript.SafeExecCompiled`). The apply store reaches
+the proposal's Scope and coverage plan; the library's `Exec` releases its
+store on every exit (success, error or panic), so a cached instance never
+pins an old proposal. The verifier is what entitles the VM to run
 wire-supplied bytecode without per-instruction checks.
 
-Every scripted order admission proposes carries an artifact; an order it
-forwards without one is marked `preload_unavailable` and rejected before any
-read. The artifact is an optimization derivable from the script text, not
-part of the order's meaning, so a scripted order reaching execution without
-one is recompiled from its text (`numscript.CompileForReplay`, the same
-compile admission runs) and executed on the VM: it costs a compile and never
-changes the outcome. Outside audit replay (below) a missing artifact is still
-an admission bug, so it is flagged with an Antithesis `assert.Unreachable`
-(invariant #7), which never feeds the outcome (invariant #2).
+Every scripted order admission proposes carries `compiled_vars`,
+`compiled_script_hash` and exactly one of `compiled_program` and
+`compiled_program_hash`; an order it forwards without them is marked
+`preload_unavailable` and rejected before any read. The bytecode travels by
+value once per script per admission instance — on the first order whose
+script that instance's own compile cache had not compiled before
+(`CompiledScript.AlreadyCompiled`, backed by `lruEntry.compileParsed`) — and
+by reference, as the XXH3-128 of the bytes (`numscript.HashProgram`), on
+every later order of the script. The signal describes what this instance has
+sent, never a peek at what any replica cached: admission and the FSM apply
+path each construct their own `NumscriptCache` instance and share no state,
+and the FSM tolerates the signal being wrong either way (service protocol
+revision 23; see
+[Omitting already-cached Numscript bytecode](../../../../ops/deployment.md#omitting-already-cached-numscript-bytecode-revision-23)).
+The FSM runs the committed artifact when its own library can use it, and
+otherwise derives program and vars from the script text with that library
+(`numscript.SafeExecCommitted`, built on `numscript.SafeExecFromText`, the
+same compile admission runs). A by-value artifact is usable when the library
+reads its bytecode version. A by-reference one is usable when bytes with the
+committed program hash are at hand: the node's own cache entry for the script
+hash when its bytes have that hash — the steady state, since applying the
+earlier by-value order warmed every replica — or, after a restart, an LRU
+eviction, or on a replica that joined later, this binary's compile of the
+script text when it reproduces the hash, then decoded, verified and cached
+like a by-value program (one compile per script per cache lifetime, never one
+per order). Within one library version the same text compiles to the same
+bytes, so a hit and a miss run the same bytes with the same committed vars
+and the outcome never depends on a replica's cache (invariant #2). A library
+that cannot read the artifact's version, or a compile that does not reproduce
+the referenced hash, means another library version produced the artifact — a
+replica mid rolling upgrade — and is never a failure: the replica derives
+program and vars from the text, and the committed vars are never run against
+a program they were not encoded for (equal pool sizes with a different
+variable layout would post wrong amounts with no error at all). Agreement
+across library versions then rests on the library keeping a script's
+semantics stable, the contract audit replay (below) already relies on. The
+artifact as a whole is an optimization derivable from the script text, not
+part of the order's meaning: an order with none of the four fields takes the
+same text path, which outside audit replay is an admission bug flagged with
+an Antithesis `assert.Unreachable` (invariant #7) that never feeds the
+outcome (invariant #2). Any other combination of the four fields is a corrupt
+state admission never produces and fails the order loudly before any cache
+access.
 
-A present artifact is never repaired from the text. The FSM rejects it —
-failing the order with `ErrNumscriptRuntime` (invariant #7), identically on
-every node running the binary — when: either half lacks a valid header or
-carries a bytecode version (major.minor) the bundled library cannot read
-(`numscriptlib.CurrentBytecodeVersion.CanRead`); either half does not decode;
-the program fails verification; or `compiled_script_hash` does not match the
-resolved text. For a stable major a readable version is the same major and a
-minor no newer than the bundled one, since a minor bump is additive by the
-library's contract; an unstable `0.x` version, which the library uses today,
-reads only itself. The library's decoders apply that rule, so the ledger never
-encodes it. None of these failures can happen by construction: admission
-produces the whole artifact with this very library, inline scripts travel in
-the order, exact library versions are immutable, an advanced `"latest"` is
-stale-rejected first, and our own compiler produced the bytecode. A
-version-mismatched artifact is therefore an impossible state for unreleased v3,
-which has no cross-version replay contract; a future stable contract must let
-a binary execute every artifact version in Ledger's supported recovery window
-with its original semantics, not repair it from the text (see
-[Upgrading across the Numscript VM execution change](../../../../ops/deployment.md#upgrading-across-the-numscript-vm-execution-change-revision-22)).
+What the FSM does reject — failing the order with `ErrNumscriptRuntime`
+(invariant #7), identically on every node running the binary — is corruption,
+not a version difference: a half whose header this library reads but which
+does not decode; a program that fails verification; committed vars a cached
+program's layout does not cover; or a `compiled_script_hash` that does not
+match the resolved text. Readability is the library's own rule
+(`numscriptlib.CurrentBytecodeVersion.CanRead`): for a stable major, the same
+major and a minor no newer than the bundled one, since a minor bump is
+additive by the library's contract; an unstable `0.x` version, which the
+library uses today, reads only itself. The ledger never encodes that rule
+itself — it peeks the version header to choose the text path, and the
+decoders enforce it. None of the corruption failures can happen by
+construction: admission produces the whole artifact with its own library,
+inline scripts travel in the order, exact library versions are immutable, an
+advanced `"latest"` is stale-rejected first, and our own compiler produced
+the bytecode (see
+[Upgrading across the Numscript VM execution change](../../../../ops/deployment.md#upgrading-across-the-numscript-vm-execution-change-revision-22)
+for the library-semantics side of an upgrade).
 
 The outcome is a function of the committed entry and the running binary
 alone, so every replica on one binary applies the entry identically

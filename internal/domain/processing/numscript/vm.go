@@ -13,19 +13,36 @@ import (
 
 // CompiledScript is the Numscript VM artifact admission compiles on the
 // leader's parallel path and binds to the order (OrderTechnical): the encoded
-// bytecode, the runtime vars encoded against that program's variable layout,
-// and the XXH3-128 hash of the exact script text it was compiled from. The VM is
-// the only execution engine: the FSM decodes and executes this artifact on
-// every node, and recompiles it from the script text (CompileForReplay) only
-// for a scripted order that arrives without one. A present artifact the FSM
-// cannot run fails the order loudly (see SafeExecCompiled).
+// bytecode and its hash (HashProgram), the runtime vars encoded against that
+// program's variable layout, and the XXH3-128 hash of the exact script text it
+// was compiled from. The VM is the only execution engine: the FSM executes
+// this artifact on every node that can use it — the committed bytes when they
+// travel by value, bytes proven by ProgramHash to be these when they travel
+// by reference — and otherwise derives program and vars from the script text
+// with its own library (see SafeExecCommitted): a scripted order that arrives
+// without an artifact, or a replica whose library version differs from the
+// one that produced it. A present artifact this binary can read but not
+// decode or verify fails the order loudly (see SafeExecCompiled).
 //
 // program and vars are the decoded forms of Program and Vars, kept for
 // admission's own effects run so it need not decode what it just encoded.
+//
+// AlreadyCompiled reports whether this exact NumscriptCache instance had
+// already compiled this script hash before this call — i.e. whether the
+// program half is a cache hit on this entry, not a fresh compile. Admission
+// reads it as "the bytecode for this script has been sent by this instance
+// before" and then binds ProgramHash to the order instead of Program (see
+// admission.go). The signal is approximate by design — it says nothing about
+// what any replica has cached — and the FSM tolerates it being wrong either
+// way: bytes sent again are a plain by-value apply, and a reference no
+// replica can serve from cache is recompiled from the script text (see
+// SafeExecCommitted).
 type CompiledScript struct {
-	Program    []byte
-	Vars       []byte
-	ScriptHash []byte
+	Program         []byte
+	ProgramHash     []byte
+	Vars            []byte
+	ScriptHash      []byte
+	AlreadyCompiled bool
 
 	program numscriptlib.CompiledProgram
 	vars    numscriptlib.Vars
@@ -47,7 +64,7 @@ func compileScript(entry *lruEntry, vars map[string]string) (out *CompiledScript
 		}
 	}()
 
-	compiled, compileErr := entry.compileParsed()
+	compiled, compileErr, alreadyCompiled := entry.compileParsed()
 	if compileErr != nil {
 		return nil, compileErr
 	}
@@ -57,16 +74,18 @@ func compileScript(entry *lruEntry, vars map[string]string) (out *CompiledScript
 		return nil, &domain.ErrNumscriptCompile{Detail: encErr.Error()}
 	}
 
-	hash := entry.hash
+	hash, programHash := entry.hash, compiled.encodedHash
 
 	return &CompiledScript{
 		// The order's artifact travels into OrderTechnical; give it its own
 		// bytes rather than aliasing the entry shared by every order of the script.
-		Program:    bytes.Clone(compiled.encoded),
-		Vars:       encodedVars.Encode(),
-		ScriptHash: hash[:],
-		program:    compiled.program,
-		vars:       encodedVars,
+		Program:         bytes.Clone(compiled.encoded),
+		ProgramHash:     programHash[:],
+		Vars:            encodedVars.Encode(),
+		ScriptHash:      hash[:],
+		AlreadyCompiled: alreadyCompiled,
+		program:         compiled.program,
+		vars:            encodedVars,
 	}, nil
 }
 
@@ -166,9 +185,11 @@ func (s *VMStore) GetMetadata(_ context.Context, account, scope, key string) (st
 //   - Header and bytecode version: the library's decoders refuse a half with
 //     an invalid header, or of a bytecode version the bundled library cannot
 //     read (UnsupportedBytecodeVersionError), so foreign bytecode is never
-//     run. Admission produces the artifact with this very library and v3 has
-//     no cross-version replay contract yet, so neither is repaired from the
-//     script text.
+//     run here. A version this library cannot read is not a defect but
+//     another library version's artifact (a replica on a different version
+//     during a rolling upgrade): SafeExecCommitted routes such an order to
+//     the script text before it reaches this function, so one arriving here
+//     is a caller bug.
 //   - Decode and verification: the artifact was produced by our own compiler
 //     from a script that parsed, so malformed bytes mean a codec or compiler
 //     bug, and the verifier is what entitles the VM to execute wire-supplied
@@ -207,6 +228,127 @@ func SafeExecCompiled(cache *NumscriptCache, scriptHash, programBytes, varsBytes
 	}
 
 	return safeExecVM(entry.vm, &vars, store)
+}
+
+// CommittedArtifact is a scripted order's VM artifact as committed in
+// OrderTechnical, in one of the two shapes admission produces (classified by
+// the caller, see the processing package's classifyCompiledArtifact): Vars
+// always set, and exactly one of Program (the bytecode by value) and
+// ProgramHash (the bytecode by reference, HashProgram of the bytes).
+type CommittedArtifact struct {
+	Program     []byte
+	ProgramHash [16]byte
+	Vars        []byte
+}
+
+// readable reports whether this binary's bundled library can read the
+// bytecode version of every half present (CurrentBytecodeVersion.CanRead).
+// A half whose header does not even parse is not another version's artifact
+// but a corrupt one, and is left to the decoders to fail loudly.
+func (a CommittedArtifact) readable() bool {
+	if version, err := numscriptlib.PeekVarsVersion(a.Vars); err == nil && !numscriptlib.CurrentBytecodeVersion.CanRead(version) {
+		return false
+	}
+
+	if len(a.Program) == 0 {
+		return true
+	}
+
+	version, err := numscriptlib.PeekCompiledProgramVersion(a.Program)
+
+	return err != nil || numscriptlib.CurrentBytecodeVersion.CanRead(version)
+}
+
+// SafeExecCommitted executes a committed scripted order on the FSM apply path:
+// the committed artifact when this binary can use it, otherwise program and
+// vars derived from the script text with this binary's own library
+// (SafeExecFromText), exactly as audit replay derives every order. This
+// binary can use the artifact when:
+//
+//   - every half carries a bytecode version its bundled library reads. A
+//     version it cannot read means another library version produced the
+//     artifact — a replica running a different version during a rolling
+//     upgrade — which is the ordinary reason to derive from the text, never
+//     a failure;
+//   - by value, nothing more: the committed bytes run with the committed vars
+//     (SafeExecCompiled);
+//   - by reference, bytes with the committed program hash are at hand: this
+//     node's cache entry for the script (the steady state — the earlier
+//     by-value order of the script warmed every replica that applied it), or
+//     this binary's own compile of the text when it reproduces the hash
+//     (after a restart or an LRU eviction, on a replica that joined later),
+//     which is then cached for the next reference. A compile that does not
+//     reproduce the hash means another library version compiled the committed
+//     bytes; the committed vars were encoded against that program's variable
+//     layout and must not run against this one — equal pool sizes with a
+//     different layout would post wrong amounts with no error — so the order
+//     is derived from the text, vars included.
+//
+// Within one library version every replica therefore runs the same bytes with
+// the same committed vars, whatever its cache holds (invariant #2). Across
+// library versions a replica runs its own compilation of the same text with
+// vars it encodes itself, and the outcome agrees because the Numscript library
+// keeps a script's semantics stable across versions — the contract the store
+// checker's audit replay already relies on for every scripted order, and the
+// reason a version difference never fails an order here. What does fail
+// loudly (ErrNumscriptRuntime) is an artifact this library reads but cannot
+// decode or verify, or committed vars the cached program's layout does not
+// cover: corrupt bytes, not a version difference. Vars are decoded before any
+// cache access, so corrupt vars fail the same way on every replica.
+//
+// scriptHash must be HashScript(script), which the caller has already checked
+// against the order's committed script hash: it keys both cache sides, and
+// the parse side would otherwise cache the text under another script's key.
+func SafeExecCommitted(cache *NumscriptCache, scriptHash [16]byte, artifact CommittedArtifact, script string, scriptVars map[string]string, store *VMStore) (result numscriptlib.ExecutionResult, err domain.SerializableError) {
+	defer func() {
+		if panicErr := numscriptPanicToDescribable(recover()); panicErr != nil {
+			result = numscriptlib.ExecutionResult{}
+			err = panicErr
+		}
+	}()
+
+	if !artifact.readable() {
+		return SafeExecFromText(cache, script, scriptVars, store)
+	}
+
+	if len(artifact.Program) > 0 {
+		return SafeExecCompiled(cache, scriptHash[:], artifact.Program, artifact.Vars, store)
+	}
+
+	vars, decErr := numscriptlib.DecodeVars(artifact.Vars)
+	if decErr != nil {
+		return numscriptlib.ExecutionResult{}, &domain.ErrNumscriptRuntime{
+			Detail: "decoding compiled numscript vars: " + decErr.Error(),
+		}
+	}
+
+	entry, reproduced, resolveErr := cache.resolveByReference(scriptHash, artifact.ProgramHash, script, &vars)
+	if resolveErr != nil {
+		return numscriptlib.ExecutionResult{}, resolveErr
+	}
+
+	if !reproduced {
+		return SafeExecFromText(cache, script, scriptVars, store)
+	}
+
+	return safeExecVM(entry.vm, &vars, store)
+}
+
+// SafeExecFromText compiles script with scriptVars under this binary's bundled
+// library, exactly as admission does (CompileForReplay), and executes the
+// result, caching the program like any by-value artifact. It serves an order
+// that carries no artifact — the store checker's audit replay — and one whose
+// artifact this binary cannot use (see SafeExecCommitted). Under the same
+// library every compilation of a script means the same thing; across library
+// versions the outcome rests on the library keeping the script's semantics
+// stable (see docs/ops/deployment.md).
+func SafeExecFromText(cache *NumscriptCache, script string, scriptVars map[string]string, store *VMStore) (numscriptlib.ExecutionResult, domain.SerializableError) {
+	compiled, compileErr := CompileForReplay(cache, script, scriptVars)
+	if compileErr != nil {
+		return numscriptlib.ExecutionResult{}, compileErr
+	}
+
+	return SafeExecCompiled(cache, compiled.ScriptHash, compiled.Program, compiled.Vars, store)
 }
 
 // convertVMError is convertNumscriptError's counterpart for the VM's error
