@@ -358,7 +358,7 @@ var _ = Describe("Query Checkpoints", func() {
 
 			vols := resp.FindVolume(asset, "")
 			Expect(vols).NotTo(BeNil(), "expected %s volumes at checkpoint %d", asset, cp)
-			Expect(vols.GetBalance()).To(Equal(expected),
+			Expect(vols.GetBalance().DecimalString()).To(Equal(expected),
 				"balance at checkpoint %d should be frozen at %s", cp, expected)
 		}
 
@@ -381,7 +381,7 @@ var _ = Describe("Query Checkpoints", func() {
 			})
 			Expect(err).To(Succeed())
 
-			Expect(resp.FindVolume(asset, "").GetBalance()).To(Equal("400"))
+			Expect(resp.FindVolume(asset, "").GetBalance().DecimalString()).To(Equal("400"))
 		})
 	})
 

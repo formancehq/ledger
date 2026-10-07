@@ -16,6 +16,11 @@ Since the FSM is called synchronously during Raft entry application, serializati
 
 Replace `BigInt` with `Uint256` — a fixed-size message of 4 `fixed64` fields representing the four 64-bit limbs of a 256-bit unsigned integer.
 
+This decision applies to persisted buckets and posting amounts. API volume
+projections use canonical `BigUint`/`SignedBigInt` messages: collapsing several color
+buckets may legitimately produce a total beyond 256 bits, and the public JSON
+projection renders those values as exact quoted decimals.
+
 ```protobuf
 message Uint256 {
   fixed64 v0 = 1;  // least significant limb
@@ -39,7 +44,7 @@ Go's `math/big.Int` is the standard arbitrary-precision integer, but it has prop
 | **Arithmetic** | General-purpose (handles arbitrary size) | Unrolled 256-bit operations, ~2-10x faster |
 | **Range** | Unlimited | 0 to 2^256-1 (sufficient for any monetary system) |
 
-The `uint256.Int` library was originally designed for Ethereum's EVM (which uses 256-bit words) and provides constant-time, allocation-free arithmetic. Since our volumes never exceed 256 bits (2^256 ≈ 1.16 × 10^77, far beyond any real-world monetary quantity), this is a safe upper bound.
+The `uint256.Int` library was originally designed for Ethereum's EVM (which uses 256-bit words) and provides constant-time, allocation-free arithmetic. Since individual persisted per-bucket volumes never exceed 256 bits (2^256 ≈ 1.16 × 10^77, far beyond any real-world monetary quantity), this is a safe upper bound for storage. Note that `GetAccount` responses use `VolumesWithBalance` (backed by `BigUint`/`SignedBigInt`, unbounded), because collapsing several color buckets for the same account may produce totals beyond 256 bits. By contrast, `AggregatedVolume` (returned by `GET /volumes`) intentionally keeps `Uint256` input/output fields: widening that message to `BigUint` was out of scope for EN-2066. The aggregation pipeline (`accumulate` and `collapseColorBuckets`) already enforces a 256-bit ceiling on both per-account and cross-account sums and returns `ErrAggregateOverflow` when the limit is hit; callers must handle that error. Migrating `AggregatedVolume` to `BigUint` is tracked separately.
 
 ## Wire format benefits
 

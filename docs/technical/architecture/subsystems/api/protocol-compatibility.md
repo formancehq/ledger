@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"21"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"22"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 21:
+leader. For example, with a schema implementing revision 22:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 21' \
+grpcurl -plaintext -H 'ledger-protocol-version: 22' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -212,9 +212,8 @@ and the ledger `name` metadata; revision 14 returned `NotFound` without
 
 This is an incompatible response-semantic change even though the service
 protobuf schema is unchanged: revision-14 clients may interpret the structured
-reason and metadata differently. The revision increments from the target
-branch's 14 to 15, and all communicating service clients and servers must be
-rebuilt with the matching revision. HTTP missing-ledger responses remain 404.
+reason and metadata differently. All communicating service clients and servers
+must be rebuilt with the matching revision. HTTP missing-ledger responses remain 404.
 
 ## Filterless prepared-query updates (revision 16)
 
@@ -262,6 +261,17 @@ that never compiles, such as a missing condition value, a missing field referenc
 or a builtin field the condition does not serve. A revision-20 server stores such
 a query and fails every execution, so peers on the same revision must agree on
 which writes are rejected.
+
+## Typed arbitrary-precision volumes (revision 22)
+
+Revision 22 replaces the decimal `string` fields in `Volumes` and
+`VolumesWithBalance` with typed arbitrary-precision integers. Non-negative
+input/output totals use a canonical minimal unsigned big-endian magnitude;
+balances use a sign plus that magnitude and reject negative zero. The HTTP JSON
+projection remains exact decimal strings, while protobuf clients must implement
+the new typed messages. The representation is unbounded because account color
+collapse may sum several independently bounded `Uint256` buckets beyond 256
+bits.
 
 ## Maintaining the revision
 

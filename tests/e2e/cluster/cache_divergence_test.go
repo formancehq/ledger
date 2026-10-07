@@ -187,11 +187,17 @@ func verifyVolumesConsistent(ctx context.Context, servers []*testutil.ServiceWit
 			for _, acct := range accounts {
 				for _, entry := range acct.GetVolumes() {
 					vol := entry.GetVolumes()
+					key := fmt.Sprintf("%s/%s/%s", acct.GetAddress(), entry.GetAsset(), entry.GetColor())
+					if vol == nil || vol.GetInput() == nil || vol.GetOutput() == nil {
+						// A present entry with absent required fields is a malformed
+						// response; record a sentinel that cannot match a valid snapshot.
+						snap.volumes[key] = "<malformed>"
+						continue
+					}
 					// Key on (account, asset, color) so colored buckets stay
 					// distinct in the divergence snapshot. Empty color is the
 					// uncolored bucket.
-					key := fmt.Sprintf("%s/%s/%s", acct.GetAddress(), entry.GetAsset(), entry.GetColor())
-					snap.volumes[key] = fmt.Sprintf("%s:%s", vol.GetInput(), vol.GetOutput())
+					snap.volumes[key] = fmt.Sprintf("%s:%s", vol.GetInput().DecimalString(), vol.GetOutput().DecimalString())
 				}
 			}
 

@@ -265,7 +265,7 @@ func buildTestLog() *commonpb.Log {
 										RevertedAt: &commonpb.Timestamp{},
 										PostCommitVolumes: &commonpb.PostCommitVolumes{VolumesByAccount: map[string]*commonpb.VolumesByAssets{
 											"users:001": {Volumes: []*commonpb.VolumeEntry{
-												{Asset: "USD", Volumes: &commonpb.Volumes{Input: "100", Output: "0"}},
+												{Asset: "USD", Volumes: &commonpb.Volumes{Input: commonpb.MustBigUintFromDecimal("100"), Output: commonpb.MustBigUintFromDecimal("0")}},
 											}},
 										}},
 									},
