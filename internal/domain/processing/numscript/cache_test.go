@@ -218,3 +218,99 @@ func TestNumscriptCache_RecordSize_ReportsBothSides(t *testing.T) {
 
 	require.Equal(t, map[string]int64{cacheSideParsed: 1, cacheSideCompiled: 1}, sizes)
 }
+
+func TestNumscriptCache_PeekCompiledProgram_Miss(t *testing.T) {
+	t.Parallel()
+
+	c := NewNumscriptCache(10)
+
+	program, ok := c.PeekCompiledProgram(HashScript(`send [USD/2 100] (source = @world destination = @users:alice)`))
+	require.False(t, ok)
+	require.Nil(t, program)
+}
+
+func TestNumscriptCache_PeekCompiledProgram_Hit(t *testing.T) {
+	t.Parallel()
+
+	c := NewNumscriptCache(10)
+	script := `send [USD/2 100] (source = @world destination = @users:alice)`
+
+	entry := c.getOrParseEntry(script)
+	require.Nil(t, entry.script.err)
+
+	compiled := mustCompile(t, entry, nil)
+	vars, decErr := numscriptlib.DecodeVars(compiled.Vars)
+	require.NoError(t, decErr)
+
+	_, err := c.getOrDecodeCompiled(compiled.ScriptHash, compiled.Program, &vars)
+	require.Nil(t, err)
+
+	hash := HashScript(script)
+	program, ok := c.PeekCompiledProgram(hash)
+	require.True(t, ok)
+	require.Equal(t, compiled.Program, program)
+
+	// The returned slice is a defensive copy: mutating it must not corrupt the
+	// cache entry a later peek or decode would read.
+	program[0] ^= 0xFF
+	again, ok := c.PeekCompiledProgram(hash)
+	require.True(t, ok)
+	require.Equal(t, compiled.Program, again)
+}
+
+func TestNumscriptCache_SeenCompiledProgram_FirstSeenIsFalse(t *testing.T) {
+	t.Parallel()
+
+	c := NewNumscriptCache(10)
+	hash := HashScript(`send [USD/2 100] (source = @world destination = @users:alice)`)
+
+	alreadySeen := c.SeenCompiledProgram(hash, []byte("program-bytes"))
+	require.False(t, alreadySeen)
+}
+
+func TestNumscriptCache_SeenCompiledProgram_SecondIdenticalCallIsTrue(t *testing.T) {
+	t.Parallel()
+
+	c := NewNumscriptCache(10)
+	hash := HashScript(`send [USD/2 100] (source = @world destination = @users:alice)`)
+	program := []byte("program-bytes")
+
+	require.False(t, c.SeenCompiledProgram(hash, program))
+	require.True(t, c.SeenCompiledProgram(hash, program))
+	require.True(t, c.SeenCompiledProgram(hash, program), "stays seen across repeated calls")
+}
+
+func TestNumscriptCache_SeenCompiledProgram_DifferentBytesSameHashIsNotSeen(t *testing.T) {
+	t.Parallel()
+
+	c := NewNumscriptCache(10)
+	hash := HashScript(`send [USD/2 100] (source = @world destination = @users:alice)`)
+
+	require.False(t, c.SeenCompiledProgram(hash, []byte("first-compile")))
+	// A different compilation result for the same hash (not assumed
+	// deterministic) is not "already sent": the new bytes have not been
+	// attached to a proposal yet.
+	require.False(t, c.SeenCompiledProgram(hash, []byte("second-compile")))
+	// The second bytes are now what counts as seen.
+	require.True(t, c.SeenCompiledProgram(hash, []byte("second-compile")))
+	require.False(t, c.SeenCompiledProgram(hash, []byte("first-compile")))
+}
+
+func TestNumscriptCache_SeenCompiledProgram_Eviction(t *testing.T) {
+	t.Parallel()
+
+	c := NewNumscriptCache(2)
+
+	hashA := HashScript(`send [USD/2 1] (source = @a destination = @b)`)
+	hashB := HashScript(`send [USD/2 2] (source = @b destination = @c)`)
+	hashC := HashScript(`send [USD/2 3] (source = @c destination = @d)`)
+
+	require.False(t, c.SeenCompiledProgram(hashA, []byte("a")))
+	require.False(t, c.SeenCompiledProgram(hashB, []byte("b")))
+	require.False(t, c.SeenCompiledProgram(hashC, []byte("c"))) // evicts A (LRU)
+
+	// Checked in this order deliberately: a Seen call for an evicted hash
+	// re-inserts it, which would itself evict B if checked first.
+	require.True(t, c.SeenCompiledProgram(hashB, []byte("b")), "B survived the eviction")
+	require.False(t, c.SeenCompiledProgram(hashA, []byte("a")), "A was evicted to make room for C")
+}

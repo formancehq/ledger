@@ -302,13 +302,22 @@ type OrderTechnical struct {
 	// with its own bundled library, so this change is a stop-all-nodes
 	// deployment boundary (service protocol revision 22; see
 	// docs/ops/deployment.md, "Upgrading across the Numscript VM execution
-	// change"). Every scripted order admission proposes carries one: a script
-	// the VM cannot run is rejected at admission. A scripted order reaching the
-	// FSM without an artifact is recompiled from its script text, which keeps
-	// its outcome only while the bundled Numscript library keeps the script's
-	// execution semantics (history applied by another library can replay
-	// differently; see docs/ops/deployment.md). Outside the store checker's
-	// audit replay (whose orders never carry one) a missing artifact is an
+	// change"). Every scripted order admission proposes carries compiled_vars
+	// and compiled_script_hash: a script the VM cannot run is rejected at
+	// admission. compiled_program itself may be legitimately absent next to a
+	// present hash and vars: admission omits it once it has already attached
+	// these exact bytes to an earlier proposal for this hash — its own
+	// bookkeeping (NumscriptCache.SeenCompiledProgram), not anything the
+	// executing FSM has cached (service protocol revision 23; see
+	// docs/ops/deployment.md, "Omitting already-cached Numscript bytecode"). A
+	// scripted order reaching the FSM with compiled_program absent — whether
+	// alone or together with vars and hash — is served from this node's own
+	// apply-side cache or recompiled from its script text, which keeps its
+	// outcome only while the bundled Numscript library
+	// keeps the script's execution semantics (history applied by another
+	// library can replay differently; see docs/ops/deployment.md). Outside the
+	// store checker's audit replay (whose orders never carry any of the three)
+	// and the deliberate program-only omission above, a missing artifact is an
 	// admission bug, flagged with assert.Unreachable.
 	CompiledProgram []byte `protobuf:"bytes,5,opt,name=compiled_program,json=compiledProgram,proto3" json:"compiled_program,omitempty"`
 	// compiled_vars is the order's runtime vars encoded against

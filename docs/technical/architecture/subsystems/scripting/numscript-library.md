@@ -243,17 +243,31 @@ and coverage plan; the library's `Exec` releases its store on every exit
 The verifier is what entitles the VM to run
 wire-supplied bytecode without per-instruction checks.
 
-Every scripted order admission proposes carries an artifact; an order it
-forwards without one is marked `preload_unavailable` and rejected before any
-read. The artifact is an optimization derivable from the script text, not
-part of the order's meaning, so a scripted order reaching execution without
-one is recompiled from its text (`numscript.CompileForReplay`, the same
-compile admission runs) and executed on the VM: it costs a compile and never
-changes the outcome. Outside audit replay (below) a missing artifact is still
-an admission bug, so it is flagged with an Antithesis `assert.Unreachable`
-(invariant #7), which never feeds the outcome (invariant #2).
+Every scripted order admission proposes carries `compiled_vars` and
+`compiled_script_hash`; an order it forwards without them is marked
+`preload_unavailable` and rejected before any read. The bytecode half,
+`compiled_program`, is also attached by default, but admission may omit it
+alone once it has already attached these exact bytes to an earlier proposal
+for this hash (`NumscriptCache.SeenCompiledProgram`, a bounded LRU of hashes
+this admission instance has sent before — its own bookkeeping, never a peek
+at whether any replica actually applied or cached the artifact: admission and
+the FSM apply path each construct their own `NumscriptCache` instance and
+share no state; service protocol revision 23; see
+[Omitting already-cached Numscript bytecode](../../../../ops/deployment.md#omitting-already-cached-numscript-bytecode-revision-23)).
+The artifact as a whole is an optimization derivable from the script text, not
+part of the order's meaning: a scripted order reaching execution with no
+program — whether every field is absent, or only the program is, next to a
+present hash and vars — first tries this node's own apply-side cache for that
+hash (`NumscriptCache.PeekCompiledProgram`) and, on a miss, recompiles from
+the script text (`numscript.CompileForReplay`, the same compile admission
+runs); it costs a compile and never changes the outcome. A fully missing
+artifact (all three fields absent) outside audit replay (below) is still an
+admission bug, so it is flagged with an Antithesis `assert.Unreachable`
+(invariant #7), which never feeds the outcome (invariant #2); a program alone
+absent next to a present hash and vars is not — it is exactly the deliberate
+omission above.
 
-A present artifact is never repaired from the text. The FSM rejects it —
+A present program is never repaired from the text. The FSM rejects it —
 failing the order with `ErrNumscriptRuntime` (invariant #7), identically on
 every node running the binary — when: either half lacks a valid header or
 carries a bytecode version (major.minor) the bundled library cannot read

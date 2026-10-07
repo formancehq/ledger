@@ -78,14 +78,24 @@ func vmTestScope(t *testing.T) *MockScope {
 	return mockStore
 }
 
-// produceVMScript runs the producer on vmScript against a fresh test scope,
-// staging the given artifact (all nil for an order without one) the way
-// the dispatcher would from OrderTechnical.
+// produceVMScript runs the producer on vmScript against a fresh test scope and
+// a fresh cache, staging the given artifact (all nil for an order without
+// one) the way the dispatcher would from OrderTechnical.
 func produceVMScript(t *testing.T, vars map[string]string, programBytes, varsBytes, scriptHash []byte) (*produceResult, domain.SerializableError) {
 	t.Helper()
 
+	return produceVMScriptWithCache(t, numscript.NewNumscriptCache(16), vars, programBytes, varsBytes, scriptHash)
+}
+
+// produceVMScriptWithCache is produceVMScript against a caller-supplied cache,
+// for tests that need to observe behavior across more than one order sharing
+// the same node-local cache (e.g. a program omitted because a prior order on
+// this cache already warmed it).
+func produceVMScriptWithCache(t *testing.T, cache *numscript.NumscriptCache, vars map[string]string, programBytes, varsBytes, scriptHash []byte) (*produceResult, domain.SerializableError) {
+	t.Helper()
+
 	producer := &numscriptPostingProducer{
-		cache:              numscript.NewNumscriptCache(16),
+		cache:              cache,
 		ledgerName:         "test",
 		assetCache:         map[string]cachedAssetPrecision{},
 		compiledProgram:    programBytes,
@@ -275,9 +285,11 @@ func TestProduce_InvalidArtifactHeaderIsLoud(t *testing.T) {
 	}
 }
 
-// TestProduce_PartialArtifactIsLoud: only an artifact with all three parts
-// absent is missing and recompiled; one with any part present is a corrupt
-// artifact admission never produces, and fails the order loudly.
+// TestProduce_PartialArtifactIsLoud: a program alone may be legitimately
+// absent (vars and hash present) — see
+// TestProduce_OmittedProgramRecompilesToTheSameOutcome — but every other
+// partial shape is a corrupt artifact admission never produces, and fails the
+// order loudly.
 func TestProduce_PartialArtifactIsLoud(t *testing.T) {
 	t.Parallel()
 
@@ -287,10 +299,10 @@ func TestProduce_PartialArtifactIsLoud(t *testing.T) {
 		program, vars, hash []byte
 		detail              string
 	}{
-		"no program": {nil, varsBytes, scriptHash, "decoding compiled numscript program"},
-		"no vars":    {programBytes, nil, scriptHash, "decoding compiled numscript vars"},
-		"no hash":    {programBytes, varsBytes, nil, "does not match the resolved script text"},
-		"hash only":  {nil, nil, scriptHash, "decoding compiled numscript vars"},
+		"no vars":                {programBytes, nil, scriptHash, "decoding compiled numscript vars"},
+		"no hash":                {programBytes, varsBytes, nil, "does not match the resolved script text"},
+		"hash only":              {nil, nil, scriptHash, "decoding compiled numscript vars"},
+		"no program, short hash": {nil, varsBytes, scriptHash[:8], "script hash has 8 bytes, want 16"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -299,6 +311,50 @@ func TestProduce_PartialArtifactIsLoud(t *testing.T) {
 			requireNumscriptRuntimeError(t, err, tc.detail)
 		})
 	}
+}
+
+// TestProduce_OmittedProgramRecompilesToTheSameOutcome: admission may omit
+// compiled_program alone (keeping vars and hash) once it has already attached
+// these exact bytes to an earlier proposal for this hash. On a cache miss —
+// the case here, a fresh cache, which is also the ordinary case since
+// nothing admission does ever warms this node's apply-side cache — this node
+// recompiles from the script text and produces exactly what the full
+// artifact produces.
+func TestProduce_OmittedProgramRecompilesToTheSameOutcome(t *testing.T) {
+	t.Parallel()
+
+	programBytes, varsBytes, scriptHash := compileArtifactForTest(t, vmScript, vmScriptVars)
+
+	withArtifact, err := produceVMScript(t, vmScriptVars, programBytes, varsBytes, scriptHash)
+	require.Nil(t, err)
+
+	omittedProgram, err := produceVMScript(t, vmScriptVars, nil, varsBytes, scriptHash)
+	require.Nil(t, err)
+
+	require.Equal(t, withArtifact, omittedProgram)
+}
+
+// TestProduce_OmittedProgramUsesWarmCache: when a prior order on this node's
+// own apply-side cache already decoded and verified this hash's bytes (this
+// node having applied an earlier committed entry that carried the program),
+// a later order omitting the program serves those cached bytes directly — no
+// recompile — and produces exactly the same outcome. Admission's decision to
+// omit is independent of this (see admission.go's SeenCompiledProgram use,
+// its own separate bookkeeping) — this test only exercises the FSM apply
+// side's PeekCompiledProgram lookup.
+func TestProduce_OmittedProgramUsesWarmCache(t *testing.T) {
+	t.Parallel()
+
+	programBytes, varsBytes, scriptHash := compileArtifactForTest(t, vmScript, vmScriptVars)
+	cache := numscript.NewNumscriptCache(16)
+
+	warming, err := produceVMScriptWithCache(t, cache, vmScriptVars, programBytes, varsBytes, scriptHash)
+	require.Nil(t, err)
+
+	omittedProgram, err := produceVMScriptWithCache(t, cache, vmScriptVars, nil, varsBytes, scriptHash)
+	require.Nil(t, err)
+
+	require.Equal(t, warming, omittedProgram)
 }
 
 // TestProduce_UnverifiableArtifactIsLoud: bytecode in the bundled format that

@@ -230,7 +230,10 @@ The FSM keeps two pieces of node-local state across proposals in the
 `RequestProcessor`'s `NumscriptCache`: parsed scripts, and one decoded,
 verified VM instance per script hash, reused by every later apply of the same
 program bytes. Admission owns a separate cache instance; it never shares the
-FSM's warm VMs.
+FSM's warm VMs, nor the reverse — admission's instance additionally tracks,
+on its own third LRU side, which hashes it has already attached bytecode for
+(`SeenCompiledProgram`, service protocol revision 23), consulted only by
+admission and never by the FSM apply path.
 
 **Inputs.** The committed inputs of one scripted execution are the resolved
 script text, the artifact's program bytes, vars bytes and script hash, the
@@ -251,15 +254,28 @@ semantic equivalence with direct postings belong to `accounting-invariants`;
 replaying audited orders, which never carry an artifact, belongs to
 `persistence-restore-replay` and the checker.
 
-**Artifact presence.** Only a fully missing artifact — program, vars, and
-script hash all absent — is recompiled from the script text, with an Antithesis
+**Artifact presence.** A fully missing artifact — program, vars, and script
+hash all absent — is recompiled from the script text, with an Antithesis
 `assert.Unreachable` outside audit replay that never feeds the outcome. A
-present artifact that is partial, has an invalid header, carries a bytecode
-version the bundled library cannot read, or fails decoding, verification, or
-the script-hash binding fails the order with `ErrNumscriptRuntime` identically
-on every replica running the binary. Repairing a present artifact from the text
-is a finding: it would let corrupt committed bytes and a correct replica's
-failure diverge.
+program alone absent, next to a present vars and script hash, is also
+recompiled from the text (or served from this node's own apply-side cache for
+that hash, `NumscriptCache.PeekCompiledProgram`) — not an admission bug, but
+admission deliberately omitting bytecode once its own bookkeeping
+(`NumscriptCache.SeenCompiledProgram`, a bounded LRU on admission's own cache
+instance) shows it already attached these exact bytes to an earlier proposal
+for this hash — never a peek at what any replica's apply-side cache actually
+holds: admission and the FSM apply path each construct their own
+`NumscriptCache` and share no state (service protocol revision 23). Both
+resolutions for the same hash must converge on byte-identical bytecode; this
+leans on the same per-library compile-determinism assumption the checker's
+audit replay already makes (`persistence-restore-replay`), now also
+load-bearing on the live apply path, not only offline. Any other partial
+artifact — a program present but truncated, with an invalid header, carrying
+a bytecode version the bundled library cannot read, or failing decoding,
+verification, or the script-hash binding — fails the order with
+`ErrNumscriptRuntime` identically on every replica running the binary.
+Repairing such a present-but-broken program from the text is a finding: it
+would let corrupt committed bytes and a correct replica's failure diverge.
 
 The script hash is XXH3-128 and is not collision-resistant against chosen
 inputs. A crafted collision is not a finding here while write scopes are
@@ -278,13 +294,16 @@ complete result — postings, metadata, error reason, audit bytes — across:
    panic;
 5. orders of one script with different vars, sharing one verification record;
 6. a missing artifact recompiled in audit replay against the same order applied
-   with its artifact in the cluster.
+   with its artifact in the cluster;
+7. a program omitted with vars and hash present: a replica whose cache already
+   holds the hash (serves it directly) against one that misses and recompiles
+   from the text.
 
 The focused entry points are `TestSafeExecCompiled_*` and `TestProduce_*`
 (artifact presence, warm reuse, panic recovery, same-script-different-bytes,
-source release). A finding needs a concrete pair of incidental histories that
-yields a different component of `T`; a slower cold path or a cache miss is not
-one.
+source release, omitted-program cache hit and recompile). A finding needs a
+concrete pair of incidental histories that yields a different component of
+`T`; a slower cold path or a cache miss is not one.
 
 ## Reachability, evidence, and rejection
 

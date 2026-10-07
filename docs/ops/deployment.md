@@ -864,6 +864,43 @@ across an FSM outcome change" above:
   must be resynchronised from the leader — the same repair as a straddled
   window, which `ledgerctl check` likewise does not detect.
 
+### Omitting already-cached Numscript bytecode (revision 23)
+
+Service protocol revision 23 lets admission omit `compiled_program` from a
+scripted order's technical sub-message while still attaching `compiled_vars`
+and `compiled_script_hash`, once admission has already attached these exact
+bytes to an earlier proposal for that hash. This is admission's own
+bookkeeping (`NumscriptCache.SeenCompiledProgram`, a bounded LRU of hashes it
+has sent before) — admission and the FSM apply path each construct their own
+`NumscriptCache` instance and share no state, so this is never a peek at
+whether any replica has actually applied or cached the artifact. A binary
+predating this revision does not know `compiled_program` can be legitimately
+absent next to a present hash and vars: it decodes the empty bytes as a
+corrupt artifact and fails the order with a Numscript runtime error, while a
+revision-23 binary applying the exact same entry succeeds by serving the hash
+from its own apply-side cache or recompiling from the script text —
+replicated-state divergence (one replica commits the transaction, another
+rejects the same entry), not merely an availability difference. Deploy this
+revision with all nodes stopped, as for every prior Numscript VM
+apply-semantics change in this release line.
+
+A revision-23 FSM applying an entry whose `compiled_program` is absent next to
+a present hash and vars first checks its own apply-side cache for that hash
+(populated only by this node's own earlier executions, never by admission —
+see above); on a miss — the ordinary case, since nothing admission does warms
+it, as well as a restart, LRU eviction, a newly joined replica, or a
+leadership change — it recompiles from the script text exactly as it already
+does for a fully missing artifact. Either path must produce byte-identical
+bytecode for the outcome to stay deterministic across replicas (invariant #2):
+this relies on the same "same bundled library, same text, same compiled
+bytes" assumption the store checker's audit replay already makes for every
+scripted order (see above) — this revision is the first place that
+assumption also has to hold on the live apply path, not only during an
+offline check. `compiled_vars` and `compiled_script_hash` are always present
+regardless of whether the program is attached, so the hash-binding check
+against the resolved script text (see
+protocol-compatibility.md) runs unconditionally.
+
 ### Audit hash keying — threat model
 
 The audit hash chain (`processing.HashGenerator`) is keyed by a value derived from the immutable `cluster-id`. This is **defense in depth against offline grinding from outside the cluster boundary**, not a tamper-evidence guarantee against an attacker with persisted-store access.

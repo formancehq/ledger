@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"22"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"23"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 22:
+leader. For example, with a schema implementing revision 23:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 22' \
+grpcurl -plaintext -H 'ledger-protocol-version: 23' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -315,6 +315,35 @@ key's frozen outcome or rejects with `ERROR_REASON_PRELOAD_UNAVAILABLE`.
 Neither revision freezes the compile failure itself under an idempotency key:
 revision 21's apply failure was `KindInternal`, which is not freezable, and
 revision 22's rejection happens before apply.
+
+## Omitting already-cached Numscript bytecode (revision 23)
+
+Revision 23 lets admission omit `OrderTechnical.compiled_program` from a
+scripted order while still attaching `compiled_vars` and
+`compiled_script_hash`, once admission has already attached these exact bytes
+to an earlier proposal for that hash — its own bookkeeping
+(`NumscriptCache.SeenCompiledProgram`, a bounded LRU of hashes it has sent
+before), never a peek at whether any replica actually applied or cached the
+artifact: admission and the FSM apply path each construct their own
+`NumscriptCache` instance and share no state. A revision-22 binary does not
+know the program can be legitimately absent next to a present hash and vars:
+it decodes the empty bytes as a corrupt artifact and fails the order, while a
+revision-23 binary applying the identical entry succeeds by serving the hash
+from its own apply-side cache (`NumscriptCache.PeekCompiledProgram`) or
+recompiling from the script text — replicated-state divergence, not merely an
+availability difference. Deploy this revision with all nodes stopped — see
+[Omitting already-cached Numscript bytecode](../../../../ops/deployment.md#omitting-already-cached-numscript-bytecode-revision-23).
+
+This is not a new wire field: `compiled_program` was already optional in shape
+(a fully missing artifact already recompiled from the script text, for the
+store checker's audit replay). Revision 23 widens when an absent program is
+expected — now also whenever hash and vars are present but the program is
+not — and changes what the FSM does about it: serve this node's own cache
+entry for that hash, falling back to the same recompile-from-text path,
+rather than treat a present hash with an absent program as a corrupt
+artifact. `compiled_vars` and `compiled_script_hash` remain mandatory for
+every scripted order exactly as before; only `compiled_program` becomes
+conditional on what this node's own cache already proves it has.
 
 ## Maintaining the revision
 

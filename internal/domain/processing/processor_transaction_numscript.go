@@ -31,13 +31,19 @@ type numscriptPostingProducer struct {
 	// compiledProgram/compiledVars/compiledScriptHash are the Numscript VM
 	// artifact admission compiled on the leader's parallel path (from
 	// OrderTechnical, staged like the hash above). Execution decodes and runs
-	// the bytecode on the VM, the only engine. A missing artifact (all three
-	// empty) is recompiled from the script text; a present one this binary
-	// cannot run — partial, an invalid header, a bytecode version the bundled
-	// library cannot read, or bytes that fail decoding or verification — fails
-	// the order loudly. The outcome is a function of the committed entry and
-	// the running binary alone, so every node on that binary applies it
-	// identically (invariant #2).
+	// the bytecode on the VM, the only engine. A fully missing artifact (all
+	// three empty) is recompiled from the script text. Admission may also omit
+	// compiled_program alone, keeping vars and hash, once it has already
+	// attached these exact bytes to an earlier proposal for this hash
+	// (NumscriptCache.SeenCompiledProgram, admission's own bookkeeping — not
+	// this node's apply-side cache). This node then looks for the bytes in
+	// ITS OWN apply-side cache, or — on a miss, the ordinary case — recompiles
+	// from the script text exactly like the fully-missing case. Either way the
+	// outcome is a function of the committed entry and the running binary
+	// alone, never of which of these paths supplied the bytes (invariant #2):
+	// a present but otherwise broken program — an invalid header, a bytecode
+	// version the bundled library cannot read, or bytes that fail decoding or
+	// verification — still fails the order loudly.
 	compiledProgram    []byte
 	compiledVars       []byte
 	compiledScriptHash []byte
@@ -147,17 +153,30 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	// under the same bundled library, never changes the outcome (history from
 	// a library with different execution semantics can replay differently, see
 	// numscript.CompileForReplay). Re-running an audited order, which never
-	// carries compiled code, always gets here. Anywhere else it is an admission
-	// bug — admission binds an artifact to every scripted order it proposes,
-	// and one it forwards without is marked preload_unavailable and rejected
-	// before reaching here — so it is flagged under Antithesis (invariant #7).
+	// carries compiled code, always gets here. Anywhere else a fully missing
+	// artifact is an admission bug — admission binds vars and a hash to every
+	// scripted order it proposes, and one it forwards without is marked
+	// preload_unavailable and rejected before reaching here — so it is flagged
+	// under Antithesis (invariant #7).
 	//
-	// A present artifact is never repaired from the text: admission produces
-	// all of it for every scripted order, so a partial one, an invalid header
-	// or a bytecode version the bundled library cannot read is a corrupt or
-	// impossible state, and SafeExecCompiled fails it loudly below.
+	// A present program is never repaired from the text: an invalid header, a
+	// bytecode version the bundled library cannot read, or bytes that fail
+	// decoding or verification are a corrupt or impossible state, and
+	// SafeExecCompiled fails them loudly below. But the program alone — vars
+	// and hash present — may be deliberately omitted: admission skips it once
+	// its own NumscriptCache.SeenCompiledProgram reports it already attached
+	// these exact bytes to an earlier proposal (admission's own bookkeeping,
+	// unrelated to this node's apply-side cache — the two are separate
+	// NumscriptCache instances, see cache.go). This node then looks for the
+	// bytes in ITS OWN apply-side cache (PeekCompiledProgram); a miss (the
+	// ordinary case — that cache is never warmed by anything admission does —
+	// or a restart, LRU eviction, new joiner, or leadership change)
+	// recompiles from the script text exactly like the fully-missing case,
+	// rather than asserting unreachable — admission deliberately producing
+	// this shape is the opposite of a bug.
 	compiledProgram, compiledVars, compiledScriptHash := p.compiledProgram, p.compiledVars, p.compiledScriptHash
-	if len(compiledProgram) == 0 && len(compiledVars) == 0 && len(compiledScriptHash) == 0 {
+	switch {
+	case len(compiledProgram) == 0 && len(compiledVars) == 0 && len(compiledScriptHash) == 0:
 		if !p.compileMissing {
 			assert.Unreachable("scripted order reached FSM apply without its compiled numscript artifact", map[string]any{
 				"ledger": ledgerName,
@@ -170,6 +189,24 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		}
 
 		compiledProgram, compiledVars, compiledScriptHash = compiled.Program, compiled.Vars, compiled.ScriptHash
+
+	case len(compiledProgram) == 0:
+		if len(compiledScriptHash) != len([16]byte{}) {
+			return nil, &domain.ErrNumscriptRuntime{
+				Detail: fmt.Sprintf("compiled numscript artifact: script hash has %d bytes, want 16", len(compiledScriptHash)),
+			}
+		}
+
+		if cached, ok := p.cache.PeekCompiledProgram([16]byte(compiledScriptHash)); ok {
+			compiledProgram = cached
+		} else {
+			compiled, compileErr := numscript.CompileForReplay(p.cache, script.GetPlain(), script.GetVars())
+			if compileErr != nil {
+				return nil, compileErr
+			}
+
+			compiledProgram = compiled.Program
+		}
 	}
 
 	// The artifact is bound to the exact text admission compiled. The text

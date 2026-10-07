@@ -46,3 +46,64 @@ func TestResolveScripts_BindsCompiledArtifact(t *testing.T) {
 	_, err = numscriptlib.VerifyCompiledProgramWithVars(program, &vars)
 	require.NoError(t, err, "the bound artifact must pass the same verification the FSM runs")
 }
+
+// TestResolveScripts_OmitsBytecodeOnceAdmissionHasSentIt: once this admission
+// instance has attached a script hash's bytecode to one proposal, a later
+// order using the identical script omits compiled_program, keeping vars and
+// hash. This is admission's own bookkeeping (NumscriptCache.SeenCompiledProgram)
+// — independent of whether the first proposal ever committed or of anything
+// the FSM apply path cached on its own, separate NumscriptCache instance; see
+// the FSM-side cache-or-recompile fallback in
+// processor_transaction_numscript.go.
+func TestResolveScripts_OmitsBytecodeOnceAdmissionHasSentIt(t *testing.T) {
+	t.Parallel()
+
+	const script = `send [USD 10] (
+	source = @world
+	destination = @dst
+)`
+
+	admission, _ := createTestAdmission(t, createTestStore(t))
+
+	first := scriptOrder(testLedgerName, script)
+	require.NoError(t, runResolveProvenance(t, admission, []*raftcmdpb.Order{first}, false))
+
+	firstTechnical := first.GetTechnical()
+	require.NotEmpty(t, firstTechnical.GetCompiledProgram(), "the first use of a script must carry the bytecode")
+
+	second := scriptOrder(testLedgerName, script)
+	require.NoError(t, runResolveProvenance(t, admission, []*raftcmdpb.Order{second}, false))
+
+	secondTechnical := second.GetTechnical()
+	require.Empty(t, secondTechnical.GetCompiledProgram(),
+		"a script this admission instance has already sent must not carry the bytecode again")
+	require.Equal(t, firstTechnical.GetCompiledVars(), secondTechnical.GetCompiledVars(),
+		"vars are still bound per order even when the program is omitted")
+	require.Equal(t, firstTechnical.GetCompiledScriptHash(), secondTechnical.GetCompiledScriptHash())
+}
+
+// TestResolveScripts_DifferentAdmissionInstancesEachSendBytecodeOnce: two
+// independent admission instances (e.g. across a leadership change) each
+// attach the bytecode on their own first use of a script — one instance
+// having already sent it carries no information for another.
+func TestResolveScripts_DifferentAdmissionInstancesEachSendBytecodeOnce(t *testing.T) {
+	t.Parallel()
+
+	const script = `send [USD 10] (
+	source = @world
+	destination = @dst
+)`
+
+	store := createTestStore(t)
+
+	firstAdmission, _ := createTestAdmission(t, store)
+	first := scriptOrder(testLedgerName, script)
+	require.NoError(t, runResolveProvenance(t, firstAdmission, []*raftcmdpb.Order{first}, false))
+	require.NotEmpty(t, first.GetTechnical().GetCompiledProgram())
+
+	secondAdmission, _ := createTestAdmission(t, store)
+	second := scriptOrder(testLedgerName, script)
+	require.NoError(t, runResolveProvenance(t, secondAdmission, []*raftcmdpb.Order{second}, false))
+	require.NotEmpty(t, second.GetTechnical().GetCompiledProgram(),
+		"a new admission instance's first use of a script must still carry the bytecode")
+}

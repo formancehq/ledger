@@ -2086,9 +2086,23 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			// every node. Discovery always returns one on success — a script the
 			// VM cannot run already failed discovery with ErrNumscriptCompile.
 			technical := orderTechnical(order)
-			technical.CompiledProgram = discovered.Compiled.Program
 			technical.CompiledVars = discovered.Compiled.Vars
 			technical.CompiledScriptHash = discovered.Compiled.ScriptHash
+
+			// Omit the bytecode itself once this admission instance has already
+			// attached these exact bytes for this hash before (SeenCompiledProgram
+			// records it as a side effect of this same call) — never on the
+			// first sighting. This is independent of whether that earlier
+			// proposal ever committed: any replica that turns out to lack this
+			// hash's bytecode recompiles it identically from the script text
+			// instead of executing it (processor_transaction_numscript.go), the
+			// same fallback already used for a fully missing artifact. Omitting
+			// never risks the order, only its proposal size.
+			if a.numscriptCache.SeenCompiledProgram([16]byte(discovered.Compiled.ScriptHash), discovered.Compiled.Program) {
+				technical.CompiledProgram = nil
+			} else {
+				technical.CompiledProgram = discovered.Compiled.Program
+			}
 
 			// Fold this script's effects into the batch accumulator so a later
 			// order in the same atomic batch resolves against them (EN-1406 P1-1).
