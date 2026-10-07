@@ -293,10 +293,14 @@ The artifact is bound to its script text by an XXH3-128 hash
 The artifact itself carries the Numscript library's bytecode version
 (major.minor). The FSM executes it when the bundled library can read that
 version: the same major and a minor no newer for a stable major, or exactly
-the same version for an unstable `0.x`. Otherwise — or when the artifact is
-malformed — the order fails with a Numscript runtime error; the script is
-recompiled from its text only when the artifact is missing, so foreign
-bytecode is never run and a present artifact is never repaired.
+the same version for an unstable `0.x`. A version it cannot read means
+another library version produced the artifact; the FSM then derives program
+and vars from the script text with its own library instead, exactly as the
+store checker's audit replay derives every order (see revision 23 below), so
+foreign bytecode is never run. A malformed artifact — one the library reads
+but cannot decode or verify, a partial one, or one whose script hash does not
+match the resolved text — fails the order with a Numscript runtime error and
+is never repaired from the text.
 
 Revision 22 also moves where and how a statically invalid script fails.
 `Parse` checks syntax only; the Numscript typechecker runs inside the

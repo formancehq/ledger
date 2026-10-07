@@ -836,8 +836,9 @@ across an FSM outcome change" above:
   the VM, while the replicas that applied it before the stop interpreted it
   with the old library: for the scripts listed above the outcome differs. A
   rollback exposes the same window in the other direction, and a later
-  library update that changes the bytecode version fails such entries instead
-  (see the next point). Such a replica must be resynchronised from the leader.
+  library update that changes the bytecode version opens the same window for
+  entries that do carry an artifact (see the next point). Such a replica must
+  be resynchronised from the leader.
 - **`ledgerctl check` cannot single out a straddled replica.** Each replica's
   audit chain stays internally consistent, and the check's replay on the new
   binary already reports every affected entry the old library applied, on
@@ -845,24 +846,31 @@ across an FSM outcome change" above:
   comparing transaction metadata and audit entries across replicas; a replica
   that applied entries inside the window must be resynchronised from the
   leader.
-- **An artifact this binary cannot read fails the order, never recompiled.**
-  The FSM runs an artifact when both its halves carry a bytecode version
-  (major.minor) the bundled Numscript library can read. For a stable major that
-  is the same major and a minor no newer than its own. An unstable `0.x`
-  version, which the library uses today, reads only itself. Anything else —
-  another version, an invalid header, or bytes that do not decode — fails the
-  order with a Numscript runtime error, identically on every node running that
-  binary; the script is never recompiled or interpreted in the artifact's
-  place. Only an entry that carries no artifact is recompiled. v3 has no
-  cross-version replay contract yet. The operational consequence: after a
-  library update that changes the bytecode version in a way this binary cannot
-  read (any change while the version is `0.x`), the Raft entries a node
-  replays above its last snapshot after restarting on the new binary fail on
-  replay although they succeeded on the binary that admitted them; a rollback
-  has the same effect in the other direction. A replica that applied such
-  entries before the stop therefore diverges from one that replays them and
-  must be resynchronised from the leader — the same repair as a straddled
-  window, which `ledgerctl check` likewise does not detect.
+- **An artifact this binary cannot read is derived from the script text,
+  never failed.** The FSM runs a committed artifact when both its halves carry
+  a bytecode version (major.minor) the bundled Numscript library can read. For
+  a stable major that is the same major and a minor no newer than its own. An
+  unstable `0.x` version, which the library uses today, reads only itself. Any
+  other version means another library version produced the artifact, and the
+  FSM then derives program and vars from the script text with its own library
+  — the same path the store checker's audit replay takes for every order (see
+  "Omitting already-cached Numscript bytecode" below). Only corruption fails
+  the order with a Numscript runtime error, identically on every node running
+  that binary: an invalid header the library reads, bytes that do not decode
+  or verify, a partial artifact, or a script hash that does not match the
+  resolved text; such an artifact is never repaired from the text. The
+  operational consequence: after a library update that changes the bytecode
+  version (any change while the version is `0.x`), the Raft entries a node
+  replays above its last snapshot after restarting on the new binary run on a
+  recompile of their script text under the new library, while the replicas
+  that applied them before the stop ran the committed bytecode under the old
+  one; a rollback has the same effect in the other direction. The outcomes
+  agree only as far as the library keeps the script's semantics stable across
+  the two versions. Where they differ — the scripts listed above — this is
+  the straddled window of the previous points, with the same repair: a
+  replica that applied such entries before the stop diverges from one that
+  replays them and must be resynchronised from the leader, which
+  `ledgerctl check` likewise does not detect.
 
 ### Omitting already-cached Numscript bytecode (revision 23)
 
