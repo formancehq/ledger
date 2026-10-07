@@ -229,11 +229,8 @@ The Write-Ahead Log (WAL) metrics track the performance of the WAL append operat
 ### Propose Queue Metrics
 
 The propose queue buffers proposals (transactions) before they are submitted to Raft consensus.
-
-| Metric | Type | Unit | Description |
-|--------|------|------|-------------|
-| `raft.node.propose.load` | Histogram | 1 | Current number of items in the propose queue. High values indicate backpressure. |
-| `raft.node.propose.full` | Counter | 1 | Number of times the propose queue was full and proposals were dropped. **Alert if non-zero**. |
+Admission instruments it: see `admission.propose_queue.load` and
+`admission.propose_queue.full` in the [admission metrics](#admission-metrics).
 
 ## Transport Metrics
 
