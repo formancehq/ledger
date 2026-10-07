@@ -83,6 +83,12 @@ type Checker struct {
 	// bulks, or naming part of one, satisfies every other check. Guarded by mu.
 	committedBulks map[uint64]committedBulk
 
+	// setupMaxSeq is the global sequence of setup's last log. Every log at or
+	// below it predates the workers and was seeded into the model, not learned,
+	// so the audit trail's entries for them are not judged. Set before the
+	// workers start.
+	setupMaxSeq uint64
+
 	// ledgerIdentities maps each ledger to the id and creation timestamp its
 	// creation log reported. The model assigns neither, so this is the only
 	// record a read of those two fields can be held to. Guarded by mu.

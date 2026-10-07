@@ -275,7 +275,7 @@ func (c *Checker) validateAuditPage(maxTicket, learnedBefore uint64, entries []a
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	logs, firstLearned, committedMax := c.committedLogsBySequence()
+	logs, committedMax := c.committedLogsBySequence()
 	unknownBulks := c.bulksOutstandingAt(maxTicket)
 	typed := auditFiltersOrderType(filter)
 
@@ -299,10 +299,10 @@ func (c *Checker) validateAuditPage(maxTicket, learnedBefore uint64, entries []a
 			continue
 		}
 
-		// Setup committed ledgers and their initial schema before the first bulk
-		// this driver drained; the oracle seeded that state directly and learned no
-		// sequence for it, so entries below the first learned one are not judged.
-		if !e.failed && e.maxLog < firstLearned {
+		// Setup committed ledgers and their initial schema before the workers
+		// started; the oracle seeded that state directly and learned no sequence
+		// for it, so setup's entries are not judged.
+		if !e.failed && e.maxLog <= c.setupMaxSeq {
 			continue
 		}
 
@@ -333,7 +333,7 @@ func (c *Checker) validateAuditPage(maxTicket, learnedBefore uint64, entries []a
 			return auditVerdict{finding: "audit entry names logs the model never committed", entry: describeAuditEntry(e), why: "committed frontier is " + strconv.FormatUint(committedMax, 10), missingSeq: e.minLog}
 		}
 
-		if why, missing := auditSuccessMismatch(e, logs, c.committedBulks, committedMax, firstLearned); why != "" {
+		if why, missing := auditSuccessMismatch(e, logs, c.committedBulks, committedMax); why != "" {
 			return auditVerdict{finding: "audit entry outside model", entry: describeAuditEntry(e), why: why, missingSeq: missing}
 		}
 
@@ -353,7 +353,7 @@ func (c *Checker) validateAuditPage(maxTicket, learnedBefore uint64, entries []a
 	// page this one does not hold.
 	if cond := bareAuditLogSeqRange(filter); cond != nil && len(entries) < pageSize && afterSeq == 0 {
 		for seq := range logs {
-			if seq < firstLearned || !matchUintBounds(cond, seq) {
+			if !matchUintBounds(cond, seq) {
 				continue
 			}
 
@@ -508,14 +508,11 @@ type committedLog struct {
 
 // committedLogsBySequence indexes every committed log a sequence was learned
 // for — the oracle's rows and the ledger-level logs it keeps no row for — with
-// the lowest and highest such sequence. Caller holds c.mu.
-func (c *Checker) committedLogsBySequence() (logs map[uint64]committedLog, minSeq, maxSeq uint64) {
+// the highest such sequence. Caller holds c.mu.
+func (c *Checker) committedLogsBySequence() (logs map[uint64]committedLog, maxSeq uint64) {
 	logs = make(map[uint64]committedLog, len(c.committedLogs))
 	note := func(seq uint64, l committedLog) {
 		logs[seq] = l
-		if minSeq == 0 || seq < minSeq {
-			minSeq = seq
-		}
 		maxSeq = max(maxSeq, seq)
 	}
 
@@ -529,7 +526,7 @@ func (c *Checker) committedLogsBySequence() (logs map[uint64]committedLog, minSe
 		note(seq, committedLog{ledger: rec.ledger, kind: rec.kind})
 	}
 
-	return logs, minSeq, maxSeq
+	return logs, maxSeq
 }
 
 // bulksOutstandingAt reports whether any bulk dispatched no later than
@@ -576,7 +573,7 @@ func (c *Checker) rejectionExplains(e auditEntry) bool {
 // frontier is not one bulk of the model, or "" when it is: its sequence range
 // is contiguous, one order per log, every sequence is a committed log, and the
 // entry's ledgers are exactly those logs' ledgers.
-func auditSuccessMismatch(e auditEntry, logs map[uint64]committedLog, bulks map[uint64]committedBulk, committedMax, firstLearned uint64) (why string, missingSeq uint64) {
+func auditSuccessMismatch(e auditEntry, logs map[uint64]committedLog, bulks map[uint64]committedBulk, committedMax uint64) (why string, missingSeq uint64) {
 	if e.minLog == 0 || e.maxLog < e.minLog {
 		return "empty or inverted log range", 0
 	}
@@ -618,18 +615,14 @@ func auditSuccessMismatch(e auditEntry, logs map[uint64]committedLog, bulks map[
 
 	// One bulk is one entry, so the range must be some bulk's own boundaries: a
 	// contiguous run of committed logs is not enough, or an entry merging two
-	// adjacent bulks — or naming part of one — passes every check above. Below the
-	// first learned sequence the model saw no bulk drain, so there is nothing to
-	// compare against.
-	if e.minLog >= firstLearned {
-		bulk, recorded := bulks[e.minLog]
-		if !recorded {
-			return "no committed bulk begins at " + strconv.FormatUint(e.minLog, 10), e.minLog
-		}
+	// adjacent bulks — or naming part of one — passes every check above.
+	bulk, recorded := bulks[e.minLog]
+	if !recorded {
+		return "no committed bulk begins at " + strconv.FormatUint(e.minLog, 10), e.minLog
+	}
 
-		if bulk.maxSeq != e.maxLog {
-			return "the bulk at " + strconv.FormatUint(e.minLog, 10) + " ends at " + strconv.FormatUint(bulk.maxSeq, 10) + ", entry names " + strconv.FormatUint(e.maxLog, 10), 0
-		}
+	if bulk.maxSeq != e.maxLog {
+		return "the bulk at " + strconv.FormatUint(e.minLog, 10) + " ends at " + strconv.FormatUint(bulk.maxSeq, 10) + ", entry names " + strconv.FormatUint(e.maxLog, 10), 0
 	}
 
 	return "", 0
@@ -1373,12 +1366,12 @@ func (c *Checker) validateAuditEntry(maxTicket uint64, e auditEntry) auditVerdic
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	logs, firstLearned, committedMax := c.committedLogsBySequence()
+	logs, committedMax := c.committedLogsBySequence()
 	unknownBulks := c.bulksOutstandingAt(maxTicket)
 
 	// System-scoped and setup-era entries are not modelled, the same exemptions
 	// validateAuditPage grants them.
-	if len(e.ledgers) == 0 || !e.failed && e.maxLog < firstLearned {
+	if len(e.ledgers) == 0 || !e.failed && e.maxLog <= c.setupMaxSeq {
 		return auditVerdict{}
 	}
 
@@ -1398,7 +1391,7 @@ func (c *Checker) validateAuditEntry(maxTicket uint64, e auditEntry) auditVerdic
 		return auditVerdict{finding: "audit entry names logs the model never committed", entry: describeAuditEntry(e), why: "committed frontier is " + strconv.FormatUint(committedMax, 10)}
 	}
 
-	if why, missing := auditSuccessMismatch(e, logs, c.committedBulks, committedMax, firstLearned); why != "" {
+	if why, missing := auditSuccessMismatch(e, logs, c.committedBulks, committedMax); why != "" {
 		return auditVerdict{finding: "audit entry outside model", entry: describeAuditEntry(e), why: why, missingSeq: missing}
 	}
 

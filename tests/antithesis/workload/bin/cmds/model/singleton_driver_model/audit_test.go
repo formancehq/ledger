@@ -65,52 +65,47 @@ func TestAuditSuccessMismatchPinsOneBulk(t *testing.T) {
 	entry := auditEntry{seq: 7, ledgers: []string{"a", "b"}, orderCount: 3, minLog: 10, maxLog: 12, itemSeqs: []uint64{10, 11, 12}}
 	bulks := map[uint64]committedBulk{10: {minSeq: 10, maxSeq: 12, orders: 3}}
 
-	why, _ := auditSuccessMismatch(entry, logs, bulks, 12, 10)
+	why, _ := auditSuccessMismatch(entry, logs, bulks, 12)
 	require.Empty(t, why)
 
 	archived := entry
 	archived.itemSeqs = nil
-	why, _ = auditSuccessMismatch(archived, logs, bulks, 12, 10)
+	why, _ = auditSuccessMismatch(archived, logs, bulks, 12)
 	require.Empty(t, why, "purged items are not a mismatch")
 
 	e := entry
 	e.ledgers = []string{"a"}
-	why, _ = auditSuccessMismatch(e, logs, bulks, 12, 10)
+	why, _ = auditSuccessMismatch(e, logs, bulks, 12)
 	require.Contains(t, why, "entry names a")
 
 	e = entry
 	e.orderCount = 2
-	why, _ = auditSuccessMismatch(e, logs, bulks, 12, 10)
+	why, _ = auditSuccessMismatch(e, logs, bulks, 12)
 	require.Contains(t, why, "order count")
 
 	e = entry
 	e.maxLog = 13
-	why, _ = auditSuccessMismatch(e, logs, bulks, 12, 10)
+	why, _ = auditSuccessMismatch(e, logs, bulks, 12)
 	require.Contains(t, why, "straddles")
 
 	e = entry
 	e.itemSeqs = []uint64{10, 11, 99}
-	why, _ = auditSuccessMismatch(e, logs, bulks, 12, 10)
+	why, _ = auditSuccessMismatch(e, logs, bulks, 12)
 	require.Contains(t, why, "outside the entry")
 
 	// One entry per bulk: a contiguous run of committed logs is not enough when
 	// the bulks behind it were separate.
 	split := map[uint64]committedBulk{10: {minSeq: 10, maxSeq: 11, orders: 2}, 12: {minSeq: 12, maxSeq: 12, orders: 1}}
-	why, _ = auditSuccessMismatch(entry, logs, split, 12, 10)
+	why, _ = auditSuccessMismatch(entry, logs, split, 12)
 	require.Contains(t, why, "ends at 11")
 
 	merged := auditEntry{seq: 7, ledgers: []string{"b"}, orderCount: 1, minLog: 11, maxLog: 11}
-	why, missing := auditSuccessMismatch(merged, logs, bulks, 12, 10)
+	why, missing := auditSuccessMismatch(merged, logs, bulks, 12)
 	require.Contains(t, why, "no committed bulk begins at 11")
 	require.EqualValues(t, 11, missing)
 
-	// Setup-era ranges predate the first bulk this driver drained, so no boundary
-	// was recorded for them.
-	why, _ = auditSuccessMismatch(merged, logs, bulks, 12, 20)
-	require.Empty(t, why)
-
 	delete(logs, 11)
-	why, _ = auditSuccessMismatch(entry, logs, bulks, 12, 10)
+	why, _ = auditSuccessMismatch(entry, logs, bulks, 12)
 	require.Contains(t, why, "no committed log")
 }
 
@@ -420,16 +415,35 @@ func TestValidateAuditPageReverseTail(t *testing.T) {
 func TestValidateAuditPageSetupEraAndLedgerLevelLogs(t *testing.T) {
 	t.Parallel()
 
-	c := &Checker{ledgerNames: []string{"L"}, modelState: committedStateWithSequences(t, 42), inflight: map[uint64]oracle.Bulk{}, ledgerLogSeqs: map[uint64]ledgerLogRecord{}, committedBulks: singleOrderBulks(42, 43), committedLogs: metadataLogs(42)}
+	c := &Checker{ledgerNames: []string{"L"}, modelState: committedStateWithSequences(t, 42), inflight: map[uint64]oracle.Bulk{}, ledgerLogSeqs: map[uint64]ledgerLogRecord{}, committedBulks: singleOrderBulks(42, 43), committedLogs: metadataLogs(42), setupMaxSeq: 2}
 
 	setup := auditEntry{seq: 1, ledgers: []string{"L"}, orderCount: 1, minLog: 2, maxLog: 2}
-	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{setup}, false, nil, 50, 0, "").finding, "below the first learned sequence is setup")
+	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{setup}, false, nil, 50, 0, "").finding, "at or below setup's last log is setup")
 
 	ledgerLevel := auditEntry{seq: 8, ledgers: []string{"L"}, orderCount: 1, minLog: 43, maxLog: 43}
 	require.Equal(t, "audit entry names logs the model never committed", c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{ledgerLevel}, false, nil, 50, 0, "").finding)
 
 	c.ledgerLogSeqs[43] = ledgerLogRecord{ledger: "L", kind: "saved_ledger_metadata"}
 	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{ledgerLevel}, false, nil, 50, 0, "").finding, "a learned ledger-level sequence is a committed log")
+}
+
+// Before the first bulk drains the model has learned no sequence, so setup's
+// entries are told apart by setup's own last log, not by what was learned.
+func TestValidateAuditPageBeforeFirstDrain(t *testing.T) {
+	t.Parallel()
+
+	c := &Checker{ledgerNames: []string{"L"}, modelState: oracle.NewGlobalState(), inflight: map[uint64]oracle.Bulk{}, ledgerLogSeqs: map[uint64]ledgerLogRecord{}, committedBulks: map[uint64]committedBulk{}, committedLogs: map[uint64]committedLog{}, setupMaxSeq: 8}
+
+	createLedger := auditEntry{seq: 6, ledgers: []string{"L"}, orderCount: 1, minLog: 6, maxLog: 6}
+	require.Empty(t, c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{createLedger}, true, nil, 50, 0, "").finding, "setup's CreateLedger is not judged")
+	require.Empty(t, c.validateAuditEntry(0, createLedger).finding, "setup's CreateLedger is not judged")
+
+	driver := auditEntry{seq: 9, ledgers: []string{"L"}, orderCount: 1, minLog: 9, maxLog: 9}
+	require.Equal(t, "audit entry names logs the model never committed", c.validateAuditPage(0, c.auditLearnSeq, []auditEntry{driver, createLedger}, true, nil, 50, 0, "").finding)
+	require.Equal(t, "audit entry names logs the model never committed", c.validateAuditEntry(0, driver).finding)
+
+	c.inflight[1] = oracle.Bulk{}
+	require.Empty(t, c.validateAuditPage(1, c.auditLearnSeq, []auditEntry{driver, createLedger}, true, nil, 50, 0, "").finding, "an undrained bulk may have committed it")
 }
 
 // The audit trail serves its whole history from the first page on, so a
