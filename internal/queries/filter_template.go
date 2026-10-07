@@ -253,7 +253,8 @@ func resolveValue(fieldType FieldType, value string, vars map[string]any) (any, 
 	}
 }
 
-var varRegex = regexp.MustCompile(`^\${([a-z_]+)}$`)
+// Variable names may contain digits after the first char, as in ParseTemplate.
+var varRegex = regexp.MustCompile(`^\${([a-z_][a-z0-9_]*)}$`)
 
 func extractVariableName(s string) (string, error) {
 	matches := varRegex.FindStringSubmatch(s)
