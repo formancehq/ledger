@@ -78,29 +78,60 @@ func vmTestScope(t *testing.T) *MockScope {
 	return mockStore
 }
 
+// testArtifact is the technical artifact a producer test stages, in any
+// combination of the four OrderTechnical fields — the shapes admission
+// produces and the ones it never does (see classifyCompiledArtifact).
+type testArtifact struct {
+	program, programHash, vars, scriptHash []byte
+}
+
+// byValueArtifact is the shape of a script's first order from an admission
+// instance: the bytecode itself, next to vars and script hash.
+func byValueArtifact(programBytes, varsBytes, scriptHash []byte) testArtifact {
+	return testArtifact{program: programBytes, vars: varsBytes, scriptHash: scriptHash}
+}
+
+// byReferenceArtifact is the shape of every later order of the script from
+// that instance: the bytecode's hash in place of the bytes.
+func byReferenceArtifact(programBytes, varsBytes, scriptHash []byte) testArtifact {
+	programHash := numscript.HashProgram(programBytes)
+
+	return testArtifact{programHash: programHash[:], vars: varsBytes, scriptHash: scriptHash}
+}
+
 // produceVMScript runs the producer on vmScript against a fresh test scope and
-// a fresh cache, staging the given artifact (all nil for an order without
-// one) the way the dispatcher would from OrderTechnical.
+// a fresh cache, staging the given by-value artifact (all nil for an order
+// without one) the way the dispatcher would from OrderTechnical.
 func produceVMScript(t *testing.T, vars map[string]string, programBytes, varsBytes, scriptHash []byte) (*produceResult, domain.SerializableError) {
 	t.Helper()
 
-	return produceVMScriptWithCache(t, numscript.NewNumscriptCache(16), vars, programBytes, varsBytes, scriptHash)
+	return produceVMScriptArtifact(t, numscript.NewNumscriptCache(16), vars, byValueArtifact(programBytes, varsBytes, scriptHash))
 }
 
 // produceVMScriptWithCache is produceVMScript against a caller-supplied cache,
 // for tests that need to observe behavior across more than one order sharing
-// the same node-local cache (e.g. a program omitted because a prior order on
-// this cache already warmed it).
+// the same node-local cache (e.g. a by-value order warming it for a later
+// by-reference one).
 func produceVMScriptWithCache(t *testing.T, cache *numscript.NumscriptCache, vars map[string]string, programBytes, varsBytes, scriptHash []byte) (*produceResult, domain.SerializableError) {
 	t.Helper()
 
+	return produceVMScriptArtifact(t, cache, vars, byValueArtifact(programBytes, varsBytes, scriptHash))
+}
+
+// produceVMScriptArtifact runs the producer on vmScript against a fresh test
+// scope and the given cache, staging artifact as the dispatcher would from
+// OrderTechnical.
+func produceVMScriptArtifact(t *testing.T, cache *numscript.NumscriptCache, vars map[string]string, artifact testArtifact) (*produceResult, domain.SerializableError) {
+	t.Helper()
+
 	producer := &numscriptPostingProducer{
-		cache:              cache,
-		ledgerName:         "test",
-		assetCache:         map[string]cachedAssetPrecision{},
-		compiledProgram:    programBytes,
-		compiledVars:       varsBytes,
-		compiledScriptHash: scriptHash,
+		cache:               cache,
+		ledgerName:          "test",
+		assetCache:          map[string]cachedAssetPrecision{},
+		compiledProgram:     artifact.program,
+		compiledProgramHash: artifact.programHash,
+		compiledVars:        artifact.vars,
+		compiledScriptHash:  artifact.scriptHash,
 	}
 
 	return producer.produce(vmTestScope(t), "test",
@@ -204,31 +235,36 @@ func unreadableBytecodeVersions(t *testing.T) map[string]numscriptlib.BytecodeVe
 	return candidates
 }
 
-// TestProduce_UnreadableBytecodeVersionIsLoud: an artifact carrying a
-// bytecode version the bundled library cannot read fails the order loudly, for
-// either half. Admission produces the artifact with this very library and v3
-// has no cross-version replay contract, so a present artifact is never
-// repaired from the script text.
-func TestProduce_UnreadableBytecodeVersionIsLoud(t *testing.T) {
+// TestProduce_UnreadableBytecodeVersionDerivesFromText: an artifact carrying a
+// bytecode version the bundled library cannot read, in either half, came from
+// another library version — a replica mid rolling upgrade — and is not a
+// failure: the order is derived from the script text with this binary's own
+// library, business vars included (the committed vars say 999, the business
+// vars 100), to the outcome a readable artifact produces.
+func TestProduce_UnreadableBytecodeVersionDerivesFromText(t *testing.T) {
 	t.Parallel()
 
-	programBytes, varsBytes, scriptHash := compileArtifactForTest(t, vmScript, vmScriptVars)
+	programBytes, committedVars, scriptHash := compileArtifactForTest(t, vmScript, map[string]string{"amt": "USD/2 999"})
+
+	expected, err := produceVMScript(t, vmScriptVars, nil, nil, nil)
+	require.Nil(t, err)
 
 	for name, v := range unreadableBytecodeVersions(t) {
 		for _, half := range []string{"program", "vars"} {
 			t.Run(name+" "+half, func(t *testing.T) {
 				t.Parallel()
 
-				program, vars := programBytes, varsBytes
+				program, vars := programBytes, committedVars
 				if half == "program" {
 					program = withArtifactVersion(t, program, v)
 				} else {
 					vars = withArtifactVersion(t, vars, v)
 				}
 
-				_, err := produceVMScript(t, vmScriptVars, program, vars, scriptHash)
-				requireNumscriptRuntimeError(t, err, "decoding compiled numscript "+half)
-				require.Contains(t, err.Error(), "not readable by this build")
+				derived, err := produceVMScript(t, vmScriptVars, program, vars, scriptHash)
+				require.Nil(t, err)
+				require.Equal(t, expected, derived)
+				require.Equal(t, uint64(100), derived.Postings[0].GetAmount().ToBigInt().Uint64())
 			})
 		}
 	}
@@ -285,95 +321,101 @@ func TestProduce_InvalidArtifactHeaderIsLoud(t *testing.T) {
 	}
 }
 
-// TestProduce_PartialArtifactIsLoud: a program alone may be legitimately
-// absent (vars and hash present) — see
-// TestProduce_OmittedProgramRecompilesToTheSameOutcome — but every other
-// partial shape is a corrupt artifact admission never produces, and fails
-// the order loudly on both a cold and a warm cache (see
-// TestProduce_HashOnlyFailsConsistentlyOnHitAndMiss): vars is never
-// re-derived from the business script fields, so an absent or corrupt vars
-// field is never silently repaired, regardless of cache state.
+// TestProduce_PartialArtifactIsLoud: the artifact arrives by value, by
+// reference (see TestProduce_ProgramByReference*), or not at all; every other
+// combination of the four fields is a corrupt artifact admission never
+// produces and fails the order loudly — identically on a cold cache and on
+// one already warm for the script, since the shape is classified before any
+// cache access and vars are never re-derived from the business script fields
+// (invariant #2). The one by-reference shape with a malformed script hash is
+// a well-formed shape that fails the hash binding instead.
 func TestProduce_PartialArtifactIsLoud(t *testing.T) {
 	t.Parallel()
 
 	programBytes, varsBytes, scriptHash := compileArtifactForTest(t, vmScript, vmScriptVars)
+	programHash := numscript.HashProgram(programBytes)
 
 	for name, tc := range map[string]struct {
-		program, vars, hash []byte
-		detail              string
+		artifact testArtifact
+		detail   string
 	}{
-		"no vars":                {programBytes, nil, scriptHash, "decoding compiled numscript vars"},
-		"no hash":                {programBytes, varsBytes, nil, "does not match the resolved script text"},
-		"hash only":              {nil, nil, scriptHash, "decoding compiled numscript vars"},
-		"no program, short hash": {nil, varsBytes, scriptHash[:8], "script hash has 8 bytes, want 16"},
+		"no vars":                           {testArtifact{program: programBytes, scriptHash: scriptHash}, "is partial"},
+		"no script hash":                    {testArtifact{program: programBytes, vars: varsBytes}, "is partial"},
+		"script hash only":                  {testArtifact{scriptHash: scriptHash}, "is partial"},
+		"vars only":                         {testArtifact{vars: varsBytes}, "is partial"},
+		"program by value and by reference": {testArtifact{program: programBytes, programHash: programHash[:], vars: varsBytes, scriptHash: scriptHash}, "is partial"},
+		"program hash without vars":         {testArtifact{programHash: programHash[:], scriptHash: scriptHash}, "is partial"},
+		"program hash alone":                {testArtifact{programHash: programHash[:]}, "is partial"},
+		"short program hash":                {testArtifact{programHash: programHash[:8], vars: varsBytes, scriptHash: scriptHash}, "is partial"},
+		"by reference, short script hash":   {testArtifact{programHash: programHash[:], vars: varsBytes, scriptHash: scriptHash[:8]}, "does not match the resolved script text"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := produceVMScript(t, vmScriptVars, tc.program, tc.vars, tc.hash)
-			requireNumscriptRuntimeError(t, err, tc.detail)
+			_, coldErr := produceVMScriptArtifact(t, numscript.NewNumscriptCache(16), vmScriptVars, tc.artifact)
+			requireNumscriptRuntimeError(t, coldErr, tc.detail)
+
+			warm := numscript.NewNumscriptCache(16)
+			_, err := produceVMScriptArtifact(t, warm, vmScriptVars, byValueArtifact(programBytes, varsBytes, scriptHash))
+			require.Nil(t, err)
+
+			_, warmErr := produceVMScriptArtifact(t, warm, vmScriptVars, tc.artifact)
+			require.Equal(t, coldErr, warmErr, "a corrupt shape must fail identically whatever this node's cache holds")
 		})
 	}
 }
 
-// TestProduce_HashOnlyFailsConsistentlyOnHitAndMiss: vars and program both
-// absent, hash present, fails the same way whether this node's cache is cold
-// (TestProduce_PartialArtifactIsLoud's "hash only") or already warm for this
-// hash — the outcome must not depend on this node's own cache state
-// (invariant #2). compiledVars is never re-derived from the business script
-// fields on a miss, so there is nothing for a warm cache to disagree with.
-func TestProduce_HashOnlyFailsConsistentlyOnHitAndMiss(t *testing.T) {
+// TestProduce_ProgramByReferenceRecompilesToTheSameOutcome: a by-reference
+// order on a cold cache (restart, eviction, late joiner) compiles the script
+// text, accepts the bytes because they hash to the committed program hash,
+// and produces exactly what the by-value artifact produces.
+func TestProduce_ProgramByReferenceRecompilesToTheSameOutcome(t *testing.T) {
+	t.Parallel()
+
+	programBytes, varsBytes, scriptHash := compileArtifactForTest(t, vmScript, vmScriptVars)
+
+	byValue, err := produceVMScript(t, vmScriptVars, programBytes, varsBytes, scriptHash)
+	require.Nil(t, err)
+
+	byReference, err := produceVMScriptArtifact(t, numscript.NewNumscriptCache(16), vmScriptVars, byReferenceArtifact(programBytes, varsBytes, scriptHash))
+	require.Nil(t, err)
+
+	require.Equal(t, byValue, byReference)
+}
+
+// TestProduce_ProgramByReferenceUsesWarmCache: when this node applied the
+// earlier by-value order of the script (the steady state — that order warmed
+// every replica), a by-reference order runs the cached bytes directly, no
+// compile, to exactly the same outcome.
+func TestProduce_ProgramByReferenceUsesWarmCache(t *testing.T) {
 	t.Parallel()
 
 	programBytes, varsBytes, scriptHash := compileArtifactForTest(t, vmScript, vmScriptVars)
 	cache := numscript.NewNumscriptCache(16)
 
-	_, err := produceVMScriptWithCache(t, cache, vmScriptVars, programBytes, varsBytes, scriptHash)
+	byValue, err := produceVMScriptWithCache(t, cache, vmScriptVars, programBytes, varsBytes, scriptHash)
 	require.Nil(t, err)
 
-	_, err = produceVMScriptWithCache(t, cache, vmScriptVars, nil, nil, scriptHash)
-	requireNumscriptRuntimeError(t, err, "decoding compiled numscript vars")
+	byReference, err := produceVMScriptArtifact(t, cache, vmScriptVars, byReferenceArtifact(programBytes, varsBytes, scriptHash))
+	require.Nil(t, err)
+
+	require.Equal(t, byValue, byReference)
 }
 
-// TestProduce_OmittedProgramRecompilesToTheSameOutcome: admission may omit
-// compiled_program alone (keeping vars and hash) once it has already attached
-// these exact bytes to an earlier proposal for this hash. On a cache miss —
-// the case here, a fresh cache, which is also the ordinary case since
-// nothing admission does ever warms this node's apply-side cache — this node
-// recompiles from the script text and produces exactly what the full
-// artifact produces.
-func TestProduce_OmittedProgramRecompilesToTheSameOutcome(t *testing.T) {
-	t.Parallel()
-
-	programBytes, varsBytes, scriptHash := compileArtifactForTest(t, vmScript, vmScriptVars)
-
-	withArtifact, err := produceVMScript(t, vmScriptVars, programBytes, varsBytes, scriptHash)
-	require.Nil(t, err)
-
-	omittedProgram, err := produceVMScript(t, vmScriptVars, nil, varsBytes, scriptHash)
-	require.Nil(t, err)
-
-	require.Equal(t, withArtifact, omittedProgram)
-}
-
-// TestProduce_OmittedProgramUsesCommittedVarsOnHitAndMiss: compiledVars is
-// the committed field and is never re-derived from the business script
-// fields on either path — a cold cache recompiles only the program and
-// pairs it with the same committed compiledVars a warm cache would have used
-// directly. Pairing a locally recompiled program with committed vars is safe
-// because compiling identical text under the same bundled library is
-// deterministic (see numscript-library.md): the program's variable layout is
-// the same regardless of which node, or which of its compiles, produced it.
-// Here compiledVars intentionally differs from vmScriptVars (the business
-// fields CompileForReplay would use if it ever bound vars itself) — the
-// posting must reflect compiledVars either way, proving neither path
-// substitutes the business fields for it.
-func TestProduce_OmittedProgramUsesCommittedVarsOnHitAndMiss(t *testing.T) {
+// TestProduce_ProgramByReferenceUsesCommittedVarsOnHitAndMiss: the committed
+// compiledVars run on both paths and are never re-derived from the business
+// script fields — a cold cache recompiles only the program and pairs it with
+// the same committed vars a warm cache uses directly. compiledVars here
+// intentionally differs from vmScriptVars (what a recompile that bound vars
+// itself would use): the posting must reflect compiledVars either way, and
+// the two outcomes must be identical (invariant #2).
+func TestProduce_ProgramByReferenceUsesCommittedVarsOnHitAndMiss(t *testing.T) {
 	t.Parallel()
 
 	programBytes, differentVarsBytes, scriptHash := compileArtifactForTest(t, vmScript, map[string]string{"amt": "USD/2 999"})
+	byReference := byReferenceArtifact(programBytes, differentVarsBytes, scriptHash)
 
-	cold, err := produceVMScript(t, vmScriptVars, nil, differentVarsBytes, scriptHash)
+	cold, err := produceVMScriptArtifact(t, numscript.NewNumscriptCache(16), vmScriptVars, byReference)
 	require.Nil(t, err)
 	require.Equal(t, uint64(999), cold.Postings[0].GetAmount().ToBigInt().Uint64())
 
@@ -381,34 +423,33 @@ func TestProduce_OmittedProgramUsesCommittedVarsOnHitAndMiss(t *testing.T) {
 	_, err = produceVMScriptWithCache(t, cache, vmScriptVars, programBytes, differentVarsBytes, scriptHash)
 	require.Nil(t, err)
 
-	warm, err := produceVMScriptWithCache(t, cache, vmScriptVars, nil, differentVarsBytes, scriptHash)
+	warm, err := produceVMScriptArtifact(t, cache, vmScriptVars, byReference)
 	require.Nil(t, err)
 	require.Equal(t, uint64(999), warm.Postings[0].GetAmount().ToBigInt().Uint64())
 
 	require.Equal(t, cold, warm, "outcome must not depend on this node's own cache state")
 }
 
-// TestProduce_OmittedProgramUsesWarmCache: when a prior order on this node's
-// own apply-side cache already decoded and verified this hash's bytes (this
-// node having applied an earlier committed entry that carried the program),
-// a later order omitting the program serves those cached bytes directly — no
-// recompile — and produces exactly the same outcome. Admission's decision to
-// omit is independent of this (see admission.go's use of
-// CompiledScript.AlreadyCompiled, admission's own separate compile cache) —
-// this test only exercises the FSM apply side's SafeExecIfCached lookup.
-func TestProduce_OmittedProgramUsesWarmCache(t *testing.T) {
+// TestProduce_IrreproducibleReferenceDerivesFromText: a by-reference order
+// whose hash this node can neither find in its cache nor reproduce by
+// compiling the script text was compiled by another library version. It is
+// not a failure, and the committed vars (999) are never run against a program
+// they were not encoded for: program and vars are derived from the script
+// text with this binary's own library (business vars, 100). Here the hash
+// names another script's bytecode, standing in for a foreign compilation.
+func TestProduce_IrreproducibleReferenceDerivesFromText(t *testing.T) {
 	t.Parallel()
 
-	programBytes, varsBytes, scriptHash := compileArtifactForTest(t, vmScript, vmScriptVars)
-	cache := numscript.NewNumscriptCache(16)
+	_, committedVars, scriptHash := compileArtifactForTest(t, vmScript, map[string]string{"amt": "USD/2 999"})
+	otherProgram, _, _ := compileArtifactForTest(t, `send [USD/2 1] (source = @wallet destination = @out)`, nil)
 
-	warming, err := produceVMScriptWithCache(t, cache, vmScriptVars, programBytes, varsBytes, scriptHash)
+	expected, err := produceVMScript(t, vmScriptVars, nil, nil, nil)
 	require.Nil(t, err)
 
-	omittedProgram, err := produceVMScriptWithCache(t, cache, vmScriptVars, nil, varsBytes, scriptHash)
+	derived, err := produceVMScriptArtifact(t, numscript.NewNumscriptCache(16), vmScriptVars, byReferenceArtifact(otherProgram, committedVars, scriptHash))
 	require.Nil(t, err)
-
-	require.Equal(t, warming, omittedProgram)
+	require.Equal(t, expected, derived)
+	require.Equal(t, uint64(100), derived.Postings[0].GetAmount().ToBigInt().Uint64())
 }
 
 // TestProduce_UnverifiableArtifactIsLoud: bytecode in the bundled format that

@@ -866,41 +866,57 @@ across an FSM outcome change" above:
 
 ### Omitting already-cached Numscript bytecode (revision 23)
 
-Service protocol revision 23 lets admission omit `compiled_program` from a
-scripted order's technical sub-message while still attaching `compiled_vars`
-and `compiled_script_hash`, when its own compile cache already had this script
-hash compiled before this proposal (`CompiledScript.AlreadyCompiled`, backed
-by `lruEntry.compileParsed` on admission's own `NumscriptCache` instance).
-This is a cheap, deliberately imprecise signal, not a guarantee that any
-replica has actually applied or cached the artifact: admission and the FSM
-apply path each construct their own `NumscriptCache` instance and share no
-state. Sending the bytecode anyway on a cache hit, or omitting it on a cache
-miss, are both tolerated by design — only systematically guessing wrong would
-defeat the point. A binary predating this revision does not know
-`compiled_program` can be legitimately absent next to a present hash and
-vars: it decodes the empty bytes as a corrupt artifact and fails the order
-with a Numscript runtime error, while a revision-23 binary applying the exact
-same entry succeeds by serving the hash from its own apply-side cache or
-recompiling from the script text — replicated-state divergence (one replica
-commits the transaction, another rejects the same entry), not merely an
-availability difference. Deploy this revision with all nodes stopped, as for
-every prior Numscript VM apply-semantics change in this release line.
+Service protocol revision 23 lets admission send a scripted order's bytecode
+by reference instead of by value: `compiled_program_hash`, the XXH3-128 of
+the bytes, in place of `compiled_program`, next to the `compiled_vars` and
+`compiled_script_hash` every scripted order carries. Admission does so once
+its own compile cache has compiled the script before
+(`CompiledScript.AlreadyCompiled`, backed by `lruEntry.compileParsed` on
+admission's own `NumscriptCache` instance), so the bytes travel once per
+script per admission instance and every later order of that script carries
+16 bytes instead. The signal describes what this instance has sent, not what
+any replica holds: admission and the FSM apply path each construct their own
+`NumscriptCache` instance and share no state. Being wrong either way is
+tolerated — bytes sent again are a plain by-value apply, and a reference a
+replica cannot serve from its cache is recompiled, below. A binary predating
+this revision does not know the new field and treats a by-reference order as
+a partial artifact, which is why the service protocol revision changes.
 
-A revision-23 FSM applying an entry whose `compiled_program` is absent next to
-a present hash and vars first checks its own apply-side cache for that hash
-(populated only by this node's own earlier executions, never by admission —
-see above); on a miss — the ordinary case, since nothing admission does warms
-it, as well as a restart, LRU eviction, a newly joined replica, or a
-leadership change — it recompiles from the script text exactly as it already
-does for a fully missing artifact. Either path must produce byte-identical
-bytecode for the outcome to stay deterministic across replicas (invariant #2):
-this relies on the same "same bundled library, same text, same compiled
-bytes" assumption the store checker's audit replay already makes for every
-scripted order (see above) — this revision is the first place that
-assumption also has to hold on the live apply path, not only during an
-offline check. `compiled_vars` and `compiled_script_hash` are always present
-regardless of whether the program is attached, so the hash-binding check
-against the resolved script text (see
+The FSM runs a committed artifact when its own bundled library can use it,
+and otherwise derives program and vars from the script text with that
+library, exactly as the store checker's audit replay derives every order
+(`numscript.SafeExecCommitted`). A by-value artifact is usable when the
+library reads its bytecode version. A by-reference one is usable when bytes
+with the committed program hash are at hand: in steady state the replica's
+own apply-side cache holds them, because applying the earlier by-value order
+of the same script decoded, verified and cached the bytes on every replica,
+so a reference is served without compiling anything; after a restart or an
+LRU eviction, or on a replica that joined after the bytes were last sent, the
+replica compiles the script text instead — once per script per cache
+lifetime, never once per order — and uses the result when it hashes to the
+committed program hash, caching it for the next reference. Within one library
+version the same text compiles to the same bytes, so a hit and a miss run the
+same bytes with the same committed vars and the outcome is independent of a
+replica's cache (invariant #2).
+
+Replicas need not run the same library version. A replica whose library
+cannot read the artifact's bytecode version, or whose compiler does not
+reproduce the referenced bytes, is a replica on another version — a rolling
+upgrade in progress — and derives both program and vars from the script text
+with its own library; it never fails the order for a version difference, and
+it never runs the committed vars against a program they were not encoded for
+(equal pool sizes with a different variable layout would post wrong amounts
+without any error). Agreement between such a replica and the others then
+rests on the Numscript library keeping a script's semantics stable across
+versions, the same contract audit replay relies on for every scripted order,
+and a library change that alters a script's outcome is an FSM outcome change
+(see "Upgrading across an FSM outcome change" above) whatever the artifact
+shape. What does fail loudly is corruption, not version: an artifact the
+library reads but cannot decode or verify, committed vars a cached program's
+layout does not cover, or any combination of the four fields other than the
+three shapes admission produces, rejected before any cache access.
+`compiled_vars` and `compiled_script_hash` are present in both shapes, so the
+hash-binding check against the resolved script text (see
 protocol-compatibility.md) runs unconditionally.
 
 ### Audit hash keying — threat model

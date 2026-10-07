@@ -28,29 +28,77 @@ type numscriptPostingProducer struct {
 	// OrderTechnical, staged on Context by the dispatcher) — the baseline the
 	// stale-inputs check re-resolves against. Empty means nothing to check.
 	inputsResolutionHash []byte
-	// compiledProgram/compiledVars/compiledScriptHash are the Numscript VM
-	// artifact admission compiled on the leader's parallel path (from
-	// OrderTechnical, staged like the hash above). Execution decodes and runs
-	// the bytecode on the VM, the only engine. A fully missing artifact (all
-	// three empty) is recompiled from the script text. Admission may also omit
-	// compiled_program alone, keeping vars and hash, when its own compile
-	// cache already had this script hash compiled before this proposal
-	// (CompiledScript.AlreadyCompiled — admission's own cache, not this
-	// node's apply-side cache). This node then looks for the bytes in ITS OWN
-	// apply-side cache, or — on a miss, the ordinary case — recompiles from
-	// the script text exactly like the fully-missing case. Either way the
-	// outcome is a function of the committed entry and the running binary
-	// alone, never of which of these paths supplied the bytes (invariant #2):
-	// a present but otherwise broken program — an invalid header, a bytecode
-	// version the bundled library cannot read, or bytes that fail decoding or
-	// verification — still fails the order loudly.
-	compiledProgram    []byte
-	compiledVars       []byte
-	compiledScriptHash []byte
+	// compiledProgram/compiledProgramHash/compiledVars/compiledScriptHash are
+	// the Numscript VM artifact admission compiled on the leader's parallel
+	// path (from OrderTechnical, staged like the hash above), in one of the
+	// shapes classifyCompiledArtifact accepts. Execution runs the bytecode on
+	// the VM, the only engine: the committed artifact when this binary can
+	// use it — the committed bytes by value; bytes proven by
+	// compiledProgramHash to be the ones admission compiled by reference,
+	// from this node's apply-side cache or from its own compile of the text —
+	// and otherwise program and vars derived from the script text with this
+	// binary's own library (numscript.SafeExecCommitted): an absent artifact
+	// (audit replay), a bytecode version this library cannot read, or a
+	// reference its compiler does not reproduce, the last two being a replica
+	// on another library version during a rolling upgrade. The outcome is a
+	// function of the committed entry and the running binary alone, never of
+	// this node's cache (invariant #2); across library versions it rests on
+	// the library keeping script semantics stable. A present program this
+	// library reads but cannot decode or verify — an invalid header, corrupt
+	// bytes — fails the order loudly.
+	compiledProgram     []byte
+	compiledProgramHash []byte
+	compiledVars        []byte
+	compiledScriptHash  []byte
 	// compileMissing marks the store checker's audit replay, whose orders
 	// never carry compiled code, so a missing artifact there is expected (see
 	// RequestProcessor.CompileMissingNumscript).
 	compileMissing bool
+}
+
+// compiledArtifactShape is how a committed scripted order carries its VM
+// artifact — see OrderTechnical.compiled_program in raft_cmd.proto.
+type compiledArtifactShape int
+
+const (
+	// artifactAbsent: none of the four fields. The store checker's audit
+	// replay, whose orders keep only business fields; an admission bug
+	// anywhere else.
+	artifactAbsent compiledArtifactShape = iota
+	// artifactByValue: program bytes, vars and script hash.
+	artifactByValue
+	// artifactByReference: program hash in place of the bytes, vars and
+	// script hash — admission had already sent the bytes on an earlier order
+	// of the script.
+	artifactByReference
+)
+
+// classifyCompiledArtifact maps the four technical fields to the shape
+// admission produced, or fails loudly (ErrNumscriptRuntime, invariant #7) on
+// any combination it never does — both the program and its hash, either one
+// without vars or script hash, vars or script hash alone, a program hash of
+// the wrong length. It runs before any cache access and reads nothing but the
+// committed fields, so a corrupt shape fails identically on every replica
+// whatever its cache holds (invariant #2). The script hash's own length is
+// left to the binding check against the resolved text, which rejects any
+// value that is not the exact 16-byte hash.
+func classifyCompiledArtifact(program, programHash, vars, scriptHash []byte) (compiledArtifactShape, domain.SerializableError) {
+	hasProgram, hasProgramHash := len(program) > 0, len(programHash) > 0
+	hasVars, hasScriptHash := len(vars) > 0, len(scriptHash) > 0
+
+	switch {
+	case !hasProgram && !hasProgramHash && !hasVars && !hasScriptHash:
+		return artifactAbsent, nil
+	case hasProgram && !hasProgramHash && hasVars && hasScriptHash:
+		return artifactByValue, nil
+	case !hasProgram && len(programHash) == len([16]byte{}) && hasVars && hasScriptHash:
+		return artifactByReference, nil
+	}
+
+	return artifactAbsent, &domain.ErrNumscriptRuntime{
+		Detail: fmt.Sprintf("compiled numscript artifact is partial: program=%t programHash=%d bytes vars=%t scriptHash=%t",
+			hasProgram, len(programHash), hasVars, hasScriptHash),
+	}
 }
 
 func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *raftcmdpb.CreateTransactionOrder, script *commonpb.Script) (*produceResult, domain.SerializableError) {
@@ -148,38 +196,13 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	// Execute the script on the VM, the only execution engine. When Force is
 	// true, the store returns unlimited balances to bypass balance checks.
 	//
-	// The artifact is derivable from the script text, so a missing one is
-	// recompiled here exactly as admission compiles it: it costs a compile and,
-	// under the same bundled library, never changes the outcome (history from
-	// a library with different execution semantics can replay differently, see
-	// numscript.CompileForReplay). Re-running an audited order, which never
-	// carries compiled code, always gets here. Anywhere else a fully missing
-	// artifact is an admission bug — admission binds vars and a hash to every
-	// scripted order it proposes, and one it forwards without is marked
-	// preload_unavailable and rejected before reaching here — so it is flagged
-	// under Antithesis (invariant #7).
-	compiledProgram, compiledVars, compiledScriptHash := p.compiledProgram, p.compiledVars, p.compiledScriptHash
-	if len(compiledProgram) == 0 && len(compiledVars) == 0 && len(compiledScriptHash) == 0 {
-		if !p.compileMissing {
-			assert.Unreachable("scripted order reached FSM apply without its compiled numscript artifact", map[string]any{
-				"ledger": ledgerName,
-			})
-		}
-
-		compiled, compileErr := numscript.CompileForReplay(p.cache, script.GetPlain(), script.GetVars())
-		if compileErr != nil {
-			return nil, compileErr
-		}
-
-		compiledProgram, compiledVars, compiledScriptHash = compiled.Program, compiled.Vars, compiled.ScriptHash
-	} else if len(compiledProgram) == 0 && len(compiledScriptHash) != len([16]byte{}) {
-		// Guards the [16]byte conversion the omitted-program path below relies
-		// on. Checked ahead of the hash-binding comparison (which tolerates
-		// any length) so a malformed hash gets this specific detail instead
-		// of the generic mismatch message.
-		return nil, &domain.ErrNumscriptRuntime{
-			Detail: fmt.Sprintf("compiled numscript artifact: script hash has %d bytes, want 16", len(compiledScriptHash)),
-		}
+	// The artifact arrives by value, by reference, or not at all; every other
+	// combination of the four fields is a corrupt state admission never
+	// produces and fails loudly here, before any cache access, so it fails
+	// identically on every replica (invariants #2, #7).
+	shape, shapeErr := classifyCompiledArtifact(p.compiledProgram, p.compiledProgramHash, p.compiledVars, p.compiledScriptHash)
+	if shapeErr != nil {
+		return nil, shapeErr
 	}
 
 	// The artifact is bound to the exact text admission compiled. The text
@@ -187,7 +210,9 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	// library versions are immutable, and an advanced "latest" was
 	// stale-rejected before the producer ran — so a mismatch is a "should not
 	// happen" surfaced loudly (invariant #7), never executing the wrong program.
-	if !bytes.Equal(scriptHash[:], compiledScriptHash) {
+	// An absent artifact has no hash to bind; its recompile below keys the
+	// cache by the resolved text's own hash.
+	if shape != artifactAbsent && !bytes.Equal(scriptHash[:], p.compiledScriptHash) {
 		return nil, &domain.ErrNumscriptRuntime{
 			Detail: "compiled numscript artifact does not match the resolved script text",
 		}
@@ -200,53 +225,58 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		execErr domain.SerializableError
 	)
 
-	// A present program is never repaired from the text: an invalid header, a
-	// bytecode version the bundled library cannot read, or bytes that fail
-	// decoding or verification are a corrupt or impossible state, and
-	// SafeExecCompiled fails them loudly below. But the program alone — vars
-	// and hash present — may be deliberately omitted: admission skips it when
-	// its own compile cache already had this script hash compiled before
-	// this proposal (CompiledScript.AlreadyCompiled, admission's own cache —
-	// unrelated to this node's apply-side cache; the two are separate
-	// NumscriptCache instances, see cache.go). This node then tries its own
-	// apply-side cache for that hash (SafeExecIfCached, which runs directly
-	// from the cached entry — there is nothing of the caller's own to verify
-	// it against, so no bytes are cloned or compared). A miss (the ordinary
-	// case — that cache is never warmed by anything admission does — or a
-	// restart, LRU eviction, new joiner, or leadership change) recompiles the
-	// program from the script text exactly like the fully-missing case,
-	// rather than asserting unreachable — admission deliberately producing
-	// this shape is the opposite of a bug.
-	//
-	// Either way compiledVars — the committed field, never re-derived — is
-	// what runs: outcome must not depend on this node's own cache state
-	// (invariant #2), so the hit and miss paths use the same vars authority.
-	// Pairing it with a locally recompiled program is safe only because
-	// compiling identical text under the same bundled library is
-	// deterministic (byte-identical, always — see numscript-library.md); a
-	// mismatch would mean a different library version compiled it, the
-	// mixed-binary window this revision's stop-all-nodes deployment rules
-	// out, the same guarantee the "program present" branch below already
-	// relies on without a second thought.
-	if len(compiledProgram) == 0 {
-		// compiledScriptHash is already confirmed to be 16 bytes above.
-		var found bool
-
-		result, execErr, found = numscript.SafeExecIfCached(p.cache, [16]byte(compiledScriptHash), compiledVars, vmStore)
-		if !found {
-			compiled, compileErr := numscript.CompileForReplay(p.cache, script.GetPlain(), script.GetVars())
-			if compileErr != nil {
-				return nil, compileErr
-			}
-
-			// Any failure short of execution — an invalid header, an unreadable
-			// bytecode version, undecodable bytes, unverifiable bytecode — is
-			// final (see SafeExecCompiled): the order fails on every node
-			// running this binary.
-			result, execErr = numscript.SafeExecCompiled(p.cache, scriptHash[:], compiled.Program, compiledVars, vmStore)
+	switch shape {
+	case artifactByValue, artifactByReference:
+		// The committed artifact runs when this binary can use it, and the
+		// order is derived from the script text with this binary's own
+		// library otherwise (see SafeExecCommitted). By value that means the
+		// committed bytes and vars, as long as their bytecode version is one
+		// this library reads. By reference — admission already sent the bytes
+		// on an earlier order of the script (CompiledScript.AlreadyCompiled:
+		// its own compile cache's memory, not a claim about this node's) — it
+		// means bytes with the committed hash: this node's apply-side cache in
+		// steady state (applying that earlier order warmed every replica), or
+		// its own compile of the text after a restart, an LRU eviction, or a
+		// late join, when that compile reproduces the hash. A version this
+		// library cannot read, or a compile that does not reproduce the hash,
+		// is a replica on another library version (a rolling upgrade), not a
+		// defect: program and vars are then derived from the text. Within one
+		// library version the outcome is therefore independent of this node's
+		// cache (invariant #2); across versions it rests on the library
+		// keeping script semantics stable, as audit replay already does.
+		// classifyCompiledArtifact checked the program hash is 16 bytes,
+		// which the conversion relies on.
+		artifact := numscript.CommittedArtifact{Program: p.compiledProgram, Vars: p.compiledVars}
+		if shape == artifactByReference {
+			artifact.ProgramHash = [16]byte(p.compiledProgramHash)
 		}
-	} else {
-		result, execErr = numscript.SafeExecCompiled(p.cache, scriptHash[:], compiledProgram, compiledVars, vmStore)
+
+		result, execErr = numscript.SafeExecCommitted(p.cache, scriptHash, artifact, script.GetPlain(), script.GetVars(), vmStore)
+	case artifactAbsent:
+		// The artifact is derivable from the script text, so an absent one is
+		// recompiled here exactly as admission compiles it: it costs a compile
+		// and, under the same bundled library, never changes the outcome
+		// (history from a library with different execution semantics can
+		// replay differently, see numscript.CompileForReplay). Re-running an
+		// audited order, which never carries compiled code, always gets here.
+		// Anywhere else an absent artifact is an admission bug — admission
+		// binds one to every scripted order it proposes, and one it forwards
+		// without is marked preload_unavailable and rejected before reaching
+		// here — so it is flagged under Antithesis (invariant #7).
+		if !p.compileMissing {
+			assert.Unreachable("scripted order reached FSM apply without its compiled numscript artifact", map[string]any{
+				"ledger": ledgerName,
+			})
+		}
+
+		result, execErr = numscript.SafeExecFromText(p.cache, script.GetPlain(), script.GetVars(), vmStore)
+	default:
+		// classifyCompiledArtifact returns only the three shapes above. A
+		// fourth value is a programming error and must surface rather than
+		// fall through to an empty result (invariant #7).
+		return nil, &domain.ErrNumscriptRuntime{
+			Detail: fmt.Sprintf("compiled numscript artifact: unknown shape %d", shape),
+		}
 	}
 
 	if execErr != nil {

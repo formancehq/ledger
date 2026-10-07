@@ -2089,20 +2089,26 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			technical.CompiledVars = discovered.Compiled.Vars
 			technical.CompiledScriptHash = discovered.Compiled.ScriptHash
 
-			// Omit the bytecode itself when this admission instance's own
-			// compile cache already had this script hash compiled before this
-			// call (discovered.Compiled.AlreadyCompiled — see
-			// lruEntry.compileParsed): a cheap, deliberately imprecise signal,
-			// not a guarantee the bytecode reached any replica. Sending it
-			// anyway on a false negative, or omitting it on a false positive,
-			// are both harmless: any replica that turns out to lack this
-			// hash's bytecode recompiles it identically from the script text
-			// instead of executing it (processor_transaction_numscript.go),
-			// the same fallback already used for a fully missing artifact.
+			// The bytecode travels by value once per script per admission
+			// instance and by reference — its hash — afterwards: this
+			// instance's own compile cache remembers whether it had compiled
+			// the script before this call (discovered.Compiled.AlreadyCompiled,
+			// see lruEntry.compileParsed). That is a cheap, deliberately
+			// approximate signal about what this instance has sent, not a
+			// guarantee the bytes reached or are still cached on any replica.
+			// Both ways of being wrong are tolerated: bytes sent again are a
+			// plain by-value apply, and a reference a replica cannot serve
+			// from its own cache is recompiled from the script text
+			// (numscript.SafeExecCommitted) — one compile per script per
+			// replica cache lifetime, never one per order. Exactly one of the
+			// two fields is set, and both are assigned so a re-admitted order
+			// cannot keep a stale value from an earlier pass.
 			if discovered.Compiled.AlreadyCompiled {
 				technical.CompiledProgram = nil
+				technical.CompiledProgramHash = discovered.Compiled.ProgramHash
 			} else {
 				technical.CompiledProgram = discovered.Compiled.Program
+				technical.CompiledProgramHash = nil
 			}
 
 			// Fold this script's effects into the batch accumulator so a later

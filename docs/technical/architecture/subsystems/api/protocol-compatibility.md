@@ -318,34 +318,31 @@ revision 22's rejection happens before apply.
 
 ## Omitting already-cached Numscript bytecode (revision 23)
 
-Revision 23 lets admission omit `OrderTechnical.compiled_program` from a
-scripted order while still attaching `compiled_vars` and
-`compiled_script_hash`, when its own compile cache already had this script
-hash compiled before this proposal (`CompiledScript.AlreadyCompiled`, backed
-by `lruEntry.compileParsed` on admission's own `NumscriptCache` instance) — a
-cheap, deliberately imprecise signal, never a peek at whether any replica
-actually applied or cached the artifact: admission and the FSM apply path
-each construct their own `NumscriptCache` instance and share no state.
-Sending the bytecode on a cache hit, or omitting it on a cache miss, are both
-tolerated by design. A revision-22 binary does not know the program can be
-legitimately absent next to a present hash and vars: it decodes the empty
-bytes as a corrupt artifact and fails the order, while a revision-23 binary
-applying the identical entry succeeds by serving the hash from its own
-apply-side cache (`NumscriptCache.PeekCompiledProgram`) or recompiling from
-the script text — replicated-state divergence, not merely an availability
-difference. Deploy this revision with all nodes stopped — see
-[Omitting already-cached Numscript bytecode](../../../../ops/deployment.md#omitting-already-cached-numscript-bytecode-revision-23).
+Revision 23 lets admission send `OrderTechnical.compiled_program` by
+reference: a new field, `compiled_program_hash` (the XXH3-128 of the bytes),
+replaces the bytes once admission's own compile cache has compiled the script
+before (`CompiledScript.AlreadyCompiled`, backed by `lruEntry.compileParsed`
+on admission's own `NumscriptCache` instance), so the bytecode travels once
+per script per admission instance. `compiled_vars` and `compiled_script_hash`
+remain mandatory for every scripted order exactly as before, and exactly one
+of `compiled_program` and `compiled_program_hash` accompanies them; any other
+combination fails the order loudly. The signal describes what this instance
+has sent, never what any replica has cached — admission and the FSM apply
+path each construct their own `NumscriptCache` instance and share no state —
+and the FSM tolerates it being wrong either way.
 
-This is not a new wire field: `compiled_program` was already optional in shape
-(a fully missing artifact already recompiled from the script text, for the
-store checker's audit replay). Revision 23 widens when an absent program is
-expected — now also whenever hash and vars are present but the program is
-not — and changes what the FSM does about it: serve this node's own cache
-entry for that hash, falling back to the same recompile-from-text path,
-rather than treat a present hash with an absent program as a corrupt
-artifact. `compiled_vars` and `compiled_script_hash` remain mandatory for
-every scripted order exactly as before; only `compiled_program` becomes
-conditional on what this node's own cache already proves it has.
+The FSM runs a committed artifact when its own library can use it — by value
+when it reads the bytecode version, by reference when it holds or reproduces
+bytes with the committed hash — and otherwise derives program and vars from
+the script text with its own library (`numscript.SafeExecCommitted`), so
+replicas on different library versions apply the same entry without failing
+it; see
+[Omitting already-cached Numscript bytecode](../../../../ops/deployment.md#omitting-already-cached-numscript-bytecode-revision-23)
+for the contract that keeps their outcomes equal. A revision-22 binary does
+not know the new field and treats a by-reference order as a partial
+artifact, failing the order a revision-23 binary applies — replicated-state
+divergence, not merely an availability difference — which is why the revision
+changes.
 
 ## Maintaining the revision
 

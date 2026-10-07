@@ -229,6 +229,10 @@ send [COIN ($a + $b) + ($c + $d) + ($e + $f)] (
 	require.Equal(t, first.ScriptHash, second.ScriptHash)
 	require.NotEqual(t, first.Vars, second.Vars, "vars are bound per order")
 
+	programHash := HashProgram(first.Program)
+	require.Equal(t, programHash[:], first.ProgramHash, "the program hash names exactly the bytes the order carries")
+	require.Equal(t, first.ProgramHash, second.ProgramHash)
+
 	// A fresh entry (new script, never compiled on this cache) reports false.
 	freshEntry := cache.getOrParseEntry(`send [COIN 1] (source = @a destination = @b)`)
 	fresh := mustCompile(t, freshEntry, nil)
@@ -285,29 +289,9 @@ func TestVMStore_ScopedReadsRejected(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrScopedBalanceUnsupported)
 }
 
-// TestSafeExecIfCached_Miss: an empty cache reports found=false and never
-// touches the store or panics — the caller is expected to recompile and fall
-// back to SafeExecCompiled instead.
-func TestSafeExecIfCached_Miss(t *testing.T) {
-	t.Parallel()
-
-	cache := NewNumscriptCache(16)
-	hash := HashScript(`send [COIN 1] (source = @a destination = @b)`)
-
-	result, err, found := SafeExecIfCached(cache, hash, []byte("irrelevant"), NewVMStore(mapValueSource{}, false))
-	require.False(t, found)
-	require.Nil(t, err)
-	require.Equal(t, numscriptlib.ExecutionResult{}, result)
-}
-
-// TestSafeExecIfCached_Hit: once SafeExecCompiled has warmed the cache for a
-// hash, SafeExecIfCached runs directly from the cached entry — no program
-// bytes of its own are supplied or compared, only vars and a store — and
-// produces exactly the same outcome a full SafeExecCompiled call would.
-func TestSafeExecIfCached_Hit(t *testing.T) {
-	t.Parallel()
-
-	script := `vars {
+// byReferenceScript is the script the SafeExecCommitted tests run: one
+// monetary var, so the vars actually travel and bind to the program's layout.
+const byReferenceScript = `vars {
   monetary $amt
 }
 
@@ -315,43 +299,248 @@ send $amt (
   source = @src
   destination = @dst
 )`
-	entry := mustEntry(t, script)
-	compiled := mustCompile(t, entry, map[string]string{"amt": "COIN 30"})
 
-	cache := NewNumscriptCache(16)
-	store := NewVMStore(mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}, false)
-
-	warm, err := SafeExecCompiled(cache, compiled.ScriptHash, compiled.Program, compiled.Vars, store)
-	require.Nil(t, err)
-
-	cached, cachedErr, found := SafeExecIfCached(cache, [16]byte(compiled.ScriptHash), compiled.Vars, store)
-	require.True(t, found)
-	require.Nil(t, cachedErr)
-	require.Equal(t, warm, cached)
+// byReferenceStore funds @src for byReferenceScript.
+func byReferenceStore() *VMStore {
+	return NewVMStore(mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}, false)
 }
 
-// TestSafeExecIfCached_VarsDecodeErrorIsConclusive: a hit with undecodable
-// vars bytes is a final error (found=true, not a cache miss to paper over by
-// falling back to a recompile) — the committed vars are corrupt, not absent.
-func TestSafeExecIfCached_VarsDecodeErrorIsConclusive(t *testing.T) {
+// requireParseSideUntouched asserts the cache never parsed (so never compiled)
+// the script: the hot path of a by-reference hit, and the early exit of
+// corrupt vars, must not reach the parse side at all.
+func requireParseSideUntouched(t *testing.T, cache *NumscriptCache, scriptHash [16]byte) {
+	t.Helper()
+
+	cache.mu.RLock()
+	_, parsed := cache.cache[scriptHash]
+	cache.mu.RUnlock()
+
+	require.False(t, parsed, "the script must not have been parsed or compiled on this path")
+}
+
+// byReferenceVars are the vars admission committed for the SafeExecCommitted
+// tests; byReferenceScriptVars are the business script vars of the same order
+// and deliberately differ, so a posting of 30 proves the committed artifact
+// ran and a posting of 7 proves program and vars were derived from the text.
+var (
+	byReferenceVars       = map[string]string{"amt": "COIN 30"}
+	byReferenceScriptVars = map[string]string{"amt": "COIN 7"}
+)
+
+// byReference is the committed artifact naming compiled's bytes by hash.
+func byReference(compiled *CompiledScript) CommittedArtifact {
+	return CommittedArtifact{ProgramHash: [16]byte(compiled.ProgramHash), Vars: compiled.Vars}
+}
+
+// byValue is the committed artifact carrying compiled's bytes.
+func byValue(compiled *CompiledScript) CommittedArtifact {
+	return CommittedArtifact{Program: compiled.Program, Vars: compiled.Vars}
+}
+
+func requirePostingAmount(t *testing.T, result numscriptlib.ExecutionResult, amount string) {
+	t.Helper()
+
+	require.Len(t, result.Postings, 1)
+	require.Equal(t, amount, result.Postings[0].Amount.String())
+}
+
+// TestSafeExecCommitted_ByValueRunsCommittedArtifact: a by-value artifact this
+// library reads runs the committed bytes with the committed vars, never the
+// business script vars.
+func TestSafeExecCommitted_ByValueRunsCommittedArtifact(t *testing.T) {
 	t.Parallel()
 
-	script := `send [COIN 1] (source = @a destination = @b)`
-	entry := mustEntry(t, script)
-	compiled := mustCompile(t, entry, nil)
+	compiled := mustCompile(t, mustEntry(t, byReferenceScript), byReferenceVars)
+
+	result, err := SafeExecCommitted(NewNumscriptCache(16), [16]byte(compiled.ScriptHash), byValue(compiled), byReferenceScript, byReferenceScriptVars, byReferenceStore())
+	require.Nil(t, err)
+	requirePostingAmount(t, result, "30")
+}
+
+// TestSafeExecCommitted_ReferenceHitRunsAdmissionBytesWithoutCompiling: once a
+// by-value apply has warmed the cache for a script, a by-reference order
+// naming those bytes' hash runs the cached instance with the committed vars
+// and produces exactly the by-value outcome — without touching the parse
+// side, so steady state compiles nothing on the FSM.
+func TestSafeExecCommitted_ReferenceHitRunsAdmissionBytesWithoutCompiling(t *testing.T) {
+	t.Parallel()
+
+	compiled := mustCompile(t, mustEntry(t, byReferenceScript), byReferenceVars)
+	scriptHash := [16]byte(compiled.ScriptHash)
 
 	cache := NewNumscriptCache(16)
-	store := NewVMStore(mapValueSource{}, true) // force: unlimited balance, no setup needed
+	store := byReferenceStore()
 
-	_, err := SafeExecCompiled(cache, compiled.ScriptHash, compiled.Program, compiled.Vars, store)
+	valueResult, err := SafeExecCompiled(cache, compiled.ScriptHash, compiled.Program, compiled.Vars, store)
 	require.Nil(t, err)
 
-	corruptVars := bytes.Clone(compiled.Vars)
-	corruptVars[0] ^= 0xFF
+	referenceResult, err := SafeExecCommitted(cache, scriptHash, byReference(compiled), byReferenceScript, byReferenceScriptVars, store)
+	require.Nil(t, err)
+	require.Equal(t, valueResult, referenceResult)
+	requirePostingAmount(t, referenceResult, "30")
 
-	_, cachedErr, found := SafeExecIfCached(cache, [16]byte(compiled.ScriptHash), corruptVars, store)
-	require.True(t, found)
-	require.NotNil(t, cachedErr)
+	requireParseSideUntouched(t, cache, scriptHash)
+}
+
+// TestSafeExecCommitted_ReferenceMissRecompilesMatchingBytesAndWarms: a cold
+// cache (restart, eviction, late joiner) compiles the script text, accepts
+// the result because it hashes to the committed program hash, runs it with
+// the committed vars to the by-value outcome, and caches exactly those bytes
+// so the next reference is a hit.
+func TestSafeExecCommitted_ReferenceMissRecompilesMatchingBytesAndWarms(t *testing.T) {
+	t.Parallel()
+
+	compiled := mustCompile(t, mustEntry(t, byReferenceScript), byReferenceVars)
+	scriptHash, programHash := [16]byte(compiled.ScriptHash), [16]byte(compiled.ProgramHash)
+	store := byReferenceStore()
+
+	valueResult, err := SafeExecCompiled(NewNumscriptCache(16), compiled.ScriptHash, compiled.Program, compiled.Vars, store)
+	require.Nil(t, err)
+
+	cold := NewNumscriptCache(16)
+
+	recompiled, err := SafeExecCommitted(cold, scriptHash, byReference(compiled), byReferenceScript, byReferenceScriptVars, store)
+	require.Nil(t, err)
+	require.Equal(t, valueResult, recompiled)
+	requirePostingAmount(t, recompiled, "30")
+
+	entry, ok := cold.lookupCompiled(scriptHash)
+	require.True(t, ok, "the recompiled program must be cached for the next reference")
+	require.Equal(t, programHash, entry.programHash)
+	require.Equal(t, compiled.Program, entry.program, "the cached bytes are exactly the ones admission compiled")
+
+	again, err := SafeExecCommitted(cold, scriptHash, byReference(compiled), byReferenceScript, byReferenceScriptVars, store)
+	require.Nil(t, err)
+	require.Equal(t, valueResult, again)
+}
+
+// TestSafeExecCommitted_IrreproducibleReferenceDerivesFromText: when this
+// binary's compile of the text does not reproduce the committed program hash
+// — another library version compiled the committed bytes — the order is
+// derived from the text, vars included: the committed vars (30) are never run
+// against a program they were not encoded for, the business vars (7) are. The
+// committed hash here names another script's bytecode, standing in for a
+// foreign compilation, and the derived program is cached for the next order.
+func TestSafeExecCommitted_IrreproducibleReferenceDerivesFromText(t *testing.T) {
+	t.Parallel()
+
+	compiled := mustCompile(t, mustEntry(t, byReferenceScript), byReferenceVars)
+	other := mustCompile(t, mustEntry(t, `send [COIN 2] (source = @a destination = @b)`), nil)
+	require.NotEqual(t, compiled.ProgramHash, other.ProgramHash)
+
+	cache := NewNumscriptCache(16)
+	scriptHash := [16]byte(compiled.ScriptHash)
+	foreign := CommittedArtifact{ProgramHash: [16]byte(other.ProgramHash), Vars: compiled.Vars}
+
+	result, err := SafeExecCommitted(cache, scriptHash, foreign, byReferenceScript, byReferenceScriptVars, byReferenceStore())
+	require.Nil(t, err)
+	requirePostingAmount(t, result, "7")
+
+	entry, ok := cache.lookupCompiled(scriptHash)
+	require.True(t, ok, "the derived program is cached like any other")
+	require.Equal(t, compiled.Program, entry.program, "this binary's own compile of the text")
+}
+
+// TestSafeExecCommitted_ForeignBytecodeVersionDerivesFromText: an artifact
+// whose program or vars carry a bytecode version this library cannot read
+// came from another library version (a replica mid rolling upgrade). It is
+// not a failure: program and vars are derived from the text with this
+// binary's own library — the business vars (7), not the committed ones (30)
+// — in every shape, and nothing is decoded from the foreign bytes.
+func TestSafeExecCommitted_ForeignBytecodeVersionDerivesFromText(t *testing.T) {
+	t.Parallel()
+
+	compiled := mustCompile(t, mustEntry(t, byReferenceScript), byReferenceVars)
+	scriptHash := [16]byte(compiled.ScriptHash)
+
+	for name, version := range unreadableBytecodeVersions(t) {
+		for shapeName, artifact := range map[string]CommittedArtifact{
+			"by value, foreign program": {Program: withArtifactVersion(t, compiled.Program, version), Vars: compiled.Vars},
+			"by value, foreign vars":    {Program: compiled.Program, Vars: withArtifactVersion(t, compiled.Vars, version)},
+			"by reference, foreign vars": {
+				ProgramHash: [16]byte(compiled.ProgramHash),
+				Vars:        withArtifactVersion(t, compiled.Vars, version),
+			},
+		} {
+			t.Run(name+", "+shapeName, func(t *testing.T) {
+				t.Parallel()
+
+				result, err := SafeExecCommitted(NewNumscriptCache(16), scriptHash, artifact, byReferenceScript, byReferenceScriptVars, byReferenceStore())
+				require.Nil(t, err)
+				requirePostingAmount(t, result, "7")
+			})
+		}
+	}
+}
+
+// TestSafeExecCommitted_EntryWithOtherBytesIsReplaced: an entry holding other
+// bytes under the same script hash (this node's own compile cached while the
+// leader ran another library version, say) is not served for a reference to
+// different bytes. The text is recompiled, matched against the committed hash
+// and replaces the entry, so the node runs the referenced bytes.
+func TestSafeExecCommitted_EntryWithOtherBytesIsReplaced(t *testing.T) {
+	t.Parallel()
+
+	compiled := mustCompile(t, mustEntry(t, byReferenceScript), byReferenceVars)
+	other := mustCompile(t, mustEntry(t, `send [COIN 2] (source = @src destination = @dst)`), nil)
+	scriptHash := [16]byte(compiled.ScriptHash)
+
+	cache := NewNumscriptCache(16)
+	store := byReferenceStore()
+
+	// Plant the other program under this script's hash.
+	_, err := SafeExecCompiled(cache, compiled.ScriptHash, other.Program, other.Vars, store)
+	require.Nil(t, err)
+
+	result, err := SafeExecCommitted(cache, scriptHash, byReference(compiled), byReferenceScript, byReferenceScriptVars, store)
+	require.Nil(t, err)
+	requirePostingAmount(t, result, "30")
+
+	entry, ok := cache.lookupCompiled(scriptHash)
+	require.True(t, ok)
+	require.Equal(t, compiled.Program, entry.program, "the entry now holds the referenced bytes")
+}
+
+// TestSafeExecCommitted_CorruptVarsFailBeforeAnyCacheAccess: committed vars
+// whose header this library reads but whose body does not decode are corrupt,
+// not foreign: a final error on a warm and on a cold cache alike, in both
+// shapes. They are decoded before the lookup, so the outcome cannot depend on
+// cache state, and a cold node does not even parse the script.
+func TestSafeExecCommitted_CorruptVarsFailBeforeAnyCacheAccess(t *testing.T) {
+	t.Parallel()
+
+	compiled := mustCompile(t, mustEntry(t, byReferenceScript), byReferenceVars)
+	scriptHash := [16]byte(compiled.ScriptHash)
+	store := byReferenceStore()
+
+	corruptVars := bytes.Clone(compiled.Vars)
+	for i := artifactHeaderLen; i < len(corruptVars); i++ {
+		corruptVars[i] ^= 0xA5
+	}
+
+	for shapeName, artifact := range map[string]CommittedArtifact{
+		"by value":     {Program: compiled.Program, Vars: corruptVars},
+		"by reference": {ProgramHash: [16]byte(compiled.ProgramHash), Vars: corruptVars},
+	} {
+		t.Run(shapeName, func(t *testing.T) {
+			t.Parallel()
+
+			warm := NewNumscriptCache(16)
+			_, err := SafeExecCompiled(warm, compiled.ScriptHash, compiled.Program, compiled.Vars, store)
+			require.Nil(t, err)
+
+			_, warmErr := SafeExecCommitted(warm, scriptHash, artifact, byReferenceScript, byReferenceScriptVars, store)
+			require.NotNil(t, warmErr)
+			require.Contains(t, warmErr.Error(), "decoding compiled numscript vars")
+
+			cold := NewNumscriptCache(16)
+
+			_, coldErr := SafeExecCommitted(cold, scriptHash, artifact, byReferenceScript, byReferenceScriptVars, store)
+			require.Equal(t, warmErr, coldErr, "corrupt vars must fail identically whatever the cache holds")
+
+			requireParseSideUntouched(t, cold, scriptHash)
+		})
+	}
 }
 
 // TestSafeExecCompiled_WarmInstanceReuse: repeated applies of the same artifact
@@ -851,3 +1040,9 @@ send [COIN 90] (
 	require.ErrorAs(t, err, &runtimeErr)
 	require.Contains(t, runtimeErr.Detail, "cannot be negative")
 }
+
+// artifactHeaderLen is the library's fixed header: a 4-byte magic, major and
+// minor as two little-endian uint16, then the uint16 section count. Corrupting
+// a blob past it keeps the version readable, so the decoder — not the version
+// check — is what rejects the bytes.
+const artifactHeaderLen = 10

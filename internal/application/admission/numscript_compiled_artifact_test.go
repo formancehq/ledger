@@ -32,6 +32,7 @@ func TestResolveScripts_BindsCompiledArtifact(t *testing.T) {
 
 	technical := order.GetTechnical()
 	require.NotEmpty(t, technical.GetCompiledProgram(), "the artifact must be bound to the order")
+	require.Empty(t, technical.GetCompiledProgramHash(), "bytes sent by value carry no reference")
 
 	hash := numscript.HashScript(script)
 	require.Equal(t, hash[:], technical.GetCompiledScriptHash(),
@@ -47,15 +48,17 @@ func TestResolveScripts_BindsCompiledArtifact(t *testing.T) {
 	require.NoError(t, err, "the bound artifact must pass the same verification the FSM runs")
 }
 
-// TestResolveScripts_OmitsBytecodeOnceAdmissionHasSentIt: once this admission
-// instance's own compile cache already has a script hash compiled (from an
-// earlier order), a later order using the identical script omits
-// compiled_program, keeping vars and hash. The signal is
-// CompiledScript.AlreadyCompiled (see lruEntry.compileParsed) — independent
-// of whether an earlier proposal ever committed, or of anything the FSM
-// apply path cached on its own, separate NumscriptCache instance; see the
-// FSM-side cache-or-recompile fallback in processor_transaction_numscript.go.
-func TestResolveScripts_OmitsBytecodeOnceAdmissionHasSentIt(t *testing.T) {
+// TestResolveScripts_SendsBytecodeByReferenceOnceSent: once this admission
+// instance's own compile cache has compiled a script (from an earlier order),
+// a later order using the identical script carries the bytecode by reference
+// — compiled_program_hash, the hash of exactly the bytes the first order
+// carried — instead of by value, keeping vars and script hash. The signal is
+// CompiledScript.AlreadyCompiled (see lruEntry.compileParsed), independent of
+// whether the earlier proposal ever committed or of anything the FSM apply
+// path cached on its own, separate NumscriptCache instance; the FSM side
+// (serve from cache, or recompile and check the hash) is covered by the
+// processing package's producer tests.
+func TestResolveScripts_SendsBytecodeByReferenceOnceSent(t *testing.T) {
 	t.Parallel()
 
 	const script = `send [USD 10] (
@@ -70,6 +73,7 @@ func TestResolveScripts_OmitsBytecodeOnceAdmissionHasSentIt(t *testing.T) {
 
 	firstTechnical := first.GetTechnical()
 	require.NotEmpty(t, firstTechnical.GetCompiledProgram(), "the first use of a script must carry the bytecode")
+	require.Empty(t, firstTechnical.GetCompiledProgramHash())
 
 	second := scriptOrder(testLedgerName, script)
 	require.NoError(t, runResolveProvenance(t, admission, []*raftcmdpb.Order{second}, false))
@@ -77,8 +81,12 @@ func TestResolveScripts_OmitsBytecodeOnceAdmissionHasSentIt(t *testing.T) {
 	secondTechnical := second.GetTechnical()
 	require.Empty(t, secondTechnical.GetCompiledProgram(),
 		"a script this admission instance has already sent must not carry the bytecode again")
+
+	programHash := numscript.HashProgram(firstTechnical.GetCompiledProgram())
+	require.Equal(t, programHash[:], secondTechnical.GetCompiledProgramHash(),
+		"the reference must name exactly the bytes the first order carried")
 	require.Equal(t, firstTechnical.GetCompiledVars(), secondTechnical.GetCompiledVars(),
-		"vars are still bound per order even when the program is omitted")
+		"vars are still bound per order when the program travels by reference")
 	require.Equal(t, firstTechnical.GetCompiledScriptHash(), secondTechnical.GetCompiledScriptHash())
 }
 
@@ -100,10 +108,12 @@ func TestResolveScripts_DifferentAdmissionInstancesEachSendBytecodeOnce(t *testi
 	first := scriptOrder(testLedgerName, script)
 	require.NoError(t, runResolveProvenance(t, firstAdmission, []*raftcmdpb.Order{first}, false))
 	require.NotEmpty(t, first.GetTechnical().GetCompiledProgram())
+	require.Empty(t, first.GetTechnical().GetCompiledProgramHash())
 
 	secondAdmission, _ := createTestAdmission(t, store)
 	second := scriptOrder(testLedgerName, script)
 	require.NoError(t, runResolveProvenance(t, secondAdmission, []*raftcmdpb.Order{second}, false))
 	require.NotEmpty(t, second.GetTechnical().GetCompiledProgram(),
 		"a new admission instance's first use of a script must still carry the bytecode")
+	require.Empty(t, second.GetTechnical().GetCompiledProgramHash())
 }

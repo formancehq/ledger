@@ -19,18 +19,22 @@ import (
 
 // NumscriptCache stores parsed Numscript programs keyed by their content hash,
 // and decoded+verified VM artifacts — each as one warm VM instance — keyed by
-// the same script-content hash and served only for identical program bytes
-// (see getOrDecodeCompiled). Both sides use an LRU eviction policy bounded by
-// maxSize to prevent unbounded memory growth. Thread-safe: an RWMutex allows
-// concurrent cache hits without contention. LRU reordering is approximate —
-// read hits do not call MoveToFront to avoid write-locking on the hot path.
+// the same script-content hash and served only for the program bytes an order
+// commits to: identical bytes when the program travels by value (see
+// getOrDecodeCompiled), bytes with the committed hash when it travels by
+// reference (see resolveByReference). Both sides use an LRU eviction policy
+// bounded by maxSize to prevent unbounded memory growth. Thread-safe: an
+// RWMutex allows concurrent cache hits without contention. LRU reordering is
+// approximate — read hits do not call MoveToFront to avoid write-locking on
+// the hot path.
 //
 // Admission and the FSM apply path each construct their own NumscriptCache
 // instance (see internal/bootstrap/module.go and
 // processing.NewRequestProcessor) — they share no state. The compiled side
-// (compiledCache) is populated only by getOrDecodeCompiled, called only from
-// the FSM apply path's SafeExecCompiled, so it is never warm on admission's
-// instance.
+// (compiledCache) is populated only by getOrDecodeCompiled, reached only from
+// the FSM apply path (SafeExecCompiled, SafeExecCommitted), so it is never
+// warm on admission's instance; admission's parsed side remembers, per entry,
+// whether it has compiled the script before (lruEntry.compiledBefore).
 type NumscriptCache struct {
 	mu      sync.RWMutex
 	cache   map[[16]byte]*list.Element
@@ -64,15 +68,18 @@ type lruEntry struct {
 }
 
 // compiledProgram is the script-dependent half of an admission compile: the
-// program, its encoded bytecode, and the encoder that binds an order's vars to
-// the program's variable layout. None depends on any order's values, so one
-// instance serves every order of the script. It is shared and never mutated:
-// compileScript hands each order its own copy of the bytes, and admission's
-// effects run builds its own VM instance over the (immutable) program.
+// program, its encoded bytecode and that bytecode's hash (HashProgram, the
+// order's compiled_program_hash when the bytes travel by reference), and the
+// encoder that binds an order's vars to the program's variable layout. None
+// depends on any order's values, so one instance serves every order of the
+// script. It is shared and never mutated: compileScript hands each order its
+// own copy of the bytes, and admission's effects run builds its own VM
+// instance over the (immutable) program.
 type compiledProgram struct {
 	varsEncoder numscriptlib.VarsEncoder
 	program     numscriptlib.CompiledProgram
 	encoded     []byte
+	encodedHash [16]byte
 }
 
 // parsedScript wraps a parsed Numscript program with any parsing errors.
@@ -95,14 +102,35 @@ type parsedScript struct {
 // order carrying this artifact presents a shape it reports sufficient, and the
 // verification outcome is reusable without re-running the static pass.
 //
-// program is the exact encoded bytes that were decoded and verified. A hit
-// requires the order's bytes to be identical, so the node always executes the
-// committed artifact, never another compilation of the same script.
+// program is the exact encoded bytes that were decoded and verified, and
+// programHash their HashProgram. A hit requires the order's bytes to be
+// identical (by value) or to have the order's hash (by reference), so the node
+// always executes the artifact admission compiled, never another compilation
+// of the same script.
 type compiledLruEntry struct {
-	hash     [16]byte
-	program  []byte
-	vm       *numscriptlib.Vm
-	verified numscriptlib.VerifiedVarsInfo
+	hash        [16]byte
+	program     []byte
+	programHash [16]byte
+	vm          *numscriptlib.Vm
+	verified    numscriptlib.VerifiedVarsInfo
+}
+
+// verifyVars checks an order's vars against the entry's program: O(1) through
+// the verification record when the shape is one it reports sufficient,
+// otherwise the full static pass against the actual vars, so a failure carries
+// the verifier's own error (a "should not happen", see getOrDecodeCompiled).
+func (e *compiledLruEntry) verifyVars(vars *numscriptlib.Vars) domain.SerializableError {
+	if e.verified.CheckVars(vars) {
+		return nil
+	}
+
+	if _, verifyErr := numscriptlib.VerifyCompiledProgramWithVars(e.vm.Program, vars); verifyErr != nil {
+		return &domain.ErrNumscriptRuntime{
+			Detail: "verifying compiled numscript program: " + verifyErr.Error(),
+		}
+	}
+
+	return nil
 }
 
 // NewNumscriptCache creates a new NumscriptCache with the given maximum size.
@@ -130,6 +158,15 @@ func NewNumscriptCache(maxSize int) *NumscriptCache {
 // write could not.
 func HashScript(script string) [16]byte {
 	return xxh3.HashString128(script).Bytes()
+}
+
+// HashProgram computes the XXH3-128 hash of encoded program bytes: the order's
+// compiled_program_hash when the program travels by reference, and what the
+// FSM checks a cached or recompiled program against before running it in
+// place of the committed bytes (see SafeExecCommitted). Same collision
+// caveat as HashScript.
+func HashProgram(program []byte) [16]byte {
+	return xxh3.Hash128(program).Bytes()
 }
 
 // GetOrParse retrieves a parsed script from the cache or parses it if not found.
@@ -228,10 +265,13 @@ func (c *NumscriptCache) getOrParseEntryHashed(hash [16]byte, script string) *lr
 // callers for the same script block on the Once and share the single result.
 //
 // alreadyCompiled reports whether an earlier call on this exact entry already
-// ran the compile — false only for the one call that actually computes it
-// (or the first of a small race of concurrent first callers, all of which see
-// false; see compileScript's caller, admission's bytecode-omission decision,
-// which tolerates that imprecision by design). An entry evicted and later
+// claimed the compile: false for exactly one call per entry (the atomic swap
+// below), true for every later one — including concurrent first callers that
+// then block on the Once for the result, and callers after a cached compile
+// failure. Admission reads it as "this instance has sent the bytecode for
+// this script before" and sends the program by reference from then on (see
+// compileScript's callers); the FSM tolerates the signal being wrong in
+// either direction (see SafeExecCommitted). An entry evicted and later
 // recreated starts this at false again, which is the conservative answer:
 // this incarnation has not compiled it yet, regardless of an older
 // incarnation having done so before eviction.
@@ -253,7 +293,13 @@ func (e *lruEntry) compileParsed() (program *compiledProgram, err domain.Seriali
 			return
 		}
 
-		e.compiled = &compiledProgram{varsEncoder: varsEncoder, program: program, encoded: program.Encode()}
+		encoded := program.Encode()
+		e.compiled = &compiledProgram{
+			varsEncoder: varsEncoder,
+			program:     program,
+			encoded:     encoded,
+			encodedHash: HashProgram(encoded),
+		}
 	})
 
 	return e.compiled, e.compileErr, alreadyCompiled
@@ -268,21 +314,24 @@ func (e *lruEntry) compileParsed() (program *compiledProgram, err domain.Seriali
 // A program that does not decode — including one with an invalid header or of
 // a bytecode version the bundled library cannot read, which the decoder
 // refuses — is rejected loudly before verification and never inserted, so
-// every cached entry holds a program this binary can run.
+// every cached entry holds a program this binary can run. (SafeExecCommitted
+// routes an artifact of a version this library cannot read to the script text
+// before it gets here; see there.)
 //
 // Entries are keyed by scriptHash — the order's HashScript(text), already
 // checked against the resolved text by the caller — and hold the exact program
 // bytes they verified. A hit requires those bytes to equal the order's:
 // compiling the same text under the same bundled library is deterministic —
 // byte-identical, always — but this binary is not the only one that could
-// have produced the committed bytes. A mismatch means two different library
-// versions compiled the same text (a straddled mixed-binary window, not
-// ordinary operation — see docs/ops/deployment.md), so the order's bytes take
+// have produced the committed bytes: a replica on another library version
+// (a rolling upgrade) compiles the same text to other bytes, and may have
+// cached its own compile of the script (SafeExecFromText) before a by-value
+// order of the leader's bytes arrives. On a mismatch the order's bytes take
 // the cold path and, once verified, replace the entry: the node always
 // executes the committed bytes, and only pays the decode+verify again when
-// the bytes change. A rejected artifact (undecodable, foreign version,
-// unverifiable) is never inserted, so it leaves the current entry in place.
-// The cache itself is in-memory, so a binary upgrade restarts with it empty.
+// the bytes change. A rejected artifact (undecodable, unverifiable) is never
+// inserted, so it leaves the current entry in place. The cache itself is
+// in-memory, so a binary upgrade restarts with it empty.
 //
 // vars is only consulted through the entry's VerifiedVarsInfo: the vars shape
 // is fixed by the program's own variable layout, so a cached artifact is valid
@@ -299,25 +348,9 @@ func (c *NumscriptCache) getOrDecodeCompiled(scriptHash, programBytes []byte, va
 
 	hash := [16]byte(scriptHash)
 
-	c.compiledMu.RLock()
-	elem, ok := c.compiledCache[hash]
-	c.compiledMu.RUnlock()
-
-	var entry *compiledLruEntry
-	if ok {
-		entry, _ = elem.Value.(*compiledLruEntry)
-		ok = bytes.Equal(entry.program, programBytes)
-	}
-
-	if ok {
-		if entry.verified.CheckVars(vars) {
-			return entry, nil
-		}
-
-		if _, verifyErr := numscriptlib.VerifyCompiledProgramWithVars(entry.vm.Program, vars); verifyErr != nil {
-			return nil, &domain.ErrNumscriptRuntime{
-				Detail: "verifying compiled numscript program: " + verifyErr.Error(),
-			}
+	if entry, ok := c.lookupCompiled(hash); ok && bytes.Equal(entry.program, programBytes) {
+		if verifyErr := entry.verifyVars(vars); verifyErr != nil {
+			return nil, verifyErr
 		}
 
 		return entry, nil
@@ -361,18 +394,76 @@ func (c *NumscriptCache) getOrDecodeCompiled(scriptHash, programBytes []byte, va
 		}
 	}
 
-	entry = &compiledLruEntry{
+	entry := &compiledLruEntry{
 		hash: hash,
 		// Own copy: programBytes aliases the committed order.
-		program:  bytes.Clone(programBytes),
-		vm:       numscriptlib.NewVm(program),
-		verified: verified,
+		program:     bytes.Clone(programBytes),
+		programHash: HashProgram(programBytes),
+		vm:          numscriptlib.NewVm(program),
+		verified:    verified,
 	}
 	c.compiledCache[hash] = c.compiledOrder.PushFront(entry)
 
 	c.recordSize(cacheSideCompiled, int64(c.compiledOrder.Len()))
 
 	return entry, nil
+}
+
+// lookupCompiled returns the compiled-side entry cached under scriptHash, if
+// any. Read-locked only: a hit never reorders the LRU (see NumscriptCache).
+func (c *NumscriptCache) lookupCompiled(scriptHash [16]byte) (*compiledLruEntry, bool) {
+	c.compiledMu.RLock()
+	elem, ok := c.compiledCache[scriptHash]
+	c.compiledMu.RUnlock()
+
+	if !ok {
+		return nil, false
+	}
+
+	entry, _ := elem.Value.(*compiledLruEntry)
+
+	return entry, true
+}
+
+// resolveByReference returns the compiled-side entry holding the bytes with
+// programHash for the script keyed by scriptHash, for an order that carries
+// its program by reference (see SafeExecCommitted): the cached entry when its
+// bytes have that hash, otherwise this binary's own compile of script —
+// decoded, verified against vars and cached, exactly as a by-value program
+// would be, but only if it reproduces the hash. reproduced is false when it
+// does not: another library version compiled the committed bytes, and the
+// caller must derive the order from the text instead. A parse or compile
+// failure of the text is returned as is, since deriving from the text would
+// fail the same way. scriptHash must be HashScript(script).
+func (c *NumscriptCache) resolveByReference(scriptHash, programHash [16]byte, script string, vars *numscriptlib.Vars) (entry *compiledLruEntry, reproduced bool, err domain.SerializableError) {
+	if cached, ok := c.lookupCompiled(scriptHash); ok && cached.programHash == programHash {
+		if verifyErr := cached.verifyVars(vars); verifyErr != nil {
+			return nil, true, verifyErr
+		}
+
+		return cached, true, nil
+	}
+
+	parsed := c.getOrParseEntryHashed(scriptHash, script)
+	if parsed.script.err != nil {
+		return nil, true, parsed.script.err
+	}
+
+	compiled, compileErr, _ := parsed.compileParsed()
+	if compileErr != nil {
+		return nil, true, compileErr
+	}
+
+	if compiled.encodedHash != programHash {
+		return nil, false, nil
+	}
+
+	entry, err = c.getOrDecodeCompiled(scriptHash[:], compiled.encoded, vars)
+	if err != nil {
+		return nil, true, err
+	}
+
+	return entry, true, nil
 }
 
 // InitCacheMetrics initializes the cache metrics on the NumscriptCache.
