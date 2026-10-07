@@ -12164,7 +12164,7 @@
                         "uid": "${pyroscope}"
                      },
                      "groupBy": [ ],
-                     "labelSelector": "{service_name=\"ledger\"}",
+                     "labelSelector": "{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}",
                      "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
                      "queryType": "profile",
                      "refId": "A"
@@ -12194,7 +12194,7 @@
                         "uid": "${pyroscope}"
                      },
                      "groupBy": [ ],
-                     "labelSelector": "{service_name=\"ledger\"}",
+                     "labelSelector": "{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}",
                      "profileTypeId": "memory:alloc_space:bytes:space:bytes",
                      "queryType": "profile",
                      "refId": "A"
@@ -12224,7 +12224,7 @@
                         "uid": "${pyroscope}"
                      },
                      "groupBy": [ ],
-                     "labelSelector": "{service_name=\"ledger\"}",
+                     "labelSelector": "{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}",
                      "profileTypeId": "memory:inuse_space:bytes:space:bytes",
                      "queryType": "profile",
                      "refId": "A"
@@ -12254,7 +12254,7 @@
                         "uid": "${pyroscope}"
                      },
                      "groupBy": [ ],
-                     "labelSelector": "{service_name=\"ledger\"}",
+                     "labelSelector": "{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}",
                      "profileTypeId": "goroutines:goroutine:count:goroutine:count",
                      "queryType": "profile",
                      "refId": "A"

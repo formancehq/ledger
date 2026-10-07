@@ -346,7 +346,12 @@ local promTarget(expr, refId='A', legendFormat=null) = {
     targets: [promTarget(expr, 'A', std.get(opts, 'legendFormat', null)) + { format: 'heatmap', instant: true }],
   } + (if description != null then { description: description } else {}),
 
-  // flamegraph wraps a Pyroscope flame-graph target.
+  // flamegraph wraps a Pyroscope flame-graph target. Profiles are
+  // selected with the dashboard's namespace, cluster and node variables:
+  // the server tags them with the labels the metrics carry
+  // (cmd/server/pyroscope_tags.go). Pyroscope labels never pass through
+  // the OTel collector, so the selector is identical in every naming
+  // variant and transform.libsonnet leaves `labelSelector` untouched.
   flamegraph(title, gridPos, profileType, description=null):: {
     type: 'flamegraph',
     title: title,
@@ -355,7 +360,7 @@ local promTarget(expr, refId='A', legendFormat=null) = {
     targets: [{
       datasource: pyroDatasource,
       groupBy: [],
-      labelSelector: '{service_name="ledger"}',
+      labelSelector: '{k8s_namespace_name=~"$namespace", formance_ledger_cluster_name=~"$cluster", formance_ledger_node_id=~"$node"}',
       profileTypeId: profileType,
       queryType: 'profile',
       refId: 'A',
