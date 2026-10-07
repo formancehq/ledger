@@ -120,10 +120,15 @@ message OrderTechnical {
   bytes compiled_program = 5;
   // compiled_vars is the order's runtime vars encoded against the variable
   // layout of the program compiled_program carries or compiled_program_hash
-  // names (numscript VarsEncoder + Vars.Encode). Always present next to
-  // either one: the FSM runs these committed bytes on every path and never
-  // re-derives vars from the business script fields, so a corrupt value fails
-  // the order identically on every replica, whatever its cache holds.
+  // names (numscript VarsEncoder + Vars.Encode). Present next to either one,
+  // and run as committed whenever this binary can use that program — by
+  // value, or by reference once it holds or reproduces bytes with the
+  // committed hash — so a corrupt value then fails the order identically on
+  // every replica, whatever its cache holds. When the referenced bytes are
+  // from a library version this binary cannot reproduce or cannot read,
+  // compiled_vars is not used for that order: the FSM derives both program
+  // and vars afresh from the script text instead (see compiled_program),
+  // exactly as audit replay does for every order.
   bytes compiled_vars = 6;
   // compiled_script_hash is the XXH3-128 (16 bytes) of the exact script text
   // the program was compiled from. It is not collision-resistant against
