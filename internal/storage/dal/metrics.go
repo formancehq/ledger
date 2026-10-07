@@ -20,7 +20,7 @@ func NewMetricsListener(m metric.Meter, stallState *WriteStallState) *pebble.Eve
 	}
 
 	diskSlowDurationMilliseconds, err := m.Int64Histogram(
-		"pebble.disk_slow.duration.milliseconds",
+		"pebble.disk_slow.duration",
 		metric.WithUnit("ms"),
 		metric.WithDescription("Duration of slow disk operations detected by Pebble"),
 	)
@@ -37,7 +37,7 @@ func NewMetricsListener(m metric.Meter, stallState *WriteStallState) *pebble.Eve
 	}
 
 	flushDurMilliseconds, err := m.Int64Histogram(
-		"pebble.flush.duration.milliseconds",
+		"pebble.flush.duration",
 		metric.WithUnit("ms"),
 		metric.WithDescription("Duration of Pebble flush operations"),
 	)
@@ -46,7 +46,7 @@ func NewMetricsListener(m metric.Meter, stallState *WriteStallState) *pebble.Eve
 	}
 
 	flushInputBytes, err := m.Int64Histogram(
-		"pebble.flush.input.bytes",
+		"pebble.flush.input.size",
 		metric.WithUnit("By"),
 		metric.WithDescription("Input bytes flushed from memtables"),
 	)
@@ -63,7 +63,7 @@ func NewMetricsListener(m metric.Meter, stallState *WriteStallState) *pebble.Eve
 	}
 
 	compactionMilliseconds, err := m.Int64Histogram(
-		"pebble.compaction.duration.milliseconds",
+		"pebble.compaction.duration",
 		metric.WithUnit("ms"),
 		metric.WithDescription("Duration of Pebble compactions"),
 	)
@@ -80,7 +80,7 @@ func NewMetricsListener(m metric.Meter, stallState *WriteStallState) *pebble.Eve
 	}
 
 	stallMilliseconds, err := m.Int64Histogram(
-		"pebble.write_stall.duration.milliseconds",
+		"pebble.write_stall.duration",
 		metric.WithUnit("ms"),
 		metric.WithDescription("Duration of Pebble write stalls"),
 	)

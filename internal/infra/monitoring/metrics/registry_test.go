@@ -58,6 +58,27 @@ func TestMetricsRegistry(t *testing.T) {
 	}
 }
 
+// TestInstrumentNamesCarryNoUnit enforces the OpenTelemetry naming
+// guideline (and RFC-0021 rule 3) that a metric name never spells its
+// unit: the unit belongs in metric.WithUnit, and the Prometheus
+// translation appends it, so `pebble.flush.duration.milliseconds` would
+// surface as `..._milliseconds_milliseconds` or lose the unit entirely.
+func TestInstrumentNamesCarryNoUnit(t *testing.T) {
+	t.Parallel()
+
+	unitWords := map[string]struct{}{
+		"ns": {}, "us": {}, "ms": {}, "nanoseconds": {}, "microseconds": {},
+		"milliseconds": {}, "seconds": {}, "bytes": {}, "percent": {},
+	}
+	for _, name := range collectInstrumentNamesFromCode(t, filepath.Join(findRepoRoot(t), "internal")) {
+		for _, word := range strings.FieldsFunc(name, func(r rune) bool { return r == '.' || r == '_' }) {
+			if _, ok := unitWords[word]; ok {
+				t.Errorf("metric %q spells its unit %q in the name; drop it and set metric.WithUnit instead", name, word)
+			}
+		}
+	}
+}
+
 // TestNamingPolicyMatchesDashboards verifies the invariants the
 // dashboard generator in misc/devenv/monitoring-dashboards relies on
 // to mirror the go-libs metrics prefix (metrics.PrefixedName):

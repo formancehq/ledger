@@ -8,7 +8,7 @@ panels.row('Read Index (Pebble)', 166, [
     'Level Sizes (stacked)',
     { h: 8, w: 12, x: 0, y: 1 },
     [
-      { expr: 'readindex.level.bytes{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: 'Node {{formance.ledger.node.id}} — L{{level}}' },
+      { expr: 'readindex.level.size{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: 'Node {{formance.ledger.node.id}} — L{{level}}' },
     ], unit='bytes',
     description='Total bytes stored in each Pebble LSM level. Level 0 holds recently flushed memtable data; higher levels hold progressively older, compacted data.', opts={ stackMode: 'normal', fillOpacity: 20 },
   ),
@@ -17,7 +17,7 @@ panels.row('Read Index (Pebble)', 166, [
     'Memtable Size',
     { h: 8, w: 12, x: 12, y: 1 },
     [
-      { expr: 'readindex.memtable.bytes{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: 'Node {{formance.ledger.node.id}}' },
+      { expr: 'readindex.memtable.size{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: 'Node {{formance.ledger.node.id}}' },
     ], unit='bytes',
     description='Current memtable size in bytes. The memtable absorbs writes before they are flushed to L0 SSTables.', opts={ fillOpacity: 15 },
   ),

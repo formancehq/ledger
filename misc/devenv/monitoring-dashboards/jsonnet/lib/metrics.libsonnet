@@ -105,15 +105,15 @@
   // Pebble's EventListener; Pebble itself does not expose OTel).
   pebble:: {
     flush_total: 'pebble.flush.total',
-    flush_duration_milliseconds: 'pebble.flush.duration.milliseconds',
-    flush_input_bytes: 'pebble.flush.input.bytes',
+    flush_duration: 'pebble.flush.duration',
+    flush_input_size: 'pebble.flush.input.size',
     compaction_total: 'pebble.compaction.total',
-    compaction_duration_milliseconds: 'pebble.compaction.duration.milliseconds',
+    compaction_duration: 'pebble.compaction.duration',
     write_stall_total: 'pebble.write_stall.total',
-    write_stall_duration_milliseconds: 'pebble.write_stall.duration.milliseconds',
+    write_stall_duration: 'pebble.write_stall.duration',
     write_stall_active: 'pebble.write_stall.active',
     disk_slow_total: 'pebble.disk_slow.total',
-    disk_slow_duration_milliseconds: 'pebble.disk_slow.duration.milliseconds',
+    disk_slow_duration: 'pebble.disk_slow.duration',
     vfs_read_ops: 'pebble.vfs.read.ops',
     vfs_write_ops: 'pebble.vfs.write.ops',
     vfs_sync_ops: 'pebble.vfs.sync.ops',
@@ -163,16 +163,16 @@
 
   // readindex — internal/storage/readstore/metrics.go
   readindex:: {
-    level_bytes: 'readindex.level.bytes',
-    memtable_bytes: 'readindex.memtable.bytes',
+    level_size: 'readindex.level.size',
+    memtable_size: 'readindex.memtable.size',
     cache_hits: 'readindex.cache.hits',
     cache_misses: 'readindex.cache.misses',
   },
 
   // usagestore — internal/storage/usagestore/metrics.go
   usagestore:: {
-    level_bytes: 'usagestore.level.bytes',
-    memtable_bytes: 'usagestore.memtable.bytes',
+    level_size: 'usagestore.level.size',
+    memtable_size: 'usagestore.memtable.size',
     cache_hits: 'usagestore.cache.hits',
     cache_misses: 'usagestore.cache.misses',
   },
@@ -184,7 +184,7 @@
 
   // storage (custom — disk usage) — internal/infra/monitoring/diskusage/diskusage.go
   storage:: {
-    disk_volume_bytes: 'storage.disk.volume.bytes',
+    disk_volume_usage: 'storage.disk.volume.usage',
   },
 
   // wal — internal/storage/wal/wal_default.go

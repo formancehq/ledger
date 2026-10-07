@@ -62,7 +62,9 @@ are independent of these OTLP resource attributes.
 Metric names in this document use the **OpenTelemetry dot-notation**
 without the namespace prefix (`admission.command.duration`,
 `raft.fsm.logs_appended`). Attribute names such as `formance.ledger.node.id`
-are shown as emitted; the metrics prefix never applies to them. The server emits
+are shown as emitted; the metrics prefix never applies to them. Metric names
+carry no unit: the unit is the instrument's unit field (the Unit column below),
+and the Prometheus translation appends it as a suffix. The server emits
 every metric its own instrumentation creates under the
 `--otel-metrics-prefix` namespace (default `formance.ledger`, env
 `OTEL_METRICS_PREFIX`, `none` to disable), so
@@ -382,8 +384,8 @@ Flushes write data from memory (memtable) to disk (SSTable).
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
 | `pebble.flush.total` | Counter | 1 | Number of Pebble flush operations |
-| `pebble.flush.duration.milliseconds` | Histogram | ms | Duration of Pebble flush operations (CPU + I/O time) |
-| `pebble.flush.input.bytes` | Histogram | By | Input bytes flushed from memtables to SSTables |
+| `pebble.flush.duration` | Histogram | ms | Duration of Pebble flush operations (CPU + I/O time) |
+| `pebble.flush.input.size` | Histogram | By | Input bytes flushed from memtables to SSTables |
 
 **Attributes**:
 - `reason`: Flush reason (e.g., `capacity`, `delete_only_compaction`)
@@ -396,7 +398,7 @@ Compactions merge and reorganize SSTables to optimize read performance and recla
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
 | `pebble.compaction.total` | Counter | 1 | Number of Pebble compaction operations |
-| `pebble.compaction.duration.milliseconds` | Histogram | ms | Duration of Pebble compactions |
+| `pebble.compaction.duration` | Histogram | ms | Duration of Pebble compactions |
 
 **Attributes**:
 - `reason`: Compaction reason (e.g., `elision`, `default`, `move`)
@@ -409,7 +411,7 @@ Write stalls occur when Pebble cannot keep up with write rate due to compaction 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
 | `pebble.write_stall.total` | Counter | 1 | Number of Pebble write stalls |
-| `pebble.write_stall.duration.milliseconds` | Histogram | ms | Duration of Pebble write stalls |
+| `pebble.write_stall.duration` | Histogram | ms | Duration of Pebble write stalls |
 | `pebble.write_stall.active` | Gauge | 1 | Whether Pebble is currently stalling writes (1/0) |
 
 **Attributes**:
@@ -434,7 +436,7 @@ expansion reject invalid or older-than-one-minute samples.
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `storage.disk.volume.bytes` | Gauge | By | Disk space used on a storage volume |
+| `storage.disk.volume.usage` | Gauge | By | Disk space used on a storage volume |
 
 **Attributes**:
 - `volume`: Storage volume name

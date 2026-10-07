@@ -11,21 +11,21 @@ import (
 // RegisterMetrics registers Pebble internal metrics with the given meter.
 func (s *Store) RegisterMetrics(m metric.Meter) (metric.Registration, error) {
 	levelBytes, err := m.Int64ObservableGauge(
-		"readindex.level.bytes",
+		"readindex.level.size",
 		metric.WithDescription("Total bytes in each Pebble level"),
 		metric.WithUnit("By"),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("creating readindex.level.bytes gauge: %w", err)
+		return nil, fmt.Errorf("creating readindex.level.size gauge: %w", err)
 	}
 
 	memtableBytes, err := m.Int64ObservableGauge(
-		"readindex.memtable.bytes",
+		"readindex.memtable.size",
 		metric.WithDescription("Current memtable size in bytes"),
 		metric.WithUnit("By"),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("creating readindex.memtable.bytes gauge: %w", err)
+		return nil, fmt.Errorf("creating readindex.memtable.size gauge: %w", err)
 	}
 
 	cacheHits, err := m.Int64ObservableGauge(

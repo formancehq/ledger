@@ -14,21 +14,21 @@ import (
 // secondary store.
 func (s *Store) RegisterMetrics(m metric.Meter) (metric.Registration, error) {
 	levelBytes, err := m.Int64ObservableGauge(
-		"usagestore.level.bytes",
+		"usagestore.level.size",
 		metric.WithDescription("Total bytes in each Pebble level"),
 		metric.WithUnit("By"),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("creating usagestore.level.bytes gauge: %w", err)
+		return nil, fmt.Errorf("creating usagestore.level.size gauge: %w", err)
 	}
 
 	memtableBytes, err := m.Int64ObservableGauge(
-		"usagestore.memtable.bytes",
+		"usagestore.memtable.size",
 		metric.WithDescription("Current memtable size in bytes"),
 		metric.WithUnit("By"),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("creating usagestore.memtable.bytes gauge: %w", err)
+		return nil, fmt.Errorf("creating usagestore.memtable.size gauge: %w", err)
 	}
 
 	cacheHits, err := m.Int64ObservableGauge(
