@@ -812,6 +812,8 @@ var _ = Describe("Transactions", Ordered, func() {
 
 			txID := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().GetTransaction().GetId()
 			createSnapshot := pcvOf(resp, 0)["ev-read"].FindVolume("GBP", "")
+			Expect(createSnapshot).NotTo(BeNil())
+			Expect(createSnapshot.Validate()).To(Succeed())
 			Expect(createSnapshot.GetInput().DecimalString()).To(Equal("300"))
 
 			// Unitary get returns the stored historical snapshot verbatim.
@@ -823,8 +825,11 @@ var _ = Describe("Transactions", Ordered, func() {
 
 				vba := tx.GetPostCommitVolumes().GetVolumesByAccount()["ev-read"]
 				g.Expect(vba).NotTo(BeNil())
-				g.Expect(vba.FindVolume("GBP", "").GetInput().DecimalString()).To(Equal("300"))
-				g.Expect(vba.FindVolume("GBP", "").GetOutput().DecimalString()).To(Equal("0"))
+				snapshot := vba.FindVolume("GBP", "")
+				g.Expect(snapshot).NotTo(BeNil())
+				g.Expect(snapshot.Validate()).To(Succeed())
+				g.Expect(snapshot.GetInput().DecimalString()).To(Equal("300"))
+				g.Expect(snapshot.GetOutput().DecimalString()).To(Equal("0"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
 			// List returns the same immutable snapshot.
@@ -839,7 +844,11 @@ var _ = Describe("Transactions", Ordered, func() {
 					}
 				}
 				g.Expect(found).NotTo(BeNil())
-				g.Expect(found.GetPostCommitVolumes().GetVolumesByAccount()["ev-read"].FindVolume("GBP", "").GetInput().DecimalString()).To(Equal("300"))
+				snapshot := found.GetPostCommitVolumes().GetVolumesByAccount()["ev-read"].FindVolume("GBP", "")
+				g.Expect(snapshot).NotTo(BeNil())
+				g.Expect(snapshot.Validate()).To(Succeed())
+				g.Expect(snapshot.GetInput().DecimalString()).To(Equal("300"))
+				g.Expect(snapshot.GetOutput().DecimalString()).To(Equal("0"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
