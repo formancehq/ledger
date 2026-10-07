@@ -12,9 +12,9 @@ func TestFileFetcher_FetchFileOnceRejectsNonLocalPath(t *testing.T) {
 	t.Parallel()
 
 	client, clientState := newMockSnapshotClient(t, nil, nil, nil)
-	fetcher := &fileFetcher{client: client, sessionID: "test-session"}
+	fetcher := &fileFetcher{sessionID: "test-session"}
 
-	err := fetcher.fetchFileOnce(t.Context(), &snapshotpb.FileEntry{Path: "../outside"}, t.TempDir(), nil)
+	err := fetcher.fetchFileOnce(t.Context(), client, &snapshotpb.FileEntry{Path: "../outside"}, t.TempDir(), nil)
 	require.ErrorContains(t, err, "invalid snapshot path")
 	require.Zero(t, clientState.fetchFileCalls.Load())
 }

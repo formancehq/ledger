@@ -108,6 +108,32 @@ func newMockSnapshotClient(t *testing.T, prepareResp *snapshotpb.PrepareSnapshot
 	return c, s
 }
 
+func fixedSnapshotClient(client snapshotpb.SnapshotServiceClient) snapshotClientSource {
+	return func() (snapshotpb.SnapshotServiceClient, error) { return client, nil }
+}
+
+// recyclingSnapshotClients hands out `first` until it is retired, then
+// `second`, the way the transport pool swaps a restarted peer connection.
+type recyclingSnapshotClients struct {
+	first, second snapshotpb.SnapshotServiceClient
+	retired       atomic.Bool
+	resolved      atomic.Int32
+}
+
+func (r *recyclingSnapshotClients) source() (snapshotpb.SnapshotServiceClient, error) {
+	r.resolved.Add(1)
+
+	if r.retired.Load() {
+		return r.second, nil
+	}
+
+	return r.first, nil
+}
+
+// closingConnErr is what grpc-go returns on a call issued through a
+// ClientConn that was closed under it.
+var closingConnErr = status.Error(codes.Canceled, "grpc: the client connection is closing")
+
 func fileSHA256(data []byte) string {
 	h := sha256.Sum256(data)
 
@@ -155,7 +181,7 @@ func TestGRPCSnapshotFetcher_HappyPath(t *testing.T) {
 	}
 
 	client, csState := buildMockClient(t, files)
-	fetcher := &grpcSnapshotFetcher{client: client, logger: logging.Testing(), parallelism: 2, retryCount: 5, fileRetryCount: 3}
+	fetcher := &grpcSnapshotFetcher{clientSource: fixedSnapshotClient(client), logger: logging.Testing(), parallelism: 2, retryCount: 5, fileRetryCount: 3}
 
 	size, err := fetcher.FetchSnapshot(t.Context(), dir, nil, 0)
 	require.NoError(t, err)
@@ -182,7 +208,7 @@ func TestGRPCSnapshotFetcher_ParallelFetch(t *testing.T) {
 	}
 
 	client, csState := buildMockClient(t, files)
-	fetcher := &grpcSnapshotFetcher{client: client, logger: logging.Testing(), parallelism: 4, retryCount: 5, fileRetryCount: 3}
+	fetcher := &grpcSnapshotFetcher{clientSource: fixedSnapshotClient(client), logger: logging.Testing(), parallelism: 4, retryCount: 5, fileRetryCount: 3}
 
 	size, err := fetcher.FetchSnapshot(t.Context(), dir, nil, 0)
 	require.NoError(t, err)
@@ -220,7 +246,7 @@ func TestGRPCSnapshotFetcher_HashMismatch(t *testing.T) {
 		streams,
 	)
 
-	fetcher := &grpcSnapshotFetcher{client: client, logger: logging.Testing(), parallelism: 1, retryCount: 5, fileRetryCount: 3}
+	fetcher := &grpcSnapshotFetcher{clientSource: fixedSnapshotClient(client), logger: logging.Testing(), parallelism: 1, retryCount: 5, fileRetryCount: 3}
 	_, err := fetcher.FetchSnapshot(t.Context(), dir, nil, 0)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "hash mismatch")
@@ -245,7 +271,7 @@ func TestGRPCSnapshotFetcher_RejectsNonLocalManifestPath(t *testing.T) {
 		nil,
 	)
 
-	fetcher := &grpcSnapshotFetcher{client: client, logger: logging.Testing(), parallelism: 1, retryCount: 1, fileRetryCount: 1}
+	fetcher := &grpcSnapshotFetcher{clientSource: fixedSnapshotClient(client), logger: logging.Testing(), parallelism: 1, retryCount: 1, fileRetryCount: 1}
 	_, err = fetcher.FetchSnapshot(t.Context(), targetDir, nil, 0)
 	require.ErrorContains(t, err, "invalid snapshot path")
 	require.Zero(t, clientState.fetchFileCalls.Load())
@@ -276,7 +302,7 @@ func TestGRPCSnapshotFetcher_RejectsStagingPathCollision(t *testing.T) {
 		nil,
 	)
 
-	fetcher := &grpcSnapshotFetcher{client: client, logger: logging.Testing(), parallelism: 4, retryCount: 1, fileRetryCount: 1}
+	fetcher := &grpcSnapshotFetcher{clientSource: fixedSnapshotClient(client), logger: logging.Testing(), parallelism: 4, retryCount: 1, fileRetryCount: 1}
 	_, err := fetcher.FetchSnapshot(t.Context(), targetDir, nil, 0)
 	require.ErrorContains(t, err, "collides with the staging path")
 	require.Zero(t, clientState.fetchFileCalls.Load())
@@ -305,7 +331,7 @@ func TestGRPCSnapshotFetcher_RejectsDuplicateManifestPath(t *testing.T) {
 		nil,
 	)
 
-	fetcher := &grpcSnapshotFetcher{client: client, logger: logging.Testing(), parallelism: 4, retryCount: 1, fileRetryCount: 1}
+	fetcher := &grpcSnapshotFetcher{clientSource: fixedSnapshotClient(client), logger: logging.Testing(), parallelism: 4, retryCount: 1, fileRetryCount: 1}
 	_, err := fetcher.FetchSnapshot(t.Context(), targetDir, nil, 0)
 	require.ErrorContains(t, err, "duplicate snapshot path")
 	require.Zero(t, clientState.fetchFileCalls.Load())
@@ -341,7 +367,7 @@ func TestGRPCSnapshotFetcher_RejectsSymlinkEscape(t *testing.T) {
 		streams,
 	)
 
-	fetcher := &grpcSnapshotFetcher{client: client, logger: logging.Testing(), parallelism: 1, retryCount: 1, fileRetryCount: 1}
+	fetcher := &grpcSnapshotFetcher{clientSource: fixedSnapshotClient(client), logger: logging.Testing(), parallelism: 1, retryCount: 1, fileRetryCount: 1}
 	_, err := fetcher.FetchSnapshot(t.Context(), targetDir, nil, 0)
 	require.ErrorContains(t, err, "creating parent directory")
 	require.Equal(t, int32(1), clientState.fetchFileCalls.Load())
@@ -371,7 +397,7 @@ func TestGRPCSnapshotFetcher_MissingDigest(t *testing.T) {
 		streams,
 	)
 
-	fetcher := &grpcSnapshotFetcher{client: client, logger: logging.Testing(), parallelism: 1, retryCount: 1, fileRetryCount: 1}
+	fetcher := &grpcSnapshotFetcher{clientSource: fixedSnapshotClient(client), logger: logging.Testing(), parallelism: 1, retryCount: 1, fileRetryCount: 1}
 	_, err := fetcher.FetchSnapshot(t.Context(), t.TempDir(), nil, 0)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid or missing SHA-256 digest")
@@ -400,7 +426,7 @@ func TestGRPCSnapshotFetcher_SizeMismatch(t *testing.T) {
 		streams,
 	)
 
-	fetcher := &grpcSnapshotFetcher{client: client, logger: logging.Testing(), parallelism: 1, retryCount: 1, fileRetryCount: 1}
+	fetcher := &grpcSnapshotFetcher{clientSource: fixedSnapshotClient(client), logger: logging.Testing(), parallelism: 1, retryCount: 1, fileRetryCount: 1}
 	_, err := fetcher.FetchSnapshot(t.Context(), t.TempDir(), nil, 0)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "size mismatch")
@@ -432,7 +458,7 @@ func TestGRPCSnapshotFetcher_RejectsExcessBytes(t *testing.T) {
 		streams,
 	)
 
-	fetcher := &grpcSnapshotFetcher{client: client, logger: logging.Testing(), parallelism: 1, retryCount: 1, fileRetryCount: 1}
+	fetcher := &grpcSnapshotFetcher{clientSource: fixedSnapshotClient(client), logger: logging.Testing(), parallelism: 1, retryCount: 1, fileRetryCount: 1}
 	_, err := fetcher.FetchSnapshot(t.Context(), targetDir, nil, 0)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "got at least 5")
@@ -466,7 +492,7 @@ func TestGRPCSnapshotFetcher_RetryRewritesPartialFile(t *testing.T) {
 		streams,
 	)
 
-	fetcher := &grpcSnapshotFetcher{client: client, logger: logging.Testing(), parallelism: 1, retryCount: 1, fileRetryCount: 2}
+	fetcher := &grpcSnapshotFetcher{clientSource: fixedSnapshotClient(client), logger: logging.Testing(), parallelism: 1, retryCount: 1, fileRetryCount: 2}
 	_, err := fetcher.FetchSnapshot(t.Context(), targetDir, nil, 0)
 	require.NoError(t, err)
 	require.Equal(t, int32(2), csState.fetchFileCalls.Load())
@@ -486,7 +512,7 @@ func TestGRPCSnapshotFetcher_UnavailableWrapsErrNotAvailable(t *testing.T) {
 		nil,
 	)
 
-	fetcher := &grpcSnapshotFetcher{client: client, logger: logging.Testing(), parallelism: 1, retryCount: 5, fileRetryCount: 3}
+	fetcher := &grpcSnapshotFetcher{clientSource: fixedSnapshotClient(client), logger: logging.Testing(), parallelism: 1, retryCount: 5, fileRetryCount: 3}
 	_, err := fetcher.FetchSnapshot(t.Context(), t.TempDir(), nil, 0)
 	require.Error(t, err)
 	require.ErrorIs(t, err, state.ErrNotAvailable)
@@ -503,7 +529,7 @@ func TestGRPCSnapshotFetcher_ProgressTracking(t *testing.T) {
 
 	client, _ := buildMockClient(t, files)
 	progress := state.NewSyncProgress()
-	fetcher := &grpcSnapshotFetcher{client: client, logger: logging.Testing(), parallelism: 2, retryCount: 5, fileRetryCount: 3}
+	fetcher := &grpcSnapshotFetcher{clientSource: fixedSnapshotClient(client), logger: logging.Testing(), parallelism: 2, retryCount: 5, fileRetryCount: 3}
 
 	_, err := fetcher.FetchSnapshot(t.Context(), dir, progress, 0)
 	require.NoError(t, err)
@@ -553,7 +579,7 @@ func TestGRPCSnapshotFetcher_RedownloadsCompletedFiles(t *testing.T) {
 		streams,
 	)
 
-	fetcher := &grpcSnapshotFetcher{client: client, logger: logging.Testing(), parallelism: 2, retryCount: 5, fileRetryCount: 3}
+	fetcher := &grpcSnapshotFetcher{clientSource: fixedSnapshotClient(client), logger: logging.Testing(), parallelism: 2, retryCount: 5, fileRetryCount: 3}
 	_, err := fetcher.FetchSnapshot(t.Context(), dir, nil, 0)
 	require.NoError(t, err)
 
@@ -589,7 +615,7 @@ func TestGRPCSnapshotFetcher_CloseSessionAlwaysCalled(t *testing.T) {
 		streams,
 	)
 
-	fetcher := &grpcSnapshotFetcher{client: client, logger: logging.Testing(), parallelism: 1, retryCount: 5, fileRetryCount: 3}
+	fetcher := &grpcSnapshotFetcher{clientSource: fixedSnapshotClient(client), logger: logging.Testing(), parallelism: 1, retryCount: 5, fileRetryCount: 3}
 	_, err := fetcher.FetchSnapshot(t.Context(), t.TempDir(), nil, 0)
 	require.Error(t, err)
 	require.GreaterOrEqual(t, csState.closeCalled.Load(), int32(1))
@@ -611,7 +637,7 @@ func TestGRPCSnapshotFetcher_LogsThroughInjectedLogger(t *testing.T) {
 	logger := logging.NewDefaultLogger(&logs, false, false, false)
 
 	client, _ := buildMockClient(t, files)
-	fetcher := &grpcSnapshotFetcher{client: client, logger: logger, parallelism: 1, retryCount: 1, fileRetryCount: 1}
+	fetcher := &grpcSnapshotFetcher{clientSource: fixedSnapshotClient(client), logger: logger, parallelism: 1, retryCount: 1, fileRetryCount: 1}
 
 	_, err := fetcher.FetchSnapshot(t.Context(), dir, nil, 0)
 	require.NoError(t, err)
@@ -620,4 +646,110 @@ func TestGRPCSnapshotFetcher_LogsThroughInjectedLogger(t *testing.T) {
 	require.Contains(t, logged, "Requesting snapshot session from leader")
 	require.Contains(t, logged, "Downloading snapshot file")
 	require.Contains(t, logged, "Snapshot file downloaded")
+}
+
+// TestGRPCSnapshotFetcher_RetriesFileOnRecycledConnection covers the Raft
+// transport restarting the shared peer connection while a file stream is in
+// flight: the stream fails with Canceled, and the next attempt must run on
+// the re-dialed connection and complete the file.
+func TestGRPCSnapshotFetcher_RetriesFileOnRecycledConnection(t *testing.T) {
+	t.Parallel()
+
+	targetDir := t.TempDir()
+	content := []byte("complete-content")
+	manifest := &snapshotpb.SnapshotManifest{Files: []*snapshotpb.FileEntry{
+		{Path: "data.bin", Size: uint64(len(content))},
+	}}
+	prepared := &snapshotpb.PrepareSnapshotResponse{SessionId: "test-session", Manifest: manifest}
+
+	clients := &recyclingSnapshotClients{}
+
+	// The stream delivers a partial chunk, then dies with the connection.
+	closingStream := NewMockServerStreamingClient[snapshotpb.FetchFileResponse](gomock.NewController(t))
+	gomock.InOrder(
+		closingStream.EXPECT().Recv().Return(&snapshotpb.FetchFileResponse{Data: content[:4]}, nil),
+		closingStream.EXPECT().Recv().DoAndReturn(func() (*snapshotpb.FetchFileResponse, error) {
+			clients.retired.Store(true)
+
+			return nil, closingConnErr
+		}),
+	)
+	closingClient, closingState := newMockSnapshotClient(t, prepared, nil,
+		map[string]*MockServerStreamingClient[snapshotpb.FetchFileResponse]{"data.bin": closingStream})
+
+	freshClient, freshState := buildMockClient(t, map[string][]byte{"data.bin": content})
+
+	clients.first, clients.second = closingClient, freshClient
+
+	fetcher := &grpcSnapshotFetcher{clientSource: clients.source, logger: logging.Testing(), parallelism: 1, retryCount: 1, fileRetryCount: 2}
+	_, err := fetcher.FetchSnapshot(t.Context(), targetDir, nil, 0)
+	require.NoError(t, err)
+
+	require.Equal(t, int32(1), closingState.fetchFileCalls.Load())
+	require.Equal(t, int32(1), freshState.fetchFileCalls.Load())
+	require.Equal(t, int32(3), clients.resolved.Load(), "session + one resolve per file attempt")
+
+	data, err := os.ReadFile(filepath.Join(targetDir, "data.bin"))
+	require.NoError(t, err)
+	require.Equal(t, content, data)
+	require.NoFileExists(t, filepath.Join(targetDir, "data.bin.tmp"))
+}
+
+// TestGRPCSnapshotFetcher_RetriesSessionOnRecycledConnection covers the
+// restart landing on PrepareSnapshot: the session attempt fails with
+// Canceled and the next session must be opened on the re-dialed connection.
+func TestGRPCSnapshotFetcher_RetriesSessionOnRecycledConnection(t *testing.T) {
+	t.Parallel()
+
+	targetDir := t.TempDir()
+	content := []byte("complete-content")
+
+	clients := &recyclingSnapshotClients{}
+
+	closingClient := NewMockSnapshotServiceClient(gomock.NewController(t))
+	closingClient.EXPECT().PrepareSnapshot(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(context.Context, *snapshotpb.PrepareSnapshotRequest, ...grpc.CallOption) (*snapshotpb.PrepareSnapshotResponse, error) {
+			clients.retired.Store(true)
+
+			return nil, closingConnErr
+		}).Times(1)
+
+	freshClient, freshState := buildMockClient(t, map[string][]byte{"data.bin": content})
+
+	clients.first, clients.second = closingClient, freshClient
+
+	fetcher := &grpcSnapshotFetcher{clientSource: clients.source, logger: logging.Testing(), parallelism: 1, retryCount: 2, fileRetryCount: 1}
+	_, err := fetcher.FetchSnapshot(t.Context(), targetDir, nil, 0)
+	require.NoError(t, err)
+
+	require.Equal(t, int32(1), freshState.fetchFileCalls.Load())
+	require.Equal(t, int32(1), freshState.closeCalled.Load())
+
+	data, err := os.ReadFile(filepath.Join(targetDir, "data.bin"))
+	require.NoError(t, err)
+	require.Equal(t, content, data)
+}
+
+// A Canceled status caused by the caller's own context is not a transport
+// hiccup: the fetch must stop instead of burning retries.
+func TestGRPCSnapshotFetcher_CallerCancellationIsNotRetried(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+
+	client := NewMockSnapshotServiceClient(gomock.NewController(t))
+	client.EXPECT().PrepareSnapshot(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(context.Context, *snapshotpb.PrepareSnapshotRequest, ...grpc.CallOption) (*snapshotpb.PrepareSnapshotResponse, error) {
+			cancel()
+
+			return nil, status.FromContextError(context.Canceled).Err()
+		}).Times(1)
+
+	fetcher := &grpcSnapshotFetcher{clientSource: fixedSnapshotClient(client), logger: logging.Testing(), parallelism: 1, retryCount: 5, fileRetryCount: 1}
+	// Times(1) on PrepareSnapshot is the no-retry assertion. The error
+	// surfaces either as the gRPC status or as the heartbeat wrapper's
+	// context error, depending on which select arm wins.
+	_, err := fetcher.FetchSnapshot(ctx, t.TempDir(), nil, 0)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, context.Canceled) || status.Code(err) == codes.Canceled, err)
 }
