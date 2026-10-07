@@ -4745,7 +4745,7 @@ Continuous profiling via Pyroscope. Only available when the binary is built with
 | `--pyroscope-basic-auth-user` | string | `""` | Basic auth username for Pyroscope |
 | `--pyroscope-basic-auth-password` | string | `""` | Basic auth password for Pyroscope |
 | `--pyroscope-upload-rate` | duration | `15s` | Profile upload rate |
-| `--pyroscope-tags` | string slice | `[]` | Additional tags for profiles (format: `key=value`, repeatable) |
+| `--pyroscope-tags` | string slice | `[]` | Additional tags for profiles (format: `key=value`, repeatable). The server sets `k8s_namespace_name`, `formance_ledger_cluster_name` and `formance_ledger_node_id` from the matching OTel resource attributes; these override user tags of the same name |
 | `--pyroscope-profile-types` | string slice | all types | Profile types to enable (`cpu,alloc_objects,alloc_space,inuse_objects,inuse_space,goroutines,mutex_count,mutex_duration,block_count,block_duration`) |
 | `--pyroscope-mutex-profile-fraction` | int | `5` | Mutex profile fraction (0 to disable) |
 | `--pyroscope-block-profile-rate` | int | `5` | Block profile rate (0 to disable) |

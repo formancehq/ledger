@@ -9,7 +9,6 @@ import (
 	"os/signal"
 	"runtime"
 	"runtime/debug"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -303,14 +302,14 @@ func runServer(cmd *cobra.Command, bindings network.Bindings) error {
 		serviceName, _ := cmd.Flags().GetString(otlp.OtelServiceNameFlag)
 		pyroscopeCfg.ApplicationName = serviceName
 	}
-	// Add node ID as a tag
+	// Tag profiles with the cluster/node identity the metrics carry
+	// through the telemetry resource.
 	if pyroscopeCfg.Enabled {
 		if pyroscopeCfg.Tags == nil {
 			pyroscopeCfg.Tags = make(map[string]string)
 		}
 
-		pyroscopeCfg.Tags["node_id"] = strconv.FormatUint(cfg.RaftConfig.NodeID, 10)
-		pyroscopeCfg.Tags["cluster_id"] = cfg.ClusterID
+		addPyroscopeResourceTags(pyroscopeCfg.Tags, telemetryResource)
 	}
 
 	// Configure flight recorder

@@ -198,8 +198,26 @@ func assertDashboardTree(t *testing.T, value any, native bool) {
 			if profileType, ok := value["profileTypeId"].(string); ok && strings.HasPrefix(profileType, "goroutine:") {
 				t.Errorf("obsolete singular goroutine profile type at %s: %s", path, profileType)
 			}
-			if selector, ok := value["labelSelector"].(string); ok && strings.Contains(selector, "version=") {
-				t.Errorf("Pyroscope selector relies on absent version label at %s: %s", path, selector)
+			if selector, ok := value["labelSelector"].(string); ok {
+				if strings.Contains(selector, "version=") {
+					t.Errorf("Pyroscope selector relies on absent version label at %s: %s", path, selector)
+				}
+				// The server tags profiles with the same namespace,
+				// cluster and node identity as the metrics; service_name
+				// is a per-deployment application name and matches
+				// nothing the dashboard variables select.
+				for _, want := range []string{
+					`k8s_namespace_name=~"$namespace"`,
+					`formance_ledger_cluster_name=~"$cluster"`,
+					`formance_ledger_node_id=~"$node"`,
+				} {
+					if !strings.Contains(selector, want) {
+						t.Errorf("Pyroscope selector at %s is not scoped by %s: %s", path, want, selector)
+					}
+				}
+				if strings.Contains(selector, "service_name") {
+					t.Errorf("Pyroscope selector hard-codes a service name at %s: %s", path, selector)
+				}
 			}
 
 			for key, child := range value {

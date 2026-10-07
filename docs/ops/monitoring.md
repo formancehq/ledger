@@ -823,7 +823,7 @@ export PYROSCOPE_DISABLE_GC_RUNS=false
 | `--pyroscope-basic-auth-user` | Basic auth username | - |
 | `--pyroscope-basic-auth-password` | Basic auth password | - |
 | `--pyroscope-upload-rate` | Profile upload interval | `15s` |
-| `--pyroscope-tags` | Additional tags (key=value, repeatable) | - |
+| `--pyroscope-tags` | Additional tags (key=value, repeatable); see [Profile Labels](#profile-labels) for tags the server sets | - |
 | `--pyroscope-profile-types` | Profile types to enable (repeatable) | See below |
 | `--pyroscope-mutex-profile-fraction` | Mutex profile fraction | `5` |
 | `--pyroscope-block-profile-rate` | Block profile rate | `5` |
@@ -869,15 +869,31 @@ Credentials are delivered through Pod `secretKeyRef` entries. See
 Secret and rotation behavior. Kubernetes manifests must use these references;
 the runtime environment variables above are populated by Kubernetes.
 
-### Automatic Tags
+### Profile Labels
 
-The following tags are automatically added to all profiles:
-- `node_id` - The Raft node ID
-- `cluster_id` - The cluster ID
+The server adds these tags to every profile, overriding a `--pyroscope-tags`
+entry with the same name. They are the labels the metrics carry after the
+OTLP→Prometheus translation, so the same selector works for both signals:
+
+| Tag | Value |
+|-----|-------|
+| `k8s_namespace_name` | `k8s.namespace.name` resource attribute, when set (by the operator) |
+| `formance_ledger_cluster_name` | `formance.ledger.cluster.name` resource attribute: the `Cluster` resource name, or the cluster ID without the operator |
+| `formance_ledger_node_id` | `formance.ledger.node.id` resource attribute: the Raft node ID |
+
+They follow the [shared telemetry resource](#shared-telemetry-resource), so
+`--otel-resource-attributes` (or `OTEL_RESOURCE_ATTRIBUTES`) overrides them
+like any other identity attribute. The Grafana dashboards select profiles with
+`{k8s_namespace_name=~"$namespace", formance_ledger_cluster_name=~"$cluster", formance_ledger_node_id=~"$node"}`.
+
+The server no longer tags profiles with the bare Raft node ID (`node_id`) or
+the declared cluster ID (`cluster_id`): the node ID repeats across clusters and
+separate clusters can share a cluster ID, so neither identifies a node or a
+cluster on its own. A `--pyroscope-tags` entry with either name is still kept.
 
 The application name defaults to the OTel service name, `ledger` unless
 `--otel-service-name` is set, so every node reports under one application and
-these tags tell nodes apart.
+these tags tell clusters and nodes apart.
 
 ### Best Practices
 
