@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"20"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"22"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 20:
+leader. For example, with a schema implementing revision 22:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 20' \
+grpcurl -plaintext -H 'ledger-protocol-version: 22' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -254,21 +254,30 @@ log. A revision-19 server ignores that request field and acknowledges creation
 without the supplied values. Clients, servers and replicas must agree on the
 atomic creation semantics; rebuild communicating service binaries together.
 
-## Numscript metadata rendering and VM execution (revision 21)
+## Prepared-query filter shape validation (revision 21)
 
-Revision 21 stores and returns an account-typed Numscript metadata value
+Revision 21 rejects `Apply(CreatePreparedQuery)` and `Apply(UpdatePreparedQuery)`
+with `InvalidArgument` / `FILTER_COMPILATION_ERROR` when a filter leaf has a shape
+that never compiles, such as a missing condition value, a missing field reference,
+or a builtin field the condition does not serve. A revision-20 server stores such
+a query and fails every execution, so peers on the same revision must agree on
+which writes are rejected.
+
+## Numscript metadata rendering and VM execution (revision 22)
+
+Revision 22 stores and returns an account-typed Numscript metadata value
 (`set_tx_meta("k", @merchants:acme)` and its `set_account_meta` counterpart) as
-the bare account name, `merchants:acme`, where revision 20 returned
+the bare account name, `merchants:acme`, where revision 21 returned
 `@merchants:acme`. The rendering now comes from the Numscript library itself,
 identically on both of its engines, and the bare name is the form a later
 `meta()` read can resolve as an account again — the `@`-prefixed form could
 not. Scalar values are unchanged: strings and numbers stay verbatim, monetary
 stays `ASSET amount`, portions and assets keep their canonical forms. The
 `.proto` text of the exposed metadata messages is unchanged, so the difference
-is invisible to a schema comparison; a revision-20 client would read the same
+is invisible to a schema comparison; a revision-21 client would read the same
 Apply request back with different metadata bytes.
 
-Revision 21 also changes apply semantics: admission compiles each resolvable
+Revision 22 also changes apply semantics: admission compiles each resolvable
 script to Numscript VM bytecode and binds it to the order's technical
 sub-message, and the FSM executes that artifact instead of re-interpreting the
 script text. The VM is the only engine: a script it cannot compile is rejected
@@ -278,7 +287,7 @@ a binary predating these fields silently drops them and interprets with the
 older Numscript library, so a mixed-binary cluster applying the same committed
 entry writes divergent transaction and audit bytes. Deploy this revision with
 all nodes stopped — see
-[Upgrading across the Numscript VM execution change](../../../../ops/deployment.md#upgrading-across-the-numscript-vm-execution-change-revision-21).
+[Upgrading across the Numscript VM execution change](../../../../ops/deployment.md#upgrading-across-the-numscript-vm-execution-change-revision-22).
 The artifact is bound to its script text by an XXH3-128 hash
 (`compiled_script_hash`), which also keys the FSM's script caches.
 The artifact itself carries the Numscript library's bytecode version
@@ -289,7 +298,7 @@ malformed — the order fails with a Numscript runtime error; the script is
 recompiled from its text only when the artifact is missing, so foreign
 bytecode is never run and a present artifact is never repaired.
 
-Revision 21 also moves where and how a statically invalid script fails.
+Revision 22 also moves where and how a statically invalid script fails.
 `Parse` checks syntax only; the Numscript typechecker runs inside the
 compiler. Every static-semantics failure the compiler catches — a type
 mismatch, an undeclared variable, an unknown function or var type, `oneof` or
@@ -304,8 +313,8 @@ an idempotency key: admission forwards it as preload-unavailable (see
 [admission idempotency](../admission/idempotency.md)), so the FSM replays the
 key's frozen outcome or rejects with `ERROR_REASON_PRELOAD_UNAVAILABLE`.
 Neither revision freezes the compile failure itself under an idempotency key:
-revision 20's apply failure was `KindInternal`, which is not freezable, and
-revision 21's rejection happens before apply.
+revision 21's apply failure was `KindInternal`, which is not freezable, and
+revision 22's rejection happens before apply.
 
 ## Maintaining the revision
 
