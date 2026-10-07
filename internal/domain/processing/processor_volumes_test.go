@@ -87,6 +87,8 @@ func TestBuildPostCommitVolumes_FoundAndAbsent(t *testing.T) {
 
 	users := findVolumeEntry(result, "users:001", "USD", "")
 	require.NotNil(t, users)
+	require.NotNil(t, users.GetInput(), "input field must be present even when zero")
+	require.NotNil(t, users.GetOutput(), "output field must be present even when zero")
 	require.Equal(t, "0", users.GetInput().DecimalString())
 	require.Equal(t, "0", users.GetOutput().DecimalString())
 }

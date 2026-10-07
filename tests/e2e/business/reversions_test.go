@@ -301,14 +301,20 @@ var _ = Describe("Reversions", Ordered, func() {
 				Address: "account-a",
 			})
 			Expect(err).To(Succeed())
-			Expect(accountAAfter.FindVolume("USD", "").GetBalance().DecimalString()).To(Equal("0"))
+			accountAAfterVol := accountAAfter.FindVolume("USD", "")
+			Expect(accountAAfterVol).NotTo(BeNil(), "expected USD entry on account-a after reversion")
+			Expect(accountAAfterVol.GetBalance()).NotTo(BeNil(), "balance field must be present after reversion")
+			Expect(accountAAfterVol.GetBalance().DecimalString()).To(Equal("0"))
 
 			accountBAfter, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "account-b",
 			})
 			Expect(err).To(Succeed())
-			Expect(accountBAfter.FindVolume("USD", "").GetBalance().DecimalString()).To(Equal("0"))
+			accountBAfterVol := accountBAfter.FindVolume("USD", "")
+			Expect(accountBAfterVol).NotTo(BeNil(), "expected USD entry on account-b after reversion")
+			Expect(accountBAfterVol.GetBalance()).NotTo(BeNil(), "balance field must be present after reversion")
+			Expect(accountBAfterVol.GetBalance().DecimalString()).To(Equal("0"))
 		})
 
 		It("Should correctly track volumes after revert", func() {

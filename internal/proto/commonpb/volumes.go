@@ -108,20 +108,29 @@ func (v *Volumes) Balance() (*big.Int, error) {
 	if v == nil {
 		return big.NewInt(0), nil
 	}
-	if err := v.Validate(); err != nil {
+	input, output, err := v.toBigInts()
+	if err != nil {
 		return nil, err
+	}
+
+	return new(big.Int).Sub(input, output), nil
+}
+
+func (v *Volumes) toBigInts() (*big.Int, *big.Int, error) {
+	if err := v.Validate(); err != nil {
+		return nil, nil, err
 	}
 
 	input, err := v.GetInput().ToBigInt()
 	if err != nil {
-		return nil, fmt.Errorf("invalid input volume: %w", err)
+		return nil, nil, fmt.Errorf("invalid input volume: %w", err)
 	}
 	output, err := v.GetOutput().ToBigInt()
 	if err != nil {
-		return nil, fmt.Errorf("invalid output volume: %w", err)
+		return nil, nil, fmt.Errorf("invalid output volume: %w", err)
 	}
 
-	return new(big.Int).Sub(input, output), nil
+	return input, output, nil
 }
 
 // MarshalJSON implements json.Marshaler for Volumes.
@@ -130,63 +139,69 @@ func (v *Volumes) MarshalJSON() ([]byte, error) {
 		return json.Marshal(nil)
 	}
 
-	balance, err := v.Balance()
+	input, output, err := v.toBigInts()
 	if err != nil {
 		return nil, err
 	}
 
-	vwb := &VolumesWithBalance{
-		Input:   v.GetInput(),
-		Output:  v.GetOutput(),
-		Balance: NewSignedBigInt(balance),
-	}
-	// Marshal via pointer so VolumesWithBalance.MarshalJSON (pointer receiver)
-	// runs, calling Validate() and producing the canonical decimal-string shape.
-	return json.Marshal(vwb)
+	return marshalVolumesJSON(input, output, new(big.Int).Sub(input, output))
 }
 
 func (v *VolumesWithBalance) Validate() error {
+	_, _, _, err := v.validatedBigInts()
+
+	return err
+}
+
+// validatedBigInts retains the decoded values so JSON rendering does not parse
+// them again after validating their canonical encoding and balance consistency.
+func (v *VolumesWithBalance) validatedBigInts() (*big.Int, *big.Int, *big.Int, error) {
 	if v == nil {
-		return nil
+		return nil, nil, nil, nil
 	}
 	if v.GetInput() == nil || v.GetOutput() == nil || v.GetBalance() == nil {
-		return errors.New("volume input, output, and balance must be present")
+		return nil, nil, nil, errors.New("volume input, output, and balance must be present")
 	}
 	input, err := v.GetInput().ToBigInt()
 	if err != nil {
-		return fmt.Errorf("invalid input volume: %w", err)
+		return nil, nil, nil, fmt.Errorf("invalid input volume: %w", err)
 	}
 	output, err := v.GetOutput().ToBigInt()
 	if err != nil {
-		return fmt.Errorf("invalid output volume: %w", err)
+		return nil, nil, nil, fmt.Errorf("invalid output volume: %w", err)
 	}
 	balance, err := v.GetBalance().ToBigInt()
 	if err != nil {
-		return fmt.Errorf("invalid balance: %w", err)
+		return nil, nil, nil, fmt.Errorf("invalid balance: %w", err)
 	}
 	if want := new(big.Int).Sub(input, output); balance.Cmp(want) != 0 {
-		return fmt.Errorf("balance %s does not equal input minus output %s", balance, want)
+		return nil, nil, nil, fmt.Errorf("balance %s does not equal input minus output %s", balance, want)
 	}
 
-	return nil
+	return input, output, balance, nil
 }
 
 func (v *VolumesWithBalance) MarshalJSON() ([]byte, error) {
 	if v == nil {
 		return json.Marshal(nil)
 	}
-	if err := v.Validate(); err != nil {
+	input, output, balance, err := v.validatedBigInts()
+	if err != nil {
 		return nil, err
 	}
 
+	return marshalVolumesJSON(input, output, balance)
+}
+
+func marshalVolumesJSON(input, output, balance *big.Int) ([]byte, error) {
 	return json.Marshal(&struct {
 		Input   string `json:"input"`
 		Output  string `json:"output"`
 		Balance string `json:"balance"`
 	}{
-		Input:   v.GetInput().DecimalString(),
-		Output:  v.GetOutput().DecimalString(),
-		Balance: v.GetBalance().DecimalString(),
+		Input:   input.String(),
+		Output:  output.String(),
+		Balance: balance.String(),
 	})
 }
 
