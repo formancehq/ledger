@@ -22,6 +22,13 @@ matching signed negative and unsigned nonnegative metadata values. See
 
 ## Summary
 
+### Prepared-query filter shape validation
+
+Creating or updating a prepared query rejects a filter leaf whose shape can
+never compile (a missing value or field reference, or an unsupported builtin
+field) with `FILTER_COMPILATION_ERROR`, instead of storing a query whose every
+execution fails. Service protocol revision 21 accompanies this rejection.
+
 ### Superuser authentication
 
 Privileged JWTs use the boolean `superuser` claim. Static Ed25519 keys must

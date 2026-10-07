@@ -290,25 +290,95 @@ func validateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarge
 		}
 	}
 
-	if c := f.GetAccountHasAsset(); c != nil {
-		return ValidateHasAssetPrecision(c.GetPrecision())
+	return ValidateFilterLeaf(f)
+}
+
+// ValidateFilterLeaf rejects a leaf condition whose shape no schema, parameter
+// set or index state can make compile: a missing value or field reference, a
+// builtin field the condition does not serve, or a has-asset precision above
+// MaxHasAssetPrecision. query.Compile and query.CompileReverse apply it to every
+// node they dispatch and ValidateFilterForTarget to every leaf it walks, so a
+// stored prepared query never fails on its own shape. Combinators pass.
+func ValidateFilterLeaf(f *commonpb.QueryFilter) SerializableError {
+	switch v := f.GetFilter().(type) {
+	case *commonpb.QueryFilter_Field:
+		return validateFieldConditionShape(v.Field)
+	case *commonpb.QueryFilter_Address:
+		if v.Address.GetMatch() == nil {
+			return filterShapeError("address condition has no match")
+		}
+	case *commonpb.QueryFilter_Reference:
+		if v.Reference.GetCond() == nil {
+			return filterShapeError("reference condition has no value")
+		}
+
+		return validateStringConditionValue(v.Reference.GetCond())
+	case *commonpb.QueryFilter_Ledger:
+		if v.Ledger.GetCond() == nil {
+			return filterShapeError("ledger condition has no value")
+		}
+
+		return validateStringConditionValue(v.Ledger.GetCond())
+	case *commonpb.QueryFilter_BuiltinUint:
+		if v.BuiltinUint.GetCond() == nil {
+			return filterShapeError("builtin uint condition has no value")
+		}
+
+		switch field := v.BuiltinUint.GetField(); field {
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID,
+			commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
+			commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
+			commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
+		default:
+			return filterShapeError(fmt.Sprintf("unsupported builtin uint field: %v", field))
+		}
+	case *commonpb.QueryFilter_LogBuiltinUint:
+		if v.LogBuiltinUint.GetCond() == nil {
+			return filterShapeError("log builtin uint condition has no value")
+		}
+
+		if field := v.LogBuiltinUint.GetField(); field != commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE {
+			return filterShapeError(fmt.Sprintf("unsupported log builtin uint field: %v", field))
+		}
+	case *commonpb.QueryFilter_AccountHasAsset:
+		if precision := v.AccountHasAsset.GetPrecision(); precision > MaxHasAssetPrecision {
+			return filterShapeError(fmt.Sprintf("has asset precision %d exceeds maximum %d", precision, MaxHasAssetPrecision))
+		}
 	}
 
 	return nil
 }
 
-// ValidateHasAssetPrecision rejects a has-asset precision above
-// MaxHasAssetPrecision. query.Compile applies it at execute time and
-// ValidateFilterForTarget at prepared-query write time, so a stored has-asset
-// filter always compiles.
-func ValidateHasAssetPrecision(precision uint32) SerializableError {
-	if precision <= MaxHasAssetPrecision {
-		return nil
+func validateFieldConditionShape(fc *commonpb.FieldCondition) SerializableError {
+	if fc.GetField() == nil {
+		return filterShapeError("field condition has no field reference")
 	}
 
-	return &ErrFilterCompilation{
-		Detail: fmt.Sprintf("has asset precision %d exceeds maximum %d", precision, MaxHasAssetPrecision),
+	switch c := fc.GetCondition().(type) {
+	case *commonpb.FieldCondition_StringCond:
+		return validateStringConditionValue(c.StringCond)
+	case *commonpb.FieldCondition_BoolCond:
+		if c.BoolCond.GetValue() == nil {
+			return filterShapeError("bool condition has no value")
+		}
+	case *commonpb.FieldCondition_IntCond, *commonpb.FieldCondition_UintCond, *commonpb.FieldCondition_ExistsCond:
+	default:
+		return filterShapeError("field condition has no condition")
 	}
+
+	return nil
+}
+
+func validateStringConditionValue(cond *commonpb.StringCondition) SerializableError {
+	if cond.GetValue() == nil {
+		return filterShapeError("string condition has no value")
+	}
+
+	return nil
+}
+
+func filterShapeError(detail string) SerializableError {
+	return &ErrFilterCompilation{Detail: detail}
 }
 
 // ValidateSigningKeyID checks a signing-key identifier against the same

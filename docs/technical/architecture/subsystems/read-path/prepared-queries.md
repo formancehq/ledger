@@ -69,15 +69,15 @@ Two layers, following the project-wide pattern (see [admission / validation.md](
 
 - Ledger must exist (rejects `ErrLedgerNotFound` otherwise).
 - Name must not already be in use (rejects on duplicate — there is no implicit upsert; clients must explicitly `Update`).
-- A non-nil filter must compile against the ledger's current declared-metadata schema (`Compile()` with the standard `MaxFilterDepth=100` guard). Nil is the match-all definition; an empty filter object or empty textual expression is invalid.
-- A `has asset BASE/PRECISION` condition must have a precision ≤ 255 (`domain.MaxHasAssetPrecision`), the bound the compiler applies at execute time.
+- A non-nil filter must pass `domain.ValidateFilterForTarget`: every condition is valid on the query's target, the tree is at most `MaxFilterDepth=100` deep, and every leaf passes `domain.ValidateFilterLeaf`. That leaf check rejects a missing value or field reference, a builtin field the condition does not serve, and a `has asset` precision above 255 (`domain.MaxHasAssetPrecision`). The compiler applies the same leaf check at every node it dispatches, so a stored filter never fails to compile on its own shape. Nil is the match-all definition; an empty filter object or empty textual expression is invalid.
+- The filter is not compiled at write time. Errors that depend on the ledger's declared-metadata schema, index state, or runtime parameters surface at execution.
 
 HTTP creation treats an omitted `filter` and explicit JSON `null` as match-all.
 HTTP update treats omission as no change and JSON `null` as an explicit request
 to remove the stored filter. Apply/gRPC represents that removal with a nil
 protobuf filter because protobuf has no separate JSON-null value for this field.
 
-A compile error at FSM time is hash-bound as an `AuditFailure`, so a checker run can re-derive the rejection from the audit chain.
+A validation error at FSM time is hash-bound as an `AuditFailure`, so a checker run can re-derive the rejection from the audit chain.
 
 ## Execution
 
