@@ -57,22 +57,58 @@ func TestGeneratedDashboards(t *testing.T) {
 			assertDatasourceDefault(t, dashboard, strings.Contains(file, "-native"))
 			assertDashboardTree(t, dashboard, strings.Contains(file, "-native"))
 			assertMetricPrefix(t, string(raw), filepath.Base(file))
-			assertClusterVariable(t, dashboard, strings.HasPrefix(filepath.Base(file), "ledger-metrics-otel"))
+			assertClusterVariable(t, dashboard, string(raw), strings.HasPrefix(filepath.Base(file), "ledger-metrics-otel"))
 		})
 	}
 }
 
+// walkQueries calls fn with every PromQL-bearing field (expr, query,
+// definition) of a dashboard tree.
+func walkQueries(value any, path string, fn func(path, query string)) {
+	switch v := value.(type) {
+	case map[string]any:
+		for key, child := range v {
+			if s, ok := child.(string); ok && (key == "expr" || key == "query" || key == "definition") {
+				fn(path+"."+key, s)
+
+				continue
+			}
+			walkQueries(child, path+"."+key, fn)
+		}
+	case []any:
+		for i, child := range v {
+			walkQueries(child, fmt.Sprintf("%s[%d]", path, i), fn)
+		}
+	}
+}
+
+// clusterIDFilter matches a selector filtering the declared cluster ID on the
+// Cluster variable, in any naming variant and JSON escaping.
+var clusterIDFilter = regexp.MustCompile(`formance[._]ledger[._]cluster[._]id[^,}]{0,6}=~[^,}]{0,4}\$cluster`)
+
 // assertClusterVariable applies the Cluster variable regex the way Grafana
-// does to query_result lines: the `value` group drives the filter and the
-// `text` group the label, with `value` as the fallback label.
-func assertClusterVariable(t *testing.T, dashboard map[string]any, otel bool) {
+// does to query_result lines. Declared cluster IDs repeat across clusters
+// (EN-2031), so the variable must key on the cluster name: two clusters that
+// share the ID "default" must still yield two values.
+func assertClusterVariable(t *testing.T, dashboard map[string]any, raw string, otel bool) {
 	t.Helper()
 
-	cluster := arrayField(t, objectField(t, dashboard, "templating"), "list")[2].(map[string]any)
-	raw, _ := cluster["regex"].(string)
-	pattern, err := regexp.Compile(strings.TrimSuffix(strings.TrimPrefix(raw, "/"), "/"))
+	if m := clusterIDFilter.FindString(raw); m != "" {
+		t.Errorf("a query filters the cluster ID on $cluster (%s); key on formance.ledger.cluster.name", m)
+	}
+	// A Cluster resource name is only unique within its namespace, so every
+	// query scoped to $cluster must also be scoped to $namespace.
+	walkQueries(dashboard, "dashboard", func(path, query string) {
+		if strings.Contains(query, "$cluster") && !strings.Contains(query, "$namespace") {
+			t.Errorf("%s filters on $cluster without $namespace: %s", path, query)
+		}
+	})
+
+	cluster := arrayField(t, objectField(t, dashboard, "templating"), "list")[3].(map[string]any)
+	expr, _ := cluster["regex"].(string)
+	pattern, err := regexp.Compile(strings.TrimSuffix(strings.TrimPrefix(expr, "/"), "/"))
 	if err != nil {
-		t.Fatalf("cluster variable regex %q: %v", raw, err)
+		t.Fatalf("cluster variable regex %q: %v", expr, err)
 	}
 	label := func(name string) string {
 		if otel {
@@ -81,29 +117,17 @@ func assertClusterVariable(t *testing.T, dashboard map[string]any, otel bool) {
 
 		return strings.ReplaceAll(name, ".", "_")
 	}
-	for _, test := range []struct {
-		line, wantValue, wantText string
-	}{
-		{
-			line:      fmt.Sprintf(`raft.node.lead{%s="c-1", %s="prod", %s="2"} 1 1700000000000`, label("formance.ledger.cluster.id"), label("formance.ledger.cluster.name"), label("formance.ledger.node.id")),
-			wantValue: "c-1", wantText: "prod",
-		},
-		{
-			line:      fmt.Sprintf(`raft.node.lead{%s="c-1", %s="2"} 1 1700000000000`, label("formance.ledger.cluster.id"), label("formance.ledger.node.id")),
-			wantValue: "c-1", wantText: "c-1",
-		},
-	} {
-		match := pattern.FindStringSubmatch(test.line)
-		if match == nil {
-			t.Fatalf("cluster variable regex %q does not match %q", raw, test.line)
+	line := func(name string) string {
+		return fmt.Sprintf(`raft.node.lead{%s="default", %s=%q, %s="2"} 1 1700000000000`,
+			label("formance.ledger.cluster.id"), label("formance.ledger.cluster.name"), name, label("formance.ledger.node.id"))
+	}
+	for _, name := range []string{"prod-eu", "prod-us"} {
+		match := pattern.FindStringSubmatch(line(name))
+		if len(match) < 2 {
+			t.Fatalf("cluster variable regex %q does not capture the cluster name in %q", expr, line(name))
 		}
-		value := match[pattern.SubexpIndex("value")]
-		text := match[pattern.SubexpIndex("text")]
-		if text == "" {
-			text = value
-		}
-		if value != test.wantValue || text != test.wantText {
-			t.Errorf("cluster variable on %q: got value=%q text=%q, want value=%q text=%q", test.line, value, text, test.wantValue, test.wantText)
+		if match[1] != name {
+			t.Errorf("cluster variable on %q: got %q, want the cluster name %q", line(name), match[1], name)
 		}
 	}
 }
@@ -113,8 +137,8 @@ func assertDatasourceDefault(t *testing.T, dashboard map[string]any, native bool
 
 	templating := objectField(t, dashboard, "templating")
 	variables := arrayField(t, templating, "list")
-	if len(variables) != 4 {
-		t.Fatalf("expected datasource, Pyroscope, cluster and node variables; got %d", len(variables))
+	if len(variables) != 5 {
+		t.Fatalf("expected datasource, Pyroscope, namespace, cluster and node variables; got %d", len(variables))
 	}
 
 	datasource := variables[0].(map[string]any)

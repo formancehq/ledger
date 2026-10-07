@@ -29,9 +29,9 @@ panels.row('Applier', 164, [
     'Apply entries Batch size distribution',
     { h: 8, w: 12, x: 12, y: 9 },
     [
-      { expr: 'histogram_quantile(0.99, sum(rate(raft.apply_entries.batch_size_distribution_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'Node {{formance.ledger.node.id}}: P99' },
-      { expr: 'histogram_quantile(0.95, sum(rate(raft.apply_entries.batch_size_distribution_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'Node {{formance.ledger.node.id}}: P95' },
-      { expr: 'histogram_quantile(0.75, sum(rate(raft.apply_entries.batch_size_distribution_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'Node {{formance.ledger.node.id}}: P75' },
+      { expr: 'histogram_quantile(0.99, sum(rate(raft.apply_entries.batch_size_distribution_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'Node {{formance.ledger.node.id}}: P99' },
+      { expr: 'histogram_quantile(0.95, sum(rate(raft.apply_entries.batch_size_distribution_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'Node {{formance.ledger.node.id}}: P95' },
+      { expr: 'histogram_quantile(0.75, sum(rate(raft.apply_entries.batch_size_distribution_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'Node {{formance.ledger.node.id}}: P75' },
       { expr: queries.histogramAvg('raft.apply_entries.batch_size_distribution', by=['formance.ledger.node.id']), legendFormat: 'Node {{formance.ledger.node.id}}: Avg' },
     ],
     description=|||
@@ -51,9 +51,9 @@ panels.row('Applier', 164, [
     'Applying entries percentiles',
     { h: 8, w: 12, x: 0, y: 17 },
     [
-      { expr: 'histogram_quantile(0.99, sum(rate(raft.apply_entries.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'Node {{formance.ledger.node.id}}: P99' },
-      { expr: 'histogram_quantile(0.95, sum(rate(raft.apply_entries.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'Node {{formance.ledger.node.id}}: P95' },
-      { expr: 'histogram_quantile(0.75, sum(rate(raft.apply_entries.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'Node {{formance.ledger.node.id}}: P75' },
+      { expr: 'histogram_quantile(0.99, sum(rate(raft.apply_entries.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'Node {{formance.ledger.node.id}}: P99' },
+      { expr: 'histogram_quantile(0.95, sum(rate(raft.apply_entries.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'Node {{formance.ledger.node.id}}: P95' },
+      { expr: 'histogram_quantile(0.75, sum(rate(raft.apply_entries.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'Node {{formance.ledger.node.id}}: P75' },
       { expr: queries.histogramAvg('raft.apply_entries.duration', by=['formance.ledger.node.id']), legendFormat: 'Node {{formance.ledger.node.id}}: Avg' },
     ], unit='s',
     description=|||
@@ -93,9 +93,9 @@ panels.row('Applier', 164, [
     'Applier Batch Wait (p50, p95, p99)',
     { h: 8, w: 24, x: 0, y: 109 },
     [
-      { expr: 'histogram_quantile(0.50, sum(rate(raft.applier.batch_wait.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
-      { expr: 'histogram_quantile(0.95, sum(rate(raft.applier.batch_wait.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
-      { expr: 'histogram_quantile(0.99, sum(rate(raft.applier.batch_wait.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.50, sum(rate(raft.applier.batch_wait.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.95, sum(rate(raft.applier.batch_wait.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.99, sum(rate(raft.applier.batch_wait.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
     ], unit='s', opts={ showPoints: 'auto' },
   ),
 
@@ -103,9 +103,9 @@ panels.row('Applier', 164, [
     'Prepare Duration (p50, p95, p99)',
     { h: 8, w: 12, x: 0, y: 117 },
     [
-      { expr: 'histogram_quantile(0.50, sum(rate(raft.fsm.prepare.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p50' },
-      { expr: 'histogram_quantile(0.95, sum(rate(raft.fsm.prepare.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p95' },
-      { expr: 'histogram_quantile(0.99, sum(rate(raft.fsm.prepare.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p99' },
+      { expr: 'histogram_quantile(0.50, sum(rate(raft.fsm.prepare.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p50' },
+      { expr: 'histogram_quantile(0.95, sum(rate(raft.fsm.prepare.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p95' },
+      { expr: 'histogram_quantile(0.99, sum(rate(raft.fsm.prepare.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p99' },
     ], unit='s',
   ),
 
@@ -113,9 +113,9 @@ panels.row('Applier', 164, [
     'Commit Wait Duration (p50, p95, p99)',
     { h: 8, w: 12, x: 12, y: 117 },
     [
-      { expr: 'histogram_quantile(0.50, sum(rate(raft.applier.commit_wait.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p50' },
-      { expr: 'histogram_quantile(0.95, sum(rate(raft.applier.commit_wait.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p95' },
-      { expr: 'histogram_quantile(0.99, sum(rate(raft.applier.commit_wait.duration_bucket{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p99' },
+      { expr: 'histogram_quantile(0.50, sum(rate(raft.applier.commit_wait.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p50' },
+      { expr: 'histogram_quantile(0.95, sum(rate(raft.applier.commit_wait.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p95' },
+      { expr: 'histogram_quantile(0.99, sum(rate(raft.applier.commit_wait.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p99' },
     ], unit='s',
     description='Time spent waiting for the previous batch\'s async commit to finish before starting the next prepare. Near zero = pipelining is effective (commit finishes before next batch arrives). Near commit duration = fully I/O-bound, no pipelining benefit.',
   ),

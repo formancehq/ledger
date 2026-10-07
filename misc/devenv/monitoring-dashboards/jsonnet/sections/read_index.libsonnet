@@ -8,7 +8,7 @@ panels.row('Read Index (Pebble)', 166, [
     'Level Sizes (stacked)',
     { h: 8, w: 12, x: 0, y: 1 },
     [
-      { expr: 'readindex.level.size{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: 'Node {{formance.ledger.node.id}} — L{{level}}' },
+      { expr: 'readindex.level.size{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: 'Node {{formance.ledger.node.id}} — L{{level}}' },
     ], unit='bytes',
     description='Total bytes stored in each Pebble LSM level. Level 0 holds recently flushed memtable data; higher levels hold progressively older, compacted data.', opts={ stackMode: 'normal', fillOpacity: 20 },
   ),
@@ -17,7 +17,7 @@ panels.row('Read Index (Pebble)', 166, [
     'Memtable Size',
     { h: 8, w: 12, x: 12, y: 1 },
     [
-      { expr: 'readindex.memtable.size{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: 'Node {{formance.ledger.node.id}}' },
+      { expr: 'readindex.memtable.size{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: 'Node {{formance.ledger.node.id}}' },
     ], unit='bytes',
     description='Current memtable size in bytes. The memtable absorbs writes before they are flushed to L0 SSTables.', opts={ fillOpacity: 15 },
   ),
@@ -26,8 +26,8 @@ panels.row('Read Index (Pebble)', 166, [
     'Block Cache Hits / Misses',
     { h: 8, w: 12, x: 0, y: 10 },
     [
-      { expr: 'readindex.cache.hits{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: 'Node {{formance.ledger.node.id}} — hits' },
-      { expr: 'readindex.cache.misses{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: 'Node {{formance.ledger.node.id}} — misses' },
+      { expr: 'readindex.cache.hits{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: 'Node {{formance.ledger.node.id}} — hits' },
+      { expr: 'readindex.cache.misses{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: 'Node {{formance.ledger.node.id}} — misses' },
     ], unit='ops',
     description='Block cache hit and miss rates. A high hit rate indicates the working set fits in cache.',
   ),
@@ -35,7 +35,7 @@ panels.row('Read Index (Pebble)', 166, [
   panels.stat(
     'Cache Hit Ratio',
     { h: 8, w: 12, x: 12, y: 10 },
-    'readindex.cache.hits{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"} / (readindex.cache.hits{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"} + readindex.cache.misses{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"})', unit='percentunit',
+    'readindex.cache.hits{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"} / (readindex.cache.hits{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"} + readindex.cache.misses{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"})', unit='percentunit',
     description='Block cache hit ratio: hits / (hits + misses). Values above 90% are good.', opts={ legendFormat: 'Node {{formance.ledger.node.id}}' },
   ),
 ])

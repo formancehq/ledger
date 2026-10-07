@@ -234,13 +234,13 @@ local naming = import 'naming.libsonnet';
 
   // rewriteExpr walks a PromQL expression and rewrites:
   //   - bare identifiers that look like metric names (raft.fsm.logs_…)
-  //   - label names inside { … } selectors (formance.ledger.cluster.id=…)
+  //   - label names inside { … } selectors (formance.ledger.cluster.name=…)
   //   - label names inside `by (…)` / `on (…)` / `without (…)` /
   //     `ignoring (…)` clauses (idem)
   //   - quoted metric names {"raft.fsm.logs_appended", …}
   //     (the Prometheus 3.x quoted-name syntax used for OTel metrics
   //     whose names contain dots)
-  //   - quoted label names inside selectors {"formance.ledger.cluster.id"=~…}
+  //   - quoted label names inside selectors {"formance.ledger.cluster.name"=~…}
   //   - the legacy __name__="metric.name" selector form
   //
   // Label *values* (right-hand side of =, =~, !=, !~) are left
@@ -333,7 +333,7 @@ local naming = import 'naming.libsonnet';
   // metric/label name references.
   // rewriteRegex transforms a Grafana templating regex field.
   // Grafana exports use `\.` to match a literal dot in a label name
-  // (e.g. /formance\.ledger\.cluster\.id="([^"]+)"/). After the collector
+  // (e.g. /formance\.ledger\.cluster\.name="([^"]+)"/). After the collector
   // sanitises the labels there is no dot to match anymore, so we
   // collapse every escaped-dot into the underscore the collector
   // emitted. We deliberately do not touch other parts of the regex.

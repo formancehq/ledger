@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 	flag "github.com/spf13/pflag"
@@ -33,8 +34,9 @@ const (
 	// same one that prefixes the ledger metrics: OpenTelemetry reserves the
 	// semantic-convention namespaces (service.*, k8s.*, ...) for its own
 	// attributes.
-	resourceAttributeClusterID = "formance.ledger.cluster.id"
-	resourceAttributeNodeID    = "formance.ledger.node.id"
+	resourceAttributeClusterID   = "formance.ledger.cluster.id"
+	resourceAttributeClusterName = "formance.ledger.cluster.name"
+	resourceAttributeNodeID      = "formance.ledger.node.id"
 )
 
 func addOtlpLogsFlags(flags *flag.FlagSet) {
@@ -48,10 +50,19 @@ func addOtlpLogsFlags(flags *flag.FlagSet) {
 }
 
 // resourceFromFlags builds the resource shared by logs, traces, and metrics.
-// The node identity attributes (service.instance.id, formance.ledger.cluster.id,
-// formance.ledger.node.id) are placed before --otel-resource-attributes so
-// go-libs' last-wins precedence keeps explicit overrides authoritative, as it
-// does for service.name and service.version.
+// The node identity attributes (service.instance.id, formance.ledger.cluster.*,
+// formance.ledger.node.id) are placed before --otel-resource-attributes, which
+// OTEL_RESOURCE_ATTRIBUTES is bound to, so go-libs' last-wins precedence keeps
+// explicit overrides authoritative, as it does for service.name and
+// service.version.
+//
+// The cluster name, not the declared cluster ID, keys the cluster: IDs are
+// declared per deployment and repeat across clusters (EN-2031). The operator
+// supplies the name (the Cluster resource name) and k8s.namespace.name, which
+// together tell clusters apart; without the operator the name defaults to the
+// cluster ID. service.instance.id is the effective cluster name: the cluster
+// is the ledger instance, and its nodes are told apart by
+// formance.ledger.node.id.
 func resourceFromFlags(cmd *cobra.Command, clusterID string, nodeID uint64, info version.Info) (*resource.Resource, error) {
 	// addOtlpLogsFlags registers this flag with its string type before use.
 	serviceName, _ := cmd.Flags().GetString(otlp.OtelServiceNameFlag)
@@ -63,15 +74,29 @@ func resourceFromFlags(cmd *cobra.Command, clusterID string, nodeID uint64, info
 	}
 	// addOtlpLogsFlags registers this flag with its string-slice type before use.
 	explicit, _ := cmd.Flags().GetStringSlice(otlp.OtelResourceAttributesFlag)
+	clusterName := lastAttributeValue(explicit, resourceAttributeClusterName, clusterID)
 	attributes := append([]string{
-		// service.instance.id must be unique per service.name, and Raft node
-		// IDs are only unique within a cluster.
-		fmt.Sprintf("%s=%s/%d", semconv.ServiceInstanceIDKey, clusterID, nodeID),
+		fmt.Sprintf("%s=%s", semconv.ServiceInstanceIDKey, clusterName),
 		fmt.Sprintf("%s=%s", resourceAttributeClusterID, clusterID),
+		fmt.Sprintf("%s=%s", resourceAttributeClusterName, clusterID),
 		fmt.Sprintf("%s=%d", resourceAttributeNodeID, nodeID),
 	}, explicit...)
 
 	return otlp.BuildResource(serviceName, attributes, fmt.Sprintf("%s-%s", info.Version, info.Commit))
+}
+
+// lastAttributeValue returns the value the resource will hold for key: the
+// last key=value entry wins, as in go-libs BuildResource. Malformed entries
+// are skipped here; BuildResource rejects them.
+func lastAttributeValue(attributes []string, key, fallback string) string {
+	value := fallback
+	for _, attribute := range attributes {
+		if k, v, ok := strings.Cut(attribute, "="); ok && k == key {
+			value = v
+		}
+	}
+
+	return value
 }
 
 func loggerFromFlags(cmd *cobra.Command, defaultFields map[string]any, res *resource.Resource) (logging.Logger, error) {
