@@ -366,11 +366,9 @@ func TestHandleListLedgerLogs_WithAfterParam(t *testing.T) {
 	t.Parallel()
 
 	backend := NewMockBackend(gomock.NewController(t))
-	backend.EXPECT().ListLogs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint64, _ uint32, _ *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
-			return cursor.NewSliceCursor[*commonpb.Log](nil), nil
-		},
-	).AnyTimes()
+	// The cursor travels as afterSequence, outside the client's filter tree.
+	backend.EXPECT().ListLogs(gomock.Any(), "ledger1", uint64(42), uint32(10), nil).
+		Return(cursor.NewSliceCursor[*commonpb.Log](nil), nil)
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()

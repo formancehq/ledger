@@ -837,8 +837,8 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 	}
 
 	// The cursor MUST be the ledger-local LedgerLog.Id — DefaultController.ListLogs
-	// compiles afterSequence into a `LogId > afterSequence` filter against the
-	// ledger-local id. Emitting the global raft sequence (Log.Sequence) would
+	// seeks the compiled log iterator, keyed by ledger-local id, past
+	// afterSequence. Emitting the global raft sequence (Log.Sequence) would
 	// skip valid ledger logs on the next page as soon as the two diverge
 	// (after ledger creation or with >1 ledger).
 	//
