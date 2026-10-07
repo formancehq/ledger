@@ -46,7 +46,7 @@ type Builder struct {
 	pebbleLastSeq           atomic.Uint64
 	logsIndexed             atomic.Uint64
 	metricsRegistration     metric.Registration // tailworker gauge triplet
-	logsIndexedRegistration metric.Registration // builder-specific logs_indexed_total gauge
+	logsIndexedRegistration metric.Registration // builder-specific logs_indexed counter
 
 	// Per-ledger index configuration cache.
 	indexConfig map[string]*ledgerIndexConfig
@@ -823,8 +823,8 @@ func (b *Builder) PebbleLastSequence() uint64 {
 }
 
 // registerMetrics registers the shared tail-worker progress gauges plus the
-// builder-specific logs_indexed_total counter-gauge. Two registrations are
-// stored on the receiver so Stop can unregister both.
+// builder-specific logs_indexed counter. Two registrations are stored on the
+// receiver so Stop can unregister both.
 func (b *Builder) registerMetrics() error {
 	triplet, err := tailworker.RegisterTailGauges(b.meter, "index.builder", "pebble", &b.lastIndexedSeq, &b.pebbleLastSeq)
 	if err != nil {
@@ -832,9 +832,12 @@ func (b *Builder) registerMetrics() error {
 	}
 	b.metricsRegistration = triplet
 
-	logsIndexedGauge, err := b.meter.Int64ObservableGauge(
-		"index.builder.logs_indexed_total",
+	// The value only grows within a process, so it is an observable
+	// counter: rate() then works and a restart reads as a counter reset.
+	logsIndexedCounter, err := b.meter.Int64ObservableCounter(
+		"index.builder.logs_indexed",
 		metric.WithDescription("Total number of logs indexed since process start"),
+		metric.WithUnit("{log}"),
 	)
 	if err != nil {
 		return err
@@ -842,11 +845,11 @@ func (b *Builder) registerMetrics() error {
 
 	reg, err := b.meter.RegisterCallback(
 		func(_ context.Context, o metric.Observer) error {
-			o.ObserveInt64(logsIndexedGauge, int64(b.logsIndexed.Load()))
+			o.ObserveInt64(logsIndexedCounter, int64(b.logsIndexed.Load()))
 
 			return nil
 		},
-		logsIndexedGauge,
+		logsIndexedCounter,
 	)
 	if err != nil {
 		return err

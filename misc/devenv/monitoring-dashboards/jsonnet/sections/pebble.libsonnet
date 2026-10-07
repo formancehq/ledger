@@ -9,7 +9,7 @@ panels.row('Pebble', 165, [
     'Flush / second',
     { h: 8, w: 8, x: 0, y: 88 },
     [
-      { expr: 'sum by (formance.ledger.node.id, status, reason) (rate({__name__="pebble.flush.total", "formance.ledger.cluster.id"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval]))', legendFormat: 'Node {{formance.ledger.node.id}} {{status}} {{reason}}' },
+      { expr: 'sum by (formance.ledger.node.id, status, reason) (rate({__name__="pebble.flushes", "formance.ledger.cluster.id"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval]))', legendFormat: 'Node {{formance.ledger.node.id}} {{status}} {{reason}}' },
     ],
     description=|||
       Number of Pebble flush operations per second. Flushes write data from memory (memtable) to disk (SSTable).
@@ -72,7 +72,7 @@ panels.row('Pebble', 165, [
     'Compactions / second',
     { h: 8, w: 8, x: 0, y: 96 },
     [
-      { expr: 'sum by (formance.ledger.node.id, status, reason) (rate({__name__="pebble.compaction.total", "formance.ledger.cluster.id"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval]))', legendFormat: 'Node {{formance.ledger.node.id}}: {{status}} {{reason}}' },
+      { expr: 'sum by (formance.ledger.node.id, status, reason) (rate({__name__="pebble.compactions", "formance.ledger.cluster.id"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval]))', legendFormat: 'Node {{formance.ledger.node.id}}: {{status}} {{reason}}' },
     ],
     description=|||
       Number of Pebble compaction operations per second. Compactions merge and reorganize SSTables.
@@ -116,7 +116,7 @@ panels.row('Pebble', 165, [
     'Compaction errors / second',
     { h: 8, w: 8, x: 16, y: 96 },
     [
-      { expr: 'sum by (formance.ledger.node.id, reason) (rate({__name__="pebble.compaction.total", status="error", "formance.ledger.cluster.id"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval]))', legendFormat: 'Node {{formance.ledger.node.id}}: {{reason}}' },
+      { expr: 'sum by (formance.ledger.node.id, reason) (rate({__name__="pebble.compactions", status="error", "formance.ledger.cluster.id"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval]))', legendFormat: 'Node {{formance.ledger.node.id}}: {{reason}}' },
     ],
     description=|||
       Rate of compaction errors per second.
@@ -164,7 +164,7 @@ panels.row('Pebble', 165, [
     'Write stalls / second',
     { h: 8, w: 8, x: 8, y: 104 },
     [
-      { expr: 'sum by (formance.ledger.node.id, reason) (rate({__name__="pebble.write_stall.total", "formance.ledger.cluster.id"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval]))', legendFormat: 'Node {{formance.ledger.node.id}} / {{reason}}' },
+      { expr: 'sum by (formance.ledger.node.id, reason) (rate({__name__="pebble.write_stalls", "formance.ledger.cluster.id"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval]))', legendFormat: 'Node {{formance.ledger.node.id}} / {{reason}}' },
     ],
     description=|||
       Number of write stall events per second. Each stall temporarily blocks write operations.
@@ -248,7 +248,7 @@ panels.row('Pebble', 165, [
     'Disk slow events / second',
     { h: 8, w: 12, x: 0, y: 120 },
     [
-      { expr: 'sum by (formance.ledger.node.id, op) (rate({__name__="pebble.disk_slow.total", "formance.ledger.cluster.id"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval]))', legendFormat: 'Node {{formance.ledger.node.id}} / {{op}}' },
+      { expr: 'sum by (formance.ledger.node.id, op) (rate({__name__="pebble.disk_slow.operations", "formance.ledger.cluster.id"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval]))', legendFormat: 'Node {{formance.ledger.node.id}} / {{op}}' },
     ],
     description=|||
       Number of slow disk operations detected by Pebble per second. A slow disk event fires when a write operation exceeds Pebble's disk slowness threshold.

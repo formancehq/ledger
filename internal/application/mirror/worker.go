@@ -148,7 +148,7 @@ func NewWorker(
 		metric.WithUnit("By"), sizeBuckets)
 	logsIngested, _ := meter.Int64Counter("mirror.logs.ingested",
 		metric.WithUnit("{log}"))
-	batchTotal, _ := meter.Int64Counter("mirror.batch.total",
+	batchTotal, _ := meter.Int64Counter("mirror.batches",
 		metric.WithUnit("{batch}"))
 
 	return &Worker{

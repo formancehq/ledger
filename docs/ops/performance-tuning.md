@@ -235,7 +235,7 @@ The default configuration is tuned for write-heavy workloads:
 
 Monitor these metrics for write stalls:
 ```promql
-increase(pebble_write_stall_total[5m]) > 0
+increase(formance_ledger_pebble_write_stalls_total[5m]) > 0
 ```
 
 ### 5.3. Generation Rotation Threshold
@@ -369,7 +369,7 @@ Current balance = `base + latest cumulative diff`. Pebble range scans are effici
 | `admission.preload.duration` | High latency | Increase generation threshold K |
 | `admission.preload.cache_hits` | Low hit rate | Review account access patterns |
 | `raft.apply_entries.duration` p99 | > 50ms | Check disk I/O, compaction backlog |
-| `pebble_write_stall_total` | Any increase | Add disk IOPS, tune compaction |
+| `formance_ledger_pebble_write_stalls_total` | Any increase | Add disk IOPS, tune compaction |
 | `cache.rotations` | Frequency | Informational: correlates with K |
 | `bloom.negatives` / `bloom.lookups` | Low ratio per type | Filter not effective for that type — consider disabling it |
 | `bloom.ready` | 0 after startup | Filter still populating — preloads fall back to Pebble |

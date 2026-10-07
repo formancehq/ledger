@@ -30,7 +30,7 @@ panels.row('Admission', 169, [
     'Preload Rate (by type)',
     { h: 8, w: 12, x: 12, y: 90 },
     [
-      { expr: 'sum(rate(admission.preload.total{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', legendFormat: 'Node {{formance.ledger.node.id}}' },
+      { expr: 'sum(rate(admission.preloads{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', legendFormat: 'Node {{formance.ledger.node.id}}' },
     ], unit='ops',
     description=|||
       Rate of preload operations from the persistent store per second. High rates after warmup may indicate cache efficiency issues.
