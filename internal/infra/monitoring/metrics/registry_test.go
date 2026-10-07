@@ -71,10 +71,16 @@ func TestInstrumentNamesCarryNoUnit(t *testing.T) {
 		"milliseconds": {}, "seconds": {}, "bytes": {}, "percent": {},
 	}
 	for _, name := range collectInstrumentNamesFromCode(t, filepath.Join(findRepoRoot(t), "internal")) {
-		for _, word := range strings.FieldsFunc(name, func(r rune) bool { return r == '.' || r == '_' }) {
+		words := strings.FieldsFunc(name, func(r rune) bool { return r == '.' || r == '_' })
+		for _, word := range words {
 			if _, ok := unitWords[word]; ok {
 				t.Errorf("metric %q spells its unit %q in the name; drop it and set metric.WithUnit instead", name, word)
 			}
+		}
+		// Counters must not end in total either: the Prometheus translation
+		// appends _total, and delta backends would read it literally.
+		if words[len(words)-1] == "total" {
+			t.Errorf("metric %q ends in total; name the counted thing in the plural instead (e.g. pebble.flushes)", name)
 		}
 	}
 }

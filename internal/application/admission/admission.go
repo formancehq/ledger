@@ -274,7 +274,7 @@ func NewAdmission(
 	}
 
 	preloadCounter, err := meter.Int64Counter(
-		"admission.preload.total",
+		"admission.preloads",
 		metric.WithDescription("Total number of preload operations from store"),
 		metric.WithUnit("{preload}"),
 	)
@@ -301,7 +301,7 @@ func NewAdmission(
 	}
 
 	actionCounter, err := meter.Int64Counter(
-		"admission.action.total",
+		"admission.actions",
 		metric.WithDescription("Total number of orders (actions) admission processed, tagged by order_type. Counts every order attempted in the batch; not gated on the FSM apply outcome."),
 		metric.WithUnit("{action}"),
 	)
@@ -310,8 +310,8 @@ func NewAdmission(
 	}
 
 	actionErrorsCounter, err := meter.Int64Counter(
-		"admission.action.errors.total",
-		metric.WithDescription("Number of orders (actions) whose admission batch ended in error, tagged by order_type. A strict subset of admission.action.total."),
+		"admission.action.errors",
+		metric.WithDescription("Number of orders (actions) whose admission batch ended in error, tagged by order_type. A strict subset of admission.actions."),
 		metric.WithUnit("{action}"),
 	)
 	if err != nil {
@@ -426,11 +426,11 @@ func (a *Admission) observeCallerSnapshot(ctx context.Context, snap *commonpb.Ca
 // maintenance mode, request-to-order conversion — carry no order_type and are
 // intentionally excluded.
 //
-// admission.action.total counts every order attempted, regardless of outcome.
+// admission.actions counts every order attempted, regardless of outcome.
 // A batch is one atomic Raft command with a single outcome, so on failure
 // (*errp != nil) every order in the batch is counted as errored under its own
-// order_type: none of them applied. That keeps admission.action.errors.total a
-// strict subset of admission.action.total (error rate ∈ [0, 1]). order_type
+// order_type: none of them applied. That keeps admission.action.errors a
+// strict subset of admission.actions (error rate ∈ [0, 1]). order_type
 // reuses domain.AuditOrderType so the labels stay consistent with the audit
 // filter DSL (EN-1305 / EN-1582). Recording stays on the admission path; the FSM
 // apply path is never touched.

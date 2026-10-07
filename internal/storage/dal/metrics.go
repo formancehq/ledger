@@ -12,7 +12,8 @@ import (
 
 func NewMetricsListener(m metric.Meter, stallState *WriteStallState) *pebble.EventListener {
 	diskSlowTotal, err := m.Int64Counter(
-		"pebble.disk_slow.total",
+		"pebble.disk_slow.operations",
+		metric.WithUnit("{operation}"),
 		metric.WithDescription("Number of Pebble disk slow events"),
 	)
 	if err != nil {
@@ -29,7 +30,8 @@ func NewMetricsListener(m metric.Meter, stallState *WriteStallState) *pebble.Eve
 	}
 
 	flushTotal, err := m.Int64Counter(
-		"pebble.flush.total",
+		"pebble.flushes",
+		metric.WithUnit("{flush}"),
 		metric.WithDescription("Number of Pebble flush operations"),
 	)
 	if err != nil {
@@ -55,7 +57,8 @@ func NewMetricsListener(m metric.Meter, stallState *WriteStallState) *pebble.Eve
 	}
 
 	compactionTotal, err := m.Int64Counter(
-		"pebble.compaction.total",
+		"pebble.compactions",
+		metric.WithUnit("{compaction}"),
 		metric.WithDescription("Number of Pebble compaction operations"),
 	)
 	if err != nil {
@@ -72,7 +75,8 @@ func NewMetricsListener(m metric.Meter, stallState *WriteStallState) *pebble.Eve
 	}
 
 	stallTotal, err := m.Int64Counter(
-		"pebble.write_stall.total",
+		"pebble.write_stalls",
+		metric.WithUnit("{stall}"),
 		metric.WithDescription("Number of Pebble write stalls"),
 	)
 	if err != nil {

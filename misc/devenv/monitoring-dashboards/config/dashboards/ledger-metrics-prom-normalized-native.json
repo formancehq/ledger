@@ -6071,7 +6071,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum by (formance_ledger_node_id, status, reason) (rate({__name__=\"formance_ledger_pebble_flush_total\", \"formance_ledger_cluster_id\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval]))",
+                     "expr": "sum by (formance_ledger_node_id, status, reason) (rate({__name__=\"formance_ledger_pebble_flushes_total\", \"formance_ledger_cluster_id\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval]))",
                      "legendFormat": "Node {{formance_ledger_node_id}} {{status}} {{reason}}",
                      "range": true,
                      "refId": "A"
@@ -6400,7 +6400,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum by (formance_ledger_node_id, status, reason) (rate({__name__=\"formance_ledger_pebble_compaction_total\", \"formance_ledger_cluster_id\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval]))",
+                     "expr": "sum by (formance_ledger_node_id, status, reason) (rate({__name__=\"formance_ledger_pebble_compactions_total\", \"formance_ledger_cluster_id\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval]))",
                      "legendFormat": "Node {{formance_ledger_node_id}}: {{status}} {{reason}}",
                      "range": true,
                      "refId": "A"
@@ -6630,7 +6630,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum by (formance_ledger_node_id, reason) (rate({__name__=\"formance_ledger_pebble_compaction_total\", status=\"error\", \"formance_ledger_cluster_id\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval]))",
+                     "expr": "sum by (formance_ledger_node_id, reason) (rate({__name__=\"formance_ledger_pebble_compactions_total\", status=\"error\", \"formance_ledger_cluster_id\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval]))",
                      "legendFormat": "Node {{formance_ledger_node_id}}: {{reason}}",
                      "range": true,
                      "refId": "A"
@@ -6826,7 +6826,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum by (formance_ledger_node_id, reason) (rate({__name__=\"formance_ledger_pebble_write_stall_total\", \"formance_ledger_cluster_id\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval]))",
+                     "expr": "sum by (formance_ledger_node_id, reason) (rate({__name__=\"formance_ledger_pebble_write_stalls_total\", \"formance_ledger_cluster_id\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval]))",
                      "legendFormat": "Node {{formance_ledger_node_id}} / {{reason}}",
                      "range": true,
                      "refId": "A"
@@ -7385,7 +7385,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum by (formance_ledger_node_id, op) (rate({__name__=\"formance_ledger_pebble_disk_slow_total\", \"formance_ledger_cluster_id\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval]))",
+                     "expr": "sum by (formance_ledger_node_id, op) (rate({__name__=\"formance_ledger_pebble_disk_slow_operations_total\", \"formance_ledger_cluster_id\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval]))",
                      "legendFormat": "Node {{formance_ledger_node_id}} / {{op}}",
                      "range": true,
                      "refId": "A"
@@ -9062,7 +9062,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(rate(formance_ledger_admission_preload_total{formance_ledger_cluster_id=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (formance_ledger_node_id)",
+                     "expr": "sum(rate(formance_ledger_admission_preloads_total{formance_ledger_cluster_id=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (formance_ledger_node_id)",
                      "legendFormat": "Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
@@ -11332,7 +11332,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(rate(formance_ledger_mirror_batch_total{formance_ledger_cluster_id=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (status)",
+                     "expr": "sum(rate(formance_ledger_mirror_batches_total{formance_ledger_cluster_id=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (status)",
                      "legendFormat": "{{status}}",
                      "range": true,
                      "refId": "A"

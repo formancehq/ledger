@@ -15,7 +15,7 @@ panels.row('Index Builder', 173, [
     'Indexing Rate',
     { h: 8, w: 8, x: 8, y: 109 },
     [
-      { expr: 'rate(index.builder.logs_indexed_total{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[1m])', legendFormat: '{{formance.ledger.node.id}}' },
+      { expr: 'rate(index.builder.logs_indexed{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[1m])', legendFormat: '{{formance.ledger.node.id}}' },
     ], unit='ops',
     description='Rate of logs indexed per second. Higher values indicate faster catch-up.', opts={ showPoints: 'auto' },
   ),

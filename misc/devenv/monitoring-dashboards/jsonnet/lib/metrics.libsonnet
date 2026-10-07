@@ -22,7 +22,7 @@
     proposal_guard_duration: 'admission.proposal_guard.duration',
     proposal_guard_rebuild: 'admission.proposal_guard.rebuild',
     preload_duration: 'admission.preload.duration',
-    preload_total: 'admission.preload.total',
+    preloads: 'admission.preloads',
     preload_keys_needed: 'admission.preload.keys_needed',
     preload_cache_hits: 'admission.preload.cache_hits',
     audit_missing_caller: 'admission.audit.missing_caller',
@@ -31,8 +31,8 @@
     orders_preparation_duration: 'admission.orders_preparation.duration',
     scripts_duration: 'admission.scripts.duration',
     response_resolution_duration: 'admission.response_resolution.duration',
-    action_total: 'admission.action.total',
-    action_errors_total: 'admission.action.errors.total',
+    actions: 'admission.actions',
+    action_errors: 'admission.action.errors',
   },
 
   // bloom — internal/infra/bloom/bloom.go
@@ -66,7 +66,7 @@
     last_indexed_sequence: 'index.builder.last_indexed_sequence',
     pebble_last_sequence: 'index.builder.pebble_last_sequence',
     lag: 'index.builder.lag',
-    logs_indexed_total: 'index.builder.logs_indexed_total',
+    logs_indexed: 'index.builder.logs_indexed',
   },
 
   // audit_index — internal/application/auditindexer/indexer.go
@@ -98,21 +98,21 @@
     batch_duration: 'mirror.batch.duration',
     command_size: 'mirror.command.size',
     logs_ingested: 'mirror.logs.ingested',
-    batch_total: 'mirror.batch.total',
+    batches: 'mirror.batches',
   },
 
   // pebble — internal/storage/dal/metrics.go (our wrapper around
   // Pebble's EventListener; Pebble itself does not expose OTel).
   pebble:: {
-    flush_total: 'pebble.flush.total',
+    flushes: 'pebble.flushes',
     flush_duration: 'pebble.flush.duration',
     flush_input_size: 'pebble.flush.input.size',
-    compaction_total: 'pebble.compaction.total',
+    compactions: 'pebble.compactions',
     compaction_duration: 'pebble.compaction.duration',
-    write_stall_total: 'pebble.write_stall.total',
+    write_stalls: 'pebble.write_stalls',
     write_stall_duration: 'pebble.write_stall.duration',
     write_stall_active: 'pebble.write_stall.active',
-    disk_slow_total: 'pebble.disk_slow.total',
+    disk_slow_operations: 'pebble.disk_slow.operations',
     disk_slow_duration: 'pebble.disk_slow.duration',
     vfs_read_ops: 'pebble.vfs.read.ops',
     vfs_write_ops: 'pebble.vfs.write.ops',

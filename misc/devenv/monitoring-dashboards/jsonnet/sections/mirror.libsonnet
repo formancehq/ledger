@@ -17,7 +17,7 @@ panels.row('Mirror', 171, [
     'Batch Rate',
     { h: 8, w: 12, x: 12, y: 107 },
     [
-      { expr: 'sum(rate(mirror.batch.total{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (status)', legendFormat: '{{status}}' },
+      { expr: 'sum(rate(mirror.batches{formance.ledger.cluster.id=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (status)', legendFormat: '{{status}}' },
     ], unit='ops',
     description='Rate of mirror batches processed per second, broken down by status (success/error).', opts={ stackMode: 'normal' },
   ),
