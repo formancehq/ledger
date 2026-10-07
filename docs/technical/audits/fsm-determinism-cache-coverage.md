@@ -230,9 +230,10 @@ The FSM keeps two pieces of node-local state across proposals in the
 `RequestProcessor`'s `NumscriptCache`: parsed scripts, and one decoded,
 verified VM instance per script hash, reused by every later apply of the same
 program bytes. Admission owns a separate cache instance; it never shares the
-FSM's warm VMs, nor the reverse — admission's instance additionally tracks,
-on its own third LRU side, which hashes it has already attached bytecode for
-(`SeenCompiledProgram`, service protocol revision 23), consulted only by
+FSM's warm VMs, nor the reverse — admission's instance exposes, from its
+existing parsed-script side, whether a hash was already compiled before this
+proposal (`CompiledScript.AlreadyCompiled`, backed by
+`lruEntry.compileParsed`, service protocol revision 23), consulted only by
 admission and never by the FSM apply path.
 
 **Inputs.** The committed inputs of one scripted execution are the resolved
@@ -260,16 +261,19 @@ hash all absent — is recompiled from the script text, with an Antithesis
 program alone absent, next to a present vars and script hash, is also
 recompiled from the text (or served from this node's own apply-side cache for
 that hash, `NumscriptCache.PeekCompiledProgram`) — not an admission bug, but
-admission deliberately omitting bytecode once its own bookkeeping
-(`NumscriptCache.SeenCompiledProgram`, a bounded LRU on admission's own cache
-instance) shows it already attached these exact bytes to an earlier proposal
-for this hash — never a peek at what any replica's apply-side cache actually
-holds: admission and the FSM apply path each construct their own
-`NumscriptCache` and share no state (service protocol revision 23). Both
-resolutions for the same hash must converge on byte-identical bytecode; this
-leans on the same per-library compile-determinism assumption the checker's
-audit replay already makes (`persistence-restore-replay`), now also
-load-bearing on the live apply path, not only offline. Any other partial
+admission deliberately omitting bytecode when its own compile cache already
+had this script hash compiled before this proposal
+(`CompiledScript.AlreadyCompiled`, backed by `lruEntry.compileParsed` on
+admission's own cache instance) — a cheap, deliberately imprecise signal,
+never a peek at what any replica's apply-side cache actually holds: admission
+and the FSM apply path each construct their own `NumscriptCache` and share no
+state (service protocol revision 23). Sending the bytecode on a cache hit, or
+omitting it on a cache miss, are both tolerated by design; only a systematic
+wrong guess would defeat the point. Both resolutions for the same hash must
+converge on byte-identical bytecode; this leans on the same per-library
+compile-determinism assumption the checker's audit replay already makes
+(`persistence-restore-replay`), now also load-bearing on the live apply path,
+not only offline. Any other partial
 artifact — a program present but truncated, with an invalid header, carrying
 a bytecode version the bundled library cannot read, or failing decoding,
 verification, or the script-hash binding — fails the order with

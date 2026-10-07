@@ -48,13 +48,13 @@ func TestResolveScripts_BindsCompiledArtifact(t *testing.T) {
 }
 
 // TestResolveScripts_OmitsBytecodeOnceAdmissionHasSentIt: once this admission
-// instance has attached a script hash's bytecode to one proposal, a later
-// order using the identical script omits compiled_program, keeping vars and
-// hash. This is admission's own bookkeeping (NumscriptCache.SeenCompiledProgram)
-// — independent of whether the first proposal ever committed or of anything
-// the FSM apply path cached on its own, separate NumscriptCache instance; see
-// the FSM-side cache-or-recompile fallback in
-// processor_transaction_numscript.go.
+// instance's own compile cache already has a script hash compiled (from an
+// earlier order), a later order using the identical script omits
+// compiled_program, keeping vars and hash. The signal is
+// CompiledScript.AlreadyCompiled (see lruEntry.compileParsed) — independent
+// of whether an earlier proposal ever committed, or of anything the FSM
+// apply path cached on its own, separate NumscriptCache instance; see the
+// FSM-side cache-or-recompile fallback in processor_transaction_numscript.go.
 func TestResolveScripts_OmitsBytecodeOnceAdmissionHasSentIt(t *testing.T) {
 	t.Parallel()
 

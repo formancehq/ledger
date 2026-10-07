@@ -868,21 +868,23 @@ across an FSM outcome change" above:
 
 Service protocol revision 23 lets admission omit `compiled_program` from a
 scripted order's technical sub-message while still attaching `compiled_vars`
-and `compiled_script_hash`, once admission has already attached these exact
-bytes to an earlier proposal for that hash. This is admission's own
-bookkeeping (`NumscriptCache.SeenCompiledProgram`, a bounded LRU of hashes it
-has sent before) — admission and the FSM apply path each construct their own
-`NumscriptCache` instance and share no state, so this is never a peek at
-whether any replica has actually applied or cached the artifact. A binary
-predating this revision does not know `compiled_program` can be legitimately
-absent next to a present hash and vars: it decodes the empty bytes as a
-corrupt artifact and fails the order with a Numscript runtime error, while a
-revision-23 binary applying the exact same entry succeeds by serving the hash
-from its own apply-side cache or recompiling from the script text —
-replicated-state divergence (one replica commits the transaction, another
-rejects the same entry), not merely an availability difference. Deploy this
-revision with all nodes stopped, as for every prior Numscript VM
-apply-semantics change in this release line.
+and `compiled_script_hash`, when its own compile cache already had this script
+hash compiled before this proposal (`CompiledScript.AlreadyCompiled`, backed
+by `lruEntry.compileParsed` on admission's own `NumscriptCache` instance).
+This is a cheap, deliberately imprecise signal, not a guarantee that any
+replica has actually applied or cached the artifact: admission and the FSM
+apply path each construct their own `NumscriptCache` instance and share no
+state. Sending the bytecode anyway on a cache hit, or omitting it on a cache
+miss, are both tolerated by design — only systematically guessing wrong would
+defeat the point. A binary predating this revision does not know
+`compiled_program` can be legitimately absent next to a present hash and
+vars: it decodes the empty bytes as a corrupt artifact and fails the order
+with a Numscript runtime error, while a revision-23 binary applying the exact
+same entry succeeds by serving the hash from its own apply-side cache or
+recompiling from the script text — replicated-state divergence (one replica
+commits the transaction, another rejects the same entry), not merely an
+availability difference. Deploy this revision with all nodes stopped, as for
+every prior Numscript VM apply-semantics change in this release line.
 
 A revision-23 FSM applying an entry whose `compiled_program` is absent next to
 a present hash and vars first checks its own apply-side cache for that hash

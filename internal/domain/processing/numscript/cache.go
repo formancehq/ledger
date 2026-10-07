@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/zeebo/xxh3"
 	"go.opentelemetry.io/otel/attribute"
@@ -17,23 +18,19 @@ import (
 )
 
 // NumscriptCache stores parsed Numscript programs keyed by their content hash,
-// decoded+verified VM artifacts — each as one warm VM instance — keyed by
+// and decoded+verified VM artifacts — each as one warm VM instance — keyed by
 // the same script-content hash and served only for identical program bytes
-// (see getOrDecodeCompiled), and, on admission's own instance only, a record
-// of which hashes this admission process has already attached bytecode for
-// (see SeenCompiledProgram). All three sides use an LRU eviction policy
-// bounded by maxSize to prevent unbounded memory growth. Thread-safe: an
-// RWMutex allows concurrent cache hits without contention. LRU reordering is
-// approximate — read hits do not call MoveToFront to avoid write-locking on
-// the hot path.
+// (see getOrDecodeCompiled). Both sides use an LRU eviction policy bounded by
+// maxSize to prevent unbounded memory growth. Thread-safe: an RWMutex allows
+// concurrent cache hits without contention. LRU reordering is approximate —
+// read hits do not call MoveToFront to avoid write-locking on the hot path.
 //
 // Admission and the FSM apply path each construct their own NumscriptCache
 // instance (see internal/bootstrap/module.go and
 // processing.NewRequestProcessor) — they share no state. The compiled side
 // (compiledCache) is populated only by getOrDecodeCompiled, called only from
 // the FSM apply path's SafeExecCompiled, so it is never warm on admission's
-// instance; the sent side (sentCache) exists only to let admission track its
-// own proposals and is never consulted by the FSM apply path.
+// instance.
 type NumscriptCache struct {
 	mu      sync.RWMutex
 	cache   map[[16]byte]*list.Element
@@ -43,15 +40,6 @@ type NumscriptCache struct {
 	compiledMu    sync.RWMutex
 	compiledCache map[[16]byte]*list.Element
 	compiledOrder *list.List
-
-	// sentMu/sentCache/sentOrder back SeenCompiledProgram: admission's own
-	// bookkeeping of which script hashes it has already attached bytecode
-	// for, unrelated to compiledCache (which only the FSM apply path
-	// populates, on its own separate NumscriptCache instance — see
-	// PeekCompiledProgram and SeenCompiledProgram).
-	sentMu    sync.Mutex
-	sentCache map[[16]byte]*list.Element
-	sentOrder *list.List
 
 	// Metrics (nil if not initialized)
 	sizeGauge metric.Int64Gauge
@@ -69,6 +57,10 @@ type lruEntry struct {
 	compileOnce sync.Once
 	compiled    *compiledProgram
 	compileErr  domain.SerializableError
+	// compiledBefore reports, to the caller of compileParsed, whether an
+	// earlier call on this exact entry already ran the compile (true) or this
+	// call is the one doing it (false) — see compileParsed.
+	compiledBefore atomic.Bool
 }
 
 // compiledProgram is the script-dependent half of an admission compile: the
@@ -126,8 +118,6 @@ func NewNumscriptCache(maxSize int) *NumscriptCache {
 		maxSize:       maxSize,
 		compiledCache: make(map[[16]byte]*list.Element, maxSize),
 		compiledOrder: list.New(),
-		sentCache:     make(map[[16]byte]*list.Element, maxSize),
-		sentOrder:     list.New(),
 	}
 }
 
@@ -236,7 +226,18 @@ func (c *NumscriptCache) getOrParseEntryHashed(hash [16]byte, script string) *lr
 // computed here; binding an order's vars (VarsEncoder.Encode) is per-order and
 // stays with the caller. The compile runs outside the cache locks; concurrent
 // callers for the same script block on the Once and share the single result.
-func (e *lruEntry) compileParsed() (*compiledProgram, domain.SerializableError) {
+//
+// alreadyCompiled reports whether an earlier call on this exact entry already
+// ran the compile — false only for the one call that actually computes it
+// (or the first of a small race of concurrent first callers, all of which see
+// false; see compileScript's caller, admission's bytecode-omission decision,
+// which tolerates that imprecision by design). An entry evicted and later
+// recreated starts this at false again, which is the conservative answer:
+// this incarnation has not compiled it yet, regardless of an older
+// incarnation having done so before eviction.
+func (e *lruEntry) compileParsed() (program *compiledProgram, err domain.SerializableError, alreadyCompiled bool) {
+	alreadyCompiled = e.compiledBefore.Swap(true)
+
 	e.compileOnce.Do(func() {
 		defer func() {
 			if panicErr := numscriptPanicToDescribable(recover()); panicErr != nil {
@@ -255,7 +256,7 @@ func (e *lruEntry) compileParsed() (*compiledProgram, domain.SerializableError) 
 		e.compiled = &compiledProgram{varsEncoder: varsEncoder, program: program, encoded: program.Encode()}
 	})
 
-	return e.compiled, e.compileErr
+	return e.compiled, e.compileErr, alreadyCompiled
 }
 
 // getOrDecodeCompiled returns the cache entry holding the decoded, verified VM
@@ -382,7 +383,7 @@ func (c *NumscriptCache) getOrDecodeCompiled(scriptHash, programBytes []byte, va
 // This cache is populated only through getOrDecodeCompiled — i.e. only by a
 // node actually executing a scripted order — so it is NOT shared with
 // admission's own NumscriptCache instance (a separate cache; see
-// SeenCompiledProgram for admission's own, unrelated bookkeeping).
+// lruEntry.compiledBefore for admission's own, unrelated signal).
 func (c *NumscriptCache) PeekCompiledProgram(hash [16]byte) ([]byte, bool) {
 	c.compiledMu.RLock()
 	defer c.compiledMu.RUnlock()
@@ -395,65 +396,6 @@ func (c *NumscriptCache) PeekCompiledProgram(hash [16]byte) ([]byte, bool) {
 	entry, _ := elem.Value.(*compiledLruEntry)
 
 	return bytes.Clone(entry.program), true
-}
-
-// sentLruEntry records one script hash's bytes as already attached to a
-// proposal by this admission instance — see SeenCompiledProgram.
-type sentLruEntry struct {
-	hash    [16]byte
-	program []byte
-}
-
-// SeenCompiledProgram reports whether this exact NumscriptCache instance has
-// already recorded program for hash, and records it (replacing any different
-// bytes previously recorded for the same hash) before returning. Admission
-// calls it once per resolved script, right where it would otherwise attach
-// compiled_program: a true result means this same admission process already
-// proposed this hash's bytecode at least once, so the new proposal can omit
-// it and keep only compiled_vars and compiled_script_hash.
-//
-// This is deliberately independent of whether that earlier proposal ever
-// committed or of anything the FSM apply path cached (a separate
-// NumscriptCache instance — see PeekCompiledProgram): the two are wired up
-// without any shared state between admission and the state machine. A false
-// "not seen" (this node's own bookkeeping evicted the entry, or admission
-// failed over to another node) only costs a resend of bytes nothing was
-// waiting for. A false "already seen" cannot happen — a hit requires the
-// exact bytes to match — but is harmless even in principle: any replica that
-// turns out not to have this hash's bytecode recompiles it identically from
-// the script text (processor_transaction_numscript.go), the same fallback
-// already used for a fully missing artifact. Bounded by the same maxSize as
-// the other two LRU sides.
-func (c *NumscriptCache) SeenCompiledProgram(hash [16]byte, program []byte) (alreadySeen bool) {
-	c.sentMu.Lock()
-	defer c.sentMu.Unlock()
-
-	if elem, ok := c.sentCache[hash]; ok {
-		entry, _ := elem.Value.(*sentLruEntry)
-		if bytes.Equal(entry.program, program) {
-			c.sentOrder.MoveToFront(elem)
-
-			return true
-		}
-
-		// Same hash, different bytes (this admission instance's own compile
-		// result changed, e.g. its parse cache evicted and recompiled): the
-		// new bytes are what counts as "seen" from here on.
-		c.sentOrder.Remove(elem)
-		delete(c.sentCache, hash)
-	}
-
-	if c.sentOrder.Len() >= c.maxSize {
-		back := c.sentOrder.Back()
-		if back != nil {
-			evicted, _ := c.sentOrder.Remove(back).(*sentLruEntry)
-			delete(c.sentCache, evicted.hash)
-		}
-	}
-
-	c.sentCache[hash] = c.sentOrder.PushFront(&sentLruEntry{hash: hash, program: bytes.Clone(program)})
-
-	return false
 }
 
 // InitCacheMetrics initializes the cache metrics on the NumscriptCache.

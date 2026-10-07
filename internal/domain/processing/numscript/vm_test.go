@@ -209,21 +209,30 @@ send [COIN ($a + $b) + ($c + $d) + ($e + $f)] (
 
 	entry := cache.getOrParseEntry(script)
 	require.Nil(t, entry.script.err)
-	firstCompile, err := entry.compileParsed()
+	firstCompile, err, firstAlreadyCompiled := entry.compileParsed()
 	require.Nil(t, err)
-	secondCompile, err := entry.compileParsed()
+	require.False(t, firstAlreadyCompiled, "the very first compile of this entry is not a repeat")
+	secondCompile, err, secondAlreadyCompiled := entry.compileParsed()
 	require.Nil(t, err)
 	require.Same(t, firstCompile, secondCompile)
+	require.True(t, secondAlreadyCompiled, "a later call on the same entry is a repeat")
 	require.Same(t, entry, cache.getOrParseEntry(script))
 
 	first := mustCompile(t, cache.getOrParseEntry(script), map[string]string{"a": "1", "b": "2", "c": "3", "d": "4", "e": "5", "f": "6"})
+	require.True(t, first.AlreadyCompiled, "compileParsed already ran above for this entry")
 
 	second := mustCompile(t, cache.getOrParseEntry(script), map[string]string{"a": "10", "b": "20", "c": "30", "d": "40", "e": "50", "f": "60"})
+	require.True(t, second.AlreadyCompiled)
 
 	require.Equal(t, first.Program, second.Program)
 	require.NotSame(t, &first.Program[0], &second.Program[0], "each order carries its own copy of the shared program bytes")
 	require.Equal(t, first.ScriptHash, second.ScriptHash)
 	require.NotEqual(t, first.Vars, second.Vars, "vars are bound per order")
+
+	// A fresh entry (new script, never compiled on this cache) reports false.
+	freshEntry := cache.getOrParseEntry(`send [COIN 1] (source = @a destination = @b)`)
+	fresh := mustCompile(t, freshEntry, nil)
+	require.False(t, fresh.AlreadyCompiled)
 
 	// An uncompilable script caches its outcome the same way.
 	scaling := cache.getOrParseEntry(`#![feature("experimental-asset-scaling")]
@@ -231,11 +240,12 @@ send [COIN/2 100] (
   source = @src with scaling through @swap
   destination = @dst
 )`)
-	scalingCompiled, firstErr := scaling.compileParsed()
+	scalingCompiled, firstErr, _ := scaling.compileParsed()
 	require.Nil(t, scalingCompiled)
 	requireCompileError(t, firstErr)
-	_, secondErr := scaling.compileParsed()
+	_, secondErr, alreadyCompiledAfterFailure := scaling.compileParsed()
 	require.Same(t, firstErr, secondErr, "the compile failure is cached, not recomputed")
+	require.True(t, alreadyCompiledAfterFailure, "a cached compile failure still counts as already compiled")
 	_, err = compileScript(scaling, nil)
 	require.Same(t, firstErr, err)
 }

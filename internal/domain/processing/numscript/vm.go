@@ -22,10 +22,20 @@ import (
 //
 // program and vars are the decoded forms of Program and Vars, kept for
 // admission's own effects run so it need not decode what it just encoded.
+//
+// AlreadyCompiled reports whether this exact NumscriptCache instance had
+// already compiled this script hash before this call — i.e. whether the
+// program half is a cache hit on this entry, not a fresh compile. Admission
+// uses it to decide whether a proposal can omit Program and keep only Vars
+// and ScriptHash: a false positive or negative here is tolerated by design
+// (see admission.go) — the FSM apply path recompiles from the script text
+// whenever a program it needs turns out not to be cached, the same fallback
+// already used for a fully missing artifact.
 type CompiledScript struct {
-	Program    []byte
-	Vars       []byte
-	ScriptHash []byte
+	Program         []byte
+	Vars            []byte
+	ScriptHash      []byte
+	AlreadyCompiled bool
 
 	program numscriptlib.CompiledProgram
 	vars    numscriptlib.Vars
@@ -47,7 +57,7 @@ func compileScript(entry *lruEntry, vars map[string]string) (out *CompiledScript
 		}
 	}()
 
-	compiled, compileErr := entry.compileParsed()
+	compiled, compileErr, alreadyCompiled := entry.compileParsed()
 	if compileErr != nil {
 		return nil, compileErr
 	}
@@ -62,11 +72,12 @@ func compileScript(entry *lruEntry, vars map[string]string) (out *CompiledScript
 	return &CompiledScript{
 		// The order's artifact travels into OrderTechnical; give it its own
 		// bytes rather than aliasing the entry shared by every order of the script.
-		Program:    bytes.Clone(compiled.encoded),
-		Vars:       encodedVars.Encode(),
-		ScriptHash: hash[:],
-		program:    compiled.program,
-		vars:       encodedVars,
+		Program:         bytes.Clone(compiled.encoded),
+		Vars:            encodedVars.Encode(),
+		ScriptHash:      hash[:],
+		AlreadyCompiled: alreadyCompiled,
+		program:         compiled.program,
+		vars:            encodedVars,
 	}, nil
 }
 

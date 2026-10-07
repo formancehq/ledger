@@ -339,9 +339,9 @@ func TestProduce_OmittedProgramRecompilesToTheSameOutcome(t *testing.T) {
 // node having applied an earlier committed entry that carried the program),
 // a later order omitting the program serves those cached bytes directly — no
 // recompile — and produces exactly the same outcome. Admission's decision to
-// omit is independent of this (see admission.go's SeenCompiledProgram use,
-// its own separate bookkeeping) — this test only exercises the FSM apply
-// side's PeekCompiledProgram lookup.
+// omit is independent of this (see admission.go's use of
+// CompiledScript.AlreadyCompiled, admission's own separate compile cache) —
+// this test only exercises the FSM apply side's PeekCompiledProgram lookup.
 func TestProduce_OmittedProgramUsesWarmCache(t *testing.T) {
 	t.Parallel()
 

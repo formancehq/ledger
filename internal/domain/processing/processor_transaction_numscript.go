@@ -33,12 +33,12 @@ type numscriptPostingProducer struct {
 	// OrderTechnical, staged like the hash above). Execution decodes and runs
 	// the bytecode on the VM, the only engine. A fully missing artifact (all
 	// three empty) is recompiled from the script text. Admission may also omit
-	// compiled_program alone, keeping vars and hash, once it has already
-	// attached these exact bytes to an earlier proposal for this hash
-	// (NumscriptCache.SeenCompiledProgram, admission's own bookkeeping — not
-	// this node's apply-side cache). This node then looks for the bytes in
-	// ITS OWN apply-side cache, or — on a miss, the ordinary case — recompiles
-	// from the script text exactly like the fully-missing case. Either way the
+	// compiled_program alone, keeping vars and hash, when its own compile
+	// cache already had this script hash compiled before this proposal
+	// (CompiledScript.AlreadyCompiled — admission's own cache, not this
+	// node's apply-side cache). This node then looks for the bytes in ITS OWN
+	// apply-side cache, or — on a miss, the ordinary case — recompiles from
+	// the script text exactly like the fully-missing case. Either way the
 	// outcome is a function of the committed entry and the running binary
 	// alone, never of which of these paths supplied the bytes (invariant #2):
 	// a present but otherwise broken program — an invalid header, a bytecode
@@ -163,10 +163,10 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	// bytecode version the bundled library cannot read, or bytes that fail
 	// decoding or verification are a corrupt or impossible state, and
 	// SafeExecCompiled fails them loudly below. But the program alone — vars
-	// and hash present — may be deliberately omitted: admission skips it once
-	// its own NumscriptCache.SeenCompiledProgram reports it already attached
-	// these exact bytes to an earlier proposal (admission's own bookkeeping,
-	// unrelated to this node's apply-side cache — the two are separate
+	// and hash present — may be deliberately omitted: admission skips it when
+	// its own compile cache already had this script hash compiled before
+	// this proposal (CompiledScript.AlreadyCompiled, admission's own cache —
+	// unrelated to this node's apply-side cache; the two are separate
 	// NumscriptCache instances, see cache.go). This node then looks for the
 	// bytes in ITS OWN apply-side cache (PeekCompiledProgram); a miss (the
 	// ordinary case — that cache is never warmed by anything admission does —

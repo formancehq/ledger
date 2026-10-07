@@ -247,12 +247,14 @@ Every scripted order admission proposes carries `compiled_vars` and
 `compiled_script_hash`; an order it forwards without them is marked
 `preload_unavailable` and rejected before any read. The bytecode half,
 `compiled_program`, is also attached by default, but admission may omit it
-alone once it has already attached these exact bytes to an earlier proposal
-for this hash (`NumscriptCache.SeenCompiledProgram`, a bounded LRU of hashes
-this admission instance has sent before — its own bookkeeping, never a peek
-at whether any replica actually applied or cached the artifact: admission and
-the FSM apply path each construct their own `NumscriptCache` instance and
-share no state; service protocol revision 23; see
+alone when its own compile cache already had this script hash compiled
+before this proposal (`CompiledScript.AlreadyCompiled`, backed by
+`lruEntry.compileParsed` — admission's own cache, never a peek at whether any
+replica actually applied or cached the artifact: admission and the FSM apply
+path each construct their own `NumscriptCache` instance and share no state).
+This is a cheap, deliberately imprecise signal: sending the bytecode on a
+cache hit, or omitting it on a cache miss, are both tolerated by design
+(service protocol revision 23; see
 [Omitting already-cached Numscript bytecode](../../../../ops/deployment.md#omitting-already-cached-numscript-bytecode-revision-23)).
 The artifact as a whole is an optimization derivable from the script text, not
 part of the order's meaning: a scripted order reaching execution with no

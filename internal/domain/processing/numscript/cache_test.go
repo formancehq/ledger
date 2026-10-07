@@ -258,59 +258,26 @@ func TestNumscriptCache_PeekCompiledProgram_Hit(t *testing.T) {
 	require.Equal(t, compiled.Program, again)
 }
 
-func TestNumscriptCache_SeenCompiledProgram_FirstSeenIsFalse(t *testing.T) {
+func TestLruEntry_CompileParsed_AlreadyCompiledAcrossEviction(t *testing.T) {
 	t.Parallel()
 
-	c := NewNumscriptCache(10)
-	hash := HashScript(`send [USD/2 100] (source = @world destination = @users:alice)`)
+	c := NewNumscriptCache(1)
+	script := `send [USD/2 100] (source = @world destination = @users:alice)`
+	other := `send [USD/2 1] (source = @a destination = @b)`
 
-	alreadySeen := c.SeenCompiledProgram(hash, []byte("program-bytes"))
-	require.False(t, alreadySeen)
-}
+	entry := c.getOrParseEntry(script)
+	_, err, alreadyCompiled := entry.compileParsed()
+	require.Nil(t, err)
+	require.False(t, alreadyCompiled)
 
-func TestNumscriptCache_SeenCompiledProgram_SecondIdenticalCallIsTrue(t *testing.T) {
-	t.Parallel()
+	// Evict the entry by parsing a second script against a cache of size 1.
+	c.getOrParseEntry(other)
+	require.NotSame(t, entry, c.getOrParseEntry(script), "the original entry was evicted")
 
-	c := NewNumscriptCache(10)
-	hash := HashScript(`send [USD/2 100] (source = @world destination = @users:alice)`)
-	program := []byte("program-bytes")
-
-	require.False(t, c.SeenCompiledProgram(hash, program))
-	require.True(t, c.SeenCompiledProgram(hash, program))
-	require.True(t, c.SeenCompiledProgram(hash, program), "stays seen across repeated calls")
-}
-
-func TestNumscriptCache_SeenCompiledProgram_DifferentBytesSameHashIsNotSeen(t *testing.T) {
-	t.Parallel()
-
-	c := NewNumscriptCache(10)
-	hash := HashScript(`send [USD/2 100] (source = @world destination = @users:alice)`)
-
-	require.False(t, c.SeenCompiledProgram(hash, []byte("first-compile")))
-	// A different compilation result for the same hash (not assumed
-	// deterministic) is not "already sent": the new bytes have not been
-	// attached to a proposal yet.
-	require.False(t, c.SeenCompiledProgram(hash, []byte("second-compile")))
-	// The second bytes are now what counts as seen.
-	require.True(t, c.SeenCompiledProgram(hash, []byte("second-compile")))
-	require.False(t, c.SeenCompiledProgram(hash, []byte("first-compile")))
-}
-
-func TestNumscriptCache_SeenCompiledProgram_Eviction(t *testing.T) {
-	t.Parallel()
-
-	c := NewNumscriptCache(2)
-
-	hashA := HashScript(`send [USD/2 1] (source = @a destination = @b)`)
-	hashB := HashScript(`send [USD/2 2] (source = @b destination = @c)`)
-	hashC := HashScript(`send [USD/2 3] (source = @c destination = @d)`)
-
-	require.False(t, c.SeenCompiledProgram(hashA, []byte("a")))
-	require.False(t, c.SeenCompiledProgram(hashB, []byte("b")))
-	require.False(t, c.SeenCompiledProgram(hashC, []byte("c"))) // evicts A (LRU)
-
-	// Checked in this order deliberately: a Seen call for an evicted hash
-	// re-inserts it, which would itself evict B if checked first.
-	require.True(t, c.SeenCompiledProgram(hashB, []byte("b")), "B survived the eviction")
-	require.False(t, c.SeenCompiledProgram(hashA, []byte("a")), "A was evicted to make room for C")
+	// The new entry for the same script text starts cold again: an evicted
+	// incarnation's "already compiled" history does not carry over, which is
+	// the conservative (never-assume-cached) answer.
+	_, err, alreadyCompiled = c.getOrParseEntry(script).compileParsed()
+	require.Nil(t, err)
+	require.False(t, alreadyCompiled)
 }

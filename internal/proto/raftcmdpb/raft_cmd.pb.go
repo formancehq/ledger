@@ -305,9 +305,9 @@ type OrderTechnical struct {
 	// change"). Every scripted order admission proposes carries compiled_vars
 	// and compiled_script_hash: a script the VM cannot run is rejected at
 	// admission. compiled_program itself may be legitimately absent next to a
-	// present hash and vars: admission omits it once it has already attached
-	// these exact bytes to an earlier proposal for this hash — its own
-	// bookkeeping (NumscriptCache.SeenCompiledProgram), not anything the
+	// present hash and vars: admission omits it when its own compile cache
+	// already had this script hash compiled before this proposal
+	// (CompiledScript.AlreadyCompiled) — its own cache, not anything the
 	// executing FSM has cached (service protocol revision 23; see
 	// docs/ops/deployment.md, "Omitting already-cached Numscript bytecode"). A
 	// scripted order reaching the FSM with compiled_program absent — whether
