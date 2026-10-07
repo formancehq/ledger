@@ -389,3 +389,11 @@ commit before the key is durable. Cluster ID is node-local operational identity
 and must not enter audit hashing. A retrying leader may generate a different
 candidate; only the first committed value is authoritative. The adjacent
 persistence audit owns checkpoint and cross-cluster restore parity.
+
+## Atomic creation metadata (EN-2686)
+
+CreateLedger stages initial metadata in the canonical ledger-metadata keyspace in the same proposal as ledger identity, boundaries and initial schema. Committed metadata limits apply before staging; creation metadata requires no additional preload read and cannot mutate the audited order.
+
+For normal and mirror creation, do rejection, proposal rollback and idempotent replay preserve initial metadata atomically without a second save, new metadata read dependency, duplicate allocation or order mutation?
+
+See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.

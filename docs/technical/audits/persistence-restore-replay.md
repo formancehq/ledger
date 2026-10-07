@@ -181,3 +181,11 @@ different destination cluster ID, new destination writes, checker validation,
 and a subsequent destination backup and restore. Compare historical audit and
 item bytes as well as logical projections. The integrity audit owns checker
 verdict quality; this domain owns lifecycle preservation and next-write parity.
+
+## Atomic creation metadata (EN-2686)
+
+CreatedLedgerLog carries initial metadata so post-checkpoint creation reconstructs canonical metadata during ApplyExportsAndRebuild. Persisted LedgerInfo does not duplicate the canonical metadata projection.
+
+Does a restore with nonempty checkpoint files and a nonempty post-checkpoint creation delta reproduce typed initial metadata for normal and mirror ledgers, including explicit protobuf null and a schema type mismatch?
+
+See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.

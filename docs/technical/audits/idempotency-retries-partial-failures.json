@@ -22,7 +22,7 @@
     "pkg/actions/**",
     "tests/**"
   ],
-  "related_docs": ["docs/technical/audits/idempotency-retries-partial-failures.md", "AGENTS.md", "docs/technical/agent-context.md", "docs/technical/architecture/subsystems/admission/", "docs/technical/architecture/subsystems/api/", "docs/technical/architecture/subsystems/backup/incremental-restore-contract.md", "docs/technical/architecture/subsystems/consensus/", "docs/technical/architecture/subsystems/fsm/", "docs/technical/contributing/ai-audit.md", "docs/ops/cli.md", "docs/ops/deployment.md"],
+  "related_docs": ["docs/technical/audits/idempotency-retries-partial-failures.md", "AGENTS.md", "docs/technical/agent-context.md", "docs/technical/architecture/subsystems/admission/", "docs/technical/architecture/subsystems/api/", "docs/technical/architecture/subsystems/backup/incremental-restore-contract.md", "docs/technical/architecture/subsystems/consensus/", "docs/technical/architecture/subsystems/fsm/", "docs/technical/contributing/ai-audit.md", "docs/ops/cli.md", "docs/ops/deployment.md", "docs/technical/architecture/subsystems/api/atomic-ledger-creation.md"],
   "invariants": [
     "Retrying one logical mutation must not create duplicate committed business effects when the API promises or relies on idempotence.",
     "A timeout or cancelled response must not be interpreted internally as proof that the mutation did not commit.",
@@ -32,7 +32,8 @@
     "Failure before commit must not leak partial authoritative state.",
     "Retry state, idempotency keys, or deduplication state required for correctness must survive the lifecycle boundaries promised by the system.",
     "Distinguish three identities: (a) the client/API logical-operation identity, which exists only as the idempotency key scoped to one atomic apply batch; (b) the Raft proposal identity of a single accepted proposal; (c) transport continuity of one in-flight call across follower-to-leader forwarding, leader changes, and gRPC retries. Leader changes and transport retries must not commit one accepted proposal twice (b), and must preserve logical-operation identity (a) only where the retried request supplies the same idempotency key; two unkeyed attempts remain distinct logical operations even when they originate from one client call across a leader transition.",
-    "Background retries must be bounded/cancellable and must not resurrect obsolete work after shutdown or superseding state."
+    "Background retries must be bounded/cancellable and must not resurrect obsolete work after shutdown or superseding state.",
+    "Initial metadata shares the CreateLedger operation identity and proposal atomicity. A keyed replay returns the original creation result without an additional audit record, metadata save or ledger allocation."
   ],
   "adversarial_questions": [
     "Where can a request commit and then lose its response?",
@@ -43,7 +44,8 @@
     "Can storage retry repeat a non-idempotent side effect?",
     "Can duplicate transport delivery reach apply twice through different paths?",
     "Can retry metadata disappear on restart while the original effect remains?",
-    "Can shutdown race with a retry worker and execute work after ownership has ended?"
+    "Can shutdown race with a retry worker and execute work after ownership has ended?",
+    "After a keyed creation carrying metadata, does replay preserve the original metadata and audit sequence? Does an invalid metadata map leave neither a ledger nor metadata rows or a consumed ledger ID?"
   ],
   "dynamic_checks_to_consider": ["fault injection after commit before response", "Run tests/antithesis/workload/internal/client_transport_test.go and client_transport_controls_test.go against the actual NewGRPCConn factory as well as the retained native retry control; verify maintenance-after-close ambiguity, gate-disable recovery, stable identity, a single durable effect, and non-retry of caller/server terminal statuses", "same-key same-content frozen success/failure replay and same-key different-content conflict property tests across TTL and eviction races", "leader change during retry", "connection reset during bulk", "storage transient-error injection", "restart between effect and dedupe persistence"]
 }

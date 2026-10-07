@@ -54,6 +54,15 @@ metadata values are intentionally unsupported.
 This conversion is used to derive index keys. It does not mutate the source
 metadata or change entity-read responses.
 
+## Initial ledger metadata
+
+`CreateLedgerRequest.metadata` seeds the ledger metadata keyspace atomically
+with ledger creation, in both normal and mirror modes. HTTP uses the shared
+scalar converter and omits null entries. Initial values are not coerced to the
+initial schema declarations. Creation permission includes initial metadata;
+later saves retain their separate metadata-write scope. See
+[atomic creation](../api/atomic-ledger-creation.md).
+
 ## Schema lifecycle
 
 `CreateLedgerRequest.initial_schema` installs declarations when the ledger is

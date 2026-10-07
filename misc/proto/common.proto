@@ -702,6 +702,7 @@ message CreatedLedgerLog {
   map<string, AccountType> account_types = 6;
   ChartEnforcementMode default_enforcement_mode = 7;
   uint32 id = 8;                              // Numeric ledger ID assigned by FSM
+  map<string, MetadataValue> metadata = 9; // Initial ledger metadata
 }
 
 message DeletedLedgerLog {

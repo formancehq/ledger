@@ -92,7 +92,7 @@ message OrderTechnical {
   // (invariant #2) — provided every replica runs a binary that knows these
   // fields. A binary predating them silently drops the artifact and interprets
   // with its own bundled library, so this change is a stop-all-nodes
-  // deployment boundary (service protocol revision 20; see
+  // deployment boundary (service protocol revision 21; see
   // docs/ops/deployment.md, "Upgrading across the Numscript VM execution
   // change"). Every scripted order admission proposes carries one: a script
   // the VM cannot run is rejected at admission. A scripted order reaching the
@@ -249,6 +249,7 @@ message CreateLedgerOrder {
   common.MirrorSourceConfig mirror_source = 3;
   map<string, common.AccountType> account_types = 4;  // Initial account types
   common.ChartEnforcementMode default_enforcement_mode = 5;  // Default enforcement for unmatched accounts
+  map<string, common.MetadataValue> metadata = 6; // Initial ledger metadata
 }
 
 message MirrorIngestOrder {

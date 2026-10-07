@@ -26,6 +26,10 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 		return nil, &domain.ErrLedgerAlreadyExists{Name: ledger}
 	}
 
+	if err := validateMetadataAtApply(order.GetMetadata(), ctx); err != nil {
+		return nil, err
+	}
+
 	// Validate initial account types if provided, then build a canonical map
 	// for derived state. Iterate names in sorted order so the first invalid
 	// pattern reported (chain-bound ErrInvalidPattern → AuditFailure) is
@@ -78,6 +82,10 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 		NextLogId:         1,
 	})
 
+	for key, value := range order.GetMetadata() {
+		s.LedgerMetadata().Put(domain.LedgerMetadataKey{LedgerName: ledger, Key: key}, value)
+	}
+
 	// The MirrorConfigChange signal (post-commit mirror worker
 	// reconciliation) is derived from CreatedLedgerLog.Mode == MIRROR by
 	// deriveSignals — see processor.go.
@@ -100,6 +108,7 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 		Type: &commonpb.LogPayload_CreateLedger{
 			CreateLedger: &commonpb.CreatedLedgerLog{
 				Name:                   ledger,
+				Metadata:               order.GetMetadata(),
 				Id:                     ledgerID,
 				CreatedAt:              createdAt,
 				MetadataSchema:         populateInitialSchema(order.GetInitialSchema()),

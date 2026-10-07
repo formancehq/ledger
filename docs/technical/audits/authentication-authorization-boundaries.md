@@ -162,3 +162,11 @@ which checks ran, their observations and untested boundaries. Proposed cases,
 green CI and exhaustive helper mappings do not by themselves prove runtime auth
 coverage. Manifest shape/path validation during preparation starts no provider
 and produces no product audit report.
+
+## Atomic creation metadata (EN-2686)
+
+Initial metadata on normal or mirror creation is authorized by ledger:LedgerWrite with the creation itself; subsequent metadata saves retain ledger:MetadataWrite.
+
+Can a caller with LedgerWrite create a ledger with initial metadata without MetadataWrite, while the same caller cannot use the later metadata-save operation without its required scope?
+
+See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.

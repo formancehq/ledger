@@ -43,6 +43,8 @@ func WalkOrderMetadata(order *raftcmdpb.Order, walk MetadataWalk) SerializableEr
 	switch p := ls.GetPayload().(type) {
 	case *raftcmdpb.LedgerScopedOrder_Apply:
 		return walkApplyMetadata(p.Apply, walk)
+	case *raftcmdpb.LedgerScopedOrder_CreateLedger:
+		return walk.VisitMap("", p.CreateLedger.GetMetadata())
 	case *raftcmdpb.LedgerScopedOrder_SaveLedgerMetadata:
 		return walk.VisitMap("", p.SaveLedgerMetadata.GetMetadata())
 	case *raftcmdpb.LedgerScopedOrder_DeleteLedgerMetadata:

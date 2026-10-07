@@ -287,11 +287,15 @@ func generateLifecycle(g oracle.GlobalState, ledgers []string, newLedger string,
 		if random.RandomChoice([]uint8{0, 1, 2, 3}) == 0 {
 			return &servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{
 				Name: newLedger, Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+				Metadata:     randomMetaMap(),
 				MirrorSource: &commonpb.MirrorSourceConfig{LedgerName: "unused"},
 			}}}
 		}
 
-		return actions.CreateLedgerAction(newLedger, nil)
+		request := actions.CreateLedgerAction(newLedger, nil)
+		request.GetCreateLedger().Metadata = randomMetaMap()
+
+		return request
 	}
 	if random.RandomChoice(indexPool(24)) != 0 {
 		return nil
