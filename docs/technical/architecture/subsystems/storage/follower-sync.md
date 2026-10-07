@@ -42,6 +42,15 @@ attempt produces only the complete file. A new session fetches every manifest
 file again: without a content digest in the manifest, a file left by an earlier
 checkpoint cannot be trusted from path and size alone.
 
+Transient means `Unavailable`, `Aborted`, `DeadlineExceeded`, `Internal`, and
+`Canceled` while the sync's own context is still live. The fetcher talks to the
+leader over the Raft transport's shared peer connection, which the transport
+may restart under it; calls on the closed connection fail with `Canceled`. The
+fetcher resolves the client from the transport before every session and file
+attempt, so the retry runs on the re-dialed connection. A `Canceled` caused by
+the sync's own context (interrupted sync, leader change) ends the fetch
+without retrying.
+
 The final rename is the trust boundary. Truncated content, excess content, a
 missing or malformed digest, and a digest mismatch all leave the final path
 untouched.
