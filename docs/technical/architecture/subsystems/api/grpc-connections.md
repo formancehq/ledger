@@ -37,6 +37,8 @@ When a node joins, it discovers all existing cluster members via `ClusterBootstr
 
 Both RPCs may land on a follower, which forwards them to the leader over the Raft transport's shared peer connection. The joiner retries `Unavailable` with backoff and treats every other status as final (`FailedPrecondition` with `STALE_RAFT_PROGRESS`, the removed-member rejection, `Unauthenticated`). A failure of the forwarding hop itself — the shared connection being restarted mid-call, or the leader not answering in time — is reported to the joiner as `Unavailable`, so it retries; the leader never produces `Canceled` or `DeadlineExceeded` itself, as it maps its own context errors to `Unavailable`. Any status the leader returns is passed through unchanged. `AlreadyExists` from the leader is treated as success: it means a previous attempt's ConfChange committed before its reply reached the joiner, and the leader only answers it while it has replicated nothing to that node yet.
 
+`PermissionDenied` — the RaftServer's cluster-id check — is a configuration error and fatal in both discovery and registration, like `Unauthenticated`; each surfaces a typed error naming the `--cluster-id` or `--cluster-secret` to fix. Neither the discovery loop nor the registration preflight has a deadline of its own: fx applies its start timeout only to `App.Run`, and the server starts through `App.Start` with the command context, so both retry transient failures with backoff until they succeed or the process is terminated.
+
 The Raft transport handles internal inter-node communication for consensus:
 
 ```mermaid
