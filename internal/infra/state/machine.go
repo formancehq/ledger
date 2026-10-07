@@ -182,7 +182,7 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 	logsAppendedCounter, err := raftMeter.Int64Counter(
 		"raft.fsm.logs_appended",
 		metric.WithDescription("Total number of logs appended to the store. Use rate() to get logs per second."),
-		metric.WithUnit("1"),
+		metric.WithUnit("{log}"),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating logs_appended counter: %w", err)
@@ -215,7 +215,7 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 	preloadMissCounter, err := raftMeter.Int64Counter(
 		"raft.fsm.preload.coverage_miss",
 		metric.WithDescription("Reads on the FSM hot path of keys not declared in the proposal's ExecutionPlan. Labeled by attribute kind. The order observing the miss is rejected with a business error."),
-		metric.WithUnit("1"),
+		metric.WithUnit("{read}"),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating preload_coverage_miss counter: %w", err)

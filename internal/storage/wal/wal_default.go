@@ -230,7 +230,7 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 	s.appendBatchSizeHistogram, err = meter.Int64Histogram(
 		"wal.append.batch_size",
 		metric.WithDescription("Number of entries appended at once"),
-		metric.WithUnit("1"),
+		metric.WithUnit("{entry}"),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating append batch size histogram: %w", err)

@@ -79,6 +79,46 @@ func TestInstrumentNamesCarryNoUnit(t *testing.T) {
 	}
 }
 
+// TestCountInstrumentsUseAnnotationUnits enforces the OpenTelemetry unit
+// guideline (https://opentelemetry.io/docs/specs/semconv/general/metrics/#instrument-units)
+// that `1` denotes a dimensionless value (a ratio or a utilization), which
+// only a gauge can hold, while integer counts of things use a UCUM
+// annotation such as `{entry}`.
+func TestCountInstrumentsUseAnnotationUnits(t *testing.T) {
+	t.Parallel()
+
+	call := regexp.MustCompile(`\.(` + strings.Join(instrumentMethods, "|") + `)\(\s*"([^"]+)"`)
+	unit := regexp.MustCompile(`WithUnit\("([^"]*)"\)`)
+	err := filepath.Walk(filepath.Join(findRepoRoot(t), "internal"), func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		calls := call.FindAllSubmatchIndex(data, -1)
+		for i, c := range calls {
+			// An instrument's options end before the next constructor call.
+			end := len(data)
+			if i+1 < len(calls) {
+				end = calls[i+1][0]
+			}
+			method, name := string(data[c[2]:c[3]]), string(data[c[4]:c[5]])
+			m := unit.FindSubmatch(data[c[1]:end])
+			if m != nil && string(m[1]) == "1" && !strings.HasSuffix(method, "Gauge") {
+				t.Errorf("%s: %s %q uses unit \"1\", which denotes a ratio; use a UCUM annotation such as \"{entry}\"", path, method, name)
+			}
+		}
+
+		return nil
+	})
+	require.NoError(t, err)
+}
+
 // TestNamingPolicyMatchesDashboards verifies the invariants the
 // dashboard generator in misc/devenv/monitoring-dashboards relies on
 // to mirror the go-libs metrics prefix (metrics.PrefixedName):

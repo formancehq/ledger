@@ -225,7 +225,7 @@ func NewApplier(
 
 	a.applyEntriesBatchSizeCounter, err = meter.Int64Counter("raft.apply_entries.batch_size",
 		metric.WithDescription("Size of batches passed to ApplyEntries"),
-		metric.WithUnit("1"),
+		metric.WithUnit("{entry}"),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating batch_size counter: %w", err)
@@ -233,7 +233,7 @@ func NewApplier(
 
 	a.applyEntriesBatchSizeHistogram, err = meter.Int64Histogram("raft.apply_entries.batch_size_distribution",
 		metric.WithDescription("Distribution of batch sizes passed to ApplyEntries"),
-		metric.WithUnit("1"),
+		metric.WithUnit("{entry}"),
 		metric.WithExplicitBucketBoundaries(
 			1, 2, 3, 4, 5, 10, 20, 50, 100, 200, 500, 1000, 2000,
 		),
@@ -269,7 +269,7 @@ func NewApplier(
 	a.readiesDuringGatingHistogram, err = meter.Int64Histogram(
 		"raft.node.gating.readies_processed",
 		metric.WithDescription("Number of Readies processed during each gating period"),
-		metric.WithUnit("1"),
+		metric.WithUnit("{ready}"),
 		metric.WithExplicitBucketBoundaries(
 			0, 1, 2, 3, 5, 10, 20, 50, 100, 200,
 		),

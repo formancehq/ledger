@@ -78,7 +78,7 @@ type Admission struct {
 	commandSizeHistogram           metric.Int64Histogram
 	proposeQueueLoadHistogram      metric.Int64Histogram
 	proposeQueueInflight           atomic.Int32
-	proposeQueueFullCounter        metric.Float64Counter
+	proposeQueueFullCounter        metric.Int64Counter
 	proposeDurationHistogram       metric.Int64Histogram
 	fsmFutureWaitHistogram         metric.Int64Histogram
 	proposalGuardDurationHistogram metric.Int64Histogram
@@ -201,16 +201,16 @@ func NewAdmission(
 	proposeQueueLoadHistogram, err := meter.Int64Histogram(
 		"admission.propose_queue.load",
 		metric.WithDescription("Propose queue load"),
-		metric.WithUnit("1"),
+		metric.WithUnit("{proposal}"),
 	)
 	if err != nil {
 		panic(err)
 	}
 
-	proposeQueueFullCounter, err := meter.Float64Counter(
+	proposeQueueFullCounter, err := meter.Int64Counter(
 		"admission.propose_queue.full",
 		metric.WithDescription("Number of times the propose queue was full"),
-		metric.WithUnit("1"),
+		metric.WithUnit("{proposal}"),
 	)
 	if err != nil {
 		panic(err)
@@ -255,7 +255,7 @@ func NewAdmission(
 	proposalGuardRebuildCounter, err := meter.Int64Counter(
 		"admission.proposal_guard.rebuild",
 		metric.WithDescription("Number of times the proposal guard had to rebuild preloads due to boundary shift"),
-		metric.WithUnit("1"),
+		metric.WithUnit("{rebuild}"),
 	)
 	if err != nil {
 		panic(err)
@@ -276,7 +276,7 @@ func NewAdmission(
 	preloadCounter, err := meter.Int64Counter(
 		"admission.preload.total",
 		metric.WithDescription("Total number of preload operations from store"),
-		metric.WithUnit("1"),
+		metric.WithUnit("{preload}"),
 	)
 	if err != nil {
 		panic(err)
@@ -285,7 +285,7 @@ func NewAdmission(
 	preloadKeysNeededCounter, err := meter.Int64Counter(
 		"admission.preload.keys_needed",
 		metric.WithDescription("Total number of keys that needed resolving during preload"),
-		metric.WithUnit("1"),
+		metric.WithUnit("{key}"),
 	)
 	if err != nil {
 		panic(err)
@@ -294,7 +294,7 @@ func NewAdmission(
 	preloadCacheHitsCounter, err := meter.Int64Counter(
 		"admission.preload.cache_hits",
 		metric.WithDescription("Total number of keys found guaranteed in cache (no store read needed)"),
-		metric.WithUnit("1"),
+		metric.WithUnit("{key}"),
 	)
 	if err != nil {
 		panic(err)
@@ -303,7 +303,7 @@ func NewAdmission(
 	actionCounter, err := meter.Int64Counter(
 		"admission.action.total",
 		metric.WithDescription("Total number of orders (actions) admission processed, tagged by order_type. Counts every order attempted in the batch; not gated on the FSM apply outcome."),
-		metric.WithUnit("1"),
+		metric.WithUnit("{action}"),
 	)
 	if err != nil {
 		panic(err)
@@ -312,7 +312,7 @@ func NewAdmission(
 	actionErrorsCounter, err := meter.Int64Counter(
 		"admission.action.errors.total",
 		metric.WithDescription("Number of orders (actions) whose admission batch ended in error, tagged by order_type. A strict subset of admission.action.total."),
-		metric.WithUnit("1"),
+		metric.WithUnit("{action}"),
 	)
 	if err != nil {
 		panic(err)
@@ -321,7 +321,7 @@ func NewAdmission(
 	missingCallerCounter, err := meter.Int64Counter(
 		"admission.audit.missing_caller",
 		metric.WithDescription("Committed writes with a missing caller snapshot or unset principal"),
-		metric.WithUnit("1"),
+		metric.WithUnit("{write}"),
 	)
 	if err != nil {
 		panic(err)
@@ -330,7 +330,7 @@ func NewAdmission(
 	callerSubjectEmptyCounter, err := meter.Int64Counter(
 		"admission.audit.caller_subject_empty",
 		metric.WithDescription("Committed user writes whose caller has a source but an empty subject (e.g. Ed25519 token without sub)"),
-		metric.WithUnit("1"),
+		metric.WithUnit("{write}"),
 	)
 	if err != nil {
 		panic(err)

@@ -71,18 +71,18 @@ type DefaultTransport struct {
 	serviceAdvertiseAddr string
 	// Metrics for recv queues (indexed by priority: 0=high, 1=medium, 2=low)
 	recvQueueLoadHistogram [3]metric.Int64Histogram
-	recvQueueFullCounter   [3]metric.Float64Counter
+	recvQueueFullCounter   [3]metric.Int64Counter
 	recvQueueAttributes    [3]attribute.Set
 	recvQueueInflight      [3]atomic.Int32
 
 	// Metrics for unreachable queue
 	unreachableLoadHistogram metric.Int64Histogram
-	unreachableFullCounter   metric.Float64Counter
+	unreachableFullCounter   metric.Int64Counter
 	unreachableInflight      atomic.Int32
 
 	// Metrics for pending send queue
 	pendingSendLoadHistogram metric.Int64Histogram
-	pendingSendFullCounter   metric.Float64Counter
+	pendingSendFullCounter   metric.Int64Counter
 	pendingSendInflight      atomic.Int32
 
 	// stopped is set at the beginning of Stop() to guard channel sends
@@ -188,14 +188,14 @@ func NewTransport(
 
 		var err error
 
-		t.recvQueueFullCounter[priority], err = m.Float64Counter("raft.transport.recv.full", metric.WithUnit("1"))
+		t.recvQueueFullCounter[priority], err = m.Int64Counter("raft.transport.recv.full", metric.WithUnit("{batch}"))
 		if err != nil {
 			panic(err)
 		}
 
 		t.recvQueueLoadHistogram[priority], err = m.Int64Histogram(
 			"raft.transport.recv.load",
-			metric.WithUnit("1"),
+			metric.WithUnit("{batch}"),
 			metric.WithExplicitBucketBoundaries(expBoundaries(12, config.Reception[priority])...),
 		)
 		if err != nil {
@@ -206,14 +206,14 @@ func NewTransport(
 	// Initialize unreachable queue metrics
 	var err error
 
-	t.unreachableFullCounter, err = meter.Float64Counter("raft.transport.unreachable.full", metric.WithUnit("1"))
+	t.unreachableFullCounter, err = meter.Int64Counter("raft.transport.unreachable.full", metric.WithUnit("{peer}"))
 	if err != nil {
 		panic(err)
 	}
 
 	t.unreachableLoadHistogram, err = meter.Int64Histogram(
 		"raft.transport.unreachable.load",
-		metric.WithUnit("1"),
+		metric.WithUnit("{peer}"),
 		metric.WithExplicitBucketBoundaries(expBoundaries(12, unreachableCapacity)...),
 	)
 	if err != nil {
@@ -221,14 +221,14 @@ func NewTransport(
 	}
 
 	// Initialize pending send queue metrics
-	t.pendingSendFullCounter, err = meter.Float64Counter("raft.send.pending_messages.full", metric.WithUnit("1"))
+	t.pendingSendFullCounter, err = meter.Int64Counter("raft.send.pending_messages.full", metric.WithUnit("{batch}"))
 	if err != nil {
 		panic(err)
 	}
 
 	t.pendingSendLoadHistogram, err = meter.Int64Histogram(
 		"raft.send.pending_messages.load",
-		metric.WithUnit("1"),
+		metric.WithUnit("{batch}"),
 		metric.WithExplicitBucketBoundaries(expBoundaries(12, pendingSendCapacity)...),
 	)
 	if err != nil {
@@ -416,14 +416,14 @@ func (t *DefaultTransport) AddPeer(id uint64, addr string) {
 			),
 		)
 
-		conn.sendQueueFullCounter[priority], err = m.Float64Counter("raft.transport.peer.sending.full", metric.WithUnit("1"))
+		conn.sendQueueFullCounter[priority], err = m.Int64Counter("raft.transport.peer.sending.full", metric.WithUnit("{batch}"))
 		if err != nil {
 			panic(err)
 		}
 
 		conn.sendQueueLoadHistogram[priority], err = m.Int64Histogram(
 			"raft.transport.peer.sending.load",
-			metric.WithUnit("1"),
+			metric.WithUnit("{batch}"),
 			metric.WithExplicitBucketBoundaries(expBoundaries(12, t.config.Send[priority])...),
 		)
 		if err != nil {
@@ -767,7 +767,7 @@ type peerConnection struct {
 
 	// Metrics for sending queues (indexed by priority: 0=high, 1=medium, 2=low)
 	sendQueueLoadHistogram [3]metric.Int64Histogram
-	sendQueueFullCounter   [3]metric.Float64Counter
+	sendQueueFullCounter   [3]metric.Int64Counter
 	sendQueueAttributes    [3]attribute.Set
 	sendQueueInflight      [3]atomic.Int32
 	peerAttributes         attribute.Set
