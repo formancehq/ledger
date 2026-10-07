@@ -43,7 +43,8 @@
     "docs/technical/architecture/subsystems/backup/incremental-restore-contract.md",
     "docs/technical/audits/accounting-invariants.json",
     "docs/technical/audits/persistence-restore-replay.json",
-    "docs/technical/audits/read-consistency-projections.json"
+    "docs/technical/audits/read-consistency-projections.json",
+    "docs/technical/architecture/subsystems/api/atomic-ledger-creation.md"
   ],
   "invariants": [
     "Within AGENTS.md invariant #8 and its documented scope refinements, every non-exempt primary-store projection requires reachable verification against audit-bound evidence. Inventory the current production call graph and persisted fields rather than assuming the documented pass table is exhaustive; record known gaps as prior work, not new findings.",
@@ -52,7 +53,8 @@
     "A clean verdict requires successful completion of applicable verification and no reported corruption; nil Check error alone is insufficient because mismatches are callback events. Iterator/decode/replay failures, cancellation and truncated expectations must not be converted into an observed healthy result. Do not require all dependent passes to continue after already reported corruption.",
     "Comparisons must detect missing, surplus and changed data where the projection contract promises those comparisons, using logical equality and lifecycle/retention semantics. Valid deletion, expiry and local index-version progress are not corruption; missing-row guarantees must be established per projection rather than assumed universally.",
     "Primary passes must compare one pinned primary snapshot. The reverse-map exception requires its documented peer-before-primary pin and alignment rules: only aligned rows receive oracle-dependent verdicts, absence/lag is not full peer verification, and malformed/ahead cases retain their documented signals. Peer index values and usagestore are outside this checker scope.",
-    "The checker reads the committed audit key and history from one pinned primary-store snapshot, rejects missing or malformed key state with history, and reports mismatched valid keys as chain failures without accepting cluster ID as a fallback."
+    "The checker reads the committed audit key and history from one pinned primary-store snapshot, rejects missing or malformed key state with history, and reports mismatched valid keys as chain failures without accepting cluster ID as a fallback.",
+    "Ledger metadata expectations fold successful chain-bound audited creation, save, key-delete and ledger-delete orders. Compare against canonical primary metadata on the pinned snapshot; suppress final-projection comparisons when the chain prefix is truncated."
   ],
   "adversarial_questions": [
     "For each persisted primary keyspace and meaningful field, which production Check call verifies it, from which verified source, over what interval and in which comparison direction? Which unmatched-key, decoder, continue, early-return or unregistered-variant branch can omit a required comparison? Is the omission new, an approved exemption, or a known gap?",
@@ -62,7 +64,8 @@
     "Do set and field comparisons distinguish absent/default/zero values, malformed keys, extra rows, typed metadata, compound identities and legitimate lifecycle removal? Can a healthy proposal-local signing cascade, ledger deletion, TTL eviction or index rewrite falsify an overbroad expectation?",
     "What trust anchor and threat model make an alleged chain mutation detectable? Do not require detection of coordinated removal of both audit and log tails without an independent retained anchor, or claim a ClusterID-derived hash key is a secret signing authority. Unsupported stronger authenticity/completeness requirements remain questions.",
     "Does the RPC, CLI or staged-restore consumer preserve corruption and incomplete/error signals? Separate checker-specific evidence loss from generic API adaptation, restore mutation or process lifecycle problems; inspect outside scope only far enough to establish the concrete handoff.",
-    "Does a missing, short, or replaced valid audit key cause checker or staged restore to report a hard failure or hash mismatch, and can the caller accidentally substitute the operational cluster ID?"
+    "Does a missing, short, or replaced valid audit key cause checker or staged restore to report a hard failure or hash mismatch, and can the caller accidentally substitute the operational cluster ID?",
+    "Can missing, injected or altered creation metadata evade detection, or can later saves/deletes produce false mismatches? Does a truncated audit chain cause misleading metadata errors based on an incomplete prefix?"
   ],
   "dynamic_checks_to_consider": [
     "During a separately authorized read-only audit, first inventory existing checker test names and fixtures under the repository-pinned environment. A focused existing suite such as go test -race ./internal/application/check/... -count=1 is evidence only for assertions actually executed. Record exact SHA, command, tags, selected tests, result, skipped prerequisites and proof limits. This manifest change does not execute those product probes.",

@@ -276,6 +276,7 @@ func TestGenerateLifecycleHonorsConfiguredLiveTarget(t *testing.T) {
 
 	require.NotNil(t, req.GetCreateLedger())
 	require.Equal(t, "model-5", req.GetCreateLedger().GetName())
+	require.NotEmpty(t, req.GetCreateLedger().GetMetadata())
 }
 
 func TestReserveLedgerCreateCountsOutstandingCreates(t *testing.T) {

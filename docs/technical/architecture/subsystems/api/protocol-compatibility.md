@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"19"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"20"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -246,6 +246,13 @@ Revision 19 renames the privileged JWT claim to `superuser`, the CLI flag to
 semantics and protobuf field number 3 are unchanged, but tokens and credential
 configuration must use the new name. Older claims and flags have no aliases;
 update clients, servers, OIDC claim mappings, and operator Credentials together.
+
+## Atomic creation metadata (revision 20)
+
+Revision 20 adds typed initial metadata to CreateLedgerRequest and its creation
+log. A revision-19 server ignores that request field and acknowledges creation
+without the supplied values. Clients, servers and replicas must agree on the
+atomic creation semantics; rebuild communicating service binaries together.
 
 ## Maintaining the revision
 

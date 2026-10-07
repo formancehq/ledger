@@ -16,6 +16,10 @@ Decoded leader errors retain their exact gRPC status through routing wrappers
 and streaming cursors. See [forwarding and cancellation](http-api.md#forwarded-writes-and-the-transport-seam)
 for the distinction between a decoded rejection and raw transport cancellation.
 
+## Atomic creation
+
+[Atomic ledger creation metadata](atomic-ledger-creation.md) defines initial metadata, authorization, audit and restore behavior.
+
 ## Related
 
 - [Admission](../admission/) — what every write request enters next.

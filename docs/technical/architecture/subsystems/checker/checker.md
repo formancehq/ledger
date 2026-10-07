@@ -291,3 +291,12 @@ The contract every new persisted projection must satisfy:
 Skipping any of these makes the projection an unmonitored tampering vector. The rule is enforced by code review and by the [AGENTS.md / invariant #8](../../../../../AGENTS.md) constraint: a projection without a checker pass is the violation.
 
 The contract is scoped to the **primary FSM store**. Data in a peer secondary store (the readstore, the `usagestore`) is out of scope as a rule, and a new pass over one is not a routine extension: `compareReverseMapOrphans` is the only one, retained as a targeted defense against corruption or lifecycle-contract violations in the maintenance-critical reverse map. A proposed peer-store pass must identify a concrete divergence that existing maintenance or integrity checks do not detect, describe its effect on the projection, and pin detection with a regression test. Atomic range cleanup alone does not detect rows introduced outside that cleanup path. Note also that such a pass needs its own read handle on the peer store — the main-store snapshot the other passes share does not cover it — and that handle must be pinned by `Check()` **before** the primary snapshot, not next to it and never when the pass runs: the oracle terms are frozen at the primary pin, so a peer view opened after it is judged against state that predates it, while a peer view opened before it can only trail the verified sequence. It must skip loudly (INFO log, no clean result) when the peer store is absent, and it must not treat a peer cursor that differs from the verified sequence as a clean result either — see the reverse-map pass above.
+
+## Ledger metadata creation and lifecycle
+
+`ledgerMetadataVerifier` folds successful chain-verified CreateLedger,
+SaveLedgerMetadata, DeleteLedgerMetadata and DeleteLedger orders, then compares
+the canonical ledger metadata keyspace on the pinned primary snapshot. It
+reports missing, injected and changed values as METADATA_MISMATCH. A chain break
+already reports corrupt evidence; the incomplete fold is not compared against
+the final store. Creation log payloads are also checked by exact audit replay.

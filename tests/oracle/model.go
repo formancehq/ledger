@@ -2363,6 +2363,9 @@ func (g *GlobalState) applyLifecycle(req *servicepb.Request) (OrderResult, bool)
 		for _, field := range r.CreateLedger.GetInitialSchema() {
 			ls.applySetMetadataFieldType(&servicepb.SetMetadataFieldTypeRequest{Ledger: name, TargetType: field.GetTargetType(), Key: field.GetKey(), Type: field.GetType()})
 		}
+		for key, value := range r.CreateLedger.GetMetadata() {
+			ls.ledgerMeta = ls.ledgerMeta.Set(key, value.CloneVT())
+		}
 		g.lifecycle = g.lifecycle.Set(name, LedgerLifecycle{Mode: r.CreateLedger.GetMode(), MirrorSource: r.CreateLedger.GetMirrorSource().CloneVT()})
 		g.ledgers[name] = ls
 

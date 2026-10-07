@@ -1424,6 +1424,34 @@ func (m *CreatedLedgerLog) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.Metadata) > 0 {
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Get().(*[]string)
+		keys := (*keysPtr)[:0]
+		for k := range m.Metadata {
+			keys = append(keys, k)
+		}
+		slices.Sort(keys)
+		for _, k := range keys {
+			v := m.Metadata[k]
+			baseI := i
+			size, _ := v.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x12
+			i -= len(k)
+			copy(dAtA[i:], k)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(k)))
+			i--
+			dAtA[i] = 0xa
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
+			i--
+			dAtA[i] = 0x4a
+		}
+		clear(keys)
+		*keysPtr = keys
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Put(keysPtr)
+	}
 	if m.Id != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Id))
 		i--

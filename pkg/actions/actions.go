@@ -28,11 +28,12 @@ func ExtractGRPCErrorInfo(err error) *errdetails.ErrorInfo {
 }
 
 // CreateLedgerAction creates an action for creating a new ledger.
-func CreateLedgerAction(name string, _ map[string]string) *servicepb.Request {
+func CreateLedgerAction(name string, metadata map[string]string) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_CreateLedger{
 			CreateLedger: &servicepb.CreateLedgerRequest{
-				Name: name,
+				Name:     name,
+				Metadata: commonpb.MetadataFromGoMap(metadata),
 			},
 		},
 	}

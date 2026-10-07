@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"maps"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -21,6 +22,7 @@ func validateLifecycleLog(req *servicepb.Request, expectedPreparedQuery, payload
 			log.GetMode() != r.CreateLedger.GetMode() || !log.GetMirrorSource().EqualVT(r.CreateLedger.GetMirrorSource()) ||
 			!log.GetMetadataSchema().EqualVT(lifecycleMetadataSchema(r.CreateLedger.GetInitialSchema())) ||
 			!accountTypesEqual(log.GetAccountTypes(), r.CreateLedger.GetAccountTypes()) ||
+			!maps.EqualFunc(log.GetMetadata(), r.CreateLedger.GetMetadata(), func(a, b *commonpb.MetadataValue) bool { return a.EqualVT(b) }) ||
 			log.GetDefaultEnforcementMode() != r.CreateLedger.GetDefaultEnforcementMode() {
 			return errors.New("create-ledger response does not match request")
 		}
