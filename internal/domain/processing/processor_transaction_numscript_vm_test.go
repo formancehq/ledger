@@ -287,9 +287,12 @@ func TestProduce_InvalidArtifactHeaderIsLoud(t *testing.T) {
 
 // TestProduce_PartialArtifactIsLoud: a program alone may be legitimately
 // absent (vars and hash present) — see
-// TestProduce_OmittedProgramRecompilesToTheSameOutcome and
-// TestProduce_HashOnlyRecompilesBothHalves — but every other partial shape is
-// a corrupt artifact admission never produces, and fails the order loudly.
+// TestProduce_OmittedProgramRecompilesToTheSameOutcome — but every other
+// partial shape is a corrupt artifact admission never produces, and fails
+// the order loudly on both a cold and a warm cache (see
+// TestProduce_HashOnlyFailsConsistentlyOnHitAndMiss): vars is never
+// re-derived from the business script fields, so an absent or corrupt vars
+// field is never silently repaired, regardless of cache state.
 func TestProduce_PartialArtifactIsLoud(t *testing.T) {
 	t.Parallel()
 
@@ -301,6 +304,7 @@ func TestProduce_PartialArtifactIsLoud(t *testing.T) {
 	}{
 		"no vars":                {programBytes, nil, scriptHash, "decoding compiled numscript vars"},
 		"no hash":                {programBytes, varsBytes, nil, "does not match the resolved script text"},
+		"hash only":              {nil, nil, scriptHash, "decoding compiled numscript vars"},
 		"no program, short hash": {nil, varsBytes, scriptHash[:8], "script hash has 8 bytes, want 16"},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -312,22 +316,23 @@ func TestProduce_PartialArtifactIsLoud(t *testing.T) {
 	}
 }
 
-// TestProduce_HashOnlyRecompilesBothHalves: vars and program both absent,
-// hash present, is no longer a loud failure. The omitted-program recompile
-// path regenerates vars from the business script fields regardless of what
-// the committed compiledVars held (see
-// TestProduce_OmittedProgramIgnoresStaleCommittedVarsOnRecompile), so an
-// empty or corrupt committed vars field is repaired the same way a missing
-// program is — there is nothing distinctly "corrupt" about this shape
-// anymore now that both halves come from the one fresh compile on a miss.
-func TestProduce_HashOnlyRecompilesBothHalves(t *testing.T) {
+// TestProduce_HashOnlyFailsConsistentlyOnHitAndMiss: vars and program both
+// absent, hash present, fails the same way whether this node's cache is cold
+// (TestProduce_PartialArtifactIsLoud's "hash only") or already warm for this
+// hash — the outcome must not depend on this node's own cache state
+// (invariant #2). compiledVars is never re-derived from the business script
+// fields on a miss, so there is nothing for a warm cache to disagree with.
+func TestProduce_HashOnlyFailsConsistentlyOnHitAndMiss(t *testing.T) {
 	t.Parallel()
 
-	_, _, scriptHash := compileArtifactForTest(t, vmScript, vmScriptVars)
+	programBytes, varsBytes, scriptHash := compileArtifactForTest(t, vmScript, vmScriptVars)
+	cache := numscript.NewNumscriptCache(16)
 
-	result, err := produceVMScript(t, vmScriptVars, nil, nil, scriptHash)
+	_, err := produceVMScriptWithCache(t, cache, vmScriptVars, programBytes, varsBytes, scriptHash)
 	require.Nil(t, err)
-	require.Equal(t, uint64(100), result.Postings[0].GetAmount().ToBigInt().Uint64())
+
+	_, err = produceVMScriptWithCache(t, cache, vmScriptVars, nil, nil, scriptHash)
+	requireNumscriptRuntimeError(t, err, "decoding compiled numscript vars")
 }
 
 // TestProduce_OmittedProgramRecompilesToTheSameOutcome: admission may omit
@@ -351,24 +356,36 @@ func TestProduce_OmittedProgramRecompilesToTheSameOutcome(t *testing.T) {
 	require.Equal(t, withArtifact, omittedProgram)
 }
 
-// TestProduce_OmittedProgramIgnoresStaleCommittedVarsOnRecompile: a cache
-// miss recompiles both the program and the vars from the one fresh compile —
-// it must never pair the freshly recompiled program with the committed
-// compiledVars bytes, which could be a different (if under the same bundled
-// library, still byte-identical in practice, but never assumed so across a
-// recompile the code takes this path to avoid depending on) compilation.
-// compiledVars here deliberately encodes the wrong amount; the business
-// script vars (what the recompile actually binds) carry the right one —
-// only a correct fix produces the right posting.
-func TestProduce_OmittedProgramIgnoresStaleCommittedVarsOnRecompile(t *testing.T) {
+// TestProduce_OmittedProgramUsesCommittedVarsOnHitAndMiss: compiledVars is
+// the committed field and is never re-derived from the business script
+// fields on either path — a cold cache recompiles only the program and
+// pairs it with the same committed compiledVars a warm cache would have used
+// directly. Pairing a locally recompiled program with committed vars is safe
+// because compiling identical text under the same bundled library is
+// deterministic (see numscript-library.md): the program's variable layout is
+// the same regardless of which node, or which of its compiles, produced it.
+// Here compiledVars intentionally differs from vmScriptVars (the business
+// fields CompileForReplay would use if it ever bound vars itself) — the
+// posting must reflect compiledVars either way, proving neither path
+// substitutes the business fields for it.
+func TestProduce_OmittedProgramUsesCommittedVarsOnHitAndMiss(t *testing.T) {
 	t.Parallel()
 
-	_, _, scriptHash := compileArtifactForTest(t, vmScript, vmScriptVars)
-	_, staleVarsBytes, _ := compileArtifactForTest(t, vmScript, map[string]string{"amt": "USD/2 999"})
+	programBytes, differentVarsBytes, scriptHash := compileArtifactForTest(t, vmScript, map[string]string{"amt": "USD/2 999"})
 
-	result, err := produceVMScript(t, vmScriptVars, nil, staleVarsBytes, scriptHash)
+	cold, err := produceVMScript(t, vmScriptVars, nil, differentVarsBytes, scriptHash)
 	require.Nil(t, err)
-	require.Equal(t, uint64(100), result.Postings[0].GetAmount().ToBigInt().Uint64())
+	require.Equal(t, uint64(999), cold.Postings[0].GetAmount().ToBigInt().Uint64())
+
+	cache := numscript.NewNumscriptCache(16)
+	_, err = produceVMScriptWithCache(t, cache, vmScriptVars, programBytes, differentVarsBytes, scriptHash)
+	require.Nil(t, err)
+
+	warm, err := produceVMScriptWithCache(t, cache, vmScriptVars, nil, differentVarsBytes, scriptHash)
+	require.Nil(t, err)
+	require.Equal(t, uint64(999), warm.Postings[0].GetAmount().ToBigInt().Uint64())
+
+	require.Equal(t, cold, warm, "outcome must not depend on this node's own cache state")
 }
 
 // TestProduce_OmittedProgramUsesWarmCache: when a prior order on this node's

@@ -213,12 +213,21 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	// from the cached entry — there is nothing of the caller's own to verify
 	// it against, so no bytes are cloned or compared). A miss (the ordinary
 	// case — that cache is never warmed by anything admission does — or a
-	// restart, LRU eviction, new joiner, or leadership change) recompiles
-	// from the script text exactly like the fully-missing case, rather than
-	// asserting unreachable — admission deliberately producing this shape is
-	// the opposite of a bug. The recompiled program and vars are a matched
-	// pair from the one fresh compile, never mixed with the committed
-	// (possibly differently-compiled) compiledVars.
+	// restart, LRU eviction, new joiner, or leadership change) recompiles the
+	// program from the script text exactly like the fully-missing case,
+	// rather than asserting unreachable — admission deliberately producing
+	// this shape is the opposite of a bug.
+	//
+	// Either way compiledVars — the committed field, never re-derived — is
+	// what runs: outcome must not depend on this node's own cache state
+	// (invariant #2), so the hit and miss paths use the same vars authority.
+	// Pairing it with a locally recompiled program is safe only because
+	// compiling identical text under the same bundled library is
+	// deterministic (byte-identical, always — see numscript-library.md); a
+	// mismatch would mean a different library version compiled it, the
+	// mixed-binary window this revision's stop-all-nodes deployment rules
+	// out, the same guarantee the "program present" branch below already
+	// relies on without a second thought.
 	if len(compiledProgram) == 0 {
 		// compiledScriptHash is already confirmed to be 16 bytes above.
 		var found bool
@@ -234,7 +243,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 			// bytecode version, undecodable bytes, unverifiable bytecode — is
 			// final (see SafeExecCompiled): the order fails on every node
 			// running this binary.
-			result, execErr = numscript.SafeExecCompiled(p.cache, scriptHash[:], compiled.Program, compiled.Vars, vmStore)
+			result, execErr = numscript.SafeExecCompiled(p.cache, scriptHash[:], compiled.Program, compiledVars, vmStore)
 		}
 	} else {
 		result, execErr = numscript.SafeExecCompiled(p.cache, scriptHash[:], compiledProgram, compiledVars, vmStore)
