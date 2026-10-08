@@ -18,21 +18,31 @@ func TestRunGeneratesSchemasFromCRDs(t *testing.T) {
 	require.NoError(t, run(crdDir, outDir))
 
 	expected := []string{
-		"v1alpha1_cluster.json",
-		"v1alpha1_cluster.spec.json",
-		"v1alpha1_ledger.json",
-		"v1alpha1_ledger.spec.json",
 		"v1alpha1_backup.json",
 		"v1alpha1_backup.spec.json",
 		"v1alpha1_backuprun.json",
 		"v1alpha1_backuprun.spec.json",
+		"v1alpha1_cluster.json",
+		"v1alpha1_cluster.spec.json",
 		"v1alpha1_credentials.json",
 		"v1alpha1_credentials.spec.json",
+		"v1alpha1_eventsink.json",
+		"v1alpha1_eventsink.spec.json",
+		"v1alpha1_ledger.json",
+		"v1alpha1_ledger.spec.json",
 	}
+
+	entries, err := os.ReadDir(outDir)
+	require.NoError(t, err)
+
+	actual := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		actual = append(actual, entry.Name())
+	}
+	require.ElementsMatch(t, expected, actual, "generated schema files must exactly match the expected set")
 
 	for _, name := range expected {
 		path := filepath.Join(outDir, name)
-		require.FileExists(t, path)
 
 		data, err := os.ReadFile(path)
 		require.NoError(t, err)
