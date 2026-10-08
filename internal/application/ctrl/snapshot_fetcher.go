@@ -33,9 +33,15 @@ const (
 	prepareSnapshotHeartbeat = 10 * time.Second
 )
 
+// snapshotClientSource resolves the client for the peer being synced from.
+// It is called before every attempt so a fetch survives the Raft transport
+// restarting the shared peer connection: calls on the closed connection fail
+// with Canceled, and the next attempt gets the re-dialed one.
+type snapshotClientSource func() (snapshotpb.SnapshotServiceClient, error)
+
 // grpcSnapshotFetcher implements state.SnapshotFetcher using the session-based gRPC protocol.
 type grpcSnapshotFetcher struct {
-	client         snapshotpb.SnapshotServiceClient
+	clientSource   snapshotClientSource
 	logger         logging.Logger
 	parallelism    int
 	retryCount     int
@@ -51,8 +57,10 @@ func isUnavailableError(err error) bool {
 	return false
 }
 
-// isRetryableError returns true for transient gRPC errors that may resolve on retry.
-func isRetryableError(err error) bool {
+// isRetryableError returns true for transient gRPC errors that may resolve on
+// retry. Canceled counts only while ctx is live: it then comes from the peer
+// connection being closed under the call, not from the caller giving up.
+func isRetryableError(ctx context.Context, err error) bool {
 	s, ok := status.FromError(err)
 	if !ok {
 		return false
@@ -61,6 +69,8 @@ func isRetryableError(err error) bool {
 	switch s.Code() {
 	case codes.Unavailable, codes.Aborted, codes.DeadlineExceeded, codes.Internal:
 		return true
+	case codes.Canceled:
+		return ctx.Err() == nil
 	default:
 		return false
 	}
@@ -87,7 +97,12 @@ func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, targetDir strin
 			}).Infof("Retrying snapshot fetch")
 		}
 
-		size, err := f.fetchWithSession(ctx, targetDir, progress, minAppliedIndex)
+		client, err := f.clientSource()
+		if err != nil {
+			return 0, fmt.Errorf("snapshot fetch: %w: %w", state.ErrNotAvailable, err)
+		}
+
+		size, err := f.fetchWithSession(ctx, client, targetDir, progress, minAppliedIndex)
 		if err == nil {
 			return size, nil
 		}
@@ -96,7 +111,7 @@ func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, targetDir strin
 			return 0, fmt.Errorf("snapshot fetch: %w", state.ErrNotAvailable)
 		}
 
-		if !isRetryableError(err) && !isSessionExpired(err) {
+		if !isRetryableError(ctx, err) && !isSessionExpired(err) {
 			return 0, err
 		}
 
@@ -128,7 +143,7 @@ func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, targetDir strin
 // grpc-go bugs). When we exit via ctx cancellation the inner goroutine may
 // briefly outlive the call while it drains gRPC internals; that is a
 // bounded leak, and the caller is unblocked to retry a fresh session.
-func (f *grpcSnapshotFetcher) prepareSnapshotWithHeartbeat(ctx context.Context, minAppliedIndex uint64) (*snapshotpb.PrepareSnapshotResponse, error) {
+func (f *grpcSnapshotFetcher) prepareSnapshotWithHeartbeat(ctx context.Context, client snapshotpb.SnapshotServiceClient, minAppliedIndex uint64) (*snapshotpb.PrepareSnapshotResponse, error) {
 	logger := f.logger.WithContext(ctx)
 
 	callCtx, cancel := context.WithTimeout(ctx, prepareSnapshotTimeout)
@@ -142,7 +157,7 @@ func (f *grpcSnapshotFetcher) prepareSnapshotWithHeartbeat(ctx context.Context, 
 	done := make(chan result, 1)
 
 	go func() {
-		resp, err := f.client.PrepareSnapshot(callCtx, &snapshotpb.PrepareSnapshotRequest{
+		resp, err := client.PrepareSnapshot(callCtx, &snapshotpb.PrepareSnapshotRequest{
 			MinAppliedIndex: minAppliedIndex,
 		})
 		done <- result{resp: resp, err: err}
@@ -168,7 +183,7 @@ func (f *grpcSnapshotFetcher) prepareSnapshotWithHeartbeat(ctx context.Context, 
 	}
 }
 
-func (f *grpcSnapshotFetcher) fetchWithSession(ctx context.Context, targetDir string, progress *state.SyncProgress, minAppliedIndex uint64) (uint64, error) {
+func (f *grpcSnapshotFetcher) fetchWithSession(ctx context.Context, client snapshotpb.SnapshotServiceClient, targetDir string, progress *state.SyncProgress, minAppliedIndex uint64) (uint64, error) {
 	logger := f.logger.WithContext(ctx)
 
 	logger.WithFields(map[string]any{
@@ -178,7 +193,7 @@ func (f *grpcSnapshotFetcher) fetchWithSession(ctx context.Context, targetDir st
 	prepareStart := time.Now()
 
 	// 1. Prepare session (create checkpoint + get manifest).
-	resp, err := f.prepareSnapshotWithHeartbeat(ctx, minAppliedIndex)
+	resp, err := f.prepareSnapshotWithHeartbeat(ctx, client, minAppliedIndex)
 	if err != nil {
 		return 0, fmt.Errorf("preparing snapshot: %w", err)
 	}
@@ -186,7 +201,7 @@ func (f *grpcSnapshotFetcher) fetchWithSession(ctx context.Context, targetDir st
 	sessionID := resp.GetSessionId()
 	// The server created a temporary checkpoint with this session. Close it on
 	// every later failure, including a rejected manifest.
-	defer f.closeSession(sessionID)
+	defer f.closeSession(client, sessionID)
 
 	manifest := resp.GetManifest()
 	if err := validateSnapshotManifest(manifest); err != nil {
@@ -215,9 +230,9 @@ func (f *grpcSnapshotFetcher) fetchWithSession(ctx context.Context, targetDir st
 
 	// 4. Fetch pending files in parallel.
 	ff := &fileFetcher{
-		client:     f.client,
-		sessionID:  sessionID,
-		maxRetries: f.fileRetryCount,
+		clientSource: f.clientSource,
+		sessionID:    sessionID,
+		maxRetries:   f.fileRetryCount,
 	}
 
 	g, gCtx := errgroup.WithContext(ctx)
@@ -255,11 +270,11 @@ func (f *grpcSnapshotFetcher) fetchWithSession(ctx context.Context, targetDir st
 	return manifestTotalSize(manifest), nil
 }
 
-func (f *grpcSnapshotFetcher) closeSession(sessionID string) {
+func (f *grpcSnapshotFetcher) closeSession(client snapshotpb.SnapshotServiceClient, sessionID string) {
 	ctx, cancel := context.WithTimeout(context.Background(), closeSessionTimeout)
 	defer cancel()
 
-	_, _ = f.client.CloseSession(ctx, &snapshotpb.CloseSessionRequest{SessionId: sessionID})
+	_, _ = client.CloseSession(ctx, &snapshotpb.CloseSessionRequest{SessionId: sessionID})
 }
 
 // sessionBackoffWait sleeps with exponential backoff, respecting context cancellation.
@@ -292,13 +307,21 @@ type grpcSnapshotFetcherProvider struct {
 }
 
 func (p *grpcSnapshotFetcherProvider) GetForPeer(id uint64) (state.SnapshotFetcher, error) {
-	conn := p.transport.GetPeerConnection(id)
-	if conn == nil {
-		return nil, fmt.Errorf("no connection to peer %d", id)
+	clientSource := func() (snapshotpb.SnapshotServiceClient, error) {
+		conn := p.transport.GetPeerConnection(id)
+		if conn == nil {
+			return nil, fmt.Errorf("no connection to peer %d", id)
+		}
+
+		return snapshotpb.NewSnapshotServiceClient(conn), nil
+	}
+
+	if _, err := clientSource(); err != nil {
+		return nil, err
 	}
 
 	return &grpcSnapshotFetcher{
-		client:         snapshotpb.NewSnapshotServiceClient(conn),
+		clientSource:   clientSource,
 		logger:         p.logger,
 		parallelism:    p.parallelism,
 		retryCount:     p.retryCount,

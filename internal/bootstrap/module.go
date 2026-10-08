@@ -1305,15 +1305,17 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 				return fmt.Errorf("stale raft membership on the leader: %s", st.Message())
 			}
 
-			// AlreadyExists path kept for rolling-upgrade compatibility with
-			// leaders that predate EN-1436's server-side fail-fast. Once every
-			// live cluster is past that version, this branch can be dropped —
-			// the invariant it silently patches (idempotent join treating
-			// stale Progress as success) is exactly the bug EN-1436 fixes.
+			// AlreadyExists is the leader's answer when a previous attempt
+			// already committed the ConfChange but its reply never reached us
+			// (forwarding hop cut, process restarted before the marker was
+			// written). The leader only returns it while its Progress.Match
+			// for us is still 0 — i.e. before it replicated anything — so
+			// treating it as success is safe; a non-zero Match is reported as
+			// STALE_RAFT_PROGRESS above instead.
 			if ok && st.Code() == codes.AlreadyExists {
 				logger.WithFields(map[string]any{
 					"nodeID": cfg.RaftConfig.NodeID,
-				}).Infof("Already a cluster member, skipping learner registration (deprecated pre-EN-1436 semantics)")
+				}).Infof("Already a cluster member, skipping learner registration")
 
 				if markErr := wal.MarkClusterJoined(cfg.RaftConfig.WalDir); markErr != nil {
 					return fmt.Errorf("marking cluster joined after AlreadyExists: %w", markErr)

@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -62,4 +63,37 @@ func TestClusterBootstrapServiceServer_RejectsMissingClusterID(t *testing.T) {
 	_, err := impl.GetPeers(context.Background(), &clusterbootstrappb.GetPeersRequest{})
 	require.Error(t, err)
 	assert.Equal(t, codes.PermissionDenied, status.Code(err))
+}
+
+// Statuses produced by the leader must reach the joining node unchanged:
+// its fatal classes (stale progress, removed member, auth) depend on it.
+func TestForwardedCallError_PassesLeaderStatusesThrough(t *testing.T) {
+	t.Parallel()
+
+	stale, err := status.New(codes.FailedPrecondition, "stale").WithDetails(&errdetails.ErrorInfo{
+		Reason: node.StaleRaftProgressReason,
+		Domain: "ledger",
+	})
+	require.NoError(t, err)
+
+	for _, leaderErr := range []error{
+		stale.Err(),
+		status.Error(codes.FailedPrecondition, "node 3 was previously removed from this cluster"),
+		status.Error(codes.AlreadyExists, "node already in cluster"),
+		status.Error(codes.Unauthenticated, "invalid cluster credentials on Raft RPC"),
+		status.Error(codes.Unavailable, "no leader"),
+	} {
+		require.Same(t, leaderErr, forwardedCallError(leaderErr))
+	}
+}
+
+func TestForwardedCallError_ForwardingHopFailureIsUnavailable(t *testing.T) {
+	t.Parallel()
+
+	for _, hopErr := range []error{
+		status.Error(codes.Canceled, "grpc: the client connection is closing"),
+		status.Error(codes.DeadlineExceeded, "context deadline exceeded"),
+	} {
+		assert.Equal(t, codes.Unavailable, status.Code(forwardedCallError(hopErr)))
+	}
 }

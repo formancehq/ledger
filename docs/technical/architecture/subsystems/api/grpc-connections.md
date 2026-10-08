@@ -35,6 +35,8 @@ Peers are discovered dynamically using the bootstrap/join model:
 
 When a node joins, it discovers all existing cluster members via `ClusterBootstrapService.GetPeers` on the RaftServer and registers itself as a learner through `JoinAsLearner`. Both RPCs are gated by cluster-id metadata (and the cluster-secret bearer when configured), not by the user-JWT pipeline. The leader auto-promotes caught-up learners to voters (configurable via `--learner-promotion-threshold`).
 
+Both RPCs may land on a follower, which forwards them to the leader over the Raft transport's shared peer connection. The joiner retries `Unavailable` with backoff and treats every other status as final (`FailedPrecondition` with `STALE_RAFT_PROGRESS`, the removed-member rejection, `Unauthenticated`). A failure of the forwarding hop itself — the shared connection being restarted mid-call, or the leader not answering in time — is reported to the joiner as `Unavailable`, so it retries; the leader never produces `Canceled` or `DeadlineExceeded` itself, as it maps its own context errors to `Unavailable`. Any status the leader returns is passed through unchanged. `AlreadyExists` from the leader is treated as success: it means a previous attempt's ConfChange committed before its reply reached the joiner, and the leader only answers it while it has replicated nothing to that node yet.
+
 The Raft transport handles internal inter-node communication for consensus:
 
 ```mermaid
