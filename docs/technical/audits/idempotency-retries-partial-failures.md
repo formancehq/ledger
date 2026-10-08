@@ -28,3 +28,11 @@ the separate native retry control, default and
 forever modes, disabled-retry manual recovery, caller cancellation, and terminal
 server-status controls. A first maintenance rejection and the existing
 `no leader` then maintenance control remain definitive.
+
+## Atomic creation metadata (EN-2686)
+
+Initial metadata shares the CreateLedger operation identity and proposal atomicity. A keyed replay returns the original creation result without an additional audit record, metadata save or ledger allocation.
+
+After a keyed creation carrying metadata, does replay preserve the original metadata and audit sequence? Does an invalid metadata map leave neither a ledger nor metadata rows or a consumed ledger ID?
+
+See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.

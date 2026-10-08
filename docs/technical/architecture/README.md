@@ -29,6 +29,7 @@ Cross-cutting concerns (overall design, data flows shared across subsystems, the
 | [fsm](subsystems/fsm/) | `internal/infra/state`, `internal/infra/plan`, `internal/infra/preload`, `internal/domain/processing` | Deterministic apply path, business-order processing, cache layering, preload contract. |
 | [indexer](subsystems/indexer/) | `internal/application/indexbuilder`, `internal/storage/readstore` (key layout) | Inverted-index builder, schema rewrite, atomic switch. |
 | [monitoring](subsystems/monitoring/) | `internal/infra/monitoring` | Standard trace export and collector-side sampling. |
+| [operator](subsystems/operator/) | `misc/operator` | Kubernetes lifecycle and automatic PVC expansion for Ledger clusters. |
 | [read-path](subsystems/read-path/) | `internal/application/ctrl` (reads), `internal/query`, `internal/storage/readstore` | Query pipeline, prepared queries, query checkpoints, typed metadata. |
 | [scripting](subsystems/scripting/) | numscript runtime + library | Reusable numscript programs and their lifecycle. |
 | [storage](subsystems/storage/) | `internal/storage/dal`, `wal`, `spool`, `pebblecfg` | Pebble main store, WAL, snapshots, spool. |

@@ -154,6 +154,6 @@ var _ = Describe("Idempotency preserves committed outcomes", Ordered, func() {
 		Expect(err).To(Succeed())
 		usdVol := acct.FindVolume("USD", "")
 		Expect(usdVol).NotTo(BeNil())
-		Expect(usdVol.GetInput()).To(Equal("50"))
+		Expect(usdVol.GetInput().DecimalString()).To(Equal("50"))
 	})
 })

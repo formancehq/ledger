@@ -147,6 +147,15 @@ references. The operator's scheduled `Backup` resource has a fixed `bucketId`,
 so rotating immutable retention points currently requires external
 orchestration.
 
+For operator-managed clusters without an explicit `clusterID`, the committed
+random ID is also the default backup `bucketId`. This separates independently
+created clusters even when their Kubernetes names and object-storage bucket are
+the same. An explicit backup `bucketId` remains authoritative. Record the
+source Cluster's `spec.clusterID` (and any explicit `bucketId`) with restore
+procedures: a destination Cluster has its own identity and therefore its own
+default namespace. Pass the source namespace explicitly to restore download or
+offline bootstrap, then use the destination namespace for new backups.
+
 Test restoring every retention class. Retaining only a manifest, or only the
 checkpoint objects without all incremental segments referenced by that
 manifest, is not a usable backup.
@@ -195,9 +204,9 @@ manifest, is not a usable backup.
 
 ---
 
-The restore validation step above is recommended, but not enforced by
-finalization. Offline bootstrap runs Checker only with `--validate`; see
-[Validate](#step-2-validate-recommended) for the operational recommendation.
+The restore validation step above is required before gRPC finalization.
+Offline bootstrap runs Checker only with `--validate`; see
+[Validate](#step-2-validate-required-for-grpc-finalization) for details.
 
 ## Backup ()
 
@@ -498,18 +507,18 @@ outside this timeout; size the process termination grace period to allow that
 additional work. Staging-store close errors are logged under the existing close
 policy and are not returned by the restore stop hook.
 
-### Step 2: Validate (Recommended)
+### Step 2: Validate (Required for gRPC Finalization)
 
 Checker validation is an operator-invoked integrity check, outside the normal
 request-processing path. During restore it checks the staged data before it
 becomes live: `restore validate` invokes it through the restore-mode server's
 gRPC API, while offline `store bootstrap --validate` runs it without a server.
-It is not an automatic prerequisite of `FinalizeRestore`.
+It is a prerequisite of `FinalizeRestore`.
 
 For recovery and restore drills, run validation after download and incremental
 replay complete, before finalization. Investigate any reported integrity errors
 before proceeding. The numbered workflow is the recommended operational
-sequence; the server does not enforce successful validation before finalization.
+sequence; the server enforces successful validation before gRPC finalization.
 
 ```bash
 ledgerctl restore validate
@@ -564,10 +573,8 @@ ledgerctl restore finalize --yes
 
 Calls `RestoreService.FinalizeRestore` (unary). This commits the staged backup as live data.
 
-`FinalizeRestore` does not run Checker or require a prior successful
-`ValidateRestore` call. Successful finalization therefore does not establish
-that the restored data passed integrity validation. To make validation success
-a condition of finalization in an operator script, use:
+`FinalizeRestore` does not run Checker itself, but requires a prior successful
+`ValidateRestore` call for the currently staged backup. Use:
 
 ```bash
 ledgerctl restore validate && ledgerctl restore finalize

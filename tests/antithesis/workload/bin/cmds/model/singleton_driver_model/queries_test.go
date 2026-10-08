@@ -345,7 +345,7 @@ func serverPCVFromRec(rec txRecordView) *commonpb.PostCommitVolumes {
 		entry.Volumes = append(entry.Volumes, &commonpb.VolumeEntry{
 			Asset:   key.Asset,
 			Color:   key.Color,
-			Volumes: &commonpb.Volumes{Input: vp.Input.Dec(), Output: vp.Output.Dec()},
+			Volumes: &commonpb.Volumes{Input: commonpb.MustBigUintFromDecimal(vp.Input.Dec()), Output: commonpb.MustBigUintFromDecimal(vp.Output.Dec())},
 		})
 	}
 
@@ -492,24 +492,29 @@ func TestMatchTxAddress_RolesAndExclusions(t *testing.T) {
 		return f.GetFilter().(*commonpb.QueryFilter_Address).Address
 	}
 
-	// EPHEMERAL current state is purged, but transaction address membership is
-	// immutable history and remains queryable for both wash transactions.
-	require.True(t, matchTxAddress(addr(filterAddrExactRole("e:1", anyRole)), txs.Get(int(0))))
-	require.True(t, matchTxAddress(addr(filterAddrExactRole("e:1", anyRole)), txs.Get(int(1))))
+	// The excluded ephemeral cell strips e:1 membership from both wash txs. The
+	// membership assertion is what separates this from the universe drop
+	// (TestMatchTxAddress_UniverseDrop), where the rows stay indexed and only
+	// the address match stops resolving — matchTxAddress alone would be false
+	// under either mechanism.
+	require.Zero(t, txs.Get(int(0)).IndexedAddrs()["e:1"], "same-bulk exclusion suppresses index membership")
+	require.Zero(t, txs.Get(int(1)).IndexedAddrs()["e:1"], "same-bulk exclusion suppresses index membership")
+	require.False(t, matchTxAddress(ls, addr(filterAddrExactRole("e:1", anyRole)), txs.Get(int(0))))
+	require.False(t, matchTxAddress(ls, addr(filterAddrExactRole("e:1", anyRole)), txs.Get(int(1))))
 
 	// world's side of the wash is a kept NORMAL cell — still indexed.
-	require.True(t, matchTxAddress(addr(filterAddrExactRole("world", src)), txs.Get(int(0))))
-	require.True(t, matchTxAddress(addr(filterAddrExactRole("world", dst)), txs.Get(int(1))))
+	require.True(t, matchTxAddress(ls, addr(filterAddrExactRole("world", src)), txs.Get(int(0))))
+	require.True(t, matchTxAddress(ls, addr(filterAddrExactRole("world", dst)), txs.Get(int(1))))
 
 	// Role bits on the funding tx: world is the source, a:1 the destination.
-	require.True(t, matchTxAddress(addr(filterAddrExactRole("a:1", anyRole)), txs.Get(int(2))))
-	require.True(t, matchTxAddress(addr(filterAddrExactRole("a:1", dst)), txs.Get(int(2))))
-	require.False(t, matchTxAddress(addr(filterAddrExactRole("a:1", src)), txs.Get(int(2))))
-	require.True(t, matchTxAddress(addr(filterAddrPrefixRole("a:", dst)), txs.Get(int(2))))
-	require.False(t, matchTxAddress(addr(filterAddrPrefixRole("b:", anyRole)), txs.Get(int(2))))
+	require.True(t, matchTxAddress(ls, addr(filterAddrExactRole("a:1", anyRole)), txs.Get(int(2))))
+	require.True(t, matchTxAddress(ls, addr(filterAddrExactRole("a:1", dst)), txs.Get(int(2))))
+	require.False(t, matchTxAddress(ls, addr(filterAddrExactRole("a:1", src)), txs.Get(int(2))))
+	require.True(t, matchTxAddress(ls, addr(filterAddrPrefixRole("a:", dst)), txs.Get(int(2))))
+	require.False(t, matchTxAddress(ls, addr(filterAddrPrefixRole("b:", anyRole)), txs.Get(int(2))))
 }
 
-func TestMatchTxAddress_PurgedAccountHistory(t *testing.T) {
+func TestMatchTxAddress_UniverseDrop(t *testing.T) {
 	t.Parallel()
 
 	// Bulk 1 funds ephemeral e:1 (non-zero at end of bulk → kept and indexed).
@@ -523,10 +528,12 @@ func TestMatchTxAddress_PurgedAccountHistory(t *testing.T) {
 	exact := func(a string) *commonpb.AddressMatch {
 		return filterAddrExactRole(a, commonpb.AddressRole_ADDRESS_ROLE_ANY).GetFilter().(*commonpb.QueryFilter_Address).Address
 	}
-	require.True(t, matchTxAddress(exact("e:1"), ls1.Txs().Get(int(0))))
+	require.True(t, matchTxAddress(ls1, exact("e:1"), ls1.Txs().Get(int(0))))
 
-	// Bulk 2 drains it to zero: the cell is purged from current state, while tx 1
-	// keeps its index membership and remains reachable through an address match.
+	// Bulk 2 drains it to zero: the cell is purged, dropping e:1 from the V+M
+	// universe — tx 1 keeps its index membership but stops being reachable
+	// through an address match, exactly like the server's attributes-zone
+	// account resolution.
 	res2 := res1.State.Apply(oracle.Bulk{Requests: []*servicepb.Request{
 		oracletest.TxReqL("L", "e:1", "world", "USD", 5),
 	}})
@@ -536,7 +543,7 @@ func TestMatchTxAddress_PurgedAccountHistory(t *testing.T) {
 	rec := ls2.Txs().Get(int(0))
 	require.NotZero(t, rec.IndexedAddrs()["e:1"], "membership itself is monotone")
 	require.False(t, ls2.HasAccount("e:1"))
-	require.True(t, matchTxAddress(exact("e:1"), rec))
+	require.False(t, matchTxAddress(ls2, exact("e:1"), rec))
 }
 
 func TestNeededIndexCanonicals_AddressRoles(t *testing.T) {
@@ -724,7 +731,7 @@ func TestTxRecordMatches_ComparesPostCommitVolumes(t *testing.T) {
 	require.True(t, txRecordMatches(rec, serverTxFromRec(rec)))
 
 	current := serverTxFromRec(rec)
-	current.PostCommitVolumes.GetVolumesByAccount()["acc:1"].Volumes[0].Volumes.Input = "12"
+	current.PostCommitVolumes.GetVolumesByAccount()["acc:1"].Volumes[0].Volumes.Input = commonpb.MustBigUintFromDecimal("12")
 	require.False(t, txRecordMatches(rec, current),
 		"serving the current balance instead of the snapshot is a finding")
 
@@ -734,7 +741,7 @@ func TestTxRecordMatches_ComparesPostCommitVolumes(t *testing.T) {
 
 	invented := serverTxFromRec(rec)
 	invented.PostCommitVolumes.GetVolumesByAccount()["ghost:1"] = &commonpb.VolumesByAssets{
-		Volumes: []*commonpb.VolumeEntry{{Asset: "USD", Volumes: &commonpb.Volumes{Input: "1", Output: "0"}}},
+		Volumes: []*commonpb.VolumeEntry{{Asset: "USD", Volumes: &commonpb.Volumes{Input: commonpb.MustBigUintFromDecimal("1"), Output: commonpb.MustBigUintFromDecimal("0")}}},
 	}
 	require.False(t, txRecordMatches(rec, invented), "an invented cell is a finding")
 
@@ -783,7 +790,7 @@ func TestAccountMatches_RejectsUnmodelledTimestamps(t *testing.T) {
 		return &commonpb.Account{
 			Address: "acc:1",
 			Volumes: []*commonpb.AccountVolume{
-				{Asset: "USD", Volumes: &commonpb.VolumesWithBalance{Input: "5", Output: "0", Balance: "5"}},
+				{Asset: "USD", Volumes: &commonpb.VolumesWithBalance{Input: commonpb.MustBigUintFromDecimal("5"), Output: commonpb.MustBigUintFromDecimal("0"), Balance: commonpb.MustSignedBigIntFromDecimal("5")}},
 			},
 		}
 	}
@@ -818,7 +825,11 @@ func TestAccountMatches_SegregatesColourBuckets(t *testing.T) {
 	bucket := func(color, in, bal string) *commonpb.AccountVolume {
 		return &commonpb.AccountVolume{
 			Asset: "USD", Color: color,
-			Volumes: &commonpb.VolumesWithBalance{Input: in, Output: "0", Balance: bal},
+			Volumes: &commonpb.VolumesWithBalance{
+				Input:   commonpb.MustBigUintFromDecimal(in),
+				Output:  commonpb.MustBigUintFromDecimal("0"),
+				Balance: commonpb.MustSignedBigIntFromDecimal(bal),
+			},
 		}
 	}
 	account := func(vols ...*commonpb.AccountVolume) *commonpb.Account {
@@ -845,8 +856,12 @@ func TestVolumeComparisons_RejectDuplicateRows(t *testing.T) {
 
 	usd := func(in, out, bal string) *commonpb.AccountVolume {
 		return &commonpb.AccountVolume{
-			Asset:   "USD",
-			Volumes: &commonpb.VolumesWithBalance{Input: in, Output: out, Balance: bal},
+			Asset: "USD",
+			Volumes: &commonpb.VolumesWithBalance{
+				Input:   commonpb.MustBigUintFromDecimal(in),
+				Output:  commonpb.MustBigUintFromDecimal(out),
+				Balance: commonpb.MustSignedBigIntFromDecimal(bal),
+			},
 		}
 	}
 
@@ -862,7 +877,7 @@ func TestVolumeComparisons_RejectDuplicateRows(t *testing.T) {
 
 	byAccount := snapshot.GetVolumesByAccount()["acc:1"]
 	byAccount.Volumes = append(byAccount.Volumes, &commonpb.VolumeEntry{
-		Asset: "USD", Volumes: &commonpb.Volumes{Input: "999", Output: "0"},
+		Asset: "USD", Volumes: &commonpb.Volumes{Input: commonpb.MustBigUintFromDecimal("999"), Output: commonpb.MustBigUintFromDecimal("0")},
 	})
 	require.False(t, pcvSnapshotMatches(rec.PostCommitVolumes(), snapshot),
 		"the second copy is never read, so it must not be tolerated")

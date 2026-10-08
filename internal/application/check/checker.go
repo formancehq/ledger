@@ -20,6 +20,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
+	"github.com/formancehq/ledger/v3/internal/domain/attribution"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	domainreplay "github.com/formancehq/ledger/v3/internal/domain/replay"
@@ -126,7 +127,6 @@ func auditComparableLog(log *commonpb.Log, sequence uint64) *commonpb.Log {
 		apply.Log.PurgedVolumes = nil
 		apply.Log.NewKeptVolumes = nil
 		apply.Log.EphemeralVolumes = nil
-		apply.Log.PurgedAccounts = nil
 	}
 	if cp := ret.GetPayload().GetCreatedQueryCheckpoint(); cp != nil {
 		cp.AppliedIndex = 0
@@ -360,8 +360,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// indirectly relies on, so a tampered cache cannot make a corrupted
 	// state look consistent.
 	stored := excludedVolumesSet{}
-	storedPurgedAccounts := make(map[domain.AccountKey]uint64)
-	lastFreshLogByLedger := make(map[string]uint64)
 	addStored := func(ledger, account, asset, color string) {
 		set, exists := stored[ledger]
 		if !exists {
@@ -382,18 +380,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	}
 
 	var replayWriter domainreplay.Writer = replay
-	flushEphemeralPurges := func(boundary uint64) error {
-		if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
-			return err
-		}
-		pendingPurges := replay.takePendingPurgedAccounts()
-		comparePurgedAccountProjections(storedPurgedAccounts, pendingPurges, lastFreshLogByLedger, boundary, callback)
-		clear(storedPurgedAccounts)
-		clear(lastFreshLogByLedger)
-
-		return nil
-	}
-
 	// Pass 1: Single forward iterator over all logs.
 	logIter, err := snap.NewIter(&pebble.IterOptions{
 		LowerBound: []byte{dal.ZoneHistory, dal.SubHistoryLog},
@@ -476,7 +462,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		}
 
 		for ephemeralPurgeBuffer != nil && hasProposalEnd && seq > nextProposalEnd {
-			if err := flushEphemeralPurges(nextProposalEnd); err != nil {
+			if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
 				return fmt.Errorf("flushing replay ephemeral purge at missing log boundary %d: %w", nextProposalEnd, err)
 			}
 
@@ -584,15 +570,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			for _, v := range apply.GetLog().GetEphemeralVolumes() {
 				addStored(ledgerName, v.GetAccount(), v.GetAsset(), v.GetColor())
 			}
-			for _, account := range apply.GetLog().GetPurgedAccounts() {
-				key := domain.AccountKey{LedgerName: ledgerName, Account: account}
-				if prior, exists := storedPurgedAccounts[key]; exists {
-					callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
-						fmt.Sprintf("stored account-purge annotation for %q occurs more than once in proposal (logs %d and %d)", account, prior, seq),
-						seq, ledgerName, account, ""))
-				}
-				storedPurgedAccounts[key] = seq
-			}
 		}
 
 		// Hash chain verification is now done via audit entries (see audit hash pass below).
@@ -691,13 +668,9 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					}
 
 					if payload.Apply.GetLog() != nil && payload.Apply.GetLog().GetData() != nil {
-						lastFreshLogByLedger[ledgerName] = seq
 						verifySavedMetadataAgainstAuditedOrder(ledgerName, seq, payload.Apply.GetLog().GetData(), chainBound, callback)
 
-						// purged_accounts is an unhashed projection. Checker expectations
-						// are derived independently from audit-bound effects at the proposal
-						// boundary; trusting this field would let tampering hide stale rows.
-						if err := domainreplay.ReplayLedgerLog(ledgerName, seq, payload.Apply.GetLog().GetData(), nil, payload.Apply.GetLog().GetDate(), replayWriter, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
+						if err := domainreplay.ReplayLedgerLog(ledgerName, seq, payload.Apply.GetLog().GetData(), payload.Apply.GetLog().GetDate(), replayWriter, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
 							return fmt.Errorf("replaying log %d: %w", seq, err)
 						}
 
@@ -800,7 +773,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		dispatchElisionCheck(seq, log, expectedSkippable, chainBound, callback)
 
 		if ephemeralPurgeBuffer != nil && hasProposalEnd && seq == nextProposalEnd {
-			if err := flushEphemeralPurges(nextProposalEnd); err != nil {
+			if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
 				return fmt.Errorf("flushing replay ephemeral purge at log %d: %w", seq, err)
 			}
 
@@ -851,7 +824,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	}
 
 	if ephemeralPurgeBuffer != nil {
-		if err := flushEphemeralPurges(storedMaxLogSeq); err != nil {
+		if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
 			return fmt.Errorf("flushing final replay ephemeral purge: %w", err)
 		}
 	}
@@ -883,7 +856,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// on otherwise-purged accounts).
 
 	// Comparison passes: expected = replayed state.
-	c.comparePurgedAccountAbsence(ctx, snap, replay.replayDerivedPurgedAccounts(), replay.replayDerivedPurgedVolumes(), callback)
 	c.compareVolumes(ctx, snap, replay, excluded, callback)
 	c.compareMetadata(ctx, snap, replay, excluded, callback)
 	c.compareTransactions(ctx, snap, replay, callback)
@@ -966,6 +938,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		return fmt.Errorf("comparing cluster policy projection: %w", err)
 	}
 
+	if err := folds.ledgerMetadata.compare(snap, c.attrs, callback); err != nil {
+		return fmt.Errorf("comparing ledger metadata: %w", err)
+	}
+
 	if err := c.compareReversions(snap, ledgerRevertedTxIDs, knownLedgers, callback); err != nil {
 		return err
 	}
@@ -981,98 +957,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	}
 
 	return nil
-}
-
-// comparePurgedAccountAbsence verifies the physical current-state cascade for
-// account-wide EPHEMERAL purges. The ordinary comparison passes deliberately
-// exclude purged cells, so this independent assertion must run before those
-// filters can hide a surviving primary row.
-func (c *Checker) comparePurgedAccountAbsence(
-	ctx context.Context,
-	reader dal.PebbleReader,
-	purged map[domain.AccountKey]struct{},
-	purgedVolumes map[domain.VolumeKey]struct{},
-	callback func(*servicepb.CheckStoreEvent),
-) {
-	if len(purged) == 0 && len(purgedVolumes) == 0 {
-		return
-	}
-
-	volumes, err := c.attrs.Volume.NewStreamingIter(reader, nil)
-	if err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
-			fmt.Sprintf("failed to scan purged-account volumes: %v", err), 0, "", "", ""))
-
-		return
-	}
-	for volumes.Next() {
-		if ctx.Err() != nil {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
-				fmt.Sprintf("purged-account volume scan canceled: %v", ctx.Err()), 0, "", "", ""))
-
-			break
-		}
-		entry := volumes.Entry()
-		var key domain.VolumeKey
-		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
-				fmt.Sprintf("decoding volume key during purged-account scan: %v", err), 0, "", "", ""))
-
-			continue
-		}
-		_, accountPurged := purged[key.AccountKey]
-		_, volumePurged := purgedVolumes[key]
-		if accountPurged || volumePurged {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
-				fmt.Sprintf("volume row survives replay-derived account purge for %s/%s", key.Account, key.Asset),
-				0, key.LedgerName, key.Account, key.Asset))
-		}
-	}
-	if err := volumes.Err(); err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
-			fmt.Sprintf("scanning purged-account volumes: %v", err), 0, "", "", ""))
-	}
-	if err := volumes.Close(); err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
-			fmt.Sprintf("closing purged-account volume scan: %v", err), 0, "", "", ""))
-	}
-
-	metadata, err := c.attrs.Metadata.NewStreamingIter(reader, nil)
-	if err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
-			fmt.Sprintf("failed to scan purged-account metadata: %v", err), 0, "", "", ""))
-
-		return
-	}
-	for metadata.Next() {
-		if ctx.Err() != nil {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
-				fmt.Sprintf("purged-account metadata scan canceled: %v", ctx.Err()), 0, "", "", ""))
-
-			break
-		}
-		entry := metadata.Entry()
-		var key domain.MetadataKey
-		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
-				fmt.Sprintf("decoding metadata key during purged-account scan: %v", err), 0, "", "", ""))
-
-			continue
-		}
-		if _, ok := purged[key.AccountKey]; ok {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
-				fmt.Sprintf("metadata row survives replay-derived account purge for %s/%s", key.Account, key.Key),
-				0, key.LedgerName, key.Account, key.Key))
-		}
-	}
-	if err := metadata.Err(); err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
-			fmt.Sprintf("scanning purged-account metadata: %v", err), 0, "", "", ""))
-	}
-	if err := metadata.Close(); err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
-			fmt.Sprintf("closing purged-account metadata scan: %v", err), 0, "", "", ""))
-	}
 }
 
 // collectStoredTransientVolumes walks the AppliedProposal stream and feeds
@@ -1153,32 +1037,6 @@ func compareExclusionProjections(stored, derived excludedVolumesSet, callback fu
 				0, ledger, vk.Account, vk.Asset,
 			))
 		}
-	}
-}
-
-func comparePurgedAccountProjections(stored map[domain.AccountKey]uint64, derived map[domain.AccountKey]struct{}, lastFreshLogByLedger map[string]uint64, boundary uint64, callback func(*servicepb.CheckStoreEvent)) {
-	for account, sequence := range stored {
-		if _, ok := derived[account]; ok {
-			if sequence == lastFreshLogByLedger[account.LedgerName] {
-				continue
-			}
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
-				fmt.Sprintf("stored account-purge annotation for %q is on log %d instead of terminal ledger log %d at proposal boundary %d", account.Account, sequence, lastFreshLogByLedger[account.LedgerName], boundary),
-				sequence, account.LedgerName, account.Account, ""))
-
-			continue
-		}
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
-			fmt.Sprintf("stored account-purge annotation for %q is not audit-derived at proposal boundary %d", account.Account, boundary),
-			boundary, account.LedgerName, account.Account, ""))
-	}
-	for account := range derived {
-		if _, ok := stored[account]; ok {
-			continue
-		}
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
-			fmt.Sprintf("audit-derived account purge for %q is missing from stored annotations at proposal boundary %d", account.Account, boundary),
-			boundary, account.LedgerName, account.Account, ""))
 	}
 }
 
@@ -2417,17 +2275,21 @@ func compareTransactionPostCommitVolumes(
 
 				continue
 			}
+			if stored == nil {
+				emit(k.account, k.asset, k.color, "has invalid amounts (volumes are missing)")
 
-			gotInput, iok := new(big.Int).SetString(stored.GetInput(), 10)
-			gotOutput, ook := new(big.Int).SetString(stored.GetOutput(), 10)
-
-			if !iok || !ook {
-				emit(k.account, k.asset, k.color,
-					fmt.Sprintf("has unparsable amounts (input=%q output=%q)", stored.GetInput(), stored.GetOutput()))
+				continue
+			}
+			if err := stored.Validate(); err != nil {
+				emit(k.account, k.asset, k.color, fmt.Sprintf("has invalid amounts (%v)", err))
 
 				continue
 			}
 
+			// Validate() has already confirmed input and output are present and
+			// canonical, so ToBigInt() cannot fail here.
+			gotInput, _ := stored.GetInput().ToBigInt()
+			gotOutput, _ := stored.GetOutput().ToBigInt()
 			if gotInput.Cmp(wantInput) != 0 || gotOutput.Cmp(wantOutput) != 0 {
 				emit(k.account, k.asset, k.color,
 					fmt.Sprintf("mismatch: stored(input=%s output=%s) != expected(input=%s output=%s)",
@@ -2482,7 +2344,8 @@ type chainVerifierFolds struct {
 	signing *signingVerifier
 	// policy re-derives the cluster policy from chain-bound SetClusterPolicy
 	// orders.
-	policy *clusterPolicyVerifier
+	policy         *clusterPolicyVerifier
+	ledgerMetadata *ledgerMetadataVerifier
 	// bounds re-derives the highest log sequence the chain accounts for, from
 	// the chain-verified AuditSuccess ranges. Compared against the stored Log
 	// keys after the log loop — see logBoundsVerifier for the premise and for
@@ -2492,9 +2355,10 @@ type chainVerifierFolds struct {
 
 func newChainVerifierFolds() chainVerifierFolds {
 	return chainVerifierFolds{
-		signing: newSigningVerifier(),
-		policy:  newClusterPolicyVerifier(),
-		bounds:  newLogBoundsVerifier(),
+		signing:        newSigningVerifier(),
+		policy:         newClusterPolicyVerifier(),
+		ledgerMetadata: newLedgerMetadataVerifier(),
+		bounds:         newLogBoundsVerifier(),
 	}
 }
 
@@ -2504,6 +2368,7 @@ func newChainVerifierFolds() chainVerifierFolds {
 func (f chainVerifierFolds) markLiveTruncated() {
 	f.signing.markLiveTruncated()
 	f.policy.markLiveTruncated()
+	f.ledgerMetadata.liveTruncated = true
 	f.bounds.markLiveTruncated()
 }
 
@@ -2690,6 +2555,17 @@ func (c *Checker) verifyAuditHashChain(
 		lastHash = entry.GetHash()
 		checked++
 
+		if attributionErr := attribution.Validate(entry.GetCallerSnapshot()); attributionErr != nil {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
+				fmt.Sprintf("audit entry %d has invalid caller attribution: %v", entry.GetSequence(), attributionErr),
+				logSequenceFromAuditEntry(entry), "", "", "",
+			))
+			folds.markLiveTruncated()
+
+			continue
+		}
+
 		// Now that the entry is chain-verified, re-derive the idempotency
 		// outcome a keyed proposal would have frozen under it. items carries
 		// the serialized orders, reused to recompute the proposal hash.
@@ -2798,6 +2674,7 @@ func (c *Checker) verifyAuditHashChain(
 
 				folds.signing.applyOrder(order)
 				folds.policy.applyOrder(order)
+				folds.ledgerMetadata.applyOrder(order)
 			}
 		}
 	}

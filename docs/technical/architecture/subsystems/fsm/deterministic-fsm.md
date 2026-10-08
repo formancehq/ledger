@@ -96,6 +96,17 @@ The **FSM** is the deterministic state transition function:
 
 Preload provides **base values** (volumes and optionally metadata) aligned to a **canonical boundary index**.
 
+### 3.3.1 Replicated caller attribution
+
+Every replicated write proposal carries a `CallerSnapshot`. Before cache
+rotation, HLC advancement, audit construction, or business-state writes, each
+replica validates the snapshot using only replicated bytes. Invalid attribution
+produces the same internal business rejection on every replica. The FSM advances
+the applied Raft index past that already-committed entry but performs no other
+state transition. Empty Raft entries and explicit orderless barriers are
+consensus progress records rather than writes and are the sole unattributed
+proposal form.
+
 ### 3.4 Node-local configuration and rolling upgrades
 
 A flag, environment variable, startup setting, operator value, or default compiled into a particular binary is **node-local configuration**. It is not part of the ordered Raft input, so two nodes may legitimately observe different values during configuration drift or a rolling upgrade.

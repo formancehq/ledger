@@ -1186,8 +1186,9 @@ spec:
                     type: integer
                 type: object
               clusterID:
-                default: default
-                description: ClusterID for inter-node communication validation.
+                description: |-
+                  ClusterID for inter-node communication validation. When omitted, the
+                  operator generates and persists a UUID before creating workloads.
                 type: string
                 x-kubernetes-validations:
                 - message: clusterID is immutable once set
@@ -1886,21 +1887,6 @@ spec:
                 format: int64
                 minimum: 1
                 type: integer
-              metricsNaming:
-                description: |-
-                  MetricsNaming selects the convention for metric names emitted
-                  by the server: "otel" (the default, dot-notation) preserves
-                  the OpenTelemetry instrument names; "prom" rewrites every
-                  metric the server emits with a `ledger_` prefix and dots
-                  converted to underscores so the names are unambiguous after
-                  an OTLP→Prometheus collector that sanitises dots. OTel
-                  semantic-convention auto-instrumentation (`go.*`, `process.*`,
-                  `system.*`, `http.*`) uses the global MeterProvider and is
-                  never touched by this flag.
-                enum:
-                - otel
-                - prom
-                type: string
               mirrorMaxBatchSize:
                 description: MirrorMaxBatchSize is the maximum allowed batch size
                   for mirror sync.
@@ -1984,6 +1970,16 @@ spec:
                         type: string
                       port:
                         description: Port for the metrics exporter.
+                        type: string
+                      prefix:
+                        description: |-
+                          Prefix is the namespace prepended to every metric the server's own
+                          instrumentation emits. When unset the server default
+                          `formance.ledger` applies; `none` emits unprefixed names. OTel
+                          semantic-convention instrumentation (Go runtime, host, HTTP, gRPC)
+                          is never prefixed.
+                        maxLength: 64
+                        pattern: ^[A-Za-z]([A-Za-z0-9_]*[A-Za-z0-9])?(\.[A-Za-z]([A-Za-z0-9_]*[A-Za-z0-9])?)*$
                         type: string
                       runtime:
                         description: Runtime enables runtime metrics.
@@ -2461,6 +2457,64 @@ spec:
                           AccessMode for the PVC.
                           Mutually exclusive with hostPath.
                         type: string
+                      autoExpansion:
+                        description: |-
+                          AutoExpansion configures opt-in automatic growth for PVC-backed WAL and
+                          data volumes. It is unsupported for hostPath volumes.
+                        properties:
+                          cooldown:
+                            default: 8h
+                            description: |-
+                              Cooldown is the minimum delay between completed expansion decisions.
+                              EBS policies must use at least six hours; the default is eight hours.
+                            type: string
+                          enabled:
+                            default: false
+                            description: Enabled opts this volume into automatic expansion.
+                              It defaults to false.
+                            type: boolean
+                          maximumSize:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            description: |-
+                              MaximumSize is the hard upper bound for automatic expansion. It is
+                              required when Enabled is true.
+                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                            x-kubernetes-int-or-string: true
+                          minimumIncrement:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            default: 10Gi
+                            description: MinimumIncrement is the smallest capacity
+                              increase requested at once.
+                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                            x-kubernetes-int-or-string: true
+                          targetPercent:
+                            default: 55
+                            description: TargetPercent is the utilization percentage
+                              the new capacity targets.
+                            format: int32
+                            maximum: 98
+                            minimum: 1
+                            type: integer
+                          thresholdPercent:
+                            default: 70
+                            description: ThresholdPercent is the utilization percentage
+                              that triggers expansion.
+                            format: int32
+                            maximum: 99
+                            minimum: 1
+                            type: integer
+                        type: object
+                        x-kubernetes-validations:
+                        - message: maximumSize is required when auto-expansion is
+                            enabled
+                          rule: '!self.enabled || has(self.maximumSize)'
+                        - message: targetPercent must be lower than thresholdPercent
+                          rule: '!has(self.targetPercent) || !has(self.thresholdPercent)
+                            || self.targetPercent < self.thresholdPercent'
                       hostPath:
                         description: |-
                           HostPath configures a host-local volume instead of a PVC.
@@ -2489,7 +2543,10 @@ spec:
                         anyOf:
                         - type: integer
                         - type: string
-                        description: Size of the volume.
+                        description: |-
+                          Size is the initial and minimum requested capacity of the volume. Automatic
+                          expansion updates the live PVCs only and never rewrites this field or the
+                          StatefulSet VolumeClaimTemplates.
                         pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                         x-kubernetes-int-or-string: true
                       storageClass:
@@ -2539,6 +2596,64 @@ spec:
                           AccessMode for the PVC.
                           Mutually exclusive with hostPath.
                         type: string
+                      autoExpansion:
+                        description: |-
+                          AutoExpansion configures opt-in automatic growth for PVC-backed WAL and
+                          data volumes. It is unsupported for hostPath volumes.
+                        properties:
+                          cooldown:
+                            default: 8h
+                            description: |-
+                              Cooldown is the minimum delay between completed expansion decisions.
+                              EBS policies must use at least six hours; the default is eight hours.
+                            type: string
+                          enabled:
+                            default: false
+                            description: Enabled opts this volume into automatic expansion.
+                              It defaults to false.
+                            type: boolean
+                          maximumSize:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            description: |-
+                              MaximumSize is the hard upper bound for automatic expansion. It is
+                              required when Enabled is true.
+                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                            x-kubernetes-int-or-string: true
+                          minimumIncrement:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            default: 10Gi
+                            description: MinimumIncrement is the smallest capacity
+                              increase requested at once.
+                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                            x-kubernetes-int-or-string: true
+                          targetPercent:
+                            default: 55
+                            description: TargetPercent is the utilization percentage
+                              the new capacity targets.
+                            format: int32
+                            maximum: 98
+                            minimum: 1
+                            type: integer
+                          thresholdPercent:
+                            default: 70
+                            description: ThresholdPercent is the utilization percentage
+                              that triggers expansion.
+                            format: int32
+                            maximum: 99
+                            minimum: 1
+                            type: integer
+                        type: object
+                        x-kubernetes-validations:
+                        - message: maximumSize is required when auto-expansion is
+                            enabled
+                          rule: '!self.enabled || has(self.maximumSize)'
+                        - message: targetPercent must be lower than thresholdPercent
+                          rule: '!has(self.targetPercent) || !has(self.thresholdPercent)
+                            || self.targetPercent < self.thresholdPercent'
                       hostPath:
                         description: |-
                           HostPath configures a host-local volume instead of a PVC.
@@ -2567,7 +2682,10 @@ spec:
                         anyOf:
                         - type: integer
                         - type: string
-                        description: Size of the volume.
+                        description: |-
+                          Size is the initial and minimum requested capacity of the volume. Automatic
+                          expansion updates the live PVCs only and never rewrites this field or the
+                          StatefulSet VolumeClaimTemplates.
                         pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                         x-kubernetes-int-or-string: true
                       storageClass:

@@ -49,6 +49,12 @@ not a missing test, a missing interceptor or generic security guidance. If the
 policy is absent or authoritative sources conflict, retain an **audit question**.
 A valid scope name does not imply an ACL for each ledger, a tenant model, a
 mandatory JWT subject, a revocation service or a refresh-token contract.
+Other domains rely on that absence: the Numscript script and program hashes
+(XXH3-128 — `compiled_script_hash`, keying the FSM script caches, and
+`compiled_program_hash`, naming bytecode sent by reference) are not
+collision-resistant because any writer may already write every ledger. A
+change introducing per-ledger or per-tenant write isolation must revisit that
+premise.
 
 The broad adapter globs locate registrations, implementations and fixtures;
 they do not authorize a general security review of every endpoint. Follow
@@ -67,7 +73,7 @@ are not an inventory of the current executable surface.
 | --- | --- | --- |
 | A — Installed coverage | `api/auth.md` Authorization enforcement; `internal/adapter/http/handler.go` registration and middleware; `internal/adapter/grpc/auth_interceptor.go`; generated RPC policy registry and service descriptors; `internal/bootstrap/module.go` service registration. Walk both unary and streaming methods, including dynamic Apply and index scopes. | Public gRPC policy enforcement is installed globally before handlers. The protobuf generator and startup descriptor validation require the registered BucketService and ClusterService methods to match the declared policies exactly. |
 | B — Credential states | `api/auth.md` Wire shape, Error mapping, Anonymous access and Dev-mode bypass; `grpc_auth.go:EvaluateGRPCCredentials/AuthorizeGRPC`, `http_middleware.go:HTTPAuthMiddleware/RequireScope`, `scopes.go`. | Configured anonymous writes and auth disabled are deliberate modes. Non-Bearer headers currently count as absent. HTTP public bypasses include `/health`, `/livez`, `/readyz`, `/_info`; `/clusterz` and pprof need their own route/handler inspection. gRPC Discovery, health and reflection bypass credential evaluation through exact policy/allowlist entries. |
-| C — JWT trust | `grpc_auth.go:validateToken`, `composite_keyset.go`, `ed25519_keys.go` and their tests; `api/auth.md` Token validation and OIDC discovery. Signature/expiration, issuer on the applicable OIDC path and configured static-key scope/god restrictions precede privilege grants. | EN-1926 supplies an approved audience decision but its PR is not on this base. Do not assume the existing algorithm-based source selection is the intended final contract or require an audience for deployment-dedicated static keys. |
+| C — JWT trust | `grpc_auth.go:validateToken`, `composite_keyset.go`, `ed25519_keys.go` and their tests; `api/auth.md` Token validation and OIDC discovery. Signature/expiration, issuer on the applicable OIDC path and configured static-key scope/superuser restrictions precede privilege grants. | EN-1926 supplies an approved audience decision but its PR is not on this base. Do not assume the existing algorithm-based source selection is the intended final contract or require an audience for deployment-dedicated static keys. |
 | D — Batch scopes | `request_scope.go:RequiredScopeForRequest`, `request_scope_exhaustiveness_test.go`, `http/handlers_bulk.go:serveBulk` and `grpc/auth_interceptor.go`; `admission/signing.md` distinguishes JWT auth from batch signatures. | Check every known Request and nested LedgerRequest variant. The unknown/malformed fallback requires OpsWrite and still reaches ordinary validation; it is not an unconditional reject. An unparsable signed payload defers to authoritative signature verification, so a failed peek alone does not prove bypass. |
 | E — Client/internal boundary | `grpc_auth.go:EvaluateGRPCCredentials` nonempty cluster-secret fast path; `grpc/server_bucket.go:adoptForwardedSnapshotIfTrusted`; `grpc/raft_auth.go` and `bootstrap/module.go`; `bootstrap/module_restore.go` and `api/grpc-api.md` restore lifetime. | A supplied snapshot is rejected unless the context is cluster-internal, including when auth is disabled. HTTP has no cluster-secret fast path. Raft is separately secret-protected with its documented empty-secret mode; when the secret is configured, its health RPCs are protected too (`raft_auth_test.go`). Service health/protocol exemptions do not bypass Raft authentication. Restore has a separate service set, is intentionally not JWT-authenticated, and defaults to loopback; do not assert it can never be configured otherwise. |
 | F — Caller capture | `api/auth.md` Caller identity; `grpc/client_bucket.go:Apply` captures the follower snapshot, `server_bucket.go` adopts it, `auth/caller_snapshot.go:ResolveCallerSnapshot` selects system actor, forwarded snapshot, then local auth state, and `application/admission/admission.go` attaches it to the proposal. `commands/system_caller.go` names system principals. | Resolution produces exactly one authenticated, anonymous, system, or auth-disabled principal for every valid request context. Authenticated and anonymous variants freeze effective authorization. EN-2035 separately owns rejecting missing or malformed principals at admission and restore validation boundaries. Attribute according to verified current source rules; documentation prose alone does not prove which variant code selects. |
@@ -158,3 +164,11 @@ which checks ran, their observations and untested boundaries. Proposed cases,
 green CI and exhaustive helper mappings do not by themselves prove runtime auth
 coverage. Manifest shape/path validation during preparation starts no provider
 and produces no product audit report.
+
+## Atomic creation metadata (EN-2686)
+
+Initial metadata on normal or mirror creation is authorized by ledger:LedgerWrite with the creation itself; subsequent metadata saves retain ledger:MetadataWrite.
+
+Can a caller with LedgerWrite create a ledger with initial metadata without MetadataWrite, while the same caller cannot use the later metadata-save operation without its required scope?
+
+See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.

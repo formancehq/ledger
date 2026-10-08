@@ -13,12 +13,9 @@ import (
 
 	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
 	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
-	"github.com/formancehq/ledger/v3/internal/application/accountlifecycle"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
-	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
-	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/pkg/vtmarshal"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
@@ -29,12 +26,11 @@ import (
 )
 
 const (
-	defaultBatchSize     = 100
-	defaultPollInterval  = 5 * time.Second
-	initialBackoff       = 1 * time.Second
-	maxBackoff           = 60 * time.Second
-	backoffMultiplier    = 2.0
-	lifecycleWaitTimeout = 30 * time.Second
+	defaultBatchSize    = 100
+	defaultPollInterval = 5 * time.Second
+	initialBackoff      = 1 * time.Second
+	maxBackoff          = 60 * time.Second
+	backoffMultiplier   = 2.0
 )
 
 // prefetchResult holds the result of a background log fetch started during
@@ -52,16 +48,15 @@ type prefetchResult struct {
 // Worker continuously fetches v2 logs for a single mirror ledger and proposes
 // them via Raft. It is started/stopped by the Manager based on leadership.
 type Worker struct {
-	ledgerName          string
-	batchSize           int
-	source              v2.Source
-	rewriter            *celrewrite.Rewriter
-	store               *dal.Store
-	lifecycleSerializer *accountlifecycle.Serializer
-	proposer            Proposer
-	builder             *plan.Builder
-	logger              logging.Logger
-	sourceLogCount      uint64
+	ledgerName     string
+	batchSize      int
+	source         v2.Source
+	rewriter       *celrewrite.Rewriter
+	store          *dal.Store
+	proposer       Proposer
+	builder        *plan.Builder
+	logger         logging.Logger
+	sourceLogCount uint64
 	// sourceHeadObserved records that GetLatestLogID has answered at least
 	// once, making sourceLogCount == 0 an observed empty source rather than
 	// "never asked". Without it publishIdleStatus cannot tell the two apart,
@@ -123,13 +118,9 @@ func NewWorker(
 	builder *plan.Builder,
 	logger logging.Logger,
 	meterProvider metric.MeterProvider,
-	lifecycleSerializer *accountlifecycle.Serializer,
 ) *Worker {
 	if batchSize <= 0 {
 		batchSize = defaultBatchSize
-	}
-	if lifecycleSerializer == nil {
-		lifecycleSerializer = accountlifecycle.NewSerializer()
 	}
 
 	meter := meterProvider.Meter("mirror")
@@ -161,16 +152,15 @@ func NewWorker(
 		metric.WithUnit("1"))
 
 	return &Worker{
-		ledgerName:          ledgerName,
-		batchSize:           batchSize,
-		source:              source,
-		rewriter:            rewriter,
-		store:               store,
-		lifecycleSerializer: lifecycleSerializer,
-		proposer:            proposer,
-		builder:             builder,
-		logger:              logger.WithFields(map[string]any{"cmp": "mirror-worker", "ledger": ledgerName}),
-		notify:              signal.New(),
+		ledgerName: ledgerName,
+		batchSize:  batchSize,
+		source:     source,
+		rewriter:   rewriter,
+		store:      store,
+		proposer:   proposer,
+		builder:    builder,
+		logger:     logger.WithFields(map[string]any{"cmp": "mirror-worker", "ledger": ledgerName}),
+		notify:     signal.New(),
 
 		ledgerAttr:        attribute.String("ledger", ledgerName),
 		fetchDuration:     fetchDuration,
@@ -411,22 +401,6 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	preloadStart := time.Now()
 
 	aggregate, perOrder := w.extractMirrorNeeds(cmd)
-	accounts, err := accountlifecycle.AccountsForOrders(perOrder)
-	if err != nil {
-		return false, fmt.Errorf("collecting mirror account lifecycle locks: %w", err)
-	}
-	releaseLifecycle, err := w.lifecycleSerializer.Acquire(ctx, accounts, false)
-	if err != nil {
-		return false, fmt.Errorf("acquiring mirror account lifecycle locks: %w", err)
-	}
-	defer func() {
-		if releaseLifecycle != nil {
-			releaseLifecycle()
-		}
-	}()
-	if err := w.expandAccountLifecycleCoverage(aggregate, perOrder); err != nil {
-		return false, fmt.Errorf("expanding mirror account lifecycle coverage: %w", err)
-	}
 
 	// Merge the source-head/status update into the data proposal to avoid a
 	// second Raft round-trip. The FSM processes TechnicalUpdates on any
@@ -503,8 +477,6 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 
 	proposal := runResult.Proposal
 	fsmFuture := runResult.FSMFuture
-	releaseMirrorLifecycleWhenTerminal(fsmFuture, releaseLifecycle)
-	releaseLifecycle = nil
 
 	// Start prefetching the next batch while waiting for Raft consensus.
 	// The goroutine writes to a buffered channel and always exits, even if
@@ -582,22 +554,6 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	w.statusClearConfirmed = true
 
 	return hasMore, nil
-}
-
-// releaseMirrorLifecycleWhenTerminal keeps account lifecycle serialization
-// through the FSM future's terminal result even when the worker is stopped.
-// The accepted proposal may still apply after worker cancellation; releasing
-// early would let a replacement snapshot pre-apply state and omit its effects.
-func releaseMirrorLifecycleWhenTerminal(
-	fsmFuture *futures.Future[state.ApplyResult],
-	release func(),
-) {
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), lifecycleWaitTimeout)
-		defer cancel()
-		_, _ = fsmFuture.Wait(ctx)
-		release()
-	}()
 }
 
 // drainPrefetch waits for a background prefetch goroutine to complete,
@@ -836,9 +792,9 @@ func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) (*plan.Coverage, []
 		if dm := mi.GetEntry().GetDeletedMetadata(); dm != nil {
 			switch target := dm.GetTarget().GetTarget().(type) {
 			case *commonpb.Target_Account:
-				// Same tombstone coverage as the admission-side
+				// Same Del coverage as the admission-side
 				// MirrorIngest.DeletedMetadata path (see admission.go) —
-				// KeyStore.Tombstone lazy-fabricates the Gen0 tombstone
+				// AttributeCache.Del lazy-fabricates the Gen0 tombstone
 				// from Gen1's tag if a race occurred.
 				p.Add(dal.SubAttrMetadata, domain.MetadataKey{
 					AccountKey: domain.AccountKey{LedgerName: w.ledgerName, Account: target.Account.GetAddr()},
@@ -858,32 +814,4 @@ func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) (*plan.Coverage, []
 	}
 
 	return aggregate, perOrder
-}
-
-// expandAccountLifecycleCoverage closes the key set for accounts touched by
-// mirror orders. Mirror proposals bypass public admission, and account types
-// are resolved only inside the FSM, so mirror conservatively closes every
-// touched account. The FSM's account-wide EPHEMERAL purge decision then always
-// has every persisted volume and metadata key declared.
-func (w *Worker) expandAccountLifecycleCoverage(aggregate *plan.Coverage, perOrder []*plan.Coverage) error {
-	handle, err := w.store.NewReadHandle()
-	if err != nil {
-		return err
-	}
-	defer func() { _ = handle.Close() }()
-
-	for _, coverage := range perOrder {
-		accounts, err := accountlifecycle.Accounts(coverage)
-		if err != nil {
-			return err
-		}
-
-		for account := range accounts {
-			if err := accountlifecycle.AddPersistedRows(handle, account, coverage, aggregate); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
 }

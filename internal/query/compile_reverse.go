@@ -3,7 +3,6 @@ package query
 import (
 	"encoding/binary"
 	"fmt"
-	"math"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -224,10 +223,6 @@ func compileUniverseRev(ctx *compileCtx) (readstore.ReverseIterator, error) {
 // only name the executing ledger or nothing, and naming another ledger is
 // unsatisfiable rather than a silent "all logs".
 func compileLedgerConditionRev(ctx *compileCtx, lc *commonpb.LedgerCondition) (readstore.ReverseIterator, error) {
-	if lc.GetCond() == nil {
-		return nil, domain.NewFilterCompilationError("ledger condition has no value")
-	}
-
 	want, err := resolveString(lc.GetCond(), ctx.params)
 	if err != nil {
 		return nil, err
@@ -657,53 +652,59 @@ func compileAddressMatchRev(ctx *compileCtx, am *commonpb.AddressMatch) (readsto
 
 func compileAddressPrefixRev(ctx *compileCtx, addrPrefix string, role commonpb.AddressRole) (readstore.ReverseIterator, error) {
 	if ctx.target == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
-		accountIter, err := readstore.NewPebbleReverseAccountPrefixIterator(ctx.pebbleReader, ctx.ledgerName, addrPrefix)
+		// Accounts are entity-ordered under the address prefix, so this
+		// streams descending.
+		iter, err := readstore.NewPebbleReverseAccountPrefixIterator(ctx.pebbleReader, ctx.ledgerName, addrPrefix)
 		if err != nil {
 			return nil, fmt.Errorf("creating reverse account prefix iterator: %w", err)
 		}
-		trackedAccount := trackReverse(accountIter, ctx.profile, &IteratorStats{
+
+		return trackReverse(iter, ctx.profile, &IteratorStats{
 			Label:  fmt.Sprintf("PebbleReverseAccountIterator(%s:%s*)", ctx.ledgerName, addrPrefix),
 			Kind:   "PebbleReverseAccount",
 			Prefix: "pebble:attributes",
-		})
-
-		return trackedAccount, nil
+		}), nil
 	}
 
-	accountIter, err := readstore.NewReverseAccountTxAddressPrefixIterator(
-		ctx.indexReader, ctx.kb, ctx.ledgerName, addrPrefix, addressRolePrefix(role),
-	)
+	// TRANSACTIONS target: the account→tx union is a materializing fallback,
+	// served descending through a borrowed cursor over its one sorted slice.
+	accountIter, err := readstore.NewPebbleAccountPrefixIterator(ctx.pebbleReader, ctx.ledgerName, addrPrefix)
 	if err != nil {
-		return nil, fmt.Errorf("creating reverse account transaction address prefix iterator: %w", err)
+		return nil, fmt.Errorf("creating account prefix iterator: %w", err)
 	}
-	trackedAccount := trackReverse(accountIter, ctx.profile, &IteratorStats{
-		Label: fmt.Sprintf("ReverseAccountTxAddressPrefixIterator(%s:%s*)", ctx.ledgerName, addrPrefix),
-		Kind:  "AccountTxAddressPrefix", Prefix: addressRoleBucketLabel(role),
+
+	trackedAccount := trackIterator(accountIter, ctx.profile, &IteratorStats{
+		Label:  fmt.Sprintf("PebbleAccountIterator(%s:%s*)", ctx.ledgerName, addrPrefix),
+		Kind:   "PebbleAccount",
+		Prefix: "pebble:attributes",
 	})
+
 	var accountStats *IteratorStats
 	if ctx.profile != nil {
 		accountStats = ctx.profile.Root
 	}
 
-	// TRANSACTIONS target: the account→tx union is a materializing fallback,
-	// served descending through a borrowed cursor over its one sorted slice.
 	addrTxIter := readstore.NewReverseAddressTxIterator(ctx.indexReader, ctx.kb, ctx.ledgerName, trackedAccount, addressRolePrefix(role))
 
 	return trackReverse(addrTxIter, ctx.profile, &IteratorStats{
-		Label: fmt.Sprintf("ReverseAddressTxIterator(%s)", ctx.ledgerName), Kind: "AddressTx", Prefix: addressRoleBucketLabel(role),
+		Label:    fmt.Sprintf("ReverseAddressTxIterator(%s)", ctx.ledgerName),
+		Kind:     "AddressTx",
+		Prefix:   addressRoleBucketLabel(role),
 		Children: []*IteratorStats{accountStats},
 	}), nil
 }
 
 func compileAddressExactRev(ctx *compileCtx, exactAddr string, role commonpb.AddressRole) (readstore.ReverseIterator, error) {
+	exists, err := pebbleAccountExists(ctx.pebbleReader, ctx.ledgerName, exactAddr)
+	if err != nil {
+		return nil, fmt.Errorf("checking account existence: %w", err)
+	}
+
+	if !exists {
+		return emptyReverse(), nil
+	}
+
 	if ctx.target == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
-		exists, err := pebbleAccountExists(ctx.pebbleReader, ctx.ledgerName, exactAddr)
-		if err != nil {
-			return nil, fmt.Errorf("checking account existence: %w", err)
-		}
-		if !exists {
-			return emptyReverse(), nil
-		}
 		iter := readstore.NewReverseSliceIterator([][]byte{[]byte(exactAddr)})
 
 		return trackReverse(iter, ctx.profile, &IteratorStats{
@@ -737,10 +738,6 @@ func compileAddressExactRev(ctx *compileCtx, exactAddr string, role commonpb.Add
 }
 
 func compileReferenceConditionRev(ctx *compileCtx, rc *commonpb.ReferenceCondition) (readstore.ReverseIterator, error) {
-	if rc.GetCond() == nil {
-		return nil, domain.NewFilterCompilationError("reference condition has no value")
-	}
-
 	if _, err := requireIndexReady(ctx,
 		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
 		"reference"); err != nil {
@@ -773,10 +770,6 @@ func compileAccountHasAssetConditionRev(ctx *compileCtx, c *commonpb.AccountHasA
 		return nil, err
 	}
 
-	if c.GetPrecision() > math.MaxUint8 {
-		return nil, domain.NewFilterCompilationError("has asset precision %d exceeds maximum %d", c.GetPrecision(), math.MaxUint8)
-	}
-
 	prefix := readstore.AccountByAssetPrefix(ctx.kb, ctx.ledgerName, c.GetAssetBase(), uint8(c.GetPrecision()))
 
 	// Stamp-gated in BOTH directions. See compileAccountHasAssetCondition for
@@ -795,10 +788,6 @@ func compileAccountHasAssetConditionRev(ctx *compileCtx, c *commonpb.AccountHasA
 }
 
 func compileBuiltinUintConditionRev(ctx *compileCtx, cond *commonpb.BuiltinUintCondition) (readstore.ReverseIterator, error) {
-	if cond.GetCond() == nil {
-		return nil, domain.NewFilterCompilationError("builtin uint condition has no value")
-	}
-
 	if cond.GetField() == commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID {
 		return compileTxIDConditionRev(ctx, cond.GetCond())
 	}
@@ -912,14 +901,6 @@ func compileTimestampRangeConditionRev(
 }
 
 func compileLogBuiltinUintConditionRev(ctx *compileCtx, cond *commonpb.LogBuiltinUintCondition) (readstore.ReverseIterator, error) {
-	if cond.GetCond() == nil {
-		return nil, domain.NewFilterCompilationError("log builtin uint condition has no value")
-	}
-
-	if cond.GetField() != commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE {
-		return nil, domain.NewFilterCompilationError("unsupported log builtin uint field: %v", cond.GetField())
-	}
-
 	arm, err := resolveLogDateArm(ctx)
 	if err != nil {
 		return nil, err

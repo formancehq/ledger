@@ -12,7 +12,6 @@ import (
 
 	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
 	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
-	"github.com/formancehq/ledger/v3/internal/application/accountlifecycle"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -33,14 +32,13 @@ type Proposer interface {
 // ledger configuration. It creates one Worker per mirror ledger and only runs
 // workers on the leader node.
 type Manager struct {
-	store               *dal.Store
-	proposer            Proposer
-	builder             *plan.Builder
-	logger              logging.Logger
-	notifications       *signal.Notifications
-	meterProvider       metric.MeterProvider
-	maxBatchSize        int
-	lifecycleSerializer *accountlifecycle.Serializer
+	store         *dal.Store
+	proposer      Proposer
+	builder       *plan.Builder
+	logger        logging.Logger
+	notifications *signal.Notifications
+	meterProvider metric.MeterProvider
+	maxBatchSize  int
 
 	mu                  sync.Mutex
 	workers             map[string]*Worker
@@ -60,17 +58,16 @@ type Manager struct {
 }
 
 // NewManager creates a new mirror Manager.
-func NewManager(store *dal.Store, proposer Proposer, builder *plan.Builder, logger logging.Logger, notifications *signal.Notifications, meterProvider metric.MeterProvider, maxBatchSize int, lifecycleSerializer *accountlifecycle.Serializer) *Manager {
+func NewManager(store *dal.Store, proposer Proposer, builder *plan.Builder, logger logging.Logger, notifications *signal.Notifications, meterProvider metric.MeterProvider, maxBatchSize int) *Manager {
 	return &Manager{
-		store:               store,
-		proposer:            proposer,
-		builder:             builder,
-		logger:              logger.WithFields(map[string]any{"cmp": "mirror-manager"}),
-		notifications:       notifications,
-		meterProvider:       meterProvider,
-		maxBatchSize:        maxBatchSize,
-		lifecycleSerializer: lifecycleSerializer,
-		workers:             make(map[string]*Worker),
+		store:         store,
+		proposer:      proposer,
+		builder:       builder,
+		logger:        logger.WithFields(map[string]any{"cmp": "mirror-manager"}),
+		notifications: notifications,
+		meterProvider: meterProvider,
+		maxBatchSize:  maxBatchSize,
+		workers:       make(map[string]*Worker),
 	}
 }
 
@@ -301,7 +298,7 @@ func (m *Manager) reconcileGeneration(leadership managerLeadership) {
 			batchSize = m.maxBatchSize
 		}
 
-		w := NewWorker(name, batchSize, source, rewriter, m.store, m.proposer, m.builder, m.logger, m.meterProvider, m.lifecycleSerializer)
+		w := NewWorker(name, batchSize, source, rewriter, m.store, m.proposer, m.builder, m.logger, m.meterProvider)
 		w.Start()
 		if !m.isCurrentLeader(generation) {
 			w.Stop()

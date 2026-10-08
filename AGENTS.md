@@ -93,7 +93,7 @@ Before changing Protocol Buffers, tests, Numscript, or contributor workflow, rea
 Documentation is part of the change when behavior, architecture, interfaces, CLI, or APIs change.
 
 - New technical mechanism/subsystem/non-obvious invariant: update the matching `docs/technical/architecture/` subsystem documentation and its README.
-- API endpoint change: update `docs/technical/contributing/api-comparison.md`; update `openapi.yml` for HTTP changes.
+- API endpoint change: update `docs/technical/contributing/api-comparison.md`; update `openapi.yml` for HTTP changes; update `docs/technical/contributing/v2-to-v3-endpoint-map.json` when a route it names changes.
 - CLI behavior/flag/command change: update `docs/ops/cli.md`; regenerate demo GIFs when applicable.
 - Interface/behavior change: update relevant code comments.
 - Durability and recovery documentation must state the actual in-memory mutation order, durable-write order, and residual state after failure; do not describe the intended end state as if it were the execution sequence.

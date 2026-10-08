@@ -73,10 +73,10 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, setValues []string, dr
 	if len(credentials.Spec.Scopes) > 0 {
 		previewRows = append(previewRows, []string{"Scopes", strings.Join(credentials.Spec.Scopes, ", ")})
 	}
-	if credentials.Spec.God {
-		previewRows = append(previewRows, []string{"God Mode", pterm.Yellow("enabled")})
+	if credentials.Spec.Superuser {
+		previewRows = append(previewRows, []string{"Superuser Mode", pterm.Yellow("enabled")})
 	}
-	previewRows = append(previewRows, flagbind.PreviewRows(overrides, "", "scopes", "god")...)
+	previewRows = append(previewRows, flagbind.PreviewRows(overrides, "", "scopes", "superuser")...)
 	cmdutil.RenderBoxedTable(previewRows)
 	pterm.Println()
 

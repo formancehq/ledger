@@ -14,9 +14,10 @@ import (
 
 // createLedgerBody holds optional fields for ledger creation.
 type createLedgerBody struct {
-	Mode                   string            `json:"mode,omitempty"`
-	MirrorSource           *mirrorSourceBody `json:"mirrorSource,omitempty"`
-	DefaultEnforcementMode string            `json:"defaultEnforcementMode,omitempty"`
+	Metadata               *commonpb.MetadataMap `json:"metadata,omitempty"`
+	Mode                   string                `json:"mode,omitempty"`
+	MirrorSource           *mirrorSourceBody     `json:"mirrorSource,omitempty"`
+	DefaultEnforcementMode string                `json:"defaultEnforcementMode,omitempty"`
 	// InitialSchema declares metadata field types to seed at creation time.
 	InitialSchema []metadataFieldTypeBody `json:"initialSchema,omitempty"`
 	// AccountTypes declares the initial account types (name -> full model).
@@ -93,6 +94,8 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		createReq.Metadata = body.Metadata.GetValues()
+
 		if body.Mode == "MIRROR" {
 			createReq.Mode = commonpb.LedgerMode_LEDGER_MODE_MIRROR
 
@@ -165,7 +168,9 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 		panic(unexpectedLogPayload("create-ledger", logEntry, details))
 	}
 
-	writeCreated(w, createLedgerLog.ToLedgerInfo())
+	info := createLedgerLog.ToLedgerInfo()
+	info.Metadata = createLedgerLog.GetMetadata()
+	writeCreated(w, info)
 }
 
 // mirrorSourceToProto converts the HTTP body to the proto MirrorSourceConfig.

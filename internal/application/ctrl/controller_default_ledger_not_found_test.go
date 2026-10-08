@@ -18,10 +18,10 @@ import (
 )
 
 // TestDefaultController_LedgerNotFound asserts that the read paths gated on
-// ledger existence (GetNumscript, ListNumscripts, ListPreparedQueries) map the
-// internal domain.ErrNotFound sentinel returned by query.GetLedgerByName to a
-// typed *domain.ErrLedgerNotFound (Reason LEDGER_NOT_FOUND -> HTTP 404), for
-// both a missing and a soft-deleted target ledger.
+// ledger existence map the internal domain.ErrNotFound sentinel returned by
+// query.GetLedgerByName to a typed *domain.ErrLedgerNotFound (Reason
+// LEDGER_NOT_FOUND -> HTTP 404), for both a missing and a soft-deleted target
+// ledger.
 func TestDefaultController_LedgerNotFound(t *testing.T) {
 	t.Parallel()
 
@@ -40,8 +40,18 @@ func TestDefaultController_LedgerNotFound(t *testing.T) {
 	}
 
 	call := map[string]func(ctrl *DefaultController) error{
+		"GetLedgerStats": func(ctrl *DefaultController) error {
+			_, err := ctrl.GetLedgerStats(context.Background(), ledger)
+
+			return err
+		},
 		"GetNumscript": func(ctrl *DefaultController) error {
 			_, err := ctrl.GetNumscript(context.Background(), ledger, "script", "")
+
+			return err
+		},
+		"GetTemplateUsage": func(ctrl *DefaultController) error {
+			_, err := ctrl.GetTemplateUsage(context.Background(), ledger, "script")
 
 			return err
 		},

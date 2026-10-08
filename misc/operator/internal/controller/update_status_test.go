@@ -38,6 +38,7 @@ func TestUpdateStatus_RemovesStaleConditions(t *testing.T) {
 			Conditions: []metav1.Condition{
 				{Type: "DeletionProtectionInactive", Status: metav1.ConditionTrue, Reason: "ClusterPolicyNotInstalled"},
 				{Type: "ConfigValid", Status: metav1.ConditionTrue, Reason: "Valid"},
+				{Type: dataVolumeExpansionCondition, Status: metav1.ConditionFalse, Reason: "ExpansionPending"},
 			},
 		},
 	}
@@ -70,4 +71,6 @@ func TestUpdateStatus_RemovesStaleConditions(t *testing.T) {
 		"stale condition removed in-memory must be cleared from persisted status")
 	assert.NotNil(t, meta.FindStatusCondition(got.Status.Conditions, "ConfigValid"),
 		"conditions still present in-memory must be retained")
+	assert.NotNil(t, meta.FindStatusCondition(got.Status.Conditions, dataVolumeExpansionCondition),
+		"conditions owned by the volume expansion reconciler must be preserved")
 }

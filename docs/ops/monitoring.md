@@ -32,51 +32,57 @@ are independent of these OTLP resource attributes.
 ## Naming Convention
 
 Metric names in this document use the **OpenTelemetry dot-notation**
-(`admission.command.duration`, `raft.fsm.logs_appended`,
-`service.cluster`). This is the canonical form the server emits in
-its default `--metrics-naming=otel` mode.
+without the namespace prefix (`admission.command.duration`,
+`raft.fsm.logs_appended`, `service.cluster`). The server emits
+every metric its own instrumentation creates under the
+`--otel-metrics-prefix` namespace (default `formance.ledger`, env
+`OTEL_METRICS_PREFIX`, `none` to disable), so
+`raft.fsm.logs_appended` is emitted as
+`formance.ledger.raft.fsm.logs_appended`. This includes the metrics
+we name under `raft.*` and `pebble.*` — etcd-raft and Pebble do not
+export OpenTelemetry themselves; those names are our emissions about
+our integration with those libraries. The prefix groups the ledger
+metrics together and keeps them unambiguous in a backend that also
+receives other services' metrics, as the OpenTelemetry naming
+guidelines recommend for application-specific names.
 
 The OTLP→Prometheus collector that fronts most cloud Prometheus
 backends sanitises dots in names: `service.cluster` becomes
-`service_cluster`, `raft.fsm.logs_appended` becomes
-`raft_fsm_logs_appended`. When the server is started with
-`--metrics-naming=prom`, **every metric the server emits** is also
-prefixed with `ledger_` at emission time so they are unambiguous in a
-Prometheus instance that also scrapes other services. This includes
-the metrics we name under `raft.*` and `pebble.*` — etcd-raft and
-Pebble do not export OpenTelemetry themselves; those names are our
-emissions about our integration with those libraries.
+`service_cluster`, `formance.ledger.raft.fsm.logs_appended` becomes
+`formance_ledger_raft_fsm_logs_appended`. The server itself always
+emits dot notation.
 
-| Source | OTel mode | Prom mode |
-| ------ | --------- | --------- |
-| `admission.command.duration` (we emit) | `admission.command.duration` | `ledger_admission_command_duration` |
-| `raft.fsm.logs_appended` (we emit, instruments etcd-raft) | `raft.fsm.logs_appended` | `ledger_raft_fsm_logs_appended` |
-| `pebble.flush.total` (we emit, instruments Pebble) | `pebble.flush.total` | `ledger_pebble_flush_total` |
+| Source | Emitted by the server | After a dot-sanitising collector |
+| ------ | --------------------- | -------------------------------- |
+| `admission.command.duration` (we emit) | `formance.ledger.admission.command.duration` | `formance_ledger_admission_command_duration` |
+| `raft.fsm.logs_appended` (we emit, instruments etcd-raft) | `formance.ledger.raft.fsm.logs_appended` | `formance_ledger_raft_fsm_logs_appended` |
+| `pebble.flush.total` (we emit, instruments Pebble) | `formance.ledger.pebble.flush.total` | `formance_ledger_pebble_flush_total` |
 | `http.server.request.duration` (OTel auto-instr) | `http.server.request.duration` | `http_server_request_duration` |
 | `go.memory.allocated` (OTel auto-instr) | `go.memory.allocated` | `go_memory_allocated` |
 | `service.cluster` (attribute) | `service.cluster` | `service_cluster` |
 
 OpenTelemetry semantic-convention auto-instrumentation (`go.*`,
-`process.*`, `system.*`, `http.*`) is emitted via the global
-MeterProvider, which is left as the raw SDK provider — those metrics
-bypass the renaming policy entirely. The de-dotted form that appears
-in `prom` mode is what the OTel→Prometheus collector produces on its
-own; the server itself does not touch them.
+`process.*`, `system.*`, `http.*`, `rpc.*`) is emitted via the
+global MeterProvider, which go-libs leaves as the raw SDK provider —
+only the MeterProvider injected into the ledger's own components is
+prefixed, so those metrics keep their upstream names.
 
-Seven pre-built Grafana dashboards ship under
+Eight pre-built Grafana dashboards ship under
 `misc/devenv/monitoring-dashboards/config/dashboards/`. Pick the
-one that matches your combination of *(server `--metrics-naming`
-flag, OTel→Prom collector normalisation, histogram representation)*:
+one that matches your combination of *(server `--otel-metrics-prefix`,
+names as stored in Prometheus, histogram representation)*. A custom
+prefix has no pre-built dashboard.
 
-| Server | Collector | Histograms | File |
-| ------ | --------- | ---------- | ---- |
-| `otel` | preserves dots                       | classic | `ledger-metrics-otel.json` |
-| `prom` | dots → underscores only              | classic | `ledger-metrics-prom.json` |
-| `prom` | full normalisation (unit + `_total`) | classic | `ledger-metrics-prom-normalized.json` |
-| `prom` | full normalisation (unit + `_total`) | native  | `ledger-metrics-prom-normalized-native.json` |
-| `otel` | dots → underscores only              | classic | `ledger-metrics-prom-noprefix.json` |
-| `otel` | full normalisation (unit + `_total`) | classic | `ledger-metrics-prom-noprefix-normalized.json` |
-| `otel` | full normalisation (unit + `_total`) | native  | `ledger-metrics-prom-noprefix-normalized-native.json` |
+| Server prefix | Stored names | Histograms | File |
+| ------------- | ------------ | ---------- | ---- |
+| `formance.ledger` (default) | dots preserved                       | classic | `ledger-metrics-otel.json` |
+| `formance.ledger` (default) | dots → underscores only              | classic | `ledger-metrics-prom.json` |
+| `formance.ledger` (default) | full normalisation (unit + `_total`) | classic | `ledger-metrics-prom-normalized.json` |
+| `formance.ledger` (default) | full normalisation (unit + `_total`) | native  | `ledger-metrics-prom-normalized-native.json` |
+| `none` | dots preserved                       | classic | `ledger-metrics-otel-noprefix.json` |
+| `none` | dots → underscores only              | classic | `ledger-metrics-prom-noprefix.json` |
+| `none` | full normalisation (unit + `_total`) | classic | `ledger-metrics-prom-noprefix-normalized.json` |
+| `none` | full normalisation (unit + `_total`) | native  | `ledger-metrics-prom-noprefix-normalized-native.json` |
 
 The **normalised** variants additionally embed the UCUM unit
 suffix the collector appends (`us` → `_microseconds`, `By` →
@@ -99,9 +105,9 @@ the generator uses `_sum`/`_count` for classic histograms and
 classic dashboards default to the `Prometheus` Grafana datasource;
 native dashboards default to `Prometheus Native`. The standard
 devenv stack uses
-`ledger-metrics-prom-noprefix-normalized-native.json`.
+`ledger-metrics-prom-normalized-native.json`.
 
-All seven are regenerated from the same Jsonnet source via
+All eight are regenerated from the same Jsonnet source via
 `just generate-dashboards`. See
 [`misc/devenv/monitoring-dashboards/README.md`](../../misc/devenv/monitoring-dashboards/README.md).
 
@@ -390,6 +396,13 @@ Write stalls occur when Pebble cannot keep up with write rate due to compaction 
 
 Filesystem-level disk usage is tracked per volume via `syscall.Statfs`. A background collector samples usage at a regular interval (default 5s).
 
+Each WAL and data sample is published atomically with its last successful
+observation time and the validity of the latest collection attempt. If
+`Statfs` fails, the collector preserves the last successful byte values and
+timestamp for diagnostics, marks the sample invalid, and stops emitting that
+volume through the gauge until collection recovers. Health and automatic PVC
+expansion reject invalid or older-than-one-minute samples.
+
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
 | `storage.disk.volume.bytes` | Gauge | By | Disk space used on a storage volume |
@@ -410,7 +423,7 @@ The Numscript cache stores parsed Numscript programs to avoid re-parsing identic
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `numscript.cache.size` | Gauge | 1 | Number of scripts currently in the cache |
+| `numscript.cache.size` | Gauge | 1 | Number of entries currently in the cache, per `cache` attribute: `parsed` (parsed scripts) and `compiled` (verified VM artifacts, each holding a warm VM) |
 
 ### Attribute Cache Metrics
 

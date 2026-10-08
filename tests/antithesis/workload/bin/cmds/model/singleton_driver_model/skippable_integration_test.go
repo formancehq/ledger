@@ -206,6 +206,8 @@ func skippableTestServer(t *testing.T) (context.Context, servicepb.BucketService
 
 		return err == nil && state.GetLeader() != 0
 	}, 5*time.Second, 10*time.Millisecond)
+	client := servicepb.NewBucketServiceClient(conn)
+	testserver.WaitForWriteAdmission(t, ctx, client)
 
-	return ctx, servicepb.NewBucketServiceClient(conn)
+	return ctx, client
 }

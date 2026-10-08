@@ -2,7 +2,7 @@
 
 ## Overview
 
-Prepared queries are **named, parameterizable query templates** registered cluster-wide per ledger. A client creates a prepared query once (with a filter expression), then references it by name at execution time. The server compiles the filter against the current ledger schema, runs it against the read store, and streams the result back.
+Prepared queries are **named, parameterizable query templates** registered cluster-wide per ledger. A client creates a prepared query once, optionally with a filter expression, then references it by name at execution time. A query without a filter matches every entity in its target. The server compiles non-nil filters against the current ledger schema, runs the query against the read store, and streams the result back.
 
 The motivation is twofold:
 
@@ -69,29 +69,46 @@ Two layers, following the project-wide pattern (see [admission / validation.md](
 
 - Ledger must exist (rejects `ErrLedgerNotFound` otherwise).
 - Name must not already be in use (rejects on duplicate — there is no implicit upsert; clients must explicitly `Update`).
-- Filter must compile against the ledger's current declared-metadata schema (`Compile()` with the standard `MaxFilterDepth=100` guard).
+- A non-nil filter must pass `domain.ValidateFilterForTarget`: every condition is valid on the query's target, the tree is at most `MaxFilterDepth=100` deep, and every leaf passes `domain.ValidateFilterLeaf`. That leaf check rejects a missing value or field reference, a builtin field the condition does not serve, and a `has asset` precision above 255 (`domain.MaxHasAssetPrecision`). The compiler applies the same leaf check at every node it dispatches, so a stored filter never fails to compile on its own shape. Nil is the match-all definition; an empty filter object or empty textual expression is invalid.
+- The filter is not compiled at write time. Errors that depend on the ledger's declared-metadata schema, index state, or runtime parameters surface at execution.
 
-A compile error at FSM time is hash-bound as an `AuditFailure`, so a checker run can re-derive the rejection from the audit chain.
+HTTP creation treats an omitted `filter` and explicit JSON `null` as match-all.
+HTTP update treats omission as no change and JSON `null` as an explicit request
+to remove the stored filter. Apply/gRPC represents that removal with a nil
+protobuf filter because protobuf has no separate JSON-null value for this field.
+
+A validation error at FSM time is hash-bound as an `AuditFailure`, so a checker run can re-derive the rejection from the audit chain.
 
 ## Execution
 
-`ExecutePreparedQueryRequest` carries the ledger name, the query name, an execution mode (`LIST` or `AGGREGATE_VOLUMES`), and any runtime parameters. The executor:
+`ExecutePreparedQueryRequest` carries the ledger name, the query name, an execution mode (`LIST` or `AGGREGATE_VOLUMES`), any runtime parameters, and the `LIST` paging inputs (`page_size`, `cursor`, `reverse`). The executor:
 
-1. Opens the fixed main-store snapshot, then reads both the ledger schema and prepared query from that snapshot. This prevents a concurrent query/schema update or deletion from being combined with entities from a newer state. Because the stored definition determines whether an index will be used, the executor briefly reserves the event-history floor before opening the snapshot and releases it immediately when the loaded shape needs no index alignment.
-2. Verifies the requested mode is compatible with the query's `target` (e.g. `AGGREGATE_VOLUMES` only makes sense for accounts).
-3. For `AGGREGATE_VOLUMES` with an **exactly nil filter**, releases the
+1. Rejects `reverse` outside `LIST` with InvalidArgument before any read: an aggregate has no order to invert.
+2. Opens the fixed main-store snapshot, then reads both the ledger schema and prepared query from that snapshot. This prevents a concurrent query/schema update or deletion from being combined with entities from a newer state. Because the stored definition determines whether an index will be used, the executor briefly reserves the event-history floor before opening the snapshot and releases it immediately when the loaded shape needs no index alignment.
+3. Verifies the requested mode is compatible with the query's `target` (e.g. `AGGREGATE_VOLUMES` only makes sense for accounts).
+4. For `AGGREGATE_VOLUMES` with an **exactly nil filter**, releases the
    event-history reservation and calls `AggregateAllVolumes` through the same
    main-store handle. This shares the direct unfiltered aggregation's single
    ledger-wide volume scan. It opens no read-index snapshot and skips filter
    compilation and account enumeration. Metadata-only accounts contribute no
    volume rows; uint256 overflow is propagated as an error.
-4. Otherwise, opens the read-index snapshot and waits for alignment only when
+5. Otherwise, opens the read-index snapshot and waits for alignment only when
    `AlignmentOwed` is true: the filter tree contains a read-index leaf or the
    target is LOGS. It then calls `Compile(indexSnap, kb, pq.GetFilter(), ...)`
    and executes the iterator. `LIST` streams matching entities through the
    standard cursor pipeline; `AGGREGATE_VOLUMES` scans volumes per candidate
    account through `AggregateVolumes`. Empty or parameterized non-nil filters
    do not qualify for the shortcut.
+   A `LIST` with `reverse` compiles through `CompileReverse` instead, which
+   also covers a nil filter with the per-target reverse universe, and pages
+   with `PaginateReverse`. An aligned read trims either direction to the
+   main-store horizon (`NewFilterIterator` / `NewFilterReverseIterator`).
+
+**List order and cursor.** `LIST` returns entities in ascending entity order
+(account address, transaction id, log id) and in descending order with
+`reverse`. The cursor encodes the last entity of the page and no direction, so
+each page of a descending walk must repeat `reverse`. Sending a cursor with the
+other direction resumes from that entity in the new direction.
 
 The standard controller read route establishes a `ReadIndexAndWait` horizon
 before execution. `stale` skips that quorum barrier but retains a fixed local

@@ -1,12 +1,14 @@
 package http
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -35,6 +37,28 @@ func (s *Server) handleUpdatePreparedQuery(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	filterInput := bytes.TrimSpace(body.Filter)
+	if len(filterInput) == 0 {
+		queries, err := s.backend.ListPreparedQueries(r.Context(), ledgerName)
+		if err != nil {
+			handleError(w, r, err)
+
+			return
+		}
+
+		for _, query := range queries {
+			if query.GetName() == queryName {
+				w.WriteHeader(http.StatusNoContent)
+
+				return
+			}
+		}
+
+		handleError(w, r, &domain.ErrPreparedQueryNotFound{Ledger: ledgerName, Name: queryName})
+
+		return
+	}
+
 	// The update request carries only the new filter, not the target: the target
 	// is immutable and lives on the stored prepared query, which this handler
 	// does not read. Per-target filter validity is therefore enforced against the
@@ -53,8 +77,8 @@ func (s *Server) handleUpdatePreparedQuery(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if filter == nil {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("filter is required"))
+	if filter == nil && !bytes.Equal(filterInput, []byte("null")) {
+		writeBadRequest(w, "INVALID_REQUEST", errors.New("filter must contain at least one condition"))
 
 		return
 	}

@@ -69,6 +69,9 @@ builds:
 nightly:
   tag_name: nightly
   publish_release: true
+  # Archive names embed the nightly version, so replace the previous nightly
+  # release instead of accumulating one archive set per commit on it.
+  keep_single_release: true
   version_template: nightly-{{ .ShortCommit }}
 
 release:
@@ -76,6 +79,9 @@ release:
   extra_files:
   - glob: openapi.yml
 
+# Archive names carry the version (e.g. ledger_v3.0.0_linux-amd64.tar.gz) so
+# several releases can be downloaded side by side. `ledgerctl upgrade` matches
+# this layout in cmd/ledgerctl/upgrade/github.go.
 archives:
 - id: ledger-unix
   ids:
@@ -83,14 +89,14 @@ archives:
   - ledgerctl
   formats:
   - tar.gz
-  name_template: "{{ .ProjectName }}_{{ .Os }}-{{ .Arch }}"
+  name_template: "{{ .ProjectName }}_{{ if not .IsNightly }}v{{ end }}{{ .Version }}_{{ .Os }}-{{ .Arch }}"
   wrap_in_directory: true
 - id: ledger-windows
   ids:
   - ledgerctl-windows
   formats:
   - zip
-  name_template: "{{ .ProjectName }}_{{ .Os }}-{{ .Arch }}"
+  name_template: "{{ .ProjectName }}_{{ if not .IsNightly }}v{{ end }}{{ .Version }}_{{ .Os }}-{{ .Arch }}"
   wrap_in_directory: true
 
 checksum:

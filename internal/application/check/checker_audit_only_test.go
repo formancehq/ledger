@@ -37,11 +37,12 @@ const auditOnlyClusterID = "test-cluster"
 // and an unkeyed entry keeps this fixture's expectation empty.
 func newFailureAuditEntry(sequence uint64, orderCount int) (*auditpb.AuditEntry, []*auditpb.AuditItem) {
 	entry := &auditpb.AuditEntry{
-		Sequence:    sequence,
-		Timestamp:   &commonpb.Timestamp{Data: 1700000000 + sequence},
-		ProposalId:  sequence,
-		OrderCount:  uint32(orderCount),
-		HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		Sequence:       sequence,
+		Timestamp:      &commonpb.Timestamp{Data: 1700000000 + sequence},
+		ProposalId:     sequence,
+		OrderCount:     uint32(orderCount),
+		HashVersion:    uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		CallerSnapshot: testCallerSnapshot(),
 		Outcome: &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
 				Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,

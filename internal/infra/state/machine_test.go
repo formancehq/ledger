@@ -21,6 +21,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
+	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -119,6 +120,110 @@ func recoverMachineOnStore(t *testing.T, dataStore *dal.Store) *Machine {
 	return m
 }
 
+func TestPrepareEntriesRejectsInvalidAttributionBeforeBusinessMutation(t *testing.T) {
+	t.Parallel()
+
+	machine, store, _ := newTestMachineWithThreshold(t, 1)
+	installTestClusterPolicy(machine)
+	beforeAuditSequence := machine.State.NextAuditSequenceID
+	beforeSequence := machine.State.NextSequenceID
+	beforeLedgerID := machine.State.NextLedgerID
+	beforeTimestamp := machine.State.LastAppliedTimestamp
+	beforeGeneration := machine.Registry.Cache.CurrentGeneration()
+	beforeBaseIndex := machine.Registry.Cache.BaseIndex
+
+	proposal := makeProposal(42, &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "must-not-exist",
+				Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+					CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+				},
+			},
+		},
+	})
+	proposal.CallerSnapshot = &commonpb.CallerSnapshot{}
+
+	prepared, err := machine.PrepareEntries(context.Background(), store, makeEntry(t, 1, proposal))
+	require.NoError(t, err)
+	require.Len(t, prepared.Result.Results, 1)
+	var invalid *domain.ErrInvalidCallerAttribution
+	require.ErrorAs(t, prepared.Result.Results[0].Error, &invalid)
+	require.Equal(t, uint64(1), prepared.Result.Results[0].AppliedIndex)
+	require.NoError(t, machine.CommitPreparedBatch(context.Background(), prepared))
+
+	require.Equal(t, beforeAuditSequence, machine.State.NextAuditSequenceID)
+	require.Equal(t, beforeSequence, machine.State.NextSequenceID)
+	require.Equal(t, beforeLedgerID, machine.State.NextLedgerID)
+	require.Equal(t, beforeTimestamp, machine.State.LastAppliedTimestamp)
+	require.Equal(t, beforeGeneration, machine.Registry.Cache.CurrentGeneration())
+	require.Equal(t, beforeBaseIndex, machine.Registry.Cache.BaseIndex)
+	require.Empty(t, listAuditEntries(t, store, 0))
+	require.Equal(t, uint64(1), machine.LastAppliedIndex(), "Raft progress must advance past the rejected committed entry")
+}
+
+func TestPrepareEntriesRejectsMissingAttributionBeforeBusinessMutation(t *testing.T) {
+	t.Parallel()
+
+	machine, store, _ := newTestMachineWithThreshold(t, 1)
+	installTestClusterPolicy(machine)
+	beforeAuditSequence := machine.State.NextAuditSequenceID
+	beforeSequence := machine.State.NextSequenceID
+	beforeLedgerID := machine.State.NextLedgerID
+
+	proposal := makeProposal(42, &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "must-not-exist",
+				Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+					CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+				},
+			},
+		},
+	})
+	proposal.CallerSnapshot = nil
+	sealProposal(proposal)
+	entryData, err := proto.Marshal(proposal)
+	require.NoError(t, err)
+	entry := &raftpb.Entry{
+		Index: new(uint64(1)),
+		Term:  new(uint64(1)),
+		Type:  new(raftpb.EntryNormal),
+		Data:  entryData,
+	}
+
+	prepared, err := machine.PrepareEntries(context.Background(), store, entry)
+	require.NoError(t, err)
+	require.Len(t, prepared.Result.Results, 1)
+	var invalid *domain.ErrInvalidCallerAttribution
+	require.ErrorAs(t, prepared.Result.Results[0].Error, &invalid)
+	require.Equal(t, uint64(1), prepared.Result.Results[0].AppliedIndex)
+	require.NoError(t, machine.CommitPreparedBatch(context.Background(), prepared))
+
+	require.Equal(t, beforeAuditSequence, machine.State.NextAuditSequenceID)
+	require.Equal(t, beforeSequence, machine.State.NextSequenceID)
+	require.Equal(t, beforeLedgerID, machine.State.NextLedgerID)
+	require.Empty(t, listAuditEntries(t, store, 0))
+	require.Equal(t, uint64(1), machine.LastAppliedIndex(), "Raft progress must advance past the rejected committed entry")
+}
+
+func TestPrepareEntriesRejectsInvalidAttributionWithoutBusinessPayload(t *testing.T) {
+	t.Parallel()
+
+	machine, store, _ := newTestMachineWithThreshold(t, 1)
+	installTestClusterPolicy(machine)
+	proposal := makeProposal(42)
+	proposal.CallerSnapshot = &commonpb.CallerSnapshot{}
+
+	prepared, err := machine.PrepareEntries(context.Background(), store, makeEntry(t, 1, proposal))
+	require.NoError(t, err)
+	require.Len(t, prepared.Result.Results, 1)
+
+	var invalid *domain.ErrInvalidCallerAttribution
+	require.ErrorAs(t, prepared.Result.Results[0].Error, &invalid)
+	require.Equal(t, uint64(1), prepared.Result.Results[0].AppliedIndex)
+}
+
 // makeProposal builds a Proposal protobuf with the given orders.
 // It automatically generates a ExecutionPlan that declares every key the FSM
 // will read during apply (simulating what the admission layer does):
@@ -127,9 +232,10 @@ func recoverMachineOnStore(t *testing.T, dataStore *dal.Store) *Machine {
 //     payload) so the Plan admits reads on them.
 func makeProposal(id uint64, orders ...*raftcmdpb.Order) *raftcmdpb.Proposal {
 	return &raftcmdpb.Proposal{
-		Id:     id,
-		Orders: orders,
-		Date:   &commonpb.Timestamp{Data: 1700000000 + id},
+		Id:             id,
+		Orders:         orders,
+		Date:           &commonpb.Timestamp{Data: 1700000000 + id},
+		CallerSnapshot: commands.SystemCallerSnapshot(commands.ComponentClusterPolicy),
 		ExecutionPlan: &raftcmdpb.ExecutionPlan{
 			Attributes: append(buildVolumePreloads(orders), buildOrderDeclarations(orders)...),
 		},
@@ -182,14 +288,6 @@ func declareTestPlan(id attributes.U128, attrCode byte) *raftcmdpb.AttributeCove
 		Id:       &raftcmdpb.AttributeID{Id: id[:]},
 		AttrCode: uint32(attrCode),
 	}
-}
-
-func declareCanonicalTestPlan(canonical []byte, attrCode byte) *raftcmdpb.AttributeCoverage {
-	id, _ := attributes.MakeKey(canonical)
-	plan := declareTestPlan(id, attrCode)
-	plan.CanonicalKey = canonical
-
-	return plan
 }
 
 // preloadTestPlan wraps an AttributeValue payload into a seeded
@@ -299,16 +397,17 @@ func buildOrderDeclarations(orders []*raftcmdpb.Order) []*raftcmdpb.AttributeCov
 	var declared []*raftcmdpb.AttributeCoverage
 
 	for name := range ledgers {
-		ledgerCanonical := (domain.LedgerKey{Name: name}).Bytes()
+		ledgerKeyID, _ := attributes.MakeKey(domain.LedgerKey{Name: name}.Bytes())
 		declared = append(declared,
-			declareCanonicalTestPlan(ledgerCanonical, dal.SubAttrLedger),
-			declareCanonicalTestPlan(ledgerCanonical, dal.SubAttrBoundary),
+			declareTestPlan(ledgerKeyID, dal.SubAttrLedger),
+			declareTestPlan(ledgerKeyID, dal.SubAttrBoundary),
 		)
 	}
 
 	for tk := range txs {
 		txKey := domain.TransactionKey{LedgerName: tk.ledgerName, ID: tk.id}
-		declared = append(declared, declareCanonicalTestPlan(txKey.Bytes(), dal.SubAttrTransaction))
+		txID, _ := attributes.MakeKey(txKey.Bytes())
+		declared = append(declared, declareTestPlan(txID, dal.SubAttrTransaction))
 	}
 
 	for k := range accMeta {
@@ -316,7 +415,8 @@ func buildOrderDeclarations(orders []*raftcmdpb.Order) []*raftcmdpb.AttributeCov
 			AccountKey: domain.AccountKey{LedgerName: k.ledgerName, Account: k.account},
 			Key:        k.key,
 		}.Bytes()
-		declared = append(declared, declareCanonicalTestPlan(mkBytes, dal.SubAttrMetadata))
+		mkID, _ := attributes.MakeKey(mkBytes)
+		declared = append(declared, declareTestPlan(mkID, dal.SubAttrMetadata))
 	}
 
 	return declared
@@ -373,10 +473,8 @@ func buildVolumePreloads(orders []*raftcmdpb.Order) []*raftcmdpb.AttributeCovera
 				id, tag := attributes.MakeKey(canonicalKey.Bytes())
 
 				attrID := &raftcmdpb.AttributeID{Id: id[:], Tag: tag}
-				plan := preloadTestPlan(attrID, dal.SubAttrVolume,
-					rawPreloadNoT(dal.SubAttrVolume, &raftcmdpb.VolumePair{Input: zero, Output: zero}))
-				plan.CanonicalKey = canonicalKey.Bytes()
-				plans = append(plans, plan)
+				plans = append(plans, preloadTestPlan(attrID, dal.SubAttrVolume,
+					rawPreloadNoT(dal.SubAttrVolume, &raftcmdpb.VolumePair{Input: zero, Output: zero})))
 			}
 		}
 	}
@@ -391,6 +489,9 @@ func buildVolumePreloads(orders []*raftcmdpb.Order) []*raftcmdpb.AttributeCovera
 // otherwise hit *ErrCoverageMiss on the first cache read.
 func makeEntry(t *testing.T, index uint64, proposal *raftcmdpb.Proposal) *raftpb.Entry {
 	t.Helper()
+	if proposal.GetCallerSnapshot() == nil {
+		proposal.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentClusterPolicy)
+	}
 
 	sealProposal(proposal)
 

@@ -25,6 +25,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/application/check"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/attribution"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
@@ -236,7 +237,12 @@ func (impl *BucketServiceServerImpl) adoptForwardedSnapshotIfTrusted(ctx context
 			"forwarded caller snapshot on a non-cluster-internal connection")
 	}
 
-	return internalauth.WithForwardedSnapshot(ctx, fc), nil
+	capability, err := attribution.New(fc)
+	if err != nil {
+		return ctx, status.Error(codes.Internal, err.Error())
+	}
+
+	return internalauth.WithForwardedAttribution(ctx, capability), nil
 }
 
 func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *servicepb.GetTransactionRequest) (*servicepb.GetTransactionResponse, error) {
@@ -831,8 +837,8 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 	}
 
 	// The cursor MUST be the ledger-local LedgerLog.Id — DefaultController.ListLogs
-	// compiles afterSequence into a `LogId > afterSequence` filter against the
-	// ledger-local id. Emitting the global raft sequence (Log.Sequence) would
+	// seeks the compiled log iterator, keyed by ledger-local id, past
+	// afterSequence. Emitting the global raft sequence (Log.Sequence) would
 	// skip valid ledger logs on the next page as soon as the two diverge
 	// (after ledger creation or with >1 ledger).
 	//

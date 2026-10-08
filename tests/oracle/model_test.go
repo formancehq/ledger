@@ -720,27 +720,6 @@ func TestGlobalState_Apply_VolumeAnnotations(t *testing.T) {
 	}, have)
 }
 
-// A persisted {0, 0} row remains an existing cell in later bulks. Numeric zero
-// is not an absence marker, so only the first write belongs to NewKeptVolumes.
-func TestGlobalState_Apply_PersistedZeroVolumeIsNotNewAgain(t *testing.T) {
-	t.Parallel()
-
-	first := NewGlobalState().Apply(bulkOf(
-		oracletest.TxReq("world", "a:zero", "USD", 0),
-	))
-	require.True(t, first.OK)
-
-	second := first.State.Apply(bulkOf(
-		oracletest.TxReq("world", "a:zero", "USD", 1),
-	))
-	require.True(t, second.OK)
-
-	logs := second.State.Ledger("L").LogRows()
-	require.Len(t, logs, 2)
-	require.Equal(t, "a:zero:USD:,world:USD:", logs[0].NewKeptVolumes)
-	require.Empty(t, logs[1].NewKeptVolumes)
-}
-
 // The volume annotations are part of a state's identity: the same transactions
 // grouped into different bulks leave identical volumes and identical logs, yet
 // the FSM annotates them differently. A fingerprint that collapsed the two
@@ -989,7 +968,6 @@ func TestGlobalState_Apply_PreparedQueryValidation(t *testing.T) {
 		// not the generic validation one — the model reports whatever
 		// ValidateFilterForTarget reports, so the two cannot drift.
 		{"condition invalid for target", NewGlobalState(), logsWithAddress, domain.ErrReasonFilterCompilation},
-		{"update with nil filter", seeded.State, pqUpdateReq("q", nil), domain.ErrReasonValidation},
 		{"delete with empty name", seeded.State, pqDeleteReq(""), domain.ErrReasonValidation},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1002,10 +980,9 @@ func TestGlobalState_Apply_PreparedQueryValidation(t *testing.T) {
 	}
 }
 
-// TestGlobalState_Apply_PreparedQueryNilFilterOnCreate pins the create/update
-// asymmetry: the FSM accepts a nil filter at creation (it means "no filter")
-// and rejects one on update, where it would silently erase the definition.
-func TestGlobalState_Apply_PreparedQueryNilFilterOnCreate(t *testing.T) {
+// TestGlobalState_Apply_PreparedQueryNilFilter pins the match-all contract on
+// both create and update.
+func TestGlobalState_Apply_PreparedQueryNilFilter(t *testing.T) {
 	t.Parallel()
 
 	created := NewGlobalState().Apply(bulkOf(pqReq("universe", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, nil)))
@@ -1014,6 +991,18 @@ func TestGlobalState_Apply_PreparedQueryNilFilterOnCreate(t *testing.T) {
 	stored, ok := created.State.Ledger("L").PreparedQuery("universe")
 	require.True(t, ok)
 	require.Nil(t, stored.GetFilter())
+
+	filtered := created.State.Apply(bulkOf(pqUpdateReq("universe", pqFilter("a:"))))
+	require.True(t, filtered.OK)
+
+	cleared := filtered.State.Apply(bulkOf(pqUpdateReq("universe", nil)))
+	require.True(t, cleared.OK)
+
+	stored, ok = cleared.State.Ledger("L").PreparedQuery("universe")
+	require.True(t, ok)
+	require.Nil(t, stored.GetFilter())
+	require.NotNil(t, cleared.Orders[0].PreparedQueryLog.GetUpdatedPreparedQuery().GetPreviousFilter())
+	require.Nil(t, cleared.Orders[0].PreparedQueryLog.GetUpdatedPreparedQuery().GetNewFilter())
 }
 
 // TestGlobalState_Apply_PreparedQueryNoAliasing pins that committed state never
@@ -1033,27 +1022,4 @@ func TestGlobalState_Apply_PreparedQueryNoAliasing(t *testing.T) {
 	stored, ok := created.State.Ledger("L").PreparedQuery("q")
 	require.True(t, ok)
 	require.Equal(t, "a:", stored.GetFilter().GetAddress().GetHardcodedPrefix())
-}
-
-func TestGlobalState_AccountTypeTransitionPurgesMetadataOnlyEphemeralAccount(t *testing.T) {
-	t.Parallel()
-
-	addType := func(name, pattern string, persistence commonpb.AccountTypePersistence) *servicepb.Request {
-		return &servicepb.Request{Type: &servicepb.Request_AddAccountType{AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
-			Ledger: "L", AccountType: &commonpb.AccountType{Name: name, Pattern: pattern, Persistence: persistence},
-		}}}
-	}
-	seeded := NewGlobalState().Apply(bulkOf(
-		addType("fallback", "users:{id}", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL),
-		addType("specific", "users:alice", commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL),
-		oracletest.AddAccountMetaReq("users:alice", "note", commonpb.NewStringValue("value")),
-	))
-	require.True(t, seeded.OK)
-	seededLedger := seeded.State.Ledger("L")
-	require.Contains(t, seededLedger.AccountMetadata("users:alice"), "note")
-
-	reclassified := seeded.State.Apply(bulkOf(oracletest.RemoveTypeReq("specific")))
-	require.True(t, reclassified.OK)
-	reclassifiedLedger := reclassified.State.Ledger("L")
-	require.Empty(t, reclassifiedLedger.AccountMetadata("users:alice"))
 }

@@ -400,6 +400,7 @@ type CreateLedgerRequestReader interface {
 	GetMirrorSource() commonpb.MirrorSourceConfigReader
 	GetAccountTypes() CreateLedgerRequest_AccountTypesMapReader
 	GetDefaultEnforcementMode() commonpb.ChartEnforcementMode
+	GetMetadata() CreateLedgerRequest_MetadataMapReader
 	Mutate() *CreateLedgerRequest
 }
 
@@ -431,6 +432,10 @@ func (r *createLedgerRequestReadonly) GetAccountTypes() CreateLedgerRequest_Acco
 
 func (r *createLedgerRequestReadonly) GetDefaultEnforcementMode() commonpb.ChartEnforcementMode {
 	return (*CreateLedgerRequest)(r).GetDefaultEnforcementMode()
+}
+
+func (r *createLedgerRequestReadonly) GetMetadata() CreateLedgerRequest_MetadataMapReader {
+	return createLedgerRequest_metadataMapReadonly((*CreateLedgerRequest)(r).GetMetadata())
 }
 
 func (r *createLedgerRequestReadonly) Mutate() *CreateLedgerRequest {
@@ -509,6 +514,37 @@ func (m createLedgerRequest_accountTypesMapReadonly) Get(k string) (commonpb.Acc
 func (m createLedgerRequest_accountTypesMapReadonly) Range(yield func(string, commonpb.AccountTypeReader) bool) {
 	for k, v := range m {
 		var r commonpb.AccountTypeReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
+}
+
+// CreateLedgerRequest_MetadataMapReader provides read-only access to CreateLedgerRequest.Metadata.
+type CreateLedgerRequest_MetadataMapReader interface {
+	Len() int
+	Get(k string) (commonpb.MetadataValueReader, bool)
+	Range(yield func(string, commonpb.MetadataValueReader) bool)
+}
+
+type createLedgerRequest_metadataMapReadonly map[string]*commonpb.MetadataValue
+
+func (m createLedgerRequest_metadataMapReadonly) Len() int { return len(m) }
+
+func (m createLedgerRequest_metadataMapReadonly) Get(k string) (commonpb.MetadataValueReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m createLedgerRequest_metadataMapReadonly) Range(yield func(string, commonpb.MetadataValueReader) bool) {
+	for k, v := range m {
+		var r commonpb.MetadataValueReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -8055,6 +8091,7 @@ type ExecutePreparedQueryRequestReader interface {
 	GetPageSize() uint32
 	GetCursor() string
 	GetMode() commonpb.QueryMode
+	GetReverse() bool
 	Mutate() *ExecutePreparedQueryRequest
 }
 
@@ -8082,6 +8119,10 @@ func (r *executePreparedQueryRequestReadonly) GetCursor() string {
 
 func (r *executePreparedQueryRequestReadonly) GetMode() commonpb.QueryMode {
 	return (*ExecutePreparedQueryRequest)(r).GetMode()
+}
+
+func (r *executePreparedQueryRequestReadonly) GetReverse() bool {
+	return (*ExecutePreparedQueryRequest)(r).GetReverse()
 }
 
 func (r *executePreparedQueryRequestReadonly) Mutate() *ExecutePreparedQueryRequest {

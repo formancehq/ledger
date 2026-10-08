@@ -164,6 +164,14 @@ linters:
           pterm.RawOutput is set (see EN-1781). Use cmdutil.StartSpinner, which creates no
           pterm spinner when output is non-interactive. The only allowed direct use is
           cmd/ledgerctl/cmdutil/spinner.go.
+      # pterm's ProgressbarPrinter.Start spawns an elapsed-time redraw goroutine
+      # that reads Title, Total and Current without synchronisation, so every
+      # update from the caller races with it.
+      - pattern: '\bpterm\.DefaultProgressbar\b'
+        msg: |
+          pterm.DefaultProgressbar spawns a redraw goroutine that races with every update
+          to the bar. Use cmdutil.StartProgressBar, which never runs a goroutine. The only
+          allowed direct use is cmd/ledgerctl/cmdutil/progressbar.go.
   exclusions:
     rules:
     # I2 exceptions for OpenWriteSession / NewWriteSessionFromDB.
@@ -245,6 +253,10 @@ linters:
     # drives the raw printer as the reference implementation in the
     # output-equivalence test.
     - path: cmd/ledgerctl/cmdutil/spinner(_test)?\.go$
+      linters: [forbidigo]
+    # progressbar.go is the sanctioned cmdutil.StartProgressBar wrapper — the
+    # one place allowed to touch pterm.DefaultProgressbar.
+    - path: cmd/ledgerctl/cmdutil/progressbar\.go$
       linters: [forbidigo]
     # Tests use OpenWriteSession to seed data; the structural guarantee is on
     # production paths.

@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"os/signal"
 	"runtime"
 	"runtime/debug"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -33,6 +35,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/bootstrap"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/flightrecorder"
+	ledgermetrics "github.com/formancehq/ledger/v3/internal/infra/monitoring/metrics"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/pyroscope"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
@@ -98,7 +101,10 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 	otlp.AddFlags(runCmd.Flags())
 	otlptraces.AddFlags(runCmd.Flags())
 	otlppyroscopetraces.AddFlags(runCmd.Flags())
-	otlpmetrics.AddFlags(runCmd.Flags())
+	// Namespace the ledger's own metrics (--otel-metrics-prefix); go-libs
+	// leaves the global provider, and so the Go runtime, host, HTTP and
+	// gRPC semantic-convention metrics, unprefixed.
+	otlpmetrics.AddFlags(runCmd.Flags(), otlpmetrics.WithDefaultPrefix(ledgermetrics.DefaultPrefix))
 	addOtlpLogsFlags(runCmd.Flags())
 
 	// Add Pyroscope profiling flags
@@ -162,16 +168,6 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 
 	// Admission metrics (disabled by default to avoid contention under high concurrency)
 	runCmd.Flags().Bool("admission-metrics", false, "Enable admission metrics (histograms/counters in the admission hot path)")
-
-	// Naming convention for metrics emitted by the server. "otel" preserves
-	// dot-notation names (the OpenTelemetry default); "prom" prefixes every
-	// metric the server emits with "ledger_" and converts dots to underscores
-	// so the names are unambiguous after an OTLP→Prometheus collector that
-	// sanitizes "." into "_". OpenTelemetry semantic-convention
-	// auto-instrumentation (go.*, process.*, system.*, http.*) targets the
-	// global MeterProvider, bypasses the ledger factory, and is therefore
-	// never touched by this flag.
-	runCmd.Flags().String("metrics-naming", "otel", "Application metrics naming convention (otel|prom)")
 
 	// Response signing key for Ed25519 response signatures
 	runCmd.Flags().String("response-signing-key", "", "Path to Ed25519 seed file for response signing (empty = disabled)")
@@ -381,8 +377,31 @@ func runServer(cmd *cobra.Command, bindings network.Bindings) error {
 		}
 	}()
 
+	// Register before startup: service readiness precedes Fx's signal handler.
+	// Queue shutdown through Fx without canceling an in-flight OnStart hook.
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(signals)
+	done := make(chan struct{})
+	defer close(done)
+	opts = append(opts, terminationSignals(signals, done))
+
 	// Run the application (handles startup, signal handling, and graceful shutdown)
 	return service.NewWithLogger(logger, opts...).Run(cmd)
+}
+
+func terminationSignals(signals <-chan os.Signal, done <-chan struct{}) fx.Option {
+	return fx.Invoke(func(shutdowner fx.Shutdowner, logger logging.Logger) {
+		go func() {
+			select {
+			case <-signals:
+				if err := shutdowner.Shutdown(); err != nil {
+					logger.Errorf("Failed to request application shutdown: %v", err)
+				}
+			case <-done:
+			}
+		}()
+	})
 }
 
 func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, error) {
@@ -573,9 +592,6 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 
 	// Admission metrics
 	cfg.AdmissionMetrics = getBool("admission-metrics", false)
-
-	// Metrics naming convention
-	cfg.MetricsNaming = getString("metrics-naming", "otel")
 
 	// Response signing key
 	cfg.ResponseSigningKeyFile = getString("response-signing-key", "")

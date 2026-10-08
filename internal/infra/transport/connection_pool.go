@@ -17,6 +17,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/encoding/gzip"
+	"google.golang.org/grpc/keepalive"
 
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 )
@@ -114,6 +115,11 @@ func dialOptions(creds credentials.TransportCredentials, cfg PoolConfig) []grpc.
 	opts := []grpc.DialOption{
 		grpcprotocol.ClientOption(),
 		grpc.WithTransportCredentials(creds),
+		grpc.WithKeepaliveParams(keepalive.ClientParameters{
+			Time:                10 * time.Second,
+			Timeout:             5 * time.Second,
+			PermitWithoutStream: true,
+		}),
 		// NOTE: BackoffMaxDelay must stay below the election timeout.
 		grpc.WithConnectParams(grpc.ConnectParams{
 			Backoff: backoff.Config{
@@ -418,7 +424,8 @@ func (p *ConnectionPool) GetPeerAddress(peerID uint64) string {
 	return entry.addr
 }
 
-// PeerIDs returns the IDs of all known peers.
+// PeerIDs returns the IDs of all known peers. Pool membership is diagnostic;
+// committed Raft membership is authoritative for health decisions.
 func (p *ConnectionPool) PeerIDs() []uint64 {
 	p.mu.Lock()
 	defer p.mu.Unlock()

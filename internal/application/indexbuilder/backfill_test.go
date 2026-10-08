@@ -262,7 +262,7 @@ func TestIndexLogEntryUsesReplayAuditSyncForExcludedAccounts(t *testing.T) {
 	)))
 }
 
-func TestIndexPostingAddressMappingsPreservesPurgedAccountHistory(t *testing.T) {
+func TestIndexPostingAddressMappingsSkipsExcludedAccounts(t *testing.T) {
 	t.Parallel()
 
 	store, err := readstore.New(t.TempDir(), noopLogger{}, readstore.DefaultConfig())
@@ -291,25 +291,22 @@ func TestIndexPostingAddressMappingsPreservesPurgedAccountHistory(t *testing.T) 
 		{Account: "purged:dest", Asset: "USD"}:      {},
 		{Account: "shared:account", Asset: "USD"}:   {},
 	}
-	historyExcludedVolumes := map[domain.AccountAssetKey]struct{}{
-		{Account: "transient:source", Asset: "USD"}: {},
-	}
 
 	require.NoError(t, b.indexPostingAddressMappings(
 		b.kb, cfg, "test", 42, "transient:source", "kept:dest", "USD", "",
-		true, true, true, excludedVolumes, historyExcludedVolumes,
+		true, true, true, excludedVolumes,
 	))
 	require.NoError(t, b.indexPostingAddressMappings(
 		b.kb, cfg, "test", 43, "kept:source", "purged:dest", "USD", "",
-		true, true, true, excludedVolumes, historyExcludedVolumes,
+		true, true, true, excludedVolumes,
 	))
 	require.NoError(t, b.indexPostingAddressMappings(
 		b.kb, cfg, "test", 44, "shared:account", "kept:dest", "USD", "",
-		true, true, true, excludedVolumes, historyExcludedVolumes,
+		true, true, true, excludedVolumes,
 	))
 	require.NoError(t, b.indexPostingAddressMappings(
 		b.kb, cfg, "test", 45, "shared:account", "kept:dest", "EUR", "",
-		true, true, true, excludedVolumes, historyExcludedVolumes,
+		true, true, true, excludedVolumes,
 	))
 	require.NoError(t, b.wb.Flush())
 
@@ -331,19 +328,18 @@ func TestIndexPostingAddressMappingsPreservesPurgedAccountHistory(t *testing.T) 
 	assert.True(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
 		dal.NewKeyBuilder(), readstore.PrefixSourceAccountTx, "test", "kept:source", 43,
 	)))
-	assert.True(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
+	assert.False(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
 		dal.NewKeyBuilder(), readstore.PrefixAccountTx, "test", "purged:dest", 43,
 	)))
-	assert.True(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
+	assert.False(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
 		dal.NewKeyBuilder(), readstore.PrefixDestinationAccountTx, "test", "purged:dest", 43,
 	)))
 
-	// Multi-asset: both the purged USD cell and kept EUR cell remain in
-	// immutable transaction history.
-	assert.True(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
+	// Multi-asset: shared:account USD (tx 44) is excluded, EUR (tx 45) is not.
+	assert.False(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
 		dal.NewKeyBuilder(), readstore.PrefixAccountTx, "test", "shared:account", 44,
 	)))
-	assert.True(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
+	assert.False(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
 		dal.NewKeyBuilder(), readstore.PrefixSourceAccountTx, "test", "shared:account", 44,
 	)))
 	assert.True(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
@@ -414,7 +410,7 @@ func TestIndexPostingAddressMappingsWritesAccountByAsset(t *testing.T) {
 	// source=accounts:alice destination=accounts:bob asset="USD/2".
 	require.NoError(t, b.indexPostingAddressMappings(
 		b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2", "",
-		false, false, false, nil, nil,
+		false, false, false, nil,
 	))
 	require.NoError(t, b.wb.Flush())
 
@@ -448,11 +444,11 @@ func TestIndexPostingAddressMappingsAccountByAssetDedup(t *testing.T) {
 	// Feed the same posting twice within the same batch.
 	require.NoError(t, b.indexPostingAddressMappings(
 		b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2", "",
-		false, false, false, nil, nil,
+		false, false, false, nil,
 	))
 	require.NoError(t, b.indexPostingAddressMappings(
 		b.kb, cfg, "test", 2, "accounts:alice", "accounts:bob", "USD/2", "",
-		false, false, false, nil, nil,
+		false, false, false, nil,
 	))
 	require.NoError(t, b.wb.Flush())
 
@@ -496,7 +492,7 @@ func TestIndexPostingAddressMappingsAccountByAssetSurvivesInBatchDelete(t *testi
 		b.wb.SetEventSequence(1)
 		require.NoError(t, b.indexPostingAddressMappings(
 			b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2", "",
-			false, false, false, nil, nil,
+			false, false, false, nil,
 		))
 		require.NoError(t, b.wb.Flush())
 		require.Len(t, scanAccountByAsset(t, store, "test", "USD", 2), 2)
@@ -511,7 +507,7 @@ func TestIndexPostingAddressMappingsAccountByAssetSurvivesInBatchDelete(t *testi
 		b.markLedgerDeletedInBatch("test")
 		require.NoError(t, b.indexPostingAddressMappings(
 			b.kb, cfg, "test", 2, "accounts:alice", "accounts:carol", "USD/2", "",
-			false, false, false, nil, nil,
+			false, false, false, nil,
 		))
 		require.NoError(t, b.wb.Flush())
 
@@ -547,7 +543,7 @@ func TestIndexPostingAddressMappingsAccountByAssetSurvivesInBatchDelete(t *testi
 		// Old generation writes (queued, uncommitted) populate seenAcctAsset ...
 		require.NoError(t, b.indexPostingAddressMappings(
 			b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2", "",
-			false, false, false, nil, nil,
+			false, false, false, nil,
 		))
 		// ... the ledger is deleted in the same batch (range delete queued,
 		// seenAcctAsset invalidated) ...
@@ -557,7 +553,7 @@ func TestIndexPostingAddressMappingsAccountByAssetSurvivesInBatchDelete(t *testi
 		// seenAcctAsset on delete, this Put would be skipped and lost.
 		require.NoError(t, b.indexPostingAddressMappings(
 			b.kb, cfg, "test", 2, "accounts:alice", "accounts:carol", "USD/2", "",
-			false, false, false, nil, nil,
+			false, false, false, nil,
 		))
 		require.NoError(t, b.wb.Flush())
 
@@ -595,7 +591,7 @@ func TestIndexPostingAddressMappingsAccountByAssetExcludesTransient(t *testing.T
 
 	require.NoError(t, b.indexPostingAddressMappings(
 		b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2", "",
-		false, false, false, excludedVolumes, excludedVolumes,
+		false, false, false, excludedVolumes,
 	))
 	require.NoError(t, b.wb.Flush())
 
@@ -628,7 +624,7 @@ func TestIndexPostingAddressMappingsAccountByAssetDisabled(t *testing.T) {
 
 	require.NoError(t, b.indexPostingAddressMappings(
 		b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2", "",
-		false, false, false, nil, nil,
+		false, false, false, nil,
 	))
 	require.NoError(t, b.wb.Flush())
 
@@ -1083,7 +1079,7 @@ func TestIndexCreatedThenOverwrittenTxMetadataSameBatch(t *testing.T) {
 			Metadata: map[string]*commonpb.MetadataValue{key: v1},
 		},
 	}
-	require.NoError(t, b.indexCreatedTransaction(kb, cfg, ledger, ct, nil, nil))
+	require.NoError(t, b.indexCreatedTransaction(kb, cfg, ledger, ct, nil))
 
 	// 2. Same batch: overwrite the same key to v2 before the batch commits.
 	b.wb.SetEventSequence(2)
@@ -1130,7 +1126,7 @@ func TestNewTransactionMetadataUsesKnownAbsentInsert(t *testing.T) {
 						Id:       11,
 						Metadata: map[string]*commonpb.MetadataValue{key: value},
 					},
-				}, nil, nil)
+				}, nil)
 			},
 		},
 		{
@@ -1142,7 +1138,7 @@ func TestNewTransactionMetadataUsesKnownAbsentInsert(t *testing.T) {
 						Id:       12,
 						Metadata: map[string]*commonpb.MetadataValue{key: value},
 					},
-				}, nil, nil)
+				}, nil)
 			},
 		},
 	}

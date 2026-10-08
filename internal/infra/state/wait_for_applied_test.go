@@ -82,6 +82,51 @@ func TestWaitForApplied_LatePublish(t *testing.T) {
 	}
 }
 
+// Cancellation must wake an idle FSM without relying on a later publish.
+func TestWaitForApplied_Cancellation(t *testing.T) {
+	t.Parallel()
+
+	fsm, _, _ := newTestMachine(t)
+	waiting := make(chan struct{})
+	fsm.appliedCond = sync.NewCond(&notifyingLocker{
+		Locker:  &fsm.appliedMu,
+		waiting: waiting,
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() { done <- fsm.WaitForApplied(ctx, 7) }()
+
+	select {
+	case <-waiting:
+	case <-time.After(time.Second):
+		t.Fatal("WaitForApplied did not enter Cond.Wait")
+	}
+
+	cancel()
+
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(time.Second):
+		// Release the waiter even when the cancellation wakeup is broken.
+		fsm.publishApplied(7)
+		t.Fatal("WaitForApplied hung after cancellation without a publish")
+	}
+}
+
+func TestWaitForApplied_AlreadyCancelled(t *testing.T) {
+	t.Parallel()
+
+	fsm, _, _ := newTestMachine(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	require.ErrorIs(t, fsm.WaitForApplied(ctx, 7), context.Canceled)
+}
+
 // TestWaitForApplied_NoLostWakeupUnderContention: many concurrent waiters
 // vs many publishes. Every published index N must wake every waiter whose
 // target <= N. The test runs 200 publishes paired with 200 waiters with

@@ -149,16 +149,16 @@ regression fail; this falsifies a vacuous test that never reached the delta path
 | Cross-lifecycle restore tests | `tests/e2e/cluster/restore*_test.go` |
 | Model-driven restore cycles | `tests/antithesis/run_model_test.sh --restore` |
 
-## Ephemeral account purge
-
-An account-wide ephemeral purge is rebuilt from
-`LedgerLog.purged_accounts`. A checkpoint may seed volume and metadata rows for
-the address; folding a later non-empty delta range-deletes both account-owned
-attribute prefixes. Later funding logs may then create a fresh incarnation.
-Transaction history is preserved. The live FSM and rebuild writer consume the
-same committed signal, while checker comparison independently rejects surviving
-current volume or metadata rows.
-
 Also read [Audit-Bound vs Technical State](../../audit-vs-technical-state.md)
 before deciding whether a value is authoritative, checker-verified, rebuildable,
 or deliberately excluded from cross-cluster restore.
+
+## Initial ledger metadata
+
+Initial ledger metadata is rebuilt from post-checkpoint CreatedLedgerLog.metadata
+in the same rebuild batch as ledger info and boundaries. Later save/delete and
+ledger-purge logs retain their ordered effects. The canonical metadata keyspace
+is independently checked against successful chain-verified orders by
+ledgerMetadataVerifier. The normal/mirror cross-lifecycle regression is
+TestBackup_CreateLedgerMetadataRestoreParity; it compares a real checkpoint plus
+a nonempty creation delta with live entity reads and requires a healthy checker.

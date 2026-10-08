@@ -265,7 +265,7 @@ func buildTestLog() *commonpb.Log {
 										RevertedAt: &commonpb.Timestamp{},
 										PostCommitVolumes: &commonpb.PostCommitVolumes{VolumesByAccount: map[string]*commonpb.VolumesByAssets{
 											"users:001": {Volumes: []*commonpb.VolumeEntry{
-												{Asset: "USD", Volumes: &commonpb.Volumes{Input: "100", Output: "0"}},
+												{Asset: "USD", Volumes: &commonpb.Volumes{Input: commonpb.MustBigUintFromDecimal("100"), Output: commonpb.MustBigUintFromDecimal("0")}},
 											}},
 										}},
 									},
@@ -299,12 +299,10 @@ func TestResetLogForReuse_ClearsVolumeAnnotationLists(t *testing.T) {
 	ll.PurgedVolumes = []*commonpb.TouchedVolume{{Account: "t-20:99", Asset: "EUR/2"}}
 	ll.EphemeralVolumes = []*commonpb.TouchedVolume{{Account: "e:1", Asset: "USD"}}
 	ll.NewKeptVolumes = []*commonpb.TouchedVolume{{Account: "a:1", Asset: "USD"}}
-	ll.PurgedAccounts = []string{"e:1"}
 
 	resetLogForReuse(log)
 
 	assert.Empty(t, ll.GetPurgedVolumes())
 	assert.Empty(t, ll.GetEphemeralVolumes())
 	assert.Empty(t, ll.GetNewKeptVolumes())
-	assert.Empty(t, ll.GetPurgedAccounts())
 }

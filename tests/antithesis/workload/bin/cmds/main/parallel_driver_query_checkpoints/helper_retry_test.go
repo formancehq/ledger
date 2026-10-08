@@ -249,6 +249,7 @@ func checkpointRetryServer(t *testing.T) (context.Context, servicepb.BucketServi
 		return err == nil && state.GetLeader() != 0
 	}, 5*time.Second, 10*time.Millisecond)
 	backend := servicepb.NewBucketServiceClient(conn)
+	testserver.WaitForWriteAdmission(t, ctx, backend)
 	proxy := &checkpointResponseLossProxy{backend: backend, cluster: cluster, lostResponses: 1}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)

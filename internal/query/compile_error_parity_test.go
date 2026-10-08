@@ -22,9 +22,9 @@ import (
 //
 // Every case below must fail in BOTH directions with the IDENTICAL error, and
 // each one enters through a shared refusal path — the early target guard,
-// rejectInvalidCondition, the depth guard, resolveFieldMetadataCtx's schema
-// and coercion checks, requireIndexReady, or a leaf's own "condition has no
-// value" arm.
+// rejectInvalidCondition (target validity and domain.ValidateFilterLeaf's
+// shape rules), the depth guard, resolveFieldMetadataCtx's schema and coercion
+// checks, or requireIndexReady.
 
 // txRevertedAtRangeFilter names an index parityRegistry deliberately does NOT
 // declare, so both directions must refuse it at the readiness gate.
@@ -155,6 +155,66 @@ func TestCompileErrorParity(t *testing.T) {
 				Ledger: &commonpb.LedgerCondition{},
 			}},
 			wantSubstring: "ledger condition has no value",
+		},
+		{
+			name:   "builtin uint condition has no value",
+			target: transactions,
+			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
+				BuiltinUint: &commonpb.BuiltinUintCondition{Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID},
+			}},
+			wantSubstring: "builtin uint condition has no value",
+		},
+		{
+			name:   "unsupported builtin uint field",
+			target: transactions,
+			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
+				BuiltinUint: &commonpb.BuiltinUintCondition{
+					Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS,
+					Cond:  &commonpb.UintCondition{},
+				},
+			}},
+			wantSubstring: "unsupported builtin uint field",
+		},
+		{
+			name:   "log builtin uint condition has no value",
+			target: logs,
+			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogBuiltinUint{
+				LogBuiltinUint: &commonpb.LogBuiltinUintCondition{Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE},
+			}},
+			wantSubstring: "log builtin uint condition has no value",
+		},
+		{
+			name:   "string condition has no value",
+			target: accounts,
+			filter: accountFieldFilter("colour", &commonpb.FieldCondition{
+				Field:     &commonpb.FieldRef{Metadata: "colour"},
+				Condition: &commonpb.FieldCondition_StringCond{StringCond: &commonpb.StringCondition{}},
+			}),
+			wantSubstring: "string condition has no value",
+		},
+		{
+			name:   "address condition has no match",
+			target: transactions,
+			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{
+				Address: &commonpb.AddressMatch{},
+			}},
+			wantSubstring: "address condition has no match",
+		},
+		{
+			name:   "field condition has no field reference",
+			target: accounts,
+			filter: accountFieldFilter("", &commonpb.FieldCondition{
+				Condition: &commonpb.FieldCondition_ExistsCond{ExistsCond: &commonpb.ExistsCondition{}},
+			}),
+			wantSubstring: "field condition has no field reference",
+		},
+		{
+			name:   "field condition has no condition",
+			target: accounts,
+			filter: accountFieldFilter("colour", &commonpb.FieldCondition{
+				Field: &commonpb.FieldRef{Metadata: "colour"},
+			}),
+			wantSubstring: "field condition has no condition",
 		},
 		{
 			name:          "has asset precision out of range",

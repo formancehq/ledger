@@ -24,6 +24,7 @@ that authorizes each operation:
 | Task invocation | bloom snapshot/epoch and cache snapshot invocation | Completion publishes only while the captured filter snapshot remains current. Interrupt joins before replacement publication. |
 | Durable cursor | indexbuilder, auditindexer, usagebuilder and tail workers | Process Stop joins the fold. Restart resumes from the subsystem's atomic durable cursor contract; leadership alone does not restart per-replica workers. |
 | Request or session context | snapshot, restore, file stream, read lease and query checkpoint | Cancellation and completion converge on exactly-once release and cannot publish partial or superseded output. |
+| Admission request and proposal future | admission read handles, proposal guards and any request-scoped lifecycle lock | A request owns only the work it declared. Release every lifecycle lock before waiting for the proposal future. Never retain that lock through FSM application. The proposal guard is released when `Propose` returns; read handles close at their owning boundary. |
 
 Cache rotation is an FSM/cache consistency mechanism, not authority to restart
 unrelated workers. Likewise a leadership term alone is not a complete resource
@@ -97,6 +98,12 @@ At minimum, attempt to falsify these sequences with deterministic barriers:
 6. Two Stop callers observe an active worker or server while the deadline of one
    expires; verify whether the persistent shutdown request and the documented
    join still complete exactly once.
+7. An admission request blocks during persisted-state resolution, then the
+   caller cancels, proposal fails, or FSM application is delayed. Verify the
+   lifecycle-lock release before proposal wait. Any lock retained through FSM
+   application is a failure. Separately verify the read-handle owner and close
+   boundary, and whether an unrelated request can proceed. Repeat with a type
+   transition that claims a wider lifecycle scope.
 
 Record initial and final generations, identities, goroutine completion, resource
 close counts, proposal/publication counts and durable cursor bytes. A test using

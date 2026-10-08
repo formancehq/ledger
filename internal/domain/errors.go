@@ -260,6 +260,7 @@ const (
 	ErrReasonBalanceNotFound               = "BALANCE_NOT_FOUND"
 	ErrReasonBalanceNotPreloaded           = "BALANCE_NOT_PRELOADED"
 	ErrReasonNumscriptParseError           = "NUMSCRIPT_PARSE_ERROR"
+	ErrReasonNumscriptCompileError         = "NUMSCRIPT_COMPILE_ERROR"
 	ErrReasonValidation                    = "VALIDATION"
 	ErrReasonAuditDisabled                 = "AUDIT_DISABLED"
 	ErrReasonSinkAlreadyExists             = "SINK_ALREADY_EXISTS"
@@ -314,6 +315,7 @@ const (
 	ErrReasonSequenceExhausted             = "SEQUENCE_EXHAUSTED"
 	ErrReasonMetadataLimitExceeded         = "METADATA_LIMIT_EXCEEDED"
 	ErrReasonRevertTargetCreatedInBatch    = "REVERT_TARGET_CREATED_IN_BATCH"
+	ErrReasonInvalidCallerAttribution      = "INVALID_CALLER_ATTRIBUTION"
 
 	// ErrReasonWritesBlockedDiskFull signals that the write gate rejected the
 	// request because disk usage is at or above the configured block threshold.
@@ -586,11 +588,6 @@ var (
 	ErrPreparedQueryNameInvalidChar   = NewValidationSentinel("prepared query name must contain only printable ASCII (0x20–0x7E)")
 	ErrPreparedQueryNameTooLong       = NewValidationSentinel("prepared query name exceeds maximum length of 256 bytes")
 	ErrPreparedQueryTargetUnsupported = NewValidationSentinel("prepared query target is not supported (use ACCOUNTS, TRANSACTIONS or LOGS)")
-	// ErrPreparedQueryFilterRequired guards the update path: an update replaces the
-	// stored filter, so a nil filter would silently erase it (a prepared query is
-	// defined by its filter). Rejecting nil keeps the stored query intact and the
-	// audit trail deterministic on wire-replay.
-	ErrPreparedQueryFilterRequired = NewValidationSentinel("prepared query filter is required")
 	// Signing-key identifier sentinels stay local: request signing is a
 	// ledger-internal feature, not part of the Formance-wide invariants in
 	// github.com/formancehq/invariants.
@@ -788,13 +785,13 @@ func (e *ErrRevertTargetCreatedInBatch) Metadata() map[string]string {
 // ColorKnown disambiguates the two meanings of an empty Color on the wire. The
 // direct-posting path resolves the exact source bucket, so an empty Color there
 // is the genuine uncolored bucket (ColorKnown=true). The Numscript path cannot:
-// numscriptlib.MissingFundsErr carries only {Asset, Needed, Available, Range}
+// the VM's numscriptlib.VmMissingFundsError carries only {Asset, Needed, Got}
 // and never the resolved (account, color), so a colored spend surfaces here
 // with an empty Color that means "unknown", not "uncolored" (ColorKnown=false).
 // Metadata() therefore omits the color key entirely when the color is unknown,
 // so a client never mistakes an unresolved Numscript failure for a definite
 // hit on the uncolored bucket. When a future numscript bump attaches the
-// resolved bucket to MissingFundsErr, the conversion path can set the real
+// resolved bucket to VmMissingFundsError, the conversion path can set the real
 // Color with ColorKnown=true and this ambiguity disappears.
 type ErrInsufficientFunds struct {
 	Account    string
@@ -1354,6 +1351,27 @@ func (e *ErrNumscriptParse) Metadata() map[string]string {
 	return map[string]string{"details": e.Details}
 }
 
+// ErrNumscriptCompile — a script that parsed and resolved cannot run on the
+// Numscript VM, the only execution engine: a static-semantics error caught by
+// the compiler's typechecker (Parse checks syntax only), a feature used
+// without its flag, a construct the compiler does not support yet, a program
+// that exceeds the VM's capacity (register banks, program size), or a var
+// value that does not bind to the program's variable layout. Deterministic for
+// a given script and vars, so it is a freezable validation rejection. It has
+// its own reason, the compile-time counterpart of NUMSCRIPT_PARSE_ERROR, so a
+// client can tell a bad script from any other validation failure without
+// matching the message.
+type ErrNumscriptCompile struct {
+	Detail string
+}
+
+func (e *ErrNumscriptCompile) Error() string { return "numscript compile error: " + e.Detail }
+func (*ErrNumscriptCompile) Kind() ErrorKind { return KindValidation }
+func (*ErrNumscriptCompile) Reason() string  { return ErrReasonNumscriptCompileError }
+func (e *ErrNumscriptCompile) Metadata() map[string]string {
+	return map[string]string{"details": e.Detail}
+}
+
 // ErrDependencyDiscoveryFailed is returned when admission cannot discover all
 // dependencies needed to preload a Numscript transaction before proposal.
 type ErrDependencyDiscoveryFailed struct {
@@ -1830,6 +1848,22 @@ func (*ErrInvalidExecutionPlan) Kind() ErrorKind { return KindInternal }
 func (*ErrInvalidExecutionPlan) Reason() string  { return ErrReasonInvalidExecutionPlan }
 func (e *ErrInvalidExecutionPlan) Metadata() map[string]string {
 	return map[string]string{"reason": e.Reason_}
+}
+
+// ErrInvalidCallerAttribution means a write reached admission or the FSM
+// without a complete, canonical caller principal. This is a server-side trust
+// boundary violation rather than a client-correctable payload error.
+type ErrInvalidCallerAttribution struct {
+	Detail string
+}
+
+func (e *ErrInvalidCallerAttribution) Error() string {
+	return "invalid caller attribution: " + e.Detail
+}
+func (*ErrInvalidCallerAttribution) Kind() ErrorKind { return KindInternal }
+func (*ErrInvalidCallerAttribution) Reason() string  { return ErrReasonInvalidCallerAttribution }
+func (e *ErrInvalidCallerAttribution) Metadata() map[string]string {
+	return map[string]string{"detail": e.Detail}
 }
 
 // ErrExecutionPlanTooLarge is raised by plan.Builder.Build when the

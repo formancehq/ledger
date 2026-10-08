@@ -4,9 +4,13 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	numscriptlib "github.com/formancehq/numscript"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -485,8 +489,51 @@ func expectDeleteIndex(t *testing.T, mockStore *MockScope, key domain.IndexKey) 
 	return call
 }
 
-// requestToOrder converts a servicepb.Request to a raftcmdpb.Order for test purposes.
-func requestToOrder(req *servicepb.Request) *raftcmdpb.Order {
+// requestToOrder converts a servicepb.Request to a raftcmdpb.Order for test
+// purposes. A scripted CreateTransaction also gets the VM artifact admission
+// would bind to it (see stageCompiledArtifact), so the test fails right away
+// when its script does not compile rather than later, in the FSM, with a
+// misleading "no compiled numscript artifact".
+func requestToOrder(t testing.TB, req *servicepb.Request) *raftcmdpb.Order {
+	t.Helper()
+
+	order := requestToOrderWithoutArtifact(req)
+
+	if script := req.GetApply().GetAction().GetCreateTransaction().GetScript(); script.GetPlain() != "" {
+		stageCompiledArtifact(t, order, script.GetPlain(), script.GetVars())
+	}
+
+	return order
+}
+
+// stageCompiledArtifact binds the VM artifact admission would compile for
+// script to order's technical sub-message — every scripted order admission
+// proposes carries one. The script must compile: a test exercising a script
+// admission rejects has no artifact to stage and uses
+// requestToOrderWithoutArtifact instead.
+func stageCompiledArtifact(t testing.TB, order *raftcmdpb.Order, script string, vars map[string]string) {
+	t.Helper()
+
+	varsEncoder, program, err := numscriptlib.Compile(script)
+	require.NoError(t, err, "test script must compile to stage its VM artifact")
+
+	encodedVars, err := varsEncoder.Encode(vars)
+	require.NoError(t, err, "test script vars must bind to the compiled program")
+
+	hash := numscript.HashScript(script)
+
+	if order.GetTechnical() == nil {
+		order.Technical = &raftcmdpb.OrderTechnical{}
+	}
+	order.Technical.CompiledProgram = program.Encode()
+	order.Technical.CompiledVars = encodedVars.Encode()
+	order.Technical.CompiledScriptHash = hash[:]
+}
+
+// requestToOrderWithoutArtifact converts a servicepb.Request to a
+// raftcmdpb.Order without binding any VM artifact — the shape of a scripted
+// order admission should never have proposed.
+func requestToOrderWithoutArtifact(req *servicepb.Request) *raftcmdpb.Order {
 	order := &raftcmdpb.Order{}
 
 	switch reqType := req.GetType().(type) {

@@ -38,7 +38,8 @@ var _ = Describe("NumscriptExperimental (EN-1406)", Ordered, func() {
 			g.Expect(err).To(Succeed())
 			vol := account.FindVolume(asset, "")
 			g.Expect(vol).NotTo(BeNil())
-			return vol.GetBalance()
+			g.Expect(vol.GetBalance()).NotTo(BeNil(), "balance field must be present for asset %s", asset)
+			return vol.GetBalance().DecimalString()
 		}
 	}
 
@@ -382,9 +383,11 @@ send [USD/2 300] (
 
 		It("Should store set_tx_meta values as their unquoted string representation", func() {
 			// set_tx_meta with string, number, monetary, account and asset
-			// values. Ledger stores the raw client-facing string: string/number
-			// unquoted (no JSON quotes), monetary as "ASSET amount", account with
-			// a leading @, asset verbatim. This guards ValueToString.
+			// values. Ledger stores the string the numscript library renders
+			// (identically on the interpreter and the VM): string/number unquoted
+			// (no JSON quotes), monetary as "ASSET amount", account as its bare
+			// name — the form meta() can read back as an account, which the old
+			// @-prefixed rendering could not — and asset verbatim.
 			script := `
 set_tx_meta("label", "gold-tier")
 set_tx_meta("count", 42)
@@ -403,11 +406,11 @@ send [USD/2 100] (
 			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
 			meta := commonpb.MetadataToGoMap(createdTx.Transaction.Metadata)
 
-			Expect(meta["label"]).To(Equal("gold-tier"))             // string: unquoted
-			Expect(meta["count"]).To(Equal("42"))                    // number: unquoted
-			Expect(meta["fee"]).To(Equal("USD/2 150"))               // monetary: canonical
-			Expect(meta["beneficiary"]).To(Equal("@merchants:acme")) // account: @-prefixed
-			Expect(meta["currency"]).To(Equal("USD/2"))              // asset: verbatim
+			Expect(meta["label"]).To(Equal("gold-tier"))            // string: unquoted
+			Expect(meta["count"]).To(Equal("42"))                   // number: unquoted
+			Expect(meta["fee"]).To(Equal("USD/2 150"))              // monetary: canonical
+			Expect(meta["beneficiary"]).To(Equal("merchants:acme")) // account: bare name
+			Expect(meta["currency"]).To(Equal("USD/2"))             // asset: verbatim
 		})
 
 		It("Should store set_account_meta values as their unquoted string representation", func() {
@@ -517,7 +520,7 @@ send [COIN 100] (
 				})
 				g.Expect(err).To(Succeed())
 				// The RED credit lands on the segregated RED bucket only.
-				g.Expect(pool.FindVolume("COIN", "RED").GetBalance()).To(Equal("100"))
+				g.Expect(pool.FindVolume("COIN", "RED").GetBalance().DecimalString()).To(Equal("100"))
 				g.Expect(pool.FindVolume("COIN", "")).To(BeNil(),
 					"the colored credit must not collapse onto the uncolored bucket")
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
@@ -557,14 +560,14 @@ send [COIN 40] (
 				})
 				g.Expect(err).To(Succeed())
 				// RED drained by 40 (100 - 40 = 60).
-				g.Expect(pool.FindVolume("COIN", "RED").GetBalance()).To(Equal("60"))
+				g.Expect(pool.FindVolume("COIN", "RED").GetBalance().DecimalString()).To(Equal("60"))
 
 				spent, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 					Ledger:  ledgerName,
 					Address: "clr:spent",
 				})
 				g.Expect(err).To(Succeed())
-				g.Expect(spent.FindVolume("COIN", "RED").GetBalance()).To(Equal("40"))
+				g.Expect(spent.FindVolume("COIN", "RED").GetBalance().DecimalString()).To(Equal("40"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
@@ -596,7 +599,7 @@ send [COIN 1000] (
 					Address: "clr:pool",
 				})
 				g.Expect(err).To(Succeed())
-				g.Expect(pool.FindVolume("COIN", "RED").GetBalance()).To(Equal("60"))
+				g.Expect(pool.FindVolume("COIN", "RED").GetBalance().DecimalString()).To(Equal("60"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})

@@ -146,17 +146,32 @@ message Script {
 // Volumes
 // ============================================================================
 
-// Volumes represents input and output volumes
-message Volumes {
-  string input = 1;   // big.Int as string
-  string output = 2;  // big.Int as string
+// BigUint represents an arbitrary-precision non-negative integer as a minimal
+// unsigned big-endian magnitude. Zero is the empty magnitude. Leading zero
+// octets are invalid.
+message BigUint {
+  bytes magnitude = 1;
 }
 
-// VolumesWithBalance represents volumes with balance
+// SignedBigInt represents an arbitrary-precision signed integer. Negative zero is
+// invalid; producers and consumers must reject it.
+message SignedBigInt {
+  bool negative = 1;
+  BigUint magnitude = 2;
+}
+
+// Volumes represents non-negative input and output volumes.
+message Volumes {
+  BigUint input = 1;
+  BigUint output = 2;
+}
+
+// VolumesWithBalance represents non-negative cumulative volumes and their
+// signed difference (input - output).
 message VolumesWithBalance {
-  string input = 1;    // big.Int as string
-  string output = 2;   // big.Int as string
-  string balance = 3;  // big.Int as string
+  BigUint input = 1;
+  BigUint output = 2;
+  SignedBigInt balance = 3;
 }
 
 // VolumesByAssets is a sorted list of post-commit (asset, color) volume
@@ -702,6 +717,7 @@ message CreatedLedgerLog {
   map<string, AccountType> account_types = 6;
   ChartEnforcementMode default_enforcement_mode = 7;
   uint32 id = 8;                              // Numeric ledger ID assigned by FSM
+  map<string, MetadataValue> metadata = 9; // Initial ledger metadata
 }
 
 message DeletedLedgerLog {
@@ -743,10 +759,6 @@ message LedgerLog {
   //     (previous encoding carried them in both purged_volumes AND
   //     new_volumes, doubling bytes on ephemeral-heavy workloads).
   repeated TouchedVolume ephemeral_volumes = 6;
-  // Account addresses whose complete EPHEMERAL current state was removed by
-  // this log. Historical transaction mappings remain intact; consumers use
-  // this signal to purge only current-account secondary projections.
-  repeated string purged_accounts = 7;
 }
 
 // TouchedVolume identifies a (ledger-local) volume cell — an account paired
@@ -1299,6 +1311,10 @@ enum ErrorReason {
   // Creation never evicts; an existing checkpoint must be deleted first. See
   // EN-1501.
   ERROR_REASON_CHECKPOINT_LIMIT_REACHED = 65;
+  // ERROR_REASON_INVALID_CALLER_ATTRIBUTION: a proposal reached admission or
+  // the FSM without a complete canonical caller principal. This is an internal
+  // trust-boundary violation and is never client-correctable.
+  ERROR_REASON_INVALID_CALLER_ATTRIBUTION = 72;
   // ERROR_REASON_CHECKPOINT_NOT_FOUND: a DeleteQueryCheckpoint targeted an id
   // that is not live (never created, or already deleted). See EN-1501.
   ERROR_REASON_CHECKPOINT_NOT_FOUND = 66;
@@ -1326,6 +1342,13 @@ enum ErrorReason {
   // Submit the revert in a later batch.
   ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH = 70;
   ERROR_REASON_SINK_CONTROLLER_MISMATCH = 71;
+  // ERROR_REASON_NUMSCRIPT_COMPILE_ERROR: a script that parsed and resolved
+  // cannot run on the Numscript VM — a static-semantics error the compiler's
+  // typechecker catches, a feature used without its flag, an unsupported
+  // construct, exceeded VM capacity, or a var value that does not bind.
+  // Deterministic for a given script and vars (Kind=Validation); rejected at
+  // admission, never proposed.
+  ERROR_REASON_NUMSCRIPT_COMPILE_ERROR = 73;
 }
 
 // IdempotencyFailure captures a definitive business rejection so a retried key
@@ -1731,6 +1754,8 @@ enum QueryMode {
 // LedgerScopedOrder; it is intentionally NOT a field on the value itself.
 message PreparedQuery {
   string name = 1;
+  // Nil means match all entities in target. Empty/conditionless messages are
+  // invalid and must not be used as a match-all representation.
   QueryFilter filter = 2;
   QueryTarget target = 3;
 }
@@ -1762,11 +1787,10 @@ message GroupedAggregateResult {
 message PreparedQueryCursor {
   uint32 page_size = 1;
   bool has_more = 2;
-  string previous = 3;
-  string next = 4;
-  repeated Account account_data = 5;
-  repeated Transaction transaction_data = 6;
-  repeated Log log_data = 7;
+  string next = 3;
+  repeated Account account_data = 4;
+  repeated Transaction transaction_data = 5;
+  repeated Log log_data = 6;
 }
 
 // LedgerStats contains aggregate statistics for a ledger.
@@ -1805,7 +1829,7 @@ message PersistedConfig {
 // authenticated identity is a bare subject with no known origin.
 message CallerIdentity {
   string subject = 1;
-  // scopes and god live on AuthenticatedCaller, not here: CallerIdentity is
+  // scopes and superuser live on AuthenticatedCaller, not here: CallerIdentity is
   // identification only and carries no authorization decision.
   oneof source {
     string issuer = 2;  // OIDC token issuer URL
@@ -1816,7 +1840,7 @@ message CallerIdentity {
 message AuthenticatedCaller {
   CallerIdentity identity = 1;
   repeated string scopes = 2;
-  bool god = 3;
+  bool superuser = 3;
 }
 
 message AnonymousCaller {

@@ -3,6 +3,7 @@ package queries
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -18,10 +19,12 @@ func NewUpdateCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update <name>",
 		Short: "Update a prepared query filter",
-		Long: `Update the filter of an existing prepared query.
+		Long: `Update the filter of an existing prepared query. Omit --filter to clear
+the existing filter and make the query match all entities in its target.
 
 Examples:
-  ledgerctl queries update active-users --ledger my-ledger --filter "metadata[active] == true and metadata[tier] == gold"`,
+	  ledgerctl queries update active-users --ledger my-ledger --filter "metadata[active] == true and metadata[tier] == gold"
+	  ledgerctl queries update active-users --ledger my-ledger`,
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeQueryNames,
 		RunE:              runUpdate,
@@ -36,6 +39,24 @@ Examples:
 
 func runUpdate(cmd *cobra.Command, args []string) error {
 	name := args[0]
+	filterExpr, _ := cmd.Flags().GetString("filter")
+	filterSet := cmd.Flags().Changed("filter")
+	if filterSet && strings.TrimSpace(filterExpr) == "" {
+		return errors.New("--filter must contain at least one condition; omit the flag to clear the filter")
+	}
+
+	var filter *commonpb.QueryFilter
+	var err error
+	if filterSet {
+		filter, err = filterexpr.DecodeDualFormatStructuralOnly([]byte(filterExpr), commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+		if err != nil {
+			return fmt.Errorf("invalid filter expression: %w", err)
+		}
+
+		if filter == nil {
+			return errors.New("--filter must contain at least one condition")
+		}
+	}
 
 	client, conn, err := cmdutil.GetClient(cmd)
 	if err != nil {
@@ -51,33 +72,12 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	filterExpr, _ := cmd.Flags().GetString("filter")
-
-	// An update replaces the stored filter, so an empty --filter would decode to a
-	// nil filter and silently erase the prepared query's filter on the server
-	// (ValidateFilterForTarget accepts nil). Require a non-empty filter, matching
-	// the HTTP update handler's guard (handlers_update_prepared_query.go).
-	if filterExpr == "" {
-		return errors.New("--filter is required")
-	}
-
 	// The update carries only the new filter, not the target — the target is
 	// immutable and lives on the stored prepared query (the FSM re-validates the
 	// filter against it). DecodeDualFormatStructuralOnly is the shared "target not
 	// known here" entry point: it resolves bare fields with a non-audit target
 	// (prepared queries are never audit) and defers the per-target validity gate
 	// to the server (EN-1549).
-	filter, err := filterexpr.DecodeDualFormatStructuralOnly([]byte(filterExpr), commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
-	if err != nil {
-		return fmt.Errorf("invalid filter expression: %w", err)
-	}
-
-	// A structurally-valid but conditionless filter (e.g. `""` quoted, whitespace)
-	// also decodes to nil; reject it for the same reason.
-	if filter == nil {
-		return errors.New("--filter must contain at least one condition")
-	}
-
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 

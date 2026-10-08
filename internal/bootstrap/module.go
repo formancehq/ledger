@@ -31,7 +31,6 @@ import (
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	grpcadp "github.com/formancehq/ledger/v3/internal/adapter/grpc"
 	httpcompat "github.com/formancehq/ledger/v3/internal/adapter/http"
-	"github.com/formancehq/ledger/v3/internal/application/accountlifecycle"
 	"github.com/formancehq/ledger/v3/internal/application/admission"
 	"github.com/formancehq/ledger/v3/internal/application/auditindexer"
 	backupapp "github.com/formancehq/ledger/v3/internal/application/backup"
@@ -51,7 +50,6 @@ import (
 	raftmembership "github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/diskusage"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/flightrecorder"
-	ledgermetrics "github.com/formancehq/ledger/v3/internal/infra/monitoring/metrics"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/otlplogs"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
@@ -93,26 +91,6 @@ func Module() fx.Option {
 	return fx.Options(
 		transport.Module(),
 		attributes.Module(),
-		// Decorate the upstream MeterProvider so every instrument
-		// our code creates is renamed according to --metrics-naming.
-		// The decorator has no per-meter allowlist: anything the
-		// application requests from this provider (admission, cache,
-		// bloom, raft.*, pebble.*, numscript, …) goes through the
-		// rewrite in `prom` mode. OTel semantic-convention auto-
-		// instrumentation (go.*, process.*, system.*, http.*) targets
-		// the *global* MeterProvider, which we leave as the raw SDK
-		// provider — those metrics bypass this decorator entirely.
-		fx.Decorate(func(cfg Config, inner metric.MeterProvider) metric.MeterProvider {
-			naming, err := ledgermetrics.ParseNaming(cfg.MetricsNaming)
-			if err != nil {
-				// Config.Validate() has already rejected invalid values;
-				// fall back to the default so a misconfigured test fixture
-				// doesn't crash the fx graph.
-				naming = ledgermetrics.DefaultNaming
-			}
-
-			return ledgermetrics.NewFactory(inner, naming)
-		}),
 		fx.Provide(
 			fx.Annotate(func(
 				cfg Config,
@@ -500,10 +478,9 @@ func Module() fx.Option {
 			fx.Annotate(signal.NewNotifications, fx.ResultTags(`name:"mirror"`)),
 			fx.Annotate(signal.NewNotifications, fx.ResultTags(`name:"index"`)),
 			fx.Annotate(signal.NewNotifications, fx.ResultTags(`name:"usage"`)),
-			accountlifecycle.NewSerializer,
-			fx.Annotate(func(store *dal.Store, proposer mirror.Proposer, builder *plan.Builder, logger logging.Logger, notifications *signal.Notifications, meterProvider metric.MeterProvider, cfg Config, lifecycleSerializer *accountlifecycle.Serializer) *mirror.Manager {
-				return mirror.NewManager(store, proposer, builder, logger, notifications, meterProvider, cfg.MirrorMaxBatchSize, lifecycleSerializer)
-			}, fx.ParamTags(``, ``, ``, ``, `name:"mirror"`, ``, ``, ``)),
+			fx.Annotate(func(store *dal.Store, proposer mirror.Proposer, builder *plan.Builder, logger logging.Logger, notifications *signal.Notifications, meterProvider metric.MeterProvider, cfg Config) *mirror.Manager {
+				return mirror.NewManager(store, proposer, builder, logger, notifications, meterProvider, cfg.MirrorMaxBatchSize)
+			}, fx.ParamTags(``, ``, ``, ``, `name:"mirror"`, ``, ``)),
 			// Provide mirror.Proposer from the Raft node
 			func(n *node.Node) mirror.Proposer {
 				return n
@@ -569,7 +546,6 @@ func Module() fx.Option {
 				attrs *attributes.Attributes,
 				rs *readstore.Store,
 				authCfg internalauth.AuthConfig,
-				lifecycleSerializer *accountlifecycle.Serializer,
 			) ctrl.Admission {
 				var opts []func(*admission.Admission)
 				if cfg.AdmissionMetrics {
@@ -577,7 +553,6 @@ func Module() fx.Option {
 				}
 
 				opts = append(opts, admission.WithAuditProjectionState(rs.AuditProjectionState))
-				opts = append(opts, admission.WithLifecycleSerializer(lifecycleSerializer))
 
 				return admission.NewAdmission(
 					store,
@@ -626,6 +601,7 @@ func Module() fx.Option {
 				rs *readstore.Store,
 				us *usagestore.Store,
 				meterProvider metric.MeterProvider,
+				cfg Config,
 			) (ctrl.Controller, *ctrl.DefaultController) {
 				defaultCtrl := ctrl.NewDefaultController(admission, store, logger, attrs, rs, us, meterProvider.Meter("ctrl"))
 
@@ -633,6 +609,7 @@ func Module() fx.Option {
 					defaultCtrl,
 					raftNode,
 					servicePool,
+					cfg.ClusterSecret != "",
 				), defaultCtrl
 			}, fx.ParamTags(``, `name:"service"`, ``, ``, ``, ``, ``, ``, ``)),
 			func(serviceServer *grpcadp.ServiceServer, n *node.Node, store *dal.Store, rs *readstore.Store) *clusterhealth.GRPCHealthUpdater {
@@ -891,10 +868,15 @@ func Module() fx.Option {
 				eventsManager *events.Manager,
 				mirrorManager *mirror.Manager,
 				backupOrchestrator *backupapp.Orchestrator,
+				healthChecker *clusterhealth.HealthChecker,
 			) {
 				n.SetObserver(node.NewObserver(func(event any) {
 					switch e := event.(type) {
 					case node.LeadershipChangeEvent:
+						// Disk evidence is leader-term local. Invalidate it inline,
+						// before admission can observe the new leadership term.
+						healthChecker.OnLeadershipChange(e.IsLeader)
+
 						// The backup orchestrator's OnLeadershipChange is cheap
 						// (it just swaps a context) and must observe leadership
 						// transitions IN ORDER: a stale goroutine landing
@@ -911,6 +893,7 @@ func Module() fx.Option {
 						// slow Pebble reconciliation asynchronously.
 						handleLeadershipChangeEvent(e, eventsManager, mirrorManager, logger)
 					case node.LeaderReadyEvent:
+						healthChecker.OnLeaderReady()
 						proposeClusterConfigIfNeeded(n, builder, store, cfg, logger)
 					default:
 						logger.Errorf("Unknown observer event type: %T", event)
@@ -1322,15 +1305,17 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 				return fmt.Errorf("stale raft membership on the leader: %s", st.Message())
 			}
 
-			// AlreadyExists path kept for rolling-upgrade compatibility with
-			// leaders that predate EN-1436's server-side fail-fast. Once every
-			// live cluster is past that version, this branch can be dropped —
-			// the invariant it silently patches (idempotent join treating
-			// stale Progress as success) is exactly the bug EN-1436 fixes.
+			// AlreadyExists is the leader's answer when a previous attempt
+			// already committed the ConfChange but its reply never reached us
+			// (forwarding hop cut, process restarted before the marker was
+			// written). The leader only returns it while its Progress.Match
+			// for us is still 0 — i.e. before it replicated anything — so
+			// treating it as success is safe; a non-zero Match is reported as
+			// STALE_RAFT_PROGRESS above instead.
 			if ok && st.Code() == codes.AlreadyExists {
 				logger.WithFields(map[string]any{
 					"nodeID": cfg.RaftConfig.NodeID,
-				}).Infof("Already a cluster member, skipping learner registration (deprecated pre-EN-1436 semantics)")
+				}).Infof("Already a cluster member, skipping learner registration")
 
 				if markErr := wal.MarkClusterJoined(cfg.RaftConfig.WalDir); markErr != nil {
 					return fmt.Errorf("marking cluster joined after AlreadyExists: %w", markErr)
@@ -1653,12 +1638,12 @@ func buildAuthConfig(cfg Config, logger logging.Logger, oidcKeySet oidc.KeySet) 
 
 		authCfg.KeySet = internalauth.NewCompositeKeySet(result.KeySet, oidcKeySet)
 		authCfg.Ed25519AllowedScopes = result.AllowedScopes
-		authCfg.Ed25519GodKeys = result.GodKeys
+		authCfg.Ed25519SuperuserKeys = result.SuperuserKeys
 
 		logger.WithFields(map[string]any{
-			"keys_count": len(result.AllowedScopes),
-			"god_keys":   len(result.GodKeys),
-			"enabled":    authCfg.Enabled,
+			"keys_count":     len(result.AllowedScopes),
+			"superuser_keys": len(result.SuperuserKeys),
+			"enabled":        authCfg.Enabled,
 		}).Infof("Ed25519 keys loaded")
 	} else {
 		authCfg.KeySet = oidcKeySet

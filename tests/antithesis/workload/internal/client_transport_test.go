@@ -160,6 +160,7 @@ func testLostCommittedResponse(t *testing.T, mode string) {
 		return err == nil && state.GetLeader() != 0
 	}, 5*time.Second, 10*time.Millisecond)
 	leader := servicepb.NewBucketServiceClient(leaderConn)
+	testserver.WaitForWriteAdmission(t, ctx, leader)
 	_, err = leader.Apply(ctx, actions.WithIdempotencyKey("setup", actions.CreateLedgerAction("L", nil)))
 	require.NoError(t, err)
 
@@ -248,5 +249,5 @@ func testLostCommittedResponse(t *testing.T, mode string) {
 	account, err := leader.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: "L", Address: "user"})
 	require.NoError(t, err)
 	require.Len(t, account.GetVolumes(), 1)
-	require.Equal(t, "10", account.GetVolumes()[0].GetVolumes().GetBalance())
+	require.Equal(t, "10", account.GetVolumes()[0].GetVolumes().GetBalance().DecimalString())
 }

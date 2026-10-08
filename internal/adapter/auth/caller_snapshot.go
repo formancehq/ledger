@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 
+	"github.com/formancehq/ledger/v3/internal/domain/attribution"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -30,20 +31,20 @@ func IsClusterInternal(ctx context.Context) bool {
 	return v
 }
 
-// WithForwardedSnapshot attaches a caller snapshot captured by a forwarding
-// follower. Only handlers that have verified the request is cluster-internal
-// should call this; the value is otherwise untrusted.
-func WithForwardedSnapshot(ctx context.Context, snapshot *commonpb.CallerSnapshot) context.Context {
-	return context.WithValue(ctx, forwardedSnapshotKey{}, snapshot)
+// WithForwardedAttribution attaches attribution validated at the trusted peer
+// boundary. Accepting the opaque capability prevents downstream production
+// code from blessing an arbitrary protobuf as a trusted forward.
+func WithForwardedAttribution(ctx context.Context, capability attribution.Capability) context.Context {
+	return context.WithValue(ctx, forwardedSnapshotKey{}, capability)
 }
 
 // ForwardedSnapshotFromContext returns the forwarded caller snapshot, or nil
 // when none was attached (direct request, or no auth presented at the
 // forwarding hop).
 func ForwardedSnapshotFromContext(ctx context.Context) *commonpb.CallerSnapshot {
-	c, _ := ctx.Value(forwardedSnapshotKey{}).(*commonpb.CallerSnapshot)
+	capability, _ := ctx.Value(forwardedSnapshotKey{}).(attribution.Capability)
 
-	return c
+	return capability.Snapshot()
 }
 
 // WithSystemActor marks the context as a system/internal action attributed to
@@ -51,14 +52,14 @@ func ForwardedSnapshotFromContext(ctx context.Context) *commonpb.CallerSnapshot 
 // it into a system CallerSnapshot, so system proposals routed through
 // admission (schedulers) are attributed to that
 // component.
-func WithSystemActor(ctx context.Context, component string) context.Context {
+func WithSystemActor(ctx context.Context, component attribution.SystemActor) context.Context {
 	return context.WithValue(ctx, systemActorKey{}, component)
 }
 
 // systemActorFromContext returns the system component set by WithSystemActor,
 // and whether one was set.
-func systemActorFromContext(ctx context.Context) (string, bool) {
-	c, ok := ctx.Value(systemActorKey{}).(string)
+func systemActorFromContext(ctx context.Context) (attribution.SystemActor, bool) {
+	c, ok := ctx.Value(systemActorKey{}).(attribution.SystemActor)
 
 	return c, ok && c != ""
 }
@@ -76,9 +77,10 @@ func IsSystemActor(ctx context.Context) bool {
 // ResolveCallerSnapshot returns the caller snapshot for the current context,
 // in precedence order:
 //  1. an explicit system actor (WithSystemActor) — a background action;
-//  2. an explicitly forwarded snapshot (set by a follower that already
-//     validated the user JWT/Ed25519 token);
-//  3. one built from the immutable authentication state attached locally by
+//  2. an explicitly forwarded capability (set only after the leader validates
+//     the cluster peer and the frozen snapshot);
+//  3. the authenticated cluster peer when no original caller was forwarded;
+//  4. one built from the immutable authentication state attached locally by
 //     EvaluateGRPCCredentials.
 //
 // Use this from both the follower (when forwarding to the leader, to keep the
@@ -93,15 +95,22 @@ func ResolveCallerSnapshot(ctx context.Context) *commonpb.CallerSnapshot {
 		return forwarded
 	}
 
-	// A cluster-internal request is authenticated as the peer, not as the
-	// original caller. Without a forwarded snapshot, attributing the write from
-	// the peer's local authentication state would fabricate an anonymous caller
-	// with the cluster secret's scopes and hide the attribution gap.
+	// The cluster secret authenticates the peer, not an anonymous user. When a
+	// request carries no forwarded caller (for example ledgerctl or a reconcile
+	// RPC), preserve that distinction instead of fabricating an anonymous caller
+	// holding every scope granted to the peer transport.
 	if IsClusterInternal(ctx) {
-		return nil
+		return commands.SystemCallerSnapshot(commands.ComponentClusterPeer)
 	}
 
 	return buildCallerSnapshot(ctx)
+}
+
+// ResolveCallerAttribution resolves, validates, and freezes the caller at the
+// common write admission boundary. The returned capability's zero value is
+// never accepted by admission.
+func ResolveCallerAttribution(ctx context.Context) (attribution.Capability, error) {
+	return attribution.New(ResolveCallerSnapshot(ctx))
 }
 
 // buildCallerSnapshot freezes the admission-time auth state of the current
@@ -144,8 +153,8 @@ func buildCallerSnapshot(ctx context.Context) *commonpb.CallerSnapshot {
 		Identity: identity,
 	}
 
-	if god, ok := claims.Claims["god"].(bool); ok && god {
-		authenticated.God = true
+	if superuser, ok := claims.Claims["superuser"].(bool); ok && superuser {
+		authenticated.Superuser = true
 	}
 
 	authenticated.Scopes = sortedScopeStrings(ExpandedScopesFromContext(ctx))

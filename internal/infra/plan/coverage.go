@@ -14,10 +14,8 @@ import (
 // the AttributeID.Tag — MakeKey already returned it, and we were
 // discarding it under the old shape.
 type CoverageEntry struct {
-	Canonical          []byte
-	Tag                uint64
-	Persisted          bool
-	LifecycleCandidate bool
+	Canonical []byte
+	Tag       uint64
 }
 
 // Coverage describes the preload / coverage requirements for a command.
@@ -55,18 +53,6 @@ type Coverage struct {
 // key's Bytes() method; Coverage takes ownership of the slice, callers
 // MUST NOT mutate it afterwards.
 func (c *Coverage) Add(attrCode byte, canonical []byte) {
-	c.add(attrCode, canonical, false, false)
-}
-
-func (c *Coverage) AddPersisted(attrCode byte, canonical []byte) {
-	c.add(attrCode, canonical, true, false)
-}
-
-func (c *Coverage) AddLifecycleCandidate(attrCode byte, canonical []byte) {
-	c.add(attrCode, canonical, true, true)
-}
-
-func (c *Coverage) add(attrCode byte, canonical []byte, persisted, lifecycleCandidate bool) {
 	if c.Attributes == nil {
 		c.Attributes = make(map[byte]map[attributes.U128]CoverageEntry)
 	}
@@ -80,7 +66,7 @@ func (c *Coverage) add(attrCode byte, canonical []byte, persisted, lifecycleCand
 	id, tag := attributes.MakeKey(canonical)
 
 	if existing, exists := m[id]; !exists {
-		m[id] = CoverageEntry{Canonical: canonical, Tag: tag, Persisted: persisted, LifecycleCandidate: lifecycleCandidate}
+		m[id] = CoverageEntry{Canonical: canonical, Tag: tag}
 	} else if existing.Tag != tag {
 		// Same XXH3-128 id but a different XXH3-64 tag means two distinct
 		// canonical keys genuinely collided on the 128-bit id (~2^-128).
@@ -102,10 +88,6 @@ func (c *Coverage) add(attrCode byte, canonical []byte, persisted, lifecycleCand
 		if c.collision == nil {
 			c.collision = &attributes.ErrCollisionDetected{Bytes: canonical, OriginalTag: existing.Tag, NewTag: tag}
 		}
-	} else if persisted || lifecycleCandidate {
-		existing.Persisted = existing.Persisted || persisted
-		existing.LifecycleCandidate = existing.LifecycleCandidate || lifecycleCandidate
-		m[id] = existing
 	}
 }
 
@@ -202,10 +184,6 @@ func (c *Coverage) Merge(src *Coverage) {
 				if c.collision == nil {
 					c.collision = &attributes.ErrCollisionDetected{Bytes: entry.Canonical, OriginalTag: existing.Tag, NewTag: entry.Tag}
 				}
-			} else {
-				existing.Persisted = existing.Persisted || entry.Persisted
-				existing.LifecycleCandidate = existing.LifecycleCandidate || entry.LifecycleCandidate
-				dst[id] = existing
 			}
 		}
 	}

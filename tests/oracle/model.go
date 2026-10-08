@@ -136,9 +136,9 @@ type LedgerState struct {
 
 	// everAsset is the account-by-asset index projection: the set of
 	// (account, assetBase, precision) any committed, non-excluded posting has ever
-	// touched, on either side. This is the exact current set the has-asset filter
-	// serves (see recordAssetTouches); account-wide EPHEMERAL purge removes every
-	// membership, while a later re-fund records it again.
+	// touched, on either side. This is the exact set the has-asset filter serves
+	// (see recordAssetTouches) — a monotonic history, NOT the current volume set:
+	// an account drained to zero and purged from the volume table stays here.
 	everAsset Map[assetTouch, struct{}]
 
 	// compiledChart memoizes compiled() for the current types value — nil means
@@ -897,7 +897,6 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 	orders := make([]OrderResult, 0, len(bulk.Requests))
 	touched := map[string]map[VolumeKey]bool{}
 	retired := map[string]struct{}{}
-	touchedAccounts := map[string]map[string]bool{}
 
 	// Per-order cells, kept beside the per-ledger union: the FSM hangs each
 	// log's volume annotations on the cells THAT order touched, so the union
@@ -962,12 +961,6 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 		}
 
 		orderCells := map[VolumeKey]bool{}
-		accounts := touchedAccounts[name]
-		if accounts == nil {
-			accounts = map[string]bool{}
-			touchedAccounts[name] = accounts
-		}
-		orderAccounts := requestAccountTouches(req)
 
 		beforeOrder := ls
 		oc := ls.applyOne(req, orderCells, batchInitialTxCount[name])
@@ -984,24 +977,6 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 		logsBefore := ls.logs.Len()
 
 		if oc.OK {
-			if oc.Skipped == nil {
-				for account := range orderAccounts {
-					accounts[account] = true
-				}
-				if requestMutatesAccountTypes(req) {
-					// A chart transition can expose an EPHEMERAL fallback without
-					// touching an account row. The server closes lifecycle coverage
-					// over every persisted volume and metadata row for such orders;
-					// mirror that candidate set so end-of-bulk purge semantics stay
-					// serializable in the model.
-					for key := range ls.volumes.All() {
-						accounts[key.Address] = true
-					}
-					for key := range ls.metadata.All() {
-						accounts[key.Address] = true
-					}
-				}
-			}
 			// Appended centrally rather than per handler: every committed
 			// ledger-scoped order produces exactly one log, so a handler that
 			// forgot would silently shorten the stream and mis-id every log
@@ -1047,21 +1022,12 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 		ls.recordAssetTouches(&base, cells)
 		ls.recordIndexedAddrs(&base, uint64(base.Txs().Len())+1)
 
-		purged, coveredPurged := ls.purgeZeroBalance(cells, touchedAccounts[name])
+		purged := ls.purgeZeroBalance(cells)
 
 		ann := ls.classifyVolumes(&base, cells, purged)
 		for _, ot := range orderTouches {
 			if ot.ledger == name {
 				ls.annotateLog(ot.logIdx, ot.cells, ann)
-			}
-		}
-		if len(coveredPurged) > 0 {
-			for _, orderTouche := range slices.Backward(orderTouches) {
-				if orderTouche.ledger == name && ls.logs.Get(orderTouche.logIdx).kind != "order_skipped" {
-					ls.annotateCoveredPurges(orderTouche.logIdx, coveredPurged)
-
-					break
-				}
 			}
 		}
 
@@ -1082,45 +1048,6 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 	}
 
 	return ApplyResult{OK: true, State: next, Orders: orders}
-}
-
-func requestMutatesAccountTypes(req *servicepb.Request) bool {
-	switch req.GetType().(type) {
-	case *servicepb.Request_AddAccountType, *servicepb.Request_RemoveAccountType:
-		return true
-	}
-	switch req.GetApply().GetAction().GetData().(type) {
-	case *servicepb.LedgerAction_AddAccountType, *servicepb.LedgerAction_RemoveAccountType:
-		return true
-	default:
-		return false
-	}
-}
-
-func requestAccountTouches(req *servicepb.Request) map[string]bool {
-	out := map[string]bool{}
-	apply := req.GetApply()
-	if apply == nil {
-		return out
-	}
-	switch action := apply.GetAction().GetData().(type) {
-	case *servicepb.LedgerAction_CreateTransaction:
-		for account, metadata := range action.CreateTransaction.GetAccountMetadata() {
-			if len(metadata.GetValues()) > 0 {
-				out[account] = true
-			}
-		}
-	case *servicepb.LedgerAction_AddMetadata:
-		if account := action.AddMetadata.GetTarget().GetAccount(); account != nil && len(action.AddMetadata.GetMetadata()) > 0 {
-			out[account.GetAddr()] = true
-		}
-	case *servicepb.LedgerAction_DeleteMetadata:
-		if account := action.DeleteMetadata.GetTarget().GetAccount(); account != nil {
-			out[account.GetAddr()] = true
-		}
-	}
-
-	return out
 }
 
 // RequestsEqual compares the modeled business intent of request slices. Chart
@@ -1366,8 +1293,8 @@ func (s *LedgerState) appendLog(req *servicepb.Request, txID uint64) {
 // of bulk (write_set_new_volumes.go): a purged cell that held a non-zero value
 // before the bulk drained to zero, one that was created and zeroed inside the
 // bulk is ephemeral, and a surviving cell that did not exist before is newly
-// kept. Existence comes from map membership rather than the numeric value: a
-// persisted {0, 0} cell already exists, while a purged cell is absent.
+// kept. "Did not exist" covers an absent cell and a zero placeholder alike,
+// matching isNewVolumeUpdate.
 type volumeAnnotations struct {
 	purged    map[VolumeKey]bool
 	newKept   map[VolumeKey]bool
@@ -1393,8 +1320,8 @@ func (s *LedgerState) classifyVolumes(base *LedgerState, touched, purged map[Vol
 	compiled := s.compiled()
 
 	for key := range touched {
-		_, existed := base.volumes.Get(key)
-		newCell := !existed
+		prior := base.vol(key)
+		newCell := prior.Input.IsZero() && prior.Output.IsZero()
 
 		if newCell {
 			if t := s.match(key.Address, compiled); t != nil &&
@@ -1855,8 +1782,8 @@ func (s *LedgerState) cellExcluded(base *LedgerState, key VolumeKey, compiled []
 
 	switch t.Persistence {
 	case commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT:
-		_, existed := base.volumes.Get(key)
-		if !existed {
+		bv := base.vol(key)
+		if bv.Input.IsZero() && bv.Output.IsZero() {
 			return true
 		}
 
@@ -1866,29 +1793,6 @@ func (s *LedgerState) cellExcluded(base *LedgerState, key VolumeKey, compiled []
 	default:
 		return false
 	}
-}
-
-// cellHistoryExcluded preserves the historical exclusion contract: only
-// TRANSIENT cells are absent from account/source/destination transaction
-// mappings. Draining an EPHEMERAL cell removes current state but not the
-// transaction that performed the drain.
-func (s *LedgerState) cellHistoryExcluded(base *LedgerState, key VolumeKey, compiled []accounttype.CompiledType) bool {
-	vp, ok := s.volumes.Get(key)
-	if !ok {
-		return true
-	}
-
-	t := s.match(key.Address, compiled)
-	if t == nil || t.Persistence != commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT {
-		return false
-	}
-
-	_, existed := base.volumes.Get(key)
-	if !existed {
-		return true
-	}
-
-	return vp.Input.Cmp(&vp.Output) == 0
 }
 
 // recordIndexedAddrs stamps every transaction this bulk appended (ids in
@@ -1908,11 +1812,11 @@ func (s *LedgerState) recordIndexedAddrs(base *LedgerState, firstNew uint64) {
 		rec.indexedAddrs = map[string]uint8{}
 
 		for _, p := range rec.postings {
-			if !s.cellHistoryExcluded(base, VolumeKey{Address: p.GetSource(), Asset: p.GetAsset(), Color: p.GetColor()}, compiled) {
+			if !s.cellExcluded(base, VolumeKey{Address: p.GetSource(), Asset: p.GetAsset(), Color: p.GetColor()}, compiled) {
 				rec.indexedAddrs[p.GetSource()] |= AddrIndexedSource
 			}
 
-			if !s.cellHistoryExcluded(base, VolumeKey{Address: p.GetDestination(), Asset: p.GetAsset(), Color: p.GetColor()}, compiled) {
+			if !s.cellExcluded(base, VolumeKey{Address: p.GetDestination(), Asset: p.GetAsset(), Color: p.GetColor()}, compiled) {
 				rec.indexedAddrs[p.GetDestination()] |= AddrIndexedDestination
 			}
 		}
@@ -2085,8 +1989,8 @@ func (s *LedgerState) fieldTypes(target commonpb.TargetType) Map[string, commonp
 // validation gates call the very functions the FSM calls, and surface their own
 // Reason, so the two cannot drift.
 //
-// A nil filter is accepted here exactly as the FSM accepts it — only the update
-// path requires one — and executes as the unfiltered universe.
+// A nil filter is accepted here exactly as the FSM accepts it and executes as
+// the unfiltered universe.
 //
 // The stored definition is cloned so the model never aliases the request
 // message: a later mutation of the submitted proto must not reach committed
@@ -2136,12 +2040,6 @@ func (s *LedgerState) applyUpdatePreparedQuery(req *servicepb.UpdatePreparedQuer
 	existing, ok := s.preparedQueries.Get(req.GetName())
 	if !ok {
 		return OrderResult{Reason: domain.ErrReasonPreparedQueryNotFound}
-	}
-
-	// An update replaces the stored filter, so a nil one would silently erase
-	// the definition; the FSM rejects it rather than persisting it.
-	if req.GetFilter() == nil {
-		return OrderResult{Reason: domain.ErrPreparedQueryFilterRequired.Reason()}
 	}
 
 	if !domain.IsPreparedQueryExecutableTarget(existing.GetTarget()) {
@@ -2286,10 +2184,8 @@ func (s *LedgerState) transientViolation(base *LedgerState, touched map[VolumeKe
 		}
 
 		// Grandfather clause: pre-existing non-zero balance is exempt.
-		// A row that existed before the bulk (even at {0,0}) is grandfathered:
-		// it is a previously persisted row being drained, not a fresh transient.
-		_, existed := base.volumes.Get(key)
-		if existed {
+		bv := base.vol(key)
+		if bv.Input.Cmp(&bv.Output) != 0 {
 			continue
 		}
 
@@ -2303,13 +2199,11 @@ func (s *LedgerState) transientViolation(base *LedgerState, touched map[VolumeKe
 
 // purgeZeroBalance drops touched EPHEMERAL/TRANSIENT cells that landed at a zero
 // balance, mirroring the server's post-commit write-set sweep (PR #151).
-func (s *LedgerState) purgeZeroBalance(touched map[VolumeKey]bool, touchedAccounts map[string]bool) (map[VolumeKey]bool, map[VolumeKey]bool) {
+func (s *LedgerState) purgeZeroBalance(touched map[VolumeKey]bool) map[VolumeKey]bool {
 	purged := map[VolumeKey]bool{}
-	coveredPurged := map[VolumeKey]bool{}
 	compiled := s.compiled()
 
 	for key := range touched {
-		touchedAccounts[key.Address] = true
 		vp, ok := s.volumes.Get(key)
 		if !ok {
 			continue
@@ -2330,60 +2224,7 @@ func (s *LedgerState) purgeZeroBalance(touched map[VolumeKey]bool, touchedAccoun
 		}
 	}
 
-	for address := range touchedAccounts {
-		t := s.match(address, compiled)
-		if t == nil || t.Persistence != commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL {
-			continue
-		}
-		live := false
-		for key, volume := range s.volumes.All() {
-			if key.Address == address && volume.Input.Cmp(&volume.Output) != 0 {
-				live = true
-
-				break
-			}
-		}
-		if live {
-			continue
-		}
-		for key := range s.volumes.All() {
-			if key.Address == address {
-				volume, _ := s.volumes.Get(key)
-				s.volumes = s.volumes.Delete(key)
-				if touched[key] {
-					purged[key] = true
-				} else if !volume.Input.IsZero() || !volume.Output.IsZero() {
-					coveredPurged[key] = true
-				}
-			}
-		}
-		for key := range s.metadata.All() {
-			if key.Address == address {
-				s.metadata = s.metadata.Delete(key)
-			}
-		}
-		for key := range s.everAsset.All() {
-			if key.address == address {
-				s.everAsset = s.everAsset.Delete(key)
-			}
-		}
-	}
-
-	return purged, coveredPurged
-}
-
-func (s *LedgerState) annotateCoveredPurges(idx int, covered map[VolumeKey]bool) {
-	rec := *s.logs.Get(idx)
-	parts := make([]string, 0, 2)
-	if rec.purged != "" {
-		parts = append(parts, strings.Split(rec.purged, ",")...)
-	}
-	if rendered := renderTouchedVolumes(covered); rendered != "" {
-		parts = append(parts, strings.Split(rendered, ",")...)
-	}
-	sort.Strings(parts)
-	rec.purged = strings.Join(parts, ",")
-	s.logs = s.logs.Set(idx, &rec)
+	return purged
 }
 
 func checkpointTerm(key string, id uint64) Digest {
@@ -2521,6 +2362,9 @@ func (g *GlobalState) applyLifecycle(req *servicepb.Request) (OrderResult, bool)
 		}
 		for _, field := range r.CreateLedger.GetInitialSchema() {
 			ls.applySetMetadataFieldType(&servicepb.SetMetadataFieldTypeRequest{Ledger: name, TargetType: field.GetTargetType(), Key: field.GetKey(), Type: field.GetType()})
+		}
+		for key, value := range r.CreateLedger.GetMetadata() {
+			ls.ledgerMeta = ls.ledgerMeta.Set(key, value.CloneVT())
 		}
 		g.lifecycle = g.lifecycle.Set(name, LedgerLifecycle{Mode: r.CreateLedger.GetMode(), MirrorSource: r.CreateLedger.GetMirrorSource().CloneVT()})
 		g.ledgers[name] = ls

@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
       - name: minio
-        image: minio/minio:RELEASE.2024-06-13T22-53-53Z
+        image: __REGISTRY__/minio:__TAG__
         args: ["server", "/data", "--console-address", ":9001"]
         env:
         - name: MINIO_ROOT_USER
@@ -65,7 +65,7 @@ spec:
       restartPolicy: OnFailure
       containers:
       - name: mc
-        image: minio/mc:RELEASE.2024-06-12T14-34-03Z
+        image: __REGISTRY__/minio:__TAG__
         command: ["/bin/sh", "-c"]
         args:
         - |

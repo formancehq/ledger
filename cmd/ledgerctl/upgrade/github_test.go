@@ -15,28 +15,32 @@ func TestArchiveAssetName(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
-		goos   string
-		goarch string
-		want   string
+		name    string
+		version string
+		goos    string
+		goarch  string
+		want    string
 	}{
 		{
-			name:   "linux amd64",
-			goos:   "linux",
-			goarch: "amd64",
-			want:   "ledger_linux-amd64.tar.gz",
+			name:    "linux amd64",
+			version: "v3.0.0",
+			goos:    "linux",
+			goarch:  "amd64",
+			want:    "ledger_v3.0.0_linux-amd64.tar.gz",
 		},
 		{
-			name:   "darwin arm64",
-			goos:   "darwin",
-			goarch: "arm64",
-			want:   "ledger_darwin-arm64.tar.gz",
+			name:    "darwin arm64 prerelease",
+			version: "v3.0.0-beta.0",
+			goos:    "darwin",
+			goarch:  "arm64",
+			want:    "ledger_v3.0.0-beta.0_darwin-arm64.tar.gz",
 		},
 		{
-			name:   "windows amd64",
-			goos:   "windows",
-			goarch: "amd64",
-			want:   "ledger_windows-amd64.zip",
+			name:    "windows amd64 nightly",
+			version: "nightly-deadbeef",
+			goos:    "windows",
+			goarch:  "amd64",
+			want:    "ledger_nightly-deadbeef_windows-amd64.zip",
 		},
 	}
 
@@ -44,7 +48,7 @@ func TestArchiveAssetName(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			require.Equal(t, test.want, archiveAssetName(test.goos, test.goarch))
+			require.Equal(t, test.want, archiveAssetName(test.version, test.goos, test.goarch))
 		})
 	}
 }
@@ -60,17 +64,65 @@ func TestExecutableName(t *testing.T) {
 func TestFindAssetForPlatform(t *testing.T) {
 	t.Parallel()
 
+	tests := []struct {
+		name    string
+		version string
+	}{
+		{name: "stable", version: "v3.0.0"},
+		{name: "prerelease", version: "v3.0.0-beta.0"},
+		{name: "nightly", version: "nightly-deadbeef"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			release := &releaseInfo{
+				Assets: []assetInfo{
+					{Name: "checksums.txt"},
+					{Name: archiveAssetName(test.version, "linux", "amd64")},
+					{Name: archiveAssetName(test.version, "windows", "amd64")},
+					{Name: archiveAssetName(test.version, "windows", "arm64")},
+				},
+			}
+
+			for _, platform := range [][2]string{{"linux", "amd64"}, {"windows", "amd64"}} {
+				asset, err := findAssetForPlatform(release, platform[0], platform[1])
+				require.NoError(t, err)
+				require.Equal(t, archiveAssetName(test.version, platform[0], platform[1]), asset.Name)
+			}
+		})
+	}
+}
+
+func TestFindAssetForPlatformRejectsUnversionedOrForeignAssets(t *testing.T) {
+	t.Parallel()
+
 	release := &releaseInfo{
 		Assets: []assetInfo{
-			{Name: "checksums.txt"},
-			{Name: archiveAssetName("linux", "amd64")},
-			{Name: archiveAssetName("windows", "amd64")},
+			{Name: "ledger_linux-amd64.tar.gz"},
+			{Name: "ledger_benchmarks_v3.0.0_linux-amd64.tar.gz"},
+			{Name: archiveAssetName("v3.0.0", "linux", "arm64")},
 		},
 	}
 
-	asset, err := findAssetForPlatform(release, "windows", "amd64")
-	require.NoError(t, err)
-	require.Equal(t, archiveAssetName("windows", "amd64"), asset.Name)
+	_, err := findAssetForPlatform(release, "linux", "amd64")
+	require.EqualError(t, err, `no binary available for linux/amd64 (expected asset "ledger_<version>_linux-amd64.tar.gz")`)
+}
+
+func TestFindAssetForPlatformRejectsAmbiguousAssets(t *testing.T) {
+	t.Parallel()
+
+	release := &releaseInfo{
+		TagName: "v3.0.0",
+		Assets: []assetInfo{
+			{Name: archiveAssetName("v3.0.0", "linux", "amd64")},
+			{Name: archiveAssetName("v3.0.1", "linux", "amd64")},
+		},
+	}
+
+	_, err := findAssetForPlatform(release, "linux", "amd64")
+	require.ErrorContains(t, err, "multiple binaries available for linux/amd64")
 }
 
 func TestFindStableRelease(t *testing.T) {

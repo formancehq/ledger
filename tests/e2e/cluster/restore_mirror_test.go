@@ -156,7 +156,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 
 		vol := acct.FindVolume(asset, "")
 		g.Expect(vol).ToNot(BeNil(), "%s: %s %s volumes missing", phase, account, asset)
-		g.Expect(vol.GetInput()).To(Equal(preBackupInput), "%s: %s %s input", phase, account, asset)
+		g.Expect(vol.GetInput().DecimalString()).To(Equal(preBackupInput), "%s: %s %s input", phase, account, asset)
 	}
 
 	BeforeAll(func() {
@@ -322,7 +322,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 
 			vol := acct.FindVolume(asset, "")
 			Expect(vol).ToNot(BeNil(), "live: %s %s volumes missing", account, asset)
-			preBackupInput = vol.GetInput()
+			preBackupInput = vol.GetInput().DecimalString()
 
 			// Premise guard: without a single, complete ingestion on the live
 			// node the post-restore comparisons would be vacuous.
@@ -382,6 +382,8 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 				Expect(statusErr).To(Succeed())
 				return resp.GetState()
 			}, 2*time.Minute, 500*time.Millisecond).Should(Equal(restorepb.DownloadState_DOWNLOAD_STATE_SUCCEEDED))
+
+			Expect(validateRestoreWithoutErrors(ctx, restoreClient)).To(Succeed())
 
 			_, err = restoreClient.FinalizeRestore(ctx, &restorepb.FinalizeRestoreRequest{})
 			Expect(err).To(Succeed())

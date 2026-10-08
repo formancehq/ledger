@@ -7,7 +7,6 @@ spec:
   image:
     repository: ghcr.io/formancehq/ledger
     tag: latest
-  clusterID: default
   podAntiAffinity:
     enabled: true
     type: hard

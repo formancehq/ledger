@@ -84,7 +84,7 @@ type credentialsKeyInfo struct {
 	KeyID           string
 	PublicKey       string // hex-encoded
 	Scopes          []string
-	God             bool
+	Superuser       bool
 }
 
 // unresolvedCredential identifies a selector-matching Credentials whose key is
@@ -92,18 +92,18 @@ type credentialsKeyInfo struct {
 // the credential's prior key up in the existing ConfigMap for carry-forward
 // (EN-1491) — the ConfigMap prefix + credential name, which together form the
 // pubkey filename produced by pubKeyFileName — plus the LIVE authorization
-// metadata (Scopes, God) read from the current Credentials spec. Only the key
+// metadata (Scopes, Superuser) read from the current Credentials spec. Only the key
 // material (KeyID/PublicKey) is unavailable (that is precisely what is missing)
 // and must be carried forward from the prior ConfigMap; authorization metadata
 // must always reflect the current spec, never the stale stored entry.
 type unresolvedCredential struct {
 	ConfigMapPrefix string
 	CredentialsName string
-	// Scopes and God come from the current Credentials spec so a narrowed spec
-	// (scopes removed, god cleared) takes effect even while the secret is
+	// Scopes and Superuser come from the current Credentials spec so a narrowed spec
+	// (scopes removed, superuser cleared) takes effect even while the secret is
 	// transiently unresolved and the key material is carried forward.
-	Scopes []string
-	God    bool
+	Scopes    []string
+	Superuser bool
 }
 
 // pubKeyFileName returns the ConfigMap key under which a credential's hex public
@@ -125,7 +125,7 @@ type authKeyEntry struct {
 	KeyID         string   `json:"keyId"`
 	PublicKeyFile string   `json:"publicKeyFile"`
 	Scopes        []string `json:"scopes"`
-	God           bool     `json:"god,omitempty"`
+	Superuser     bool     `json:"superuser,omitempty"`
 }
 
 // reconcileAuthKeys resolves all Credentials matching the given Cluster,
@@ -153,8 +153,8 @@ type authKeyEntry struct {
 //     freezing it would needlessly block image/replica/TLS updates (EN-1487, P1).
 //     In every non-disabled case we still REBUILD the ConfigMap via the same
 //     carry-forward path as the partial case — each entry keeps its last-known key
-//     material while its authorization metadata (scopes / god) is refreshed from
-//     the live Credentials spec, so a narrowed or god-cleared Credentials does not
+//     material while its authorization metadata (scopes / superuser) is refreshed from
+//     the live Credentials spec, so a narrowed or superuser-cleared Credentials does not
 //     preserve stale privileges indefinitely while its Secret stays undistributed.
 //     The freeze is further narrowed to an INCOMPLETE carried set: if every
 //     previously-distributed still-matched credential's key is carried forward
@@ -255,7 +255,7 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 	// normally. Either way, rather than early-return with the ConfigMap untouched —
 	// which would preserve stale authorization metadata indefinitely while the
 	// Secret is undistributed — we fall through to the shared carry-forward path
-	// (case 3): each entry keeps its last-known key material and gets its scopes/god
+	// (case 3): each entry keeps its last-known key material and gets its scopes/superuser
 	// refreshed from the live spec. The regression guard further down still returns
 	// a pending reason with the wiring untouched when there is nothing to carry
 	// forward (no prior key material), so an Ed25519-dependent cluster is never
@@ -328,12 +328,12 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 				// Key material (KeyID/PublicKey) is carried forward from the prior
 				// ConfigMap — it is unrecoverable while the secret is unresolved. But
 				// authorization metadata comes from the LIVE spec so a narrowed
-				// Credentials (scopes removed / god cleared) takes effect immediately
+				// Credentials (scopes removed / superuser cleared) takes effect immediately
 				// rather than preserving stale privileges indefinitely.
 				KeyID:     entry.KeyID,
 				PublicKey: pubKey,
 				Scopes:    u.Scopes,
-				God:       u.God,
+				Superuser: u.Superuser,
 			})
 		}
 	}
@@ -375,7 +375,7 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 	// unresolved: the ConfigMap references only key material that is present, so
 	// envvars resolves a non-empty key file and no keyless crash-loop can occur (the
 	// server verifies tokens with public keys alone). Freezing a complete set would
-	// strand a legitimate authorization change — narrowed scopes / cleared god on
+	// strand a legitimate authorization change — narrowed scopes / cleared superuser on
 	// the carried entries — because pods load AUTH_ED25519_KEYS once at boot and
 	// would never restart (EN-1487, QHX5a rollout half).
 	if requiresEd25519Keys {
@@ -452,7 +452,7 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 			KeyID:         a.KeyID,
 			PublicKeyFile: "/auth-keys/" + fileName,
 			Scopes:        a.Scopes,
-			God:           a.God,
+			Superuser:     a.Superuser,
 		})
 		pubKeyData[fileName] = a.PublicKey
 	}
@@ -494,7 +494,7 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 	//     authorization metadata over the carried key material, and rolling is
 	//     crash-loop-safe because the referenced key set is non-empty and complete.
 	//     Rolling is in fact REQUIRED here: pods load AUTH_ED25519_KEYS once at
-	//     boot, so a narrowed-scopes / cleared-god change only takes effect on
+	//     boot, so a narrowed-scopes / cleared-superuser change only takes effect on
 	//     restart. Freezing would strand that authorization change indefinitely.
 	//   - Issuer-backed / auth-disabled clusters (requiresEd25519Keys == false) —
 	//     never crash-loop on a missing key set, so they reconcile normally too.
@@ -585,12 +585,12 @@ func (r *ClusterReconciler) collectClusterCredentialsKeys(ctx context.Context, l
 
 		if len(cred.Status.DistributedSecretRefs) == 0 {
 			logger.Info("credentials has no distributed secret yet, skipping", "credentials", cred.Name)
-			unresolved = append(unresolved, unresolvedCredential{ConfigMapPrefix: configMapPrefix, CredentialsName: cred.Name, Scopes: cred.Spec.Scopes, God: cred.Spec.God})
+			unresolved = append(unresolved, unresolvedCredential{ConfigMapPrefix: configMapPrefix, CredentialsName: cred.Name, Scopes: cred.Spec.Scopes, Superuser: cred.Spec.Superuser})
 
 			continue
 		}
 
-		info, ok, err := r.readCredentialsKeyFromSecret(ctx, cred.Name, cred.Status.DistributedSecretRefs[0], cred.Spec.Scopes, cred.Spec.God, configMapPrefix)
+		info, ok, err := r.readCredentialsKeyFromSecret(ctx, cred.Name, cred.Status.DistributedSecretRefs[0], cred.Spec.Scopes, cred.Spec.Superuser, configMapPrefix)
 		if err != nil {
 			return nil, 0, nil, err
 		}
@@ -598,7 +598,7 @@ func (r *ClusterReconciler) collectClusterCredentialsKeys(ctx context.Context, l
 			// Distributed but the secret is not yet readable (missing/empty
 			// fields): treat it as transiently unresolved so its prior key can be
 			// carried forward rather than dropped.
-			unresolved = append(unresolved, unresolvedCredential{ConfigMapPrefix: configMapPrefix, CredentialsName: cred.Name, Scopes: cred.Spec.Scopes, God: cred.Spec.God})
+			unresolved = append(unresolved, unresolvedCredential{ConfigMapPrefix: configMapPrefix, CredentialsName: cred.Name, Scopes: cred.Spec.Scopes, Superuser: cred.Spec.Superuser})
 
 			continue
 		}
@@ -615,7 +615,7 @@ func (r *ClusterReconciler) readCredentialsKeyFromSecret(
 	credentialsName string,
 	secretRef ledgerv1alpha1.SecretReference,
 	scopes []string,
-	god bool,
+	superuser bool,
 	configMapPrefix string,
 ) (credentialsKeyInfo, bool, error) {
 	logger := log.FromContext(ctx)
@@ -655,7 +655,7 @@ func (r *ClusterReconciler) readCredentialsKeyFromSecret(
 		KeyID:           keyID,
 		PublicKey:       pubKeyHex,
 		Scopes:          scopes,
-		God:             god,
+		Superuser:       superuser,
 	}, true, nil
 }
 

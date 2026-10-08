@@ -218,3 +218,44 @@ func TestHandleCreateLedger_AlreadyExists(t *testing.T) {
 	resp := decodeResponse[ErrorResponse](t, w)
 	require.Equal(t, "LEDGER_ALREADY_EXISTS", resp.ErrorCode)
 }
+
+func TestHandleCreateLedger_InitialMetadata(t *testing.T) {
+	t.Parallel()
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+			create := req.GetUnsigned().GetRequests()[0].GetCreateLedger()
+			require.Equal(t, "bar", create.GetMetadata()["foo"].GetStringValue())
+			require.Equal(t, uint64(9007199254740993), create.GetMetadata()["count"].GetUintValue())
+			require.NotContains(t, create.GetMetadata(), "cleared")
+			require.True(t, create.GetMetadata()["enabled"].GetBoolValue())
+
+			return &domain.ApplyResult{Logs: []*commonpb.Log{{Payload: &commonpb.LogPayload{
+				Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "test-ledger", Metadata: create.GetMetadata()}},
+			}}}}, nil
+		})
+	srv := newTestServer(t, backend)
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodPost, "/test-ledger", strings.NewReader(`{"metadata":{"foo":"bar","count":9007199254740993,"enabled":true,"cleared":null}}`), map[string]string{"ledgerName": "test-ledger"})
+	srv.handleCreateLedger(w, r)
+	require.Equal(t, http.StatusCreated, w.Code)
+	require.Contains(t, w.Body.String(), `"count":9007199254740993`)
+	require.Contains(t, w.Body.String(), `"foo":"bar"`)
+	require.Contains(t, w.Body.String(), `"enabled":true`)
+	require.NotContains(t, w.Body.String(), `"cleared"`)
+}
+
+func TestHandleCreateLedger_RejectsUnsupportedMetadata(t *testing.T) {
+	t.Parallel()
+	for _, value := range []string{`{"nested":"value"}`, `[1,2]`, `1.5`} {
+		t.Run(value, func(t *testing.T) {
+			t.Parallel()
+			backend := NewMockBackend(gomock.NewController(t))
+			srv := newTestServer(t, backend)
+			w := httptest.NewRecorder()
+			r := newRequest(t, http.MethodPost, "/test-ledger", strings.NewReader(`{"metadata":{"value":`+value+`}}`), map[string]string{"ledgerName": "test-ledger"})
+			srv.handleCreateLedger(w, r)
+			require.Equal(t, http.StatusBadRequest, w.Code)
+		})
+	}
+}

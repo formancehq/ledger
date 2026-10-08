@@ -247,14 +247,21 @@ func githubDownload(url string) (*http.Response, error) {
 	return resp, nil
 }
 
-// archiveAssetName returns the expected archive filename for an OS/arch pair.
-func archiveAssetName(goos, goarch string) string {
+// archiveAssetName returns the archive filename published for a release
+// version and OS/arch pair, e.g. "ledger_v3.0.0_linux-amd64.tar.gz".
+// It must stay in sync with the archive name_template in .goreleaser.yml.
+func archiveAssetName(version, goos, goarch string) string {
+	return projectName + "_" + version + archiveAssetSuffix(goos, goarch)
+}
+
+// archiveAssetSuffix returns the version-independent tail of an archive name.
+func archiveAssetSuffix(goos, goarch string) string {
 	extension := ".tar.gz"
 	if goos == "windows" {
 		extension = ".zip"
 	}
 
-	return fmt.Sprintf("%s_%s-%s%s", projectName, goos, goarch, extension)
+	return fmt.Sprintf("_%s-%s%s", goos, goarch, extension)
 }
 
 func executableName(goos string) string {
@@ -270,15 +277,47 @@ func findAsset(release *releaseInfo) (*assetInfo, error) {
 	return findAssetForPlatform(release, runtime.GOOS, runtime.GOARCH)
 }
 
+// findAssetForPlatform matches on the archive layout rather than an exact name
+// because the version embedded in nightly archives is not derivable from the
+// release metadata.
 func findAssetForPlatform(release *releaseInfo, goos, goarch string) (*assetInfo, error) {
-	want := archiveAssetName(goos, goarch)
+	prefix := projectName + "_"
+	suffix := archiveAssetSuffix(goos, goarch)
+
+	var found *assetInfo
+
 	for i := range release.Assets {
-		if release.Assets[i].Name == want {
-			return &release.Assets[i], nil
+		name := release.Assets[i].Name
+		// The length guard keeps prefix and suffix from sharing the "_" of an
+		// unversioned name such as "ledger_linux-amd64.tar.gz".
+		if len(name) <= len(prefix)+len(suffix) ||
+			!strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, suffix) {
+			continue
 		}
+
+		version := name[len(prefix) : len(name)-len(suffix)]
+		if strings.Contains(version, "_") {
+			continue
+		}
+
+		if found != nil {
+			return nil, fmt.Errorf(
+				"multiple binaries available for %s/%s in release %s: %q and %q",
+				goos, goarch, release.TagName, found.Name, name,
+			)
+		}
+
+		found = &release.Assets[i]
 	}
 
-	return nil, fmt.Errorf("no binary available for %s/%s (expected asset %q)", goos, goarch, want)
+	if found == nil {
+		return nil, fmt.Errorf(
+			"no binary available for %s/%s (expected asset %q)",
+			goos, goarch, archiveAssetName("<version>", goos, goarch),
+		)
+	}
+
+	return found, nil
 }
 
 // findChecksumsAsset finds the checksums.txt asset in the release.

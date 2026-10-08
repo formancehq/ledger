@@ -21,6 +21,9 @@ type RequestProcessor struct {
 	hashBuf            []byte // reusable buffer for idempotency hash serialization
 	compiledTypesCache map[string][]accounttype.CompiledType
 	assetCache         map[string]cachedAssetPrecision // per-batch cache for ParseAssetPrecision
+
+	// compileMissingNumscript: see CompileMissingNumscript.
+	compileMissingNumscript bool
 }
 
 // Context bundles per-batch shared state (caches, ledger metadata) and
@@ -57,6 +60,18 @@ type Context struct {
 	// Empty for every non-revert order.
 	RevertTargetDigest []byte
 
+	// CompiledProgram/CompiledProgramHash/CompiledVars/CompiledScriptHash are
+	// the Numscript VM artifact admission compiled for THIS order (from
+	// OrderTechnical), staged here like the fields above. Every scripted order
+	// admission proposes carries one, with the program by value or by
+	// reference (exactly one of the first two set); the numscript producer
+	// recompiles a missing one from the script text, flagging it as an
+	// admission bug outside audit replay (see classifyCompiledArtifact).
+	CompiledProgram     []byte
+	CompiledProgramHash []byte
+	CompiledVars        []byte
+	CompiledScriptHash  []byte
+
 	// batchInitialNextTxID is the NextTransactionId each ledger carried before
 	// this batch mutated it, captured by processApply on the first *apply* order
 	// for that ledger. A revert whose target id is at or above this value targets
@@ -91,6 +106,9 @@ type Context struct {
 	NumscriptCache *numscript.NumscriptCache
 	CompiledTypes  map[string][]accounttype.CompiledType
 	AssetCache     map[string]cachedAssetPrecision
+
+	// CompileMissingNumscript mirrors RequestProcessor.CompileMissingNumscript.
+	CompileMissingNumscript bool
 }
 
 // NewRequestProcessor creates a new RequestProcessor with the given meter.
@@ -114,6 +132,16 @@ func NewRequestProcessor(m metric.Meter, numscriptCacheSize int) (*RequestProces
 		compiledTypesCache: make(map[string][]accounttype.CompiledType),
 		assetCache:         make(map[string]cachedAssetPrecision),
 	}, nil
+}
+
+// CompileMissingNumscript tells this processor that scripted orders arrive
+// without compiled code by design, so recompiling them is not flagged as an
+// admission bug. It changes no outcome: a missing artifact is always
+// recompiled from the script text. Only the store checker's audit replay turns
+// it on — the audit keeps only the business part of an order, so the orders
+// it re-runs never carry compiled code.
+func (p *RequestProcessor) CompileMissingNumscript() {
+	p.compileMissingNumscript = true
 }
 
 // compiledTypesFor returns compiled account types for the given ledger,
@@ -234,10 +262,11 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 	// per-apply fields (Boundaries, LedgerInfo) are populated by the apply
 	// orchestrators.
 	ctx := &Context{
-		NumscriptCache:       p.numscriptCache,
-		CompiledTypes:        p.compiledTypesCache,
-		AssetCache:           p.assetCache,
-		batchInitialNextTxID: make(map[string]uint64),
+		NumscriptCache:          p.numscriptCache,
+		CompiledTypes:           p.compiledTypesCache,
+		AssetCache:              p.assetCache,
+		CompileMissingNumscript: p.compileMissingNumscript,
+		batchInitialNextTxID:    make(map[string]uint64),
 	}
 
 	ctx.metadataBudget = &commandMetadataBudget{}
@@ -515,11 +544,12 @@ func hashOrder(order *raftcmdpb.Order, buf []byte) (hash []byte, grownBuf []byte
 // processor's per-batch caches and forwards to processOrder.
 func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s Scope) (*commonpb.LogPayload, domain.SerializableError) {
 	ctx := &Context{
-		metadataBudget:       &commandMetadataBudget{bytes: domain.OrderMetadataSize(order)},
-		NumscriptCache:       p.numscriptCache,
-		CompiledTypes:        p.compiledTypesCache,
-		AssetCache:           p.assetCache,
-		batchInitialNextTxID: make(map[string]uint64),
+		metadataBudget:          &commandMetadataBudget{bytes: domain.OrderMetadataSize(order)},
+		NumscriptCache:          p.numscriptCache,
+		CompiledTypes:           p.compiledTypesCache,
+		AssetCache:              p.assetCache,
+		CompileMissingNumscript: p.compileMissingNumscript,
+		batchInitialNextTxID:    make(map[string]uint64),
 	}
 
 	return p.processOrder(order, s, ctx)
@@ -536,6 +566,10 @@ func (p *RequestProcessor) processOrder(order *raftcmdpb.Order, s Scope, ctx *Co
 	// CreateTransactionOrder.
 	ctx.InputsResolutionHash = order.GetTechnical().GetInputsResolutionHash()
 	ctx.RevertTargetDigest = order.GetTechnical().GetRevertTargetDigest()
+	ctx.CompiledProgram = order.GetTechnical().GetCompiledProgram()
+	ctx.CompiledProgramHash = order.GetTechnical().GetCompiledProgramHash()
+	ctx.CompiledVars = order.GetTechnical().GetCompiledVars()
+	ctx.CompiledScriptHash = order.GetTechnical().GetCompiledScriptHash()
 	// Reset per-apply fields — only processApply/processMirrorIngest set them.
 	ctx.Boundaries = nil
 	ctx.LedgerInfo = nil

@@ -25,9 +25,9 @@ require (
 	github.com/cockroachdb/pebble/v2 v2.1.7
 	github.com/databricks/databricks-sql-go v1.10.0
 	github.com/dustin/go-humanize v1.0.1
-	github.com/formancehq/go-libs/v5 v5.9.0
+	github.com/formancehq/go-libs/v5 v5.10.0
 	github.com/formancehq/invariants v0.11.0
-	github.com/formancehq/numscript v0.0.25-0.20260713092057-edde2b17f0a0 // pinned to numscript main @edde2b17 (#169, ResolveDependencies); repin to v0.0.25 once tagged off main
+	github.com/formancehq/numscript v0.0.27-0.20261006084331-e0b55a6fdd6f // pinned to numscript main @e0b55a6 (#199 compiler+VM, #211 Exec releases the store on return); repin to a release tag once one is cut
 	github.com/fsnotify/fsnotify v1.5.4
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/go-jose/go-jose/v4 v4.1.4
@@ -88,7 +88,10 @@ require (
 	google.golang.org/protobuf v1.36.11
 )
 
-require go.opentelemetry.io/proto/otlp v1.11.0
+require (
+	github.com/getkin/kin-openapi v0.144.0
+	go.opentelemetry.io/proto/otlp v1.11.0
+)
 
 require (
 	al.essio.dev/pkg/shellescape v1.5.1 // indirect
@@ -168,7 +171,6 @@ require (
 	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
-	github.com/getkin/kin-openapi v0.144.0 // indirect
 	github.com/getsentry/sentry-go v0.43.0 // indirect
 	github.com/go-chi/chi v4.1.2+incompatible // indirect
 	github.com/go-chi/render v1.0.3 // indirect

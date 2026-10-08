@@ -1,0 +1,534 @@
+{
+  "description": "Maps every Ledger v2 HTTP operation (the v2 API and the unversioned v1 API it still serves) to its Ledger 3.0 equivalent. Keys and targets are paths on the ledger server; behind a Stack gateway, prefix both with `/api/ledger`.",
+  "sources": {
+    "v2": "Stack v3.2 OpenAPI, Ledger v2 operations",
+    "v3": "openapi.yml"
+  },
+  "gatewayPrefix": "/api/ledger",
+  "statuses": {
+    "moved": "Same operation at the v3 path. Contract-wide changes apply (typed metadata, response envelope, idempotency scope, post-commit volumes); notes list any parameter that is no longer accepted.",
+    "changed": "A v3 equivalent exists, but its parameters, method or behavior differ. Read the notes.",
+    "replaced": "The capability moved to a different resource model. The listed v3 operations cover it.",
+    "removed": "No v3 HTTP equivalent. The notes name the alternative, if there is one."
+  },
+  "operations": {
+    "GET /_info": {
+      "operationId": "getInfo",
+      "status": "changed",
+      "v3": [
+        "GET /_info"
+      ],
+      "notes": "Unversioned build information as flat JSON with no `data` envelope. Storage configuration is not returned."
+    },
+    "GET /{ledger}/_info": {
+      "operationId": "getLedgerInfo",
+      "status": "changed",
+      "v3": [
+        "GET /v3/{ledgerName}"
+      ],
+      "notes": "Returns the ledger's configuration and metadata. Storage migration status is not exposed."
+    },
+    "HEAD /{ledger}/accounts": {
+      "operationId": "countAccounts",
+      "status": "removed",
+      "v3": [],
+      "notes": "No count endpoint. Page through `GET /v3/{ledgerName}/accounts` if you need a total."
+    },
+    "GET /{ledger}/accounts": {
+      "operationId": "listAccounts",
+      "status": "changed",
+      "v3": [
+        "GET /v3/{ledgerName}/accounts"
+      ],
+      "notes": "`address` and `metadata` conditions move into `filter`. `balance` and `balanceOperator` are not accepted. The cursor is `after`.",
+      "docs": "/modules/ledger/querying/filters-and-pagination"
+    },
+    "GET /{ledger}/accounts/{address}": {
+      "operationId": "getAccount",
+      "status": "changed",
+      "v3": [
+        "GET /v3/{ledgerName}/accounts/{address}"
+      ],
+      "notes": "Volumes are returned per asset and color."
+    },
+    "POST /{ledger}/accounts/{address}/metadata": {
+      "operationId": "addMetadataToAccount",
+      "status": "moved",
+      "v3": [
+        "POST /v3/{ledgerName}/accounts/{address}/metadata"
+      ]
+    },
+    "GET /{ledger}/mapping": {
+      "operationId": "getMapping",
+      "status": "removed",
+      "v3": [],
+      "notes": "Ledger v1 mapping contracts have no equivalent. Account types validate address patterns.",
+      "docs": "/modules/ledger/modeling/account-types"
+    },
+    "PUT /{ledger}/mapping": {
+      "operationId": "updateMapping",
+      "status": "removed",
+      "v3": [],
+      "notes": "Ledger v1 mapping contracts have no equivalent. Account types validate address patterns.",
+      "docs": "/modules/ledger/modeling/account-types"
+    },
+    "POST /{ledger}/script": {
+      "operationId": "runScript",
+      "status": "changed",
+      "v3": [
+        "POST /v3/{ledgerName}/transactions"
+      ],
+      "notes": "Send the program in the `script` field (`plain` and `vars`), or reference a saved program with `scriptReference`. `preview` is not accepted.",
+      "docs": "/modules/ledger/migration/update-clients#update-transaction-writes"
+    },
+    "GET /{ledger}/stats": {
+      "operationId": "readStats",
+      "status": "changed",
+      "v3": [
+        "GET /v3/{ledgerName}/stats"
+      ],
+      "notes": "No account count. Returns `transactionCount`, `logCount` and usage counters."
+    },
+    "HEAD /{ledger}/transactions": {
+      "operationId": "countTransactions",
+      "status": "removed",
+      "v3": [],
+      "notes": "No count endpoint. `GET /v3/{ledgerName}/stats` returns the unfiltered `transactionCount`."
+    },
+    "GET /{ledger}/transactions": {
+      "operationId": "listTransactions",
+      "status": "changed",
+      "v3": [
+        "GET /v3/{ledgerName}/transactions"
+      ],
+      "notes": "`reference`, `account`, `source`, `destination` and `metadata` move into `filter`. `startTime` and `endTime` become `startDate` and `endDate`. Each filter needs its own index: `TX_BUILTIN_INDEX_TIMESTAMP` for the dates, `TX_BUILTIN_INDEX_REFERENCE` for `reference`, `TX_BUILTIN_INDEX_ADDRESS`, `TX_BUILTIN_INDEX_SOURCE_ADDRESS` and `TX_BUILTIN_INDEX_DESTINATION_ADDRESS` for `account`, `source` and `destination` respectively, and a metadata index for each `metadata` key. The cursor is `after`.",
+      "docs": "/modules/ledger/querying/filters-and-pagination"
+    },
+    "POST /{ledger}/transactions": {
+      "operationId": "createTransaction",
+      "status": "changed",
+      "v3": [
+        "POST /v3/{ledgerName}/transactions"
+      ],
+      "notes": "Returns `201` with the transaction under `data.transaction`. `preview` is not accepted.",
+      "docs": "/modules/ledger/migration/update-clients#update-transaction-writes"
+    },
+    "GET /{ledger}/transactions/{txid}": {
+      "operationId": "getTransaction",
+      "status": "moved",
+      "v3": [
+        "GET /v3/{ledgerName}/transactions/{transactionId}"
+      ]
+    },
+    "POST /{ledger}/transactions/{txid}/metadata": {
+      "operationId": "addMetadataOnTransaction",
+      "status": "moved",
+      "v3": [
+        "POST /v3/{ledgerName}/transactions/{transactionId}/metadata"
+      ]
+    },
+    "POST /{ledger}/transactions/{txid}/revert": {
+      "operationId": "revertTransaction",
+      "status": "changed",
+      "v3": [
+        "POST /v3/{ledgerName}/transactions/{transactionId}/revert"
+      ],
+      "notes": "`disableChecks` becomes `force` in the JSON body."
+    },
+    "POST /{ledger}/transactions/batch": {
+      "operationId": "CreateTransactions",
+      "status": "changed",
+      "v3": [
+        "POST /v3/{ledgerName}/bulk"
+      ],
+      "notes": "Send an array of `CREATE_TRANSACTION` elements. The failure model differs.",
+      "docs": "/modules/ledger/migration/update-clients#update-bulk-handling"
+    },
+    "GET /{ledger}/balances": {
+      "operationId": "getBalances",
+      "status": "changed",
+      "v3": [
+        "GET /v3/{ledgerName}/accounts"
+      ],
+      "notes": "Balances are part of each account's `volumes`. `address` moves into `filter`.",
+      "docs": "/modules/ledger/migration/removed-capabilities"
+    },
+    "GET /{ledger}/aggregate/balances": {
+      "operationId": "getBalancesAggregated",
+      "status": "changed",
+      "v3": [
+        "GET /v3/{ledgerName}/volumes"
+      ],
+      "notes": "`address` moves into `filter`. `useInsertionDate` is not accepted."
+    },
+    "GET /{ledger}/logs": {
+      "operationId": "listLogs",
+      "status": "changed",
+      "v3": [
+        "GET /v3/{ledgerName}/logs"
+      ],
+      "notes": "`startTime` and `endTime` become `startDate` and `endDate`, which require the builtin `LOG_BUILTIN_INDEX_DATE` index. The cursor is `after`."
+    },
+    "GET /_/info": {
+      "operationId": "v2GetInfo",
+      "status": "changed",
+      "v3": [
+        "GET /_info"
+      ],
+      "notes": "Unversioned: the path has no `/v3` segment. Flat JSON with no `data` envelope."
+    },
+    "GET /_/metrics": {
+      "operationId": "getMetrics",
+      "status": "removed",
+      "v3": [],
+      "notes": "No HTTP metrics endpoint. Ledger exports metrics through OpenTelemetry.",
+      "docs": "/modules/ledger/operations/monitoring"
+    },
+    "GET /v2": {
+      "operationId": "v2ListLedgers",
+      "status": "changed",
+      "v3": [
+        "GET /v3/"
+      ],
+      "notes": "Returns every ledger in one response. `pageSize`, `cursor`, `includeDeleted` and `sort` are not accepted."
+    },
+    "GET /v2/{ledger}": {
+      "operationId": "v2GetLedger",
+      "status": "moved",
+      "v3": [
+        "GET /v3/{ledgerName}"
+      ]
+    },
+    "POST /v2/{ledger}": {
+      "operationId": "v2CreateLedger",
+      "status": "changed",
+      "v3": [
+        "POST /v3/{ledgerName}"
+      ],
+      "notes": "`bucket` and `features` are not accepted. The body takes `metadata`, `mode`, `mirrorSource`, `defaultEnforcementMode`, `initialSchema` and `accountTypes`. Returns `201`.",
+      "docs": "/modules/ledger/migration/removed-capabilities"
+    },
+    "POST /v2/{ledger}/schemas/{version}": {
+      "operationId": "v2InsertSchema",
+      "status": "replaced",
+      "v3": [
+        "PUT /v3/{ledgerName}/metadata-schema/{targetType}/{key}",
+        "POST /v3/{ledgerName}/account-types",
+        "PUT /v3/{ledgerName}/numscripts/{name}",
+        "POST /v3/{ledgerName}/prepared-queries"
+      ],
+      "notes": "Write each part of the schema to its own resource. There is no version to insert.",
+      "docs": "/modules/ledger/migration/update-clients#replace-ledger-schema-workflows"
+    },
+    "GET /v2/{ledger}/schemas/{version}": {
+      "operationId": "v2GetSchema",
+      "status": "replaced",
+      "v3": [
+        "GET /v3/{ledgerName}/metadata-schema",
+        "GET /v3/{ledgerName}/account-types",
+        "GET /v3/{ledgerName}/numscripts/{name}",
+        "GET /v3/{ledgerName}/prepared-queries"
+      ],
+      "notes": "Read each resource's current state. There is no version to select.",
+      "docs": "/modules/ledger/migration/update-clients#replace-ledger-schema-workflows"
+    },
+    "GET /v2/{ledger}/schemas": {
+      "operationId": "v2ListSchemas",
+      "status": "replaced",
+      "v3": [
+        "GET /v3/{ledgerName}/metadata-schema",
+        "GET /v3/{ledgerName}/account-types",
+        "GET /v3/{ledgerName}/numscripts",
+        "GET /v3/{ledgerName}/prepared-queries"
+      ],
+      "notes": "There is no list of schema versions. List each resource instead.",
+      "docs": "/modules/ledger/migration/update-clients#replace-ledger-schema-workflows"
+    },
+    "PUT /v2/{ledger}/metadata": {
+      "operationId": "v2UpdateLedgerMetadata",
+      "status": "changed",
+      "v3": [
+        "POST /v3/{ledgerName}/metadata"
+      ],
+      "notes": "The method changes from `PUT` to `POST`."
+    },
+    "DELETE /v2/{ledger}/metadata/{key}": {
+      "operationId": "v2DeleteLedgerMetadata",
+      "status": "moved",
+      "v3": [
+        "DELETE /v3/{ledgerName}/metadata/{key}"
+      ]
+    },
+    "GET /v2/{ledger}/_info": {
+      "operationId": "v2GetLedgerInfo",
+      "status": "changed",
+      "v3": [
+        "GET /v3/{ledgerName}"
+      ],
+      "notes": "Returns the ledger's configuration and metadata. Storage migration status is not exposed."
+    },
+    "POST /v2/{ledger}/_bulk": {
+      "operationId": "v2CreateBulk",
+      "status": "changed",
+      "v3": [
+        "POST /v3/{ledgerName}/bulk"
+      ],
+      "notes": "The path has no underscore. `parallel` and `schemaVersion` are not accepted, and the failure model differs.",
+      "docs": "/modules/ledger/migration/update-clients#update-bulk-handling"
+    },
+    "HEAD /v2/{ledger}/accounts": {
+      "operationId": "v2CountAccounts",
+      "status": "removed",
+      "v3": [],
+      "notes": "No count endpoint. Page through `GET /v3/{ledgerName}/accounts` if you need a total."
+    },
+    "GET /v2/{ledger}/accounts": {
+      "operationId": "v2ListAccounts",
+      "status": "changed",
+      "v3": [
+        "GET /v3/{ledgerName}/accounts"
+      ],
+      "notes": "The JSON query body moves into the `filter` query parameter. `expand`, `pit` and `sort` are not accepted; volumes are always returned. The cursor is `after`. Account date fields are gone.",
+      "docs": "/modules/ledger/migration/removed-capabilities#account-date-fields"
+    },
+    "GET /v2/{ledger}/accounts/{address}": {
+      "operationId": "v2GetAccount",
+      "status": "changed",
+      "v3": [
+        "GET /v3/{ledgerName}/accounts/{address}"
+      ],
+      "notes": "`expand` and `pit` are not accepted. Volumes are always returned, per asset and color."
+    },
+    "POST /v2/{ledger}/accounts/{address}/metadata": {
+      "operationId": "v2AddMetadataToAccount",
+      "status": "moved",
+      "v3": [
+        "POST /v3/{ledgerName}/accounts/{address}/metadata"
+      ],
+      "notes": "`dryRun` and `schemaVersion` are not accepted."
+    },
+    "DELETE /v2/{ledger}/accounts/{address}/metadata/{key}": {
+      "operationId": "v2DeleteAccountMetadata",
+      "status": "moved",
+      "v3": [
+        "DELETE /v3/{ledgerName}/accounts/{address}/metadata/{key}"
+      ]
+    },
+    "GET /v2/{ledger}/stats": {
+      "operationId": "v2ReadStats",
+      "status": "changed",
+      "v3": [
+        "GET /v3/{ledgerName}/stats"
+      ],
+      "notes": "No account count. Returns `transactionCount`, `logCount` and usage counters."
+    },
+    "HEAD /v2/{ledger}/transactions": {
+      "operationId": "v2CountTransactions",
+      "status": "removed",
+      "v3": [],
+      "notes": "No count endpoint. `GET /v3/{ledgerName}/stats` returns the unfiltered `transactionCount`."
+    },
+    "GET /v2/{ledger}/transactions": {
+      "operationId": "v2ListTransactions",
+      "status": "changed",
+      "v3": [
+        "GET /v3/{ledgerName}/transactions"
+      ],
+      "notes": "The JSON query body moves into the `filter` query parameter. Each filter needs its own index: `TX_BUILTIN_INDEX_TIMESTAMP` for `timestamp`, `TX_BUILTIN_INDEX_REFERENCE` for `reference`, `TX_BUILTIN_INDEX_ADDRESS`, `TX_BUILTIN_INDEX_SOURCE_ADDRESS` and `TX_BUILTIN_INDEX_DESTINATION_ADDRESS` for `account`, `source` and `destination` respectively, and a metadata index for each `metadata` key. `expand`, `pit`, `order` and `sort` are not accepted; `reverse` is kept. The cursor is `after`.",
+      "docs": "/modules/ledger/querying/filters-and-pagination"
+    },
+    "POST /v2/{ledger}/transactions": {
+      "operationId": "v2CreateTransaction",
+      "status": "changed",
+      "v3": [
+        "POST /v3/{ledgerName}/transactions"
+      ],
+      "notes": "`dryRun`, `runtime` and `schemaVersion` are not accepted, and `force` is read from the JSON body only. Use `scriptReference` to run a saved program. Returns `201`.",
+      "docs": "/modules/ledger/migration/update-clients#update-transaction-writes"
+    },
+    "GET /v2/{ledger}/transactions/{id}": {
+      "operationId": "v2GetTransaction",
+      "status": "changed",
+      "v3": [
+        "GET /v3/{ledgerName}/transactions/{transactionId}"
+      ],
+      "notes": "`expand` and `pit` are not accepted. `postCommitVolumes` is always returned."
+    },
+    "POST /v2/{ledger}/transactions/{id}/metadata": {
+      "operationId": "v2AddMetadataOnTransaction",
+      "status": "moved",
+      "v3": [
+        "POST /v3/{ledgerName}/transactions/{transactionId}/metadata"
+      ],
+      "notes": "`dryRun` and `schemaVersion` are not accepted."
+    },
+    "DELETE /v2/{ledger}/transactions/{id}/metadata/{key}": {
+      "operationId": "v2DeleteTransactionMetadata",
+      "status": "moved",
+      "v3": [
+        "DELETE /v3/{ledgerName}/transactions/{transactionId}/metadata/{key}"
+      ]
+    },
+    "POST /v2/{ledger}/transactions/{id}/revert": {
+      "operationId": "v2RevertTransaction",
+      "status": "changed",
+      "v3": [
+        "POST /v3/{ledgerName}/transactions/{transactionId}/revert"
+      ],
+      "notes": "`force` and `atEffectiveDate` move from query parameters to the JSON body. `dryRun` and `schemaVersion` are not accepted."
+    },
+    "GET /v2/{ledger}/aggregate/balances": {
+      "operationId": "v2GetBalancesAggregated",
+      "status": "changed",
+      "v3": [
+        "GET /v3/{ledgerName}/volumes"
+      ],
+      "notes": "The account query moves into `filter`. `pit` and `useInsertionDate` are not accepted."
+    },
+    "GET /v2/{ledger}/volumes": {
+      "operationId": "v2GetVolumesWithBalances",
+      "status": "changed",
+      "v3": [
+        "GET /v3/{ledgerName}/volumes",
+        "GET /v3/{ledgerName}/accounts"
+      ],
+      "notes": "v3 `/volumes` aggregates across matching accounts; read accounts for per-account volumes. `groupBy` becomes `groupByPrefixes`. `startTime`, `endTime` and `insertionDate` are not accepted.",
+      "docs": "/modules/ledger/migration/removed-capabilities"
+    },
+    "GET /v2/{ledger}/logs": {
+      "operationId": "v2ListLogs",
+      "status": "changed",
+      "v3": [
+        "GET /v3/{ledgerName}/logs"
+      ],
+      "notes": "`LOG_BUILTIN_INDEX_DATE` is required to filter by date (`startDate`/`endDate`, or `date` in `filter`). `pit` and `sort` are not accepted. The cursor is `after`."
+    },
+    "POST /v2/{ledger}/logs/import": {
+      "operationId": "v2ImportLogs",
+      "status": "removed",
+      "v3": [],
+      "notes": "Use a mirror ledger to bring Ledger v2 history into v3.",
+      "docs": "/modules/ledger/migration/overview"
+    },
+    "POST /v2/{ledger}/logs/export": {
+      "operationId": "v2ExportLogs",
+      "status": "removed",
+      "v3": [],
+      "notes": "Use a mirror ledger to bring Ledger v2 history into v3.",
+      "docs": "/modules/ledger/migration/overview"
+    },
+    "POST /v2/{ledger}/queries/{id}/run": {
+      "operationId": "v2RunQuery",
+      "status": "replaced",
+      "v3": [
+        "POST /v3/{ledgerName}/prepared-queries/{queryName}/execute"
+      ],
+      "notes": "Schema-defined queries become prepared queries, created with `POST /v3/{ledgerName}/prepared-queries`.",
+      "docs": "/modules/ledger/querying/prepared-queries"
+    },
+    "GET /v2/_/exporters": {
+      "operationId": "v2ListExporters",
+      "status": "replaced",
+      "v3": [
+        "GET /v3/_/events-sinks"
+      ],
+      "notes": "Exporters and pipelines are replaced by event sinks. HTTP lists sinks and their status.",
+      "docs": "/modules/ledger/events/configure-sink"
+    },
+    "POST /v2/_/exporters": {
+      "operationId": "v2CreateExporter",
+      "status": "removed",
+      "v3": [],
+      "notes": "Exporters and pipelines are replaced by event sinks. Add and remove sinks with `ledgerctl` or gRPC; HTTP has no write route.",
+      "docs": "/modules/ledger/events/configure-sink"
+    },
+    "GET /v2/_/exporters/{exporterID}": {
+      "operationId": "v2GetExporterState",
+      "status": "replaced",
+      "v3": [
+        "GET /v3/_/events-sinks"
+      ],
+      "notes": "Exporters and pipelines are replaced by event sinks. HTTP lists sinks and their status.",
+      "docs": "/modules/ledger/events/configure-sink"
+    },
+    "PUT /v2/_/exporters/{exporterID}": {
+      "operationId": "v2UpdateExporter",
+      "status": "removed",
+      "v3": [],
+      "notes": "Exporters and pipelines are replaced by event sinks. Add and remove sinks with `ledgerctl` or gRPC; HTTP has no write route.",
+      "docs": "/modules/ledger/events/configure-sink"
+    },
+    "DELETE /v2/_/exporters/{exporterID}": {
+      "operationId": "v2DeleteExporter",
+      "status": "removed",
+      "v3": [],
+      "notes": "Exporters and pipelines are replaced by event sinks. Add and remove sinks with `ledgerctl` or gRPC; HTTP has no write route.",
+      "docs": "/modules/ledger/events/configure-sink"
+    },
+    "DELETE /v2/_/buckets/{bucket}": {
+      "operationId": "v2DeleteBucket",
+      "status": "removed",
+      "v3": [],
+      "notes": "No bucket delete route. `DELETE /v3/{ledgerName}` deletes a single ledger."
+    },
+    "POST /v2/_/buckets/{bucket}/restore": {
+      "operationId": "v2RestoreBucket",
+      "status": "removed",
+      "v3": [],
+      "notes": "No bucket restore route."
+    },
+    "GET /v2/{ledger}/pipelines": {
+      "operationId": "v2ListPipelines",
+      "status": "replaced",
+      "v3": [
+        "GET /v3/_/events-sinks"
+      ],
+      "notes": "Exporters and pipelines are replaced by event sinks. HTTP lists sinks and their status.",
+      "docs": "/modules/ledger/events/configure-sink"
+    },
+    "POST /v2/{ledger}/pipelines": {
+      "operationId": "v2CreatePipeline",
+      "status": "removed",
+      "v3": [],
+      "notes": "Exporters and pipelines are replaced by event sinks. Add and remove sinks with `ledgerctl` or gRPC; HTTP has no write route.",
+      "docs": "/modules/ledger/events/configure-sink"
+    },
+    "GET /v2/{ledger}/pipelines/{pipelineID}": {
+      "operationId": "v2GetPipelineState",
+      "status": "replaced",
+      "v3": [
+        "GET /v3/_/events-sinks"
+      ],
+      "notes": "Exporters and pipelines are replaced by event sinks. HTTP lists sinks and their status.",
+      "docs": "/modules/ledger/events/configure-sink"
+    },
+    "DELETE /v2/{ledger}/pipelines/{pipelineID}": {
+      "operationId": "v2DeletePipeline",
+      "status": "removed",
+      "v3": [],
+      "notes": "Exporters and pipelines are replaced by event sinks. Add and remove sinks with `ledgerctl` or gRPC; HTTP has no write route.",
+      "docs": "/modules/ledger/events/configure-sink"
+    },
+    "POST /v2/{ledger}/pipelines/{pipelineID}/reset": {
+      "operationId": "v2ResetPipeline",
+      "status": "removed",
+      "v3": [],
+      "notes": "Exporters and pipelines are replaced by event sinks. Add and remove sinks with `ledgerctl` or gRPC; HTTP has no write route.",
+      "docs": "/modules/ledger/events/configure-sink"
+    },
+    "POST /v2/{ledger}/pipelines/{pipelineID}/start": {
+      "operationId": "v2StartPipeline",
+      "status": "removed",
+      "v3": [],
+      "notes": "Exporters and pipelines are replaced by event sinks. Add and remove sinks with `ledgerctl` or gRPC; HTTP has no write route.",
+      "docs": "/modules/ledger/events/configure-sink"
+    },
+    "POST /v2/{ledger}/pipelines/{pipelineID}/stop": {
+      "operationId": "v2StopPipeline",
+      "status": "removed",
+      "v3": [],
+      "notes": "Exporters and pipelines are replaced by event sinks. Add and remove sinks with `ledgerctl` or gRPC; HTTP has no write route.",
+      "docs": "/modules/ledger/events/configure-sink"
+    }
+  }
+}

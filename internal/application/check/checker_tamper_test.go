@@ -11,6 +11,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -93,9 +94,9 @@ func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 		{"caller_source_swap_to_empty_issuer", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
 			e.CallerSnapshot.GetAuthenticated().Identity.Source = &commonpb.CallerIdentity_Issuer{Issuer: ""}
 		}},
-		{"caller_god", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
+		{"caller_superuser", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
 			caller := e.GetCallerSnapshot().GetAuthenticated()
-			caller.God = !caller.GetGod()
+			caller.Superuser = !caller.GetSuperuser()
 		}},
 		{"caller_scopes_add", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
 			caller := e.GetCallerSnapshot().GetAuthenticated()
@@ -167,6 +168,48 @@ func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 	}
 }
 
+func TestVerifyAuditHashChain_RejectsValidHashWithInvalidAttribution(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	const clusterID = "invalid-attribution-cluster"
+
+	entry, items := newRichAuditEntry("success")
+	entry.CallerSnapshot = &commonpb.CallerSnapshot{}
+	// Compute a legitimate hash over the malformed replicated value. This pins
+	// the semantic validation used by restore/check independently of tamper
+	// detection: possession of a matching hash cannot legitimize attribution.
+	persistAuditEntry(t, store, entry, items, clusterID)
+
+	mismatches := runChainVerifier(t, store, clusterID)
+	require.Len(t, mismatches, 1)
+	require.Contains(t, mismatches[0].GetMessage(), "invalid caller attribution")
+}
+
+func TestVerifyAuditHashChain_InvalidAttributionPreservesHashChain(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	const clusterID = "invalid-attribution-chain-cluster"
+
+	first, firstItems := newRichAuditEntry("success")
+	first.CallerSnapshot = &commonpb.CallerSnapshot{}
+	persistAuditEntry(t, store, first, firstItems, clusterID)
+
+	second, secondItems := newRichAuditEntry("success")
+	second.Sequence = 2
+	second.Timestamp.Data++
+	second.GetSuccess().MinLogSequence = 3
+	second.GetSuccess().MaxLogSequence = 4
+	secondItems[0].LogSequence = 3
+	secondItems[1].LogSequence = 4
+	persistAuditEntryAfter(t, store, second, secondItems, clusterID, first.GetHash())
+
+	mismatches := runChainVerifier(t, store, clusterID)
+	require.Len(t, mismatches, 1)
+	require.Contains(t, mismatches[0].GetMessage(), "invalid caller attribution")
+}
+
 // newRichAuditEntry returns a fully-populated AuditEntry (sequence 1,
 // realistic timestamps, two ledgers, caller snapshot with key_id source,
 // either a success outcome with transient + purged maps or a failure
@@ -188,8 +231,8 @@ func newRichAuditEntry(outcomeKind string) (*auditpb.AuditEntry, []*auditpb.Audi
 						Subject: "alice",
 						Source:  &commonpb.CallerIdentity_KeyId{KeyId: "kid-1"},
 					},
-					Scopes: []string{"read", "write"},
-					God:    false,
+					Scopes:    []string{"read", "write"},
+					Superuser: false,
 				},
 			},
 		},
@@ -266,8 +309,15 @@ func richAuditOrder(ledger string) []byte {
 // builders, assigns them on the entry, then writes the entry + items to
 // Pebble at their canonical keys.
 func persistAuditEntry(t *testing.T, store *dal.Store, entry *auditpb.AuditEntry, items []*auditpb.AuditItem, clusterID string) {
+	persistAuditEntryAfter(t, store, entry, items, clusterID, nil)
+}
+
+func persistAuditEntryAfter(t *testing.T, store *dal.Store, entry *auditpb.AuditEntry, items []*auditpb.AuditItem, clusterID string, lastHash []byte) {
 	t.Helper()
 	_ = clusterID
+	if entry.GetCallerSnapshot() == nil {
+		entry.CallerSnapshot = testCallerSnapshot()
+	}
 
 	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
 
@@ -281,9 +331,13 @@ func persistAuditEntry(t *testing.T, store *dal.Store, entry *auditpb.AuditEntry
 		hashSlices = append(hashSlices, state.BuildPerItemPayload(item))
 	}
 
-	_, entry.Hash = gen.Compute(nil, nil, hashSlices)
+	_, entry.Hash = gen.Compute(nil, lastHash, hashSlices)
 
 	rewriteAuditEntry(t, store, entry, items)
+}
+
+func testCallerSnapshot() *commonpb.CallerSnapshot {
+	return commands.SystemCallerSnapshot(commands.ComponentClusterPolicy)
 }
 
 // rewriteAuditEntry writes entry + items at their canonical keys WITHOUT

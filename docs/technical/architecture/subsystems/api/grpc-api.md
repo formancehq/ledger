@@ -107,6 +107,20 @@ service BucketService {
 }
 ```
 
+`ClusterService.GetDiskUsage` is a node-local diagnostic RPC: it is not
+forwarded to the leader. Its WAL and data `VolumeUsage` messages contain the
+last known bytes plus collection state:
+
+- `valid` reports whether the latest `Statfs` attempt succeeded;
+- `sample_age_ms` is computed on the serving node and is the machine-readable
+  freshness signal, avoiding cross-node clock arithmetic;
+- `observed_at_us` is the last successful sample time for diagnostics;
+- `error` is diagnostic text and must never be parsed for control decisions.
+
+When `valid` is false, `used_bytes`, `total_bytes`, and `observed_at_us` may be
+the last successful values. Health and operator control loops reject invalid or
+older-than-one-minute samples.
+
 ## Read Operations
 
 ### ListLedgers
@@ -158,12 +172,18 @@ if err != nil {
     return err
 }
 
-fmt.Printf("Account: %s\n", account.Address)
-for asset, volumes := range account.Volumes {
+fmt.Printf("Account: %s\n", account.GetAddress())
+for _, entry := range account.GetVolumes() {
+    volumes := entry.GetVolumes()
     fmt.Printf("  %s: input=%s, output=%s, balance=%s\n",
-        asset, volumes.Input, volumes.Output, volumes.Balance)
+        entry.GetAsset(), volumes.GetInput().DecimalString(),
+        volumes.GetOutput().DecimalString(), volumes.GetBalance().DecimalString())
 }
 ```
+
+The protobuf fields are typed arbitrary-precision integers (`BigUint` and
+`SignedBigInt`). The helper calls above render their canonical decimal values;
+the HTTP projection emits the same values as JSON strings.
 
 ### GetTransaction
 
@@ -635,6 +655,7 @@ All business errors carry an `ErrorInfo` detail with a machine-readable reason. 
 | Balance not found | `FAILED_PRECONDITION` | `BALANCE_NOT_FOUND` | `account`, `asset` |
 | Balance not preloaded | `FAILED_PRECONDITION` | `BALANCE_NOT_PRELOADED` | `account`, `asset` |
 | Numscript parse error | `INVALID_ARGUMENT` | `NUMSCRIPT_PARSE_ERROR` | `details` |
+| Numscript compile error | `INVALID_ARGUMENT` | `NUMSCRIPT_COMPILE_ERROR` | `details` |
 | Validation error | `INVALID_ARGUMENT` | `VALIDATION` | *(none)* |
 
 ### Error Handling Example (with ErrorInfo)

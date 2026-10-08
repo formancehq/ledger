@@ -564,7 +564,7 @@ func (ctrl *DefaultController) GetLedgerStats(ctx context.Context, ledgerName st
 
 	if _, err := query.GetLedgerByName(ctx, handle, ledgerName); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
+			return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
 		}
 
 		return nil, err
@@ -1112,16 +1112,21 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 		return nil, fmt.Errorf("inspecting index: %w", err)
 	}
 
-	return toInspectIndexResponse(inspectResult), nil
+	return toInspectIndexResponse(mode, inspectResult), nil
 }
 
-func toInspectIndexResponse(r *readstore.InspectResult) *servicepb.InspectIndexResponse {
-	if r.Values != nil {
-		var nextCursor string
-		if r.HasMore && len(r.NextCursor) > 0 {
-			nextCursor = encodeCursor(r.NextCursor)
-		}
+// toInspectIndexResponse builds the arm the request asked for. The arm is the
+// answer to which question was asked, so it comes from the mode and never from
+// which result slice the scan happened to populate: an index holding no live
+// values answers on its own arm with an empty list.
+func toInspectIndexResponse(mode readstore.InspectMode, r *readstore.InspectResult) *servicepb.InspectIndexResponse {
+	var nextCursor string
+	if r.HasMore && len(r.NextCursor) > 0 {
+		nextCursor = encodeCursor(r.NextCursor)
+	}
 
+	switch mode { //exhaustive:enforce
+	case readstore.InspectDistinctValuesMode:
 		return &servicepb.InspectIndexResponse{
 			Result: &servicepb.InspectIndexResponse_DistinctValues{
 				DistinctValues: &servicepb.InspectDistinctValues{
@@ -1131,20 +1136,14 @@ func toInspectIndexResponse(r *readstore.InspectResult) *servicepb.InspectIndexR
 				},
 			},
 		}
-	}
 
-	if r.Facets != nil {
+	case readstore.InspectFacetsMode:
 		facets := make([]*servicepb.InspectFacet, len(r.Facets))
 		for i, f := range r.Facets {
 			facets[i] = &servicepb.InspectFacet{
 				Value: f.Value,
 				Count: f.Count,
 			}
-		}
-
-		var nextCursor string
-		if r.HasMore && len(r.NextCursor) > 0 {
-			nextCursor = encodeCursor(r.NextCursor)
 		}
 
 		return &servicepb.InspectIndexResponse{
@@ -1156,16 +1155,29 @@ func toInspectIndexResponse(r *readstore.InspectResult) *servicepb.InspectIndexR
 				},
 			},
 		}
+
+	case readstore.InspectSummaryMode:
+		return &servicepb.InspectIndexResponse{
+			Result: &servicepb.InspectIndexResponse_Summary{
+				Summary: &servicepb.InspectSummary{
+					Cardinality:      r.Cardinality,
+					Min:              r.Min,
+					Max:              r.Max,
+					EntitiesWithKey:  r.EntitiesWithKey,
+					EntitiesWithNull: r.EntitiesWithNull,
+				},
+			},
+		}
 	}
 
+	// Unreachable when the exhaustive linter is enabled. Distinct values is
+	// what the request-side mode resolution assigns to an unrecognized mode.
 	return &servicepb.InspectIndexResponse{
-		Result: &servicepb.InspectIndexResponse_Summary{
-			Summary: &servicepb.InspectSummary{
-				Cardinality:      r.Cardinality,
-				Min:              r.Min,
-				Max:              r.Max,
-				EntitiesWithKey:  r.EntitiesWithKey,
-				EntitiesWithNull: r.EntitiesWithNull,
+		Result: &servicepb.InspectIndexResponse_DistinctValues{
+			DistinctValues: &servicepb.InspectDistinctValues{
+				Values:     r.Values,
+				HasMore:    r.HasMore,
+				NextCursor: nextCursor,
 			},
 		},
 	}
@@ -1633,31 +1645,6 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 
 	pageSize = ClampFetchSize(pageSize)
 
-	// Translate afterSequence into a LogId filter so the Compile framework
-	// respects the cursor position. LogId with min=afterSequence, min_exclusive=true
-	// excludes the entry at afterSequence and returns only newer entries.
-	if afterSequence > 0 {
-		afterFilter := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_LogId{
-				LogId: &commonpb.LogIdCondition{
-					Cond: &commonpb.UintCondition{
-						Min:          &afterSequence,
-						MinExclusive: true,
-					},
-				},
-			},
-		}
-		if filter != nil {
-			filter = &commonpb.QueryFilter{
-				Filter: &commonpb.QueryFilter_And{
-					And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{filter, afterFilter}},
-				},
-			}
-		} else {
-			filter = afterFilter
-		}
-	}
-
 	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(ctx, ctrl.readStore, handle, ledgerInfo.GetName(), releaseHold)
 	if err != nil {
 		releaseHold()
@@ -1688,7 +1675,14 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 		query.MainHorizonKeep(commonpb.QueryTarget_QUERY_TARGET_LOGS, handle, snap, ledgerInfo.GetName(), mainSeq))
 	defer iter.Close()
 
-	logIDs, _, paginateErr := readstore.PaginateForward(iter, pageSize, nil)
+	// Seeking keeps the resume position out of the filter tree, leaving the
+	// client's filter its whole MaxFilterDepth budget.
+	var after []byte
+	if afterSequence > 0 {
+		after = binary.BigEndian.AppendUint64(nil, afterSequence)
+	}
+
+	logIDs, _, paginateErr := readstore.PaginateForward(iter, pageSize, after)
 	if paginateErr != nil {
 		releaseHold()
 		_ = handle.Close()
@@ -2010,14 +2004,13 @@ func (ctrl *DefaultController) GetNumscript(ctx context.Context, ledger, name st
 // has never been invoked on an existing ledger.
 //
 // Ledger existence is validated first so an unknown or soft-deleted ledger
-// surfaces a NotFound business error (HTTP 404) rather than a zero-valued 200 —
-// the same 404-on-missing contract as GetLedgerStats. This path returns the
-// NOT_FOUND errorCode (via NewNotFoundError); GetNumscript/ListNumscripts now
-// return the typed LEDGER_NOT_FOUND errorCode instead, but both are HTTP 404.
+// surfaces the typed LEDGER_NOT_FOUND business error (HTTP 404) rather than a
+// zero-valued 200 — the same missing-ledger contract as GetLedgerStats,
+// GetNumscript, and ListNumscripts.
 func (ctrl *DefaultController) GetTemplateUsage(ctx context.Context, ledger, name string) (*commonpb.TemplateUsage, error) {
 	if _, err := query.GetLedgerByName(ctx, ctrl.store, ledger); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, commonpb.NewNotFoundError("ledger %s not found", ledger)
+			return nil, &domain.ErrLedgerNotFound{Name: ledger}
 		}
 
 		return nil, err

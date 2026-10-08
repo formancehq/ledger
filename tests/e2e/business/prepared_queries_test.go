@@ -15,6 +15,7 @@ import (
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 // accountAddresses extracts addresses from a slice of Account objects.
@@ -935,6 +936,51 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 			Expect(eurVol.Input.ToBigInt().Int64()).To(Equal(int64(50)))
 			Expect(eurVol.Output.ToBigInt().Int64()).To(Equal(int64(0)))
 		})
+
+		It("Should create and update filterless queries with direct aggregation parity", func() {
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_CreatePreparedQuery{CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+					Ledger: ledgerName,
+					Query: &commonpb.PreparedQuery{
+						Name:   "all-volumes",
+						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Filter: nil,
+					},
+				}},
+			}))
+			Expect(err).To(Succeed())
+
+			expectDirectParity := func(queryName string) {
+				Eventually(func(g Gomega) {
+					prepared, execErr := sharedClient.ExecutePreparedQuery(sharedCtx, &servicepb.ExecutePreparedQueryRequest{
+						Ledger:    ledgerName,
+						QueryName: queryName,
+						Mode:      commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES,
+					})
+					g.Expect(execErr).To(Succeed())
+
+					direct, directErr := sharedClient.AggregateVolumes(sharedCtx, &servicepb.AggregateVolumesRequest{
+						Ledger: ledgerName,
+					})
+					g.Expect(directErr).To(Succeed())
+					g.Expect(proto.Equal(prepared.GetAggregate(), direct)).To(BeTrue(),
+						"filterless prepared aggregation must equal the direct endpoint")
+				}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+			}
+
+			expectDirectParity("all-volumes")
+
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_UpdatePreparedQuery{UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
+					Ledger: ledgerName,
+					Name:   "admin-volumes",
+					Filter: nil,
+				}},
+			}))
+			Expect(err).To(Succeed())
+
+			expectDirectParity("admin-volumes")
+		})
 	})
 
 	// ========================================================================
@@ -1012,6 +1058,86 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 				Mode:      commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES,
 			})
 			Expect(err).To(HaveOccurred())
+		})
+
+		It("Should reject filter shapes that can never compile", func() {
+			for _, tc := range []struct {
+				target commonpb.QueryTarget
+				filter *commonpb.QueryFilter
+				want   string
+			}{
+				{
+					target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+					filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reference{Reference: &commonpb.ReferenceCondition{}}},
+					want:   "reference condition has no value",
+				},
+				{
+					target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
+					filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogBuiltinUint{LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
+						Cond: &commonpb.UintCondition{},
+					}}},
+					want: "unsupported log builtin uint field",
+				},
+				{
+					target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+					filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{Address: &commonpb.AddressMatch{}}},
+					want:   "address condition has no match",
+				},
+			} {
+				_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+					Type: &servicepb.Request_CreatePreparedQuery{CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+						Ledger: ledgerName,
+						Query: &commonpb.PreparedQuery{
+							Name:   "malformed-shape",
+							Target: tc.target,
+							Filter: tc.filter,
+						},
+					}},
+				}))
+				Expect(status.Code(err)).To(Equal(codes.InvalidArgument), tc.want)
+				Expect(err.Error()).To(ContainSubstring(tc.want))
+			}
+		})
+
+		It("Should reject a has-asset precision the asset index cannot encode", func() {
+			overflow := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_AccountHasAsset{
+				AccountHasAsset: &commonpb.AccountHasAssetCondition{AssetBase: "USD", Precision: 1038},
+			}}
+
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_CreatePreparedQuery{CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+					Ledger: ledgerName,
+					Query: &commonpb.PreparedQuery{
+						Name:   "has-asset-overflow",
+						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Filter: overflow,
+					},
+				}},
+			}))
+			Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+			Expect(err.Error()).To(ContainSubstring("has asset precision"))
+
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_CreatePreparedQuery{CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+					Ledger: ledgerName,
+					Query: &commonpb.PreparedQuery{
+						Name:   "has-asset-update",
+						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Filter: actions.StringMetadataFilter("role", "admin"),
+					},
+				}},
+			}))
+			Expect(err).To(Succeed())
+
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_UpdatePreparedQuery{UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
+					Ledger: ledgerName,
+					Name:   "has-asset-update",
+					Filter: overflow,
+				}},
+			}))
+			Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+			Expect(err.Error()).To(ContainSubstring("has asset precision"))
 		})
 
 		It("Should return NOT_FOUND when updating a non-existent query", func() {

@@ -302,7 +302,7 @@ func TestHandleExecutePreparedQuery_CursorShapeIsCamelCase(t *testing.T) {
 						Next:     "nxt",
 						AccountData: []*commonpb.Account{
 							{Address: "alice", Volumes: []*commonpb.AccountVolume{
-								{Asset: "USD", Color: "", Volumes: &commonpb.VolumesWithBalance{Input: "100", Output: "30", Balance: "70"}},
+								{Asset: "USD", Color: "", Volumes: &commonpb.VolumesWithBalance{Input: commonpb.MustBigUintFromDecimal("100"), Output: commonpb.MustBigUintFromDecimal("30"), Balance: commonpb.MustSignedBigIntFromDecimal("70")}},
 							}},
 						},
 					},
@@ -357,4 +357,46 @@ func TestHandleExecutePreparedQuery_UnsupportedParameterType(t *testing.T) {
 	srv.handleExecutePreparedQuery(w, r)
 
 	require.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestHandleExecutePreparedQuery_Reverse(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name  string
+		query string
+		body  string
+		want  bool
+	}{
+		{name: "default", body: `{}`, want: false},
+		{name: "body", body: `{"reverse":true}`, want: true},
+		{name: "query string", query: "?reverse=true", body: `{}`, want: true},
+		{name: "query string overrides body", query: "?reverse=false", body: `{"reverse":true}`, want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var captured *servicepb.ExecutePreparedQueryRequest
+
+			backend := NewMockBackend(gomock.NewController(t))
+			backend.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+					captured = req
+
+					return &servicepb.ExecutePreparedQueryResponse{}, nil
+				})
+			srv := newTestServer(t, backend)
+
+			w := httptest.NewRecorder()
+			r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries/my-query/execute"+tc.query, strings.NewReader(tc.body), map[string]string{
+				"ledgerName": "ledger1",
+				"queryName":  "my-query",
+			})
+
+			srv.handleExecutePreparedQuery(w, r)
+
+			require.Equal(t, http.StatusOK, w.Code)
+			require.Equal(t, tc.want, captured.GetReverse())
+		})
+	}
 }

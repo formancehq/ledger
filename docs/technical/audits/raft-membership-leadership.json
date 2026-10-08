@@ -33,6 +33,7 @@
     "internal/adapter/grpc/server_cluster*.go",
     "internal/adapter/grpc/server_snapshot*.go",
     "internal/adapter/grpc/snapshot_session*.go",
+    "pkg/testserver/gateway.go",
     "cmd/server/join_auth_test.go",
     "cmd/server/server*.go",
     "misc/proto/raft_transport.proto",
@@ -56,6 +57,7 @@
     "docs/technical/audits/raft-membership-leadership.md",
     "docs/technical/architecture/data-flows.md",
     "docs/technical/architecture/subsystems/consensus/",
+    "docs/technical/architecture/subsystems/api/grpc-connections.md",
     "docs/technical/architecture/subsystems/admission/",
     "docs/technical/architecture/subsystems/fsm/",
     "docs/technical/architecture/subsystems/storage/",
@@ -73,6 +75,7 @@
     "Force removal remains an explicitly unsafe, leader-local recovery operation: it must enforce its operator preconditions, persist the reduced ConfState before peer/tombstone cleanup, fail-stop after an irreversible live transition whose persistence fails, and converge surviving followers only through the documented snapshot path.",
     "Joining, restarting, lagging, removed, or snapshot-receiving nodes must not vote, accept transfer, serve quorum-certified reads, or admit writes with stale authority before their Raft, FSM, membership, and durable applied horizons satisfy the documented gate.",
     "Raft transport authentication, stream replacement, disconnect/reconnect, duplicate delivery, and forwarding must preserve message and request identity across terms; transport retries may redeliver Raft messages but must not manufacture a second logical proposal or a false acknowledgement.",
+    "A silently blackholed Raft stream must be detected and replaced so a peer can redial its current endpoint and resume message delivery. Sustained healthy traffic or a valid delayed probe response must not cause a false disconnect. A response on the high-priority stream alone does not establish liveness of the medium- or low-priority streams.",
     "ReadIndex certification requires the active leader and a quorum of the current voter configuration, and the certified index must be applied before the read proceeds. Only an explicitly stale read may bypass that certificate; projection semantics after the barrier belong to read-consistency-projections.",
     "Snapshot send/install must bind compatible Raft metadata, ConfState, FSM snapshot, spool/catch-up state, and peer identity. The receiver must drain conflicting apply work and remain non-serving until installation and subsequent synchronization establish a coherent applied and durable horizon.",
     "Committed entry ordering and membership outcomes must survive leader crash, transfer, restart, retained-log catch-up, and snapshot catch-up without loss, double durable effect, or configuration regression. Pure deterministic FSM/cache correctness after the consensus boundary belongs to fsm-determinism-cache-coverage."
@@ -87,6 +90,7 @@
     "Can a lagging or syncing node accept MsgTimeoutNow, campaign, advertise leadership, complete ReadIndex, or serve a forwarded mutation before spool replay and snapshot synchronization reach the required index?",
     "Can retained-log compaction, snapshot selection, transfer interruption, sender restart, or receiver restart combine an incompatible ConfState with FSM/store contents, regress applied indexes, or discard entries committed after the snapshot?",
     "Can simultaneous transport connections, stale streams, protocol/authentication rejection, reconnect queues, duplicate messages, or unreachable notifications cross terms or peer incarnations and affect the wrong active connection or Raft node?",
+    "After an old peer address silently blackholes traffic and discovery points to a replacement endpoint, does the outbound connection detect the missing probe response or blocked send, close the old attempt, redial, and deliver a Raft message? Can continuously nonempty priority queues starve probe scheduling, or can a valid delayed response, stale response, or response from another stream incorrectly reset the deadline or close a healthy connection?",
     "When a committed ConfChangeUpdateNode refreshes an existing peer address, do Pebble, the membership cache, and the operational Raft and service connection pools converge before the next Raft tick without recreating the peer identity or send loop?",
     "Can a follower-to-leader forwarded request loop, fall back locally without a valid leader/barrier, lose cancellation or committed-outcome metadata, or be executed twice because transport identity is confused with logical proposal identity?",
     "Which immediate leadership observers update routing and membership authority synchronously, and can their failure expose stale authority? Deep goroutine ownership, cancellation, shutdown joins, and event/mirror/backup worker generations belong to concurrency-lifecycle-shutdown."
@@ -101,6 +105,7 @@
     "inject failure before and after force-remove snapshot-file replacement, WAL snapshot-record append, and Pebble membership cleanup; restart and compare the authoritative ConfState with whether the process continued serving",
     "block a follower beyond retained-log range, force real MsgSnap catch-up, transfer or restart during install, and prove it cannot campaign or serve until applied and durable indexes pass the installed snapshot and replay horizon",
     "replace and reconnect authenticated Raft streams while delaying and duplicating messages, then verify term/peer-incarnation routing and exactly one logical proposal outcome",
+    "blackhole an existing TCP connection without closing it, move the peer endpoint, and verify a new dial plus delivered Raft message; repeat under sustained nonempty queues and delayed or stale probe responses to distinguish recovery from false disconnects",
     "commit ConfChangeUpdateNode for an existing Match=0 learner at a new endpoint, inject one optional-TLS probe failure before recovery, then prove Pebble, cache, and the retried live Raft dial target use that endpoint while ConfState and peer identity remain unchanged",
     "differentially compare uninterrupted execution with leader crash, transfer, restart, retained-log replay, and snapshot catch-up using the same admitted operations and final ConfState"
   ]

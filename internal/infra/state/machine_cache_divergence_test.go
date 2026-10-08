@@ -13,6 +13,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
+	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -675,6 +676,9 @@ func buildProposalWithLeaderPreloads(
 
 func mustMakeEntry(t *testing.T, index uint64, proposal *raftcmdpb.Proposal) *raftpb.Entry {
 	t.Helper()
+	if proposal.GetCallerSnapshot() == nil {
+		proposal.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentClusterPolicy)
+	}
 
 	data, err := proto.Marshal(proposal)
 	require.NoError(t, err)

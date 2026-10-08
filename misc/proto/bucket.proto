@@ -224,6 +224,7 @@ message CreateLedgerRequest {
   common.MirrorSourceConfig mirror_source = 4;
   map<string, common.AccountType> account_types = 5;  // Initial account types
   common.ChartEnforcementMode default_enforcement_mode = 6;  // Default enforcement for unmatched accounts
+  map<string, common.MetadataValue> metadata = 7; // Initial ledger metadata, atomic with creation
 }
 
 message DeleteLedgerRequest {
@@ -1211,6 +1212,8 @@ message CreatePreparedQueryRequest {
 message UpdatePreparedQueryRequest {
   string ledger = 1;
   string name = 2;
+  // Nil explicitly removes the stored filter and makes the query match all
+  // entities in its immutable target.
   common.QueryFilter filter = 3;
 }
 
@@ -1234,6 +1237,10 @@ message ExecutePreparedQueryRequest {
   uint32 page_size = 4;
   string cursor = 5;
   common.QueryMode mode = 6;
+  // reverse pages LIST results in descending entity order. The cursor stays a
+  // position, so every page of a descending walk must repeat reverse=true.
+  // AGGREGATE_VOLUMES rejects it with InvalidArgument.
+  bool reverse = 7;
 }
 
 message ExecutePreparedQueryResponse {

@@ -13,8 +13,12 @@
 Releases publish platform archives on
 [GitHub](https://github.com/formancehq/ledger/releases):
 
-- Linux/macOS: `ledger_linux-amd64.tar.gz`, `ledger_darwin-arm64.tar.gz`, and the corresponding architectures. These archives contain `ledger-server` and `ledgerctl`.
-- Windows: `ledger_windows-amd64.zip` and `ledger_windows-arm64.zip`. These archives contain `ledgerctl.exe` only.
+- Linux/macOS: `ledger_<version>_linux-amd64.tar.gz`, `ledger_<version>_darwin-arm64.tar.gz`, and the corresponding architectures. These archives contain `ledger-server` and `ledgerctl`.
+- Windows: `ledger_<version>_windows-amd64.zip` and `ledger_<version>_windows-arm64.zip`. These archives contain `ledgerctl.exe` only.
+
+`<version>` is the release tag, for example `ledger_v3.0.0-beta.0_darwin-arm64.tar.gz`,
+or `nightly-<short-commit>` for nightly builds. Each archive extracts into a
+directory with the same name, so several versions can sit side by side.
 
 Extract the archive and put `ledgerctl` or `ledgerctl.exe` on your `PATH`. Prefer
 the CLI distributed with the deployed server build. `ledgerctl upgrade` selects
@@ -1929,7 +1933,7 @@ ledgerctl version
 
 The **server** exposes the same build metadata over two unauthenticated channels:
 
-- **HTTP** — `GET /_info` returns flat JSON (no `data` envelope): `{"version":"…","commit":"…","buildDate":"…","goVersion":"…","protocolVersion":"13"}`.
+- **HTTP** — `GET /_info` returns flat JSON (no `data` envelope): `{"version":"…","commit":"…","buildDate":"…","goVersion":"…","protocolVersion":"21"}`.
 - **gRPC** — the `Discovery` RPC's `DiscoveryResponse` carries a `ServerInfo` message with the same information, including `protocol_version`.
 
 This is useful for monitoring deployed nodes and spotting version skew across a cluster (the per-node `version` is also surfaced on each `NodeInfo` in `GetClusterState`).
@@ -2867,7 +2871,8 @@ ledgerctl cluster remove-node 3 --force
 
 #### cluster disk-usage
 
-Display disk space used by storage components on the connected node.
+Display filesystem usage and measurement freshness for the WAL and data
+volumes on the connected node.
 
 **Aliases:** `du`
 
@@ -2884,7 +2889,10 @@ ledgerctl cluster disk-usage [flags]
 
 **Behavior:**
 - Returns disk usage from the node the CLI is directly connected to (no leader forwarding)
-- Displays two sections: storage components (Spool, WAL, Data) and volumes (WAL, Data)
+- Displays the WAL and data volumes with status, used/total bytes, sample age,
+  last successful observation time, and any diagnostic collection error
+- `--json` exposes `valid` and `sampleAgeMs` for machine decisions;
+  `observedAtUs` and `error` are diagnostic fields
 
 **Example:**
 
@@ -2896,9 +2904,9 @@ ledgerctl cluster disk-usage
 ledgerctl cluster du --json
 ```
 
-**Output sections:**
-- **Storage Components**: Size of each storage component (Spool, WAL excluding spool, Data)
-- **Volumes**: Used and total capacity of each storage volume (WAL including spool, Data)
+**Output section:**
+- **Volumes**: WAL and data filesystem capacity plus collection validity and
+  freshness. Bytes shown on an invalid row are only the last successful values.
 
 #### cluster maintenance
 
@@ -2968,7 +2976,7 @@ ledgerctl auth generate-token \
 | `--subject` | yes | | JWT subject claim |
 | `--scopes` | no | | Comma-separated scopes |
 | `--expiration` | no | `1h` | Token validity duration |
-| `--god` | no | `false` | Include god-mode claim (grants all scopes; key must allow it) |
+| `--superuser` | no | `false` | Include superuser-mode claim (grants all scopes; key must allow it) |
 | `--store` | no | `false` | Store the generated token in the OS keychain (keyed by `--server`) |
 
 The token is printed to stdout and can be used with `--auth-token` or the `Authorization: Bearer` header. When `--store` is set, the token is also stored in the OS keychain for the current `--server` address, and a confirmation is printed to stderr.
@@ -3004,7 +3012,7 @@ ledgerctl auth login [flags]
 | `--subject` | * | | JWT subject claim |
 | `--scopes` | no | | Comma-separated scopes |
 | `--expiration` | no | `1h` | Token validity duration |
-| `--god` | no | `false` | Include god-mode claim (grants all scopes; key must allow it) |
+| `--superuser` | no | `false` | Include superuser-mode claim (grants all scopes; key must allow it) |
 | `--bundle` | no | | Path to JSON key bundle file (or `-` for stdin) |
 
 \* Required when not using `--bundle` or stdin pipe. When a bundle is provided, explicit flags override bundle values.
@@ -3636,10 +3644,12 @@ Displays each query's name, target, and filter in human-readable DSL format.
 
 #### queries update
 
-Update the filter of an existing prepared query.
+Update the filter of an existing prepared query. Omit `--filter` to remove the
+stored filter and make the query match all entities in its target. Supplying an
+empty or whitespace-only `--filter` is invalid.
 
 ```bash
-ledgerctl queries update <name> --ledger <ledger-name> --filter "<new-filter>" [flags]
+ledgerctl queries update <name> --ledger <ledger-name> [--filter "<new-filter>"] [flags]
 ```
 
 #### queries delete
@@ -3670,6 +3680,7 @@ ledgerctl queries execute <name> --ledger <ledger-name> [flags]
 | `--param` | | Query parameter as `key=value` (repeatable) |
 | `--page-size` | `10` | Number of results per page |
 | `--mode` | `list` | Query mode: `list` or `aggregate` |
+| `--reverse` | `false` | List results in descending order. Rejected in `aggregate` mode |
 | `--analyze` | `false` | Display the query profile: server-side phase timing (prepare/execute/barrier/deliver) plus iterator stats |
 | `--timeout` | `10s` | Request timeout |
 
@@ -3684,6 +3695,9 @@ ledgerctl queries execute by-tier --ledger my-ledger --param tier=gold
 
 # Aggregate mode (returns per-asset volumes)
 ledgerctl queries execute active-users --ledger my-ledger --mode aggregate
+
+# Newest transactions first
+ledgerctl queries execute big-txns --ledger my-ledger --reverse
 
 # Multiple parameters
 ledgerctl queries execute filtered --ledger my-ledger --param status=active --param region=eu
@@ -3771,7 +3785,12 @@ ledgerctl restore preview
 
 Commit the staged backup as live data and shut down the server.
 
+The staged backup must first pass `ledgerctl restore validate`; otherwise the
+server returns a failed-precondition error.
+
 ```bash
+ledgerctl restore validate
+
 # With confirmation prompt
 ledgerctl restore finalize
 
@@ -4355,6 +4374,19 @@ writes resume ──────────────── resume mark (e.g.
 
 The constraint `resume < block` is validated at startup; the server refuses to start if either pair violates it.
 
+The health checker only acts on valid samples no older than one minute. An
+invalid, stale, or unreachable sample does not create a disk block by itself,
+but it cannot clear an existing block; recovery requires fresh samples for all
+volumes on every member in the committed Raft configuration. That configuration
+defines the required peers, so a member missing from the gRPC connection pool is
+considered unreachable. Valid WAL and data samples are evaluated independently.
+After each leadership transition the disk verdict starts unknown and writes are
+rejected until the new leader completes one cluster poll with fresh local WAL
+and data samples. Fresh remote samples can block that initial verdict, but an
+unavailable remote member does not create a permanent block without observed
+high usage. Within the leadership term, invalid evidence still cannot clear an
+observed block, and an older-term check cannot reopen the gate.
+
 #### Write-gate error semantics
 
 When the write gate is active, write commands are rejected with a structured gRPC/HTTP error:
@@ -4363,6 +4395,11 @@ When the write gate is active, write commands are rejected with a structured gRP
 |-----------|-------------|-------------|-------------------|
 | Disk full (WAL or data volume at or above block mark) | `ResourceExhausted` | 429 | `WRITES_BLOCKED_DISK_FULL` |
 | Clock skew (any peer exceeds `--health-clock-skew-threshold`) | `Unavailable` | 503 | `WRITES_BLOCKED_CLOCK_SKEW` |
+
+The post-election unknown disk verdict uses the same
+`WRITES_BLOCKED_DISK_FULL` response until fresh local evidence and the first
+cluster poll are available; this keeps the safety change within the existing
+public error contract.
 
 The node remains `Ready` (gRPC health: `SERVING`) and continues to serve reads in both cases. Readiness is unaffected by disk usage and clock skew.
 
@@ -4383,38 +4420,44 @@ ledger run --health-clock-skew-threshold 0 [other flags...]
 
 ---
 
-### Server Metrics Naming Flag
+### Server Metrics Prefix Flag
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--metrics-naming` | string | `otel` | Application metrics naming convention (`otel` or `prom`) |
+| `--otel-metrics-prefix` | string | `formance.ledger` | Namespace prepended to the server's own metric names (`none` to disable) |
 
-Controls how the application's own metric names are emitted. Every
-instrument the server creates (admission, cache, wal, raft, pebble,
-…) is subject to the policy. OpenTelemetry semantic-convention
-auto-instrumentation (`http.*`, `go.*`, `process.*`, `system.*`)
-goes through the *global* MeterProvider and bypasses this flag, so
-those names always keep their canonical upstream form.
+The flag comes from the go-libs metrics module, like the other
+`--otel-metrics-*` flags, and is also read from the
+`OTEL_METRICS_PREFIX` environment variable. The ledger sets its
+default to `formance.ledger`, following the OpenTelemetry
+recommendation to namespace application-specific names.
 
-- `otel` (default): preserves dot-notation names —
-  `admission.command.duration`, `raft.fsm.logs_appended`. Use this
-  when your OTLP→Prometheus collector preserves dots, or when you
-  query directly through OpenTelemetry tooling.
-- `prom`: rewrites our metric names to the Prometheus convention.
-  Names get the `ledger_` prefix and every dot becomes an
-  underscore, so `admission.command.duration` is emitted as
-  `ledger_admission_command_duration` and `raft.fsm.logs_appended`
-  as `ledger_raft_fsm_logs_appended`. Use this when the collector
-  in front of Prometheus sanitises dots (the default for recent OTel
-  collectors and most cloud Prometheus offerings).
+The prefix is joined to every instrument the server's own code creates
+(admission, cache, wal, raft, pebble, …) with a `.`:
+`raft.fsm.logs_appended` is emitted as
+`formance.ledger.raft.fsm.logs_appended`. OpenTelemetry
+semantic-convention instrumentation (`http.*`, `rpc.*`, `go.*`,
+`process.*`, `system.*`) records through the *global* MeterProvider,
+which is never prefixed, so those names keep their canonical upstream
+form.
 
-The two pre-built Grafana dashboards under
-`misc/devenv/monitoring-dashboards/config/dashboards/` match these
-two modes — pick `ledger-metrics-prom.json` if you run with
-`--metrics-naming=prom`.
+The value is at most 64 characters of dot-separated segments made of
+letters, digits and underscores, each starting with a letter and
+ending with a letter or digit; an invalid value fails startup. Set it
+to `none` (`--otel-metrics-prefix=none`, `OTEL_METRICS_PREFIX=none`
+or the operator's `spec.monitoring.metrics.prefix: none`) to emit
+unprefixed names. An explicit empty flag value has the same effect,
+but an empty `OTEL_METRICS_PREFIX` environment variable is ignored.
+
+Names are always emitted in OpenTelemetry dot notation. An
+OTLP→Prometheus collector that sanitises dots stores them as
+`formance_ledger_…`. The pre-built Grafana dashboards under
+`misc/devenv/monitoring-dashboards/config/dashboards/` cover the
+default prefix and `none`; see
+[Monitoring](monitoring.md#naming-convention) for the matrix.
 
 ```bash
-ledger run --metrics-naming=prom [other flags...]
+ledger run --otel-metrics-prefix=acme.ledger [other flags...]
 ```
 
 ---

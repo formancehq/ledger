@@ -185,7 +185,7 @@ func TestReconcileAuthKeys_TransientNonDistribution_PreservesConfigMap(t *testin
 // Ed25519-dependent cluster must NOT freeze. reconcileAuthKeys rebuilds the
 // ConfigMap so the stored authorization metadata tracks the live spec — carrying
 // only the key material forward — AND reports pending=false so the StatefulSet
-// rolls and the narrowed / god-cleared authorization actually reaches the running
+// rolls and the narrowed / superuser-cleared authorization actually reaches the running
 // pods (which load AUTH_ED25519_KEYS once at boot). Rolling is crash-loop-safe
 // here because the referenced key set is non-empty and complete.
 func TestReconcileAuthKeys_TransientNonDistribution_CompleteCarriedSet_RollsWithRefreshedAuthz(t *testing.T) {
@@ -200,14 +200,14 @@ func TestReconcileAuthKeys_TransientNonDistribution_CompleteCarriedSet_RollsWith
 	scheme := authKeysScheme(t)
 
 	// Prior ConfigMap: the credential's key with STALE broad authorization
-	// (god + read/write), keyed by the same stable identity reconcileAuthKeys
+	// (superuser + read/write), keyed by the same stable identity reconcileAuthKeys
 	// writes.
 	fileName := pubKeyFileName("credentials", credName)
 	prior := authKeysJSON{Keys: []authKeyEntry{{
 		KeyID:         "k1",
 		PublicKeyFile: "/auth-keys/" + fileName,
 		Scopes:        []string{"read", "write"},
-		God:           true,
+		Superuser:     true,
 	}}}
 	priorRaw, err := json.Marshal(prior)
 	require.NoError(t, err)
@@ -220,8 +220,8 @@ func TestReconcileAuthKeys_TransientNonDistribution_CompleteCarriedSet_RollsWith
 	}
 
 	// Live Credentials: still undistributed, but authorization has been narrowed
-	// to read-only with god cleared (matchingCredentials sets Scopes=["read"],
-	// God=false).
+	// to read-only with superuser cleared (matchingCredentials sets Scopes=["read"],
+	// Superuser=false).
 	cred := matchingCredentials(credName, selector, false, "", "")
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existingCM, cred).Build()
@@ -244,7 +244,7 @@ func TestReconcileAuthKeys_TransientNonDistribution_CompleteCarriedSet_RollsWith
 	assert.Equal(t, "k1", got.Keys[0].KeyID, "key material must be carried forward")
 	assert.Equal(t, "deadbeef", cm.Data[fileName], "public key blob must be carried forward")
 	assert.Equal(t, []string{"read"}, got.Keys[0].Scopes, "scopes must be refreshed from the live spec")
-	assert.False(t, got.Keys[0].God, "god must be refreshed (cleared) from the live spec")
+	assert.False(t, got.Keys[0].Superuser, "superuser must be refreshed (cleared) from the live spec")
 }
 
 // TestReconcileAuthKeys_TransientNonDistribution_IncompleteCarriedSet_StaysPending

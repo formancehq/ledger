@@ -24,6 +24,7 @@ sequenceDiagram
     G->>G: If cluster-internal, adopt forwarded caller snapshot
     G->>Ctrl: ctrl.Apply(batch)
     Ctrl->>A: Admit(batch)
+    A->>A: Resolve + validate caller capability
     A->>A: Health + maintenance check
     A->>A: Verify Ed25519 signature, unwrap batch
     A->>A: Convert requests → orders
@@ -58,6 +59,16 @@ The gRPC interceptor, handler, and controller layers exist so the same admission
 ## The Admit pipeline
 
 `Admit` is structured as a sequence of stages, each of which can short-circuit the whole batch:
+
+### 0. Caller attribution
+
+`ResolveCallerAttribution()` converts authenticated request state, a trusted
+follower capability, or an allowlisted system actor into an opaque capability.
+Missing, malformed, or non-canonical attribution fails here, before the write
+gate and before any batch parsing, preload, proposal, or Raft work. Admission
+attaches a clone from the capability to the proposal. Direct clients cannot
+supply the peer-only forwarded snapshot; the gRPC boundary accepts it only on a
+cluster-secret-authenticated connection.
 
 ### 1. Write gate
 
@@ -113,6 +124,37 @@ The guard's job is to make sure the cache state observed during preload is the s
 
 A response signature (`SignedLog`) is attached at the gRPC layer on the way out — see [signing.md](signing.md).
 
+## Admission cost boundary
+
+Admission may read the local store to build a proposal. It may enumerate
+persisted state or expand coverage when the semantics require that information.
+The design must state whether the work scales with the request, with persisted
+state, or with both, and why that trade-off is acceptable.
+
+Admission must release every lifecycle lock before it waits for the proposal
+future. A lifecycle lock must never remain held through FSM application. The
+FSM owns the committed lifecycle transition; admission prepares and validates
+the proposal only.
+
+The proposal guard is not a lifecycle lock. It protects cache-generation
+correctness and loader lifetime until `Propose` returns. Release it before
+`proposal.Wait(ctx)` and never reuse it to serialize lifecycle state.
+
+Before implementation, a state-dependent read or coverage expansion must state
+all of the following:
+
+- the product or operational need that requires the read or expansion;
+- the complexity and the cardinality that bound it;
+- the proposal, WAL, cache, and storage amplification;
+- the alternatives considered, including a bounded or asynchronous design;
+- the deterministic cost-shape test and the representative throughput and
+  latency evidence that validate the budget;
+- the trigger that causes the extra work and the path that does not.
+
+If a proposal needs a lifecycle lock while it is pending, raise an architecture
+decision before implementation. Do not introduce that lock through an ordinary
+PR.
+
 ## Idempotency
 
 Two-stage check:
@@ -124,7 +166,7 @@ This split exists because the *uniqueness* check requires committed state — ad
 
 ## Validation: structural vs behavioural
 
-Admission validates **structural correctness** (UX-fast feedback before Raft): account address shape, asset code shape, metadata key shape, idempotency-key length, etc.
+Admission validates **structural correctness** (UX-fast feedback before Raft): caller attribution, account address shape, asset code shape, metadata key shape, idempotency-key length, etc.
 
 The FSM validates **behavioural invariants** (audit-bound): balance sufficiency, account-type constraints, overflow, already-reverted transactions, etc.
 

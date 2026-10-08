@@ -8,6 +8,10 @@ This document compares the POC's API with the original Formance ledger API and d
 > intentionally unversioned. The original ledger's `/v2` is **not** preserved
 > by this POC — there is no compatibility shim.
 
+For the per-operation Ledger v2 → v3 path mapping, see
+[`v2-to-v3-endpoint-map.json`](v2-to-v3-endpoint-map.json). Update it in the same
+change when a route it names is renamed or removed.
+
 HTTP typed metadata preserves exact integer values, including signed 64-bit
 bounds and values above 2^53, for metadata writes, transaction creation and
 reversal (unitary and bulk). Integral decimal/exponent spellings are accepted;
@@ -17,6 +21,21 @@ matching signed negative and unsigned nonnegative metadata values. See
 [Metadata number decoding](../architecture/subsystems/api/http-api.md#metadata-number-decoding).
 
 ## Summary
+
+### Prepared-query filter shape validation
+
+Creating or updating a prepared query rejects a filter leaf whose shape can
+never compile (a missing value or field reference, or an unsupported builtin
+field) with `FILTER_COMPILATION_ERROR`, instead of storing a query whose every
+execution fails. Service protocol revision 21 accompanies this rejection.
+
+### Superuser authentication
+
+Privileged JWTs use the boolean `superuser` claim. Static Ed25519 keys must
+explicitly allow `superuser` in their key configuration. The CLI exposes
+`--superuser`, operator Credentials expose `spec.superuser`, and audit callers
+report `superuser`. Service protocol revision 19 accompanies this rename;
+all granular-scope authorization behavior is unchanged.
 
 ### Service protocol compatibility (EN-1851)
 
@@ -51,7 +70,7 @@ can use effective metadata ceilings instead of compiled default estimates.
 | Create transaction with `force` | ✅ | ✅ | Bypasses balance checks |
 | **Transactions (Read)** |
 | Get transaction by ID | ✅ | ✅ | |
-| List transactions | ⚠️ | ✅ | gRPC stream only (no HTTP handler); supports `source`/`destination` address filtering, `reference`, `startTime`/`endTime`, and `id` via prepared queries |
+| List transactions | ✅ | ✅ | HTTP `GET /v3/{ledgerName}/transactions` and gRPC stream: cursor pagination, `startDate`/`endDate` range, and the generic `filter` (`source`/`destination`/`address`, `reference`, `id`, metadata) |
 | **Metadata** |
 | Save account metadata | ✅ | ✅ | |
 | Delete account metadata | ✅ | ✅ | |
@@ -118,6 +137,7 @@ can use effective metadata ceilings instead of compiled default estimates.
 | Store metrics | ✅ | ❌ | Pebble storage metrics |
 | Store integrity check | ✅ | ❌ | Hash chain + derived data verification |
 | Store backup | ✅ | ❌ | Point-in-time Pebble backup as tar archive |
+| Filesystem disk usage | ✅ | ❌ | Node-local gRPC/CLI diagnostic with per-volume validity, server-computed sample age, last observation time, and diagnostic error |
 | Index status | ✅ | ❌ | Read index builder progress (lag, file size) |
 | Store restore | ✅ | ❌ | Upload backup, validate, preview, finalize (--restore mode) |
 | **Prepared Queries** |
@@ -125,7 +145,7 @@ can use effective metadata ceilings instead of compiled default estimates.
 | Update prepared query | ✅ | ❌ | |
 | Delete prepared query | ✅ | ❌ | |
 | List prepared queries | ✅ | ❌ | |
-| Execute prepared query (list) | ✅ | ❌ | Returns matching entities with cursor pagination; validates filters against metadata schema |
+| Execute prepared query (list) | ✅ | ❌ | Returns matching entities with cursor pagination, ascending or descending (`reverse`); validates filters against metadata schema |
 | Execute prepared query (aggregate) | ✅ | ❌ | Returns aggregated volumes per asset; validates filters against metadata schema |
 | **User-Configurable Indexes** |
 | Create index | ✅ | ❌ | Opt-in address, metadata, reference, timestamp, inserted-at, or account-asset indexes per ledger. HTTP: `POST /v3/{ledger}/indexes`; gRPC: `Apply(CreateIndex)` |
@@ -167,6 +187,17 @@ The same v3 projection is used by HTTP get/list logs, prepared-query `logData`,
 JSON events, and `ledgerctl` JSON/YAML output. Global-log and event envelopes
 remain specific to v3. Protobuf RPCs, persisted data, audit hashing, and the
 separate ClickHouse/Databricks analytical projection are unchanged.
+
+The OpenAPI data object explicitly allows additional properties (EN-2685).
+Generated SDK decoders must preserve the operation payload both directly and
+inside `SystemLog.payload.apply.log`; the schema does not exhaustively type
+each operation variant.
+
+The same explicit additional-properties policy covers other opaque v3 objects
+(ledger metadata schemas, transaction account metadata, audit/signature fields,
+event sinks/statuses, signing keys and index responses). This changes the SDK
+schema contract without changing server payloads, routes or v2 compatibility.
+The intentionally empty `DropAction` remains exempt.
 
 This replaces the earlier unreleased v3 payload wrappers and shared
 `SET_METADATA` fallback discriminator. This is an output contract; decoding the
@@ -350,7 +381,7 @@ to 8.
 ### 5. Ledger Management
 
 **Endpoints:**
-- `POST /v3/{ledgerName}` - Create a ledger. Optional body fields: `mode`, `mirrorSource`, `defaultEnforcementMode`, `initialSchema` (metadata field types), and `accountTypes` (full account-type model — name/pattern/persistence/segmentTypes). These mirror the gRPC `CreateLedgerRequest`.
+- `POST /v3/{ledgerName}` - Create a ledger. Optional body fields: `metadata`, `mode`, `mirrorSource`, `defaultEnforcementMode`, `initialSchema` (metadata field types), and `accountTypes` (full account-type model — name/pattern/persistence/segmentTypes). These mirror the gRPC `CreateLedgerRequest`. Initial typed metadata is atomic with creation in normal and mirror modes and requires only `ledger:LedgerWrite`; later saves require `ledger:MetadataWrite`. JSON null entries are omitted. Schema declarations do not enforce write-time value types. See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md).
 - `DELETE /v3/{ledgerName}` - Delete a ledger
 - `GET /v3/{ledgerName}` - Get ledger info (read)
 - `GET /v3/` - List all ledgers (read)
@@ -492,7 +523,20 @@ aliases (EN-1540) — is documented once in
 
 ### 10. Prepared Queries and User-Configurable Indexes
 
-Prepared queries are reusable, named filter queries stored per-ledger. They can be executed in two modes: `LIST` (returns matching entity IDs with cursor pagination) and `AGGREGATE_VOLUMES` (returns aggregated volumes per asset for matched accounts).
+Prepared queries are reusable, named queries stored per-ledger. A nil filter is
+a match-all definition for the selected target. HTTP create accepts omitted or
+null `filter`; HTTP update treats omission as no change and null as filter
+removal. `Apply(UpdatePreparedQuery)` uses a nil protobuf filter for removal.
+Empty objects and empty textual expressions are invalid. Queries can be
+executed in two modes: `LIST` (returns matching entity IDs with cursor
+pagination, ascending by default and descending with `reverse`) and `AGGREGATE_VOLUMES` (returns aggregated volumes per asset for
+matched accounts).
+
+`PreparedQueryFilterInput` describes a structured `QueryFilter` or an inline
+nullable string in OpenAPI 3.0 (EN-2685). Null belongs to the string alternative,
+so the union needs no dummy empty-object model and does not rely on ignored
+siblings beside a `$ref`. Generated create/update request serializers must
+preserve structured and textual inputs and distinguish omission from null.
 
 **Endpoints:**
 - `POST /v3/{ledgerName}/prepared-queries` — Create
@@ -603,6 +647,11 @@ ledgerctl indexes list --ledger my-ledger
 - `DELETE /v3/{ledgerName}/metadata/{key}` - Delete a metadata key
 
 These endpoints are documented in Section 3 (Metadata Management) above.
+
+Both routes require `ledger:MetadataWrite`; `ledger:write` grants it under
+the default scope mapping. SDK metadata-key parameters take the raw key, such
+as `formance.com/reviewed`, and encode it as one path segment. Direct HTTP
+clients perform that encoding themselves; the server decodes exactly once.
 
 ### 5. ❌ Ledger Configuration Update
 
@@ -981,14 +1030,14 @@ Read endpoints comparison with the original ledger:
 | Endpoint | POC | Original | Notes |
 |----------|-----|----------|-------|
 | `GET /v3/{ledgerName}/transactions/{id}` | ✅ | ✅ | Get a transaction by ID |
-| `GET /v3/{ledgerName}/transactions` | ⚠️ | ✅ | List transactions (gRPC stream only, no HTTP handler) |
+| `GET /v3/{ledgerName}/transactions` | ✅ | ✅ | List transactions: cursor pagination, `startDate`/`endDate` range, and the generic `filter` (reference selection via `filter={"$match":{"reference":"..."}}`) |
 | `GET /v3/{ledgerName}/accounts` | ✅ | ✅ | List accounts (rich boolean filter, cursor pagination). No `first_usage` / `insertion_date` / `updated_at` filter or ordering ([details](#6--account-date-fields-first_usage-insertion_date-updated_at)) |
 | `GET /v3/{ledgerName}/accounts/{address}` | ✅ | ✅ | Get an account |
 | `GET /v3/{ledgerName}/accounts/{address}/balances` | ❌ | ✅ | Get account balances |
 | `GET /v3/{ledgerName}/accounts/{address}/volumes` | ❌ | ✅ | Get account volumes |
 | `GET /v3/{ledgerName}/volumes` | ✅ | ✅ | Aggregate volumes (per-asset, generic account `filter`) |
 | `GET /v3/{ledgerName}/logs` | ✅ | ✅ | List per-ledger logs. Supports `?after=` for pagination. Ledger-scoped read → requires `ledger:read` (granular `ledger:LedgerRead`) on both transports |
-| `GET /v3/{ledgerName}/stats` | ✅ | ✅ | Ledger usage statistics (transaction, volume, reference, posting, log, revert, Numscript-execution, ephemeral-evicted and transient-used counts) |
+| `GET /v3/{ledgerName}/stats` | ✅ | ✅ | Ledger usage statistics (transaction, volume, reference, posting, log, revert, Numscript-execution, ephemeral-evicted and transient-used counts). A missing or deleted ledger returns `404 LEDGER_NOT_FOUND` |
 | `GET /v3/{ledgerName}` | ✅ | ✅ | Get ledger info |
 | `POST /v3/{ledgerName}/promote` | ✅ | ❌ | Promote mirror ledger to normal mode |
 | `GET /v3/` | ✅ | ✅ | List all ledgers |
@@ -1004,7 +1053,7 @@ Read endpoints comparison with the original ledger:
 | `POST /v3/{ledgerName}/prepared-queries/{queryName}/execute` | ✅ | ❌ | Execute a prepared query |
 | `GET /v3/{ledgerName}/numscripts` | ✅ | ❌ | List all numscripts (greatest version of each) |
 | `GET /v3/{ledgerName}/numscripts/{name}?version=` | ✅ | ❌ | Get numscript (version selector, empty/latest = greatest semver) |
-| `GET /v3/{ledgerName}/numscripts/{name}/usage` | ✅ | ❌ | Get invocation count + last-used timestamp |
+| `GET /v3/{ledgerName}/numscripts/{name}/usage` | ✅ | ❌ | Get invocation count + last-used timestamp. A missing or deleted ledger returns `404 LEDGER_NOT_FOUND`; a never-invoked template returns a zero-valued `200` response |
 | `GET /v3/{ledgerName}/numscripts/{name}/versions` | ✅ | ❌ | List version history |
 | `PUT /v3/{ledgerName}/numscripts/{name}` | ✅ | ❌ | Save an immutable version (explicit full semver). Requires `ledger:LedgerWrite` on both the dedicated route and gRPC `Apply(SaveNumscript)` |
 | `GET /v3/{ledgerName}/account-types` | ✅ | ❌ | List account types |
@@ -1012,7 +1061,6 @@ Read endpoints comparison with the original ledger:
 | `POST /v3/{ledgerName}/account-types` | ✅ | ❌ | Add account type. Requires `ledger:MetadataWrite` on both the dedicated route and gRPC `Apply` |
 | `DELETE /v3/{ledgerName}/account-types/{typeName}` | ✅ | ❌ | Remove account type. Requires `ledger:MetadataWrite` on both the dedicated route and gRPC `Apply` |
 | `PUT /v3/{ledgerName}/account-types/default-enforcement-mode` | ✅ | ❌ | Set default enforcement mode (STRICT/AUDIT). Requires `ledger:MetadataWrite` on both the dedicated route and gRPC `Apply` |
-| `GET /v3/{ledgerName}/transactions` | ✅ | ❌ | List transactions: cursor pagination, `startDate`/`endDate` range, and the generic `filter` (reference selection via `filter={"$match":{"reference":"..."}}`) |
 | `GET /v3/_/logs/{sequence}` | ✅ | ❌ | Fetch a single system log by bucket-wide sequence. No ledger identity → requires `ledger` ops-read (granular `ledger:OpsRead`) |
 | `GET /v3/_/events-sinks` | ✅ | ❌ | List configured event sinks with per-sink status (`{sinks, sinkStatuses}`, parity with gRPC `GetEventsSinks`) |
 | `GET /v3/_/signing-keys` | ✅ | ❌ | List registered Ed25519 signing keys |
@@ -1191,6 +1239,7 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Balance not found | `FAILED_PRECONDITION` | `BALANCE_NOT_FOUND` | `account`, `asset` |
 | Balance not preloaded | `FAILED_PRECONDITION` | `BALANCE_NOT_PRELOADED` | `account`, `asset` |
 | Numscript parse error | `INVALID_ARGUMENT` | `NUMSCRIPT_PARSE_ERROR` | `details` |
+| Numscript compile error | `INVALID_ARGUMENT` | `NUMSCRIPT_COMPILE_ERROR` | `details` |
 | Numscript runtime error | `INTERNAL` | `NUMSCRIPT_RUNTIME` | `detail` |
 | Numscript not found | `NOT_FOUND` | `NUMSCRIPT_NOT_FOUND` | `name` |
 | Numscript invalid version | `INVALID_ARGUMENT` | `NUMSCRIPT_INVALID_VERSION` | `version` |

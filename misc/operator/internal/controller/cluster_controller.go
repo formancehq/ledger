@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/google/uuid"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -68,6 +69,18 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// Handle deletion — owned resources are garbage-collected via owner references.
 	if !ledger.DeletionTimestamp.IsZero() {
 		return ctrl.Result{}, nil
+	}
+	// Commit the identity before any resource can start a Ledger process. An
+	// update conflict aborts this reconcile; the next read uses the winning ID.
+	if ledger.Spec.ClusterID == "" {
+		generated, err := uuid.NewRandom()
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("generating cluster ID: %w", err)
+		}
+		ledger.Spec.ClusterID = generated.String()
+		if err := r.Update(ctx, ledger); err != nil {
+			return ctrl.Result{}, fmt.Errorf("persisting generated cluster ID: %w", err)
+		}
 	}
 
 	// Clear the persisted Phase before stepping through reconcile so a
@@ -364,13 +377,27 @@ func (r *ClusterReconciler) updateStatus(ctx context.Context, ledger *ledgerv1al
 	}
 
 	// ledger was fetched fresh at the top of Reconcile and this reconciler is the
-	// sole writer of Cluster status conditions, so ledger.Status.Conditions is
-	// the authoritative desired set after this pass — including conditions removed
+	// primary writer of Cluster status conditions, so its non-volume conditions
+	// are the authoritative desired set after this pass — including conditions removed
 	// during reconcile (e.g. DeletionProtectionInactive once the cluster policy is
 	// installed or protection is disabled). Assign it onto the freshly-fetched latest
-	// so those removals are persisted; an additive SetStatusCondition merge would
-	// leave stale conditions in .status.conditions forever.
-	latest.Status.Conditions = ledger.Status.Conditions
+	// so those removals are persisted. Volume expansion conditions have a separate
+	// writer and are merged from the latest object below.
+	volumeConditions := make([]metav1.Condition, 0, 2)
+	for _, condition := range latest.Status.Conditions {
+		if isVolumeExpansionCondition(condition) {
+			volumeConditions = append(volumeConditions, condition)
+		}
+	}
+	latest.Status.Conditions = latest.Status.Conditions[:0]
+	for _, condition := range ledger.Status.Conditions {
+		if !isVolumeExpansionCondition(condition) {
+			latest.Status.Conditions = append(latest.Status.Conditions, condition)
+		}
+	}
+	for _, condition := range volumeConditions {
+		meta.SetStatusCondition(&latest.Status.Conditions, condition)
+	}
 
 	// Preserve the phase set during reconciliation (e.g. "Degraded" from
 	// validation failure) before we try to recompute from StatefulSet state.
@@ -556,9 +583,6 @@ func applyDefaults(ledger *ledgerv1alpha1.Cluster) {
 	if ledger.Spec.DataDir == "" {
 		ledger.Spec.DataDir = "/data/app"
 	}
-	if ledger.Spec.ClusterID == "" {
-		ledger.Spec.ClusterID = "default"
-	}
 	if ledger.Spec.ServiceAccount.Create == nil {
 		create := true
 		ledger.Spec.ServiceAccount.Create = &create
@@ -591,16 +615,9 @@ func validateSpec(ledger *ledgerv1alpha1.Cluster) error {
 		return err
 	}
 
-	// Validate hostPath / PVC mutual exclusion for each volume.
-	volumes := []struct {
-		name string
-		spec *ledgerv1alpha1.VolumeSpec
-	}{
-		{"persistence.wal", &ledger.Spec.Persistence.WAL},
-		{"persistence.data", &ledger.Spec.Persistence.Data},
-	}
-	for _, v := range volumes {
-		if err := validateVolumeSpec(v.name, v.spec); err != nil {
+	// Validate hostPath / PVC mutual exclusion and automatic expansion for each volume.
+	for _, volume := range persistenceVolumeDefinitions(ledger) {
+		if err := validateVolumeSpec(volume.Field, volume.Spec, volume.DefaultSize, volume.AutoExpansionAllowed); err != nil {
 			return err
 		}
 	}
@@ -672,22 +689,13 @@ func validateClusterConfig(spec *ledgerv1alpha1.ClusterSpec) error {
 	return nil
 }
 
-// validateVolumeSpec checks that hostPath and PVC fields are mutually exclusive.
-func validateVolumeSpec(field string, spec *ledgerv1alpha1.VolumeSpec) error {
-	if spec.HostPath == nil {
-		return nil
-	}
-	if spec.HostPath.Path == "" {
-		return fmt.Errorf("%s.hostPath.path must not be empty", field)
-	}
-	if spec.StorageClass != "" {
-		return fmt.Errorf("%s: storageClass and hostPath are mutually exclusive", field)
-	}
-	if spec.VolumeAttributesClassName != "" {
-		return fmt.Errorf("%s: volumeAttributesClassName and hostPath are mutually exclusive", field)
-	}
+// validateVolumeSpec checks hostPath/PVC exclusivity and the opt-in automatic
+// expansion policy. Runtime validation complements the generated CRD rules so
+// Clusters constructed in-process receive the same guarantees.
+func validateVolumeSpec(field string, spec *ledgerv1alpha1.VolumeSpec, defaultSize string, autoExpansionAllowed bool) error {
+	_, err := validateAndResolveVolumeSpec(field, spec, defaultSize, autoExpansionAllowed)
 
-	return nil
+	return err
 }
 
 // hasHostPathVolume returns true if any volume uses hostPath.

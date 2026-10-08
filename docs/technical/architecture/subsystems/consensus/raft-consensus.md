@@ -146,6 +146,33 @@ A stalled initialization or drain can therefore retain the hook and its
 resources until it completes. Fatal `Run` errors retain their existing
 process-failure behavior.
 
+#### Leader readiness generations
+
+Leadership acquisition does not admit writes immediately. The node first
+drains previously submitted apply work and waits until the FSM has applied the
+new leader's current-term no-op entry. Applying that entry proves that every
+preceding entry is committed and locally applied. `WaitLeaderReady` exposes
+this generation-specific gate to admission, and `LeaderReadyEvent` lets
+bootstrap reconcile persisted cluster configuration only after the same gate.
+
+Each acquisition owns a cancellable readiness generation. After the FSM
+wait succeeds, the waiter rechecks cancellation before emitting the event and
+releasing admission. Leadership loss cancels the generation and joins its
+waiter through `done` before publishing the loss event. Cancellation observed
+by the recheck prevents the old generation from emitting `LeaderReadyEvent`
+or releasing admission. Cancellation can also arrive after the recheck;
+in that case, the join ensures readiness publication and its synchronous
+observer callback finish before the loss transition is published. The join
+provides this ordering; `cancelAndWait` does not acquire the publication lock.
+The leadership-loss signal wakes requests already waiting on that generation
+with `ErrNotLeader`. A later acquisition always installs a new independent
+generation.
+
+A failed FSM wait completes the background waiter without marking the
+generation ready, so admission remains blocked until its request context is
+cancelled. Leadership loss separately wakes existing waiters with
+`ErrNotLeader`; a later acquisition installs a fresh gate for new requests.
+
 #### Applier
 
 `internal/infra/node/applier.go` decouples WAL writes from FSM application by running as a dedicated goroutine. This provides two levels of pipelining:
@@ -193,9 +220,31 @@ Drain points ensure the pending commit completes before barriers, checkpoints, s
 - Send Raft messages
 - Receive Raft messages
 - Detect unreachable nodes
+- Detect silently stalled outbound streams: one high-priority ping may be
+  outstanding per connection attempt. A matching pong acknowledges that probe;
+  a missing pong, a blocked send, or five seconds without a sent probe cancels
+  the attempt independently of the send loop. Due probes are scheduled before
+  queued Raft traffic so a healthy but busy peer is not disconnected merely
+  because its send queues stay nonempty. A matching pong resets the no-probe
+  deadline so a slow but valid response leaves time for the next probe. The
+  loop then reports the peer unreachable, drains pending sends, and restarts
+  its pooled connection after
+  at most the existing one-second retry delay. Restart constructs a new
+  `dns:///` client, allowing the current peer address to resolve again.
+  Detection is approximately five seconds; full recovery additionally needs
+  retry, DNS, any optional-TLS probe, and a Raft election. A high-priority
+  pong cannot establish delivery on the medium and low priority streams.
 - Refresh an existing peer's pooled connection after a committed address update
   while preserving that peer's send loop and queues; a transient optional-TLS
   probe failure retains the committed target for the loop's next retry
+
+The shared Raft and service connection pools also send gRPC keepalives every
+ten seconds with a five-second response timeout. Raft, service, restore, and
+test gateway servers accept that cadence in TLS and plaintext modes. This
+detects a silent socket failure when the HTTP/2 connection is idle; other
+HTTP/2 activity can defer that detection, so the application probe remains
+the primary Raft stream check. These local liveness rules do not change the
+service RPC contract or `pkg/grpcprotocol.Version`.
 
 ```mermaid
 graph TB

@@ -33,6 +33,7 @@ Examples:
   ledgerctl queries execute by-tier --ledger my-ledger --param tier=gold
   ledgerctl queries execute big-txns --ledger my-ledger --param min_amount=1000
   ledgerctl queries execute active-users --ledger my-ledger --mode aggregate
+  ledgerctl queries execute big-txns --ledger my-ledger --reverse
   ledgerctl queries execute active-users --ledger my-ledger --all`,
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeQueryNames,
@@ -47,6 +48,7 @@ Examples:
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 	cmdutil.AddAnalyzeFlag(cmd)
 	cmd.Flags().Bool("all", false, "Fetch all results at once (no pagination)")
+	cmd.Flags().Bool("reverse", false, "List results in descending order (list mode only)")
 	cmdutil.AddOutputFlags(cmd)
 
 	return cmd
@@ -74,6 +76,7 @@ func runExecute(cmd *cobra.Command, args []string) error {
 	modeStr, _ := cmd.Flags().GetString("mode")
 	showProfile, _ := cmd.Flags().GetBool("analyze")
 	fetchAll, _ := cmd.Flags().GetBool("all")
+	reverse, _ := cmd.Flags().GetBool("reverse")
 
 	params, err := parseParams(paramFlags)
 	if err != nil {
@@ -108,6 +111,7 @@ func runExecute(cmd *cobra.Command, args []string) error {
 			PageSize:   pageSize,
 			Cursor:     cursor,
 			Mode:       mode,
+			Reverse:    reverse,
 		}, ggrpc.Trailer(&trailer))
 
 		cancel()

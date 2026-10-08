@@ -202,13 +202,15 @@ func makeDeleteSentinelEntry(t *testing.T, index uint64, ledger string, deleting
 			id, tag := attributes.MakeKey(key.Bytes())
 			plans = append(plans, &raftcmdpb.AttributeCoverage{
 				Id: &raftcmdpb.AttributeID{Id: id[:], Tag: tag}, AttrCode: uint32(dal.SubAttrVolume),
-				CanonicalKey: key.Bytes(),
-				Value:        &raftcmdpb.AttributeValue{RawValue: zero},
+				Value: &raftcmdpb.AttributeValue{RawValue: zero},
 			})
 		}
 	}
 	proposal := &raftcmdpb.Proposal{
 		Id: index, Date: &commonpb.Timestamp{Data: 1700000000 + index},
+		CallerSnapshot: &commonpb.CallerSnapshot{
+			Principal: &commonpb.CallerSnapshot_AuthDisabled{AuthDisabled: &commonpb.AuthDisabledCaller{}},
+		},
 		ExecutionPlan: &raftcmdpb.ExecutionPlan{Attributes: plans},
 		Orders: []*raftcmdpb.Order{{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: ls},
 			Technical: &raftcmdpb.OrderTechnical{CoverageBits: []byte{byte(1<<len(plans)) - 1}}}},

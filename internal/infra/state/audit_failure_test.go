@@ -552,6 +552,12 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{"details": "unexpected token at line 3"},
 		},
 		{
+			name:        "NumscriptCompile",
+			err:         &domain.ErrNumscriptCompile{Detail: "cannot take all balance of an unbounded source"},
+			wantReason:  domain.ErrReasonNumscriptCompileError,
+			wantContext: map[string]string{"details": "cannot take all balance of an unbounded source"},
+		},
+		{
 			name:        "NumscriptRuntime",
 			err:         &domain.ErrNumscriptRuntime{Detail: "posting amount is negative"},
 			wantReason:  domain.ErrReasonNumscriptRuntime,
@@ -650,6 +656,12 @@ func auditFailureCases() []auditFailureCase {
 			err:         &domain.ErrInvalidExecutionPlan{Reason_: "coverage bit 9 past the attribute slice"},
 			wantReason:  domain.ErrReasonInvalidExecutionPlan,
 			wantContext: map[string]string{"reason": "coverage bit 9 past the attribute slice"},
+		},
+		{
+			name:        "InvalidCallerAttribution",
+			err:         &domain.ErrInvalidCallerAttribution{Detail: "missing principal"},
+			wantReason:  domain.ErrReasonInvalidCallerAttribution,
+			wantContext: map[string]string{"detail": "missing principal"},
 		},
 		{
 			name:        "ExecutionPlanTooLarge",

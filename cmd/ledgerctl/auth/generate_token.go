@@ -25,7 +25,7 @@ type tokenParams struct {
 	subject    string
 	scopes     []string
 	expiration time.Duration
-	god        bool
+	superuser  bool
 }
 
 // NewGenerateTokenCommand returns the "auth generate-token" command.
@@ -57,7 +57,7 @@ func addTokenGenerationFlags(cmd *cobra.Command) {
 	cmd.Flags().String("subject", "", "JWT subject")
 	cmd.Flags().StringSlice("scopes", nil, "Scopes to include (e.g., ledger:read,ledger:write)")
 	cmd.Flags().Duration("expiration", 1*time.Hour, "Token validity duration")
-	cmd.Flags().Bool("god", false, "Include god-mode claim (grants all scopes; key must allow it)")
+	cmd.Flags().Bool("superuser", false, "Include superuser-mode claim (grants all scopes; key must allow it)")
 }
 
 // signToken creates a signed JWT from the given parameters.
@@ -71,8 +71,8 @@ func signToken(p tokenParams) (string, error) {
 	claims.Expiration = oidc.FromTime(oidc.Time(now.Add(p.expiration).Unix()).AsTime())
 	claims.Scopes = oidc.SpaceDelimitedArray(p.scopes)
 
-	if p.god {
-		claims.Claims = map[string]any{"god": true}
+	if p.superuser {
+		claims.Claims = map[string]any{"superuser": true}
 	}
 
 	payload, err := json.Marshal(claims)
@@ -120,7 +120,7 @@ func tokenParamsFromFlags(cmd *cobra.Command) (tokenParams, error) {
 
 	scopes, _ := cmd.Flags().GetStringSlice("scopes")
 	expiration, _ := cmd.Flags().GetDuration("expiration")
-	god, _ := cmd.Flags().GetBool("god")
+	superuser, _ := cmd.Flags().GetBool("superuser")
 
 	seed, err := signing.LoadSeedFromFile(signingKeyPath)
 	if err != nil {
@@ -133,7 +133,7 @@ func tokenParamsFromFlags(cmd *cobra.Command) (tokenParams, error) {
 		subject:    subject,
 		scopes:     scopes,
 		expiration: expiration,
-		god:        god,
+		superuser:  superuser,
 	}, nil
 }
 

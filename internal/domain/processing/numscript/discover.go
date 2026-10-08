@@ -47,6 +47,11 @@ type DiscoveryResult struct {
 	WriteMetadata map[domain.MetadataKey]struct{}
 	InputsHash    []byte
 
+	// Compiled is the VM artifact for this script, bound to the order: the VM is
+	// the only execution engine, so it is always set on success — a script the
+	// VM cannot run fails discovery with ErrNumscriptCompile instead.
+	Compiled *CompiledScript
+
 	NetBalanceDeltas map[domain.VolumeKey]*big.Int
 	MetadataWrites   map[domain.MetadataKey]string
 }
@@ -72,10 +77,12 @@ func DiscoverNumscriptDependencies(
 	source ValueSource,
 	force bool,
 ) (*DiscoveryResult, error) {
-	parsed, parseErr := cache.GetOrParse(script)
-	if parseErr != nil {
-		return nil, parseErr
+	entry := cache.getOrParseEntry(script)
+	if entry.script.err != nil {
+		return nil, entry.script.err
 	}
+
+	parsed := entry.script.program
 
 	variablesMap := make(numscriptlib.VariablesMap, len(vars))
 	maps.Copy(variablesMap, vars)
@@ -90,12 +97,23 @@ func DiscoverNumscriptDependencies(
 		}
 	}
 
+	// Compile after resolution, so a script resolution rejects (e.g. asset
+	// scaling, a scope-qualified read) keeps its specific error. A compile
+	// failure is returned bare, not as a DependencyResolutionError: it depends
+	// only on the script and vars, never on state, so admission terminates it
+	// as a freezable validation failure (or surfaces a panic loudly).
+	compiled, compileErr := compileScript(entry, vars)
+	if compileErr != nil {
+		return nil, compileErr
+	}
+
 	result := &DiscoveryResult{
 		ReadVolumes:   make(map[domain.VolumeKey]struct{}, len(resolved.AccountsReads)),
 		WriteVolumes:  make(map[domain.VolumeKey]struct{}, len(resolved.AccountsWrites)),
 		ReadMetadata:  make(map[domain.MetadataKey]struct{}, len(resolved.MetaReads)),
 		WriteMetadata: make(map[domain.MetadataKey]struct{}, len(resolved.MetaWrites)),
 		InputsHash:    recording.Hash(),
+		Compiled:      compiled,
 	}
 
 	// Ledger volumes are keyed by (ledger, account, asset, color): color IS a
@@ -142,9 +160,9 @@ func DiscoverNumscriptDependencies(
 	// Compute this script's effects (net balance deltas + metadata writes) by
 	// executing it against the same source. A later order in the same atomic
 	// batch resolves against pre-batch storage plus these effects, mirroring the
-	// FSM's sequential apply over a mutated WriteSet (EN-1406 P1-1). Executing
-	// here uses the in-script feature flags (parsed.Run merges #![feature]) so it
-	// matches the FSM run.
+	// FSM's sequential apply over a mutated WriteSet (EN-1406 P1-1). It runs the
+	// very artifact bound to the order, on the VM — the engine the FSM uses — so
+	// the predicted effects are the ones the FSM will produce.
 	//
 	// Effects are best-effort: a runtime failure here (insufficient funds against
 	// admission-time state, overflow, …) is NOT an admission rejection. Balance
@@ -156,7 +174,7 @@ func DiscoverNumscriptDependencies(
 	// divergence between admission-time and apply-time state). Running the check
 	// here as a hard reject would prematurely fail orders that the FSM would
 	// accept once earlier same-batch or concurrent orders have moved balances.
-	execResult, execErr := SafeRun(parsed, context.Background(), variablesMap, NewStore(source, force))
+	execResult, execErr := execCompiledScript(compiled, NewVMStore(source, force))
 	if execErr != nil {
 		// A recovered numscript-library panic is a "should not happen"
 		// (CLAUDE.md invariant #7) and must surface loudly — exactly like the
@@ -190,15 +208,11 @@ func DiscoverNumscriptDependencies(
 	if len(execResult.AccountsMetadata) > 0 {
 		result.MetadataWrites = make(map[domain.MetadataKey]string, len(execResult.AccountsMetadata))
 		for _, row := range execResult.AccountsMetadata {
-			value, convErr := ValueToString(row.Value)
-			if convErr != nil {
-				return nil, convertNumscriptError(convErr)
-			}
-
+			// The library renders metadata values to their stored string form.
 			result.MetadataWrites[domain.MetadataKey{
 				AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: row.Account},
 				Key:        row.Key,
-			}] = value
+			}] = row.Value
 		}
 	}
 

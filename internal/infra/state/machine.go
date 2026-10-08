@@ -17,6 +17,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/attribution"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -174,8 +175,8 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 	sentinelMode := sentinel.IsEnabled()
 	// raft.* metrics describe the consensus engine and follow the
 	// upstream etcd-raft naming convention; numscript.* metrics are
-	// application-specific so they live on a separate meter, which
-	// the metric-naming factory may prefix in `prom` mode.
+	// application-specific so they live on a separate meter. Both are
+	// namespaced by --otel-metrics-prefix like every injected meter.
 	raftMeter := meterProvider.Meter("raft.node")
 	numscriptMeter := meterProvider.Meter("numscript")
 	logsAppendedCounter, err := raftMeter.Int64Counter(
@@ -212,7 +213,7 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 	}
 
 	preloadMissCounter, err := raftMeter.Int64Counter(
-		"ledger.preload.coverage_miss",
+		"raft.fsm.preload.coverage_miss",
 		metric.WithDescription("Reads on the FSM hot path of keys not declared in the proposal's ExecutionPlan. Labeled by attribute kind. The order observing the miss is rejected with a business error."),
 		metric.WithUnit("1"),
 	)
@@ -354,7 +355,11 @@ func (fsm *Machine) WaitForApplied(ctx context.Context, targetIndex uint64) erro
 	go func() {
 		select {
 		case <-ctx.Done():
+			// Serialize cancellation with the ctx.Err()/Cond.Wait sequence so
+			// the wakeup cannot be lost before the waiter enters the wait queue.
+			fsm.appliedMu.Lock()
 			fsm.appliedCond.Broadcast()
+			fsm.appliedMu.Unlock()
 		case <-done:
 		}
 	}()
@@ -515,6 +520,44 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 			}
 		}
 
+		// Validate replicated caller attribution before cache rotation or any
+		// business-state write. Empty Raft entries and explicit no-op proposals
+		// are consensus barriers rather than writes, so they carry no caller.
+		if entry.GetType() == raftpb.EntryNormal && len(entry.GetData()) > 0 {
+			if cmd == nil {
+				assert.Unreachable("normal entry with non-empty Data but nil Proposal", map[string]any{
+					"raftIndex": entryIndex,
+				})
+
+				_ = batch.Cancel()
+
+				return nil, fmt.Errorf("invariant: decoded entry at raft index %d has nil Proposal", entryIndex)
+			}
+
+			if len(cmd.GetOrders()) > 0 || len(cmd.GetTechnicalUpdates()) > 0 || cmd.GetCallerSnapshot() != nil {
+				if attributionErr := attribution.Validate(cmd.GetCallerSnapshot()); attributionErr != nil {
+					invalid, ok := errors.AsType[*domain.ErrInvalidCallerAttribution](attributionErr)
+					if !ok {
+						_ = batch.Cancel()
+
+						return nil, fmt.Errorf("validating caller attribution: %w", attributionErr)
+					}
+
+					// The malformed entry is already committed in Raft, so advance only
+					// replicated progress. No cache rotation, HLC advancement, audit
+					// entry, or business-state mutation is allowed for the rejection.
+					fsm.State.LastAppliedIndex++
+					ret.Results = append(ret.Results, ApplyResult{
+						ProposalID:   cmd.GetId(),
+						AppliedIndex: entryIndex,
+						Error:        &domain.BusinessError{Err: invalid},
+					})
+
+					continue
+				}
+			}
+		}
+
 		preRotationPQGen0 := fsm.Registry.Cache.PreparedQueries.Gen0().Size()
 		preRotationPQGen1 := fsm.Registry.Cache.PreparedQueries.Gen1().Size()
 
@@ -595,20 +638,6 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 			}
 
 			continue
-		}
-
-		// cmd was set from decoded[i].Proposal at the top of the iteration:
-		// DecodeEntries unmarshalled it once at the applier boundary, so the
-		// hot path never re-decodes the same raft payload. The caller owns
-		// the *Proposal lifetime (VT pool); the FSM only reads from it.
-		if cmd == nil {
-			assert.Unreachable("normal entry with non-empty Data but nil Proposal", map[string]any{
-				"raftIndex": entryIndex,
-			})
-
-			_ = batch.Cancel()
-
-			return nil, fmt.Errorf("invariant: decoded entry at raft index %d has nil Proposal", entryIndex)
 		}
 
 		if len(cmd.GetOrders()) == 0 && len(cmd.GetTechnicalUpdates()) == 0 {
@@ -1004,7 +1033,7 @@ func (fsm *Machine) Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.W
 		if value == nil {
 			// Coverage-only entry: nothing to seed. The gen0→gen1 fallback
 			// in AttributeCache.Get and the lazy gen1→gen0 promote in
-			// KeyStore.Tombstone cover the handler's reads and deletes
+			// AttributeCache.Del cover the handler's reads and deletes
 			// respectively; coverage_bits (invariant #9) bounds the read
 			// horizon to admission's declared preload set. Keeps Preload
 			// O(seeds) instead of O(coverage entries).
@@ -1609,10 +1638,6 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		result.AuditEntryWritten = true
 
 		return result, nil
-	}
-
-	if err := buffer.PrepareEphemeralAccountPurge(validateScope, proposal.GetExecutionPlan().GetAttributes()); err != nil {
-		return nil, fmt.Errorf("preparing ephemeral account purge: %w", err)
 	}
 
 	sinkConfigChanged := buffer.SinkConfigChanged()

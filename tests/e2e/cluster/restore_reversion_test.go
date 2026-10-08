@@ -86,8 +86,8 @@ var _ = Describe("Restore reversion bitset", Ordered, func() {
 
 		vol := acct.FindVolume("USD", "")
 		Expect(vol).ToNot(BeNil(), "%s: %s USD volumes missing", phase, account)
-		Expect(vol.GetInput()).To(Equal("600"), "%s: %s USD input", phase, account)
-		Expect(vol.GetOutput()).To(Equal("100"), "%s: %s USD output", phase, account)
+		Expect(vol.GetInput().DecimalString()).To(Equal("600"), "%s: %s USD input", phase, account)
+		Expect(vol.GetOutput().DecimalString()).To(Equal("100"), "%s: %s USD output", phase, account)
 	}
 
 	storage := func() *commonpb.BackupStorage {
@@ -284,6 +284,8 @@ var _ = Describe("Restore reversion bitset", Ordered, func() {
 				Expect(statusErr).To(Succeed())
 				return resp.GetState()
 			}, 2*time.Minute, 500*time.Millisecond).Should(Equal(restorepb.DownloadState_DOWNLOAD_STATE_SUCCEEDED))
+
+			Expect(validateRestoreWithoutErrors(ctx, restoreClient)).To(Succeed())
 
 			_, err = restoreClient.FinalizeRestore(ctx, &restorepb.FinalizeRestoreRequest{})
 			Expect(err).To(Succeed())

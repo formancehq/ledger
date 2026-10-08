@@ -166,8 +166,8 @@ func pollUntilTerminal(
 	pollInterval time.Duration,
 	rpcTimeout time.Duration,
 ) (*restorepb.GetDownloadStatusResponse, error) {
-	progress, _ := pterm.DefaultProgressbar.WithTitle("Downloading backup").WithTotal(1).WithShowCount(false).Start()
-	defer func() { _, _ = progress.Stop() }()
+	progress := cmdutil.StartProgressBar("Downloading backup", 1)
+	defer progress.Stop()
 
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
@@ -203,9 +203,9 @@ func pollUntilTerminal(
 }
 
 // updateProgress refreshes the progress bar from the last status snapshot.
-// pterm's progress bar takes int totals; we scale bytes down to KiB so the
+// The progress bar takes int totals; we scale bytes down to KiB so the
 // counter stays within int range on very large (multi-TB) backups.
-func updateProgress(bar *pterm.ProgressbarPrinter, resp *restorepb.GetDownloadStatusResponse) {
+func updateProgress(bar *cmdutil.ProgressBar, resp *restorepb.GetDownloadStatusResponse) {
 	const kib = 1024
 
 	total := int(resp.GetTotalBytes() / kib)
@@ -214,9 +214,6 @@ func updateProgress(bar *pterm.ProgressbarPrinter, resp *restorepb.GetDownloadSt
 	}
 
 	done := min(int(resp.GetBytesDownloaded()/kib), total)
-
-	bar.Total = total
-	bar.Current = done
 
 	title := fmt.Sprintf("Downloading: %d/%d files, %s / %s",
 		resp.GetFilesDownloaded(), resp.GetTotalFiles(),
@@ -227,5 +224,5 @@ func updateProgress(bar *pterm.ProgressbarPrinter, resp *restorepb.GetDownloadSt
 		title += " (" + cf + ")"
 	}
 
-	bar.UpdateTitle(title)
+	bar.Update(title, done, total)
 }

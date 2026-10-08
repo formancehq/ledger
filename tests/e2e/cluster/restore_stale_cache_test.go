@@ -261,6 +261,8 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 				return resp.GetState()
 			}, 2*time.Minute, 500*time.Millisecond).Should(Equal(restorepb.DownloadState_DOWNLOAD_STATE_SUCCEEDED))
 
+			Expect(validateRestoreWithoutErrors(ctx, restoreClient)).To(Succeed())
+
 			_, err = restoreClient.FinalizeRestore(ctx, &restorepb.FinalizeRestoreRequest{})
 			Expect(err).To(Succeed())
 		})
@@ -324,8 +326,8 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 			// isolates any failure below to the cache, not the rebuild.
 			resp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "mallory"})
 			Expect(err).To(Succeed())
-			Expect(resp.FindVolume("USD", "").GetInput()).To(Equal("1000"))
-			Expect(resp.FindVolume("USD", "").GetOutput()).To(Equal("1000"))
+			Expect(resp.FindVolume("USD", "").GetInput().DecimalString()).To(Equal("1000"))
+			Expect(resp.FindVolume("USD", "").GetOutput().DecimalString()).To(Equal("1000"))
 		})
 
 		It("should apply against the drained volumes, not the checkpoint-era cache entry", func() {
@@ -336,8 +338,8 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 
 			resp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "mallory"})
 			Expect(err).To(Succeed())
-			Expect(resp.FindVolume("USD", "").GetInput()).To(Equal("1500"))
-			Expect(resp.FindVolume("USD", "").GetOutput()).To(Equal("1000"),
+			Expect(resp.FindVolume("USD", "").GetInput().DecimalString()).To(Equal("1500"))
+			Expect(resp.FindVolume("USD", "").GetOutput().DecimalString()).To(Equal("1000"),
 				"the FSM read mallory's VolumePair from the restored 0xFF cache (checkpoint-era input=1000/output=0) instead of the delta-rebuilt 0xF1 value, clobbering the drain")
 		})
 	})

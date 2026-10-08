@@ -1,0 +1,19 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: Cluster
+metadata:
+  name: volume-auto-disabled
+spec:
+  replicas: 1
+  image:
+    repository: alpine
+    tag: "3"
+  persistence:
+    wal:
+      hostPath:
+        path: /tmp/ledger-auto-disabled/wal
+    data:
+      hostPath:
+        path: /tmp/ledger-auto-disabled/data
+    coldCache:
+      hostPath:
+        path: /tmp/ledger-auto-disabled/cold-cache
