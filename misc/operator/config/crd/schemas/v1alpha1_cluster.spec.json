@@ -1014,8 +1014,7 @@
       "type": "object"
     },
     "clusterID": {
-      "default": "default",
-      "description": "ClusterID for inter-node communication validation.",
+      "description": "ClusterID for inter-node communication validation. When omitted, the\noperator generates and persists a UUID before creating workloads.",
       "type": "string",
       "x-kubernetes-validations": [
         {
@@ -1023,6 +1022,12 @@
           "rule": "oldSelf == '' || self == oldSelf"
         }
       ]
+    },
+    "clusterPolicyRevision": {
+      "description": "ClusterPolicyRevision is the monotonic revision number the leader must\npropose to replace the committed cluster policy. Bump this whenever you\nchange any metadata-limit field, idempotencyTTL, hashAlgorithm, or\nqueryCheckpointLimit. The leader proposes the policy only when this\nexceeds the applied revision; setting a new value without bumping the\nrevision logs a divergence error and changes nothing.",
+      "format": "int64",
+      "minimum": 1,
+      "type": "integer"
     },
     "dataDir": {
       "default": "/data/app",
@@ -1739,13 +1744,35 @@
       "format": "int32",
       "type": "integer"
     },
-    "metricsNaming": {
-      "description": "MetricsNaming selects the convention for metric names emitted\nby the server: \"otel\" (the default, dot-notation) preserves\nthe OpenTelemetry instrument names; \"prom\" rewrites every\nmetric the server emits with a `ledger_` prefix and dots\nconverted to underscores so the names are unambiguous after\nan OTLP→Prometheus collector that sanitises dots. OTel\nsemantic-convention auto-instrumentation (`go.*`, `process.*`,\n`system.*`, `http.*`) uses the global MeterProvider and is\nnever touched by this flag.",
-      "enum": [
-        "otel",
-        "prom"
-      ],
-      "type": "string"
+    "metadataMaxCommandBytes": {
+      "description": "MetadataMaxCommandBytes is the maximum total metadata bytes one command\nmay carry across all entities it touches. Bounds what a single accepted\nwrite can replicate through Raft. Must be \u003e= metadataMaxEntityBytes.\nReplicated in the cluster policy; requires bumping clusterPolicyRevision.\nDefault: 1048576 (1 MiB).",
+      "format": "int64",
+      "minimum": 1,
+      "type": "integer"
+    },
+    "metadataMaxEntityBytes": {
+      "description": "MetadataMaxEntityBytes is the maximum total metadata bytes one command\nmay carry for a single entity. Must not exceed metadataMaxCommandBytes.\nReplicated in the cluster policy; requires bumping clusterPolicyRevision.\nDefault: 65536 (64 KiB).",
+      "format": "int64",
+      "minimum": 1,
+      "type": "integer"
+    },
+    "metadataMaxEntries": {
+      "description": "MetadataMaxEntries is the maximum number of metadata entries one command\nmay carry for a single entity (transaction, account, or ledger). This is\nreplicated in the cluster policy; changing it requires bumping\nclusterPolicyRevision. Default: 128.",
+      "format": "int64",
+      "minimum": 1,
+      "type": "integer"
+    },
+    "metadataMaxKeyBytes": {
+      "description": "MetadataMaxKeyBytes is the maximum metadata key size in bytes. Must not\nexceed metadataMaxEntityBytes. Replicated in the cluster policy; requires\nbumping clusterPolicyRevision. Default: 256.",
+      "format": "int64",
+      "minimum": 1,
+      "type": "integer"
+    },
+    "metadataMaxValueBytes": {
+      "description": "MetadataMaxValueBytes is the maximum metadata value size in bytes. Must\nnot exceed metadataMaxEntityBytes. Replicated in the cluster policy;\nrequires bumping clusterPolicyRevision. Default: 16384 (16 KiB).",
+      "format": "int64",
+      "minimum": 1,
+      "type": "integer"
     },
     "mirrorMaxBatchSize": {
       "description": "MirrorMaxBatchSize is the maximum allowed batch size for mirror sync.",
@@ -1855,6 +1882,12 @@
               "description": "Port for the metrics exporter.",
               "type": "string"
             },
+            "prefix": {
+              "description": "Prefix is the namespace prepended to every metric the server's own\ninstrumentation emits. When unset the server default\n`formance.ledger` applies; `none` emits unprefixed names. OTel\nsemantic-convention instrumentation (Go runtime, host, HTTP, gRPC)\nis never prefixed.",
+              "maxLength": 64,
+              "pattern": "^[A-Za-z]([A-Za-z0-9_]*[A-Za-z0-9])?(\\.[A-Za-z]([A-Za-z0-9_]*[A-Za-z0-9])?)*$",
+              "type": "string"
+            },
             "runtime": {
               "description": "Runtime enables runtime metrics.",
               "type": "boolean"
@@ -1873,13 +1906,53 @@
               "description": "ApplicationName overrides the application name.",
               "type": "string"
             },
-            "authToken": {
-              "description": "AuthToken for Pyroscope authentication.",
-              "type": "string"
+            "authTokenFrom": {
+              "description": "AuthTokenFrom references a Pyroscope authentication token in a Secret in the Cluster namespace.",
+              "properties": {
+                "key": {
+                  "description": "Key is the key within the Secret.",
+                  "type": "string"
+                },
+                "name": {
+                  "description": "Name is the Secret name.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "key",
+                "name"
+              ],
+              "type": "object",
+              "x-kubernetes-validations": [
+                {
+                  "message": "secret name and key must be non-empty",
+                  "rule": "self.name != '' \u0026\u0026 self.key != ''"
+                }
+              ]
             },
-            "basicAuthPassword": {
-              "description": "BasicAuthPassword for basic authentication.",
-              "type": "string"
+            "basicAuthPasswordFrom": {
+              "description": "BasicAuthPasswordFrom references a basic-auth password in a Secret in the Cluster namespace.",
+              "properties": {
+                "key": {
+                  "description": "Key is the key within the Secret.",
+                  "type": "string"
+                },
+                "name": {
+                  "description": "Name is the Secret name.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "key",
+                "name"
+              ],
+              "type": "object",
+              "x-kubernetes-validations": [
+                {
+                  "message": "secret name and key must be non-empty",
+                  "rule": "self.name != '' \u0026\u0026 self.key != ''"
+                }
+              ]
             },
             "basicAuthUser": {
               "description": "BasicAuthUser for basic authentication.",
@@ -2334,6 +2407,75 @@
               "description": "AccessMode for the PVC.\nMutually exclusive with hostPath.",
               "type": "string"
             },
+            "autoExpansion": {
+              "description": "AutoExpansion configures opt-in automatic growth for PVC-backed WAL and\ndata volumes. It is unsupported for hostPath volumes.",
+              "properties": {
+                "cooldown": {
+                  "default": "8h",
+                  "description": "Cooldown is the minimum delay between completed expansion decisions.\nEBS policies must use at least six hours; the default is eight hours.",
+                  "type": "string"
+                },
+                "enabled": {
+                  "default": false,
+                  "description": "Enabled opts this volume into automatic expansion. It defaults to false.",
+                  "type": "boolean"
+                },
+                "maximumSize": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ],
+                  "description": "MaximumSize is the hard upper bound for automatic expansion. It is\nrequired when Enabled is true.",
+                  "pattern": "^(\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))))?$",
+                  "x-kubernetes-int-or-string": true
+                },
+                "minimumIncrement": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ],
+                  "default": "10Gi",
+                  "description": "MinimumIncrement is the smallest capacity increase requested at once.",
+                  "pattern": "^(\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))))?$",
+                  "x-kubernetes-int-or-string": true
+                },
+                "targetPercent": {
+                  "default": 55,
+                  "description": "TargetPercent is the utilization percentage the new capacity targets.",
+                  "format": "int32",
+                  "maximum": 98,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "thresholdPercent": {
+                  "default": 70,
+                  "description": "ThresholdPercent is the utilization percentage that triggers expansion.",
+                  "format": "int32",
+                  "maximum": 99,
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "type": "object",
+              "x-kubernetes-validations": [
+                {
+                  "message": "maximumSize is required when auto-expansion is enabled",
+                  "rule": "!self.enabled || has(self.maximumSize)"
+                },
+                {
+                  "message": "targetPercent must be lower than thresholdPercent",
+                  "rule": "!has(self.targetPercent) || !has(self.thresholdPercent) || self.targetPercent \u003c self.thresholdPercent"
+                }
+              ]
+            },
             "hostPath": {
               "description": "HostPath configures a host-local volume instead of a PVC.\nWhen set, no PersistentVolumeClaim is created for this volume.\nThe pod uses a hostPath volume mounted from the specified path on the node.\nEach pod gets an isolated subdirectory named after its ordinal index.\nThis is intended for NVMe instance stores where Raft replication provides durability.\nMutually exclusive with storageClass, accessMode, and volumeAttributesClassName.",
               "properties": {
@@ -2365,7 +2507,7 @@
                   "type": "string"
                 }
               ],
-              "description": "Size of the volume.",
+              "description": "Size is the initial and minimum requested capacity of the volume. Automatic\nexpansion updates the live PVCs only and never rewrites this field or the\nStatefulSet VolumeClaimTemplates.",
               "pattern": "^(\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))))?$",
               "x-kubernetes-int-or-string": true
             },
@@ -2409,6 +2551,75 @@
               "description": "AccessMode for the PVC.\nMutually exclusive with hostPath.",
               "type": "string"
             },
+            "autoExpansion": {
+              "description": "AutoExpansion configures opt-in automatic growth for PVC-backed WAL and\ndata volumes. It is unsupported for hostPath volumes.",
+              "properties": {
+                "cooldown": {
+                  "default": "8h",
+                  "description": "Cooldown is the minimum delay between completed expansion decisions.\nEBS policies must use at least six hours; the default is eight hours.",
+                  "type": "string"
+                },
+                "enabled": {
+                  "default": false,
+                  "description": "Enabled opts this volume into automatic expansion. It defaults to false.",
+                  "type": "boolean"
+                },
+                "maximumSize": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ],
+                  "description": "MaximumSize is the hard upper bound for automatic expansion. It is\nrequired when Enabled is true.",
+                  "pattern": "^(\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))))?$",
+                  "x-kubernetes-int-or-string": true
+                },
+                "minimumIncrement": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ],
+                  "default": "10Gi",
+                  "description": "MinimumIncrement is the smallest capacity increase requested at once.",
+                  "pattern": "^(\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))))?$",
+                  "x-kubernetes-int-or-string": true
+                },
+                "targetPercent": {
+                  "default": 55,
+                  "description": "TargetPercent is the utilization percentage the new capacity targets.",
+                  "format": "int32",
+                  "maximum": 98,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "thresholdPercent": {
+                  "default": 70,
+                  "description": "ThresholdPercent is the utilization percentage that triggers expansion.",
+                  "format": "int32",
+                  "maximum": 99,
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "type": "object",
+              "x-kubernetes-validations": [
+                {
+                  "message": "maximumSize is required when auto-expansion is enabled",
+                  "rule": "!self.enabled || has(self.maximumSize)"
+                },
+                {
+                  "message": "targetPercent must be lower than thresholdPercent",
+                  "rule": "!has(self.targetPercent) || !has(self.thresholdPercent) || self.targetPercent \u003c self.thresholdPercent"
+                }
+              ]
+            },
             "hostPath": {
               "description": "HostPath configures a host-local volume instead of a PVC.\nWhen set, no PersistentVolumeClaim is created for this volume.\nThe pod uses a hostPath volume mounted from the specified path on the node.\nEach pod gets an isolated subdirectory named after its ordinal index.\nThis is intended for NVMe instance stores where Raft replication provides durability.\nMutually exclusive with storageClass, accessMode, and volumeAttributesClassName.",
               "properties": {
@@ -2440,7 +2651,7 @@
                   "type": "string"
                 }
               ],
-              "description": "Size of the volume.",
+              "description": "Size is the initial and minimum requested capacity of the volume. Automatic\nexpansion updates the live PVCs only and never rewrites this field or the\nStatefulSet VolumeClaimTemplates.",
               "pattern": "^(\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))))?$",
               "x-kubernetes-int-or-string": true
             },

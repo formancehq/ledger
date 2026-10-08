@@ -653,7 +653,7 @@
       "description": "LedgerCRDStatus defines the observed state of a Ledger.",
       "properties": {
         "appliedIndexes": {
-          "description": "AppliedIndexes is the set of index identifiers (canonical form) the\noperator has created on this ledger. It is the operator-owned set that\nscopes index drops: only indexes listed here are ever dropped, so\nexternally-created and CRD-unrepresentable indexes are preserved.",
+          "description": "AppliedIndexes is the set of index identifiers (canonical form) the\noperator has created on this ledger, reconstructed from successful audit\ncreations attributed to this resource UID and matching the current index.\nThis is an observation, not deletion authority. Managed indexes must be\nchanged through spec.indexes, not manually replaced during reconciliation.",
           "items": {
             "type": "string"
           },

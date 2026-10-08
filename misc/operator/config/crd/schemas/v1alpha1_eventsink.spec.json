@@ -1,0 +1,90 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "description": "EventSinkSpec declares one NATS sink in the referenced Ledger cluster.",
+  "properties": {
+    "batchDelayMs": {
+      "description": "BatchDelayMs is the maximum delay before a partial batch is published.",
+      "format": "int64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "batchSize": {
+      "description": "BatchSize is the maximum number of events per batch. Zero uses Ledger's default.",
+      "format": "int32",
+      "maximum": 100000,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "clusterRef": {
+      "description": "ClusterRef names a Cluster in the same namespace.",
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object",
+      "x-kubernetes-validations": [
+        {
+          "message": "clusterRef is immutable",
+          "rule": "self == oldSelf"
+        }
+      ]
+    },
+    "eventTypes": {
+      "description": "EventTypes filters events. Empty selects all event types.",
+      "items": {
+        "enum": [
+          "COMMITTED_TRANSACTION",
+          "REVERTED_TRANSACTION",
+          "SAVED_METADATA",
+          "DELETED_METADATA",
+          "CREATED_LEDGER",
+          "DELETED_LEDGER",
+          "SKIPPED_ORDER"
+        ],
+        "type": "string"
+      },
+      "type": "array",
+      "x-kubernetes-list-type": "set"
+    },
+    "format": {
+      "default": "json",
+      "description": "Format is the event serialization format.",
+      "enum": [
+        "json",
+        "protobuf"
+      ],
+      "type": "string"
+    },
+    "nats": {
+      "description": "NATS configures the JetStream destination.",
+      "properties": {
+        "topic": {
+          "description": "Topic is the subject prefix.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "url": {
+          "description": "URL is the NATS URL. Credentials must be referenced from a Secret in a later API revision.",
+          "minLength": 1,
+          "pattern": "^nats://[^@]+$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "topic",
+        "url"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "clusterRef",
+    "nats"
+  ],
+  "type": "object"
+}
