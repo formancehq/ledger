@@ -37,7 +37,7 @@ func newSinkErrorSanitizer(connectionURLs []string, credentials ...string) sinkE
 		if parsed.User != nil {
 			if password, ok := parsed.User.Password(); ok {
 				secrets = append(secrets, password)
-			} else if parsed.Scheme == "nats" {
+			} else if parsed.Scheme == "nats" || parsed.Scheme == "tls" || parsed.Scheme == "ws" || parsed.Scheme == "wss" {
 				// Only NATS places a token in the username position without a password.
 				// Treating the username as a credential for other schemes (e.g. ClickHouse)
 				// over-redacts unrelated diagnostics such as table names.

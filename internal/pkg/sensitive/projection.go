@@ -22,26 +22,30 @@ var credentialQueryKeys = map[string]bool{
 	"client_secret": true, "authorization": true,
 }
 
-// redactURL returns a copy of the URL/DSN string with credentials removed:
-// the password in the userinfo component is replaced with "xxxxx", the username
-// is redacted for NATS (where the token travels as the username with no password),
-// and recognised credential query parameters are set to "xxxxx".
-// The host, port, path and non-credential query parameters are preserved so that
-// operational context remains visible. If the value cannot be parsed as a URL,
-// Marker is returned.
-func redactURL(raw string) string {
-	if raw == "" {
-		return raw
-	}
+// proxyQueryKeys are query parameter names whose values are themselves URLs
+// that may carry credentials (e.g. ClickHouse http_proxy, https_proxy).
+var proxyQueryKeys = map[string]bool{
+	"http_proxy": true, "https_proxy": true,
+}
+
+// natsTokenSchemes are URL schemes where the NATS driver treats a bare
+// username (no password) as an authentication token.
+var natsTokenSchemes = map[string]bool{
+	"nats": true, "tls": true, "ws": true, "wss": true,
+}
+
+// redactSingleURL redacts credentials from a single URL that is guaranteed
+// not to be a comma-separated NATS server list.
+func redactSingleURL(raw string) (string, bool) {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || parsed.Host == "" {
-		return Marker
+		return "", false
 	}
 	if parsed.User != nil {
 		if _, hasPassword := parsed.User.Password(); hasPassword {
 			parsed.User = url.UserPassword(parsed.User.Username(), "xxxxx")
-		} else if parsed.Scheme == "nats" && parsed.User.Username() != "" {
-			// NATS places a token in the username position without a password.
+		} else if natsTokenSchemes[parsed.Scheme] && parsed.User.Username() != "" {
+			// NATS-family schemes place a token in the username position without a password.
 			parsed.User = url.User("xxxxx")
 		}
 	}
@@ -57,13 +61,61 @@ func redactURL(raw string) string {
 						items[i] = "xxxxx"
 					}
 					values[key] = items
+				} else if proxyQueryKeys[norm] {
+					// The value is itself a URL that may contain credentials.
+					for i, v := range items {
+						decoded, err := url.QueryUnescape(v)
+						if err != nil {
+							decoded = v
+						}
+						sanitized, ok := redactSingleURL(decoded)
+						if ok {
+							items[i] = sanitized
+						} else {
+							items[i] = "xxxxx"
+						}
+					}
+					values[key] = items
 				}
 			}
 			parsed.RawQuery = values.Encode()
 		}
 	}
 
-	return parsed.String()
+	return parsed.String(), true
+}
+
+// redactURL returns a copy of the URL/DSN string with credentials removed.
+// For NATS server lists (comma-separated URLs) each entry is redacted individually.
+// If the value cannot be parsed, Marker is returned.
+func redactURL(raw string) string {
+	if raw == "" {
+		return raw
+	}
+	trimmed := strings.TrimSpace(raw)
+
+	// NATS and its TLS/WebSocket variants support comma-separated server URLs.
+	// url.Parse treats everything after the first comma as part of the path, so
+	// we must split and redact each server independently.
+	if strings.Contains(trimmed, ",") {
+		parts := strings.Split(trimmed, ",")
+		redacted := make([]string, len(parts))
+		for i, part := range parts {
+			if s, ok := redactSingleURL(strings.TrimSpace(part)); ok {
+				redacted[i] = s
+			} else {
+				redacted[i] = Marker
+			}
+		}
+
+		return strings.Join(redacted, ",")
+	}
+
+	if s, ok := redactSingleURL(trimmed); ok {
+		return s
+	}
+
+	return Marker
 }
 
 // Redact returns a deep copy with sensitive fields masked. Unknown wire fields

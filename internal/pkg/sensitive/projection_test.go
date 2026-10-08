@@ -212,3 +212,76 @@ func TestCloneSensitiveURL(t *testing.T) {
 	require.Equal(t, "events", natsView.GetTopic())
 	require.Equal(t, "nats://mytoken@host:4222", nats.GetUrl())
 }
+
+func TestRedactURLClickHouseProxy(t *testing.T) {
+	t.Parallel()
+	// Credential-bearing http_proxy value must be redacted even when URL-encoded.
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "http_proxy with credentials",
+			in:   "clickhouse://host:9000/db?http_proxy=http%3A%2F%2Falice%3Aproxy-secret%40proxy%3A8080",
+			want: "clickhouse://host:9000/db?http_proxy=http%3A%2F%2Falice%3Axxxxx%40proxy%3A8080",
+		},
+		{
+			name: "https_proxy with credentials",
+			in:   "clickhouse://host:9000/db?https_proxy=http%3A%2F%2Fbob%3Asecret%40proxy%3A3128",
+			want: "clickhouse://host:9000/db?https_proxy=http%3A%2F%2Fbob%3Axxxxx%40proxy%3A3128",
+		},
+		{
+			name: "non-credential query param preserved",
+			in:   "clickhouse://host:9000/db?compress=true",
+			want: "clickhouse://host:9000/db?compress=true",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, redactURL(tc.in))
+		})
+	}
+}
+
+func TestRedactURLNATSMultiServer(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "multi-server with distinct passwords",
+			in:   "nats://alice:first-secret@host1,nats://bob:second-secret@host2:4222",
+			want: "nats://alice:xxxxx@host1,nats://bob:xxxxx@host2:4222",
+		},
+		{
+			name: "ws scheme token in username",
+			in:   "ws://token-secret@host:4443",
+			want: "ws://xxxxx@host:4443",
+		},
+		{
+			name: "wss scheme token in username",
+			in:   "wss://token-secret@host:4443",
+			want: "wss://xxxxx@host:4443",
+		},
+		{
+			name: "tls scheme token in username",
+			in:   "tls://token-secret@host:4222",
+			want: "tls://xxxxx@host:4222",
+		},
+		{
+			name: "multi-server mixed scheme",
+			in:   "nats://alice:s1@host1,tls://bob:s2@host2",
+			want: "nats://alice:xxxxx@host1,tls://bob:xxxxx@host2",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, redactURL(tc.in))
+		})
+	}
+}
