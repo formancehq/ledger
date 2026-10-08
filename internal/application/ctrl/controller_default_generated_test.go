@@ -55,6 +55,21 @@ func (mr *MockAdmissionMockRecorder) Admit(ctx, req any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Admit", reflect.TypeOf((*MockAdmission)(nil).Admit), ctx, req)
 }
 
+// AdmitClusterPolicy mocks base method.
+func (m *MockAdmission) AdmitClusterPolicy(ctx context.Context, policy *grpc.ClusterPolicy) (*domain.ApplyResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AdmitClusterPolicy", ctx, policy)
+	ret0, _ := ret[0].(*domain.ApplyResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AdmitClusterPolicy indicates an expected call of AdmitClusterPolicy.
+func (mr *MockAdmissionMockRecorder) AdmitClusterPolicy(ctx, policy any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AdmitClusterPolicy", reflect.TypeOf((*MockAdmission)(nil).AdmitClusterPolicy), ctx, policy)
+}
+
 // Barrier mocks base method.
 func (m *MockAdmission) Barrier(ctx context.Context) (uint64, error) {
 	m.ctrl.T.Helper()

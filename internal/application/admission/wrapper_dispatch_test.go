@@ -499,6 +499,7 @@ func TestExtractSystemScopedNeeds_OnlySinkConfigsContribute(t *testing.T) {
 		{"delete_query_checkpoint", &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &raftcmdpb.DeleteQueryCheckpointOrder{}}}},
 		{"set_query_checkpoint_schedule", &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_SetQueryCheckpointSchedule{SetQueryCheckpointSchedule: &raftcmdpb.SetQueryCheckpointScheduleOrder{}}}},
 		{"delete_query_checkpoint_schedule", &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_DeleteQueryCheckpointSchedule{DeleteQueryCheckpointSchedule: &raftcmdpb.DeleteQueryCheckpointScheduleOrder{}}}},
+		{"set_cluster_policy", &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_SetClusterPolicy{SetClusterPolicy: &raftcmdpb.SetClusterPolicyOrder{}}}},
 	}
 
 	for _, tc := range noOpVariants {

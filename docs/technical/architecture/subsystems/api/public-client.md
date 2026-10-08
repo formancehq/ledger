@@ -8,11 +8,9 @@ each Protobuf file descriptor once. The public closure comprises `common`,
 persisted-only common messages live in `internal_state.proto`; Raft,
 replication, bootstrap, snapshot, and storage protocols remain private. The
 public schemas also contain operational and administrative RPC messages when
-they are part of a declared service contract. One deliberate exception is
-`bucket.Request.set_cluster_policy`: it is an internal control-plane arm of
-the public `Apply` envelope, not a client-facing operation. Removing that arm
-from the generated client requires separating the internal admission command
-envelope from the public `ApplyRequest`, and is a follow-up protocol refactor.
+they are part of a declared service contract. Internal control-plane commands
+such as cluster-policy reconciliation use server-owned admission paths and are
+not part of the public `Apply` envelope.
 
 The nested Go module at `pkg/client/v3` contains generated bindings, the six
 source `.proto` files, `proto/ledger-public.protoset`, and `contract.json`.
@@ -91,15 +89,15 @@ does not increment it.
 
 ## Release order and compatibility
 
-For the initial `v3.0.0-beta.6` pair, the client tag is
-`pkg/client/v3.0.0-beta.6`. Publish that immutable Go module before the server
+For the current `v3.0.0-beta.7` pair, the client tag is
+`pkg/client/v3.0.0-beta.7`. Publish that immutable Go module before the server
 tag. Matching versions and commits are convenient when both change together,
 but neither is a compatibility rule.
 
 Before every server tag, set `misc/release/public-client.json` to that server
 version and the compatible published client version. A server-only fix can
 select the existing client: for example, server `v3.0.0-beta.7` can select
-client `v3.0.0-beta.6` when the public descriptor and protocol revision are
+client `v3.0.0-beta.7` when the public descriptor and protocol revision are
 unchanged. Updating this server metadata does not mutate or retag the client.
 An independent client-helper release can likewise advance the client version
 without advancing the server version.

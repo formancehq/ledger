@@ -1450,7 +1450,7 @@ func TestRequestsToOrders_CheckpointOrderPosition(t *testing.T) {
 			store := createTestStore(t)
 			adm, _ := createTestAdmission(t, store)
 
-			_, _, err := adm.requestsToOrders(t.Context(), tc.reqs, nil)
+			_, _, err := adm.requestsToOrders(t.Context(), tc.reqs, nil, nil)
 			if tc.wantErr != nil {
 				require.ErrorIs(t, err, tc.wantErr)
 			} else {

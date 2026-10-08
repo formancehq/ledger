@@ -314,7 +314,6 @@ message Request {
     DeleteQueryCheckpointScheduleRequest delete_query_checkpoint_schedule = 25;
     SaveLedgerMetadataRequest save_ledger_metadata = 26;
     DeleteLedgerMetadataRequest delete_ledger_metadata = 27;
-    SetClusterPolicyRequest set_cluster_policy = 28;
   }
   // Signing happens at the batch level, never per request: a signed
   // ApplyRequest carries an opaque SignedApplyBatch whose payload is the
@@ -328,13 +327,6 @@ message CreateQueryCheckpointRequest {}
 // DeleteQueryCheckpointRequest removes a query checkpoint via Raft.
 message DeleteQueryCheckpointRequest {
   fixed64 checkpoint_id = 1;
-}
-
-// SetClusterPolicyRequest updates the replicated cluster policy. Internal /
-// control-plane only — constructed by the leader-side reconciler and not
-// exposed via ClusterService.
-message SetClusterPolicyRequest {
-  common.ClusterPolicy policy = 1;
 }
 
 message PromoteLedgerRequest {

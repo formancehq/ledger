@@ -27,7 +27,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/formancehq/go-libs/v5 v5.9.0
 	github.com/formancehq/invariants v0.11.0
-	github.com/formancehq/ledger/pkg/client/v3 v3.0.0-beta.6
+	github.com/formancehq/ledger/pkg/client/v3 v3.0.0-beta.7
 	github.com/formancehq/numscript v0.0.25-0.20260713092057-edde2b17f0a0 // pinned to numscript main @edde2b17 (#169, ResolveDependencies); repin to v0.0.25 once tagged off main
 	github.com/fsnotify/fsnotify v1.5.4
 	github.com/go-chi/chi/v5 v5.3.0

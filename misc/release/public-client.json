@@ -1,8 +1,8 @@
 {
-  "serverVersion": "v3.0.0-beta.6",
+  "serverVersion": "v3.0.0-beta.7",
   "clientModule": "github.com/formancehq/ledger/pkg/client/v3",
-  "clientVersion": "v3.0.0-beta.6",
-  "contractDescriptorSHA256": "41e1e5523f79bd173791ef3ad858b7a42c6eeaeae1c6633966449c471d9db600",
+  "clientVersion": "v3.0.0-beta.7",
+  "contractDescriptorSHA256": "293dcc39e5faa42e7f9dce41159ef132da21684ea44d62fa5f21f572af269cf9",
   "protocolVersion": "16",
   "compatibilityBasis": "identical-contract-and-protocol"
 }

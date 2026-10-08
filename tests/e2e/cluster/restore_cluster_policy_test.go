@@ -15,7 +15,6 @@ import (
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
-	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -60,6 +59,8 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 		restoreWalDir  string
 		restoreDataDir string
 		minioEndpoint  string
+		sourceWalDir   string
+		sourceDataDir  string
 	)
 
 	storage := func() *clusterpb.BackupStorage {
@@ -112,6 +113,10 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 		Expect(err).To(Succeed())
 		restoreDataDir, err = os.MkdirTemp("", "clusterpolicy-restore-data-*")
 		Expect(err).To(Succeed())
+		sourceWalDir, err = os.MkdirTemp("", "clusterpolicy-source-wal-*")
+		Expect(err).To(Succeed())
+		sourceDataDir, err = os.MkdirTemp("", "clusterpolicy-source-data-*")
+		Expect(err).To(Succeed())
 	})
 
 	Describe("Phase 1: post-checkpoint policy revision in the exported delta", Ordered, func() {
@@ -122,20 +127,28 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 			grpcConn      *grpc.ClientConn
 		)
 
-		BeforeAll(func() {
+		startSource := func(revision, limit uint64) {
 			instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 				NodeID:    1,
 				ClusterID: clusterID,
 				Ports:     ports,
-				WalDir:    GinkgoT().TempDir(),
-				DataDir:   GinkgoT().TempDir(),
+				WalDir:    sourceWalDir,
+				DataDir:   sourceDataDir,
 				Debug:     testutil.Debug,
 				Output:    GinkgoWriter,
 			})
-			instruments = append(instruments, testserver.WithBootstrap())
+			instruments = append(instruments,
+				testserver.WithBootstrap(),
+				testserver.WithClusterPolicyRevision(revision),
+				testserver.WithQueryCheckpointLimit(limit),
+			)
 
 			sourceServer = lease.NewService(cmdserver.NewRunCommandWithBindings, testservice.WithInstruments(instruments...))
 			Expect(sourceServer.Start(ctx)).To(Succeed())
+		}
+
+		BeforeAll(func() {
+			startSource(1, 10)
 
 			var err error
 			client, clusterClient, grpcConn, err = testutil.NewGRPCClient(ports.GRPC())
@@ -167,34 +180,23 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 		})
 
 		It("bumps the policy and writes business data after the checkpoint", func() {
-			// SetClusterPolicy is exempt from write readiness but waits for the
-			// committed audit key, then establishes the post-checkpoint revision.
-			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", &clusterpb.Request{
-				Type: &clusterpb.Request_SetClusterPolicy{
-					SetClusterPolicy: &clusterpb.SetClusterPolicyRequest{
-						Policy: &clusterpb.ClusterPolicy{
-							Revision:             postCheckpointRevision,
-							IdempotencyTtlMicros: uint64((time.Hour).Microseconds()),
-							QueryCheckpointLimit: postCheckpointLimit,
-							// A committed policy must carry the metadata
-							// ceilings: the FSM refuses one without them, and
-							// business writes are rejected while they are
-							// absent.
-							MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
-							MetadataMaxKeyBytes:         domain.DefaultMetadataMaxKeyBytes,
-							MetadataMaxValueBytes:       domain.DefaultMetadataMaxValueBytes,
-							MetadataMaxEntityBytes:      domain.DefaultMetadataMaxEntityBytes,
-							MetadataMaxCommandBytes:     domain.DefaultMetadataMaxCommandBytes,
-						},
-					},
-				},
-			}))
-			Expect(err).To(Succeed())
+			// Restart with a higher desired revision. The leader-side reconciler
+			// submits the internal policy command, which keeps it out of the public
+			// Apply envelope while still producing the post-checkpoint delta.
+			stopCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			Expect(sourceServer.Stop(stopCtx)).To(Succeed())
+			cancel()
+			startSource(postCheckpointRevision, postCheckpointLimit)
+			Eventually(func(g Gomega) bool {
+				state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+				g.Expect(err).To(Succeed())
+				return state.Leader != 0
+			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
 
 			// A business write proves the gate is open (policy committed) and puts
 			// a post-checkpoint ledger in the delta, so a dropped delta on restore
 			// surfaces as a missing ledger rather than passing silently.
-			_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(deltaLedger, nil)))
+			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(deltaLedger, nil)))
 			Expect(err).To(Succeed())
 		})
 

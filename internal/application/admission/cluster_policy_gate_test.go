@@ -23,31 +23,6 @@ func businessWrite(name string) *commonpb.ApplyRequest {
 	})
 }
 
-func setClusterPolicyWrite(revision, limit uint64) *commonpb.ApplyRequest {
-	return commonpb.UnsignedApplyRequest("", &commonpb.Request{
-		Type: &commonpb.Request_SetClusterPolicy{
-			SetClusterPolicy: &commonpb.SetClusterPolicyRequest{
-				Policy: &commonpb.ClusterPolicy{Revision: revision, QueryCheckpointLimit: limit},
-			},
-		},
-	})
-}
-
-func TestAllRequestsAreClusterPolicy(t *testing.T) {
-	t.Parallel()
-
-	policyReq := &commonpb.Request{Type: &commonpb.Request_SetClusterPolicy{
-		SetClusterPolicy: &commonpb.SetClusterPolicyRequest{Policy: &commonpb.ClusterPolicy{Revision: 1}},
-	}}
-	businessReq := &commonpb.Request{Type: &commonpb.Request_CreateLedger{
-		CreateLedger: &commonpb.CreateLedgerRequest{Name: "l"},
-	}}
-
-	require.True(t, allRequestsAreClusterPolicy([]*commonpb.Request{policyReq}))
-	require.False(t, allRequestsAreClusterPolicy([]*commonpb.Request{businessReq}))
-	require.False(t, allRequestsAreClusterPolicy([]*commonpb.Request{policyReq, businessReq}))
-}
-
 // TestWaitClusterPolicyReady covers the gate mechanism: it blocks while no
 // policy is committed and returns as soon as one is.
 func TestWaitClusterPolicyReady(t *testing.T) {
@@ -149,7 +124,7 @@ func TestAdmit_ClusterPolicyWriteReadinessGate(t *testing.T) {
 		)
 		defer cancel()
 
-		_, err := a.Admit(ctx, setClusterPolicyWrite(1, 10))
+		_, err := a.AdmitClusterPolicy(ctx, &commonpb.ClusterPolicy{Revision: 1, QueryCheckpointLimit: 10})
 		require.ErrorIs(t, err, sentinel)
 	})
 }

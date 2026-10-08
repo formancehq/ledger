@@ -1551,13 +1551,9 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 
 	logger.Infof("Proposing cluster policy revision %d", desired.GetRevision())
 
-	if _, err := admission.Admit(
+	if _, err := admission.AdmitClusterPolicy(
 		internalauth.WithSystemActor(ctx, commands.ComponentClusterPolicy),
-		clusterpb.UnsignedApplyRequest("", &clusterpb.Request{
-			Type: &clusterpb.Request_SetClusterPolicy{
-				SetClusterPolicy: &clusterpb.SetClusterPolicyRequest{Policy: desired},
-			},
-		}),
+		desired,
 	); err != nil {
 		// Transient (propose timeout, momentary write gate, leadership churn):
 		// the next tick retries while this node stays leader.

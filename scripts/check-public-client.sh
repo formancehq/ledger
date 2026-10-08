@@ -30,7 +30,7 @@ module example.com/ledger-client-contract-check
 
 go 1.26.0
 
-require github.com/formancehq/ledger/pkg/client/v3 v3.0.0-beta.6
+require github.com/formancehq/ledger/pkg/client/v3 v3.0.0-beta.7
 EOF
 cat > "$external_dir/client_test.go" <<'EOF'
 package clientcheck

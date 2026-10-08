@@ -11,7 +11,7 @@ replace github.com/formancehq/ledger/pkg/client/v3 => ../../../pkg/client/v3
 require (
 	github.com/antithesishq/antithesis-sdk-go v0.8.0-default-no-op
 	github.com/formancehq/go-libs/v5 v5.9.0
-	github.com/formancehq/ledger/pkg/client/v3 v3.0.0-beta.6
+	github.com/formancehq/ledger/pkg/client/v3 v3.0.0-beta.7
 	github.com/formancehq/ledger/v3 v3.0.0-00010101000000-000000000000
 	github.com/holiman/uint256 v1.3.2
 	github.com/stretchr/testify v1.11.1
