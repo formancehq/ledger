@@ -37,7 +37,8 @@
     "docs/technical/architecture/subsystems/backup/incremental-restore-contract.md",
     "docs/technical/architecture/subsystems/checker/README.md",
     "docs/ops/backup-restore.md",
-    "docs/technical/contributing/testing.md"
+    "docs/technical/contributing/testing.md",
+    "docs/technical/architecture/subsystems/api/atomic-ledger-creation.md"
   ],
   "invariants": [
     "For every committed effect intended to survive cross-cluster restore, live(prefix + delta) and restore(checkpoint(prefix), delta) must produce the same logical persisted state and the same next admission/apply behavior. The delta must be non-empty and contain the operation under examination; byte equality is required only where the storage contract requires it.",
@@ -53,7 +54,8 @@
     "Restore parity evidence must use an oracle independent of the restore writer where practical and must include CheckStore on the restored primary store without findings or errors. Checker success is corroboration, not a substitute for direct logical comparisons; a checker defect belongs to integrity-verifier-soundness unless a restore path corrupted the input.",
     "Format, checksum, key-shape, identity, sequence-boundary, and configuration validation must reject incompatible or corrupt persisted/snapshot/export input before authoritative activation. Ledger v3 is unreleased: do not require migrations or compatibility with removed v3 formats that current authoritative documentation explicitly rejects.",
     "Caches, preload state, peer read stores, usage stores, and other rebuildable local projections must not become authoritative over restored primary state. Their discard or reconstruction must converge from the complete restored history without overwriting newer post-checkpoint primary values.",
-    "The once-committed audit key is preserved checkpoint state: a full checkpoint must contain it before any incremental audit delta, restore must keep it while discarding source cluster identity, and post-restore writes and backups must continue under the restored key."
+    "The once-committed audit key is preserved checkpoint state: a full checkpoint must contain it before any incremental audit delta, restore must keep it while discarding source cluster identity, and post-restore writes and backups must continue under the restored key.",
+    "CreatedLedgerLog carries initial metadata so post-checkpoint creation reconstructs canonical metadata during ApplyExportsAndRebuild. Persisted LedgerInfo does not duplicate the canonical metadata projection."
   ],
   "adversarial_questions": [
     "For every current FSM/live-apply write into the primary store, can its value change after a full checkpoint? Which preserved/rebuilt/discarded class owns it, which exported record supplies the facts, and which independent comparison proves the restored value and next consuming decision?",
@@ -69,7 +71,8 @@
     "Can corrupted, truncated or incompatible SST, manifest or export input mutate authoritative staging state before its failure is detected? Does retry reset partial files/batches and avoid retaining rows from a rejected attempt?",
     "Do existing tests create meaningful state before the checkpoint, commit the target mutation after it, prove the export is non-empty and covers that mutation, restore through the production composition, compare exact logical values, run CheckStore, and exercise a subsequent consumer? Which step is missing or could pass vacuously?",
     "Is a candidate actually a restore/replay root cause, or only generic process re-exec, Raft snapshot transport/install ordering, checker blindness, read-index lag/rebuild, retry identity, configuration admission, or filesystem confinement already owned by a neighboring manifest?",
-    "Can a full checkpoint be published before key initialization and later receive a nonempty audit delta, or can restore preparation, follower sync, or destination config overwrite the source audit key?"
+    "Can a full checkpoint be published before key initialization and later receive a nonempty audit delta, or can restore preparation, follower sync, or destination config overwrite the source audit key?",
+    "Does a restore with nonempty checkpoint files and a nonempty post-checkpoint creation delta reproduce typed initial metadata for normal and mirror ledgers, including explicit protobuf null and a schema type mismatch?"
   ],
   "dynamic_checks_to_consider": [
     "During a separately authorized read-only audit, first inventory current live primary-store mutations, export record variants, RebuildDelta cases, PrepareForBackup resets, checker passes and restore fixtures at the exact audited SHA. Record commands, selected tests, build tags, skipped infrastructure and assertion limits. This manifest-only change does not authorize running the product audit.",

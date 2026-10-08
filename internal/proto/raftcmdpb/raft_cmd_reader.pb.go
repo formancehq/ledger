@@ -91,6 +91,10 @@ type OrderTechnicalReader interface {
 	GetInputsResolutionHash() []byte
 	GetPreloadUnavailable() bool
 	GetRevertTargetDigest() []byte
+	GetCompiledProgram() []byte
+	GetCompiledVars() []byte
+	GetCompiledScriptHash() []byte
+	GetCompiledProgramHash() []byte
 	Mutate() *OrderTechnical
 }
 
@@ -110,6 +114,22 @@ func (r *orderTechnicalReadonly) GetPreloadUnavailable() bool {
 
 func (r *orderTechnicalReadonly) GetRevertTargetDigest() []byte {
 	return bytes.Clone((*OrderTechnical)(r).GetRevertTargetDigest())
+}
+
+func (r *orderTechnicalReadonly) GetCompiledProgram() []byte {
+	return bytes.Clone((*OrderTechnical)(r).GetCompiledProgram())
+}
+
+func (r *orderTechnicalReadonly) GetCompiledVars() []byte {
+	return bytes.Clone((*OrderTechnical)(r).GetCompiledVars())
+}
+
+func (r *orderTechnicalReadonly) GetCompiledScriptHash() []byte {
+	return bytes.Clone((*OrderTechnical)(r).GetCompiledScriptHash())
+}
+
+func (r *orderTechnicalReadonly) GetCompiledProgramHash() []byte {
+	return bytes.Clone((*OrderTechnical)(r).GetCompiledProgramHash())
 }
 
 func (r *orderTechnicalReadonly) Mutate() *OrderTechnical {
@@ -1450,6 +1470,7 @@ type CreateLedgerOrderReader interface {
 	GetMirrorSource() commonpb.MirrorSourceConfigReader
 	GetAccountTypes() CreateLedgerOrder_AccountTypesMapReader
 	GetDefaultEnforcementMode() commonpb.ChartEnforcementMode
+	GetMetadata() CreateLedgerOrder_MetadataMapReader
 	Mutate() *CreateLedgerOrder
 }
 
@@ -1477,6 +1498,10 @@ func (r *createLedgerOrderReadonly) GetAccountTypes() CreateLedgerOrder_AccountT
 
 func (r *createLedgerOrderReadonly) GetDefaultEnforcementMode() commonpb.ChartEnforcementMode {
 	return (*CreateLedgerOrder)(r).GetDefaultEnforcementMode()
+}
+
+func (r *createLedgerOrderReadonly) GetMetadata() CreateLedgerOrder_MetadataMapReader {
+	return createLedgerOrder_metadataMapReadonly((*CreateLedgerOrder)(r).GetMetadata())
 }
 
 func (r *createLedgerOrderReadonly) Mutate() *CreateLedgerOrder {
@@ -1555,6 +1580,37 @@ func (m createLedgerOrder_accountTypesMapReadonly) Get(k string) (commonpb.Accou
 func (m createLedgerOrder_accountTypesMapReadonly) Range(yield func(string, commonpb.AccountTypeReader) bool) {
 	for k, v := range m {
 		var r commonpb.AccountTypeReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
+}
+
+// CreateLedgerOrder_MetadataMapReader provides read-only access to CreateLedgerOrder.Metadata.
+type CreateLedgerOrder_MetadataMapReader interface {
+	Len() int
+	Get(k string) (commonpb.MetadataValueReader, bool)
+	Range(yield func(string, commonpb.MetadataValueReader) bool)
+}
+
+type createLedgerOrder_metadataMapReadonly map[string]*commonpb.MetadataValue
+
+func (m createLedgerOrder_metadataMapReadonly) Len() int { return len(m) }
+
+func (m createLedgerOrder_metadataMapReadonly) Get(k string) (commonpb.MetadataValueReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m createLedgerOrder_metadataMapReadonly) Range(yield func(string, commonpb.MetadataValueReader) bool) {
+	for k, v := range m {
+		var r commonpb.MetadataValueReader
 		if v != nil {
 			r = v.AsReader()
 		}

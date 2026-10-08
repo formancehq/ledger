@@ -1,6 +1,7 @@
 package transactions
 
 import (
+	"fmt"
 	"sort"
 
 	"github.com/pterm/pterm"
@@ -10,6 +11,8 @@ import (
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
+
+// "fmt" is used below for error formatting.
 
 // renderPostCommitVolumes displays a PostCommitVolumes table in the CLI output.
 // Volumes are listed per (account, asset, color); with --rescale, each account's
@@ -44,11 +47,29 @@ func renderPostCommitVolumes(pcv *commonpb.PostCommitVolumes, rescale *uint8) er
 			raw := make([]cmdutil.RawVolume, 0, len(vba.GetVolumes()))
 			for _, entry := range vba.GetVolumes() {
 				v := entry.GetVolumes()
+				if v == nil {
+					return fmt.Errorf("post-commit volumes: account %s asset %s color %q has no Volumes container",
+						account, entry.GetAsset(), entry.GetColor())
+				}
+				if err := v.Validate(); err != nil {
+					return fmt.Errorf("post-commit volumes: account %s asset %s color %q is malformed: %w",
+						account, entry.GetAsset(), entry.GetColor(), err)
+				}
+				inputStr, err := v.GetInput().Dec()
+				if err != nil {
+					return fmt.Errorf("post-commit volumes: account %s asset %s color %q input is malformed: %w",
+						account, entry.GetAsset(), entry.GetColor(), err)
+				}
+				outputStr, err := v.GetOutput().Dec()
+				if err != nil {
+					return fmt.Errorf("post-commit volumes: account %s asset %s color %q output is malformed: %w",
+						account, entry.GetAsset(), entry.GetColor(), err)
+				}
 				raw = append(raw, cmdutil.RawVolume{
 					Asset:  entry.GetAsset(),
 					Color:  entry.GetColor(),
-					Input:  v.GetInput(),
-					Output: v.GetOutput(),
+					Input:  inputStr,
+					Output: outputStr,
 				})
 			}
 
@@ -78,6 +99,22 @@ func renderPostCommitVolumes(pcv *commonpb.PostCommitVolumes, rescale *uint8) er
 		// VolumesByAssets.Volumes is sorted by (asset, color) server-side.
 		for _, entry := range vba.GetVolumes() {
 			v := entry.GetVolumes()
+			if v == nil {
+				return fmt.Errorf("post-commit volumes: account %s asset %s color %q has no Volumes container",
+					account, entry.GetAsset(), entry.GetColor())
+			}
+			if err := v.Validate(); err != nil {
+				return fmt.Errorf("post-commit volumes: account %s asset %s color %q is malformed: %w",
+					account, entry.GetAsset(), entry.GetColor(), err)
+			}
+			input, err := v.GetInput().Dec()
+			if err != nil {
+				return err
+			}
+			output, err := v.GetOutput().Dec()
+			if err != nil {
+				return err
+			}
 			displayColor := entry.GetColor()
 			if displayColor == "" {
 				displayColor = "-"
@@ -87,8 +124,8 @@ func renderPostCommitVolumes(pcv *commonpb.PostCommitVolumes, rescale *uint8) er
 				account,
 				entry.GetAsset(),
 				displayColor,
-				v.GetInput(),
-				v.GetOutput(),
+				input,
+				output,
 			})
 		}
 	}

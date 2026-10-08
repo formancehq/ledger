@@ -23,21 +23,26 @@ const (
 
 // fileFetcher fetches a single file from a snapshot session via gRPC.
 type fileFetcher struct {
-	client     snapshotpb.SnapshotServiceClient
-	sessionID  string
-	maxRetries int
+	clientSource snapshotClientSource
+	sessionID    string
+	maxRetries   int
 }
 
 // fetchFile streams a single file, writes it atomically (.tmp → rename), and
 // verifies the SHA256. Retries up to maxRetries on transient errors.
 func (f *fileFetcher) fetchFile(ctx context.Context, entry *snapshotpb.FileEntry, targetDir string, progress *state.SyncProgress) error {
 	for attempt := range f.maxRetries {
-		err := f.fetchFileOnce(ctx, entry, targetDir, progress)
+		client, err := f.clientSource()
+		if err != nil {
+			return err
+		}
+
+		err = f.fetchFileOnce(ctx, client, entry, targetDir, progress)
 		if err == nil {
 			return nil
 		}
 
-		if !isRetryableError(err) || attempt == f.maxRetries-1 {
+		if !isRetryableError(ctx, err) || attempt == f.maxRetries-1 {
 			return err
 		}
 
@@ -61,7 +66,7 @@ func (f *fileFetcher) fetchFile(ctx context.Context, entry *snapshotpb.FileEntry
 	return fmt.Errorf("file fetch failed after %d attempts: %s", f.maxRetries, entry.GetPath())
 }
 
-func (f *fileFetcher) fetchFileOnce(ctx context.Context, entry *snapshotpb.FileEntry, targetDir string, progress *state.SyncProgress) error {
+func (f *fileFetcher) fetchFileOnce(ctx context.Context, client snapshotpb.SnapshotServiceClient, entry *snapshotpb.FileEntry, targetDir string, progress *state.SyncProgress) error {
 	if !filepath.IsLocal(entry.GetPath()) {
 		return fmt.Errorf("invalid snapshot path: %q", entry.GetPath())
 	}
@@ -75,7 +80,7 @@ func (f *fileFetcher) fetchFileOnce(ctx context.Context, entry *snapshotpb.FileE
 		_ = root.Close()
 	}()
 
-	stream, err := f.client.FetchFile(ctx, &snapshotpb.FetchFileRequest{
+	stream, err := client.FetchFile(ctx, &snapshotpb.FetchFileRequest{
 		SessionId: f.sessionID,
 		Path:      entry.GetPath(),
 	})

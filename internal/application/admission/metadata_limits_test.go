@@ -1,12 +1,15 @@
 package admission
 
 import (
+	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -161,6 +164,11 @@ func TestValidateCommandMetadata_EveryOrderShape(t *testing.T) {
 				},
 			}),
 			wantDimension: domain.MetadataLimitDimensionKey,
+		},
+		{
+			name:          "creation metadata over the value ceiling",
+			order:         metadataLedgerScopedOrder(&raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{Metadata: map[string]*commonpb.MetadataValue{"k": overValueCeiling}}}}),
+			wantDimension: domain.MetadataLimitDimensionValue,
 		},
 		{
 			name: "save ledger metadata over the value ceiling",
@@ -456,5 +464,38 @@ func TestValidateOrderMetadataShapeSelectsStableKey(t *testing.T) {
 		require.ErrorAs(t, validateOrderMetadata(order), &keyErr)
 		require.Equal(t, "a", keyErr.Key)
 		require.ErrorIs(t, keyErr, domain.ErrMetadataValueContainsNullByte)
+	}
+}
+
+func TestCreateLedgerMetadataPreloadCost(t *testing.T) {
+	t.Parallel()
+	for _, count := range []int{0, 1, 128} {
+		metadata := make(map[string]*commonpb.MetadataValue, count)
+		for i := range count {
+			metadata[fmt.Sprintf("key%d", i)] = commonpb.NewStringValue("value")
+		}
+		order := metadataLedgerScopedOrder(&raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{Metadata: metadata}}})
+		needs := &plan.Coverage{}
+		extractLedgerScopedNeeds(needs, order.GetLedgerScoped(), nil)
+		require.Equal(t, 1, needs.AttributeKeysCount(), "creation only preloads its ledger row regardless of metadata size")
+	}
+}
+
+func BenchmarkCreateLedgerMetadataValidation(b *testing.B) {
+	for _, count := range []int{0, 1, 32, 128} {
+		b.Run(strconv.Itoa(count), func(b *testing.B) {
+			metadata := make(map[string]*commonpb.MetadataValue, count)
+			for i := range count {
+				metadata[fmt.Sprintf("key%d", i)] = commonpb.NewStringValue("value")
+			}
+			order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "main", Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{Metadata: metadata}}}}}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				if err := domain.ValidateCommandMetadata([]*raftcmdpb.Order{order}, domain.DefaultMetadataLimits); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }

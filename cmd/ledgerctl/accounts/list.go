@@ -351,11 +351,29 @@ func formatAccountBalances(volumes []*commonpb.AccountVolume, rescale *uint8) ([
 		raw := make([]cmdutil.RawVolume, 0, len(volumes))
 		for _, entry := range volumes {
 			vol := entry.GetVolumes()
+			if vol == nil {
+				return nil, fmt.Errorf("formatAccountBalances: account %s asset %q color %q has no Volumes container",
+					"(unknown)", entry.GetAsset(), entry.GetColor())
+			}
+			if err := vol.Validate(); err != nil {
+				return nil, fmt.Errorf("formatAccountBalances: account %s asset %q color %q is malformed: %w",
+					"(unknown)", entry.GetAsset(), entry.GetColor(), err)
+			}
+			inputStr, err := vol.GetInput().Dec()
+			if err != nil {
+				return nil, fmt.Errorf("formatAccountBalances: account %s asset %q color %q input is malformed: %w",
+					"(unknown)", entry.GetAsset(), entry.GetColor(), err)
+			}
+			outputStr, err := vol.GetOutput().Dec()
+			if err != nil {
+				return nil, fmt.Errorf("formatAccountBalances: account %s asset %q color %q output is malformed: %w",
+					"(unknown)", entry.GetAsset(), entry.GetColor(), err)
+			}
 			raw = append(raw, cmdutil.RawVolume{
 				Asset:  entry.GetAsset(),
 				Color:  entry.GetColor(),
-				Input:  vol.GetInput(),
-				Output: vol.GetOutput(),
+				Input:  inputStr,
+				Output: outputStr,
 			})
 		}
 
@@ -384,10 +402,23 @@ func formatAccountBalances(volumes []*commonpb.AccountVolume, rescale *uint8) ([
 	lines := make([]string, 0, len(volumes))
 
 	for _, entry := range volumes {
-		balance := entry.GetVolumes().GetBalance()
+		vol := entry.GetVolumes()
+		if vol == nil {
+			return nil, fmt.Errorf("formatAccountBalances: account %s asset %q color %q has no Volumes container",
+				"(unknown)", entry.GetAsset(), entry.GetColor())
+		}
+		if err := vol.Validate(); err != nil {
+			return nil, fmt.Errorf("formatAccountBalances: account %s asset %q color %q is malformed: %w",
+				"(unknown)", entry.GetAsset(), entry.GetColor(), err)
+		}
+		balance, err := vol.GetBalance().Dec()
+		if err != nil {
+			return nil, fmt.Errorf("formatAccountBalances: account %s asset %q color %q balance is malformed: %w",
+				"(unknown)", entry.GetAsset(), entry.GetColor(), err)
+		}
 
 		balanceColor := pterm.Green
-		if balance != "" && balance[0] == '-' {
+		if len(balance) > 0 && balance[0] == '-' {
 			balanceColor = pterm.Red
 		}
 

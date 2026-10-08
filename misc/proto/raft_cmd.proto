@@ -84,6 +84,75 @@ message OrderTechnical {
   // checks, so a target that is unknown or already reverted keeps returning
   // those reasons. Empty for every non-revert order.
   bytes revert_target_digest = 4;
+  // compiled_program is the Numscript VM bytecode admission compiled from this
+  // order's script on the leader's parallel path (numscript Compile + Encode).
+  // The VM is the only execution engine: the FSM decodes, verifies and
+  // executes this artifact on every node, so compilation happens once per
+  // proposal and the outcome is a function of the committed entry alone
+  // (invariant #2) — provided every replica runs a binary that knows these
+  // fields. A binary predating them silently drops the artifact and interprets
+  // with its own bundled library, so this change is a stop-all-nodes
+  // deployment boundary (service protocol revision 23; see
+  // docs/ops/deployment.md, "Upgrading across the Numscript VM execution
+  // change"). Every scripted order admission proposes carries compiled_vars,
+  // compiled_script_hash and exactly one of compiled_program and
+  // compiled_program_hash: a script the VM cannot run is rejected at
+  // admission. The bytes themselves travel by value once per script per
+  // admission instance — on the first order whose script that instance's own
+  // compile cache had not compiled before (CompiledScript.AlreadyCompiled) —
+  // and by reference, as compiled_program_hash, on every later order of the
+  // script (service protocol revision 24; see docs/ops/deployment.md,
+  // "Omitting already-cached Numscript bytecode"). The FSM runs the committed
+  // artifact when its bundled library can use it: by value, the committed
+  // bytes with the committed vars; by reference, bytes with the referenced
+  // hash from its own apply-side cache or from its own compile of the script
+  // text when that reproduces the hash — so program and vars stay the matched
+  // pair of one compilation. A replica whose library cannot read the
+  // artifact's bytecode version, or whose compiler does not reproduce the
+  // referenced bytes (another library version, as during a rolling upgrade),
+  // derives program and vars from the script text with its own library
+  // instead, exactly as the store checker's audit replay derives every order
+  // (whose orders carry none of these fields); outcomes then agree because
+  // the library keeps a script's semantics stable across versions (see
+  // docs/ops/deployment.md). Outside audit replay, an order reaching the FSM
+  // with no artifact at all is an admission bug, flagged with
+  // assert.Unreachable; any other partial shape fails the order loudly.
+  bytes compiled_program = 5;
+  // compiled_vars is the order's runtime vars encoded against the variable
+  // layout of the program compiled_program carries or compiled_program_hash
+  // names (numscript VarsEncoder + Vars.Encode). Present next to either one,
+  // and run as committed whenever this binary can use that program — by
+  // value, or by reference once it holds or reproduces bytes with the
+  // committed hash — so a corrupt value then fails the order identically on
+  // every replica, whatever its cache holds. When the referenced bytes are
+  // from a library version this binary cannot reproduce or cannot read,
+  // compiled_vars is not used for that order: the FSM derives both program
+  // and vars afresh from the script text instead (see compiled_program),
+  // exactly as audit replay does for every order.
+  bytes compiled_vars = 6;
+  // compiled_script_hash is the XXH3-128 (16 bytes) of the exact script text
+  // the program was compiled from. It is not collision-resistant against
+  // chosen inputs: every writer of a cluster may write every ledger, so a
+  // crafted collision gains nothing a direct write could not. The FSM refuses
+  // to run the artifact against a different resolved text — inline scripts
+  // travel in the order, exact library versions are immutable, and an advanced
+  // "latest" is stale-rejected before execution, so a mismatch is a "should
+  // not happen" surfaced loudly (invariant #7) rather than silently executing
+  // the wrong program.
+  bytes compiled_script_hash = 7;
+  // compiled_program_hash is the XXH3-128 (16 bytes) of the exact
+  // compiled_program bytes admission compiled, carried in place of those bytes
+  // once this admission instance has already sent them for the script (see
+  // compiled_program). The FSM runs compiled_vars only against bytes with
+  // this very hash: its own cache entry for compiled_script_hash when that
+  // entry's bytes have it, otherwise its own compile of the script text when
+  // that reproduces it. When it does not — another library version compiled
+  // the committed bytes, as on a replica mid rolling upgrade — the FSM never
+  // runs compiled_vars against a program they were not encoded for; it
+  // derives both program and vars from the script text instead. Same
+  // collision caveat as compiled_script_hash. Empty whenever compiled_program
+  // is present.
+  bytes compiled_program_hash = 8;
 }
 
 // LedgerScopedOrder is the wrapper for every Order variant that targets a
@@ -216,6 +285,7 @@ message CreateLedgerOrder {
   common.MirrorSourceConfig mirror_source = 3;
   map<string, common.AccountType> account_types = 4;  // Initial account types
   common.ChartEnforcementMode default_enforcement_mode = 5;  // Default enforcement for unmatched accounts
+  map<string, common.MetadataValue> metadata = 6; // Initial ledger metadata
 }
 
 message MirrorIngestOrder {

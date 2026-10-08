@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"20"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"25"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 20:
+leader. For example, with a schema implementing revision 25:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 20' \
+grpcurl -plaintext -H 'ledger-protocol-version: 25' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -212,9 +212,8 @@ and the ledger `name` metadata; revision 14 returned `NotFound` without
 
 This is an incompatible response-semantic change even though the service
 protobuf schema is unchanged: revision-14 clients may interpret the structured
-reason and metadata differently. The revision increments from the target
-branch's 14 to 15, and all communicating service clients and servers must be
-rebuilt with the matching revision. HTTP missing-ledger responses remain 404.
+reason and metadata differently. All communicating service clients and servers
+must be rebuilt with the matching revision. HTTP missing-ledger responses remain 404.
 
 ## Filterless prepared-query updates (revision 16)
 
@@ -247,14 +246,126 @@ semantics and protobuf field number 3 are unchanged, but tokens and credential
 configuration must use the new name. Older claims and flags have no aliases;
 update clients, servers, OIDC claim mappings, and operator Credentials together.
 
-## Two-way page tokens (revision 20)
+## Atomic creation metadata (revision 20)
 
-Revision 20 replaces every list cursor with a page token from
+Revision 20 adds typed initial metadata to CreateLedgerRequest and its creation
+log. A revision-19 server ignores that request field and acknowledges creation
+without the supplied values. Clients, servers and replicas must agree on the
+atomic creation semantics; rebuild communicating service binaries together.
+
+## Prepared-query filter shape validation (revision 21)
+
+Revision 21 rejects `Apply(CreatePreparedQuery)` and `Apply(UpdatePreparedQuery)`
+with `InvalidArgument` / `FILTER_COMPILATION_ERROR` when a filter leaf has a shape
+that never compiles, such as a missing condition value, a missing field reference,
+or a builtin field the condition does not serve. A revision-20 server stores such
+a query and fails every execution, so peers on the same revision must agree on
+which writes are rejected.
+
+## Typed arbitrary-precision volumes (revision 22)
+
+Revision 22 replaces the decimal `string` fields in `Volumes` and
+`VolumesWithBalance` with typed arbitrary-precision integers. Non-negative
+input/output totals use a canonical minimal unsigned big-endian magnitude;
+balances use a sign plus that magnitude and reject negative zero. The HTTP JSON
+projection remains exact decimal strings, while protobuf clients must implement
+the new typed messages. The representation is unbounded because account color
+collapse may sum several independently bounded `Uint256` buckets beyond 256
+bits.
+
+## Numscript metadata rendering and VM execution (revision 23)
+
+Revision 22 stores and returns an account-typed Numscript metadata value
+(`set_tx_meta("k", @merchants:acme)` and its `set_account_meta` counterpart) as
+the bare account name, `merchants:acme`, where revision 22 returned
+`@merchants:acme`. The rendering now comes from the Numscript library itself,
+identically on both of its engines, and the bare name is the form a later
+`meta()` read can resolve as an account again — the `@`-prefixed form could
+not. Scalar values are unchanged: strings and numbers stay verbatim, monetary
+stays `ASSET amount`, portions and assets keep their canonical forms. The
+`.proto` text of the exposed metadata messages is unchanged, so the difference
+is invisible to a schema comparison; a revision-22 client would read the same
+Apply request back with different metadata bytes.
+
+Revision 22 also changes apply semantics: admission compiles each resolvable
+script to Numscript VM bytecode and binds it to the order's technical
+sub-message, and the FSM executes that artifact instead of re-interpreting the
+script text. The VM is the only engine: a script it cannot compile is rejected
+at admission, and a scripted order reaching the FSM without an artifact is
+recompiled from its text rather than interpreted. Like revision 6, apply semantics must agree across every replica:
+a binary predating these fields silently drops them and interprets with the
+older Numscript library, so a mixed-binary cluster applying the same committed
+entry writes divergent transaction and audit bytes. Deploy this revision with
+all nodes stopped — see
+[Upgrading across the Numscript VM execution change](../../../../ops/deployment.md#upgrading-across-the-numscript-vm-execution-change-revision-23).
+The artifact is bound to its script text by an XXH3-128 hash
+(`compiled_script_hash`), which also keys the FSM's script caches.
+The artifact itself carries the Numscript library's bytecode version
+(major.minor). The FSM executes it when the bundled library can read that
+version: the same major and a minor no newer for a stable major, or exactly
+the same version for an unstable `0.x`. A version it cannot read means
+another library version produced the artifact; the FSM then derives program
+and vars from the script text with its own library instead, exactly as the
+store checker's audit replay derives every order (see revision 24 below), so
+foreign bytecode is never run. A malformed artifact — one the library reads
+but cannot decode or verify, a partial one, or one whose script hash does not
+match the resolved text — fails the order with a Numscript runtime error and
+is never repaired from the text.
+
+Revision 22 also moves where and how a statically invalid script fails.
+`Parse` checks syntax only; the Numscript typechecker runs inside the
+compiler. Every static-semantics failure the compiler catches — a type
+mismatch, an undeclared variable, an unknown function or var type, `oneof` or
+a mid-script `balance()` without its feature flag, a send-all from an
+unbounded-overdraft source — used to pass admission, reach apply, and fail
+there as `ERROR_REASON_NUMSCRIPT_RUNTIME` (`KindInternal`). It now fails
+at admission as `ErrNumscriptCompile` with the new
+`ERROR_REASON_NUMSCRIPT_COMPILE_ERROR` (`KindValidation`, detail in the
+`details` metadata key, like `NUMSCRIPT_PARSE_ERROR`), and such an order no longer produces a proposal, a failure
+log, or an audit entry. The one exception is a `latest` script reference under
+an idempotency key: admission forwards it as preload-unavailable (see
+[admission idempotency](../admission/idempotency.md)), so the FSM replays the
+key's frozen outcome or rejects with `ERROR_REASON_PRELOAD_UNAVAILABLE`.
+Neither revision freezes the compile failure itself under an idempotency key:
+revision 22's apply failure was `KindInternal`, which is not freezable, and
+revision 23's rejection happens before apply.
+
+## Omitting already-cached Numscript bytecode (revision 24)
+
+Revision 23 lets admission send `OrderTechnical.compiled_program` by
+reference: a new field, `compiled_program_hash` (the XXH3-128 of the bytes),
+replaces the bytes once admission's own compile cache has compiled the script
+before (`CompiledScript.AlreadyCompiled`, backed by `lruEntry.compileParsed`
+on admission's own `NumscriptCache` instance), so the bytecode travels once
+per script per admission instance. `compiled_vars` and `compiled_script_hash`
+remain mandatory for every scripted order exactly as before, and exactly one
+of `compiled_program` and `compiled_program_hash` accompanies them; any other
+combination fails the order loudly. The signal describes what this instance
+has sent, never what any replica has cached — admission and the FSM apply
+path each construct their own `NumscriptCache` instance and share no state —
+and the FSM tolerates it being wrong either way.
+
+The FSM runs a committed artifact when its own library can use it — by value
+when it reads the bytecode version, by reference when it holds or reproduces
+bytes with the committed hash — and otherwise derives program and vars from
+the script text with its own library (`numscript.SafeExecCommitted`), so
+replicas on different library versions apply the same entry without failing
+it; see
+[Omitting already-cached Numscript bytecode](../../../../ops/deployment.md#omitting-already-cached-numscript-bytecode-revision-24)
+for the contract that keeps their outcomes equal. A revision-23 binary does
+not know the new field and treats a by-reference order as a partial
+artifact, failing the order a revision-24 binary applies — replicated-state
+divergence, not merely an availability difference — which is why the revision
+changes.
+
+## Two-way page tokens (revision 25)
+
+Revision 25 replaces every list cursor with a page token from
 `pkg/pagecursor`: base64url (unpadded) of `{"key": <string>, "back": <bool>}`.
-A revision-19 cursor was the raw key itself (a decimal id, an address, a
-name, or base64url value bytes for index inspection), which a revision-20
-server rejects with `InvalidArgument`, and a revision-20 token is not a raw
-key a revision-19 server can parse.
+A revision-24 cursor was the raw key itself (a decimal id, an address, a
+name, or base64url value bytes for index inspection), which a revision-25
+server rejects with `InvalidArgument`, and a revision-25 token is not a raw
+key a revision-24 server can parse.
 
 Paged list RPCs publish `x-previous-cursor` beside `x-next-cursor`, and
 `PreparedQueryCursor`, `InspectDistinctValues` and `InspectFacets` gain a

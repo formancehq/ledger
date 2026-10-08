@@ -1697,7 +1697,8 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 // order, trims to the main snapshot's horizon, and collects one page of
 // ledger-local log ids past afterSequence (exclusive; zero is no position).
 // The position is a paginator seek, so the read stays bounded by the page
-// whatever the filter compiles to.
+// whatever the filter compiles to, and the client's filter keeps its whole
+// MaxFilterDepth budget.
 func (ctrl *DefaultController) paginateLogIDs(handle *dal.ReadHandle, snap *pebble.Snapshot, mainSeq uint64, ledgerInfo *commonpb.LedgerInfo, filter *commonpb.QueryFilter, afterSequence uint64, pageSize uint32, reverse bool) ([][]byte, error) {
 	var after []byte
 	if afterSequence > 0 {

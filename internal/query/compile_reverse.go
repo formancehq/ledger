@@ -223,10 +223,6 @@ func compileUniverseRev(ctx *compileCtx) (readstore.ReverseIterator, error) {
 // only name the executing ledger or nothing, and naming another ledger is
 // unsatisfiable rather than a silent "all logs".
 func compileLedgerConditionRev(ctx *compileCtx, lc *commonpb.LedgerCondition) (readstore.ReverseIterator, error) {
-	if lc.GetCond() == nil {
-		return nil, domain.NewFilterCompilationError("ledger condition has no value")
-	}
-
 	want, err := resolveString(lc.GetCond(), ctx.params)
 	if err != nil {
 		return nil, err
@@ -742,10 +738,6 @@ func compileAddressExactRev(ctx *compileCtx, exactAddr string, role commonpb.Add
 }
 
 func compileReferenceConditionRev(ctx *compileCtx, rc *commonpb.ReferenceCondition) (readstore.ReverseIterator, error) {
-	if rc.GetCond() == nil {
-		return nil, domain.NewFilterCompilationError("reference condition has no value")
-	}
-
 	if _, err := requireIndexReady(ctx,
 		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
 		"reference"); err != nil {
@@ -778,10 +770,6 @@ func compileAccountHasAssetConditionRev(ctx *compileCtx, c *commonpb.AccountHasA
 		return nil, err
 	}
 
-	if err := domain.ValidateHasAssetPrecision(c.GetPrecision()); err != nil {
-		return nil, &domain.BusinessError{Err: err}
-	}
-
 	prefix := readstore.AccountByAssetPrefix(ctx.kb, ctx.ledgerName, c.GetAssetBase(), uint8(c.GetPrecision()))
 
 	// Stamp-gated in BOTH directions. See compileAccountHasAssetCondition for
@@ -800,10 +788,6 @@ func compileAccountHasAssetConditionRev(ctx *compileCtx, c *commonpb.AccountHasA
 }
 
 func compileBuiltinUintConditionRev(ctx *compileCtx, cond *commonpb.BuiltinUintCondition) (readstore.ReverseIterator, error) {
-	if cond.GetCond() == nil {
-		return nil, domain.NewFilterCompilationError("builtin uint condition has no value")
-	}
-
 	if cond.GetField() == commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID {
 		return compileTxIDConditionRev(ctx, cond.GetCond())
 	}
@@ -917,14 +901,6 @@ func compileTimestampRangeConditionRev(
 }
 
 func compileLogBuiltinUintConditionRev(ctx *compileCtx, cond *commonpb.LogBuiltinUintCondition) (readstore.ReverseIterator, error) {
-	if cond.GetCond() == nil {
-		return nil, domain.NewFilterCompilationError("log builtin uint condition has no value")
-	}
-
-	if cond.GetField() != commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE {
-		return nil, domain.NewFilterCompilationError("unsupported log builtin uint field: %v", cond.GetField())
-	}
-
 	arm, err := resolveLogDateArm(ctx)
 	if err != nil {
 		return nil, err

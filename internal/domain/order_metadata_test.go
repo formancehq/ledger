@@ -69,3 +69,54 @@ func TestValidateCommandMetadataCountsMapsAndBareKeys(t *testing.T) {
 	require.Equal(t, MetadataLimitDimensionCommand, limitErr.Dimension)
 	require.EqualValues(t, 12, limitErr.Actual)
 }
+
+func TestCreateLedgerMetadataValidation(t *testing.T) {
+	t.Parallel()
+	limits := MetadataLimits{MaxEntriesPerEntity: 2, MaxKeyBytes: 8, MaxValueBytes: 16, MaxTotalBytesPerEntity: 40, MaxTotalBytesPerCommand: 60}
+	create := func(m map[string]*commonpb.MetadataValue) *raftcmdpb.Order {
+		return &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "main", Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{Metadata: m}}}}}
+	}
+	for _, tc := range []struct {
+		name      string
+		metadata  map[string]*commonpb.MetadataValue
+		dimension string
+		invalid   bool
+	}{
+		{name: "omitted"},
+		{name: "supported null", metadata: map[string]*commonpb.MetadataValue{"k": commonpb.NewNullValue("original")}},
+		{name: "empty key", metadata: map[string]*commonpb.MetadataValue{"": commonpb.NewStringValue("v")}, invalid: true},
+		{name: "invalid key", metadata: map[string]*commonpb.MetadataValue{"bad%key": commonpb.NewStringValue("v")}, invalid: true},
+		{name: "invalid value", metadata: map[string]*commonpb.MetadataValue{"k": commonpb.NewStringValue("\x00")}, invalid: true},
+		{name: "empty value follows existing metadata contract", metadata: map[string]*commonpb.MetadataValue{"k": {}}},
+		{name: "entries", metadata: map[string]*commonpb.MetadataValue{"a": commonpb.NewStringValue("v"), "b": commonpb.NewStringValue("v"), "c": commonpb.NewStringValue("v")}, dimension: MetadataLimitDimensionEntries},
+		{name: "key", metadata: map[string]*commonpb.MetadataValue{"123456789": commonpb.NewStringValue("v")}, dimension: MetadataLimitDimensionKey},
+		{name: "value", metadata: map[string]*commonpb.MetadataValue{"k": commonpb.NewStringValue("12345678901234567")}, dimension: MetadataLimitDimensionValue},
+		{name: "entity", metadata: map[string]*commonpb.MetadataValue{"12345678": commonpb.NewStringValue("1234567890123456"), "abcdefgh": commonpb.NewStringValue("1234567890123456")}, dimension: MetadataLimitDimensionEntity},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			order := create(tc.metadata)
+			before := order.CloneVT()
+			err := ValidateCommandMetadata([]*raftcmdpb.Order{order}, limits)
+			require.True(t, before.EqualVT(order))
+			switch {
+			case tc.dimension != "":
+				var limitErr *ErrMetadataLimitExceeded
+				require.ErrorAs(t, err, &limitErr)
+				require.Equal(t, tc.dimension, limitErr.Dimension)
+			case tc.invalid:
+				require.Error(t, err)
+			default:
+				require.NoError(t, err)
+			}
+		})
+	}
+	metadata := map[string]*commonpb.MetadataValue{"12345678": commonpb.NewStringValue("1234567890123456"), "abcdefgh": commonpb.NewStringValue("12345678")}
+	first, second := create(metadata), create(metadata)
+	require.EqualValues(t, 40, OrderMetadataSize(first))
+	require.NoError(t, ValidateCommandMetadata([]*raftcmdpb.Order{first}, limits))
+	var limitErr *ErrMetadataLimitExceeded
+	require.ErrorAs(t, ValidateCommandMetadata([]*raftcmdpb.Order{first, second}, limits), &limitErr)
+	require.Equal(t, MetadataLimitDimensionCommand, limitErr.Dimension)
+	require.EqualValues(t, 80, limitErr.Actual)
+}

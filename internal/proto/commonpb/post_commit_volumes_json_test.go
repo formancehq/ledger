@@ -31,11 +31,11 @@ func TestPostCommitVolumes_MarshalJSON_Flat(t *testing.T) {
 	pcv := &PostCommitVolumes{
 		VolumesByAccount: map[string]*VolumesByAssets{
 			"users:alice": {Volumes: []*VolumeEntry{
-				{Asset: "USD/2", Color: "", Volumes: &Volumes{Input: "100", Output: "40"}},
-				{Asset: "USD/2", Color: "GOLD", Volumes: &Volumes{Input: "10", Output: "0"}},
+				{Asset: "USD/2", Color: "", Volumes: &Volumes{Input: MustBigUintFromDecimal("100"), Output: MustBigUintFromDecimal("40")}},
+				{Asset: "USD/2", Color: "GOLD", Volumes: &Volumes{Input: MustBigUintFromDecimal("10"), Output: MustBigUintFromDecimal("0")}},
 			}},
 			"world": {Volumes: []*VolumeEntry{
-				{Asset: "USD/2", Color: "", Volumes: &Volumes{Input: "0", Output: "100"}},
+				{Asset: "USD/2", Color: "", Volumes: &Volumes{Input: MustBigUintFromDecimal("0"), Output: MustBigUintFromDecimal("100")}},
 			}},
 		},
 	}
@@ -90,7 +90,7 @@ func TestPostCommitVolumes_MarshalJSON_AccountNamedVolumesByAccount(t *testing.T
 	pcv := &PostCommitVolumes{
 		VolumesByAccount: map[string]*VolumesByAssets{
 			"volumesByAccount": {Volumes: []*VolumeEntry{
-				{Asset: "USD/2", Color: "", Volumes: &Volumes{Input: "100", Output: "40"}},
+				{Asset: "USD/2", Color: "", Volumes: &Volumes{Input: MustBigUintFromDecimal("100"), Output: MustBigUintFromDecimal("40")}},
 			}},
 		},
 	}
@@ -105,4 +105,23 @@ func TestPostCommitVolumes_MarshalJSON_AccountNamedVolumesByAccount(t *testing.T
 	require.Equal(t, "USD/2", out["volumesByAccount"][0].Asset)
 	require.Equal(t, "100", out["volumesByAccount"][0].Input)
 	require.Equal(t, "40", out["volumesByAccount"][0].Output)
+}
+
+// TestVolumeEntry_MarshalJSON_RejectsMissingVolumes verifies that a VolumeEntry
+// with no Volumes container — a nil field that would otherwise silently produce
+// valid-looking "0"/"0" output — returns an error instead of masking corruption.
+func TestVolumeEntry_MarshalJSON_RejectsMissingVolumes(t *testing.T) {
+	t.Parallel()
+
+	// Nil Volumes container.
+	_, err := json.Marshal(&VolumeEntry{Asset: "USD", Color: ""})
+	require.Error(t, err, "nil Volumes must return an error, not silent zero")
+
+	// Volumes container present but Input field absent (zero-valued expected).
+	_, err = json.Marshal(&VolumeEntry{Asset: "USD", Volumes: &Volumes{Output: MustBigUintFromDecimal("0")}})
+	require.Error(t, err, "missing Input must return an error")
+
+	// Volumes container present but Output field absent (zero-valued expected).
+	_, err = json.Marshal(&VolumeEntry{Asset: "USD", Volumes: &Volumes{Input: MustBigUintFromDecimal("0")}})
+	require.Error(t, err, "missing Output must return an error")
 }

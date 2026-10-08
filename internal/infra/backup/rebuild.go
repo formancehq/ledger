@@ -245,7 +245,7 @@ func rebuildDelta(
 
 			// Reconstruct the full LedgerInfo from the creation log — including
 			// MirrorSource, AccountTypes, and DefaultEnforcementMode, all part of
-			// the stored projection. ToLedgerInfo copies every creation-time field.
+			// the stored projection. Initial metadata is rebuilt separately below.
 			info := p.CreateLedger.ToLedgerInfo()
 			advancedLedgerID, exhausted := domain.CheckedNextLedgerID(info.GetId())
 			if exhausted != nil {
@@ -270,6 +270,15 @@ func rebuildDelta(
 				cloned := maps.Clone(types)
 				rawLedgerTypes[info.GetName()] = cloned
 				ledgerAccountTypes[info.GetName()] = accounttype.CompileTypes(cloned)
+			}
+
+			for key, value := range p.CreateLedger.GetMetadata() {
+				mk := domain.LedgerMetadataKey{LedgerName: info.GetName(), Key: key}
+				if _, err := ledgerMetadata.Set(batch, mk.Bytes(), value); err != nil {
+					_ = batch.Cancel()
+
+					return fmt.Errorf("saving initial ledger metadata at log %d: %w", seq, err)
+				}
 			}
 
 			writer.initBoundaries(info.GetName())

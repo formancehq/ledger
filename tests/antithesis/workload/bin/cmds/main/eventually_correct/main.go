@@ -128,16 +128,6 @@ func listAccounts(ctx context.Context, client servicepb.BucketServiceClient, led
 	}
 }
 
-// parseBalance parses a decimal string into a *big.Int, defaulting to 0.
-func parseBalance(s string) *big.Int {
-	v, ok := new(big.Int).SetString(s, 10)
-	if !ok {
-		return big.NewInt(0)
-	}
-
-	return v
-}
-
 // checkBalanced verifies that all aggregated volumes sum to zero for each asset.
 func checkBalanced(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
 	accounts, err := listAccounts(ctx, client, ledger)
@@ -158,7 +148,20 @@ func checkBalanced(ctx context.Context, client servicepb.BucketServiceClient, le
 				aggregated[k] = big.NewInt(0)
 			}
 
-			aggregated[k].Add(aggregated[k], parseBalance(entry.GetVolumes().GetBalance()))
+			d := internal.Details{"ledger": ledger, "account": account.GetAddress(), "asset": entry.GetAsset(), "color": entry.GetColor()}
+			vwb := entry.GetVolumes()
+			if vwb == nil || vwb.GetBalance() == nil {
+				assert.Always(false, "double-entry: account volume balance field is absent", d)
+
+				continue
+			}
+			bal, err := vwb.GetBalance().ToBigInt()
+			if err != nil {
+				assert.Always(false, "double-entry: account volume balance is invalid", d.With(internal.Details{"error": err.Error()}))
+
+				continue
+			}
+			aggregated[k].Add(aggregated[k], bal)
 		}
 	}
 
@@ -250,15 +253,23 @@ func checkVolumesConsistentAttempt(ctx context.Context, client servicepb.BucketS
 			asset := entry.GetAsset()
 			color := entry.GetColor()
 			vol := entry.GetVolumes()
-			input := parseBalance(vol.GetInput())
-			output := parseBalance(vol.GetOutput())
-			balance := parseBalance(vol.GetBalance())
+			d := details.With(internal.Details{"account": account.GetAddress(), "asset": asset, "color": color})
+			if vol == nil || vol.GetInput() == nil || vol.GetOutput() == nil || vol.GetBalance() == nil {
+				assert.Always(false, "cross-check: account volume has missing required fields", d)
 
-			internal.CheckVolume(input, output, balance, details.With(internal.Details{
-				"account": account.GetAddress(),
-				"asset":   asset,
-				"color":   color,
-			}))
+				continue
+			}
+			inputVal, inputErr := vol.GetInput().ToBigInt()
+			outputVal, outputErr := vol.GetOutput().ToBigInt()
+			balanceVal, balErr := vol.GetBalance().ToBigInt()
+			if inputErr != nil || outputErr != nil || balErr != nil {
+				assert.Always(false, "cross-check: account volume has invalid typed amount", d.With(internal.Details{
+					"inputErr": inputErr, "outputErr": outputErr, "balErr": balErr,
+				}))
+
+				continue
+			}
+			internal.CheckVolume(inputVal, outputVal, balanceVal, d)
 
 			getAcc, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
 				Ledger:  ledger,
@@ -287,8 +298,18 @@ func checkVolumesConsistentAttempt(ctx context.Context, client servicepb.BucketS
 				continue
 			}
 
-			actualBalance := parseBalance(actualVol.GetBalance())
-			if balance.Cmp(actualBalance) != 0 {
+			if actualVol.GetBalance() == nil {
+				assert.Always(false, "cross-check: GetAccount volume balance is absent", d)
+
+				continue
+			}
+			actualBalance, actualErr := actualVol.GetBalance().ToBigInt()
+			if actualErr != nil {
+				assert.Always(false, "cross-check: GetAccount volume balance is invalid", d.With(internal.Details{"error": actualErr.Error()}))
+
+				continue
+			}
+			if balanceVal.Cmp(actualBalance) != 0 {
 				// Reuse the preceding horizon: Q+1 is this recheck's own barrier.
 				// Other barriers and ambiguous RPC retries can also advance the
 				// log; a jump calls for re-reading, not a corruption verdict.
@@ -300,7 +321,7 @@ func checkVolumesConsistentAttempt(ctx context.Context, client servicepb.BucketS
 				}
 				if newCommitIndex != quiescentCommitIndex+1 {
 					log.Printf("composer: balance mismatch on %s/%s (list=%s, get=%s), additional proposals at %d→%d — re-reading",
-						account.GetAddress(), asset, balance.String(), actualBalance.String(), quiescentCommitIndex, newCommitIndex)
+						account.GetAddress(), asset, balanceVal.String(), actualBalance.String(), quiescentCommitIndex, newCommitIndex)
 
 					return newCommitIndex
 				}
@@ -310,7 +331,7 @@ func checkVolumesConsistentAttempt(ctx context.Context, client servicepb.BucketS
 				assert.Unreachable("list/get balance divergence persisted past quiescence", details.With(internal.Details{
 					"account":       account.GetAddress(),
 					"asset":         asset,
-					"listBalance":   balance.String(),
+					"listBalance":   balanceVal.String(),
 					"actualBalance": actualBalance.String(),
 				}))
 
@@ -322,7 +343,7 @@ func checkVolumesConsistentAttempt(ctx context.Context, client servicepb.BucketS
 			assert.Reachable("list/get balance pair verified matching", details.With(internal.Details{
 				"account":       account.GetAddress(),
 				"asset":         asset,
-				"listBalance":   balance.String(),
+				"listBalance":   balanceVal.String(),
 				"actualBalance": actualBalance.String(),
 			}))
 

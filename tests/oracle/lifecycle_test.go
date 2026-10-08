@@ -286,3 +286,26 @@ func TestGlobalState_DeletionDoesNotBypassTransientValidation(t *testing.T) {
 	require.Equal(t, domain.ErrReasonTransientAccountNonZero, result.Reason)
 	require.Equal(t, base.Fingerprint(), result.State.Fingerprint())
 }
+
+func TestGlobalState_LifecycleCreationMetadata(t *testing.T) {
+	t.Parallel()
+	for _, mode := range []commonpb.LedgerMode{commonpb.LedgerMode_LEDGER_MODE_NORMAL, commonpb.LedgerMode_LEDGER_MODE_MIRROR} {
+		t.Run(mode.String(), func(t *testing.T) {
+			t.Parallel()
+			req := createLifecycleLedger(mode)
+			metadata := map[string]*commonpb.MetadataValue{"owner": commonpb.NewStringValue("team"), "count": commonpb.NewUintValue(9007199254740993), "null": commonpb.NewNullValue("raw")}
+			req.GetCreateLedger().Metadata = metadata
+			req.GetCreateLedger().InitialSchema = []*commonpb.SetMetadataFieldTypeCommand{{TargetType: commonpb.TargetType_TARGET_TYPE_LEDGER, Key: "owner", Type: commonpb.MetadataType_METADATA_TYPE_INT64}}
+			base := NewGlobalState()
+			created := base.Apply(bulkOf(req))
+			require.True(t, created.OK)
+			for key, want := range metadata {
+				got, exists := created.State.Ledger("L").LedgerMeta().Get(key)
+				require.True(t, exists, key)
+				require.True(t, want.EqualVT(got), key)
+			}
+			require.Empty(t, base.Ledgers(), "the previous model snapshot is immutable")
+			require.Empty(t, created.State.Ledger("L").LogIDs(), "creation does not invent a ledger-scoped log")
+		})
+	}
+}

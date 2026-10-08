@@ -21,9 +21,9 @@ func TestFormatAccountBalances(t *testing.T) {
 			Asset: asset,
 			Color: color,
 			Volumes: &commonpb.VolumesWithBalance{
-				Input:   input,
-				Output:  output,
-				Balance: balance,
+				Input:   commonpb.MustBigUintFromDecimal(input),
+				Output:  commonpb.MustBigUintFromDecimal(output),
+				Balance: commonpb.MustSignedBigIntFromDecimal(balance),
 			},
 		}
 	}
@@ -70,9 +70,9 @@ func TestFormatAccountBalances(t *testing.T) {
 		t.Parallel()
 
 		volumes := []*commonpb.AccountVolume{
-			entry("EUR/2", "", "", "", "-50"),
-			entry("GBP/2", "", "", "", "0"),
-			entry("USD/2", "", "", "", "1000"),
+			entry("EUR/2", "", "0", "50", "-50"),
+			entry("GBP/2", "", "0", "0", "0"),
+			entry("USD/2", "", "1000", "0", "1000"),
 		}
 
 		assertLines(t, mustFormat(t, volumes, nil), []string{
@@ -161,6 +161,23 @@ func TestFormatAccountBalances(t *testing.T) {
 			t.Fatalf("expected an invariant error, got lines %v", lines)
 		}
 
+		if !strings.Contains(err.Error(), `"USD/2"`) {
+			t.Errorf("expected the error to name the offending asset, got %v", err)
+		}
+	})
+
+	t.Run("without --rescale, absent Volumes container fails", func(t *testing.T) {
+		t.Parallel()
+
+		volumes := []*commonpb.AccountVolume{
+			entry("EUR/2", "", "0", "0", "0"),
+			{Asset: "USD/2"}, // no Volumes container
+		}
+
+		lines, err := formatAccountBalances(volumes, nil)
+		if err == nil {
+			t.Fatalf("expected an invariant error for absent Volumes, got lines %v", lines)
+		}
 		if !strings.Contains(err.Error(), `"USD/2"`) {
 			t.Errorf("expected the error to name the offending asset, got %v", err)
 		}

@@ -22,6 +22,13 @@ matching signed negative and unsigned nonnegative metadata values. See
 
 ## Summary
 
+### Prepared-query filter shape validation
+
+Creating or updating a prepared query rejects a filter leaf whose shape can
+never compile (a missing value or field reference, or an unsupported builtin
+field) with `FILTER_COMPILATION_ERROR`, instead of storing a query whose every
+execution fails. Service protocol revision 21 accompanies this rejection.
+
 ### Superuser authentication
 
 Privileged JWTs use the boolean `superuser` claim. Static Ed25519 keys must
@@ -178,6 +185,17 @@ The same v3 projection is used by HTTP get/list logs, prepared-query `logData`,
 JSON events, and `ledgerctl` JSON/YAML output. Global-log and event envelopes
 remain specific to v3. Protobuf RPCs, persisted data, audit hashing, and the
 separate ClickHouse/Databricks analytical projection are unchanged.
+
+The OpenAPI data object explicitly allows additional properties (EN-2685).
+Generated SDK decoders must preserve the operation payload both directly and
+inside `SystemLog.payload.apply.log`; the schema does not exhaustively type
+each operation variant.
+
+The same explicit additional-properties policy covers other opaque v3 objects
+(ledger metadata schemas, transaction account metadata, audit/signature fields,
+event sinks/statuses, signing keys and index responses). This changes the SDK
+schema contract without changing server payloads, routes or v2 compatibility.
+The intentionally empty `DropAction` remains exempt.
 
 This replaces the earlier unreleased v3 payload wrappers and shared
 `SET_METADATA` fallback discriminator. This is an output contract; decoding the
@@ -361,7 +379,7 @@ to 8.
 ### 5. Ledger Management
 
 **Endpoints:**
-- `POST /v3/{ledgerName}` - Create a ledger. Optional body fields: `mode`, `mirrorSource`, `defaultEnforcementMode`, `initialSchema` (metadata field types), and `accountTypes` (full account-type model — name/pattern/persistence/segmentTypes). These mirror the gRPC `CreateLedgerRequest`.
+- `POST /v3/{ledgerName}` - Create a ledger. Optional body fields: `metadata`, `mode`, `mirrorSource`, `defaultEnforcementMode`, `initialSchema` (metadata field types), and `accountTypes` (full account-type model — name/pattern/persistence/segmentTypes). These mirror the gRPC `CreateLedgerRequest`. Initial typed metadata is atomic with creation in normal and mirror modes and requires only `ledger:LedgerWrite`; later saves require `ledger:MetadataWrite`. JSON null entries are omitted. Schema declarations do not enforce write-time value types. See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md).
 - `DELETE /v3/{ledgerName}` - Delete a ledger
 - `GET /v3/{ledgerName}` - Get ledger info (read)
 - `GET /v3/` - List all ledgers (read)
@@ -512,6 +530,12 @@ executed in two modes: `LIST` (returns matching entity IDs with cursor
 pagination, ascending by default and descending with `reverse`) and `AGGREGATE_VOLUMES` (returns aggregated volumes per asset for
 matched accounts).
 
+`PreparedQueryFilterInput` describes a structured `QueryFilter` or an inline
+nullable string in OpenAPI 3.0 (EN-2685). Null belongs to the string alternative,
+so the union needs no dummy empty-object model and does not rely on ignored
+siblings beside a `$ref`. Generated create/update request serializers must
+preserve structured and textual inputs and distinguish omission from null.
+
 **Endpoints:**
 - `POST /v3/{ledgerName}/prepared-queries` — Create
 - `PUT /v3/{ledgerName}/prepared-queries/{name}` — Update filter
@@ -621,6 +645,11 @@ ledgerctl indexes list --ledger my-ledger
 - `DELETE /v3/{ledgerName}/metadata/{key}` - Delete a metadata key
 
 These endpoints are documented in Section 3 (Metadata Management) above.
+
+Both routes require `ledger:MetadataWrite`; `ledger:write` grants it under
+the default scope mapping. SDK metadata-key parameters take the raw key, such
+as `formance.com/reviewed`, and encode it as one path segment. Direct HTTP
+clients perform that encoding themselves; the server decodes exactly once.
 
 ### 5. ❌ Ledger Configuration Update
 
@@ -1237,6 +1266,7 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Balance not found | `FAILED_PRECONDITION` | `BALANCE_NOT_FOUND` | `account`, `asset` |
 | Balance not preloaded | `FAILED_PRECONDITION` | `BALANCE_NOT_PRELOADED` | `account`, `asset` |
 | Numscript parse error | `INVALID_ARGUMENT` | `NUMSCRIPT_PARSE_ERROR` | `details` |
+| Numscript compile error | `INVALID_ARGUMENT` | `NUMSCRIPT_COMPILE_ERROR` | `details` |
 | Numscript runtime error | `INTERNAL` | `NUMSCRIPT_RUNTIME` | `detail` |
 | Numscript not found | `NOT_FOUND` | `NUMSCRIPT_NOT_FOUND` | `name` |
 | Numscript invalid version | `INVALID_ARGUMENT` | `NUMSCRIPT_INVALID_VERSION` | `version` |

@@ -938,6 +938,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		return fmt.Errorf("comparing cluster policy projection: %w", err)
 	}
 
+	if err := folds.ledgerMetadata.compare(snap, c.attrs, callback); err != nil {
+		return fmt.Errorf("comparing ledger metadata: %w", err)
+	}
+
 	if err := c.compareReversions(snap, ledgerRevertedTxIDs, knownLedgers, callback); err != nil {
 		return err
 	}
@@ -2271,17 +2275,21 @@ func compareTransactionPostCommitVolumes(
 
 				continue
 			}
+			if stored == nil {
+				emit(k.account, k.asset, k.color, "has invalid amounts (volumes are missing)")
 
-			gotInput, iok := new(big.Int).SetString(stored.GetInput(), 10)
-			gotOutput, ook := new(big.Int).SetString(stored.GetOutput(), 10)
-
-			if !iok || !ook {
-				emit(k.account, k.asset, k.color,
-					fmt.Sprintf("has unparsable amounts (input=%q output=%q)", stored.GetInput(), stored.GetOutput()))
+				continue
+			}
+			if err := stored.Validate(); err != nil {
+				emit(k.account, k.asset, k.color, fmt.Sprintf("has invalid amounts (%v)", err))
 
 				continue
 			}
 
+			// Validate() has already confirmed input and output are present and
+			// canonical, so ToBigInt() cannot fail here.
+			gotInput, _ := stored.GetInput().ToBigInt()
+			gotOutput, _ := stored.GetOutput().ToBigInt()
 			if gotInput.Cmp(wantInput) != 0 || gotOutput.Cmp(wantOutput) != 0 {
 				emit(k.account, k.asset, k.color,
 					fmt.Sprintf("mismatch: stored(input=%s output=%s) != expected(input=%s output=%s)",
@@ -2336,7 +2344,8 @@ type chainVerifierFolds struct {
 	signing *signingVerifier
 	// policy re-derives the cluster policy from chain-bound SetClusterPolicy
 	// orders.
-	policy *clusterPolicyVerifier
+	policy         *clusterPolicyVerifier
+	ledgerMetadata *ledgerMetadataVerifier
 	// bounds re-derives the highest log sequence the chain accounts for, from
 	// the chain-verified AuditSuccess ranges. Compared against the stored Log
 	// keys after the log loop — see logBoundsVerifier for the premise and for
@@ -2346,9 +2355,10 @@ type chainVerifierFolds struct {
 
 func newChainVerifierFolds() chainVerifierFolds {
 	return chainVerifierFolds{
-		signing: newSigningVerifier(),
-		policy:  newClusterPolicyVerifier(),
-		bounds:  newLogBoundsVerifier(),
+		signing:        newSigningVerifier(),
+		policy:         newClusterPolicyVerifier(),
+		ledgerMetadata: newLedgerMetadataVerifier(),
+		bounds:         newLogBoundsVerifier(),
 	}
 }
 
@@ -2358,6 +2368,7 @@ func newChainVerifierFolds() chainVerifierFolds {
 func (f chainVerifierFolds) markLiveTruncated() {
 	f.signing.markLiveTruncated()
 	f.policy.markLiveTruncated()
+	f.ledgerMetadata.liveTruncated = true
 	f.bounds.markLiveTruncated()
 }
 
@@ -2663,6 +2674,7 @@ func (c *Checker) verifyAuditHashChain(
 
 				folds.signing.applyOrder(order)
 				folds.policy.applyOrder(order)
+				folds.ledgerMetadata.applyOrder(order)
 			}
 		}
 	}

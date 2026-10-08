@@ -204,18 +204,23 @@ func compile(ctx *compileCtx, filter *commonpb.QueryFilter) (readstore.EntityIte
 // rejectInvalidCondition validates a single QueryFilter node against the
 // authoritative per-target validity table (commonpb.targetConditionValidity),
 // returning a uniform, actionable error when the condition is not valid on the
-// target. Combinators are always valid; recursion into their children is handled
-// by the compile* combinators, each of which re-enters compile() and thus
-// re-runs this check per child.
+// target, then against domain.ValidateFilterLeaf, the shape rules prepared
+// queries are also validated with at write time. Combinators are always valid;
+// recursion into their children is handled by the compile* combinators, each of
+// which re-enters compile() and thus re-runs this check per child.
 func rejectInvalidCondition(target commonpb.QueryTarget, filter *commonpb.QueryFilter) error {
 	kind := commonpb.ConditionKindOf(filter)
-	if commonpb.ConditionValidForTarget(target, kind) {
-		return nil
+	if !commonpb.ConditionValidForTarget(target, kind) {
+		return domain.NewFilterCompilationError(
+			"condition %q is not valid on target %s",
+			kind.String(), commonpb.TargetHumanName(target))
 	}
 
-	return domain.NewFilterCompilationError(
-		"condition %q is not valid on target %s",
-		kind.String(), commonpb.TargetHumanName(target))
+	if err := domain.ValidateFilterLeaf(filter); err != nil {
+		return &domain.BusinessError{Err: err}
+	}
+
+	return nil
 }
 
 // compileUniverse returns an iterator over ALL entities (no filter).
@@ -278,10 +283,6 @@ func compileUniverse(ctx *compileCtx) (readstore.EntityIterator, error) {
 // prepared_query_filter.go / EN-1503). LedgerCondition is only valid on LOGS
 // per the validity table, so no cross-target concern arises.
 func compileLedgerCondition(ctx *compileCtx, lc *commonpb.LedgerCondition) (readstore.EntityIterator, error) {
-	if lc.GetCond() == nil {
-		return nil, domain.NewFilterCompilationError("ledger condition has no value")
-	}
-
 	want, err := resolveString(lc.GetCond(), ctx.params)
 	if err != nil {
 		return nil, err
@@ -474,10 +475,6 @@ func compileRevertedCondition(ctx *compileCtx, cond *commonpb.RevertedCondition)
 // It returns the possibly-coerced condition together with the metadata
 // context the type-specific compilers consume.
 func resolveFieldMetadataCtx(ctx *compileCtx, fc *commonpb.FieldCondition) (*commonpb.FieldCondition, *metadataCtx, error) {
-	if fc.GetField() == nil {
-		return nil, nil, domain.NewFilterCompilationError("field condition has no field reference")
-	}
-
 	ns := targetNamespace(ctx.target)
 	metaKey := fc.GetField().GetMetadata()
 
@@ -1144,10 +1141,6 @@ func compileAddressExact(ctx *compileCtx, exactAddr string, role commonpb.Addres
 // compileReferenceCondition compiles a ReferenceCondition into a prefix scan on the transaction reference index.
 // Requires the reference builtin index to be READY.
 func compileReferenceCondition(ctx *compileCtx, rc *commonpb.ReferenceCondition) (readstore.EntityIterator, error) {
-	if rc.GetCond() == nil {
-		return nil, domain.NewFilterCompilationError("reference condition has no value")
-	}
-
 	if _, err := requireIndexReady(ctx,
 		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
 		"reference"); err != nil {
@@ -1179,16 +1172,12 @@ func compileReferenceCondition(ctx *compileCtx, rc *commonpb.ReferenceCondition)
 // (assetBase, precision) cell. Valid only on the ACCOUNTS target. Requires the
 // account asset builtin index to be READY — there is no on-scan fallback.
 func compileAccountHasAssetCondition(ctx *compileCtx, c *commonpb.AccountHasAssetCondition) (readstore.EntityIterator, error) {
-	// Target validity (ACCOUNTS only) is enforced at the dispatch site by
-	// rejectInvalidCondition against the single source of truth; no local guard.
+	// Target validity (ACCOUNTS only) and the one-byte precision bound are
+	// enforced at the dispatch site by rejectInvalidCondition; no local guard.
 	if _, err := requireIndexReady(ctx,
 		indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
 		"has asset"); err != nil {
 		return nil, err
-	}
-
-	if err := domain.ValidateHasAssetPrecision(c.GetPrecision()); err != nil {
-		return nil, &domain.BusinessError{Err: err}
 	}
 
 	// Key layout: [0x0C][ledger 64B][assetBase\x00][precision 1B][account].
@@ -1217,12 +1206,8 @@ func compileAccountHasAssetCondition(ctx *compileCtx, c *commonpb.AccountHasAsse
 
 // compileBuiltinUintCondition dispatches to the appropriate builtin uint condition compiler.
 func compileBuiltinUintCondition(ctx *compileCtx, cond *commonpb.BuiltinUintCondition) (readstore.EntityIterator, error) {
-	if cond.GetCond() == nil {
-		return nil, domain.NewFilterCompilationError("builtin uint condition has no value")
-	}
-
-	// Target validity (TRANSACTIONS only) is enforced at the dispatch site by
-	// rejectInvalidCondition against the single source of truth. Transaction
+	// Target validity (TRANSACTIONS only), a present condition and a served
+	// field are enforced at the dispatch site by rejectInvalidCondition. Transaction
 	// builtins (id/timestamp/insertedAt/revertedAt) read transaction indexes and
 	// yield transaction-keyed entities, so they are meaningful only on the
 	// transactions target; no local guard.
@@ -1417,14 +1402,6 @@ func compileTimestampRangeCondition(
 
 // compileLogBuiltinUintCondition dispatches to the appropriate log builtin uint condition compiler.
 func compileLogBuiltinUintCondition(ctx *compileCtx, cond *commonpb.LogBuiltinUintCondition) (readstore.EntityIterator, error) {
-	if cond.GetCond() == nil {
-		return nil, domain.NewFilterCompilationError("log builtin uint condition has no value")
-	}
-
-	if cond.GetField() != commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE {
-		return nil, domain.NewFilterCompilationError("unsupported log builtin uint field: %v", cond.GetField())
-	}
-
 	arm, err := resolveLogDateArm(ctx)
 	if err != nil {
 		return nil, err

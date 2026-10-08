@@ -167,12 +167,18 @@ if err != nil {
     return err
 }
 
-fmt.Printf("Account: %s\n", account.Address)
-for asset, volumes := range account.Volumes {
+fmt.Printf("Account: %s\n", account.GetAddress())
+for _, entry := range account.GetVolumes() {
+    volumes := entry.GetVolumes()
     fmt.Printf("  %s: input=%s, output=%s, balance=%s\n",
-        asset, volumes.Input, volumes.Output, volumes.Balance)
+        entry.GetAsset(), volumes.GetInput().DecimalString(),
+        volumes.GetOutput().DecimalString(), volumes.GetBalance().DecimalString())
 }
 ```
+
+The protobuf fields are typed arbitrary-precision integers (`BigUint` and
+`SignedBigInt`). The helper calls above render their canonical decimal values;
+the HTTP projection emits the same values as JSON strings.
 
 ### GetTransaction
 
@@ -644,6 +650,7 @@ All business errors carry an `ErrorInfo` detail with a machine-readable reason. 
 | Balance not found | `FAILED_PRECONDITION` | `BALANCE_NOT_FOUND` | `account`, `asset` |
 | Balance not preloaded | `FAILED_PRECONDITION` | `BALANCE_NOT_PRELOADED` | `account`, `asset` |
 | Numscript parse error | `INVALID_ARGUMENT` | `NUMSCRIPT_PARSE_ERROR` | `details` |
+| Numscript compile error | `INVALID_ARGUMENT` | `NUMSCRIPT_COMPILE_ERROR` | `details` |
 | Validation error | `INVALID_ARGUMENT` | `VALIDATION` | *(none)* |
 
 ### Error Handling Example (with ErrorInfo)

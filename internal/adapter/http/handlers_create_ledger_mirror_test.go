@@ -39,7 +39,7 @@ func TestHandleCreateLedger_MirrorModeHTTP(t *testing.T) {
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
-	body := `{"mode":"MIRROR","mirrorSource":{"ledgerName":"default","type":"http","baseUrl":"http://v2:3068","oauth2ClientId":"my-id","oauth2ClientSecret":"my-secret","oauth2TokenEndpoint":"https://auth.example.com/token","oauth2Scopes":["ledger:read"]}}`
+	body := `{"metadata":{"owner":"mirror-team"},"mode":"MIRROR","mirrorSource":{"ledgerName":"default","type":"http","baseUrl":"http://v2:3068","oauth2ClientId":"my-id","oauth2ClientSecret":"my-secret","oauth2TokenEndpoint":"https://auth.example.com/token","oauth2Scopes":["ledger:read"]}}`
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPost, "/mirror-ledger", strings.NewReader(body), map[string]string{
 		"ledgerName": "mirror-ledger",
@@ -59,6 +59,7 @@ func TestHandleCreateLedger_MirrorModeHTTP(t *testing.T) {
 	httpCfg := createReq.GetMirrorSource().GetHttp()
 	require.NotNil(t, httpCfg)
 	require.Equal(t, "http://v2:3068", httpCfg.GetBaseUrl())
+	require.Equal(t, "mirror-team", capturedReq.GetCreateLedger().GetMetadata()["owner"].GetStringValue())
 	require.NotNil(t, httpCfg.GetOauth2ClientCredentials())
 	require.Equal(t, "my-id", httpCfg.GetOauth2ClientCredentials().GetClientId())
 	require.Equal(t, "my-secret", httpCfg.GetOauth2ClientCredentials().GetClientSecret())

@@ -19,10 +19,10 @@ func TestCheckpointReadsRejectLiveMutation(t *testing.T) {
 	frozen := buildGlobal(t, oracletest.TxReqL("L", "world", "acc:1", "USD", 5))
 	result := frozen.Apply(oracle.Bulk{Requests: []*servicepb.Request{oracletest.RevertReqL("L", 1, true)}})
 	require.True(t, result.OK)
-	account := &commonpb.Account{Address: "acc:1", Volumes: []*commonpb.AccountVolume{{Asset: "USD", Volumes: &commonpb.VolumesWithBalance{Input: "5", Output: "0", Balance: "5"}}}}
+	account := &commonpb.Account{Address: "acc:1", Volumes: []*commonpb.AccountVolume{{Asset: "USD", Volumes: &commonpb.VolumesWithBalance{Input: commonpb.MustBigUintFromDecimal("5"), Output: commonpb.MustBigUintFromDecimal("0"), Balance: commonpb.MustSignedBigIntFromDecimal("5")}}}}
 	require.True(t, checkpointAccountReadMatches(frozen, "L", "acc:1", account, true))
-	account.Volumes[0].Volumes.Output = "5"
-	account.Volumes[0].Volumes.Balance = "0"
+	account.Volumes[0].Volumes.Output = commonpb.MustBigUintFromDecimal("5")
+	account.Volumes[0].Volumes.Balance = commonpb.MustSignedBigIntFromDecimal("0")
 	require.True(t, checkpointAccountReadMatches(result.State, "L", "acc:1", account, true))
 	require.False(t, checkpointAccountReadMatches(frozen, "L", "acc:1", account, true))
 	require.True(t, checkpointTransactionReadMatches(frozen, "L", 1, serverTxFromRec(frozen.Ledger("L").Txs().Get(0)), true))
@@ -68,10 +68,10 @@ func TestDeletedCheckpointReadAcceptsOnlyFrozenSuccessOrNotFound(t *testing.T) {
 	del := bulkOf(&servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &servicepb.DeleteQueryCheckpointRequest{CheckpointId: 1}}})
 	c.validateBulkSuccess(del, &servicepb.ApplyResponse{Logs: []*commonpb.Log{{Sequence: 12, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_DeletedQueryCheckpoint{DeletedQueryCheckpoint: &commonpb.DeletedQueryCheckpointLog{CheckpointId: 1}}}}}})
 	frozen = c.deletedCheckpointSnapshots[1].state
-	account := &commonpb.Account{Address: "acc:1", Volumes: []*commonpb.AccountVolume{{Asset: "USD", Volumes: &commonpb.VolumesWithBalance{Input: "5", Output: "0", Balance: "5"}}}}
+	account := &commonpb.Account{Address: "acc:1", Volumes: []*commonpb.AccountVolume{{Asset: "USD", Volumes: &commonpb.VolumesWithBalance{Input: commonpb.MustBigUintFromDecimal("5"), Output: commonpb.MustBigUintFromDecimal("0"), Balance: commonpb.MustSignedBigIntFromDecimal("5")}}}}
 	require.True(t, c.checkpointReadOutcomeMatches(1, 0, checkpointAccountReadMatches(frozen, "L", "acc:1", account, true), nil), "a replica may still serve the frozen checkpoint after deletion")
-	account.Volumes[0].Volumes.Input = "9"
-	account.Volumes[0].Volumes.Balance = "9"
+	account.Volumes[0].Volumes.Input = commonpb.MustBigUintFromDecimal("9")
+	account.Volumes[0].Volumes.Balance = commonpb.MustSignedBigIntFromDecimal("9")
 	require.False(t, c.checkpointReadOutcomeMatches(1, 0, checkpointAccountReadMatches(frozen, "L", "acc:1", account, true), nil), "deletion must never permit newer business data")
 	require.True(t, c.checkpointReadOutcomeMatches(1, 0, false, status.Error(codes.NotFound, "deleted")))
 	require.False(t, c.checkpointReadOutcomeMatches(1, 0, true, status.Error(codes.Internal, "I/O failure")))
