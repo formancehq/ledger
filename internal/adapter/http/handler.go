@@ -281,9 +281,8 @@ func contentTypeMiddleware(next http.Handler) http.Handler {
 type contentTypeResponseWriter struct {
 	http.ResponseWriter
 
-	statusCode     int
-	wroteHeader    bool
-	contentTypeSet bool
+	statusCode  int
+	wroteHeader bool
 }
 
 func (rw *contentTypeResponseWriter) WriteHeader(code int) {
@@ -294,7 +293,7 @@ func (rw *contentTypeResponseWriter) WriteHeader(code int) {
 		// Set Content-Type to application/json if:
 		// 1. Status code is not 204 No Content
 		// 2. Content-Type hasn't been explicitly set
-		if code != http.StatusNoContent && !rw.contentTypeSet {
+		if code != http.StatusNoContent && rw.ResponseWriter.Header().Get("Content-Type") == "" {
 			rw.ResponseWriter.Header().Set("Content-Type", "application/json")
 		}
 
@@ -308,16 +307,6 @@ func (rw *contentTypeResponseWriter) Write(b []byte) (int, error) {
 	}
 
 	return rw.ResponseWriter.Write(b)
-}
-
-func (rw *contentTypeResponseWriter) Header() http.Header {
-	// Track if Content-Type is explicitly set
-	header := rw.ResponseWriter.Header()
-	if header.Get("Content-Type") != "" {
-		rw.contentTypeSet = true
-	}
-
-	return header
 }
 
 type chiLogFormatter struct {

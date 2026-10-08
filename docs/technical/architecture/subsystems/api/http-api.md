@@ -64,7 +64,20 @@ removing metadata field types, requires the granular `ledger:MetadataWrite`
 scope. The aggregate `ledger:write` grants it under the default mapping;
 custom mappings can differ.
 
-The server supports optional JWT/OIDC authentication with scope-based authorization. When enabled via `--auth-enabled`, all API requests must carry a valid Bearer token in the `Authorization` header. See [Authentication Guide](../../../../ops/authentication.md) for configuration details.
+The server supports optional JWT/OIDC authentication with scope-based authorization.
+When enabled via `--auth-enabled`, a supplied Bearer token is validated. Requests
+without a token use configured anonymous scopes and can succeed when those scopes
+permit the operation. Authentication-disabled mode bypasses credential and scope
+checks. See [Authentication Guide](../../../../ops/authentication.md) for configuration details.
+
+Numscript library reads require `ledger:LedgerRead`; saving a version requires
+`ledger:LedgerWrite`. All five operations declare optional `BearerAuth` and their
+401/403 responses. Missing credentials with insufficient anonymous scopes and
+invalid tokens return 401; a valid token lacking the required scope returns 403.
+These middleware failures use `text/plain; charset=utf-8`. The response wrapper
+preserves explicitly selected media types; it must not relabel plain-text denials
+as JSON. Controller/domain authorization failures can instead use JSON
+`ErrorResponse`, so the reusable auth responses describe both media types.
 
 #### The route-to-scope contract is pinned by a test
 
@@ -167,10 +180,61 @@ token, or a key that is not a valid position for the endpoint, is
 - `201 Created`: Resource created
 - `204 No Content`: Resource deleted successfully
 - `400 Bad Request`: Invalid request
+- `401 Unauthorized`: Invalid credentials, or insufficient anonymous scopes
+- `403 Forbidden`: Authenticated caller lacks the required scope
 - `404 Not Found`: Resource not found
 - `409 Conflict`: Conflict (ex: resource already exists)
+- `429 Too Many Requests`: Write admission or authoritative allocator exhaustion;
+  inspect `errorCode` before deciding whether retrying can help (see below)
 - `503 Service Unavailable`: the server cannot serve the request right now but a retry can succeed — no leader elected, admission cache horizon exceeded, any `KindUnavailable` domain error (index still building, writes blocked on clock skew, node syncing), or an internal forwarding failure surfaced as gRPC `Unavailable` (always with `Retry-After` header)
 - `500 Internal Server Error`: Server error
+
+### Resource-exhaustion response matrix
+
+Non-bulk writes return JSON `ErrorResponse` on 429, preserving `errorCode` and
+`errorMessage` for both local and reconstructed leader failures. Disk gating uses
+`WRITES_BLOCKED_DISK_FULL` (`writes blocked: disk usage exceeds threshold`),
+including a missing or obsolete gate verdict. Authoritative identifier allocation
+uses `SEQUENCE_EXHAUSTED` (`<counter> exhausted: cannot allocate another identifier`).
+Disk blocking can clear; allocator exhaustion is permanent for that allocator.
+Neither branch supplies `Retry-After`, and clients must not retry unconditionally.
+
+The following routes, relative to `/v3`, all enter `applyUnsigned` and
+`RoutedController.Apply`, reaching admission's disk gate and the business-log
+sequence allocator. The registered HTTP handler fixtures in
+`openapi_resource_exhaustion_test.go` prove the 429 status/body/media-type contract
+for every row with local and reconstructed gRPC domain errors. Admission and
+processing evidence is in `internal/application/admission/admission.go` (`Admit`)
+and `internal/domain/processing/processor.go` (`IncrementNextSequenceID`).
+
+| Method | Path | 429 body |
+| --- | --- | --- |
+| POST, DELETE | `/{ledgerName}` | `ErrorResponse` |
+| POST | `/{ledgerName}/promote` | `ErrorResponse` |
+| PUT | `/{ledgerName}/numscripts/{name}` | `ErrorResponse` |
+| POST | `/{ledgerName}/indexes` | `ErrorResponse` |
+| DELETE | `/{ledgerName}/indexes/{canonicalId}` | `ErrorResponse` |
+| POST | `/{ledgerName}/transactions` | `ErrorResponse` |
+| POST | `/{ledgerName}/transactions/{transactionId}/revert` | `ErrorResponse` |
+| POST | `/{ledgerName}/transactions/{transactionId}/metadata` | `ErrorResponse` |
+| DELETE | `/{ledgerName}/transactions/{transactionId}/metadata/{key}` | `ErrorResponse` |
+| POST | `/{ledgerName}/accounts/{address}/metadata` | `ErrorResponse` |
+| DELETE | `/{ledgerName}/accounts/{address}/metadata/{key}` | `ErrorResponse` |
+| POST | `/{ledgerName}/metadata` | `ErrorResponse` |
+| DELETE | `/{ledgerName}/metadata/{key}` | `ErrorResponse` |
+| PUT, DELETE | `/{ledgerName}/metadata-schema/{targetType}/{key}` | `ErrorResponse` |
+| POST | `/{ledgerName}/account-types` | `ErrorResponse` |
+| DELETE | `/{ledgerName}/account-types/{typeName}` | `ErrorResponse` |
+| PUT | `/{ledgerName}/account-types/default-enforcement-mode` | `ErrorResponse` |
+| POST | `/{ledgerName}/prepared-queries` | `ErrorResponse` |
+| PUT, DELETE | `/{ledgerName}/prepared-queries/{queryName}` | `ErrorResponse` |
+
+Reads and prepared-query execution use `ReadIndex`, not the gated write barrier;
+no concrete resource-exhaustion branch justifies a 429 declaration there. A bare
+gRPC `ResourceExhausted` without recognized Ledger error details is not a decoded
+domain rejection and is sanitized as an internal failure. Terminal audit-sequence
+exhaustion is also not an ordinary per-request 429 branch. Bulk retains its own
+processing `BulkResponse` envelope and response contract.
 
 ### Internal Errors and Sanitization
 

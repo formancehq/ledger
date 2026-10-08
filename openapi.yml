@@ -259,6 +259,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -290,6 +292,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -626,6 +630,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -684,6 +690,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -1037,6 +1045,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -1071,6 +1081,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -1119,6 +1131,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -1166,6 +1180,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -1201,6 +1217,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -1236,6 +1254,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -1296,6 +1316,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -1541,6 +1563,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -1575,6 +1599,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -1591,6 +1617,9 @@ paths:
       operationId: listNumscripts
       tags:
         - Numscript Library
+      security:
+        - BearerAuth: []
+        - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/PageSize'
@@ -1608,6 +1637,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ListNumscriptsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -1628,6 +1661,9 @@ paths:
       operationId: getNumscript
       tags:
         - Numscript Library
+      security:
+        - BearerAuth: []
+        - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
         - name: name
@@ -1650,6 +1686,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetNumscriptResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -1678,6 +1718,9 @@ paths:
       operationId: saveNumscript
       tags:
         - Numscript Library
+      security:
+        - BearerAuth: []
+        - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
         - name: name
@@ -1705,6 +1748,10 @@ paths:
               parameters:
                 ledgerName: '$request.path.ledgerName'
                 name: '$response.body#/data/name'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '400':
           description: Bad request (version not an explicit full semver, parse error, etc.)
           content:
@@ -1720,6 +1767,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -1740,6 +1789,9 @@ paths:
       operationId: listNumscriptVersions
       tags:
         - Numscript Library
+      security:
+        - BearerAuth: []
+        - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
         - name: name
@@ -1755,6 +1807,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ListNumscriptVersionsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -1777,6 +1833,9 @@ paths:
       operationId: getNumscriptUsage
       tags:
         - Numscript Library
+      security:
+        - BearerAuth: []
+        - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
         - name: name
@@ -1792,6 +1851,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetTemplateUsageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -2020,6 +2083,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -2092,6 +2157,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -2123,6 +2190,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -2230,6 +2299,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -2304,6 +2375,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -2370,6 +2443,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -2817,6 +2892,8 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
@@ -2904,6 +2981,8 @@ paths:
           $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
@@ -3175,6 +3254,19 @@ components:
         format: byte
 
   responses:
+    ResourceExhausted:
+      description: >-
+        Resource exhausted. Write admission can reject with
+        `WRITES_BLOCKED_DISK_FULL` while disk pressure blocks writes;
+        `SEQUENCE_EXHAUSTED` means an authoritative identifier allocator
+        cannot allocate another identifier and is permanent for that allocator.
+        Inspect `errorCode` before deciding whether to retry. No retry interval
+        is supplied, and retrying cannot resolve sequence exhaustion.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
     ServiceUnavailable:
       description: >-
         Service unavailable — the server cannot serve the request right now
@@ -3217,6 +3309,9 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+        text/plain:
+          schema:
+            type: string
 
     Forbidden:
       description: Insufficient permissions (missing required scope)
@@ -3224,6 +3319,9 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+        text/plain:
+          schema:
+            type: string
 
     InternalServerError:
       description: Internal server error
