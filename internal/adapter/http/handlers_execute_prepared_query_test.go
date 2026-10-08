@@ -302,7 +302,7 @@ func TestHandleExecutePreparedQuery_CursorShapeIsCamelCase(t *testing.T) {
 						Next:     "nxt",
 						AccountData: []*commonpb.Account{
 							{Address: "alice", Volumes: []*commonpb.AccountVolume{
-								{Asset: "USD", Color: "", Volumes: &commonpb.VolumesWithBalance{Input: "100", Output: "30", Balance: "70"}},
+								{Asset: "USD", Color: "", Volumes: &commonpb.VolumesWithBalance{Input: commonpb.MustBigUintFromDecimal("100"), Output: commonpb.MustBigUintFromDecimal("30"), Balance: commonpb.MustSignedBigIntFromDecimal("70")}},
 							}},
 						},
 					},

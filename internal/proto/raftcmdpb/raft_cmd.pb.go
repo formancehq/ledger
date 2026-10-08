@@ -300,7 +300,7 @@ type OrderTechnical struct {
 	// (invariant #2) — provided every replica runs a binary that knows these
 	// fields. A binary predating them silently drops the artifact and interprets
 	// with its own bundled library, so this change is a stop-all-nodes
-	// deployment boundary (service protocol revision 22; see
+	// deployment boundary (service protocol revision 23; see
 	// docs/ops/deployment.md, "Upgrading across the Numscript VM execution
 	// change"). Every scripted order admission proposes carries compiled_vars,
 	// compiled_script_hash and exactly one of compiled_program and
@@ -309,7 +309,7 @@ type OrderTechnical struct {
 	// admission instance — on the first order whose script that instance's own
 	// compile cache had not compiled before (CompiledScript.AlreadyCompiled) —
 	// and by reference, as compiled_program_hash, on every later order of the
-	// script (service protocol revision 23; see docs/ops/deployment.md,
+	// script (service protocol revision 24; see docs/ops/deployment.md,
 	// "Omitting already-cached Numscript bytecode"). The FSM runs the committed
 	// artifact when its bundled library can use it: by value, the committed
 	// bytes with the committed vars; by reference, bytes with the referenced

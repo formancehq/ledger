@@ -786,9 +786,9 @@ Changes in this release line that fall under this rule:
 |--------|--------------------|----------|
 | EN-2045 | `SaveLedgerMetadata`, `DeleteLedgerMetadata`, `SaveNumscript`, the prepared-query create/update/delete and `PromoteLedger` applied to a soft-deleted ledger stop succeeding and become an `ERROR_REASON_LEDGER_DELETED` failure | writes aimed at a tombstoned ledger, which a healthy client does not issue |
 
-### Upgrading across the Numscript VM execution change (revision 22)
+### Upgrading across the Numscript VM execution change (revision 23)
 
-Service protocol revision 22 (#2126) makes admission compile each resolvable
+Service protocol revision 23 (#2126) makes admission compile each resolvable
 Numscript to VM bytecode carried in the order's technical sub-message, which
 the FSM executes instead of re-interpreting the script text; the bundled
 Numscript library also changes how an account-typed metadata value is rendered
@@ -872,9 +872,9 @@ across an FSM outcome change" above:
   replays them and must be resynchronised from the leader, which
   `ledgerctl check` likewise does not detect.
 
-### Omitting already-cached Numscript bytecode (revision 23)
+### Omitting already-cached Numscript bytecode (revision 24)
 
-Service protocol revision 23 lets admission send a scripted order's bytecode
+Service protocol revision 24 lets admission send a scripted order's bytecode
 by reference instead of by value: `compiled_program_hash`, the XXH3-128 of
 the bytes, in place of `compiled_program`, next to the `compiled_vars` and
 `compiled_script_hash` every scripted order carries. Admission does so once

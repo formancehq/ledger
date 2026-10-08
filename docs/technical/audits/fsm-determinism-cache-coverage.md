@@ -233,7 +233,7 @@ program bytes. Admission owns a separate cache instance; it never shares the
 FSM's warm VMs, nor the reverse — admission's instance exposes, from its
 existing parsed-script side, whether it had compiled a script before this
 proposal (`CompiledScript.AlreadyCompiled`, backed by
-`lruEntry.compileParsed`, service protocol revision 23), consulted only by
+`lruEntry.compileParsed`, service protocol revision 24), consulted only by
 admission to send the bytecode by value or by reference; the FSM learns of
 that decision only through the committed shape.
 
@@ -266,7 +266,7 @@ admission deliberately sending the bytecode once per script per instance
 admission's own cache instance: a signal about what that instance has sent,
 never about what any replica's apply-side cache holds — admission and the
 FSM apply path each construct their own `NumscriptCache` and share no state;
-service protocol revision 23). The FSM runs a committed artifact when its own
+service protocol revision 24). The FSM runs a committed artifact when its own
 library can use it, and otherwise derives program and vars from the script
 text with that library (`numscript.SafeExecCommitted`): by value, when the
 library reads the bytecode version; by reference, when bytes with the

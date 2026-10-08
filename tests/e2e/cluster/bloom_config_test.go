@@ -208,7 +208,7 @@ var _ = Describe("Bloom filter config change preserves data", Ordered, func() {
 				g.Expect(err).To(Succeed())
 				eurVol := account.FindVolume("EUR", "")
 				g.Expect(eurVol).NotTo(BeNil(), "expected EUR volumes on user:1")
-				g.Expect(eurVol.GetInput()).To(Equal("999"))
+				g.Expect(eurVol.GetInput().DecimalString()).To(Equal("999"))
 			}).
 				WithTimeout(30 * time.Second).
 				WithPolling(500 * time.Millisecond).

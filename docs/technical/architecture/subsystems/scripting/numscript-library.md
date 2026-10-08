@@ -259,8 +259,8 @@ every later order of the script. The signal describes what this instance has
 sent, never a peek at what any replica cached: admission and the FSM apply
 path each construct their own `NumscriptCache` instance and share no state,
 and the FSM tolerates the signal being wrong either way (service protocol
-revision 23; see
-[Omitting already-cached Numscript bytecode](../../../../ops/deployment.md#omitting-already-cached-numscript-bytecode-revision-23)).
+revision 24; see
+[Omitting already-cached Numscript bytecode](../../../../ops/deployment.md#omitting-already-cached-numscript-bytecode-revision-24)).
 The FSM runs the committed artifact when its own library can use it, and
 otherwise derives program and vars from the script text with that library
 (`numscript.SafeExecCommitted`, built on `numscript.SafeExecFromText`, the
@@ -307,7 +307,7 @@ construction: admission produces the whole artifact with its own library,
 inline scripts travel in the order, exact library versions are immutable, an
 advanced `"latest"` is stale-rejected first, and our own compiler produced
 the bytecode (see
-[Upgrading across the Numscript VM execution change](../../../../ops/deployment.md#upgrading-across-the-numscript-vm-execution-change-revision-22)
+[Upgrading across the Numscript VM execution change](../../../../ops/deployment.md#upgrading-across-the-numscript-vm-execution-change-revision-23)
 for the library-semantics side of an upgrade).
 
 The outcome is a function of the committed entry and the running binary
@@ -324,7 +324,7 @@ means the same thing, so this gives the order its original outcome. Across a
 library change that alters execution semantics it does not: replaying history
 applied by another library can rebuild different bytes or reject an order
 that committed, as with the interpreter-to-VM change (see
-[Upgrading across the Numscript VM execution change](../../../../ops/deployment.md#upgrading-across-the-numscript-vm-execution-change-revision-22)).
+[Upgrading across the Numscript VM execution change](../../../../ops/deployment.md#upgrading-across-the-numscript-vm-execution-change-revision-23)).
 Missing artifacts are expected there, so
 `state.AuditReplayer` turns on `RequestProcessor.CompileMissingNumscript`,
 which only skips the `assert.Unreachable`; the cluster's own processor never
