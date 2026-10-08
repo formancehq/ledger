@@ -5,13 +5,13 @@
     nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0.2511";
     nixpkgs-unstable.url = "https://flakehub.com/f/NixOS/nixpkgs/0.1";
 
-    nur = {
-      url = "github:nix-community/NUR";
-      inputs.nixpkgs.follows = "nixpkgs";
+    goreleaser = {
+      url = "github:goreleaser/nur/52282e9a2d7c6882e9e0e8675d593b928c89e323";
+      flake = false;
     };
   };
 
-  outputs = { self, nixpkgs, nixpkgs-unstable, nur }:
+  outputs = { self, nixpkgs, nixpkgs-unstable, goreleaser }:
     let
       supportedSystems = [
         "x86_64-linux"
@@ -25,7 +25,7 @@
           let
             pkgs = import nixpkgs {
               inherit system;
-              overlays = [ nur.overlays.default ];
+              overlays = [ ];
               config.allowUnfreePredicate = pkg: builtins.elem (nixpkgs.lib.getName pkg) [
                 "goreleaser-pro"
               ];
@@ -107,7 +107,7 @@
             golangci-lint
           ];
           otherPackages = [
-            pkgs.nur.repos.goreleaser.goreleaser-pro
+            (pkgs.callPackage "${goreleaser}/pkgs/goreleaser-pro" { })
             self.packages.${system}.speakeasy
           ];
         in

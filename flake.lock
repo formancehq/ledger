@@ -1,23 +1,19 @@
 {
   "nodes": {
-    "flake-parts": {
-      "inputs": {
-        "nixpkgs-lib": [
-          "nur",
-          "nixpkgs"
-        ]
-      },
+    "goreleaser": {
+      "flake": false,
       "locked": {
-        "lastModified": 1733312601,
-        "narHash": "sha256-4pDvzqnegAfRkPwO3wmwBhVi/Sye1mzps0zHWYnP88c=",
-        "owner": "hercules-ci",
-        "repo": "flake-parts",
-        "rev": "205b12d8b7cd4802fbcb8e8ef6a0f1408781a4f9",
+        "lastModified": 1789616489,
+        "narHash": "sha256-VrxdD+TQcof1UsIKNgVow5sQLUATDaT+EwsMLS0awVo=",
+        "owner": "goreleaser",
+        "repo": "nur",
+        "rev": "52282e9a2d7c6882e9e0e8675d593b928c89e323",
         "type": "github"
       },
       "original": {
-        "owner": "hercules-ci",
-        "repo": "flake-parts",
+        "owner": "goreleaser",
+        "repo": "nur",
+        "rev": "52282e9a2d7c6882e9e0e8675d593b928c89e323",
         "type": "github"
       }
     },
@@ -49,32 +45,11 @@
         "url": "https://flakehub.com/f/NixOS/nixpkgs/0.1"
       }
     },
-    "nur": {
-      "inputs": {
-        "flake-parts": "flake-parts",
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1773214191,
-        "narHash": "sha256-Cq4ZXlPIhUsryXfQ8eBWpIRak1Dbs6IyVFn3+q33yxE=",
-        "owner": "nix-community",
-        "repo": "NUR",
-        "rev": "617813431740ea136453bf8885ba6275a2fb4dfa",
-        "type": "github"
-      },
-      "original": {
-        "owner": "nix-community",
-        "repo": "NUR",
-        "type": "github"
-      }
-    },
     "root": {
       "inputs": {
+        "goreleaser": "goreleaser",
         "nixpkgs": "nixpkgs",
-        "nixpkgs-unstable": "nixpkgs-unstable",
-        "nur": "nur"
+        "nixpkgs-unstable": "nixpkgs-unstable"
       }
     }
   },
