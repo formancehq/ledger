@@ -338,6 +338,7 @@ func (c *NumscriptCache) InitCacheMetrics(m metric.Meter) error {
 	size, err := m.Int64Gauge(
 		"numscript.cache.size",
 		metric.WithDescription("Number of entries in the Numscript cache, per side (parsed scripts, warm VMs)"),
+		metric.WithUnit("{entry}"),
 	)
 	if err != nil {
 		return err

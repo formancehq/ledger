@@ -8,7 +8,7 @@ panels.row('Mirror', 171, [
     'Logs Ingested/s',
     { h: 8, w: 12, x: 0, y: 107 },
     [
-      { expr: 'sum(rate(mirror.logs.ingested{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (ledger)', legendFormat: '{{ledger}}' },
+      { expr: 'sum(rate(mirror.logs_ingested{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (ledger)', legendFormat: '{{ledger}}' },
     ], unit='ops',
     description='Rate of v2 logs fetched and ingested by the mirror worker, broken down by ledger.',
   ),

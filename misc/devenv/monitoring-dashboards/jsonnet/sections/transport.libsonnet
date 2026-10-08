@@ -78,7 +78,7 @@ panels.row('Transport & Queues', 1, [
   panels.gauge(
     'Reception channel full count',
     { h: 4, w: 24, x: 0, y: 102 },
-    'sum(increase(raft.transport.recv.full{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, priority_name)', unit='short',
+    'sum(increase(raft.transport.recv.overflows{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, priority_name)', unit='short',
     description=|||
       Total number of times the reception channel was full and messages were dropped.
       
@@ -134,7 +134,7 @@ panels.row('Transport & Queues', 1, [
   panels.gauge(
     'Unreachable channel full count',
     { h: 10, w: 8, x: 16, y: 106 },
-    'sum(increase(raft.transport.unreachable.full{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', unit='short',
+    'sum(increase(raft.transport.unreachable.overflows{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', unit='short',
     description=|||
       Total number of times the unreachable notification channel was full.
       
@@ -177,7 +177,7 @@ panels.row('Transport & Queues', 1, [
     'Pending Send Queue Full Count',
     { h: 10, w: 8, x: 16, y: 116 },
     [
-      { expr: 'sum(increase(raft.send.pending_messages.full{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', legendFormat: 'Node {{formance.ledger.node.id}}' },
+      { expr: 'sum(increase(raft.send.pending_messages.overflows{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', legendFormat: 'Node {{formance.ledger.node.id}}' },
     ], unit='short',
     description=|||
       Number of times the pending send queue was full. Alert if non-zero.
@@ -210,7 +210,7 @@ panels.row('Transport & Queues', 1, [
     'Send channel full count',
     { h: 6, w: 12, x: 12, y: 126 },
     [
-      { expr: 'sum(increase(raft.transport.peer.sending.full{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, peer, priority_name)', legendFormat: 'Node {{formance.ledger.node.id}}: Peer {{peer}} / {{priority_name}}' },
+      { expr: 'sum(increase(raft.transport.peer.sending.overflows{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, peer, priority_name)', legendFormat: 'Node {{formance.ledger.node.id}}: Peer {{peer}} / {{priority_name}}' },
     ], unit='ops',
     description=|||
       Rate of times the per-peer send channel was full and messages were dropped.
@@ -326,7 +326,7 @@ panels.row('Transport & Queues', 1, [
     'Propose queue full count',
     { h: 8, w: 8, x: 16, y: 142 },
     [
-      { expr: 'sum(increase(admission.propose_queue.full{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', legendFormat: 'Node {{formance.ledger.node.id}}' },
+      { expr: 'sum(increase(admission.propose_queue.overflows{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', legendFormat: 'Node {{formance.ledger.node.id}}' },
     ], unit='short',
     description=|||
       Total number of times the propose queue was full and proposals were dropped.
@@ -347,7 +347,7 @@ panels.row('Transport & Queues', 1, [
     'Pending responses',
     { h: 7, w: 12, x: 0, y: 150 },
     [
-      { expr: '{"raft.transport.sending.pending_response", k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: 'Node {{formance.ledger.node.id}} / Peer {{peer}}' },
+      { expr: '{"raft.transport.sending.pending_response.count", k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: 'Node {{formance.ledger.node.id}} / Peer {{peer}}' },
     ],
     description=|||
       Number of responses awaited from each peer node. Shows in-flight requests to other cluster members.

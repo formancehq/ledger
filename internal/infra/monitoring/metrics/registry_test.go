@@ -139,6 +139,44 @@ func TestInstrumentUnits(t *testing.T) {
 	})
 }
 
+// TestInstrumentNamesFollowKind enforces the OpenTelemetry naming guidelines
+// that depend on the instrument kind
+// (https://opentelemetry.io/docs/specs/semconv/general/naming/):
+//   - a counter of discrete things is named in the plural (pebble.flushes,
+//     raft.fsm.logs_appended): some word of its last segment is plural;
+//   - an UpDownCounter is not pluralized; it uses .count instead;
+//   - a duration, i.e. an instrument measured in seconds, ends in .duration.
+func TestInstrumentNamesFollowKind(t *testing.T) {
+	t.Parallel()
+
+	call := regexp.MustCompile(`\.(` + strings.Join(instrumentMethods, "|") + `)\(\s*"([^"]+)"`)
+	unit := regexp.MustCompile(`WithUnit\("([^"]*)"\)`)
+	walkSources(t, func(path string, data []byte) {
+		for _, c := range call.FindAllSubmatchIndex(data, -1) {
+			method, name := string(data[c[2]:c[3]]), string(data[c[4]:c[5]])
+			segments := strings.Split(name, ".")
+			last := segments[len(segments)-1]
+			switch {
+			case strings.HasSuffix(method, "UpDownCounter"):
+				if strings.HasSuffix(last, "s") {
+					t.Errorf("%s: UpDownCounter %q is pluralized; name it <thing>.count", path, name)
+				}
+			case strings.HasSuffix(method, "Counter"):
+				plural := false
+				for word := range strings.SplitSeq(last, "_") {
+					plural = plural || strings.HasSuffix(word, "s")
+				}
+				if !plural {
+					t.Errorf("%s: counter %q is not named in the plural (e.g. %s.%ss)", path, name, strings.Join(segments[:len(segments)-1], "."), last)
+				}
+			}
+			if m := unit.FindSubmatch(data[c[3]:callEnd(data, c[3])]); m != nil && string(m[1]) == "s" && last != "duration" {
+				t.Errorf("%s: %q measures seconds but does not end in .duration", path, name)
+			}
+		}
+	})
+}
+
 // TestRecordedDurationsAreSeconds complements TestInstrumentUnits: every
 // duration instrument declares seconds, so no Record call may pass a
 // time.Duration converted to another unit, even wrapped in float64(...)

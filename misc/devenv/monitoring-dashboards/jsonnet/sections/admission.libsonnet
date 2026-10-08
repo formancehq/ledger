@@ -180,8 +180,8 @@ panels.row('Admission', 169, [
     'Proposal Guard Rebuild Rate & Ratio',
     { h: 8, w: 12, x: 0, y: 116 },
     [
-      { expr: 'sum(rate(admission.proposal_guard.rebuild{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id) / ' + queries.histogramCountRate('admission.proposal_guard.duration', by=['formance.ledger.node.id']), legendFormat: 'Rebuild ratio - Node {{formance.ledger.node.id}}' },
-      { expr: 'sum(rate(admission.proposal_guard.rebuild{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', legendFormat: 'Rebuilds/s - Node {{formance.ledger.node.id}}' },
+      { expr: 'sum(rate(admission.proposal_guard.rebuilds{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id) / ' + queries.histogramCountRate('admission.proposal_guard.duration', by=['formance.ledger.node.id']), legendFormat: 'Rebuild ratio - Node {{formance.ledger.node.id}}' },
+      { expr: 'sum(rate(admission.proposal_guard.rebuilds{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', legendFormat: 'Rebuilds/s - Node {{formance.ledger.node.id}}' },
     ], unit='percentunit',
     description=|||
       Rate of proposal guard rebuilds (boundary shifted) vs total guard acquisitions. A high ratio means the cache generation boundary is frequently shifting between optimistic preload and proposal, causing expensive re-builds under lock.
