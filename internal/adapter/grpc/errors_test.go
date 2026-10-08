@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3"
+	"go.opentelemetry.io/otel/attribute"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
@@ -68,7 +69,18 @@ func TestHandlePanic_DoesNotLeakStackToClient(t *testing.T) {
 	ended := recorder.Ended()
 	require.Len(t, ended, 1)
 	require.NotEmpty(t, grpcSpanAttribute(ended[0], "correlation_id"))
-	require.NotEmpty(t, ended[0].Events())
+	require.Empty(t, grpcSpanAttribute(ended[0], "panic.value"), "panic details use the exception semantic conventions")
+
+	// The panic is the span's single OpenTelemetry exception event; the
+	// raw value stays on the span, never in the client error.
+	events := ended[0].Events()
+	require.Len(t, events, 1)
+	require.Equal(t, "exception", events[0].Name)
+	require.ElementsMatch(t, []attribute.KeyValue{
+		attribute.String("exception.type", "string"),
+		attribute.String("exception.message", secretInternal),
+		attribute.String("exception.stacktrace", string(stack)),
+	}, events[0].Attributes)
 }
 
 func TestBusinessErrorToGRPCStatus_LedgerAlreadyExists(t *testing.T) {
