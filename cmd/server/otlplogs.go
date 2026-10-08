@@ -82,7 +82,7 @@ func resourceFromFlags(cmd *cobra.Command, clusterID string, nodeID uint64, info
 		fmt.Sprintf("%s=%d", resourceAttributeNodeID, nodeID),
 	}, explicit...)
 
-	return otlp.BuildResource(serviceName, attributes, fmt.Sprintf("%s-%s", info.Version, info.Commit))
+	return otlp.BuildResource(serviceName, attributes, info.ServiceVersion())
 }
 
 // lastAttributeValue returns the value the resource will hold for key: the

@@ -22,7 +22,7 @@ Server OTLP logs, traces, and metrics use the same OpenTelemetry resource:
 | Attribute | Value | Set by |
 | --------- | ----- | ------ |
 | `service.name` | `--otel-service-name`, default `ledger` (identical on every node) | server |
-| `service.version` | build version and commit, joined by a hyphen | server |
+| `service.version` | semver build metadata `<version>+<commit>` (e.g. `3.0.0+abc1234`); the commit is omitted when unknown or already in the version | server |
 | `service.instance.id` | the cluster name (`formance.ledger.cluster.name`) | server |
 | `formance.ledger.cluster.id` | `--cluster-id` | server |
 | `formance.ledger.cluster.name` | `Cluster` resource name; the server defaults it to the cluster ID | operator (server default) |
