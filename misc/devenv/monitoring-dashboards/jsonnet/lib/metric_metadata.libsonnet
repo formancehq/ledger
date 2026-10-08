@@ -1,9 +1,11 @@
-// Metadata for every metric the dashboard references.
+// Metadata (kind and unit) for every metric the ledger emits, plus the
+// upstream metrics the dashboard references.
 //
 // The first group (metrics we emit) is extracted from the Go call
 // sites by tools/extract-metric-metadata (one-shot) and verified
 // against the source code by
-// internal/infra/monitoring/metrics/registry_test.go.
+// internal/infra/monitoring/metrics/registry_test.go
+// (TestMetricMetadataMatchesCode).
 //
 // The second group (`go.*` / `process.*` / `system.*` / `http.*`)
 // covers OpenTelemetry semantic-convention auto-instrumentation
@@ -18,6 +20,10 @@
 // unit-suffix and `_total` rules when generating the
 // prom-normalized dashboard variant.
 {
+  'admission.action.errors': { kind: 'counter', unit: '{action}' },
+  'admission.actions': { kind: 'counter', unit: '{action}' },
+  'admission.audit.empty_caller_subject.writes': { kind: 'counter', unit: '{write}' },
+  'admission.audit.missing_caller.writes': { kind: 'counter', unit: '{write}' },
   'admission.command.duration': { kind: 'histogram', unit: 's' },
   'admission.command.size': { kind: 'histogram', unit: 'By' },
   'admission.fsm_future.wait.duration': { kind: 'histogram', unit: 's' },
@@ -29,11 +35,14 @@
   'admission.proposal_guard.duration': { kind: 'histogram', unit: 's' },
   'admission.proposal_guard.rebuilds': { kind: 'counter', unit: '{rebuild}' },
   'admission.propose.duration': { kind: 'histogram', unit: 's' },
-  'admission.propose_queue.overflows': { kind: 'counter', unit: '{proposal}' },
   'admission.propose_queue.load': { kind: 'histogram', unit: '{proposal}' },
+  'admission.propose_queue.overflows': { kind: 'counter', unit: '{proposal}' },
   'admission.resolve_batch.duration': { kind: 'histogram', unit: 's' },
   'admission.response_resolution.duration': { kind: 'histogram', unit: 's' },
-  'admission.scripts.duration': { kind: 'histogram', unit: 's' },
+  'admission.script.duration': { kind: 'histogram', unit: 's' },
+  'audit.indexer.audit_last_sequence': { kind: 'gauge', unit: null },
+  'audit.indexer.lag': { kind: 'gauge', unit: '{sequence}' },
+  'audit.indexer.last_indexed_sequence': { kind: 'gauge', unit: null },
   'bloom.adds': { kind: 'counter', unit: '{key}' },
   'bloom.false_positives': { kind: 'counter', unit: '{lookup}' },
   'bloom.lookups': { kind: 'counter', unit: '{lookup}' },
@@ -44,6 +53,7 @@
   'cache.size': { kind: 'gauge', unit: '{entry}' },
   'ctrl.apply.duration': { kind: 'histogram', unit: 's' },
   'grpc.apply.duration': { kind: 'histogram', unit: 's' },
+  'health.disk.poll.failures': { kind: 'counter', unit: '{failure}' },
   'index.builder.lag': { kind: 'gauge', unit: '{sequence}' },
   'index.builder.last_indexed_sequence': { kind: 'gauge', unit: null },
   'index.builder.logs_indexed': { kind: 'counter', unit: '{log}' },
@@ -74,9 +84,9 @@
   'raft.append_entries.duration': { kind: 'histogram', unit: 's' },
   'raft.applier.batch_wait.duration': { kind: 'histogram', unit: 's' },
   'raft.applier.commit_wait.duration': { kind: 'histogram', unit: 's' },
-  'raft.entries_applied': { kind: 'counter', unit: '{entry}' },
   'raft.apply_entries.batch_size': { kind: 'histogram', unit: '{entry}' },
   'raft.apply_entries.duration': { kind: 'histogram', unit: 's' },
+  'raft.entries_applied': { kind: 'counter', unit: '{entry}' },
   'raft.fsm.batch_commit.duration': { kind: 'histogram', unit: 's' },
   'raft.fsm.logs_appended': { kind: 'counter', unit: '{log}' },
   'raft.fsm.preload.coverage_misses': { kind: 'counter', unit: '{read}' },
@@ -93,21 +103,28 @@
   'raft.process_entry.duration': { kind: 'histogram', unit: 's' },
   'raft.read_index.duration': { kind: 'histogram', unit: 's' },
   'raft.ready.committed_entries': { kind: 'histogram', unit: '{entry}' },
-  'raft.send.pending_messages.overflows': { kind: 'counter', unit: '{batch}' },
-  'raft.send.pending_messages.load': { kind: 'histogram', unit: '{batch}' },
-  'raft.transport.peer.sending.overflows': { kind: 'counter', unit: '{batch}' },
+  'raft.send.pending_batch.load': { kind: 'histogram', unit: '{batch}' },
+  'raft.send.pending_batch.overflows': { kind: 'counter', unit: '{batch}' },
   'raft.transport.peer.sending.load': { kind: 'histogram', unit: '{batch}' },
+  'raft.transport.peer.sending.overflows': { kind: 'counter', unit: '{batch}' },
   'raft.transport.ping.duration': { kind: 'histogram', unit: 's' },
-  'raft.transport.recv.overflows': { kind: 'counter', unit: '{batch}' },
   'raft.transport.recv.load': { kind: 'histogram', unit: '{batch}' },
-  'raft.transport.sending.pending_response.count': { kind: 'gauge', unit: '{response}' },
-  'raft.transport.unreachable.overflows': { kind: 'counter', unit: '{peer}' },
+  'raft.transport.recv.overflows': { kind: 'counter', unit: '{batch}' },
+  'raft.transport.sending.pending_response.count': { kind: 'updowncounter', unit: '{response}' },
   'raft.transport.unreachable.load': { kind: 'histogram', unit: '{peer}' },
+  'raft.transport.unreachable.overflows': { kind: 'counter', unit: '{peer}' },
   'readindex.cache.hits': { kind: 'counter', unit: '{hit}' },
   'readindex.cache.misses': { kind: 'counter', unit: '{miss}' },
   'readindex.level.size': { kind: 'gauge', unit: 'By' },
   'readindex.memtable.size': { kind: 'gauge', unit: 'By' },
   'storage.disk.volume.usage': { kind: 'gauge', unit: 'By' },
+  'usage.builder.audit_last_sequence': { kind: 'gauge', unit: null },
+  'usage.builder.lag': { kind: 'gauge', unit: '{sequence}' },
+  'usage.builder.last_indexed_sequence': { kind: 'gauge', unit: null },
+  'usagestore.cache.hits': { kind: 'counter', unit: '{hit}' },
+  'usagestore.cache.misses': { kind: 'counter', unit: '{miss}' },
+  'usagestore.level.size': { kind: 'gauge', unit: 'By' },
+  'usagestore.memtable.size': { kind: 'gauge', unit: 'By' },
   'wal.append.batch_size': { kind: 'histogram', unit: '{entry}' },
   'wal.append.save.duration': { kind: 'histogram', unit: 's' },
 
@@ -121,7 +138,7 @@
   'go.memory.allocations': { kind: 'counter', unit: '{allocation}' },
   'go.memory.gc.goal': { kind: 'gauge', unit: 'By' },
   'go.memory.used': { kind: 'gauge', unit: 'By' },
-  'go.processor.limit': { kind: 'gauge', unit: '{cpu}' },
+  'go.processor.limit': { kind: 'gauge', unit: '{thread}' },
   'http.server.request.duration': { kind: 'histogram', unit: 's' },
   'process.cpu.time': { kind: 'counter', unit: 's' },
   'system.memory.usage': { kind: 'gauge', unit: 'By' },

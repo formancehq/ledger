@@ -120,7 +120,7 @@ func TestAdmitRecordsEnteredPhasesOnFailure(t *testing.T) {
 	const (
 		mResolveBatch       = "admission.resolve_batch.duration"
 		mOrdersPreparation  = "admission.orders_preparation.duration"
-		mScripts            = "admission.scripts.duration"
+		mScripts            = "admission.script.duration"
 		mResponseResolution = "admission.response_resolution.duration"
 		mFSMFutureWait      = "admission.fsm_future.wait.duration"
 		mProposalGuard      = "admission.proposal_guard.duration"

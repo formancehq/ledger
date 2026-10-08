@@ -200,9 +200,9 @@ panels.row('Admission', 169, [
     'Scripts Duration (p50, p95, p99)',
     { h: 8, w: 12, x: 12, y: 124 },
     [
-      { expr: 'histogram_quantile(0.50, sum(rate(admission.scripts.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
-      { expr: 'histogram_quantile(0.95, sum(rate(admission.scripts.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
-      { expr: 'histogram_quantile(0.99, sum(rate(admission.scripts.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.50, sum(rate(admission.script.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.95, sum(rate(admission.script.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.99, sum(rate(admission.script.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
     ], unit='s',
     description='Time spent resolving Numscript references and enriching preload needs with script-discovered volumes/metadata. Phase of admission.command.duration.',
   ),

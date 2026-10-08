@@ -26,8 +26,9 @@ const (
 )
 
 const (
-	// defaultServiceName is the logical service reported by every node. Nodes
-	// are told apart by service.instance.id, not by service.name.
+	// defaultServiceName is the logical service reported by every node. A
+	// cluster is told apart by service.instance.id (its name) and its nodes by
+	// formance.ledger.node.id, not by service.name.
 	defaultServiceName = "ledger"
 
 	// Custom resource attributes live under the formance.ledger namespace, the

@@ -175,8 +175,8 @@ system attribution to the authenticated boundary and named producers.
 
 Admission retains post-commit diagnostic signals as a defense-in-depth check:
 
-- `admission.audit.missing_callers` (+ error log) — a proposal reached the observation seam with a missing snapshot or unset principal. This is anomalous because normal resolution is total.
-- `admission.audit.empty_caller_subjects` (+ info log) — the caller has a user source (key id / issuer) but an empty subject; the entry is still attributable by source.
+- `admission.audit.missing_caller.writes` (+ error log) — a proposal reached the observation seam with a missing snapshot or unset principal. This is anomalous because normal resolution is total.
+- `admission.audit.empty_caller_subject.writes` (+ info log) — the caller has a user source (key id / issuer) but an empty subject; the entry is still attributable by source.
 
 Only authenticated principals are eligible for the empty-subject signal; system, anonymous, and auth-disabled principals remain explicit without a subject.
 

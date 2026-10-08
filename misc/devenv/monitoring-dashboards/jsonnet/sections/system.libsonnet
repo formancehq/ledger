@@ -19,7 +19,7 @@ panels.row('System', 0, [
       - Storage backpressure (check Pebble write stalls)
       - Network issues between nodes
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#fsm-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#fsm-metrics
    |||,
   ),
 
@@ -39,7 +39,7 @@ panels.row('System', 0, [
       
       Check network configuration if latency is consistently high.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#global-transport-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#global-transport-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -59,7 +59,7 @@ panels.row('System', 0, [
       
       Sudden spikes in 5xx errors may indicate system issues.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#http-server-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#http-server-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -80,7 +80,7 @@ panels.row('System', 0, [
       
       Consider increasing memory limits or scaling horizontally.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#system-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#system-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -104,7 +104,7 @@ max by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.i
       - Increasing CPU limits
       - Scaling horizontally
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#process-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#process-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto', max: 1 },
   ),
 
@@ -125,7 +125,7 @@ max by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.i
       
       Sudden drops may indicate network partitions.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#process-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#process-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -140,7 +140,7 @@ max by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.i
       
       Provides visibility into how memory is allocated at the OS level. Useful for capacity planning and troubleshooting memory pressure.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#process-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#process-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -158,7 +158,7 @@ max by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.i
       - Need for object pooling
       - Memory leaks if trend is upward
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#go-runtime-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#go-runtime-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -176,7 +176,7 @@ max by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.i
       - Split-brain scenarios (different nodes reporting different leaders)
       - Extended periods with no leader
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#node-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#node-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -193,7 +193,7 @@ max by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.i
       - Count grows unbounded over time
       - Count is significantly higher than expected
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#go-runtime-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#go-runtime-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -211,7 +211,7 @@ max by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.i
       
       High heap usage may trigger more frequent GC cycles.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#go-runtime-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#go-runtime-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -226,7 +226,7 @@ max by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.i
       
       High allocation rates increase GC overhead. Combined with 'Go memory allocated', this helps identify whether you're allocating many small objects or fewer large objects.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#go-runtime-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#go-runtime-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -241,7 +241,7 @@ max by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.i
       
       The GC goal grows as your application uses more memory. If it grows unbounded, you may have a memory leak. The GOGC environment variable controls how aggressively the GC runs.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#go-runtime-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#go-runtime-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 ])

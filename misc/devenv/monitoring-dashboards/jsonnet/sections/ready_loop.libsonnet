@@ -10,9 +10,11 @@ panels.row('Ready Loop', 2, [
     { h: 8, w: 12, x: 0, y: 3 },
     [
       { expr: queries.histogramSumRate('raft.process_entry.duration', by=['formance.ledger.node.id']), legendFormat: 'Node {{formance.ledger.node.id}}' },
-    ], unit='s',
+    ], unit='percentunit',
     description=|||
-      Time spent processing Raft 'Ready' state (in seconds). The Ready loop is the main Raft processing cycle.
+      Fraction of wall-clock time spent (seconds spent per second; 100% = busy the whole interval).
+
+      Time spent processing Raft 'Ready' state (seconds spent per second). The Ready loop is the main Raft processing cycle.
       
       This includes:
       - Sending messages to peers
@@ -22,7 +24,7 @@ panels.row('Ready Loop', 2, [
       
       High values indicate the Raft loop is slow, which limits throughput.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#node-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#node-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -67,9 +69,11 @@ panels.row('Ready Loop', 2, [
     { h: 8, w: 12, x: 0, y: 27 },
     [
       { expr: queries.histogramSumRate('raft.append_entries.duration', by=['formance.ledger.node.id']), legendFormat: 'Node {{formance.ledger.node.id}}' },
-    ], unit='s',
+    ], unit='percentunit',
     description=|||
-      Time spent appending entries to the Write-Ahead Log (WAL) in seconds.
+      Fraction of wall-clock time spent (seconds spent per second; 100% = busy the whole interval).
+
+      Time spent appending entries to the Write-Ahead Log (WAL).
       
       WAL writes must complete before entries can be committed. High latency indicates:
       - Slow disk I/O
@@ -78,7 +82,7 @@ panels.row('Ready Loop', 2, [
       
       This directly impacts transaction latency and throughput.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#node-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#node-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -126,9 +130,11 @@ panels.row('Ready Loop', 2, [
     { h: 8, w: 12, x: 12, y: 59 },
     [
       { expr: queries.histogramSumRate('wal.append.save.duration', by=['formance.ledger.node.id']), legendFormat: 'Node {{formance.ledger.node.id}}' },
-    ], unit='s',
+    ], unit='percentunit',
     description=|||
-      Time spent saving entries to the Write-Ahead Log (WAL) on disk, in seconds.
+      Fraction of wall-clock time spent (seconds spent per second; 100% = busy the whole interval).
+
+      Time spent saving entries to the Write-Ahead Log (WAL) on disk.
       
       This is the actual disk I/O time for persisting entries. High values indicate:
       - Slow disk I/O
@@ -201,7 +207,8 @@ panels.row('Ready Loop', 2, [
     { h: 8, w: 12, x: 12, y: 91 },
     [
       { expr: queries.histogramSumRate('raft.node.ready.wait.duration', by=['formance.ledger.node.id']), legendFormat: 'Node {{formance.ledger.node.id}}' },
-    ], unit='s', opts={ fillOpacity: 0, showPoints: 'auto' },
+    ], unit='percentunit',
+    description='Fraction of wall-clock time spent (seconds spent per second; 100% = busy the whole interval).', opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
   panels.timeseries(
@@ -223,8 +230,10 @@ panels.row('Ready Loop', 2, [
     { h: 7, w: 12, x: 0, y: 115 },
     [
       { expr: queries.histogramSumRate('raft.node.unspool.duration', by=['formance.ledger.node.id']), legendFormat: 'Node {{formance.ledger.node.id}}' },
-    ], unit='s',
+    ], unit='percentunit',
     description=|||
+      Fraction of wall-clock time spent (seconds spent per second; 100% = busy the whole interval).
+
       Time spent in unspoolAndResume after a maintenance task (snapshot or checkpoint restore). During this time, spooled entries are replayed into the store.
       
       Long unspool times indicate many entries were spooled during the maintenance task, which means the system was under heavy write load when the snapshot was triggered.
@@ -265,8 +274,10 @@ panels.row('Ready Loop', 2, [
     [
       { expr: queries.histogramSumRate('raft.node.maintenance.snapshot_creation.duration', by=['formance.ledger.node.id']), legendFormat: 'Node {{formance.ledger.node.id}}: Snapshot creation' },
       { expr: queries.histogramSumRate('raft.node.maintenance.replay_spool.duration', by=['formance.ledger.node.id']), legendFormat: 'Node {{formance.ledger.node.id}}: Replay spool' },
-    ], unit='s',
+    ], unit='percentunit',
     description=|||
+      Fraction of wall-clock time spent (seconds spent per second; 100% = busy the whole interval).
+
       Gating timeline breakdown: snapshot creation time vs replay spool time (stacked bars).
       
       Shows how time is spent during each maintenance task (snapshot). The total of both series approximates the gating wait duration.
@@ -284,8 +295,10 @@ panels.row('Ready Loop', 2, [
     { h: 7, w: 8, x: 0, y: 150 },
     [
       { expr: queries.histogramSumRate('raft.fsm.rotation.duration', by=['formance.ledger.node.id']), legendFormat: 'Node {{formance.ledger.node.id}}' },
-    ], unit='s',
+    ], unit='percentunit',
     description=|||
+      Fraction of wall-clock time spent (seconds spent per second; 100% = busy the whole interval).
+
       Time spent in generation rotation (boundary flush) during ApplyEntries.
       
       Rotation happens when the raft index crosses a generation threshold. During rotation, dirty boundaries are flushed to PebbleDB inline in the critical path.
