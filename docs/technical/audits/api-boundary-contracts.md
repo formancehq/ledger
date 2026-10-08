@@ -46,10 +46,18 @@ LedgerLog JSON loses some typed metadata distinctions by design and is not a
 backup/replay representation. JSON number precision must be assessed using exact
 values, not a test oracle that has already rounded through `float64`.
 
-For generated SDK evidence (EN-2685), bind the specification, generator and
+For generated SDK evidence (EN-2685, EN-2781), bind the specification, generator and
 dependency versions. Exercise actual LedgerLog and nested SystemLog decoders
 with nonempty operation payloads; explicit additional properties must prevent
-empty-object stripping. Exercise actual prepared-query create/update serializers
+empty-object stripping. Reconcile the SystemLog variant fixtures with the live
+LogPayload descriptor and JSON codec. Verify the actual built SDK externally:
+single-log, list-log and prepared-query LOGS response decoders
+must retain representative nested non-apply payloads, every current variant and
+an unknown future sibling. SystemLog.payload is open while apply.log stays typed
+and LedgerLog.data remains complete. Credential-safe projections remain EN-1634;
+SDK field stripping is not a security boundary. The repository Go regression
+and its `testdata/` inventory guard the schema and actual JSON codec. Exercise
+actual prepared-query create/update serializers
 with structured, nested, textual, null and omitted filters. A standalone helper
 or OpenAPI lint result alone cannot establish request corruption or preservation.
 The OpenAPI 3.0 filter union uses a QueryFilter reference and an inline nullable

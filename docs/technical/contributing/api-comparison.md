@@ -191,6 +191,14 @@ Generated SDK decoders must preserve the operation payload both directly and
 inside `SystemLog.payload.apply.log`; the schema does not exhaustively type
 each operation variant.
 
+`SystemLog.payload` also explicitly permits additional properties (EN-2781).
+The existing typed `apply.log` remains available; all other system variants
+and future siblings retain their nested JSON as open-ended values. The same
+contract applies to single-log, list-log and prepared-query LOGS response
+decoding. These global system operations have no v2 ledger-log equivalent;
+the nested ledger log keeps its existing v2-style `type`/`data` structure.
+EN-1634 separately owns credential-safe read projections.
+
 The same explicit additional-properties policy covers other opaque v3 objects
 (ledger metadata schemas, transaction account metadata, audit/signature fields,
 event sinks/statuses, signing keys and index responses). This changes the SDK

@@ -3236,6 +3236,11 @@ components:
           minimum: 0
         payload:
           type: object
+          description: |
+            Named system payload variants are preserved as supplied, including
+            nested fields and future sibling variants. Only apply is typed here;
+            other variants remain open-ended (EN-2781).
+          additionalProperties: true
           properties:
             apply:
               type: object
