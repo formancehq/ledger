@@ -3,9 +3,11 @@ package ledger
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"sync/atomic"
+	"time"
 
 	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/metric"
@@ -160,6 +162,9 @@ func (store *Store) GetPrefixedRelationName(v string) string {
 	return fmt.Sprintf(`"%s".%s`, store.ledger.Bucket, v)
 }
 
+// releaseLockTimeout bounds the unlock query, which runs detached from the caller's context.
+const releaseLockTimeout = 5 * time.Second
+
 func (store *Store) LockLedger(ctx context.Context) (*Store, bun.IDB, func() error, error) {
 	storeCp := *store
 	switch db := store.db.(type) {
@@ -177,9 +182,17 @@ func (store *Store) LockLedger(ctx context.Context) (*Store, bun.IDB, func() err
 		storeCp.db = conn
 
 		return &storeCp, storeCp.db, func() error {
-			_, err := conn.ExecContext(ctx, `SELECT pg_advisory_unlock(hashtext(?))`, fmt.Sprintf("ledger:%d", store.ledger.ID))
+			// The caller's context is often already cancelled here (e.g. an HTTP request that ended),
+			// but the lock must not outlive the operation.
+			releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), releaseLockTimeout)
+			defer cancel()
+
+			_, err := conn.ExecContext(releaseCtx, `SELECT pg_advisory_unlock(hashtext(?))`, fmt.Sprintf("ledger:%d", store.ledger.ID))
 			if err != nil {
-				return err
+				// The session may still hold the lock: discard the connection instead of
+				// returning it to the pool, closing the session makes PostgreSQL drop the lock.
+				_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+				return fmt.Errorf("releasing ledger lock: %w", err)
 			}
 			return conn.Close()
 		}, nil
