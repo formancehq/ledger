@@ -222,7 +222,7 @@ func TestHandleExecutePreparedQuery_UnknownMode(t *testing.T) {
 // TestHandleExecutePreparedQuery_AggregateEmitsColor pins that the aggregate
 // variant is serialized under the `aggregateResult` envelope key through the
 // same camelCase DTO as the dedicated /aggregate handler: `color` is always
-// present (including the uncolored bucket, as ""), amounts are decimal strings,
+// present (including the uncolored bucket, as ""), amounts are numeric by default,
 // and a balance is computed. The previous raw-proto serialization dropped
 // `color` on uncolored rows (json:"color,omitempty") and leaked PascalCase
 // oneof wrapper keys.
@@ -257,22 +257,25 @@ func TestHandleExecutePreparedQuery_AggregateEmitsColor(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code)
 
-	resp := decodeResponse[executePreparedQueryResponseJSON](t, w)
+	resp := decodeResponse[struct {
+		Cursor          *commonpb.PreparedQueryCursor `json:"cursor"`
+		AggregateResult *aggregateVolumesWireJSON     `json:"aggregateResult"`
+	}](t, w)
 	require.Nil(t, resp.Cursor, "aggregate response must not set the cursor variant")
 	require.NotNil(t, resp.AggregateResult)
 	vols := resp.AggregateResult.Volumes
 	require.Len(t, vols, 2)
 
-	// Uncolored bucket: color present as "" (not omitted), amounts as strings.
+	// Uncolored bucket: color present as "" (not omitted), amounts as numbers.
 	require.Equal(t, "", vols[0].Color)
 	require.Equal(t, "USD", vols[0].Asset)
-	require.Equal(t, "100", vols[0].Input)
-	require.Equal(t, "30", vols[0].Output)
-	require.Equal(t, "70", vols[0].Balance)
+	require.Equal(t, "100", string(vols[0].Input))
+	require.Equal(t, "30", string(vols[0].Output))
+	require.Equal(t, "70", string(vols[0].Balance))
 
 	// Colored bucket carries its color verbatim.
 	require.Equal(t, "RED", vols[1].Color)
-	require.Equal(t, "50", vols[1].Balance)
+	require.Equal(t, "50", string(vols[1].Balance))
 
 	// The raw body must be the camelCase `aggregateResult` envelope, carry the
 	// `color` key for the uncolored row, and must NOT leak the PascalCase oneof.
@@ -287,7 +290,7 @@ func TestHandleExecutePreparedQuery_AggregateEmitsColor(t *testing.T) {
 // cursor variant is serialized under the `cursor` envelope key via
 // PreparedQueryCursor.MarshalJSON, not wrapped in the PascalCase Go oneof
 // envelope. The nested account volume row must carry camelCase keys,
-// decimal-string amounts, and `color` present even for the uncolored bucket.
+// numeric amounts, and `color` present even for the uncolored bucket.
 func TestHandleExecutePreparedQuery_CursorShapeIsCamelCase(t *testing.T) {
 	t.Parallel()
 
@@ -336,9 +339,9 @@ func TestHandleExecutePreparedQuery_CursorShapeIsCamelCase(t *testing.T) {
 	require.Contains(t, body, `"accountData"`)
 	// color is present on the uncolored account-volume row (not dropped).
 	require.Contains(t, body, `"color":""`)
-	// Amounts are decimal strings, not raw numbers.
-	require.Contains(t, body, `"input":"100"`)
-	require.Contains(t, body, `"balance":"70"`)
+	// Default monetary values are JSON number tokens, matching v2.
+	require.Contains(t, body, `"input":100`)
+	require.Contains(t, body, `"balance":70`)
 }
 
 func TestHandleExecutePreparedQuery_UnsupportedParameterType(t *testing.T) {

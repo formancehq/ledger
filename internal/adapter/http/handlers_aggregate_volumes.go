@@ -20,10 +20,10 @@ type aggregatedVolumeJSON struct {
 	// Color is always emitted (even when empty) so clients can distinguish
 	// the uncolored bucket from an older response shape that didn't carry
 	// the color dimension at all.
-	Color   string `json:"color"`
-	Input   string `json:"input"`
-	Output  string `json:"output"`
-	Balance string `json:"balance"`
+	Color   string                 `json:"color"`
+	Input   *commonpb.BigUint      `json:"input"`
+	Output  *commonpb.BigUint      `json:"output"`
+	Balance *commonpb.SignedBigInt `json:"balance"`
 }
 
 type groupedAggregateResultJSON struct {
@@ -35,13 +35,16 @@ func toAggregatedVolumeJSON(v *commonpb.AggregatedVolume) *aggregatedVolumeJSON 
 	input := v.GetInput().ToBigInt()
 	output := v.GetOutput().ToBigInt()
 	balance := new(big.Int).Sub(input, output)
+	// Uint256 inputs are unsigned, so conversion cannot fail.
+	inputAmount, _ := commonpb.NewBigUint(input)
+	outputAmount, _ := commonpb.NewBigUint(output)
 
 	return &aggregatedVolumeJSON{
 		Asset:   v.GetAsset(),
 		Color:   v.GetColor(),
-		Input:   input.String(),
-		Output:  output.String(),
-		Balance: balance.String(),
+		Input:   inputAmount,
+		Output:  outputAmount,
+		Balance: commonpb.NewSignedBigInt(balance),
 	}
 }
 
@@ -114,5 +117,5 @@ func (s *Server) handleAggregateVolumes(w http.ResponseWriter, r *http.Request) 
 	}
 
 	finishProfile(w, r, profile)
-	writeOK(w, toAggregateVolumesJSON(result))
+	writeMonetaryOK(w, r, toAggregateVolumesJSON(result))
 }

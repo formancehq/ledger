@@ -98,5 +98,5 @@ func (s *Server) handleListLedgerLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writePageOK(w, r, logs, links)
+	writeMonetaryPageOK(w, r, logs, links)
 }

@@ -336,7 +336,7 @@ func writeBulkResponse(w http.ResponseWriter, r *http.Request, elements []*servi
 	}
 
 	response := bulkResponse{Data: apiResults}
-	writeJSONResponse(w, statusCode, response)
+	writeMonetaryJSONResponse(w, r, statusCode, response)
 }
 
 // perElementStatus returns the HTTP status a given per-element error would

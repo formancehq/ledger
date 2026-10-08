@@ -2,6 +2,7 @@ package commonpb
 
 import (
 	"database/sql/driver"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"math/big"
@@ -203,6 +204,30 @@ func marshalVolumesJSON(input, output, balance *big.Int) ([]byte, error) {
 		Output:  output.String(),
 		Balance: balance.String(),
 	})
+}
+
+// MarshalJSONTo retains validation and typed amounts for request-scoped encoders.
+func (v *Volumes) MarshalJSONTo(enc *jsontext.Encoder) error {
+	input, output, err := v.toBigInts()
+	if err != nil {
+		return err
+	}
+
+	return json.MarshalEncode(enc, volumesJSON{Input: v.GetInput(), Output: v.GetOutput(), Balance: NewSignedBigInt(new(big.Int).Sub(input, output))})
+}
+
+func (v *VolumesWithBalance) MarshalJSONTo(enc *jsontext.Encoder) error {
+	if err := v.Validate(); err != nil {
+		return err
+	}
+
+	return json.MarshalEncode(enc, volumesJSON{Input: v.GetInput(), Output: v.GetOutput(), Balance: v.GetBalance()})
+}
+
+type volumesJSON struct {
+	Input   *BigUint      `json:"input"`
+	Output  *BigUint      `json:"output"`
+	Balance *SignedBigInt `json:"balance"`
 }
 
 func parseCanonicalBigUint(decimal string) (*BigUint, error) {

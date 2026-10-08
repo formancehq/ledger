@@ -152,9 +152,14 @@ types are deliberately arbitrary precision: an individual persisted color
 bucket is bounded by `Uint256`, but `collapseColors` may sum multiple buckets
 past 256 bits. `BigUint.magnitude` is the minimal unsigned big-endian magnitude
 (empty for zero, never prefixed with a zero octet). `SignedBigInt` adds a sign;
-its zero has no magnitude and can never be negative. Public HTTP JSON continues
-to expose canonical decimal strings so JavaScript and other IEEE-754 consumers
-do not lose precision.
+its zero has no magnitude and can never be negative. Public HTTP JSON uses
+exact decimal number tokens by default, matching v2. Clients can opt in to
+canonical decimal strings with `Formance-Bigint-As-String: true` (also accepting
+case-insensitive `yes`, `y` and `1`, without whitespace trimming). This applies
+to posting amounts, cumulative volumes and signed balances, including nested
+responses. JavaScript and other IEEE-754 consumers should enable the header to
+retain exact large values. Legacy JSON codecs outside HTTP continue to render
+volumes and balances as strings; protobuf representations remain unchanged.
 
 ## Mirror-Related Proto Types
 

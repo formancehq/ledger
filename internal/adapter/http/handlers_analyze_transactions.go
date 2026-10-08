@@ -2,9 +2,11 @@ package http
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -49,12 +51,12 @@ type hourBucketJSON struct {
 }
 
 type assetVolumeStatsJSON struct {
-	Asset            string `json:"asset"`
-	TotalVolume      string `json:"totalVolume"`
-	AverageVolume    string `json:"averageVolume"`
-	MinVolume        string `json:"minVolume"`
-	MaxVolume        string `json:"maxVolume"`
-	TransactionCount uint64 `json:"transactionCount"`
+	Asset            string            `json:"asset"`
+	TotalVolume      *commonpb.BigUint `json:"totalVolume"`
+	AverageVolume    *commonpb.BigUint `json:"averageVolume"`
+	MinVolume        *commonpb.BigUint `json:"minVolume"`
+	MaxVolume        *commonpb.BigUint `json:"maxVolume"`
+	TransactionCount uint64            `json:"transactionCount"`
 }
 
 func postingStructureToString(s servicepb.PostingStructure) string {
@@ -72,7 +74,7 @@ func postingStructureToString(s servicepb.PostingStructure) string {
 	}
 }
 
-func toAnalyzeTransactionsJSON(resp *servicepb.AnalyzeTransactionsResponse) *analyzeTransactionsResponseJSON {
+func toAnalyzeTransactionsJSON(resp *servicepb.AnalyzeTransactionsResponse) (*analyzeTransactionsResponseJSON, error) {
 	result := &analyzeTransactionsResponseJSON{
 		TotalTransactions: resp.GetTotalTransactions(),
 		TotalReverted:     resp.GetTotalReverted(),
@@ -80,13 +82,17 @@ func toAnalyzeTransactionsJSON(resp *servicepb.AnalyzeTransactionsResponse) *ana
 	}
 
 	for _, fp := range resp.GetFlowPatterns() {
-		result.FlowPatterns = append(result.FlowPatterns, toFlowPatternJSON(fp))
+		pattern, err := toFlowPatternJSON(fp)
+		if err != nil {
+			return nil, err
+		}
+		result.FlowPatterns = append(result.FlowPatterns, pattern)
 	}
 
-	return result
+	return result, nil
 }
 
-func toFlowPatternJSON(fp *servicepb.FlowPattern) *flowPatternJSON {
+func toFlowPatternJSON(fp *servicepb.FlowPattern) (*flowPatternJSON, error) {
 	result := &flowPatternJSON{
 		Signature:        fp.GetSignature(),
 		Structure:        postingStructureToString(fp.GetStructure()),
@@ -126,17 +132,26 @@ func toFlowPatternJSON(fp *servicepb.FlowPattern) *flowPatternJSON {
 
 	result.VolumeStats = make([]*assetVolumeStatsJSON, 0, len(fp.GetVolumeStats()))
 	for _, vs := range fp.GetVolumeStats() {
-		result.VolumeStats = append(result.VolumeStats, &assetVolumeStatsJSON{
-			Asset:            vs.GetAsset(),
-			TotalVolume:      vs.GetTotalVolume(),
-			AverageVolume:    vs.GetAverageVolume(),
-			MinVolume:        vs.GetMinVolume(),
-			MaxVolume:        vs.GetMaxVolume(),
-			TransactionCount: vs.GetTransactionCount(),
-		})
+		statistics := &assetVolumeStatsJSON{Asset: vs.GetAsset(), TransactionCount: vs.GetTransactionCount()}
+		for _, amount := range []struct {
+			decimal string
+			target  **commonpb.BigUint
+		}{
+			{vs.GetTotalVolume(), &statistics.TotalVolume},
+			{vs.GetAverageVolume(), &statistics.AverageVolume},
+			{vs.GetMinVolume(), &statistics.MinVolume},
+			{vs.GetMaxVolume(), &statistics.MaxVolume},
+		} {
+			value := &commonpb.BigUint{}
+			if err := value.UnmarshalJSON(strconv.AppendQuote(nil, amount.decimal)); err != nil {
+				return nil, fmt.Errorf("invalid analysis volume statistic: %w", err)
+			}
+			*amount.target = value
+		}
+		result.VolumeStats = append(result.VolumeStats, statistics)
 	}
 
-	return result
+	return result, nil
 }
 
 // handleAnalyzeTransactions handles GET /{ledgerName}/analyze-transactions.
@@ -166,5 +181,11 @@ func (s *Server) handleAnalyzeTransactions(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	writeOK(w, toAnalyzeTransactionsJSON(resp))
+	body, err := toAnalyzeTransactionsJSON(resp)
+	if err != nil {
+		handleError(w, r, err)
+
+		return
+	}
+	writeMonetaryOK(w, r, body)
 }

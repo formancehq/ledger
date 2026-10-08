@@ -1,12 +1,44 @@
-// Package json provides a compatibility layer for JSON encoding/decoding using sonic.
-// It provides the same API surface as encoding/json/v2 but uses sonic for performance.
+// Package json uses Sonic for ordinary JSON encoding and decoding, with a
+// scoped encoding/json/v2 path for option-aware HTTP monetary responses.
 package json
 
 import (
+	stdjson "encoding/json"
+	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
 	"io"
 
 	"github.com/bytedance/sonic"
 )
+
+// MarshalEncode is the option-aware path for nested public projections. Unlike
+// an opaque MarshalJSON call, it retains the request's type-specific marshalers.
+// Existing custom projections retain unsorted nested maps. Escaping follows
+// the outer writer: ConfigStd streaming escapes HTML/JS, buffered defaults do not.
+func MarshalEncode(enc *jsontext.Encoder, value any) error {
+	return jsonv2.MarshalEncode(enc, value, jsonv2.Deterministic(false))
+}
+
+// MarshalWithOptions uses the scoped v2 path with Sonic ConfigDefault's public
+// compatibility settings. Ordinary Marshal calls continue to use Sonic.
+func MarshalWithOptions(value any, opts ...jsonv2.Options) ([]byte, error) {
+	options := append([]jsonv2.Options{stdjson.DefaultOptionsV1(), jsonv2.Deterministic(false),
+		jsontext.EscapeForHTML(false), jsontext.EscapeForJS(false)}, opts...)
+
+	return jsonv2.Marshal(value, options...)
+}
+
+// MarshalWriteWithOptions retains the streaming writer's legacy options and
+// trailing newline. Nested public projections select their existing options.
+func MarshalWriteWithOptions(w io.Writer, value any, opts ...jsonv2.Options) error {
+	options := append([]jsonv2.Options{stdjson.DefaultOptionsV1()}, opts...)
+	if err := jsonv2.MarshalWrite(w, value, options...); err != nil {
+		return err
+	}
+	_, err := io.WriteString(w, "\n")
+
+	return err
+}
 
 // Marshal returns the JSON encoding of v using sonic.
 func Marshal(v any) ([]byte, error) {

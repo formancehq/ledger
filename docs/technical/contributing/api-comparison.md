@@ -165,6 +165,31 @@ for client setup, restore behavior, failure limitations, and revision changes.
 
 ## Ledger-log JSON contract
 
+### Monetary encoding parity (EN-2779)
+
+V2 and v3 HTTP responses emit decimal JSON number tokens for posting amounts,
+volume input/output and balances by default. `Formance-Bigint-As-String` opts
+into canonical decimal strings for all of these values. Both recognize
+case-insensitive `true`, `yes`, `y` and `1`, without trimming whitespace.
+The v2 reference is `internal/api/v2/views.go` (`needBigIntAsString`, transaction,
+account, log and aggregate renderers), verified on v2/main at
+`d47ba1746cec2173d84eab8ec575be196eae0837`; native values there use `math/big.Int`.
+
+V3 applies this contract to transaction create/get/list/revert, account get/list,
+aggregate volumes, transaction-analysis statistics, bulk (including partial
+failures), ledger/system logs, and prepared-query cursors/aggregates. V3 posting inputs accept both integer tokens
+and canonical unsigned decimal strings regardless of the response header, with
+the existing uint256 bound. Volume input/output and balances retain their
+arbitrary-precision bounds and signedness. IDs, metadata and nonmonetary
+integer projections retain their existing contract.
+
+The OpenAPI schemas expose number/string unions and the reusable header on
+every affected operation. Generated SDK operation tests in `tests/sdk/` retain
+exact opt-in strings rather than coercing them into JavaScript numbers.
+CLI/events and protobuf wire/storage/audit encodings retain their previous
+representations. This intentionally replaces v3's previous always-string HTTP
+volume output while preserving its field shapes and color dimension.
+
 EN-1790 aligns the nested ledger-log JSON with v2 where the existing v3 data
 model permits a simple projection. Both use `type` to identify a payload held
 directly in `data`, and metadata logs use `targetType` with `targetId` (string

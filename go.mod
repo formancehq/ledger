@@ -1,6 +1,6 @@
 module github.com/formancehq/ledger/v3
 
-go 1.26.0
+go 1.27.0
 
 require (
 	github.com/AlecAivazis/survey/v2 v2.3.7
@@ -29,6 +29,7 @@ require (
 	github.com/formancehq/invariants v0.11.0
 	github.com/formancehq/numscript v0.1.1 // #199 compiler+VM, #211 Exec releases the store on return
 	github.com/fsnotify/fsnotify v1.5.4
+	github.com/getkin/kin-openapi v0.144.0
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -74,6 +75,7 @@ require (
 	go.opentelemetry.io/otel/sdk/log v0.15.0
 	go.opentelemetry.io/otel/sdk/metric v1.45.0
 	go.opentelemetry.io/otel/trace v1.45.0
+	go.opentelemetry.io/proto/otlp v1.11.0
 	go.uber.org/fx v1.24.0
 	go.uber.org/goleak v1.3.0
 	go.uber.org/mock v0.6.0
@@ -86,11 +88,6 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260803160001-6ac0973c030d
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.11
-)
-
-require (
-	github.com/getkin/kin-openapi v0.144.0
-	go.opentelemetry.io/proto/otlp v1.11.0
 )
 
 require (

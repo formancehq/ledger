@@ -147,6 +147,62 @@ it returns `413 BODY_TOO_LARGE`, including when only the suffix is oversized.
 
 ### Response Format
 
+#### Monetary amounts and the string opt-in
+
+EN-2779 aligns the HTTP monetary encoding with Ledger v2. Posting amounts,
+volume input/output and signed balances are decimal JSON number tokens by
+default. JSON has no separate bigint scalar type. Clients needing exact values
+above JavaScript's safe-integer range should send:
+
+```http
+Formance-Bigint-As-String: true
+```
+
+Case-insensitive `true`, `yes`, `y` and `1` enable canonical decimal strings;
+omission and every other value retain numbers. Whitespace is not trimmed, as
+in v2. The choice belongs to one response and never changes shared messages or
+process-global state. It applies to transaction create/get/list/revert, account
+get/list, aggregate volumes (including groups), transaction-analysis volume
+statistics (total, integer average, minimum and maximum), bulk results (including successful
+entries beside failures), ledger-log lists, system-log get, and prepared-query
+account/transaction/log cursors and aggregate results. Nested post-commit volumes
+follow the same choice. IDs, typed metadata, timestamps and unrelated integer
+projections are not stringified by this header.
+
+Posting request amounts accept integer tokens and canonical unsigned decimal
+strings independently of the response header. Both forms are bounded by
+`0..2^256-1`; negatives, fractions, exponents, hexadecimal, overflow and
+noncanonical quoted forms (including leading zeros) are rejected. Volume
+input/output use arbitrary-precision non-negative integers; balances may be
+negative. The opt-in does not narrow these existing volume bounds.
+
+The implementation uses a scoped `encoding/json/v2` path with type-specific
+marshalers for Posting, BigUint and SignedBigInt. Option-aware nested codecs
+share the existing public projections with legacy MarshalJSON callers.
+Ordinary response encoding and input decoding retain Sonic. CLI/event JSON,
+protobuf wire/storage formats, signatures and audit/idempotency semantics are
+unchanged. Checked responses still buffer before success headers; streaming
+responses retain their trailing newline and existing failure boundary.
+
+The generated TypeScript SDK exposes the header as `formanceBigintAsString`
+on every affected operation and monetary fields as number-or-string unions:
+
+```typescript
+const response = await sdk.transactions.createTransaction({
+  ledgerName: "ledger1",
+  formanceBigintAsString: "true",
+  body: {
+    postings: [{ source: "world", destination: "bank", asset: "USD",
+      amount: "123456789012345678901234567890" }],
+  },
+});
+// Keep the returned string, or convert it directly with BigInt(amount).
+// Do not pass it through Number(). Set the header on each affected operation.
+```
+
+Run `just test-sdk-bigint` for regenerated SDK integration against the real HTTP
+router; see `tests/sdk/README.md`. Generation requires Speakeasy authentication.
+
 #### Success
 
 ```json
@@ -1048,14 +1104,18 @@ func (r *RoutedController) Apply(ctx context.Context, requests ...*servicepb.Req
 
 ## Response serialization
 
-Two encoders serve HTTP response bodies, and the choice is **not** a matter of taste:
+The response writer selects the encoder from its payload contract:
 
 | Writer | Encoder | Use for |
 |---|---|---|
 | `writeOK` / `writeOKChecked` | sonic (`internal/adapter/json`) | Anything whose type has a custom `MarshalJSON`, and all hand-written DTOs |
+| `writeMonetaryOK` / `writeMonetaryCreated` / `writeMonetaryOKChecked` | scoped `encoding/json/v2` | Posting, volume and balance responses requiring request-scoped negotiation |
 | `writeProtoOK` / `writeProtoListOK` | `protojson` | Proto messages with **no** custom `MarshalJSON` |
 
-**The rule: when a type has a hand-written `MarshalJSON`, that method is the public contract.** Route it through `writeOKChecked`. `protojson` works off protobuf reflection and ignores `json.Marshaler`, so sending such a type through it silently discards the intended shape.
+**The rule: custom JSON projections define the public shape.** Use the monetary
+writers for negotiated monetary responses, and `writeOKChecked` for other
+fallible custom projections. `protojson` ignores both `MarshalJSON` and
+`MarshalJSONTo`, so it must not bypass a type's custom representation.
 
 The camelCase convention cannot arbitrate between the two — both encoders satisfy it. The deciding fact is whether a marshaller exists. `internal/adapter/http/encoder_contract_test.go` enforces this in both directions.
 

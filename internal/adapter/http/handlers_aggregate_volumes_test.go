@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	stdjson "encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -15,11 +16,28 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
+	"github.com/formancehq/ledger/v3/internal/adapter/json"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
+
+// Decode the public wire values rather than reusing the server's typed DTO.
+type aggregateVolumeWireJSON struct {
+	Asset   string             `json:"asset"`
+	Color   string             `json:"color"`
+	Input   stdjson.RawMessage `json:"input"`
+	Output  stdjson.RawMessage `json:"output"`
+	Balance stdjson.RawMessage `json:"balance"`
+}
+type aggregateVolumesWireJSON struct {
+	Volumes []aggregateVolumeWireJSON `json:"volumes"`
+	Groups  []struct {
+		Prefix  string                    `json:"prefix"`
+		Volumes []aggregateVolumeWireJSON `json:"volumes"`
+	} `json:"groups"`
+}
 
 func TestHandleAggregateVolumes_Success(t *testing.T) {
 	t.Parallel()
@@ -53,13 +71,13 @@ func TestHandleAggregateVolumes_Success(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code)
 
-	wrapper := decodeResponse[BaseResponse[aggregateVolumesResponseJSON]](t, w)
+	wrapper := decodeResponse[BaseResponse[aggregateVolumesWireJSON]](t, w)
 	resp := wrapper.Data
 	require.Len(t, resp.Volumes, 1)
 	require.Equal(t, "USD/2", resp.Volumes[0].Asset)
-	require.Equal(t, "1000", resp.Volumes[0].Input)
-	require.Equal(t, "400", resp.Volumes[0].Output)
-	require.Equal(t, "600", resp.Volumes[0].Balance)
+	require.Equal(t, "1000", string(resp.Volumes[0].Input))
+	require.Equal(t, "400", string(resp.Volumes[0].Output))
+	require.Equal(t, "600", string(resp.Volumes[0].Balance))
 	require.Empty(t, resp.Groups)
 }
 
@@ -128,15 +146,15 @@ func TestHandleAggregateVolumes_WithGroups(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code)
 
-	wrapper := decodeResponse[BaseResponse[aggregateVolumesResponseJSON]](t, w)
+	wrapper := decodeResponse[BaseResponse[aggregateVolumesWireJSON]](t, w)
 	resp := wrapper.Data
 	require.Len(t, resp.Groups, 1)
 	require.Equal(t, "users:", resp.Groups[0].Prefix)
 	require.Len(t, resp.Groups[0].Volumes, 1)
 	require.Equal(t, "EUR/2", resp.Groups[0].Volumes[0].Asset)
-	require.Equal(t, "500", resp.Groups[0].Volumes[0].Input)
-	require.Equal(t, "200", resp.Groups[0].Volumes[0].Output)
-	require.Equal(t, "300", resp.Groups[0].Volumes[0].Balance)
+	require.Equal(t, "500", string(resp.Groups[0].Volumes[0].Input))
+	require.Equal(t, "200", string(resp.Groups[0].Volumes[0].Output))
+	require.Equal(t, "300", string(resp.Groups[0].Volumes[0].Balance))
 }
 
 func TestHandleAggregateVolumes_MissingLedgerName(t *testing.T) {
@@ -386,5 +404,42 @@ func TestHandleAggregateVolumes_FilterInvalidForTarget(t *testing.T) {
 		srv.handleAggregateVolumes(w, r)
 
 		require.Equal(t, http.StatusBadRequest, w.Code, "raw: %s", raw)
+	}
+}
+
+func TestAggregateVolumesMonetaryOptions(t *testing.T) {
+	t.Parallel()
+	value := &commonpb.AggregatedVolume{Asset: "USD", Color: "red", Input: commonpb.NewUint256FromUint64(9007199254740993), Output: commonpb.NewUint256FromUint64(9007199254740994)}
+	result := &commonpb.AggregateResult{Volumes: []*commonpb.AggregatedVolume{value}, Groups: []*commonpb.GroupedAggregateResult{{Prefix: "users:", Volumes: []*commonpb.AggregatedVolume{value}}}}
+	dto := toAggregateVolumesJSON(result)
+	numeric, err := json.MarshalWithOptions(dto, commonpb.MonetaryAmountsAsNumbers())
+	require.NoError(t, err)
+	require.Equal(t, `{"volumes":[{"asset":"USD","color":"red","input":9007199254740993,"output":9007199254740994,"balance":-1}],"groups":[{"prefix":"users:","volumes":[{"asset":"USD","color":"red","input":9007199254740993,"output":9007199254740994,"balance":-1}]}]}`, string(numeric))
+	quoted, err := json.MarshalWithOptions(dto, commonpb.MonetaryAmountsAsStrings())
+	require.NoError(t, err)
+	require.Equal(t, `{"volumes":[{"asset":"USD","color":"red","input":"9007199254740993","output":"9007199254740994","balance":"-1"}],"groups":[{"prefix":"users:","volumes":[{"asset":"USD","color":"red","input":"9007199254740993","output":"9007199254740994","balance":"-1"}]}]}`, string(quoted))
+}
+
+func TestHandleAggregateVolumesMonetaryHeader(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, header, amounts string }{
+		{name: "default", amounts: `"input":9007199254740993,"output":9007199254740994,"balance":-1`},
+		{name: "strings", header: "true", amounts: `"input":"9007199254740993","output":"9007199254740994","balance":"-1"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			backend := NewMockBackend(gomock.NewController(t))
+			volume := &commonpb.AggregatedVolume{Asset: "USD", Input: commonpb.NewUint256FromUint64(9007199254740993), Output: commonpb.NewUint256FromUint64(9007199254740994)}
+			backend.EXPECT().AggregateVolumes(gomock.Any(), "ledger", gomock.Any(), gomock.Any()).Return(&commonpb.AggregateResult{Groups: []*commonpb.GroupedAggregateResult{{Prefix: "world", Volumes: []*commonpb.AggregatedVolume{volume}}}}, nil)
+			srv := newTestServer(t, backend)
+			request := newRequest(t, http.MethodGet, "/ledger/volumes", nil, map[string]string{"ledgerName": "ledger"})
+			if tc.header != "" {
+				request.Header.Set("Formance-Bigint-As-String", tc.header)
+			}
+			response := httptest.NewRecorder()
+			srv.handleAggregateVolumes(response, request)
+			require.Equal(t, http.StatusOK, response.Code)
+			require.Equal(t, `{"data":{"volumes":[],"groups":[{"prefix":"world","volumes":[{"asset":"USD","color":"",`+tc.amounts+`}]}]}}`+"\n", response.Body.String())
+		})
 	}
 }
