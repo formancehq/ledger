@@ -223,109 +223,54 @@ failure branch.
 
 ## Numscript VM execution state
 
-A scripted order executes the compiled artifact admission bound to its
-`OrderTechnical` (see
-[numscript-library.md](../architecture/subsystems/scripting/numscript-library.md)).
-The FSM keeps two pieces of node-local state across proposals in the
-`RequestProcessor`'s `NumscriptCache`: parsed scripts, and one decoded,
-verified VM instance per script hash, reused by every later apply of the same
-program bytes. Admission owns a separate cache instance; it never shares the
-FSM's warm VMs, nor the reverse — admission's instance exposes, from its
-existing parsed-script side, whether it had compiled a script before this
-proposal (`CompiledScript.AlreadyCompiled`, backed by
-`lruEntry.compileParsed`, service protocol revision 24), consulted only by
-admission to send the bytecode by value or by reference; the FSM learns of
-that decision only through the committed shape.
+A scripted order carries inline text or a versioned library reference, plus
+business variables. Admission compiles to validate and predict effects, but
+that program is local and is not committed. Each FSM replica resolves the text
+under declared coverage, compiles it with its bundled Numscript library, binds
+the order's variables, and executes the VM. Audit replay takes the same text
+path. See [numscript-library.md](../architecture/subsystems/scripting/numscript-library.md).
 
-**Inputs.** The committed inputs of one scripted execution are the resolved
-script text, the artifact's program bytes or program hash, vars bytes and
-script hash, the order's `force` flag, and the balances and metadata read
-through the gated `Scope`. Everything else is incidental: the cache size
-(node-local `NumscriptCacheSize`), LRU residency and eviction, whether the
-entry is cold or warm, which compiled bytes for the same script hash were
-cached first, the verification record produced by an earlier order's vars,
-and the registers and run state an earlier run left in the instance.
+The `RequestProcessor` owns a parsed-script cache and a decoded, verified warm
+VM cache. Admission owns a separate `NumscriptCache`; it shares neither
+programs nor VM instances with apply. Cache size is node-local. Cold compile,
+decode and verification, warm hits, LRU eviction, and a previous order's
+variable values may change cost but not the transition. A warm VM must never
+execute concurrently or retain a completed run's store, Scope, or proposal
+plan. A run that fails or panics must leave the VM reusable for the next
+order. A cache hit must match the locally compiled program bytes and verify
+that the current variables fit its layout.
 
-**Ownership.** This domain owns the equivalence of the transition across those
-incidental states and the lifetime of what a cached instance retains: after
-every exit — success, error, or recovered panic — the instance must not keep
-the run's store, and through it the apply `Scope` and the proposal's coverage
-plan, reachable. The Numscript library releases its store when `Exec` returns;
-the ledger pins that contract with a regression test. Numscript arithmetic and
-semantic equivalence with direct postings belong to `accounting-invariants`;
-replaying audited orders, which never carry an artifact, belongs to
-`persistence-restore-replay` and the checker.
+**Committed inputs.** The resolved script text, business variables, `force`,
+and balances and metadata available through the proposal's gated `Scope` fix
+the outcome for one binary. A library reference must resolve only through its
+declared preload coverage; it may not trigger a Pebble read during apply. The
+XXH3-128 script hash is a cache key, not a collision-resistant commitment. Its
+security premise is cluster-wide write scope (see
+`authentication-authorization-boundaries`).
 
-**Artifact presence.** An absent artifact — program, program hash, vars, and
-script hash all absent — is recompiled from the script text, with an
-Antithesis `assert.Unreachable` outside audit replay that never feeds the
-outcome. A program by reference — `compiled_program_hash` in place of the
-bytes, next to a present vars and script hash — is not an admission bug but
-admission deliberately sending the bytecode once per script per instance
-(`CompiledScript.AlreadyCompiled`, backed by `lruEntry.compileParsed` on
-admission's own cache instance: a signal about what that instance has sent,
-never about what any replica's apply-side cache holds — admission and the
-FSM apply path each construct their own `NumscriptCache` and share no state;
-service protocol revision 24). The FSM runs a committed artifact when its own
-library can use it, and otherwise derives program and vars from the script
-text with that library (`numscript.SafeExecCommitted`): by value, when the
-library reads the bytecode version; by reference, when bytes with the
-committed program hash are at hand — its own cache entry when that entry's
-bytes have the hash, otherwise its own compile of the text when that
-reproduces the hash, then cached. The committed vars run only against bytes
-with the committed hash: the hash is what makes the program/vars pairing a
-checked property. An unreadable version or an irreproducible hash means
-another library version produced the artifact (a replica mid rolling upgrade)
-and is never a failure: the replica derives program and vars from the text,
-the path audit replay (`persistence-restore-replay`) takes for every order,
-and cross-version agreement rests on the library keeping script semantics
-stable. Any other combination of the four fields, a half whose header does
-not parse (truncated or with a bad magic, whatever bytecode version the other
-half carries — both headers are inspected before the version decides
-anything, and in the producer next to the shape classification, ahead of the
-stale-inputs re-resolution), and a program the library reads but which fails decoding,
-verification, or the script-hash binding, fail the order with
-`ErrNumscriptRuntime` identically on every replica running the binary — a
-wrong shape before any cache access. Repairing such a corrupt program from
-the text is a finding: it would let corrupt committed bytes and a correct
-replica's failure diverge. So is running committed vars against bytes whose
-hash was not checked against the committed one, and so is failing an order
-because the artifact came from another library version.
+**Cross-version boundary.** Text-only orders remove dependence on a committed
+bytecode version. They do not guarantee that two Numscript versions give the
+same business result. Include Raft entries accepted before an upgrade but
+applied afterward, WAL replay after a restart, and checker replay when
+assessing a semantic change. A node-local flag or binary default must not
+select a different apply interpretation for the same committed entry. The
+current unreleased-v3 deployment contract resets state across such changes;
+maintaining history would need a separate replicated semantic boundary.
 
-The script hash is XXH3-128 and is not collision-resistant against chosen
-inputs. A crafted collision is not a finding here while write scopes are
-cluster-wide (see `authentication-authorization-boundaries`); an accidental
-collision, or a path where two different texts sharing a hash yield different
-results for honest orders, still is.
+**Equivalence scenarios.** Compare the complete result — postings, metadata,
+error reason, audit bytes, and writes — for the same committed order across:
 
-**Equivalence scenarios.** For the same committed artifact, compare the
-complete result — postings, metadata, error reason, audit bytes — across:
+1. a cold cache and a warm hit;
+2. size-one caches with interleaved scripts forcing eviction;
+3. one script with different per-order variable values;
+4. a VM left dirty by missing funds or a recovered store panic;
+5. inline and library-reference orders resolved from declared coverage;
+6. apply and audit replay under the same library.
 
-1. a cold entry (decode and verify) and a warm hit;
-2. a cache of size 1 with interleaved scripts forcing eviction between runs;
-3. an entry holding other compiled bytes for the same script hash, which must
-   be replaced so the node runs the committed bytes;
-4. an instance left dirty by a missing-funds failure and by a recovered store
-   panic;
-5. orders of one script with different vars, sharing one verification record;
-6. a missing artifact recompiled in audit replay against the same order applied
-   with its artifact in the cluster;
-7. a program by reference: a replica whose cache holds bytes with the
-   committed hash (serves them directly) against one that misses and
-   recompiles from the text, and against one whose entry holds other bytes
-   for the same script hash (replaced by the recompile);
-8. an artifact this library cannot use — a bytecode version it cannot read,
-   or a reference its compiler does not reproduce — derived from the text
-   with the business script vars, against the same order applied with a
-   usable artifact: equal under one library version, and never a failure.
-
-The focused entry points are `TestSafeExecCompiled_*`,
-`TestSafeExecCommitted_*` and `TestProduce_*` (artifact presence and shape,
-warm reuse, panic recovery, same-script-different-bytes, source release,
-by-reference cache hit and recompile, foreign version and irreproducible
-reference derived from the text). A finding needs a concrete pair of
-incidental histories that yields a different component of `T`; a slower cold
-path or a cache miss is not one.
+The focused entry points are `TestSafeExecFromText_ColdWarmSameOutcome`,
+`TestProduce_TextScript*`, and the warm-instance `TestSafeExecCompiled_*` tests.
+A finding needs a concrete pair of incidental histories with a different
+component of the transition; a slower cold path alone is not a finding.
 
 ## Reachability, evidence, and rejection
 

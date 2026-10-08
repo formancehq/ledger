@@ -49,10 +49,9 @@ not a missing test, a missing interceptor or generic security guidance. If the
 policy is absent or authoritative sources conflict, retain an **audit question**.
 A valid scope name does not imply an ACL for each ledger, a tenant model, a
 mandatory JWT subject, a revocation service or a refresh-token contract.
-Other domains rely on that absence: the Numscript script and program hashes
-(XXH3-128 — `compiled_script_hash`, keying the FSM script caches, and
-`compiled_program_hash`, naming bytecode sent by reference) are not
-collision-resistant because any writer may already write every ledger. A
+Other domains rely on that absence: the XXH3-128 Numscript script hash
+keying the FSM caches is not collision-resistant because any writer may
+already write every ledger. A
 change introducing per-ledger or per-tenant write isolation must revisit that
 premise.
 

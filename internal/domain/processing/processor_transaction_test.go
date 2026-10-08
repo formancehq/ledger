@@ -695,7 +695,7 @@ func TestProcessCreateTransaction_Numscript_ParseError(t *testing.T) {
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 
-	order := requestToOrderWithoutArtifact(numscriptSendRequest(`
+	order := requestToOrderUnchecked(numscriptSendRequest(`
 		send [USD/2 invalid] (
 			source = @world
 			destination = @users:alice

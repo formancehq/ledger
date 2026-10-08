@@ -34,9 +34,8 @@ import (
 
 // applyingProposer replaces only Raft transport: the bytes admission's
 // Builder.Run produced are applied by the real FSM, so the scripted orders
-// under test carry the execution plan, coverage bits and compiled artifact
-// production admission binds, and the logs and audit entries exported below are
-// the ones live apply emits.
+// under test carry the execution plan and coverage bits production admission
+// binds. The logs and audit entries exported below are the ones live apply emits.
 type applyingProposer struct {
 	t       *testing.T
 	machine *state.Machine

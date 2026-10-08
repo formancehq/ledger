@@ -292,77 +292,8 @@ type OrderTechnical struct {
 	// checks, so a target that is unknown or already reverted keeps returning
 	// those reasons. Empty for every non-revert order.
 	RevertTargetDigest []byte `protobuf:"bytes,4,opt,name=revert_target_digest,json=revertTargetDigest,proto3" json:"revert_target_digest,omitempty"`
-	// compiled_program is the Numscript VM bytecode admission compiled from this
-	// order's script on the leader's parallel path (numscript Compile + Encode).
-	// The VM is the only execution engine: the FSM decodes, verifies and
-	// executes this artifact on every node, so compilation happens once per
-	// proposal and the outcome is a function of the committed entry alone
-	// (invariant #2) — provided every replica runs a binary that knows these
-	// fields. A binary predating them silently drops the artifact and interprets
-	// with its own bundled library, so this change is a stop-all-nodes
-	// deployment boundary (service protocol revision 23; see
-	// docs/ops/deployment.md, "Upgrading across the Numscript VM execution
-	// change"). Every scripted order admission proposes carries compiled_vars,
-	// compiled_script_hash and exactly one of compiled_program and
-	// compiled_program_hash: a script the VM cannot run is rejected at
-	// admission. The bytes themselves travel by value once per script per
-	// admission instance — on the first order whose script that instance's own
-	// compile cache had not compiled before (CompiledScript.AlreadyCompiled) —
-	// and by reference, as compiled_program_hash, on every later order of the
-	// script (service protocol revision 24; see docs/ops/deployment.md,
-	// "Omitting already-cached Numscript bytecode"). The FSM runs the committed
-	// artifact when its bundled library can use it: by value, the committed
-	// bytes with the committed vars; by reference, bytes with the referenced
-	// hash from its own apply-side cache or from its own compile of the script
-	// text when that reproduces the hash — so program and vars stay the matched
-	// pair of one compilation. A replica whose library cannot read the
-	// artifact's bytecode version, or whose compiler does not reproduce the
-	// referenced bytes (another library version, as during a rolling upgrade),
-	// derives program and vars from the script text with its own library
-	// instead, exactly as the store checker's audit replay derives every order
-	// (whose orders carry none of these fields); outcomes then agree because
-	// the library keeps a script's semantics stable across versions (see
-	// docs/ops/deployment.md). Outside audit replay, an order reaching the FSM
-	// with no artifact at all is an admission bug, flagged with
-	// assert.Unreachable; any other partial shape fails the order loudly.
-	CompiledProgram []byte `protobuf:"bytes,5,opt,name=compiled_program,json=compiledProgram,proto3" json:"compiled_program,omitempty"`
-	// compiled_vars is the order's runtime vars encoded against the variable
-	// layout of the program compiled_program carries or compiled_program_hash
-	// names (numscript VarsEncoder + Vars.Encode). Present next to either one,
-	// and run as committed whenever this binary can use that program — by
-	// value, or by reference once it holds or reproduces bytes with the
-	// committed hash — so a corrupt value then fails the order identically on
-	// every replica, whatever its cache holds. When the referenced bytes are
-	// from a library version this binary cannot reproduce or cannot read,
-	// compiled_vars is not used for that order: the FSM derives both program
-	// and vars afresh from the script text instead (see compiled_program),
-	// exactly as audit replay does for every order.
-	CompiledVars []byte `protobuf:"bytes,6,opt,name=compiled_vars,json=compiledVars,proto3" json:"compiled_vars,omitempty"`
-	// compiled_script_hash is the XXH3-128 (16 bytes) of the exact script text
-	// the program was compiled from. It is not collision-resistant against
-	// chosen inputs: every writer of a cluster may write every ledger, so a
-	// crafted collision gains nothing a direct write could not. The FSM refuses
-	// to run the artifact against a different resolved text — inline scripts
-	// travel in the order, exact library versions are immutable, and an advanced
-	// "latest" is stale-rejected before execution, so a mismatch is a "should
-	// not happen" surfaced loudly (invariant #7) rather than silently executing
-	// the wrong program.
-	CompiledScriptHash []byte `protobuf:"bytes,7,opt,name=compiled_script_hash,json=compiledScriptHash,proto3" json:"compiled_script_hash,omitempty"`
-	// compiled_program_hash is the XXH3-128 (16 bytes) of the exact
-	// compiled_program bytes admission compiled, carried in place of those bytes
-	// once this admission instance has already sent them for the script (see
-	// compiled_program). The FSM runs compiled_vars only against bytes with
-	// this very hash: its own cache entry for compiled_script_hash when that
-	// entry's bytes have it, otherwise its own compile of the script text when
-	// that reproduces it. When it does not — another library version compiled
-	// the committed bytes, as on a replica mid rolling upgrade — the FSM never
-	// runs compiled_vars against a program they were not encoded for; it
-	// derives both program and vars from the script text instead. Same
-	// collision caveat as compiled_script_hash. Empty whenever compiled_program
-	// is present.
-	CompiledProgramHash []byte `protobuf:"bytes,8,opt,name=compiled_program_hash,json=compiledProgramHash,proto3" json:"compiled_program_hash,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *OrderTechnical) Reset() {
@@ -419,34 +350,6 @@ func (x *OrderTechnical) GetPreloadUnavailable() bool {
 func (x *OrderTechnical) GetRevertTargetDigest() []byte {
 	if x != nil {
 		return x.RevertTargetDigest
-	}
-	return nil
-}
-
-func (x *OrderTechnical) GetCompiledProgram() []byte {
-	if x != nil {
-		return x.CompiledProgram
-	}
-	return nil
-}
-
-func (x *OrderTechnical) GetCompiledVars() []byte {
-	if x != nil {
-		return x.CompiledVars
-	}
-	return nil
-}
-
-func (x *OrderTechnical) GetCompiledScriptHash() []byte {
-	if x != nil {
-		return x.CompiledScriptHash
-	}
-	return nil
-}
-
-func (x *OrderTechnical) GetCompiledProgramHash() []byte {
-	if x != nil {
-		return x.CompiledProgramHash
 	}
 	return nil
 }
@@ -5485,16 +5388,12 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\rledger_scoped\x18\x01 \x01(\v2\x17.raft.LedgerScopedOrderH\x00R\fledgerScoped\x12>\n" +
 	"\rsystem_scoped\x18\x02 \x01(\v2\x17.raft.SystemScopedOrderH\x00R\fsystemScoped\x122\n" +
 	"\ttechnical\x18\x03 \x01(\v2\x14.raft.OrderTechnicalR\ttechnicalB\x06\n" +
-	"\x04type\"\x84\x03\n" +
+	"\x04type\"\xce\x01\n" +
 	"\x0eOrderTechnical\x12#\n" +
 	"\rcoverage_bits\x18\x01 \x01(\fR\fcoverageBits\x124\n" +
 	"\x16inputs_resolution_hash\x18\x02 \x01(\fR\x14inputsResolutionHash\x12/\n" +
 	"\x13preload_unavailable\x18\x03 \x01(\bR\x12preloadUnavailable\x120\n" +
-	"\x14revert_target_digest\x18\x04 \x01(\fR\x12revertTargetDigest\x12)\n" +
-	"\x10compiled_program\x18\x05 \x01(\fR\x0fcompiledProgram\x12#\n" +
-	"\rcompiled_vars\x18\x06 \x01(\fR\fcompiledVars\x120\n" +
-	"\x14compiled_script_hash\x18\a \x01(\fR\x12compiledScriptHash\x122\n" +
-	"\x15compiled_program_hash\x18\b \x01(\fR\x13compiledProgramHash\"\xda\x06\n" +
+	"\x14revert_target_digest\x18\x04 \x01(\fR\x12revertTargetDigest\"\xda\x06\n" +
 	"\x11LedgerScopedOrder\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12.\n" +
 	"\x05apply\x18\x02 \x01(\v2\x16.raft.LedgerApplyOrderH\x00R\x05apply\x12>\n" +

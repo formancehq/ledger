@@ -7,10 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	numscriptlib "github.com/formancehq/numscript"
 
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
-	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -74,22 +72,6 @@ func TestVerifyAuditHashChain_KeyedNumscriptTxBindsAcceptedOrder(t *testing.T) {
 		},
 	}
 
-	// Admission binds the compiled VM artifact to every scripted order it
-	// proposes; technical fields are outside the idempotency hash below and
-	// are left out of the audit, so the checker's replay compiles the script
-	// itself.
-	script := order.GetLedgerScoped().GetApply().GetCreateTransaction().GetScript().GetPlain()
-	varsEncoder, program, err := numscriptlib.Compile(script)
-	require.NoError(t, err)
-	encodedVars, err := varsEncoder.Encode(nil)
-	require.NoError(t, err)
-	scriptHash := numscript.HashScript(script)
-	order.Technical = &raftcmdpb.OrderTechnical{
-		CompiledProgram:    program.Encode(),
-		CompiledVars:       encodedVars.Encode(),
-		CompiledScriptHash: scriptHash[:],
-	}
-
 	// The FSM freezes the idempotency hash of the accepted order, before
 	// ProcessOrders runs. Capture it pre-processing.
 	frozenHash := processing.HashOrders([]*raftcmdpb.Order{order})
@@ -106,7 +88,7 @@ func TestVerifyAuditHashChain_KeyedNumscriptTxBindsAcceptedOrder(t *testing.T) {
 	require.Equal(t, "kept", txMeta["caller-only"], "caller-only metadata must be preserved")
 
 	// The audited order bytes are captured after processing, exactly as the FSM
-	// does: the business part only, without the compiled code. They must equal
+	// does: the business part only. They must equal
 	// the accepted order: only the caller's metadata, never the script's.
 	serialized := processing.MarshalOrderBusinessIntent(order, nil)
 
