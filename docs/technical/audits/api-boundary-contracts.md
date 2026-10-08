@@ -60,7 +60,7 @@ event sinks/statuses, signing keys and index responses explicitly allow
 additional properties. Only the intentionally empty `DropAction` is exempt.
 SDK metadata keys are raw inputs; direct HTTP clients encode a single segment.
 
-For bulk SDK evidence (EN-2782), preserve both processing envelopes and early
+For bulk SDK evidence, preserve both processing envelopes and early
 errors at every rolled-up status. `BulkErrorResponse` uses non-exclusive `anyOf`
 because its optional bulk error properties overlap ordinary ErrorResponse.
 JWT rejection can be plain-text 401, while missing/insufficient element scopes

@@ -381,7 +381,7 @@ batch can span ledgers, but the HTTP bulk operation cannot. In atomic mode,
 per-element `ik` values are ignored; `continueOnFailure` controls the business
 error status without allowing partial application of the batch.
 
-**SDK error contract (EN-2782):** Processing failures retain the `data` array,
+**SDK error contract:** Processing failures retain the `data` array,
 including committed successes, the failed element and aborted later elements.
 Business statuses 400/401/403/404/409 are suppressed to 200 only when
 `continueOnFailure=true`. Processing 429/500/503 surface unconditionally;

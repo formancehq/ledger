@@ -1,6 +1,6 @@
 # Bulk SDK contract probes
 
-EN-2782 requires evidence through the actual generated TypeScript bulk operation,
+Bulk SDK contracts require evidence through the actual generated TypeScript bulk operation,
 in addition to OpenAPI validation. These probes accept a compiled consumer SDK;
 they do not maintain a second SDK or hand-written response decoder in Ledger.
 

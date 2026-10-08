@@ -504,7 +504,7 @@ an atomic batch failure is reported for every element. In sequential mode,
 `continueOnFailure=false` stops submission after the first failure and later
 elements report `ERROR` with `errorDescription: context canceled`.
 
-EN-2782 requires SDK clients to send the typed batch identity and retain complete
+SDK clients must send the typed batch identity and retain complete
 outcomes when the overall request fails. OpenAPI therefore declares the reusable
 header parameter and a bulk-specific `BulkErrorResponse` union. The union uses
 `anyOf`: `BulkResponse` has optional top-level error fields, so ordinary
