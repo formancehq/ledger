@@ -856,9 +856,10 @@ across an FSM outcome change" above:
   — the same path the store checker's audit replay takes for every order (see
   "Omitting already-cached Numscript bytecode" below). Only corruption fails
   the order with a Numscript runtime error, identically on every node running
-  that binary: an invalid header the library reads, bytes that do not decode
-  or verify, a partial artifact, or a script hash that does not match the
-  resolved text; such an artifact is never repaired from the text. The
+  that binary: a header that does not parse (whatever version the other half
+  carries), bytes the library reads but cannot decode or verify, a partial
+  artifact, or a script hash that does not match the resolved text; such an
+  artifact is never repaired from the text. The
   operational consequence: after a library update that changes the bytecode
   version (any change while the version is `0.x`), the Raft entries a node
   replays above its last snapshot after restarting on the new binary run on a

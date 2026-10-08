@@ -321,6 +321,37 @@ func TestProduce_InvalidArtifactHeaderIsLoud(t *testing.T) {
 	}
 }
 
+// TestProduce_MalformedHeaderNextToForeignVersionIsLoud: a half whose header
+// does not parse fails the order loudly even when the other half carries a
+// bytecode version this library cannot read — which alone would derive the
+// order from the text. Corruption is never masked by a foreign version.
+func TestProduce_MalformedHeaderNextToForeignVersionIsLoud(t *testing.T) {
+	t.Parallel()
+
+	programBytes, varsBytes, scriptHash := compileArtifactForTest(t, vmScript, vmScriptVars)
+
+	for name, v := range unreadableBytecodeVersions(t) {
+		for _, malformedHalf := range []string{"program", "vars"} {
+			t.Run(name+", malformed "+malformedHalf, func(t *testing.T) {
+				t.Parallel()
+
+				program, vars := bytes.Clone(programBytes), bytes.Clone(varsBytes)
+				if malformedHalf == "program" {
+					program[0] ^= 0xFF
+					vars = withArtifactVersion(t, vars, v)
+				} else {
+					vars[0] ^= 0xFF
+					program = withArtifactVersion(t, program, v)
+				}
+
+				_, err := produceVMScript(t, vmScriptVars, program, vars, scriptHash)
+				requireNumscriptRuntimeError(t, err, "decoding compiled numscript "+malformedHalf)
+				require.Contains(t, err.Error(), "bad magic")
+			})
+		}
+	}
+}
+
 // TestProduce_PartialArtifactIsLoud: the artifact arrives by value, by
 // reference (see TestProduce_ProgramByReference*), or not at all; every other
 // combination of the four fields is a corrupt artifact admission never
