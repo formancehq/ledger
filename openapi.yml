@@ -1819,17 +1819,31 @@ paths:
         revert transactions, delete metadata) in a single request. Requires
         `ledger:write` scope.
 
+        With `atomic=true`, all elements target the URL's ledger and are
+        submitted as one batch. `Idempotency-Key` identifies that whole batch;
+        per-element `ik` values are ignored. With `atomic=false`
+        (default), each element is submitted separately under its own
+        `ik`; the header is ignored.
+
+        `continueOnFailure` controls sequential continuation and business-error
+        status rollup. It does not allow partial application of an atomic
+        batch. Non-atomic failures can follow already committed elements:
+        inspect every result and preserve the original identities when retrying.
+        A timeout or infrastructure failure does not prove that work was not
+        committed. This contract does not enable automatic SDK retries.
+
         The response status is decided in three tiers:
 
         1. **Request-level failures** (before per-element processing):
            malformed body → `400`, missing/insufficient scope → `401` or
-           `403`, oversized body → `413`, leader unavailable → `503`.
+           `403`, too many elements → `413`. Exceeding the byte limit while
+           decoding the body currently returns `400`.
            Returned unconditionally, `continueOnFailure` does not apply.
         2. **Infrastructure failures during processing** (transport
            timeout, cache-horizon exceeded, storage error): the overall
-           status is `500`, regardless of `continueOnFailure`. Callers
-           must retry the bulk — the top-level failure means the request
-           did not complete deterministically.
+           status is `503` for retryable failures and `500` otherwise,
+           regardless of `continueOnFailure`. Callers
+           must inspect the element outcomes before deciding what to retry.
         3. **Per-element errors during processing**: each element's error
            carries the HTTP status it would surface as a single request
            (via the same mapping `handleError` uses). The top-level
@@ -1859,18 +1873,26 @@ paths:
         - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/IdempotencyKey'
         - name: continueOnFailure
           in: query
           schema:
             type: boolean
             default: false
-          description: Continue processing remaining operations even if one fails
+          description: |
+            Continue sequential processing after a failure and suppress the
+            top-level status for business errors. Does not suppress 429 or 5xx
+            failures, or permit partial application when atomic=true.
         - name: atomic
           in: query
           schema:
             type: boolean
             default: false
-          description: Execute all operations atomically (not yet supported)
+          description: |
+            Submit all operations as one atomic batch under the optional
+            Idempotency-Key header. Per-element ik values are ignored.
+            All elements target ledgerName. On failure every element reports
+            the batch error; continueOnFailure does not change atomicity.
       requestBody:
         required: true
         content:
@@ -1891,7 +1913,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BulkResponse'
+                $ref: '#/components/schemas/BulkErrorResponse'
         '429':
           description: |
             A per-element error mapped to `KindResourceExhausted` (quota,
@@ -1903,11 +1925,32 @@ paths:
               schema:
                 $ref: '#/components/schemas/BulkResponse'
         '401':
-          $ref: '#/components/responses/Unauthorized'
+          description: Authentication failure before processing or in an element
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkErrorResponse'
+            text/plain:
+              schema:
+                type: string
         '403':
-          $ref: '#/components/responses/Forbidden'
+          description: Insufficient scope before processing or permission failure in an element
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkErrorResponse'
         '404':
-          $ref: '#/components/responses/NotFound'
+          description: A ledger or resource was not found during processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkErrorResponse'
+        '409':
+          description: An element or the atomic batch conflicts with existing state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkErrorResponse'
         '413':
           description: Request entity too large
           content:
@@ -1915,9 +1958,31 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+          description: |
+            Retryable processing failure, including leader loss or an expired
+            admission cache horizon. Surfaces regardless of continueOnFailure.
+            Inspect per-element outcomes before retrying a non-atomic batch.
+          headers:
+            Retry-After:
+              description: Number of seconds to wait before retrying
+              schema:
+                type: integer
+                format: int32
+                minimum: 1
+                example: 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkErrorResponse'
         '500':
-          $ref: '#/components/responses/InternalServerError'
+          description: |
+            Processing failure with per-element outcomes, or an ordinary error
+            from panic recovery. Surfaces regardless of continueOnFailure.
+            An infrastructure failure does not establish whether work committed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkErrorResponse'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -3848,6 +3913,17 @@ components:
           type: string
         errorMessage:
           type: string
+
+    BulkErrorResponse:
+      description: |
+        Bulk processing returns per-element outcomes in data, including any
+        preceding successes and subsequent aborted elements. Failures before
+        processing and panic recovery can return only errorCode/errorMessage.
+        These object shapes overlap: use a non-exclusive union and preserve
+        the bulk fields when decoding a processing failure.
+      anyOf:
+        - $ref: '#/components/schemas/BulkResponse'
+        - $ref: '#/components/schemas/ErrorResponse'
 
     BulkResult:
       type: object

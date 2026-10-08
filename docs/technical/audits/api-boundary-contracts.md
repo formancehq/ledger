@@ -67,6 +67,27 @@ opaque ledger metadata, transaction account metadata, audit/signature fields,
 event sinks/statuses, signing keys and index responses explicitly allow
 additional properties. Only the intentionally empty `DropAction` is exempt.
 SDK metadata keys are raw inputs; direct HTTP clients encode a single segment.
+
+For bulk SDK evidence, preserve both processing envelopes and early
+errors at every rolled-up status. `BulkErrorResponse` uses non-exclusive `anyOf`
+because its optional bulk error properties overlap ordinary ErrorResponse.
+JWT rejection can be plain-text 401, while missing/insufficient element scopes
+produce JSON 401/403. `TestHandleBulk_*Contract` validates real router responses
+and can export them for `tests/sdk/bulk-contract.mjs`; the generated operation
+must retain every successful, failed and aborted element's fields, 503 headers,
+and default retry behavior. Typecheck `tests/sdk/bulk-idempotency.ts` and prove
+the typed key emits the real header (including omission). Sequential elements
+retain wire field `ik`; the batch header applies only to atomic HTTP batches
+for the URL ledger. Bind the exact schema, generator configuration/version and
+dependency lock. These boundary probes do not prove durable keyed replay,
+atomic rollback or safe unkeyed retry; those belong to the neighboring
+idempotency domain.
+
+For Speakeasy's mixed JSON/text error limitation, apply
+`tests/sdk/bulk-generation-overlay.yml` only to generation input. Keep both 401
+media types in the canonical schema and verify typed JSON plus raw invalid-token
+text through the generated operation, as described in `tests/sdk/README.md`.
+
 Compare documented write scopes with both the granular route guard and default
 aggregate mapping. Creation metadata remains EN-2686's separate server contract.
 
