@@ -81,9 +81,7 @@ updates, the committed-index wait, and response/error mapping. Concurrent
 operations against the same node must be distinguished by proposal identity and
 expected change type; a late commit must not satisfy a replacement waiter.
 
-For removal, distinguish an identified joined member from a bootstrap seed or
-phantom learner without an instance identity. The replicated tombstone guarantee
-applies only where the authoritative consensus documentation says it does.
+For removal, every member carries a mandatory 16-byte instance_id (enforced at every admission, persistence, and promotion boundary). The replicated tombstone guarantee applies to every removal; identity-less phantom learners are no longer a supported member state. Distinguish a removal with a normal committed ConfChange from a force removal, which bypasses Raft consensus and relies on operator preconditions instead of quorum safety.
 Prove rejoin and promotion behavior through every production entry rather than
 assuming that one admission check covers direct add, auto-promotion, discovery,
 or leadership change.

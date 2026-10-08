@@ -2825,8 +2825,11 @@ INSTANCE_ID_HEX=$(od -An -tx1 "$WAL_DIR/INSTANCE_ID" | tr -d ' \n')
 # Add node 4 as a learner
 ledgerctl cluster add-learner 4 node-4:7777 node-4:8888 "$INSTANCE_ID_HEX"
 
-# Add a learner using custom timeout
-ledgerctl cluster add-learner 5 node-5:7777 node-5:8888 "$INSTANCE_ID_HEX" --timeout 30s
+# Add node 5 as a learner - read its own WAL directory for its unique INSTANCE_ID.
+# Reusing node-4 identity here would register node-5 under the wrong incarnation.
+NODE5_WAL_DIR=${NODE5_WAL_DIR:-./wal}
+NODE5_INSTANCE_ID_HEX=$(od -An -tx1 "$NODE5_WAL_DIR/INSTANCE_ID" | tr -d ' \n')
+ledgerctl cluster add-learner 5 node-5:7777 node-5:8888 "$NODE5_INSTANCE_ID_HEX" --timeout 30s
 ```
 
 #### cluster promote-learner
