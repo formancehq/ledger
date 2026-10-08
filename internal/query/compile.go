@@ -1406,8 +1406,20 @@ func compileLogBuiltinUintCondition(ctx *compileCtx, cond *commonpb.LogBuiltinUi
 	if err != nil {
 		return nil, err
 	}
+	bounds, err := resolveUintBounds(cond.GetCond(), ctx.params)
+	if err != nil {
+		return nil, err
+	}
+	if bounds.empty {
+		return readstore.NewSliceIterator(nil), nil
+	}
+	lower, upper, entityOffset, _ := timestampRangeBounds(arm.prefix, bounds)
+	iter, err := readstore.NewMonotoneDateIterator[readstore.Asc](ctx.indexReader, lower, upper, entityOffset)
+	if err != nil {
+		return nil, fmt.Errorf("creating log date iterator: %w", err)
+	}
 
-	return compileTimestampRangeCondition(ctx, cond.GetCond(), arm.prefix, arm.bucket, arm.stampPin)
+	return trackIterator(iter, ctx.profile, &IteratorStats{Label: fmt.Sprintf("MonotoneDateIterator(lldt:%s range)", ctx.ledgerName), Kind: "Range", Prefix: arm.bucket}), nil
 }
 
 // compileLogIdCondition filters logs by ledger-local log ID using the ledger logs index.
