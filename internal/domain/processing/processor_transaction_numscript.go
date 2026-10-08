@@ -134,6 +134,25 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		}
 	}
 
+	// The artifact's headers are inspected here for the same reason the shape
+	// is: a half whose header does not parse is corrupt, whatever bytecode
+	// version the other half carries, and must fail loudly before the
+	// stale-inputs re-resolution below can report the order as a retryable
+	// stale input instead (numscript.CommittedArtifact.CheckHeaders reads only
+	// the committed bytes, no state). classifyCompiledArtifact checked the
+	// program hash is 16 bytes, which the conversion relies on.
+	var artifact numscript.CommittedArtifact
+	if shape != artifactAbsent {
+		artifact = numscript.CommittedArtifact{Program: p.compiledProgram, Vars: p.compiledVars}
+		if shape == artifactByReference {
+			artifact.ProgramHash = [16]byte(p.compiledProgramHash)
+		}
+
+		if headerErr := artifact.CheckHeaders(); headerErr != nil {
+			return nil, headerErr
+		}
+	}
+
 	// Stale-inputs check: admission bound the balance/metadata values its
 	// dependency resolution read into OrderTechnical.inputs_resolution_hash
 	// (staged on p.inputsResolutionHash by the dispatcher). Re-resolve
@@ -245,13 +264,6 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		// library version the outcome is therefore independent of this node's
 		// cache (invariant #2); across versions it rests on the library
 		// keeping script semantics stable, as audit replay already does.
-		// classifyCompiledArtifact checked the program hash is 16 bytes,
-		// which the conversion relies on.
-		artifact := numscript.CommittedArtifact{Program: p.compiledProgram, Vars: p.compiledVars}
-		if shape == artifactByReference {
-			artifact.ProgramHash = [16]byte(p.compiledProgramHash)
-		}
-
 		result, execErr = numscript.SafeExecCommitted(p.cache, scriptHash, artifact, script.GetPlain(), script.GetVars(), vmStore)
 	case artifactAbsent:
 		// The artifact is derivable from the script text, so an absent one is

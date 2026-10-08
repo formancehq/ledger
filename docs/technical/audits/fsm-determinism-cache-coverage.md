@@ -282,7 +282,8 @@ and cross-version agreement rests on the library keeping script semantics
 stable. Any other combination of the four fields, a half whose header does
 not parse (truncated or with a bad magic, whatever bytecode version the other
 half carries — both headers are inspected before the version decides
-anything), and a program the library reads but which fails decoding,
+anything, and in the producer next to the shape classification, ahead of the
+stale-inputs re-resolution), and a program the library reads but which fails decoding,
 verification, or the script-hash binding, fail the order with
 `ErrNumscriptRuntime` identically on every replica running the binary — a
 wrong shape before any cache access. Repairing such a corrupt program from

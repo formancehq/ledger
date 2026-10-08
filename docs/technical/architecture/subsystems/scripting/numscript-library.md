@@ -296,7 +296,10 @@ What the FSM does reject — failing the order with `ErrNumscriptRuntime`
 not a version difference: a half whose header does not parse (truncated, bad
 magic), whatever bytecode version the other half carries — the headers of
 both halves are inspected before the version decides anything, so a foreign
-version never masks a corrupt half; a half whose header this library reads
+version never masks a corrupt half, and the producer inspects them next to
+the shape classification, ahead of the stale-inputs re-resolution, so changed
+inputs never turn a corrupt header into a retryable stale rejection
+(`numscript.CommittedArtifact.CheckHeaders`); a half whose header this library reads
 but which does not decode; a program that fails verification; committed vars a cached
 program's layout does not cover; or a `compiled_script_hash` that does not
 match the resolved text. Readability is the library's own rule

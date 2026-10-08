@@ -276,6 +276,20 @@ func (a CommittedArtifact) readable() (readable bool, headerErr domain.Serializa
 	return readable, nil
 }
 
+// CheckHeaders fails loudly (ErrNumscriptRuntime) when a present half's header
+// does not parse, decoding nothing else — the headerErr verdict of readable,
+// for a caller that must reject a corrupt artifact before doing anything that
+// could return a different error first. The producer runs it next to the
+// shape classification, ahead of the stale-inputs re-resolution, so a corrupt
+// header is never reported as a retryable stale input when the order's inputs
+// happen to have changed too. SafeExecCommitted repeats the inspection for its
+// own verdict; it costs one header peek per half.
+func (a CommittedArtifact) CheckHeaders() domain.SerializableError {
+	_, headerErr := a.readable()
+
+	return headerErr
+}
+
 // SafeExecCommitted executes a committed scripted order on the FSM apply path:
 // the committed artifact when this binary can use it, otherwise program and
 // vars derived from the script text with this binary's own library
