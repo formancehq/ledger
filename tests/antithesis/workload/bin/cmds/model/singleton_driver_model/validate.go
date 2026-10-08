@@ -169,6 +169,14 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 		if i < len(logs) {
 			payload = logs[i].GetPayload()
 		}
+		if err := validateSavedNumscriptLog(res.Orders[i].SavedNumscript, payload); err != nil {
+			assert.Unreachable("singleton_driver_model: saved numscript response mismatch", internal.Details{
+				"ledger": oracle.LedgerOf(req),
+				"error":  err.Error(),
+			})
+
+			return
+		}
 		if err := validateLifecycleLog(req, res.Orders[i].PreparedQueryLog, payload); err != nil {
 			assert.Unreachable("singleton_driver_model: lifecycle response mismatch", internal.Details{
 				"ledger": oracle.LedgerOf(req),
@@ -322,28 +330,33 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 				return
 			}
 
-			if !postingsEqual(ct.GetPostings(), tx.GetPostings()) {
+			if !postingsEqual(order.Postings, tx.GetPostings()) {
+				dbgf("MODEL FINDING: ledger=%s postings mismatch: script=%q vars=%v model=%s returned=%s",
+					oracle.LedgerOf(req), scriptText(c.modelState, req), scriptVars(ct), renderPostings(order.Postings), renderPostings(tx.GetPostings()))
 				assert.Unreachable("singleton_driver_model: transaction postings mismatch", internal.Details{
-					"ledger":    oracle.LedgerOf(req),
-					"requested": renderPostings(ct.GetPostings()),
-					"returned":  renderPostings(tx.GetPostings()),
+					"ledger":   oracle.LedgerOf(req),
+					"scripted": oracle.IsScripted(ct),
+					"model":    renderPostings(order.Postings),
+					"returned": renderPostings(tx.GetPostings()),
 				})
 
 				return
 			}
 
-			// Account metadata set via the transaction payload is echoed verbatim
-			// on the CreatedTransaction log (the workload uses no numscript, so the
-			// server merges nothing else in).
-			if !accountMetaMapEqual(ct.GetAccountMetadata(), data.GetCreatedTransaction().GetAccountMetadata()) {
+			// The log echoes the caller's account metadata over whatever the
+			// script set.
+			if !accountMetaMapEqual(order.AccountMetadata, data.GetCreatedTransaction().GetAccountMetadata()) {
 				assert.Unreachable("singleton_driver_model: transaction account-metadata mismatch", internal.Details{
-					"ledger":    oracle.LedgerOf(req),
-					"requested": len(ct.GetAccountMetadata()),
-					"returned":  len(data.GetCreatedTransaction().GetAccountMetadata()),
+					"ledger":   oracle.LedgerOf(req),
+					"scripted": oracle.IsScripted(ct),
+					"model":    len(order.AccountMetadata),
+					"returned": len(data.GetCreatedTransaction().GetAccountMetadata()),
 				})
 
 				return
 			}
+
+			noteScriptCommit(bulk, i, ct, order)
 		}
 
 		// DeleteMetadata (account or transaction) echoes the deleted target and key
@@ -561,6 +574,20 @@ func (c *Checker) validateFailure(maxTicket uint64, failedBulk oracle.Bulk, reqE
 			assert.Reachable("singleton_driver_model: idempotency-conflict rejection exercised", internal.Details{})
 		case domain.ErrReasonFilterCompilation:
 			assert.Reachable("singleton_driver_model: malformed prepared-query filter refused at save", internal.Details{})
+		case domain.ErrReasonNumscriptParseError:
+			assert.Reachable("singleton_driver_model: numscript parse error refused", internal.Details{})
+		case domain.ErrReasonNumscriptCompileError:
+			assert.Reachable("singleton_driver_model: numscript compile error refused", internal.Details{})
+		case domain.ErrReasonNumscriptExecutionError:
+			assert.Reachable("singleton_driver_model: numscript execution error refused", internal.Details{})
+		case domain.ErrReasonNumscriptNotFound:
+			assert.Reachable("singleton_driver_model: unknown numscript reference refused", internal.Details{})
+		case domain.ErrReasonNumscriptVersionAlreadyExists:
+			assert.Reachable("singleton_driver_model: numscript version collision refused", internal.Details{})
+		case domain.ErrReasonNumscriptInvalidVersion:
+			assert.Reachable("singleton_driver_model: malformed numscript version refused", internal.Details{})
+		case domain.ErrReasonPreloadUnavailable:
+			assert.Reachable("singleton_driver_model: unresolvable script forwarded and refused", internal.Details{})
 		}
 
 		dbgf("MODEL FAIL OK: ledgers=%s kinds=%s explained by %s", bulkLedgers(failedBulk), requestKinds(failedBulk), reason)

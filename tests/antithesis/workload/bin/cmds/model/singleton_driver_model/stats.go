@@ -23,11 +23,12 @@ type statsUsage struct {
 	postings   uint64
 	references uint64
 	reverts    uint64
+	numscripts uint64
 }
 
 // modelUsage counts what the usagebuilder counts (usagestore/keys.go): postings
 // summed over every created and revert transaction, creates carrying a
-// reference, and revert orders.
+// reference, revert orders, and scripted creates.
 func modelUsage(ls oracle.LedgerState) statsUsage {
 	var u statsUsage
 
@@ -43,6 +44,10 @@ func modelUsage(ls oracle.LedgerState) statsUsage {
 
 		if rec.RevertsTransaction() != 0 {
 			u.reverts++
+		}
+
+		if rec.Scripted() {
+			u.numscripts++
 		}
 	}
 
@@ -122,17 +127,6 @@ func runLedgerStats(src *generation.Source, ctx context.Context, client servicep
 // explain both would reject a legal response the moment the usage projection
 // lags the boundary handle, which it does by design.
 func (c *Checker) validateLedgerStats(maxTicket uint64, ledger string, stats *commonpb.LedgerStats) {
-	// The workload sends neither a Script nor a NumscriptReference, so no create
-	// can count as a numscript execution.
-	if stats.GetNumscriptExecutionCount() != 0 {
-		assert.Unreachable("singleton_driver_model: ledger stats counted a numscript execution", internal.Details{
-			"ledger": ledger,
-			"count":  stats.GetNumscriptExecutionCount(),
-		})
-
-		return
-	}
-
 	txCount := stats.GetTransactionCount()
 	logCount := stats.GetLogCount()
 
@@ -160,6 +154,7 @@ func (c *Checker) validateLedgerStats(maxTicket uint64, ledger string, stats *co
 		postings:   stats.GetPostingCount(),
 		references: stats.GetReferenceCount(),
 		reverts:    stats.GetRevertCount(),
+		numscripts: stats.GetNumscriptExecutionCount(),
 	}
 
 	// The usagestore snapshot is taken after the boundary handle and its builder
@@ -173,7 +168,8 @@ func (c *Checker) validateLedgerStats(maxTicket uint64, ledger string, stats *co
 
 		return served.postings <= m.postings &&
 			served.references <= m.references &&
-			served.reverts <= m.reverts
+			served.reverts <= m.reverts &&
+			served.numscripts <= m.numscripts
 	}) {
 		modelMax := c.modelUsageCommitted(ledger)
 
@@ -182,9 +178,11 @@ func (c *Checker) validateLedgerStats(maxTicket uint64, ledger string, stats *co
 			"serverPostings":   served.postings,
 			"serverReferences": served.references,
 			"serverReverts":    served.reverts,
+			"serverNumscripts": served.numscripts,
 			"modelPostings":    modelMax.postings,
 			"modelReferences":  modelMax.references,
 			"modelReverts":     modelMax.reverts,
+			"modelNumscripts":  modelMax.numscripts,
 			"foldDiag":         c.foldDiag(maxTicket),
 		})
 

@@ -113,7 +113,7 @@ func (c *Checker) handleObservation(obs observation) {
 	// effectively didn't happen. Shutdown errors (ctx cancelled / deadline
 	// from MODEL_MAX_SECONDS) are dropped the same way: the outcome is
 	// unknown but we're tearing down, so there's nothing to validate.
-	if obs.err != nil && (internal.IsTransient(obs.err) || isShutdownError(obs.err)) {
+	if obs.err != nil && !internal.IsPreloadUnavailable(obs.err) && (internal.IsTransient(obs.err) || isShutdownError(obs.err)) {
 		dbgf("TRANSIENT/SHUTDOWN SKIP: ledgers=%s kinds=%s meta=%s err=%v", bulkLedgers(obs.bulk), requestKinds(obs.bulk), bulkMeta(obs.bulk), obs.err)
 		markObservationProcessed(obs)
 
