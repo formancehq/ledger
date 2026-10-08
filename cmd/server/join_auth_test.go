@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/ledger/v3/internal/bootstrap"
+	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterbootstrappb"
 )
 
@@ -83,4 +85,97 @@ func TestDiscoverPeers_FailsFastOnUnauthenticated(t *testing.T) {
 	// Must fail fast, not retry until the deadline.
 	require.Less(t, elapsed, 5*time.Second,
 		"discovery must abort immediately on Unauthenticated, not retry until the deadline")
+}
+
+// wrongClusterIDBootstrapServer rejects every GetPeers with the RaftServer's
+// cluster-id check status and counts the attempts.
+type wrongClusterIDBootstrapServer struct {
+	clusterbootstrappb.UnimplementedClusterBootstrapServiceServer
+
+	attempts atomic.Int32
+}
+
+func (s *wrongClusterIDBootstrapServer) GetPeers(context.Context, *clusterbootstrappb.GetPeersRequest) (*clusterbootstrappb.GetPeersResponse, error) {
+	s.attempts.Add(1)
+
+	return nil, status.Error(codes.PermissionDenied, "invalid cluster ID")
+}
+
+// TestDiscoverPeers_FailsFastOnPermissionDenied pins EN-2738: a wrong
+// --cluster-id is a configuration error, so discovery must abort on the first
+// attempt with a typed, actionable JoinClusterIDError instead of retrying
+// forever, as learner registration already does.
+func TestDiscoverPeers_FailsFastOnPermissionDenied(t *testing.T) {
+	t.Parallel()
+
+	srv := &wrongClusterIDBootstrapServer{}
+	addr := serveClusterBootstrap(t, srv)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	_, err := discoverPeersFromClusterWithRetry(
+		ctx, addr, bootstrap.TLSConfig{Mode: bootstrap.TLSModeDisabled}, "wrong-cluster", "",
+	)
+	require.Error(t, err)
+
+	var idErr *bootstrap.JoinClusterIDError
+	require.True(t, errors.As(err, &idErr),
+		"PermissionDenied during discovery must surface as *bootstrap.JoinClusterIDError, got %T: %v", err, err)
+	require.Equal(t, addr, idErr.PeerAddress)
+	require.Equal(t, "wrong-cluster", idErr.ClusterID)
+	require.Equal(t, "invalid cluster ID", idErr.Detail, "Detail must carry the unwrapped status message")
+	require.Contains(t, err.Error(), "set --cluster-id")
+	require.Equal(t, int32(1), srv.attempts.Load(), "a cluster-id mismatch must not be retried")
+}
+
+// flakyBootstrapServer fails its first GetPeers with Unavailable, then
+// answers with one peer.
+type flakyBootstrapServer struct {
+	clusterbootstrappb.UnimplementedClusterBootstrapServiceServer
+
+	attempts atomic.Int32
+}
+
+func (s *flakyBootstrapServer) GetPeers(context.Context, *clusterbootstrappb.GetPeersRequest) (*clusterbootstrappb.GetPeersResponse, error) {
+	if s.attempts.Add(1) == 1 {
+		return nil, status.Error(codes.Unavailable, "no leader")
+	}
+
+	return &clusterbootstrappb.GetPeersResponse{Peers: []*clusterbootstrappb.PeerInfo{
+		{Id: 1, RaftAddress: "node-1:7777", ServiceAddress: "node-1:8888"},
+	}}, nil
+}
+
+// TestDiscoverPeers_RetriesTransientFailureThenSucceeds keeps the transient
+// path retrying: the fail-fast classes must not widen to Unavailable.
+func TestDiscoverPeers_RetriesTransientFailureThenSucceeds(t *testing.T) {
+	t.Parallel()
+
+	srv := &flakyBootstrapServer{}
+	addr := serveClusterBootstrap(t, srv)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	peers, err := discoverPeersFromClusterWithRetry(
+		ctx, addr, bootstrap.TLSConfig{Mode: bootstrap.TLSModeDisabled}, "test-cluster", "",
+	)
+	require.NoError(t, err)
+	require.Equal(t, int32(2), srv.attempts.Load())
+	require.Equal(t, []node.Peer{{ID: 1, Address: "node-1:7777", ServiceAddress: "node-1:8888"}}, peers)
+}
+
+func serveClusterBootstrap(t *testing.T, impl clusterbootstrappb.ClusterBootstrapServiceServer) string {
+	t.Helper()
+
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	srv := grpc.NewServer()
+	clusterbootstrappb.RegisterClusterBootstrapServiceServer(srv, impl)
+	go func() { _ = srv.Serve(lis) }()
+	t.Cleanup(srv.Stop)
+
+	return lis.Addr().String()
 }

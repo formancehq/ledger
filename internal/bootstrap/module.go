@@ -1084,15 +1084,42 @@ func (e *JoinAuthError) Error() string {
 			"set --cluster-secret to the value configured on the existing cluster nodes (and --tls-mode, which --cluster-secret requires)"
 	}
 
-	target := e.PeerAddress
-	if e.PeerID != 0 {
-		target = fmt.Sprintf("peer %d (%s)", e.PeerID, e.PeerAddress)
-	}
-
 	return fmt.Sprintf(
 		"cluster join rejected by %s: inter-node authentication failed (%s); %s",
-		target, e.Detail, hint,
+		joinTarget(e.PeerID, e.PeerAddress), e.Detail, hint,
 	)
+}
+
+// JoinClusterIDError is returned when a joining node is rejected by the target
+// cluster's inter-node RaftServer with codes.PermissionDenied: the cluster-id
+// metadata it sent does not match the target's --cluster-id. Like
+// JoinAuthError it is a configuration error, fatal and never retried, and it
+// covers both inter-node join RPCs (PeerID is 0 during peer discovery).
+type JoinClusterIDError struct {
+	PeerID      uint64
+	PeerAddress string
+	// ClusterID is the value this node was started with.
+	ClusterID string
+	// Detail is the raw gRPC status message from the target for diagnostics.
+	Detail string
+}
+
+func (e *JoinClusterIDError) Error() string {
+	return fmt.Sprintf(
+		"cluster join rejected by %s: cluster ID mismatch (%s); this node was started with --cluster-id %q: "+
+			"set --cluster-id to the value configured on the existing cluster nodes",
+		joinTarget(e.PeerID, e.PeerAddress), e.Detail, e.ClusterID,
+	)
+}
+
+// joinTarget names the rejecting cluster member; peerID is 0 during peer
+// discovery, where only the --join address is known.
+func joinTarget(peerID uint64, address string) string {
+	if peerID == 0 {
+		return address
+	}
+
+	return fmt.Sprintf("peer %d (%s)", peerID, address)
 }
 
 // shouldRunJoinPreflight reports whether the join preflight (tryAddLearner)
@@ -1346,6 +1373,18 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 					PeerID:      peer.ID,
 					PeerAddress: peer.Address,
 					HasSecret:   cfg.ClusterSecret != "",
+					Detail:      st.Message(),
+				}
+			}
+
+			// PermissionDenied is the RaftServer's cluster-id check: this
+			// node's --cluster-id does not match the target cluster's. A
+			// configuration error like Unauthenticated, reported the same way.
+			if ok && st.Code() == codes.PermissionDenied {
+				return &JoinClusterIDError{
+					PeerID:      peer.ID,
+					PeerAddress: peer.Address,
+					ClusterID:   cfg.ClusterID,
 					Detail:      st.Message(),
 				}
 			}

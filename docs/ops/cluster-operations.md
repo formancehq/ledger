@@ -76,7 +76,7 @@ discoverPeersFromClusterWithRetry()
     │  ┌─────────────────────────────────────┐
     │  │ Retry loop:                          │
     │  │   Exponential backoff 500ms → 5s     │
-    │  │   Deadline: 60 seconds               │
+    │  │   No deadline (until SIGTERM)        │
     │  │   Call GetPeers RPC                  │
     │  └─────────────────────────────────────┘
     │
@@ -86,14 +86,19 @@ cfg.RaftConfig.Peers = [{ID: 1, Addr: "...", ServiceAddr: "..."}]
 
 The retry loop allows the joining node to wait for the bootstrap node to be ready (useful when all pods start simultaneously in Kubernetes).
 
-**Fail-fast on a cluster-secret mismatch (EN-1080).** The retry loop treats
-transient conditions (peer not yet up, no leader) as retryable, but a
-`codes.Unauthenticated` from the target — the joining node's `--cluster-secret`
-is missing or wrong — is a hard configuration error. Instead of spinning until
-the 60-second deadline and surfacing an opaque "context deadline exceeded", the
-node aborts discovery immediately with a `JoinAuthError` that names the
-`--join` address and tells the operator whether to add or fix the secret.
-Learner registration (Phase 4) applies the same rule.
+**Fail-fast on a configuration mismatch (EN-1080, EN-2738).** The retry loop
+treats transient conditions (peer not yet up, no leader) as retryable, but two
+statuses from the target are hard configuration errors that would otherwise be
+retried forever:
+
+- `codes.Unauthenticated` — the joining node's `--cluster-secret` is missing or
+  wrong. Discovery aborts immediately with a `JoinAuthError` that names the
+  `--join` address and tells the operator whether to add or fix the secret.
+- `codes.PermissionDenied` — the joining node's `--cluster-id` does not match
+  the target cluster's. Discovery aborts immediately with a
+  `JoinClusterIDError` that names the `--join` address and the rejected value.
+
+Learner registration (Phase 4) applies the same rules.
 
 #### Phase 2: Node Initialization
 
@@ -138,6 +143,8 @@ Leader proposes ConfChangeAddLearnerNode
     ▼
 ConfChange committed → all nodes update transport & service pool
 ```
+
+The registration loop has no deadline of its own: it retries `Unavailable` with backoff until it succeeds or the process is terminated, and every other status is final.
 
 On **restart** (WAL not empty), this registration step is **skipped** because the node is already a cluster member.
 
@@ -359,7 +366,7 @@ fi
 
 - **Pod management policy**: `Parallel` (all pods start simultaneously)
 - **Pod-0**: bootstraps the cluster
-- **Other pods**: join via pod-0 with 60s retry (waiting for pod-0 to be ready)
+- **Other pods**: join via pod-0, retrying peer discovery with backoff until pod-0 answers (no deadline)
 - **Auto-promotion**: controlled by `config.raft.learnerPromotionThreshold` in the Ledger CR spec
 - **Node IDs**: `POD_INDEX + 1` (Pod 0 = Node 1, Pod 1 = Node 2, etc.)
 
