@@ -14,7 +14,7 @@ import (
 
 var wellFormedLegend = regexp.MustCompile(`^(?:[^{}]|\{\{[A-Za-z_][A-Za-z0-9_.]*\}\})*$`)
 
-var nativeClassicHistogramSuffix =regexp.MustCompile(`(?:raft|admission|wal|pebble|http)[A-Za-z0-9_]*(?:_sum|_count)(?:\{|\[)`)
+var nativeClassicHistogramSuffix = regexp.MustCompile(`(?:raft|admission|wal|pebble|http)[A-Za-z0-9_]*(?:_sum|_count)(?:\{|\[)`)
 
 // resourceAttributeLabels masks the ledger's own resource-attribute labels.
 // They share the formance.ledger namespace with the metrics prefix but are
