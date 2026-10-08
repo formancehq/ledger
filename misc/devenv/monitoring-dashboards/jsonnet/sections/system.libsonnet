@@ -94,7 +94,7 @@ panels.row('System', 0, [
 /
 max by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) (
   go.processor.limit{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}
-)', legendFormat: '{{{{formance.ledger.cluster.name}}}} / Node {{{{formance.ledger.node.id}}}}' },
+)', legendFormat: '{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}' },
     ], unit='percentunit',
     description=|||
       CPU utilization: process CPU seconds per second divided by the Go processor limit (GOMAXPROCS), per node. 1.0 means every available processor is busy.
@@ -133,7 +133,7 @@ max by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.i
     'System memory usage',
     { h: 8, w: 8, x: 0, y: 109 },
     [
-      { expr: '{"system.memory.usage", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}', legendFormat: 'Node {{ formance.ledger.node.id}}: {{system.memory.state}}' },
+      { expr: '{"system.memory.usage", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}', legendFormat: 'Node {{formance.ledger.node.id}}: {{system.memory.state}}' },
     ], unit='bytes',
     description=|||
       Absolute system memory usage in bytes, broken down by state (used, free, cached, buffered).

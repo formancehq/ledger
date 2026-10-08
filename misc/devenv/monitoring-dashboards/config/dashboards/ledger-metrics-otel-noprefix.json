@@ -529,7 +529,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) (\n  rate(process.cpu.time{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])\n)\n/\nmax by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) (\n  go.processor.limit{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}\n)",
-                     "legendFormat": "{{{{formance.ledger.cluster.name}}}} / Node {{{{formance.ledger.node.id}}}}",
+                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -738,7 +738,7 @@
                      },
                      "editorMode": "code",
                      "expr": "{\"system.memory.usage\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"}",
-                     "legendFormat": "Node {{ formance.ledger.node.id}}: {{system.memory.state}}",
+                     "legendFormat": "Node {{formance.ledger.node.id}}: {{system.memory.state}}",
                      "range": true,
                      "refId": "A"
                   }

@@ -12,7 +12,9 @@ import (
 	"testing"
 )
 
-var nativeClassicHistogramSuffix = regexp.MustCompile(`(?:raft|admission|wal|pebble|http)[A-Za-z0-9_]*(?:_sum|_count)(?:\{|\[)`)
+var wellFormedLegend = regexp.MustCompile(`^(?:[^{}]|\{\{[A-Za-z_][A-Za-z0-9_.]*\}\})*$`)
+
+var nativeClassicHistogramSuffix =regexp.MustCompile(`(?:raft|admission|wal|pebble|http)[A-Za-z0-9_]*(?:_sum|_count)(?:\{|\[)`)
 
 // resourceAttributeLabels masks the ledger's own resource-attribute labels.
 // They share the formance.ledger namespace with the metrics prefix but are
@@ -193,6 +195,13 @@ func assertDashboardTree(t *testing.T, value any, native bool) {
 				if native && nativeClassicHistogramSuffix.MatchString(expr) {
 					t.Errorf("native dashboard references a classic histogram suffix at %s: %s", path, expr)
 				}
+			}
+
+			// Grafana substitutes {{label}}; rewriteLegendFormat only
+			// de-dots that exact form, so anything else leaves a raw
+			// or empty placeholder in Prometheus variants.
+			if legend, ok := value["legendFormat"].(string); ok && !wellFormedLegend.MatchString(legend) {
+				t.Errorf("malformed legend placeholder at %s: %q", path, legend)
 			}
 
 			if profileType, ok := value["profileTypeId"].(string); ok && strings.HasPrefix(profileType, "goroutine:") {
