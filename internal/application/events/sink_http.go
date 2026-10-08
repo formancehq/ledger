@@ -121,5 +121,5 @@ func (s *HTTPSink) post(ctx context.Context, event *eventspb.Event, body []byte)
 		return nil
 	}
 
-	return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	return fmt.Errorf("unexpected status code %s from %s", resp.Status, s.endpoint)
 }

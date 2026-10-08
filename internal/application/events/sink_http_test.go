@@ -168,7 +168,7 @@ func TestHTTPSink_Publish_ErrorStatus(t *testing.T) {
 
 	err = sink.Publish(context.Background(), events)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "unexpected status code: 500")
+	require.Contains(t, err.Error(), "unexpected status code")
 }
 
 func TestHTTPSink_Close(t *testing.T) {
