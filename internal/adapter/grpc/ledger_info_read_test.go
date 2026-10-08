@@ -22,6 +22,14 @@ func TestLedgerInfoGRPCReadCredentialsCurrentAndCheckpoint(t *testing.T) {
 		{LedgerName: "source", Type: &commonpb.MirrorSourceConfig_Http{Http: &commonpb.HttpMirrorSourceConfig{
 			BaseUrl: "https://reader:base-canary@source.example/prefix", Oauth2ClientCredentials: &commonpb.OAuth2ClientCredentials{ClientId: "client", ClientSecret: "oauth-canary", TokenEndpoint: "https://client:token-canary@auth.example/token"},
 		}}},
+		{LedgerName: "source", Type: &commonpb.MirrorSourceConfig_Http{Http: &commonpb.HttpMirrorSourceConfig{
+			BaseUrl:                 "http://base-token-canary@source.example:8080/prefix?region=eu&access_token=query-canary",
+			Oauth2ClientCredentials: &commonpb.OAuth2ClientCredentials{ClientId: "client", TokenEndpoint: "http://oauth-token-canary@auth.example/token"},
+		}}},
+		{LedgerName: "source", Type: &commonpb.MirrorSourceConfig_Http{Http: &commonpb.HttpMirrorSourceConfig{
+			BaseUrl:                 "https://base-token-canary@source.example:8080/prefix?region=eu&access_token=query-canary",
+			Oauth2ClientCredentials: &commonpb.OAuth2ClientCredentials{ClientId: "client", TokenEndpoint: "https://oauth-token-canary@auth.example/token"},
+		}}},
 		{LedgerName: "source", Type: &commonpb.MirrorSourceConfig_Postgres{Postgres: &commonpb.PostgresMirrorSourceConfig{
 			Dsn: "host=db.example user=reader password=postgres-canary dbname=ledger",
 		}}},

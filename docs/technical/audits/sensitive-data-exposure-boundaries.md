@@ -225,7 +225,8 @@ external secret storage are outside this revision.
 
 ## LedgerInfo read oracle (EN-1635 / EN-2780)
 
-Seed OAuth secrets, HTTP source/OAuth endpoint URL passwords, and PostgreSQL URL/query/keyword passwords, including escaped
+Seed OAuth secrets, HTTP source/OAuth endpoint URL passwords and passwordless
+HTTP(S) userinfo tokens, and PostgreSQL URL/query/keyword passwords, including escaped
 quotes, duplicate passwords, sslpassword, empty and malformed inputs. Exercise
 routed HTTP get/list and actual service current/checkpoint get/list controllers
 and streams. Serialized canaries must be absent, non-secret connection/OAuth/IAM

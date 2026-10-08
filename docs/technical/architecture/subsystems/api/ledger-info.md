@@ -55,7 +55,8 @@ introduced by EN-1632 / PR #1977. EN-1635 integrates it at HTTP get/list and gRP
 GetLedger/ListLedgers boundaries. gRPC projection runs after current/checkpoint
 selection and pagination, and preserves stream headers/trailers and errors.
 
-HTTP source and OAuth token-endpoint URL userinfo/query credentials are masked
+HTTP source and OAuth token-endpoint URL userinfo/query credentials are masked,
+including passwordless HTTP(S) userinfo, which may hold reusable tokens,
 while host/path and non-secret settings are preserved. OAuth client secrets
 become `[redacted]` presence markers. PostgreSQL passwords
 in URL userinfo/query settings or keyword/value DSNs become `xxxxx`. Non-secret
@@ -67,7 +68,7 @@ The original object, nested maps/slices and stored bytes remain unchanged.
 Do not apply this projection to controller/worker configuration, persistence,
 accepted orders, signed bytes, or audit-chain material. This change does not
 close EN-1634 (historical audit/log credentials) or EN-1632 (sink read boundaries).
-Service protocol revision 26 identifies the changed external gRPC read semantics.
+Service protocol revision 27 identifies the changed external gRPC read semantics.
 
 ## Snapshot and cost boundary
 

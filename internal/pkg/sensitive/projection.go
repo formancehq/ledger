@@ -44,8 +44,8 @@ func redactSingleURL(raw string) (string, bool) {
 	if parsed.User != nil {
 		if _, hasPassword := parsed.User.Password(); hasPassword {
 			parsed.User = url.UserPassword(parsed.User.Username(), "xxxxx")
-		} else if natsTokenSchemes[parsed.Scheme] && parsed.User.Username() != "" {
-			// NATS-family schemes place a token in the username position without a password.
+		} else if (natsTokenSchemes[parsed.Scheme] || parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.User.Username() != "" {
+			// Passwordless HTTP(S) and NATS-family userinfo can contain reusable tokens.
 			parsed.User = url.User("xxxxx")
 		}
 	}

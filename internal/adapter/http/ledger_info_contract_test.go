@@ -32,6 +32,14 @@ func TestLedgerInfoReadResponsesRedactCredentials(t *testing.T) {
 				ClientId: "client", ClientSecret: "oauth-canary-2780", TokenEndpoint: "https://client:token-canary@auth.example/token", Scopes: []string{"ledger:read"},
 			},
 		}}},
+		{LedgerName: "source", Type: &commonpb.MirrorSourceConfig_Http{Http: &commonpb.HttpMirrorSourceConfig{
+			BaseUrl:                 "http://base-token-canary@source.example:8080/prefix?region=eu&access_token=query-canary",
+			Oauth2ClientCredentials: &commonpb.OAuth2ClientCredentials{ClientId: "client", TokenEndpoint: "http://oauth-token-canary@auth.example/token"},
+		}}},
+		{LedgerName: "source", Type: &commonpb.MirrorSourceConfig_Http{Http: &commonpb.HttpMirrorSourceConfig{
+			BaseUrl:                 "https://base-token-canary@source.example:8080/prefix?region=eu&access_token=query-canary",
+			Oauth2ClientCredentials: &commonpb.OAuth2ClientCredentials{ClientId: "client", TokenEndpoint: "https://oauth-token-canary@auth.example/token"},
+		}}},
 		{LedgerName: "source", Type: &commonpb.MirrorSourceConfig_Postgres{Postgres: &commonpb.PostgresMirrorSourceConfig{
 			Dsn: "postgres://reader:pg-canary-2780@db.example/ledger?sslmode=require",
 		}}},

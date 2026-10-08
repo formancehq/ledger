@@ -5001,7 +5001,7 @@ components:
       properties:
         baseUrl:
           type: string
-          description: Source URL with userinfo and query credentials masked
+          description: Source URL with userinfo (including passwordless tokens) and query credentials masked
         oauth2ClientCredentials:
           $ref: '#/components/schemas/MirrorOAuthRead'
 
@@ -5016,7 +5016,7 @@ components:
           description: Presence marker only; reusable secret material is never returned
         tokenEndpoint:
           type: string
-          description: OAuth endpoint URL with userinfo and query credentials masked
+          description: OAuth endpoint URL with userinfo (including passwordless tokens) and query credentials masked
         scopes:
           type: array
           items:
