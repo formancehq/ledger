@@ -149,7 +149,22 @@ func TestOpenAPISpec_SystemLogPayloadPreservation(t *testing.T) {
 			}
 		})
 	}
-	// Two additional fixtures protect metadata apply data and a future sibling.
+	// Supplemental fixtures validate schema preservation only: apply.log is
+	// output-only, and a future sibling is unknown to the current protojson codec.
+	for _, name := range []string{"applyMetadata", "futureVariant"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			fixture, ok := fixtures[name]
+			require.True(t, ok, "missing supplemental system payload fixture")
+			variant := name
+			if name == "applyMetadata" {
+				variant = "apply"
+			}
+			require.Contains(t, fixture, variant)
+			require.Len(t, fixture, 1)
+			require.NoError(t, payload.VisitJSON(fixture))
+		})
+	}
 	require.Len(t, fixtures, fields.Len()+2)
 }
 
