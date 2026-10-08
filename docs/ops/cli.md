@@ -4489,10 +4489,10 @@ ledger run --snapshot-session-ttl 15m [other flags...]
 |------|------|---------|-------------|
 | `--cluster-id` | string | `""` (required) | Cluster ID for inter-node communication validation |
 
-Every inter-node RPC on the RaftServer (Raft transport streams, snapshot
-service, and the `ClusterBootstrapService` used by `--join`) carries the
-cluster ID as metadata; a call whose value does not match the receiver's
-`--cluster-id` is rejected with `codes.PermissionDenied`.
+Raft transport streams and the `ClusterBootstrapService` RPCs used by `--join`
+carry the cluster ID as metadata; a call whose value does not match the
+receiver's `--cluster-id` is rejected with `codes.PermissionDenied`. The
+snapshot service relies on the cluster secret alone.
 
 **Joining fails fast on a cluster-id mismatch.** A node started with `--join`
 and a `--cluster-id` the target cluster does not accept aborts immediately,
