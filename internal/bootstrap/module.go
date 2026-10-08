@@ -1524,9 +1524,9 @@ func proposeClusterConfigIfNeeded(n *node.Node, builder *plan.Builder, store *da
 // revision. It gates on leadership itself and is safe to call repeatedly: the
 // ClusterPolicyReconciler invokes it on a ticker so a transient proposal failure
 // self-heals on the next tick. Unlike the cluster config, the policy flows
-// through Admit (as an audited SetClusterPolicy order) so the checker can
-// re-derive it; the write-readiness gate exempts the policy request so this
-// proposal is never blocked by its own gate.
+// through AdmitClusterPolicy as an internal audited SetClusterPolicy order so
+// the checker can re-derive it; the write-readiness gate exempts this
+// non-business proposal so it is never blocked by its own cluster-policy gate.
 func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store *dal.Store, cfg Config, isLeader func() bool, logger logging.Logger) {
 	if !isLeader() {
 		return
@@ -1569,13 +1569,9 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 
 	logger.Infof("Proposing cluster policy revision %d", desired.GetRevision())
 
-	if _, err := admission.Admit(
+	if _, err := admission.AdmitClusterPolicy(
 		internalauth.WithSystemActor(ctx, commands.ComponentClusterPolicy),
-		servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_SetClusterPolicy{
-				SetClusterPolicy: &servicepb.SetClusterPolicyRequest{Policy: desired},
-			},
-		}),
+		desired,
 	); err != nil {
 		// Transient (propose timeout, momentary write gate, leadership churn):
 		// the next tick retries while this node stays leader.

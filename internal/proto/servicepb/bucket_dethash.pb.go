@@ -636,16 +636,6 @@ func (m *Request) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i--
 			dAtA[i] = 0xda
 		}
-	case *Request_SetClusterPolicy:
-		if v.SetClusterPolicy != nil {
-			size, _ := v.SetClusterPolicy.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0xe2
-		}
 	}
 	return len(dAtA) - i, nil
 }
@@ -662,17 +652,6 @@ func (m *CreateQueryCheckpointRequest) MarshalDeterministicVT(dAtA []byte) []byt
 }
 
 func (m *DeleteQueryCheckpointRequest) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *SetClusterPolicyRequest) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
