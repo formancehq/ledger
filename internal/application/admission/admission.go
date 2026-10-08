@@ -242,7 +242,7 @@ func NewAdmission(
 
 	proposalGuardDurationHistogram, err := meter.Float64Histogram(
 		"admission.proposal_guard.duration",
-		metric.WithDescription("Time spent waiting to acquire the proposal guard lock"),
+		metric.WithDescription("Time from requesting the proposal guard until Propose returns: lock wait plus hold"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(
 			0, 0.0001, 0.0005, 0.002, 0.01, 0.05, 0.2, 1,
