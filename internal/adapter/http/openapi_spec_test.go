@@ -111,12 +111,12 @@ func TestOpenAPISpec_SystemLogPayloadPreservation(t *testing.T) {
 	require.True(t, *payload.AdditionalProperties.Has)
 	require.Same(t, doc.Components.Schemas["LedgerLog"].Value, payload.Properties["apply"].Value.Properties["log"].Value)
 
-	fixturesJSON, err := os.ReadFile("../../../tests/sdk/system-log-payloads.json")
+	fixturesJSON, err := os.ReadFile("testdata/system_log_payloads.json")
 	require.NoError(t, err)
 	var fixtures map[string]map[string]any
 	require.NoError(t, json.Unmarshal(fixturesJSON, &fixtures))
 
-	// Reconcile the SDK fixtures with the live descriptor and the actual custom
+	// Reconcile the payload fixtures with the live descriptor and the actual custom
 	// JSON codec. A new variant or a JSON-name change must extend the regression.
 	fields := (&commonpb.LogPayload{}).ProtoReflect().Descriptor().Oneofs().ByName("type").Fields()
 	for i := range fields.Len() {
@@ -124,7 +124,7 @@ func TestOpenAPISpec_SystemLogPayloadPreservation(t *testing.T) {
 		t.Run(field.JSONName(), func(t *testing.T) {
 			t.Parallel()
 			fixture, ok := fixtures[field.JSONName()]
-			require.True(t, ok, "missing generated SDK fixture")
+			require.True(t, ok, "missing system payload fixture")
 			require.Contains(t, fixture, field.JSONName())
 			require.Len(t, fixture, 1)
 			require.NoError(t, payload.VisitJSON(fixture))

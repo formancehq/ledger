@@ -1011,7 +1011,8 @@ ledger-log lists and prepared-query `cursor.logData`. JSON events use the same
 system envelope. This schema correction changes neither server serialization
 nor authoritative audit bytes. Credential-safe read projections remain the
 separate EN-1634 contract; SDK field stripping is not a security boundary.
-The fixture inventory and actual SDK regression are in `tests/sdk/`.
+The Go schema regression and codec-reconciled fixture inventory live in
+`internal/adapter/http/openapi_spec_test.go` and its `testdata/` directory.
 
 Other opaque object schemas also explicitly allow additional properties:
 ledger metadata schemas, transaction account-metadata maps, protobuf JSON
