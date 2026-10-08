@@ -211,11 +211,12 @@ A write batch reaches the controller through the gRPC Apply handler.
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `grpc.apply.duration` | Histogram | s | Total duration of the gRPC Apply handler: forwarded identity, `ctrl.Apply` and response signing. |
-| `ctrl.apply.duration` | Histogram | s | End-to-end duration of a batch Apply call in the controller. |
+| `grpc.apply.duration` | Histogram | s | Total duration of the gRPC Apply handler: forwarded identity, `ctrl.Apply`, checkpoint wait and response signing. Recorded on every exit, failures included. |
+| `ctrl.apply.duration` | Histogram | s | Duration of a batch's admission in the controller. Recorded on every exit, failures included. |
 
 **Attributes**:
 - `batch_size`: number of requests in the batch
+- `status`: `success` or `error`; filter on `success` for latency SLOs, since fast rejections pull the error distribution down
 
 ## Raft Consensus Metrics
 
@@ -236,7 +237,7 @@ A write batch reaches the controller through the gRPC Apply handler.
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `raft.node.lead` | Gauge | - | Current leader node ID as seen by this node (0 if no leader known) |
+| `raft.node.leader` | Gauge | - | 1 while this node recognizes a Raft leader, identified by the `leader_id` attribute (decimal Raft node ID); 0 while it knows none. All nodes of a healthy cluster report the same `leader_id`. |
 | `raft.apply_entries.duration` | Histogram | s | Time spent applying committed log entries to the FSM. This is the critical path for transaction processing. |
 | `raft.entries_applied` | Counter | `{entry}` | Total count of entries applied (cumulative). Use `rate()` to get entries/second. |
 | `raft.apply_entries.batch_size` | Histogram | `{entry}` | Distribution of batch sizes when applying entries. Higher batches indicate better throughput efficiency. |
@@ -360,38 +361,24 @@ The admission service handles order processing before Raft consensus. It preload
 
 ### Preload Metrics
 
-When a value is not guaranteed to be in cache (based on the cache generation), the admission service loads it from the persistent store. These metrics track the performance and volume of these preload operations.
+Before proposing a batch, admission builds its preloads: for every key the batch's orders need (volumes, reversion status, idempotency keys, references, boundaries, ledgers), it uses the cached value when the cache generation guarantees it, and reads the persistent store otherwise. These metrics cover one build per batch; they carry no attributes.
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `admission.preload.duration` | Histogram | s | Time spent loading a preload value from the store. Includes the actual disk read and computation time. High values indicate slow storage or expensive computations. |
-| `admission.preloads` | Counter | `{preload}` | Total number of preload operations from store (cache misses). High rates may indicate cache miss issues or cold startup. |
-| `admission.preload.keys_needed` | Counter | `{key}` | Total number of keys that needed resolving during preload. This is the total demand before cache filtering. |
-| `admission.preload.cache_hits` | Counter | `{key}` | Total number of keys found guaranteed in cache (no store read needed). Use with `keys_needed` to compute cache hit ratio. |
+| `admission.preload.duration` | Histogram | s | Time to build the preloads of one batch (one `Builder.Build` call), including its store reads and computations. Recorded whether the build succeeds or fails. High values indicate slow storage or expensive computations. |
+| `admission.preloads` | Counter | `{preload}` | Successful preload builds: one per admitted batch, whatever the number of keys it needs. |
+| `admission.preload.keys_needed` | Counter | `{key}` | Keys the successful builds needed, before cache filtering: the total preload demand. |
+| `admission.preload.cache_hits` | Counter | `{key}` | Keys those builds found guaranteed in cache (no store read needed). |
 
-**Attributes**:
-- `type`: Attribute type being preloaded (`input`, `output`, `ledgers`, `reversions`, `idempotency_keys`, `references`, `boundaries`)
+**Derived Metrics** (all counters are cumulative, so use rates over one window):
+- **Cache hit ratio**: `rate(cache_hits) / rate(keys_needed)` — fraction of keys served from cache
+- **Store read ratio**: `(rate(keys_needed) - rate(cache_hits)) / rate(keys_needed)` — fraction of keys read from the store
+- **Keys per batch**: `rate(keys_needed) / rate(preloads)`
 
-**Attribute Types**:
-| Type | Description |
-|------|-------------|
-| `input` | Account input volumes (credits received) |
-| `output` | Account output volumes (debits sent) |
-| `ledgers` | Ledger info and metadata |
-| `reversions` | Transaction reversion status |
-| `idempotency_keys` | Idempotency key mappings |
-| `references` | Transaction reference mappings |
-| `boundaries` | Ledger boundaries (next IDs) |
-
-**Derived Metrics**:
-- **Cache hit ratio**: `cache_hits / keys_needed * 100` — percentage of keys served from cache
-- **Store read ratio**: `preloads / keys_needed * 100` — percentage requiring store reads
-
-**Preload Flow**: When processing a transaction, the admission service checks if required values (volumes, reversion status, idempotency keys, references, boundaries) are in cache. If not guaranteed in cache due to generation rotation, it loads them from the persistent store. These metrics help identify:
+These metrics help identify:
 - Storage performance issues (high preload duration)
 - Cache efficiency problems (low cache hit ratio after warmup)
 - Cold start behavior (expected low cache hit ratio initially)
-- Read volume per transaction type (keys_needed by type)
 
 ### Command Metrics
 
@@ -835,14 +822,14 @@ The dashboard is organized into the following sections:
 - Cache Size by Type
 
 **Admission Section**:
-- Preload Duration (by type)
-- Preload Rate (by type)
+- Preload Duration (p50, p95, p99)
+- Preload Builds Rate
 - Command Duration Percentiles
 - Propose Duration Percentiles
 - Command Size Distribution
-- Preload Keys Needed Rate (by type)
+- Preload Keys Needed Rate
 - Preload Cache Hit Ratio (%)
-- Preload Store Reads vs Cache Hits (by type)
+- Preload Store Reads vs Cache Hits
 - Propose Queue Load
 
 ## Alerting Recommendations
@@ -862,7 +849,7 @@ buckets.
 
 1. **No Leader**
    ```promql
-   max by (k8s_namespace_name, formance_ledger_cluster_name) (formance_ledger_raft_node_lead) == 0
+   max by (k8s_namespace_name, formance_ledger_cluster_name) (formance_ledger_raft_node_leader) == 0
    ```
    Duration: 30s
    

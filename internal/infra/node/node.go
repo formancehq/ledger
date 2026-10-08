@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -19,6 +20,7 @@ import (
 	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.etcd.io/raft/v3/tracker"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -441,7 +443,7 @@ type Node struct {
 	// Metrics (kept on Node: WAL/transport/orchestrate-related)
 	processEntryHistogram             metric.Float64Histogram
 	appendEntriesHistogram            metric.Float64Histogram
-	leadMonitorHistogram              metric.Int64Gauge
+	leaderRegistration                metric.Registration
 	committedEntriesPerReadyHistogram metric.Int64Histogram
 	readyWaitDurationHistogram        metric.Float64Histogram
 	readyTerminatedWaitHistogram      metric.Float64Histogram
@@ -743,7 +745,27 @@ func NewNode(
 		panic(err)
 	}
 
-	node.leadMonitorHistogram, err = meter.Int64Gauge("raft.node.lead")
+	// The leader is an attribute, not the gauge value: Raft node IDs span
+	// uint64, which an int64 gauge cannot carry. Observing the current soft
+	// state reports only the present leader, so a former leader's series
+	// does not linger after an election.
+	leaderGauge, err := meter.Int64ObservableGauge("raft.node.leader",
+		metric.WithDescription("1 while this node recognises a Raft leader, identified by leader_id; 0 while none is known"),
+	)
+	if err != nil {
+		panic(err)
+	}
+	node.leaderRegistration, err = meter.RegisterCallback(func(_ context.Context, o metric.Observer) error {
+		ss := node.lastSoftState.Load()
+		if ss == nil || ss.Lead == raft.None {
+			o.ObserveInt64(leaderGauge, 0)
+
+			return nil
+		}
+		o.ObserveInt64(leaderGauge, 1, metric.WithAttributes(attribute.String("leader_id", strconv.FormatUint(ss.Lead, 10))))
+
+		return nil
+	}, leaderGauge)
 	if err != nil {
 		panic(err)
 	}
@@ -994,6 +1016,14 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 func (node *Node) run(ctx context.Context, ready func()) error {
 	node.runDone = make(chan struct{})
 	defer close(node.runDone)
+	// Stop reporting the leader once the node stops running. Unregister only
+	// fails for a registration from another provider, which cannot happen
+	// here, and shutdown must not fail on telemetry.
+	defer func() {
+		if node.leaderRegistration != nil {
+			_ = node.leaderRegistration.Unregister()
+		}
+	}()
 
 	// Determine the Applied index for raft.Config from the FSM's durable last
 	// applied index (read from Pebble). doMaintenance calls Store.SyncWAL
@@ -1341,8 +1371,6 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 				}()
 			}
 		}
-
-		node.leadMonitorHistogram.Record(ctx, int64(ss.Lead))
 
 		node.lastSoftState.Store(ss)
 	}

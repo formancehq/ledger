@@ -43,7 +43,7 @@
         {
           allValue: '.*',
           datasource: { type: 'prometheus', uid: '${datasource}' },
-          definition: 'query_result(raft.node.lead)',
+          definition: 'query_result(raft.node.leader)',
           description: 'Select the Kubernetes namespace of the Ledger cluster',
           includeAll: true,
           label: 'Namespace',
@@ -51,7 +51,7 @@
           options: [],
           query: {
             qryType: 1,
-            query: 'query_result(raft.node.lead)',
+            query: 'query_result(raft.node.leader)',
             refId: 'PrometheusVariableQueryEditor-VariableQuery',
           },
           refresh: 1,
@@ -66,7 +66,7 @@
         {
           allValue: '.*',
           datasource: { type: 'prometheus', uid: '${datasource}' },
-          definition: 'query_result(raft.node.lead{k8s.namespace.name=~"$namespace"})',
+          definition: 'query_result(raft.node.leader{k8s.namespace.name=~"$namespace"})',
           description: 'Select a Ledger cluster to filter metrics',
           includeAll: true,
           label: 'Cluster',
@@ -74,7 +74,7 @@
           options: [],
           query: {
             qryType: 1,
-            query: 'query_result(raft.node.lead{k8s.namespace.name=~"$namespace"})',
+            query: 'query_result(raft.node.leader{k8s.namespace.name=~"$namespace"})',
             refId: 'PrometheusVariableQueryEditor-VariableQuery',
           },
           refresh: 1,
@@ -89,7 +89,7 @@
         {
           allValue: '.*',
           datasource: { type: 'prometheus', uid: '${datasource}' },
-          definition: 'query_result(raft.node.lead{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster"})',
+          definition: 'query_result(raft.node.leader{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster"})',
           description: 'Select a node to filter metrics',
           includeAll: true,
           label: 'Node',
@@ -97,7 +97,7 @@
           options: [],
           query: {
             qryType: 1,
-            query: 'query_result(raft.node.lead{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster"})',
+            query: 'query_result(raft.node.leader{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster"})',
             refId: 'PrometheusVariableQueryEditor-VariableQuery',
           },
           refresh: 1,

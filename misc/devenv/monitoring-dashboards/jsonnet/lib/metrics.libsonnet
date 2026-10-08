@@ -141,7 +141,7 @@
     process_entry_duration: 'raft.process_entry.duration',
     read_index_duration: 'raft.read_index.duration',
     ready_committed_entries: 'raft.ready.committed_entries',
-    node_lead: 'raft.node.lead',
+    node_leader: 'raft.node.leader',
     node_gating_wait_duration: 'raft.node.gating.wait.duration',
     node_gating_readies_processed: 'raft.node.gating.readies_processed',
     node_ready_wait_duration: 'raft.node.ready.wait.duration',

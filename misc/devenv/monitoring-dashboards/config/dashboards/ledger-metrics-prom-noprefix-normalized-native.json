@@ -417,7 +417,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "rate({\"system_memory_utilization_ratio\", \"system_memory_state\"=\"used\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval])",
+                     "expr": "{\"system_memory_utilization_ratio\", \"system_memory_state\"=\"used\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}",
                      "legendFormat": "Node {{formance_ledger_node_id}} : Used",
                      "range": true,
                      "refId": "A"
@@ -428,7 +428,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "rate({\"system_memory_utilization_ratio\", \"system_memory_state\"=\"free\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval])",
+                     "expr": "{\"system_memory_utilization_ratio\", \"system_memory_state\"=\"free\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}",
                      "legendFormat": "Node {{formance_ledger_node_id}} : Free",
                      "range": true,
                      "refId": "B"
@@ -442,7 +442,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "CPU utilization as a ratio of process CPU time to available processor limit. Shows how much CPU capacity the process is using.\n\nValues close to 1.0 indicate CPU saturation. Consider:\n- Profiling to identify hot paths\n- Increasing CPU limits\n- Scaling horizontally\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#process-metrics\n",
+               "description": "CPU utilization: process CPU seconds per second divided by the Go processor limit (GOMAXPROCS), per node. 1.0 means every available processor is busy.\n\nValues close to 1.0 indicate CPU saturation. Consider:\n- Profiling to identify hot paths\n- Increasing CPU limits\n- Scaling horizontally\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#process-metrics\n",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -528,21 +528,10 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum by (formance_ledger_node_id) (\n  rate(process_cpu_time_seconds_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])\n)",
-                     "legendFormat": "Node {{formance_ledger_node_id}}: {{cpu_mode}}",
+                     "expr": "sum by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) (\n  rate(process_cpu_time_seconds_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])\n)\n/\nmax by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) (\n  go_processor_limit{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}\n)",
+                     "legendFormat": "{{{{formance_ledger_cluster_name}}}} / Node {{{{formance_ledger_node_id}}}}",
                      "range": true,
                      "refId": "A"
-                  },
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "max by (formance_ledger_node_id) (\n  go_processor_limit{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}\n)",
-                     "legendFormat": "Node {{formance_ledger_node_id}}: Limit",
-                     "range": true,
-                     "refId": "B"
                   }
                ],
                "title": "Process CPU time",
@@ -861,7 +850,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Shows which node is recognized as the Raft leader by each node. All nodes should report the same leader ID.\n\nLeader ID 0 means no leader is known (cluster is electing). Monitor for:\n- Frequent leader changes (leadership instability)\n- Split-brain scenarios (different nodes reporting different leaders)\n- Extended periods with no leader\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#node-metrics\n",
+               "description": "Shows which node is recognized as the Raft leader by each node: each series is 1 for the leader_id a node currently recognizes. All nodes should report the same leader_id.\n\nA value of 0 (no leader_id) means the node knows no leader (cluster is electing). Monitor for:\n- Frequent leader changes (leadership instability)\n- Split-brain scenarios (different nodes reporting different leaders)\n- Extended periods with no leader\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#node-metrics\n",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -945,8 +934,8 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "{\"raft_node_lead\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}",
-                     "legendFormat": "Node {{formance_ledger_node_id}}",
+                     "expr": "{\"raft_node_leader\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}",
+                     "legendFormat": "Node {{formance_ledger_node_id}} → leader {{leader_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -8856,7 +8845,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Time spent loading preload values from the persistent store during admission. High values indicate slow storage or expensive attribute computations.\n\nBreakdown by attribute type:\n- volumes: Account volumes (input/output)\n- reversions: Transaction reversion status\n- idempotency_keys: Idempotency key mappings\n- boundaries: Ledger boundaries\n- ledgers: Ledger info\n- references: Transaction references\n",
+               "description": "Time to build the preloads of one admission batch (one Builder.Build call): the store reads and computations its orders need. High values indicate slow storage or expensive attribute computations.\n",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -8941,8 +8930,8 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.50, sum(rate(admission_preload_duration_seconds{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (type))",
-                     "legendFormat": "p50 - {{type}}",
+                     "expr": "histogram_quantile(0.50, sum(rate(admission_preload_duration_seconds{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (formance_ledger_node_id))",
+                     "legendFormat": "p50 - Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -8952,8 +8941,8 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.95, sum(rate(admission_preload_duration_seconds{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (type))",
-                     "legendFormat": "p95 - {{type}}",
+                     "expr": "histogram_quantile(0.95, sum(rate(admission_preload_duration_seconds{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (formance_ledger_node_id))",
+                     "legendFormat": "p95 - Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "B"
                   },
@@ -8963,8 +8952,8 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.99, sum(rate(admission_preload_duration_seconds{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (type))",
-                     "legendFormat": "p99 - {{type}}",
+                     "expr": "histogram_quantile(0.99, sum(rate(admission_preload_duration_seconds{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (formance_ledger_node_id))",
+                     "legendFormat": "p99 - Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "C"
                   }
@@ -8977,7 +8966,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Rate of preload operations from the persistent store per second. High rates after warmup may indicate cache efficiency issues.\n\nBreakdown by attribute type:\n- volumes: Account volumes (input/output)\n- reversions: Transaction reversion status\n- idempotency_keys: Idempotency key mappings\n- boundaries: Ledger boundaries\n- ledgers: Ledger info\n- references: Transaction references\n",
+               "description": "Successful preload builds per second: one per admitted batch, whatever the number of keys it needs.\n",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -9068,7 +9057,7 @@
                      "refId": "A"
                   }
                ],
-               "title": "Preload Rate (by type)",
+               "title": "Preload Builds Rate",
                "type": "timeseries"
             },
             {
@@ -9076,7 +9065,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Rate of keys that need resolving during preload, broken down by attribute type.\nThis shows the total demand on the preload system before cache filtering.\n",
+               "description": "Rate of keys that need resolving during preload.\nThis shows the total demand on the preload system before cache filtering.\n",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -9167,7 +9156,7 @@
                      "refId": "A"
                   }
                ],
-               "title": "Preload Keys Needed Rate (by type)",
+               "title": "Preload Keys Needed Rate",
                "type": "timeseries"
             },
             {
@@ -9274,7 +9263,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Comparison of store reads (cache misses) vs cache hits by attribute type.\nHelps visualize the cache effectiveness at a glance.\n",
+               "description": "Comparison of store reads (keys_needed - cache_hits) vs cache hits.\nHelps visualize the cache effectiveness at a glance.\n",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -9376,7 +9365,7 @@
                      "refId": "B"
                   }
                ],
-               "title": "Preload Store Reads vs Cache Hits (by type)",
+               "title": "Preload Store Reads vs Cache Hits",
                "type": "timeseries"
             },
             {
@@ -12315,7 +12304,7 @@
                "type": "prometheus",
                "uid": "${datasource}"
             },
-            "definition": "query_result(raft_node_lead)",
+            "definition": "query_result(raft_node_leader)",
             "description": "Select the Kubernetes namespace of the Ledger cluster",
             "includeAll": true,
             "label": "Namespace",
@@ -12323,7 +12312,7 @@
             "options": [ ],
             "query": {
                "qryType": 1,
-               "query": "query_result(raft_node_lead)",
+               "query": "query_result(raft_node_leader)",
                "refId": "PrometheusVariableQueryEditor-VariableQuery"
             },
             "refresh": 1,
@@ -12337,7 +12326,7 @@
                "type": "prometheus",
                "uid": "${datasource}"
             },
-            "definition": "query_result(raft_node_lead{k8s_namespace_name=~\"$namespace\"})",
+            "definition": "query_result(raft_node_leader{k8s_namespace_name=~\"$namespace\"})",
             "description": "Select a Ledger cluster to filter metrics",
             "includeAll": true,
             "label": "Cluster",
@@ -12345,7 +12334,7 @@
             "options": [ ],
             "query": {
                "qryType": 1,
-               "query": "query_result(raft_node_lead{k8s_namespace_name=~\"$namespace\"})",
+               "query": "query_result(raft_node_leader{k8s_namespace_name=~\"$namespace\"})",
                "refId": "PrometheusVariableQueryEditor-VariableQuery"
             },
             "refresh": 1,
@@ -12359,7 +12348,7 @@
                "type": "prometheus",
                "uid": "${datasource}"
             },
-            "definition": "query_result(raft_node_lead{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\"})",
+            "definition": "query_result(raft_node_leader{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\"})",
             "description": "Select a node to filter metrics",
             "includeAll": true,
             "label": "Node",
@@ -12367,7 +12356,7 @@
             "options": [ ],
             "query": {
                "qryType": 1,
-               "query": "query_result(raft_node_lead{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\"})",
+               "query": "query_result(raft_node_leader{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\"})",
                "refId": "PrometheusVariableQueryEditor-VariableQuery"
             },
             "refresh": 1,

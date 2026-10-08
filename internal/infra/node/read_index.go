@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -130,8 +131,8 @@ func (node *Node) ReadIndexAndWait(ctx context.Context) (*ReadBarrierInfo, error
 	span.SetAttributes(
 		attribute.Int64("commit_index", int64(commitIndex)),
 		attribute.Int64("persisted_before_wait", int64(persistedBefore)),
-		attribute.Int64("leader", int64(node.GetLeader())),
-		attribute.Int64("node_id", int64(node.config.NodeID)),
+		attribute.String("leader", strconv.FormatUint(node.GetLeader(), 10)),
+		attribute.String("node_id", strconv.FormatUint(node.config.NodeID, 10)),
 	)
 
 	_, waitSpan := readIndexTracer.Start(ctx, "node.wait_for_applied",
