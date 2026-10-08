@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strconv"
+	"strings"
 
 	"github.com/formancehq/go-libs/v5/pkg/types/time"
 )
@@ -72,10 +74,8 @@ func validateValueType(expectedType FieldType, v any) error {
 		})
 	case TypeNumeric:
 		err = castAndValidateValue(v, func(n json.Number) error {
-			if _, ok := new(big.Int).SetString(string(n), 10); !ok {
-				return fmt.Errorf("number should be an integer: %v", n)
-			}
-			return nil
+			_, err := jsonNumberToInt(n)
+			return err
 		})
 		if err != nil {
 			err = castAndValidateValue(v, func(f float64) error {
@@ -113,4 +113,26 @@ func castAndValidateValue[T any](value any, validate func(T) error) error {
 	} else {
 		return errors.New("value doesn't match expected type")
 	}
+}
+
+// maxNumberExponent bounds the exponent accepted in a JSON number such as
+// 1e3, so a tiny payload cannot expand into a huge integer.
+const maxNumberExponent = 1000
+
+// jsonNumberToInt parses a JSON number exactly and returns it as an integer.
+// Integral values written in decimal or exponent form (123.0, 1e3, 1e+16) are
+// accepted. Values with a fractional part (1.5) are rejected.
+func jsonNumberToInt(n json.Number) (*big.Int, error) {
+	s := string(n)
+	if i := strings.IndexAny(s, "eE"); i >= 0 {
+		exp, err := strconv.Atoi(strings.TrimPrefix(s[i+1:], "+"))
+		if err != nil || exp > maxNumberExponent || exp < -maxNumberExponent {
+			return nil, fmt.Errorf("number should be an integer: %v", n)
+		}
+	}
+	r, ok := new(big.Rat).SetString(s)
+	if !ok || !r.IsInt() {
+		return nil, fmt.Errorf("number should be an integer: %v", n)
+	}
+	return new(big.Int).Set(r.Num()), nil
 }
