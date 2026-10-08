@@ -14,6 +14,7 @@
     "internal/bootstrap/controller_routed.go",
     "internal/storage/dal/reader.go",
     "internal/storage/dal/store.go",
+    "internal/adapter/grpc/consistency.go",
     "internal/adapter/grpc/server_bucket.go",
     "internal/adapter/http/**",
     "tests/e2e/business/**",
@@ -46,6 +47,7 @@
   ],
   "invariants": [
     "A default live read executes ReadIndexAndWait, carries the barrier to local execution, and rejects a pinned main snapshot whose durable LastAppliedIndex is below it. A stale read may omit only the quorum barrier; it cannot be labeled default or bypass alignment for a projection it consults.",
+    "The requested mode reaches RoutedController.readCtrl unchanged from either transport: gRPC x-consistency metadata and the HTTP X-Consistency header both store it via internal/query/consistency.go. An HTTP request with an unknown or repeated selector is rejected before any read and is never served as the default. A stale read is never forwarded, so it always describes the receiving replica.",
     "A request uses one fixed main-store handle and durable horizon H. It waits only for projections consulted, never chases a moving head, and reads each projection certificate from the immutable snapshot supplying the result.",
     "A projection publishes Raft progress H only after folding every relevant source item visible at H. Progress/cursor and all result-affecting writes for that boundary commit atomically; empty Raft entries advance certification when complete, while terminal corruption fails readiness and wakes waiters.",
     "At restart, index dispatch is restored from ledger history and active versions at the durable read-store cursor. A newer main registry cannot apply drops or ledger deletions early: any intermediate checkpoint certificate must include the index writes preceding those lifecycle logs.",
@@ -58,6 +60,7 @@
   ],
   "adversarial_questions": [
     "For every public read and mode, where is ReadIndexAndWait invoked, how is its index transported, and can a direct, prepared, inspect, audit, stats, or checkpoint path drop or relabel it?",
+    "Can any HTTP or gRPC read route bypass the consistency middleware or interceptor, serve an unrecognised HTTP selector as linearizable, or leak a stale level into a forwarded or leader-fallback read?",
     "Can a request open the main handle before reserving history, derive H or sequence from another handle, release a lease early, or read the certificate outside the projection snapshot it uses?",
     "Can a builder advance Raft progress or its native cursor before all rows, deletions, registry/version state, audit entries, or counters represented by that position share a successful batch? What is visible after commit, flush, or retry failure?",
     "Do no-log Raft entries, empty ledgers, rollback/reset, terminal corruption, or restart make a waiter hang, accept incomplete empty state, or skip a required position?",

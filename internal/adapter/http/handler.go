@@ -109,7 +109,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 
 	// Business API routes: mounted under APIVersionPrefix.
 	registerAPIRoutes := func(r chi.Router) {
-		r.With(contentTypeMiddleware, utf8PathParamValidator).Group(func(r chi.Router) {
+		r.With(contentTypeMiddleware, utf8PathParamValidator, readConsistency).Group(func(r chi.Router) {
 			// Profiled reads (EN-1859). Declared here, outside the scope groups
 			// below, because chi applies group middleware BEFORE route
 			// middleware: inside `r.With(requireXRead).Group(…)` the scope guard
