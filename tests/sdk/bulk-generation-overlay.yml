@@ -1,0 +1,12 @@
+overlay: 1.0.0
+info:
+  title: Ledger bulk TypeScript error media selection
+  version: 1.0.0
+actions:
+  - target: $["paths"]["/v3/{ledgerName}/bulk"]["post"]["responses"]["401"]["content"]["text/plain"]
+    description: |
+      Speakeasy cannot model an error response containing both object JSON and
+      non-object content. Select JSON for generated models; invalid-token text
+      remains available through the default SDK error's raw body. Apply only to
+      generation input, retaining both media types in the canonical API schema.
+    remove: true

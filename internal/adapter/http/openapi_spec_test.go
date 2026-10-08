@@ -76,6 +76,23 @@ func TestOpenAPISpec_DecodesStrictly(t *testing.T) {
 	require.Contains(t, doc, "paths")
 }
 
+func TestOpenAPISpec_BulkIdempotencyHeader(t *testing.T) {
+	t.Parallel()
+
+	doc, err := openapi3.NewLoader().LoadFromFile("../../../openapi.yml")
+	require.NoError(t, err)
+	operation := doc.Paths.Value("/v3/{ledgerName}/bulk").Post
+	var header *openapi3.Parameter
+	for _, parameter := range operation.Parameters {
+		if parameter.Value.In == "header" && parameter.Value.Name == "Idempotency-Key" {
+			header = parameter.Value
+		}
+	}
+	require.NotNil(t, header, "SDK callers need a typed batch idempotency header")
+	require.False(t, header.Required)
+	require.True(t, header.Schema.Value.Type.Is("string"))
+}
+
 func TestOpenAPISpec_LogPayloadPreservation(t *testing.T) {
 	t.Parallel()
 

@@ -493,6 +493,57 @@ Clients should:
 - **Idempotency**: Ensure write operations are idempotent to safely retry after leader election
 - **Monitoring**: Track `503` responses to monitor cluster health and leader election frequency
 
+## Bulk identity and response contract
+
+`POST /v3/{ledgerName}/bulk` accepts a JSON array. All elements target the
+ledger named in the URL. With `atomic=true`, admission receives one batch under
+the optional `Idempotency-Key` header; per-element `ik` values are ignored.
+With `atomic=false` (default), each element is submitted separately under its
+own `ik`, and the header is ignored. `continueOnFailure` does not change atomicity:
+an atomic batch failure is reported for every element. In sequential mode,
+`continueOnFailure=false` stops submission after the first failure and later
+elements report `ERROR` with `errorDescription: context canceled`.
+
+EN-2782 requires SDK clients to send the typed batch identity and retain complete
+outcomes when the overall request fails. OpenAPI therefore declares the reusable
+header parameter and a bulk-specific `BulkErrorResponse` union. The union uses
+`anyOf`: `BulkResponse` has optional top-level error fields, so ordinary
+`ErrorResponse` bodies overlap it and cannot be modeled with exclusive `oneOf`.
+The generated decoder must preserve `data`, `responseType`, `logID`, operation
+data and element errors rather than treating a valid processing response as an
+ordinary error that requires top-level errorCode/errorMessage.
+
+| Trigger | Overall status | Body |
+| --- | --- | --- |
+| Success, including an empty batch | 200 | BulkResponse; empty batches currently emit `{}` |
+| Malformed JSON, invalid ledger name, or byte-limit failure during decoding | 400 | Top-level errorCode/errorMessage, no element outcomes |
+| Missing credentials for a write element | 401 | JSON top-level errorCode/errorMessage |
+| Invalid JWT rejected by middleware | 401 | `text/plain`, starting with `invalid token:` |
+| Valid credentials missing an element's scope | 403 | JSON top-level errorCode/errorMessage |
+| More than the configured maximum element count | 413 | JSON top-level errorCode/errorMessage |
+| Processing-time business failure | 400/401/403/404/409 | BulkResponse with every element outcome; 200 instead when continueOnFailure=true |
+| Processing-time resource exhaustion | 429 | BulkResponse, regardless of continueOnFailure |
+| Leader loss, cache horizon exceeded, or a classified unavailable error | 503 | BulkResponse and `Retry-After: 1`, regardless of continueOnFailure |
+| Processing-time internal/unclassified failure | 500 | BulkResponse, regardless of continueOnFailure |
+| Panic recovery | 500 | Ordinary ErrorResponse with a sanitized correlation ID |
+
+The byte limit is implemented by `MaxBytesReader`, but `serveBulk` maps its read
+error to `400 VALIDATION`; the separate element-count guard maps to
+`413 BULK_SIZE_EXCEEDED`. These are distinct current paths. Request-level
+rejections always surface, independently of continueOnFailure. During processing,
+the highest infrastructure status wins; otherwise the highest business status
+wins unless continueOnFailure suppresses it. Aborted elements contribute no
+status. Returned statuses do not prove that preceding or ambiguous work did not
+commit: non-atomic batches can contain committed successes before a failure.
+Callers must inspect all outcomes and preserve the original batch/element
+identities when retrying. The schema correction does not enable SDK retries.
+
+`TestHandleBulk_*Contract` exercises the real router and validates its bytes
+against the declared responses. It can export those exact responses for
+`tests/sdk/bulk-contract.mjs`, which exercises the regenerated consumer operation,
+including plain-text JWT failures, header omission and 503 retry hints. See
+[the SDK probe instructions](../../../../../tests/sdk/README.md).
+
 ## Metadata number decoding
 
 HTTP metadata numbers retain their exact decimal value before conversion to

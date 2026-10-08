@@ -372,9 +372,43 @@ to 8.
 
 **Options:**
 - ✅ `continueOnFailure` - Continue even on error
-- ✅ `atomic` - All operations or nothing (supports cross-ledger operations)
+- ✅ `atomic` - Submit all operations as one batch for the URL's ledger
+- ✅ `Idempotency-Key` header - Optional identity of the whole atomic batch
+- ✅ Per-element `ik` - Identity of each sequential operation; header ignored
 
-> **Note:** Unlike v2, v3 supports **system-level atomic bulk operations** that can span multiple ledgers. This is enabled by the [Global Log Architecture](../architecture/subsystems/consensus/global-log.md).
+HTTP bulk actions all inherit the URL's ledger name. The underlying service
+batch can span ledgers, but the HTTP bulk operation cannot. In atomic mode,
+per-element `ik` values are ignored; `continueOnFailure` controls the business
+error status without allowing partial application of the batch.
+
+**SDK error contract (EN-2782):** Processing failures retain the `data` array,
+including committed successes, the failed element and aborted later elements.
+Business statuses 400/401/403/404/409 are suppressed to 200 only when
+`continueOnFailure=true`. Processing 429/500/503 surface unconditionally;
+503 retains `Retry-After: 1`. OpenAPI declares `BulkErrorResponse` as an `anyOf`
+union of the bulk envelope and ordinary ErrorResponse where both are accepted,
+and includes the optional batch idempotency header. Empty successful batches
+currently emit `{}`. Invalid JWTs return a plain-text 401 from middleware;
+per-element scope prechecks return JSON 401/403. Byte-limit decoding errors
+return 400; the configured element-count limit returns 413. Panic recovery
+returns an ordinary JSON 500. See the
+[complete response matrix](../architecture/subsystems/api/http-api.md#bulk-identity-and-response-contract).
+Generated SDK callers can inspect all element fields and error headers; this
+change does not alter automatic retry defaults. A failed request does not prove
+noncommit, and sequential retries must preserve per-element identities.
+
+**v2 comparison:** Verified against v2 source revision
+`d47ba1746` (`internal/api/v2/controllers_bulk.go`,
+`internal/api/bulking/{bulker,elements,handler_json}.go`, their tests and
+`openapi/v2.yaml`). Both versions use `atomic`, `continueOnFailure`, and the
+element field `ik`; v2's JSON result also exposes responseType/data/logID and
+element errors. V2 returns 400 for an element failure and declares bulk bodies
+for 200/400. V3 uses the existing status classifier to expose 404/409/429/5xx
+with the same element envelope. V2 passes each element's identity to its
+controller, including inside its database transaction, and its bulk operation
+does not declare or read a batch-level header. V3's single atomic proposal has
+one identity, so the new typed header documents that intentional difference.
+The v2 schemaVersion/parallel options are not added to v3 by this correction.
 
 ### 5. Ledger Management
 
