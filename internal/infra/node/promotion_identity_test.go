@@ -19,7 +19,6 @@ import (
 // each production caller must propagate the payload through ProposeConfChange.
 func requireCompletePromotion(t *testing.T, n *Node) (*raftpb.Entry, *raftpb.ConfChangeV2) {
 	t.Helper()
-
 	ready := n.rawNode.Ready()
 	var promotions []*raftpb.Entry
 	for _, entry := range ready.Entries {
@@ -44,10 +43,8 @@ func requireCompletePromotion(t *testing.T, n *Node) (*raftpb.Entry, *raftpb.Con
 
 	return entry, cc
 }
-
 func TestPromoteLearner_ProposesCompleteRegisteredIdentity(t *testing.T) {
 	t.Parallel()
-
 	n := newConfiguredPeersTestNode(t)
 	n.logger = logging.Testing()
 	setup := newTestApplierSetupWithConfChangeHandler(t, make(LocalResponses, 1024), n.membership.WriteConfChange)
@@ -56,7 +53,6 @@ func TestPromoteLearner_ProposesCompleteRegisteredIdentity(t *testing.T) {
 	go func() {
 		results <- n.PromoteLearner(t.Context(), 2)
 	}()
-
 	cmd := <-n.clusterCommandCh
 	err := cmd.fn()
 	require.NoError(t, err)
@@ -64,7 +60,6 @@ func TestPromoteLearner_ProposesCompleteRegisteredIdentity(t *testing.T) {
 	payload, err := membership.UnmarshalConfChangeContext(cc.GetContext())
 	require.NoError(t, err)
 	require.NotEmpty(t, payload.ProposalID, "manual promotion must retain waiter correlation")
-
 	// Acknowledge the captured entry through the same correlation mechanism
 	// as finishReady, then release the command response and its caller.
 	pending, err := n.takePendingConfChange(cc, entry.GetIndex())
@@ -81,14 +76,11 @@ func TestPromoteLearner_ProposesCompleteRegisteredIdentity(t *testing.T) {
 	cmd.errCh <- nil
 	require.NoError(t, <-results)
 }
-
 func TestCheckAndPromoteLearners_ProposesCompleteRegisteredIdentity(t *testing.T) {
 	t.Parallel()
-
 	n := newConfiguredPeersTestNode(t)
 	n.logger = logging.Testing()
 	n.lastAutoPromote = make(map[uint64]time.Time)
-
 	// A real replication acknowledgement makes the learner active and caught
 	// up to the leader's initial no-op entry, satisfying the automatic gate.
 	ack := msgWithIndex(raftpb.MsgAppResp, 2, 1, 1)
@@ -98,7 +90,6 @@ func TestCheckAndPromoteLearners_ProposesCompleteRegisteredIdentity(t *testing.T
 	require.True(t, progress.IsLearner)
 	require.True(t, progress.RecentActive)
 	require.Equal(t, uint64(1), progress.Match)
-
 	require.NoError(t, n.checkAndPromoteLearners())
 	_, cc := requireCompletePromotion(t, n)
 	payload, err := membership.UnmarshalConfChangeContext(cc.GetContext())
@@ -107,10 +98,8 @@ func TestCheckAndPromoteLearners_ProposesCompleteRegisteredIdentity(t *testing.T
 	_, attempted := n.lastAutoPromote[2]
 	require.True(t, attempted)
 }
-
 func TestCheckAndPromoteLearnersMissingRowStopsRun(t *testing.T) {
 	t.Parallel()
-
 	setup := newTestApplierSetup(t)
 	require.NoError(t, setup.wal.UpdateSnapshotConfState(&raftpb.ConfState{
 		Voters: []uint64{1}, Learners: []uint64{2},
@@ -133,7 +122,6 @@ func TestCheckAndPromoteLearnersMissingRowStopsRun(t *testing.T) {
 		setup.applier.recovery, setup.applier.synchronizer, m, setup.responseSink,
 	)
 	require.NoError(t, err)
-
 	ready := make(chan struct{})
 	runErr := make(chan error, 1)
 	done := make(chan struct{})
@@ -161,7 +149,6 @@ func TestCheckAndPromoteLearnersMissingRowStopsRun(t *testing.T) {
 		t.Fatal("Node.Run did not become ready")
 	}
 	require.Eventually(t, n.IsLeader, 5*time.Second, time.Millisecond)
-
 	// Prepare the impossible state and a real replication acknowledgement
 	// inside orchestrate. The subsequent production ticker, rather than the
 	// test calling checkAndPromoteLearners, must surface the invariant to Run.
@@ -183,10 +170,8 @@ func TestCheckAndPromoteLearnersMissingRowStopsRun(t *testing.T) {
 
 			return n.rawNode.Step(ack)
 		}))
-
 		require.True(collect, armed)
 	}, 5*time.Second, time.Millisecond)
-
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
@@ -200,4 +185,55 @@ func TestCheckAndPromoteLearnersMissingRowStopsRun(t *testing.T) {
 	default:
 		t.Fatal("Node.Run did not publish lifecycle completion")
 	}
+}
+func TestPromoteLearner_CommitsLeaderCachedAddresses(t *testing.T) {
+	t.Parallel()
+	// Regression test for Finding 2 (paul-nicolas review 2026-10-08):
+	// promotionContext captures addresses from the leader's in-memory cache
+	// (PeerAddresses()), not from the target node's own authoritative self row.
+	// A learner that restarted with new advertised endpoints (via Register on
+	// restart) will have its new addresses known locally, but the leader's
+	// cache still holds the old registration until an explicit AddLearner or
+	// UpdateNode propagates the change.
+	//
+	// This test documents the current behavior: promotion commits the addresses
+	// the leader has registered, not the target's self-reported endpoints.
+	// The operator must issue AddLearner with the new addresses (triggering
+	// a ConfChangeUpdateNode) before auto-promotion if the endpoints changed.
+	n := newConfiguredPeersTestNode(t)
+	n.logger = logging.Testing()
+	n.lastAutoPromote = make(map[uint64]time.Time)
+	// Simulate that the leader's cache still holds the old addresses for peer 2.
+	// (The default from newConfiguredPeersTestNode is "old:7777"/"old:8888".)
+	leaderCachedAddr := "old:7777"
+	leaderCachedSvc := "old:8888"
+	leaderCachedID := []byte("peer-instance-id")
+	// A real replication acknowledgement makes the learner active.
+	ack := msgWithIndex(raftpb.MsgAppResp, 2, 1, 1)
+	ack.Term = new(n.rawNode.Status().GetTerm())
+	require.NoError(t, n.rawNode.Step(ack))
+	require.True(t, n.rawNode.Status().Progress[2].IsLearner)
+	require.NoError(t, n.checkAndPromoteLearners())
+	ready := n.rawNode.Ready()
+	var entries []*raftpb.Entry
+	for _, e := range ready.Entries {
+		if e.GetType() == raftpb.EntryConfChangeV2 {
+			entries = append(entries, e)
+		}
+	}
+	require.Len(t, entries, 1, "must propose exactly one promotion")
+	cc, ok, err := membership.UnmarshalConfChangeV2(entries[0])
+	require.NoError(t, err)
+	require.True(t, ok)
+	payload, err := membership.UnmarshalConfChangeContext(cc.GetContext())
+	require.NoError(t, err)
+	// The committed payload carries the leader-cached addresses, not any
+	// target-side self-reported endpoint. This is the documented behavior:
+	// the leader's view is authoritative for what gets committed to consensus.
+	assert.Equal(t, leaderCachedAddr, payload.RaftAddress,
+		"promotion commits the leader-cached raft address, not a target-reported one")
+	assert.Equal(t, leaderCachedSvc, payload.ServiceAddress,
+		"promotion commits the leader-cached service address, not a target-reported one")
+	assert.Equal(t, leaderCachedID, payload.InstanceID,
+		"promotion commits the leader-cached identity, consistent with the persisted membership row")
 }

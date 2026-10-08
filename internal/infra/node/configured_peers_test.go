@@ -15,14 +15,12 @@ import (
 
 func newConfiguredPeersTestNode(t *testing.T) *Node {
 	t.Helper()
-
 	w, err := wal.New(t.TempDir(), logging.Testing(), noop.Meter{})
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, w.Close()) })
 	require.NoError(t, w.CreateSnapshot(0, &raftpb.ConfState{
 		Voters: []uint64{1}, Learners: []uint64{2},
 	}, nil))
-
 	rawNode, err := raft.NewRawNode(&raft.Config{
 		ID:              1,
 		ElectionTick:    10,
@@ -42,7 +40,6 @@ func newConfiguredPeersTestNode(t *testing.T) *Node {
 		rawNode.Advance(ready)
 	}
 	require.Equal(t, raft.StateLeader, rawNode.Status().RaftState)
-
 	m := newTestMembership(t)
 	require.NoError(t, m.Set(1, "self:7777", "self:8888", []byte("self-instance-id")))
 	require.NoError(t, m.Set(2, "old:7777", "old:8888", []byte("peer-instance-id")))
@@ -56,10 +53,8 @@ func newConfiguredPeersTestNode(t *testing.T) *Node {
 		clusterCommandCh: make(chan *clusterCommand),
 	}
 }
-
 func TestGetConfiguredPeers_FollowerDoesNotPublishLeaderView(t *testing.T) {
 	t.Parallel()
-
 	n := newConfiguredPeersTestNode(t)
 	storage := raft.NewMemoryStorage()
 	require.NoError(t, storage.ApplySnapshot(&raftpb.Snapshot{Metadata: &raftpb.SnapshotMetadata{
@@ -85,10 +80,8 @@ func TestGetConfiguredPeers_FollowerDoesNotPublishLeaderView(t *testing.T) {
 	require.Empty(t, <-results, "local cached peers must not masquerade as leader discovery")
 	require.NotEmpty(t, n.membership.PeerAddresses())
 }
-
 func TestGetConfiguredPeers_SnapshotSurvivesMembershipChange(t *testing.T) {
 	t.Parallel()
-
 	for _, replace := range []bool{false, true} {
 		name := "removed"
 		if replace {
@@ -96,7 +89,6 @@ func TestGetConfiguredPeers_SnapshotSurvivesMembershipChange(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			n := newConfiguredPeersTestNode(t)
 			type result struct {
 				peers []Peer
@@ -107,7 +99,6 @@ func TestGetConfiguredPeers_SnapshotSurvivesMembershipChange(t *testing.T) {
 				peers, err := n.GetConfiguredPeers(t.Context())
 				results <- result{peers: peers, err: err}
 			}()
-
 			// Run the command as orchestrate would, but hold its response until
 			// the next configuration change. The caller must still receive the
 			// complete old peer row, never a missing row or the new incarnation.
@@ -125,7 +116,6 @@ func TestGetConfiguredPeers_SnapshotSurvivesMembershipChange(t *testing.T) {
 				require.NoError(t, n.membership.Set(2, "new:7777", "new:8888", []byte("next-instance-id")))
 			}
 			cmd.errCh <- err
-
 			got := <-results
 			require.NoError(t, got.err)
 			require.ElementsMatch(t, []Peer{
@@ -135,10 +125,8 @@ func TestGetConfiguredPeers_SnapshotSurvivesMembershipChange(t *testing.T) {
 		})
 	}
 }
-
 func TestGetConfiguredPeers_RejectsMissingConfiguredIdentity(t *testing.T) {
 	t.Parallel()
-
 	n := newConfiguredPeersTestNode(t)
 	n.membership.Remove(2)
 	results := make(chan error, 1)
@@ -150,10 +138,8 @@ func TestGetConfiguredPeers_RejectsMissingConfiguredIdentity(t *testing.T) {
 	cmd.errCh <- cmd.fn()
 	require.ErrorContains(t, <-results, "invariant: cluster member 2 has no membership row")
 }
-
 func TestGetConfiguredPeers_TopologySnapshotIsAtomicWithConcurrentRehydrate(t *testing.T) {
 	t.Parallel()
-
 	// Regression test for the concurrency window between rawNode.Status() and
 	// membership.PeerAddresses() in the pre-fix GetConfiguredPeers. The fix
 	// wraps both reads inside membership.WithPeerAddresses (which holds m.mu.RLock
@@ -166,7 +152,6 @@ func TestGetConfiguredPeers_TopologySnapshotIsAtomicWithConcurrentRehydrate(t *t
 	// In both cases the result must be internally consistent: the address and
 	// identity for peer 2 must belong to the same incarnation, never a mix.
 	n := newConfiguredPeersTestNode(t)
-
 	type result struct {
 		peers []Peer
 		err   error
@@ -176,9 +161,7 @@ func TestGetConfiguredPeers_TopologySnapshotIsAtomicWithConcurrentRehydrate(t *t
 		peers, err := n.GetConfiguredPeers(t.Context())
 		results <- result{peers: peers, err: err}
 	}()
-
 	cmd := <-n.clusterCommandCh
-
 	// Start concurrent Set() immediately — races with cmd.fn().
 	// WithPeerAddresses ensures the two views (Status + addresses) are captured
 	// under a single RLock, so Set() either runs entirely before or entirely after
@@ -188,15 +171,12 @@ func TestGetConfiguredPeers_TopologySnapshotIsAtomicWithConcurrentRehydrate(t *t
 		require.NoError(t, n.membership.Set(2, "new:7777", "new:8888", []byte("next-instance-id")))
 		close(setDone)
 	}()
-
 	err := cmd.fn()
 	require.NoError(t, err)
 	cmd.errCh <- err
-
 	<-setDone
 	got := <-results
 	require.NoError(t, got.err)
-
 	// Find peer 2 in the result.
 	var peer2 *Peer
 	for i := range got.peers {
@@ -207,8 +187,67 @@ func TestGetConfiguredPeers_TopologySnapshotIsAtomicWithConcurrentRehydrate(t *t
 		}
 	}
 	require.NotNil(t, peer2, "peer 2 must be present in the topology snapshot")
-
 	// The snapshot must be one consistent incarnation: address and identity must match.
+	switch peer2.Address {
+	case "old:7777":
+		require.Equal(t, []byte("peer-instance-id"), peer2.InstanceID,
+			"old address must pair with old identity, never a mixed incarnation")
+	case "new:7777":
+		require.Equal(t, []byte("next-instance-id"), peer2.InstanceID,
+			"new address must pair with new identity, never a mixed incarnation")
+	default:
+		t.Fatalf("unexpected address for peer 2: %q", peer2.Address)
+	}
+}
+func TestGetConfiguredPeers_TopologySnapshotIsAtomicWithConcurrentRehydrate_DeterministicOracle(t *testing.T) {
+	t.Parallel()
+	// This test provides the deterministic Rehydrate oracle that the concurrent-Set
+	// test above cannot supply. Rehydrate holds m.mu.Lock for the entire cache swap,
+	// which blocks WithPeerAddresses (m.mu.RLock). The snapshot captured inside
+	// cmd.fn() must therefore see either the pre-Rehydrate or the post-Rehydrate
+	// state for peer 2, never a mix of old address with new identity or vice versa.
+	//
+	// Without the WithPeerAddresses fix a concurrent Rehydrate can interleave
+	// between the rawNode.Status() and the PeerAddresses() call: Status would
+	// still include peer 2, but PeerAddresses would return the new incarnation,
+	// pairing address "old:7777" with identity "next-instance-id".
+	n := newConfiguredPeersTestNode(t)
+	// Persist the new incarnation for peer 2 so Rehydrate loads it.
+	// The in-memory Membership cache still holds the old row.
+	require.NoError(t, n.membership.PeerStore().Put(2, "new:7777", "new:8888", []byte("next-instance-id")))
+	type result struct {
+		peers []Peer
+		err   error
+	}
+	results := make(chan result, 1)
+	go func() {
+		peers, err := n.GetConfiguredPeers(t.Context())
+		results <- result{peers: peers, err: err}
+	}()
+	cmd := <-n.clusterCommandCh
+	// Run Rehydrate concurrently with cmd.fn(). WithPeerAddresses serialises
+	// the two operations so only one complete view is observable.
+	rehydrateDone := make(chan error, 1)
+	go func() {
+		rehydrateDone <- n.membership.Rehydrate()
+	}()
+	err := cmd.fn()
+	require.NoError(t, err)
+	cmd.errCh <- err
+	require.NoError(t, <-rehydrateDone)
+	got := <-results
+	require.NoError(t, got.err)
+	var peer2 *Peer
+	for i := range got.peers {
+		if got.peers[i].ID == 2 {
+			peer2 = &got.peers[i]
+
+			break
+		}
+	}
+	require.NotNil(t, peer2, "peer 2 must be present in the topology snapshot")
+	// The snapshot must be one consistent incarnation: address and identity
+	// must belong to the same Rehydrate generation.
 	switch peer2.Address {
 	case "old:7777":
 		require.Equal(t, []byte("peer-instance-id"), peer2.InstanceID,
