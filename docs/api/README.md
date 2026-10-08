@@ -2704,7 +2704,7 @@ Run a query template on a ledger
 |sort|query|string|false|Sort results using a field name and order (ascending or descending).|
 |body|body|object|true|none|
 |» cursor|body|string|false|none|
-|» params|body|[V2QueryParams](#schemav2queryparams)|false|Parameters applied when running a query template|
+|» params|body|[V2QueryParams](#schemav2queryparams)|false|Parameters for this run, layered on top of the template's `params`.|
 |»» pageSize|body|integer(int64)|false|The maximum number of results to return per page.|
 |»» cursor|body|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
 |»» expand|body|string|false|Additional data to include in the response, such as volumes|
@@ -2738,6 +2738,11 @@ No other parameters can be set when this parameter is set.
 
 **sort**: Sort results using a field name and order (ascending or descending).
 Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
+
+**» params**: Parameters for this run, layered on top of the template's `params`.
+Params are resolved in order: server defaults, then the template's `params`, then these run `params`. Each layer overrides the previous one field by field.
+A field that is absent or `null` here keeps the template's value: `null` does not clear it. This differs from JSON Merge Patch (RFC 7396), where `null` removes a field.
+To run a template that sets `endTime` against the current state, pass an explicit `endTime` set to the current time. `expand` can be cleared with `[]`.
 
 **»» cursor**: Parameter used in pagination requests. Maximum page size is set to 15.
 Set to the value of next for the next page of results.
@@ -6959,7 +6964,7 @@ xor
 |---|---|---|---|---|
 |description|string|false|none|Human-readable description of what the query returns|
 |resource|[V2QueryResource](#schemav2queryresource)|false|none|The resource a query template targets|
-|params|[V2QueryParams](#schemav2queryparams)|false|none|Parameters applied when running a query template|
+|params|[V2QueryParams](#schemav2queryparams)|false|none|Default parameters for this template. Params are resolved in order: server defaults, then these template `params`, then the run request's `params`. Each layer overrides the previous one field by field.<br>A field that is absent or `null` in the run request keeps the value set here: `null` does not clear it. This differs from JSON Merge Patch (RFC 7396), where `null` removes a field.|
 |vars|object|false|none|Variables the query accepts, keyed by variable name|
 |» **additionalProperties**|[V2QueryTemplateVar](#schemav2querytemplatevar)|false|none|none|
 |body|object|false|none|The filter expression the query evaluates|
