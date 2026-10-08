@@ -53,6 +53,31 @@ need gRPC metadata. The gate does not version the HTTP API or Raft/storage
 formats. See [the service protocol contract](../architecture/subsystems/api/protocol-compatibility.md)
 for client setup, restore behavior, failure limitations, and revision changes.
 
+### Authentication and resource exhaustion (EN-2783)
+
+The five v3 Numscript library operations declare their existing optional bearer
+authentication and 401/403 failures. Anonymous scopes and auth-disabled mode remain
+supported. Middleware failures contain plain text; controller failures can contain
+the usual JSON `errorCode`/`errorMessage` envelope. Clients dispatch using both
+status and media type. The HTTP response wrapper preserves an explicit content
+type so a plain-text scope denial is not mislabeled JSON.
+
+The 22 non-bulk Apply write operations declare JSON 429 responses for disk gating
+and authoritative identifier exhaustion. See the evidence-backed
+[route/status/body matrix](../architecture/subsystems/api/http-api.md#resource-exhaustion-response-matrix).
+No 429 retry interval is supplied. `WRITES_BLOCKED_DISK_FULL` can clear with disk
+pressure; `SEQUENCE_EXHAUSTED` is permanent for the allocator. Bulk keeps its
+distinct processing envelope, and reads gain no speculative 429 declarations.
+
+The v2 reference at `d47ba1746cec2173d84eab8ec575be196eae0837`
+(`internal/api/common/errors.go`, `openapi.yaml`) has the familiar JSON
+`errorCode`/`errorMessage` error envelope, which v3 preserves for domain failures.
+Its database-client saturation maps to 503, not the v3 disk/sequence 429 reasons;
+these different server semantics do not warrant forcing equivalent statuses.
+The inspected v2 specification has no matching versioned Numscript library
+routes or service-local 401/403 declarations. V3 scope failures follow its own
+JWT/anonymous policy; no new endpoint or authorization requirement is introduced.
+
 ### Feature comparison
 
 | Feature | POC | Original | Notes |
