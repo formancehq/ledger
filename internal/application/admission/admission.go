@@ -495,7 +495,9 @@ func (a *Admission) recordPhaseOnExit(ctx context.Context, hist metric.Int64Hist
 // 4. For volumes not guaranteed in cache, load base values from store at B(nextIndex)
 // 5. Propose command with Preload containing base values.
 func (a *Admission) Admit(ctx context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
-	return a.admit(ctx, req, nil)
+	return a.admitWithResolver(ctx, func(ctx context.Context) (verifiedBatch, error) {
+		return a.resolveBatch(ctx, req)
+	})
 }
 
 // AdmitClusterPolicy admits the leader's internal cluster-policy reconciliation
@@ -505,10 +507,14 @@ func (a *Admission) AdmitClusterPolicy(ctx context.Context, policy *commonpb.Clu
 		return nil, errors.New("cluster policy must not be nil")
 	}
 
-	return a.admit(ctx, nil, policy)
+	return a.admitWithResolver(ctx, func(context.Context) (verifiedBatch, error) {
+		return verifiedBatch{clusterPolicy: policy}, nil
+	})
 }
 
-func (a *Admission) admit(ctx context.Context, req *commonpb.ApplyRequest, clusterPolicy *commonpb.ClusterPolicy) (response *domain.ApplyResult, err error) {
+type batchResolver func(context.Context) (verifiedBatch, error)
+
+func (a *Admission) admitWithResolver(ctx context.Context, resolve batchResolver) (response *domain.ApplyResult, err error) {
 	caller, err := auth.ResolveCallerAttribution(ctx)
 	if err != nil {
 		invalid, ok := errors.AsType[*domain.ErrInvalidCallerAttribution](err)
@@ -548,12 +554,7 @@ func (a *Admission) admit(ctx context.Context, req *commonpb.ApplyRequest, clust
 
 	ctx, sigSpan := tracer.Start(ctx, "admission.verify_signatures")
 	resolveBatchStart := time.Now()
-	var batch verifiedBatch
-	if clusterPolicy != nil {
-		batch = verifiedBatch{clusterPolicy: clusterPolicy}
-	} else {
-		batch, err = a.resolveBatch(ctx, req)
-	}
+	batch, err := resolve(ctx)
 	a.resolveBatchDurationHistogram.Record(ctx, time.Since(resolveBatchStart).Microseconds())
 
 	sigSpan.End()
@@ -563,7 +564,7 @@ func (a *Admission) admit(ctx context.Context, req *commonpb.ApplyRequest, clust
 	}
 
 	// Check maintenance mode: block all requests except SetMaintenanceMode.
-	if a.sharedState.MaintenanceMode() && clusterPolicy == nil && !allRequestsAreMaintenanceMode(batch.requests) {
+	if a.sharedState.MaintenanceMode() && batch.clusterPolicy == nil && !allRequestsAreMaintenanceMode(batch.requests) {
 		return nil, ErrMaintenanceMode
 	}
 
@@ -586,7 +587,7 @@ func (a *Admission) admit(ctx context.Context, req *commonpb.ApplyRequest, clust
 	// fresh leader's reconciler commits the policy within a reconcile interval, so
 	// this blocks only during the startup window. Internal cluster-policy
 	// proposals are exempt so the reconciler can establish the policy.
-	businessBatch := clusterPolicy == nil
+	businessBatch := batch.clusterPolicy == nil
 	if businessBatch {
 		if err := a.waitClusterPolicyReady(ctx); err != nil {
 			return nil, err
@@ -603,7 +604,7 @@ func (a *Admission) admit(ctx context.Context, req *commonpb.ApplyRequest, clust
 	stopOrdersPrep := a.recordPhaseOnExit(ctx, a.ordersPreparationDurationHistogram)
 	defer stopOrdersPrep()
 
-	orders, overlay, err := a.requestsToOrders(ctx, batch.requests, batch.sig, clusterPolicy)
+	orders, overlay, err := a.requestsToOrders(ctx, batch.requests, batch.sig, batch.clusterPolicy)
 	if err != nil {
 		return nil, fmt.Errorf("converting requests to orders: %w", err)
 	}
