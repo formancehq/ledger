@@ -529,7 +529,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) (\n  rate(process_cpu_time_seconds_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])\n)\n/\nmax by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) (\n  go_processor_limit{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}\n)",
-                     "legendFormat": "{{{{formance_ledger_cluster_name}}}} / Node {{{{formance_ledger_node_id}}}}",
+                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
