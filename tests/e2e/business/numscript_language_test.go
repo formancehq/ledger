@@ -126,6 +126,9 @@ send [USD/2 *] (
 		})
 
 		It("Should reject send-all from an unbounded-overdraft source", func() {
+			// The VM compiler rejects this statically (it cannot take all
+			// balance of an unbounded source), so admission refuses the script
+			// as a validation error before it is ever proposed.
 			script := `
 send [USD/2 *] (
   source = @sa:credit allowing unbounded overdraft
@@ -136,8 +139,8 @@ send [USD/2 *] (
 			Expect(err).To(HaveOccurred())
 			info := actions.ExtractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil(), "error must carry error info: %v", err)
-			Expect(info.Reason).To(Equal(domain.ErrReasonNumscriptRuntime),
-				"send-all from unbounded-overdraft source must be a runtime error, got %q", info.Reason)
+			Expect(info.Reason).To(Equal(domain.ErrReasonNumscriptCompileError),
+				"send-all from unbounded-overdraft source must be a compile-time error, got %q", info.Reason)
 		})
 	})
 

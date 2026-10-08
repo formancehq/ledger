@@ -14,6 +14,21 @@ type Cursor[T any] interface {
 	Close() error
 }
 
+// MoreReporter is implemented by cursors over a source that capped its own
+// response: once exhausted, HasMore reports whether that source signaled
+// rows beyond what it delivered.
+type MoreReporter interface {
+	HasMore() bool
+}
+
+// SourceHasMore reports whether an exhausted cursor's source signaled further
+// rows. Cursors that are not MoreReporters delivered everything they had.
+func SourceHasMore[T any](c Cursor[T]) bool {
+	m, ok := c.(MoreReporter)
+
+	return ok && m.HasMore()
+}
+
 // SliceCursor wraps a slice to implement the Cursor interface.
 type SliceCursor[T any] struct {
 	items []T

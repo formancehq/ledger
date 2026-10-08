@@ -19,13 +19,24 @@ paths:
   /v3/:
     get:
       summary: List all ledgers
-      description: Returns a list of all ledgers in the cluster. Requires `ledger:read` scope.
+      description: |
+        Lists the ledgers in the cluster, paged by name (ascending unless
+        `reverse=true`). Requires `ledger:read` scope.
       operationId: listAllLedgers
       tags:
         - Ledgers
       security:
         - BearerAuth: []
         - {}
+      parameters:
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageCursor'
+        - name: reverse
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: List in descending name order when true.
       responses:
         '200':
           description: List of ledgers retrieved successfully
@@ -342,9 +353,10 @@ paths:
     get:
       summary: List logs for a ledger
       description: |
-        Lists log entries for a specific ledger, ordered by ledger-local log ID ascending.
+        Lists log entries for a specific ledger, paged by ledger-local log ID
+        (ascending unless `reverse=true`).
         Requires the builtin `LOG` index to be enabled on the ledger via `CreateIndex`.
-        Supports cursor pagination via the `after` query parameter. Requires `ledger:read` scope.
+        Requires `ledger:read` scope.
       operationId: listLedgerLogs
       tags:
         - Logs
@@ -353,21 +365,14 @@ paths:
         - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
-        - name: pageSize
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageCursor'
+        - name: reverse
           in: query
           schema:
-            type: integer
-            format: uint32
-            minimum: 0
-            default: 0
-          description: Maximum number of log entries to return (0 = no limit)
-        - name: after
-          in: query
-          schema:
-            type: integer
-            format: uint64
-            minimum: 0
-          description: Ledger-local log ID to start after (exclusive, for cursor pagination)
+            type: boolean
+            default: false
+          description: List in descending ledger-local log ID order when true.
         - name: startDate
           in: query
           schema:
@@ -398,11 +403,19 @@ paths:
                 type: object
                 required:
                   - data
+                  - hasMore
                 properties:
                   data:
                     type: array
                     items:
                       $ref: '#/components/schemas/SystemLog'
+                  next:
+                    $ref: '#/components/schemas/PageToken'
+                  previous:
+                    $ref: '#/components/schemas/PageToken'
+                  hasMore:
+                    type: boolean
+                    description: True when a following page exists; set iff `next` is.
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -423,7 +436,8 @@ paths:
       summary: List audit entries
       description: |
         Lists audit trail entries (one per proposal, success or failure) across
-        the whole bucket, ordered by audit sequence ascending. Audit reads are
+        the whole bucket, paged by audit sequence (ascending unless
+        `reverse=true`). Audit reads are
         not ledger-scoped in the path — a single proposal can touch several
         ledgers — so ledger scope, outcome and other dimensions are expressed
         through the `filter` query parameter.
@@ -443,21 +457,8 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
-        - name: pageSize
-          in: query
-          schema:
-            type: integer
-            format: uint32
-            minimum: 0
-            default: 0
-          description: Maximum number of audit entries to return (0 = server default, capped at 1000)
-        - name: after
-          in: query
-          schema:
-            type: integer
-            format: uint64
-            minimum: 0
-          description: Audit sequence to start after (exclusive, opaque cursor for pagination)
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageCursor'
         - name: reverse
           in: query
           schema:
@@ -511,11 +512,21 @@ paths:
             application/json:
               schema:
                 type: object
+                required:
+                  - data
+                  - hasMore
                 properties:
                   data:
                     type: array
                     items:
                       $ref: '#/components/schemas/AuditEntry'
+                  next:
+                    $ref: '#/components/schemas/PageToken'
+                  previous:
+                    $ref: '#/components/schemas/PageToken'
+                  hasMore:
+                    type: boolean
+                    description: True when a following page exists; set iff `next` is.
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -684,8 +695,8 @@ paths:
       description: |
         Lists transactions for a specific ledger. The default order is
         newest-first (descending transaction id); pass `reverse=true` to
-        get oldest-first (ascending). Supports cursor pagination via the
-        `after` query parameter, an optional date range (`startDate`/`endDate`),
+        get oldest-first (ascending). Supports cursor pagination (`pageSize`,
+        `cursor`), an optional date range (`startDate`/`endDate`),
         and the generic `filter` parameter (e.g. reference selection via
         `filter={"$match":{"reference":"..."}}`, URL-encoded). Requires
         `ledger:TransactionRead` scope.
@@ -703,20 +714,8 @@ paths:
         - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
-        - name: pageSize
-          in: query
-          schema:
-            type: integer
-            format: uint32
-            minimum: 0
-            default: 0
-        - name: after
-          in: query
-          schema:
-            type: integer
-            format: uint64
-            minimum: 0
-          description: Transaction id to start after (exclusive, for cursor pagination).
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageCursor'
         - name: reverse
           in: query
           schema:
@@ -757,11 +756,19 @@ paths:
                 type: object
                 required:
                   - data
+                  - hasMore
                 properties:
                   data:
                     type: array
                     items:
                       $ref: '#/components/schemas/TransactionResponse'
+                  next:
+                    $ref: '#/components/schemas/PageToken'
+                  previous:
+                    $ref: '#/components/schemas/PageToken'
+                  hasMore:
+                    type: boolean
+                    description: True when a following page exists; set iff `next` is.
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -828,17 +835,8 @@ paths:
         - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
-        - name: pageSize
-          in: query
-          description: Maximum number of accounts to return (0 = no limit)
-          schema:
-            type: integer
-            format: int32
-        - name: after
-          in: query
-          description: Account address to start after (for cursor pagination, exclusive)
-          schema:
-            type: string
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageCursor'
         - name: reverse
           in: query
           schema:
@@ -859,11 +857,21 @@ paths:
             application/json:
               schema:
                 type: object
+                required:
+                  - data
+                  - hasMore
                 properties:
                   data:
                     type: array
                     items:
                       $ref: '#/components/schemas/Account'
+                  next:
+                    $ref: '#/components/schemas/PageToken'
+                  previous:
+                    $ref: '#/components/schemas/PageToken'
+                  hasMore:
+                    type: boolean
+                    description: True when a following page exists; set iff `next` is.
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1370,9 +1378,13 @@ paths:
             maximum: 10000
         - name: cursor
           in: query
-          description: Pagination cursor from previous response
+          description: |
+            Page token from a previous response's `nextCursor` or
+            `previousCursor`, for distinctValues/facets modes (see the
+            `PageToken` schema; the key is the base64url encoding of the
+            metadata value). Omit for the first page.
           schema:
-            type: string
+            $ref: '#/components/schemas/PageToken'
       responses:
         '200':
           description: Index inspection result
@@ -1573,12 +1585,22 @@ paths:
   /v3/{ledgerName}/numscripts:
     get:
       summary: List all numscripts
-      description: Returns every numscript for a ledger at its greatest stored version.
+      description: |
+        Lists every numscript of a ledger at its greatest stored version, paged
+        by name (ascending unless `reverse=true`).
       operationId: listNumscripts
       tags:
         - Numscript Library
       parameters:
         - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageCursor'
+        - name: reverse
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: List in descending name order when true.
       responses:
         '200':
           description: List of numscripts retrieved successfully
@@ -2067,9 +2089,12 @@ paths:
             format: uint32
         - name: cursor
           in: query
-          description: Cursor for pagination (overrides body value)
+          description: |
+            Page token from a previous response's `cursor.next` or
+            `cursor.previous` (see the `PageToken` schema). Overrides the body
+            value.
           schema:
-            type: string
+            $ref: '#/components/schemas/PageToken'
         - name: reverse
           in: query
           description: List in descending entity order when true (overrides body value)
@@ -2382,18 +2407,26 @@ paths:
     get:
       summary: List registered Ed25519 signing keys
       description: |
-        Streams every Ed25519 signing key registered on the cluster. Requires
-        `ledger:OpsRead` scope.
+        Lists the Ed25519 signing keys registered on the cluster, paged by key
+        id (ascending unless `reverse=true`). Requires `ledger:OpsRead` scope.
 
-        This route performs a live linearizable read and drains the full
-        cursor. It does not expose the gRPC bidirectional cursor; signing-key
-        reads are live-only on both transports.
+        This route performs a live linearizable read; signing-key reads are
+        live-only on both transports.
       operationId: listSigningKeys
       tags:
         - Ops
       security:
         - BearerAuth: []
         - {}
+      parameters:
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageCursor'
+        - name: reverse
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: List in descending key id order when true.
       responses:
         '200':
           description: Signing keys retrieved successfully.
@@ -2403,6 +2436,7 @@ paths:
                 type: object
                 required:
                   - data
+                  - hasMore
                 properties:
                   data:
                     type: array
@@ -2410,6 +2444,15 @@ paths:
                       type: object
                       additionalProperties: true
                       description: SigningKey (protobuf JSON representation)
+                  next:
+                    $ref: '#/components/schemas/PageToken'
+                  previous:
+                    $ref: '#/components/schemas/PageToken'
+                  hasMore:
+                    type: boolean
+                    description: True when a following page exists; set iff `next` is.
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2859,6 +2902,28 @@ components:
         `ledger:write` (write operations), `ledger:admin` (cluster operations).
 
   parameters:
+    PageSize:
+      name: pageSize
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: uint32
+        minimum: 0
+        default: 100
+      description: Maximum number of items per page. 0 or absent means 100; values above 1000 are clamped to 1000.
+
+    PageCursor:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        $ref: '#/components/schemas/PageToken'
+      description: |
+        Page token from a previous response's `next` or `previous` field (see
+        the `PageToken` schema). Omit for the first page. Pass the same
+        `reverse` and `filter` on every page of a walk.
+
     LedgerName:
       name: ledgerName
       in: path
@@ -3117,6 +3182,45 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
 
   schemas:
+    PageToken:
+      type: string
+      description: |
+        Page token of a paged list. Clients normally pass back the `next` or
+        `previous` value of a previous response verbatim; building one by hand
+        is supported.
+
+        A token is base64url (unpadded, RFC 4648 §5) of the JSON object
+        `{"key": <string>, "back": <bool>}`. Both fields are omitted when empty,
+        and unknown fields are rejected. `key` is a position in the endpoint's
+        textual form:
+
+          - transactions: decimal transaction id
+          - logs: decimal ledger-local log id
+          - audit entries: decimal audit sequence
+          - accounts: address
+          - ledgers and numscripts: name
+          - signing keys: key id
+          - prepared queries: decimal id for TRANSACTIONS and LOGS targets,
+            address for ACCOUNTS
+          - index inspection: base64url of the encoded metadata value
+
+        Both directions exclude the key and return rows in the requested order
+        (`reverse` included):
+
+          - `{"key": K}` serves the rows strictly after K;
+          - `{"key": K, "back": true}` serves the page that ends strictly
+            before K;
+          - `{"back": true}` serves the last page;
+          - an absent or empty token, or `e30` (`{}`), serves the first page.
+
+        On a forward page, `next` is set when a further row follows the page,
+        and `previous` whenever the request carried a key. On a back page,
+        `previous` is set when a further row precedes the page, and `next`
+        whenever the request carried a key. A first page therefore has no
+        `previous`, and the last page requested with `{"back": true}` has no
+        `next`. A malformed token, or a key that is not a valid position for
+        the endpoint, is rejected with 400 `INVALID_REQUEST`.
+
     SystemLog:
       type: object
       description: |
@@ -3347,13 +3451,20 @@ components:
       type: object
       required:
         - data
+        - hasMore
       properties:
         data:
           type: array
           items:
             $ref: '#/components/schemas/LedgerInfo'
-          description: List of all ledgers in the cluster
-          nullable: true
+          description: One page of ledgers, in the requested name order
+        next:
+          $ref: '#/components/schemas/PageToken'
+        previous:
+          $ref: '#/components/schemas/PageToken'
+        hasMore:
+          type: boolean
+          description: True when a following page exists; set iff `next` is.
 
     LedgerInfo:
       type: object
@@ -4416,10 +4527,11 @@ components:
           description: Distinct values in sorted order
         hasMore:
           type: boolean
-          description: Whether more values are available
+          description: Whether more values are available; set iff `nextCursor` is
         nextCursor:
-          type: string
-          description: Pagination cursor for the next page
+          $ref: '#/components/schemas/PageToken'
+        previousCursor:
+          $ref: '#/components/schemas/PageToken'
 
     InspectFacetsResponse:
       type: object
@@ -4434,10 +4546,11 @@ components:
           description: Facets sorted by value
         hasMore:
           type: boolean
-          description: Whether more facets are available
+          description: Whether more facets are available; set iff `nextCursor` is
         nextCursor:
-          type: string
-          description: Pagination cursor for the next page
+          $ref: '#/components/schemas/PageToken'
+        previousCursor:
+          $ref: '#/components/schemas/PageToken'
 
     InspectFacet:
       type: object
@@ -4959,13 +5072,20 @@ components:
       type: object
       required:
         - data
+        - hasMore
       properties:
         data:
           type: array
           items:
             $ref: '#/components/schemas/NumscriptInfo'
-          description: List of all numscripts
-          nullable: true
+          description: One page of numscripts, in the requested name order
+        next:
+          $ref: '#/components/schemas/PageToken'
+        previous:
+          $ref: '#/components/schemas/PageToken'
+        hasMore:
+          type: boolean
+          description: True when a following page exists; set iff `next` is.
 
     TemplateUsage:
       type: object
@@ -5237,7 +5357,11 @@ components:
           description: Maximum number of results per page
         cursor:
           type: string
-          description: Cursor for pagination (from previous response)
+          description: |
+            Page token from a previous response's `cursor.next` or
+            `cursor.previous` (see the `PageToken` schema). The key is the
+            decimal id for TRANSACTIONS and LOGS targets, the address for
+            ACCOUNTS.
         mode:
           type: string
           enum:
@@ -5249,8 +5373,9 @@ components:
           default: false
           description: |
             List in descending entity order (address, transaction id or log id).
-            The cursor carries no direction, so every page of a descending walk
-            must set `reverse`. Rejected with 400 in `AGGREGATE_VOLUMES` mode.
+            A page token is relative to the requested order, so every page of a
+            descending walk must set `reverse`. Rejected with 400 in
+            `AGGREGATE_VOLUMES` mode.
 
     PreparedQueryResponse:
       type: object
@@ -5464,8 +5589,11 @@ components:
               type: integer
             hasMore:
               type: boolean
+              description: True when a following page exists; set iff `next` is.
             next:
-              type: string
+              $ref: '#/components/schemas/PageToken'
+            previous:
+              $ref: '#/components/schemas/PageToken'
             accountData:
               type: array
               items:

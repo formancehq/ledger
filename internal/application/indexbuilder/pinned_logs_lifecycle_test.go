@@ -72,7 +72,7 @@ func TestListLogsRejectsLedgerDeletedDuringAlignment(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(4), foldCursor)
 	c := ctrl.NewDefaultController(nil, b.pebbleStore, b.logger, b.attrs, b.readStore, nil, noop.NewMeterProvider().Meter("pinned-logs"))
-	baseline, err := c.ListLogs(query.WithReadBarrierHorizon(t.Context(), 4), ledger, 0, 3, nil)
+	baseline, err := c.ListLogs(query.WithReadBarrierHorizon(t.Context(), 4), ledger, 0, 3, nil, false)
 	require.NoError(t, err)
 	baselineLogs, err := cursor.Collect(baseline)
 	require.NoError(t, err)
@@ -80,7 +80,7 @@ func TestListLogsRejectsLedgerDeletedDuringAlignment(t *testing.T) {
 
 	// A fully acquired cursor must keep its pre-deletion main snapshot alive
 	// even after the projection is wiped by the later deletion.
-	pinnedCursor, err := c.ListLogs(query.WithReadBarrierHorizon(t.Context(), 4), ledger, 0, 3, nil)
+	pinnedCursor, err := c.ListLogs(query.WithReadBarrierHorizon(t.Context(), 4), ledger, 0, 3, nil, false)
 	require.NoError(t, err)
 	defer func() {
 		if pinnedCursor != nil {
@@ -112,7 +112,7 @@ func TestListLogsRejectsLedgerDeletedDuringAlignment(t *testing.T) {
 	}()
 	go func() {
 		defer close(finished)
-		cur, queryErr := c.ListLogs(observed, ledger, 0, 3, nil)
+		cur, queryErr := c.ListLogs(observed, ledger, 0, 3, nil, false)
 		if queryErr != nil {
 			result <- queryResult{err: queryErr}
 
@@ -161,7 +161,7 @@ func TestListLogsRejectsLedgerDeletedDuringAlignment(t *testing.T) {
 		pinnedIDs = append(pinnedIDs, log.GetPayload().GetApply().GetLog().GetId())
 	}
 	require.Equal(t, []uint64{1, 2, 3}, pinnedIDs, "an already acquired cursor must retain its pinned logs")
-	freshCursor, freshErr := c.ListLogs(query.WithReadBarrierHorizon(t.Context(), 6), ledger, 0, 3, nil)
+	freshCursor, freshErr := c.ListLogs(query.WithReadBarrierHorizon(t.Context(), 6), ledger, 0, 3, nil, false)
 	require.Nil(t, freshCursor)
 	var freshNotFound *commonpb.NotFoundError
 	require.ErrorAs(t, freshErr, &freshNotFound, "fresh reads reject before alignment")

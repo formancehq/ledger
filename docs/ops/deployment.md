@@ -786,6 +786,147 @@ Changes in this release line that fall under this rule:
 |--------|--------------------|----------|
 | EN-2045 | `SaveLedgerMetadata`, `DeleteLedgerMetadata`, `SaveNumscript`, the prepared-query create/update/delete and `PromoteLedger` applied to a soft-deleted ledger stop succeeding and become an `ERROR_REASON_LEDGER_DELETED` failure | writes aimed at a tombstoned ledger, which a healthy client does not issue |
 
+### Upgrading across the Numscript VM execution change (revision 23)
+
+Service protocol revision 23 (#2126) makes admission compile each resolvable
+Numscript to VM bytecode carried in the order's technical sub-message, which
+the FSM executes instead of re-interpreting the script text; the bundled
+Numscript library also changes how an account-typed metadata value is rendered
+(`merchants:acme` instead of `@merchants:acme`). The VM is the new binary's
+only execution engine: admission rejects a script it cannot compile, and the
+FSM runs a scripted order that carries no artifact by recompiling its text for
+the VM, never by interpreting it.
+
+The technical fields are additive protobuf, so a binary predating them decodes
+the same committed entry without the artifact and takes the interpreter path
+with the older library. For a script writing account-typed metadata, an old
+and a new replica applying the same entry then persist different transaction
+and audit bytes — replicated-state divergence, not just a label difference.
+The library bump also changes the outcome of some edge-case scripts, so a
+mixed window can flip a whole order's outcome, the same class as "Upgrading
+across an FSM outcome change" above:
+
+- allotment portions summing past 100% next to `remaining` used to commit and
+  now reject;
+- an allotment with two `remaining` clauses used to commit, silently giving
+  nothing to the second one, and now rejects.
+
+- **Mixed-binary rolling upgrades are not supported across this change.** Stop
+  all nodes before deploying the new binary. The Kubernetes operator performs a
+  *rolling* update by default, so this constraint has to be applied
+  deliberately.
+- **Wipe the data unless the history contains no affected script.** No
+  persisted key layout or value encoding changes and `storage-schema-version`
+  is unaffected, so the new binary boots on existing data — but that history
+  is not fully re-verifiable. `ledgerctl check` replays every audited order on
+  the running binary, recompiling its script with the new library, and
+  compares the result with the stored log. An entry the old binary applied
+  with an affected script therefore fails the check on every replica: an
+  account-typed metadata value (stored `@merchants:acme`, reconstructed
+  `merchants:acme`) is reported as `LOG_PAYLOAD_MISMATCH`, and an edge-case
+  allotment listed above, which committed then and is rejected now, stops the
+  check with a replay error. Resynchronising from the leader does not clear
+  either. As for any unreleased v3 upgrade, wiping the data avoids this;
+  keeping it is sound only for a history with none of these scripts.
+- **Stopping all nodes does not remove every exposure.** A scripted entry
+  committed before the stop but applied by a node only after it restarts on
+  the new binary — the entries it replays above its last snapshot — runs on
+  the new binary. An entry the old binary committed carries no artifact, so
+  the new binary recompiles its script with the new library and runs it on
+  the VM, while the replicas that applied it before the stop interpreted it
+  with the old library: for the scripts listed above the outcome differs. A
+  rollback exposes the same window in the other direction, and a later
+  library update that changes the bytecode version opens the same window for
+  entries that do carry an artifact (see the next point). Such a replica must
+  be resynchronised from the leader.
+- **`ledgerctl check` cannot single out a straddled replica.** Each replica's
+  audit chain stays internally consistent, and the check's replay on the new
+  binary already reports every affected entry the old library applied, on
+  healthy replicas too (see the previous points). Detecting a divergence means
+  comparing transaction metadata and audit entries across replicas; a replica
+  that applied entries inside the window must be resynchronised from the
+  leader.
+- **An artifact this binary cannot read is derived from the script text,
+  never failed.** The FSM runs a committed artifact when both its halves carry
+  a bytecode version (major.minor) the bundled Numscript library can read. For
+  a stable major that is the same major and a minor no newer than its own. An
+  unstable `0.x` version, which the library uses today, reads only itself. Any
+  other version means another library version produced the artifact, and the
+  FSM then derives program and vars from the script text with its own library
+  — the same path the store checker's audit replay takes for every order (see
+  "Omitting already-cached Numscript bytecode" below). Only corruption fails
+  the order with a Numscript runtime error, identically on every node running
+  that binary: an invalid header the library reads, bytes that do not decode
+  or verify, a partial artifact, or a script hash that does not match the
+  resolved text; such an artifact is never repaired from the text. The
+  operational consequence: after a library update that changes the bytecode
+  version (any change while the version is `0.x`), the Raft entries a node
+  replays above its last snapshot after restarting on the new binary run on a
+  recompile of their script text under the new library, while the replicas
+  that applied them before the stop ran the committed bytecode under the old
+  one; a rollback has the same effect in the other direction. The outcomes
+  agree only as far as the library keeps the script's semantics stable across
+  the two versions. Where they differ — the scripts listed above — this is
+  the straddled window of the previous points, with the same repair: a
+  replica that applied such entries before the stop diverges from one that
+  replays them and must be resynchronised from the leader, which
+  `ledgerctl check` likewise does not detect.
+
+### Omitting already-cached Numscript bytecode (revision 24)
+
+Service protocol revision 24 lets admission send a scripted order's bytecode
+by reference instead of by value: `compiled_program_hash`, the XXH3-128 of
+the bytes, in place of `compiled_program`, next to the `compiled_vars` and
+`compiled_script_hash` every scripted order carries. Admission does so once
+its own compile cache has compiled the script before
+(`CompiledScript.AlreadyCompiled`, backed by `lruEntry.compileParsed` on
+admission's own `NumscriptCache` instance), so the bytes travel once per
+script per admission instance and every later order of that script carries
+16 bytes instead. The signal describes what this instance has sent, not what
+any replica holds: admission and the FSM apply path each construct their own
+`NumscriptCache` instance and share no state. Being wrong either way is
+tolerated — bytes sent again are a plain by-value apply, and a reference a
+replica cannot serve from its cache is recompiled, below. A binary predating
+this revision does not know the new field and treats a by-reference order as
+a partial artifact, which is why the service protocol revision changes.
+
+The FSM runs a committed artifact when its own bundled library can use it,
+and otherwise derives program and vars from the script text with that
+library, exactly as the store checker's audit replay derives every order
+(`numscript.SafeExecCommitted`). A by-value artifact is usable when the
+library reads its bytecode version. A by-reference one is usable when bytes
+with the committed program hash are at hand: in steady state the replica's
+own apply-side cache holds them, because applying the earlier by-value order
+of the same script decoded, verified and cached the bytes on every replica,
+so a reference is served without compiling anything; after a restart or an
+LRU eviction, or on a replica that joined after the bytes were last sent, the
+replica compiles the script text instead — once per script per cache
+lifetime, never once per order — and uses the result when it hashes to the
+committed program hash, caching it for the next reference. Within one library
+version the same text compiles to the same bytes, so a hit and a miss run the
+same bytes with the same committed vars and the outcome is independent of a
+replica's cache (invariant #2).
+
+Replicas need not run the same library version. A replica whose library
+cannot read the artifact's bytecode version, or whose compiler does not
+reproduce the referenced bytes, is a replica on another version — a rolling
+upgrade in progress — and derives both program and vars from the script text
+with its own library; it never fails the order for a version difference, and
+it never runs the committed vars against a program they were not encoded for
+(equal pool sizes with a different variable layout would post wrong amounts
+without any error). Agreement between such a replica and the others then
+rests on the Numscript library keeping a script's semantics stable across
+versions, the same contract audit replay relies on for every scripted order,
+and a library change that alters a script's outcome is an FSM outcome change
+(see "Upgrading across an FSM outcome change" above) whatever the artifact
+shape. What does fail loudly is corruption, not version: an artifact the
+library reads but cannot decode or verify, committed vars a cached program's
+layout does not cover, or any combination of the four fields other than the
+three shapes admission produces, rejected before any cache access.
+`compiled_vars` and `compiled_script_hash` are present in both shapes, so the
+hash-binding check against the resolved script text (see
+protocol-compatibility.md) runs unconditionally.
+
 ### Audit hash keying — threat model
 
 The audit hash chain (`processing.HashGenerator`) is keyed by a value derived from the immutable `cluster-id`. This is **defense in depth against offline grinding from outside the cluster boundary**, not a tamper-evidence guarantee against an attacker with persisted-store access.

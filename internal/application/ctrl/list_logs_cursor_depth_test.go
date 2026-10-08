@@ -83,7 +83,7 @@ func TestListLogs_CursorDoesNotConsumeFilterDepth(t *testing.T) {
 	listIDs := func(afterSequence uint64) []uint64 {
 		t.Helper()
 
-		c, err := ctrl.ListLogs(t.Context(), ledger, afterSequence, 2, filter)
+		c, err := ctrl.ListLogs(t.Context(), ledger, afterSequence, 2, filter, false)
 		require.NoError(t, err)
 
 		got, err := cursor.Collect(c)

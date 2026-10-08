@@ -798,6 +798,13 @@ const (
 	// Submit the revert in a later batch.
 	ErrorReason_ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH ErrorReason = 70
 	ErrorReason_ERROR_REASON_SINK_CONTROLLER_MISMATCH       ErrorReason = 71
+	// ERROR_REASON_NUMSCRIPT_COMPILE_ERROR: a script that parsed and resolved
+	// cannot run on the Numscript VM — a static-semantics error the compiler's
+	// typechecker catches, a feature used without its flag, an unsupported
+	// construct, exceeded VM capacity, or a var value that does not bind.
+	// Deterministic for a given script and vars (Kind=Validation); rejected at
+	// admission, never proposed.
+	ErrorReason_ERROR_REASON_NUMSCRIPT_COMPILE_ERROR ErrorReason = 73
 )
 
 // Enum value maps for ErrorReason.
@@ -876,6 +883,7 @@ var (
 		69: "ERROR_REASON_METADATA_LIMIT_EXCEEDED",
 		70: "ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH",
 		71: "ERROR_REASON_SINK_CONTROLLER_MISMATCH",
+		73: "ERROR_REASON_NUMSCRIPT_COMPILE_ERROR",
 	}
 	ErrorReason_value = map[string]int32{
 		"ERROR_REASON_UNSPECIFIED":                      0,
@@ -951,6 +959,7 @@ var (
 		"ERROR_REASON_METADATA_LIMIT_EXCEEDED":          69,
 		"ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH":   70,
 		"ERROR_REASON_SINK_CONTROLLER_MISMATCH":         71,
+		"ERROR_REASON_NUMSCRIPT_COMPILE_ERROR":          73,
 	}
 )
 
@@ -11984,15 +11993,18 @@ func (x *GroupedAggregateResult) GetVolumes() []*AggregatedVolume {
 	return nil
 }
 
-// PreparedQueryCursor follows the cursor-based pagination pattern.
+// PreparedQueryCursor is one page of a prepared query's LIST results. next
+// and previous are page tokens (see ListOptions.cursor); has_more is set iff
+// next is.
 type PreparedQueryCursor struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	PageSize        uint32                 `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	HasMore         bool                   `protobuf:"varint,2,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
 	Next            string                 `protobuf:"bytes,3,opt,name=next,proto3" json:"next,omitempty"`
-	AccountData     []*Account             `protobuf:"bytes,4,rep,name=account_data,json=accountData,proto3" json:"account_data,omitempty"`
-	TransactionData []*Transaction         `protobuf:"bytes,5,rep,name=transaction_data,json=transactionData,proto3" json:"transaction_data,omitempty"`
-	LogData         []*Log                 `protobuf:"bytes,6,rep,name=log_data,json=logData,proto3" json:"log_data,omitempty"`
+	Previous        string                 `protobuf:"bytes,4,opt,name=previous,proto3" json:"previous,omitempty"`
+	AccountData     []*Account             `protobuf:"bytes,5,rep,name=account_data,json=accountData,proto3" json:"account_data,omitempty"`
+	TransactionData []*Transaction         `protobuf:"bytes,6,rep,name=transaction_data,json=transactionData,proto3" json:"transaction_data,omitempty"`
+	LogData         []*Log                 `protobuf:"bytes,7,rep,name=log_data,json=logData,proto3" json:"log_data,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -12044,6 +12056,13 @@ func (x *PreparedQueryCursor) GetHasMore() bool {
 func (x *PreparedQueryCursor) GetNext() string {
 	if x != nil {
 		return x.Next
+	}
+	return ""
+}
+
+func (x *PreparedQueryCursor) GetPrevious() string {
+	if x != nil {
+		return x.Previous
 	}
 	return ""
 }
@@ -12937,11 +12956,14 @@ func (x *ReadOptions) GetCheckpointId() uint64 {
 // parameters every streaming read endpoint understands. Embed it as a field
 // on the Request so the contract stays DRY across resources.
 //
-// cursor is OPAQUE from the client's POV: the server encodes the next-page
-// resume token internally (entity address, sequence number, …) and the client
-// round-trips whatever value it received as the "x-next-cursor" trailer of
-// the previous response. This lets the server evolve its on-wire cursor
-// format without breaking deployed clients.
+// cursor is a page token: base64url (unpadded) of the JSON object
+// {"key": <string>, "back": <bool>}, built by pkg/pagecursor. Paged responses
+// return the tokens of the adjacent pages in the "x-next-cursor" and
+// "x-previous-cursor" trailers. key is the position, in the endpoint's
+// textual form (decimal id, address, name); a forward token serves the rows
+// strictly after key, a back token the page ending strictly before key, both
+// in the requested order. A back token with an empty key serves the last
+// page.
 //
 // Not every endpoint honors every option: a reverse-uncapable or filter-less
 // endpoint MUST reject a non-default value with InvalidArgument rather than
@@ -12952,8 +12974,8 @@ type ListOptions struct {
 	// page_size is the maximum number of items per page. 0 lets the server
 	// pick a sane default (currently 100); the server clamps to MaxPageSize.
 	PageSize uint32 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	// cursor is the opaque resume token from the previous page's
-	// x-next-cursor trailer. Empty starts at the iteration head.
+	// cursor is a page token, normally copied from a previous response's
+	// x-next-cursor or x-previous-cursor trailer. Empty starts at the head.
 	Cursor string `protobuf:"bytes,3,opt,name=cursor,proto3" json:"cursor,omitempty"`
 	// reverse inverts the default iteration order for endpoints that support it.
 	Reverse bool `protobuf:"varint,4,opt,name=reverse,proto3" json:"reverse,omitempty"`
@@ -13861,14 +13883,15 @@ const file_common_proto_rawDesc = "" +
 	"\x06groups\x18\x02 \x03(\v2\x1e.common.GroupedAggregateResultR\x06groups\"d\n" +
 	"\x16GroupedAggregateResult\x12\x16\n" +
 	"\x06prefix\x18\x01 \x01(\tR\x06prefix\x122\n" +
-	"\avolumes\x18\x02 \x03(\v2\x18.common.AggregatedVolumeR\avolumes\"\xfd\x01\n" +
+	"\avolumes\x18\x02 \x03(\v2\x18.common.AggregatedVolumeR\avolumes\"\x99\x02\n" +
 	"\x13PreparedQueryCursor\x12\x1b\n" +
 	"\tpage_size\x18\x01 \x01(\rR\bpageSize\x12\x19\n" +
 	"\bhas_more\x18\x02 \x01(\bR\ahasMore\x12\x12\n" +
-	"\x04next\x18\x03 \x01(\tR\x04next\x122\n" +
-	"\faccount_data\x18\x04 \x03(\v2\x0f.common.AccountR\vaccountData\x12>\n" +
-	"\x10transaction_data\x18\x05 \x03(\v2\x13.common.TransactionR\x0ftransactionData\x12&\n" +
-	"\blog_data\x18\x06 \x03(\v2\v.common.LogR\alogData\"\x91\x03\n" +
+	"\x04next\x18\x03 \x01(\tR\x04next\x12\x1a\n" +
+	"\bprevious\x18\x04 \x01(\tR\bprevious\x122\n" +
+	"\faccount_data\x18\x05 \x03(\v2\x0f.common.AccountR\vaccountData\x12>\n" +
+	"\x10transaction_data\x18\x06 \x03(\v2\x13.common.TransactionR\x0ftransactionData\x12&\n" +
+	"\blog_data\x18\a \x03(\v2\v.common.LogR\alogData\"\x91\x03\n" +
 	"\vLedgerStats\x12+\n" +
 	"\x11transaction_count\x18\x01 \x01(\x06R\x10transactionCount\x12!\n" +
 	"\fvolume_count\x18\x02 \x01(\x06R\vvolumeCount\x12'\n" +
@@ -14003,7 +14026,7 @@ const file_common_proto_rawDesc = "" +
 	"\x12LEDGER_MODE_MIRROR\x10\x01*Q\n" +
 	"\x0fMirrorSyncState\x12\x1d\n" +
 	"\x19MIRROR_SYNC_STATE_SYNCING\x10\x00\x12\x1f\n" +
-	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\x90\x17\n" +
+	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\xba\x17\n" +
 	"\vErrorReason\x12\x1c\n" +
 	"\x18ERROR_REASON_UNSPECIFIED\x10\x00\x12&\n" +
 	"\"ERROR_REASON_LEDGER_ALREADY_EXISTS\x10\x01\x12!\n" +
@@ -14078,7 +14101,8 @@ const file_common_proto_rawDesc = "" +
 	"!ERROR_REASON_INDEX_ALREADY_EXISTS\x10D\x12(\n" +
 	"$ERROR_REASON_METADATA_LIMIT_EXCEEDED\x10E\x12/\n" +
 	"+ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH\x10F\x12)\n" +
-	"%ERROR_REASON_SINK_CONTROLLER_MISMATCH\x10G*Q\n" +
+	"%ERROR_REASON_SINK_CONTROLLER_MISMATCH\x10G\x12(\n" +
+	"$ERROR_REASON_NUMSCRIPT_COMPILE_ERROR\x10I*Q\n" +
 	"\x14ChartEnforcementMode\x12\x1c\n" +
 	"\x18CHART_ENFORCEMENT_STRICT\x10\x00\x12\x1b\n" +
 	"\x17CHART_ENFORCEMENT_AUDIT\x10\x01*i\n" +

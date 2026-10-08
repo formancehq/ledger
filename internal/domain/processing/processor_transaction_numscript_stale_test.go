@@ -149,3 +149,40 @@ func TestProduce_InvalidExecutionPlanDuringResolutionIsLoudNotStale(t *testing.T
 // domain.CoverageContractViolation). The tests above keep exercising this
 // package's use of it through produce(), which is the behaviour that matters
 // here.
+
+// TestProduce_PartialArtifactWithStaleInputsIsLoudNotStale: a malformed
+// compiled artifact is classified before the stale-inputs re-resolution, so an
+// order carrying both a partial artifact and an armed inputs-resolution hash
+// fails with the loud ErrNumscriptRuntime — never the retryable
+// ErrStaleInputsResolution, which would have the client re-admit an order whose
+// committed artifact is corrupt — on a cold cache and on one already warm for
+// the script. The Scope has no expectations: the shape check must reject before
+// any store read.
+func TestProduce_PartialArtifactWithStaleInputsIsLoudNotStale(t *testing.T) {
+	t.Parallel()
+
+	scriptHash := numscript.HashScript(staleScript)
+
+	for name, warm := range map[string]bool{"cold cache": false, "warm cache": true} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			producer := newNumscriptProducer()
+			// Program bytes without vars or script hash: a partial artifact.
+			producer.compiledProgram = []byte("program")
+
+			if warm {
+				_, err := producer.cache.GetOrParseHashed(scriptHash, staleScript)
+				require.Nil(t, err)
+			}
+
+			_, err := producer.produce(NewMockScope(ctrl), "test", staleOrder(), &commonpb.Script{Plain: staleScript})
+
+			requireNumscriptRuntimeError(t, err, "is partial")
+			require.NotErrorIs(t, err, domain.ErrStaleInputsResolution)
+		})
+	}
+}

@@ -2016,36 +2016,6 @@ func timestampRangeBounds(ledgerPrefix []byte, bounds resolvedUintBounds) (lower
 
 	return lower, upper, entityOffset, entityLen
 }
-
-// logIDRangeBounds builds the scan range for the ledger logs index, whose
-// entity is the 8-byte log ID directly after the ledger prefix.
-func logIDRangeBounds(prefix []byte, bounds resolvedUintBounds) (lower, upper []byte) {
-	lower = make([]byte, 0, len(prefix)+8)
-	lower = append(lower, prefix...)
-	upper = make([]byte, 0, len(prefix)+8)
-	upper = append(upper, prefix...)
-
-	if bounds.hasMin {
-		minBytes := make([]byte, 8)
-		binary.BigEndian.PutUint64(minBytes, bounds.min)
-		lower = append(lower, minBytes...)
-	}
-
-	if bounds.hasMax {
-		maxBytes := make([]byte, 8)
-		binary.BigEndian.PutUint64(maxBytes, bounds.max)
-		upper = append(upper, maxBytes...)
-	} else {
-		upper = dal.PrefixUpperBound(prefix)
-	}
-
-	if !bounds.hasMin {
-		lower = prefix
-	}
-
-	return lower, upper
-}
-
 func sortEntities(entities [][]byte) {
 	sort.Slice(entities, func(i, j int) bool {
 		return bytes.Compare(entities[i], entities[j]) < 0

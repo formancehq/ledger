@@ -983,18 +983,18 @@ func (c *MockControllerListLedgersCall) DoAndReturn(f func(context.Context) (cur
 }
 
 // ListLogs mocks base method.
-func (m *MockController) ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
+func (m *MockController) ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Log], error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListLogs", ctx, ledgerName, afterSequence, pageSize, filter)
+	ret := m.ctrl.Call(m, "ListLogs", ctx, ledgerName, afterSequence, pageSize, filter, reverse)
 	ret0, _ := ret[0].(cursor.Cursor[*commonpb.Log])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListLogs indicates an expected call of ListLogs.
-func (mr *MockControllerMockRecorder) ListLogs(ctx, ledgerName, afterSequence, pageSize, filter any) *MockControllerListLogsCall {
+func (mr *MockControllerMockRecorder) ListLogs(ctx, ledgerName, afterSequence, pageSize, filter, reverse any) *MockControllerListLogsCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogs", reflect.TypeOf((*MockController)(nil).ListLogs), ctx, ledgerName, afterSequence, pageSize, filter)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogs", reflect.TypeOf((*MockController)(nil).ListLogs), ctx, ledgerName, afterSequence, pageSize, filter, reverse)
 	return &MockControllerListLogsCall{Call: call}
 }
 
@@ -1010,13 +1010,13 @@ func (c *MockControllerListLogsCall) Return(arg0 cursor.Cursor[*commonpb.Log], a
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerListLogsCall) Do(f func(context.Context, string, uint64, uint32, *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error)) *MockControllerListLogsCall {
+func (c *MockControllerListLogsCall) Do(f func(context.Context, string, uint64, uint32, *commonpb.QueryFilter, bool) (cursor.Cursor[*commonpb.Log], error)) *MockControllerListLogsCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerListLogsCall) DoAndReturn(f func(context.Context, string, uint64, uint32, *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error)) *MockControllerListLogsCall {
+func (c *MockControllerListLogsCall) DoAndReturn(f func(context.Context, string, uint64, uint32, *commonpb.QueryFilter, bool) (cursor.Cursor[*commonpb.Log], error)) *MockControllerListLogsCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

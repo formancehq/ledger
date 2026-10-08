@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -14,35 +15,29 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/query"
+	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 )
 
-// NextCursorTrailerKey is the gRPC trailer key under which streaming list
-// handlers publish the opaque resume token for the following page. Clients
-// pass it back as the next request's ListOptions.cursor; the server is free
-// to evolve the encoding (entity address, sequence number, opaque token, …)
-// without coordinating with deployed clients.
-//
-// Cursors that are derived from user-controlled identifiers (ledger names,
-// numscript names, …) must already be safe for HTTP/2 header values —
-// printable ASCII (0x20–0x7E), no CR/LF/NUL. The corresponding domain
-// validators (`ValidateLedgerName`, `ValidateNumscriptName`) enforce this
-// at admission so we can drop tokens into the trailer raw without an
-// extra encode/decode hop.
-const NextCursorTrailerKey = "x-next-cursor"
+// NextCursorTrailerKey and PreviousCursorTrailerKey are the gRPC trailer
+// keys under which paged list handlers publish the page tokens
+// (pkg/pagecursor) of the following and preceding pages. Clients pass one
+// back as the next request's ListOptions.cursor.
+const (
+	NextCursorTrailerKey     = "x-next-cursor"
+	PreviousCursorTrailerKey = "x-previous-cursor"
+)
 
-// sendPagedToStream emits up to pageSize items from cur, closes the cursor,
-// and only publishes an x-next-cursor trailer when it actually observes a
-// (pageSize+1)th item. The peek-ahead avoids the false-positive where a list
-// of exactly pageSize items would emit a trailer pointing past the last
-// element — clients would then issue a spurious empty round-trip.
+// sendPagedToStream serves the page that page requests from cur, closes the
+// cursor, and publishes the adjacent pages' tokens as trailers. cur must be
+// read in page.ReadReverse order and sized for pageSize+1 items: the extra
+// row proves a further page exists without a spurious empty round-trip on a
+// list of exactly pageSize items. keyOf renders an item's position as a
+// cursor key; an empty key yields no link through that item.
 //
-// When the peek fires, the cursor is computed from the LAST SENT item, not
-// from the peeked item: resume semantics is exclusive ("after cursor"), so
-// using the peeked item as the cursor would skip it on the next page.
+// A forward page streams as it is read. A back page is read in the opposite
+// order, so it is buffered (at most pageSize+1 items) and sent reversed.
 //
-// Callers must size the source cursor for pageSize+1 items so the peek can
-// fire. Pass pageSize == 0 (and cursorOf == nil) to drain unbounded without
-// emitting a trailer.
+// Pass pageSize == 0 to drain unbounded without trailers.
 //
 // # Phase attribution (EN-1859)
 //
@@ -74,7 +69,8 @@ func sendPagedToStream[Res any](
 	stream ggrpc.ServerStreamingServer[Res],
 	itemName string,
 	pageSize uint32,
-	cursorOf func(*Res) string,
+	page pagecursor.Cursor,
+	keyOf func(*Res) string,
 ) error {
 	defer func() {
 		_ = cur.Close()
@@ -87,22 +83,9 @@ func sendPagedToStream[Res any](
 	profile := query.ProfileFromContext(ctx)
 	timed := profile != nil
 
-	var (
-		count    uint32
-		lastSent *Res
-	)
+	var count uint32
 
-	emitTrailer := func() {
-		if pageSize == 0 || cursorOf == nil || lastSent == nil {
-			return
-		}
-
-		if next := cursorOf(lastSent); next != "" {
-			stream.SetTrailer(metadata.Pairs(NextCursorTrailerKey, next))
-		}
-	}
-
-	for {
+	next := func() (*Res, error) {
 		produceStart := nowIf(timed)
 		item, err := cur.Next()
 
@@ -110,40 +93,16 @@ func sendPagedToStream[Res any](
 			profile.AddProduction(time.Since(produceStart))
 		}
 
-		if err != nil {
+		if err != nil && !errors.Is(err, io.EOF) {
 			span.SetAttributes(attribute.Int64("stream.items_sent", int64(count)))
 
-			if errors.Is(err, io.EOF) {
-				// Local cursor had no peek slot. If the source was a routed
-				// gRPC stream whose own peek fired upstream, forward upstream's
-				// cursor VERBATIM — we trust the upstream's "after this" token,
-				// and re-deriving from our local lastSent would (a) drop the
-				// trailer entirely when we sent zero items this batch
-				// (lastSent == nil short-circuits emitTrailer) and (b) compute
-				// a different value when upstream's encoding differs.
-				if uc, ok := cur.(UpstreamTrailer); ok {
-					if next := uc.NextCursor(); next != "" {
-						stream.SetTrailer(metadata.Pairs(NextCursorTrailerKey, next))
-					}
-				}
-
-				return nil
-			}
-
-			return fmt.Errorf("reading %s: %w", itemName, err)
+			return nil, fmt.Errorf("reading %s: %w", itemName, err)
 		}
 
-		// The (pageSize+1)th item proves another page exists. Resume tokens
-		// are exclusive, so use the LAST SENT item — not this peek — as the
-		// cursor; using the peek would have the client skip it next time.
-		if pageSize > 0 && count >= pageSize {
-			emitTrailer()
+		return item, err
+	}
 
-			span.SetAttributes(attribute.Int64("stream.items_sent", int64(count)))
-
-			return nil
-		}
-
+	send := func(item *Res) error {
 		deliverStart := nowIf(timed)
 		sendErr := stream.Send(item)
 
@@ -158,9 +117,109 @@ func sendPagedToStream[Res any](
 		}
 
 		profile.MarkFirstRow()
-
-		lastSent = item
 		count++
+
+		return nil
+	}
+
+	link := func(first, last *Res, more bool) {
+		span.SetAttributes(attribute.Int64("stream.items_sent", int64(count)))
+
+		if pageSize == 0 {
+			return
+		}
+
+		var firstKey, lastKey string
+		if first != nil {
+			firstKey, lastKey = keyOf(first), keyOf(last)
+		}
+
+		nextToken, previousToken := page.Links(firstKey, lastKey, int(count), more)
+
+		var md metadata.MD
+		if nextToken != "" {
+			md = metadata.Join(md, metadata.Pairs(NextCursorTrailerKey, nextToken))
+		}
+
+		if previousToken != "" {
+			md = metadata.Join(md, metadata.Pairs(PreviousCursorTrailerKey, previousToken))
+		}
+
+		if md != nil {
+			stream.SetTrailer(md)
+		}
+	}
+
+	if page.Back {
+		var read []*Res
+
+		for pageSize == 0 || uint32(len(read)) <= pageSize {
+			item, err := next()
+			if errors.Is(err, io.EOF) {
+				break
+			}
+
+			if err != nil {
+				return err
+			}
+
+			read = append(read, item)
+		}
+
+		more := cursor.SourceHasMore(cur)
+		if pageSize > 0 && uint32(len(read)) > pageSize {
+			read, more = read[:pageSize], true
+		}
+
+		var first, last *Res
+
+		for _, r := range slices.Backward(read) {
+			if err := send(r); err != nil {
+				return err
+			}
+		}
+
+		if len(read) > 0 {
+			first, last = read[len(read)-1], read[0]
+		}
+
+		link(first, last, more)
+
+		return nil
+	}
+
+	var first, last *Res
+
+	for {
+		item, err := next()
+		if errors.Is(err, io.EOF) {
+			// A routed source capped its response at the leader's page limit:
+			// the leader's own peek is the only proof of a further page.
+			link(first, last, cursor.SourceHasMore(cur))
+
+			return nil
+		}
+
+		if err != nil {
+			return err
+		}
+
+		// The (pageSize+1)th item proves another page exists; it is not sent.
+		if pageSize > 0 && count >= pageSize {
+			link(first, last, true)
+
+			return nil
+		}
+
+		if err := send(item); err != nil {
+			return err
+		}
+
+		if first == nil {
+			first = item
+		}
+
+		last = item
 	}
 }
 

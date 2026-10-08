@@ -510,6 +510,7 @@ func (x *PreparedQueryCursor) MarshalJSON() ([]byte, error) {
 		PageSize        uint32         `json:"pageSize"`
 		HasMore         bool           `json:"hasMore"`
 		Next            string         `json:"next,omitempty"`
+		Previous        string         `json:"previous,omitempty"`
 		AccountData     []*Account     `json:"accountData,omitempty"`
 		TransactionData []*Transaction `json:"transactionData,omitempty"`
 		LogData         []*Log         `json:"logData,omitempty"`
@@ -517,6 +518,7 @@ func (x *PreparedQueryCursor) MarshalJSON() ([]byte, error) {
 		PageSize:        x.GetPageSize(),
 		HasMore:         x.GetHasMore(),
 		Next:            x.GetNext(),
+		Previous:        x.GetPrevious(),
 		AccountData:     x.GetAccountData(),
 		TransactionData: x.GetTransactionData(),
 		LogData:         x.GetLogData(),

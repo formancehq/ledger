@@ -39,6 +39,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -138,7 +139,7 @@ func main() {
 		for range maxPages {
 			var cursor string
 			if afterLocalID > 0 {
-				cursor = strconv.FormatUint(afterLocalID, 10) // ledger-local log ID, exclusive
+				cursor = pagecursor.Cursor{Key: strconv.FormatUint(afterLocalID, 10)}.Encode() // ledger-local log ID, exclusive
 			}
 			stream, err := client.ListLogs(ctx, &servicepb.ListLogsRequest{
 				Ledger: ledger,
