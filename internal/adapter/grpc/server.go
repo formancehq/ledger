@@ -387,17 +387,10 @@ func handlePanic(ctx context.Context, logger logging.Logger, r any, stack []byte
 	fields["correlation_id"] = correlationID
 	logger.WithFields(fields).Errorf("gRPC handler panicked: %v\n%s", r, stack)
 
-	span := trace.SpanFromContext(ctx)
-	span.SetAttributes(
-		attribute.String("panic.value", fmt.Sprintf("%v", r)),
-		attribute.String("panic.stack", string(stack)),
-		attribute.String("correlation_id", correlationID),
-	)
+	trace.SpanFromContext(ctx).SetAttributes(attribute.String("correlation_id", correlationID))
+	apitrace.RecordPanic(ctx, r, stack)
 
-	grpcErr := status.Errorf(codes.Internal, "internal server error (correlation ID: %s)", correlationID)
-	span.RecordError(grpcErr)
-
-	return grpcErr
+	return status.Errorf(codes.Internal, "internal server error (correlation ID: %s)", correlationID)
 }
 
 // recoveryInterceptor catches panics and records stack traces on the OTel span.
