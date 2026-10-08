@@ -17,7 +17,7 @@ const Marker = "[redacted]"
 // credentialQueryKeys are query parameter names that commonly carry credentials.
 // The lookup is case-folded and dash-normalised on the key before comparison.
 var credentialQueryKeys = map[string]bool{
-	"password": true, "passwd": true, "secret": true, "token": true,
+	"password": true, "sslpassword": true, "passwd": true, "secret": true, "token": true,
 	"api_key": true, "apikey": true, "access_token": true, "access_key": true,
 	"client_secret": true, "authorization": true,
 }
@@ -38,7 +38,7 @@ var natsTokenSchemes = map[string]bool{
 // not to be a comma-separated NATS server list.
 func redactSingleURL(raw string) (string, bool) {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || parsed.Host == "" {
+	if err != nil || (parsed.Host == "" && parsed.Scheme != "postgres" && parsed.Scheme != "postgresql") {
 		return "", false
 	}
 	if parsed.User != nil {
@@ -88,6 +88,9 @@ func redactSingleURL(raw string) (string, bool) {
 func redactURL(raw string) string {
 	if raw == "" {
 		return raw
+	}
+	if !strings.Contains(raw, "://") && strings.Contains(raw, "=") {
+		return redactKeywordDSN(raw)
 	}
 	trimmed := strings.TrimSpace(raw)
 

@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 25:
+leader. For example, with a schema implementing revision 26:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 25' \
+grpcurl -plaintext -H 'ledger-protocol-version: 26' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -428,3 +428,10 @@ cannot enter unary or streaming business handlers, while the matching revision
 does. Keep diagnostic exemptions usable without a revision. Exercise the real
 client/server paths, restoration without Discovery, and internal service
 forwarding so the gate cannot make the repository's own clients incompatible.
+
+## Credential-safe LedgerInfo reads (revision 26)
+
+EN-1635 / EN-2780 changes GetLedger and ListLedgers responses, including
+checkpoint reads, to detached credential-safe projections. Original mirror
+configuration remains available internally. This external read-semantic change
+requires matching clients and servers. See [LedgerInfo](ledger-info.md).

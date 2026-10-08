@@ -66,6 +66,13 @@ of the rule is that it holds *by construction*: a future change that starts
 embedding `LedgerInfo` content (schema, account types, metadata) next to
 attribute data cannot silently reintroduce a torn read.
 
+## Listed mirror progress
+
+ListLedgers enriches each consumed mirror through its existing listing handle,
+with three point reads for boundaries, source head and status. Normal ledgers
+do not incur those reads. The cursor retains snapshot ownership through Close
+and returns mirror-read errors. See [LedgerInfo](../api/ledger-info.md).
+
 ## Exceptions
 
 These read from the live store / a direct handle deliberately; a snapshot would

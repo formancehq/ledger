@@ -1073,14 +1073,14 @@ message SetAccountMetadataFromAddressReplacement {
 message DropAction {}
 
 message HttpMirrorSourceConfig {
-  string base_url = 1;
+  string base_url = 1 [(sensitive_url) = true];
   OAuth2ClientCredentials oauth2_client_credentials = 2;
 }
 
 message OAuth2ClientCredentials {
   string client_id = 1;
   string client_secret = 2 [(sensitive) = true];
-  string token_endpoint = 3;
+  string token_endpoint = 3 [(sensitive_url) = true];
   repeated string scopes = 4;
 }
 
@@ -1463,14 +1463,10 @@ extend google.protobuf.FieldOptions {
   // rejects a missing annotation, so proto's false default cannot classify by
   // accident.
   bool ledger_log_is_history = 50125;
-  // sensitive marks fields that must not appear verbatim in a detached public
-  // projection. Strings are replaced with a marker; other field kinds are cleared.
+  // Sensitive projections reuse the detached public-view contract from EN-1632.
+  // Strings are masked; other field kinds are cleared. Never use for persistence.
   bool sensitive = 50126;
-  // sensitive_url marks string fields whose value is a URL or DSN that may embed
-  // credentials in the userinfo component or recognised credential query parameters.
-  // The projection replaces credentials with "xxxxx" while preserving the host,
-  // port, path and non-credential query parameters. Falls back to Marker when the
-  // value cannot be parsed as a URL.
+  // Mask credentials in URL or PostgreSQL keyword/value connection strings.
   bool sensitive_url = 50127;
 }
 

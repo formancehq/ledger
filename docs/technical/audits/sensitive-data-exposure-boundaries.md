@@ -222,3 +222,18 @@ responses, errors, logs, telemetry, manifests and diagnostics must not contain
 the raw key. A canary probe must trace actual serializers and distinguish an
 authorized checkpoint from an unintended public exposure. Rotation and
 external secret storage are outside this revision.
+
+## LedgerInfo read oracle (EN-1635 / EN-2780)
+
+Seed OAuth secrets, HTTP source/OAuth endpoint URL passwords, and PostgreSQL URL/query/keyword passwords, including escaped
+quotes, duplicate passwords, sslpassword, empty and malformed inputs. Exercise
+routed HTTP get/list and actual service current/checkpoint get/list controllers
+and streams. Serialized canaries must be absent, non-secret connection/OAuth/IAM
+fields must survive, and original nested scopes/configuration must remain intact
+for internal consumers. The shared projection uses the EN-1632/#1977 annotation
+contract; check deep clones and unknown-field removal. Configuration projection
+does not establish historical audit/log or sink-read remediation.
+
+See [LedgerInfo](../architecture/subsystems/api/ledger-info.md) and regressions
+in internal/pkg/sensitive/projection_test.go, internal/adapter/http/ledger_info_contract_test.go
+and internal/adapter/grpc/ledger_info_read_test.go.

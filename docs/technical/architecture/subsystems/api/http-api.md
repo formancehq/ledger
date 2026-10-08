@@ -57,6 +57,12 @@ the SDK encode the path segment. Passing a pre-encoded key to an SDK produces
 double encoding and is rejected. Direct HTTP clients encode the raw key as one
 path segment themselves.
 
+### Ledger information
+
+See [LedgerInfo read contract](ledger-info.md) for camelCase properties, explicit
+defaults, decimal-string mirror counters, separate creation/read configuration
+schemas and credential-safe responses.
+
 ### Authentication
 
 Saving or deleting ledger, account or transaction metadata, and setting or

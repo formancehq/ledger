@@ -17,6 +17,11 @@ Decoded leader errors retain their exact gRPC status through routing wrappers
 and streaming cursors. See [forwarding and cancellation](http-api.md#forwarded-writes-and-the-transport-seam)
 for the distinction between a decoded rejection and raw transport cancellation.
 
+## Ledger information
+
+[LedgerInfo read contract](ledger-info.md) defines HTTP projection, exact counters,
+secret-safe current/checkpoint reads and downstream SDK ownership.
+
 ## Atomic creation
 
 [Atomic ledger creation metadata](atomic-ledger-creation.md) defines initial metadata, authorization, audit and restore behavior.

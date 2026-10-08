@@ -82,6 +82,8 @@ func writeCreated(w http.ResponseWriter, data any) {
 // legitimate caller (EN-1622): their payload types carry a hand-written
 // MarshalJSON that marshals a metadata map and can genuinely fail, so the
 // streaming writeOK would append an error object to an already-committed 200.
+// LedgerInfo reads also use this path (EN-2780): enum validation and nested
+// mirror configuration marshaling can fail.
 // The remaining list/get handlers keep writeOK: their struct marshaling cannot
 // fail, so buffering would only add an allocation.
 func writeOKChecked(w http.ResponseWriter, r *http.Request, data any) {
