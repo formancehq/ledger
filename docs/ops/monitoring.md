@@ -423,7 +423,7 @@ The Numscript cache stores parsed Numscript programs to avoid re-parsing identic
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `numscript.cache.size` | Gauge | 1 | Number of scripts currently in the cache |
+| `numscript.cache.size` | Gauge | 1 | Number of entries currently in the cache, per `cache` attribute: `parsed` (parsed scripts) and `compiled` (verified VM artifacts, each holding a warm VM) |
 
 ### Attribute Cache Metrics
 

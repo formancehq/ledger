@@ -67,17 +67,24 @@ func TestProcessCreateTransaction_NumscriptReference_ResolvesContent(t *testing.
 			mockStore.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1234567890}).AsReader()).AnyTimes()
 			expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: ledger, ID: 1}, nil)
 
+			vars := map[string]string{"destination": "merchants:shop"}
+			// Admission compiles the content it resolved for the reference.
+			programBytes, varsBytes, scriptHash := compileArtifactForTest(t, content, vars)
+
 			payload, processErr := processCreateTransaction(ledger, &raftcmdpb.CreateTransactionOrder{
 				NumscriptReference: &raftcmdpb.NumscriptReference{
 					Name:    name,
 					Version: tt.selector,
-					Vars:    map[string]string{"destination": "merchants:shop"},
+					Vars:    vars,
 				},
 			}, &Context{
-				Scope:          mockStore,
-				Boundaries:     &raftcmdpb.LedgerBoundaries{NextTransactionId: 1},
-				LedgerInfo:     (&commonpb.LedgerInfo{Name: ledger, Id: 1}).AsReader(),
-				NumscriptCache: processor.numscriptCache,
+				Scope:              mockStore,
+				Boundaries:         &raftcmdpb.LedgerBoundaries{NextTransactionId: 1},
+				LedgerInfo:         (&commonpb.LedgerInfo{Name: ledger, Id: 1}).AsReader(),
+				NumscriptCache:     processor.numscriptCache,
+				CompiledProgram:    programBytes,
+				CompiledVars:       varsBytes,
+				CompiledScriptHash: scriptHash,
 			})
 			require.NoError(t, processErr)
 			require.NotNil(t, payload)

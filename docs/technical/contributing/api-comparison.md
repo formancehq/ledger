@@ -1237,6 +1237,7 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Balance not found | `FAILED_PRECONDITION` | `BALANCE_NOT_FOUND` | `account`, `asset` |
 | Balance not preloaded | `FAILED_PRECONDITION` | `BALANCE_NOT_PRELOADED` | `account`, `asset` |
 | Numscript parse error | `INVALID_ARGUMENT` | `NUMSCRIPT_PARSE_ERROR` | `details` |
+| Numscript compile error | `INVALID_ARGUMENT` | `NUMSCRIPT_COMPILE_ERROR` | `details` |
 | Numscript runtime error | `INTERNAL` | `NUMSCRIPT_RUNTIME` | `detail` |
 | Numscript not found | `NOT_FOUND` | `NUMSCRIPT_NOT_FOUND` | `name` |
 | Numscript invalid version | `INVALID_ARGUMENT` | `NUMSCRIPT_INVALID_VERSION` | `version` |

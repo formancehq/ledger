@@ -4,7 +4,7 @@ Numscript is a domain-specific language (DSL) for expressing financial transacti
 
 ## Overview
 
-This ledger implementation uses the official Numscript interpreter from `github.com/formancehq/numscript`. All experimental features are **available** (the server imposes no restrictions), but each script must **explicitly opt in** using the `#![feature("...")]` pragma.
+This ledger implementation uses the official Numscript library from `github.com/formancehq/numscript`: its parser and dependency resolver analyze scripts at admission, its compiler produces the VM bytecode admission binds to the order, and its register VM executes that bytecode in the FSM — the only execution engine (see [the scripting subsystem](../architecture/subsystems/scripting/numscript-library.md)). All experimental features are **available** (the server imposes no restrictions), but each script must **explicitly opt in** using the `#![feature("...")]` pragma.
 
 ### Key Capabilities
 
@@ -466,7 +466,7 @@ Admission calls `ParseResult.ResolveDependencies(ctx, vars, store)`, which walks
 
 The wrapper lives in `internal/domain/processing/numscript/discover.go` (`DiscoverNumscriptDependencies`), the `Store` adapter and value-recording layer in `internal/domain/processing/numscript/store.go`:
 
-1. **Parse** the script using `cache.GetOrParse(script)` — the NumscriptCache is shared with real execution.
+1. **Parse** the script through the NumscriptCache — the same parsed entry the admission-side compile hangs off (`lruEntry.compileParsed`), so parse and compile both run once per cached script.
 2. **Resolve** dependencies against a `RecordingStore` wrapping the admission-time value source.
 3. **Map** the resolved account/metadata dependencies to Ledger volume/metadata preload keys `(ledger, account, asset)` / `(ledger, account, key)` — Ledger does not partition volumes or metadata by color/scope.
 4. **Preload** the union of read and write keys so every FSM read/mutate resolves from cache.
@@ -516,7 +516,7 @@ That reason is **retryable and deliberately NOT freezable**: a preparation gap i
 
 ### Notes
 
-- **Shared parsing cache**: dependency resolution, the FSM-time stale re-resolution, and real execution all use `cache.GetOrParse(script)`, so a script is parsed once and cached for every path.
+- **Shared parsing cache**: dependency resolution, the admission-side compile and the FSM-time stale re-resolution all use the NumscriptCache's parsed entry, so a script is parsed once per cache instance (admission and the FSM apply path each own one). Execution never walks the parsed AST: the FSM runs the compiled VM artifact bound to the order, cached as one decoded, verified warm VM instance per script on the cache's compiled side.
 - **`force` mode**: with the transaction's `force` flag, the resolver's `Store` returns unlimited balances, so bounded sources still resolve but no real balance is consulted.
 - **Resolution errors**: if resolution fails at admission (e.g. a `meta()` chain that cannot resolve), admission rejects the transaction as a business validation error before proposing — proposing without complete preloads would produce a doomed Raft apply.
 

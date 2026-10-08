@@ -102,7 +102,7 @@ func TestProcessAddMetadata_WithSchema(t *testing.T) {
 		},
 	}
 
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 }
@@ -141,7 +141,7 @@ func TestProcessAddMetadata_TransactionNotFound(t *testing.T) {
 		},
 	}
 
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.Error(t, err)
 	require.Nil(t, result)
 
@@ -279,7 +279,7 @@ func TestProcessDeleteMetadata_Transaction(t *testing.T) {
 		},
 	}
 
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -322,7 +322,7 @@ func TestProcessDeleteMetadata_TransactionNotFound(t *testing.T) {
 		},
 	}
 
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.Error(t, err)
 	require.Nil(t, result)
 

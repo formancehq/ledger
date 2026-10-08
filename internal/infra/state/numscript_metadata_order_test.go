@@ -8,6 +8,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -16,7 +17,7 @@ func TestNumscriptMetadataFailureSameAuditOnReplicas(t *testing.T) {
 	t.Parallel()
 	const ledger = "metadata-order"
 	order := createTransactionOrder(ledger, false)
-	order.GetLedgerScoped().GetApply().GetCreateTransaction().Script = &commonpb.Script{
+	script := &commonpb.Script{
 		Plain: `
 			vars { string $poison }
 			set_tx_meta("a", $poison)
@@ -24,6 +25,16 @@ func TestNumscriptMetadataFailureSameAuditOnReplicas(t *testing.T) {
 			send [USD/2 100] (source = @world destination = @users:alice)
 		`,
 		Vars: map[string]string{"poison": "safe\x00poison"},
+	}
+	order.GetLedgerScoped().GetApply().GetCreateTransaction().Script = script
+	// Every scripted order admission proposes carries the VM artifact it
+	// compiled; bind the same one here.
+	compiled, compileErr := numscript.CompileForReplay(numscript.NewNumscriptCache(1), script.GetPlain(), script.GetVars())
+	require.Nil(t, compileErr)
+	order.Technical = &raftcmdpb.OrderTechnical{
+		CompiledProgram:    compiled.Program,
+		CompiledVars:       compiled.Vars,
+		CompiledScriptHash: compiled.ScriptHash,
 	}
 	proposal := makeProposal(2, order)
 	proposal.Idempotency = &commonpb.Idempotency{Key: "metadata-order-key"}

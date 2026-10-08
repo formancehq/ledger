@@ -263,6 +263,7 @@ func TestDiscover_OneofExhaustive(t *testing.T) {
 	t.Parallel()
 
 	script := `
+#![feature("experimental-oneof")]
 send [USD/2 50] (
   source = oneof {
     @first
@@ -535,7 +536,8 @@ func TestDiscover_ServesColoredWrite(t *testing.T) {
 	t.Parallel()
 
 	cache := NewNumscriptCache(16)
-	script := `send [COIN 10] (
+	script := `#![feature("experimental-asset-colors")]
+	send [COIN 10] (
 		source = @world \ "RED"
 		destination = @dest
 	)`
@@ -556,7 +558,8 @@ func TestDiscover_ServesColoredRead(t *testing.T) {
 	t.Parallel()
 
 	cache := NewNumscriptCache(16)
-	script := `send [COIN 10] (
+	script := `#![feature("experimental-asset-colors")]
+	send [COIN 10] (
 		source = @wallet \ "RED"
 		destination = @dest
 	)`
