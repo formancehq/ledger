@@ -319,7 +319,7 @@ func NewAdmission(
 	}
 
 	missingCallerCounter, err := meter.Int64Counter(
-		"admission.audit.missing_callers",
+		"admission.audit.missing_caller.writes",
 		metric.WithDescription("Committed writes with a missing caller snapshot or unset principal"),
 		metric.WithUnit("{write}"),
 	)
@@ -328,7 +328,7 @@ func NewAdmission(
 	}
 
 	callerSubjectEmptyCounter, err := meter.Int64Counter(
-		"admission.audit.empty_caller_subjects",
+		"admission.audit.empty_caller_subject.writes",
 		metric.WithDescription("Committed user writes whose caller has a source but an empty subject (e.g. Ed25519 token without sub)"),
 		metric.WithUnit("{write}"),
 	)
@@ -357,7 +357,7 @@ func NewAdmission(
 	}
 
 	scriptsDurationHistogram, err := meter.Float64Histogram(
-		"admission.scripts.duration",
+		"admission.script.duration",
 		metric.WithDescription("Time spent resolving Numscript references and enriching preload needs with script-discovered volumes/metadata"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(phaseBucketBoundaries...),

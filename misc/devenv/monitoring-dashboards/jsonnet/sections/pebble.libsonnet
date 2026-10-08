@@ -21,7 +21,7 @@ panels.row('Pebble', 165, [
       
       High flush rates indicate heavy write activity. Monitor flush duration for performance.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#flush-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#flush-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -44,7 +44,7 @@ panels.row('Pebble', 165, [
       
       P99 spikes may correlate with write stalls. Consider NVMe storage for better performance.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#flush-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#flush-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -64,7 +64,7 @@ panels.row('Pebble', 165, [
       
       Compare with flush duration to understand I/O efficiency.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#flush-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#flush-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -85,7 +85,7 @@ panels.row('Pebble', 165, [
       
       High compaction rates indicate active data reorganization. Watch compaction duration for bottlenecks.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#compaction-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#compaction-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -108,7 +108,7 @@ panels.row('Pebble', 165, [
       
       Long compactions may temporarily impact read performance. Very high P99 values warrant investigation.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#compaction-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#compaction-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -131,7 +131,7 @@ panels.row('Pebble', 165, [
       
       Check system logs and disk health immediately.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#compaction-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#compaction-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -156,7 +156,7 @@ panels.row('Pebble', 165, [
       - Consider faster storage (NVMe)
       - Review compaction settings
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#write-stall-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#write-stall-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -179,7 +179,7 @@ panels.row('Pebble', 165, [
       - Reduced write rate
       - Tuning Pebble settings
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#write-stall-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#write-stall-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -202,7 +202,7 @@ panels.row('Pebble', 165, [
       
       Long stalls (>1s) are critical. High P99 values indicate occasional severe blocking.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#write-stall-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#write-stall-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 

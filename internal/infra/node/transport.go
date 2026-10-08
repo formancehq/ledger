@@ -221,13 +221,13 @@ func NewTransport(
 	}
 
 	// Initialize pending send queue metrics
-	t.pendingSendFullCounter, err = meter.Int64Counter("raft.send.pending_messages.overflows", metric.WithUnit("{batch}"))
+	t.pendingSendFullCounter, err = meter.Int64Counter("raft.send.pending_batch.overflows", metric.WithUnit("{batch}"))
 	if err != nil {
 		panic(err)
 	}
 
 	t.pendingSendLoadHistogram, err = meter.Int64Histogram(
-		"raft.send.pending_messages.load",
+		"raft.send.pending_batch.load",
 		metric.WithUnit("{batch}"),
 		metric.WithExplicitBucketBoundaries(expBoundaries(12, pendingSendCapacity)...),
 	)

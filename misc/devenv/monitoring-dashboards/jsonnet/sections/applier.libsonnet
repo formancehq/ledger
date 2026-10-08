@@ -10,9 +10,11 @@ panels.row('Applier', 164, [
     { h: 8, w: 12, x: 12, y: 1 },
     [
       { expr: queries.histogramSumRate('raft.apply_entries.duration', by=['formance.ledger.node.id']), legendFormat: 'Node {{formance.ledger.node.id}}' },
-    ], unit='s',
+    ], unit='percentunit',
     description=|||
-      Total time spent applying committed entries to the FSM (in seconds per second).
+      Fraction of wall-clock time spent (seconds spent per second; 100% = busy the whole interval).
+
+      Total time spent applying committed entries to the FSM (seconds spent per second).
       
       This is where transactions are actually processed and balances updated. High values indicate:
       - Complex transactions taking longer
@@ -21,7 +23,7 @@ panels.row('Applier', 164, [
       
       Correlate with 'Applying entries rate' and Pebble metrics.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#node-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#node-metrics
    |||,
   ),
 
@@ -43,7 +45,7 @@ panels.row('Applier', 164, [
       
       Higher percentiles indicate the system is effectively batching under load, which improves throughput.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#node-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#node-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -66,7 +68,7 @@ panels.row('Applier', 164, [
       
       High P99 values may indicate occasional slow operations (GC pauses, disk flushes).
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#node-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#node-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -85,7 +87,7 @@ panels.row('Applier', 164, [
       
       Total transactions/sec = rate × average batch size
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#node-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#node-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 

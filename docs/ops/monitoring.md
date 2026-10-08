@@ -184,12 +184,12 @@ System and Go runtime metrics are provided by the OpenTelemetry SDK and `go-libs
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `go.goroutine.count` | Gauge | 1 | Current number of goroutines |
+| `go.goroutine.count` | Gauge | `{goroutine}` | Current number of goroutines |
 | `go.memory.allocated` | Counter | By | Total bytes allocated (cumulative) |
-| `go.memory.allocations` | Counter | 1 | Total number of allocations |
+| `go.memory.allocations` | Counter | `{allocation}` | Total number of allocations |
 | `go.memory.used` | Gauge | By | Memory currently in use by type (stack, heap) |
 | `go.memory.gc.goal` | Gauge | By | Target heap size for next GC cycle |
-| `go.processor.limit` | Gauge | 1 | Number of OS threads that can execute user-level Go code |
+| `go.processor.limit` | Gauge | `{thread}` | Number of OS threads that can execute user-level Go code |
 
 ## HTTP Server Metrics
 
@@ -309,8 +309,8 @@ Outgoing messages are first queued in a global pending send queue before being d
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `raft.send.pending_messages.load` | Histogram | `{batch}` | Current load of the pending send queue. High values indicate messages are being queued faster than they can be dispatched to peers. |
-| `raft.send.pending_messages.overflows` | Counter | `{batch}` | Number of times the pending send queue was full. **Alert if non-zero**. |
+| `raft.send.pending_batch.load` | Histogram | `{batch}` | Current load of the pending send queue. High values indicate messages are being queued faster than they can be dispatched to peers. |
+| `raft.send.pending_batch.overflows` | Counter | `{batch}` | Number of times the pending send queue was full. **Alert if non-zero**. |
 
 ### Reception Channel Metrics
 
@@ -390,6 +390,10 @@ These metrics help identify:
 | `admission.proposal_guard.duration` | Histogram | s | Time from requesting the proposal guard until the proposal is handed to Raft: the wait to acquire the guard plus the time holding it. This is the contended portion of the propose path. |
 | `admission.proposal_guard.rebuilds` | Counter | `{rebuild}` | Number of times the proposal guard had to rebuild preloads because a boundary shifted. |
 | `admission.command.size` | Histogram | By | Size of marshalled Raft commands in bytes. Large commands may indicate many postings or metadata. |
+| `admission.resolve_batch.duration` | Histogram | s | Time verifying the batch signature and unmarshalling the trusted ApplyBatch. |
+| `admission.orders_preparation.duration` | Histogram | s | Time converting requests to orders and extracting their preload needs (script-dependent needs excluded). |
+| `admission.script.duration` | Histogram | s | Time resolving Numscript references and enriching the preload needs with the volumes and metadata scripts discover. |
+| `admission.response_resolution.duration` | Histogram | s | Time resolving FSM results into logs after apply, including the log reads for idempotent replays. Zero on the common create path. |
 
 ### Action Metrics
 
@@ -420,8 +424,8 @@ for how the caller snapshot is resolved.
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `admission.audit.missing_callers` | Counter | `{write}` | Committed writes whose caller snapshot is missing or has no principal; the audit entry is unattributed. Logged at error level. **Alert if non-zero**: resolution is normally total. |
-| `admission.audit.empty_caller_subjects` | Counter | `{write}` | Committed user writes whose caller has a source (key ID or issuer) but an empty subject, for example an Ed25519 token without `sub`. The entry is attributable by source only. Logged at info level. |
+| `admission.audit.missing_caller.writes` | Counter | `{write}` | Committed writes whose caller snapshot is missing or has no principal; the audit entry is unattributed. Logged at error level. **Alert if non-zero**: resolution is normally total. |
+| `admission.audit.empty_caller_subject.writes` | Counter | `{write}` | Committed user writes whose caller has a source (key ID or issuer) but an empty subject, for example an Ed25519 token without `sub`. The entry is attributable by source only. Logged at info level. |
 
 ### Propose Queue Metrics
 
@@ -716,8 +720,14 @@ This exposes standard Go runtime metrics including:
 ## Histogram Bucket Boundaries
 
 Every duration histogram records seconds as a float (unit `s`), so
-sub-microsecond phases keep their precision. Each instrument declares its
-own explicit boundaries next to its definition; for example:
+sub-microsecond phases keep their precision.
+
+The server exports every histogram with Base2 exponential aggregation (set by
+the go-libs metrics module), which adapts its buckets to the recorded values
+and ignores explicit boundaries. Many instruments still declare explicit
+boundaries as advice: they apply only under a meter provider that uses
+explicit-bucket aggregation, such as tests or a custom setup. Some duration
+histograms declare none. Examples:
 
 ### Apply Entries Duration
 
@@ -729,7 +739,7 @@ own explicit boundaries next to its definition; for example:
 ### Admission Phase Durations
 
 `admission.resolve_batch.duration`, `admission.orders_preparation.duration`,
-`admission.scripts.duration` and `admission.response_resolution.duration`
+`admission.script.duration` and `admission.response_resolution.duration`
 (seconds, starting at 1µs because the fast phases run in single-digit
 microseconds):
 ```
@@ -753,7 +763,9 @@ The development environment includes pre-configured Grafana dashboards:
 
 ### Ledger Metrics Dashboard
 
-Located at `misc/devenv/monitoring-dashboards/config/dashboards/ledger-metrics.json`
+Generated in eight variants under `misc/devenv/monitoring-dashboards/config/dashboards/`
+(see [Naming Convention](#naming-convention) for which one matches your
+pipeline); the standard devenv stack uses `ledger-metrics-prom-normalized-native.json`.
 
 The dashboard is organized into the following sections:
 

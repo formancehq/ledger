@@ -22,7 +22,7 @@ panels.row('Transport & Queues', 1, [
       
       High rates indicate active replication. Zero rates may indicate network issues.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#reception-channel-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#reception-channel-metrics
    |||,
   ),
 
@@ -33,14 +33,11 @@ panels.row('Transport & Queues', 1, [
     description=|||
       Heatmap showing queue depth distribution for high-priority received messages (priority 0).
       
-      High-priority messages include:
-      - AppendEntries responses (AppResp)
-      - Vote requests/responses (Vote, VoteResp)
-      - Pre-vote requests (PreVote, PreVoteResp)
+      High-priority messages are the leader heartbeats and their responses (MsgHeartbeat, MsgHeartbeatResp).
       
-      Consistently high queue depth indicates the node cannot process messages fast enough. This may delay leader election or log replication acknowledgments.
+      Consistently high queue depth indicates the node cannot process messages fast enough. Delayed heartbeats can make followers time out and trigger needless elections.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#reception-channel-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#reception-channel-metrics
    |||,
     opts={ legendFormat: '__auto' },
   ),
@@ -54,7 +51,7 @@ panels.row('Transport & Queues', 1, [
       
       Medium-priority messages include: MsgVote, MsgVoteResp, MsgPreVote, MsgPreVoteResp, MsgAppResp.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#reception-channel-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#reception-channel-metrics
    |||,
     opts={ legendFormat: '__auto' },
   ),
@@ -70,7 +67,7 @@ panels.row('Transport & Queues', 1, [
       
       High queue depth on followers is normal during heavy write load. On the leader, it should be minimal.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#reception-channel-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#reception-channel-metrics
    |||,
     opts={ legendFormat: '__auto' },
   ),
@@ -91,7 +88,7 @@ panels.row('Transport & Queues', 1, [
       
       Increase queue capacity or investigate why processing is slow.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#reception-channel-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#reception-channel-metrics
    |||, opts={ legendFormat: '{{priority_name}}' },
   ),
 
@@ -111,7 +108,7 @@ panels.row('Transport & Queues', 1, [
       
       Correlate with ping latency and leadership status.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#unreachable-channel-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#unreachable-channel-metrics
    |||,
   ),
 
@@ -126,7 +123,7 @@ panels.row('Transport & Queues', 1, [
       
       High values indicate many peers are becoming unreachable.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#unreachable-channel-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#unreachable-channel-metrics
    |||,
     opts={ legendFormat: '__auto' },
   ),
@@ -140,7 +137,7 @@ panels.row('Transport & Queues', 1, [
       
       Non-zero values indicate the system cannot process unreachable notifications fast enough, which may delay failure detection.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#unreachable-channel-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#unreachable-channel-metrics
    |||, opts={ legendFormat: 'Node {{formance.ledger.node.id}}' },
   ),
 
@@ -148,12 +145,12 @@ panels.row('Transport & Queues', 1, [
     'Pending Send Queue Throughput',
     { h: 10, w: 8, x: 0, y: 116 },
     [
-      { expr: queries.histogramCountRate('raft.send.pending_messages.load', by=['formance.ledger.node.id']), legendFormat: 'Node {{formance.ledger.node.id}}' },
+      { expr: queries.histogramCountRate('raft.send.pending_batch.load', by=['formance.ledger.node.id']), legendFormat: 'Node {{formance.ledger.node.id}}' },
     ], unit='ops',
     description=|||
       Throughput of the pending send queue. This is the rate at which message batches are being queued for dispatch to peers.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#pending-send-queue-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#pending-send-queue-metrics
    |||,
   ),
 
@@ -161,14 +158,14 @@ panels.row('Transport & Queues', 1, [
     'Pending Send Queue Load',
     { h: 10, w: 8, x: 8, y: 116 },
     'sum(
-  rate(raft.send.pending_messages.load_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])
+  rate(raft.send.pending_batch.load_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])
 ) by (formance.ledger.node.id, le)',
     description=|||
       Heatmap showing queue depth distribution for the pending send queue.
       
       High values indicate messages are being queued faster than they can be dispatched.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#pending-send-queue-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#pending-send-queue-metrics
    |||,
     opts={ legendFormat: '__auto' },
   ),
@@ -177,12 +174,12 @@ panels.row('Transport & Queues', 1, [
     'Pending Send Queue Full Count',
     { h: 10, w: 8, x: 16, y: 116 },
     [
-      { expr: 'sum(increase(raft.send.pending_messages.overflows{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', legendFormat: 'Node {{formance.ledger.node.id}}' },
+      { expr: 'sum(increase(raft.send.pending_batch.overflows{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', legendFormat: 'Node {{formance.ledger.node.id}}' },
     ], unit='short',
     description=|||
       Number of times the pending send queue was full. Alert if non-zero.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#pending-send-queue-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#pending-send-queue-metrics
    |||, opts={ drawStyle: 'bars', fillOpacity: 50 },
   ),
 
@@ -202,7 +199,7 @@ panels.row('Transport & Queues', 1, [
       
       High rates on the leader indicate active replication.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#per-peer-sending-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#per-peer-sending-metrics
    |||,
   ),
 
@@ -211,11 +208,11 @@ panels.row('Transport & Queues', 1, [
     { h: 6, w: 12, x: 12, y: 126 },
     [
       { expr: 'sum(increase(raft.transport.peer.sending.overflows{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, peer, priority_name)', legendFormat: 'Node {{formance.ledger.node.id}}: Peer {{peer}} / {{priority_name}}' },
-    ], unit='ops',
+    ], unit='short',
     description=|||
-      Rate of times the per-peer send channel was full and messages were dropped.
+      Number of batches dropped per interval because the per-peer send channel was full.
       
-      ALERT: Non-zero rates indicate messages to peers are being dropped!
+      ALERT: Non-zero counts indicate messages to peers are being dropped!
       
       This causes:
       - Delayed replication to affected peer
@@ -224,7 +221,7 @@ panels.row('Transport & Queues', 1, [
       
       Investigate network connectivity to the affected peer.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#per-peer-sending-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#per-peer-sending-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -235,14 +232,11 @@ panels.row('Transport & Queues', 1, [
     description=|||
       Heatmap showing per-peer send queue depth for high-priority messages (priority 0).
       
-      High-priority outbound messages:
-      - AppendEntries responses
-      - Vote requests/responses
-      - Pre-vote requests/responses
+      High-priority outbound messages are the leader heartbeats and their responses (MsgHeartbeat, MsgHeartbeatResp).
       
-      These messages are critical for consensus. High queue depth may delay leader election or acknowledgment of replicated entries.
+      These messages keep leadership alive. High queue depth may let followers time out and trigger needless elections.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#per-peer-sending-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#per-peer-sending-metrics
    |||,
     opts={ legendFormat: '__auto' },
   ),
@@ -256,7 +250,7 @@ panels.row('Transport & Queues', 1, [
       
       Medium-priority messages include: MsgVote, MsgVoteResp, MsgPreVote, MsgPreVoteResp, MsgAppResp.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#per-peer-sending-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#per-peer-sending-metrics
    |||,
     opts={ legendFormat: '__auto' },
   ),
@@ -275,7 +269,7 @@ panels.row('Transport & Queues', 1, [
       - Slow followers
       - High write throughput
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#per-peer-sending-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#per-peer-sending-metrics
    |||,
     opts={ legendFormat: '__auto' },
   ),
@@ -297,7 +291,7 @@ panels.row('Transport & Queues', 1, [
       - Apply entries latency
       - Storage write stalls
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#propose-queue-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#propose-queue-metrics
    |||,
   ),
 
@@ -317,7 +311,7 @@ panels.row('Transport & Queues', 1, [
       - Reducing client request rate
       - Investigating bottlenecks
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#propose-queue-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#propose-queue-metrics
    |||,
     opts={ legendFormat: '__auto' },
   ),
@@ -339,7 +333,7 @@ panels.row('Transport & Queues', 1, [
       - Reduce client load
       - Investigate processing bottlenecks
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#propose-queue-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#propose-queue-metrics
    |||,
   ),
 
@@ -359,7 +353,7 @@ panels.row('Transport & Queues', 1, [
       
       Persistently high values for a specific peer may indicate that peer is struggling.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#global-transport-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#global-transport-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 ])
