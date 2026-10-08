@@ -20,15 +20,15 @@ func TestClonePreservesSourceAndDropsOpaqueEvidence(t *testing.T) {
 	source := &commonpb.Log{Sequence: 17, ResponseSignature: &signaturepb.SignedLog{KeyId: "server", Payload: []byte("secret"), Signature: []byte("signature")}}
 	source.ProtoReflect().SetUnknown(protowire.AppendBytes(protowire.AppendTag(nil, 1000, protowire.BytesType), []byte("unknown secret")))
 	before := proto.Clone(source)
-	view := Clone(source)
+	view := Redact(source)
 	require.Equal(t, uint64(17), view.GetSequence())
 	require.Nil(t, view.GetResponseSignature())
 	require.Empty(t, view.ProtoReflect().GetUnknown())
 	require.True(t, proto.Equal(before, source))
 	require.NotSame(t, source, view)
 	var absent *commonpb.Log
-	require.Nil(t, Clone(absent))
-	require.Nil(t, Clone[proto.Message](nil))
+	require.Nil(t, Redact(absent))
+	require.Nil(t, Redact[proto.Message](nil))
 }
 
 func TestCloneRecursiveDescriptors(t *testing.T) {
@@ -70,7 +70,7 @@ func TestCloneRecursiveDescriptors(t *testing.T) {
 	source.Mutable(desc.Fields().ByName("by_name")).Map().Set(protoreflect.ValueOfString("server").MapKey(), makeChild())
 	source.Set(desc.Fields().ByName("opaque"), protoreflect.ValueOfBytes([]byte("credential")))
 	before := proto.Clone(source)
-	view := Clone(source)
+	view := Redact(source)
 	require.True(t, proto.Equal(before, source))
 	require.False(t, view.Has(desc.Fields().ByName("opaque")))
 	assertChild := func(v protoreflect.Value) {
@@ -86,7 +86,7 @@ func TestCloneRecursiveDescriptors(t *testing.T) {
 func TestClonePreservesSanitizedSinkDiagnostic(t *testing.T) {
 	t.Parallel()
 	source := &commonpb.SinkError{Message: "sending request to webhook.example: connection refused"}
-	view := Clone(source)
+	view := Redact(source)
 	require.Equal(t, source.GetMessage(), view.GetMessage())
 	require.NotSame(t, source, view)
 }
@@ -99,7 +99,7 @@ func TestCloneNilNestedMessages(t *testing.T) {
 	}}
 	before := proto.Clone(source)
 	var view *commonpb.PostCommitVolumes
-	require.NotPanics(t, func() { view = Clone(source) })
+	require.NotPanics(t, func() { view = Redact(source) })
 	require.True(t, proto.Equal(before, source))
 	// proto.Clone materializes nil map/list messages before redact sees them.
 	require.NotNil(t, view.GetVolumesByAccount()["absent"])
@@ -117,7 +117,7 @@ func TestCloneSensitiveOneofs(t *testing.T) {
 		{Auth: &commonpb.DatabricksSinkConfig_OauthM2M{OauthM2M: &commonpb.DatabricksOAuthM2M{ClientId: "visible", ClientSecret: "credential"}}},
 	} {
 		before := proto.Clone(source)
-		view := Clone(source)
+		view := Redact(source)
 		require.True(t, proto.Equal(before, source))
 		if source.GetToken() != "" {
 			require.Equal(t, Marker, view.GetToken())
@@ -131,7 +131,7 @@ func TestCloneSensitiveOneofs(t *testing.T) {
 func TestCloneMasksMirrorDiagnostic(t *testing.T) {
 	t.Parallel()
 	source := &commonpb.MirrorSyncError{Message: "connection password=sentinel"}
-	projected := Clone(source)
+	projected := Redact(source)
 	require.Equal(t, Marker, projected.GetMessage())
 	require.Equal(t, "connection password=sentinel", source.GetMessage())
 }
@@ -198,7 +198,7 @@ func TestCloneSensitiveURL(t *testing.T) {
 		Dsn:   "clickhouse://user:secret@host:9000/db",
 		Table: "ledger_events",
 	}
-	view := Clone(source)
+	view := Redact(source)
 	require.Equal(t, "clickhouse://user:xxxxx@host:9000/db", view.GetDsn())
 	require.Equal(t, "ledger_events", view.GetTable())
 	require.Equal(t, "clickhouse://user:secret@host:9000/db", source.GetDsn())
@@ -207,7 +207,7 @@ func TestCloneSensitiveURL(t *testing.T) {
 		Url:   "nats://mytoken@host:4222",
 		Topic: "events",
 	}
-	natsView := Clone(nats)
+	natsView := Redact(nats)
 	require.Equal(t, "nats://xxxxx@host:4222", natsView.GetUrl())
 	require.Equal(t, "events", natsView.GetTopic())
 	require.Equal(t, "nats://mytoken@host:4222", nats.GetUrl())

@@ -66,10 +66,10 @@ func redactURL(raw string) string {
 	return parsed.String()
 }
 
-// Clone returns a deep copy with sensitive fields masked. Unknown wire fields
+// Redact returns a deep copy with sensitive fields masked. Unknown wire fields
 // are omitted because their confidentiality cannot be established by the schema.
 // The original message, including its exact byte fields, is never modified.
-func Clone[T proto.Message](message T) T {
+func Redact[T proto.Message](message T) T {
 	if any(message) == nil || !message.ProtoReflect().IsValid() {
 		return message
 	}

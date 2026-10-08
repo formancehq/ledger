@@ -876,7 +876,7 @@ func (impl *BucketServiceServerImpl) GetEventsSinks(ctx context.Context, _ *serv
 		return nil, fmt.Errorf("loading events sinks: %w", err)
 	}
 	for i, s := range sinks {
-		sinks[i] = sensitive.Clone(s)
+		sinks[i] = sensitive.Redact(s)
 	}
 
 	return &servicepb.GetEventsSinksResponse{

@@ -27,7 +27,7 @@ func (s *Server) handleGetEventsSinks(w http.ResponseWriter, r *http.Request) {
 	// proto tags (sink_name) and the untagged oneof wrapper field. Reusing the
 	// gRPC GetEventsSinksResponse gives both transports an identical shape.
 	for i, s := range sinks {
-		sinks[i] = sensitive.Clone(s)
+		sinks[i] = sensitive.Redact(s)
 	}
 	raw, err := protojson.Marshal(&servicepb.GetEventsSinksResponse{
 		Sinks:        sinks,
