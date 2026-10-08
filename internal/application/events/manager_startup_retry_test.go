@@ -77,7 +77,9 @@ func (p *startupStatusProposer) Propose(_ context.Context, proposal *node.Propos
 
 			return f, nil
 		}
-		p.updates.Add(1)
+		if update.GetError() != nil || update.GetClearError() || update.GetCursor() > 0 {
+			p.updates.Add(1)
+		}
 	}
 	f.Resolve(state.ApplyResult{}, nil)
 
@@ -87,14 +89,17 @@ func (p *startupStatusProposer) Propose(_ context.Context, proposal *node.Propos
 // delayedStartupStatusProposer accepts an error report but applies it only
 // before a later clear, as an ordered Raft log can do after the first wait times out.
 type delayedStartupStatusProposer struct {
-	store         *dal.Store
-	mu            sync.Mutex
-	pending       *raftcmdpb.EventsSinkUpdate
-	pendingFuture *futures.Future[state.ApplyResult]
-	clearProposed chan struct{}
-	release       chan struct{}
-	reportApplied chan struct{}
-	releaseClear  chan struct{}
+	store           *dal.Store
+	mu              sync.Mutex
+	barrierOnce     sync.Once
+	clearOnce       sync.Once
+	pending         *raftcmdpb.EventsSinkUpdate
+	pendingFuture   *futures.Future[state.ApplyResult]
+	barrierProposed chan struct{}
+	clearProposed   chan struct{}
+	release         chan struct{}
+	reportApplied   chan struct{}
+	releaseClear    chan struct{}
 }
 
 func (p *delayedStartupStatusProposer) Propose(_ context.Context, proposal *node.Proposal) (*futures.Future[state.ApplyResult], error) {
@@ -113,11 +118,29 @@ func (p *delayedStartupStatusProposer) Propose(_ context.Context, proposal *node
 
 		return f, nil
 	}
-	close(p.clearProposed)
+	if update.GetClearError() {
+		p.clearOnce.Do(func() { close(p.clearProposed) })
+		go func() {
+			<-p.releaseClear
+			f.Resolve(state.ApplyResult{}, applyStartupStatusUpdate(p.store, update))
+		}()
+
+		return f, nil
+	}
+	p.mu.Lock()
+	hasPending := p.pending != nil
+	p.mu.Unlock()
+	if !hasPending {
+		f.Resolve(state.ApplyResult{}, applyStartupStatusUpdate(p.store, update))
+
+		return f, nil
+	}
+	p.barrierOnce.Do(func() { close(p.barrierProposed) })
 	go func() {
 		<-p.release
 		p.mu.Lock()
 		pending, pendingFuture := p.pending, p.pendingFuture
+		p.pending, p.pendingFuture = nil, nil
 		p.mu.Unlock()
 		if pending != nil {
 			err := applyStartupStatusUpdate(p.store, pending)
@@ -128,7 +151,6 @@ func (p *delayedStartupStatusProposer) Propose(_ context.Context, proposal *node
 				return
 			}
 			close(p.reportApplied)
-			<-p.releaseClear
 		}
 		f.Resolve(state.ApplyResult{}, applyStartupStatusUpdate(p.store, update))
 	}()
@@ -347,7 +369,7 @@ func TestManager_UncertainStartupReportClearedAfterRecovery(t *testing.T) {
 		Nats: &commonpb.NatsSinkConfig{Url: "nats://dependency.invalid:4222", Topic: "ledger.events"},
 	}}
 	saveManagedSinkConfig(t, attrs, store, config)
-	proposer := &delayedStartupStatusProposer{store: store, clearProposed: make(chan struct{}), release: make(chan struct{}), reportApplied: make(chan struct{}), releaseClear: make(chan struct{})}
+	proposer := &delayedStartupStatusProposer{store: store, barrierProposed: make(chan struct{}), clearProposed: make(chan struct{}), release: make(chan struct{}), reportApplied: make(chan struct{}), releaseClear: make(chan struct{})}
 	var releaseOnce sync.Once
 	t.Cleanup(func() { releaseOnce.Do(func() { close(proposer.release) }) })
 	var clearOnce sync.Once
@@ -358,9 +380,9 @@ func TestManager_UncertainStartupReportClearedAfterRecovery(t *testing.T) {
 	m.OnLeadershipChange(true)
 	require.Eventually(t, func() bool { return attempts.Load() >= 2 }, 5*time.Second, 10*time.Millisecond)
 	select {
-	case <-proposer.clearProposed:
+	case <-proposer.barrierProposed:
 	case <-time.After(2 * time.Second):
-		t.Fatal("a successful start must order a clear after the uncertain report")
+		t.Fatal("a successful start must wait for accepted status updates")
 	}
 	releaseOnce.Do(func() { close(proposer.release) })
 	select {
@@ -371,6 +393,11 @@ func TestManager_UncertainStartupReportClearedAfterRecovery(t *testing.T) {
 	status, err := startupStatusView(store, config)
 	require.NoError(t, err)
 	require.Equal(t, "sink startup: temporary startup failure", status.GetError().GetMessage())
+	select {
+	case <-proposer.clearProposed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the startup error was not cleared after the status barrier")
+	}
 	clearOnce.Do(func() { close(proposer.releaseClear) })
 	require.Eventually(t, func() bool {
 		status, err := startupStatusView(store, config)
@@ -440,4 +467,56 @@ func TestManager_PreservesDeliveryErrorAcrossStartupFailure(t *testing.T) {
 
 		return err == nil && status.GetError() == nil && status.GetCursor() == 1
 	}, 3*time.Second, 10*time.Millisecond, "the delivery error clears only after a successful publish")
+}
+
+func TestManager_PreservesPendingDeliveryErrorAcrossStartup(t *testing.T) {
+	previous, existed := sinkFactories["nats"]
+	t.Cleanup(func() {
+		if existed {
+			sinkFactories["nats"] = previous
+		} else {
+			delete(sinkFactories, "nats")
+		}
+	})
+	sinkFactories["nats"] = func(*commonpb.SinkConfig, Format) (Sink, error) {
+		return startupRetryTestSink{}, nil
+	}
+	builder, store := newTestBuilder(t)
+	attrs := attributes.New()
+	config := &commonpb.SinkConfig{Name: "pending-delivery-error", Type: &commonpb.SinkConfig_Nats{
+		Nats: &commonpb.NatsSinkConfig{Url: "nats://dependency.invalid:4222", Topic: "ledger.events"},
+	}}
+	saveManagedSinkConfig(t, attrs, store, config)
+	proposer := &delayedStartupStatusProposer{
+		store: store, barrierProposed: make(chan struct{}), clearProposed: make(chan struct{}),
+		release: make(chan struct{}), reportApplied: make(chan struct{}), releaseClear: make(chan struct{}),
+		pending:       &raftcmdpb.EventsSinkUpdate{SinkName: config.GetName(), Error: &commonpb.SinkError{Message: "delivery failed"}},
+		pendingFuture: futures.New[state.ApplyResult](),
+	}
+	var releaseOnce sync.Once
+	t.Cleanup(func() { releaseOnce.Do(func() { close(proposer.release) }) })
+	m := NewManager(store, attrs, proposer, builder, logging.Testing(), signal.NewNotifications())
+	m.Start()
+	t.Cleanup(m.Stop)
+	m.OnLeadershipChange(true)
+	select {
+	case <-proposer.barrierProposed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("startup did not wait for the pending delivery update")
+	}
+	status, err := startupStatusView(store, config)
+	require.NoError(t, err)
+	require.Nil(t, status.GetError(), "the delivery update is still pending")
+	releaseOnce.Do(func() { close(proposer.release) })
+	require.Eventually(t, func() bool {
+		status, err := startupStatusView(store, config)
+
+		return err == nil && status.GetError().GetMessage() == "delivery failed" &&
+			managedSinkByName(m, config.GetName()) != nil
+	}, 3*time.Second, 10*time.Millisecond)
+	select {
+	case <-proposer.clearProposed:
+		t.Fatal("startup cleared a previously accepted delivery error")
+	default:
+	}
 }

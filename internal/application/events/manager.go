@@ -384,6 +384,23 @@ func (m *Manager) reportStartupError(name string, startupErr error, generation u
 	if status.GetError().GetMessage() == message {
 		return
 	}
+	// Drain earlier accepted updates before deciding which error owns the
+	// single status slot. A stopped emitter may still have a delivery error
+	// waiting for FSM apply.
+	if err := m.synchronizeSinkStatus(name, generation); err != nil {
+		m.logger.Errorf("Failed to synchronize status for sink %q: %v", name, err)
+
+		return
+	}
+	status, err = m.readSinkStatus(name)
+	if err != nil {
+		m.logger.Errorf("Failed to read synchronized status for sink %q: %v", name, err)
+
+		return
+	}
+	if status.GetError().GetMessage() == message {
+		return
+	}
 	// A delivery error remains authoritative until a successful publish.
 	// SinkStatus has room for one error; replacing it here would erase that
 	// unresolved delivery failure when startup later succeeds.
@@ -408,11 +425,14 @@ func (m *Manager) finishStartupStatus(emitter *Emitter, generation uint64) error
 	if !m.isCurrentLeader(generation) {
 		return nil
 	}
+	if err := m.synchronizeSinkStatus(emitter.sinkName, generation); err != nil {
+		return err
+	}
 	status, err := m.readSinkStatus(emitter.sinkName)
 	if err != nil {
 		return err
 	}
-	if status.GetError() != nil && !strings.HasPrefix(status.GetError().GetMessage(), sinkStartupErrorPrefix) {
+	if status.GetError() == nil || !strings.HasPrefix(status.GetError().GetMessage(), sinkStartupErrorPrefix) {
 		return nil
 	}
 	leaderContext, current := m.currentLeaderContext(generation)
@@ -421,13 +441,25 @@ func (m *Manager) finishStartupStatus(emitter *Emitter, generation uint64) error
 	}
 	ctx, cancel := context.WithTimeout(leaderContext, deliveredCursorUpdateTimeout)
 	defer cancel()
-	// Always order a clear after startup, even when the read found no status.
-	// An earlier accepted error proposal may still be waiting for FSM apply
-	// after its own wait timed out. Raft applies this clear after that report.
 
 	return emitter.proposeSinkUpdate(ctx, &raftcmdpb.EventsSinkUpdate{
 		SinkName: emitter.sinkName, ClearError: true,
 	})
+}
+
+// synchronizeSinkStatus waits for an empty technical update to apply. Raft
+// applies earlier accepted sink updates first, including updates whose caller
+// stopped waiting, so the following status read sees the settled error.
+func (m *Manager) synchronizeSinkStatus(name string, generation uint64) error {
+	leaderContext, current := m.currentLeaderContext(generation)
+	if !current {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(leaderContext, deliveredCursorUpdateTimeout)
+	defer cancel()
+
+	return NewEmitter(m.store, nil, name, m.proposer, m.builder, m.logger, DefaultEmitterConfig()).proposeSinkUpdate(ctx,
+		&raftcmdpb.EventsSinkUpdate{SinkName: name})
 }
 
 // scheduleStartupRetry triggers a future reconcile for transient startup

@@ -66,8 +66,10 @@ current contract, record the unmet proof as a question.
 
 Startup status is a separate observation from delivery acknowledgement. The
 manager proposes an error for failed construction or emitter startup, unless a
-prior delivery error is still authoritative. After a successful start it orders
-a clear after any pending startup report, before the emitter can publish.
+prior delivery error is still authoritative. It waits for an empty Raft update
+to apply before reading status so accepted delivery and startup errors cannot
+remain hidden behind that read. After a successful start it clears only an
+observed startup error, before the emitter can publish.
 An unchanged retry must not repeatedly propose the same message. A configured
 sink with cursor zero and no error is pending; a delivery error from a prior
 emitter must remain until successful publication. Trace the persisted status,
