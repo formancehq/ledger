@@ -473,6 +473,66 @@ func TestSafeExecCommitted_ForeignBytecodeVersionDerivesFromText(t *testing.T) {
 	}
 }
 
+// TestSafeExecCommitted_MalformedHeaderNextToForeignVersionIsLoud: a half
+// whose header does not parse is corrupt, not foreign, whatever the other
+// half carries. Next to a program or vars of a bytecode version this library
+// cannot read — which alone would derive the order from the text — the
+// corrupt half still fails the order loudly, with the decoder's own message
+// for that half, and the text is never parsed: a foreign version must not
+// mask corruption (invariant #7), and the order must fail the same way on a
+// replica whose library does read the foreign half.
+func TestSafeExecCommitted_MalformedHeaderNextToForeignVersionIsLoud(t *testing.T) {
+	t.Parallel()
+
+	compiled := mustCompile(t, mustEntry(t, byReferenceScript), byReferenceVars)
+	scriptHash := [16]byte(compiled.ScriptHash)
+
+	malformations := map[string]func([]byte) []byte{
+		"bad magic": func(encoded []byte) []byte {
+			patched := bytes.Clone(encoded)
+			patched[0] ^= 0xFF
+
+			return patched
+		},
+		"truncated": func(encoded []byte) []byte {
+			return bytes.Clone(encoded[:artifactHeaderLen/2])
+		},
+	}
+
+	for versionName, version := range unreadableBytecodeVersions(t) {
+		for malformationName, malform := range malformations {
+			for shapeName, tc := range map[string]struct {
+				artifact CommittedArtifact
+				half     string
+			}{
+				"malformed vars next to a foreign program": {
+					artifact: CommittedArtifact{Program: withArtifactVersion(t, compiled.Program, version), Vars: malform(compiled.Vars)},
+					half:     "vars",
+				},
+				"malformed program next to foreign vars": {
+					artifact: CommittedArtifact{Program: malform(compiled.Program), Vars: withArtifactVersion(t, compiled.Vars, version)},
+					half:     "program",
+				},
+			} {
+				t.Run(versionName+", "+malformationName+", "+shapeName, func(t *testing.T) {
+					t.Parallel()
+
+					cache := NewNumscriptCache(16)
+
+					_, err := SafeExecCommitted(cache, scriptHash, tc.artifact, byReferenceScript, byReferenceScriptVars, byReferenceStore())
+					require.NotNil(t, err)
+					require.False(t, IsPanic(err))
+					require.Equal(t, domain.ErrReasonNumscriptRuntime, err.Reason())
+					require.Contains(t, err.Error(), "decoding compiled numscript "+tc.half)
+					require.Contains(t, err.Error(), "bad magic")
+
+					requireParseSideUntouched(t, cache, scriptHash)
+				})
+			}
+		}
+	}
+}
+
 // TestSafeExecCommitted_EntryWithOtherBytesIsReplaced: an entry holding other
 // bytes under the same script hash (this node's own compile cached while the
 // leader ran another library version, say) is not served for a reference to

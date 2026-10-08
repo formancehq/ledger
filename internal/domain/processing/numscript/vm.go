@@ -241,22 +241,39 @@ type CommittedArtifact struct {
 	Vars        []byte
 }
 
-// readable reports whether this binary's bundled library can read the
-// bytecode version of every half present (CurrentBytecodeVersion.CanRead).
-// A half whose header does not even parse is not another version's artifact
-// but a corrupt one, and is left to the decoders to fail loudly.
-func (a CommittedArtifact) readable() bool {
-	if version, err := numscriptlib.PeekVarsVersion(a.Vars); err == nil && !numscriptlib.CurrentBytecodeVersion.CanRead(version) {
-		return false
+// readable inspects the header of every half present, before anything is
+// decoded. headerErr is set when a header does not even parse (truncated, bad
+// magic): that half is not another version's artifact but a corrupt one, and
+// it fails the order loudly (invariant #7) with the message the decoder would
+// have produced for it. Otherwise readable reports whether this binary's
+// bundled library can read the bytecode version of every half present
+// (CurrentBytecodeVersion.CanRead). Both halves are inspected before either
+// verdict, so a corrupt half is never masked by a foreign version in the
+// other one: an artifact that is both corrupt and foreign fails instead of
+// being derived from the text, and fails the same way on a replica whose
+// library does read the foreign half.
+func (a CommittedArtifact) readable() (readable bool, headerErr domain.SerializableError) {
+	varsVersion, err := numscriptlib.PeekVarsVersion(a.Vars)
+	if err != nil {
+		return false, &domain.ErrNumscriptRuntime{
+			Detail: "decoding compiled numscript vars: " + err.Error(),
+		}
 	}
 
-	if len(a.Program) == 0 {
-		return true
+	readable = numscriptlib.CurrentBytecodeVersion.CanRead(varsVersion)
+
+	if len(a.Program) > 0 {
+		programVersion, err := numscriptlib.PeekCompiledProgramVersion(a.Program)
+		if err != nil {
+			return false, &domain.ErrNumscriptRuntime{
+				Detail: "decoding compiled numscript program: " + err.Error(),
+			}
+		}
+
+		readable = readable && numscriptlib.CurrentBytecodeVersion.CanRead(programVersion)
 	}
 
-	version, err := numscriptlib.PeekCompiledProgramVersion(a.Program)
-
-	return err != nil || numscriptlib.CurrentBytecodeVersion.CanRead(version)
+	return readable, nil
 }
 
 // SafeExecCommitted executes a committed scripted order on the FSM apply path:
@@ -269,7 +286,9 @@ func (a CommittedArtifact) readable() bool {
 //     version it cannot read means another library version produced the
 //     artifact — a replica running a different version during a rolling
 //     upgrade — which is the ordinary reason to derive from the text, never
-//     a failure;
+//     a failure. A half whose header does not parse at all is corrupt, not
+//     foreign, and fails the order before either verdict, whatever version
+//     the other half carries (see readable);
 //   - by value, nothing more: the committed bytes run with the committed vars
 //     (SafeExecCompiled);
 //   - by reference, bytes with the committed program hash are at hand: this
@@ -291,10 +310,11 @@ func (a CommittedArtifact) readable() bool {
 // keeps a script's semantics stable across versions — the contract the store
 // checker's audit replay already relies on for every scripted order, and the
 // reason a version difference never fails an order here. What does fail
-// loudly (ErrNumscriptRuntime) is an artifact this library reads but cannot
-// decode or verify, or committed vars the cached program's layout does not
-// cover: corrupt bytes, not a version difference. Vars are decoded before any
-// cache access, so corrupt vars fail the same way on every replica.
+// loudly (ErrNumscriptRuntime) is a half whose header does not parse, an
+// artifact this library reads but cannot decode or verify, or committed vars
+// the cached program's layout does not cover: corrupt bytes, not a version
+// difference. Headers are inspected and vars are decoded before any cache
+// access, so a corrupt artifact fails the same way on every replica.
 //
 // scriptHash must be HashScript(script), which the caller has already checked
 // against the order's committed script hash: it keys both cache sides, and
@@ -307,7 +327,12 @@ func SafeExecCommitted(cache *NumscriptCache, scriptHash [16]byte, artifact Comm
 		}
 	}()
 
-	if !artifact.readable() {
+	readable, headerErr := artifact.readable()
+	if headerErr != nil {
+		return numscriptlib.ExecutionResult{}, headerErr
+	}
+
+	if !readable {
 		return SafeExecFromText(cache, script, scriptVars, store)
 	}
 
