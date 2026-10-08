@@ -92,35 +92,21 @@ func NewGRPCIdentityCursor[T any](ctx context.Context, client grpc.ServerStreami
 	})
 }
 
-// UpstreamTrailer is implemented by cursors that expose an upstream
-// x-next-cursor trailer once they're exhausted. sendPagedToStream uses this
-// to surface a follower-side trailer when the routed leader signaled more
-// pages but the local cursor itself hit EOF (no peek slot available).
-//
-// Direct cursor consumers (HTTP compatibility shims, drain loops, etc.) just
-// see a normal EOF and don't have to know about the trailer — they can
-// type-assert when they care.
-type UpstreamTrailer interface {
-	NextCursor() string
-}
-
 // upstreamPeekCursor wraps a streaming gRPC cursor used by a routed
-// BucketGrpcClient so the follower-side sendPagedToStream peek-ahead can
-// still fire when the leader signaled more pages via x-next-cursor.
+// BucketGrpcClient so a follower can still tell that the leader holds rows
+// beyond the ones it streamed.
 //
 // The leader caps its response at MaxPageSize and only advertises the extra
-// page through the trailer; without this wrapper, the follower-side cursor
-// would also hit EOF on a full page and the follower's sendPagedToStream
-// would never emit a trailer of its own, breaking pagination for clustered
-// deployments. We expose the upstream cursor as a side channel
-// (UpstreamTrailer.NextCursor) so generic Cursor[*T] consumers — HTTP
-// compatibility reads, drain loops — get a normal EOF and never see a fake
-// record.
+// rows through its x-next-cursor trailer; without this wrapper a follower
+// asking for MaxPageSize+1 rows would see a full page end in EOF and drop
+// the link to the following page. The signal is exposed as a side channel
+// (cursor.MoreReporter) so generic Cursor[*T] consumers — HTTP compatibility
+// reads, drain loops — get a normal EOF and never see a fake record.
 type upstreamPeekCursor[Res any] struct {
-	ctx        context.Context
-	client     grpc.ServerStreamingClient[Res]
-	exhausted  bool
-	nextCursor string
+	ctx       context.Context
+	client    grpc.ServerStreamingClient[Res]
+	exhausted bool
+	hasMore   bool
 }
 
 func (c *upstreamPeekCursor[Res]) Next() (*Res, error) {
@@ -133,14 +119,14 @@ func (c *upstreamPeekCursor[Res]) Next() (*Res, error) {
 
 	if errors.Is(err, io.EOF) && !c.exhausted {
 		c.exhausted = true
-		c.nextCursor = nextCursorFromTrailer(c.client.Trailer())
+		c.hasMore = nextCursorFromTrailer(c.client.Trailer()) != ""
 	}
 
 	return nil, err
 }
 
-func (c *upstreamPeekCursor[Res]) NextCursor() string {
-	return c.nextCursor
+func (c *upstreamPeekCursor[Res]) HasMore() bool {
+	return c.hasMore
 }
 
 func (c *upstreamPeekCursor[Res]) Close() error {
@@ -150,8 +136,8 @@ func (c *upstreamPeekCursor[Res]) Close() error {
 // NewUpstreamPeekCursor wraps the streaming gRPC client used by routed
 // BucketGrpcClient methods. The returned cursor satisfies cursor.Cursor[*T]
 // (so generic consumers see only real items + io.EOF) and additionally
-// satisfies UpstreamTrailer so sendPagedToStream can pick up the leader's
-// x-next-cursor.
+// satisfies cursor.MoreReporter so paged handlers can tell the leader held
+// further rows.
 func NewUpstreamPeekCursor[T any](ctx context.Context, client grpc.ServerStreamingClient[T]) cursor.Cursor[*T] {
 	return &upstreamPeekCursor[T]{ctx: ctx, client: client}
 }

@@ -3,6 +3,7 @@ package readstore
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"math"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -847,6 +848,27 @@ func NewReverseLedgerLogIterator(reader dal.PebbleReader, kb *dal.KeyBuilder, le
 	prefix := LedgerLogPrefix(kb, ledgerName)
 
 	return NewReversePrefixIterator(reader, prefix, len(prefix), 8)
+}
+
+// NewReverseLedgerLogRangeIterator is the descending twin of
+// NewLedgerLogRangeIterator: log ids in the half-open [lower, upper) range,
+// high to low, streamed. Nil bounds are open; non-nil bounds are 8-byte
+// big-endian ids.
+func NewReverseLedgerLogRangeIterator(reader dal.PebbleReader, kb *dal.KeyBuilder, ledgerName string, lower, upper []byte) (*ReversePrefixIterator, error) {
+	if lower != nil && len(lower) != 8 || upper != nil && len(upper) != 8 {
+		return nil, fmt.Errorf("invariant: ledger log range bounds must be 8 bytes, got %d and %d", len(lower), len(upper))
+	}
+
+	prefix := LedgerLogPrefix(kb, ledgerName)
+
+	lowerBound := append(append([]byte(nil), prefix...), lower...)
+
+	upperBound := IncrementBytes(prefix)
+	if upper != nil {
+		upperBound = append(append([]byte(nil), prefix...), upper...)
+	}
+
+	return newBoundedReversePrefixIterator(reader, prefix, lowerBound, upperBound, len(prefix), 8)
 }
 
 // NewPebbleTxRangeIterator creates a bounded transaction iterator for range queries.

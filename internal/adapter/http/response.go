@@ -129,6 +129,18 @@ func writeProtoOK(w http.ResponseWriter, msg proto.Message) {
 // calls MarshalJSON per element. A nil/empty slice serializes as `[]`, matching
 // the drained-cursor list handlers.
 func writeProtoListOK[T proto.Message](w http.ResponseWriter, msgs []T) {
+	data, err := protoListJSON(msgs)
+	if err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, "INTERNAL_ERROR", err)
+
+		return
+	}
+
+	writeOK(w, data)
+}
+
+// protoListJSON renders msgs as a JSON array of protojson objects.
+func protoListJSON[T proto.Message](msgs []T) (json.RawValue, error) {
 	var buf bytes.Buffer
 
 	buf.WriteByte('[')
@@ -140,9 +152,7 @@ func writeProtoListOK[T proto.Message](w http.ResponseWriter, msgs []T) {
 
 		raw, err := protojson.Marshal(msg)
 		if err != nil {
-			writeErrorResponse(w, http.StatusInternalServerError, "INTERNAL_ERROR", err)
-
-			return
+			return nil, err
 		}
 
 		buf.Write(raw)
@@ -150,7 +160,7 @@ func writeProtoListOK[T proto.Message](w http.ResponseWriter, msgs []T) {
 
 	buf.WriteByte(']')
 
-	writeOK(w, json.RawValue(buf.Bytes()))
+	return json.RawValue(buf.Bytes()), nil
 }
 
 // writeBadRequest writes a 400 Bad Request response.

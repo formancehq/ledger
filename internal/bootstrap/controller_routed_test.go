@@ -145,11 +145,11 @@ func TestRoutedController_IndexedReadsForwardLocalBarrierHorizon(t *testing.T) {
 		{
 			name: "list logs",
 			expect: func(local *ctrlmock.MockController) {
-				local.EXPECT().ListLogs(barrierHorizonMatcher(42), "ledger", uint64(0), uint32(10), nil).
+				local.EXPECT().ListLogs(barrierHorizonMatcher(42), "ledger", uint64(0), uint32(10), nil, false).
 					Return(cursor.NewSliceCursor([]*commonpb.Log{}), nil)
 			},
 			call: func(ctx context.Context, routed *RoutedController) error {
-				_, err := routed.ListLogs(ctx, "ledger", 0, 10, nil)
+				_, err := routed.ListLogs(ctx, "ledger", 0, 10, nil, false)
 
 				return err
 			},

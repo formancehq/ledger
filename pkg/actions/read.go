@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 )
 
 // ListLedgers collects every ledger across the cluster, following the
@@ -100,7 +101,17 @@ func ListNumscriptVersions(ctx context.Context, client servicepb.BucketServiceCl
 	return resp.GetLatestVersion(), resp.GetVersions(), nil
 }
 
-// nextCursorFromTrailer returns the opaque cursor for the following page, or
+// afterToken returns the page token resuming strictly after key, or "" for
+// the first page when key is empty.
+func afterToken(key string) string {
+	if key == "" {
+		return ""
+	}
+
+	return pagecursor.Cursor{Key: key}.Encode()
+}
+
+// nextCursorFromTrailer returns the page token of the following page, or
 // "" when the server signaled end-of-stream (no trailer). Mirrors the
 // cmdutil.NextCursorFromTrailer helper without creating a CLI-package
 // dependency from pkg/actions.
@@ -536,7 +547,7 @@ func ListAccountsFiltered(ctx context.Context, client servicepb.BucketServiceCli
 		Ledger: ledger,
 		Options: &commonpb.ListOptions{
 			PageSize: pageSize,
-			Cursor:   afterAddress,
+			Cursor:   afterToken(afterAddress),
 			Filter:   filter,
 		},
 	})
@@ -561,16 +572,16 @@ func ListAccountsFiltered(ctx context.Context, client servicepb.BucketServiceCli
 
 // ListTransactionsFiltered collects transactions with pagination and filter params.
 func ListTransactionsFiltered(ctx context.Context, client servicepb.BucketServiceClient, ledger string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter) ([]*commonpb.Transaction, error) {
-	var cursor string
+	var after string
 	if afterTxID > 0 {
-		cursor = strconv.FormatUint(afterTxID, 10)
+		after = strconv.FormatUint(afterTxID, 10)
 	}
 
 	stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
 		Ledger: ledger,
 		Options: &commonpb.ListOptions{
 			PageSize: pageSize,
-			Cursor:   cursor,
+			Cursor:   afterToken(after),
 			Filter:   filter,
 		},
 	})

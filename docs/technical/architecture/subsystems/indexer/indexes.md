@@ -201,12 +201,20 @@ type InspectResult struct {
     Max              *commonpb.MetadataValue
     EntitiesWithKey  uint64
     EntitiesWithNull uint64
-    HasMore          bool
-    NextCursor       []byte
+    HasMore          bool   // a further value beyond the page, in scan order
+    FirstValue       []byte // encodings of the page's first and last values,
+    LastValue        []byte // in scan order; nil when the page is empty
 }
 ```
 
-Source: `internal/storage/readstore/inspect.go:42-52`.
+Source: `internal/storage/readstore/inspect.go`.
+
+`InspectParams.CursorBytes` is the encoded value to resume past (exclusive) and
+`InspectParams.Backward` scans in descending value order from before it. The
+controller decodes the page token (its key is the base64url value encoding),
+scans backward for a back token, reverses that page to ascending order, and
+derives `next_cursor` / `previous_cursor` from the first and last values with
+`pagecursor.Cursor.Links` (see [Pagination](../read-path/query-pipeline.md#pagination)).
 
 ### How `inspectSummary` works
 

@@ -18,6 +18,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
+	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 )
 
 func TestHandleListAccounts_Success(t *testing.T) {
@@ -62,14 +63,14 @@ func TestHandleListAccounts_WithPagination(t *testing.T) {
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
-	r := newRequest(t, http.MethodGet, "/ledger1/accounts?pageSize=10&after=users:005", nil, map[string]string{
+	r := newRequest(t, http.MethodGet, "/ledger1/accounts?pageSize=10&cursor="+pagecursor.Cursor{Key: "users:005"}.Encode(), nil, map[string]string{
 		"ledgerName": "ledger1",
 	})
 
 	srv.handleListAccounts(w, r)
 
 	require.Equal(t, http.StatusOK, w.Code)
-	require.Equal(t, uint32(10), capturedPageSize)
+	require.Equal(t, uint32(11), capturedPageSize, "one row beyond the page detects a next page")
 	require.Equal(t, "users:005", capturedAfter)
 }
 

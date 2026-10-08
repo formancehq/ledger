@@ -7200,9 +7200,9 @@ type ExecutePreparedQueryRequest struct {
 	PageSize   uint32                              `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	Cursor     string                              `protobuf:"bytes,5,opt,name=cursor,proto3" json:"cursor,omitempty"`
 	Mode       commonpb.QueryMode                  `protobuf:"varint,6,opt,name=mode,proto3,enum=common.QueryMode" json:"mode,omitempty"`
-	// reverse pages LIST results in descending entity order. The cursor stays a
-	// position, so every page of a descending walk must repeat reverse=true.
-	// AGGREGATE_VOLUMES rejects it with InvalidArgument.
+	// reverse pages LIST results in descending entity order. A page token is
+	// relative to the requested order, so every page of a descending walk must
+	// repeat reverse=true. AGGREGATE_VOLUMES rejects it with InvalidArgument.
 	Reverse       bool `protobuf:"varint,7,opt,name=reverse,proto3" json:"reverse,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -8466,13 +8466,16 @@ func (*InspectIndexResponse_Facets) isInspectIndexResponse_Result() {}
 
 func (*InspectIndexResponse_Summary) isInspectIndexResponse_Result() {}
 
+// next_cursor and previous_cursor are page tokens (see
+// common.ListOptions.cursor) whose key is the base64url value encoding.
 type InspectDistinctValues struct {
-	state         protoimpl.MessageState    `protogen:"open.v1"`
-	Values        []*commonpb.MetadataValue `protobuf:"bytes,1,rep,name=values,proto3" json:"values,omitempty"`
-	HasMore       bool                      `protobuf:"varint,2,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
-	NextCursor    string                    `protobuf:"bytes,3,opt,name=next_cursor,json=nextCursor,proto3" json:"next_cursor,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState    `protogen:"open.v1"`
+	Values         []*commonpb.MetadataValue `protobuf:"bytes,1,rep,name=values,proto3" json:"values,omitempty"`
+	HasMore        bool                      `protobuf:"varint,2,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
+	NextCursor     string                    `protobuf:"bytes,3,opt,name=next_cursor,json=nextCursor,proto3" json:"next_cursor,omitempty"`
+	PreviousCursor string                    `protobuf:"bytes,4,opt,name=previous_cursor,json=previousCursor,proto3" json:"previous_cursor,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *InspectDistinctValues) Reset() {
@@ -8522,6 +8525,13 @@ func (x *InspectDistinctValues) GetHasMore() bool {
 func (x *InspectDistinctValues) GetNextCursor() string {
 	if x != nil {
 		return x.NextCursor
+	}
+	return ""
+}
+
+func (x *InspectDistinctValues) GetPreviousCursor() string {
+	if x != nil {
+		return x.PreviousCursor
 	}
 	return ""
 }
@@ -8579,12 +8589,13 @@ func (x *InspectFacet) GetCount() uint64 {
 }
 
 type InspectFacets struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Facets        []*InspectFacet        `protobuf:"bytes,1,rep,name=facets,proto3" json:"facets,omitempty"`
-	HasMore       bool                   `protobuf:"varint,2,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
-	NextCursor    string                 `protobuf:"bytes,3,opt,name=next_cursor,json=nextCursor,proto3" json:"next_cursor,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Facets         []*InspectFacet        `protobuf:"bytes,1,rep,name=facets,proto3" json:"facets,omitempty"`
+	HasMore        bool                   `protobuf:"varint,2,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
+	NextCursor     string                 `protobuf:"bytes,3,opt,name=next_cursor,json=nextCursor,proto3" json:"next_cursor,omitempty"`
+	PreviousCursor string                 `protobuf:"bytes,4,opt,name=previous_cursor,json=previousCursor,proto3" json:"previous_cursor,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *InspectFacets) Reset() {
@@ -8634,6 +8645,13 @@ func (x *InspectFacets) GetHasMore() bool {
 func (x *InspectFacets) GetNextCursor() string {
 	if x != nil {
 		return x.NextCursor
+	}
+	return ""
+}
+
+func (x *InspectFacets) GetPreviousCursor() string {
+	if x != nil {
+		return x.PreviousCursor
 	}
 	return ""
 }
@@ -9398,20 +9416,22 @@ const file_bucket_proto_rawDesc = "" +
 	"\x0fdistinct_values\x18\x01 \x01(\v2\x1d.ledger.InspectDistinctValuesH\x00R\x0edistinctValues\x12/\n" +
 	"\x06facets\x18\x02 \x01(\v2\x15.ledger.InspectFacetsH\x00R\x06facets\x122\n" +
 	"\asummary\x18\x03 \x01(\v2\x16.ledger.InspectSummaryH\x00R\asummaryB\b\n" +
-	"\x06result\"\x82\x01\n" +
+	"\x06result\"\xab\x01\n" +
 	"\x15InspectDistinctValues\x12-\n" +
 	"\x06values\x18\x01 \x03(\v2\x15.common.MetadataValueR\x06values\x12\x19\n" +
 	"\bhas_more\x18\x02 \x01(\bR\ahasMore\x12\x1f\n" +
 	"\vnext_cursor\x18\x03 \x01(\tR\n" +
-	"nextCursor\"Q\n" +
+	"nextCursor\x12'\n" +
+	"\x0fprevious_cursor\x18\x04 \x01(\tR\x0epreviousCursor\"Q\n" +
 	"\fInspectFacet\x12+\n" +
 	"\x05value\x18\x01 \x01(\v2\x15.common.MetadataValueR\x05value\x12\x14\n" +
-	"\x05count\x18\x02 \x01(\x06R\x05count\"y\n" +
+	"\x05count\x18\x02 \x01(\x06R\x05count\"\xa2\x01\n" +
 	"\rInspectFacets\x12,\n" +
 	"\x06facets\x18\x01 \x03(\v2\x14.ledger.InspectFacetR\x06facets\x12\x19\n" +
 	"\bhas_more\x18\x02 \x01(\bR\ahasMore\x12\x1f\n" +
 	"\vnext_cursor\x18\x03 \x01(\tR\n" +
-	"nextCursor\"\xde\x01\n" +
+	"nextCursor\x12'\n" +
+	"\x0fprevious_cursor\x18\x04 \x01(\tR\x0epreviousCursor\"\xde\x01\n" +
 	"\x0eInspectSummary\x12 \n" +
 	"\vcardinality\x18\x01 \x01(\x06R\vcardinality\x12'\n" +
 	"\x03min\x18\x02 \x01(\v2\x15.common.MetadataValueR\x03min\x12'\n" +

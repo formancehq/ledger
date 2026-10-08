@@ -2,25 +2,34 @@ package http
 
 import (
 	"net/http"
+	"slices"
+	"strings"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
-// handleListAllLedgers handles GET / to list all ledgers.
+// handleListAllLedgers handles GET / to list ledgers, paged by name.
 func (s *Server) handleListAllLedgers(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	page, ok := parsePageQuery(w, r)
+	if !ok {
+		return
+	}
 
-	// Get all ledgers info
-	cursor, err := s.backend.ListLedgers(ctx)
+	cursor, err := s.backend.ListLedgers(r.Context())
 	if err != nil {
 		handleError(w, r, err)
 
 		return
 	}
 
-	ret, ok := drainCursor(w, r, cursor)
+	ledgers, ok := drainCursor(w, r, cursor)
 	if !ok {
 		return
 	}
 
-	// Return ledgers list wrapped in BaseResponse
-	writeOK(w, ret)
+	name := func(l *commonpb.LedgerInfo) string { return l.GetName() }
+	slices.SortFunc(ledgers, func(a, b *commonpb.LedgerInfo) int { return strings.Compare(name(a), name(b)) })
+
+	ledgers, links := pageSorted(page, ledgers, name)
+	writePageOK(w, r, ledgers, links)
 }
