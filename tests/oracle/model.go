@@ -112,6 +112,10 @@ type LedgerState struct {
 	// query's stored filter predict different execution windows.
 	preparedQueries Map[string, *commonpb.PreparedQuery]
 
+	// numscripts is the ledger's numscript library: immutable content per
+	// (name, version). "latest" is derived (NumscriptLatest), never stored.
+	numscripts Map[NumscriptKey, string]
+
 	// logs is the ledger's log stream: index i holds the log with ledger-local
 	// id i+1, dense from 1, mirroring the server's LedgerBoundaries.NextLogId
 	// (initialised to 1 at CreateLedger, so the first apply lands on 1). Every
@@ -173,6 +177,7 @@ func NewLedgerState() LedgerState {
 
 		indexes:         NewMap[string, bool](stringComparer{}, indexTerm),
 		preparedQueries: NewMap[string, *commonpb.PreparedQuery](stringComparer{}, preparedQueryTerm),
+		numscripts:      NewMap[NumscriptKey, string](numscriptKeyComparer{}, numscriptTerm),
 		retypeWindows:   NewMap[string, uint32](stringComparer{}, retypeWindowTerm),
 		logs:            NewList[*logRecord](logTerm),
 		everAsset:       NewMap[assetTouch, struct{}](assetTouchComparer{}, assetTouchTerm),
@@ -198,7 +203,7 @@ func (s *LedgerState) collections() []interface {
 	}{
 		s.types, s.volumes, s.metadata, s.ledgerMeta,
 		s.accountFieldTypes, s.ledgerFieldTypes, s.transactionFieldTypes,
-		s.txs, s.indexes, s.preparedQueries, s.everAsset, s.logs, s.retypeWindows,
+		s.txs, s.indexes, s.preparedQueries, s.numscripts, s.everAsset, s.logs, s.retypeWindows,
 	}
 }
 
@@ -438,6 +443,8 @@ func txTerm(idx int, tx *txRecord) Digest {
 	t.str(tx.reference)
 	t.boolean(tx.reverted)
 	t.u64(tx.revertedBy, tx.revertsTransaction)
+	t.boolean(tx.scripted)
+	t.str(tx.template)
 
 	// A nil timestamp (server-dated, unpredictable) must not collide with any
 	// concrete value: validateTransactionRead skips the check only when nil.
@@ -722,6 +729,14 @@ type OrderResult struct {
 	// committed prepared-query lifecycle order. These orders do not have a
 	// ledger-local LogID, but their echoed definitions are still observable.
 	PreparedQueryLog *commonpb.LogPayload
+	// SavedNumscript is the library entry a committed SaveNumscript echoes on
+	// its top-level log; CreatedAt is server-dated and left unset.
+	SavedNumscript *commonpb.NumscriptInfo
+	// Postings and AccountMetadata are a committed create's postings and merged
+	// account metadata as the server logs them: the request's own for a postings
+	// create, the script's product under the caller's for a scripted one.
+	Postings        []*commonpb.Posting
+	AccountMetadata map[string]*commonpb.MetadataMap
 }
 
 // metaEffect is a metadata write's predicted effect, for asserting the server's
@@ -760,6 +775,11 @@ type txRecord struct {
 	revertedBy         uint64
 	revertedAt         *commonpb.Timestamp
 	revertsTransaction uint64
+	// scripted marks a create that ran a script, inline or by reference, and
+	// template names the library script a reference ran ("" otherwise): the
+	// usage counters derive from them.
+	scripted bool
+	template string
 	// pcv is the transaction's post-commit volumes: for every cell its own
 	// postings touched, the running volume once they had all applied. An
 	// immutable historical snapshot, so a read must echo it unchanged however
@@ -843,6 +863,8 @@ func LedgerOf(req *servicepb.Request) string {
 		return r.UpdatePreparedQuery.GetLedger()
 	case *servicepb.Request_DeletePreparedQuery:
 		return r.DeletePreparedQuery.GetLedger()
+	case *servicepb.Request_SaveNumscript:
+		return r.SaveNumscript.GetLedger()
 	default:
 		panic(fmt.Sprintf("LedgerOf: unmodeled request type %T", req.GetType()))
 	}
@@ -901,12 +923,22 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 		if !validSkippableReasons(req.GetApply()) {
 			return ApplyResult{Reason: domain.ErrReasonValidation, State: g}
 		}
-		if ct := req.GetApply().GetAction().GetCreateTransaction(); ct != nil && len(ct.GetPostings()) == 0 {
-			return ApplyResult{OK: false, Reason: domain.ErrReasonValidation, State: g}
+		if ct := req.GetApply().GetAction().GetCreateTransaction(); ct.GetScriptReference() != nil && ct.GetScript().GetPlain() != "" {
+			return ApplyResult{Reason: domain.ErrScriptAndReferenceConflict.Reason(), State: g}
+		}
+	}
+	for _, req := range bulk.Requests {
+		if reason := createContentReason(req.GetApply().GetAction().GetCreateTransaction()); reason != "" {
+			return ApplyResult{OK: false, Reason: reason, State: g}
 		}
 		if reason := preparedQueryAdmissionReason(req); reason != "" {
 			return ApplyResult{OK: false, Reason: reason, State: g}
 		}
+	}
+
+	forwarded, reason := g.admitScripts(bulk)
+	if reason != "" {
+		return ApplyResult{OK: false, Reason: reason, State: g}
 	}
 
 	// Per-batch idempotency, checked after admission's structural and maintenance
@@ -948,7 +980,10 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 	// not declare volume coverage for — from one that already existed.
 	batchInitialTxCount := map[string]uint64{}
 
-	for _, req := range bulk.Requests {
+	for i, req := range bulk.Requests {
+		if forwarded[i] {
+			return ApplyResult{Reason: domain.ErrReasonPreloadUnavailable, State: g, Orders: append(orders, OrderResult{Reason: domain.ErrReasonPreloadUnavailable})}
+		}
 		if oc, handled := next.applyCheckpoint(req); handled {
 			orders = append(orders, oc)
 			if !oc.OK {
@@ -1173,6 +1208,9 @@ func logKindFor(req *servicepb.Request) string {
 		// ledger metadata they take no ledger-local log id and never appear in
 		// ListLogs. Naming a kind here would consume an id and shift every
 		// subsequent log's id past the server's.
+		return ""
+	case *servicepb.Request_SaveNumscript:
+		// Same as prepared queries: a top-level SavedNumscript payload.
 		return ""
 	case *servicepb.Request_Apply:
 		switch r.Apply.GetAction().GetData().(type) {
@@ -1486,6 +1524,9 @@ func (s *LedgerState) applyOne(req *servicepb.Request, touched map[VolumeKey]boo
 	case *servicepb.Request_DeletePreparedQuery:
 		return s.applyDeletePreparedQuery(r.DeletePreparedQuery)
 
+	case *servicepb.Request_SaveNumscript:
+		return s.applySaveNumscript(r.SaveNumscript)
+
 	case *servicepb.Request_Apply:
 		switch a := r.Apply.GetAction().GetData().(type) {
 		case *servicepb.LedgerAction_SetDefaultEnforcementMode:
@@ -1523,8 +1564,6 @@ func (s *LedgerState) applyOne(req *servicepb.Request, touched map[VolumeKey]boo
 // transaction reports INSUFFICIENT_FUNDS even when an address also fails the
 // chart; match that order — floor first, then STRICT chart enforcement.
 func (s *LedgerState) applyTransaction(ct *servicepb.CreateTransactionPayload, touched map[VolumeKey]bool) OrderResult {
-	postings := ct.GetPostings()
-
 	// A reference must be unique; the FSM checks this first, before producing
 	// postings or enforcing the chart, so a duplicate wins over any floor/chart
 	// issue the same transaction might also have.
@@ -1533,24 +1572,56 @@ func (s *LedgerState) applyTransaction(ct *servicepb.CreateTransactionPayload, t
 		return OrderResult{Reason: domain.ErrReasonTransactionReferenceConflict}
 	}
 
-	pcv, reason := s.applyPostings(postings, ct.GetForce(), touched)
-	if reason != "" {
-		return OrderResult{Reason: reason}
+	scripted := IsScripted(ct)
+	postings := ct.GetPostings()
+	metadata := ct.GetMetadata()
+	accountMetadata := ct.GetAccountMetadata()
+
+	var pcv map[VolumeKey]VolumePair
+	if scripted {
+		product, produced, reason := s.produceScript(ct, touched)
+		if reason != "" {
+			return OrderResult{Reason: reason}
+		}
+
+		if len(product.postings) == 0 {
+			return OrderResult{Reason: domain.ErrEmptyTransaction.Reason()}
+		}
+
+		if reason := validatePostingFields(product.postings); reason != "" {
+			return OrderResult{Reason: reason}
+		}
+
+		postings, pcv = product.postings, produced
+		metadata, accountMetadata = mergeScriptMetadata(ct, product)
+	} else {
+		var reason string
+		pcv, reason = s.applyPostings(postings, ct.GetForce(), touched)
+		if reason != "" {
+			return OrderResult{Reason: reason}
+		}
 	}
 
 	if s.chartRejects(postings) {
 		return OrderResult{Reason: domain.ErrReasonAccountNotMatchingType}
 	}
 
-	// Account metadata attached to the transaction is applied verbatim, last-
-	// writer-wins. The server applies it without chart enforcement (unlike a
-	// standalone AddMetadata — processor_transaction.go); the generator only
-	// attaches it to the transaction's own accounts, which already passed the
-	// posting chart check above, so no enforcement branch is needed.
-	for account, mm := range ct.GetAccountMetadata() {
+	// Account metadata attached to the transaction — the caller's, over the
+	// script's — is applied verbatim, last-writer-wins, without chart
+	// enforcement (unlike a standalone AddMetadata — processor_transaction.go).
+	for account, mm := range accountMetadata {
+		if err := domain.ValidateAccountAddress(account); err != nil {
+			return OrderResult{Reason: err.Reason()}
+		}
+
 		for key, val := range mm.GetValues() {
 			s.metadata = s.metadata.Set(MetaKey{Address: account, Key: key}, val)
 		}
+	}
+
+	var template string
+	if scripted {
+		template = ct.GetScriptReference().GetName()
 	}
 
 	// Append to the log; the id is its 1-based position. Metadata is stored
@@ -1561,20 +1632,22 @@ func (s *LedgerState) applyTransaction(ct *servicepb.CreateTransactionPayload, t
 		id:        id,
 		reference: ref,
 		postings:  postings,
-		metadata:  ct.GetMetadata(),
+		metadata:  metadata,
 		timestamp: ct.GetTimestamp(),
 		pcv:       pcv,
+		scripted:  scripted,
+		template:  template,
 	})
 	if ref != "" {
 		s.txByRef = s.txByRef.Set(ref, int(id))
 	}
 
 	var meta *metaEffect
-	if len(ct.GetMetadata()) > 0 {
-		meta = &metaEffect{saved: ct.GetMetadata()}
+	if len(metadata) > 0 {
+		meta = &metaEffect{saved: metadata}
 	}
 
-	return OrderResult{OK: true, PCV: pcv, Meta: meta, TxID: id}
+	return OrderResult{OK: true, PCV: pcv, Meta: meta, TxID: id, Postings: postings, AccountMetadata: accountMetadata}
 }
 
 // applyRevert predicts a RevertTransaction: it reverses the original postings
@@ -1713,7 +1786,11 @@ func (s *LedgerState) chartRejects(postings []*commonpb.Posting) bool {
 // evaluated against the running volumes, so an earlier posting in the same bulk
 // can fund a later source — mirroring applyPosting in processor_posting.go.
 func (s *LedgerState) applyPostings(postings []*commonpb.Posting, force bool, touched map[VolumeKey]bool) (map[VolumeKey]VolumePair, string) {
-	pcv := map[VolumeKey]VolumePair{}
+	return s.applyPostingsInto(map[VolumeKey]VolumePair{}, postings, force, touched)
+}
+
+// applyPostingsInto is applyPostings accumulating into an existing pcv map.
+func (s *LedgerState) applyPostingsInto(pcv map[VolumeKey]VolumePair, postings []*commonpb.Posting, force bool, touched map[VolumeKey]bool) (map[VolumeKey]VolumePair, string) {
 	bump := func(key VolumeKey, addIn, addOut *uint256.Int) {
 		cur := s.vol(key)
 		cur.Input.Add(&cur.Input, addIn)
