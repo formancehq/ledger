@@ -162,6 +162,34 @@ func withJSONSchemaMeta(schema *apiextv1.JSONSchemaProps) map[string]any {
 	}
 
 	doc["$schema"] = jsonSchemaDraft04
+	enforceAdditionalPropertiesFalse(doc)
 
 	return doc
+}
+
+// enforceAdditionalPropertiesFalse makes the schema reject unknown properties
+// on every object node that declares a fixed property set, so editor/IDE
+// validation catches typos (e.g. "replicass") that the Kubernetes API server
+// would otherwise silently prune rather than reject. It leaves map-type nodes
+// (which declare "additionalProperties" as a value schema, not a boolean)
+// and nodes explicitly marked x-kubernetes-preserve-unknown-fields untouched.
+func enforceAdditionalPropertiesFalse(node any) {
+	switch n := node.(type) {
+	case map[string]any:
+		if _, hasProperties := n["properties"]; hasProperties {
+			_, hasAdditionalProperties := n["additionalProperties"]
+			preserveUnknown, _ := n["x-kubernetes-preserve-unknown-fields"].(bool)
+			if !hasAdditionalProperties && !preserveUnknown {
+				n["additionalProperties"] = false
+			}
+		}
+
+		for _, value := range n {
+			enforceAdditionalPropertiesFalse(value)
+		}
+	case []any:
+		for _, item := range n {
+			enforceAdditionalPropertiesFalse(item)
+		}
+	}
 }

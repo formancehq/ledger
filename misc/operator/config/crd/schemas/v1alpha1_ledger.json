@@ -1,5 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-04/schema#",
+  "additionalProperties": false,
   "description": "Ledger manages the lifecycle of a ledger on a Cluster via gRPC.",
   "properties": {
     "apiVersion": {
@@ -14,6 +15,7 @@
       "type": "object"
     },
     "spec": {
+      "additionalProperties": false,
       "description": "LedgerCRDSpec defines the desired state of a Ledger.",
       "properties": {
         "clusterRef": {
@@ -21,6 +23,7 @@
           "type": "string"
         },
         "indexes": {
+          "additionalProperties": false,
           "description": "Indexes declares the account/transaction indexes the operator maintains\non this ledger. This is especially useful for mirror ledgers, which are\nread-only and provisioned entirely through this CRD: it lets you keep the\nmirror queryable without hand-running `ledgerctl indexes create`.\n\nOwnership semantics:\n  - Field ABSENT (nil) =\u003e unmanaged. The operator never lists, creates,\n    or drops indexes on this ledger. This is the safe default so an\n    operator upgrade does not touch pre-existing indexes.\n  - Field PRESENT (even empty {}) =\u003e managed. The operator reconciles the\n    indexes it owns to match this spec: it creates the declared indexes\n    and drops indexes it previously created that are no longer declared.\n    It only ever drops indexes it created itself (tracked in\n    status.appliedIndexes) — externally-created indexes and index kinds\n    this CRD cannot express are left untouched. An empty {} therefore\n    means \"drop the indexes I previously managed\", not \"drop every index\".\n\nIndex maintenance is independent of ledger immutability: editing this\nfield never trips the SpecDrifted condition.",
           "properties": {
             "account": {
@@ -37,6 +40,7 @@
             "metadata": {
               "description": "Metadata lists the metadata-key indexes to maintain on account or\ntransaction metadata. Each (target, key) pair must be unique.",
               "items": {
+                "additionalProperties": false,
                 "description": "MetadataIndexSpec declares one metadata-key index. Creating a metadata index\nrequires the metadata field to exist in the ledger schema first, so the\noperator declares the field type (via `ledgers set-metadata-type`) before\ncreating the index. The declared field type is reconciled too: changing Type\nre-declares the field, which the server treats as a schema change (it bumps\nthe index forward-encoding version and schedules a rewrite).",
                 "properties": {
                   "key": {
@@ -108,6 +112,7 @@
           "type": "object"
         },
         "mirrorSource": {
+          "additionalProperties": false,
           "description": "MirrorSource configures the replication source when mode is \"mirror\".\nRequired when mode is \"mirror\".",
           "properties": {
             "batchSize": {
@@ -116,6 +121,7 @@
               "type": "integer"
             },
             "http": {
+              "additionalProperties": false,
               "description": "HTTP configures replication via the Ledger v2 HTTP API.",
               "properties": {
                 "baseUrl": {
@@ -123,6 +129,7 @@
                   "type": "string"
                 },
                 "oauth2": {
+                  "additionalProperties": false,
                   "description": "OAuth2 configures OAuth2 client credentials for authentication.",
                   "properties": {
                     "clientId": {
@@ -130,6 +137,7 @@
                       "type": "string"
                     },
                     "clientSecretFrom": {
+                      "additionalProperties": false,
                       "description": "ClientSecretFrom references a Kubernetes Secret containing the OAuth2 client secret.",
                       "properties": {
                         "key": {
@@ -177,9 +185,11 @@
               "type": "string"
             },
             "postgres": {
+              "additionalProperties": false,
               "description": "Postgres configures replication via direct PostgreSQL access.",
               "properties": {
                 "awsIamAuth": {
+                  "additionalProperties": false,
                   "description": "AWSIAMAuth enables AWS RDS IAM authentication: the mirror mints a\nshort-lived (15 min) SigV4 token per connection from the ambient AWS\ncredential chain on the ledger pod (IRSA, instance profile, env, profile).\nMutually exclusive with PasswordFrom.\n\nIn a typical EKS deployment, IRSA is wired by annotating the\nCluster ServiceAccount with eks.amazonaws.com/role-arn, e.g.:\n  kind: Cluster\n  spec:\n    serviceAccount:\n      annotations:\n        eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT:role/mirror-rds-iam\nThe bound IAM role must allow rds-db:connect on the RDS db-user ARN\n(arn:aws:rds-db:REGION:ACCOUNT:dbuser:DB-RESOURCE-ID/USER). The role is\nshared across every mirror in the Cluster, so its policy must\ncover every RDS endpoint addressed by Ledger CRDs in that service.",
                   "properties": {
                     "assumeRoleArn": {
@@ -209,6 +219,7 @@
                   "type": "string"
                 },
                 "passwordFrom": {
+                  "additionalProperties": false,
                   "description": "PasswordFrom references a Kubernetes Secret containing the PostgreSQL password.\nMutually exclusive with AWSIAMAuth.",
                   "properties": {
                     "key": {
@@ -273,18 +284,22 @@
             "rewriteRules": {
               "description": "RewriteRules are CEL rewrite rules applied, in order, to every mirror log\nentry as the mirror translates v2 source logs into v3 orders. Each rule can\nrename address segments, transform metadata, or drop transactions (see\nMirrorRewriteRule). Applies to both HTTP and Postgres sources.",
               "items": {
+                "additionalProperties": false,
                 "description": "MirrorRewriteRule transforms a mirror log entry during v2→v3 translation.\nA rule is scoped to exactly one variant of MirrorLogEntry.data. That scope\ndetermines the CEL type of `log` in the rule's predicate and the set of\nactions the rule can carry: `set_account_metadata` inside a\n`savedMetadata` rule is impossible to write, because the proto oneof\ndoesn't include it. When Stop is true and the rule matches (scope +\npredicate), no further rules are evaluated. Rewriting is a deterministic\ntranslation-time projection: the source v2 ledger is never modified.\n\nExactly one of the scope fields must be set.",
                 "properties": {
                   "anyVariant": {
+                    "additionalProperties": false,
                     "description": "AnyVariantRule scopes to every variant. `log` is typed as MirrorLogEntry, so\nthe predicate must use `has(log.\u003cvariant\u003e)` guards. The action set is\nrestricted to operations that make sense on every variant.",
                     "properties": {
                       "actions": {
                         "items": {
+                          "additionalProperties": false,
                           "properties": {
                             "drop": {
                               "type": "object"
                             },
                             "rewriteAddress": {
+                              "additionalProperties": false,
                               "properties": {
                                 "pattern": {
                                   "type": "string"
@@ -311,12 +326,15 @@
                     "type": "object"
                   },
                   "createdTransaction": {
+                    "additionalProperties": false,
                     "description": "CreatedTransactionRule scopes to MirrorCreatedTransaction. Inside `match`,\n`log` is typed as the created-transaction proto — write `log.metadata[\"k\"]`\ndirectly, not `log.created_transaction.metadata[\"k\"]`.",
                     "properties": {
                       "actions": {
                         "items": {
+                          "additionalProperties": false,
                           "properties": {
                             "deleteAccountMetadata": {
+                              "additionalProperties": false,
                               "properties": {
                                 "account": {
                                   "type": "string"
@@ -332,6 +350,7 @@
                               "type": "object"
                             },
                             "deleteMetadata": {
+                              "additionalProperties": false,
                               "properties": {
                                 "key": {
                                   "type": "string"
@@ -346,6 +365,7 @@
                               "type": "object"
                             },
                             "rewriteAddress": {
+                              "additionalProperties": false,
                               "properties": {
                                 "pattern": {
                                   "type": "string"
@@ -361,6 +381,7 @@
                               "type": "object"
                             },
                             "setAccountMetadata": {
+                              "additionalProperties": false,
                               "description": "SetAccountMetadataAction — see SetMetadataAction for the literal / valueExpr /\ntype semantics on the value field.",
                               "properties": {
                                 "account": {
@@ -386,6 +407,7 @@
                               "type": "object"
                             },
                             "setAccountMetadataFromAddress": {
+                              "additionalProperties": false,
                               "description": "SetAccountMetadataFromAddressAction runs a single RE2 pattern over every\nposting address and, for each match, writes one or more metadata entries\non the matched account using group-capturing replacements.",
                               "properties": {
                                 "pattern": {
@@ -393,6 +415,7 @@
                                 },
                                 "replacements": {
                                   "items": {
+                                    "additionalProperties": false,
                                     "properties": {
                                       "key": {
                                         "type": "string"
@@ -420,6 +443,7 @@
                               "type": "object"
                             },
                             "setMetadata": {
+                              "additionalProperties": false,
                               "description": "SetMetadataAction sets a metadata key. `value` is a literal string; `valueExpr`\nis a CEL expression evaluated against the current variant at commit time\n(e.g. `log.reference`). Exactly one should be set; setting neither writes an\nempty string. Optional `type` coerces the produced string into a typed\nMetadataValue — one of \"string\" (default), \"int64\", \"bool\", \"uint64\",\n\"int8\"/\"int16\"/\"int32\", \"uint8\"/\"uint16\"/\"uint32\", \"datetime\".",
                               "properties": {
                                 "key": {
@@ -452,14 +476,17 @@
                     "type": "object"
                   },
                   "deletedMetadata": {
+                    "additionalProperties": false,
                     "properties": {
                       "actions": {
                         "items": {
+                          "additionalProperties": false,
                           "properties": {
                             "drop": {
                               "type": "object"
                             },
                             "rewriteAddress": {
+                              "additionalProperties": false,
                               "properties": {
                                 "pattern": {
                                   "type": "string"
@@ -486,11 +513,14 @@
                     "type": "object"
                   },
                   "revertedTransaction": {
+                    "additionalProperties": false,
                     "properties": {
                       "actions": {
                         "items": {
+                          "additionalProperties": false,
                           "properties": {
                             "deleteMetadata": {
+                              "additionalProperties": false,
                               "properties": {
                                 "key": {
                                   "type": "string"
@@ -505,6 +535,7 @@
                               "type": "object"
                             },
                             "rewriteAddress": {
+                              "additionalProperties": false,
                               "properties": {
                                 "pattern": {
                                   "type": "string"
@@ -520,6 +551,7 @@
                               "type": "object"
                             },
                             "setMetadata": {
+                              "additionalProperties": false,
                               "description": "SetMetadataAction sets a metadata key. `value` is a literal string; `valueExpr`\nis a CEL expression evaluated against the current variant at commit time\n(e.g. `log.reference`). Exactly one should be set; setting neither writes an\nempty string. Optional `type` coerces the produced string into a typed\nMetadataValue — one of \"string\" (default), \"int64\", \"bool\", \"uint64\",\n\"int8\"/\"int16\"/\"int32\", \"uint8\"/\"uint16\"/\"uint32\", \"datetime\".",
                               "properties": {
                                 "key": {
@@ -552,11 +584,14 @@
                     "type": "object"
                   },
                   "savedMetadata": {
+                    "additionalProperties": false,
                     "properties": {
                       "actions": {
                         "items": {
+                          "additionalProperties": false,
                           "properties": {
                             "deleteMetadata": {
+                              "additionalProperties": false,
                               "properties": {
                                 "key": {
                                   "type": "string"
@@ -571,6 +606,7 @@
                               "type": "object"
                             },
                             "rewriteAddress": {
+                              "additionalProperties": false,
                               "properties": {
                                 "pattern": {
                                   "type": "string"
@@ -586,6 +622,7 @@
                               "type": "object"
                             },
                             "setMetadata": {
+                              "additionalProperties": false,
                               "description": "SetMetadataAction sets a metadata key. `value` is a literal string; `valueExpr`\nis a CEL expression evaluated against the current variant at commit time\n(e.g. `log.reference`). Exactly one should be set; setting neither writes an\nempty string. Optional `type` coerces the produced string into a typed\nMetadataValue — one of \"string\" (default), \"int64\", \"bool\", \"uint64\",\n\"int8\"/\"int16\"/\"int32\", \"uint8\"/\"uint16\"/\"uint32\", \"datetime\".",
                               "properties": {
                                 "key": {
@@ -650,6 +687,7 @@
       "type": "object"
     },
     "status": {
+      "additionalProperties": false,
       "description": "LedgerCRDStatus defines the observed state of a Ledger.",
       "properties": {
         "appliedIndexes": {
@@ -667,6 +705,7 @@
         "conditions": {
           "description": "Conditions represent the latest available observations of the Ledger's state.",
           "items": {
+            "additionalProperties": false,
             "description": "Condition contains details for one aspect of the current state of this API Resource.",
             "properties": {
               "lastTransitionTime": {

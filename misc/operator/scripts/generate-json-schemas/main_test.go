@@ -54,6 +54,92 @@ func TestRunGeneratesSchemasFromCRDs(t *testing.T) {
 	}
 }
 
+func TestRunGeneratesStrictSchemas(t *testing.T) {
+	t.Parallel()
+
+	crdDir := filepath.Join("..", "..", "config", "crd", "bases")
+	outDir := t.TempDir()
+
+	require.NoError(t, run(crdDir, outDir))
+
+	data, err := os.ReadFile(filepath.Join(outDir, "v1alpha1_cluster.spec.json"))
+	require.NoError(t, err)
+
+	var doc map[string]any
+	require.NoError(t, json.Unmarshal(data, &doc))
+
+	require.Equal(t, false, doc["additionalProperties"], "root spec object must reject unknown properties")
+
+	properties, ok := doc["properties"].(map[string]any)
+	require.True(t, ok)
+
+	bloom, ok := properties["bloom"].(map[string]any)
+	require.True(t, ok, "expected a bloom object property")
+	require.Equal(t, false, bloom["additionalProperties"], "nested object with a fixed property set must be strict")
+
+	additionalLabels, ok := properties["additionalLabels"].(map[string]any)
+	require.True(t, ok, "expected an additionalLabels map property")
+	require.Equal(t,
+		map[string]any{"type": "string"},
+		additionalLabels["additionalProperties"],
+		"a map-type field's value schema must not be overwritten with false",
+	)
+}
+
+func TestEnforceAdditionalPropertiesFalse(t *testing.T) {
+	t.Parallel()
+
+	doc := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"strictChild": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name": map[string]any{"type": "string"},
+				},
+			},
+			"mapField": map[string]any{
+				"type":                 "object",
+				"additionalProperties": map[string]any{"type": "string"},
+			},
+			"openField": map[string]any{
+				"type":                                 "object",
+				"x-kubernetes-preserve-unknown-fields": true,
+				"properties": map[string]any{
+					"anything": map[string]any{"type": "string"},
+				},
+			},
+			"opaque": map[string]any{"type": "object"},
+			"list": map[string]any{
+				"type": "array",
+				"items": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"key": map[string]any{"type": "string"},
+					},
+				},
+			},
+		},
+	}
+
+	enforceAdditionalPropertiesFalse(doc)
+
+	properties := doc["properties"].(map[string]any)
+
+	require.Equal(t, false, doc["additionalProperties"])
+	require.Equal(t, false, properties["strictChild"].(map[string]any)["additionalProperties"])
+	require.Equal(t,
+		map[string]any{"type": "string"},
+		properties["mapField"].(map[string]any)["additionalProperties"],
+	)
+	require.NotContains(t, properties["openField"].(map[string]any), "additionalProperties")
+	require.NotContains(t, properties["opaque"].(map[string]any), "additionalProperties")
+	require.Equal(t,
+		false,
+		properties["list"].(map[string]any)["items"].(map[string]any)["additionalProperties"],
+	)
+}
+
 func TestRunFailsWhenNoStorageVersion(t *testing.T) {
 	t.Parallel()
 

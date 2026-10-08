@@ -539,6 +539,8 @@ spec:
 
 Use the `.spec.json` variant only when validating a bare spec fragment (its root has no `spec` property, so pointing it at a full manifest validates nothing useful).
 
+Every object with a fixed property set rejects unknown properties (`additionalProperties: false`), so a typo like `replicass` is flagged by the editor instead of being silently pruned the way the Kubernetes API server would prune it. Map-type fields (e.g. `additionalLabels`) keep their value schema and still accept arbitrary keys; opaque fields (`metadata`, and anything marked `x-kubernetes-preserve-unknown-fields`) are left unconstrained.
+
 Regenerate after changing CRD types in `api/v1alpha1/`. These files are also attached to each tagged [GitHub release](https://github.com/formancehq/ledger/releases) alongside `openapi.yml`.
 
 ### Project Structure

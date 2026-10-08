@@ -1,5 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-04/schema#",
+  "additionalProperties": false,
   "description": "Backup manages scheduled backups of a Cluster to S3 via ledgerctl.",
   "properties": {
     "apiVersion": {
@@ -14,6 +15,7 @@
       "type": "object"
     },
     "spec": {
+      "additionalProperties": false,
       "description": "BackupSpec defines the desired state of a Backup.",
       "properties": {
         "clusterRef": {
@@ -21,6 +23,7 @@
           "type": "string"
         },
         "destination": {
+          "additionalProperties": false,
           "description": "Destination defines where backups are stored.",
           "properties": {
             "bucketId": {
@@ -36,6 +39,7 @@
               "type": "string"
             },
             "s3": {
+              "additionalProperties": false,
               "description": "S3 configuration (required when driver is \"s3\").",
               "properties": {
                 "bucket": {
@@ -54,6 +58,7 @@
               "type": "object"
             },
             "s3AccessKeyIdFrom": {
+              "additionalProperties": false,
               "description": "S3AccessKeyIDFrom references a static AWS access key ID in a Secret in\nthe Backup namespace. Kubernetes injects it into the backup Job at runtime.\nIf not set, the default AWS credential chain is used on the Ledger server.",
               "properties": {
                 "key": {
@@ -72,6 +77,7 @@
               "type": "object"
             },
             "s3SecretAccessKeyFrom": {
+              "additionalProperties": false,
               "description": "S3SecretAccessKeyFrom references a static AWS secret access key in a Secret\nin the Backup namespace. The value never appears in the Backup or Job spec.\nIf not set, the default AWS credential chain is used on the Ledger server.",
               "properties": {
                 "key": {
@@ -102,6 +108,7 @@
           "type": "integer"
         },
         "schedule": {
+          "additionalProperties": false,
           "description": "Schedule defines cron schedules for full and incremental backups.\nBoth entries are optional; a Backup without any schedule is valid\nand acts as a backup configuration template for manual BackupRun resources.",
           "properties": {
             "full": {
@@ -134,11 +141,13 @@
       "type": "object"
     },
     "status": {
+      "additionalProperties": false,
       "description": "BackupStatus defines the observed state of a Backup.",
       "properties": {
         "conditions": {
           "description": "Conditions represent the latest available observations.",
           "items": {
+            "additionalProperties": false,
             "description": "Condition contains details for one aspect of the current state of this API Resource.",
             "properties": {
               "lastTransitionTime": {
@@ -192,6 +201,7 @@
           "type": "array"
         },
         "lastFullBackup": {
+          "additionalProperties": false,
           "description": "LastFullBackup holds the result of the last full backup.",
           "properties": {
             "durationMs": {
@@ -248,6 +258,7 @@
           "type": "string"
         },
         "lastIncrementalBackup": {
+          "additionalProperties": false,
           "description": "LastIncrementalBackup holds the result of the last incremental backup.",
           "properties": {
             "auditEntriesExported": {

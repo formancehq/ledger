@@ -1,5 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-04/schema#",
+  "additionalProperties": false,
   "description": "EventSinkSpec declares one NATS sink in the referenced Ledger cluster.",
   "properties": {
     "batchDelayMs": {
@@ -16,6 +17,7 @@
       "type": "integer"
     },
     "clusterRef": {
+      "additionalProperties": false,
       "description": "ClusterRef names a Cluster in the same namespace.",
       "properties": {
         "name": {
@@ -61,6 +63,7 @@
       "type": "string"
     },
     "nats": {
+      "additionalProperties": false,
       "description": "NATS configures the JetStream destination.",
       "properties": {
         "topic": {

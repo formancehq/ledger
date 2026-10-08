@@ -1,5 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-04/schema#",
+  "additionalProperties": false,
   "description": "ClusterSpec defines the desired state of Cluster.",
   "properties": {
     "additionalLabels": {
@@ -14,22 +15,27 @@
       "type": "boolean"
     },
     "affinity": {
+      "additionalProperties": false,
       "description": "Affinity rules for pod scheduling.",
       "properties": {
         "nodeAffinity": {
+          "additionalProperties": false,
           "description": "Describes node affinity scheduling rules for the pod.",
           "properties": {
             "preferredDuringSchedulingIgnoredDuringExecution": {
               "description": "The scheduler will prefer to schedule pods to nodes that satisfy\nthe affinity expressions specified by this field, but it may choose\na node that violates one or more of the expressions. The node that is\nmost preferred is the one with the greatest sum of weights, i.e.\nfor each node that meets all of the scheduling requirements (resource\nrequest, requiredDuringScheduling affinity expressions, etc.),\ncompute a sum by iterating through the elements of this field and adding\n\"weight\" to the sum if the node matches the corresponding matchExpressions; the\nnode(s) with the highest sum are the most preferred.",
               "items": {
+                "additionalProperties": false,
                 "description": "An empty preferred scheduling term matches all objects with implicit weight 0\n(i.e. it's a no-op). A null preferred scheduling term matches no objects (i.e. is also a no-op).",
                 "properties": {
                   "preference": {
+                    "additionalProperties": false,
                     "description": "A node selector term, associated with the corresponding weight.",
                     "properties": {
                       "matchExpressions": {
                         "description": "A list of node selector requirements by node's labels.",
                         "items": {
+                          "additionalProperties": false,
                           "description": "A node selector requirement is a selector that contains values, a key, and an operator\nthat relates the key and values.",
                           "properties": {
                             "key": {
@@ -61,6 +67,7 @@
                       "matchFields": {
                         "description": "A list of node selector requirements by node's fields.",
                         "items": {
+                          "additionalProperties": false,
                           "description": "A node selector requirement is a selector that contains values, a key, and an operator\nthat relates the key and values.",
                           "properties": {
                             "key": {
@@ -109,16 +116,19 @@
               "x-kubernetes-list-type": "atomic"
             },
             "requiredDuringSchedulingIgnoredDuringExecution": {
+              "additionalProperties": false,
               "description": "If the affinity requirements specified by this field are not met at\nscheduling time, the pod will not be scheduled onto the node.\nIf the affinity requirements specified by this field cease to be met\nat some point during pod execution (e.g. due to an update), the system\nmay or may not try to eventually evict the pod from its node.",
               "properties": {
                 "nodeSelectorTerms": {
                   "description": "Required. A list of node selector terms. The terms are ORed.",
                   "items": {
+                    "additionalProperties": false,
                     "description": "A null or empty node selector term matches no objects. The requirements of\nthem are ANDed.\nThe TopologySelectorTerm type implements a subset of the NodeSelectorTerm.",
                     "properties": {
                       "matchExpressions": {
                         "description": "A list of node selector requirements by node's labels.",
                         "items": {
+                          "additionalProperties": false,
                           "description": "A node selector requirement is a selector that contains values, a key, and an operator\nthat relates the key and values.",
                           "properties": {
                             "key": {
@@ -150,6 +160,7 @@
                       "matchFields": {
                         "description": "A list of node selector requirements by node's fields.",
                         "items": {
+                          "additionalProperties": false,
                           "description": "A node selector requirement is a selector that contains values, a key, and an operator\nthat relates the key and values.",
                           "properties": {
                             "key": {
@@ -196,22 +207,27 @@
           "type": "object"
         },
         "podAffinity": {
+          "additionalProperties": false,
           "description": "Describes pod affinity scheduling rules (e.g. co-locate this pod in the same node, zone, etc. as some other pod(s)).",
           "properties": {
             "preferredDuringSchedulingIgnoredDuringExecution": {
               "description": "The scheduler will prefer to schedule pods to nodes that satisfy\nthe affinity expressions specified by this field, but it may choose\na node that violates one or more of the expressions. The node that is\nmost preferred is the one with the greatest sum of weights, i.e.\nfor each node that meets all of the scheduling requirements (resource\nrequest, requiredDuringScheduling affinity expressions, etc.),\ncompute a sum by iterating through the elements of this field and adding\n\"weight\" to the sum if the node has pods which matches the corresponding podAffinityTerm; the\nnode(s) with the highest sum are the most preferred.",
               "items": {
+                "additionalProperties": false,
                 "description": "The weights of all of the matched WeightedPodAffinityTerm fields are added per-node to find the most preferred node(s)",
                 "properties": {
                   "podAffinityTerm": {
+                    "additionalProperties": false,
                     "description": "Required. A pod affinity term, associated with the corresponding weight.",
                     "properties": {
                       "labelSelector": {
+                        "additionalProperties": false,
                         "description": "A label query over a set of resources, in this case pods.\nIf it's null, this PodAffinityTerm matches with no Pods.",
                         "properties": {
                           "matchExpressions": {
                             "description": "matchExpressions is a list of label selector requirements. The requirements are ANDed.",
                             "items": {
+                              "additionalProperties": false,
                               "description": "A label selector requirement is a selector that contains values, a key, and an operator that\nrelates the key and values.",
                               "properties": {
                                 "key": {
@@ -268,11 +284,13 @@
                         "x-kubernetes-list-type": "atomic"
                       },
                       "namespaceSelector": {
+                        "additionalProperties": false,
                         "description": "A label query over the set of namespaces that the term applies to.\nThe term is applied to the union of the namespaces selected by this field\nand the ones listed in the namespaces field.\nnull selector and null or empty namespaces list means \"this pod's namespace\".\nAn empty selector ({}) matches all namespaces.",
                         "properties": {
                           "matchExpressions": {
                             "description": "matchExpressions is a list of label selector requirements. The requirements are ANDed.",
                             "items": {
+                              "additionalProperties": false,
                               "description": "A label selector requirement is a selector that contains values, a key, and an operator that\nrelates the key and values.",
                               "properties": {
                                 "key": {
@@ -348,14 +366,17 @@
             "requiredDuringSchedulingIgnoredDuringExecution": {
               "description": "If the affinity requirements specified by this field are not met at\nscheduling time, the pod will not be scheduled onto the node.\nIf the affinity requirements specified by this field cease to be met\nat some point during pod execution (e.g. due to a pod label update), the\nsystem may or may not try to eventually evict the pod from its node.\nWhen there are multiple elements, the lists of nodes corresponding to each\npodAffinityTerm are intersected, i.e. all terms must be satisfied.",
               "items": {
+                "additionalProperties": false,
                 "description": "Defines a set of pods (namely those matching the labelSelector\nrelative to the given namespace(s)) that this pod should be\nco-located (affinity) or not co-located (anti-affinity) with,\nwhere co-located is defined as running on a node whose value of\nthe label with key \u003ctopologyKey\u003e matches that of any node on which\na pod of the set of pods is running",
                 "properties": {
                   "labelSelector": {
+                    "additionalProperties": false,
                     "description": "A label query over a set of resources, in this case pods.\nIf it's null, this PodAffinityTerm matches with no Pods.",
                     "properties": {
                       "matchExpressions": {
                         "description": "matchExpressions is a list of label selector requirements. The requirements are ANDed.",
                         "items": {
+                          "additionalProperties": false,
                           "description": "A label selector requirement is a selector that contains values, a key, and an operator that\nrelates the key and values.",
                           "properties": {
                             "key": {
@@ -412,11 +433,13 @@
                     "x-kubernetes-list-type": "atomic"
                   },
                   "namespaceSelector": {
+                    "additionalProperties": false,
                     "description": "A label query over the set of namespaces that the term applies to.\nThe term is applied to the union of the namespaces selected by this field\nand the ones listed in the namespaces field.\nnull selector and null or empty namespaces list means \"this pod's namespace\".\nAn empty selector ({}) matches all namespaces.",
                     "properties": {
                       "matchExpressions": {
                         "description": "matchExpressions is a list of label selector requirements. The requirements are ANDed.",
                         "items": {
+                          "additionalProperties": false,
                           "description": "A label selector requirement is a selector that contains values, a key, and an operator that\nrelates the key and values.",
                           "properties": {
                             "key": {
@@ -481,22 +504,27 @@
           "type": "object"
         },
         "podAntiAffinity": {
+          "additionalProperties": false,
           "description": "Describes pod anti-affinity scheduling rules (e.g. avoid putting this pod in the same node, zone, etc. as some other pod(s)).",
           "properties": {
             "preferredDuringSchedulingIgnoredDuringExecution": {
               "description": "The scheduler will prefer to schedule pods to nodes that satisfy\nthe anti-affinity expressions specified by this field, but it may choose\na node that violates one or more of the expressions. The node that is\nmost preferred is the one with the greatest sum of weights, i.e.\nfor each node that meets all of the scheduling requirements (resource\nrequest, requiredDuringScheduling anti-affinity expressions, etc.),\ncompute a sum by iterating through the elements of this field and adding\n\"weight\" to the sum if the node has pods which matches the corresponding podAffinityTerm; the\nnode(s) with the highest sum are the most preferred.",
               "items": {
+                "additionalProperties": false,
                 "description": "The weights of all of the matched WeightedPodAffinityTerm fields are added per-node to find the most preferred node(s)",
                 "properties": {
                   "podAffinityTerm": {
+                    "additionalProperties": false,
                     "description": "Required. A pod affinity term, associated with the corresponding weight.",
                     "properties": {
                       "labelSelector": {
+                        "additionalProperties": false,
                         "description": "A label query over a set of resources, in this case pods.\nIf it's null, this PodAffinityTerm matches with no Pods.",
                         "properties": {
                           "matchExpressions": {
                             "description": "matchExpressions is a list of label selector requirements. The requirements are ANDed.",
                             "items": {
+                              "additionalProperties": false,
                               "description": "A label selector requirement is a selector that contains values, a key, and an operator that\nrelates the key and values.",
                               "properties": {
                                 "key": {
@@ -553,11 +581,13 @@
                         "x-kubernetes-list-type": "atomic"
                       },
                       "namespaceSelector": {
+                        "additionalProperties": false,
                         "description": "A label query over the set of namespaces that the term applies to.\nThe term is applied to the union of the namespaces selected by this field\nand the ones listed in the namespaces field.\nnull selector and null or empty namespaces list means \"this pod's namespace\".\nAn empty selector ({}) matches all namespaces.",
                         "properties": {
                           "matchExpressions": {
                             "description": "matchExpressions is a list of label selector requirements. The requirements are ANDed.",
                             "items": {
+                              "additionalProperties": false,
                               "description": "A label selector requirement is a selector that contains values, a key, and an operator that\nrelates the key and values.",
                               "properties": {
                                 "key": {
@@ -633,14 +663,17 @@
             "requiredDuringSchedulingIgnoredDuringExecution": {
               "description": "If the anti-affinity requirements specified by this field are not met at\nscheduling time, the pod will not be scheduled onto the node.\nIf the anti-affinity requirements specified by this field cease to be met\nat some point during pod execution (e.g. due to a pod label update), the\nsystem may or may not try to eventually evict the pod from its node.\nWhen there are multiple elements, the lists of nodes corresponding to each\npodAffinityTerm are intersected, i.e. all terms must be satisfied.",
               "items": {
+                "additionalProperties": false,
                 "description": "Defines a set of pods (namely those matching the labelSelector\nrelative to the given namespace(s)) that this pod should be\nco-located (affinity) or not co-located (anti-affinity) with,\nwhere co-located is defined as running on a node whose value of\nthe label with key \u003ctopologyKey\u003e matches that of any node on which\na pod of the set of pods is running",
                 "properties": {
                   "labelSelector": {
+                    "additionalProperties": false,
                     "description": "A label query over a set of resources, in this case pods.\nIf it's null, this PodAffinityTerm matches with no Pods.",
                     "properties": {
                       "matchExpressions": {
                         "description": "matchExpressions is a list of label selector requirements. The requirements are ANDed.",
                         "items": {
+                          "additionalProperties": false,
                           "description": "A label selector requirement is a selector that contains values, a key, and an operator that\nrelates the key and values.",
                           "properties": {
                             "key": {
@@ -697,11 +730,13 @@
                     "x-kubernetes-list-type": "atomic"
                   },
                   "namespaceSelector": {
+                    "additionalProperties": false,
                     "description": "A label query over the set of namespaces that the term applies to.\nThe term is applied to the union of the namespaces selected by this field\nand the ones listed in the namespaces field.\nnull selector and null or empty namespaces list means \"this pod's namespace\".\nAn empty selector ({}) matches all namespaces.",
                     "properties": {
                       "matchExpressions": {
                         "description": "matchExpressions is a list of label selector requirements. The requirements are ANDed.",
                         "items": {
+                          "additionalProperties": false,
                           "description": "A label selector requirement is a selector that contains values, a key, and an operator that\nrelates the key and values.",
                           "properties": {
                             "key": {
@@ -769,6 +804,7 @@
       "type": "object"
     },
     "auth": {
+      "additionalProperties": false,
       "description": "Auth holds authentication and authorization configuration.",
       "properties": {
         "anonymousScopes": {
@@ -831,9 +867,11 @@
       ]
     },
     "bloom": {
+      "additionalProperties": false,
       "description": "Bloom filter configuration per attribute type.",
       "properties": {
         "boundaries": {
+          "additionalProperties": false,
           "description": "Boundaries bloom filter configuration.",
           "properties": {
             "expectedKeys": {
@@ -849,6 +887,7 @@
           "type": "object"
         },
         "ledgerMetadata": {
+          "additionalProperties": false,
           "description": "LedgerMetadata bloom filter configuration.",
           "properties": {
             "expectedKeys": {
@@ -864,6 +903,7 @@
           "type": "object"
         },
         "ledgers": {
+          "additionalProperties": false,
           "description": "Ledgers bloom filter configuration.",
           "properties": {
             "expectedKeys": {
@@ -879,6 +919,7 @@
           "type": "object"
         },
         "metadata": {
+          "additionalProperties": false,
           "description": "Metadata bloom filter configuration.",
           "properties": {
             "expectedKeys": {
@@ -894,6 +935,7 @@
           "type": "object"
         },
         "numscriptContents": {
+          "additionalProperties": false,
           "description": "NumscriptContents bloom filter configuration.",
           "properties": {
             "expectedKeys": {
@@ -909,6 +951,7 @@
           "type": "object"
         },
         "numscriptVersions": {
+          "additionalProperties": false,
           "description": "NumscriptVersions bloom filter configuration.",
           "properties": {
             "expectedKeys": {
@@ -924,6 +967,7 @@
           "type": "object"
         },
         "preparedQueries": {
+          "additionalProperties": false,
           "description": "PreparedQueries bloom filter configuration.",
           "properties": {
             "expectedKeys": {
@@ -939,6 +983,7 @@
           "type": "object"
         },
         "references": {
+          "additionalProperties": false,
           "description": "References bloom filter configuration.",
           "properties": {
             "expectedKeys": {
@@ -954,6 +999,7 @@
           "type": "object"
         },
         "sinkConfigs": {
+          "additionalProperties": false,
           "description": "SinkConfigs bloom filter configuration.",
           "properties": {
             "expectedKeys": {
@@ -969,6 +1015,7 @@
           "type": "object"
         },
         "transactions": {
+          "additionalProperties": false,
           "description": "Transactions bloom filter configuration.",
           "properties": {
             "expectedKeys": {
@@ -984,6 +1031,7 @@
           "type": "object"
         },
         "volumes": {
+          "additionalProperties": false,
           "description": "Volumes bloom filter configuration.",
           "properties": {
             "expectedKeys": {
@@ -1002,6 +1050,7 @@
       "type": "object"
     },
     "cache": {
+      "additionalProperties": false,
       "description": "Cache configuration.",
       "properties": {
         "rotationThreshold": {
@@ -1047,6 +1096,7 @@
     "dnsEndpoints": {
       "description": "DNSEndpoints configures one or more ExternalDNS DNSEndpoint resources.\nEach entry is reconciled into its own DNSEndpoint object, so distinct\nendpoints (e.g. a public and a private one) can carry different\nannotations. Entries are keyed by their unique name.",
       "items": {
+        "additionalProperties": false,
         "description": "DNSEndpointSpec defines a single ExternalDNS DNSEndpoint configuration.",
         "properties": {
           "annotations": {
@@ -1063,6 +1113,7 @@
           "endpoints": {
             "description": "Endpoints is the list of DNS endpoint entries.",
             "items": {
+              "additionalProperties": false,
               "description": "DNSEndpointEntry defines a single DNS endpoint.",
               "properties": {
                 "dnsName": {
@@ -1072,6 +1123,7 @@
                 "providerSpecific": {
                   "description": "ProviderSpecific holds provider-specific properties.",
                   "items": {
+                    "additionalProperties": false,
                     "description": "ProviderSpecificProperty defines a provider-specific key-value pair.",
                     "properties": {
                       "name": {
@@ -1144,6 +1196,7 @@
     "extraEnv": {
       "description": "ExtraEnv is a list of additional environment variables to inject into ledger containers.",
       "items": {
+        "additionalProperties": false,
         "description": "EnvVar represents an environment variable present in a Container.",
         "properties": {
           "name": {
@@ -1155,9 +1208,11 @@
             "type": "string"
           },
           "valueFrom": {
+            "additionalProperties": false,
             "description": "Source for the environment variable's value. Cannot be used if value is not empty.",
             "properties": {
               "configMapKeyRef": {
+                "additionalProperties": false,
                 "description": "Selects a key of a ConfigMap.",
                 "properties": {
                   "key": {
@@ -1181,6 +1236,7 @@
                 "x-kubernetes-map-type": "atomic"
               },
               "fieldRef": {
+                "additionalProperties": false,
                 "description": "Selects a field of the pod: supports metadata.name, metadata.namespace, `metadata.labels['\u003cKEY\u003e']`, `metadata.annotations['\u003cKEY\u003e']`,\nspec.nodeName, spec.serviceAccountName, status.hostIP, status.podIP, status.podIPs.",
                 "properties": {
                   "apiVersion": {
@@ -1199,6 +1255,7 @@
                 "x-kubernetes-map-type": "atomic"
               },
               "resourceFieldRef": {
+                "additionalProperties": false,
                 "description": "Selects a resource of the container: only resources limits and requests\n(limits.cpu, limits.memory, limits.ephemeral-storage, requests.cpu, requests.memory and requests.ephemeral-storage) are currently supported.",
                 "properties": {
                   "containerName": {
@@ -1230,6 +1287,7 @@
                 "x-kubernetes-map-type": "atomic"
               },
               "secretKeyRef": {
+                "additionalProperties": false,
                 "description": "Selects a key of a secret in the pod's namespace",
                 "properties": {
                   "key": {
@@ -1293,6 +1351,7 @@
       "type": "string"
     },
     "headlessService": {
+      "additionalProperties": false,
       "description": "HeadlessService configuration for Raft peer discovery.",
       "properties": {
         "annotations": {
@@ -1311,6 +1370,7 @@
       "type": "object"
     },
     "health": {
+      "additionalProperties": false,
       "description": "Health check configuration.",
       "properties": {
         "clockSkewThreshold": {
@@ -1355,6 +1415,7 @@
       "type": "string"
     },
     "image": {
+      "additionalProperties": false,
       "description": "Image configuration for the ledger container.",
       "properties": {
         "pullPolicy": {
@@ -1375,6 +1436,7 @@
     "imagePullSecrets": {
       "description": "ImagePullSecrets for private registries.",
       "items": {
+        "additionalProperties": false,
         "description": "LocalObjectReference contains enough information to let you locate the\nreferenced object inside the same namespace.",
         "properties": {
           "name": {
@@ -1389,6 +1451,7 @@
       "type": "array"
     },
     "ingress": {
+      "additionalProperties": false,
       "description": "Ingress configuration for HTTP access.",
       "properties": {
         "annotations": {
@@ -1409,6 +1472,7 @@
         "hosts": {
           "description": "Hosts configuration.",
           "items": {
+            "additionalProperties": false,
             "description": "IngressHost defines an ingress host rule.",
             "properties": {
               "host": {
@@ -1418,6 +1482,7 @@
               "paths": {
                 "description": "Paths are the path rules.",
                 "items": {
+                  "additionalProperties": false,
                   "description": "IngressPath defines an ingress path rule.",
                   "properties": {
                     "path": {
@@ -1453,6 +1518,7 @@
         "tls": {
           "description": "TLS configuration.",
           "items": {
+            "additionalProperties": false,
             "description": "IngressTLS defines ingress TLS configuration.",
             "properties": {
               "hosts": {
@@ -1481,6 +1547,7 @@
       ]
     },
     "ingressGrpc": {
+      "additionalProperties": false,
       "description": "IngressGrpc configuration for gRPC access.",
       "properties": {
         "annotations": {
@@ -1501,6 +1568,7 @@
         "hosts": {
           "description": "Hosts configuration.",
           "items": {
+            "additionalProperties": false,
             "description": "IngressHost defines an ingress host rule.",
             "properties": {
               "host": {
@@ -1510,6 +1578,7 @@
               "paths": {
                 "description": "Paths are the path rules.",
                 "items": {
+                  "additionalProperties": false,
                   "description": "IngressPath defines an ingress path rule.",
                   "properties": {
                     "path": {
@@ -1552,6 +1621,7 @@
         "tls": {
           "description": "TLS configuration.",
           "items": {
+            "additionalProperties": false,
             "description": "IngressTLS defines ingress TLS configuration.",
             "properties": {
               "hosts": {
@@ -1580,9 +1650,11 @@
       ]
     },
     "livenessProbe": {
+      "additionalProperties": false,
       "description": "LivenessProbe overrides the default liveness probe for the ledger container.",
       "properties": {
         "exec": {
+          "additionalProperties": false,
           "description": "Exec specifies a command to execute in the container.",
           "properties": {
             "command": {
@@ -1602,6 +1674,7 @@
           "type": "integer"
         },
         "grpc": {
+          "additionalProperties": false,
           "description": "GRPC specifies a GRPC HealthCheckRequest.",
           "properties": {
             "port": {
@@ -1621,6 +1694,7 @@
           "type": "object"
         },
         "httpGet": {
+          "additionalProperties": false,
           "description": "HTTPGet specifies an HTTP GET request to perform.",
           "properties": {
             "host": {
@@ -1630,6 +1704,7 @@
             "httpHeaders": {
               "description": "Custom headers to set in the request. HTTP allows repeated headers.",
               "items": {
+                "additionalProperties": false,
                 "description": "HTTPHeader describes a custom header to be used in HTTP probes",
                 "properties": {
                   "name": {
@@ -1692,6 +1767,7 @@
           "type": "integer"
         },
         "tcpSocket": {
+          "additionalProperties": false,
           "description": "TCPSocket specifies a connection to a TCP port.",
           "properties": {
             "host": {
@@ -1780,6 +1856,7 @@
       "type": "integer"
     },
     "monitoring": {
+      "additionalProperties": false,
       "description": "Monitoring configuration (OpenTelemetry).",
       "properties": {
         "attributes": {
@@ -1787,6 +1864,7 @@
           "type": "string"
         },
         "flightRecorder": {
+          "additionalProperties": false,
           "description": "FlightRecorder configuration for runtime execution trace buffering.",
           "properties": {
             "enabled": {
@@ -1814,6 +1892,7 @@
           "type": "object"
         },
         "logs": {
+          "additionalProperties": false,
           "description": "Logs configuration.",
           "properties": {
             "enabled": {
@@ -1848,6 +1927,7 @@
           "type": "object"
         },
         "metrics": {
+          "additionalProperties": false,
           "description": "Metrics configuration.",
           "properties": {
             "enabled": {
@@ -1900,6 +1980,7 @@
           "type": "object"
         },
         "pyroscope": {
+          "additionalProperties": false,
           "description": "Pyroscope continuous profiling configuration.",
           "properties": {
             "applicationName": {
@@ -1907,6 +1988,7 @@
               "type": "string"
             },
             "authTokenFrom": {
+              "additionalProperties": false,
               "description": "AuthTokenFrom references a Pyroscope authentication token in a Secret in the Cluster namespace.",
               "properties": {
                 "key": {
@@ -1931,6 +2013,7 @@
               ]
             },
             "basicAuthPasswordFrom": {
+              "additionalProperties": false,
               "description": "BasicAuthPasswordFrom references a basic-auth password in a Secret in the Cluster namespace.",
               "properties": {
                 "key": {
@@ -2005,6 +2088,7 @@
           "type": "string"
         },
         "traces": {
+          "additionalProperties": false,
           "description": "Traces configuration.",
           "properties": {
             "batch": {
@@ -2042,16 +2126,19 @@
       "type": "object"
     },
     "networkPolicy": {
+      "additionalProperties": false,
       "description": "NetworkPolicy configuration for egress restrictions.",
       "properties": {
         "additionalEgress": {
           "description": "AdditionalEgress appends custom egress rules to the generated NetworkPolicy.\nUse this to allow traffic to cluster-internal services (e.g. databases, message brokers).",
           "items": {
+            "additionalProperties": false,
             "description": "NetworkPolicyEgressRule describes a particular set of traffic that is allowed out of pods\nmatched by a NetworkPolicySpec's podSelector. The traffic must match both ports and to.\nThis type is beta-level in 1.8",
             "properties": {
               "ports": {
                 "description": "ports is a list of destination ports for outgoing traffic.\nEach item in this list is combined using a logical OR. If this field is\nempty or missing, this rule matches all ports (traffic not restricted by port).\nIf this field is present and contains at least one item, then this rule allows\ntraffic only if the traffic matches at least one port in the list.",
                 "items": {
+                  "additionalProperties": false,
                   "description": "NetworkPolicyPort describes a port to allow traffic on",
                   "properties": {
                     "endPort": {
@@ -2084,9 +2171,11 @@
               "to": {
                 "description": "to is a list of destinations for outgoing traffic of pods selected for this rule.\nItems in this list are combined using a logical OR operation. If this field is\nempty or missing, this rule matches all destinations (traffic not restricted by\ndestination). If this field is present and contains at least one item, this rule\nallows traffic only if the traffic matches at least one item in the to list.",
                 "items": {
+                  "additionalProperties": false,
                   "description": "NetworkPolicyPeer describes a peer to allow traffic to/from. Only certain combinations of\nfields are allowed",
                   "properties": {
                     "ipBlock": {
+                      "additionalProperties": false,
                       "description": "ipBlock defines policy on a particular IPBlock. If this field is set then\nneither of the other fields can be.",
                       "properties": {
                         "cidr": {
@@ -2108,11 +2197,13 @@
                       "type": "object"
                     },
                     "namespaceSelector": {
+                      "additionalProperties": false,
                       "description": "namespaceSelector selects namespaces using cluster-scoped labels. This field follows\nstandard label selector semantics; if present but empty, it selects all namespaces.\n\nIf podSelector is also set, then the NetworkPolicyPeer as a whole selects\nthe pods matching podSelector in the namespaces selected by namespaceSelector.\nOtherwise it selects all pods in the namespaces selected by namespaceSelector.",
                       "properties": {
                         "matchExpressions": {
                           "description": "matchExpressions is a list of label selector requirements. The requirements are ANDed.",
                           "items": {
+                            "additionalProperties": false,
                             "description": "A label selector requirement is a selector that contains values, a key, and an operator that\nrelates the key and values.",
                             "properties": {
                               "key": {
@@ -2153,11 +2244,13 @@
                       "x-kubernetes-map-type": "atomic"
                     },
                     "podSelector": {
+                      "additionalProperties": false,
                       "description": "podSelector is a label selector which selects pods. This field follows standard label\nselector semantics; if present but empty, it selects all pods.\n\nIf namespaceSelector is also set, then the NetworkPolicyPeer as a whole selects\nthe pods matching podSelector in the Namespaces selected by NamespaceSelector.\nOtherwise it selects the pods matching podSelector in the policy's own namespace.",
                       "properties": {
                         "matchExpressions": {
                           "description": "matchExpressions is a list of label selector requirements. The requirements are ANDed.",
                           "items": {
+                            "additionalProperties": false,
                             "description": "A label selector requirement is a selector that contains values, a key, and an operator that\nrelates the key and values.",
                             "properties": {
                               "key": {
@@ -2235,6 +2328,7 @@
       "type": "integer"
     },
     "pebble": {
+      "additionalProperties": false,
       "description": "Pebble storage engine configuration.",
       "properties": {
         "bytesPerSync": {
@@ -2341,6 +2435,7 @@
           "x-kubernetes-int-or-string": true
         },
         "valueSeparation": {
+          "additionalProperties": false,
           "description": "ValueSeparation configuration for large value storage in blob files.",
           "properties": {
             "enabled": {
@@ -2397,9 +2492,11 @@
       "type": "object"
     },
     "persistence": {
+      "additionalProperties": false,
       "description": "Persistence configuration for WAL and data volumes.",
       "properties": {
         "data": {
+          "additionalProperties": false,
           "description": "Data persistence configuration.",
           "properties": {
             "accessMode": {
@@ -2408,6 +2505,7 @@
               "type": "string"
             },
             "autoExpansion": {
+              "additionalProperties": false,
               "description": "AutoExpansion configures opt-in automatic growth for PVC-backed WAL and\ndata volumes. It is unsupported for hostPath volumes.",
               "properties": {
                 "cooldown": {
@@ -2477,6 +2575,7 @@
               ]
             },
             "hostPath": {
+              "additionalProperties": false,
               "description": "HostPath configures a host-local volume instead of a PVC.\nWhen set, no PersistentVolumeClaim is created for this volume.\nThe pod uses a hostPath volume mounted from the specified path on the node.\nEach pod gets an isolated subdirectory named after its ordinal index.\nThis is intended for NVMe instance stores where Raft replication provides durability.\nMutually exclusive with storageClass, accessMode, and volumeAttributesClassName.",
               "properties": {
                 "path": {
@@ -2528,6 +2627,7 @@
           "type": "boolean"
         },
         "retentionPolicy": {
+          "additionalProperties": false,
           "description": "RetentionPolicy for PVCs.",
           "properties": {
             "whenDeleted": {
@@ -2544,6 +2644,7 @@
           "type": "object"
         },
         "wal": {
+          "additionalProperties": false,
           "description": "WAL persistence configuration.",
           "properties": {
             "accessMode": {
@@ -2552,6 +2653,7 @@
               "type": "string"
             },
             "autoExpansion": {
+              "additionalProperties": false,
               "description": "AutoExpansion configures opt-in automatic growth for PVC-backed WAL and\ndata volumes. It is unsupported for hostPath volumes.",
               "properties": {
                 "cooldown": {
@@ -2621,6 +2723,7 @@
               ]
             },
             "hostPath": {
+              "additionalProperties": false,
               "description": "HostPath configures a host-local volume instead of a PVC.\nWhen set, no PersistentVolumeClaim is created for this volume.\nThe pod uses a hostPath volume mounted from the specified path on the node.\nEach pod gets an isolated subdirectory named after its ordinal index.\nThis is intended for NVMe instance stores where Raft replication provides durability.\nMutually exclusive with storageClass, accessMode, and volumeAttributesClassName.",
               "properties": {
                 "path": {
@@ -2677,6 +2780,7 @@
       "type": "object"
     },
     "podAntiAffinity": {
+      "additionalProperties": false,
       "description": "PodAntiAffinity configuration.",
       "properties": {
         "enabled": {
@@ -2710,9 +2814,11 @@
       "type": "object"
     },
     "podSecurityContext": {
+      "additionalProperties": false,
       "description": "PodSecurityContext for the pod.",
       "properties": {
         "appArmorProfile": {
+          "additionalProperties": false,
           "description": "appArmorProfile is the AppArmor options to use by the containers in this pod.\nNote that this field cannot be set when spec.os.name is windows.",
           "properties": {
             "localhostProfile": {
@@ -2757,6 +2863,7 @@
           "type": "string"
         },
         "seLinuxOptions": {
+          "additionalProperties": false,
           "description": "The SELinux context to be applied to all containers.\nIf unspecified, the container runtime will allocate a random SELinux context for each\ncontainer.  May also be set in SecurityContext.  If set in\nboth SecurityContext and PodSecurityContext, the value specified in SecurityContext\ntakes precedence for that container.\nNote that this field cannot be set when spec.os.name is windows.",
           "properties": {
             "level": {
@@ -2779,6 +2886,7 @@
           "type": "object"
         },
         "seccompProfile": {
+          "additionalProperties": false,
           "description": "The seccomp options to use by the containers in this pod.\nNote that this field cannot be set when spec.os.name is windows.",
           "properties": {
             "localhostProfile": {
@@ -2811,6 +2919,7 @@
         "sysctls": {
           "description": "Sysctls hold a list of namespaced sysctls used for the pod. Pods with unsupported\nsysctls (by the container runtime) might fail to launch.\nNote that this field cannot be set when spec.os.name is windows.",
           "items": {
+            "additionalProperties": false,
             "description": "Sysctl defines a kernel parameter to be set",
             "properties": {
               "name": {
@@ -2832,6 +2941,7 @@
           "x-kubernetes-list-type": "atomic"
         },
         "windowsOptions": {
+          "additionalProperties": false,
           "description": "The Windows specific settings applied to all containers.\nIf unspecified, the options within a container's SecurityContext will be used.\nIf set in both SecurityContext and PodSecurityContext, the value specified in SecurityContext takes precedence.\nNote that this field cannot be set when spec.os.name is linux.",
           "properties": {
             "gmsaCredentialSpec": {
@@ -2861,6 +2971,7 @@
       "type": "string"
     },
     "raft": {
+      "additionalProperties": false,
       "description": "Raft consensus configuration.",
       "properties": {
         "compactionMargin": {
@@ -2924,6 +3035,7 @@
           "type": "string"
         },
         "transport": {
+          "additionalProperties": false,
           "description": "Transport queue configuration.",
           "properties": {
             "bufferSize": {
@@ -2962,6 +3074,7 @@
       "type": "object"
     },
     "readIndex": {
+      "additionalProperties": false,
       "description": "ReadIndex configuration for the Pebble read index store.",
       "properties": {
         "batchSize": {
@@ -2970,6 +3083,7 @@
           "type": "integer"
         },
         "pebble": {
+          "additionalProperties": false,
           "description": "Pebble holds the common Pebble tunables for the read index.\nUses the same knobs as the primary store (cache size, memtable, L0 thresholds, etc.).",
           "properties": {
             "bytesPerSync": {
@@ -3076,6 +3190,7 @@
               "x-kubernetes-int-or-string": true
             },
             "valueSeparation": {
+              "additionalProperties": false,
               "description": "ValueSeparation configuration for large value storage in blob files.",
               "properties": {
                 "enabled": {
@@ -3135,9 +3250,11 @@
       "type": "object"
     },
     "readinessProbe": {
+      "additionalProperties": false,
       "description": "ReadinessProbe overrides the default readiness probe for the ledger container.",
       "properties": {
         "exec": {
+          "additionalProperties": false,
           "description": "Exec specifies a command to execute in the container.",
           "properties": {
             "command": {
@@ -3157,6 +3274,7 @@
           "type": "integer"
         },
         "grpc": {
+          "additionalProperties": false,
           "description": "GRPC specifies a GRPC HealthCheckRequest.",
           "properties": {
             "port": {
@@ -3176,6 +3294,7 @@
           "type": "object"
         },
         "httpGet": {
+          "additionalProperties": false,
           "description": "HTTPGet specifies an HTTP GET request to perform.",
           "properties": {
             "host": {
@@ -3185,6 +3304,7 @@
             "httpHeaders": {
               "description": "Custom headers to set in the request. HTTP allows repeated headers.",
               "items": {
+                "additionalProperties": false,
                 "description": "HTTPHeader describes a custom header to be used in HTTP probes",
                 "properties": {
                   "name": {
@@ -3247,6 +3367,7 @@
           "type": "integer"
         },
         "tcpSocket": {
+          "additionalProperties": false,
           "description": "TCPSocket specifies a connection to a TCP port.",
           "properties": {
             "host": {
@@ -3292,11 +3413,13 @@
       "type": "integer"
     },
     "resources": {
+      "additionalProperties": false,
       "description": "Resources for the ledger container.",
       "properties": {
         "claims": {
           "description": "Claims lists the names of resources, defined in spec.resourceClaims,\nthat are used by this container.\n\nThis is an alpha field and requires enabling the\nDynamicResourceAllocation feature gate.\n\nThis field is immutable. It can only be set for containers.",
           "items": {
+            "additionalProperties": false,
             "description": "ResourceClaim references one entry in PodSpec.ResourceClaims.",
             "properties": {
               "name": {
@@ -3355,6 +3478,7 @@
       "type": "object"
     },
     "responseSigning": {
+      "additionalProperties": false,
       "description": "ResponseSigning configuration (Ed25519).",
       "properties": {
         "enabled": {
@@ -3378,6 +3502,7 @@
       "type": "boolean"
     },
     "securityContext": {
+      "additionalProperties": false,
       "description": "SecurityContext for the container.",
       "properties": {
         "allowPrivilegeEscalation": {
@@ -3385,6 +3510,7 @@
           "type": "boolean"
         },
         "appArmorProfile": {
+          "additionalProperties": false,
           "description": "appArmorProfile is the AppArmor options to use by this container. If set, this profile\noverrides the pod's appArmorProfile.\nNote that this field cannot be set when spec.os.name is windows.",
           "properties": {
             "localhostProfile": {
@@ -3402,6 +3528,7 @@
           "type": "object"
         },
         "capabilities": {
+          "additionalProperties": false,
           "description": "The capabilities to add/drop when running containers.\nDefaults to the default set of capabilities granted by the container runtime.\nNote that this field cannot be set when spec.os.name is windows.",
           "properties": {
             "add": {
@@ -3452,6 +3579,7 @@
           "type": "integer"
         },
         "seLinuxOptions": {
+          "additionalProperties": false,
           "description": "The SELinux context to be applied to the container.\nIf unspecified, the container runtime will allocate a random SELinux context for each\ncontainer.  May also be set in PodSecurityContext.  If set in both SecurityContext and\nPodSecurityContext, the value specified in SecurityContext takes precedence.\nNote that this field cannot be set when spec.os.name is windows.",
           "properties": {
             "level": {
@@ -3474,6 +3602,7 @@
           "type": "object"
         },
         "seccompProfile": {
+          "additionalProperties": false,
           "description": "The seccomp options to use by this container. If seccomp options are\nprovided at both the pod \u0026 container level, the container options\noverride the pod options.\nNote that this field cannot be set when spec.os.name is windows.",
           "properties": {
             "localhostProfile": {
@@ -3491,6 +3620,7 @@
           "type": "object"
         },
         "windowsOptions": {
+          "additionalProperties": false,
           "description": "The Windows specific settings applied to all containers.\nIf unspecified, the options from the PodSecurityContext will be used.\nIf set in both SecurityContext and PodSecurityContext, the value specified in SecurityContext takes precedence.\nNote that this field cannot be set when spec.os.name is linux.",
           "properties": {
             "gmsaCredentialSpec": {
@@ -3520,6 +3650,7 @@
       "type": "boolean"
     },
     "service": {
+      "additionalProperties": false,
       "description": "Service configuration for the ClusterIP service.",
       "properties": {
         "annotations": {
@@ -3556,6 +3687,7 @@
       "type": "object"
     },
     "serviceAccount": {
+      "additionalProperties": false,
       "description": "ServiceAccount configuration.",
       "properties": {
         "annotations": {
@@ -3577,6 +3709,7 @@
       "type": "object"
     },
     "snapshot": {
+      "additionalProperties": false,
       "description": "Snapshot sync configuration for Raft snapshot transfers.",
       "properties": {
         "fileRetryCount": {
@@ -3602,9 +3735,11 @@
       "type": "object"
     },
     "startupProbe": {
+      "additionalProperties": false,
       "description": "StartupProbe overrides the default startup probe for the ledger container.",
       "properties": {
         "exec": {
+          "additionalProperties": false,
           "description": "Exec specifies a command to execute in the container.",
           "properties": {
             "command": {
@@ -3624,6 +3759,7 @@
           "type": "integer"
         },
         "grpc": {
+          "additionalProperties": false,
           "description": "GRPC specifies a GRPC HealthCheckRequest.",
           "properties": {
             "port": {
@@ -3643,6 +3779,7 @@
           "type": "object"
         },
         "httpGet": {
+          "additionalProperties": false,
           "description": "HTTPGet specifies an HTTP GET request to perform.",
           "properties": {
             "host": {
@@ -3652,6 +3789,7 @@
             "httpHeaders": {
               "description": "Custom headers to set in the request. HTTP allows repeated headers.",
               "items": {
+                "additionalProperties": false,
                 "description": "HTTPHeader describes a custom header to be used in HTTP probes",
                 "properties": {
                   "name": {
@@ -3714,6 +3852,7 @@
           "type": "integer"
         },
         "tcpSocket": {
+          "additionalProperties": false,
           "description": "TCPSocket specifies a connection to a TCP port.",
           "properties": {
             "host": {
@@ -3752,6 +3891,7 @@
       "type": "object"
     },
     "tls": {
+      "additionalProperties": false,
       "description": "TLS configuration for gRPC connections.",
       "properties": {
         "caSecretKey": {
@@ -3772,6 +3912,7 @@
     "tolerations": {
       "description": "Tolerations for pod scheduling.",
       "items": {
+        "additionalProperties": false,
         "description": "The pod this Toleration is attached to tolerates any taint that matches\nthe triple \u003ckey,value,effect\u003e using the matching operator \u003coperator\u003e.",
         "properties": {
           "effect": {
@@ -3803,14 +3944,17 @@
     "topologySpreadConstraints": {
       "description": "TopologySpreadConstraints describe how pods are spread across failure\ndomains (e.g. zones, nodes). See PodSpec.topologySpreadConstraints. The\npod label selector defaults to the Cluster's selector when omitted.",
       "items": {
+        "additionalProperties": false,
         "description": "TopologySpreadConstraint specifies how to spread matching pods among the given topology.",
         "properties": {
           "labelSelector": {
+            "additionalProperties": false,
             "description": "LabelSelector is used to find matching pods.\nPods that match this label selector are counted to determine the number of pods\nin their corresponding topology domain.",
             "properties": {
               "matchExpressions": {
                 "description": "matchExpressions is a list of label selector requirements. The requirements are ANDed.",
                 "items": {
+                  "additionalProperties": false,
                   "description": "A label selector requirement is a selector that contains values, a key, and an operator that\nrelates the key and values.",
                   "properties": {
                     "key": {

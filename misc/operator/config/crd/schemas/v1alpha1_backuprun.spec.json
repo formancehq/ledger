@@ -1,5 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-04/schema#",
+  "additionalProperties": false,
   "description": "BackupRunSpec defines the desired state of a BackupRun.",
   "properties": {
     "backupRef": {

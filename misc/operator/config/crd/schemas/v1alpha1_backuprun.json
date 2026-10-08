@@ -1,5 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-04/schema#",
+  "additionalProperties": false,
   "description": "BackupRun represents a single backup execution triggered either by a Backup schedule\nor manually (e.g. via `kubectl ledger backup trigger`).",
   "properties": {
     "apiVersion": {
@@ -14,6 +15,7 @@
       "type": "object"
     },
     "spec": {
+      "additionalProperties": false,
       "description": "BackupRunSpec defines the desired state of a BackupRun.",
       "properties": {
         "backupRef": {
@@ -36,6 +38,7 @@
       "type": "object"
     },
     "status": {
+      "additionalProperties": false,
       "description": "BackupRunStatus defines the observed state of a BackupRun.",
       "properties": {
         "completionTime": {
@@ -46,6 +49,7 @@
         "conditions": {
           "description": "Conditions represent the latest available observations.",
           "items": {
+            "additionalProperties": false,
             "description": "Condition contains details for one aspect of the current state of this API Resource.",
             "properties": {
               "lastTransitionTime": {
@@ -99,6 +103,7 @@
           "type": "array"
         },
         "full": {
+          "additionalProperties": false,
           "description": "Full holds the result of a Full backup run. Set only when spec.type is Full and the run succeeded.",
           "properties": {
             "durationMs": {
@@ -150,6 +155,7 @@
           "type": "object"
         },
         "incremental": {
+          "additionalProperties": false,
           "description": "Incremental holds the result of an Incremental backup run. Set only when spec.type is Incremental and the run succeeded.",
           "properties": {
             "auditEntriesExported": {
