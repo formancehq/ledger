@@ -3,6 +3,7 @@ package events
 import (
 	"context"
 	"errors"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
@@ -30,6 +32,31 @@ type startupStatusProposer struct {
 	updates atomic.Int64
 }
 
+func applyStartupStatusUpdate(store *dal.Store, update *raftcmdpb.EventsSinkUpdate) error {
+	batch := store.OpenWriteSession()
+	var err error
+	if update.GetCursor() > 0 {
+		err = state.SetSinkCursor(batch, update.GetSinkName(), update.GetCursor())
+	}
+	if err != nil {
+		_ = batch.Cancel()
+
+		return err
+	}
+	if update.GetClearError() {
+		err = state.ClearSinkStatus(batch, update.GetSinkName())
+	} else if update.GetError() != nil {
+		err = state.SetSinkStatus(batch, &commonpb.SinkStatus{SinkName: update.GetSinkName(), Error: update.GetError()})
+	}
+	if err != nil {
+		_ = batch.Cancel()
+
+		return err
+	}
+
+	return batch.Commit()
+}
+
 func (p *startupStatusProposer) Propose(_ context.Context, proposal *node.Proposal) (*futures.Future[state.ApplyResult], error) {
 	defer proposal.Resolve(nil, nil)
 	f := futures.New[state.ApplyResult]()
@@ -44,18 +71,7 @@ func (p *startupStatusProposer) Propose(_ context.Context, proposal *node.Propos
 		if update == nil {
 			continue
 		}
-		batch := p.store.OpenWriteSession()
-		var err error
-		if update.GetClearError() {
-			err = state.ClearSinkStatus(batch, update.GetSinkName())
-		} else if update.GetError() != nil {
-			err = state.SetSinkStatus(batch, &commonpb.SinkStatus{SinkName: update.GetSinkName(), Error: update.GetError()})
-		}
-		if err == nil {
-			err = batch.Commit()
-		} else {
-			_ = batch.Cancel()
-		}
+		err := applyStartupStatusUpdate(p.store, update)
 		if err != nil {
 			f.Resolve(state.ApplyResult{}, err)
 
@@ -64,6 +80,58 @@ func (p *startupStatusProposer) Propose(_ context.Context, proposal *node.Propos
 		p.updates.Add(1)
 	}
 	f.Resolve(state.ApplyResult{}, nil)
+
+	return f, nil
+}
+
+// delayedStartupStatusProposer accepts an error report but applies it only
+// before a later clear, as an ordered Raft log can do after the first wait times out.
+type delayedStartupStatusProposer struct {
+	store         *dal.Store
+	mu            sync.Mutex
+	pending       *raftcmdpb.EventsSinkUpdate
+	pendingFuture *futures.Future[state.ApplyResult]
+	clearProposed chan struct{}
+	release       chan struct{}
+	reportApplied chan struct{}
+	releaseClear  chan struct{}
+}
+
+func (p *delayedStartupStatusProposer) Propose(_ context.Context, proposal *node.Proposal) (*futures.Future[state.ApplyResult], error) {
+	cmd := &raftcmdpb.Proposal{}
+	if err := cmd.UnmarshalVT(proposal.Data()); err != nil {
+		return nil, err
+	}
+	update := cmd.GetTechnicalUpdates()[0].GetEventsSink()
+	proposal.Resolve(nil, nil)
+	f := futures.New[state.ApplyResult]()
+	if update.GetError() != nil {
+		p.mu.Lock()
+		p.pending = update
+		p.pendingFuture = f
+		p.mu.Unlock()
+
+		return f, nil
+	}
+	close(p.clearProposed)
+	go func() {
+		<-p.release
+		p.mu.Lock()
+		pending, pendingFuture := p.pending, p.pendingFuture
+		p.mu.Unlock()
+		if pending != nil {
+			err := applyStartupStatusUpdate(p.store, pending)
+			pendingFuture.Resolve(state.ApplyResult{}, err)
+			if err != nil {
+				f.Resolve(state.ApplyResult{}, err)
+
+				return
+			}
+			close(p.reportApplied)
+			<-p.releaseClear
+		}
+		f.Resolve(state.ApplyResult{}, applyStartupStatusUpdate(p.store, update))
+	}()
 
 	return f, nil
 }
@@ -254,4 +322,122 @@ func TestManager_WaitStartedFailureIsReportedAndCleared(t *testing.T) {
 		return err == nil && status.GetError() == nil && managedSinkByName(m, config.GetName()) != nil
 	}, 3*time.Second, 10*time.Millisecond)
 	require.Equal(t, int64(2), proposer.updates.Load())
+}
+
+func TestManager_UncertainStartupReportClearedAfterRecovery(t *testing.T) {
+	previous, existed := sinkFactories["nats"]
+	t.Cleanup(func() {
+		if existed {
+			sinkFactories["nats"] = previous
+		} else {
+			delete(sinkFactories, "nats")
+		}
+	})
+	var attempts atomic.Int64
+	sinkFactories["nats"] = func(*commonpb.SinkConfig, Format) (Sink, error) {
+		if attempts.Add(1) == 1 {
+			return nil, errors.New("temporary startup failure")
+		}
+
+		return startupRetryTestSink{}, nil
+	}
+	builder, store := newTestBuilder(t)
+	attrs := attributes.New()
+	config := &commonpb.SinkConfig{Name: "uncertain-startup-report", Type: &commonpb.SinkConfig_Nats{
+		Nats: &commonpb.NatsSinkConfig{Url: "nats://dependency.invalid:4222", Topic: "ledger.events"},
+	}}
+	saveManagedSinkConfig(t, attrs, store, config)
+	proposer := &delayedStartupStatusProposer{store: store, clearProposed: make(chan struct{}), release: make(chan struct{}), reportApplied: make(chan struct{}), releaseClear: make(chan struct{})}
+	var releaseOnce sync.Once
+	t.Cleanup(func() { releaseOnce.Do(func() { close(proposer.release) }) })
+	var clearOnce sync.Once
+	t.Cleanup(func() { clearOnce.Do(func() { close(proposer.releaseClear) }) })
+	m := NewManager(store, attrs, proposer, builder, logging.Testing(), signal.NewNotifications())
+	m.Start()
+	t.Cleanup(m.Stop)
+	m.OnLeadershipChange(true)
+	require.Eventually(t, func() bool { return attempts.Load() >= 2 }, 5*time.Second, 10*time.Millisecond)
+	select {
+	case <-proposer.clearProposed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("a successful start must order a clear after the uncertain report")
+	}
+	releaseOnce.Do(func() { close(proposer.release) })
+	select {
+	case <-proposer.reportApplied:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the accepted startup report did not apply")
+	}
+	status, err := startupStatusView(store, config)
+	require.NoError(t, err)
+	require.Equal(t, "sink startup: temporary startup failure", status.GetError().GetMessage())
+	clearOnce.Do(func() { close(proposer.releaseClear) })
+	require.Eventually(t, func() bool {
+		status, err := startupStatusView(store, config)
+
+		return err == nil && status.GetError() == nil && managedSinkByName(m, config.GetName()) != nil
+	}, 3*time.Second, 10*time.Millisecond)
+}
+
+func TestManager_PreservesDeliveryErrorAcrossStartupFailure(t *testing.T) {
+	previous, existed := sinkFactories["nats"]
+	t.Cleanup(func() {
+		if existed {
+			sinkFactories["nats"] = previous
+		} else {
+			delete(sinkFactories, "nats")
+		}
+	})
+	allowSuccess := make(chan struct{})
+	sinkFactories["nats"] = func(*commonpb.SinkConfig, Format) (Sink, error) {
+		select {
+		case <-allowSuccess:
+			return startupRetryTestSink{}, nil
+		default:
+			return nil, errors.New("constructor unavailable")
+		}
+	}
+	builder, store := newTestBuilder(t)
+	attrs := attributes.New()
+	config := &commonpb.SinkConfig{Name: "prior-delivery-error", Type: &commonpb.SinkConfig_Nats{
+		Nats: &commonpb.NatsSinkConfig{Url: "nats://dependency.invalid:4222", Topic: "ledger.events"},
+	}}
+	saveManagedSinkConfig(t, attrs, store, config)
+	batch := store.OpenWriteSession()
+	require.NoError(t, state.SetSinkStatus(batch, &commonpb.SinkStatus{SinkName: config.GetName(), Error: &commonpb.SinkError{Message: "delivery failed"}}))
+	require.NoError(t, batch.Commit())
+	proposer := &startupStatusProposer{store: store}
+	m := NewManager(store, attrs, proposer, builder, logging.Testing(), signal.NewNotifications())
+	m.Start()
+	t.Cleanup(m.Stop)
+	m.OnLeadershipChange(true)
+	require.Eventually(t, func() bool { return pendingStartupRetry(m, config.GetName()) }, time.Second, 10*time.Millisecond)
+	status, err := startupStatusView(store, config)
+	require.NoError(t, err)
+	require.Equal(t, "delivery failed", status.GetError().GetMessage())
+	require.Zero(t, proposer.updates.Load())
+	close(allowSuccess)
+	require.Eventually(t, func() bool { return managedSinkByName(m, config.GetName()) != nil }, 3*time.Second, 10*time.Millisecond)
+	status, err = startupStatusView(store, config)
+	require.NoError(t, err)
+	require.Equal(t, "delivery failed", status.GetError().GetMessage())
+	require.Zero(t, proposer.updates.Load())
+
+	batch = store.OpenWriteSession()
+	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{
+		Sequence: 1,
+		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
+			CreateLedger: &commonpb.CreatedLedgerLog{
+				Name: "orders", CreatedAt: commonpb.NewTimestamp(libtime.Now()),
+			},
+		}},
+	}}))
+	require.NoError(t, state.SetAppliedIndex(batch, 1))
+	require.NoError(t, batch.Commit())
+	managedSinkByName(m, config.GetName()).emitter.Notify()
+	require.Eventually(t, func() bool {
+		status, err := startupStatusView(store, config)
+
+		return err == nil && status.GetError() == nil && status.GetCursor() == 1
+	}, 3*time.Second, 10*time.Millisecond, "the delivery error clears only after a successful publish")
 }

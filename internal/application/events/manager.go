@@ -328,7 +328,7 @@ func (m *Manager) startSink(sc *commonpb.SinkConfig, generation uint64) *managed
 
 		return nil
 	}
-	if err := m.clearStartupError(emitter, generation); err != nil {
+	if err := m.finishStartupStatus(emitter, generation); err != nil {
 		m.logger.Errorf("Failed to clear startup error for sink %q: %v", sc.GetName(), err)
 		emitter.Stop()
 		if closeErr := sink.Close(); closeErr != nil {
@@ -384,6 +384,12 @@ func (m *Manager) reportStartupError(name string, startupErr error, generation u
 	if status.GetError().GetMessage() == message {
 		return
 	}
+	// A delivery error remains authoritative until a successful publish.
+	// SinkStatus has room for one error; replacing it here would erase that
+	// unresolved delivery failure when startup later succeeds.
+	if status.GetError() != nil && !strings.HasPrefix(status.GetError().GetMessage(), sinkStartupErrorPrefix) {
+		return
+	}
 	leaderContext, current := m.currentLeaderContext(generation)
 	if !current {
 		return
@@ -398,7 +404,7 @@ func (m *Manager) reportStartupError(name string, startupErr error, generation u
 	}
 }
 
-func (m *Manager) clearStartupError(emitter *Emitter, generation uint64) error {
+func (m *Manager) finishStartupStatus(emitter *Emitter, generation uint64) error {
 	if !m.isCurrentLeader(generation) {
 		return nil
 	}
@@ -406,7 +412,7 @@ func (m *Manager) clearStartupError(emitter *Emitter, generation uint64) error {
 	if err != nil {
 		return err
 	}
-	if !strings.HasPrefix(status.GetError().GetMessage(), sinkStartupErrorPrefix) {
+	if status.GetError() != nil && !strings.HasPrefix(status.GetError().GetMessage(), sinkStartupErrorPrefix) {
 		return nil
 	}
 	leaderContext, current := m.currentLeaderContext(generation)
@@ -415,6 +421,9 @@ func (m *Manager) clearStartupError(emitter *Emitter, generation uint64) error {
 	}
 	ctx, cancel := context.WithTimeout(leaderContext, deliveredCursorUpdateTimeout)
 	defer cancel()
+	// Always order a clear after startup, even when the read found no status.
+	// An earlier accepted error proposal may still be waiting for FSM apply
+	// after its own wait timed out. Raft applies this clear after that report.
 
 	return emitter.proposeSinkUpdate(ctx, &raftcmdpb.EventsSinkUpdate{
 		SinkName: emitter.sinkName, ClearError: true,

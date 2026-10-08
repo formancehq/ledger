@@ -104,7 +104,7 @@ func TestManager_CoalescedLeadershipFlapReplacesPriorGenerationEmitter(t *testin
 		},
 	})
 
-	m := NewManager(store, attrs, nil, builder, logging.Testing(), notifications)
+	m := NewManager(store, attrs, &startupStatusProposer{store: store}, builder, logging.Testing(), notifications)
 	m.Start()
 	t.Cleanup(m.Stop)
 	m.OnLeadershipChange(true)

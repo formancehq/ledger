@@ -65,8 +65,9 @@ actually provides. If stronger durability is a desired feature absent from the
 current contract, record the unmet proof as a question.
 
 Startup status is a separate observation from delivery acknowledgement. The
-manager proposes an error for failed construction or emitter startup and clears
-that startup error after a successful start, before the emitter can publish.
+manager proposes an error for failed construction or emitter startup, unless a
+prior delivery error is still authoritative. After a successful start it orders
+a clear after any pending startup report, before the emitter can publish.
 An unchanged retry must not repeatedly propose the same message. A configured
 sink with cursor zero and no error is pending; a delivery error from a prior
 emitter must remain until successful publication. Trace the persisted status,
