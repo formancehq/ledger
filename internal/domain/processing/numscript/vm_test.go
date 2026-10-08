@@ -749,9 +749,12 @@ func TestSafeExecCompiled_WarmInstanceReleasesSource(t *testing.T) {
 // TestSafeExecCompiled_ForeignBytecodeVersionRejected: an artifact whose
 // program or vars carry a bytecode version the bundled library cannot read is
 // rejected loudly (ErrNumscriptRuntime, not a panic) and never cached, for
-// either half: the apply path hands every present artifact to SafeExecCompiled
-// and never repairs one from the script text. A readable older minor of a
-// stable major runs (TestSafeExecCompiled_OlderMinorRuns).
+// either half. This covers SafeExecCompiled's strict decoding contract only; it
+// never repairs an artifact from the script text. The apply path goes through
+// SafeExecCommitted instead, which derives program and vars from the text for
+// an unreadable version (TestSafeExecCommitted_ForeignBytecodeVersionDerivesFromText).
+// A readable older minor of a stable major runs
+// (TestSafeExecCompiled_OlderMinorRuns).
 func TestSafeExecCompiled_ForeignBytecodeVersionRejected(t *testing.T) {
 	t.Parallel()
 

@@ -110,6 +110,30 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	// artifact binding check further down compares it to the committed hash.
 	scriptHash := numscript.HashScript(script.GetPlain())
 
+	// The artifact arrives by value, by reference, or not at all; every other
+	// combination of the four fields is a corrupt state admission never
+	// produces and fails loudly here, before any cache access and before the stale-inputs
+	// re-resolution (which would otherwise report a malformed artifact as a
+	// retryable stale input), so it fails identically on every replica
+	// (invariants #2, #7).
+	shape, shapeErr := classifyCompiledArtifact(p.compiledProgram, p.compiledProgramHash, p.compiledVars, p.compiledScriptHash)
+	if shapeErr != nil {
+		return nil, shapeErr
+	}
+
+	// The artifact is bound to the exact text admission compiled. The text
+	// resolved here cannot differ — inline scripts travel in the order, exact
+	// library versions are immutable, and an advanced "latest" was
+	// stale-rejected before the producer ran — so a mismatch is a "should not
+	// happen" surfaced loudly (invariant #7), never executing the wrong program.
+	// An absent artifact has no hash to bind; its recompile below keys the
+	// cache by the resolved text's own hash.
+	if shape != artifactAbsent && !bytes.Equal(scriptHash[:], p.compiledScriptHash) {
+		return nil, &domain.ErrNumscriptRuntime{
+			Detail: "compiled numscript artifact does not match the resolved script text",
+		}
+	}
+
 	// Stale-inputs check: admission bound the balance/metadata values its
 	// dependency resolution read into OrderTechnical.inputs_resolution_hash
 	// (staged on p.inputsResolutionHash by the dispatcher). Re-resolve
@@ -195,29 +219,6 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 
 	// Execute the script on the VM, the only execution engine. When Force is
 	// true, the store returns unlimited balances to bypass balance checks.
-	//
-	// The artifact arrives by value, by reference, or not at all; every other
-	// combination of the four fields is a corrupt state admission never
-	// produces and fails loudly here, before any cache access, so it fails
-	// identically on every replica (invariants #2, #7).
-	shape, shapeErr := classifyCompiledArtifact(p.compiledProgram, p.compiledProgramHash, p.compiledVars, p.compiledScriptHash)
-	if shapeErr != nil {
-		return nil, shapeErr
-	}
-
-	// The artifact is bound to the exact text admission compiled. The text
-	// resolved here cannot differ — inline scripts travel in the order, exact
-	// library versions are immutable, and an advanced "latest" was
-	// stale-rejected before the producer ran — so a mismatch is a "should not
-	// happen" surfaced loudly (invariant #7), never executing the wrong program.
-	// An absent artifact has no hash to bind; its recompile below keys the
-	// cache by the resolved text's own hash.
-	if shape != artifactAbsent && !bytes.Equal(scriptHash[:], p.compiledScriptHash) {
-		return nil, &domain.ErrNumscriptRuntime{
-			Detail: "compiled numscript artifact does not match the resolved script text",
-		}
-	}
-
 	vmStore := numscript.NewVMStore(&scopeValueSource{store: s, ledgerName: ledgerName}, order.GetForce())
 
 	var (
