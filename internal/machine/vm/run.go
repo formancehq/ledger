@@ -1,8 +1,13 @@
 package vm
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"math"
 	"math/big"
+	"strconv"
 
 	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
 	"github.com/formancehq/go-libs/v5/pkg/types/time"
@@ -29,7 +34,24 @@ type ScriptV1 struct {
 	Vars map[string]any `json:"vars"`
 }
 
-func (s ScriptV1) ToCore() Script {
+// ErrInvalidMonetaryAmount is returned when a v1 monetary amount cannot be
+// represented as an exact integer.
+var ErrInvalidMonetaryAmount = errors.New("invalid monetary amount")
+
+func (s *ScriptV1) UnmarshalJSON(data []byte) error {
+	type scriptV1Alias ScriptV1
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+
+	var decoded scriptV1Alias
+	if err := decoder.Decode(&decoded); err != nil {
+		return err
+	}
+	*s = ScriptV1(decoded)
+	return nil
+}
+
+func (s ScriptV1) ToCore() (Script, error) {
 	s.Script.Vars = map[string]string{}
 	for k, v := range s.Vars {
 		switch v := v.(type) {
@@ -39,14 +61,24 @@ func (s ScriptV1) ToCore() Script {
 			switch amount := v["amount"].(type) {
 			case string:
 				s.Script.Vars[k] = fmt.Sprintf("%s %s", v["asset"], amount)
+			case json.Number:
+				rational, ok := new(big.Rat).SetString(string(amount))
+				if !ok || !rational.IsInt() {
+					return Script{}, fmt.Errorf("%w for variable %q: amount must be an integer", ErrInvalidMonetaryAmount, k)
+				}
+				s.Script.Vars[k] = fmt.Sprintf("%s %s", v["asset"], rational.Num().String())
 			case float64:
-				s.Script.Vars[k] = fmt.Sprintf("%s %d", v["asset"], int(amount))
+				const maxSafeInteger = 1<<53 - 1
+				if amount != math.Trunc(amount) || math.Abs(amount) > maxSafeInteger {
+					return Script{}, fmt.Errorf("%w for variable %q: floating-point amount must be an integer within the safe range", ErrInvalidMonetaryAmount, k)
+				}
+				s.Script.Vars[k] = fmt.Sprintf("%s %s", v["asset"], strconv.FormatInt(int64(amount), 10))
 			}
 		default:
 			s.Script.Vars[k] = fmt.Sprint(v)
 		}
 	}
-	return s.Script
+	return s.Script, nil
 }
 
 type Result struct {
