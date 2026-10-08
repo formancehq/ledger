@@ -8,7 +8,7 @@ import (
 
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -329,7 +329,7 @@ func TestReferenceAttribute(t *testing.T) {
 
 	// Set a value, then overwrite with a later Set — latest wins
 	batch := store.OpenWriteSession()
-	require.NoError(t, errOnly(attrs.References.Set(batch, testKey, &internalcommonpb.TransactionReferenceValue{
+	require.NoError(t, errOnly(attrs.References.Set(batch, testKey, &internalstatepb.TransactionReferenceValue{
 		TransactionId: 42,
 	})))
 	require.NoError(t, batch.Commit())
@@ -340,7 +340,7 @@ func TestReferenceAttribute(t *testing.T) {
 
 	// Overwrite with a later Set
 	batch = store.OpenWriteSession()
-	require.NoError(t, errOnly(attrs.References.Set(batch, testKey, &internalcommonpb.TransactionReferenceValue{
+	require.NoError(t, errOnly(attrs.References.Set(batch, testKey, &internalstatepb.TransactionReferenceValue{
 		TransactionId: 99,
 	})))
 	require.NoError(t, batch.Commit())

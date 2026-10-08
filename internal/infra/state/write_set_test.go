@@ -13,7 +13,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -176,7 +176,7 @@ func TestWriteSetGetPutIdempotencyKey(t *testing.T) {
 	_, err := buf.GetIdempotencyKey(key)
 	require.ErrorIs(t, err, domain.ErrNotFound)
 
-	buf.PutIdempotencyKey(key, &internalcommonpb.IdempotencyKeyValue{FirstLogSequence: 5, LogCount: 1})
+	buf.PutIdempotencyKey(key, &internalstatepb.IdempotencyKeyValue{FirstLogSequence: 5, LogCount: 1})
 	val, err := buf.GetIdempotencyKey(key)
 	require.NoError(t, err)
 	require.NotNil(t, val)
@@ -193,7 +193,7 @@ func TestWriteSetGetPutTransactionReference(t *testing.T) {
 	_, err := buf.TransactionReferences().Get(key)
 	require.ErrorIs(t, err, domain.ErrNotFound)
 
-	buf.TransactionReferences().Put(key, &internalcommonpb.TransactionReferenceValue{TransactionId: 100})
+	buf.TransactionReferences().Put(key, &internalstatepb.TransactionReferenceValue{TransactionId: 100})
 	val, err := buf.TransactionReferences().Get(key)
 	require.NoError(t, err)
 	require.NotNil(t, val)
@@ -205,7 +205,7 @@ func TestWriteSetTransactionState(t *testing.T) {
 	buf, _, _ := newTestBuffer(t)
 
 	key := domain.TransactionKey{LedgerName: "test", ID: 1}
-	state := &internalcommonpb.TransactionState{
+	state := &internalstatepb.TransactionState{
 		CreatedByLog: 5,
 	}
 
@@ -467,11 +467,11 @@ func TestWriteSetResetIsolation(t *testing.T) {
 	)
 	buf.PutIdempotencyKey(
 		domain.IdempotencyKey{Key: "ik-leak"},
-		&internalcommonpb.IdempotencyKeyValue{FirstLogSequence: 7, LogCount: 1},
+		&internalstatepb.IdempotencyKeyValue{FirstLogSequence: 7, LogCount: 1},
 	)
 	buf.TransactionReferences().Put(
 		domain.TransactionReferenceKey{LedgerName: "test", Reference: "ref-leak"},
-		&internalcommonpb.TransactionReferenceValue{TransactionId: 42},
+		&internalstatepb.TransactionReferenceValue{TransactionId: 42},
 	)
 
 	// Pending slices

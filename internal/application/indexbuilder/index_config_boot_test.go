@@ -19,7 +19,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -77,7 +77,7 @@ func TestBootInitPreservesAddressQueryPinnedBeforeDrop(t *testing.T) {
 	commitBootQueryState(t, b, 3, []*commonpb.Log{
 		bootQueryApplyLog(ledger, 3, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{Transaction: tx}}}),
 	}, func(batch *dal.WriteSession) {
-		_, err := b.attrs.Transaction.Set(batch, (domain.TransactionKey{LedgerName: ledger, ID: 162}).Bytes(), &internalcommonpb.TransactionState{CreatedByLog: 3})
+		_, err := b.attrs.Transaction.Set(batch, (domain.TransactionKey{LedgerName: ledger, ID: 162}).Bytes(), &internalstatepb.TransactionState{CreatedByLog: 3})
 		require.NoError(t, err)
 		_, err = b.attrs.Volume.Set(batch, domain.NewVolumeKey(ledger, account, "USD", "").Bytes(), &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(1)})
 		require.NoError(t, err)

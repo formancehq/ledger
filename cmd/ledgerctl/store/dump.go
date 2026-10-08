@@ -13,7 +13,7 @@ import (
 
 	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -209,7 +209,7 @@ func decodeValue(key, val []byte) string {
 			return "(empty time index entry)"
 		}
 
-		return tryProtoJSON(val, &internalcommonpb.IdempotencyKeyValue{})
+		return tryProtoJSON(val, &internalstatepb.IdempotencyKeyValue{})
 	case dal.ZoneHistory:
 		if len(key) >= 2 && key[1] == dal.SubHistoryAuditItem {
 			return tryProtoJSON(val, &auditpb.AuditItem{})
@@ -276,9 +276,9 @@ func decodeGlobalValue(key, val []byte) string {
 	case dal.SubGlobQueryCheckpointSchedule:
 		return fmt.Sprintf("cron=%q", string(val))
 	case dal.SubGlobPersistedConfig:
-		return tryProtoJSON(val, &internalcommonpb.PersistedConfig{})
+		return tryProtoJSON(val, &internalstatepb.PersistedConfig{})
 	case dal.SubGlobClusterConfig:
-		return tryProtoJSON(val, &internalcommonpb.PersistedClusterState{})
+		return tryProtoJSON(val, &internalstatepb.PersistedClusterState{})
 	default:
 		return hexVal(val)
 	}
@@ -298,13 +298,13 @@ func decodeAttributeValue(key, val []byte) string {
 	case dal.SubAttrMetadata:
 		return tryProtoJSON(val, &auditpb.MetadataValue{})
 	case dal.SubAttrReference:
-		return tryProtoJSON(val, &internalcommonpb.TransactionReferenceValue{})
+		return tryProtoJSON(val, &internalstatepb.TransactionReferenceValue{})
 	case dal.SubAttrLedger:
 		return tryProtoJSON(val, &auditpb.LedgerInfo{})
 	case dal.SubAttrBoundary:
 		return tryProtoJSON(val, &raftcmdpb.LedgerBoundaries{})
 	case dal.SubAttrTransaction:
-		return tryProtoJSON(val, &internalcommonpb.TransactionState{})
+		return tryProtoJSON(val, &internalstatepb.TransactionState{})
 	default:
 		return hexVal(val)
 	}

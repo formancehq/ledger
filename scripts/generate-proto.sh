@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
 root_module=github.com/formancehq/ledger/v3
 client_module=github.com/formancehq/ledger/pkg/client/v3
 public=(common signature audit bucket cluster restore)
-internal=(raft_transport cluster_bootstrap raft_cmd snapshot events proposal internal_common)
+internal=(raft_transport cluster_bootstrap raft_cmd snapshot events proposal internal_state)
 
 mkdir -p build pkg/client/v3/grpc pkg/client/v3/proto
 for tool in dethash reader skippable queryfilter-validity ledger-log-category rpcauth; do

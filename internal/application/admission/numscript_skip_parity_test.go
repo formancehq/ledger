@@ -9,7 +9,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -80,7 +80,7 @@ func writeReference(t *testing.T, admission *Admission, ledger, reference string
 
 	key := domain.TransactionReferenceKey{LedgerName: ledger, Reference: reference}
 	batch := admission.store.OpenWriteSession()
-	_, err := admission.attrs.References.Set(batch, key.Bytes(), &internalcommonpb.TransactionReferenceValue{TransactionId: txID})
+	_, err := admission.attrs.References.Set(batch, key.Bytes(), &internalstatepb.TransactionReferenceValue{TransactionId: txID})
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 }

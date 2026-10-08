@@ -16,7 +16,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -69,7 +69,7 @@ func TestInvalidCallerAttributionPreventsRestoreFinalization(t *testing.T) {
 	server.mu.Unlock()
 	t.Cleanup(server.Shutdown)
 
-	configBytes, err := proto.Marshal(&internalcommonpb.PersistedConfig{ClusterId: clusterID})
+	configBytes, err := proto.Marshal(&internalstatepb.PersistedConfig{ClusterId: clusterID})
 	require.NoError(t, err)
 	entry := &auditpb.AuditEntry{
 		Sequence:       1,
@@ -120,7 +120,7 @@ func TestCanceledValidationPreventsRestoreFinalization(t *testing.T) {
 	server.mu.Unlock()
 	t.Cleanup(server.Shutdown)
 
-	configBytes, err := proto.Marshal(&internalcommonpb.PersistedConfig{ClusterId: "source-cluster"})
+	configBytes, err := proto.Marshal(&internalstatepb.PersistedConfig{ClusterId: "source-cluster"})
 	require.NoError(t, err)
 	batch := store.OpenWriteSession()
 	require.NoError(t, batch.SetBytes([]byte{dal.ZoneClusterPersistent, dal.SubGlobPersistedConfig}, configBytes))

@@ -13,7 +13,7 @@ import (
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -383,8 +383,8 @@ func TestCleanupToken_Release(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = loaders.References.LoadOrWait(key4, 100, testCacheEpoch, func() (*internalcommonpb.TransactionReferenceValue, error) {
-		return &internalcommonpb.TransactionReferenceValue{TransactionId: 1}, nil
+	_, err = loaders.References.LoadOrWait(key4, 100, testCacheEpoch, func() (*internalstatepb.TransactionReferenceValue, error) {
+		return &internalstatepb.TransactionReferenceValue{TransactionId: 1}, nil
 	})
 	require.NoError(t, err)
 
@@ -419,10 +419,10 @@ func TestCleanupToken_Release(t *testing.T) {
 	assert.Equal(t, 1, volumeLoadCount2, "Volumes key2 should reload after Release")
 
 	refLoadCount := 0
-	_, err = loaders.References.LoadOrWait(key4, 100, testCacheEpoch, func() (*internalcommonpb.TransactionReferenceValue, error) {
+	_, err = loaders.References.LoadOrWait(key4, 100, testCacheEpoch, func() (*internalstatepb.TransactionReferenceValue, error) {
 		refLoadCount++
 
-		return &internalcommonpb.TransactionReferenceValue{TransactionId: 2}, nil
+		return &internalstatepb.TransactionReferenceValue{TransactionId: 2}, nil
 	})
 	require.NoError(t, err)
 	assert.Equal(t, 1, refLoadCount, "References should reload after Release")

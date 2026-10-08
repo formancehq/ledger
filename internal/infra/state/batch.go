@@ -8,7 +8,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -205,7 +205,7 @@ func SaveMaintenanceMode(b *dal.WriteSession, enabled bool) error {
 }
 
 // SaveClusterState stores the persisted cluster state in the batch.
-func saveClusterState(b *dal.WriteSession, state *internalcommonpb.PersistedClusterState) error {
+func saveClusterState(b *dal.WriteSession, state *internalstatepb.PersistedClusterState) error {
 	return b.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobClusterConfig}, state)
 }
 

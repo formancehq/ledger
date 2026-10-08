@@ -12,7 +12,7 @@ import (
 
 	grpc "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	domain "github.com/formancehq/ledger/v3/internal/domain"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	raftcmdpb "github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -1456,10 +1456,10 @@ func (c *MockScopeSetRequireSignaturesCall) DoAndReturn(f func(bool)) *MockScope
 }
 
 // TransactionReferences mocks base method.
-func (m *MockScope) TransactionReferences() Accessor[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader] {
+func (m *MockScope) TransactionReferences() Accessor[domain.TransactionReferenceKey, *internalstatepb.TransactionReferenceValue, internalstatepb.TransactionReferenceValueReader] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "TransactionReferences")
-	ret0, _ := ret[0].(Accessor[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader])
+	ret0, _ := ret[0].(Accessor[domain.TransactionReferenceKey, *internalstatepb.TransactionReferenceValue, internalstatepb.TransactionReferenceValueReader])
 	return ret0
 }
 
@@ -1476,28 +1476,28 @@ type MockScopeTransactionReferencesCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockScopeTransactionReferencesCall) Return(arg0 Accessor[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader]) *MockScopeTransactionReferencesCall {
+func (c *MockScopeTransactionReferencesCall) Return(arg0 Accessor[domain.TransactionReferenceKey, *internalstatepb.TransactionReferenceValue, internalstatepb.TransactionReferenceValueReader]) *MockScopeTransactionReferencesCall {
 	c.Call = c.Call.Return(arg0)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockScopeTransactionReferencesCall) Do(f func() Accessor[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader]) *MockScopeTransactionReferencesCall {
+func (c *MockScopeTransactionReferencesCall) Do(f func() Accessor[domain.TransactionReferenceKey, *internalstatepb.TransactionReferenceValue, internalstatepb.TransactionReferenceValueReader]) *MockScopeTransactionReferencesCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeTransactionReferencesCall) DoAndReturn(f func() Accessor[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader]) *MockScopeTransactionReferencesCall {
+func (c *MockScopeTransactionReferencesCall) DoAndReturn(f func() Accessor[domain.TransactionReferenceKey, *internalstatepb.TransactionReferenceValue, internalstatepb.TransactionReferenceValueReader]) *MockScopeTransactionReferencesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // TransactionStates mocks base method.
-func (m *MockScope) TransactionStates() Accessor[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader] {
+func (m *MockScope) TransactionStates() Accessor[domain.TransactionKey, *internalstatepb.TransactionState, internalstatepb.TransactionStateReader] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "TransactionStates")
-	ret0, _ := ret[0].(Accessor[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader])
+	ret0, _ := ret[0].(Accessor[domain.TransactionKey, *internalstatepb.TransactionState, internalstatepb.TransactionStateReader])
 	return ret0
 }
 
@@ -1514,19 +1514,19 @@ type MockScopeTransactionStatesCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockScopeTransactionStatesCall) Return(arg0 Accessor[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader]) *MockScopeTransactionStatesCall {
+func (c *MockScopeTransactionStatesCall) Return(arg0 Accessor[domain.TransactionKey, *internalstatepb.TransactionState, internalstatepb.TransactionStateReader]) *MockScopeTransactionStatesCall {
 	c.Call = c.Call.Return(arg0)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockScopeTransactionStatesCall) Do(f func() Accessor[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader]) *MockScopeTransactionStatesCall {
+func (c *MockScopeTransactionStatesCall) Do(f func() Accessor[domain.TransactionKey, *internalstatepb.TransactionState, internalstatepb.TransactionStateReader]) *MockScopeTransactionStatesCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeTransactionStatesCall) DoAndReturn(f func() Accessor[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader]) *MockScopeTransactionStatesCall {
+func (c *MockScopeTransactionStatesCall) DoAndReturn(f func() Accessor[domain.TransactionKey, *internalstatepb.TransactionState, internalstatepb.TransactionStateReader]) *MockScopeTransactionStatesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

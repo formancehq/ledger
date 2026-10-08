@@ -26,7 +26,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	protoerr "github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -263,7 +263,7 @@ func (ctrl *DefaultController) buildTransaction(ctx context.Context, reader dal.
 // assembleTransactionFromState builds a transaction from its TransactionState and the creation log.
 // Metadata values are returned verbatim — declared_type is an index hint, not
 // an API contract, so reads do not coerce.
-func assembleTransactionFromState(ctx context.Context, reader dal.PebbleReader, transactionID uint64, state *internalcommonpb.TransactionState) (*auditpb.Transaction, error) {
+func assembleTransactionFromState(ctx context.Context, reader dal.PebbleReader, transactionID uint64, state *internalstatepb.TransactionState) (*auditpb.Transaction, error) {
 	log, err := query.ReadLogBySequence(ctx, reader, state.GetCreatedByLog())
 	if err != nil {
 		return nil, fmt.Errorf("getting system log %d: %w", state.GetCreatedByLog(), err)

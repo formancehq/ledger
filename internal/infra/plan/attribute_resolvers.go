@@ -8,7 +8,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/preload"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -115,7 +115,7 @@ func buildAttrResolvers(
 			getValue: attrs.Volume.Get,
 			bloom:    filter(dal.SubAttrVolume),
 		},
-		dal.SubAttrReference: &protoAttrResolver[*internalcommonpb.TransactionReferenceValue]{
+		dal.SubAttrReference: &protoAttrResolver[*internalstatepb.TransactionReferenceValue]{
 			attrCode: dal.SubAttrReference,
 			typeName: "references",
 			cache:    c.References,
@@ -131,7 +131,7 @@ func buildAttrResolvers(
 			getValue: attrs.SinkConfig.Get,
 			bloom:    filter(dal.SubAttrSinkConfig),
 		},
-		dal.SubAttrNumscriptVersion: &protoAttrResolver[*internalcommonpb.NumscriptVersionValue]{
+		dal.SubAttrNumscriptVersion: &protoAttrResolver[*internalstatepb.NumscriptVersionValue]{
 			attrCode: dal.SubAttrNumscriptVersion,
 			typeName: "numscript_versions",
 			cache:    c.NumscriptVersions,
@@ -147,7 +147,7 @@ func buildAttrResolvers(
 			getValue: attrs.NumscriptContent.Get,
 			bloom:    filter(dal.SubAttrNumscriptContent),
 		},
-		dal.SubAttrTransaction: &protoAttrResolver[*internalcommonpb.TransactionState]{
+		dal.SubAttrTransaction: &protoAttrResolver[*internalstatepb.TransactionState]{
 			attrCode: dal.SubAttrTransaction,
 			typeName: "transactions",
 			cache:    c.Transactions,

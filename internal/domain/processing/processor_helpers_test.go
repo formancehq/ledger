@@ -9,7 +9,7 @@ import (
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -228,9 +228,9 @@ type mockStubs struct {
 	boundariesCall            *gomock.Call
 	accountMetadata           *kindStub[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]
 	accountMetadataCall       *gomock.Call
-	transactionStates         *kindStub[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader]
+	transactionStates         *kindStub[domain.TransactionKey, *internalstatepb.TransactionState, internalstatepb.TransactionStateReader]
 	transactionStatesCall     *gomock.Call
-	transactionReferences     *kindStub[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader]
+	transactionReferences     *kindStub[domain.TransactionReferenceKey, *internalstatepb.TransactionReferenceValue, internalstatepb.TransactionReferenceValueReader]
 	transactionReferencesCall *gomock.Call
 	indexes                   *kindStub[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]
 	indexesCall               *gomock.Call
@@ -303,22 +303,22 @@ func (m *mockStubs) accountMetadataStubFor(mockStore *MockScope) (*kindStub[doma
 	return m.accountMetadata, m.accountMetadataCall
 }
 
-func (m *mockStubs) transactionStatesStubFor(mockStore *MockScope) (*kindStub[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader], *gomock.Call) {
+func (m *mockStubs) transactionStatesStubFor(mockStore *MockScope) (*kindStub[domain.TransactionKey, *internalstatepb.TransactionState, internalstatepb.TransactionStateReader], *gomock.Call) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.transactionStates == nil {
-		m.transactionStates = &kindStub[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader]{}
+		m.transactionStates = &kindStub[domain.TransactionKey, *internalstatepb.TransactionState, internalstatepb.TransactionStateReader]{}
 		m.transactionStatesCall = mockStore.EXPECT().TransactionStates().Return(m.transactionStates).AnyTimes()
 	}
 
 	return m.transactionStates, m.transactionStatesCall
 }
 
-func (m *mockStubs) transactionReferencesStubFor(mockStore *MockScope) (*kindStub[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader], *gomock.Call) {
+func (m *mockStubs) transactionReferencesStubFor(mockStore *MockScope) (*kindStub[domain.TransactionReferenceKey, *internalstatepb.TransactionReferenceValue, internalstatepb.TransactionReferenceValueReader], *gomock.Call) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.transactionReferences == nil {
-		m.transactionReferences = &kindStub[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader]{}
+		m.transactionReferences = &kindStub[domain.TransactionReferenceKey, *internalstatepb.TransactionReferenceValue, internalstatepb.TransactionReferenceValueReader]{}
 		m.transactionReferencesCall = mockStore.EXPECT().TransactionReferences().Return(m.transactionReferences).AnyTimes()
 	}
 
@@ -428,17 +428,17 @@ func expectDeleteAccountMetadata(t *testing.T, mockStore *MockScope, key domain.
 	return call
 }
 
-func expectGetTransactionState(mockStore *MockScope, key domain.TransactionKey, value internalcommonpb.TransactionStateReader, err error) *gomock.Call {
+func expectGetTransactionState(mockStore *MockScope, key domain.TransactionKey, value internalstatepb.TransactionStateReader, err error) *gomock.Call {
 	stub, call := stubsFor(mockStore).transactionStatesStubFor(mockStore)
 	stub.expectGet(key, value, err)
 
 	return call
 }
 
-func expectPutTransactionState(t *testing.T, mockStore *MockScope, key domain.TransactionKey, _ *internalcommonpb.TransactionState, hooks ...func(domain.TransactionKey, *internalcommonpb.TransactionState)) *gomock.Call {
+func expectPutTransactionState(t *testing.T, mockStore *MockScope, key domain.TransactionKey, _ *internalstatepb.TransactionState, hooks ...func(domain.TransactionKey, *internalstatepb.TransactionState)) *gomock.Call {
 	t.Helper()
 	stub, call := stubsFor(mockStore).transactionStatesStubFor(mockStore)
-	var hook func(domain.TransactionKey, *internalcommonpb.TransactionState)
+	var hook func(domain.TransactionKey, *internalstatepb.TransactionState)
 	if len(hooks) > 0 {
 		hook = hooks[0]
 	}
@@ -447,10 +447,10 @@ func expectPutTransactionState(t *testing.T, mockStore *MockScope, key domain.Tr
 	return call
 }
 
-func expectPutTransactionReference(t *testing.T, mockStore *MockScope, key domain.TransactionReferenceKey, _ *internalcommonpb.TransactionReferenceValue, hooks ...func(domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue)) *gomock.Call {
+func expectPutTransactionReference(t *testing.T, mockStore *MockScope, key domain.TransactionReferenceKey, _ *internalstatepb.TransactionReferenceValue, hooks ...func(domain.TransactionReferenceKey, *internalstatepb.TransactionReferenceValue)) *gomock.Call {
 	t.Helper()
 	stub, call := stubsFor(mockStore).transactionReferencesStubFor(mockStore)
-	var hook func(domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue)
+	var hook func(domain.TransactionReferenceKey, *internalstatepb.TransactionReferenceValue)
 	if len(hooks) > 0 {
 		hook = hooks[0]
 	}

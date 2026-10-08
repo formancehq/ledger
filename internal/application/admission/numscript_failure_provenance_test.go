@@ -13,7 +13,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript/numscriptmock"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -54,7 +54,7 @@ func writeNumscriptRef(t *testing.T, admission *Admission, ledger, name, version
 	_, err = admission.attrs.NumscriptVersion.Set(
 		batch,
 		domain.NumscriptVersionKey{LedgerName: ledger, Name: name}.Bytes(),
-		&internalcommonpb.NumscriptVersionValue{Version: version},
+		&internalstatepb.NumscriptVersionValue{Version: version},
 	)
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())

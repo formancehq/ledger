@@ -11,7 +11,7 @@ import (
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -85,7 +85,7 @@ func TestProcessOrdersBareMetadataKeysPolicyChange(t *testing.T) {
 				if missing {
 					stored = map[string]*commonpb.MetadataValue{}
 				}
-				transaction := &internalcommonpb.TransactionState{Metadata: stored}
+				transaction := &internalstatepb.TransactionState{Metadata: stored}
 				originalTransaction := proto.Clone(transaction)
 				switch kind {
 				case "account":
@@ -101,10 +101,10 @@ func TestProcessOrdersBareMetadataKeysPolicyChange(t *testing.T) {
 					stub.onDelete(func(key domain.MetadataKey) { recordWrite(); delete(stored, key.Key) })
 				case "transaction":
 					stub, _ := stubsFor(scope).transactionStatesStubFor(scope)
-					stub.onGet(func(domain.TransactionKey) (internalcommonpb.TransactionStateReader, error) {
+					stub.onGet(func(domain.TransactionKey) (internalstatepb.TransactionStateReader, error) {
 						return transaction.AsReader(), nil
 					})
-					stub.onPut(func(_ domain.TransactionKey, value *internalcommonpb.TransactionState) {
+					stub.onPut(func(_ domain.TransactionKey, value *internalstatepb.TransactionState) {
 						recordWrite()
 						transaction = value
 					})

@@ -18,7 +18,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -492,8 +492,8 @@ func TestCacheSnapshotter_PersistAndRestoreReferences(t *testing.T) {
 
 	refKey := domain.TransactionReferenceKey{LedgerName: "test", Reference: "ref-1"}
 	u128 := attributes.HashU128(refKey.Bytes())
-	value := &internalcommonpb.TransactionReferenceValue{TransactionId: 99}
-	registry.Cache.References.Gen0().Put(u128, attributes.Entry[*internalcommonpb.TransactionReferenceValue]{
+	value := &internalstatepb.TransactionReferenceValue{TransactionId: 99}
+	registry.Cache.References.Gen0().Put(u128, attributes.Entry[*internalstatepb.TransactionReferenceValue]{
 		Tag: 6, Data: value,
 	})
 
@@ -514,8 +514,8 @@ func TestCacheSnapshotter_PersistAndRestoreTransactions(t *testing.T) {
 
 	txKey := domain.TransactionKey{LedgerName: "test", ID: 42}
 	u128 := attributes.HashU128(txKey.Bytes())
-	value := &internalcommonpb.TransactionState{CreatedByLog: 10, RevertedByTransaction: 5}
-	registry.Cache.Transactions.Gen0().Put(u128, attributes.Entry[*internalcommonpb.TransactionState]{
+	value := &internalstatepb.TransactionState{CreatedByLog: 10, RevertedByTransaction: 5}
+	registry.Cache.Transactions.Gen0().Put(u128, attributes.Entry[*internalstatepb.TransactionState]{
 		Tag: 7, Data: value,
 	})
 

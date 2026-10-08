@@ -17,7 +17,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -151,8 +151,8 @@ type gatedScope struct {
 	gatedVolumes               *gatedAccessor[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader]
 	gatedAccountMetadata       *gatedAccessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]
 	gatedLedgerMetadata        *gatedAccessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]
-	gatedTransactionReferences *gatedAccessor[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader]
-	gatedTransactionStates     *gatedAccessor[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader]
+	gatedTransactionReferences *gatedAccessor[domain.TransactionReferenceKey, *internalstatepb.TransactionReferenceValue, internalstatepb.TransactionReferenceValueReader]
+	gatedTransactionStates     *gatedAccessor[domain.TransactionKey, *internalstatepb.TransactionState, internalstatepb.TransactionStateReader]
 	gatedPreparedQueries       *gatedAccessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader]
 	gatedIndexes               *gatedAccessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]
 }
@@ -331,8 +331,8 @@ func NewScopeFactory(
 	g.gatedVolumes = newGatedAccessor[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader](inner.volumes, g, dal.SubAttrVolume)
 	g.gatedAccountMetadata = newGatedAccessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader](inner.accountMetadata, g, dal.SubAttrMetadata)
 	g.gatedLedgerMetadata = newGatedAccessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader](inner.ledgerMetadata, g, dal.SubAttrLedgerMetadata)
-	g.gatedTransactionReferences = newGatedAccessor[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader](inner.transactionReferences, g, dal.SubAttrReference)
-	g.gatedTransactionStates = newGatedAccessor[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader](inner.transactionStates, g, dal.SubAttrTransaction)
+	g.gatedTransactionReferences = newGatedAccessor[domain.TransactionReferenceKey, *internalstatepb.TransactionReferenceValue, internalstatepb.TransactionReferenceValueReader](inner.transactionReferences, g, dal.SubAttrReference)
+	g.gatedTransactionStates = newGatedAccessor[domain.TransactionKey, *internalstatepb.TransactionState, internalstatepb.TransactionStateReader](inner.transactionStates, g, dal.SubAttrTransaction)
 	g.gatedPreparedQueries = newGatedAccessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader](inner.preparedQueries, g, dal.SubAttrPreparedQuery)
 	g.gatedIndexes = newGatedAccessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader](inner.indexes, g, dal.SubAttrIndex)
 
@@ -551,11 +551,11 @@ func (g *gatedScope) LedgerMetadata() processing.Accessor[domain.LedgerMetadataK
 	return g.gatedLedgerMetadata
 }
 
-func (g *gatedScope) TransactionReferences() processing.Accessor[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader] {
+func (g *gatedScope) TransactionReferences() processing.Accessor[domain.TransactionReferenceKey, *internalstatepb.TransactionReferenceValue, internalstatepb.TransactionReferenceValueReader] {
 	return g.gatedTransactionReferences
 }
 
-func (g *gatedScope) TransactionStates() processing.Accessor[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader] {
+func (g *gatedScope) TransactionStates() processing.Accessor[domain.TransactionKey, *internalstatepb.TransactionState, internalstatepb.TransactionStateReader] {
 	return g.gatedTransactionStates
 }
 

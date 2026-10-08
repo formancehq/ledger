@@ -12,7 +12,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -252,10 +252,10 @@ func TestCheck_FailureOnlyHistory_ReportsTamperedIdempotencyOutcome(t *testing.T
 		return store
 	}
 
-	faithful := &internalcommonpb.IdempotencyKeyValue{
+	faithful := &internalstatepb.IdempotencyKeyValue{
 		CreatedAt: createdAt,
 		Hash:      proposalHash,
-		Failure: &internalcommonpb.IdempotencyFailure{
+		Failure: &internalstatepb.IdempotencyFailure{
 			Reason:   auditpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
 			Message:  "balance too low",
 			Metadata: map[string]string{"account": "bank"},
@@ -274,16 +274,16 @@ func TestCheck_FailureOnlyHistory_ReportsTamperedIdempotencyOutcome(t *testing.T
 
 	cases := []struct {
 		name   string
-		mutate func(v *internalcommonpb.IdempotencyKeyValue)
+		mutate func(v *internalstatepb.IdempotencyKeyValue)
 	}{
-		{"failure message", func(v *internalcommonpb.IdempotencyKeyValue) { v.Failure.Message = "you have plenty of money" }},
-		{"failure reason", func(v *internalcommonpb.IdempotencyKeyValue) {
+		{"failure message", func(v *internalstatepb.IdempotencyKeyValue) { v.Failure.Message = "you have plenty of money" }},
+		{"failure reason", func(v *internalstatepb.IdempotencyKeyValue) {
 			v.Failure.Reason = auditpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND
 		}},
-		{"proposal hash", func(v *internalcommonpb.IdempotencyKeyValue) { v.Hash = []byte("forged-hash") }},
+		{"proposal hash", func(v *internalstatepb.IdempotencyKeyValue) { v.Hash = []byte("forged-hash") }},
 		// A nil failure with a log range is how a SUCCESS is frozen; the audit
 		// entry says the proposal was rejected.
-		{"outcome flipped to success", func(v *internalcommonpb.IdempotencyKeyValue) {
+		{"outcome flipped to success", func(v *internalstatepb.IdempotencyKeyValue) {
 			v.Failure = nil
 			v.FirstLogSequence = 1
 			v.LogCount = 1

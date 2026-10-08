@@ -5,7 +5,7 @@ package raft;
 option go_package = "github.com/formancehq/ledger/v3/internal/proto/raftcmdpb";
 
 import "common.proto";
-import "internal_common.proto";
+import "internal_state.proto";
 import "signature.proto";
 
 // Order represents a request to be processed by the FSM.

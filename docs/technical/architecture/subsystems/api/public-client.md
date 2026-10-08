@@ -5,7 +5,7 @@ package for the Ledger service contract. The server, `ledgerctl`, and Ledger's
 gRPC tests import it too, so linking a client with `pkg/testserver` registers
 each Protobuf file descriptor once. The public closure comprises `common`,
 `signature`, `audit`, `bucket`, `cluster`, and `restore` (55 RPCs). The seven
-persisted-only common messages live in `internal_common.proto`; Raft,
+persisted-only common messages live in `internal_state.proto`; Raft,
 replication, bootstrap, snapshot, and storage protocols remain private.
 
 The nested Go module at `pkg/client/v3` contains generated bindings, the six

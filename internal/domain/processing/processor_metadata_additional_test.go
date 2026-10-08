@@ -9,7 +9,7 @@ import (
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -244,7 +244,7 @@ func TestProcessDeleteMetadata_Transaction(t *testing.T) {
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 5}
 
 	txKey := domain.TransactionKey{LedgerName: "test-ledger", ID: 3}
-	existingState := &internalcommonpb.TransactionState{
+	existingState := &internalstatepb.TransactionState{
 		CreatedByLog: 1,
 		Metadata: map[string]*commonpb.MetadataValue{
 			"category": commonpb.NewStringValue("expense"),
@@ -255,7 +255,7 @@ func TestProcessDeleteMetadata_Transaction(t *testing.T) {
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	expectGetTransactionState(mockStore, txKey, existingState.AsReader(), nil)
-	expectPutTransactionState(t, mockStore, txKey, nil, func(_ domain.TransactionKey, state *internalcommonpb.TransactionState) {
+	expectPutTransactionState(t, mockStore, txKey, nil, func(_ domain.TransactionKey, state *internalstatepb.TransactionState) {
 		// "category" should be removed, only "status" remains
 		require.NotNil(t, state.GetMetadata())
 		require.Len(t, state.GetMetadata(), 1)

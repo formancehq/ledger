@@ -8,7 +8,7 @@ import (
 	binary "encoding/binary"
 	fmt "fmt"
 	grpc "github.com/formancehq/ledger/pkg/client/v3/grpc"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
 	proto "google.golang.org/protobuf/proto"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -24003,7 +24003,7 @@ func (m *ReloadIdempotencyKey) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Value == nil {
-				m.Value = &internalcommonpb.IdempotencyKeyValue{}
+				m.Value = &internalstatepb.IdempotencyKeyValue{}
 			}
 			if err := m.Value.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err

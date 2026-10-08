@@ -10,7 +10,7 @@ import (
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -1057,7 +1057,7 @@ func TestMirrorIngest_RevertedTransaction_AbsentVolumes(t *testing.T) {
 	expectPutVolume(t, mockStore, domain.NewVolumeKey("mirror-ledger", "users:rare-account", "USD/2", ""), nil)
 	expectPutVolume(t, mockStore, domain.NewVolumeKey("mirror-ledger", "world", "USD/2", ""), nil)
 	expectPutTransactionState(t, mockStore,
-		domain.TransactionKey{LedgerName: "mirror-ledger", ID: 42}, nil, func(_ domain.TransactionKey, st *internalcommonpb.TransactionState) {
+		domain.TransactionKey{LedgerName: "mirror-ledger", ID: 42}, nil, func(_ domain.TransactionKey, st *internalstatepb.TransactionState) {
 			require.Equal(t, uint64(5), st.GetRevertsTransaction())
 		})
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "mirror-ledger"}, nil)
@@ -1127,15 +1127,15 @@ func TestMirrorIngest_RevertedTransaction_LinksOriginal(t *testing.T) {
 	origKey := domain.TransactionKey{LedgerName: "mirror-ledger", ID: 5}
 
 	mockStore.EXPECT().PutReverted(origKey, true)
-	expectGetTransactionState(mockStore, origKey, (&internalcommonpb.TransactionState{CreatedByLog: 7}).AsReader(), nil)
+	expectGetTransactionState(mockStore, origKey, (&internalstatepb.TransactionState{CreatedByLog: 7}).AsReader(), nil)
 	expectPutVolume(t, mockStore, domain.NewVolumeKey("mirror-ledger", "users:rare-account", "USD/2", ""), nil)
 	expectPutVolume(t, mockStore, domain.NewVolumeKey("mirror-ledger", "world", "USD/2", ""), nil)
-	expectPutTransactionState(t, mockStore, origKey, nil, func(_ domain.TransactionKey, st *internalcommonpb.TransactionState) {
+	expectPutTransactionState(t, mockStore, origKey, nil, func(_ domain.TransactionKey, st *internalstatepb.TransactionState) {
 		require.Equal(t, uint64(42), st.GetRevertedByTransaction())
 		require.Equal(t, revertTimestamp, st.GetRevertedAt())
 	})
 	expectPutTransactionState(t, mockStore,
-		domain.TransactionKey{LedgerName: "mirror-ledger", ID: 42}, nil, func(_ domain.TransactionKey, st *internalcommonpb.TransactionState) {
+		domain.TransactionKey{LedgerName: "mirror-ledger", ID: 42}, nil, func(_ domain.TransactionKey, st *internalstatepb.TransactionState) {
 			require.Equal(t, uint64(5), st.GetRevertsTransaction())
 		})
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "mirror-ledger"}, nil)

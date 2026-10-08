@@ -18,7 +18,7 @@ The Raft transport layer and ledger service use gRPC for communication. Protocol
 | `signature.proto` | Request signature types |
 | `events.proto` | Domain event types |
 | `restore.proto` | Restore service |
-| `internal_common.proto` | Persisted-only common messages (not public) |
+| `internal_state.proto` | Persisted-only common messages (not public) |
 
 ### Generated Code
 
@@ -28,7 +28,7 @@ The Raft transport layer and ledger service use gRPC for communication. Protocol
 | `internal/proto/publicpolicy/` | Generated query-filter validity, log-category, and RPC authorization tables used by the server |
 | `internal/protohelpers/`, `internal/protosql/` | Server-side conversion, builders, SQL, and schema adapters for public messages |
 | `raftcmdpb/` | FSM command types |
-| `internalcommonpb/` | Persisted-only common messages |
+| `internalstatepb/` | Persisted-only common messages |
 | `snapshotpb/` | Snapshot service |
 | `eventspb/` | Domain event types |
 | `rafttransportpb/` | Internal Raft transport |

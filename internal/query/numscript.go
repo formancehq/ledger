@@ -9,14 +9,14 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/pkg/semver"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // ReadNumscriptLatestVersion reads the per-name latest pointer (the greatest
 // stored semver) from the attributes zone. Returns "" if the numscript does
 // not exist.
-func ReadNumscriptLatestVersion(attr *attributes.Attribute[*internalcommonpb.NumscriptVersionValue], reader dal.PebbleGetter, ledgerName string, name string) (string, error) {
+func ReadNumscriptLatestVersion(attr *attributes.Attribute[*internalstatepb.NumscriptVersionValue], reader dal.PebbleGetter, ledgerName string, name string) (string, error) {
 	val, err := attr.Get(reader, domain.NumscriptVersionKey{LedgerName: ledgerName, Name: name}.Bytes())
 	if err != nil {
 		return "", fmt.Errorf("reading numscript latest version for %q/%q: %w", ledgerName, name, err)
@@ -36,7 +36,7 @@ func ReadNumscriptLatestVersion(attr *attributes.Attribute[*internalcommonpb.Num
 //
 // Returns nil if the numscript or version does not exist.
 func ReadNumscript(
-	versionAttr *attributes.Attribute[*internalcommonpb.NumscriptVersionValue],
+	versionAttr *attributes.Attribute[*internalstatepb.NumscriptVersionValue],
 	contentAttr *attributes.Attribute[*commonpb.NumscriptInfo],
 	reader dal.PebbleReader,
 	ledgerName string, name string,
@@ -70,7 +70,7 @@ func ReadNumscript(
 // ReadAllNumscripts lists all numscripts for a ledger by scanning the latest
 // pointers, then fetching each script's greatest version content.
 func ReadAllNumscripts(
-	versionAttr *attributes.Attribute[*internalcommonpb.NumscriptVersionValue],
+	versionAttr *attributes.Attribute[*internalstatepb.NumscriptVersionValue],
 	contentAttr *attributes.Attribute[*commonpb.NumscriptInfo],
 	reader dal.PebbleReader,
 	ledgerName string,
@@ -111,7 +111,7 @@ func ReadAllNumscripts(
 // ReadAllNumscriptVersions returns the numscript's history: its current latest
 // (greatest stored semver) and every stored version ordered highest-first.
 func ReadAllNumscriptVersions(
-	versionAttr *attributes.Attribute[*internalcommonpb.NumscriptVersionValue],
+	versionAttr *attributes.Attribute[*internalstatepb.NumscriptVersionValue],
 	contentAttr *attributes.Attribute[*commonpb.NumscriptInfo],
 	reader dal.PebbleReader,
 	ledgerName string, name string,

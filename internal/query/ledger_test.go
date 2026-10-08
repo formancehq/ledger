@@ -13,7 +13,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
@@ -97,7 +97,7 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	_, err = attrs.Metadata.Set(batch, metadataCanonicalKey, commonpb.NewStringValue("value"))
 	require.NoError(t, err)
 	txKey := domain.TransactionKey{LedgerName: "test-ledger", ID: 1}
-	_, err = attrs.Transaction.Set(batch, txKey.Bytes(), &internalcommonpb.TransactionState{
+	_, err = attrs.Transaction.Set(batch, txKey.Bytes(), &internalstatepb.TransactionState{
 		CreatedByLog: 1,
 	})
 	require.NoError(t, err)

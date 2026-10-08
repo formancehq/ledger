@@ -24,7 +24,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -1662,7 +1662,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// duplicate replays the same committed logs instead of re-executing.
 	// Sequences are contiguous, so (first, count) reconstructs every reference.
 	if idempotencyKey != "" && len(createdLogs) > 0 {
-		value := &internalcommonpb.IdempotencyKeyValue{
+		value := &internalstatepb.IdempotencyKeyValue{
 			FirstLogSequence: createdLogs[0].GetSequence(),
 			LogCount:         uint32(len(createdLogs)),
 			Hash:             proposalHash,
@@ -1816,11 +1816,11 @@ func (fsm *Machine) recordIdempotencyFailure(batch *dal.WriteSession, key string
 
 	reason, message := describeFailure(d)
 
-	value := &internalcommonpb.IdempotencyKeyValue{
+	value := &internalstatepb.IdempotencyKeyValue{
 		Hash:      proposalHash,
 		CreatedAt: createdAt,
 		ExpiresAt: expiresAt,
-		Failure: &internalcommonpb.IdempotencyFailure{
+		Failure: &internalstatepb.IdempotencyFailure{
 			Reason:   reason,
 			Message:  message,
 			Metadata: d.Metadata(),

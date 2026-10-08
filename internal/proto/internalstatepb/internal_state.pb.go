@@ -2,9 +2,9 @@
 // versions:
 // 	protoc-gen-go v1.36.12
 // 	protoc        v7.34.2
-// source: internal_common.proto
+// source: internal_state.proto
 
-package internalcommonpb
+package internalstatepb
 
 import (
 	grpc "github.com/formancehq/ledger/pkg/client/v3/grpc"
@@ -34,7 +34,7 @@ type PersistedClusterState struct {
 
 func (x *PersistedClusterState) Reset() {
 	*x = PersistedClusterState{}
-	mi := &file_internal_common_proto_msgTypes[0]
+	mi := &file_internal_state_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -46,7 +46,7 @@ func (x *PersistedClusterState) String() string {
 func (*PersistedClusterState) ProtoMessage() {}
 
 func (x *PersistedClusterState) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_common_proto_msgTypes[0]
+	mi := &file_internal_state_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -59,7 +59,7 @@ func (x *PersistedClusterState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PersistedClusterState.ProtoReflect.Descriptor instead.
 func (*PersistedClusterState) Descriptor() ([]byte, []int) {
-	return file_internal_common_proto_rawDescGZIP(), []int{0}
+	return file_internal_state_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *PersistedClusterState) GetConfig() *grpc.ClusterConfig {
@@ -105,7 +105,7 @@ type TransactionState struct {
 
 func (x *TransactionState) Reset() {
 	*x = TransactionState{}
-	mi := &file_internal_common_proto_msgTypes[1]
+	mi := &file_internal_state_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -117,7 +117,7 @@ func (x *TransactionState) String() string {
 func (*TransactionState) ProtoMessage() {}
 
 func (x *TransactionState) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_common_proto_msgTypes[1]
+	mi := &file_internal_state_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -130,7 +130,7 @@ func (x *TransactionState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TransactionState.ProtoReflect.Descriptor instead.
 func (*TransactionState) Descriptor() ([]byte, []int) {
-	return file_internal_common_proto_rawDescGZIP(), []int{1}
+	return file_internal_state_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *TransactionState) GetCreatedByLog() uint64 {
@@ -202,7 +202,7 @@ type IdempotencyKeyValue struct {
 
 func (x *IdempotencyKeyValue) Reset() {
 	*x = IdempotencyKeyValue{}
-	mi := &file_internal_common_proto_msgTypes[2]
+	mi := &file_internal_state_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -214,7 +214,7 @@ func (x *IdempotencyKeyValue) String() string {
 func (*IdempotencyKeyValue) ProtoMessage() {}
 
 func (x *IdempotencyKeyValue) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_common_proto_msgTypes[2]
+	mi := &file_internal_state_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -227,7 +227,7 @@ func (x *IdempotencyKeyValue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IdempotencyKeyValue.ProtoReflect.Descriptor instead.
 func (*IdempotencyKeyValue) Descriptor() ([]byte, []int) {
-	return file_internal_common_proto_rawDescGZIP(), []int{2}
+	return file_internal_state_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *IdempotencyKeyValue) GetFirstLogSequence() uint64 {
@@ -295,7 +295,7 @@ type IdempotencyFailure struct {
 
 func (x *IdempotencyFailure) Reset() {
 	*x = IdempotencyFailure{}
-	mi := &file_internal_common_proto_msgTypes[3]
+	mi := &file_internal_state_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -307,7 +307,7 @@ func (x *IdempotencyFailure) String() string {
 func (*IdempotencyFailure) ProtoMessage() {}
 
 func (x *IdempotencyFailure) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_common_proto_msgTypes[3]
+	mi := &file_internal_state_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -320,7 +320,7 @@ func (x *IdempotencyFailure) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IdempotencyFailure.ProtoReflect.Descriptor instead.
 func (*IdempotencyFailure) Descriptor() ([]byte, []int) {
-	return file_internal_common_proto_rawDescGZIP(), []int{3}
+	return file_internal_state_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *IdempotencyFailure) GetReason() grpc.ErrorReason {
@@ -354,7 +354,7 @@ type TransactionReferenceValue struct {
 
 func (x *TransactionReferenceValue) Reset() {
 	*x = TransactionReferenceValue{}
-	mi := &file_internal_common_proto_msgTypes[4]
+	mi := &file_internal_state_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -366,7 +366,7 @@ func (x *TransactionReferenceValue) String() string {
 func (*TransactionReferenceValue) ProtoMessage() {}
 
 func (x *TransactionReferenceValue) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_common_proto_msgTypes[4]
+	mi := &file_internal_state_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -379,7 +379,7 @@ func (x *TransactionReferenceValue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TransactionReferenceValue.ProtoReflect.Descriptor instead.
 func (*TransactionReferenceValue) Descriptor() ([]byte, []int) {
-	return file_internal_common_proto_rawDescGZIP(), []int{4}
+	return file_internal_state_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *TransactionReferenceValue) GetTransactionId() uint64 {
@@ -399,7 +399,7 @@ type NumscriptVersionValue struct {
 
 func (x *NumscriptVersionValue) Reset() {
 	*x = NumscriptVersionValue{}
-	mi := &file_internal_common_proto_msgTypes[5]
+	mi := &file_internal_state_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -411,7 +411,7 @@ func (x *NumscriptVersionValue) String() string {
 func (*NumscriptVersionValue) ProtoMessage() {}
 
 func (x *NumscriptVersionValue) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_common_proto_msgTypes[5]
+	mi := &file_internal_state_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -424,7 +424,7 @@ func (x *NumscriptVersionValue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NumscriptVersionValue.ProtoReflect.Descriptor instead.
 func (*NumscriptVersionValue) Descriptor() ([]byte, []int) {
-	return file_internal_common_proto_rawDescGZIP(), []int{5}
+	return file_internal_state_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *NumscriptVersionValue) GetVersion() string {
@@ -449,7 +449,7 @@ type PersistedConfig struct {
 
 func (x *PersistedConfig) Reset() {
 	*x = PersistedConfig{}
-	mi := &file_internal_common_proto_msgTypes[6]
+	mi := &file_internal_state_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -461,7 +461,7 @@ func (x *PersistedConfig) String() string {
 func (*PersistedConfig) ProtoMessage() {}
 
 func (x *PersistedConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_common_proto_msgTypes[6]
+	mi := &file_internal_state_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -474,7 +474,7 @@ func (x *PersistedConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PersistedConfig.ProtoReflect.Descriptor instead.
 func (*PersistedConfig) Descriptor() ([]byte, []int) {
-	return file_internal_common_proto_rawDescGZIP(), []int{6}
+	return file_internal_state_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *PersistedConfig) GetNodeId() uint64 {
@@ -498,11 +498,11 @@ func (x *PersistedConfig) GetStorageSchemaVersion() uint32 {
 	return 0
 }
 
-var File_internal_common_proto protoreflect.FileDescriptor
+var File_internal_state_proto protoreflect.FileDescriptor
 
-const file_internal_common_proto_rawDesc = "" +
+const file_internal_state_proto_rawDesc = "" +
 	"\n" +
-	"\x15internal_common.proto\x12\x06common\x1a\fcommon.proto\"g\n" +
+	"\x14internal_state.proto\x12\x06common\x1a\fcommon.proto\"g\n" +
 	"\x15PersistedClusterState\x12-\n" +
 	"\x06config\x18\x01 \x01(\v2\x15.common.ClusterConfigR\x06config\x12\x1f\n" +
 	"\vcache_epoch\x18\x02 \x01(\x06R\n" +
@@ -544,22 +544,22 @@ const file_internal_common_proto_rawDesc = "" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12\x1d\n" +
 	"\n" +
 	"cluster_id\x18\x02 \x01(\tR\tclusterId\x124\n" +
-	"\x16storage_schema_version\x18\x03 \x01(\rR\x14storageSchemaVersionBAZ?github.com/formancehq/ledger/v3/internal/proto/internalcommonpbb\x06proto3"
+	"\x16storage_schema_version\x18\x03 \x01(\rR\x14storageSchemaVersionB@Z>github.com/formancehq/ledger/v3/internal/proto/internalstatepbb\x06proto3"
 
 var (
-	file_internal_common_proto_rawDescOnce sync.Once
-	file_internal_common_proto_rawDescData []byte
+	file_internal_state_proto_rawDescOnce sync.Once
+	file_internal_state_proto_rawDescData []byte
 )
 
-func file_internal_common_proto_rawDescGZIP() []byte {
-	file_internal_common_proto_rawDescOnce.Do(func() {
-		file_internal_common_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_internal_common_proto_rawDesc), len(file_internal_common_proto_rawDesc)))
+func file_internal_state_proto_rawDescGZIP() []byte {
+	file_internal_state_proto_rawDescOnce.Do(func() {
+		file_internal_state_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_internal_state_proto_rawDesc), len(file_internal_state_proto_rawDesc)))
 	})
-	return file_internal_common_proto_rawDescData
+	return file_internal_state_proto_rawDescData
 }
 
-var file_internal_common_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
-var file_internal_common_proto_goTypes = []any{
+var file_internal_state_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_internal_state_proto_goTypes = []any{
 	(*PersistedClusterState)(nil),     // 0: common.PersistedClusterState
 	(*TransactionState)(nil),          // 1: common.TransactionState
 	(*IdempotencyKeyValue)(nil),       // 2: common.IdempotencyKeyValue
@@ -575,7 +575,7 @@ var file_internal_common_proto_goTypes = []any{
 	(grpc.ErrorReason)(0),             // 12: common.ErrorReason
 	(*grpc.MetadataValue)(nil),        // 13: common.MetadataValue
 }
-var file_internal_common_proto_depIdxs = []int32{
+var file_internal_state_proto_depIdxs = []int32{
 	9,  // 0: common.PersistedClusterState.config:type_name -> common.ClusterConfig
 	7,  // 1: common.TransactionState.metadata:type_name -> common.TransactionState.MetadataEntry
 	10, // 2: common.TransactionState.timestamp:type_name -> common.Timestamp
@@ -592,26 +592,26 @@ var file_internal_common_proto_depIdxs = []int32{
 	0,  // [0:9] is the sub-list for field type_name
 }
 
-func init() { file_internal_common_proto_init() }
-func file_internal_common_proto_init() {
-	if File_internal_common_proto != nil {
+func init() { file_internal_state_proto_init() }
+func file_internal_state_proto_init() {
+	if File_internal_state_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_common_proto_rawDesc), len(file_internal_common_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_state_proto_rawDesc), len(file_internal_state_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
-		GoTypes:           file_internal_common_proto_goTypes,
-		DependencyIndexes: file_internal_common_proto_depIdxs,
-		MessageInfos:      file_internal_common_proto_msgTypes,
+		GoTypes:           file_internal_state_proto_goTypes,
+		DependencyIndexes: file_internal_state_proto_depIdxs,
+		MessageInfos:      file_internal_state_proto_msgTypes,
 	}.Build()
-	File_internal_common_proto = out.File
-	file_internal_common_proto_goTypes = nil
-	file_internal_common_proto_depIdxs = nil
+	File_internal_state_proto = out.File
+	file_internal_state_proto_goTypes = nil
+	file_internal_state_proto_depIdxs = nil
 }

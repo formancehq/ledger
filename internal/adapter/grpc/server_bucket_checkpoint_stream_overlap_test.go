@@ -17,7 +17,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -36,7 +36,7 @@ func TestListTransactionsServesOverlappingCheckpointStreams(t *testing.T) {
 		// cursor while the request itself returns exactly twelve rows.
 		for id := uint64(1); id <= 13; id++ {
 			key := domain.TransactionKey{LedgerName: ledger, ID: id}
-			_, err := attrs.Transaction.Set(batch, key.Bytes(), &internalcommonpb.TransactionState{CreatedByLog: id})
+			_, err := attrs.Transaction.Set(batch, key.Bytes(), &internalstatepb.TransactionState{CreatedByLog: id})
 			require.NoError(t, err)
 			require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{
 				Sequence: id,

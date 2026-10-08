@@ -9,12 +9,12 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // ReadTransactionState reads the current state of a transaction from the attributes zone.
-func ReadTransactionState(ctx context.Context, reader dal.PebbleGetter, attrs *attributes.Attribute[*internalcommonpb.TransactionState], ledgerName string, txID uint64) (*internalcommonpb.TransactionState, error) {
+func ReadTransactionState(ctx context.Context, reader dal.PebbleGetter, attrs *attributes.Attribute[*internalstatepb.TransactionState], ledgerName string, txID uint64) (*internalstatepb.TransactionState, error) {
 	_, span := queryTracer.Start(ctx, "query.read_tx_state",
 		trace.WithAttributes(
 			attribute.String("ledger", ledgerName),

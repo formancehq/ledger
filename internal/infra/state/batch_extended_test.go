@@ -12,7 +12,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -259,18 +259,18 @@ func TestReadTransactionState(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
-	txAttr := attributes.NewAttribute[*internalcommonpb.TransactionState](dal.SubAttrTransaction)
+	txAttr := attributes.NewAttribute[*internalstatepb.TransactionState](dal.SubAttrTransaction)
 
 	// Store state for two different transactions
 	batch := s.OpenWriteSession()
 	_, err := txAttr.Set(batch,
 		domain.TransactionKey{LedgerName: "test", ID: 100}.Bytes(),
-		&internalcommonpb.TransactionState{CreatedByLog: 1},
+		&internalstatepb.TransactionState{CreatedByLog: 1},
 	)
 	require.NoError(t, err)
 	_, err = txAttr.Set(batch,
 		domain.TransactionKey{LedgerName: "test", ID: 200}.Bytes(),
-		&internalcommonpb.TransactionState{CreatedByLog: 2},
+		&internalstatepb.TransactionState{CreatedByLog: 2},
 	)
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())

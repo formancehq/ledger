@@ -25,7 +25,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/pkg/semver"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -71,7 +71,7 @@ func rebuildDelta(
 		index:                  attrs.Index,
 		pendingVolumes:         make(map[string]*raftcmdpb.VolumePair),
 		pendingMetadata:        make(map[string]*auditpb.MetadataValue),
-		pendingTx:              make(map[string]*internalcommonpb.TransactionState),
+		pendingTx:              make(map[string]*internalstatepb.TransactionState),
 		pendingIndexes:         make(map[string]*auditpb.Index),
 		purgedVolumePrefixes:   make(map[string]struct{}),
 		purgedMetadataPrefixes: make(map[string]struct{}),
@@ -459,7 +459,7 @@ func rebuildDelta(
 				}
 				numscriptGreatest[keyStr] = greatest
 
-				if _, err := numscriptVersion.Set(batch, versionKey.Bytes(), &internalcommonpb.NumscriptVersionValue{Version: greatest}); err != nil {
+				if _, err := numscriptVersion.Set(batch, versionKey.Bytes(), &internalstatepb.NumscriptVersionValue{Version: greatest}); err != nil {
 					_ = batch.Cancel()
 
 					return fmt.Errorf("saving numscript version at log %d: %w", seq, err)
@@ -1013,14 +1013,14 @@ type attributeReplayWriter struct {
 	batch           *dal.WriteSession
 	volume          *attributes.Attribute[*raftcmdpb.VolumePair]
 	metadata        *attributes.Attribute[*auditpb.MetadataValue]
-	tx              *attributes.Attribute[*internalcommonpb.TransactionState]
+	tx              *attributes.Attribute[*internalstatepb.TransactionState]
 	ledger          *attributes.Attribute[*auditpb.LedgerInfo]
-	references      *attributes.Attribute[*internalcommonpb.TransactionReferenceValue]
+	references      *attributes.Attribute[*internalstatepb.TransactionReferenceValue]
 	boundary        *attributes.Attribute[*raftcmdpb.LedgerBoundaries]
 	index           *attributes.Attribute[*auditpb.Index]
 	pendingVolumes  map[string]*raftcmdpb.VolumePair
 	pendingMetadata map[string]*auditpb.MetadataValue
-	pendingTx       map[string]*internalcommonpb.TransactionState
+	pendingTx       map[string]*internalstatepb.TransactionState
 	// Purge range tombstones are invisible to reads through the non-indexed
 	// write batch. These canonical prefixes shadow checkpoint rows until the
 	// batch commits; exact pending entries take precedence when the account is
@@ -1800,7 +1800,7 @@ func (w *attributeReplayWriter) MoveMetadata(oldKey, newKey []byte) error {
 // Symmetric to GetVolume — required because w.batch is non-indexed and would
 // otherwise hide same-batch writes from subsequent reads within the 5000-log
 // commit window.
-func (w *attributeReplayWriter) getTx(canonicalKey []byte) (*internalcommonpb.TransactionState, error) {
+func (w *attributeReplayWriter) getTx(canonicalKey []byte) (*internalstatepb.TransactionState, error) {
 	if state, ok := w.pendingTx[string(canonicalKey)]; ok {
 		return state, nil
 	}
@@ -1813,7 +1813,7 @@ func (w *attributeReplayWriter) CreateTransaction(canonicalKey []byte, seq uint6
 		return err
 	}
 
-	txState := &internalcommonpb.TransactionState{
+	txState := &internalstatepb.TransactionState{
 		CreatedByLog:       seq,
 		Metadata:           metadata,
 		Timestamp:          timestamp,
@@ -1836,7 +1836,7 @@ func (w *attributeReplayWriter) CreateTransaction(canonicalKey []byte, seq uint6
 func (w *attributeReplayWriter) SetTransactionReference(ledgerName, reference string, txID uint64) error {
 	key := domain.TransactionReferenceKey{LedgerName: ledgerName, Reference: reference}.Bytes()
 
-	_, err := w.references.Set(w.batch, key, &internalcommonpb.TransactionReferenceValue{TransactionId: txID})
+	_, err := w.references.Set(w.batch, key, &internalstatepb.TransactionReferenceValue{TransactionId: txID})
 
 	return err
 }
@@ -1848,7 +1848,7 @@ func (w *attributeReplayWriter) SetRevertedBy(canonicalKey []byte, revertTxID ui
 	}
 
 	if existing == nil {
-		existing = &internalcommonpb.TransactionState{}
+		existing = &internalstatepb.TransactionState{}
 	}
 
 	existing.RevertedByTransaction = revertTxID
@@ -1886,7 +1886,7 @@ func (w *attributeReplayWriter) SaveTxMetadata(canonicalKey []byte, metadata map
 	}
 
 	if existing == nil {
-		existing = &internalcommonpb.TransactionState{}
+		existing = &internalstatepb.TransactionState{}
 	}
 
 	if existing.GetMetadata() == nil {

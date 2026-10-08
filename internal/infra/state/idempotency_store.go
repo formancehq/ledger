@@ -10,7 +10,7 @@ import (
 	"github.com/zeebo/blake3"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -33,31 +33,31 @@ func HashIdempotencyKey(key string) attributes.U128 {
 // directly from `[0x05][0x01]` Pebble entries without needing the original
 // caller-supplied string, and keeps lookups O(1) on the hash.
 type IdempotencyStore struct {
-	entries map[attributes.U128]*internalcommonpb.IdempotencyKeyValue
+	entries map[attributes.U128]*internalstatepb.IdempotencyKeyValue
 }
 
 // NewIdempotencyStore creates a new IdempotencyStore.
 func NewIdempotencyStore() *IdempotencyStore {
 	return &IdempotencyStore{
-		entries: make(map[attributes.U128]*internalcommonpb.IdempotencyKeyValue),
+		entries: make(map[attributes.U128]*internalstatepb.IdempotencyKeyValue),
 	}
 }
 
 // Get returns the idempotency value for the given key, if present in the in-memory map.
-func (s *IdempotencyStore) Get(key string) (*internalcommonpb.IdempotencyKeyValue, bool) {
+func (s *IdempotencyStore) Get(key string) (*internalstatepb.IdempotencyKeyValue, bool) {
 	v, ok := s.entries[HashIdempotencyKey(key)]
 
 	return v, ok
 }
 
 // Put writes an idempotency key to the in-memory map.
-func (s *IdempotencyStore) Put(key string, value *internalcommonpb.IdempotencyKeyValue) {
+func (s *IdempotencyStore) Put(key string, value *internalstatepb.IdempotencyKeyValue) {
 	s.entries[HashIdempotencyKey(key)] = value
 }
 
 // IsExpired reports whether the outcome has reached its frozen expiry as of
 // nowMicros. expires_at == 0 means never expires.
-func (s *IdempotencyStore) IsExpired(value *internalcommonpb.IdempotencyKeyValue, nowMicros uint64) bool {
+func (s *IdempotencyStore) IsExpired(value *internalstatepb.IdempotencyKeyValue, nowMicros uint64) bool {
 	return IdempotencyExpired(value.GetExpiresAt(), nowMicros)
 }
 
@@ -102,7 +102,7 @@ func IdempotencyExpiresAt(createdAt, ttlMicros uint64) uint64 {
 
 // Reset clears the in-memory map (used during snapshot restore).
 func (s *IdempotencyStore) Reset() {
-	s.entries = make(map[attributes.U128]*internalcommonpb.IdempotencyKeyValue)
+	s.entries = make(map[attributes.U128]*internalstatepb.IdempotencyKeyValue)
 }
 
 // RestoreFromStore rebuilds the in-memory map from Pebble. It scans every
@@ -136,7 +136,7 @@ func (s *IdempotencyStore) RestoreFromStore(reader dal.PebbleReader) error {
 			continue
 		}
 
-		value := &internalcommonpb.IdempotencyKeyValue{}
+		value := &internalstatepb.IdempotencyKeyValue{}
 		if err := value.UnmarshalVT(iter.Value()); err != nil {
 			return fmt.Errorf("unmarshaling idempotency value: %w", err)
 		}
@@ -335,7 +335,7 @@ func (s *IdempotencyStore) Evict(batch *dal.WriteSession, cutoffMicros uint64, l
 
 // SaveIdempotencyKey writes an idempotency key-value pair under [0x05][0x01] and
 // a time-index entry under [0x05][0x02] for efficient eviction.
-func SaveIdempotencyKey(batch *dal.WriteSession, key string, value *internalcommonpb.IdempotencyKeyValue) error {
+func SaveIdempotencyKey(batch *dal.WriteSession, key string, value *internalstatepb.IdempotencyKeyValue) error {
 	keyHash := HashIdempotencyKey(key)
 
 	// Main entry: [0x05][0x01][key_hash 16 bytes] -> marshaled IdempotencyKeyValue
@@ -376,7 +376,7 @@ func SaveIdempotencyKey(batch *dal.WriteSession, key string, value *internalcomm
 
 // LoadIdempotencyKey reads an idempotency key from Pebble under prefix 0x03.
 // Returns nil if the key does not exist.
-func LoadIdempotencyKey(reader dal.PebbleReader, key string) (*internalcommonpb.IdempotencyKeyValue, error) {
+func LoadIdempotencyKey(reader dal.PebbleReader, key string) (*internalstatepb.IdempotencyKeyValue, error) {
 	keyHash := HashIdempotencyKey(key)
 
 	pebbleKey := make([]byte, 2+16)
@@ -395,7 +395,7 @@ func LoadIdempotencyKey(reader dal.PebbleReader, key string) (*internalcommonpb.
 
 	defer func() { _ = closer.Close() }()
 
-	value := &internalcommonpb.IdempotencyKeyValue{}
+	value := &internalstatepb.IdempotencyKeyValue{}
 	if err := value.UnmarshalVT(val); err != nil {
 		return nil, fmt.Errorf("unmarshaling idempotency value: %w", err)
 	}

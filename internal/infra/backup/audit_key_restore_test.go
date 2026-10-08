@@ -18,7 +18,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -118,7 +118,7 @@ func TestAuditKeyFullIncrementalRestoreAcrossClusterIDs(t *testing.T) {
 		}
 	}
 	require.NoError(t, attributes.PrepareForBackup(restored))
-	config := &internalcommonpb.PersistedConfig{NodeId: 1, ClusterId: "cluster-b", StorageSchemaVersion: 2}
+	config := &internalstatepb.PersistedConfig{NodeId: 1, ClusterId: "cluster-b", StorageSchemaVersion: 2}
 	batch := restored.OpenWriteSession()
 	require.NoError(t, batch.SetProto([]byte{dal.ZoneClusterPersistent, dal.SubGlobPersistedConfig}, config))
 	require.NoError(t, batch.Commit())

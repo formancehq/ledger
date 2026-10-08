@@ -20,7 +20,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/pkg/kv"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -331,12 +331,12 @@ func NewCacheSnapshotter(logger logging.Logger, registry *StateRegistry, bloomFi
 	metadata := newProtoSnapshotSlot(dal.SubAttrMetadata, c.AccountMetadata, func() *commonpb.MetadataValue { return &commonpb.MetadataValue{} })
 	ledgers := newProtoSnapshotSlot(dal.SubAttrLedger, c.Ledgers, func() *commonpb.LedgerInfo { return &commonpb.LedgerInfo{} })
 	boundaries := newProtoSnapshotSlot(dal.SubAttrBoundary, c.Boundaries, func() *raftcmdpb.LedgerBoundaries { return &raftcmdpb.LedgerBoundaries{} })
-	references := newProtoSnapshotSlot(dal.SubAttrReference, c.References, func() *internalcommonpb.TransactionReferenceValue {
-		return &internalcommonpb.TransactionReferenceValue{}
+	references := newProtoSnapshotSlot(dal.SubAttrReference, c.References, func() *internalstatepb.TransactionReferenceValue {
+		return &internalstatepb.TransactionReferenceValue{}
 	})
-	transactions := newProtoSnapshotSlot(dal.SubAttrTransaction, c.Transactions, func() *internalcommonpb.TransactionState { return &internalcommonpb.TransactionState{} })
+	transactions := newProtoSnapshotSlot(dal.SubAttrTransaction, c.Transactions, func() *internalstatepb.TransactionState { return &internalstatepb.TransactionState{} })
 	sinks := newProtoSnapshotSlot(dal.SubAttrSinkConfig, c.SinkConfigs, func() *commonpb.SinkConfig { return &commonpb.SinkConfig{} })
-	numscriptVersions := newProtoSnapshotSlot(dal.SubAttrNumscriptVersion, c.NumscriptVersions, func() *internalcommonpb.NumscriptVersionValue { return &internalcommonpb.NumscriptVersionValue{} })
+	numscriptVersions := newProtoSnapshotSlot(dal.SubAttrNumscriptVersion, c.NumscriptVersions, func() *internalstatepb.NumscriptVersionValue { return &internalstatepb.NumscriptVersionValue{} })
 	numscriptContents := newProtoSnapshotSlot(dal.SubAttrNumscriptContent, c.NumscriptContents, func() *commonpb.NumscriptInfo { return &commonpb.NumscriptInfo{} })
 	preparedQueries := newProtoSnapshotSlot(dal.SubAttrPreparedQuery, c.PreparedQueries, func() *commonpb.PreparedQuery { return &commonpb.PreparedQuery{} })
 	ledgerMetadata := newProtoSnapshotSlot(dal.SubAttrLedgerMetadata, c.LedgerMetadata, func() *commonpb.MetadataValue { return &commonpb.MetadataValue{} })

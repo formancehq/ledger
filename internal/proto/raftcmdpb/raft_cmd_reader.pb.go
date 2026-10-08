@@ -6,7 +6,7 @@ package raftcmdpb
 import (
 	bytes "bytes"
 	grpc "github.com/formancehq/ledger/pkg/client/v3/grpc"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	slices "slices"
 )
 
@@ -5349,7 +5349,7 @@ func NewAttributeValueListReader(s []*AttributeValue) AttributeValueListReader {
 // Call Mutate() to obtain a mutable clone.
 type ReloadIdempotencyKeyReader interface {
 	GetKey() string
-	GetValue() internalcommonpb.IdempotencyKeyValueReader
+	GetValue() internalstatepb.IdempotencyKeyValueReader
 	Mutate() *ReloadIdempotencyKey
 }
 
@@ -5359,7 +5359,7 @@ func (r *reloadIdempotencyKeyReadonly) GetKey() string {
 	return (*ReloadIdempotencyKey)(r).GetKey()
 }
 
-func (r *reloadIdempotencyKeyReadonly) GetValue() internalcommonpb.IdempotencyKeyValueReader {
+func (r *reloadIdempotencyKeyReadonly) GetValue() internalstatepb.IdempotencyKeyValueReader {
 	v := (*ReloadIdempotencyKey)(r).GetValue()
 	if v == nil {
 		return nil

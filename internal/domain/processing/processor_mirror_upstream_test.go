@@ -12,7 +12,7 @@ import (
 
 	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -63,9 +63,9 @@ func TestMirrorIngest_UpstreamRevertPreservesOriginalIdentity(t *testing.T) {
 	})
 	boundaryStub.onPut(func(_ domain.LedgerKey, value *raftcmdpb.LedgerBoundaries) { boundaries = value.CloneVT() })
 
-	states := make(map[domain.TransactionKey]*internalcommonpb.TransactionState)
+	states := make(map[domain.TransactionKey]*internalstatepb.TransactionState)
 	stateStub, _ := stubsFor(store).transactionStatesStubFor(store)
-	stateStub.onPut(func(key domain.TransactionKey, value *internalcommonpb.TransactionState) {
+	stateStub.onPut(func(key domain.TransactionKey, value *internalstatepb.TransactionState) {
 		states[key] = value.CloneVT()
 		stateStub.expectGet(key, states[key].AsReader(), nil)
 	})

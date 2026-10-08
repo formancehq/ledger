@@ -8,7 +8,7 @@ import (
 
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -18,12 +18,12 @@ import (
 type Attributes struct {
 	Volume           *Attribute[*raftcmdpb.VolumePair]
 	Metadata         *Attribute[*commonpb.MetadataValue]
-	References       *Attribute[*internalcommonpb.TransactionReferenceValue]
+	References       *Attribute[*internalstatepb.TransactionReferenceValue]
 	Ledger           *Attribute[*commonpb.LedgerInfo]
 	Boundary         *Attribute[*raftcmdpb.LedgerBoundaries]
-	Transaction      *Attribute[*internalcommonpb.TransactionState]
+	Transaction      *Attribute[*internalstatepb.TransactionState]
 	SinkConfig       *Attribute[*commonpb.SinkConfig]
-	NumscriptVersion *Attribute[*internalcommonpb.NumscriptVersionValue]
+	NumscriptVersion *Attribute[*internalstatepb.NumscriptVersionValue]
 	NumscriptContent *Attribute[*commonpb.NumscriptInfo]
 	PreparedQuery    *Attribute[*commonpb.PreparedQuery]
 	LedgerMetadata   *Attribute[*commonpb.MetadataValue]
@@ -35,12 +35,12 @@ func New() *Attributes {
 	return &Attributes{
 		Volume:           NewAttribute[*raftcmdpb.VolumePair](dal.SubAttrVolume),
 		Metadata:         NewAttribute[*commonpb.MetadataValue](dal.SubAttrMetadata),
-		References:       NewAttribute[*internalcommonpb.TransactionReferenceValue](dal.SubAttrReference),
+		References:       NewAttribute[*internalstatepb.TransactionReferenceValue](dal.SubAttrReference),
 		Ledger:           NewAttribute[*commonpb.LedgerInfo](dal.SubAttrLedger),
 		Boundary:         NewAttribute[*raftcmdpb.LedgerBoundaries](dal.SubAttrBoundary),
-		Transaction:      NewAttribute[*internalcommonpb.TransactionState](dal.SubAttrTransaction),
+		Transaction:      NewAttribute[*internalstatepb.TransactionState](dal.SubAttrTransaction),
 		SinkConfig:       NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig),
-		NumscriptVersion: NewAttribute[*internalcommonpb.NumscriptVersionValue](dal.SubAttrNumscriptVersion),
+		NumscriptVersion: NewAttribute[*internalstatepb.NumscriptVersionValue](dal.SubAttrNumscriptVersion),
 		NumscriptContent: NewAttribute[*commonpb.NumscriptInfo](dal.SubAttrNumscriptContent),
 		PreparedQuery:    NewAttribute[*commonpb.PreparedQuery](dal.SubAttrPreparedQuery),
 		LedgerMetadata:   NewAttribute[*commonpb.MetadataValue](dal.SubAttrLedgerMetadata),

@@ -30,7 +30,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/pkg/semver"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -2179,7 +2179,7 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 
 	// Collect live transaction states up-front so that fabricated entries
 	// (live without replay) are part of allKeys.
-	liveTx := make(map[string]*internalcommonpb.TransactionState)
+	liveTx := make(map[string]*internalstatepb.TransactionState)
 
 	liveIter, err := c.attrs.Transaction.NewStreamingIter(reader, nil)
 	if err != nil {
@@ -2206,7 +2206,7 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 	}
 
 	// Collect replay transaction states.
-	replayTx := make(map[string]*internalcommonpb.TransactionState)
+	replayTx := make(map[string]*internalstatepb.TransactionState)
 
 	replayIter, err := replay.newPrefixIter(replayPrefixTransaction)
 	if err != nil {
@@ -2234,7 +2234,7 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 			return 1
 		}
 
-		state := &internalcommonpb.TransactionState{}
+		state := &internalstatepb.TransactionState{}
 		if err := state.UnmarshalVT(valBytes[1:]); err != nil {
 			_ = replayIter.Close()
 			emitErr(fmt.Sprintf("unmarshaling replay transaction at key %x: %v", canonicalKey, err))
@@ -2273,7 +2273,7 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 
 		// Expected: the replayed state. Stays nil when only the live store has
 		// the entry (fabricated state).
-		var expected *internalcommonpb.TransactionState
+		var expected *internalstatepb.TransactionState
 		if rs, ok := replayTx[key]; ok {
 			expected = rs
 		}
@@ -4542,7 +4542,7 @@ func (c *Checker) compareIdempotencyOutcomes(
 			continue
 		}
 
-		var stored internalcommonpb.IdempotencyKeyValue
+		var stored internalstatepb.IdempotencyKeyValue
 		if err := stored.UnmarshalVT(iter.Value()); err != nil {
 			return fmt.Errorf("unmarshalling idempotency value: %w", err)
 		}
@@ -4582,7 +4582,7 @@ func (c *Checker) compareIdempotencyOutcomes(
 
 // idempotencyMismatch returns a human-readable reason the stored frozen outcome
 // diverges from the audit-derived expectation, or "" when they agree.
-func idempotencyMismatch(stored *internalcommonpb.IdempotencyKeyValue, exp expectedIdempotency) string {
+func idempotencyMismatch(stored *internalstatepb.IdempotencyKeyValue, exp expectedIdempotency) string {
 	if !bytes.Equal(stored.GetHash(), exp.proposalHash) {
 		return fmt.Sprintf("proposal hash %x does not match audit-derived %x", stored.GetHash(), exp.proposalHash)
 	}
@@ -5124,7 +5124,7 @@ func checkReversionInvariants(
 
 // normalizeTransactionState replaces an empty metadata map with nil so that
 // proto.Equal treats both representations as equivalent.
-func normalizeTransactionState(s *internalcommonpb.TransactionState) {
+func normalizeTransactionState(s *internalstatepb.TransactionState) {
 	if s.GetMetadata() != nil && len(s.GetMetadata()) == 0 {
 		s.Metadata = nil
 	}

@@ -10,7 +10,7 @@ import (
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -49,7 +49,7 @@ func revertObservationFixture(t *testing.T, txID uint64, postings []*commonpb.Po
 	txKey := domain.TransactionKey{LedgerName: staleTestLedger, ID: txID}
 
 	scope.EXPECT().GetReverted(txKey).Return(false, nil)
-	expectGetTransactionState(scope, txKey, (&internalcommonpb.TransactionState{Postings: postings}).AsReader(), nil)
+	expectGetTransactionState(scope, txKey, (&internalstatepb.TransactionState{Postings: postings}).AsReader(), nil)
 
 	return scope, &raftcmdpb.LedgerBoundaries{NextTransactionId: txID + 1, NextLogId: 1}
 }

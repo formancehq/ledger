@@ -11,7 +11,7 @@ import (
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -179,7 +179,7 @@ func TestApplyProposal_FreezesExpiryFromClusterPolicy(t *testing.T) {
 		ttlMicros  = uint64(60_000_000)
 	)
 
-	loadKey := func(key string) *internalcommonpb.IdempotencyKeyValue {
+	loadKey := func(key string) *internalstatepb.IdempotencyKeyValue {
 		handle, err := dataStore.NewDirectReadHandle()
 		require.NoError(t, err)
 
@@ -316,7 +316,7 @@ func TestPreload_DoesNotResurrectEvictedOutcome(t *testing.T) {
 
 	// Freeze an outcome with a finite expiry into both the map and Pebble
 	// (main key + time index), exactly as the FSM success/failure path does.
-	value := &internalcommonpb.IdempotencyKeyValue{FirstLogSequence: 7, LogCount: 1, Hash: []byte("h"), CreatedAt: 1, ExpiresAt: expiresAt}
+	value := &internalstatepb.IdempotencyKeyValue{FirstLogSequence: 7, LogCount: 1, Hash: []byte("h"), CreatedAt: 1, ExpiresAt: expiresAt}
 
 	freezeBatch := dataStore.OpenWriteSession()
 	require.NoError(t, SaveIdempotencyKey(freezeBatch, key, value))
@@ -379,7 +379,7 @@ func TestPreload_DoesNotResurrectEvictedOutcome(t *testing.T) {
 
 	// A live outcome (expires_at above the cutoff) is still re-injected.
 	liveKey := "live-key"
-	liveValue := &internalcommonpb.IdempotencyKeyValue{FirstLogSequence: 9, LogCount: 1, Hash: []byte("h2"), CreatedAt: 1, ExpiresAt: expiresAt * 2}
+	liveValue := &internalstatepb.IdempotencyKeyValue{FirstLogSequence: 9, LogCount: 1, Hash: []byte("h2"), CreatedAt: 1, ExpiresAt: expiresAt * 2}
 	livePlan := &raftcmdpb.ExecutionPlan{
 		LastPersistedIndex: machine.Registry.Cache.BaseIndex.Gen0,
 		IdempotencyKeys:    []*raftcmdpb.ReloadIdempotencyKey{{Key: liveKey, Value: liveValue}},
@@ -498,11 +498,11 @@ func TestPreload_DoesNotOverwriteNewerOutcomeWithStalePlan(t *testing.T) {
 	const key = "superseded-key"
 
 	// A newer live outcome is already in the map (installed by an earlier apply).
-	live := &internalcommonpb.IdempotencyKeyValue{FirstLogSequence: 10, LogCount: 1, CreatedAt: 2_000_000}
+	live := &internalstatepb.IdempotencyKeyValue{FirstLogSequence: 10, LogCount: 1, CreatedAt: 2_000_000}
 	machine.Registry.Idempotency.Put(key, live)
 
 	// A concurrent proposal's plan still carries the older, superseded value.
-	stale := &internalcommonpb.IdempotencyKeyValue{FirstLogSequence: 1, LogCount: 1, CreatedAt: 1_000_000}
+	stale := &internalstatepb.IdempotencyKeyValue{FirstLogSequence: 1, LogCount: 1, CreatedAt: 1_000_000}
 	plan := &raftcmdpb.ExecutionPlan{
 		IdempotencyKeys: []*raftcmdpb.ReloadIdempotencyKey{{Key: key, Value: stale}},
 	}
@@ -545,7 +545,7 @@ func TestEviction_ReusedKeyDeletesCleanly(t *testing.T) {
 	)
 
 	// Freeze the first outcome A, then flush so its Set lands in an SST.
-	a := &internalcommonpb.IdempotencyKeyValue{FirstLogSequence: 1, LogCount: 1, CreatedAt: 1, ExpiresAt: expA}
+	a := &internalstatepb.IdempotencyKeyValue{FirstLogSequence: 1, LogCount: 1, CreatedAt: 1, ExpiresAt: expA}
 	b1 := dataStore.OpenWriteSession()
 	require.NoError(t, SaveIdempotencyKey(b1, key, a))
 	require.NoError(t, b1.Commit())
@@ -555,7 +555,7 @@ func TestEviction_ReusedKeyDeletesCleanly(t *testing.T) {
 	// A expires; a fresh proposal reuses the key and freezes B — a SECOND Set on
 	// the same main key. Flush again so the two Sets sit in separate SSTs, the
 	// shape under which a SingleDelete could resurrect A.
-	b := &internalcommonpb.IdempotencyKeyValue{FirstLogSequence: 2, LogCount: 1, CreatedAt: 2, ExpiresAt: expB}
+	b := &internalstatepb.IdempotencyKeyValue{FirstLogSequence: 2, LogCount: 1, CreatedAt: 2, ExpiresAt: expB}
 	b2 := dataStore.OpenWriteSession()
 	require.NoError(t, SaveIdempotencyKey(b2, key, b))
 	require.NoError(t, b2.Commit())
@@ -617,7 +617,7 @@ func TestApplyProposal_StalePreloadCannotResurrectSupersededOutcome(t *testing.T
 
 	machine.State.ClusterPolicy = idempotencyTestPolicy(1, ttlMicros)
 
-	keyed := func(date uint64, stale *internalcommonpb.IdempotencyKeyValue, orders ...*raftcmdpb.Order) *raftcmdpb.Proposal {
+	keyed := func(date uint64, stale *internalstatepb.IdempotencyKeyValue, orders ...*raftcmdpb.Order) *raftcmdpb.Proposal {
 		p := makeProposal(1, orders...)
 		p.Date = &commonpb.Timestamp{Data: date}
 		p.Idempotency = &commonpb.Idempotency{Key: key}
@@ -630,7 +630,7 @@ func TestApplyProposal_StalePreloadCannotResurrectSupersededOutcome(t *testing.T
 	fund := func(amount int64) *raftcmdpb.Order {
 		return createTransactionOrder(ledgerName, true, newPosting("world", acct, "EUR", amount))
 	}
-	loadKey := func() *internalcommonpb.IdempotencyKeyValue {
+	loadKey := func() *internalstatepb.IdempotencyKeyValue {
 		h, err := dataStore.NewDirectReadHandle()
 		require.NoError(t, err)
 

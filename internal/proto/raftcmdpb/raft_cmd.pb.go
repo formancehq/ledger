@@ -8,7 +8,7 @@ package raftcmdpb
 
 import (
 	grpc "github.com/formancehq/ledger/pkg/client/v3/grpc"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -5059,9 +5059,9 @@ func (x *AttributeValue) GetRawValue() []byte {
 // "Reload" rather than the cache-attribute pre-loading the AttributePlan
 // variants feed.
 type ReloadIdempotencyKey struct {
-	state         protoimpl.MessageState                `protogen:"open.v1"`
-	Key           string                                `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
-	Value         *internalcommonpb.IdempotencyKeyValue `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	state         protoimpl.MessageState               `protogen:"open.v1"`
+	Key           string                               `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	Value         *internalstatepb.IdempotencyKeyValue `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5103,7 +5103,7 @@ func (x *ReloadIdempotencyKey) GetKey() string {
 	return ""
 }
 
-func (x *ReloadIdempotencyKey) GetValue() *internalcommonpb.IdempotencyKeyValue {
+func (x *ReloadIdempotencyKey) GetValue() *internalstatepb.IdempotencyKeyValue {
 	if x != nil {
 		return x.Value
 	}
@@ -5405,7 +5405,7 @@ var File_raft_cmd_proto protoreflect.FileDescriptor
 
 const file_raft_cmd_proto_rawDesc = "" +
 	"\n" +
-	"\x0eraft_cmd.proto\x12\x04raft\x1a\fcommon.proto\x1a\x15internal_common.proto\x1a\x0fsignature.proto\"\xc3\x01\n" +
+	"\x0eraft_cmd.proto\x12\x04raft\x1a\fcommon.proto\x1a\x14internal_state.proto\x1a\x0fsignature.proto\"\xc3\x01\n" +
 	"\x05Order\x12>\n" +
 	"\rledger_scoped\x18\x01 \x01(\v2\x17.raft.LedgerScopedOrderH\x00R\fledgerScoped\x12>\n" +
 	"\rsystem_scoped\x18\x02 \x01(\v2\x17.raft.SystemScopedOrderH\x00R\fsystemScoped\x122\n" +
@@ -5797,118 +5797,118 @@ func file_raft_cmd_proto_rawDescGZIP() []byte {
 var file_raft_cmd_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_raft_cmd_proto_msgTypes = make([]protoimpl.MessageInfo, 82)
 var file_raft_cmd_proto_goTypes = []any{
-	(BackupKind)(0),                              // 0: raft.BackupKind
-	(BackupJobStatus)(0),                         // 1: raft.BackupJobStatus
-	(*Order)(nil),                                // 2: raft.Order
-	(*OrderTechnical)(nil),                       // 3: raft.OrderTechnical
-	(*LedgerScopedOrder)(nil),                    // 4: raft.LedgerScopedOrder
-	(*SystemScopedOrder)(nil),                    // 5: raft.SystemScopedOrder
-	(*CreatePreparedQueryOrder)(nil),             // 6: raft.CreatePreparedQueryOrder
-	(*UpdatePreparedQueryOrder)(nil),             // 7: raft.UpdatePreparedQueryOrder
-	(*DeletePreparedQueryOrder)(nil),             // 8: raft.DeletePreparedQueryOrder
-	(*AddEventsSinkOrder)(nil),                   // 9: raft.AddEventsSinkOrder
-	(*RemoveEventsSinkOrder)(nil),                // 10: raft.RemoveEventsSinkOrder
-	(*RegisterSigningKeyOrder)(nil),              // 11: raft.RegisterSigningKeyOrder
-	(*RevokeSigningKeyOrder)(nil),                // 12: raft.RevokeSigningKeyOrder
-	(*SetSigningConfigOrder)(nil),                // 13: raft.SetSigningConfigOrder
-	(*SetMaintenanceModeOrder)(nil),              // 14: raft.SetMaintenanceModeOrder
-	(*SetClusterPolicyOrder)(nil),                // 15: raft.SetClusterPolicyOrder
-	(*SaveNumscriptOrder)(nil),                   // 16: raft.SaveNumscriptOrder
-	(*CreateQueryCheckpointOrder)(nil),           // 17: raft.CreateQueryCheckpointOrder
-	(*DeleteQueryCheckpointOrder)(nil),           // 18: raft.DeleteQueryCheckpointOrder
-	(*QueryCheckpointState)(nil),                 // 19: raft.QueryCheckpointState
-	(*SetQueryCheckpointScheduleOrder)(nil),      // 20: raft.SetQueryCheckpointScheduleOrder
-	(*DeleteQueryCheckpointScheduleOrder)(nil),   // 21: raft.DeleteQueryCheckpointScheduleOrder
-	(*CreateLedgerOrder)(nil),                    // 22: raft.CreateLedgerOrder
-	(*MirrorIngestOrder)(nil),                    // 23: raft.MirrorIngestOrder
-	(*MirrorLogEntry)(nil),                       // 24: raft.MirrorLogEntry
-	(*MirrorFillGap)(nil),                        // 25: raft.MirrorFillGap
-	(*MirrorCreatedTransaction)(nil),             // 26: raft.MirrorCreatedTransaction
-	(*MirrorSavedMetadata)(nil),                  // 27: raft.MirrorSavedMetadata
-	(*MirrorRevertedTransaction)(nil),            // 28: raft.MirrorRevertedTransaction
-	(*MirrorDeletedMetadata)(nil),                // 29: raft.MirrorDeletedMetadata
-	(*PromoteLedgerOrder)(nil),                   // 30: raft.PromoteLedgerOrder
-	(*DeleteLedgerOrder)(nil),                    // 31: raft.DeleteLedgerOrder
-	(*LedgerApplyOrder)(nil),                     // 32: raft.LedgerApplyOrder
-	(*CreateIndexOrder)(nil),                     // 33: raft.CreateIndexOrder
-	(*DropIndexOrder)(nil),                       // 34: raft.DropIndexOrder
-	(*AddAccountTypeOrder)(nil),                  // 35: raft.AddAccountTypeOrder
-	(*RemoveAccountTypeOrder)(nil),               // 36: raft.RemoveAccountTypeOrder
-	(*UpdateDefaultEnforcementModeOrder)(nil),    // 37: raft.UpdateDefaultEnforcementModeOrder
-	(*SetMetadataFieldTypeOrder)(nil),            // 38: raft.SetMetadataFieldTypeOrder
-	(*RemoveMetadataFieldTypeOrder)(nil),         // 39: raft.RemoveMetadataFieldTypeOrder
-	(*CreateTransactionOrder)(nil),               // 40: raft.CreateTransactionOrder
-	(*NumscriptReference)(nil),                   // 41: raft.NumscriptReference
-	(*SaveMetadataOrder)(nil),                    // 42: raft.SaveMetadataOrder
-	(*RevertTransactionOrder)(nil),               // 43: raft.RevertTransactionOrder
-	(*DeleteMetadataOrder)(nil),                  // 44: raft.DeleteMetadataOrder
-	(*SaveLedgerMetadataOrder)(nil),              // 45: raft.SaveLedgerMetadataOrder
-	(*DeleteLedgerMetadataOrder)(nil),            // 46: raft.DeleteLedgerMetadataOrder
-	(*Proposal)(nil),                             // 47: raft.Proposal
-	(*TechnicalUpdate)(nil),                      // 48: raft.TechnicalUpdate
-	(*BackupDestination)(nil),                    // 49: raft.BackupDestination
-	(*S3BackupTarget)(nil),                       // 50: raft.S3BackupTarget
-	(*AzureBackupTarget)(nil),                    // 51: raft.AzureBackupTarget
-	(*BackupJob)(nil),                            // 52: raft.BackupJob
-	(*BackupOrder)(nil),                          // 53: raft.BackupOrder
-	(*IncrementalBackupOrder)(nil),               // 54: raft.IncrementalBackupOrder
-	(*BackupOrderStart)(nil),                     // 55: raft.BackupOrderStart
-	(*BackupOrderComplete)(nil),                  // 56: raft.BackupOrderComplete
-	(*BackupOrderFail)(nil),                      // 57: raft.BackupOrderFail
-	(*IdempotencyEviction)(nil),                  // 58: raft.IdempotencyEviction
-	(*MirrorSyncUpdate)(nil),                     // 59: raft.MirrorSyncUpdate
-	(*EventsSinkUpdate)(nil),                     // 60: raft.EventsSinkUpdate
-	(*CreatedLogOrReference)(nil),                // 61: raft.CreatedLogOrReference
-	(*LedgerBoundaries)(nil),                     // 62: raft.LedgerBoundaries
-	(*VolumePair)(nil),                           // 63: raft.VolumePair
-	(*ExecutionPlan)(nil),                        // 64: raft.ExecutionPlan
-	(*AttributeCoverage)(nil),                    // 65: raft.AttributeCoverage
-	(*AttributeValue)(nil),                       // 66: raft.AttributeValue
-	(*ReloadIdempotencyKey)(nil),                 // 67: raft.ReloadIdempotencyKey
-	(*CacheGenerationMeta)(nil),                  // 68: raft.CacheGenerationMeta
-	(*CacheSnapshotMeta)(nil),                    // 69: raft.CacheSnapshotMeta
-	(*PeerAddress)(nil),                          // 70: raft.PeerAddress
-	(*RemovedMemberEntry)(nil),                   // 71: raft.RemovedMemberEntry
-	(*AttributeID)(nil),                          // 72: raft.AttributeID
-	nil,                                          // 73: raft.CreateLedgerOrder.AccountTypesEntry
-	nil,                                          // 74: raft.MirrorCreatedTransaction.MetadataEntry
-	nil,                                          // 75: raft.MirrorCreatedTransaction.AccountMetadataEntry
-	nil,                                          // 76: raft.MirrorSavedMetadata.MetadataEntry
-	nil,                                          // 77: raft.MirrorRevertedTransaction.MetadataEntry
-	nil,                                          // 78: raft.CreateTransactionOrder.MetadataEntry
-	nil,                                          // 79: raft.CreateTransactionOrder.AccountMetadataEntry
-	nil,                                          // 80: raft.NumscriptReference.VarsEntry
-	nil,                                          // 81: raft.SaveMetadataOrder.MetadataEntry
-	nil,                                          // 82: raft.RevertTransactionOrder.MetadataEntry
-	nil,                                          // 83: raft.SaveLedgerMetadataOrder.MetadataEntry
-	(*grpc.PreparedQuery)(nil),                   // 84: common.PreparedQuery
-	(*grpc.QueryFilter)(nil),                     // 85: common.QueryFilter
-	(*grpc.SinkConfig)(nil),                      // 86: common.SinkConfig
-	(*grpc.ClusterPolicy)(nil),                   // 87: common.ClusterPolicy
-	(*grpc.Timestamp)(nil),                       // 88: common.Timestamp
-	(*grpc.SetMetadataFieldTypeCommand)(nil),     // 89: common.SetMetadataFieldTypeCommand
-	(grpc.LedgerMode)(0),                         // 90: common.LedgerMode
-	(*grpc.MirrorSourceConfig)(nil),              // 91: common.MirrorSourceConfig
-	(grpc.ChartEnforcementMode)(0),               // 92: common.ChartEnforcementMode
-	(*grpc.Posting)(nil),                         // 93: common.Posting
-	(*grpc.Target)(nil),                          // 94: common.Target
-	(grpc.ErrorReason)(0),                        // 95: common.ErrorReason
-	(*grpc.IndexID)(nil),                         // 96: common.IndexID
-	(*grpc.AccountType)(nil),                     // 97: common.AccountType
-	(grpc.TargetType)(0),                         // 98: common.TargetType
-	(grpc.MetadataType)(0),                       // 99: common.MetadataType
-	(*grpc.Script)(nil),                          // 100: common.Script
-	(*grpc.CallerSnapshot)(nil),                  // 101: common.CallerSnapshot
-	(*grpc.Idempotency)(nil),                     // 102: common.Idempotency
-	(*grpc.SignedApplyBatch)(nil),                // 103: signature.SignedApplyBatch
-	(*grpc.ClusterConfig)(nil),                   // 104: common.ClusterConfig
-	(*grpc.MirrorSyncError)(nil),                 // 105: common.MirrorSyncError
-	(*grpc.SinkError)(nil),                       // 106: common.SinkError
-	(*grpc.Log)(nil),                             // 107: common.Log
-	(*grpc.Uint256)(nil),                         // 108: common.Uint256
-	(*internalcommonpb.IdempotencyKeyValue)(nil), // 109: common.IdempotencyKeyValue
-	(*grpc.MetadataValue)(nil),                   // 110: common.MetadataValue
-	(*grpc.MetadataMap)(nil),                     // 111: common.MetadataMap
+	(BackupKind)(0),                             // 0: raft.BackupKind
+	(BackupJobStatus)(0),                        // 1: raft.BackupJobStatus
+	(*Order)(nil),                               // 2: raft.Order
+	(*OrderTechnical)(nil),                      // 3: raft.OrderTechnical
+	(*LedgerScopedOrder)(nil),                   // 4: raft.LedgerScopedOrder
+	(*SystemScopedOrder)(nil),                   // 5: raft.SystemScopedOrder
+	(*CreatePreparedQueryOrder)(nil),            // 6: raft.CreatePreparedQueryOrder
+	(*UpdatePreparedQueryOrder)(nil),            // 7: raft.UpdatePreparedQueryOrder
+	(*DeletePreparedQueryOrder)(nil),            // 8: raft.DeletePreparedQueryOrder
+	(*AddEventsSinkOrder)(nil),                  // 9: raft.AddEventsSinkOrder
+	(*RemoveEventsSinkOrder)(nil),               // 10: raft.RemoveEventsSinkOrder
+	(*RegisterSigningKeyOrder)(nil),             // 11: raft.RegisterSigningKeyOrder
+	(*RevokeSigningKeyOrder)(nil),               // 12: raft.RevokeSigningKeyOrder
+	(*SetSigningConfigOrder)(nil),               // 13: raft.SetSigningConfigOrder
+	(*SetMaintenanceModeOrder)(nil),             // 14: raft.SetMaintenanceModeOrder
+	(*SetClusterPolicyOrder)(nil),               // 15: raft.SetClusterPolicyOrder
+	(*SaveNumscriptOrder)(nil),                  // 16: raft.SaveNumscriptOrder
+	(*CreateQueryCheckpointOrder)(nil),          // 17: raft.CreateQueryCheckpointOrder
+	(*DeleteQueryCheckpointOrder)(nil),          // 18: raft.DeleteQueryCheckpointOrder
+	(*QueryCheckpointState)(nil),                // 19: raft.QueryCheckpointState
+	(*SetQueryCheckpointScheduleOrder)(nil),     // 20: raft.SetQueryCheckpointScheduleOrder
+	(*DeleteQueryCheckpointScheduleOrder)(nil),  // 21: raft.DeleteQueryCheckpointScheduleOrder
+	(*CreateLedgerOrder)(nil),                   // 22: raft.CreateLedgerOrder
+	(*MirrorIngestOrder)(nil),                   // 23: raft.MirrorIngestOrder
+	(*MirrorLogEntry)(nil),                      // 24: raft.MirrorLogEntry
+	(*MirrorFillGap)(nil),                       // 25: raft.MirrorFillGap
+	(*MirrorCreatedTransaction)(nil),            // 26: raft.MirrorCreatedTransaction
+	(*MirrorSavedMetadata)(nil),                 // 27: raft.MirrorSavedMetadata
+	(*MirrorRevertedTransaction)(nil),           // 28: raft.MirrorRevertedTransaction
+	(*MirrorDeletedMetadata)(nil),               // 29: raft.MirrorDeletedMetadata
+	(*PromoteLedgerOrder)(nil),                  // 30: raft.PromoteLedgerOrder
+	(*DeleteLedgerOrder)(nil),                   // 31: raft.DeleteLedgerOrder
+	(*LedgerApplyOrder)(nil),                    // 32: raft.LedgerApplyOrder
+	(*CreateIndexOrder)(nil),                    // 33: raft.CreateIndexOrder
+	(*DropIndexOrder)(nil),                      // 34: raft.DropIndexOrder
+	(*AddAccountTypeOrder)(nil),                 // 35: raft.AddAccountTypeOrder
+	(*RemoveAccountTypeOrder)(nil),              // 36: raft.RemoveAccountTypeOrder
+	(*UpdateDefaultEnforcementModeOrder)(nil),   // 37: raft.UpdateDefaultEnforcementModeOrder
+	(*SetMetadataFieldTypeOrder)(nil),           // 38: raft.SetMetadataFieldTypeOrder
+	(*RemoveMetadataFieldTypeOrder)(nil),        // 39: raft.RemoveMetadataFieldTypeOrder
+	(*CreateTransactionOrder)(nil),              // 40: raft.CreateTransactionOrder
+	(*NumscriptReference)(nil),                  // 41: raft.NumscriptReference
+	(*SaveMetadataOrder)(nil),                   // 42: raft.SaveMetadataOrder
+	(*RevertTransactionOrder)(nil),              // 43: raft.RevertTransactionOrder
+	(*DeleteMetadataOrder)(nil),                 // 44: raft.DeleteMetadataOrder
+	(*SaveLedgerMetadataOrder)(nil),             // 45: raft.SaveLedgerMetadataOrder
+	(*DeleteLedgerMetadataOrder)(nil),           // 46: raft.DeleteLedgerMetadataOrder
+	(*Proposal)(nil),                            // 47: raft.Proposal
+	(*TechnicalUpdate)(nil),                     // 48: raft.TechnicalUpdate
+	(*BackupDestination)(nil),                   // 49: raft.BackupDestination
+	(*S3BackupTarget)(nil),                      // 50: raft.S3BackupTarget
+	(*AzureBackupTarget)(nil),                   // 51: raft.AzureBackupTarget
+	(*BackupJob)(nil),                           // 52: raft.BackupJob
+	(*BackupOrder)(nil),                         // 53: raft.BackupOrder
+	(*IncrementalBackupOrder)(nil),              // 54: raft.IncrementalBackupOrder
+	(*BackupOrderStart)(nil),                    // 55: raft.BackupOrderStart
+	(*BackupOrderComplete)(nil),                 // 56: raft.BackupOrderComplete
+	(*BackupOrderFail)(nil),                     // 57: raft.BackupOrderFail
+	(*IdempotencyEviction)(nil),                 // 58: raft.IdempotencyEviction
+	(*MirrorSyncUpdate)(nil),                    // 59: raft.MirrorSyncUpdate
+	(*EventsSinkUpdate)(nil),                    // 60: raft.EventsSinkUpdate
+	(*CreatedLogOrReference)(nil),               // 61: raft.CreatedLogOrReference
+	(*LedgerBoundaries)(nil),                    // 62: raft.LedgerBoundaries
+	(*VolumePair)(nil),                          // 63: raft.VolumePair
+	(*ExecutionPlan)(nil),                       // 64: raft.ExecutionPlan
+	(*AttributeCoverage)(nil),                   // 65: raft.AttributeCoverage
+	(*AttributeValue)(nil),                      // 66: raft.AttributeValue
+	(*ReloadIdempotencyKey)(nil),                // 67: raft.ReloadIdempotencyKey
+	(*CacheGenerationMeta)(nil),                 // 68: raft.CacheGenerationMeta
+	(*CacheSnapshotMeta)(nil),                   // 69: raft.CacheSnapshotMeta
+	(*PeerAddress)(nil),                         // 70: raft.PeerAddress
+	(*RemovedMemberEntry)(nil),                  // 71: raft.RemovedMemberEntry
+	(*AttributeID)(nil),                         // 72: raft.AttributeID
+	nil,                                         // 73: raft.CreateLedgerOrder.AccountTypesEntry
+	nil,                                         // 74: raft.MirrorCreatedTransaction.MetadataEntry
+	nil,                                         // 75: raft.MirrorCreatedTransaction.AccountMetadataEntry
+	nil,                                         // 76: raft.MirrorSavedMetadata.MetadataEntry
+	nil,                                         // 77: raft.MirrorRevertedTransaction.MetadataEntry
+	nil,                                         // 78: raft.CreateTransactionOrder.MetadataEntry
+	nil,                                         // 79: raft.CreateTransactionOrder.AccountMetadataEntry
+	nil,                                         // 80: raft.NumscriptReference.VarsEntry
+	nil,                                         // 81: raft.SaveMetadataOrder.MetadataEntry
+	nil,                                         // 82: raft.RevertTransactionOrder.MetadataEntry
+	nil,                                         // 83: raft.SaveLedgerMetadataOrder.MetadataEntry
+	(*grpc.PreparedQuery)(nil),                  // 84: common.PreparedQuery
+	(*grpc.QueryFilter)(nil),                    // 85: common.QueryFilter
+	(*grpc.SinkConfig)(nil),                     // 86: common.SinkConfig
+	(*grpc.ClusterPolicy)(nil),                  // 87: common.ClusterPolicy
+	(*grpc.Timestamp)(nil),                      // 88: common.Timestamp
+	(*grpc.SetMetadataFieldTypeCommand)(nil),    // 89: common.SetMetadataFieldTypeCommand
+	(grpc.LedgerMode)(0),                        // 90: common.LedgerMode
+	(*grpc.MirrorSourceConfig)(nil),             // 91: common.MirrorSourceConfig
+	(grpc.ChartEnforcementMode)(0),              // 92: common.ChartEnforcementMode
+	(*grpc.Posting)(nil),                        // 93: common.Posting
+	(*grpc.Target)(nil),                         // 94: common.Target
+	(grpc.ErrorReason)(0),                       // 95: common.ErrorReason
+	(*grpc.IndexID)(nil),                        // 96: common.IndexID
+	(*grpc.AccountType)(nil),                    // 97: common.AccountType
+	(grpc.TargetType)(0),                        // 98: common.TargetType
+	(grpc.MetadataType)(0),                      // 99: common.MetadataType
+	(*grpc.Script)(nil),                         // 100: common.Script
+	(*grpc.CallerSnapshot)(nil),                 // 101: common.CallerSnapshot
+	(*grpc.Idempotency)(nil),                    // 102: common.Idempotency
+	(*grpc.SignedApplyBatch)(nil),               // 103: signature.SignedApplyBatch
+	(*grpc.ClusterConfig)(nil),                  // 104: common.ClusterConfig
+	(*grpc.MirrorSyncError)(nil),                // 105: common.MirrorSyncError
+	(*grpc.SinkError)(nil),                      // 106: common.SinkError
+	(*grpc.Log)(nil),                            // 107: common.Log
+	(*grpc.Uint256)(nil),                        // 108: common.Uint256
+	(*internalstatepb.IdempotencyKeyValue)(nil), // 109: common.IdempotencyKeyValue
+	(*grpc.MetadataValue)(nil),                  // 110: common.MetadataValue
+	(*grpc.MetadataMap)(nil),                    // 111: common.MetadataMap
 }
 var file_raft_cmd_proto_depIdxs = []int32{
 	4,   // 0: raft.Order.ledger_scoped:type_name -> raft.LedgerScopedOrder

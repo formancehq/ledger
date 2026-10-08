@@ -16,7 +16,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/pkg/kv"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -257,12 +257,12 @@ type Cache struct {
 	mu                  sync.RWMutex
 	Volumes             *AttributeCache[*raftcmdpb.VolumePair]
 	AccountMetadata     *AttributeCache[*commonpb.MetadataValue]
-	References          *AttributeCache[*internalcommonpb.TransactionReferenceValue]
+	References          *AttributeCache[*internalstatepb.TransactionReferenceValue]
 	Ledgers             *AttributeCache[*commonpb.LedgerInfo]
 	Boundaries          *AttributeCache[*raftcmdpb.LedgerBoundaries]
-	Transactions        *AttributeCache[*internalcommonpb.TransactionState]
+	Transactions        *AttributeCache[*internalstatepb.TransactionState]
 	SinkConfigs         *AttributeCache[*commonpb.SinkConfig]
-	NumscriptVersions   *AttributeCache[*internalcommonpb.NumscriptVersionValue]
+	NumscriptVersions   *AttributeCache[*internalstatepb.NumscriptVersionValue]
 	NumscriptContents   *AttributeCache[*commonpb.NumscriptInfo]
 	PreparedQueries     *AttributeCache[*commonpb.PreparedQuery]
 	LedgerMetadata      *AttributeCache[*commonpb.MetadataValue]
@@ -568,12 +568,12 @@ func New(generationThreshold uint64, m metric.Meter) (*Cache, error) {
 	ret.generationThreshold.Store(generationThreshold)
 	ret.Volumes = newAttributeCache[*raftcmdpb.VolumePair](ret, "volumes")
 	ret.AccountMetadata = newAttributeCache[*commonpb.MetadataValue](ret, "account_metadata")
-	ret.References = newAttributeCache[*internalcommonpb.TransactionReferenceValue](ret, "references")
+	ret.References = newAttributeCache[*internalstatepb.TransactionReferenceValue](ret, "references")
 	ret.Ledgers = newAttributeCache[*commonpb.LedgerInfo](ret, "ledgers")
 	ret.Boundaries = newAttributeCache[*raftcmdpb.LedgerBoundaries](ret, "boundaries")
-	ret.Transactions = newAttributeCache[*internalcommonpb.TransactionState](ret, "transactions")
+	ret.Transactions = newAttributeCache[*internalstatepb.TransactionState](ret, "transactions")
 	ret.SinkConfigs = newAttributeCache[*commonpb.SinkConfig](ret, "sink_configs")
-	ret.NumscriptVersions = newAttributeCache[*internalcommonpb.NumscriptVersionValue](ret, "numscript_versions")
+	ret.NumscriptVersions = newAttributeCache[*internalstatepb.NumscriptVersionValue](ret, "numscript_versions")
 	ret.NumscriptContents = newAttributeCache[*commonpb.NumscriptInfo](ret, "numscript_contents")
 	ret.PreparedQueries = newAttributeCache[*commonpb.PreparedQuery](ret, "prepared_queries")
 	ret.LedgerMetadata = newAttributeCache[*commonpb.MetadataValue](ret, "ledger_metadata")

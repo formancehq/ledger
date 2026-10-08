@@ -9,7 +9,7 @@ import (
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -39,7 +39,7 @@ func TestProcessCreateTransactionRejectsAccountOutsideConfiguredTypes(t *testing
 	volumes.expectGet(domain.NewVolumeKey(ledger, "world", "USD", ""), zeroVolume, nil)
 	volumes.expectGet(domain.NewVolumeKey(ledger, "merchants:shop", "USD", ""), zeroVolume, nil)
 
-	transactionStates := &kindStub[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader]{}
+	transactionStates := &kindStub[domain.TransactionKey, *internalstatepb.TransactionState, internalstatepb.TransactionStateReader]{}
 	mockStore.EXPECT().TransactionStates().Return(transactionStates).AnyTimes()
 
 	now := (&commonpb.Timestamp{Data: 1_234_567_890}).AsReader()
@@ -98,8 +98,8 @@ func TestProcessRevertTransactionRejectsAccountOutsideConfiguredTypes(t *testing
 		Asset:       "USD",
 	}}
 
-	transactionStates := &kindStub[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader]{}
-	transactionStates.expectGet(txKey, (&internalcommonpb.TransactionState{
+	transactionStates := &kindStub[domain.TransactionKey, *internalstatepb.TransactionState, internalstatepb.TransactionStateReader]{}
+	transactionStates.expectGet(txKey, (&internalstatepb.TransactionState{
 		CreatedByLog: 42,
 		Postings:     targetPostings,
 	}).AsReader(), nil)

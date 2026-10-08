@@ -10,7 +10,7 @@ import (
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -28,7 +28,7 @@ func TestProcessRevertTransactionRejectsExhaustedIDBeforeWrites(t *testing.T) {
 	targetPostings := []*commonpb.Posting{{
 		Source: "world", Destination: "users:001", Amount: commonpb.NewUint256FromUint64(1), Asset: "USD",
 	}}
-	expectGetTransactionState(mockStore, txKey, (&internalcommonpb.TransactionState{Postings: targetPostings}).AsReader(), nil)
+	expectGetTransactionState(mockStore, txKey, (&internalstatepb.TransactionState{Postings: targetPostings}).AsReader(), nil)
 
 	payload, err := processRevertTransaction(
 		"test-ledger",
@@ -90,18 +90,18 @@ func TestProcessRevertTransaction_Success(t *testing.T) {
 	// Processor reads the original transaction state (postings included), builds
 	// the reversed postings from it, then records the reversion on it: the
 	// compensating transaction id and the effective time it was reverted.
-	expectGetTransactionState(mockStore, txKey, (&internalcommonpb.TransactionState{
+	expectGetTransactionState(mockStore, txKey, (&internalstatepb.TransactionState{
 		CreatedByLog: 42,
 		Postings:     revertTestTargetPostings(),
 	}).AsReader(), nil)
-	expectPutTransactionState(t, mockStore, txKey, nil, func(_ domain.TransactionKey, st *internalcommonpb.TransactionState) {
+	expectPutTransactionState(t, mockStore, txKey, nil, func(_ domain.TransactionKey, st *internalstatepb.TransactionState) {
 		require.Equal(t, uint64(5), st.GetRevertedByTransaction())
 		require.Equal(t, now, st.GetRevertedAt())
 	})
 
 	// Processor stores the new revert transaction state, back-linked to the original.
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(50))
-	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 5}, nil, func(_ domain.TransactionKey, st *internalcommonpb.TransactionState) {
+	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 5}, nil, func(_ domain.TransactionKey, st *internalstatepb.TransactionState) {
 		require.Equal(t, uint64(3), st.GetRevertsTransaction())
 	})
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(_ string, persisted *raftcmdpb.LedgerBoundaries) {
@@ -183,18 +183,18 @@ func TestProcessRevertTransaction_AtEffectiveDate(t *testing.T) {
 
 	// Original transaction state carries the postings and the effective
 	// timestamp populated at create time.
-	expectGetTransactionState(mockStore, txKey, (&internalcommonpb.TransactionState{
+	expectGetTransactionState(mockStore, txKey, (&internalstatepb.TransactionState{
 		CreatedByLog: 42,
 		Timestamp:    originalTimestamp,
 		Postings:     revertTestTargetPostings(),
 	}).AsReader(), nil)
-	expectPutTransactionState(t, mockStore, txKey, nil, func(_ domain.TransactionKey, st *internalcommonpb.TransactionState) {
+	expectPutTransactionState(t, mockStore, txKey, nil, func(_ domain.TransactionKey, st *internalstatepb.TransactionState) {
 		require.Equal(t, uint64(5), st.GetRevertedByTransaction())
 		require.Equal(t, originalTimestamp, st.GetRevertedAt(), "with at_effective_date reverted_at inherits the original timestamp")
 	})
 
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(50))
-	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 5}, nil, func(_ domain.TransactionKey, st *internalcommonpb.TransactionState) {
+	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 5}, nil, func(_ domain.TransactionKey, st *internalstatepb.TransactionState) {
 		require.Equal(t, uint64(3), st.GetRevertsTransaction())
 	})
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
@@ -265,7 +265,7 @@ func TestProcessRevertTransaction_AtEffectiveDate_MissingOriginalTimestamp(t *te
 	// resolved after speculative volumes, the reverted bit and the transaction
 	// boundary are staged, but before transaction states are written. The
 	// proposal write set discards these speculative effects on failure.
-	expectGetTransactionState(mockStore, txKey, (&internalcommonpb.TransactionState{
+	expectGetTransactionState(mockStore, txKey, (&internalstatepb.TransactionState{
 		CreatedByLog: 42,
 		Postings:     revertTestTargetPostings(),
 	}).AsReader(), nil)
@@ -484,7 +484,7 @@ func TestProcessRevertTransaction_EmptyPostingsIsInconsistent(t *testing.T) {
 	mockStore.EXPECT().GetReverted(txKey).Return(false, nil)
 	// Returning a real state proves this is the empty-postings guard, not the
 	// earlier absent-state guard. No volume or transaction writes are allowed.
-	expectGetTransactionState(mockStore, txKey, (&internalcommonpb.TransactionState{
+	expectGetTransactionState(mockStore, txKey, (&internalstatepb.TransactionState{
 		Timestamp: &commonpb.Timestamp{Data: 1},
 	}).AsReader(), nil)
 	payload, err := processRevertTransaction("test-ledger", &raftcmdpb.RevertTransactionOrder{TransactionId: 3}, &Context{

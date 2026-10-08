@@ -9,7 +9,7 @@ import (
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -92,11 +92,11 @@ func (s *skipSafeScope) LedgerMetadata() Accessor[domain.LedgerMetadataKey, *com
 	return s.inner.LedgerMetadata()
 }
 
-func (s *skipSafeScope) TransactionReferences() Accessor[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader] {
+func (s *skipSafeScope) TransactionReferences() Accessor[domain.TransactionReferenceKey, *internalstatepb.TransactionReferenceValue, internalstatepb.TransactionReferenceValueReader] {
 	return s.inner.TransactionReferences()
 }
 
-func (s *skipSafeScope) TransactionStates() Accessor[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader] {
+func (s *skipSafeScope) TransactionStates() Accessor[domain.TransactionKey, *internalstatepb.TransactionState, internalstatepb.TransactionStateReader] {
 	return s.inner.TransactionStates()
 }
 

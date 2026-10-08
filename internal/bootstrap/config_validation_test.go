@@ -12,7 +12,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/infra/node"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -157,7 +157,7 @@ func TestValidateOrPersistConfig_SchemaVersionBackfill(t *testing.T) {
 
 	// Simulate a pre-versioning persisted config (schema_version == 0).
 	batch := store.OpenWriteSession()
-	require.NoError(t, SavePersistedConfig(batch, &internalcommonpb.PersistedConfig{
+	require.NoError(t, SavePersistedConfig(batch, &internalstatepb.PersistedConfig{
 		NodeId:    1,
 		ClusterId: "test",
 	}))
@@ -204,7 +204,7 @@ func TestValidateOrPersistConfig_SchemaVersionTooNew(t *testing.T) {
 
 	// Persist a schema version higher than what the code supports (simulate downgrade).
 	batch := store.OpenWriteSession()
-	require.NoError(t, SavePersistedConfig(batch, &internalcommonpb.PersistedConfig{
+	require.NoError(t, SavePersistedConfig(batch, &internalstatepb.PersistedConfig{
 		NodeId:               1,
 		ClusterId:            "test",
 		StorageSchemaVersion: CurrentStorageSchemaVersion + 1,
@@ -270,7 +270,7 @@ func TestValidateOrPersistConfig_AnchorKeyPhysicallyPinned(t *testing.T) {
 	store := newTestStore(t)
 	logger := logging.Testing()
 
-	raw, err := proto.Marshal(&internalcommonpb.PersistedConfig{
+	raw, err := proto.Marshal(&internalstatepb.PersistedConfig{
 		NodeId:               1,
 		ClusterId:            "test",
 		StorageSchemaVersion: 1,
@@ -305,7 +305,7 @@ func TestValidateOrPersistConfig_SchemaVersionTooOld(t *testing.T) {
 
 	// Persist a schema version lower than current (simulate upgrade without migration).
 	batch := store.OpenWriteSession()
-	require.NoError(t, SavePersistedConfig(batch, &internalcommonpb.PersistedConfig{
+	require.NoError(t, SavePersistedConfig(batch, &internalstatepb.PersistedConfig{
 		NodeId:               1,
 		ClusterId:            "test",
 		StorageSchemaVersion: 1,

@@ -20,7 +20,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -105,9 +105,9 @@ type testEngine struct {
 	boundaries             map[string]*raftcmdpb.LedgerBoundaries
 	volumes                map[string]*raftcmdpb.VolumePair
 	metadata               map[string]*auditpb.MetadataValue
-	idempotency            map[string]*internalcommonpb.IdempotencyKeyValue
-	references             map[string]*internalcommonpb.TransactionReferenceValue
-	transactionStates      map[string]*internalcommonpb.TransactionState
+	idempotency            map[string]*internalstatepb.IdempotencyKeyValue
+	references             map[string]*internalstatepb.TransactionReferenceValue
+	transactionStates      map[string]*internalstatepb.TransactionState
 	reversions             map[string]*bitset.Bitset
 	numscriptContent       map[string]*auditpb.NumscriptInfo // key = NumscriptEntryKey bytes
 	numscriptLatest        map[string]string                 // key = NumscriptVersionKey bytes
@@ -144,9 +144,9 @@ func newTestEngine(t *testing.T) *testEngine {
 		boundaries:          make(map[string]*raftcmdpb.LedgerBoundaries),
 		volumes:             make(map[string]*raftcmdpb.VolumePair),
 		metadata:            make(map[string]*auditpb.MetadataValue),
-		idempotency:         make(map[string]*internalcommonpb.IdempotencyKeyValue),
-		references:          make(map[string]*internalcommonpb.TransactionReferenceValue),
-		transactionStates:   make(map[string]*internalcommonpb.TransactionState),
+		idempotency:         make(map[string]*internalstatepb.IdempotencyKeyValue),
+		references:          make(map[string]*internalstatepb.TransactionReferenceValue),
+		transactionStates:   make(map[string]*internalstatepb.TransactionState),
 		reversions:          make(map[string]*bitset.Bitset),
 		numscriptContent:    make(map[string]*auditpb.NumscriptInfo),
 		numscriptLatest:     make(map[string]string),
@@ -287,7 +287,7 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*auditpb.Log
 	}
 
 	for keyStr, version := range e.numscriptLatest {
-		_, err := e.attrs.NumscriptVersion.Set(batch, []byte(keyStr), &internalcommonpb.NumscriptVersionValue{Version: version})
+		_, err := e.attrs.NumscriptVersion.Set(batch, []byte(keyStr), &internalstatepb.NumscriptVersionValue{Version: version})
 		require.NoError(e.t, err)
 	}
 
@@ -629,9 +629,9 @@ func (s *scopeImpl) LedgerMetadata() processing.Accessor[domain.LedgerMetadataKe
 	}
 }
 
-func (s *scopeImpl) TransactionReferences() processing.Accessor[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader] {
-	return &scopeFuncAccessor[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader]{
-		get: func(key domain.TransactionReferenceKey) (internalcommonpb.TransactionReferenceValueReader, error) {
+func (s *scopeImpl) TransactionReferences() processing.Accessor[domain.TransactionReferenceKey, *internalstatepb.TransactionReferenceValue, internalstatepb.TransactionReferenceValueReader] {
+	return &scopeFuncAccessor[domain.TransactionReferenceKey, *internalstatepb.TransactionReferenceValue, internalstatepb.TransactionReferenceValueReader]{
+		get: func(key domain.TransactionReferenceKey) (internalstatepb.TransactionReferenceValueReader, error) {
 			v, ok := s.engine.references[string(key.Bytes())]
 			if !ok {
 				return nil, domain.ErrNotFound
@@ -639,15 +639,15 @@ func (s *scopeImpl) TransactionReferences() processing.Accessor[domain.Transacti
 
 			return v.AsReader(), nil
 		},
-		put: func(key domain.TransactionReferenceKey, value *internalcommonpb.TransactionReferenceValue) {
+		put: func(key domain.TransactionReferenceKey, value *internalstatepb.TransactionReferenceValue) {
 			s.engine.references[string(key.Bytes())] = value
 		},
 	}
 }
 
-func (s *scopeImpl) TransactionStates() processing.Accessor[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader] {
-	return &scopeFuncAccessor[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader]{
-		get: func(key domain.TransactionKey) (internalcommonpb.TransactionStateReader, error) {
+func (s *scopeImpl) TransactionStates() processing.Accessor[domain.TransactionKey, *internalstatepb.TransactionState, internalstatepb.TransactionStateReader] {
+	return &scopeFuncAccessor[domain.TransactionKey, *internalstatepb.TransactionState, internalstatepb.TransactionStateReader]{
+		get: func(key domain.TransactionKey) (internalstatepb.TransactionStateReader, error) {
 			st := s.engine.transactionStates[string(key.Bytes())]
 			if st == nil {
 				return nil, nil
@@ -655,7 +655,7 @@ func (s *scopeImpl) TransactionStates() processing.Accessor[domain.TransactionKe
 
 			return st.AsReader(), nil
 		},
-		put: func(key domain.TransactionKey, txState *internalcommonpb.TransactionState) {
+		put: func(key domain.TransactionKey, txState *internalstatepb.TransactionState) {
 			k := string(key.Bytes())
 			s.engine.transactionStates[k] = txState
 			s.modifiedTxStates[k] = struct{}{}
@@ -1666,7 +1666,7 @@ func TestCheckerDetectsTransactionUpdateMismatch(t *testing.T) {
 	// Use a high raft index so it overrides the correct state.
 	batch := engine.store.OpenWriteSession()
 	txKey := domain.TransactionKey{LedgerName: "test", ID: 1}
-	_, err := engine.attrs.Transaction.Set(batch, txKey.Bytes(), &internalcommonpb.TransactionState{
+	_, err := engine.attrs.Transaction.Set(batch, txKey.Bytes(), &internalstatepb.TransactionState{
 		CreatedByLog: 999,
 	})
 	require.NoError(t, err)
@@ -1706,7 +1706,7 @@ func TestCheckerDetectsLiveOnlyTransaction(t *testing.T) {
 	// fabricated state or a direct Pebble write.
 	batch := engine.store.OpenWriteSession()
 	rogueKey := domain.TransactionKey{LedgerName: "test", ID: 9999}
-	_, err := engine.attrs.Transaction.Set(batch, rogueKey.Bytes(), &internalcommonpb.TransactionState{
+	_, err := engine.attrs.Transaction.Set(batch, rogueKey.Bytes(), &internalstatepb.TransactionState{
 		CreatedByLog: 9999,
 	})
 	require.NoError(t, err)
@@ -2843,7 +2843,7 @@ func TestCompareReferences_DetectsMissingAndUnaudited(t *testing.T) {
 		domain.TransactionReferenceKey{LedgerName: "ldg", Reference: "ref-1"}.Bytes()))
 	_, err := engine.attrs.References.Set(batch,
 		domain.TransactionReferenceKey{LedgerName: "ldg", Reference: "ghost"}.Bytes(),
-		&internalcommonpb.TransactionReferenceValue{TransactionId: 42})
+		&internalstatepb.TransactionReferenceValue{TransactionId: 42})
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 
@@ -2913,7 +2913,7 @@ func TestCompareReferences_FlagsRowSurvivingDeletedLedger(t *testing.T) {
 	batch := engine.store.OpenWriteSession()
 	_, err := engine.attrs.References.Set(batch,
 		domain.TransactionReferenceKey{LedgerName: "doomed", Reference: "ref-1"}.Bytes(),
-		&internalcommonpb.TransactionReferenceValue{TransactionId: 1})
+		&internalstatepb.TransactionReferenceValue{TransactionId: 1})
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 

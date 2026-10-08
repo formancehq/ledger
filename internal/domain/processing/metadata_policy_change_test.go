@@ -9,7 +9,7 @@ import (
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -84,9 +84,9 @@ func TestProcessOrdersMetadataPolicyTightenedAfterAdmission(t *testing.T) {
 				if kind == "revert" {
 					key := domain.TransactionKey{LedgerName: "test-ledger", ID: 3}
 					scope.EXPECT().GetReverted(key).Return(false, nil)
-					expectGetTransactionState(scope, key, (&internalcommonpb.TransactionState{Postings: []*commonpb.Posting{{Source: "world", Destination: "users:alice", Asset: "USD", Amount: commonpb.NewUint256FromUint64(1)}}}).AsReader(), nil)
+					expectGetTransactionState(scope, key, (&internalstatepb.TransactionState{Postings: []*commonpb.Posting{{Source: "world", Destination: "users:alice", Asset: "USD", Amount: commonpb.NewUint256FromUint64(1)}}}).AsReader(), nil)
 					stub, _ := stubsFor(scope).transactionStatesStubFor(scope)
-					stub.onPut(func(domain.TransactionKey, *internalcommonpb.TransactionState) {
+					stub.onPut(func(domain.TransactionKey, *internalstatepb.TransactionState) {
 						t.Fatal("rejected metadata must not change transaction state")
 					})
 				}

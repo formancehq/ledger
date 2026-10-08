@@ -47,16 +47,28 @@ func TestPublishedContractIsTheRegisteredPublicClosure(t *testing.T) {
 		"cluster.proto":   ledgergrpc.File_cluster_proto,
 		"restore.proto":   ledgergrpc.File_restore_proto,
 	}
+	private := map[string]struct{}{
+		"raft_transport.proto":   {},
+		"cluster_bootstrap.proto": {},
+		"raft_cmd.proto":         {},
+		"snapshot.proto":          {},
+		"events.proto":            {},
+		"proposal.proto":          {},
+		"internal_state.proto":    {},
+	}
 	methodCount := 0
 	for _, file := range set.File {
 		if file.GetName() == "google/protobuf/descriptor.proto" {
 			continue
 		}
+		_, isPrivate := private[file.GetName()]
+		require.False(t, isPrivate, "private descriptor leaked into public contract: %s", file.GetName())
 		registered, ok := public[file.GetName()]
 		require.True(t, ok, "unexpected public descriptor %s", file.GetName())
 		require.True(t, proto.Equal(file, protodesc.ToFileDescriptorProto(registered)), file.GetName())
 		for _, dependency := range file.Dependency {
-			require.NotEqual(t, "internal_common.proto", dependency)
+			_, isPrivate := private[dependency]
+			require.False(t, isPrivate, "public descriptor depends on private proto %s: %s", dependency, file.GetName())
 		}
 		source, err := os.ReadFile(filepath.Join(protoDir, file.GetName()))
 		require.NoError(t, err)

@@ -8,7 +8,7 @@ import (
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -45,7 +45,7 @@ func tamperNumscriptLatest(t *testing.T, e *testEngine, ledger, name, version st
 
 	batch := e.store.OpenWriteSession()
 	key := domain.NumscriptVersionKey{LedgerName: ledger, Name: name}
-	_, err := e.attrs.NumscriptVersion.Set(batch, key.Bytes(), &internalcommonpb.NumscriptVersionValue{Version: version})
+	_, err := e.attrs.NumscriptVersion.Set(batch, key.Bytes(), &internalstatepb.NumscriptVersionValue{Version: version})
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 }

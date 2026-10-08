@@ -10,7 +10,7 @@ import (
 
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -58,7 +58,7 @@ func readVolume(t *testing.T, rs *replayStore, canonicalKey []byte) *raftcmdpb.V
 }
 
 // readTransaction reads the merged TransactionState for the given canonical key.
-func readTransaction(t *testing.T, rs *replayStore, canonicalKey []byte) *internalcommonpb.TransactionState {
+func readTransaction(t *testing.T, rs *replayStore, canonicalKey []byte) *internalstatepb.TransactionState {
 	t.Helper()
 
 	val, closer, err := rs.db.Get(replayKey(replayPrefixTransaction, canonicalKey))
@@ -69,7 +69,7 @@ func readTransaction(t *testing.T, rs *replayStore, canonicalKey []byte) *intern
 	require.NotEmpty(t, val)
 	require.Equal(t, byte(txOpFinalized), val[0], "expected txOpFinalized prefix")
 
-	var state internalcommonpb.TransactionState
+	var state internalstatepb.TransactionState
 	require.NoError(t, state.UnmarshalVT(val[1:]))
 
 	return &state
@@ -408,7 +408,7 @@ func TestReplayStoreMetadataNotFound(t *testing.T) {
 func TestTxMergerPartialMergePreservesDelete(t *testing.T) {
 	t.Parallel()
 
-	base := &internalcommonpb.TransactionState{CreatedByLog: 5, Metadata: strMetaMap("k0", "v0")}
+	base := &internalstatepb.TransactionState{CreatedByLog: 5, Metadata: strMetaMap("k0", "v0")}
 	baseData, err := base.MarshalVT()
 	require.NoError(t, err)
 	finalizedOp := append([]byte{txOpFinalized}, baseData...)
@@ -430,7 +430,7 @@ func TestTxMergerPartialMergePreservesDelete(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, byte(txOpFinalized), result[0])
 
-	var got internalcommonpb.TransactionState
+	var got internalstatepb.TransactionState
 	require.NoError(t, got.UnmarshalVT(result[1:]))
 	require.Empty(t, got.GetMetadata(), "the later delete of k0 must survive the partial merge")
 }
@@ -443,7 +443,7 @@ func TestReplayStoreDeleteSurvivesCompaction(t *testing.T) {
 	rs := newTestReplayStore(t)
 	txKey := []byte("ledger\x00tx1")
 
-	base := &internalcommonpb.TransactionState{CreatedByLog: 5, Metadata: strMetaMap("k0", "v0")}
+	base := &internalstatepb.TransactionState{CreatedByLog: 5, Metadata: strMetaMap("k0", "v0")}
 	baseData, err := base.MarshalVT()
 	require.NoError(t, err)
 	require.NoError(t, rs.db.Merge(replayKey(replayPrefixTransaction, txKey),

@@ -5,7 +5,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -21,7 +21,7 @@ import (
 // Shared by the integrity checker (which compares it against the stored
 // projection) and the backup restore path (which persists it via
 // SaveIdempotencyKey), so the two never diverge.
-func IdempotencyValueFromAudit(entry *auditpb.AuditEntry, items []*auditpb.AuditItem) (*internalcommonpb.IdempotencyKeyValue, bool) {
+func IdempotencyValueFromAudit(entry *auditpb.AuditEntry, items []*auditpb.AuditItem) (*internalstatepb.IdempotencyKeyValue, bool) {
 	switch out := entry.GetOutcome().(type) {
 	case *auditpb.AuditEntry_Failure:
 		reason := out.Failure.GetReason()
@@ -41,11 +41,11 @@ func IdempotencyValueFromAudit(entry *auditpb.AuditEntry, items []*auditpb.Audit
 			return nil, false
 		}
 
-		return &internalcommonpb.IdempotencyKeyValue{
+		return &internalstatepb.IdempotencyKeyValue{
 			Hash:      recomputeProposalHash(items),
 			CreatedAt: entry.GetTimestamp().GetData(),
 			ExpiresAt: entry.GetIdempotency().GetExpiresAt(),
-			Failure: &internalcommonpb.IdempotencyFailure{
+			Failure: &internalstatepb.IdempotencyFailure{
 				Reason:   reason,
 				Message:  out.Failure.GetMessage(),
 				Metadata: out.Failure.GetContext(),
@@ -60,7 +60,7 @@ func IdempotencyValueFromAudit(entry *auditpb.AuditEntry, items []*auditpb.Audit
 
 		minSeq := out.Success.GetMinLogSequence()
 
-		return &internalcommonpb.IdempotencyKeyValue{
+		return &internalstatepb.IdempotencyKeyValue{
 			Hash:             recomputeProposalHash(items),
 			FirstLogSequence: minSeq,
 			LogCount:         uint32(maxSeq - minSeq + 1),

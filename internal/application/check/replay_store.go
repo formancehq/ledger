@@ -18,7 +18,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	domainreplay "github.com/formancehq/ledger/v3/internal/domain/replay"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -735,7 +735,7 @@ func (m *txMerger) Finish(includesBase bool) ([]byte, io.Closer, error) {
 		return batch, nil, nil
 	}
 
-	state := &internalcommonpb.TransactionState{}
+	state := &internalstatepb.TransactionState{}
 
 	for _, op := range ops {
 		switch op[0] {

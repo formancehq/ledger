@@ -25,7 +25,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -368,7 +368,7 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 		}
 
 		batch := store.OpenWriteSession()
-		_, err := attrs.Transaction.Set(batch, domain.TransactionKey{LedgerName: testLedgerName, ID: 1}.Bytes(), &internalcommonpb.TransactionState{
+		_, err := attrs.Transaction.Set(batch, domain.TransactionKey{LedgerName: testLedgerName, ID: 1}.Bytes(), &internalstatepb.TransactionState{
 			CreatedByLog: 1,
 			Postings:     expectedPostings,
 		})

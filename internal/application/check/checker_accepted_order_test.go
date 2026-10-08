@@ -11,7 +11,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -117,7 +117,7 @@ func TestVerifyAuditHashChain_KeyedNumscriptTxBindsAcceptedOrder(t *testing.T) {
 	items := []*auditpb.AuditItem{{OrderIndex: 0, SerializedOrder: serialized, LogSequence: logSeq}}
 	persistAuditEntry(t, store, entry, items, clusterID)
 
-	writeIdempotencyEntry(t, store, idemKey, &internalcommonpb.IdempotencyKeyValue{
+	writeIdempotencyEntry(t, store, idemKey, &internalstatepb.IdempotencyKeyValue{
 		CreatedAt:        createdAt,
 		Hash:             frozenHash,
 		FirstLogSequence: logSeq,

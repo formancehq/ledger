@@ -13,7 +13,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -424,10 +424,10 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 	items := []*auditpb.AuditItem{{OrderIndex: 0, SerializedOrder: serialized}}
 	persistAuditEntry(t, store, entry, items, clusterID)
 
-	faithful := &internalcommonpb.IdempotencyKeyValue{
+	faithful := &internalstatepb.IdempotencyKeyValue{
 		CreatedAt: createdAt,
 		Hash:      proposalHash,
-		Failure: &internalcommonpb.IdempotencyFailure{
+		Failure: &internalstatepb.IdempotencyFailure{
 			Reason:   auditpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
 			Message:  "balance too low",
 			Metadata: map[string]string{"account": "bank"},
@@ -484,7 +484,7 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 
 // writeIdempotencyEntry persists a frozen idempotency value at its canonical
 // SubIdempKeys location (the layout state.SaveIdempotencyKey uses).
-func writeIdempotencyEntry(t *testing.T, store *dal.Store, key string, value *internalcommonpb.IdempotencyKeyValue) {
+func writeIdempotencyEntry(t *testing.T, store *dal.Store, key string, value *internalstatepb.IdempotencyKeyValue) {
 	t.Helper()
 
 	keyHash := state.HashIdempotencyKey(key)

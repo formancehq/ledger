@@ -24,7 +24,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -1149,7 +1149,7 @@ func newAttributeReplayWriter(t *testing.T) (*attributeReplayWriter, *attributes
 		boundary:               attrs.Boundary,
 		pendingVolumes:         make(map[string]*raftcmdpb.VolumePair),
 		pendingMetadata:        make(map[string]*auditpb.MetadataValue),
-		pendingTx:              make(map[string]*internalcommonpb.TransactionState),
+		pendingTx:              make(map[string]*internalstatepb.TransactionState),
 		purgedVolumePrefixes:   make(map[string]struct{}),
 		purgedMetadataPrefixes: make(map[string]struct{}),
 		ledgerInfos:            make(map[string]*auditpb.LedgerInfo),
@@ -1564,7 +1564,7 @@ func TestRebuildDelta_PreservesCheckpointExpiresAt(t *testing.T) {
 	batch := store.OpenWriteSession()
 	// Checkpoint-carried outcome with a finite expiry (Preserved via the SST
 	// copy); SaveIdempotencyKey also writes its eviction time-index entry.
-	require.NoError(t, state.SaveIdempotencyKey(batch, checkpointKey, &internalcommonpb.IdempotencyKeyValue{
+	require.NoError(t, state.SaveIdempotencyKey(batch, checkpointKey, &internalstatepb.IdempotencyKeyValue{
 		FirstLogSequence: 1, LogCount: 1, CreatedAt: 1_000_000, ExpiresAt: checkpointExp,
 	}))
 	// An unrelated keyed outcome in the exported delta, so RebuildDelta does real
@@ -1609,7 +1609,7 @@ func TestRebuildDelta_IdempotencyConflictKeepsCheckpointOutcome(t *testing.T) {
 
 	batch := store.OpenWriteSession()
 	// Original success frozen in the "checkpoint" (already in the store).
-	require.NoError(t, state.SaveIdempotencyKey(batch, key, &internalcommonpb.IdempotencyKeyValue{
+	require.NoError(t, state.SaveIdempotencyKey(batch, key, &internalstatepb.IdempotencyKeyValue{
 		FirstLogSequence: 1, LogCount: 1, CreatedAt: 1_000_000,
 	}))
 	// Only the later conflict is in the exported delta.
@@ -2146,7 +2146,7 @@ func TestBackup_IdempotencyExpiresAtRestoreParity(t *testing.T) {
 	require.NoError(t, post.SetProto(coldLogKey(2), createLedgerLog(2, "ledger", 2)))
 	require.NoError(t, post.SetProto(coldAuditKey(2), entry))
 	require.NoError(t, post.SetProto(coldAuditItemKey(2, 0), auditItem(t, 0, fillGapOrder("ledger", 2))))
-	require.NoError(t, state.SaveIdempotencyKey(post, key, &internalcommonpb.IdempotencyKeyValue{
+	require.NoError(t, state.SaveIdempotencyKey(post, key, &internalstatepb.IdempotencyKeyValue{
 		FirstLogSequence: 2, LogCount: 1, CreatedAt: createdAt, ExpiresAt: expiresAt,
 	}))
 	require.NoError(t, post.Commit())

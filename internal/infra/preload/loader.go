@@ -6,7 +6,7 @@ import (
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -162,13 +162,13 @@ func (al *AttributeLoader[T]) Release(key attributes.U128) {
 // Loaders groups all attribute loaders by type.
 type Loaders struct {
 	Volumes           *AttributeLoader[*raftcmdpb.VolumePair]
-	References        *AttributeLoader[*internalcommonpb.TransactionReferenceValue]
+	References        *AttributeLoader[*internalstatepb.TransactionReferenceValue]
 	Ledgers           *AttributeLoader[*commonpb.LedgerInfo]
 	Boundaries        *AttributeLoader[*raftcmdpb.LedgerBoundaries]
 	SinkConfigs       *AttributeLoader[*commonpb.SinkConfig]
 	AccountMetadata   *AttributeLoader[*commonpb.MetadataValue]
-	NumscriptVersions *AttributeLoader[*internalcommonpb.NumscriptVersionValue]
-	Transactions      *AttributeLoader[*internalcommonpb.TransactionState]
+	NumscriptVersions *AttributeLoader[*internalstatepb.NumscriptVersionValue]
+	Transactions      *AttributeLoader[*internalstatepb.TransactionState]
 	NumscriptContents *AttributeLoader[*commonpb.NumscriptInfo]
 	PreparedQueries   *AttributeLoader[*commonpb.PreparedQuery]
 	LedgerMetadata    *AttributeLoader[*commonpb.MetadataValue]
@@ -179,13 +179,13 @@ type Loaders struct {
 func NewLoaders() *Loaders {
 	return &Loaders{
 		Volumes:           NewAttributeLoader[*raftcmdpb.VolumePair](),
-		References:        NewAttributeLoader[*internalcommonpb.TransactionReferenceValue](),
+		References:        NewAttributeLoader[*internalstatepb.TransactionReferenceValue](),
 		Ledgers:           NewAttributeLoader[*commonpb.LedgerInfo](),
 		Boundaries:        NewAttributeLoader[*raftcmdpb.LedgerBoundaries](),
 		SinkConfigs:       NewAttributeLoader[*commonpb.SinkConfig](),
 		AccountMetadata:   NewAttributeLoader[*commonpb.MetadataValue](),
-		NumscriptVersions: NewAttributeLoader[*internalcommonpb.NumscriptVersionValue](),
-		Transactions:      NewAttributeLoader[*internalcommonpb.TransactionState](),
+		NumscriptVersions: NewAttributeLoader[*internalstatepb.NumscriptVersionValue](),
+		Transactions:      NewAttributeLoader[*internalstatepb.TransactionState](),
 		NumscriptContents: NewAttributeLoader[*commonpb.NumscriptInfo](),
 		PreparedQueries:   NewAttributeLoader[*commonpb.PreparedQuery](),
 		LedgerMetadata:    NewAttributeLoader[*commonpb.MetadataValue](),

@@ -9,7 +9,7 @@ import (
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -175,7 +175,7 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 
 	// Store the revert transaction's state (include metadata from the revert
 	// order); RevertsTransaction back-links it to the transaction it compensates.
-	s.TransactionStates().Put(domain.TransactionKey{LedgerName: ledger, ID: revertTxID}, &internalcommonpb.TransactionState{
+	s.TransactionStates().Put(domain.TransactionKey{LedgerName: ledger, ID: revertTxID}, &internalstatepb.TransactionState{
 		CreatedByLog:       s.GetNextSequenceID(),
 		Metadata:           order.GetMetadata(),
 		Timestamp:          revertTimestamp,

@@ -7,7 +7,7 @@ import (
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -289,7 +289,7 @@ func processMirrorCreatedTransaction(ledger string, ct *raftcmdpb.MirrorCreatedT
 	}
 
 	// Record transaction state (include metadata from the mirrored transaction)
-	s.TransactionStates().Put(domain.TransactionKey{LedgerName: ledger, ID: txID}, &internalcommonpb.TransactionState{
+	s.TransactionStates().Put(domain.TransactionKey{LedgerName: ledger, ID: txID}, &internalstatepb.TransactionState{
 		CreatedByLog: s.GetNextSequenceID(),
 		Metadata:     ct.GetMetadata(),
 		Timestamp:    timestamp,
@@ -300,7 +300,7 @@ func processMirrorCreatedTransaction(ledger string, ct *raftcmdpb.MirrorCreatedT
 	if ct.GetReference() != "" {
 		s.TransactionReferences().Put(
 			domain.TransactionReferenceKey{LedgerName: ledger, Reference: ct.GetReference()},
-			&internalcommonpb.TransactionReferenceValue{TransactionId: txID},
+			&internalstatepb.TransactionReferenceValue{TransactionId: txID},
 		)
 	}
 
@@ -504,7 +504,7 @@ func processMirrorRevertedTransaction(ledger string, rt *raftcmdpb.MirrorReverte
 
 	// Store the revert transaction's state (include metadata from the mirror
 	// revert); RevertsTransaction back-links it to the transaction it compensates.
-	s.TransactionStates().Put(domain.TransactionKey{LedgerName: ledger, ID: revertTxID}, &internalcommonpb.TransactionState{
+	s.TransactionStates().Put(domain.TransactionKey{LedgerName: ledger, ID: revertTxID}, &internalstatepb.TransactionState{
 		CreatedByLog:       s.GetNextSequenceID(),
 		Metadata:           rt.GetMetadata(),
 		Timestamp:          timestamp,

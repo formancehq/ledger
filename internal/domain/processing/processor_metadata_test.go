@@ -9,7 +9,7 @@ import (
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -149,7 +149,7 @@ func TestProcessAddMetadata_Transaction(t *testing.T) {
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 5}
 
 	txKey := domain.TransactionKey{LedgerName: "test-ledger", ID: 5}
-	existingState := &internalcommonpb.TransactionState{
+	existingState := &internalstatepb.TransactionState{
 		CreatedByLog: 1,
 	}
 
@@ -158,7 +158,7 @@ func TestProcessAddMetadata_Transaction(t *testing.T) {
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	expectGetTransactionState(mockStore, txKey, existingState.AsReader(), nil)
-	expectPutTransactionState(t, mockStore, txKey, nil, func(_ domain.TransactionKey, state *internalcommonpb.TransactionState) {
+	expectPutTransactionState(t, mockStore, txKey, nil, func(_ domain.TransactionKey, state *internalstatepb.TransactionState) {
 		require.NotNil(t, state.GetMetadata())
 		require.Len(t, state.GetMetadata(), 1)
 		require.Contains(t, state.GetMetadata(), "category")

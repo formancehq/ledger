@@ -10,7 +10,7 @@ import (
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/infra/node"
-	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
+	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -23,7 +23,7 @@ func seedClusterState(t *testing.T, store *dal.Store, cfg *commonpb.ClusterConfi
 	batch := store.OpenWriteSession()
 	require.NoError(t, batch.SetProto(
 		[]byte{dal.ZoneGlobal, dal.SubGlobClusterConfig},
-		&internalcommonpb.PersistedClusterState{Config: cfg},
+		&internalstatepb.PersistedClusterState{Config: cfg},
 	))
 	require.NoError(t, batch.Commit())
 }
