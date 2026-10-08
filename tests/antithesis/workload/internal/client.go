@@ -193,12 +193,23 @@ func retryUnaryInterceptor(maxAttempts int, retryMaintenance bool) grpc.UnaryCli
 // (admission.allRequestsAreMaintenanceMode), so an enable whose own response
 // was lost still reaches the success that schedules its disable, and the retry
 // then replays the frozen outcome under the same idempotency key.
+//
+// PRELOAD_UNAVAILABLE is not: admission forwards a script whose dependency
+// resolution failed on the current state, and every retry fails the same way
+// for as long as that state stands. The caller decides how long to wait.
 func retryableRPCError(err error, retryMaintenance bool) bool {
 	if !retryMaintenance && HasErrorReason(err, domain.ErrReasonMaintenanceMode) {
 		return false
 	}
 
-	return IsTransient(err)
+	return IsTransient(err) && !IsPreloadUnavailable(err)
+}
+
+// IsPreloadUnavailable reports the FSM's refusal of a scripted order admission
+// could not resolve dependencies for. Nothing commits: an earlier attempt that
+// had would replay its frozen outcome instead.
+func IsPreloadUnavailable(err error) bool {
+	return IsUnavailable(err) && HasErrorReason(err, "PRELOAD_UNAVAILABLE")
 }
 
 // classifyUnaryInterceptor asserts that every error escaping an RPC is
