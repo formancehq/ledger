@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -110,8 +111,10 @@ func writeSchemasForCRD(crdPath, outDir string) (int, crdInfo, error) {
 	kind := crd.Spec.Names.Kind
 	baseName := fmt.Sprintf("%s_%s", version, strings.ToLower(kind))
 
+	apiVersion := fmt.Sprintf("%s/%s", crd.Spec.Group, version)
+
 	fullPath := filepath.Join(outDir, baseName+".json")
-	if err := writeSchemaFile(fullPath, schema); err != nil {
+	if err := writeSchemaFile(fullPath, schema, requireResourceIdentity(apiVersion, kind)); err != nil {
 		return 0, crdInfo{}, fmt.Errorf("writing full schema: %w", err)
 	}
 
@@ -121,7 +124,7 @@ func writeSchemasForCRD(crdPath, outDir string) (int, crdInfo, error) {
 	}
 
 	specPath := filepath.Join(outDir, baseName+".spec.json")
-	if err := writeSchemaFile(specPath, &specSchema); err != nil {
+	if err := writeSchemaFile(specPath, &specSchema, nil); err != nil {
 		return 0, crdInfo{}, fmt.Errorf("writing spec schema: %w", err)
 	}
 
@@ -203,8 +206,19 @@ func crdOpenAPISchema(crd *apiextv1.CustomResourceDefinition) (*apiextv1.JSONSch
 	return chosen.Schema.OpenAPIV3Schema, chosen.Name, nil
 }
 
-func writeSchemaFile(path string, schema *apiextv1.JSONSchemaProps) error {
-	payload, err := json.MarshalIndent(withJSONSchemaMeta(schema), "", "  ")
+// writeSchemaFile writes schema as JSON Schema. mutate, when non-nil, can
+// further adjust the converted document (e.g. constraining resource
+// identity) before it is encoded.
+func writeSchemaFile(path string, schema *apiextv1.JSONSchemaProps, mutate func(doc map[string]any) error) error {
+	doc := withJSONSchemaMeta(schema)
+
+	if mutate != nil {
+		if err := mutate(doc); err != nil {
+			return err
+		}
+	}
+
+	payload, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encoding schema: %w", err)
 	}
@@ -215,6 +229,48 @@ func writeSchemaFile(path string, schema *apiextv1.JSONSchemaProps) error {
 	}
 
 	return nil
+}
+
+// requireResourceIdentity returns a writeSchemaFile mutator that constrains a
+// full-resource schema to the exact apiVersion/kind it describes and requires
+// both. Without this, {} or a manifest for an unrelated kind passes the
+// schema's structural checks, even though this file is advertised for full
+// Kubernetes manifest validation.
+func requireResourceIdentity(apiVersion, kind string) func(doc map[string]any) error {
+	return func(doc map[string]any) error {
+		properties, ok := doc["properties"].(map[string]any)
+		if !ok {
+			return errors.New("full resource schema has no properties")
+		}
+
+		for key, value := range map[string]string{"apiVersion": apiVersion, "kind": kind} {
+			prop, ok := properties[key].(map[string]any)
+			if !ok {
+				return fmt.Errorf("full resource schema has no %q property", key)
+			}
+			prop["enum"] = []string{value}
+		}
+
+		required, _ := doc["required"].([]any)
+		for _, key := range []string{"apiVersion", "kind"} {
+			if !containsString(required, key) {
+				required = append(required, key)
+			}
+		}
+		doc["required"] = required
+
+		return nil
+	}
+}
+
+func containsString(list []any, s string) bool {
+	for _, v := range list {
+		if str, ok := v.(string); ok && str == s {
+			return true
+		}
+	}
+
+	return false
 }
 
 func withJSONSchemaMeta(schema *apiextv1.JSONSchemaProps) map[string]any {

@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/stretchr/testify/require"
 )
 
@@ -142,6 +144,118 @@ func TestRunGeneratesStrictSchemas(t *testing.T) {
 		additionalLabels["additionalProperties"],
 		"a map-type field's value schema must not be overwritten with false",
 	)
+}
+
+// TestRunRequiresResourceIdentity compiles the generated full-resource schema
+// with a real JSON Schema validator and checks it actually rejects documents
+// with a missing or wrong apiVersion/kind, and accepts a correctly-identified
+// one. A structural assertion on "required"/"enum" isn't enough on its own:
+// this is what makes the fix observable the same way the review finding that
+// prompted it was (compiling the schema and validating sample documents).
+func TestRunRequiresResourceIdentity(t *testing.T) {
+	t.Parallel()
+
+	crdDir := filepath.Join("..", "..", "config", "crd", "bases")
+	outDir := t.TempDir()
+
+	require.NoError(t, run(crdDir, outDir))
+
+	schemaFile, err := os.Open(filepath.Join(outDir, "v1alpha1_cluster.json"))
+	require.NoError(t, err)
+	defer func() { require.NoError(t, schemaFile.Close()) }()
+
+	schemaDoc, err := jsonschema.UnmarshalJSON(schemaFile)
+	require.NoError(t, err)
+
+	compiler := jsonschema.NewCompiler()
+	require.NoError(t, compiler.AddResource("v1alpha1_cluster.json", schemaDoc))
+
+	sch, err := compiler.Compile("v1alpha1_cluster.json")
+	require.NoError(t, err)
+
+	cases := []struct {
+		name    string
+		doc     string
+		wantErr bool
+	}{
+		{name: "empty object", doc: `{}`, wantErr: true},
+		{
+			name:    "wrong apiVersion and kind",
+			doc:     `{"apiVersion":"other.example/v9","kind":"Unrelated","spec":{}}`,
+			wantErr: true,
+		},
+		{
+			name:    "correct identity",
+			doc:     `{"apiVersion":"ledger.formance.com/v1alpha1","kind":"Cluster","metadata":{"name":"x"},"spec":{}}`,
+			wantErr: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			instance, err := jsonschema.UnmarshalJSON(strings.NewReader(tc.doc))
+			require.NoError(t, err)
+
+			err = sch.Validate(instance)
+			if tc.wantErr {
+				require.Error(t, err, "expected %s to be rejected", tc.doc)
+			} else {
+				require.NoError(t, err, "expected %s to validate", tc.doc)
+			}
+		})
+	}
+}
+
+// TestRunDoesNotEnforceCELRules documents a known, deliberate limitation:
+// x-kubernetes-validations (CEL) rules are preserved in the exported schema
+// for reference but are not translated into portable JSON Schema
+// constraints, so a draft-04 validator does not enforce them. This fragment
+// violates both CEL rules on PostgresMirrorSource (ledger_crd_types.go):
+// passwordFrom and awsIamAuth are mutually exclusive, and awsIamAuth requires
+// a TLS sslMode. Kubernetes admission remains the authoritative check for
+// these rules. If this test starts failing because the fragment is now
+// rejected, update the README's "Known limitation" paragraph to match.
+func TestRunDoesNotEnforceCELRules(t *testing.T) {
+	t.Parallel()
+
+	crdDir := filepath.Join("..", "..", "config", "crd", "bases")
+	outDir := t.TempDir()
+
+	require.NoError(t, run(crdDir, outDir))
+
+	schemaFile, err := os.Open(filepath.Join(outDir, "v1alpha1_ledger.spec.json"))
+	require.NoError(t, err)
+	defer func() { require.NoError(t, schemaFile.Close()) }()
+
+	schemaDoc, err := jsonschema.UnmarshalJSON(schemaFile)
+	require.NoError(t, err)
+
+	compiler := jsonschema.NewCompiler()
+	require.NoError(t, compiler.AddResource("v1alpha1_ledger.spec.json", schemaDoc))
+
+	sch, err := compiler.Compile("v1alpha1_ledger.spec.json")
+	require.NoError(t, err)
+
+	instance, err := jsonschema.UnmarshalJSON(strings.NewReader(`{
+		"clusterRef": "my-cluster",
+		"name": "my-ledger",
+		"mirrorSource": {
+			"postgres": {
+				"host": "db.example.com",
+				"user": "ledger",
+				"database": "ledger",
+				"sslMode": "disable",
+				"passwordFrom": {"name": "pg-secret", "key": "password"},
+				"awsIamAuth": {"region": "eu-west-1"}
+			}
+		}
+	}`))
+	require.NoError(t, err)
+
+	require.NoError(t, sch.Validate(instance),
+		"CEL-only rules (mutually exclusive auth, TLS-with-IAM) are not enforced by the exported schema")
 }
 
 func TestEnforceAdditionalPropertiesFalse(t *testing.T) {

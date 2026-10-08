@@ -10,6 +10,7 @@ require (
 	github.com/prometheus/client_golang v1.19.1
 	github.com/pterm/pterm v0.12.82
 	github.com/robfig/cron/v3 v3.0.1
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.10.0
 	k8s.io/api v0.33.0
