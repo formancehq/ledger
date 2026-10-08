@@ -1,6 +1,9 @@
 package oracle
 
 import (
+	"fmt"
+	"math/big"
+	"math/rand"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -8,6 +11,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/tests/numscriptgen"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
@@ -228,4 +232,58 @@ func TestScript_ReferenceSeesRefusedSameBulkSave(t *testing.T) {
 		referenceReq("L", "ns", "1.0.0", nil),
 	))
 	require.Equal(t, domain.ErrReasonNumscriptNotFound, exact.Reason)
+}
+
+// Every generated script, seeded the way the driver seeds it, gets a verdict
+// from the oracle without panicking — and enough of them commit for the
+// generator to be worth running.
+func TestScript_GeneratedScriptsAreTotal(t *testing.T) {
+	t.Parallel()
+
+	rng := rand.New(rand.NewSource(1))
+	accounts := make([]string, 15)
+	for i := range accounts {
+		accounts[i] = fmt.Sprintf("t-%d:%d", i%3, i)
+	}
+
+	outcomes := map[string]int{}
+	for range 2000 {
+		gen := numscriptgen.GenerateFor(rng, accounts)
+
+		var seeds []*servicepb.Request
+		for k, amount := range gen.Balances {
+			if amount.Sign() > 0 {
+				seeds = append(seeds, oracletest.TxReqL("L", "world", k.Account, k.Asset, amount.Int64()))
+			} else if amount.Sign() < 0 {
+				seeds = append(seeds, createReq("L", &servicepb.CreateTransactionPayload{
+					Postings: []*commonpb.Posting{commonpb.NewPosting(k.Account, "world", k.Asset, new(big.Int).Neg(amount))},
+					Force:    true,
+				}))
+			}
+		}
+
+		for k, v := range gen.Metadata {
+			seeds = append(seeds, &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
+				Ledger: "L",
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{AddMetadata: &commonpb.SaveMetadataCommand{
+					Target:   &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: k.Account}}},
+					Metadata: map[string]*commonpb.MetadataValue{k.Key: commonpb.NewStringValue(v)},
+				}}},
+			}}})
+		}
+
+		seeded := NewGlobalState().Apply(bulkOf(seeds...))
+		require.True(t, seeded.OK || len(seeds) == 0, seeded.Reason)
+
+		res := seeded.State.Apply(keyedBulk("k", scriptReq("L", gen.Script, gen.Vars, rng.Intn(8) == 0)))
+		reason := res.Reason
+		if res.OK {
+			reason = "OK"
+		}
+
+		outcomes[reason]++
+	}
+
+	t.Logf("outcomes: %v", outcomes)
+	require.Greater(t, outcomes["OK"], 500)
 }

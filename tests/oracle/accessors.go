@@ -52,6 +52,8 @@ func (t *txRecord) InsertedAt() *commonpb.Timestamp              { return t.inse
 func (t *txRecord) RevertedBy() uint64                           { return t.revertedBy }
 func (t *txRecord) RevertedAt() *commonpb.Timestamp              { return t.revertedAt }
 func (t *txRecord) RevertsTransaction() uint64                   { return t.revertsTransaction }
+func (t *txRecord) Scripted() bool                               { return t.scripted }
+func (t *txRecord) Template() string                             { return t.template }
 
 // IndexedAddrs is the transaction's account→tx index membership, keyed by
 // account with AddrIndexedSource/AddrIndexedDestination bits — see

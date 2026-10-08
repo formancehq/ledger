@@ -605,6 +605,8 @@ func ledgerLogKindOf(req *servicepb.Request) string {
 		return "saved_ledger_metadata"
 	case *servicepb.Request_DeleteLedgerMetadata:
 		return "deleted_ledger_metadata"
+	case *servicepb.Request_SaveNumscript:
+		return "saved_numscript"
 	default:
 		return ""
 	}

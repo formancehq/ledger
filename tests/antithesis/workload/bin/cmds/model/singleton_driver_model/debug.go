@@ -99,6 +99,9 @@ func requestKinds(b oracle.Bulk) string {
 			switch r.GetApply().GetAction().GetData().(type) {
 			case *servicepb.LedgerAction_CreateTransaction:
 				parts[i] = "tx"
+				if oracle.IsScripted(r.GetApply().GetAction().GetCreateTransaction()) {
+					parts[i] = "txScript"
+				}
 			case *servicepb.LedgerAction_AddMetadata:
 				parts[i] = "addMeta"
 			case *servicepb.LedgerAction_DeleteMetadata:
@@ -124,6 +127,8 @@ func requestKinds(b oracle.Bulk) string {
 			parts[i] = "createIndex"
 		case *servicepb.Request_DropIndex:
 			parts[i] = "dropIndex"
+		case *servicepb.Request_SaveNumscript:
+			parts[i] = "saveNumscript"
 		default:
 			parts[i] = "other"
 		}
