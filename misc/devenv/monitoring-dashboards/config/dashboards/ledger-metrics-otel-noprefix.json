@@ -219,7 +219,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(rate(raft.transport.ping.latency_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id, peer) / sum(rate(raft.transport.ping.latency_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id, peer)",
+                     "expr": "sum(rate(raft.transport.ping.duration_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id, peer) / sum(rate(raft.transport.ping.duration_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id, peer)",
                      "legendFormat": "Node {{formance.ledger.node.id}} / Peer {{peer}}",
                      "range": true,
                      "refId": "A"
@@ -1764,7 +1764,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(increase(raft.transport.recv.full{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id, priority_name)",
+                     "expr": "sum(increase(raft.transport.recv.overflows{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id, priority_name)",
                      "legendFormat": "{{priority_name}}",
                      "range": true,
                      "refId": "A"
@@ -2012,7 +2012,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(increase(raft.transport.unreachable.full{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id)",
+                     "expr": "sum(increase(raft.transport.unreachable.overflows{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id)",
                      "legendFormat": "Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
@@ -2291,7 +2291,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(increase(raft.send.pending_messages.full{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id)",
+                     "expr": "sum(increase(raft.send.pending_messages.overflows{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id)",
                      "legendFormat": "Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
@@ -2489,7 +2489,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(increase(raft.transport.peer.sending.full{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id, peer, priority_name)",
+                     "expr": "sum(increase(raft.transport.peer.sending.overflows{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id, peer, priority_name)",
                      "legendFormat": "Node {{formance.ledger.node.id}}: Peer {{peer}} / {{priority_name}}",
                      "range": true,
                      "refId": "A"
@@ -3011,7 +3011,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(increase(admission.propose_queue.full{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id)",
+                     "expr": "sum(increase(admission.propose_queue.overflows{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id)",
                      "legendFormat": "Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
@@ -3109,7 +3109,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "{\"raft.transport.sending.pending_response\", k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}",
+                     "expr": "{\"raft.transport.sending.pending_response.count\", k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}",
                      "legendFormat": "Node {{formance.ledger.node.id}} / Peer {{peer}}",
                      "range": true,
                      "refId": "A"
@@ -3222,7 +3222,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(rate(raft.process_entry_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id)",
+                     "expr": "sum(rate(raft.process_entry.duration_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id)",
                      "legendFormat": "Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
@@ -3321,7 +3321,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(rate(raft.process_entry_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id)",
+                     "expr": "sum(rate(raft.process_entry.duration_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id)",
                      "legendFormat": "Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
@@ -3420,7 +3420,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.99, sum(rate(raft.process_entry_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id, le))",
+                     "expr": "histogram_quantile(0.99, sum(rate(raft.process_entry.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id, le))",
                      "legendFormat": "Node {{formance.ledger.node.id}}: P99",
                      "range": true,
                      "refId": "A"
@@ -3431,7 +3431,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.95, sum(rate(raft.process_entry_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id, le))",
+                     "expr": "histogram_quantile(0.95, sum(rate(raft.process_entry.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id, le))",
                      "legendFormat": "Node {{formance.ledger.node.id}}: P95",
                      "range": true,
                      "refId": "B"
@@ -3442,7 +3442,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.75, sum(rate(raft.process_entry_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id, le))",
+                     "expr": "histogram_quantile(0.75, sum(rate(raft.process_entry.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id, le))",
                      "legendFormat": "Node {{formance.ledger.node.id}}: P75",
                      "range": true,
                      "refId": "C"
@@ -3453,7 +3453,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(rate(raft.process_entry_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id) / sum(rate(raft.process_entry_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id)",
+                     "expr": "sum(rate(raft.process_entry.duration_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id) / sum(rate(raft.process_entry.duration_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id)",
                      "legendFormat": "Node {{formance.ledger.node.id}}: Avg",
                      "range": true,
                      "refId": "D"
@@ -3552,7 +3552,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(rate(raft.append_entries_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id)",
+                     "expr": "sum(rate(raft.append_entries.duration_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id)",
                      "legendFormat": "Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
@@ -3651,7 +3651,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.99, sum(rate(raft.append_entries_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id, le))",
+                     "expr": "histogram_quantile(0.99, sum(rate(raft.append_entries.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id, le))",
                      "legendFormat": "Node {{formance.ledger.node.id}}: P99",
                      "range": true,
                      "refId": "A"
@@ -3662,7 +3662,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.95, sum(rate(raft.append_entries_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id, le))",
+                     "expr": "histogram_quantile(0.95, sum(rate(raft.append_entries.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id, le))",
                      "legendFormat": "Node {{formance.ledger.node.id}}: P95",
                      "range": true,
                      "refId": "B"
@@ -3673,7 +3673,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.75, sum(rate(raft.append_entries_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id, le))",
+                     "expr": "histogram_quantile(0.75, sum(rate(raft.append_entries.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id, le))",
                      "legendFormat": "Node {{formance.ledger.node.id}}: P75",
                      "range": true,
                      "refId": "C"
@@ -3684,7 +3684,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(rate(raft.append_entries_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id) / sum(rate(raft.append_entries_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id)",
+                     "expr": "sum(rate(raft.append_entries.duration_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id) / sum(rate(raft.append_entries.duration_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id)",
                      "legendFormat": "Node {{formance.ledger.node.id}}: Avg",
                      "range": true,
                      "refId": "D"
@@ -4146,7 +4146,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.99, sum(rate(raft.node.ready.wait_duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, formance.ledger.node.id))",
+                     "expr": "histogram_quantile(0.99, sum(rate(raft.node.ready.wait.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, formance.ledger.node.id))",
                      "legendFormat": "Node {{formance.ledger.node.id}} p99",
                      "range": true,
                      "refId": "A"
@@ -4157,7 +4157,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.95, sum(rate(raft.node.ready.wait_duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, formance.ledger.node.id))",
+                     "expr": "histogram_quantile(0.95, sum(rate(raft.node.ready.wait.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, formance.ledger.node.id))",
                      "legendFormat": "Node {{formance.ledger.node.id}} p95",
                      "range": true,
                      "refId": "B"
@@ -4168,7 +4168,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.50, sum(rate(raft.node.ready.wait_duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, formance.ledger.node.id))",
+                     "expr": "histogram_quantile(0.50, sum(rate(raft.node.ready.wait.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, formance.ledger.node.id))",
                      "legendFormat": "Node {{formance.ledger.node.id}} p50",
                      "range": true,
                      "refId": "C"
@@ -4179,7 +4179,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(rate(raft.node.ready.wait_duration_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id) / sum(rate(raft.node.ready.wait_duration_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id)",
+                     "expr": "sum(rate(raft.node.ready.wait.duration_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id) / sum(rate(raft.node.ready.wait.duration_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id)",
                      "legendFormat": "Node {{formance.ledger.node.id}} avg",
                      "range": true,
                      "refId": "D"
@@ -4278,7 +4278,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(rate(raft.node.ready.wait_duration_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id)",
+                     "expr": "sum(rate(raft.node.ready.wait.duration_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id)",
                      "legendFormat": "Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
@@ -4376,7 +4376,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(rate(raft.node.ready.wait_duration_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id)",
+                     "expr": "sum(rate(raft.node.ready.wait.duration_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id)",
                      "legendFormat": "Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
@@ -4475,7 +4475,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.99, sum(rate(raft.node.ready_terminated.wait_duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, formance.ledger.node.id))",
+                     "expr": "histogram_quantile(0.99, sum(rate(raft.node.ready_terminated.wait.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, formance.ledger.node.id))",
                      "legendFormat": "Node {{formance.ledger.node.id}} p99",
                      "range": true,
                      "refId": "A"
@@ -4486,7 +4486,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.50, sum(rate(raft.node.ready_terminated.wait_duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, formance.ledger.node.id))",
+                     "expr": "histogram_quantile(0.50, sum(rate(raft.node.ready_terminated.wait.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, formance.ledger.node.id))",
                      "legendFormat": "Node {{formance.ledger.node.id}} p50",
                      "range": true,
                      "refId": "B"
@@ -4684,7 +4684,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.99, sum(rate(raft.node.gating.wait_duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, formance.ledger.node.id))",
+                     "expr": "histogram_quantile(0.99, sum(rate(raft.node.gating.wait.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, formance.ledger.node.id))",
                      "legendFormat": "Node {{formance.ledger.node.id}} p99",
                      "range": true,
                      "refId": "A"
@@ -4695,7 +4695,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.50, sum(rate(raft.node.gating.wait_duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, formance.ledger.node.id))",
+                     "expr": "histogram_quantile(0.50, sum(rate(raft.node.gating.wait.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, formance.ledger.node.id))",
                      "legendFormat": "Node {{formance.ledger.node.id}} p50",
                      "range": true,
                      "refId": "B"
@@ -5334,7 +5334,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.99, sum(rate(raft.apply_entries.batch_size_distribution_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id, le))",
+                     "expr": "histogram_quantile(0.99, sum(rate(raft.apply_entries.batch_size_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id, le))",
                      "legendFormat": "Node {{formance.ledger.node.id}}: P99",
                      "range": true,
                      "refId": "A"
@@ -5345,7 +5345,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.95, sum(rate(raft.apply_entries.batch_size_distribution_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id, le))",
+                     "expr": "histogram_quantile(0.95, sum(rate(raft.apply_entries.batch_size_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id, le))",
                      "legendFormat": "Node {{formance.ledger.node.id}}: P95",
                      "range": true,
                      "refId": "B"
@@ -5356,7 +5356,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.75, sum(rate(raft.apply_entries.batch_size_distribution_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id, le))",
+                     "expr": "histogram_quantile(0.75, sum(rate(raft.apply_entries.batch_size_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id, le))",
                      "legendFormat": "Node {{formance.ledger.node.id}}: P75",
                      "range": true,
                      "refId": "C"
@@ -5367,7 +5367,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(rate(raft.apply_entries.batch_size_distribution_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id) / sum(rate(raft.apply_entries.batch_size_distribution_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id)",
+                     "expr": "sum(rate(raft.apply_entries.batch_size_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id) / sum(rate(raft.apply_entries.batch_size_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id)",
                      "legendFormat": "Node {{formance.ledger.node.id}}: Avg",
                      "range": true,
                      "refId": "D"
@@ -7817,7 +7817,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "readindex.cache.hits{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}",
+                     "expr": "rate(readindex.cache.hits{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])",
                      "legendFormat": "Node {{formance.ledger.node.id}} — hits",
                      "range": true,
                      "refId": "A"
@@ -7828,7 +7828,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "readindex.cache.misses{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}",
+                     "expr": "rate(readindex.cache.misses{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])",
                      "legendFormat": "Node {{formance.ledger.node.id}} — misses",
                      "range": true,
                      "refId": "B"
@@ -7842,7 +7842,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Block cache hit ratio: hits / (hits + misses). Values above 90% are good.",
+               "description": "Block cache hit ratio over the rate interval: hits / (hits + misses). Values above 90% are good.",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -7898,7 +7898,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "readindex.cache.hits{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"} / (readindex.cache.hits{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"} + readindex.cache.misses{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"})",
+                     "expr": "rate(readindex.cache.hits{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval]) / (rate(readindex.cache.hits{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval]) + rate(readindex.cache.misses{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval]))",
                      "legendFormat": "Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
@@ -10028,7 +10028,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(rate(admission.proposal_guard.rebuild{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id) / sum(rate(admission.proposal_guard.duration_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id)",
+                     "expr": "sum(rate(admission.proposal_guard.rebuilds{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id) / sum(rate(admission.proposal_guard.duration_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id)",
                      "legendFormat": "Rebuild ratio - Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
@@ -10039,7 +10039,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(rate(admission.proposal_guard.rebuild{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id)",
+                     "expr": "sum(rate(admission.proposal_guard.rebuilds{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (formance.ledger.node.id)",
                      "legendFormat": "Rebuilds/s - Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "B"
@@ -11233,7 +11233,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(rate(mirror.logs.ingested{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (ledger)",
+                     "expr": "sum(rate(mirror.logs_ingested{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (ledger)",
                      "legendFormat": "{{ledger}}",
                      "range": true,
                      "refId": "A"

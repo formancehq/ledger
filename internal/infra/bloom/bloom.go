@@ -745,21 +745,25 @@ func newFilter(expectedKeys uint, fpRate float64, attrCode byte, meter metric.Me
 	lookups, _ := meter.Int64Counter(
 		"bloom.lookups",
 		metric.WithDescription("Total bloom filter checks"),
+		metric.WithUnit("{lookup}"),
 	)
 
 	negatives, _ := meter.Int64Counter(
 		"bloom.negatives",
 		metric.WithDescription("Bloom filter checks that returned definitely-not-present (Pebble Gets avoided)"),
+		metric.WithUnit("{lookup}"),
 	)
 
 	adds, _ := meter.Int64Counter(
 		"bloom.adds",
 		metric.WithDescription("Keys added to bloom filter"),
+		metric.WithUnit("{key}"),
 	)
 
 	falsePositives, _ := meter.Int64Counter(
 		"bloom.false_positives",
 		metric.WithDescription("Bloom filter checks that returned maybe-present but Pebble Get found nothing"),
+		metric.WithUnit("{lookup}"),
 	)
 
 	bf := newBlockedFilterOptimized(uint64(expectedKeys), fpRate)

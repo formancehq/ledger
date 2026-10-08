@@ -26,8 +26,8 @@ panels.row('Read Index (Pebble)', 166, [
     'Block Cache Hits / Misses',
     { h: 8, w: 12, x: 0, y: 10 },
     [
-      { expr: 'readindex.cache.hits{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: 'Node {{formance.ledger.node.id}} — hits' },
-      { expr: 'readindex.cache.misses{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: 'Node {{formance.ledger.node.id}} — misses' },
+      { expr: 'rate(readindex.cache.hits{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])', legendFormat: 'Node {{formance.ledger.node.id}} — hits' },
+      { expr: 'rate(readindex.cache.misses{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])', legendFormat: 'Node {{formance.ledger.node.id}} — misses' },
     ], unit='ops',
     description='Block cache hit and miss rates. A high hit rate indicates the working set fits in cache.',
   ),
@@ -35,7 +35,7 @@ panels.row('Read Index (Pebble)', 166, [
   panels.stat(
     'Cache Hit Ratio',
     { h: 8, w: 12, x: 12, y: 10 },
-    'readindex.cache.hits{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"} / (readindex.cache.hits{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"} + readindex.cache.misses{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"})', unit='percentunit',
-    description='Block cache hit ratio: hits / (hits + misses). Values above 90% are good.', opts={ legendFormat: 'Node {{formance.ledger.node.id}}' },
+    'rate(readindex.cache.hits{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval]) / (rate(readindex.cache.hits{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval]) + rate(readindex.cache.misses{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval]))', unit='percentunit',
+    description='Block cache hit ratio over the rate interval: hits / (hits + misses). Values above 90% are good.', opts={ legendFormat: 'Node {{formance.ledger.node.id}}' },
   ),
 ])

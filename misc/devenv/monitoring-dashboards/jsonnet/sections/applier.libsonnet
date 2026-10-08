@@ -29,10 +29,10 @@ panels.row('Applier', 164, [
     'Apply entries Batch size distribution',
     { h: 8, w: 12, x: 12, y: 9 },
     [
-      { expr: 'histogram_quantile(0.99, sum(rate(raft.apply_entries.batch_size_distribution_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'Node {{formance.ledger.node.id}}: P99' },
-      { expr: 'histogram_quantile(0.95, sum(rate(raft.apply_entries.batch_size_distribution_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'Node {{formance.ledger.node.id}}: P95' },
-      { expr: 'histogram_quantile(0.75, sum(rate(raft.apply_entries.batch_size_distribution_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'Node {{formance.ledger.node.id}}: P75' },
-      { expr: queries.histogramAvg('raft.apply_entries.batch_size_distribution', by=['formance.ledger.node.id']), legendFormat: 'Node {{formance.ledger.node.id}}: Avg' },
+      { expr: 'histogram_quantile(0.99, sum(rate(raft.apply_entries.batch_size_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'Node {{formance.ledger.node.id}}: P99' },
+      { expr: 'histogram_quantile(0.95, sum(rate(raft.apply_entries.batch_size_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'Node {{formance.ledger.node.id}}: P95' },
+      { expr: 'histogram_quantile(0.75, sum(rate(raft.apply_entries.batch_size_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id, le))', legendFormat: 'Node {{formance.ledger.node.id}}: P75' },
+      { expr: queries.histogramAvg('raft.apply_entries.batch_size', by=['formance.ledger.node.id']), legendFormat: 'Node {{formance.ledger.node.id}}: Avg' },
     ],
     description=|||
       Distribution of batch sizes when applying entries (P75, P95, P99 percentiles).

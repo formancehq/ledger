@@ -28,22 +28,22 @@ func (s *Store) RegisterMetrics(m metric.Meter) (metric.Registration, error) {
 		return nil, fmt.Errorf("creating readindex.memtable.size gauge: %w", err)
 	}
 
-	cacheHits, err := m.Int64ObservableGauge(
+	cacheHits, err := m.Int64ObservableCounter(
 		"readindex.cache.hits",
 		metric.WithDescription("Block cache hits"),
-		metric.WithUnit("{hits}"),
+		metric.WithUnit("{hit}"),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("creating readindex.cache.hits gauge: %w", err)
+		return nil, fmt.Errorf("creating readindex.cache.hits counter: %w", err)
 	}
 
-	cacheMisses, err := m.Int64ObservableGauge(
+	cacheMisses, err := m.Int64ObservableCounter(
 		"readindex.cache.misses",
 		metric.WithDescription("Block cache misses"),
-		metric.WithUnit("{misses}"),
+		metric.WithUnit("{miss}"),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("creating readindex.cache.misses gauge: %w", err)
+		return nil, fmt.Errorf("creating readindex.cache.misses counter: %w", err)
 	}
 
 	return m.RegisterCallback(func(_ context.Context, o metric.Observer) error {

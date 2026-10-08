@@ -710,7 +710,7 @@ func NewNode(
 	node.confState.Store(initialConfState)
 
 	// Initialize node metrics
-	node.appendEntriesHistogram, err = meter.Float64Histogram("raft.append_entries",
+	node.appendEntriesHistogram, err = meter.Float64Histogram("raft.append_entries.duration",
 		metric.WithDescription("Time spending appending entries to wal"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(
@@ -721,7 +721,7 @@ func NewNode(
 		panic(err)
 	}
 
-	node.processEntryHistogram, err = meter.Float64Histogram("raft.process_entry",
+	node.processEntryHistogram, err = meter.Float64Histogram("raft.process_entry.duration",
 		metric.WithDescription("Time spent processing ready from raft"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(
@@ -749,7 +749,7 @@ func NewNode(
 	}
 
 	node.readyWaitDurationHistogram, err = meter.Float64Histogram(
-		"raft.node.ready.wait_duration",
+		"raft.node.ready.wait.duration",
 		metric.WithDescription("Time spent waiting for a Ready from Raft"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(
@@ -761,7 +761,7 @@ func NewNode(
 	}
 
 	node.readyTerminatedWaitHistogram, err = meter.Float64Histogram(
-		"raft.node.ready_terminated.wait_duration",
+		"raft.node.ready_terminated.wait.duration",
 		metric.WithDescription("Time spent waiting for orchestrate to consume readyTerminated"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(

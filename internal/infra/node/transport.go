@@ -188,7 +188,7 @@ func NewTransport(
 
 		var err error
 
-		t.recvQueueFullCounter[priority], err = m.Int64Counter("raft.transport.recv.full", metric.WithUnit("{batch}"))
+		t.recvQueueFullCounter[priority], err = m.Int64Counter("raft.transport.recv.overflows", metric.WithUnit("{batch}"))
 		if err != nil {
 			panic(err)
 		}
@@ -206,7 +206,7 @@ func NewTransport(
 	// Initialize unreachable queue metrics
 	var err error
 
-	t.unreachableFullCounter, err = meter.Int64Counter("raft.transport.unreachable.full", metric.WithUnit("{peer}"))
+	t.unreachableFullCounter, err = meter.Int64Counter("raft.transport.unreachable.overflows", metric.WithUnit("{peer}"))
 	if err != nil {
 		panic(err)
 	}
@@ -221,7 +221,7 @@ func NewTransport(
 	}
 
 	// Initialize pending send queue metrics
-	t.pendingSendFullCounter, err = meter.Int64Counter("raft.send.pending_messages.full", metric.WithUnit("{batch}"))
+	t.pendingSendFullCounter, err = meter.Int64Counter("raft.send.pending_messages.overflows", metric.WithUnit("{batch}"))
 	if err != nil {
 		panic(err)
 	}
@@ -365,12 +365,12 @@ func (t *DefaultTransport) AddPeer(id uint64, addr string) {
 	)
 	logger := t.logger.WithFields(map[string]any{"peer": strconv.FormatUint(id, 16)})
 
-	pendingResponseCounter, err := meter.Float64UpDownCounter("raft.transport.sending.pending_response")
+	pendingResponseCounter, err := meter.Int64UpDownCounter("raft.transport.sending.pending_response.count", metric.WithUnit("{response}"))
 	if err != nil {
 		panic(err)
 	}
 
-	pingLatency, err := meter.Float64Histogram("raft.transport.ping.latency", metric.WithUnit("s"))
+	pingLatency, err := meter.Float64Histogram("raft.transport.ping.duration", metric.WithUnit("s"))
 	if err != nil {
 		panic(err)
 	}
@@ -416,7 +416,7 @@ func (t *DefaultTransport) AddPeer(id uint64, addr string) {
 			),
 		)
 
-		conn.sendQueueFullCounter[priority], err = m.Int64Counter("raft.transport.peer.sending.full", metric.WithUnit("{batch}"))
+		conn.sendQueueFullCounter[priority], err = m.Int64Counter("raft.transport.peer.sending.overflows", metric.WithUnit("{batch}"))
 		if err != nil {
 			panic(err)
 		}
@@ -757,7 +757,7 @@ type peerConnection struct {
 	nodeID                 uint64
 	clusterID              string
 	bufferSize             int
-	pendingResponseCounter metric.Float64UpDownCounter
+	pendingResponseCounter metric.Int64UpDownCounter
 	pingLatency            metric.Float64Histogram
 	reconnected            chan struct{}
 	messageID              uint64
@@ -1095,7 +1095,7 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 		if orphaned > 0 {
 			conn.pendingResponseCounter.Add(
 				context.Background(),
-				-float64(orphaned),
+				-int64(orphaned),
 				metric.WithAttributeSet(conn.peerAttributes),
 			)
 			conn.logger.WithFields(map[string]any{
@@ -1258,7 +1258,7 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 
 		conn.pendingResponseCounter.Add(
 			context.Background(),
-			float64(len(raftMessages)),
+			int64(len(raftMessages)),
 			metric.WithAttributeSet(conn.peerAttributes),
 		)
 
@@ -1285,7 +1285,7 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 			mu.Unlock()
 			conn.pendingResponseCounter.Add(
 				context.Background(),
-				-float64(len(raftMessages)),
+				-int64(len(raftMessages)),
 				metric.WithAttributeSet(conn.peerAttributes),
 			)
 			// Report peer as unreachable

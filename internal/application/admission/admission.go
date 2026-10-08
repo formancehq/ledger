@@ -208,7 +208,7 @@ func NewAdmission(
 	}
 
 	proposeQueueFullCounter, err := meter.Int64Counter(
-		"admission.propose_queue.full",
+		"admission.propose_queue.overflows",
 		metric.WithDescription("Number of times the propose queue was full"),
 		metric.WithUnit("{proposal}"),
 	)
@@ -253,7 +253,7 @@ func NewAdmission(
 	}
 
 	proposalGuardRebuildCounter, err := meter.Int64Counter(
-		"admission.proposal_guard.rebuild",
+		"admission.proposal_guard.rebuilds",
 		metric.WithDescription("Number of times the proposal guard had to rebuild preloads due to boundary shift"),
 		metric.WithUnit("{rebuild}"),
 	)
@@ -319,7 +319,7 @@ func NewAdmission(
 	}
 
 	missingCallerCounter, err := meter.Int64Counter(
-		"admission.audit.missing_caller",
+		"admission.audit.missing_callers",
 		metric.WithDescription("Committed writes with a missing caller snapshot or unset principal"),
 		metric.WithUnit("{write}"),
 	)
@@ -328,7 +328,7 @@ func NewAdmission(
 	}
 
 	callerSubjectEmptyCounter, err := meter.Int64Counter(
-		"admission.audit.caller_subject_empty",
+		"admission.audit.empty_caller_subjects",
 		metric.WithDescription("Committed user writes whose caller has a source but an empty subject (e.g. Ed25519 token without sub)"),
 		metric.WithUnit("{write}"),
 	)

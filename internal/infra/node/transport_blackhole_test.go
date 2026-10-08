@@ -145,7 +145,7 @@ func TestPeerConnectionDetectsSilentTCPBlackhole(t *testing.T) {
 	conn.logger = tr.logger
 	conn.pingLatency, err = tr.meterProvider.Meter("test").Float64Histogram("ping")
 	require.NoError(t, err)
-	conn.pendingResponseCounter, err = tr.meterProvider.Meter("test").Float64UpDownCounter("pending")
+	conn.pendingResponseCounter, err = tr.meterProvider.Meter("test").Int64UpDownCounter("pending")
 	require.NoError(t, err)
 	t.Cleanup(func() { conn.stopCancel(); <-conn.loopDone })
 	go conn.loop()
@@ -251,7 +251,7 @@ func TestPeerConnectionProbesDuringSustainedTraffic(t *testing.T) {
 	conn.logger = tr.logger
 	conn.pingLatency, err = tr.meterProvider.Meter("test").Float64Histogram("ping")
 	require.NoError(t, err)
-	conn.pendingResponseCounter, err = tr.meterProvider.Meter("test").Float64UpDownCounter("pending")
+	conn.pendingResponseCounter, err = tr.meterProvider.Meter("test").Int64UpDownCounter("pending")
 	require.NoError(t, err)
 	t.Cleanup(func() { conn.stopCancel(); <-conn.loopDone })
 	go conn.loop()

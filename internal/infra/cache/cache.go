@@ -474,6 +474,7 @@ func (c *Cache) initMetrics(m metric.Meter) error {
 	rotations, err := m.Int64Counter(
 		"cache.rotations",
 		metric.WithDescription("Number of cache generation rotations"),
+		metric.WithUnit("{rotation}"),
 	)
 	if err != nil {
 		return err
@@ -491,6 +492,7 @@ func (c *Cache) initMetrics(m metric.Meter) error {
 	sizeGauge, err := m.Int64ObservableGauge(
 		"cache.size",
 		metric.WithDescription("Number of entries in the cache"),
+		metric.WithUnit("{entry}"),
 	)
 	if err != nil {
 		return err

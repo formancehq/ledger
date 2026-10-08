@@ -227,9 +227,9 @@ A write batch reaches the controller through the gRPC Apply handler.
 | `raft.fsm.prepare.duration` | Histogram | s | Time spent in PrepareEntries (processing and merge, without the commit). |
 | `raft.fsm.batch_commit.duration` | Histogram | s | Time spent in the Pebble `batch.Commit()` during ApplyEntries. |
 | `raft.fsm.rotation.duration` | Histogram | s | Time spent in cache generation rotation (volume compaction) during ApplyEntries. |
-| `raft.fsm.preload.coverage_miss` | Counter | `{read}` | Reads on the FSM hot path of keys the proposal's ExecutionPlan did not declare. The order observing the miss is rejected with a business error. **Alert if non-zero**: it means a preload declaration is incomplete. |
+| `raft.fsm.preload.coverage_misses` | Counter | `{read}` | Reads on the FSM hot path of keys the proposal's ExecutionPlan did not declare. The order observing the miss is rejected with a business error. **Alert if non-zero**: it means a preload declaration is incomplete. |
 
-**Attributes** (`raft.fsm.preload.coverage_miss`):
+**Attributes** (`raft.fsm.preload.coverage_misses`):
 - `kind`: attribute kind of the undeclared key
 
 ### Node Metrics
@@ -238,13 +238,13 @@ A write batch reaches the controller through the gRPC Apply handler.
 |--------|------|------|-------------|
 | `raft.node.lead` | Gauge | - | Current leader node ID as seen by this node (0 if no leader known) |
 | `raft.apply_entries.duration` | Histogram | s | Time spent applying committed log entries to the FSM. This is the critical path for transaction processing. |
-| `raft.apply_entries.batch_size` | Counter | `{entry}` | Total count of entries applied (cumulative). Use `rate()` to get entries/second. |
-| `raft.apply_entries.batch_size_distribution` | Histogram | `{entry}` | Distribution of batch sizes when applying entries. Higher batches indicate better throughput efficiency. |
-| `raft.append_entries` | Histogram | s | Time spent appending entries to the Write-Ahead Log (WAL) before replication. |
-| `raft.process_entry` | Histogram | s | Time spent processing a ready state from the Raft library. Includes sending messages, applying entries, and advancing state. |
+| `raft.entries_applied` | Counter | `{entry}` | Total count of entries applied (cumulative). Use `rate()` to get entries/second. |
+| `raft.apply_entries.batch_size` | Histogram | `{entry}` | Distribution of batch sizes when applying entries. Higher batches indicate better throughput efficiency. |
+| `raft.append_entries.duration` | Histogram | s | Time spent appending entries to the Write-Ahead Log (WAL) before replication. |
+| `raft.process_entry.duration` | Histogram | s | Time spent processing a ready state from the Raft library. Includes sending messages, applying entries, and advancing state. |
 | `raft.ready.committed_entries` | Histogram | `{entry}` | Number of committed entries per Raft Ready. |
-| `raft.node.ready.wait_duration` | Histogram | s | Time the processReadies goroutine waits for the next Ready from Raft. |
-| `raft.node.ready_terminated.wait_duration` | Histogram | s | Time spent waiting for the orchestrate loop to consume a processed Ready (`readyTerminated`). |
+| `raft.node.ready.wait.duration` | Histogram | s | Time the processReadies goroutine waits for the next Ready from Raft. |
+| `raft.node.ready_terminated.wait.duration` | Histogram | s | Time spent waiting for the orchestrate loop to consume a processed Ready (`readyTerminated`). |
 | `raft.read_index.duration` | Histogram | s | Time spent in ReadIndex plus WaitForApplied for linearizable reads. |
 
 ### Applier Metrics
@@ -262,7 +262,7 @@ Gating occurs when the node performs a maintenance task (snapshot install, check
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `raft.node.gating.wait_duration` | Histogram | s | Time spent waiting for gatingTerminated (maintenance task completion) in the processReadies goroutine. High values indicate long snapshot/restore operations stalling the ready pipeline. |
+| `raft.node.gating.wait.duration` | Histogram | s | Time spent waiting for gatingTerminated (maintenance task completion) in the processReadies goroutine. High values indicate long snapshot/restore operations stalling the ready pipeline. |
 | `raft.node.gating.readies_processed` | Histogram | `{ready}` | Number of Raft Readies processed during each gating period. Higher values indicate more Readies were spooled while the maintenance task was running. |
 | `raft.node.unspool.duration` | Histogram | s | Time spent in unspoolAndResume after a maintenance task (snapshot or checkpoint), replaying the Readies spooled while gated. |
 
@@ -286,7 +286,7 @@ The Write-Ahead Log (WAL) metrics track the performance of the WAL append operat
 
 The propose queue buffers proposals (transactions) before they are submitted to Raft consensus.
 Admission instruments it: see `admission.propose_queue.load` and
-`admission.propose_queue.full` in the [admission metrics](#admission-metrics).
+`admission.propose_queue.overflows` in the [admission metrics](#admission-metrics).
 
 ## Transport Metrics
 
@@ -296,8 +296,8 @@ Transport metrics track inter-node gRPC communication for Raft consensus.
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `raft.transport.ping.latency` | Histogram | s | Round-trip latency of ping requests to peer nodes. Useful for detecting network issues. |
-| `raft.transport.sending.pending_response` | UpDownCounter | 1 | Number of pending responses awaited from peer nodes. High values may indicate slow peers. |
+| `raft.transport.ping.duration` | Histogram | s | Round-trip latency of ping requests to peer nodes. Useful for detecting network issues. |
+| `raft.transport.sending.pending_response.count` | UpDownCounter | `{response}` | Number of pending responses awaited from peer nodes. High values may indicate slow peers. |
 
 **Attributes**:
 - `peer`: Peer node ID
@@ -309,7 +309,7 @@ Outgoing messages are first queued in a global pending send queue before being d
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
 | `raft.send.pending_messages.load` | Histogram | `{batch}` | Current load of the pending send queue. High values indicate messages are being queued faster than they can be dispatched to peers. |
-| `raft.send.pending_messages.full` | Counter | `{batch}` | Number of times the pending send queue was full. **Alert if non-zero**. |
+| `raft.send.pending_messages.overflows` | Counter | `{batch}` | Number of times the pending send queue was full. **Alert if non-zero**. |
 
 ### Reception Channel Metrics
 
@@ -318,7 +318,7 @@ Messages received from other nodes are queued in 3 priority reception channels. 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
 | `raft.transport.recv.load` | Histogram | `{batch}` | Current load of the reception queue per priority. Measures queue depth over time. |
-| `raft.transport.recv.full` | Counter | `{batch}` | Number of times the reception queue was full. **Alert if non-zero**. |
+| `raft.transport.recv.overflows` | Counter | `{batch}` | Number of times the reception queue was full. **Alert if non-zero**. |
 
 **Attributes**:
 - `priority`: Queue priority level (0 = high, 1 = medium, 2 = low)
@@ -338,7 +338,7 @@ Tracks notifications when a peer becomes unreachable.
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
 | `raft.transport.unreachable.load` | Histogram | `{peer}` | Current load of the unreachable notification queue. |
-| `raft.transport.unreachable.full` | Counter | `{peer}` | Number of times the unreachable queue was full. |
+| `raft.transport.unreachable.overflows` | Counter | `{peer}` | Number of times the unreachable queue was full. |
 
 ### Per-Peer Sending Metrics
 
@@ -347,7 +347,7 @@ Each peer connection has 3 priority queues for sending messages (one per priorit
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
 | `raft.transport.peer.sending.load` | Histogram | `{batch}` | Current load of the per-peer sending queue. |
-| `raft.transport.peer.sending.full` | Counter | `{batch}` | Number of times the per-peer sending queue was full. **Alert if consistently non-zero**. |
+| `raft.transport.peer.sending.overflows` | Counter | `{batch}` | Number of times the per-peer sending queue was full. **Alert if consistently non-zero**. |
 
 **Attributes**:
 - `peer`: Peer node ID
@@ -401,7 +401,7 @@ When a value is not guaranteed to be in cache (based on the cache generation), t
 | `admission.propose.duration` | Histogram | s | Time waiting for Raft to accept and replicate a proposal (Propose + Wait). |
 | `admission.fsm_future.wait.duration` | Histogram | s | Time waiting for the FSM to apply the command after Raft accepted it. Spikes indicate gating or apply-pipeline stalls. |
 | `admission.proposal_guard.duration` | Histogram | s | Time from requesting the proposal guard until the proposal is handed to Raft: the wait to acquire the guard plus the time holding it. This is the contended portion of the propose path. |
-| `admission.proposal_guard.rebuild` | Counter | `{rebuild}` | Number of times the proposal guard had to rebuild preloads because a boundary shifted. |
+| `admission.proposal_guard.rebuilds` | Counter | `{rebuild}` | Number of times the proposal guard had to rebuild preloads because a boundary shifted. |
 | `admission.command.size` | Histogram | By | Size of marshalled Raft commands in bytes. Large commands may indicate many postings or metadata. |
 
 ### Action Metrics
@@ -433,15 +433,15 @@ for how the caller snapshot is resolved.
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `admission.audit.missing_caller` | Counter | `{write}` | Committed writes whose caller snapshot is missing or has no principal; the audit entry is unattributed. Logged at error level. **Alert if non-zero**: resolution is normally total. |
-| `admission.audit.caller_subject_empty` | Counter | `{write}` | Committed user writes whose caller has a source (key ID or issuer) but an empty subject, for example an Ed25519 token without `sub`. The entry is attributable by source only. Logged at info level. |
+| `admission.audit.missing_callers` | Counter | `{write}` | Committed writes whose caller snapshot is missing or has no principal; the audit entry is unattributed. Logged at error level. **Alert if non-zero**: resolution is normally total. |
+| `admission.audit.empty_caller_subjects` | Counter | `{write}` | Committed user writes whose caller has a source (key ID or issuer) but an empty subject, for example an Ed25519 token without `sub`. The entry is attributable by source only. Logged at info level. |
 
 ### Propose Queue Metrics
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
 | `admission.propose_queue.load` | Histogram | `{proposal}` | Current number of in-flight proposals. High values indicate backpressure from Raft consensus. |
-| `admission.propose_queue.full` | Counter | `{proposal}` | Number of times the propose queue was full and proposals were rejected. **Alert if non-zero**. |
+| `admission.propose_queue.overflows` | Counter | `{proposal}` | Number of times the propose queue was full and proposals were rejected. **Alert if non-zero**. |
 
 ## Pebble Storage Metrics
 
@@ -482,7 +482,7 @@ Write stalls occur when Pebble cannot keep up with write rate due to compaction 
 |--------|------|------|-------------|
 | `pebble.write_stalls` | Counter | `{stall}` | Number of Pebble write stalls |
 | `pebble.write_stall.duration` | Histogram | s | Duration of Pebble write stalls |
-| `pebble.write_stall.active` | Gauge | 1 | Whether Pebble is currently stalling writes (1/0) |
+| `pebble.write_stall.active` | Gauge | - | Whether Pebble is currently stalling writes (1/0) |
 
 **Attributes**:
 - `reason`: Stall reason (e.g., `memtable`, `l0`, `flush_slowdown`)
@@ -511,9 +511,9 @@ The main store counts the I/O operations it issues through Pebble's virtual file
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `pebble.vfs.read.ops` | Counter (observable) | - | Total read operations |
-| `pebble.vfs.write.ops` | Counter (observable) | - | Total write operations |
-| `pebble.vfs.sync.ops` | Counter (observable) | - | Total sync operations |
+| `pebble.vfs.read.ops` | Counter (observable) | `{operation}` | Total read operations |
+| `pebble.vfs.write.ops` | Counter (observable) | `{operation}` | Total write operations |
+| `pebble.vfs.sync.ops` | Counter (observable) | `{operation}` | Total sync operations |
 
 Use `rate()` for IOPS.
 
@@ -545,7 +545,7 @@ out of space.
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `health.disk.poll.failures` | Counter | - | Failed disk usage polls to a peer. A failure never clears an existing disk write gate. |
+| `health.disk.poll.failures` | Counter | `{failure}` | Failed disk usage polls to a peer. A failure never clears an existing disk write gate. |
 
 **Attributes**:
 - `node_id`: the Raft ID of the polled **peer**, not of the reporting node
@@ -560,15 +560,15 @@ internal metrics under its own namespace.
 |--------|------|------|-------------|
 | `readindex.level.size` / `usagestore.level.size` | Gauge | By | Total bytes in each Pebble level |
 | `readindex.memtable.size` / `usagestore.memtable.size` | Gauge | By | Current memtable size |
-| `readindex.cache.hits` / `usagestore.cache.hits` | Gauge | `{hits}` | Block cache hits since the store opened |
-| `readindex.cache.misses` / `usagestore.cache.misses` | Gauge | `{misses}` | Block cache misses since the store opened |
+| `readindex.cache.hits` / `usagestore.cache.hits` | Counter (observable) | `{hit}` | Block cache hits since the store opened |
+| `readindex.cache.misses` / `usagestore.cache.misses` | Counter (observable) | `{miss}` | Block cache misses since the store opened |
 
 **Attributes** (`*.level.size`):
 - `level`: Pebble LSM level (`0` to `6`)
 
-The cache hits and misses are Pebble's cumulative counts, exported as gauges,
-so compute a hit ratio with `delta()` over one window:
-`delta(hits[5m]) / (delta(hits[5m]) + delta(misses[5m]))`.
+The cache hits and misses are Pebble's cumulative counts, exported as
+counters, so compute a hit ratio over one window:
+`rate(hits[5m]) / (rate(hits[5m]) + rate(misses[5m]))`.
 
 ## Caching & Attributes Metrics
 
@@ -578,7 +578,7 @@ The Numscript cache stores parsed Numscript programs to avoid re-parsing identic
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `numscript.cache.size` | Gauge | 1 | Number of entries currently in the cache, per `cache` attribute: `parsed` (parsed scripts) and `compiled` (verified VM artifacts, each holding a warm VM) |
+| `numscript.cache.size` | Gauge | `{entry}` | Number of entries currently in the cache, per `cache` attribute: `parsed` (parsed scripts) and `compiled` (verified VM artifacts, each holding a warm VM) |
 
 ### Attribute Cache Metrics
 
@@ -586,9 +586,9 @@ The attribute cache stores computed attribute values (volumes, metadata) in memo
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `cache.rotations` | Counter | 1 | Number of cache generation rotations |
-| `cache.generation` | Gauge | 1 | Current cache generation number |
-| `cache.size` | Gauge | 1 | Number of entries in the cache by attribute type |
+| `cache.rotations` | Counter | `{rotation}` | Number of cache generation rotations |
+| `cache.generation` | Gauge | - | Current cache generation number |
+| `cache.size` | Gauge | `{entry}` | Number of entries in the cache by attribute type |
 
 **Attributes**:
 - `type`: Attribute type (`input`, `output`, `account_metadata`, `ledger_metadata`, `reversions`, `idempotency_keys`)
@@ -611,11 +611,11 @@ Bloom filters provide probabilistic key existence checks to avoid unnecessary Pe
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `bloom.lookups` | Counter | 1 | Total bloom filter checks (MayContain calls) |
-| `bloom.negatives` | Counter | 1 | Checks that returned definitely-not-present (Pebble Get avoided) |
-| `bloom.false_positives` | Counter | 1 | Checks that returned maybe-present but Pebble Get found nothing |
-| `bloom.adds` | Counter | 1 | Keys added to the bloom filter |
-| `bloom.ready` | Gauge | 1 | Readiness when reported (1 = ready, 0 = rebuilding after a configuration change); it may be absent when filters are disabled or before first population completes |
+| `bloom.lookups` | Counter | `{lookup}` | Total bloom filter checks (MayContain calls) |
+| `bloom.negatives` | Counter | `{lookup}` | Checks that returned definitely-not-present (Pebble Get avoided) |
+| `bloom.false_positives` | Counter | `{lookup}` | Checks that returned maybe-present but Pebble Get found nothing |
+| `bloom.adds` | Counter | `{key}` | Keys added to the bloom filter |
+| `bloom.ready` | Gauge | - | Readiness when reported (1 = ready, 0 = rebuilding after a configuration change); it may be absent when filters are disabled or before first population completes |
 
 **Attributes**:
 - `type` on the counters: attribute type (`volumes`, `metadata`, `references`,
@@ -649,14 +649,14 @@ index). Each reports how far it has got and how far it lags.
 |--------|------|------|-------------|
 | `index.builder.last_indexed_sequence` | Gauge | - | Last log sequence the index builder indexed |
 | `index.builder.pebble_last_sequence` | Gauge | - | Last log sequence available in the main store |
-| `index.builder.lag` | Gauge | - | Log sequences the index builder is behind the main store |
+| `index.builder.lag` | Gauge | `{sequence}` | Log sequences the index builder is behind the main store |
 | `index.builder.logs_indexed` | Counter (observable) | `{log}` | Logs indexed since the process started |
 | `usage.builder.last_indexed_sequence` | Gauge | - | Last audit sequence the usage builder processed |
 | `usage.builder.audit_last_sequence` | Gauge | - | Last audit sequence available upstream |
-| `usage.builder.lag` | Gauge | - | Audit sequences the usage builder is behind |
-| `audit_index.last_indexed_sequence` | Gauge | - | Last audit sequence the audit indexer indexed |
-| `audit_index.audit_last_sequence` | Gauge | - | Last audit sequence available upstream |
-| `audit_index.lag` | Gauge | - | Audit sequences the audit indexer is behind |
+| `usage.builder.lag` | Gauge | `{sequence}` | Audit sequences the usage builder is behind |
+| `audit.indexer.last_indexed_sequence` | Gauge | - | Last audit sequence the audit indexer indexed |
+| `audit.indexer.audit_last_sequence` | Gauge | - | Last audit sequence available upstream |
+| `audit.indexer.lag` | Gauge | `{sequence}` | Audit sequences the audit indexer is behind |
 
 A `lag` that keeps growing means the worker cannot keep up with the write rate;
 queries served from that derived store then return progressively staler data.
@@ -678,7 +678,7 @@ then wait for the FSM to apply.
 | `mirror.fsm_wait.duration` | Histogram | s | Time waiting for the FSM to apply the proposed batch |
 | `mirror.batch.duration` | Histogram | s | Total time of a successful batch, from start to FSM application |
 | `mirror.command.size` | Histogram | By | Size of the marshalled Raft command proposed for a batch |
-| `mirror.logs.ingested` | Counter | `{log}` | Source logs fetched into a batch, counted before translation, so a batch that later fails still counts |
+| `mirror.logs_ingested` | Counter | `{log}` | Source logs fetched into a batch, counted before translation, so a batch that later fails still counts |
 | `mirror.batches` | Counter | `{batch}` | Batches that reached an FSM outcome, by `status`. Failures before that (fetch, translate, propose) are not counted; they surface in the worker's logs and retries. |
 
 **Attributes**:
@@ -884,7 +884,7 @@ buckets.
 
 4. **Queue Full Events**
    ```promql
-   sum by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) (increase(formance_ledger_admission_propose_queue_full_total[5m])) > 0
+   sum by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) (increase(formance_ledger_admission_propose_queue_overflows_total[5m])) > 0
    ```
    Duration: 1m
 
@@ -912,11 +912,11 @@ buckets.
 
 3. **High Ping Latency**
    ```promql
-   histogram_quantile(0.99, sum by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, peer) (rate(formance_ledger_raft_transport_ping_latency_seconds[5m]))) > 0.01
+   histogram_quantile(0.99, sum by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, peer) (rate(formance_ledger_raft_transport_ping_duration_seconds[5m]))) > 0.01
    ```
    Classic histograms:
    ```promql
-   histogram_quantile(0.99, sum by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, peer, le) (rate(formance_ledger_raft_transport_ping_latency_seconds_bucket[5m]))) > 0.01
+   histogram_quantile(0.99, sum by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, peer, le) (rate(formance_ledger_raft_transport_ping_duration_seconds_bucket[5m]))) > 0.01
    ```
    Duration: 5m
 

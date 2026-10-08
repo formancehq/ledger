@@ -102,6 +102,7 @@ func NewHealthChecker(
 	hc.pollFailures, _ = meter.Int64Counter(
 		"health.disk.poll.failures",
 		metric.WithDescription("Count of failed GetDiskUsage polls to peers (failures cannot clear an existing disk write gate)"),
+		metric.WithUnit("{failure}"),
 	)
 
 	// The gate pointer defaults to nil, which CheckWritesAllowed treats as an

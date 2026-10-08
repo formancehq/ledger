@@ -27,7 +27,7 @@ panels.row('System', 0, [
     'Ping latency',
     { h: 8, w: 12, x: 12, y: 1 },
     [
-      { expr: queries.histogramAvg('raft.transport.ping.latency', by=['formance.ledger.node.id', 'peer']), legendFormat: 'Node {{formance.ledger.node.id}} / Peer {{peer}}' },
+      { expr: queries.histogramAvg('raft.transport.ping.duration', by=['formance.ledger.node.id', 'peer']), legendFormat: 'Node {{formance.ledger.node.id}} / Peer {{peer}}' },
     ], unit='s',
     description=|||
       Round-trip time (RTT) latency of ping requests between nodes. Measures network health between cluster members.
