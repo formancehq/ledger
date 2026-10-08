@@ -923,8 +923,6 @@ func compileLogIdConditionRev(ctx *compileCtx, cond *commonpb.UintCondition) (re
 		return emptyReverse(), nil
 	}
 
-	prefix := readstore.LedgerLogPrefix(ctx.kb, ctx.ledgerName)
-
 	if bounds.isEquality() {
 		logIDBytes := make([]byte, 8)
 		binary.BigEndian.PutUint64(logIDBytes, bounds.min)
@@ -948,23 +946,26 @@ func compileLogIdConditionRev(ctx *compileCtx, cond *commonpb.UintCondition) (re
 		}), nil
 	}
 
-	lower, upper := logIDRangeBounds(prefix, bounds)
+	// Ledger-log keys are ordered by log id, so a bounded id range streams
+	// descending exactly as the ascending leaf streams ascending.
+	var lower, upper []byte
 
-	iter, rErr := readstore.NewRangeIterator(ctx.indexReader, lower, upper, len(prefix), 8)
+	if bounds.hasMin {
+		lower = binary.BigEndian.AppendUint64(nil, bounds.min)
+	}
+
+	if bounds.hasMax {
+		upper = binary.BigEndian.AppendUint64(nil, bounds.max)
+	}
+
+	iter, rErr := readstore.NewReverseLedgerLogRangeIterator(ctx.indexReader, ctx.kb, ctx.ledgerName, lower, upper)
 	if rErr != nil {
-		return nil, fmt.Errorf("creating log ID range iterator: %w", rErr)
+		return nil, fmt.Errorf("creating reverse log ID range iterator: %w", rErr)
 	}
 
-	stats := &IteratorStats{
-		Label:  fmt.Sprintf("ReverseSliceIterator(llog:%s:id range)", ctx.ledgerName),
-		Kind:   "Range",
+	return trackReverse(iter, ctx.profile, &IteratorStats{
+		Label:  fmt.Sprintf("ReverseLedgerLogRangeIterator(%s:id range)", ctx.ledgerName),
+		Kind:   "LedgerLogRange",
 		Prefix: "llog",
-	}
-
-	matIter, err := materializeReverse(iter, ctx.profile, stats)
-	if err != nil {
-		return nil, err
-	}
-
-	return trackReverse(matIter, ctx.profile, stats), nil
+	}), nil
 }

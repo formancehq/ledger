@@ -53,7 +53,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 
 	spinner := cmdutil.StartSpinner("Fetching ledgers...")
 
-	all, nextCursor, err := cmdutil.FetchSinglePageOrAll(cmd, pgn.Cursor, func(cur string) ([]*commonpb.LedgerInfo, metadata.MD, error) {
+	all, cursors, err := cmdutil.FetchSinglePageOrAll(cmd, pgn.Cursor, func(cur string) ([]*commonpb.LedgerInfo, metadata.MD, error) {
 		page := pgn
 		page.Cursor = cur
 
@@ -85,7 +85,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	}
 
 	if handled, err := cmdutil.EncodeStructured(cmd, ledgers); handled || err != nil {
-		cmdutil.EmitNextCursorHint(cmd, nextCursor)
+		cmdutil.EmitCursorHints(cmd, cursors)
 
 		return err
 	}
@@ -99,6 +99,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	if len(all) == 0 {
 		pterm.Info.Println("No ledgers found.")
 		pterm.Println(pterm.Gray("Create one with: ledgerctl ledgers create --name <name>"))
+		cmdutil.EmitCursorHints(cmd, cursors)
 
 		return nil
 	}
@@ -127,7 +128,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 
 	pterm.Println()
 
-	cmdutil.EmitNextCursorHint(cmd, nextCursor)
+	cmdutil.EmitCursorHints(cmd, cursors)
 
 	return nil
 }

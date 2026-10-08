@@ -1783,14 +1783,17 @@ message GroupedAggregateResult {
   repeated AggregatedVolume volumes = 2;
 }
 
-// PreparedQueryCursor follows the cursor-based pagination pattern.
+// PreparedQueryCursor is one page of a prepared query's LIST results. next
+// and previous are page tokens (see ListOptions.cursor); has_more is set iff
+// next is.
 message PreparedQueryCursor {
   uint32 page_size = 1;
   bool has_more = 2;
   string next = 3;
-  repeated Account account_data = 4;
-  repeated Transaction transaction_data = 5;
-  repeated Log log_data = 6;
+  string previous = 4;
+  repeated Account account_data = 5;
+  repeated Transaction transaction_data = 6;
+  repeated Log log_data = 7;
 }
 
 // LedgerStats contains aggregate statistics for a ledger.
@@ -1915,11 +1918,14 @@ message ReadOptions {
 // parameters every streaming read endpoint understands. Embed it as a field
 // on the Request so the contract stays DRY across resources.
 //
-// cursor is OPAQUE from the client's POV: the server encodes the next-page
-// resume token internally (entity address, sequence number, …) and the client
-// round-trips whatever value it received as the "x-next-cursor" trailer of
-// the previous response. This lets the server evolve its on-wire cursor
-// format without breaking deployed clients.
+// cursor is a page token: base64url (unpadded) of the JSON object
+// {"key": <string>, "back": <bool>}, built by pkg/pagecursor. Paged responses
+// return the tokens of the adjacent pages in the "x-next-cursor" and
+// "x-previous-cursor" trailers. key is the position, in the endpoint's
+// textual form (decimal id, address, name); a forward token serves the rows
+// strictly after key, a back token the page ending strictly before key, both
+// in the requested order. A back token with an empty key serves the last
+// page.
 //
 // Not every endpoint honors every option: a reverse-uncapable or filter-less
 // endpoint MUST reject a non-default value with InvalidArgument rather than
@@ -1929,8 +1935,8 @@ message ListOptions {
   // page_size is the maximum number of items per page. 0 lets the server
   // pick a sane default (currently 100); the server clamps to MaxPageSize.
   uint32 page_size = 2;
-  // cursor is the opaque resume token from the previous page's
-  // x-next-cursor trailer. Empty starts at the iteration head.
+  // cursor is a page token, normally copied from a previous response's
+  // x-next-cursor or x-previous-cursor trailer. Empty starts at the head.
   string cursor = 3;
   // reverse inverts the default iteration order for endpoints that support it.
   bool reverse = 4;

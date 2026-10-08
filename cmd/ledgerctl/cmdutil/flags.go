@@ -10,15 +10,40 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
-// NextCursorTrailerKey is the gRPC trailer key that carries the opaque
-// resume token for the next page of a streaming list response. Mirrors
-// the constant defined in internal/adapter/grpc/stream_helper.go.
-const NextCursorTrailerKey = "x-next-cursor"
+// NextCursorTrailerKey and PreviousCursorTrailerKey are the gRPC trailer keys
+// that carry the page tokens of the following and preceding pages of a
+// streaming list response. Mirrors the constants defined in
+// internal/adapter/grpc/stream_helper.go.
+const (
+	NextCursorTrailerKey     = "x-next-cursor"
+	PreviousCursorTrailerKey = "x-previous-cursor"
+)
 
-// NextCursorFromTrailer returns the opaque cursor for the following page, or
-// "" when the server signaled end-of-stream (no trailer).
+// NextCursorFromTrailer returns the page token of the following page, or ""
+// when there is none.
 func NextCursorFromTrailer(trailer metadata.MD) string {
-	if vals := trailer.Get(NextCursorTrailerKey); len(vals) > 0 {
+	return firstTrailerValue(trailer, NextCursorTrailerKey)
+}
+
+// PreviousCursorFromTrailer returns the page token of the preceding page, or
+// "" when there is none.
+func PreviousCursorFromTrailer(trailer metadata.MD) string {
+	return firstTrailerValue(trailer, PreviousCursorTrailerKey)
+}
+
+// PageCursors are the adjacent-page tokens of one list response.
+type PageCursors struct {
+	Next     string
+	Previous string
+}
+
+// CursorsFromTrailer reads both page tokens from a list response's trailer.
+func CursorsFromTrailer(trailer metadata.MD) PageCursors {
+	return PageCursors{Next: NextCursorFromTrailer(trailer), Previous: PreviousCursorFromTrailer(trailer)}
+}
+
+func firstTrailerValue(trailer metadata.MD, key string) string {
+	if vals := trailer.Get(key); len(vals) > 0 {
 		return vals[0]
 	}
 
@@ -33,8 +58,8 @@ type FetchPager[T any] func(cursor string) (items []T, trailer metadata.MD, err 
 // FetchSinglePageOrAll branches on whether the user explicitly set --page-size:
 //
 //   - when --page-size or --cursor is set, fetch exactly one page starting
-//     at initialCursor and return its x-next-cursor (if any) so the caller
-//     can hint resumption to the user. Setting either flag is the canonical
+//     at initialCursor and return its page tokens so the caller can hint
+//     navigation to the user. Setting either flag is the canonical
 //     way to opt into pagination — including following the "resume with
 //     --cursor X" hint printed after the first page.
 //   - when neither flag is set, drain every page via DrainAllPages so the
@@ -46,21 +71,21 @@ func FetchSinglePageOrAll[T any](
 	cmd *cobra.Command,
 	initialCursor string,
 	fetchPage FetchPager[T],
-) (items []T, nextCursor string, err error) {
+) (items []T, cursors PageCursors, err error) {
 	if cmd.Flags().Changed("page-size") || cmd.Flags().Changed("cursor") {
 		var trailer metadata.MD
 
 		items, trailer, err = fetchPage(initialCursor)
 		if err != nil {
-			return nil, "", err
+			return nil, PageCursors{}, err
 		}
 
-		return items, NextCursorFromTrailer(trailer), nil
+		return items, CursorsFromTrailer(trailer), nil
 	}
 
 	items, err = DrainAllPages(initialCursor, fetchPage)
 
-	return items, "", err
+	return items, PageCursors{}, err
 }
 
 // DrainAllPages follows the x-next-cursor trailer chain across pages of a
@@ -145,14 +170,12 @@ type PaginationOptions struct {
 // AddPaginationFlags registers the canonical pagination flags on cmd:
 //
 //	--page-size  (uint32) — number of items per page
-//	--cursor     (string) — opaque cursor returned by the previous page
+//	--cursor     (string) — page token from a previous page's hints
 //	--reverse    (bool)   — reverse iteration order (only if SupportsReverse)
 //	--all        (bool)   — fetch every page (only if SupportsAll)
 //
-// --cursor is opaque to the client: the server publishes its value as the
-// x-next-cursor gRPC trailer of the previous page, and the client passes it
-// back unchanged. This lets the server evolve its on-wire cursor format
-// without coordinating with deployed clients.
+// --cursor takes a page token (pkg/pagecursor) as the server published it in
+// the x-next-cursor or x-previous-cursor trailer of a previous page.
 func AddPaginationFlags(cmd *cobra.Command, opts PaginationOptions) {
 	pageSize := opts.DefaultPageSize
 	if pageSize == 0 {
@@ -160,7 +183,7 @@ func AddPaginationFlags(cmd *cobra.Command, opts PaginationOptions) {
 	}
 
 	cmd.Flags().Uint32("page-size", pageSize, "Number of items per page")
-	cmd.Flags().String("cursor", "", "Opaque resume token from the x-next-cursor trailer of the previous page")
+	cmd.Flags().String("cursor", "", "Page token printed by a previous page (next or previous)")
 
 	if opts.SupportsReverse {
 		cmd.Flags().Bool("reverse", false, "Reverse iteration order")

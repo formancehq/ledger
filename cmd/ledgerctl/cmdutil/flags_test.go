@@ -372,10 +372,10 @@ func TestFetchSinglePageOrAll(t *testing.T) {
 			next:  []string{"next-cursor", ""},
 		}
 
-		items, nextCursor, err := cmdutil.FetchSinglePageOrAll(cmd, "", p.fetch)
+		items, cursors, err := cmdutil.FetchSinglePageOrAll(cmd, "", p.fetch)
 		require.NoError(t, err)
 		require.Equal(t, []int{1, 2, 3}, items, "single-page mode returns the first page only")
-		require.Equal(t, "next-cursor", nextCursor, "surfaces the trailer cursor for the resume hint")
+		require.Equal(t, cmdutil.PageCursors{Next: "next-cursor"}, cursors, "surfaces the trailer cursors for the navigation hints")
 		require.Len(t, p.calls, 1, "single-page mode does not chain")
 	})
 
@@ -408,10 +408,10 @@ func TestFetchSinglePageOrAll(t *testing.T) {
 			next:  []string{"a", "b", ""},
 		}
 
-		items, nextCursor, err := cmdutil.FetchSinglePageOrAll(cmd, "", p.fetch)
+		items, cursors, err := cmdutil.FetchSinglePageOrAll(cmd, "", p.fetch)
 		require.NoError(t, err)
 		require.Equal(t, []int{1, 2, 3, 4, 5}, items, "drain-mode returns every page")
-		require.Empty(t, nextCursor, "drain-mode never surfaces a cursor")
+		require.Zero(t, cursors, "drain-mode never surfaces a cursor")
 		require.Equal(t, []string{"", "a", "b"}, p.calls)
 	})
 }
