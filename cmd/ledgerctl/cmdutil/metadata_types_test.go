@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestParseTargetType(t *testing.T) {
@@ -14,15 +14,15 @@ func TestParseTargetType(t *testing.T) {
 	tests := []struct {
 		name    string
 		input   string
-		want    commonpb.TargetType
+		want    ledgerpb.TargetType
 		wantErr bool
 	}{
-		{"account", "account", commonpb.TargetType_TARGET_TYPE_ACCOUNT, false},
-		{"transaction", "transaction", commonpb.TargetType_TARGET_TYPE_TRANSACTION, false},
-		{"ledger", "ledger", commonpb.TargetType_TARGET_TYPE_LEDGER, false},
-		{"Account uppercase", "Account", commonpb.TargetType_TARGET_TYPE_ACCOUNT, false},
-		{"TRANSACTION uppercase", "TRANSACTION", commonpb.TargetType_TARGET_TYPE_TRANSACTION, false},
-		{"LEDGER uppercase", "LEDGER", commonpb.TargetType_TARGET_TYPE_LEDGER, false},
+		{"account", "account", ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, false},
+		{"transaction", "transaction", ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, false},
+		{"ledger", "ledger", ledgerpb.TargetType_TARGET_TYPE_LEDGER, false},
+		{"Account uppercase", "Account", ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, false},
+		{"TRANSACTION uppercase", "TRANSACTION", ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, false},
+		{"LEDGER uppercase", "LEDGER", ledgerpb.TargetType_TARGET_TYPE_LEDGER, false},
 		{"invalid", "unknown", 0, true},
 		{"empty", "", 0, true},
 	}
@@ -50,21 +50,21 @@ func TestParseMetadataType(t *testing.T) {
 	tests := []struct {
 		name    string
 		input   string
-		want    commonpb.MetadataType
+		want    ledgerpb.MetadataType
 		wantErr bool
 	}{
-		{"string", "string", commonpb.MetadataType_METADATA_TYPE_STRING, false},
-		{"int64", "int64", commonpb.MetadataType_METADATA_TYPE_INT64, false},
-		{"bool", "bool", commonpb.MetadataType_METADATA_TYPE_BOOL, false},
-		{"uint64", "uint64", commonpb.MetadataType_METADATA_TYPE_UINT64, false},
-		{"int8", "int8", commonpb.MetadataType_METADATA_TYPE_INT8, false},
-		{"int16", "int16", commonpb.MetadataType_METADATA_TYPE_INT16, false},
-		{"int32", "int32", commonpb.MetadataType_METADATA_TYPE_INT32, false},
-		{"uint8", "uint8", commonpb.MetadataType_METADATA_TYPE_UINT8, false},
-		{"uint16", "uint16", commonpb.MetadataType_METADATA_TYPE_UINT16, false},
-		{"uint32", "uint32", commonpb.MetadataType_METADATA_TYPE_UINT32, false},
-		{"Bool uppercase", "Bool", commonpb.MetadataType_METADATA_TYPE_BOOL, false},
-		{"INT64 uppercase", "INT64", commonpb.MetadataType_METADATA_TYPE_INT64, false},
+		{"string", "string", ledgerpb.MetadataType_METADATA_TYPE_STRING, false},
+		{"int64", "int64", ledgerpb.MetadataType_METADATA_TYPE_INT64, false},
+		{"bool", "bool", ledgerpb.MetadataType_METADATA_TYPE_BOOL, false},
+		{"uint64", "uint64", ledgerpb.MetadataType_METADATA_TYPE_UINT64, false},
+		{"int8", "int8", ledgerpb.MetadataType_METADATA_TYPE_INT8, false},
+		{"int16", "int16", ledgerpb.MetadataType_METADATA_TYPE_INT16, false},
+		{"int32", "int32", ledgerpb.MetadataType_METADATA_TYPE_INT32, false},
+		{"uint8", "uint8", ledgerpb.MetadataType_METADATA_TYPE_UINT8, false},
+		{"uint16", "uint16", ledgerpb.MetadataType_METADATA_TYPE_UINT16, false},
+		{"uint32", "uint32", ledgerpb.MetadataType_METADATA_TYPE_UINT32, false},
+		{"Bool uppercase", "Bool", ledgerpb.MetadataType_METADATA_TYPE_BOOL, false},
+		{"INT64 uppercase", "INT64", ledgerpb.MetadataType_METADATA_TYPE_INT64, false},
 		{"invalid", "float64", 0, true},
 		{"empty", "", 0, true},
 	}
@@ -90,19 +90,19 @@ func TestMetadataTypeString(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		input commonpb.MetadataType
+		input ledgerpb.MetadataType
 		want  string
 	}{
-		{commonpb.MetadataType_METADATA_TYPE_STRING, "string"},
-		{commonpb.MetadataType_METADATA_TYPE_INT64, "int64"},
-		{commonpb.MetadataType_METADATA_TYPE_BOOL, "bool"},
-		{commonpb.MetadataType_METADATA_TYPE_UINT64, "uint64"},
-		{commonpb.MetadataType_METADATA_TYPE_INT8, "int8"},
-		{commonpb.MetadataType_METADATA_TYPE_INT16, "int16"},
-		{commonpb.MetadataType_METADATA_TYPE_INT32, "int32"},
-		{commonpb.MetadataType_METADATA_TYPE_UINT8, "uint8"},
-		{commonpb.MetadataType_METADATA_TYPE_UINT16, "uint16"},
-		{commonpb.MetadataType_METADATA_TYPE_UINT32, "uint32"},
+		{ledgerpb.MetadataType_METADATA_TYPE_STRING, "string"},
+		{ledgerpb.MetadataType_METADATA_TYPE_INT64, "int64"},
+		{ledgerpb.MetadataType_METADATA_TYPE_BOOL, "bool"},
+		{ledgerpb.MetadataType_METADATA_TYPE_UINT64, "uint64"},
+		{ledgerpb.MetadataType_METADATA_TYPE_INT8, "int8"},
+		{ledgerpb.MetadataType_METADATA_TYPE_INT16, "int16"},
+		{ledgerpb.MetadataType_METADATA_TYPE_INT32, "int32"},
+		{ledgerpb.MetadataType_METADATA_TYPE_UINT8, "uint8"},
+		{ledgerpb.MetadataType_METADATA_TYPE_UINT16, "uint16"},
+		{ledgerpb.MetadataType_METADATA_TYPE_UINT32, "uint32"},
 	}
 
 	for _, tt := range tests {
@@ -116,8 +116,8 @@ func TestMetadataTypeString(t *testing.T) {
 func TestTargetTypeString(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, "account", TargetTypeString(commonpb.TargetType_TARGET_TYPE_ACCOUNT))
-	require.Equal(t, "transaction", TargetTypeString(commonpb.TargetType_TARGET_TYPE_TRANSACTION))
+	require.Equal(t, "account", TargetTypeString(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT))
+	require.Equal(t, "transaction", TargetTypeString(ledgerpb.TargetType_TARGET_TYPE_TRANSACTION))
 }
 
 func TestMetadataTypeOptions(t *testing.T) {
@@ -148,31 +148,31 @@ func TestParseSchemaEntry(t *testing.T) {
 	tests := []struct {
 		name       string
 		input      string
-		wantTarget commonpb.TargetType
+		wantTarget ledgerpb.TargetType
 		wantKey    string
-		wantType   commonpb.MetadataType
+		wantType   ledgerpb.MetadataType
 		wantErr    bool
 	}{
 		{
 			name:       "account int64",
 			input:      "account:age:int64",
-			wantTarget: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+			wantTarget: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 			wantKey:    "age",
-			wantType:   commonpb.MetadataType_METADATA_TYPE_INT64,
+			wantType:   ledgerpb.MetadataType_METADATA_TYPE_INT64,
 		},
 		{
 			name:       "transaction bool",
 			input:      "transaction:active:bool",
-			wantTarget: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+			wantTarget: ledgerpb.TargetType_TARGET_TYPE_TRANSACTION,
 			wantKey:    "active",
-			wantType:   commonpb.MetadataType_METADATA_TYPE_BOOL,
+			wantType:   ledgerpb.MetadataType_METADATA_TYPE_BOOL,
 		},
 		{
 			name:       "account uint64",
 			input:      "account:count:uint64",
-			wantTarget: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+			wantTarget: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 			wantKey:    "count",
-			wantType:   commonpb.MetadataType_METADATA_TYPE_UINT64,
+			wantType:   ledgerpb.MetadataType_METADATA_TYPE_UINT64,
 		},
 		{
 			name:    "missing parts",
@@ -182,9 +182,9 @@ func TestParseSchemaEntry(t *testing.T) {
 		{
 			name:       "ledger string",
 			input:      "ledger:env:string",
-			wantTarget: commonpb.TargetType_TARGET_TYPE_LEDGER,
+			wantTarget: ledgerpb.TargetType_TARGET_TYPE_LEDGER,
 			wantKey:    "env",
-			wantType:   commonpb.MetadataType_METADATA_TYPE_STRING,
+			wantType:   ledgerpb.MetadataType_METADATA_TYPE_STRING,
 		},
 		{
 			name:    "invalid target",
@@ -209,9 +209,9 @@ func TestParseSchemaEntry(t *testing.T) {
 		{
 			name:       "key with dots",
 			input:      "account:user.age:int32",
-			wantTarget: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+			wantTarget: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 			wantKey:    "user.age",
-			wantType:   commonpb.MetadataType_METADATA_TYPE_INT32,
+			wantType:   ledgerpb.MetadataType_METADATA_TYPE_INT32,
 		},
 	}
 

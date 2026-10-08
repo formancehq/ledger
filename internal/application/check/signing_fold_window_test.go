@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -39,19 +39,19 @@ func writeSigningAuditEntry(
 	clusterID string,
 	prevHash []byte,
 	seq, minLog, maxLog uint64,
-	items []*auditpb.AuditItem,
+	items []*ledgerpb.AuditItem,
 ) []byte {
 	t.Helper()
 	_ = clusterID
 
-	entry := &auditpb.AuditEntry{
+	entry := &ledgerpb.AuditEntry{
 		Sequence:       seq,
-		Timestamp:      &auditpb.Timestamp{Data: 1700000000 + seq},
+		Timestamp:      &ledgerpb.Timestamp{Data: 1700000000 + seq},
 		OrderCount:     uint32(len(items)),
-		HashVersion:    uint32(auditpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		HashVersion:    uint32(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
 		CallerSnapshot: testCallerSnapshot(),
-		Outcome: &auditpb.AuditEntry_Success{
-			Success: &auditpb.AuditSuccess{MinLogSequence: minLog, MaxLogSequence: maxLog},
+		Outcome: &ledgerpb.AuditEntry_Success{
+			Success: &ledgerpb.AuditSuccess{MinLogSequence: minLog, MaxLogSequence: maxLog},
 		},
 	}
 
@@ -65,7 +65,7 @@ func writeSigningAuditEntry(
 		hashSlices = append(hashSlices, state.BuildPerItemPayload(item))
 	}
 
-	gen := processing.NewHashGenerator(auditpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
+	gen := processing.NewHashGenerator(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
 	_, entry.Hash = gen.Compute(nil, prevHash, hashSlices)
 
 	rewriteAuditEntry(t, store, entry, items)
@@ -98,13 +98,13 @@ func TestVerifyAuditHashChain_SigningFoldIgnoresLegacyReplayReferences(t *testin
 	store := createTestStore(t)
 	publicKey := signingTestKey(0x33)
 
-	hash := writeSigningAuditEntry(t, store, clusterID, nil, 1, 1, 1, []*auditpb.AuditItem{{
+	hash := writeSigningAuditEntry(t, store, clusterID, nil, 1, 1, 1, []*ledgerpb.AuditItem{{
 		OrderIndex:      0,
 		LogSequence:     1,
 		SerializedOrder: marshalSigningOrder(t, registerSigningKeyOrder("legacy-key", publicKey, "")),
 	}})
 
-	hash = writeSigningAuditEntry(t, store, clusterID, hash, 2, 2, 2, []*auditpb.AuditItem{{
+	hash = writeSigningAuditEntry(t, store, clusterID, hash, 2, 2, 2, []*ledgerpb.AuditItem{{
 		OrderIndex:      0,
 		LogSequence:     2,
 		SerializedOrder: marshalSigningOrder(t, revokeSigningKeyOrder("legacy-key", false)),
@@ -113,7 +113,7 @@ func TestVerifyAuditHashChain_SigningFoldIgnoresLegacyReplayReferences(t *testin
 	// The upgraded-store shape: one fresh item of this entry (log 3) alongside a
 	// legacy per-order replay reference pointing back at log 1. Both are carried
 	// by the same successful entry, so only the window separates them.
-	writeSigningAuditEntry(t, store, clusterID, hash, 3, 3, 3, []*auditpb.AuditItem{
+	writeSigningAuditEntry(t, store, clusterID, hash, 3, 3, 3, []*ledgerpb.AuditItem{
 		{
 			OrderIndex:      0,
 			LogSequence:     3,
@@ -141,7 +141,7 @@ func TestVerifyAuditHashChain_SigningFoldIgnoresLegacyReplayReferences(t *testin
 	folds := newChainVerifierFolds()
 	folds.signing = verifier
 
-	_, err = checker.verifyAuditHashChain(context.Background(), handle, checkerTestAuditKey, newChainBoundState(), folds, func(*auditpb.CheckStoreEvent) {})
+	_, err = checker.verifyAuditHashChain(context.Background(), handle, checkerTestAuditKey, newChainBoundState(), folds, func(*ledgerpb.CheckStoreEvent) {})
 	require.NoError(t, err)
 
 	require.NotContains(t, verifier.keys, "legacy-key",

@@ -11,7 +11,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -24,21 +24,21 @@ func TestHandleAnalyzeAccounts_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().AnalyzeAccounts(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, ledgerName string, variableThreshold uint32, _ func(uint64, uint64)) (*servicepb.AnalyzeAccountsResponse, error) {
+		func(_ context.Context, ledgerName string, variableThreshold uint32, _ func(uint64, uint64)) (*ledgerpb.AnalyzeAccountsResponse, error) {
 			require.Equal(t, "my-ledger", ledgerName)
 			require.Equal(t, uint32(0), variableThreshold)
 
-			return &servicepb.AnalyzeAccountsResponse{
+			return &ledgerpb.AnalyzeAccountsResponse{
 				TotalAccounts: 42,
-				Patterns: []*servicepb.AccountPattern{
+				Patterns: []*ledgerpb.AccountPattern{
 					{
 						Pattern:      "users:{user_id}",
 						AccountCount: 20,
 						Assets:       []string{"USD", "EUR"},
 						MetadataKeys: []string{"role"},
-						Segments: []*servicepb.PatternSegment{
-							{Position: 0, Type: servicepb.PatternSegmentType_PATTERN_SEGMENT_TYPE_FIXED, FixedValue: "users"},
-							{Position: 1, Type: servicepb.PatternSegmentType_PATTERN_SEGMENT_TYPE_VARIABLE, VariableName: "user_id", InferredPattern: "^[a-f0-9-]+$", UniqueValues: 20, Examples: []string{"abc-123"}},
+						Segments: []*ledgerpb.PatternSegment{
+							{Position: 0, Type: ledgerpb.PatternSegmentType_PATTERN_SEGMENT_TYPE_FIXED, FixedValue: "users"},
+							{Position: 1, Type: ledgerpb.PatternSegmentType_PATTERN_SEGMENT_TYPE_VARIABLE, VariableName: "user_id", InferredPattern: "^[a-f0-9-]+$", UniqueValues: 20, Examples: []string{"abc-123"}},
 						},
 					},
 				},
@@ -76,10 +76,10 @@ func TestHandleAnalyzeAccounts_WithThreshold(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().AnalyzeAccounts(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, variableThreshold uint32, _ func(uint64, uint64)) (*servicepb.AnalyzeAccountsResponse, error) {
+		func(_ context.Context, _ string, variableThreshold uint32, _ func(uint64, uint64)) (*ledgerpb.AnalyzeAccountsResponse, error) {
 			capturedThreshold = variableThreshold
 
-			return &servicepb.AnalyzeAccountsResponse{
+			return &ledgerpb.AnalyzeAccountsResponse{
 				TotalAccounts: 0,
 				Patterns:      nil,
 			}, nil
@@ -135,7 +135,7 @@ func TestHandleAnalyzeAccounts_BackendError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().AnalyzeAccounts(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint32, _ func(uint64, uint64)) (*servicepb.AnalyzeAccountsResponse, error) {
+		func(_ context.Context, _ string, _ uint32, _ func(uint64, uint64)) (*ledgerpb.AnalyzeAccountsResponse, error) {
 			return nil, errors.New("internal error")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -155,7 +155,7 @@ func TestHandleAnalyzeAccounts_LedgerNotFound(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().AnalyzeAccounts(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint32, _ func(uint64, uint64)) (*servicepb.AnalyzeAccountsResponse, error) {
+		func(_ context.Context, _ string, _ uint32, _ func(uint64, uint64)) (*ledgerpb.AnalyzeAccountsResponse, error) {
 			return nil, &domain.ErrLedgerNotFound{Name: "missing"}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -175,8 +175,8 @@ func TestHandleAnalyzeAccounts_EmptyResponse(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().AnalyzeAccounts(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint32, _ func(uint64, uint64)) (*servicepb.AnalyzeAccountsResponse, error) {
-			return &servicepb.AnalyzeAccountsResponse{
+		func(_ context.Context, _ string, _ uint32, _ func(uint64, uint64)) (*ledgerpb.AnalyzeAccountsResponse, error) {
+			return &ledgerpb.AnalyzeAccountsResponse{
 				TotalAccounts: 0,
 				Patterns:      nil,
 			}, nil
@@ -208,15 +208,15 @@ func TestHandleAnalyzeAccounts_NoNullCollections(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().AnalyzeAccounts(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint32, _ func(uint64, uint64)) (*servicepb.AnalyzeAccountsResponse, error) {
-			return &servicepb.AnalyzeAccountsResponse{
+		func(_ context.Context, _ string, _ uint32, _ func(uint64, uint64)) (*ledgerpb.AnalyzeAccountsResponse, error) {
+			return &ledgerpb.AnalyzeAccountsResponse{
 				TotalAccounts: 1,
-				Patterns: []*servicepb.AccountPattern{
+				Patterns: []*ledgerpb.AccountPattern{
 					{
 						Pattern:      "world",
 						AccountCount: 1,
-						Segments: []*servicepb.PatternSegment{
-							{Position: 0, Type: servicepb.PatternSegmentType_PATTERN_SEGMENT_TYPE_FIXED, FixedValue: "world"},
+						Segments: []*ledgerpb.PatternSegment{
+							{Position: 0, Type: ledgerpb.PatternSegmentType_PATTERN_SEGMENT_TYPE_FIXED, FixedValue: "world"},
 						},
 					},
 				},
@@ -247,7 +247,7 @@ func TestHandleAnalyzeAccounts_NoLeaderError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().AnalyzeAccounts(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint32, _ func(uint64, uint64)) (*servicepb.AnalyzeAccountsResponse, error) {
+		func(_ context.Context, _ string, _ uint32, _ func(uint64, uint64)) (*ledgerpb.AnalyzeAccountsResponse, error) {
 			return nil, protoerr.ErrNoLeader
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -269,10 +269,10 @@ func TestHandleAnalyzeAccounts_FullRouteIntegration(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().AnalyzeAccounts(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint32, _ func(uint64, uint64)) (*servicepb.AnalyzeAccountsResponse, error) {
-			return &servicepb.AnalyzeAccountsResponse{
+		func(_ context.Context, _ string, _ uint32, _ func(uint64, uint64)) (*ledgerpb.AnalyzeAccountsResponse, error) {
+			return &ledgerpb.AnalyzeAccountsResponse{
 				TotalAccounts: 5,
-				Patterns:      []*servicepb.AccountPattern{},
+				Patterns:      []*ledgerpb.AccountPattern{},
 			}, nil
 		}).AnyTimes()
 

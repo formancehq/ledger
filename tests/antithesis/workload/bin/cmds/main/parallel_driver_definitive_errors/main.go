@@ -21,7 +21,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -54,7 +54,7 @@ func isDefinitiveCode(c codes.Code) bool {
 // conclusive is false when the read fails before or during the stream.
 func referenceFilterCheck(
 	ctx context.Context,
-	client commonpb.BucketServiceClient,
+	client ledgerpb.BucketServiceClient,
 	ledger, ref string,
 ) (bool, uint64, bool) {
 	ids, err := internal.ReadOracleTransactions(ctx, client, ledger, actions.ReferenceFilter(ref))
@@ -69,7 +69,7 @@ func referenceFilterCheck(
 }
 
 func main() {
-	internal.RunDriver("parallel_driver_definitive_errors", func(ctx context.Context, client commonpb.BucketServiceClient, _ string) {
+	internal.RunDriver("parallel_driver_definitive_errors", func(ctx context.Context, client ledgerpb.BucketServiceClient, _ string) {
 		r := internal.Rand()
 
 		// Dedicated ledger + dedicated account prefix: nothing ever funds
@@ -78,15 +78,15 @@ func main() {
 		// interleaving where another driver credits the source).
 		run := r.Uint64()
 		ledger := internal.PrefixDefinitiveErrors.WithSeed(run)
-		if err := internal.CreateQueryOracleLedger(ctx, client, ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE); err != nil {
+		if err := internal.CreateQueryOracleLedger(ctx, client, ledger, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE); err != nil {
 			return
 		}
 
 		// Menu axis (issue #321 overflow class): boundary amounts 1, 2^63,
 		// and 2^256-1 — all strictly above the source's zero balance.
-		amounts := []*commonpb.Uint256{
-			commonpb.NewUint256FromUint64(1),
-			commonpb.NewUint256FromUint64(1 << 63),
+		amounts := []*ledgerpb.Uint256{
+			ledgerpb.NewUint256FromUint64(1),
+			ledgerpb.NewUint256FromUint64(1 << 63),
 			{V0: math.MaxUint64, V1: math.MaxUint64, V2: math.MaxUint64, V3: math.MaxUint64},
 		}
 
@@ -105,13 +105,13 @@ func main() {
 				asset = "!!not a valid asset!!"
 			}
 
-			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_Apply{
-					Apply: &commonpb.LedgerApplyRequest{
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_Apply{
+					Apply: &ledgerpb.LedgerApplyRequest{
 						Ledger: ledger,
-						Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
-							CreateTransaction: &commonpb.CreateTransactionPayload{
-								Postings: []*commonpb.Posting{{
+						Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
+							CreateTransaction: &ledgerpb.CreateTransactionPayload{
+								Postings: []*ledgerpb.Posting{{
 									Source:      source,
 									Destination: "deferr-sink",
 									Amount:      amounts[i%len(amounts)],
@@ -161,16 +161,16 @@ func main() {
 		// past the window where a committed-but-rejected write could
 		// hide. Transparent UNAVAILABLE retries of the marker are harmless
 		// (no reference, idempotent for this purpose).
-		markerResp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_Apply{
-				Apply: &commonpb.LedgerApplyRequest{
+		markerResp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
-						CreateTransaction: &commonpb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{{
+					Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &ledgerpb.CreateTransactionPayload{
+							Postings: []*ledgerpb.Posting{{
 								Source:      "world",
 								Destination: "deferr-marker",
-								Amount:      commonpb.NewUint256FromUint64(1),
+								Amount:      ledgerpb.NewUint256FromUint64(1),
 								Asset:       "USD/2",
 							}},
 							Force: true,
@@ -193,7 +193,7 @@ func main() {
 	})
 }
 
-func assertRejectedWritesAbsent(ctx context.Context, client commonpb.BucketServiceClient, ledger string, rejected []rejection, details internal.Details) {
+func assertRejectedWritesAbsent(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string, rejected []rejection, details internal.Details) {
 	for _, rej := range rejected {
 		found, foundID, conclusive := referenceFilterCheck(ctx, client, ledger, rej.reference)
 		if !conclusive {

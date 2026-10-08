@@ -11,7 +11,7 @@ import (
 	"github.com/holiman/uint256"
 	"github.com/robfig/cron/v3"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
@@ -23,7 +23,7 @@ import (
 type TypeState struct {
 	Name        string
 	Pattern     string
-	Persistence commonpb.AccountTypePersistence
+	Persistence ledgerpb.AccountTypePersistence
 }
 
 // VolumeKey is one (address, asset, color) cell of the volume table. Color ""
@@ -75,15 +75,15 @@ func CompareVolumeKey(a, b VolumeKey) int {
 // enforcement mode is copied by value, so the checker forks state across
 // hypothesized serializations by plain struct copy — forks never alias.
 type LedgerState struct {
-	defaultEnforcementMode commonpb.ChartEnforcementMode
+	defaultEnforcementMode ledgerpb.ChartEnforcementMode
 	types                  Map[string, TypeState]
 	volumes                Map[VolumeKey, VolumePair]
-	metadata               Map[MetaKey, *commonpb.MetadataValue]
-	ledgerMeta             Map[string, *commonpb.MetadataValue]
+	metadata               Map[MetaKey, *ledgerpb.MetadataValue]
+	ledgerMeta             Map[string, *ledgerpb.MetadataValue]
 	// Declared metadata field types per key, driving value coercion. Keyed by
 	// metadata key (the schema is per (target, key), not per address).
-	accountFieldTypes Map[string, commonpb.MetadataType]
-	ledgerFieldTypes  Map[string, commonpb.MetadataType]
+	accountFieldTypes Map[string, ledgerpb.MetadataType]
+	ledgerFieldTypes  Map[string, ledgerpb.MetadataType]
 
 	// txs is the transaction log: index i holds the transaction with id i+1, so
 	// ids are dense and sequential, mirroring the server (first id is 1). Every
@@ -95,7 +95,7 @@ type LedgerState struct {
 	// txByRef indexes referenced transactions by reference -> id, for the
 	// generator (which targets by reference) and reference-keyed metadata writes.
 	txByRef               Map[string, int]
-	transactionFieldTypes Map[string, commonpb.MetadataType]
+	transactionFieldTypes Map[string, ledgerpb.MetadataType]
 
 	// indexes tracks the read-store indexes the ledger has, keyed by canonical
 	// IndexID string. The value is the readiness flag: false = ambiguous (created,
@@ -111,7 +111,7 @@ type LedgerState struct {
 	// shape ListPreparedQueries returns and ExecutePreparedQuery compiles. The
 	// registry is part of the state's identity: two bases differing only in a
 	// query's stored filter predict different execution windows.
-	preparedQueries Map[string, *commonpb.PreparedQuery]
+	preparedQueries Map[string, *ledgerpb.PreparedQuery]
 
 	// logs is the ledger's log stream: index i holds the log with ledger-local
 	// id i+1, dense from 1, mirroring the server's LedgerBoundaries.NextLogId
@@ -163,17 +163,17 @@ func NewLedgerState() LedgerState {
 	return LedgerState{
 		types:             NewMap[string, TypeState](stringComparer{}, typeTerm),
 		volumes:           NewMap[VolumeKey, VolumePair](volumeKeyComparer{}, volumeTerm),
-		metadata:          NewMap[MetaKey, *commonpb.MetadataValue](metaKeyComparer{}, accountMetaTerm),
-		ledgerMeta:        NewMap[string, *commonpb.MetadataValue](stringComparer{}, ledgerMetaTerm),
-		accountFieldTypes: NewMap[string, commonpb.MetadataType](stringComparer{}, fieldTypeTerm("AF")),
-		ledgerFieldTypes:  NewMap[string, commonpb.MetadataType](stringComparer{}, fieldTypeTerm("LF")),
+		metadata:          NewMap[MetaKey, *ledgerpb.MetadataValue](metaKeyComparer{}, accountMetaTerm),
+		ledgerMeta:        NewMap[string, *ledgerpb.MetadataValue](stringComparer{}, ledgerMetaTerm),
+		accountFieldTypes: NewMap[string, ledgerpb.MetadataType](stringComparer{}, fieldTypeTerm("AF")),
+		ledgerFieldTypes:  NewMap[string, ledgerpb.MetadataType](stringComparer{}, fieldTypeTerm("LF")),
 
 		txs:                   NewList[*txRecord](txTerm),
 		txByRef:               NewMap[string, int](stringComparer{}, txRefTerm),
-		transactionFieldTypes: NewMap[string, commonpb.MetadataType](stringComparer{}, fieldTypeTerm("TF")),
+		transactionFieldTypes: NewMap[string, ledgerpb.MetadataType](stringComparer{}, fieldTypeTerm("TF")),
 
 		indexes:         NewMap[string, bool](stringComparer{}, indexTerm),
-		preparedQueries: NewMap[string, *commonpb.PreparedQuery](stringComparer{}, preparedQueryTerm),
+		preparedQueries: NewMap[string, *ledgerpb.PreparedQuery](stringComparer{}, preparedQueryTerm),
 		retypeWindows:   NewMap[string, uint32](stringComparer{}, retypeWindowTerm),
 		logs:            NewList[*logRecord](logTerm),
 		everAsset:       NewMap[assetTouch, struct{}](assetTouchComparer{}, assetTouchTerm),
@@ -181,7 +181,7 @@ func NewLedgerState() LedgerState {
 }
 
 // DefaultEnforcementMode returns the current ledger chart enforcement mode.
-func (s LedgerState) DefaultEnforcementMode() commonpb.ChartEnforcementMode {
+func (s LedgerState) DefaultEnforcementMode() ledgerpb.ChartEnforcementMode {
 	return s.defaultEnforcementMode
 }
 
@@ -218,7 +218,7 @@ func (s LedgerState) Fingerprint() Digest {
 // IsEmpty reports whether the state holds nothing — the identity of a
 // fresh NewLedgerState.
 func (s LedgerState) IsEmpty() bool {
-	if s.defaultEnforcementMode != commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT {
+	if s.defaultEnforcementMode != ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT {
 		return false
 	}
 	for _, c := range s.collections() {
@@ -235,9 +235,9 @@ func (s LedgerState) IsEmpty() bool {
 // the same bulk must recompile).
 func (s *LedgerState) compiled() []accounttype.CompiledType {
 	if s.compiledChart == nil {
-		pb := make(map[string]*commonpb.AccountType, s.types.Len())
+		pb := make(map[string]*ledgerpb.AccountType, s.types.Len())
 		for name, t := range s.types.All() {
-			pb[name] = &commonpb.AccountType{Name: t.Name, Pattern: t.Pattern}
+			pb[name] = &ledgerpb.AccountType{Name: t.Name, Pattern: t.Pattern}
 		}
 
 		s.compiledChart = accounttype.CompileTypes(pb)
@@ -282,14 +282,14 @@ func volumeTerm(k VolumeKey, v VolumePair) Digest {
 	return t.sum()
 }
 
-func accountMetaTerm(k MetaKey, v *commonpb.MetadataValue) Digest {
+func accountMetaTerm(k MetaKey, v *ledgerpb.MetadataValue) Digest {
 	t := newTerm("M")
 	t.str(k.Address, k.Key, MetaValueString(v))
 
 	return t.sum()
 }
 
-func ledgerMetaTerm(k string, v *commonpb.MetadataValue) Digest {
+func ledgerMetaTerm(k string, v *ledgerpb.MetadataValue) Digest {
 	t := newTerm("LM")
 	t.str(k, MetaValueString(v))
 
@@ -298,8 +298,8 @@ func ledgerMetaTerm(k string, v *commonpb.MetadataValue) Digest {
 
 // fieldTypeTerm builds the term function for one field-type table; the tag
 // keeps the account/ledger/transaction tables in disjoint term spaces.
-func fieldTypeTerm(tag string) func(string, commonpb.MetadataType) Digest {
-	return func(k string, mt commonpb.MetadataType) Digest {
+func fieldTypeTerm(tag string) func(string, ledgerpb.MetadataType) Digest {
+	return func(k string, mt ledgerpb.MetadataType) Digest {
 		t := newTerm(tag)
 		t.str(k)
 		t.u64(uint64(mt))
@@ -323,7 +323,7 @@ func indexTerm(canonical string, active bool) Digest {
 // stored definition's deterministic encoding, so a filter rewrite (the only
 // thing an update changes) yields a different term. Two bases differing only
 // in a stored filter predict different execution windows and must not dedup.
-func preparedQueryTerm(name string, pq *commonpb.PreparedQuery) Digest {
+func preparedQueryTerm(name string, pq *ledgerpb.PreparedQuery) Digest {
 	t := newTerm("PQ")
 	t.str(name, string(pq.MarshalDeterministicVT(nil)))
 
@@ -412,7 +412,7 @@ type logRecord struct {
 	purged    string
 	newKept   string
 	ephemeral string
-	date      *commonpb.Timestamp
+	date      *ledgerpb.Timestamp
 	sequence  uint64
 	// txID links a created_transaction / reverted_transaction log to the
 	// transaction it announces, so the transaction embedded in the served log
@@ -497,19 +497,19 @@ func txTerm(idx int, tx *txRecord) Digest {
 // MetaValueString renders a metadata value as a canonical, type-tagged string,
 // used for both hashing and equality: two values are equal iff their renderings
 // match. The type tag keeps a string "5" distinct from an int 5.
-func MetaValueString(v *commonpb.MetadataValue) string {
+func MetaValueString(v *ledgerpb.MetadataValue) string {
 	switch t := v.GetType().(type) {
-	case *commonpb.MetadataValue_StringValue:
+	case *ledgerpb.MetadataValue_StringValue:
 		return "s:" + t.StringValue
-	case *commonpb.MetadataValue_IntValue:
+	case *ledgerpb.MetadataValue_IntValue:
 		return "i:" + strconv.FormatInt(t.IntValue, 10)
-	case *commonpb.MetadataValue_UintValue:
+	case *ledgerpb.MetadataValue_UintValue:
 		return "u:" + strconv.FormatUint(t.UintValue, 10)
-	case *commonpb.MetadataValue_BoolValue:
+	case *ledgerpb.MetadataValue_BoolValue:
 		return "b:" + strconv.FormatBool(t.BoolValue)
-	case *commonpb.MetadataValue_NullValue:
+	case *ledgerpb.MetadataValue_NullValue:
 		return "n:" + t.NullValue.GetOriginal()
-	case *commonpb.MetadataValue_DatetimeValue:
+	case *ledgerpb.MetadataValue_DatetimeValue:
 		return "d:" + strconv.FormatInt(t.DatetimeValue, 10)
 	default:
 		return "<nil>"
@@ -530,8 +530,8 @@ func (s *LedgerState) vol(key VolumeKey) VolumePair {
 }
 
 // accountMetadata returns addr's metadata as a key→value map (empty if none).
-func (s *LedgerState) AccountMetadata(addr string) map[string]*commonpb.MetadataValue {
-	out := map[string]*commonpb.MetadataValue{}
+func (s *LedgerState) AccountMetadata(addr string) map[string]*ledgerpb.MetadataValue {
+	out := map[string]*ledgerpb.MetadataValue{}
 	for mk, v := range s.metadata.All() {
 		if mk.Address == addr {
 			out[mk.Key] = v
@@ -570,7 +570,7 @@ type GlobalState struct {
 // committed (to tell a genuine replay from a same-key/different-body conflict)
 // and the per-order results the server will echo on every replay.
 type frozenOutcome struct {
-	requests []*commonpb.Request
+	requests []*ledgerpb.Request
 	orders   []OrderResult
 }
 
@@ -687,20 +687,20 @@ type OrderResult struct {
 	// predicted reversed postings, checked against the RevertedTransaction log.
 	Revert *revertEffect
 	// Skipped describes an opted-in business failure that committed a log but no mutations.
-	Skipped *commonpb.OrderSkippedLog
+	Skipped *ledgerpb.OrderSkippedLog
 	// LogID is the independently assigned ledger-local log ID, zero for non-ledger logs.
 	LogID uint64
 	// PreparedQueryLog is the exact top-level audit payload produced by a
 	// committed prepared-query lifecycle order. These orders do not have a
 	// ledger-local LogID, but their echoed definitions are still observable.
-	PreparedQueryLog *commonpb.LogPayload
+	PreparedQueryLog *ledgerpb.LogPayload
 }
 
 // metaEffect is a metadata write's predicted effect, for asserting the server's
 // response log: the as-written values it should have stored (saved). Stored
 // values are verbatim — the declared type is applied only on read.
 type metaEffect struct {
-	saved map[string]*commonpb.MetadataValue
+	saved map[string]*ledgerpb.MetadataValue
 }
 
 // txRecord is a committed transaction in the log: its server-assigned id, its
@@ -711,18 +711,18 @@ type metaEffect struct {
 type txRecord struct {
 	id        uint64
 	reference string
-	postings  []*commonpb.Posting
-	metadata  map[string]*commonpb.MetadataValue
+	postings  []*ledgerpb.Posting
+	metadata  map[string]*ledgerpb.MetadataValue
 	reverted  bool
 	// timestamp is the user-supplied CreateTransaction timestamp, stored verbatim
 	// and echoed on reads. nil when the client sent none — the server then stamps
 	// its own command date, which the model cannot predict, so reads skip the
 	// timestamp check for such records. The checker may later fill a nil via
 	// LearnTxStamps with the value the commit response carried.
-	timestamp *commonpb.Timestamp
+	timestamp *ledgerpb.Timestamp
 	// insertedAt is always server-stamped (never client-supplied), so it starts
 	// nil and is known only once the checker learns it from the commit response.
-	insertedAt *commonpb.Timestamp
+	insertedAt *ledgerpb.Timestamp
 	// Revert relationships, mirroring the server's Transaction fields: on a
 	// reverted original, revertedBy carries the compensating transaction's id
 	// and revertedAt its timestamp (nil when the compensating transaction is
@@ -730,7 +730,7 @@ type txRecord struct {
 	// revert transaction, revertsTransaction carries the original's id. Zero
 	// values mean not reverted / not a revert.
 	revertedBy         uint64
-	revertedAt         *commonpb.Timestamp
+	revertedAt         *ledgerpb.Timestamp
 	revertsTransaction uint64
 	// pcv is the transaction's post-commit volumes: for every cell its own
 	// postings touched, the running volume once they had all applied. An
@@ -758,7 +758,7 @@ const (
 // entry, not here.
 type revertEffect struct {
 	revertedID uint64
-	postings   []*commonpb.Posting
+	postings   []*ledgerpb.Posting
 }
 
 // ApplyResult is the predicted outcome of applying a whole bulk.
@@ -777,43 +777,43 @@ type ApplyResult struct {
 }
 
 // LedgerOf returns the request ledger, or empty for cluster-scoped orders.
-func LedgerOf(req *commonpb.Request) string {
+func LedgerOf(req *ledgerpb.Request) string {
 	switch r := req.GetType().(type) {
-	case *commonpb.Request_SetDefaultEnforcementMode:
+	case *ledgerpb.Request_SetDefaultEnforcementMode:
 		return r.SetDefaultEnforcementMode.GetLedger()
-	case *commonpb.Request_CreateLedger:
+	case *ledgerpb.Request_CreateLedger:
 		return r.CreateLedger.GetName()
-	case *commonpb.Request_DeleteLedger:
+	case *ledgerpb.Request_DeleteLedger:
 		return r.DeleteLedger.GetName()
-	case *commonpb.Request_PromoteLedger:
+	case *ledgerpb.Request_PromoteLedger:
 		return r.PromoteLedger.GetLedger()
-	case *commonpb.Request_SetMaintenanceMode,
-		*commonpb.Request_CreateQueryCheckpoint, *commonpb.Request_DeleteQueryCheckpoint,
-		*commonpb.Request_SetQueryCheckpointSchedule, *commonpb.Request_DeleteQueryCheckpointSchedule:
+	case *ledgerpb.Request_SetMaintenanceMode,
+		*ledgerpb.Request_CreateQueryCheckpoint, *ledgerpb.Request_DeleteQueryCheckpoint,
+		*ledgerpb.Request_SetQueryCheckpointSchedule, *ledgerpb.Request_DeleteQueryCheckpointSchedule:
 		return ""
-	case *commonpb.Request_Apply:
+	case *ledgerpb.Request_Apply:
 		return r.Apply.GetLedger()
-	case *commonpb.Request_AddAccountType:
+	case *ledgerpb.Request_AddAccountType:
 		return r.AddAccountType.GetLedger()
-	case *commonpb.Request_RemoveAccountType:
+	case *ledgerpb.Request_RemoveAccountType:
 		return r.RemoveAccountType.GetLedger()
-	case *commonpb.Request_SaveLedgerMetadata:
+	case *ledgerpb.Request_SaveLedgerMetadata:
 		return r.SaveLedgerMetadata.GetLedger()
-	case *commonpb.Request_DeleteLedgerMetadata:
+	case *ledgerpb.Request_DeleteLedgerMetadata:
 		return r.DeleteLedgerMetadata.GetLedger()
-	case *commonpb.Request_SetMetadataFieldType:
+	case *ledgerpb.Request_SetMetadataFieldType:
 		return r.SetMetadataFieldType.GetLedger()
-	case *commonpb.Request_RemoveMetadataFieldType:
+	case *ledgerpb.Request_RemoveMetadataFieldType:
 		return r.RemoveMetadataFieldType.GetLedger()
-	case *commonpb.Request_CreateIndex:
+	case *ledgerpb.Request_CreateIndex:
 		return r.CreateIndex.GetLedger()
-	case *commonpb.Request_DropIndex:
+	case *ledgerpb.Request_DropIndex:
 		return r.DropIndex.GetLedger()
-	case *commonpb.Request_CreatePreparedQuery:
+	case *ledgerpb.Request_CreatePreparedQuery:
 		return r.CreatePreparedQuery.GetLedger()
-	case *commonpb.Request_UpdatePreparedQuery:
+	case *ledgerpb.Request_UpdatePreparedQuery:
 		return r.UpdatePreparedQuery.GetLedger()
-	case *commonpb.Request_DeletePreparedQuery:
+	case *ledgerpb.Request_DeletePreparedQuery:
 		return r.DeletePreparedQuery.GetLedger()
 	default:
 		panic(fmt.Sprintf("LedgerOf: unmodeled request type %T", req.GetType()))
@@ -835,7 +835,7 @@ func LedgerOf(req *commonpb.Request) string {
 // ListLogs. Seeding through Apply would therefore put one phantom log at the
 // head of the stream per declared field and shift every real log's id by that
 // many.
-func (g GlobalState) SeedInitialSchema(reqs []*commonpb.Request) GlobalState {
+func (g GlobalState) SeedInitialSchema(reqs []*ledgerpb.Request) GlobalState {
 	next := g.clone()
 
 	for _, req := range reqs {
@@ -943,7 +943,7 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 			return ApplyResult{Reason: domain.ErrReasonLedgerDeleted, State: g, Orders: append(orders, OrderResult{Reason: domain.ErrReasonLedgerDeleted})}
 		}
 
-		if lc, exists := next.lifecycle.Get(name); exists && lc.Mode == commonpb.LedgerMode_LEDGER_MODE_MIRROR && !mirrorSafeRequest(req) {
+		if lc, exists := next.lifecycle.Get(name); exists && lc.Mode == ledgerpb.LedgerMode_LEDGER_MODE_MIRROR && !mirrorSafeRequest(req) {
 			return ApplyResult{Reason: domain.ErrReasonLedgerInMirrorMode, State: g, Orders: append(orders, OrderResult{Reason: domain.ErrReasonLedgerInMirrorMode})}
 		}
 		ls, ok := next.ledgers[name]
@@ -1085,37 +1085,37 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 	return ApplyResult{OK: true, State: next, Orders: orders}
 }
 
-func requestMutatesAccountTypes(req *commonpb.Request) bool {
+func requestMutatesAccountTypes(req *ledgerpb.Request) bool {
 	switch req.GetType().(type) {
-	case *commonpb.Request_AddAccountType, *commonpb.Request_RemoveAccountType:
+	case *ledgerpb.Request_AddAccountType, *ledgerpb.Request_RemoveAccountType:
 		return true
 	}
 	switch req.GetApply().GetAction().GetData().(type) {
-	case *commonpb.LedgerAction_AddAccountType, *commonpb.LedgerAction_RemoveAccountType:
+	case *ledgerpb.LedgerAction_AddAccountType, *ledgerpb.LedgerAction_RemoveAccountType:
 		return true
 	default:
 		return false
 	}
 }
 
-func requestAccountTouches(req *commonpb.Request) map[string]bool {
+func requestAccountTouches(req *ledgerpb.Request) map[string]bool {
 	out := map[string]bool{}
 	apply := req.GetApply()
 	if apply == nil {
 		return out
 	}
 	switch action := apply.GetAction().GetData().(type) {
-	case *commonpb.LedgerAction_CreateTransaction:
+	case *ledgerpb.LedgerAction_CreateTransaction:
 		for account, metadata := range action.CreateTransaction.GetAccountMetadata() {
 			if len(metadata.GetValues()) > 0 {
 				out[account] = true
 			}
 		}
-	case *commonpb.LedgerAction_AddMetadata:
+	case *ledgerpb.LedgerAction_AddMetadata:
 		if account := action.AddMetadata.GetTarget().GetAccount(); account != nil && len(action.AddMetadata.GetMetadata()) > 0 {
 			out[account.GetAddr()] = true
 		}
-	case *commonpb.LedgerAction_DeleteMetadata:
+	case *ledgerpb.LedgerAction_DeleteMetadata:
 		if account := action.DeleteMetadata.GetTarget().GetAccount(); account != nil {
 			out[account.GetAddr()] = true
 		}
@@ -1128,7 +1128,7 @@ func requestAccountTouches(req *commonpb.Request) map[string]bool {
 // actions have equivalent top-level and ledger-action wire forms, which admission
 // normalizes before hashing. Preserve the ledger, payload and skip opt-ins while
 // comparing those forms independently of the production converter.
-func RequestsEqual(a, b []*commonpb.Request) bool {
+func RequestsEqual(a, b []*ledgerpb.Request) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -1142,24 +1142,24 @@ func RequestsEqual(a, b []*commonpb.Request) bool {
 	return true
 }
 
-func canonicalIdempotencyRequest(req *commonpb.Request) *commonpb.Request {
+func canonicalIdempotencyRequest(req *ledgerpb.Request) *ledgerpb.Request {
 	var ledger string
-	var action *commonpb.LedgerAction
+	var action *ledgerpb.LedgerAction
 	switch r := req.GetType().(type) {
-	case *commonpb.Request_AddAccountType:
+	case *ledgerpb.Request_AddAccountType:
 		ledger = r.AddAccountType.GetLedger()
-		action = &commonpb.LedgerAction{Data: &commonpb.LedgerAction_AddAccountType{AddAccountType: &commonpb.AddAccountTypeRequest{AccountType: r.AddAccountType.GetAccountType()}}}
-	case *commonpb.Request_RemoveAccountType:
+		action = &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_AddAccountType{AddAccountType: &ledgerpb.AddAccountTypeRequest{AccountType: r.AddAccountType.GetAccountType()}}}
+	case *ledgerpb.Request_RemoveAccountType:
 		ledger = r.RemoveAccountType.GetLedger()
-		action = &commonpb.LedgerAction{Data: &commonpb.LedgerAction_RemoveAccountType{RemoveAccountType: &commonpb.RemoveAccountTypeRequest{Name: r.RemoveAccountType.GetName()}}}
-	case *commonpb.Request_SetDefaultEnforcementMode:
+		action = &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_RemoveAccountType{RemoveAccountType: &ledgerpb.RemoveAccountTypeRequest{Name: r.RemoveAccountType.GetName()}}}
+	case *ledgerpb.Request_SetDefaultEnforcementMode:
 		ledger = r.SetDefaultEnforcementMode.GetLedger()
-		action = &commonpb.LedgerAction{Data: &commonpb.LedgerAction_SetDefaultEnforcementMode{SetDefaultEnforcementMode: &commonpb.SetDefaultEnforcementModeRequest{EnforcementMode: r.SetDefaultEnforcementMode.GetEnforcementMode()}}}
+		action = &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_SetDefaultEnforcementMode{SetDefaultEnforcementMode: &ledgerpb.SetDefaultEnforcementModeRequest{EnforcementMode: r.SetDefaultEnforcementMode.GetEnforcementMode()}}}
 	default:
 		return req
 	}
 
-	return &commonpb.Request{Type: &commonpb.Request_Apply{Apply: &commonpb.LedgerApplyRequest{Ledger: ledger, Action: action}}}
+	return &ledgerpb.Request{Type: &ledgerpb.Request_Apply{Apply: &ledgerpb.LedgerApplyRequest{Ledger: ledger, Action: action}}}
 }
 
 // LogIDs returns the ledger-local ids of every committed log, ascending. The
@@ -1188,45 +1188,45 @@ func (s LedgerState) LogIDs() []uint64 {
 // delete twin are dispatched as their own LedgerScopedOrder and return a
 // top-level SavedLedgerMetadata / DeletedLedgerMetadata payload, so they take
 // no ledger-local id and never appear in ListLogs.
-func logKindFor(req *commonpb.Request) string {
+func logKindFor(req *ledgerpb.Request) string {
 	req = chartRequest(req)
 	switch r := req.GetType().(type) {
-	case *commonpb.Request_SetDefaultEnforcementMode:
+	case *ledgerpb.Request_SetDefaultEnforcementMode:
 		return "updated_default_enforcement_mode"
-	case *commonpb.Request_AddAccountType:
+	case *ledgerpb.Request_AddAccountType:
 		return "added_account_type"
-	case *commonpb.Request_RemoveAccountType:
+	case *ledgerpb.Request_RemoveAccountType:
 		return "removed_account_type"
-	case *commonpb.Request_SaveLedgerMetadata, *commonpb.Request_DeleteLedgerMetadata:
+	case *ledgerpb.Request_SaveLedgerMetadata, *ledgerpb.Request_DeleteLedgerMetadata:
 		return ""
-	case *commonpb.Request_SetMetadataFieldType:
+	case *ledgerpb.Request_SetMetadataFieldType:
 		return "set_metadata_field_type"
-	case *commonpb.Request_RemoveMetadataFieldType:
+	case *ledgerpb.Request_RemoveMetadataFieldType:
 		return "removed_metadata_field_type"
-	case *commonpb.Request_CreateIndex:
+	case *ledgerpb.Request_CreateIndex:
 		return "create_index"
-	case *commonpb.Request_DropIndex:
+	case *ledgerpb.Request_DropIndex:
 		return "drop_index"
-	case *commonpb.Request_CreatePreparedQuery,
-		*commonpb.Request_UpdatePreparedQuery,
-		*commonpb.Request_DeletePreparedQuery:
+	case *ledgerpb.Request_CreatePreparedQuery,
+		*ledgerpb.Request_UpdatePreparedQuery,
+		*ledgerpb.Request_DeletePreparedQuery:
 		// Prepared-query orders return a TOP-LEVEL LogPayload arm
 		// (created/updated/deleted_prepared_query), not the Apply arm, so like
 		// ledger metadata they take no ledger-local log id and never appear in
 		// ListLogs. Naming a kind here would consume an id and shift every
 		// subsequent log's id past the server's.
 		return ""
-	case *commonpb.Request_Apply:
+	case *ledgerpb.Request_Apply:
 		switch r.Apply.GetAction().GetData().(type) {
-		case *commonpb.LedgerAction_SetDefaultEnforcementMode:
+		case *ledgerpb.LedgerAction_SetDefaultEnforcementMode:
 			return "updated_default_enforcement_mode"
-		case *commonpb.LedgerAction_CreateTransaction:
+		case *ledgerpb.LedgerAction_CreateTransaction:
 			return "created_transaction"
-		case *commonpb.LedgerAction_AddMetadata:
+		case *ledgerpb.LedgerAction_AddMetadata:
 			return "saved_metadata"
-		case *commonpb.LedgerAction_DeleteMetadata:
+		case *ledgerpb.LedgerAction_DeleteMetadata:
 			return "deleted_metadata"
-		case *commonpb.LedgerAction_RevertTransaction:
+		case *ledgerpb.LedgerAction_RevertTransaction:
 			return "reverted_transaction"
 		}
 	}
@@ -1241,35 +1241,35 @@ func logKindFor(req *commonpb.Request) string {
 // Transaction logs render empty: their content is server-assigned and is
 // validated against the model's transaction records by the ListTransactions
 // path, which compares ids, references, revert relationships and stamps.
-func logPayloadFor(req *commonpb.Request) string {
+func logPayloadFor(req *ledgerpb.Request) string {
 	req = chartRequest(req)
 	switch r := req.GetType().(type) {
-	case *commonpb.Request_SetDefaultEnforcementMode:
+	case *ledgerpb.Request_SetDefaultEnforcementMode:
 		return "mode=" + strconv.Itoa(int(r.SetDefaultEnforcementMode.GetEnforcementMode()))
-	case *commonpb.Request_AddAccountType:
+	case *ledgerpb.Request_AddAccountType:
 		at := r.AddAccountType.GetAccountType()
 
 		return "type=" + at.GetName() + "|pattern=" + at.GetPattern()
-	case *commonpb.Request_RemoveAccountType:
+	case *ledgerpb.Request_RemoveAccountType:
 		return "type=" + r.RemoveAccountType.GetName()
-	case *commonpb.Request_SetMetadataFieldType:
+	case *ledgerpb.Request_SetMetadataFieldType:
 		return "target=" + strconv.Itoa(int(r.SetMetadataFieldType.GetTargetType())) +
 			"|key=" + r.SetMetadataFieldType.GetKey() +
 			"|type=" + strconv.Itoa(int(r.SetMetadataFieldType.GetType()))
-	case *commonpb.Request_RemoveMetadataFieldType:
+	case *ledgerpb.Request_RemoveMetadataFieldType:
 		return "target=" + strconv.Itoa(int(r.RemoveMetadataFieldType.GetTargetType())) +
 			"|key=" + r.RemoveMetadataFieldType.GetKey()
-	case *commonpb.Request_CreateIndex:
+	case *ledgerpb.Request_CreateIndex:
 		return "index=" + indexes.Canonical(r.CreateIndex.GetId())
-	case *commonpb.Request_DropIndex:
+	case *ledgerpb.Request_DropIndex:
 		return "index=" + indexes.Canonical(r.DropIndex.GetId())
-	case *commonpb.Request_Apply:
+	case *ledgerpb.Request_Apply:
 		switch a := r.Apply.GetAction().GetData().(type) {
-		case *commonpb.LedgerAction_SetDefaultEnforcementMode:
+		case *ledgerpb.LedgerAction_SetDefaultEnforcementMode:
 			return "mode=" + strconv.Itoa(int(a.SetDefaultEnforcementMode.GetEnforcementMode()))
-		case *commonpb.LedgerAction_AddMetadata:
+		case *ledgerpb.LedgerAction_AddMetadata:
 			return "target=" + canonicalTarget(a.AddMetadata.GetTarget()) + "|" + canonicalMetadata(a.AddMetadata.GetMetadata())
-		case *commonpb.LedgerAction_DeleteMetadata:
+		case *ledgerpb.LedgerAction_DeleteMetadata:
 			return "target=" + canonicalTarget(a.DeleteMetadata.GetTarget()) + "|key=" + a.DeleteMetadata.GetKey()
 		}
 	}
@@ -1280,7 +1280,7 @@ func logPayloadFor(req *commonpb.Request) string {
 // CanonicalServedLogPayload renders a served log's payload the way
 // logPayloadFor renders the request that produced it. Empty means the payload
 // is one this rendering does not pin (a transaction).
-func CanonicalServedLogPayload(data *commonpb.LedgerLogPayload) string {
+func CanonicalServedLogPayload(data *ledgerpb.LedgerLogPayload) string {
 	switch {
 	case data.GetOrderSkipped() != nil:
 		return canonicalSkippedLog(data.GetOrderSkipped())
@@ -1321,7 +1321,7 @@ func CanonicalServedLogPayload(data *commonpb.LedgerLogPayload) string {
 
 // canonicalTarget names a metadata target: an account by address, a
 // transaction by id.
-func canonicalTarget(t *commonpb.Target) string {
+func canonicalTarget(t *ledgerpb.Target) string {
 	if acct := t.GetAccount(); acct != nil {
 		return "acct:" + acct.GetAddr()
 	}
@@ -1331,7 +1331,7 @@ func canonicalTarget(t *commonpb.Target) string {
 
 // canonicalMetadata renders a metadata map key-sorted, values type-tagged
 // (MetaValueString), so equality of the rendering is equality of the map.
-func canonicalMetadata(m map[string]*commonpb.MetadataValue) string {
+func canonicalMetadata(m map[string]*ledgerpb.MetadataValue) string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
@@ -1349,7 +1349,7 @@ func canonicalMetadata(m map[string]*commonpb.MetadataValue) string {
 
 // appendLog records the log a committed request produced, if it produced one.
 // The id is the stream's position, dense from 1.
-func (s *LedgerState) appendLog(req *commonpb.Request, txID uint64) {
+func (s *LedgerState) appendLog(req *ledgerpb.Request, txID uint64) {
 	kind := logKindFor(req)
 	if kind == "" {
 		return
@@ -1399,7 +1399,7 @@ func (s *LedgerState) classifyVolumes(base *LedgerState, touched, purged map[Vol
 
 		if newCell {
 			if t := s.match(key.Address, compiled); t != nil &&
-				t.Persistence == commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT {
+				t.Persistence == ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT {
 				continue
 			}
 		}
@@ -1471,14 +1471,14 @@ func (s *LedgerState) annotateLog(idx int, cells map[VolumeKey]bool, ann volumeA
 
 // applyOne mutates the (already-forked) working state for one request and
 // returns its predicted outcome, recording touched volume cells.
-func (s *LedgerState) applyOne(req *commonpb.Request, touched map[VolumeKey]bool, batchInitialTxCount uint64) OrderResult {
+func (s *LedgerState) applyOne(req *ledgerpb.Request, touched map[VolumeKey]bool, batchInitialTxCount uint64) OrderResult {
 	req = chartRequest(req)
 	switch r := req.GetType().(type) {
-	case *commonpb.Request_SetDefaultEnforcementMode:
+	case *ledgerpb.Request_SetDefaultEnforcementMode:
 		s.defaultEnforcementMode = r.SetDefaultEnforcementMode.GetEnforcementMode()
 
 		return OrderResult{OK: true}
-	case *commonpb.Request_AddAccountType:
+	case *ledgerpb.Request_AddAccountType:
 		at := r.AddAccountType.GetAccountType()
 		name := at.GetName()
 		if s.types.Has(name) {
@@ -1490,7 +1490,7 @@ func (s *LedgerState) applyOne(req *commonpb.Request, touched map[VolumeKey]bool
 
 		return OrderResult{OK: true}
 
-	case *commonpb.Request_RemoveAccountType:
+	case *ledgerpb.Request_RemoveAccountType:
 		name := r.RemoveAccountType.GetName()
 		if !s.types.Has(name) {
 			return OrderResult{Reason: domain.ErrReasonAccountTypeNotFound}
@@ -1501,46 +1501,46 @@ func (s *LedgerState) applyOne(req *commonpb.Request, touched map[VolumeKey]bool
 
 		return OrderResult{OK: true}
 
-	case *commonpb.Request_SaveLedgerMetadata:
+	case *ledgerpb.Request_SaveLedgerMetadata:
 		return s.applySaveLedgerMetadata(r.SaveLedgerMetadata)
 
-	case *commonpb.Request_DeleteLedgerMetadata:
+	case *ledgerpb.Request_DeleteLedgerMetadata:
 		return s.applyDeleteLedgerMetadata(r.DeleteLedgerMetadata)
 
-	case *commonpb.Request_SetMetadataFieldType:
+	case *ledgerpb.Request_SetMetadataFieldType:
 		return s.applySetMetadataFieldType(r.SetMetadataFieldType)
 
-	case *commonpb.Request_RemoveMetadataFieldType:
+	case *ledgerpb.Request_RemoveMetadataFieldType:
 		return s.applyRemoveMetadataFieldType(r.RemoveMetadataFieldType)
 
-	case *commonpb.Request_CreateIndex:
+	case *ledgerpb.Request_CreateIndex:
 		return s.applyCreateIndex(r.CreateIndex)
 
-	case *commonpb.Request_DropIndex:
+	case *ledgerpb.Request_DropIndex:
 		return s.applyDropIndex(r.DropIndex)
 
-	case *commonpb.Request_CreatePreparedQuery:
+	case *ledgerpb.Request_CreatePreparedQuery:
 		return s.applyCreatePreparedQuery(r.CreatePreparedQuery)
 
-	case *commonpb.Request_UpdatePreparedQuery:
+	case *ledgerpb.Request_UpdatePreparedQuery:
 		return s.applyUpdatePreparedQuery(r.UpdatePreparedQuery)
 
-	case *commonpb.Request_DeletePreparedQuery:
+	case *ledgerpb.Request_DeletePreparedQuery:
 		return s.applyDeletePreparedQuery(r.DeletePreparedQuery)
 
-	case *commonpb.Request_Apply:
+	case *ledgerpb.Request_Apply:
 		switch a := r.Apply.GetAction().GetData().(type) {
-		case *commonpb.LedgerAction_SetDefaultEnforcementMode:
+		case *ledgerpb.LedgerAction_SetDefaultEnforcementMode:
 			s.defaultEnforcementMode = a.SetDefaultEnforcementMode.GetEnforcementMode()
 
 			return OrderResult{OK: true}
-		case *commonpb.LedgerAction_CreateTransaction:
+		case *ledgerpb.LedgerAction_CreateTransaction:
 			return s.applyTransaction(a.CreateTransaction, touched)
-		case *commonpb.LedgerAction_AddMetadata:
+		case *ledgerpb.LedgerAction_AddMetadata:
 			return s.applyAddMetadata(a.AddMetadata)
-		case *commonpb.LedgerAction_DeleteMetadata:
+		case *ledgerpb.LedgerAction_DeleteMetadata:
 			return s.applyDeleteMetadata(a.DeleteMetadata)
-		case *commonpb.LedgerAction_RevertTransaction:
+		case *ledgerpb.LedgerAction_RevertTransaction:
 			return s.applyRevert(a.RevertTransaction, touched, batchInitialTxCount)
 		default:
 			// The generator emits only the actions above; any other is unmodeled
@@ -1564,7 +1564,7 @@ func (s *LedgerState) applyOne(req *commonpb.Request, touched map[VolumeKey]bool
 // types (produce() then validatePostingsAgainstAccountTypes). So an underfunded
 // transaction reports INSUFFICIENT_FUNDS even when an address also fails the
 // chart; match that order — floor first, then STRICT chart enforcement.
-func (s *LedgerState) applyTransaction(ct *commonpb.CreateTransactionPayload, touched map[VolumeKey]bool) OrderResult {
+func (s *LedgerState) applyTransaction(ct *ledgerpb.CreateTransactionPayload, touched map[VolumeKey]bool) OrderResult {
 	postings := ct.GetPostings()
 
 	// A reference must be unique; the FSM checks this first, before producing
@@ -1624,7 +1624,7 @@ func (s *LedgerState) applyTransaction(ct *commonpb.CreateTransactionPayload, to
 // floor unless force is set (see applyPostings), moves the volumes, marks the
 // original reverted, and consumes a new transaction id for the revert itself.
 func (s *LedgerState) applyRevert(
-	rt *commonpb.RevertTransactionPayload,
+	rt *ledgerpb.RevertTransactionPayload,
 	touched map[VolumeKey]bool,
 	batchInitialTxCount uint64,
 ) OrderResult {
@@ -1660,9 +1660,9 @@ func (s *LedgerState) applyRevert(
 		return OrderResult{Reason: domain.ErrReasonRevertTargetCreatedInBatch}
 	}
 
-	reversed := make([]*commonpb.Posting, len(orig.postings))
+	reversed := make([]*ledgerpb.Posting, len(orig.postings))
 	for i, p := range orig.postings {
-		reversed[i] = &commonpb.Posting{
+		reversed[i] = &ledgerpb.Posting{
 			Source:      p.GetDestination(),
 			Destination: p.GetSource(),
 			Amount:      p.GetAmount(),
@@ -1684,7 +1684,7 @@ func (s *LedgerState) applyRevert(
 	// so reads skip it). With at_effective_date the revert inherits the original's
 	// timestamp (processor_revert_transaction.go), which the model knows iff the
 	// original carried a user-supplied one; otherwise it too is a server date (nil).
-	var revertTS *commonpb.Timestamp
+	var revertTS *ledgerpb.Timestamp
 	if rt.GetAtEffectiveDate() {
 		revertTS = orig.timestamp
 	}
@@ -1722,8 +1722,8 @@ func (s *LedgerState) applyRevert(
 // the chart. Enforcement only applies once the chart is non-empty (the server's
 // validateAccountAgainstAccountTypes short-circuits on an empty chart); the
 // current ledger default controls rejection of unmatched accounts.
-func (s *LedgerState) chartRejects(postings []*commonpb.Posting) bool {
-	if s.defaultEnforcementMode != commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT {
+func (s *LedgerState) chartRejects(postings []*ledgerpb.Posting) bool {
+	if s.defaultEnforcementMode != ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT {
 		return false
 	}
 	compiled := s.compiled()
@@ -1754,7 +1754,7 @@ func (s *LedgerState) chartRejects(postings []*commonpb.Posting) bool {
 // bulk is rejected with INSUFFICIENT_FUNDS (returned reason != ""). The floor is
 // evaluated against the running volumes, so an earlier posting in the same bulk
 // can fund a later source — mirroring applyPosting in processor_posting.go.
-func (s *LedgerState) applyPostings(postings []*commonpb.Posting, force bool, touched map[VolumeKey]bool) (map[VolumeKey]VolumePair, string) {
+func (s *LedgerState) applyPostings(postings []*ledgerpb.Posting, force bool, touched map[VolumeKey]bool) (map[VolumeKey]VolumePair, string) {
 	pcv := map[VolumeKey]VolumePair{}
 	bump := func(key VolumeKey, addIn, addOut *uint256.Int) {
 		cur := s.vol(key)
@@ -1855,14 +1855,14 @@ func (s *LedgerState) cellExcluded(base *LedgerState, key VolumeKey, compiled []
 	}
 
 	switch t.Persistence {
-	case commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT:
+	case ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT:
 		_, existed := base.volumes.Get(key)
 		if !existed {
 			return true
 		}
 
 		return vp.Input.Cmp(&vp.Output) == 0
-	case commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL:
+	case ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL:
 		return vp.Input.Cmp(&vp.Output) == 0
 	default:
 		return false
@@ -1880,7 +1880,7 @@ func (s *LedgerState) cellHistoryExcluded(base *LedgerState, key VolumeKey, comp
 	}
 
 	t := s.match(key.Address, compiled)
-	if t == nil || t.Persistence != commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT {
+	if t == nil || t.Persistence != ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT {
 		return false
 	}
 
@@ -1925,11 +1925,11 @@ func (s *LedgerState) recordIndexedAddrs(base *LedgerState, firstNew uint64) {
 // applyAddMetadata predicts a SaveMetadata, dispatching on the target. Metadata
 // lives outside the volume table, so it never touches the transient/purge
 // write-set.
-func (s *LedgerState) applyAddMetadata(cmd *commonpb.SaveMetadataCommand) OrderResult {
+func (s *LedgerState) applyAddMetadata(cmd *ledgerpb.SaveMetadataCommand) OrderResult {
 	switch t := cmd.GetTarget().GetTarget().(type) {
-	case *commonpb.Target_Account:
+	case *ledgerpb.Target_Account:
 		return s.applyAddAccountMetadata(t.Account.GetAddr(), cmd.GetMetadata())
-	case *commonpb.Target_TransactionId:
+	case *ledgerpb.Target_TransactionId:
 		return s.applyAddTxMetadata(t.TransactionId, cmd.GetMetadata())
 	default:
 		panic(fmt.Sprintf("model: AddMetadata target %T is unmodeled", cmd.GetTarget().GetTarget()))
@@ -1938,13 +1938,13 @@ func (s *LedgerState) applyAddMetadata(cmd *commonpb.SaveMetadataCommand) OrderR
 
 // applyAddAccountMetadata sets account metadata last-writer-wins, under STRICT
 // chart enforcement on the address when the ledger default is STRICT.
-func (s *LedgerState) applyAddAccountMetadata(addr string, md map[string]*commonpb.MetadataValue) OrderResult {
+func (s *LedgerState) applyAddAccountMetadata(addr string, md map[string]*ledgerpb.MetadataValue) OrderResult {
 	compiled := s.compiled()
-	if s.defaultEnforcementMode == commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT && len(compiled) > 0 && addr != "world" && s.match(addr, compiled) == nil {
+	if s.defaultEnforcementMode == ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT && len(compiled) > 0 && addr != "world" && s.match(addr, compiled) == nil {
 		return OrderResult{Reason: domain.ErrReasonAccountNotMatchingType}
 	}
 
-	saved := make(map[string]*commonpb.MetadataValue, len(md))
+	saved := make(map[string]*ledgerpb.MetadataValue, len(md))
 
 	for key, val := range md {
 		s.metadata = s.metadata.Set(MetaKey{Address: addr, Key: key}, val)
@@ -1956,13 +1956,13 @@ func (s *LedgerState) applyAddAccountMetadata(addr string, md map[string]*common
 
 // applyAddTxMetadata sets transaction metadata last-writer-wins on a transaction
 // addressed by id. An unknown id rejects with TRANSACTION_NOT_FOUND.
-func (s *LedgerState) applyAddTxMetadata(id uint64, md map[string]*commonpb.MetadataValue) OrderResult {
+func (s *LedgerState) applyAddTxMetadata(id uint64, md map[string]*ledgerpb.MetadataValue) OrderResult {
 	if id == 0 || id > uint64(s.txs.Len()) {
 		return OrderResult{Reason: domain.ErrReasonTransactionNotFound}
 	}
 
 	old := s.txs.Get(int(id - 1))
-	meta := make(map[string]*commonpb.MetadataValue, len(old.metadata)+len(md))
+	meta := make(map[string]*ledgerpb.MetadataValue, len(old.metadata)+len(md))
 	maps.Copy(meta, old.metadata)
 	maps.Copy(meta, md) // last-writer-wins
 	// Replace (don't mutate) so forks sharing the pointer are unaffected; a
@@ -1977,9 +1977,9 @@ func (s *LedgerState) applyAddTxMetadata(id uint64, md map[string]*commonpb.Meta
 // applyDeleteMetadata predicts a DeleteMetadata, dispatching on the target.
 // Deleting a key the entity doesn't carry rejects with METADATA_NOT_FOUND; an
 // unknown transaction id rejects with TRANSACTION_NOT_FOUND.
-func (s *LedgerState) applyDeleteMetadata(cmd *commonpb.DeleteMetadataCommand) OrderResult {
+func (s *LedgerState) applyDeleteMetadata(cmd *ledgerpb.DeleteMetadataCommand) OrderResult {
 	switch t := cmd.GetTarget().GetTarget().(type) {
-	case *commonpb.Target_Account:
+	case *ledgerpb.Target_Account:
 		mk := MetaKey{Address: t.Account.GetAddr(), Key: cmd.GetKey()}
 		if !s.metadata.Has(mk) {
 			return OrderResult{Reason: domain.ErrReasonMetadataNotFound}
@@ -1988,7 +1988,7 @@ func (s *LedgerState) applyDeleteMetadata(cmd *commonpb.DeleteMetadataCommand) O
 		s.metadata = s.metadata.Delete(mk)
 
 		return OrderResult{OK: true}
-	case *commonpb.Target_TransactionId:
+	case *ledgerpb.Target_TransactionId:
 		id := t.TransactionId
 		if id == 0 || id > uint64(s.txs.Len()) {
 			return OrderResult{Reason: domain.ErrReasonTransactionNotFound}
@@ -1999,7 +1999,7 @@ func (s *LedgerState) applyDeleteMetadata(cmd *commonpb.DeleteMetadataCommand) O
 			return OrderResult{Reason: domain.ErrReasonMetadataNotFound}
 		}
 
-		meta := make(map[string]*commonpb.MetadataValue, len(old.metadata))
+		meta := make(map[string]*ledgerpb.MetadataValue, len(old.metadata))
 		maps.Copy(meta, old.metadata)
 		delete(meta, cmd.GetKey())
 		// Replace (don't mutate) so forks sharing the pointer are unaffected; a
@@ -2017,8 +2017,8 @@ func (s *LedgerState) applyDeleteMetadata(cmd *commonpb.DeleteMetadataCommand) O
 // applySaveLedgerMetadata predicts a SaveLedgerMetadata: a last-writer-wins set of
 // each key into the ledger's own metadata. Ledger metadata is keyed only by key
 // (no account), so there is no chart enforcement.
-func (s *LedgerState) applySaveLedgerMetadata(req *commonpb.SaveLedgerMetadataRequest) OrderResult {
-	saved := make(map[string]*commonpb.MetadataValue, len(req.GetMetadata()))
+func (s *LedgerState) applySaveLedgerMetadata(req *ledgerpb.SaveLedgerMetadataRequest) OrderResult {
+	saved := make(map[string]*ledgerpb.MetadataValue, len(req.GetMetadata()))
 
 	for key, val := range req.GetMetadata() {
 		s.ledgerMeta = s.ledgerMeta.Set(key, val)
@@ -2030,7 +2030,7 @@ func (s *LedgerState) applySaveLedgerMetadata(req *commonpb.SaveLedgerMetadataRe
 
 // applyDeleteLedgerMetadata predicts a DeleteLedgerMetadata: deleting a key the
 // ledger doesn't carry rejects the bulk with METADATA_NOT_FOUND.
-func (s *LedgerState) applyDeleteLedgerMetadata(req *commonpb.DeleteLedgerMetadataRequest) OrderResult {
+func (s *LedgerState) applyDeleteLedgerMetadata(req *ledgerpb.DeleteLedgerMetadataRequest) OrderResult {
 	key := req.GetKey()
 	if !s.ledgerMeta.Has(key) {
 		return OrderResult{Reason: domain.ErrReasonMetadataNotFound}
@@ -2045,7 +2045,7 @@ func (s *LedgerState) applyDeleteLedgerMetadata(req *commonpb.DeleteLedgerMetada
 // until the driver's poller confirms it READY). Creating one that already
 // exists is rejected (EN-2009); the checks run in processCreateIndex's order,
 // existence before target validation.
-func (s *LedgerState) applyCreateIndex(req *commonpb.CreateIndexRequest) OrderResult {
+func (s *LedgerState) applyCreateIndex(req *ledgerpb.CreateIndexRequest) OrderResult {
 	canonical := indexes.Canonical(req.GetId())
 	if s.indexes.Has(canonical) {
 		return OrderResult{Reason: domain.ErrReasonIndexAlreadyExists}
@@ -2053,7 +2053,7 @@ func (s *LedgerState) applyCreateIndex(req *commonpb.CreateIndexRequest) OrderRe
 
 	// A metadata index targets a declared schema field; creating one for an
 	// undeclared (target, key) is rejected (validateIndexTarget).
-	if meta, ok := req.GetId().GetKind().(*commonpb.IndexID_Metadata); ok {
+	if meta, ok := req.GetId().GetKind().(*ledgerpb.IndexID_Metadata); ok {
 		if !s.fieldTypes(meta.Metadata.GetTarget()).Has(meta.Metadata.GetKey()) {
 			return OrderResult{Reason: domain.ErrReasonMetadataFieldNotInSchema}
 		}
@@ -2067,16 +2067,16 @@ func (s *LedgerState) applyCreateIndex(req *commonpb.CreateIndexRequest) OrderRe
 // fieldTypes returns the declared-type map for a metadata target. Ledger-target
 // declarations exist but have no index surface; unknown targets are the empty
 // map (the caller treats every key as undeclared).
-func (s *LedgerState) fieldTypes(target commonpb.TargetType) Map[string, commonpb.MetadataType] {
+func (s *LedgerState) fieldTypes(target ledgerpb.TargetType) Map[string, ledgerpb.MetadataType] {
 	switch target {
-	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+	case ledgerpb.TargetType_TARGET_TYPE_ACCOUNT:
 		return s.accountFieldTypes
-	case commonpb.TargetType_TARGET_TYPE_LEDGER:
+	case ledgerpb.TargetType_TARGET_TYPE_LEDGER:
 		return s.ledgerFieldTypes
-	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+	case ledgerpb.TargetType_TARGET_TYPE_TRANSACTION:
 		return s.transactionFieldTypes
 	default:
-		return NewMap[string, commonpb.MetadataType](stringComparer{}, fieldTypeTerm("XF"))
+		return NewMap[string, ledgerpb.MetadataType](stringComparer{}, fieldTypeTerm("XF"))
 	}
 }
 
@@ -2092,7 +2092,7 @@ func (s *LedgerState) fieldTypes(target commonpb.TargetType) Map[string, commonp
 // The stored definition is cloned so the model never aliases the request
 // message: a later mutation of the submitted proto must not reach committed
 // state.
-func (s *LedgerState) applyCreatePreparedQuery(req *commonpb.CreatePreparedQueryRequest) OrderResult {
+func (s *LedgerState) applyCreatePreparedQuery(req *ledgerpb.CreatePreparedQueryRequest) OrderResult {
 	q := req.GetQuery()
 	if q == nil {
 		return OrderResult{Reason: domain.ErrPreparedQueryRequired.Reason()}
@@ -2116,8 +2116,8 @@ func (s *LedgerState) applyCreatePreparedQuery(req *commonpb.CreatePreparedQuery
 
 	s.preparedQueries = s.preparedQueries.Set(q.GetName(), q.CloneVT())
 
-	return OrderResult{OK: true, PreparedQueryLog: &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_CreatedPreparedQuery{CreatedPreparedQuery: &commonpb.CreatedPreparedQueryLog{
+	return OrderResult{OK: true, PreparedQueryLog: &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_CreatedPreparedQuery{CreatedPreparedQuery: &ledgerpb.CreatedPreparedQueryLog{
 			Ledger: req.GetLedger(),
 			Query:  q.CloneVT(),
 		}},
@@ -2129,7 +2129,7 @@ func (s *LedgerState) applyCreatePreparedQuery(req *commonpb.CreatePreparedQuery
 // filter gates. The target is fixed at creation — an update carries no target
 // field and the FSM validates the new filter against the STORED target — so the
 // model keeps it and swaps only the filter.
-func (s *LedgerState) applyUpdatePreparedQuery(req *commonpb.UpdatePreparedQueryRequest) OrderResult {
+func (s *LedgerState) applyUpdatePreparedQuery(req *ledgerpb.UpdatePreparedQueryRequest) OrderResult {
 	if err := domain.ValidatePreparedQueryName(req.GetName()); err != nil {
 		return OrderResult{Reason: err.Reason()}
 	}
@@ -2157,8 +2157,8 @@ func (s *LedgerState) applyUpdatePreparedQuery(req *commonpb.UpdatePreparedQuery
 	updated.Filter = req.GetFilter().CloneVT()
 	s.preparedQueries = s.preparedQueries.Set(req.GetName(), updated)
 
-	return OrderResult{OK: true, PreparedQueryLog: &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_UpdatedPreparedQuery{UpdatedPreparedQuery: &commonpb.UpdatedPreparedQueryLog{
+	return OrderResult{OK: true, PreparedQueryLog: &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_UpdatedPreparedQuery{UpdatedPreparedQuery: &ledgerpb.UpdatedPreparedQueryLog{
 			Ledger:         req.GetLedger(),
 			Name:           req.GetName(),
 			PreviousFilter: existing.GetFilter().CloneVT(),
@@ -2170,7 +2170,7 @@ func (s *LedgerState) applyUpdatePreparedQuery(req *commonpb.UpdatePreparedQuery
 // applyDeletePreparedQuery removes a stored query, mirroring
 // processDeletePreparedQuery. Unlike DropIndex, deleting an absent query is NOT
 // a no-op: the FSM rejects it with PREPARED_QUERY_NOT_FOUND.
-func (s *LedgerState) applyDeletePreparedQuery(req *commonpb.DeletePreparedQueryRequest) OrderResult {
+func (s *LedgerState) applyDeletePreparedQuery(req *ledgerpb.DeletePreparedQueryRequest) OrderResult {
 	if err := domain.ValidatePreparedQueryName(req.GetName()); err != nil {
 		return OrderResult{Reason: err.Reason()}
 	}
@@ -2181,8 +2181,8 @@ func (s *LedgerState) applyDeletePreparedQuery(req *commonpb.DeletePreparedQuery
 
 	s.preparedQueries = s.preparedQueries.Delete(req.GetName())
 
-	return OrderResult{OK: true, PreparedQueryLog: &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_DeletedPreparedQuery{DeletedPreparedQuery: &commonpb.DeletedPreparedQueryLog{
+	return OrderResult{OK: true, PreparedQueryLog: &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_DeletedPreparedQuery{DeletedPreparedQuery: &ledgerpb.DeletedPreparedQueryLog{
 			Ledger: req.GetLedger(),
 			Name:   req.GetName(),
 		}},
@@ -2192,7 +2192,7 @@ func (s *LedgerState) applyDeletePreparedQuery(req *commonpb.DeletePreparedQuery
 // applyDropIndex removes an index. Drop is instantaneous: once this order is in
 // the committed prefix, a linearizable read issued after its response observes
 // it gone. Dropping an absent index is a harmless no-op.
-func (s *LedgerState) applyDropIndex(req *commonpb.DropIndexRequest) OrderResult {
+func (s *LedgerState) applyDropIndex(req *ledgerpb.DropIndexRequest) OrderResult {
 	canonical := indexes.Canonical(req.GetId())
 	s.indexes = s.indexes.Delete(canonical)
 	s.retypeWindows = s.retypeWindows.Delete(canonical)
@@ -2206,7 +2206,7 @@ func (s *LedgerState) applyDropIndex(req *commonpb.DropIndexRequest) OrderResult
 // and never rewrites stored values. The declared type is applied at read time, so
 // a value survives any retype chain losslessly (a STRING "01" retyped INT64 then
 // back to STRING still reads "01"). Always succeeds.
-func (s *LedgerState) applySetMetadataFieldType(req *commonpb.SetMetadataFieldTypeRequest) OrderResult {
+func (s *LedgerState) applySetMetadataFieldType(req *ledgerpb.SetMetadataFieldTypeRequest) OrderResult {
 	// A retype of an indexed key opens a serving window: the index keeps
 	// answering under the type it was built with until the background rewrite
 	// switches, so both types stay legal until the driver observes the switch
@@ -2217,7 +2217,7 @@ func (s *LedgerState) applySetMetadataFieldType(req *commonpb.SetMetadataFieldTy
 	// the driver proves the chain quiescent. CreateIndex requires a declared
 	// field, so the previous type always exists here. Ledger-target keys have
 	// no metadata index.
-	if tt := req.GetTargetType(); tt == commonpb.TargetType_TARGET_TYPE_ACCOUNT || tt == commonpb.TargetType_TARGET_TYPE_TRANSACTION {
+	if tt := req.GetTargetType(); tt == ledgerpb.TargetType_TARGET_TYPE_ACCOUNT || tt == ledgerpb.TargetType_TARGET_TYPE_TRANSACTION {
 		canonical := indexes.Canonical(indexes.MetadataID(tt, req.GetKey()))
 		if s.indexes.Has(canonical) {
 			if oldType, declared := s.FieldTypeFor(tt, req.GetKey()); declared {
@@ -2228,11 +2228,11 @@ func (s *LedgerState) applySetMetadataFieldType(req *commonpb.SetMetadataFieldTy
 	}
 
 	switch req.GetTargetType() {
-	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+	case ledgerpb.TargetType_TARGET_TYPE_ACCOUNT:
 		s.accountFieldTypes = s.accountFieldTypes.Set(req.GetKey(), req.GetType())
-	case commonpb.TargetType_TARGET_TYPE_LEDGER:
+	case ledgerpb.TargetType_TARGET_TYPE_LEDGER:
 		s.ledgerFieldTypes = s.ledgerFieldTypes.Set(req.GetKey(), req.GetType())
-	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+	case ledgerpb.TargetType_TARGET_TYPE_TRANSACTION:
 		s.transactionFieldTypes = s.transactionFieldTypes.Set(req.GetKey(), req.GetType())
 	default:
 		panic(fmt.Sprintf("model: SetMetadataFieldType target %v is unmodeled", req.GetTargetType()))
@@ -2248,13 +2248,13 @@ func (s *LedgerState) applySetMetadataFieldType(req *commonpb.SetMetadataFieldTy
 // A metadata index on the removed field cannot outlive its declaration — the
 // server drops it in the same order (the RemovedMetadataFieldType log carries
 // the DroppedIndex), so the model removes it too.
-func (s *LedgerState) applyRemoveMetadataFieldType(req *commonpb.RemoveMetadataFieldTypeRequest) OrderResult {
+func (s *LedgerState) applyRemoveMetadataFieldType(req *ledgerpb.RemoveMetadataFieldTypeRequest) OrderResult {
 	switch req.GetTargetType() {
-	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+	case ledgerpb.TargetType_TARGET_TYPE_ACCOUNT:
 		s.accountFieldTypes = s.accountFieldTypes.Delete(req.GetKey())
-	case commonpb.TargetType_TARGET_TYPE_LEDGER:
+	case ledgerpb.TargetType_TARGET_TYPE_LEDGER:
 		s.ledgerFieldTypes = s.ledgerFieldTypes.Delete(req.GetKey())
-	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+	case ledgerpb.TargetType_TARGET_TYPE_TRANSACTION:
 		s.transactionFieldTypes = s.transactionFieldTypes.Delete(req.GetKey())
 	default:
 		panic(fmt.Sprintf("model: RemoveMetadataFieldType target %v is unmodeled", req.GetTargetType()))
@@ -2282,7 +2282,7 @@ func (s *LedgerState) transientViolation(base *LedgerState, touched map[VolumeKe
 		}
 
 		t := s.match(key.Address, compiled)
-		if t == nil || t.Persistence != commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT {
+		if t == nil || t.Persistence != ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT {
 			continue
 		}
 
@@ -2322,8 +2322,8 @@ func (s *LedgerState) purgeZeroBalance(touched map[VolumeKey]bool, touchedAccoun
 		}
 
 		switch t.Persistence {
-		case commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
-			commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT:
+		case ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+			ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT:
 			if vp.Input.Cmp(&vp.Output) == 0 {
 				s.volumes = s.volumes.Delete(key)
 				purged[key] = true
@@ -2333,7 +2333,7 @@ func (s *LedgerState) purgeZeroBalance(touched map[VolumeKey]bool, touchedAccoun
 
 	for address := range touchedAccounts {
 		t := s.match(address, compiled)
-		if t == nil || t.Persistence != commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL {
+		if t == nil || t.Persistence != ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL {
 			continue
 		}
 		live := false
@@ -2432,9 +2432,9 @@ func (g GlobalState) QueryCheckpointSchedule() string { return g.checkpointSched
 // applyCheckpoint handles cluster-scoped lifecycle orders without introducing
 // a ledger or ledger-local log. Frozen business state belongs to the checker;
 // the forward model only predicts deterministic registry and schedule effects.
-func (g *GlobalState) applyCheckpoint(req *commonpb.Request) (OrderResult, bool) {
+func (g *GlobalState) applyCheckpoint(req *ledgerpb.Request) (OrderResult, bool) {
 	switch r := req.GetType().(type) {
-	case *commonpb.Request_CreateQueryCheckpoint:
+	case *ledgerpb.Request_CreateQueryCheckpoint:
 		if g.checkpointLimit != 0 && uint64(g.checkpoints.Len()) >= g.checkpointLimit {
 			return OrderResult{Reason: domain.ErrReasonCheckpointLimitReached}, true
 		}
@@ -2443,7 +2443,7 @@ func (g *GlobalState) applyCheckpoint(req *commonpb.Request) (OrderResult, bool)
 		g.checkpoints = g.checkpoints.Set(strconv.FormatUint(id, 10), id)
 
 		return OrderResult{OK: true, CheckpointID: id}, true
-	case *commonpb.Request_DeleteQueryCheckpoint:
+	case *ledgerpb.Request_DeleteQueryCheckpoint:
 		id := r.DeleteQueryCheckpoint.GetCheckpointId()
 		if id == 0 {
 			return OrderResult{Reason: domain.ErrReasonCheckpointIDRequired}, true
@@ -2454,7 +2454,7 @@ func (g *GlobalState) applyCheckpoint(req *commonpb.Request) (OrderResult, bool)
 		g.checkpoints = g.checkpoints.Delete(strconv.FormatUint(id, 10))
 
 		return OrderResult{OK: true, CheckpointID: id}, true
-	case *commonpb.Request_SetQueryCheckpointSchedule:
+	case *ledgerpb.Request_SetQueryCheckpointSchedule:
 		parser := cron.NewParser(cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
 		if _, err := parser.Parse(r.SetQueryCheckpointSchedule.GetCron()); err != nil {
 			return OrderResult{Reason: domain.ErrReasonInvalidCronExpression}, true
@@ -2462,7 +2462,7 @@ func (g *GlobalState) applyCheckpoint(req *commonpb.Request) (OrderResult, bool)
 		g.checkpointSchedule = r.SetQueryCheckpointSchedule.GetCron()
 
 		return OrderResult{OK: true}, true
-	case *commonpb.Request_DeleteQueryCheckpointSchedule:
+	case *ledgerpb.Request_DeleteQueryCheckpointSchedule:
 		g.checkpointSchedule = ""
 
 		return OrderResult{OK: true}, true
@@ -2483,7 +2483,7 @@ func (g GlobalState) Lifecycle(name string) (LedgerLifecycle, bool) {
 // reject business requests while enabled.
 func (g GlobalState) MaintenanceMode() bool { return g.maintenance }
 
-func allMaintenanceRequests(requests []*commonpb.Request) bool {
+func allMaintenanceRequests(requests []*ledgerpb.Request) bool {
 	for _, req := range requests {
 		if req.GetSetMaintenanceMode() == nil {
 			return false
@@ -2493,13 +2493,13 @@ func allMaintenanceRequests(requests []*commonpb.Request) bool {
 	return true
 }
 
-func (g *GlobalState) applyLifecycle(req *commonpb.Request) (OrderResult, bool) {
+func (g *GlobalState) applyLifecycle(req *ledgerpb.Request) (OrderResult, bool) {
 	switch r := req.GetType().(type) {
-	case *commonpb.Request_SetMaintenanceMode:
+	case *ledgerpb.Request_SetMaintenanceMode:
 		g.maintenance = r.SetMaintenanceMode.GetEnabled()
 
 		return OrderResult{OK: true}, true
-	case *commonpb.Request_CreateLedger:
+	case *ledgerpb.Request_CreateLedger:
 		name := r.CreateLedger.GetName()
 		if lc, exists := g.lifecycle.Get(name); exists {
 			if lc.Deleted {
@@ -2521,33 +2521,33 @@ func (g *GlobalState) applyLifecycle(req *commonpb.Request) (OrderResult, bool) 
 			ls.types = ls.types.Set(key, TypeState{Name: key, Pattern: at.GetPattern(), Persistence: at.GetPersistence()})
 		}
 		for _, field := range r.CreateLedger.GetInitialSchema() {
-			ls.applySetMetadataFieldType(&commonpb.SetMetadataFieldTypeRequest{Ledger: name, TargetType: field.GetTargetType(), Key: field.GetKey(), Type: field.GetType()})
+			ls.applySetMetadataFieldType(&ledgerpb.SetMetadataFieldTypeRequest{Ledger: name, TargetType: field.GetTargetType(), Key: field.GetKey(), Type: field.GetType()})
 		}
 		g.lifecycle = g.lifecycle.Set(name, LedgerLifecycle{Mode: r.CreateLedger.GetMode(), MirrorSource: r.CreateLedger.GetMirrorSource().CloneVT()})
 		g.ledgers[name] = ls
 
 		return OrderResult{OK: true}, true
-	case *commonpb.Request_PromoteLedger:
+	case *ledgerpb.Request_PromoteLedger:
 		name := r.PromoteLedger.GetLedger()
 		lc, exists := g.lifecycle.Get(name)
 		if !exists {
 			if _, implicit := g.ledgers[name]; !implicit {
 				return OrderResult{Reason: domain.ErrReasonLedgerNotFound}, true
 			}
-			lc.Mode = commonpb.LedgerMode_LEDGER_MODE_NORMAL
+			lc.Mode = ledgerpb.LedgerMode_LEDGER_MODE_NORMAL
 		}
 		if lc.Deleted {
 			return OrderResult{Reason: domain.ErrReasonLedgerDeleted}, true
 		}
-		if lc.Mode != commonpb.LedgerMode_LEDGER_MODE_MIRROR {
+		if lc.Mode != ledgerpb.LedgerMode_LEDGER_MODE_MIRROR {
 			return OrderResult{Reason: domain.ErrReasonLedgerNotInMirrorMode}, true
 		}
-		lc.Mode = commonpb.LedgerMode_LEDGER_MODE_NORMAL
+		lc.Mode = ledgerpb.LedgerMode_LEDGER_MODE_NORMAL
 		lc.MirrorSource = nil
 		g.lifecycle = g.lifecycle.Set(name, lc)
 
 		return OrderResult{OK: true}, true
-	case *commonpb.Request_DeleteLedger:
+	case *ledgerpb.Request_DeleteLedger:
 		name := r.DeleteLedger.GetName()
 		lc, exists := g.lifecycle.Get(name)
 		if exists && lc.Deleted {
@@ -2557,7 +2557,7 @@ func (g *GlobalState) applyLifecycle(req *commonpb.Request) (OrderResult, bool) 
 			if _, implicit := g.ledgers[name]; !implicit {
 				return OrderResult{Reason: domain.ErrReasonLedgerNotFound}, true
 			}
-			lc.Mode = commonpb.LedgerMode_LEDGER_MODE_NORMAL
+			lc.Mode = ledgerpb.LedgerMode_LEDGER_MODE_NORMAL
 		}
 		lc.Deleted = true
 		g.lifecycle = g.lifecycle.Set(name, lc)
@@ -2589,24 +2589,24 @@ func (g GlobalState) SeedQueryCheckpoints(ids []uint64, nextID uint64) GlobalSta
 	return g
 }
 
-func mirrorSafeRequest(req *commonpb.Request) bool {
+func mirrorSafeRequest(req *ledgerpb.Request) bool {
 	switch req.GetType().(type) {
-	case *commonpb.Request_SetMetadataFieldType,
-		*commonpb.Request_RemoveMetadataFieldType,
-		*commonpb.Request_CreateIndex,
-		*commonpb.Request_DropIndex,
-		*commonpb.Request_SaveLedgerMetadata,
-		*commonpb.Request_DeleteLedgerMetadata,
-		*commonpb.Request_AddAccountType,
-		*commonpb.Request_RemoveAccountType,
-		*commonpb.Request_SetDefaultEnforcementMode:
+	case *ledgerpb.Request_SetMetadataFieldType,
+		*ledgerpb.Request_RemoveMetadataFieldType,
+		*ledgerpb.Request_CreateIndex,
+		*ledgerpb.Request_DropIndex,
+		*ledgerpb.Request_SaveLedgerMetadata,
+		*ledgerpb.Request_DeleteLedgerMetadata,
+		*ledgerpb.Request_AddAccountType,
+		*ledgerpb.Request_RemoveAccountType,
+		*ledgerpb.Request_SetDefaultEnforcementMode:
 		return true
 	}
 
 	switch req.GetApply().GetAction().GetData().(type) {
-	case *commonpb.LedgerAction_AddAccountType,
-		*commonpb.LedgerAction_RemoveAccountType,
-		*commonpb.LedgerAction_SetDefaultEnforcementMode:
+	case *ledgerpb.LedgerAction_AddAccountType,
+		*ledgerpb.LedgerAction_RemoveAccountType,
+		*ledgerpb.LedgerAction_SetDefaultEnforcementMode:
 		return true
 	default:
 		return false

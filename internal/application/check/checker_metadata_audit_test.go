@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -37,9 +37,9 @@ func TestCheck_SavedMetadataUsesAuditedOrderAsAuthority(t *testing.T) {
 		errors, terminalErr := runMetadataAuditCheck(engine)
 		require.NoError(t, terminalErr)
 		require.Len(t, errors, 2)
-		logErrors := errorsOfType(errors, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_PAYLOAD_MISMATCH)
+		logErrors := errorsOfType(errors, ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_PAYLOAD_MISMATCH)
 		require.Len(t, logErrors, 1)
-		metadataErrors := errorsOfType(errors, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH)
+		metadataErrors := errorsOfType(errors, ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH)
 		require.Len(t, metadataErrors, 1)
 		require.Equal(t, log.GetSequence(), logErrors[0].GetLogSequence())
 	})
@@ -53,7 +53,7 @@ func TestCheck_SavedMetadataUsesAuditedOrderAsAuthority(t *testing.T) {
 		errors, terminalErr := runMetadataAuditCheck(engine)
 		require.NoError(t, terminalErr)
 		require.Len(t, errors, 1)
-		require.Equal(t, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH, errors[0].GetErrorType())
+		require.Equal(t, ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH, errors[0].GetErrorType())
 	})
 
 	t.Run("mirror metadata", func(t *testing.T) {
@@ -77,16 +77,16 @@ func TestCheck_SavedMetadataUsesAuditedOrderAsAuthority(t *testing.T) {
 			errors, terminalErr := runMetadataAuditCheck(engine)
 			require.NoError(t, terminalErr)
 			require.Len(t, errors, 2)
-			logErrors := errorsOfType(errors, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_PAYLOAD_MISMATCH)
+			logErrors := errorsOfType(errors, ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_PAYLOAD_MISMATCH)
 			require.Len(t, logErrors, 1)
-			metadataErrors := errorsOfType(errors, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH)
+			metadataErrors := errorsOfType(errors, ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH)
 			require.Len(t, metadataErrors, 1)
 			require.Equal(t, log.GetSequence(), logErrors[0].GetLogSequence())
 		})
 	})
 }
 
-func auditedMetadataValue(t *testing.T, engine *testEngine, auditSequence uint64, key string) *auditpb.MetadataValue {
+func auditedMetadataValue(t *testing.T, engine *testEngine, auditSequence uint64, key string) *ledgerpb.MetadataValue {
 	t.Helper()
 
 	snap, err := engine.store.NewReadHandle()
@@ -102,7 +102,7 @@ func auditedMetadataValue(t *testing.T, engine *testEngine, auditSequence uint64
 	require.NoError(t, err)
 	defer func() { require.NoError(t, closer.Close()) }()
 
-	item := &auditpb.AuditItem{}
+	item := &ledgerpb.AuditItem{}
 	require.NoError(t, item.UnmarshalVT(value))
 	order := &raftcmdpb.Order{}
 	require.NoError(t, order.UnmarshalVT(item.GetSerializedOrder()))
@@ -110,7 +110,7 @@ func auditedMetadataValue(t *testing.T, engine *testEngine, auditSequence uint64
 	return order.GetLedgerScoped().GetApply().GetAddMetadata().GetMetadata()[key]
 }
 
-func metadataAuditFixture(t *testing.T) (*testEngine, *auditpb.Log) {
+func metadataAuditFixture(t *testing.T) (*testEngine, *ledgerpb.Log) {
 	t.Helper()
 
 	engine := newTestEngine(t)
@@ -121,7 +121,7 @@ func metadataAuditFixture(t *testing.T) (*testEngine, *auditpb.Log) {
 	return engine, logs[0]
 }
 
-func mirrorMetadataAuditFixture(t *testing.T) (*testEngine, *auditpb.Log) {
+func mirrorMetadataAuditFixture(t *testing.T) (*testEngine, *ledgerpb.Log) {
 	t.Helper()
 
 	engine := newTestEngine(t)
@@ -134,7 +134,7 @@ func mirrorMetadataAuditFixture(t *testing.T) (*testEngine, *auditpb.Log) {
 
 func createMirrorLedgerOrder(name string) *raftcmdpb.Order {
 	order := createLedgerOrder(name)
-	order.GetLedgerScoped().GetCreateLedger().Mode = auditpb.LedgerMode_LEDGER_MODE_MIRROR
+	order.GetLedgerScoped().GetCreateLedger().Mode = ledgerpb.LedgerMode_LEDGER_MODE_MIRROR
 
 	return order
 }
@@ -150,9 +150,9 @@ func mirrorSaveAccountMetadataOrder(ledger, account string, metadata map[string]
 							V2LogId: 1,
 							Data: &raftcmdpb.MirrorLogEntry_SavedMetadata{
 								SavedMetadata: &raftcmdpb.MirrorSavedMetadata{
-									Target: &auditpb.Target{
-										Target: &auditpb.Target_Account{
-											Account: &auditpb.TargetAccount{Addr: account},
+									Target: &ledgerpb.Target{
+										Target: &ledgerpb.Target_Account{
+											Account: &ledgerpb.TargetAccount{Addr: account},
 										},
 									},
 									Metadata: protohelpers.MetadataFromGoMap(metadata),
@@ -166,10 +166,10 @@ func mirrorSaveAccountMetadataOrder(ledger, account string, metadata map[string]
 	}
 }
 
-func tamperSavedMetadata(t *testing.T, engine *testEngine, log *auditpb.Log, ledger, account, key string, rewriteLog bool) {
+func tamperSavedMetadata(t *testing.T, engine *testEngine, log *ledgerpb.Log, ledger, account, key string, rewriteLog bool) {
 	t.Helper()
 
-	tampered := auditpb.NewStringValue("rejected")
+	tampered := ledgerpb.NewStringValue("rejected")
 	batch := engine.store.OpenWriteSession()
 	defer func() { _ = batch.Cancel() }() // Best-effort cleanup after commit or assertion failure.
 
@@ -189,10 +189,10 @@ func tamperSavedMetadata(t *testing.T, engine *testEngine, log *auditpb.Log, led
 	require.NoError(t, batch.Commit())
 }
 
-func runMetadataAuditCheck(engine *testEngine) ([]*auditpb.CheckStoreError, error) {
+func runMetadataAuditCheck(engine *testEngine) ([]*ledgerpb.CheckStoreError, error) {
 	checker := NewChecker(engine.store, engine.attrs, nil, logging.Testing())
-	var errors []*auditpb.CheckStoreError
-	err := checker.Check(context.Background(), func(event *auditpb.CheckStoreEvent) {
+	var errors []*ledgerpb.CheckStoreError
+	err := checker.Check(context.Background(), func(event *ledgerpb.CheckStoreEvent) {
 		if checkErr := event.GetError(); checkErr != nil {
 			errors = append(errors, checkErr)
 		}

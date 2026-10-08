@@ -12,7 +12,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -126,7 +126,7 @@ type aggBenchFixture struct {
 	rs     *readstore.Store
 	attrs  *attributes.Attributes
 	handle *dal.ReadHandle
-	req    *commonpb.ExecutePreparedQueryRequest
+	req    *ledgerpb.ExecutePreparedQueryRequest
 }
 
 // newAggBenchFixture seeds a ledger with `accounts` accounts, each holding a
@@ -155,15 +155,15 @@ func newAggBenchFixture(b *testing.B, accounts int) *aggBenchFixture {
 	attrs := attributes.New()
 
 	batch := store.OpenWriteSession()
-	if err := state.SaveLedger(batch, "l", &commonpb.LedgerInfo{
+	if err := state.SaveLedger(batch, "l", &ledgerpb.LedgerInfo{
 		Name:      "l",
-		CreatedAt: commonpb.NewTimestamp(libtime.Now()),
+		CreatedAt: ledgerpb.NewTimestamp(libtime.Now()),
 	}); err != nil {
 		b.Fatal(err)
 	}
-	if _, err := attrs.PreparedQuery.Set(batch, domain.PreparedQueryKey{LedgerName: "l", Name: "q"}.Bytes(), &commonpb.PreparedQuery{
+	if _, err := attrs.PreparedQuery.Set(batch, domain.PreparedQueryKey{LedgerName: "l", Name: "q"}.Bytes(), &ledgerpb.PreparedQuery{
 		Name:   "q",
-		Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 		Filter: nil,
 	}); err != nil {
 		b.Fatal(err)
@@ -175,8 +175,8 @@ func newAggBenchFixture(b *testing.B, accounts int) *aggBenchFixture {
 		for j := range n {
 			asset := fmt.Sprintf("USD/%d", (i+j)%3+2) // precision varies 2..4
 			if _, err := attrs.Volume.Set(batch, domain.NewVolumeKey("l", account, asset, "").Bytes(), &raftcmdpb.VolumePair{
-				Input:  commonpb.NewUint256FromUint64(uint64(i + j)),
-				Output: commonpb.NewUint256FromUint64(uint64(j)),
+				Input:  ledgerpb.NewUint256FromUint64(uint64(i + j)),
+				Output: ledgerpb.NewUint256FromUint64(uint64(j)),
 			}); err != nil {
 				b.Fatal(err)
 			}
@@ -197,10 +197,10 @@ func newAggBenchFixture(b *testing.B, accounts int) *aggBenchFixture {
 		rs:     rs,
 		attrs:  attrs,
 		handle: handle,
-		req: &commonpb.ExecutePreparedQueryRequest{
+		req: &ledgerpb.ExecutePreparedQueryRequest{
 			Ledger:    "l",
 			QueryName: "q",
-			Mode:      commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES,
+			Mode:      ledgerpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES,
 		},
 	}
 }

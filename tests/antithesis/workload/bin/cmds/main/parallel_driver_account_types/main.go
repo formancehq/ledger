@@ -8,13 +8,13 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_account_types", func(ctx context.Context, client commonpb.BucketServiceClient, _ string) {
+	internal.RunDriver("parallel_driver_account_types", func(ctx context.Context, client ledgerpb.BucketServiceClient, _ string) {
 		r := internal.Rand()
 
 		// Create a dedicated ledger so account type patterns don't interfere
@@ -30,11 +30,11 @@ func main() {
 		details := internal.Details{"ledger": ledger, "typeName": typeName, "pattern": pattern}
 
 		// 1. Add an account type with a pattern.
-		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_AddAccountType{
-				AddAccountType: &commonpb.AddAccountTypeLedgerRequest{
+		_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_AddAccountType{
+				AddAccountType: &ledgerpb.AddAccountTypeLedgerRequest{
 					Ledger: ledger,
-					AccountType: &commonpb.AccountType{
+					AccountType: &ledgerpb.AccountType{
 						Name:    typeName,
 						Pattern: pattern,
 					},
@@ -56,7 +56,7 @@ func main() {
 		}
 
 		// 2. Verify the account type appears in the ledger info.
-		info, err := client.GetLedger(ctx, &commonpb.GetLedgerRequest{Ledger: ledger})
+		info, err := client.GetLedger(ctx, &ledgerpb.GetLedgerRequest{Ledger: ledger})
 		if err != nil {
 			internal.LogCleanupError("get ledger after account type add", err)
 
@@ -68,16 +68,16 @@ func main() {
 
 		// 3. Create a transaction using an address matching the pattern.
 		matchingAddr := fmt.Sprintf("%s:%d", typeName, r.Uint64()%1000)
-		typedTxResp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_Apply{
-				Apply: &commonpb.LedgerApplyRequest{
+		typedTxResp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
-						CreateTransaction: &commonpb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{{
+					Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &ledgerpb.CreateTransactionPayload{
+							Postings: []*ledgerpb.Posting{{
 								Source:      "world",
 								Destination: matchingAddr,
-								Amount:      commonpb.NewUint256FromUint64(100),
+								Amount:      ledgerpb.NewUint256FromUint64(100),
 								Asset:       "USD/2",
 							}},
 							Force: true,
@@ -95,11 +95,11 @@ func main() {
 		}
 
 		// 4. Set enforcement mode to AUDIT (permissive logging).
-		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_SetDefaultEnforcementMode{
-				SetDefaultEnforcementMode: &commonpb.SetDefaultEnforcementModeLedgerRequest{
+		_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_SetDefaultEnforcementMode{
+				SetDefaultEnforcementMode: &ledgerpb.SetDefaultEnforcementModeLedgerRequest{
 					Ledger:          ledger,
-					EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
+					EnforcementMode: ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
 				},
 			},
 		}))
@@ -108,9 +108,9 @@ func main() {
 			"should be able to set enforcement mode", details.With(internal.Details{"error": err}))
 
 		// 5. Remove the account type.
-		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_RemoveAccountType{
-				RemoveAccountType: &commonpb.RemoveAccountTypeLedgerRequest{
+		_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_RemoveAccountType{
+				RemoveAccountType: &ledgerpb.RemoveAccountTypeLedgerRequest{
 					Ledger: ledger,
 					Name:   typeName,
 				},
@@ -122,11 +122,11 @@ func main() {
 
 		// 6. Reset enforcement mode to STRICT. This ledger is selectable by other
 		// drivers, so a silent failure leaves it in AUDIT mode for them.
-		if _, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_SetDefaultEnforcementMode{
-				SetDefaultEnforcementMode: &commonpb.SetDefaultEnforcementModeLedgerRequest{
+		if _, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_SetDefaultEnforcementMode{
+				SetDefaultEnforcementMode: &ledgerpb.SetDefaultEnforcementModeLedgerRequest{
 					Ledger:          ledger,
-					EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT,
+					EnforcementMode: ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT,
 				},
 			},
 		})); err != nil {

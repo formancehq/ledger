@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -94,9 +94,9 @@ func newAuditAlignmentController(t *testing.T, appliedIndex uint64, sequences ..
 	batch := store.OpenWriteSession()
 	for _, sequence := range sequences {
 		key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(sequence).Build()
-		require.NoError(t, batch.SetProto(key, &auditpb.AuditEntry{
+		require.NoError(t, batch.SetProto(key, &ledgerpb.AuditEntry{
 			Sequence: sequence,
-			Outcome:  &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
+			Outcome:  &ledgerpb.AuditEntry_Success{Success: &ledgerpb.AuditSuccess{}},
 			Ledgers:  []string{"main"},
 		}))
 	}
@@ -110,25 +110,25 @@ func newAuditAlignmentController(t *testing.T, appliedIndex uint64, sequences ..
 	return NewDefaultController(nil, store, logger, attributes.New(), rs, nil, meter), rs
 }
 
-func auditSequenceFilter(minimum uint64) *auditpb.QueryFilter {
-	return &auditpb.QueryFilter{Filter: &auditpb.QueryFilter_Audit{Audit: &auditpb.AuditCondition{
-		Field: auditpb.AuditField_AUDIT_FIELD_SEQUENCE,
-		Condition: &auditpb.AuditCondition_UintCond{UintCond: &auditpb.UintCondition{
+func auditSequenceFilter(minimum uint64) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Audit{Audit: &ledgerpb.AuditCondition{
+		Field: ledgerpb.AuditField_AUDIT_FIELD_SEQUENCE,
+		Condition: &ledgerpb.AuditCondition_UintCond{UintCond: &ledgerpb.UintCondition{
 			Min: &minimum,
 		}},
 	}}}
 }
 
-func auditLedgerFilter(ledger string) *auditpb.QueryFilter {
-	return &auditpb.QueryFilter{Filter: &auditpb.QueryFilter_Audit{Audit: &auditpb.AuditCondition{
-		Field: auditpb.AuditField_AUDIT_FIELD_LEDGER,
-		Condition: &auditpb.AuditCondition_StringCond{StringCond: &auditpb.StringCondition{
-			Value: &auditpb.StringCondition_Hardcoded{Hardcoded: ledger},
+func auditLedgerFilter(ledger string) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Audit{Audit: &ledgerpb.AuditCondition{
+		Field: ledgerpb.AuditField_AUDIT_FIELD_LEDGER,
+		Condition: &ledgerpb.AuditCondition_StringCond{StringCond: &ledgerpb.StringCondition{
+			Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: ledger},
 		}},
 	}}}
 }
 
-func collectAuditSequences(t *testing.T, c cursor.Cursor[*auditpb.AuditEntry]) []uint64 {
+func collectAuditSequences(t *testing.T, c cursor.Cursor[*ledgerpb.AuditEntry]) []uint64 {
 	t.Helper()
 
 	entries, err := cursor.Collect(c)
@@ -146,11 +146,11 @@ func TestListAuditEntriesOnlyWaitsWhenFilterUsesAuditProjection(t *testing.T) {
 
 	ctrl, rs := newAuditAlignmentController(t, 12, 1, 2)
 	rs.SetAuditProjectionState(true, false)
-	_, err := ctrl.ListAuditEntries(context.Background(), 10, 0, &auditpb.QueryFilter{}, false)
+	_, err := ctrl.ListAuditEntries(context.Background(), 10, 0, &ledgerpb.QueryFilter{}, false)
 	require.Equal(t, codes.InvalidArgument, status.Code(err),
 		"malformed filters must be validated before projection readiness")
 
-	for name, filter := range map[string]*auditpb.QueryFilter{
+	for name, filter := range map[string]*ledgerpb.QueryFilter{
 		"unfiltered":    nil,
 		"sequence-only": auditSequenceFilter(2),
 	} {
@@ -186,7 +186,7 @@ func TestListAuditEntriesOnlyWaitsWhenFilterUsesAuditProjection(t *testing.T) {
 func TestListAuditEntriesEmptyOrDoesNotDependOnAuditProjection(t *testing.T) {
 	t.Parallel()
 
-	emptyOr := &auditpb.QueryFilter{Filter: &auditpb.QueryFilter_Or{Or: &auditpb.OrFilter{}}}
+	emptyOr := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Or{Or: &ledgerpb.OrFilter{}}}
 	for _, state := range []struct {
 		name       string
 		disabled   bool

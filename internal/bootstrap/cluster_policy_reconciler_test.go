@@ -11,7 +11,7 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -45,7 +45,7 @@ type fakeAdmission struct {
 	err   error
 }
 
-func (f *fakeAdmission) Admit(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+func (f *fakeAdmission) Admit(_ context.Context, _ *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls++
@@ -53,7 +53,7 @@ func (f *fakeAdmission) Admit(_ context.Context, _ *commonpb.ApplyRequest) (*dom
 	return nil, f.err
 }
 
-func (f *fakeAdmission) AdmitClusterPolicy(_ context.Context, _ *commonpb.ClusterPolicy) (*domain.ApplyResult, error) {
+func (f *fakeAdmission) AdmitClusterPolicy(_ context.Context, _ *ledgerpb.ClusterPolicy) (*domain.ApplyResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls++
@@ -114,7 +114,7 @@ func TestReconcileClusterPolicy(t *testing.T) {
 		cfg := validBaseConfig()
 
 		batch := store.OpenWriteSession()
-		require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
+		require.NoError(t, state.SaveClusterPolicy(batch, &ledgerpb.ClusterPolicy{
 			Revision:             cfg.ClusterPolicyRevision,
 			IdempotencyTtlMicros: uint64(cfg.IdempotencyTTL.Microseconds()),
 			QueryCheckpointLimit: cfg.QueryCheckpointLimit,
@@ -134,7 +134,7 @@ func TestReconcileClusterPolicy(t *testing.T) {
 		cfg := validBaseConfig()
 
 		batch := store.OpenWriteSession()
-		require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
+		require.NoError(t, state.SaveClusterPolicy(batch, &ledgerpb.ClusterPolicy{
 			Revision:             cfg.ClusterPolicyRevision,
 			QueryCheckpointLimit: cfg.QueryCheckpointLimit + 1,
 		}))
@@ -153,7 +153,7 @@ func TestReconcileClusterPolicy(t *testing.T) {
 		cfg := validBaseConfig()
 
 		batch := store.OpenWriteSession()
-		require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
+		require.NoError(t, state.SaveClusterPolicy(batch, &ledgerpb.ClusterPolicy{
 			Revision:             cfg.ClusterPolicyRevision + 1,
 			QueryCheckpointLimit: cfg.QueryCheckpointLimit,
 		}))

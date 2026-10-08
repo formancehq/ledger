@@ -7,7 +7,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
@@ -42,9 +42,9 @@ func main() {
 	details := internal.Details{"keyId": keyID}
 
 	// 1. Register the signing key.
-	_, err = bucketClient.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-		Type: &servicepb.Request_RegisterSigningKey{
-			RegisterSigningKey: &servicepb.RegisterSigningKeyRequest{
+	_, err = bucketClient.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+		Type: &ledgerpb.Request_RegisterSigningKey{
+			RegisterSigningKey: &ledgerpb.RegisterSigningKeyRequest{
 				KeyId:     keyID,
 				PublicKey: publicKey,
 			},
@@ -76,17 +76,17 @@ func main() {
 	}
 
 	// 3. Revoke the signing key (must be signed — keys exist on the cluster).
-	revokeReq := &servicepb.Request{
-		Type: &servicepb.Request_RevokeSigningKey{
-			RevokeSigningKey: &servicepb.RevokeSigningKeyRequest{
+	revokeReq := &ledgerpb.Request{
+		Type: &ledgerpb.Request_RevokeSigningKey{
+			RevokeSigningKey: &ledgerpb.RevokeSigningKeyRequest{
 				KeyId:   keyID,
 				Cascade: true,
 			},
 		},
 	}
 
-	signedRevoke, err := signing.Sign(&servicepb.ApplyBatch{
-		Requests: []*servicepb.Request{revokeReq},
+	signedRevoke, err := signing.Sign(&ledgerpb.ApplyBatch{
+		Requests: []*ledgerpb.Request{revokeReq},
 	}, keyID, privateKey)
 	if err != nil {
 		log.Printf("failed to sign revoke request: %s", err)
@@ -94,7 +94,7 @@ func main() {
 		return
 	}
 
-	_, err = bucketClient.Apply(ctx, servicepb.SignedApplyRequest(signedRevoke))
+	_, err = bucketClient.Apply(ctx, ledgerpb.SignedApplyRequest(signedRevoke))
 
 	assert.Sometimes(internal.IsTolerated(err),
 		"should be able to revoke signing key", details.With(internal.Details{"error": err}))

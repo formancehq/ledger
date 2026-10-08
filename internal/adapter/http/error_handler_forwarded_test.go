@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/adapter/restbulk"
@@ -357,9 +357,9 @@ func TestBulkPerElementForwardedInvalidWirePairIsSanitized(t *testing.T) {
 				"ledger deleted: secret-ledger", domain.ErrReasonLedgerDeleted,
 				map[string]string{"name": "secret-ledger"})
 
-			elements := []*restbulk.BulkElement{{Action: &servicepb.LedgerAction{
-				Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{},
+			elements := []*restbulk.BulkElement{{Action: &ledgerpb.LedgerAction{
+				Data: &ledgerpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &ledgerpb.CreateTransactionPayload{},
 				},
 			}}}
 

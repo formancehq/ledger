@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
@@ -15,20 +15,20 @@ func TestIdempotencyEquivalentRequestForms(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name   string
-		top    *commonpb.Request
-		action *commonpb.LedgerAction
+		top    *ledgerpb.Request
+		action *ledgerpb.LedgerAction
 	}{
-		{"mode", enforcementRequest(commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, false), &commonpb.LedgerAction{Data: &commonpb.LedgerAction_SetDefaultEnforcementMode{SetDefaultEnforcementMode: &commonpb.SetDefaultEnforcementModeRequest{EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT}}}},
-		{"add type", oracletest.AddTypeReq("known"), &commonpb.LedgerAction{Data: &commonpb.LedgerAction_AddAccountType{AddAccountType: &commonpb.AddAccountTypeRequest{AccountType: oracletest.AddTypeReq("known").GetAddAccountType().GetAccountType()}}}},
-		{"remove type", oracletest.RemoveTypeReq("known"), &commonpb.LedgerAction{Data: &commonpb.LedgerAction_RemoveAccountType{RemoveAccountType: &commonpb.RemoveAccountTypeRequest{Name: "known"}}}},
+		{"mode", enforcementRequest(ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, false), &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_SetDefaultEnforcementMode{SetDefaultEnforcementMode: &ledgerpb.SetDefaultEnforcementModeRequest{EnforcementMode: ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT}}}},
+		{"add type", oracletest.AddTypeReq("known"), &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_AddAccountType{AddAccountType: &ledgerpb.AddAccountTypeRequest{AccountType: oracletest.AddTypeReq("known").GetAddAccountType().GetAccountType()}}}},
+		{"remove type", oracletest.RemoveTypeReq("known"), &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_RemoveAccountType{RemoveAccountType: &ledgerpb.RemoveAccountTypeRequest{Name: "known"}}}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			nested := &commonpb.Request{Type: &commonpb.Request_Apply{Apply: &commonpb.LedgerApplyRequest{Ledger: "L", Action: tc.action}}}
+			nested := &ledgerpb.Request{Type: &ledgerpb.Request_Apply{Apply: &ledgerpb.LedgerApplyRequest{Ledger: "L", Action: tc.action}}}
 			before := tc.top.CloneVT()
-			require.True(t, RequestsEqual([]*commonpb.Request{tc.top}, []*commonpb.Request{nested}))
-			require.True(t, RequestsEqual([]*commonpb.Request{nested}, []*commonpb.Request{tc.top}))
+			require.True(t, RequestsEqual([]*ledgerpb.Request{tc.top}, []*ledgerpb.Request{nested}))
+			require.True(t, RequestsEqual([]*ledgerpb.Request{nested}, []*ledgerpb.Request{tc.top}))
 			require.True(t, before.EqualVT(tc.top), "comparison must not mutate accepted intent")
 			for _, reverse := range []bool{false, true} {
 				first, second := tc.top, nested
@@ -48,17 +48,17 @@ func TestIdempotencyEquivalentRequestForms(t *testing.T) {
 			}
 			changed := nested.CloneVT()
 			changed.GetApply().Ledger = "other"
-			require.False(t, RequestsEqual([]*commonpb.Request{tc.top}, []*commonpb.Request{changed}))
+			require.False(t, RequestsEqual([]*ledgerpb.Request{tc.top}, []*ledgerpb.Request{changed}))
 			changed = nested.CloneVT()
-			changed.GetApply().SkippableReasons = []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS}
-			require.False(t, RequestsEqual([]*commonpb.Request{tc.top}, []*commonpb.Request{changed}))
+			changed.GetApply().SkippableReasons = []ledgerpb.ErrorReason{ledgerpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS}
+			require.False(t, RequestsEqual([]*ledgerpb.Request{tc.top}, []*ledgerpb.Request{changed}))
 		})
 	}
 }
 
 func TestIdempotencyChangedModeConflicts(t *testing.T) {
 	t.Parallel()
-	first := NewGlobalState().Apply(keyedBulk("mode", enforcementRequest(commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, false)))
-	got := first.State.Apply(keyedBulk("mode", enforcementRequest(commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT, true)))
+	first := NewGlobalState().Apply(keyedBulk("mode", enforcementRequest(ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, false)))
+	got := first.State.Apply(keyedBulk("mode", enforcementRequest(ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT, true)))
 	require.Equal(t, domain.ErrReasonIdempotencyKeyConflict, got.Reason)
 }

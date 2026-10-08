@@ -3,7 +3,7 @@ package indexes
 import (
 	"errors"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
@@ -14,7 +14,7 @@ import (
 // bucket-scoped index registry. The FSM hot path passes Scope.Indexes()
 // (a processing.Accessor whose Get satisfies this shape); read-side
 // handlers pass a Pebble-backed view through the readstore. The returned
-// value is a commonpb.IndexReader so callers cannot mutate the
+// value is a ledgerpb.IndexReader so callers cannot mutate the
 // cache-resident proto in place — mirror the discipline that
 // raftcmdpb.LedgerBoundariesReader / VolumePairReader enforce for the
 // other hot-path attribute kinds (#496).
@@ -26,7 +26,7 @@ import (
 //     FSM hot path, an *ErrCoverageMiss when the proposer did not declare
 //     the key — the apply path bubbles it up as a business rejection.
 type Lookup interface {
-	Get(key domain.IndexKey) (commonpb.IndexReader, error)
+	Get(key domain.IndexKey) (ledgerpb.IndexReader, error)
 }
 
 // IndexWriter is implemented by the FSM-apply Accessor returned from
@@ -35,14 +35,14 @@ type Lookup interface {
 // returns an error so a coverage miss (invariant #6) propagates rather
 // than silently dropping.
 type IndexWriter interface {
-	Put(key domain.IndexKey, idx *commonpb.Index)
+	Put(key domain.IndexKey, idx *ledgerpb.Index)
 	Delete(key domain.IndexKey) error
 }
 
 // KeyFor builds the registry key for an index. An empty ledgerName addresses
 // the bucket-scoped slot (e.g. audit indexes); a non-empty name is the
 // ledger-scoped slot.
-func KeyFor(ledgerName string, id *commonpb.IndexID) domain.IndexKey {
+func KeyFor(ledgerName string, id *ledgerpb.IndexID) domain.IndexKey {
 	return domain.IndexKey{LedgerName: ledgerName, Canonical: Canonical(id)}
 }
 
@@ -57,7 +57,7 @@ func KeyFor(ledgerName string, id *commonpb.IndexID) domain.IndexKey {
 //
 // A nil lookup is treated as "no indexes registered" — returns (nil, nil) so
 // query.Compile / tests can drive the compiler without wiring a registry.
-func Find(r Lookup, ledgerName string, id *commonpb.IndexID) (commonpb.IndexReader, error) {
+func Find(r Lookup, ledgerName string, id *ledgerpb.IndexID) (ledgerpb.IndexReader, error) {
 	if r == nil || id == nil {
 		return nil, nil
 	}
@@ -76,7 +76,7 @@ func Find(r Lookup, ledgerName string, id *commonpb.IndexID) (commonpb.IndexRead
 
 // Put upserts an Index entry. The caller is responsible for ensuring
 // idx.GetLedger() matches ledgerName (empty for bucket-scope).
-func Put(w IndexWriter, ledgerName string, idx *commonpb.Index) {
+func Put(w IndexWriter, ledgerName string, idx *ledgerpb.Index) {
 	if idx == nil || idx.GetId() == nil {
 		return
 	}
@@ -88,7 +88,7 @@ func Put(w IndexWriter, ledgerName string, idx *commonpb.Index) {
 // nil ids so callers can pipe order payloads without explicit validation.
 // Returns any error the underlying writer surfaces (e.g. *state.ErrCoverageMiss
 // on the FSM hot path when the proposer did not declare the deletion key).
-func Remove(w IndexWriter, ledgerName string, id *commonpb.IndexID) error {
+func Remove(w IndexWriter, ledgerName string, id *ledgerpb.IndexID) error {
 	if id == nil {
 		return nil
 	}

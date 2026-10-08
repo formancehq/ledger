@@ -8,7 +8,7 @@ import (
 	"io"
 	"net/http"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // handleRevertTransaction handles POST /{ledgerName}/transactions/{transactionId}/revert to revert a transaction.
@@ -46,7 +46,7 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Build request payload
-	payload := &commonpb.RevertTransactionPayload{
+	payload := &ledgerpb.RevertTransactionPayload{
 		TransactionId: transactionID,
 	}
 
@@ -58,7 +58,7 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 			// create-transaction / set-metadata). Invalid values (objects, arrays,
 			// non-integer floats) are rejected with 400 INVALID_REQUEST instead of
 			// being silently dropped (EN-1509).
-			ms, err := commonpb.MetadataFromAnyMap(metadata)
+			ms, err := ledgerpb.MetadataFromAnyMap(metadata)
 			if err != nil {
 				writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid metadata: %w", err))
 
@@ -77,12 +77,12 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	logs, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &commonpb.Request{
-		Type: &commonpb.Request_Apply{
-			Apply: &commonpb.LedgerApplyRequest{
+	logs, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &ledgerpb.Request{
+		Type: &ledgerpb.Request_Apply{
+			Apply: &ledgerpb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Action: &commonpb.LedgerAction{
-					Data: &commonpb.LedgerAction_RevertTransaction{
+				Action: &ledgerpb.LedgerAction{
+					Data: &ledgerpb.LedgerAction_RevertTransaction{
 						RevertTransaction: payload,
 					},
 				},
@@ -109,7 +109,7 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 	logEntry := exactlyOneLog("revert-transaction", logs, details)
 
 	ledgerLog := logEntry.GetPayload().GetApply().GetLog()
-	rt, ok := ledgerLog.GetData().GetPayload().(*commonpb.LedgerLogPayload_RevertedTransaction)
+	rt, ok := ledgerLog.GetData().GetPayload().(*ledgerpb.LedgerLogPayload_RevertedTransaction)
 	if !ok {
 		panic(unexpectedLogPayload("revert-transaction", logEntry, details))
 	}

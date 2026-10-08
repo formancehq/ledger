@@ -4,7 +4,7 @@ import (
 	"cmp"
 	"fmt"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // filterFold reduces a QueryFilter tree bottom-up. foldFilter owns the
@@ -16,23 +16,23 @@ type filterFold[T any] struct {
 	and  func(children []T) T
 	or   func(children []T) T
 	not  func(child T) T
-	leaf func(f *commonpb.QueryFilter) T
+	leaf func(f *ledgerpb.QueryFilter) T
 }
 
-func foldFilter[T any](f *commonpb.QueryFilter, fold filterFold[T]) T {
+func foldFilter[T any](f *ledgerpb.QueryFilter, fold filterFold[T]) T {
 	switch x := f.GetFilter().(type) {
-	case *commonpb.QueryFilter_And:
+	case *ledgerpb.QueryFilter_And:
 		return fold.and(foldChildren(x.And.GetFilters(), fold))
-	case *commonpb.QueryFilter_Or:
+	case *ledgerpb.QueryFilter_Or:
 		return fold.or(foldChildren(x.Or.GetFilters(), fold))
-	case *commonpb.QueryFilter_Not:
+	case *ledgerpb.QueryFilter_Not:
 		return fold.not(foldFilter(x.Not.GetFilter(), fold))
 	default:
 		return fold.leaf(f)
 	}
 }
 
-func foldChildren[T any](children []*commonpb.QueryFilter, fold filterFold[T]) []T {
+func foldChildren[T any](children []*ledgerpb.QueryFilter, fold filterFold[T]) []T {
 	out := make([]T, 0, len(children))
 	for _, child := range children {
 		out = append(out, foldFilter(child, fold))
@@ -43,17 +43,17 @@ func foldChildren[T any](children []*commonpb.QueryFilter, fold filterFold[T]) [
 
 // anyLeaf reports whether pred holds for some leaf of f; combinators only
 // propagate their children's verdicts.
-func anyLeaf(f *commonpb.QueryFilter, pred func(*commonpb.QueryFilter) bool) bool {
+func anyLeaf(f *ledgerpb.QueryFilter, pred func(*ledgerpb.QueryFilter) bool) bool {
 	return foldFilter(f, filterFold[bool]{and: anyOf, or: anyOf, not: identity[bool], leaf: pred})
 }
 
 // visitLeaves calls visit on every leaf of f in tree order.
-func visitLeaves(f *commonpb.QueryFilter, visit func(*commonpb.QueryFilter)) {
+func visitLeaves(f *ledgerpb.QueryFilter, visit func(*ledgerpb.QueryFilter)) {
 	foldFilter(f, filterFold[struct{}]{
 		and: func([]struct{}) struct{} { return struct{}{} },
 		or:  func([]struct{}) struct{} { return struct{}{} },
 		not: identity[struct{}],
-		leaf: func(leaf *commonpb.QueryFilter) struct{} {
+		leaf: func(leaf *ledgerpb.QueryFilter) struct{} {
 			visit(leaf)
 
 			return struct{}{}
@@ -136,11 +136,11 @@ func withinBounds[T cmp.Ordered](v T, lo *T, loExclusive bool, hi *T, hiExclusiv
 	return true
 }
 
-func matchUintBounds(cond *commonpb.UintCondition, v uint64) bool {
+func matchUintBounds(cond *ledgerpb.UintCondition, v uint64) bool {
 	return withinBounds(v, cond.Min, cond.GetMinExclusive(), cond.Max, cond.GetMaxExclusive())
 }
 
-func matchIntBounds(cond *commonpb.IntCondition, v int64) bool {
+func matchIntBounds(cond *ledgerpb.IntCondition, v int64) bool {
 	return withinBounds(v, cond.Min, cond.GetMinExclusive(), cond.Max, cond.GetMaxExclusive())
 }
 

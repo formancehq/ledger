@@ -16,7 +16,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -632,10 +632,10 @@ func (s *inMemoryBackupStorage) ListFiles(_ context.Context, prefix string) ([]s
 func writeFailureAuditEntry(t *testing.T, store *dal.Store, seq uint64) {
 	t.Helper()
 
-	entry := &auditpb.AuditEntry{
+	entry := &ledgerpb.AuditEntry{
 		Sequence: seq,
-		Outcome: &auditpb.AuditEntry_Failure{
-			Failure: &auditpb.AuditFailure{Reason: auditpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS},
+		Outcome: &ledgerpb.AuditEntry_Failure{
+			Failure: &ledgerpb.AuditFailure{Reason: ledgerpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS},
 		},
 	}
 
@@ -651,13 +651,13 @@ func writeFailureAuditEntry(t *testing.T, store *dal.Store, seq uint64) {
 func writeSuccessAuditEntryWithItem(t *testing.T, store *dal.Store, seq uint64) {
 	t.Helper()
 
-	entry := &auditpb.AuditEntry{
+	entry := &ledgerpb.AuditEntry{
 		Sequence: seq,
-		Outcome: &auditpb.AuditEntry_Success{
-			Success: &auditpb.AuditSuccess{MinLogSequence: seq, MaxLogSequence: seq},
+		Outcome: &ledgerpb.AuditEntry_Success{
+			Success: &ledgerpb.AuditSuccess{MinLogSequence: seq, MaxLogSequence: seq},
 		},
 	}
-	item := &auditpb.AuditItem{OrderIndex: 0}
+	item := &ledgerpb.AuditItem{OrderIndex: 0}
 
 	batch := store.OpenWriteSession()
 	entryKey := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(seq).Build()

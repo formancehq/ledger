@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // handleListTransactions handles GET /{ledgerName}/transactions to list a
@@ -68,9 +68,9 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 
 	reverse := r.URL.Query().Get("reverse") == "true"
 
-	var filters []*commonpb.QueryFilter
+	var filters []*ledgerpb.QueryFilter
 
-	dateCond := &commonpb.UintCondition{}
+	dateCond := &ledgerpb.UintCondition{}
 	hasDateFilter := false
 
 	if sd := r.URL.Query().Get("startDate"); sd != "" {
@@ -95,10 +95,10 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if hasDateFilter {
-		filters = append(filters, &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_BuiltinUint{
-				BuiltinUint: &commonpb.BuiltinUintCondition{
-					Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
+		filters = append(filters, &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_BuiltinUint{
+				BuiltinUint: &ledgerpb.BuiltinUintCondition{
+					Field: ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
 					Cond:  dateCond,
 				},
 			},
@@ -108,7 +108,7 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 	// The `filter` query parameter accepts either the textual filterexpr grammar
 	// or the structured v2 JSON DSL (EN-1511); it is AND-combined with the
 	// startDate/endDate timestamp range above.
-	generic, ok := parseListFilter(w, r, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	generic, ok := parseListFilter(w, r, ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 	if !ok {
 		return
 	}

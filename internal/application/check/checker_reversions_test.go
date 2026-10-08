@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -26,7 +26,7 @@ func writeReversionWord(t *testing.T, store *dal.Store, ledger string, wordIndex
 // collectReversionEvents runs compareReversions against the store's persisted
 // bitsets with the given audit-derived set and returns the REVERTED_MISMATCH
 // errors.
-func collectReversionEvents(t *testing.T, store *dal.Store, derived map[string]*bitset.Bitset, knownLedgers map[string]struct{}) []*servicepb.CheckStoreError {
+func collectReversionEvents(t *testing.T, store *dal.Store, derived map[string]*bitset.Bitset, knownLedgers map[string]struct{}) []*ledgerpb.CheckStoreError {
 	t.Helper()
 
 	checker := NewChecker(store, attributes.New(), nil, logging.Testing())
@@ -36,11 +36,11 @@ func collectReversionEvents(t *testing.T, store *dal.Store, derived map[string]*
 
 	defer func() { _ = handle.Close() }()
 
-	var got []*servicepb.CheckStoreError
+	var got []*ledgerpb.CheckStoreError
 
-	require.NoError(t, checker.compareReversions(handle, derived, knownLedgers, func(event *servicepb.CheckStoreEvent) {
-		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok &&
-			e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH {
+	require.NoError(t, checker.compareReversions(handle, derived, knownLedgers, func(event *ledgerpb.CheckStoreEvent) {
+		if e, ok := event.GetType().(*ledgerpb.CheckStoreEvent_Error); ok &&
+			e.Error.GetErrorType() == ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH {
 			got = append(got, e.Error)
 		}
 	}))

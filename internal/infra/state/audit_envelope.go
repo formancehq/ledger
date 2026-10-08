@@ -5,7 +5,7 @@ import (
 	"errors"
 	"slices"
 
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // ErrAuditEntryMissingOutcome is returned by BuildHashedHeaderPayload when the
@@ -101,7 +101,7 @@ func appendU64(buf []byte, v uint64) []byte {
 // Returns ErrAuditEntryMissingOutcome if the entry has neither a success
 // nor a failure outcome. Apply path callers treat this as a fatal FSM
 // bug; verifier callers treat it as a tampering signal.
-func BuildHashedHeaderPayload(entry *auditpb.AuditEntry) ([]byte, error) {
+func BuildHashedHeaderPayload(entry *ledgerpb.AuditEntry) ([]byte, error) {
 	buf := make([]byte, 0, 128)
 
 	buf = appendU64(buf, entry.GetSequence())
@@ -123,10 +123,10 @@ func BuildHashedHeaderPayload(entry *auditpb.AuditEntry) ([]byte, error) {
 	// here is either an FSM regression (apply side) or persistence
 	// tampering (verifier side). Either way, surface it loudly.
 	switch out := entry.GetOutcome().(type) {
-	case *auditpb.AuditEntry_Success:
+	case *ledgerpb.AuditEntry_Success:
 		buf = appendU8(buf, outcomeTagSuccess)
 		buf = appendLenBytes(buf, buildAuditSuccessPayload(out.Success))
-	case *auditpb.AuditEntry_Failure:
+	case *ledgerpb.AuditEntry_Failure:
 		buf = appendU8(buf, outcomeTagFailure)
 		buf = appendLenBytes(buf, buildAuditFailurePayload(out.Failure))
 	default:
@@ -155,7 +155,7 @@ func BuildHashedHeaderPayload(entry *auditpb.AuditEntry) ([]byte, error) {
 // payload, each length-prefixed. Returns nil for an unsigned (nil) batch, which
 // the caller length-prefixes to a bare 0x00000000 — bytes-equal to an empty
 // signature, matching the envelope's absent/empty conflation.
-func buildSignaturePayload(sb *auditpb.SignedApplyBatch) []byte {
+func buildSignaturePayload(sb *ledgerpb.SignedApplyBatch) []byte {
 	if sb == nil {
 		return nil
 	}
@@ -168,7 +168,7 @@ func buildSignaturePayload(sb *auditpb.SignedApplyBatch) []byte {
 	return buf
 }
 
-func buildAuditSuccessPayload(s *auditpb.AuditSuccess) []byte {
+func buildAuditSuccessPayload(s *ledgerpb.AuditSuccess) []byte {
 	buf := make([]byte, 0, 16)
 
 	buf = appendU64(buf, s.GetMinLogSequence())
@@ -177,7 +177,7 @@ func buildAuditSuccessPayload(s *auditpb.AuditSuccess) []byte {
 	return buf
 }
 
-func buildAuditFailurePayload(f *auditpb.AuditFailure) []byte {
+func buildAuditFailurePayload(f *ledgerpb.AuditFailure) []byte {
 	buf := make([]byte, 0, 64)
 
 	buf = appendU32(buf, uint32(f.GetReason()))
@@ -201,20 +201,20 @@ func buildAuditFailurePayload(f *auditpb.AuditFailure) []byte {
 	return buf
 }
 
-func buildCallerSnapshotPayload(snap *auditpb.CallerSnapshot) []byte {
+func buildCallerSnapshotPayload(snap *ledgerpb.CallerSnapshot) []byte {
 	buf := make([]byte, 0, 64)
 
 	switch principal := snap.GetPrincipal().(type) {
-	case *auditpb.CallerSnapshot_Authenticated:
+	case *ledgerpb.CallerSnapshot_Authenticated:
 		buf = appendU8(buf, callerPrincipalAuthenticated)
 		buf = appendAuthenticatedCallerPayload(buf, principal.Authenticated)
-	case *auditpb.CallerSnapshot_Anonymous:
+	case *ledgerpb.CallerSnapshot_Anonymous:
 		buf = appendU8(buf, callerPrincipalAnonymous)
 		buf = appendScopes(buf, principal.Anonymous.GetScopes())
-	case *auditpb.CallerSnapshot_System:
+	case *ledgerpb.CallerSnapshot_System:
 		buf = appendU8(buf, callerPrincipalSystem)
 		buf = appendLenString(buf, principal.System.GetComponent())
-	case *auditpb.CallerSnapshot_AuthDisabled:
+	case *ledgerpb.CallerSnapshot_AuthDisabled:
 		buf = appendU8(buf, callerPrincipalAuthDisabled)
 	default:
 		buf = appendU8(buf, callerPrincipalNone)
@@ -223,15 +223,15 @@ func buildCallerSnapshotPayload(snap *auditpb.CallerSnapshot) []byte {
 	return buf
 }
 
-func appendAuthenticatedCallerPayload(buf []byte, caller *auditpb.AuthenticatedCaller) []byte {
+func appendAuthenticatedCallerPayload(buf []byte, caller *ledgerpb.AuthenticatedCaller) []byte {
 	id := caller.GetIdentity()
 	buf = appendLenString(buf, id.GetSubject())
 
 	switch src := id.GetSource().(type) {
-	case *auditpb.CallerIdentity_Issuer:
+	case *ledgerpb.CallerIdentity_Issuer:
 		buf = appendU8(buf, callerSourceIssuer)
 		buf = appendLenString(buf, src.Issuer)
-	case *auditpb.CallerIdentity_KeyId:
+	case *ledgerpb.CallerIdentity_KeyId:
 		buf = appendU8(buf, callerSourceKeyID)
 		buf = appendLenString(buf, src.KeyId)
 	default:
@@ -265,7 +265,7 @@ func appendScopes(buf []byte, values []string) []byte {
 // and the checker call this function with the AuditItem they have on hand;
 // any tampering with order_index, log_sequence, or serialized_order changes
 // the bytes and trips the hash check.
-func BuildPerItemPayload(item *auditpb.AuditItem) []byte {
+func BuildPerItemPayload(item *ledgerpb.AuditItem) []byte {
 	buf := make([]byte, 0, 32+len(item.GetSerializedOrder()))
 
 	buf = appendU32(buf, item.GetOrderIndex())

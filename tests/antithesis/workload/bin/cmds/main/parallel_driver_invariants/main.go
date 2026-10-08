@@ -5,14 +5,14 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_invariants", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
-		resp, err := client.AggregateVolumes(ctx, &servicepb.AggregateVolumesRequest{
+	internal.RunDriver("parallel_driver_invariants", func(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string) {
+		resp, err := client.AggregateVolumes(ctx, &ledgerpb.AggregateVolumesRequest{
 			Ledger: ledger,
 		})
 		if err != nil {

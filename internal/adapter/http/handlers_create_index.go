@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -55,9 +55,9 @@ func (s *Server) handleCreateIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{
-		Type: &servicepb.Request_CreateIndex{
-			CreateIndex: &servicepb.CreateIndexRequest{
+	if _, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &ledgerpb.Request{
+		Type: &ledgerpb.Request_CreateIndex{
+			CreateIndex: &ledgerpb.CreateIndexRequest{
 				Ledger: ledgerName,
 				Id:     id,
 			},

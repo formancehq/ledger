@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -40,7 +40,7 @@ func volumeUpdate(ledgerName, account string) []attributes.Update[domain.VolumeK
 		{
 			Key:          key,
 			CanonicalKey: key.Bytes(),
-			New:          &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(0), Output: commonpb.NewUint256FromUint64(0)},
+			New:          &raftcmdpb.VolumePair{Input: ledgerpb.NewUint256FromUint64(0), Output: ledgerpb.NewUint256FromUint64(0)},
 		},
 	}
 }
@@ -75,14 +75,14 @@ func TestPartitionVolumes_UngatedLedgerFailsLoudly(t *testing.T) {
 	buf, machine, _ := newTestBuffer(t)
 
 	const ledgerName = "ungated"
-	ledger := &commonpb.LedgerInfo{
+	ledger := &ledgerpb.LedgerInfo{
 		Name: ledgerName,
 		Id:   1,
-		AccountTypes: map[string]*commonpb.AccountType{
+		AccountTypes: map[string]*ledgerpb.AccountType{
 			"cache": {
 				Name:        "cache",
 				Pattern:     "acc",
-				Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+				Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
 			},
 		},
 	}
@@ -114,12 +114,12 @@ func TestValidateTransientVolumes_LedgerStorageFaultPropagates(t *testing.T) {
 
 	const ledgerName = "faulty"
 	ledgerKey := domain.LedgerKey{Name: ledgerName}
-	injectTagCollision(t, machine.Registry.Ledgers.KeyStore(), ledgerKey.Bytes(), &commonpb.LedgerInfo{Name: ledgerName})
+	injectTagCollision(t, machine.Registry.Ledgers.KeyStore(), ledgerKey.Bytes(), &ledgerpb.LedgerInfo{Name: ledgerName})
 
 	volKey := domain.NewVolumeKey(ledgerName, "acc", "USD", "")
 	buf.Derived.Volumes.Put(volKey, &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(0),
-		Output: commonpb.NewUint256FromUint64(0),
+		Input:  ledgerpb.NewUint256FromUint64(0),
+		Output: ledgerpb.NewUint256FromUint64(0),
 	})
 
 	lid, _ := attributes.MakeKey(ledgerKey.Bytes())
@@ -152,14 +152,14 @@ func TestValidateTransientVolumes_PublishesGatedTypes(t *testing.T) {
 	buf, machine, _ := newTestBuffer(t)
 
 	const presentLedger = "present"
-	ledger := &commonpb.LedgerInfo{
+	ledger := &ledgerpb.LedgerInfo{
 		Name: presentLedger,
 		Id:   1,
-		AccountTypes: map[string]*commonpb.AccountType{
+		AccountTypes: map[string]*ledgerpb.AccountType{
 			"cache": {
 				Name:        "cache",
 				Pattern:     "acc",
-				Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+				Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
 			},
 		},
 	}
@@ -173,8 +173,8 @@ func TestValidateTransientVolumes_PublishesGatedTypes(t *testing.T) {
 	presentVol := domain.NewVolumeKey(presentLedger, "acc", "USD", "")
 	absentVol := domain.NewVolumeKey("absent", "acc", "USD", "")
 	zero := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(0),
-		Output: commonpb.NewUint256FromUint64(0),
+		Input:  ledgerpb.NewUint256FromUint64(0),
+		Output: ledgerpb.NewUint256FromUint64(0),
 	}
 	buf.Derived.Volumes.Put(presentVol, zero)
 	buf.Derived.Volumes.Put(absentVol, zero)
@@ -231,7 +231,7 @@ func TestGetSinkConfig_StorageFaultPropagates(t *testing.T) {
 	buf, machine, _ := newTestBuffer(t)
 
 	const name = "faulty-sink"
-	injectTagCollision(t, machine.Registry.SinkConfigs.KeyStore(), domain.SinkConfigKey{Name: name}.Bytes(), &commonpb.SinkConfig{Name: name})
+	injectTagCollision(t, machine.Registry.SinkConfigs.KeyStore(), domain.SinkConfigKey{Name: name}.Bytes(), &ledgerpb.SinkConfig{Name: name})
 
 	cfg, err := buf.GetSinkConfig(name)
 	require.Error(t, err)
@@ -269,7 +269,7 @@ func TestNumscriptVersionExists_StorageFaultPropagates(t *testing.T) {
 		version    = "1.0.0"
 	)
 	entryKey := domain.NumscriptEntryKey{LedgerName: ledgerName, Name: scriptName, Version: version}
-	injectTagCollision(t, machine.Registry.NumscriptContents.KeyStore(), entryKey.Bytes(), &commonpb.NumscriptInfo{Name: scriptName, Version: version})
+	injectTagCollision(t, machine.Registry.NumscriptContents.KeyStore(), entryKey.Bytes(), &ledgerpb.NumscriptInfo{Name: scriptName, Version: version})
 
 	exists, err := buf.NumscriptVersionExists(ledgerName, scriptName, version)
 	require.Error(t, err)
@@ -293,14 +293,14 @@ func TestValidateTransientVolumes_BaseReadFaultSurfaces(t *testing.T) {
 	const ledgerName = "transient-fault"
 
 	// Seed a ledger whose account type marks "staging:{id}" TRANSIENT.
-	ledgerInfo := &commonpb.LedgerInfo{
+	ledgerInfo := &ledgerpb.LedgerInfo{
 		Id:   1,
 		Name: ledgerName,
-		AccountTypes: map[string]*commonpb.AccountType{
+		AccountTypes: map[string]*ledgerpb.AccountType{
 			"staging": {
 				Name:        "staging",
 				Pattern:     "staging:{id}",
-				Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
+				Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
 			},
 		},
 	}
@@ -311,8 +311,8 @@ func TestValidateTransientVolumes_BaseReadFaultSurfaces(t *testing.T) {
 	// A dirty transient volume in the overlay.
 	volKey := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: "staging:tx1"}, Asset: "USD"}
 	buf.Derived.Volumes.Put(volKey, &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(50),
-		Output: commonpb.NewUint256FromUint64(50),
+		Input:  ledgerpb.NewUint256FromUint64(50),
+		Output: ledgerpb.NewUint256FromUint64(50),
 	})
 
 	// Inject a fault on the BASE (parent KeyStore) read for that key.

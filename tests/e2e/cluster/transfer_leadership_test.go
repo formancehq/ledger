@@ -8,7 +8,7 @@ import (
 	"math/big"
 	"time"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
@@ -40,7 +40,7 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 		targetID := (lid % countInstances) + 1
 		GinkgoLogr.Info(fmt.Sprintf("Transferring leadership from node %d to node %d", lid, targetID))
 
-		resp, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
+		resp, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, &ledgerpb.TransferLeadershipRequest{
 			Transferee: uint32(targetID),
 		})
 		Expect(err).To(Succeed())
@@ -49,7 +49,7 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 		// Verify all nodes see the new leader
 		for i := range countInstances {
 			Eventually(func(g Gomega) uint64 {
-				state, err := servers[i].ClusterClient.GetClusterState(context.Background(), &clusterpb.GetClusterStateRequest{
+				state, err := servers[i].ClusterClient.GetClusterState(context.Background(), &ledgerpb.GetClusterStateRequest{
 					NodeId: servers[i].NodeID,
 				})
 				g.Expect(err).To(Succeed())
@@ -68,7 +68,7 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 
 		GinkgoLogr.Info(fmt.Sprintf("Requesting transfer via follower %d, target node %d (leader is %d)", followerID, targetID, lid))
 
-		resp, err := servers[followerID-1].ClusterClient.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
+		resp, err := servers[followerID-1].ClusterClient.TransferLeadership(ctx, &ledgerpb.TransferLeadershipRequest{
 			Transferee: uint32(targetID),
 		})
 		Expect(err).To(Succeed())
@@ -83,13 +83,13 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 		// The preceding ordered scenario also transferred leadership. Wait for
 		// that leader's first complete disk verdict before creating the ledger.
 		Eventually(func(g Gomega) {
-			_, err := servers[lid-1].Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction("transfer-test", nil)))
+			_, err := servers[lid-1].Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction("transfer-test", nil)))
 			g.Expect(err).To(Succeed())
 		}).Should(Succeed())
 
 		// Transfer leadership
 		targetID := (lid % countInstances) + 1
-		_, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
+		_, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, &ledgerpb.TransferLeadershipRequest{
 			Transferee: uint32(targetID),
 		})
 		Expect(err).To(Succeed())
@@ -97,7 +97,7 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 		// Wait for all nodes to see new leader
 		for i := range countInstances {
 			Eventually(func(g Gomega) uint64 {
-				state, err := servers[i].ClusterClient.GetClusterState(context.Background(), &clusterpb.GetClusterStateRequest{
+				state, err := servers[i].ClusterClient.GetClusterState(context.Background(), &ledgerpb.GetClusterStateRequest{
 					NodeId: servers[i].NodeID,
 				})
 				g.Expect(err).To(Succeed())
@@ -109,7 +109,7 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 		// health worker has collected fresh WAL and data samples from every
 		// committed member. Leader discovery can complete just before that poll.
 		Eventually(func(g Gomega) {
-			_, err := servers[targetID-1].Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction("transfer-test", []*clusterpb.Posting{
+			_, err := servers[targetID-1].Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction("transfer-test", []*ledgerpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			g.Expect(err).To(Succeed())
@@ -117,14 +117,14 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 
 		// Create the remaining transactions through the now-open new leader.
 		for i := 0; i < 2; i++ {
-			_, err := servers[targetID-1].Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction("transfer-test", []*clusterpb.Posting{
+			_, err := servers[targetID-1].Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction("transfer-test", []*ledgerpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 		}
 
 		// Verify data is accessible from the old leader (now follower)
-		ledger, err := servers[lid-1].Client.GetLedger(ctx, &clusterpb.GetLedgerRequest{
+		ledger, err := servers[lid-1].Client.GetLedger(ctx, &ledgerpb.GetLedgerRequest{
 			Ledger: "transfer-test",
 		})
 		Expect(err).To(Succeed())
@@ -135,7 +135,7 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 
 	It("should reject transfer to an unknown node", func() {
 		lid := *leaderID
-		_, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
+		_, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, &ledgerpb.TransferLeadershipRequest{
 			Transferee: 99,
 		})
 		Expect(err).To(HaveOccurred())
@@ -143,7 +143,7 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 
 	It("should reject transfer with zero node ID", func() {
 		lid := *leaderID
-		_, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
+		_, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, &ledgerpb.TransferLeadershipRequest{
 			Transferee: 0,
 		})
 		Expect(err).To(HaveOccurred())
@@ -154,11 +154,11 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 		lid := *leaderID
 
 		// Create a ledger and some transactions so the cluster is active
-		_, err := servers[lid-1].Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction("auto-transfer-test", nil)))
+		_, err := servers[lid-1].Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction("auto-transfer-test", nil)))
 		Expect(err).To(Succeed())
 
 		for i := 0; i < 3; i++ {
-			_, err := servers[lid-1].Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction("auto-transfer-test", []*clusterpb.Posting{
+			_, err := servers[lid-1].Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction("auto-transfer-test", []*ledgerpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -176,7 +176,7 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 		followerIdx := int(oldLeaderID) % countInstances
 		var newLeaderID uint64
 		Eventually(func(g Gomega) bool {
-			state, err := servers[followerIdx].ClusterClient.GetClusterState(context.Background(), &clusterpb.GetClusterStateRequest{
+			state, err := servers[followerIdx].ClusterClient.GetClusterState(context.Background(), &ledgerpb.GetClusterStateRequest{
 				NodeId: servers[followerIdx].NodeID,
 			})
 			g.Expect(err).To(Succeed())
@@ -188,14 +188,14 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 		// first current-epoch disk verdict. Retry the first write across that short
 		// fail-closed window; the unavailable old leader must not block it forever.
 		Eventually(func(g Gomega) {
-			_, err := servers[newLeaderID-1].Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction("auto-transfer-test", []*clusterpb.Posting{
+			_, err := servers[newLeaderID-1].Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction("auto-transfer-test", []*ledgerpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			g.Expect(err).To(Succeed())
 		}).Should(Succeed())
 
 		for i := 0; i < 2; i++ {
-			_, err := servers[newLeaderID-1].Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction("auto-transfer-test", []*clusterpb.Posting{
+			_, err := servers[newLeaderID-1].Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction("auto-transfer-test", []*ledgerpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())

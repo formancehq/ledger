@@ -13,7 +13,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/adapter/restbulk"
@@ -63,8 +63,8 @@ func TestNewHandler_SystemRoutesUnderReservedSegment(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListSigningKeys(gomock.Any()).DoAndReturn(
-		func(_ context.Context) (cursor.Cursor[*commonpb.SigningKey], error) {
-			return cursor.NewSliceCursor([]*commonpb.SigningKey{{KeyId: "k1"}}), nil
+		func(_ context.Context) (cursor.Cursor[*ledgerpb.SigningKey], error) {
+			return cursor.NewSliceCursor([]*ledgerpb.SigningKey{{KeyId: "k1"}}), nil
 		}).AnyTimes()
 	// The pre-move `/v3/signing-keys` falls through to `/v3/{ledgerName}`
 	// (handleGetLedger with ledgerName="signing-keys"); stub GetLedgerByName so
@@ -331,23 +331,23 @@ func TestHandleRevertTransaction_InvalidBody(t *testing.T) {
 func TestHandleRevertTransaction_WithMetadataInBody(t *testing.T) {
 	t.Parallel()
 
-	var capturedRequest *commonpb.Request
+	var capturedRequest *ledgerpb.Request
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, req *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedRequest = req.GetUnsigned().GetRequests()[0]
 
-			return &domain.ApplyResult{Logs: []*commonpb.Log{
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{
 				{
-					Payload: &commonpb.LogPayload{
-						Type: &commonpb.LogPayload_Apply{
-							Apply: &commonpb.ApplyLedgerLog{
-								Log: &commonpb.LedgerLog{
-									Data: &commonpb.LedgerLogPayload{
-										Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
-											RevertedTransaction: &commonpb.RevertedTransaction{
-												RevertTransaction: &commonpb.Transaction{Id: 2},
+					Payload: &ledgerpb.LogPayload{
+						Type: &ledgerpb.LogPayload_Apply{
+							Apply: &ledgerpb.ApplyLedgerLog{
+								Log: &ledgerpb.LedgerLog{
+									Data: &ledgerpb.LedgerLogPayload{
+										Payload: &ledgerpb.LedgerLogPayload_RevertedTransaction{
+											RevertedTransaction: &ledgerpb.RevertedTransaction{
+												RevertTransaction: &ledgerpb.Transaction{Id: 2},
 											},
 										},
 									},
@@ -373,9 +373,9 @@ func TestHandleRevertTransaction_WithMetadataInBody(t *testing.T) {
 	require.Equal(t, http.StatusCreated, w.Code)
 	require.NotNil(t, capturedRequest)
 
-	applyType, ok := capturedRequest.GetType().(*commonpb.Request_Apply)
+	applyType, ok := capturedRequest.GetType().(*ledgerpb.Request_Apply)
 	require.True(t, ok)
-	revertData, ok := applyType.Apply.GetAction().GetData().(*commonpb.LedgerAction_RevertTransaction)
+	revertData, ok := applyType.Apply.GetAction().GetData().(*ledgerpb.LedgerAction_RevertTransaction)
 	require.True(t, ok)
 	revertPayload := revertData.RevertTransaction
 	require.True(t, revertPayload.GetForce())
@@ -388,7 +388,7 @@ func TestHandleRevertTransaction_BackendError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, errors.New("internal error")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -430,7 +430,7 @@ func TestHandleSaveAccountMetadata_BackendApplyError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, errors.New("apply failed")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -490,7 +490,7 @@ func TestHandleSaveTransactionMetadata_BackendApplyError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, errors.New("apply failed")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -532,11 +532,11 @@ func TestHandleGetAccount_GetAccountError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
-			return &commonpb.LedgerInfo{Name: "ledger1"}, nil
+		func(_ context.Context, _ string) (*ledgerpb.LedgerInfo, error) {
+			return &ledgerpb.LedgerInfo{Name: "ledger1"}, nil
 		}).AnyTimes()
 	backend.EXPECT().GetAccount(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ string, _ ctrl.GetAccountOptions) (*commonpb.Account, error) {
+		func(_ context.Context, _ string, _ string, _ ctrl.GetAccountOptions) (*ledgerpb.Account, error) {
 			return nil, errors.New("storage error")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -577,7 +577,7 @@ func TestHandleGetTransaction_LedgerLookupError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
+		func(_ context.Context, _ string) (*ledgerpb.LedgerInfo, error) {
 			return nil, &domain.ErrLedgerNotFound{Name: "missing"}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -696,7 +696,7 @@ func TestHandleSetMetadataType_BackendApplyError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, errors.New("apply failed")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -740,7 +740,7 @@ func TestHandleRemoveMetadataType_BackendApplyError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, errors.New("apply failed")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -766,7 +766,7 @@ func TestHandleListAccounts_BackendError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListAccounts(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint32, _ string, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Account], error) {
+		func(_ context.Context, _ string, _ uint32, _ string, _ *ledgerpb.QueryFilter, _ bool) (cursor.Cursor[*ledgerpb.Account], error) {
 			return nil, protoerr.ErrNoLeader
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -786,8 +786,8 @@ func TestHandleListAccounts_CursorIterationError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListAccounts(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint32, _ string, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Account], error) {
-			return &errorCursor[*commonpb.Account]{err: errors.New("cursor iteration failed")}, nil
+		func(_ context.Context, _ string, _ uint32, _ string, _ *ledgerpb.QueryFilter, _ bool) (cursor.Cursor[*ledgerpb.Account], error) {
+			return &errorCursor[*ledgerpb.Account]{err: errors.New("cursor iteration failed")}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -815,8 +815,8 @@ func TestHandleListAllLedgers_CursorIterationError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListLedgers(gomock.Any()).DoAndReturn(
-		func(_ context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error) {
-			return &errorCursor[*commonpb.LedgerInfo]{err: errors.New("cursor error")}, nil
+		func(_ context.Context) (cursor.Cursor[*ledgerpb.LedgerInfo], error) {
+			return &errorCursor[*ledgerpb.LedgerInfo]{err: errors.New("cursor error")}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -837,9 +837,9 @@ func TestConvertBulkElementToRequest(t *testing.T) {
 
 	elem := &restbulk.BulkElement{
 		IdempotencyKey: "ik-123",
-		Action: &commonpb.LedgerAction{
-			Data: &commonpb.LedgerAction_CreateTransaction{
-				CreateTransaction: &commonpb.CreateTransactionPayload{},
+		Action: &ledgerpb.LedgerAction{
+			Data: &ledgerpb.LedgerAction_CreateTransaction{
+				CreateTransaction: &ledgerpb.CreateTransactionPayload{},
 			},
 		},
 	}
@@ -849,7 +849,7 @@ func TestConvertBulkElementToRequest(t *testing.T) {
 	req := convertBulkElementToRequest("ledger1", elem)
 
 	require.NotNil(t, req)
-	applyType, ok := req.GetType().(*commonpb.Request_Apply)
+	applyType, ok := req.GetType().(*ledgerpb.Request_Apply)
 	require.True(t, ok)
 	applyReq := applyType.Apply
 	require.Equal(t, "ledger1", applyReq.GetLedger())
@@ -869,15 +869,15 @@ func TestRunBulk_Atomic(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, req *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			reqs := req.GetUnsigned().GetRequests()
-			logs := make([]*commonpb.Log, len(reqs))
+			logs := make([]*ledgerpb.Log, len(reqs))
 			for i := range reqs {
-				logs[i] = &commonpb.Log{
-					Payload: &commonpb.LogPayload{
-						Type: &commonpb.LogPayload_Apply{
-							Apply: &commonpb.ApplyLedgerLog{
-								Log: &commonpb.LedgerLog{Id: uint64(i + 1)},
+				logs[i] = &ledgerpb.Log{
+					Payload: &ledgerpb.LogPayload{
+						Type: &ledgerpb.LogPayload_Apply{
+							Apply: &ledgerpb.ApplyLedgerLog{
+								Log: &ledgerpb.LedgerLog{Id: uint64(i + 1)},
 							},
 						},
 					},
@@ -889,8 +889,8 @@ func TestRunBulk_Atomic(t *testing.T) {
 	srv := newTestServer(t, backend)
 
 	elements := []*restbulk.BulkElement{
-		{Action: &commonpb.LedgerAction{}},
-		{Action: &commonpb.LedgerAction{}},
+		{Action: &ledgerpb.LedgerAction{}},
+		{Action: &ledgerpb.LedgerAction{}},
 	}
 
 	results := srv.runBulk(context.Background(), "ledger1", elements, bulkOptions{atomic: true})
@@ -907,13 +907,13 @@ func TestRunBulk_Sequential(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
-			return &domain.ApplyResult{Logs: []*commonpb.Log{
+		func(_ context.Context, _ *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{
 				{
-					Payload: &commonpb.LogPayload{
-						Type: &commonpb.LogPayload_Apply{
-							Apply: &commonpb.ApplyLedgerLog{
-								Log: &commonpb.LedgerLog{Id: 1},
+					Payload: &ledgerpb.LogPayload{
+						Type: &ledgerpb.LogPayload_Apply{
+							Apply: &ledgerpb.ApplyLedgerLog{
+								Log: &ledgerpb.LedgerLog{Id: 1},
 							},
 						},
 					},
@@ -923,7 +923,7 @@ func TestRunBulk_Sequential(t *testing.T) {
 	srv := newTestServer(t, backend)
 
 	elements := []*restbulk.BulkElement{
-		{Action: &commonpb.LedgerAction{}},
+		{Action: &ledgerpb.LedgerAction{}},
 	}
 
 	results := srv.runBulk(context.Background(), "ledger1", elements, bulkOptions{atomic: false})
@@ -943,14 +943,14 @@ func TestWriteBulkResponse_WithErrors(t *testing.T) {
 	t.Parallel()
 
 	elements := []*restbulk.BulkElement{
-		{Action: &commonpb.LedgerAction{
-			Data: &commonpb.LedgerAction_CreateTransaction{
-				CreateTransaction: &commonpb.CreateTransactionPayload{},
+		{Action: &ledgerpb.LedgerAction{
+			Data: &ledgerpb.LedgerAction_CreateTransaction{
+				CreateTransaction: &ledgerpb.CreateTransactionPayload{},
 			},
 		}},
-		{Action: &commonpb.LedgerAction{
-			Data: &commonpb.LedgerAction_CreateTransaction{
-				CreateTransaction: &commonpb.CreateTransactionPayload{},
+		{Action: &ledgerpb.LedgerAction{
+			Data: &ledgerpb.LedgerAction_CreateTransaction{
+				CreateTransaction: &ledgerpb.CreateTransactionPayload{},
 			},
 		}},
 	}
@@ -958,12 +958,12 @@ func TestWriteBulkResponse_WithErrors(t *testing.T) {
 	results := []bulkResult{
 		{err: domain.ErrEmptyTransaction},
 		{
-			log: &commonpb.LedgerLog{
+			log: &ledgerpb.LedgerLog{
 				Id: 2,
-				Data: &commonpb.LedgerLogPayload{
-					Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-						CreatedTransaction: &commonpb.CreatedTransaction{
-							Transaction: &commonpb.Transaction{Id: 2},
+				Data: &ledgerpb.LedgerLogPayload{
+					Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+						CreatedTransaction: &ledgerpb.CreatedTransaction{
+							Transaction: &ledgerpb.Transaction{Id: 2},
 						},
 					},
 				},
@@ -1005,9 +1005,9 @@ func TestWriteBulkResponse_KindDispatch(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			elements := []*restbulk.BulkElement{{Action: &commonpb.LedgerAction{
-				Data: &commonpb.LedgerAction_CreateTransaction{
-					CreateTransaction: &commonpb.CreateTransactionPayload{},
+			elements := []*restbulk.BulkElement{{Action: &ledgerpb.LedgerAction{
+				Data: &ledgerpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &ledgerpb.CreateTransactionPayload{},
 				},
 			}}}
 
@@ -1030,14 +1030,14 @@ func TestWriteBulkResponse_ContinueOnFailure(t *testing.T) {
 	t.Parallel()
 
 	elements := []*restbulk.BulkElement{
-		{Action: &commonpb.LedgerAction{
-			Data: &commonpb.LedgerAction_CreateTransaction{
-				CreateTransaction: &commonpb.CreateTransactionPayload{},
+		{Action: &ledgerpb.LedgerAction{
+			Data: &ledgerpb.LedgerAction_CreateTransaction{
+				CreateTransaction: &ledgerpb.CreateTransactionPayload{},
 			},
 		}},
-		{Action: &commonpb.LedgerAction{
-			Data: &commonpb.LedgerAction_CreateTransaction{
-				CreateTransaction: &commonpb.CreateTransactionPayload{},
+		{Action: &ledgerpb.LedgerAction{
+			Data: &ledgerpb.LedgerAction_CreateTransaction{
+				CreateTransaction: &ledgerpb.CreateTransactionPayload{},
 			},
 		}},
 	}
@@ -1045,12 +1045,12 @@ func TestWriteBulkResponse_ContinueOnFailure(t *testing.T) {
 	results := []bulkResult{
 		{err: domain.ErrEmptyTransaction},
 		{
-			log: &commonpb.LedgerLog{
+			log: &ledgerpb.LedgerLog{
 				Id: 2,
-				Data: &commonpb.LedgerLogPayload{
-					Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-						CreatedTransaction: &commonpb.CreatedTransaction{
-							Transaction: &commonpb.Transaction{Id: 2},
+				Data: &ledgerpb.LedgerLogPayload{
+					Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+						CreatedTransaction: &ledgerpb.CreatedTransaction{
+							Transaction: &ledgerpb.Transaction{Id: 2},
 						},
 					},
 				},
@@ -1068,21 +1068,21 @@ func TestWriteBulkResponse_AllSuccess(t *testing.T) {
 	t.Parallel()
 
 	elements := []*restbulk.BulkElement{
-		{Action: &commonpb.LedgerAction{
-			Data: &commonpb.LedgerAction_CreateTransaction{
-				CreateTransaction: &commonpb.CreateTransactionPayload{},
+		{Action: &ledgerpb.LedgerAction{
+			Data: &ledgerpb.LedgerAction_CreateTransaction{
+				CreateTransaction: &ledgerpb.CreateTransactionPayload{},
 			},
 		}},
 	}
 
 	results := []bulkResult{
 		{
-			log: &commonpb.LedgerLog{
+			log: &ledgerpb.LedgerLog{
 				Id: 1,
-				Data: &commonpb.LedgerLogPayload{
-					Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-						CreatedTransaction: &commonpb.CreatedTransaction{
-							Transaction: &commonpb.Transaction{Id: 1},
+				Data: &ledgerpb.LedgerLogPayload{
+					Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+						CreatedTransaction: &ledgerpb.CreatedTransaction{
+							Transaction: &ledgerpb.Transaction{Id: 1},
 						},
 					},
 				},
@@ -1100,8 +1100,8 @@ func TestWriteBulkResponse_NilLog(t *testing.T) {
 	t.Parallel()
 
 	elements := []*restbulk.BulkElement{
-		{Action: &commonpb.LedgerAction{
-			Data: &commonpb.LedgerAction_AddMetadata{},
+		{Action: &ledgerpb.LedgerAction{
+			Data: &ledgerpb.LedgerAction_AddMetadata{},
 		}},
 	}
 
@@ -1129,20 +1129,20 @@ func TestHandleBulk_WithAtomicFlag(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, req *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			reqs := req.GetUnsigned().GetRequests()
-			logs := make([]*commonpb.Log, len(reqs))
+			logs := make([]*ledgerpb.Log, len(reqs))
 			for i := range reqs {
-				logs[i] = &commonpb.Log{
-					Payload: &commonpb.LogPayload{
-						Type: &commonpb.LogPayload_Apply{
-							Apply: &commonpb.ApplyLedgerLog{
-								Log: &commonpb.LedgerLog{
+				logs[i] = &ledgerpb.Log{
+					Payload: &ledgerpb.LogPayload{
+						Type: &ledgerpb.LogPayload_Apply{
+							Apply: &ledgerpb.ApplyLedgerLog{
+								Log: &ledgerpb.LedgerLog{
 									Id: uint64(i + 1),
-									Data: &commonpb.LedgerLogPayload{
-										Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-											CreatedTransaction: &commonpb.CreatedTransaction{
-												Transaction: &commonpb.Transaction{Id: uint64(i + 1)},
+									Data: &ledgerpb.LedgerLogPayload{
+										Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+											CreatedTransaction: &ledgerpb.CreatedTransaction{
+												Transaction: &ledgerpb.Transaction{Id: uint64(i + 1)},
 											},
 										},
 									},
@@ -1174,7 +1174,7 @@ func TestHandleBulk_WithContinueOnFailure(t *testing.T) {
 	callCount := 0
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			callCount++
 			if callCount == 1 {
 				// Domain-level (Describable) business error — the caller
@@ -1184,17 +1184,17 @@ func TestHandleBulk_WithContinueOnFailure(t *testing.T) {
 				return nil, domain.ErrEmptyTransaction
 			}
 
-			return &domain.ApplyResult{Logs: []*commonpb.Log{
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{
 				{
-					Payload: &commonpb.LogPayload{
-						Type: &commonpb.LogPayload_Apply{
-							Apply: &commonpb.ApplyLedgerLog{
-								Log: &commonpb.LedgerLog{
+					Payload: &ledgerpb.LogPayload{
+						Type: &ledgerpb.LogPayload_Apply{
+							Apply: &ledgerpb.ApplyLedgerLog{
+								Log: &ledgerpb.LedgerLog{
 									Id: 2,
-									Data: &commonpb.LedgerLogPayload{
-										Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-											CreatedTransaction: &commonpb.CreatedTransaction{
-												Transaction: &commonpb.Transaction{Id: 2},
+									Data: &ledgerpb.LedgerLogPayload{
+										Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+											CreatedTransaction: &ledgerpb.CreatedTransaction{
+												Transaction: &ledgerpb.Transaction{Id: 2},
 											},
 										},
 									},
@@ -1230,14 +1230,14 @@ func TestWriteBulkResponse_AbortedElementsDontEscalate(t *testing.T) {
 	t.Parallel()
 
 	elements := []*restbulk.BulkElement{
-		{Action: &commonpb.LedgerAction{
-			Data: &commonpb.LedgerAction_CreateTransaction{
-				CreateTransaction: &commonpb.CreateTransactionPayload{},
+		{Action: &ledgerpb.LedgerAction{
+			Data: &ledgerpb.LedgerAction_CreateTransaction{
+				CreateTransaction: &ledgerpb.CreateTransactionPayload{},
 			},
 		}},
-		{Action: &commonpb.LedgerAction{
-			Data: &commonpb.LedgerAction_CreateTransaction{
-				CreateTransaction: &commonpb.CreateTransactionPayload{},
+		{Action: &ledgerpb.LedgerAction{
+			Data: &ledgerpb.LedgerAction_CreateTransaction{
+				CreateTransaction: &ledgerpb.CreateTransactionPayload{},
 			},
 		}},
 	}
@@ -1263,7 +1263,7 @@ func TestHandleBulk_InfraErrorNotSwallowed(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, errors.New("boom: pebble store unavailable")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -1289,7 +1289,7 @@ func TestHandleBulk_LeaderLossReturns503WithRetryAfter(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, protoerr.ErrNoLeader
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -1313,12 +1313,12 @@ func TestHandleBulk_LeaderLossReturns503WithRetryAfter(t *testing.T) {
 func TestToSchemaStatusJSON_WithTransactionFields(t *testing.T) {
 	t.Parallel()
 
-	resp := &commonpb.GetMetadataSchemaStatusResponse{
-		AccountFields: map[string]*commonpb.MetadataFieldStatus{
-			"role": {DeclaredType: commonpb.MetadataType_METADATA_TYPE_STRING},
+	resp := &ledgerpb.GetMetadataSchemaStatusResponse{
+		AccountFields: map[string]*ledgerpb.MetadataFieldStatus{
+			"role": {DeclaredType: ledgerpb.MetadataType_METADATA_TYPE_STRING},
 		},
-		TransactionFields: map[string]*commonpb.MetadataFieldStatus{
-			"category": {DeclaredType: commonpb.MetadataType_METADATA_TYPE_STRING},
+		TransactionFields: map[string]*ledgerpb.MetadataFieldStatus{
+			"category": {DeclaredType: ledgerpb.MetadataType_METADATA_TYPE_STRING},
 		},
 	}
 
@@ -1353,12 +1353,12 @@ func TestNewHandler_CreateLedgerRoute(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
-			return &domain.ApplyResult{Logs: []*commonpb.Log{
+		func(_ context.Context, _ *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{
 				{
-					Payload: &commonpb.LogPayload{
-						Type: &commonpb.LogPayload_CreateLedger{
-							CreateLedger: &commonpb.CreatedLedgerLog{
+					Payload: &ledgerpb.LogPayload{
+						Type: &ledgerpb.LogPayload_CreateLedger{
+							CreateLedger: &ledgerpb.CreatedLedgerLog{
 								Name: "test",
 							},
 						},
@@ -1382,8 +1382,8 @@ func TestNewHandler_GetLedgerRoute(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, name string) (*commonpb.LedgerInfo, error) {
-			return &commonpb.LedgerInfo{Name: name}, nil
+		func(_ context.Context, name string) (*ledgerpb.LedgerInfo, error) {
+			return &ledgerpb.LedgerInfo{Name: name}, nil
 		}).AnyTimes()
 
 	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
@@ -1401,8 +1401,8 @@ func TestNewHandler_ListAllLedgersRoute(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListLedgers(gomock.Any()).DoAndReturn(
-		func(_ context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error) {
-			return cursor.NewSliceCursor[*commonpb.LedgerInfo](nil), nil
+		func(_ context.Context) (cursor.Cursor[*ledgerpb.LedgerInfo], error) {
+			return cursor.NewSliceCursor[*ledgerpb.LedgerInfo](nil), nil
 		}).AnyTimes()
 
 	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
@@ -1444,21 +1444,21 @@ func TestWriteBulkResponse_LogWithCreatedTransaction(t *testing.T) {
 	t.Parallel()
 
 	elements := []*restbulk.BulkElement{
-		{Action: &commonpb.LedgerAction{
-			Data: &commonpb.LedgerAction_CreateTransaction{
-				CreateTransaction: &commonpb.CreateTransactionPayload{},
+		{Action: &ledgerpb.LedgerAction{
+			Data: &ledgerpb.LedgerAction_CreateTransaction{
+				CreateTransaction: &ledgerpb.CreateTransactionPayload{},
 			},
 		}},
 	}
 
 	results := []bulkResult{
 		{
-			log: &commonpb.LedgerLog{
+			log: &ledgerpb.LedgerLog{
 				Id: 1,
-				Data: &commonpb.LedgerLogPayload{
-					Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-						CreatedTransaction: &commonpb.CreatedTransaction{
-							Transaction: &commonpb.Transaction{Id: 42},
+				Data: &ledgerpb.LedgerLogPayload{
+					Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+						CreatedTransaction: &ledgerpb.CreatedTransaction{
+							Transaction: &ledgerpb.Transaction{Id: 42},
 						},
 					},
 				},
@@ -1477,14 +1477,14 @@ func TestWriteBulkResponse_LogWithoutData(t *testing.T) {
 	t.Parallel()
 
 	elements := []*restbulk.BulkElement{
-		{Action: &commonpb.LedgerAction{
-			Data: &commonpb.LedgerAction_AddMetadata{},
+		{Action: &ledgerpb.LedgerAction{
+			Data: &ledgerpb.LedgerAction_AddMetadata{},
 		}},
 	}
 
 	results := []bulkResult{
 		{
-			log: &commonpb.LedgerLog{
+			log: &ledgerpb.LedgerLog{
 				Id:   1,
 				Data: nil,
 			},
@@ -1621,18 +1621,18 @@ func TestChiLogEntry_Panic_WithSpan(t *testing.T) {
 func TestHandleCreateLedger_IdempotencyKeyPropagated(t *testing.T) {
 	t.Parallel()
 
-	var capturedBatch *commonpb.ApplyBatch
+	var capturedBatch *ledgerpb.ApplyBatch
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, req *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedBatch = req.GetUnsigned()
 
-			return &domain.ApplyResult{Logs: []*commonpb.Log{
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{
 				{
-					Payload: &commonpb.LogPayload{
-						Type: &commonpb.LogPayload_CreateLedger{
-							CreateLedger: &commonpb.CreatedLedgerLog{
+					Payload: &ledgerpb.LogPayload{
+						Type: &ledgerpb.LogPayload_CreateLedger{
+							CreateLedger: &ledgerpb.CreatedLedgerLog{
 								Name: "test",
 							},
 						},
@@ -1662,17 +1662,17 @@ func TestHandleCreateLedger_IdempotencyKeyPropagated(t *testing.T) {
 func TestHandleDeleteLedger_IdempotencyKeyPropagated(t *testing.T) {
 	t.Parallel()
 
-	var capturedBatch *commonpb.ApplyBatch
+	var capturedBatch *ledgerpb.ApplyBatch
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, req *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedBatch = req.GetUnsigned()
 
-			return &domain.ApplyResult{Logs: []*commonpb.Log{
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{
 				{
-					Payload: &commonpb.LogPayload{
-						Type: &commonpb.LogPayload_DeleteLedger{},
+					Payload: &ledgerpb.LogPayload{
+						Type: &ledgerpb.LogPayload_DeleteLedger{},
 					},
 				},
 			}}, nil

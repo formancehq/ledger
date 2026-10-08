@@ -13,7 +13,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestBusinessError(t *testing.T) {
@@ -492,7 +492,7 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 
 		d := inst.(Describable)
 
-		require.NotEqualf(t, commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED, ReasonCode(d.Reason()),
+		require.NotEqualf(t, ledgerpb.ErrorReason_ERROR_REASON_UNSPECIFIED, ReasonCode(d.Reason()),
 			"reason %q of %s has no ErrorReason enum value — add ERROR_REASON_%s to common.proto", d.Reason(), name, d.Reason())
 
 		require.Equalf(t, KindForReason(ReasonCode(d.Reason())), d.Kind(),

@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/formancehq/invariants"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/proto/publicpolicy"
 )
@@ -208,11 +208,11 @@ func ValidatePreparedQueryName(name string) SerializableError {
 // target JSON mapping — so a prepared query stored on AUDIT would fail later at
 // execute/marshal time. Enforced at write time (admission + FSM) across gRPC and
 // HTTP so a persisted prepared query is always executable.
-func IsPreparedQueryExecutableTarget(target commonpb.QueryTarget) bool {
+func IsPreparedQueryExecutableTarget(target ledgerpb.QueryTarget) bool {
 	switch target {
-	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-		commonpb.QueryTarget_QUERY_TARGET_LOGS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		ledgerpb.QueryTarget_QUERY_TARGET_LOGS:
 		return true
 	default:
 		return false
@@ -234,7 +234,7 @@ func IsPreparedQueryExecutableTarget(target commonpb.QueryTarget) bool {
 // enforces at execute time — so a maliciously (or accidentally) deep tree is
 // rejected at write time with ErrFilterTooDeep instead of being persisted (only
 // to fail every execution) or overflowing the Go stack on the write path (#341).
-func ValidateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarget) SerializableError {
+func ValidateFilterForTarget(f *ledgerpb.QueryFilter, target ledgerpb.QueryTarget) SerializableError {
 	return validateFilterForTarget(f, target, 0)
 }
 
@@ -248,7 +248,7 @@ func ValidateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarge
 // unexecutable prepared query be persisted; a deeper one would overflow the
 // stack here before Compile's guard is ever reached — the exact fatal DoS,
 // invariant #7).
-func validateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarget, depth int) SerializableError {
+func validateFilterForTarget(f *ledgerpb.QueryFilter, target ledgerpb.QueryTarget, depth int) SerializableError {
 	if f == nil {
 		return nil
 	}
@@ -258,7 +258,7 @@ func validateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarge
 	}
 
 	switch v := f.GetFilter().(type) {
-	case *commonpb.QueryFilter_And:
+	case *ledgerpb.QueryFilter_And:
 		for _, sub := range v.And.GetFilters() {
 			if err := validateFilterForTarget(sub, target, depth+1); err != nil {
 				return err
@@ -266,7 +266,7 @@ func validateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarge
 		}
 
 		return nil
-	case *commonpb.QueryFilter_Or:
+	case *ledgerpb.QueryFilter_Or:
 		for _, sub := range v.Or.GetFilters() {
 			if err := validateFilterForTarget(sub, target, depth+1); err != nil {
 				return err
@@ -274,7 +274,7 @@ func validateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarge
 		}
 
 		return nil
-	case *commonpb.QueryFilter_Not:
+	case *ledgerpb.QueryFilter_Not:
 		return validateFilterForTarget(v.Not.GetFilter(), target, depth+1)
 	}
 
@@ -349,11 +349,11 @@ func ValidateMetadataString(value string) SerializableError {
 // ValidateMetadataValue inspects the proto MetadataValue and validates the
 // string-bearing variants against the same null-byte rule as keys. Non-string
 // variants are accepted unchanged.
-func ValidateMetadataValue(value *commonpb.MetadataValue) SerializableError {
+func ValidateMetadataValue(value *ledgerpb.MetadataValue) SerializableError {
 	switch v := value.GetType().(type) {
-	case *commonpb.MetadataValue_StringValue:
+	case *ledgerpb.MetadataValue_StringValue:
 		return wrapValidationErr(invariants.ValidateMetadataString(v.StringValue))
-	case *commonpb.MetadataValue_NullValue:
+	case *ledgerpb.MetadataValue_NullValue:
 		if v.NullValue == nil {
 			return nil
 		}

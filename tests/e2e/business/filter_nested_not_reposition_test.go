@@ -7,7 +7,7 @@ import (
 	"math/big"
 	"time"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -24,7 +24,7 @@ import (
 var _ = Describe("Nested-NOT filter reposition", Ordered, func() {
 	const ledgerName = "nested-not-reposition-ledger"
 
-	tripleNot := func(f *commonpb.QueryFilter) *commonpb.QueryFilter {
+	tripleNot := func(f *ledgerpb.QueryFilter) *ledgerpb.QueryFilter {
 		return actions.NotFilter(actions.NotFilter(actions.NotFilter(f)))
 	}
 
@@ -37,20 +37,20 @@ var _ = Describe("Nested-NOT filter reposition", Ordered, func() {
 	// once the tx-address index is READY on this replica, which the explicit
 	// wait guarantees.
 	BeforeAll(func() {
-		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+		_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())
 
-		_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateAddressIndexAction(ledgerName, commonpb.AddressRole_ADDRESS_ROLE_ANY)))
+		_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateAddressIndexAction(ledgerName, ledgerpb.AddressRole_ADDRESS_ROLE_ANY)))
 		Expect(err).To(Succeed())
 
 		for i := 0; i < 8; i++ {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", fmt.Sprintf("acc:%d", i), big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 		}
 
-		Expect(actions.WaitForAddressIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.AddressRole_ADDRESS_ROLE_ANY)).To(Succeed())
+		Expect(actions.WaitForAddressIndexReady(sharedCtx, sharedClient, ledgerName, ledgerpb.AddressRole_ADDRESS_ROLE_ANY)).To(Succeed())
 
 		Eventually(func(g Gomega) {
 			txs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, actions.TxIDRangeFilter(3, 5))

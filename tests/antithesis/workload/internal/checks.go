@@ -5,7 +5,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // CheckVolume verifies that balance == input - output.
@@ -21,7 +21,7 @@ func CheckVolume(input, output, balance *big.Int, details Details) {
 
 // CheckAccountVolumes verifies volume consistency for every (asset, color)
 // bucket on an account.
-func CheckAccountVolumes(volumes []*commonpb.AccountVolume, details Details) {
+func CheckAccountVolumes(volumes []*ledgerpb.AccountVolume, details Details) {
 	for _, entry := range volumes {
 		vol := entry.GetVolumes()
 		input, _ := new(big.Int).SetString(vol.GetInput(), 10)
@@ -45,7 +45,7 @@ func CheckAccountVolumes(volumes []*commonpb.AccountVolume, details Details) {
 
 // CheckPostCommitVolumes verifies volume consistency for post-commit volumes from a transaction response.
 // Each (asset, color) bucket is verified independently.
-func CheckPostCommitVolumes(pcv *commonpb.PostCommitVolumes, details Details) {
+func CheckPostCommitVolumes(pcv *ledgerpb.PostCommitVolumes, details Details) {
 	if pcv == nil {
 		return
 	}

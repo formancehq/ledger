@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"math/big"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -27,9 +27,9 @@ func phantomPeer() (raftAddr, serviceAddr string) {
 }
 
 // waitForLearner polls the cluster state on the leader until the given node appears as a learner.
-func waitForLearner(clusterClient clusterpb.ClusterServiceClient, leaderID uint64, learnerNodeID uint32) {
+func waitForLearner(clusterClient ledgerpb.ClusterServiceClient, leaderID uint64, learnerNodeID uint32) {
 	Eventually(func(g Gomega) {
-		state, err := clusterClient.GetClusterState(context.Background(), &clusterpb.GetClusterStateRequest{
+		state, err := clusterClient.GetClusterState(context.Background(), &ledgerpb.GetClusterStateRequest{
 			NodeId: uint32(leaderID),
 		})
 		g.Expect(err).To(Succeed())
@@ -60,7 +60,7 @@ var _ = Describe("Learner node", func() {
 
 			raftAddr, serviceAddr := phantomPeer()
 
-			_, err := servers[*leaderID-1].ClusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
+			_, err := servers[*leaderID-1].ClusterClient.AddLearner(ctx, &ledgerpb.AddLearnerRequest{
 				NodeId:         4,
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
@@ -76,7 +76,7 @@ var _ = Describe("Learner node", func() {
 
 		It("should show the learner in cluster status", func() {
 			lid := *leaderID
-			state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
+			state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{
 				NodeId: uint32(lid),
 			})
 			Expect(err).To(Succeed())
@@ -93,7 +93,7 @@ var _ = Describe("Learner node", func() {
 
 		It("should have 4 nodes total (3 voters + 1 learner)", func() {
 			lid := *leaderID
-			state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
+			state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{
 				NodeId: uint32(lid),
 			})
 			Expect(err).To(Succeed())
@@ -116,7 +116,7 @@ var _ = Describe("Learner node", func() {
 
 		It("should reject leadership transfer to the learner", func() {
 			lid := *leaderID
-			_, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
+			_, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, &ledgerpb.TransferLeadershipRequest{
 				Transferee: 4,
 			})
 			Expect(err).To(HaveOccurred())
@@ -126,11 +126,11 @@ var _ = Describe("Learner node", func() {
 			lid := *leaderID
 			ledgerName := "learner-test-ledger"
 
-			_, err := servers[lid-1].Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := servers[lid-1].Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			for i := range 5 {
-				_, err := servers[lid-1].Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*clusterpb.Posting{
+				_, err := servers[lid-1].Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", fmt.Sprintf("user-%d", i), big.NewInt(100), "USD"),
 				}, nil, nil)))
 				Expect(err).To(Succeed())
@@ -150,7 +150,7 @@ var _ = Describe("Learner node", func() {
 			followerID := ((lid + 1) % countInstances) + 1
 
 			Eventually(func() error {
-				_, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
+				_, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, &ledgerpb.TransferLeadershipRequest{
 					Transferee: uint32(followerID),
 				})
 				return err
@@ -172,7 +172,7 @@ var _ = Describe("Learner node", func() {
 
 			raftAddr, serviceAddr := phantomPeer()
 
-			_, err := servers[*leaderID-1].ClusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
+			_, err := servers[*leaderID-1].ClusterClient.AddLearner(ctx, &ledgerpb.AddLearnerRequest{
 				NodeId:         4,
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
@@ -188,13 +188,13 @@ var _ = Describe("Learner node", func() {
 
 		It("should promote the learner to voter", func() {
 			lid := *leaderID
-			_, err := servers[lid-1].ClusterClient.PromoteLearner(ctx, &clusterpb.PromoteLearnerRequest{
+			_, err := servers[lid-1].ClusterClient.PromoteLearner(ctx, &ledgerpb.PromoteLearnerRequest{
 				NodeId: 4,
 			})
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+				state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 				g.Expect(err).To(Succeed())
 				for _, n := range state.Nodes {
 					if n.Id == 4 {
@@ -208,7 +208,7 @@ var _ = Describe("Learner node", func() {
 
 		It("should have 4 voters after promotion", func() {
 			lid := *leaderID
-			state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+			state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 			Expect(err).To(Succeed())
 
 			voterCount := 0
@@ -225,7 +225,7 @@ var _ = Describe("Learner node", func() {
 
 			raftAddr, serviceAddr := phantomPeer()
 
-			_, err := servers[lid-1].ClusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
+			_, err := servers[lid-1].ClusterClient.AddLearner(ctx, &ledgerpb.AddLearnerRequest{
 				NodeId:         5,
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
@@ -234,13 +234,13 @@ var _ = Describe("Learner node", func() {
 			waitForLearner(servers[lid-1].ClusterClient, lid, 5)
 
 			followerID := ((lid + 1) % countInstances) + 1
-			_, err = servers[followerID-1].ClusterClient.PromoteLearner(ctx, &clusterpb.PromoteLearnerRequest{
+			_, err = servers[followerID-1].ClusterClient.PromoteLearner(ctx, &ledgerpb.PromoteLearnerRequest{
 				NodeId: 5,
 			})
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+				state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 				g.Expect(err).To(Succeed())
 				for _, n := range state.Nodes {
 					if n.Id == 5 {
@@ -268,7 +268,7 @@ var _ = Describe("Learner node", func() {
 		})
 
 		It("should have all nodes as voters after auto-promotion", func() {
-			state, err := servers[0].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+			state, err := servers[0].ClusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 			Expect(err).To(Succeed())
 
 			Expect(state.Nodes).To(HaveLen(countInstances))
@@ -279,11 +279,11 @@ var _ = Describe("Learner node", func() {
 
 		It("should accept transactions through all nodes after auto-promotion", func() {
 			ledgerName := "auto-promote-test"
-			_, err := servers[0].Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := servers[0].Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			for i := range countInstances {
-				_, err := servers[i].Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*clusterpb.Posting{
+				_, err := servers[i].Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", fmt.Sprintf("user-%d", i), big.NewInt(100), "USD"),
 				}, nil, nil)))
 				Expect(err).To(Succeed(), "Failed to create transaction through node %d", i+1)
@@ -310,7 +310,7 @@ var _ = Describe("Learner node", func() {
 			lid := *leaderID
 			raftAddr, serviceAddr := phantomPeer()
 
-			_, err := servers[lid-1].ClusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
+			_, err := servers[lid-1].ClusterClient.AddLearner(ctx, &ledgerpb.AddLearnerRequest{
 				NodeId:         4,
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
@@ -319,7 +319,7 @@ var _ = Describe("Learner node", func() {
 
 			waitForLearner(servers[lid-1].ClusterClient, lid, 4)
 
-			_, err = servers[lid-1].ClusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
+			_, err = servers[lid-1].ClusterClient.AddLearner(ctx, &ledgerpb.AddLearnerRequest{
 				NodeId:         4,
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
@@ -333,7 +333,7 @@ var _ = Describe("Learner node", func() {
 
 			raftAddr, serviceAddr := phantomPeer()
 
-			_, err := servers[followerID-1].ClusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
+			_, err := servers[followerID-1].ClusterClient.AddLearner(ctx, &ledgerpb.AddLearnerRequest{
 				NodeId:         5,
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,

@@ -11,7 +11,7 @@ import (
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/application/check"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
@@ -46,10 +46,10 @@ func restoreAuditKeyCheckpoint(t *testing.T, storage Storage, manifest *Manifest
 
 func auditKeyCheckerClean(t *testing.T, store *dal.Store) {
 	t.Helper()
-	var findings []*commonpb.CheckStoreError
+	var findings []*ledgerpb.CheckStoreError
 	checker := check.NewChecker(store, attributes.New(), nil, testLogger())
-	require.NoError(t, checker.Check(context.Background(), func(event *commonpb.CheckStoreEvent) {
-		if e, ok := event.GetType().(*commonpb.CheckStoreEvent_Error); ok {
+	require.NoError(t, checker.Check(context.Background(), func(event *ledgerpb.CheckStoreEvent) {
+		if e, ok := event.GetType().(*ledgerpb.CheckStoreEvent_Error); ok {
 			findings = append(findings, e.Error)
 		}
 	}))
@@ -71,7 +71,7 @@ func recoveredAuditKeyMachine(t *testing.T, store *dal.Store) *state.Machine {
 	return m
 }
 
-func lastAuditForKeyTest(t *testing.T, store *dal.Store) *commonpb.AuditEntry {
+func lastAuditForKeyTest(t *testing.T, store *dal.Store) *ledgerpb.AuditEntry {
 	t.Helper()
 	handle, err := store.NewDirectReadHandle()
 	require.NoError(t, err)

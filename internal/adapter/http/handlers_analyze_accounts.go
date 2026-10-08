@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // analyzeAccountsResponseJSON is the camelCase JSON DTO for AnalyzeAccountsResponse.
@@ -46,7 +46,7 @@ func nonNilStrings(s []string) []string {
 	return s
 }
 
-func toAnalyzeAccountsJSON(resp *servicepb.AnalyzeAccountsResponse) *analyzeAccountsResponseJSON {
+func toAnalyzeAccountsJSON(resp *ledgerpb.AnalyzeAccountsResponse) *analyzeAccountsResponseJSON {
 	result := &analyzeAccountsResponseJSON{
 		TotalAccounts: resp.GetTotalAccounts(),
 	}
@@ -59,7 +59,7 @@ func toAnalyzeAccountsJSON(resp *servicepb.AnalyzeAccountsResponse) *analyzeAcco
 	return result
 }
 
-func toAccountPatternJSON(p *servicepb.AccountPattern) *accountPatternJSON {
+func toAccountPatternJSON(p *ledgerpb.AccountPattern) *accountPatternJSON {
 	result := &accountPatternJSON{
 		Pattern:      p.GetPattern(),
 		AccountCount: p.GetAccountCount(),
@@ -75,9 +75,9 @@ func toAccountPatternJSON(p *servicepb.AccountPattern) *accountPatternJSON {
 	return result
 }
 
-func toPatternSegmentJSON(s *servicepb.PatternSegment) *patternSegmentJSON {
+func toPatternSegmentJSON(s *ledgerpb.PatternSegment) *patternSegmentJSON {
 	segType := "fixed"
-	if s.GetType() == servicepb.PatternSegmentType_PATTERN_SEGMENT_TYPE_VARIABLE {
+	if s.GetType() == ledgerpb.PatternSegmentType_PATTERN_SEGMENT_TYPE_VARIABLE {
 		segType = "variable"
 	}
 

@@ -3,13 +3,13 @@ package processing
 import (
 	"errors"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func processAddLedgerMetadata(ledger string, order *raftcmdpb.SaveLedgerMetadataOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func processAddLedgerMetadata(ledger string, order *raftcmdpb.SaveLedgerMetadataOrder, ctx *Context) (*ledgerpb.LogPayload, domain.SerializableError) {
 	s := ctx.Scope
 	if ledger == "" {
 		return nil, domain.ErrLedgerNameRequired
@@ -41,9 +41,9 @@ func processAddLedgerMetadata(ledger string, order *raftcmdpb.SaveLedgerMetadata
 		s.LedgerMetadata().Put(metaKey, value)
 	}
 
-	return &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_SavedLedgerMetadata{
-			SavedLedgerMetadata: &commonpb.SavedLedgerMetadataLog{
+	return &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_SavedLedgerMetadata{
+			SavedLedgerMetadata: &ledgerpb.SavedLedgerMetadataLog{
 				Ledger:   ledger,
 				Metadata: order.GetMetadata(),
 			},
@@ -51,7 +51,7 @@ func processAddLedgerMetadata(ledger string, order *raftcmdpb.SaveLedgerMetadata
 	}, nil
 }
 
-func processDeleteLedgerMetadata(ledger string, order *raftcmdpb.DeleteLedgerMetadataOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func processDeleteLedgerMetadata(ledger string, order *raftcmdpb.DeleteLedgerMetadataOrder, ctx *Context) (*ledgerpb.LogPayload, domain.SerializableError) {
 	s := ctx.Scope
 	if ledger == "" {
 		return nil, domain.ErrLedgerNameRequired
@@ -94,9 +94,9 @@ func processDeleteLedgerMetadata(ledger string, order *raftcmdpb.DeleteLedgerMet
 		return nil, domain.StoreFailure("deleting ledger metadata", err)
 	}
 
-	return &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_DeletedLedgerMetadata{
-			DeletedLedgerMetadata: &commonpb.DeletedLedgerMetadataLog{
+	return &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_DeletedLedgerMetadata{
+			DeletedLedgerMetadata: &ledgerpb.DeletedLedgerMetadataLog{
 				Ledger: ledger,
 				Key:    order.GetKey(),
 			},

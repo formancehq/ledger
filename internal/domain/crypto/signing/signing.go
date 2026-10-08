@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 var (
@@ -20,13 +20,13 @@ var (
 // payload — it never re-serializes the batch, so cross-language clients are safe
 // regardless of their protobuf implementation's quirks. Signing the batch (not
 // each request) authenticates its composition and ordering.
-func Sign(batch *servicepb.ApplyBatch, keyID string, privateKey ed25519.PrivateKey) (*servicepb.SignedApplyBatch, error) {
+func Sign(batch *ledgerpb.ApplyBatch, keyID string, privateKey ed25519.PrivateKey) (*ledgerpb.SignedApplyBatch, error) {
 	payload, err := batch.MarshalVT()
 	if err != nil {
 		return nil, fmt.Errorf("marshaling batch for signing: %w", err)
 	}
 
-	return &servicepb.SignedApplyBatch{
+	return &ledgerpb.SignedApplyBatch{
 		KeyId:     keyID,
 		Signature: ed25519.Sign(privateKey, payload),
 		Payload:   payload,
@@ -35,7 +35,7 @@ func Sign(batch *servicepb.ApplyBatch, keyID string, privateKey ed25519.PrivateK
 
 // Verify checks the Ed25519 signature on a SignedApplyBatch envelope.
 // It verifies the exact bytes provided by the client; no re-serialization.
-func Verify(sr *servicepb.SignedApplyBatch, publicKey ed25519.PublicKey) error {
+func Verify(sr *ledgerpb.SignedApplyBatch, publicKey ed25519.PublicKey) error {
 	if sr == nil {
 		return ErrMissingSignature
 	}
@@ -57,7 +57,7 @@ func Verify(sr *servicepb.SignedApplyBatch, publicKey ed25519.PublicKey) error {
 
 // ExtractBatch deserializes the envelope payload into a trusted ApplyBatch.
 // Callers must call Verify first; ExtractBatch does not check the signature.
-func ExtractBatch(sr *servicepb.SignedApplyBatch) (*servicepb.ApplyBatch, error) {
+func ExtractBatch(sr *ledgerpb.SignedApplyBatch) (*ledgerpb.ApplyBatch, error) {
 	if sr == nil {
 		return nil, ErrMissingSignature
 	}
@@ -66,7 +66,7 @@ func ExtractBatch(sr *servicepb.SignedApplyBatch) (*servicepb.ApplyBatch, error)
 		return nil, fmt.Errorf("%w: empty payload", ErrInvalidSignature)
 	}
 
-	batch := &servicepb.ApplyBatch{}
+	batch := &ledgerpb.ApplyBatch{}
 
 	if err := batch.UnmarshalVT(sr.GetPayload()); err != nil {
 		return nil, fmt.Errorf("unmarshaling payload: %w", err)

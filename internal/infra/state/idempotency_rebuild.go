@@ -1,7 +1,7 @@
 package state
 
 import (
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
@@ -21,9 +21,9 @@ import (
 // Shared by the integrity checker (which compares it against the stored
 // projection) and the backup restore path (which persists it via
 // SaveIdempotencyKey), so the two never diverge.
-func IdempotencyValueFromAudit(entry *auditpb.AuditEntry, items []*auditpb.AuditItem) (*internalstatepb.IdempotencyKeyValue, bool) {
+func IdempotencyValueFromAudit(entry *ledgerpb.AuditEntry, items []*ledgerpb.AuditItem) (*internalstatepb.IdempotencyKeyValue, bool) {
 	switch out := entry.GetOutcome().(type) {
-	case *auditpb.AuditEntry_Failure:
+	case *ledgerpb.AuditEntry_Failure:
 		reason := out.Failure.GetReason()
 
 		// A conflict (reused key + different body) freezes nothing: the FSM's gate
@@ -33,7 +33,7 @@ func IdempotencyValueFromAudit(entry *auditpb.AuditEntry, items []*auditpb.Audit
 		// records whether a reuse hit a live prior (conflict) or executed fresh
 		// (a normal reason), so no expiry re-derivation is needed to tell them
 		// apart.
-		if reason == auditpb.ErrorReason_ERROR_REASON_IDEMPOTENCY_KEY_CONFLICT {
+		if reason == ledgerpb.ErrorReason_ERROR_REASON_IDEMPOTENCY_KEY_CONFLICT {
 			return nil, false
 		}
 
@@ -52,7 +52,7 @@ func IdempotencyValueFromAudit(entry *auditpb.AuditEntry, items []*auditpb.Audit
 			},
 		}, true
 
-	case *auditpb.AuditEntry_Success:
+	case *ledgerpb.AuditEntry_Success:
 		maxSeq := out.Success.GetMaxLogSequence()
 		if maxSeq == 0 {
 			return nil, false
@@ -78,7 +78,7 @@ func IdempotencyValueFromAudit(entry *auditpb.AuditEntry, items []*auditpb.Audit
 // byte-identical to what was frozen. The orders round-trip from the chain-bound
 // serialized_order bytes; a corrupt order would already have broken the audit
 // chain during verification, so a nil here only forces a loud hash mismatch.
-func recomputeProposalHash(items []*auditpb.AuditItem) []byte {
+func recomputeProposalHash(items []*ledgerpb.AuditItem) []byte {
 	orders := make([]*raftcmdpb.Order, 0, len(items))
 
 	for _, item := range items {

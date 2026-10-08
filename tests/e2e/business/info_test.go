@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"net/http"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -22,7 +22,7 @@ var _ = Describe("Server info", func() {
 	// and key presence, never a specific version string.
 
 	It("Should expose server info via the unauthenticated Discovery RPC", func() {
-		resp, err := sharedClient.Discovery(sharedCtx, &servicepb.DiscoveryRequest{})
+		resp, err := sharedClient.Discovery(sharedCtx, &ledgerpb.DiscoveryRequest{})
 		Expect(err).To(Succeed())
 		Expect(resp).NotTo(BeNil())
 

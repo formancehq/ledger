@@ -6,17 +6,17 @@ package oracletest
 import (
 	"math/big"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
-func AddTypeReqP(name string, p commonpb.AccountTypePersistence) *commonpb.Request {
-	return &commonpb.Request{
-		Type: &commonpb.Request_AddAccountType{
-			AddAccountType: &commonpb.AddAccountTypeLedgerRequest{
+func AddTypeReqP(name string, p ledgerpb.AccountTypePersistence) *ledgerpb.Request {
+	return &ledgerpb.Request{
+		Type: &ledgerpb.Request_AddAccountType{
+			AddAccountType: &ledgerpb.AddAccountTypeLedgerRequest{
 				Ledger: "L",
-				AccountType: &commonpb.AccountType{
+				AccountType: &ledgerpb.AccountType{
 					Name:        name,
 					Pattern:     name + ":{id}",
 					Persistence: p,
@@ -26,36 +26,36 @@ func AddTypeReqP(name string, p commonpb.AccountTypePersistence) *commonpb.Reque
 	}
 }
 
-func AddTypeReq(name string) *commonpb.Request {
-	return AddTypeReqP(name, commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL)
+func AddTypeReq(name string) *ledgerpb.Request {
+	return AddTypeReqP(name, ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL)
 }
 
-func RemoveReqL(ledger, name string) *commonpb.Request {
-	return &commonpb.Request{
-		Type: &commonpb.Request_RemoveAccountType{
-			RemoveAccountType: &commonpb.RemoveAccountTypeLedgerRequest{Ledger: ledger, Name: name},
+func RemoveReqL(ledger, name string) *ledgerpb.Request {
+	return &ledgerpb.Request{
+		Type: &ledgerpb.Request_RemoveAccountType{
+			RemoveAccountType: &ledgerpb.RemoveAccountTypeLedgerRequest{Ledger: ledger, Name: name},
 		},
 	}
 }
 
-func RemoveTypeReq(name string) *commonpb.Request {
+func RemoveTypeReq(name string) *ledgerpb.Request {
 	return RemoveReqL("L", name)
 }
 
-func TxReqL(ledger, src, dest, asset string, amount int64) *commonpb.Request {
+func TxReqL(ledger, src, dest, asset string, amount int64) *ledgerpb.Request {
 	return TxReqColoredL(ledger, src, dest, asset, "", amount)
 }
 
 // TxReqColoredL is TxReqL on an explicit color bucket; "" is the uncolored one.
-func TxReqColoredL(ledger, src, dest, asset, color string, amount int64) *commonpb.Request {
-	return &commonpb.Request{
-		Type: &commonpb.Request_Apply{
-			Apply: &commonpb.LedgerApplyRequest{
+func TxReqColoredL(ledger, src, dest, asset, color string, amount int64) *ledgerpb.Request {
+	return &ledgerpb.Request{
+		Type: &ledgerpb.Request_Apply{
+			Apply: &ledgerpb.LedgerApplyRequest{
 				Ledger: ledger,
-				Action: &commonpb.LedgerAction{
-					Data: &commonpb.LedgerAction_CreateTransaction{
-						CreateTransaction: &commonpb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{
+				Action: &ledgerpb.LedgerAction{
+					Data: &ledgerpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &ledgerpb.CreateTransactionPayload{
+							Postings: []*ledgerpb.Posting{
 								protohelpers.NewColoredPosting(src, dest, asset, color, big.NewInt(amount)),
 							},
 						},
@@ -66,13 +66,13 @@ func TxReqColoredL(ledger, src, dest, asset, color string, amount int64) *common
 	}
 }
 
-func TxReq(src, dest, asset string, amount int64) *commonpb.Request {
+func TxReq(src, dest, asset string, amount int64) *ledgerpb.Request {
 	return TxReqL("L", src, dest, asset, amount)
 }
 
 // TxReqForce is TxReq with an explicit Force flag; Force=true skips the balance
 // floor (matches the SUT's skipBalanceCheck in applyPosting).
-func TxReqForce(src, dest, asset string, amount int64, force bool) *commonpb.Request {
+func TxReqForce(src, dest, asset string, amount int64, force bool) *ledgerpb.Request {
 	req := TxReqL("L", src, dest, asset, amount)
 	req.GetApply().GetAction().GetCreateTransaction().Force = force
 
@@ -81,7 +81,7 @@ func TxReqForce(src, dest, asset string, amount int64, force bool) *commonpb.Req
 
 // TxReqRefL is TxReqL carrying a transaction reference, so tests can trigger
 // TRANSACTION_REFERENCE_CONFLICT (a second create reusing the same reference).
-func TxReqRefL(ledger, ref, src, dest, asset string, amount int64) *commonpb.Request {
+func TxReqRefL(ledger, ref, src, dest, asset string, amount int64) *ledgerpb.Request {
 	req := TxReqL(ledger, src, dest, asset, amount)
 	req.GetApply().GetAction().GetCreateTransaction().Reference = ref
 
@@ -91,14 +91,14 @@ func TxReqRefL(ledger, ref, src, dest, asset string, amount int64) *commonpb.Req
 // TxReqMulti builds a multi-posting CreateTransaction (ledger "L") with an
 // explicit Force flag. The postings compose in order — an earlier one can fund a
 // later one's source within the same transaction.
-func TxReqMulti(force bool, postings ...*commonpb.Posting) *commonpb.Request {
-	return &commonpb.Request{
-		Type: &commonpb.Request_Apply{
-			Apply: &commonpb.LedgerApplyRequest{
+func TxReqMulti(force bool, postings ...*ledgerpb.Posting) *ledgerpb.Request {
+	return &ledgerpb.Request{
+		Type: &ledgerpb.Request_Apply{
+			Apply: &ledgerpb.LedgerApplyRequest{
 				Ledger: "L",
-				Action: &commonpb.LedgerAction{
-					Data: &commonpb.LedgerAction_CreateTransaction{
-						CreateTransaction: &commonpb.CreateTransactionPayload{Postings: postings, Force: force},
+				Action: &ledgerpb.LedgerAction{
+					Data: &ledgerpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &ledgerpb.CreateTransactionPayload{Postings: postings, Force: force},
 					},
 				},
 			},
@@ -108,14 +108,14 @@ func TxReqMulti(force bool, postings ...*commonpb.Posting) *commonpb.Request {
 
 // RevertReqL builds a RevertTransaction of txID in ledger. Force=true skips the
 // balance floor on the reversed postings (reverts always set it).
-func RevertReqL(ledger string, txID uint64, force bool) *commonpb.Request {
-	return &commonpb.Request{
-		Type: &commonpb.Request_Apply{
-			Apply: &commonpb.LedgerApplyRequest{
+func RevertReqL(ledger string, txID uint64, force bool) *ledgerpb.Request {
+	return &ledgerpb.Request{
+		Type: &ledgerpb.Request_Apply{
+			Apply: &ledgerpb.LedgerApplyRequest{
 				Ledger: ledger,
-				Action: &commonpb.LedgerAction{
-					Data: &commonpb.LedgerAction_RevertTransaction{
-						RevertTransaction: &commonpb.RevertTransactionPayload{TransactionId: txID, Force: force},
+				Action: &ledgerpb.LedgerAction{
+					Data: &ledgerpb.LedgerAction_RevertTransaction{
+						RevertTransaction: &ledgerpb.RevertTransactionPayload{TransactionId: txID, Force: force},
 					},
 				},
 			},
@@ -124,15 +124,15 @@ func RevertReqL(ledger string, txID uint64, force bool) *commonpb.Request {
 }
 
 // AddTxMetaReq builds an AddMetadata targeting transaction txID (ledger "L").
-func AddTxMetaReq(txID uint64, md map[string]*commonpb.MetadataValue) *commonpb.Request {
-	return &commonpb.Request{
-		Type: &commonpb.Request_Apply{
-			Apply: &commonpb.LedgerApplyRequest{
+func AddTxMetaReq(txID uint64, md map[string]*ledgerpb.MetadataValue) *ledgerpb.Request {
+	return &ledgerpb.Request{
+		Type: &ledgerpb.Request_Apply{
+			Apply: &ledgerpb.LedgerApplyRequest{
 				Ledger: "L",
-				Action: &commonpb.LedgerAction{
-					Data: &commonpb.LedgerAction_AddMetadata{
-						AddMetadata: &commonpb.SaveMetadataCommand{
-							Target:   &commonpb.Target{Target: &commonpb.Target_TransactionId{TransactionId: txID}},
+				Action: &ledgerpb.LedgerAction{
+					Data: &ledgerpb.LedgerAction_AddMetadata{
+						AddMetadata: &ledgerpb.SaveMetadataCommand{
+							Target:   &ledgerpb.Target{Target: &ledgerpb.Target_TransactionId{TransactionId: txID}},
 							Metadata: md,
 						},
 					},
@@ -144,10 +144,10 @@ func AddTxMetaReq(txID uint64, md map[string]*commonpb.MetadataValue) *commonpb.
 
 // SetFieldTypeReq declares (target, key) with the given metadata type on
 // ledger "L".
-func SetFieldTypeReq(target commonpb.TargetType, key string, t commonpb.MetadataType) *commonpb.Request {
-	return &commonpb.Request{
-		Type: &commonpb.Request_SetMetadataFieldType{
-			SetMetadataFieldType: &commonpb.SetMetadataFieldTypeRequest{
+func SetFieldTypeReq(target ledgerpb.TargetType, key string, t ledgerpb.MetadataType) *ledgerpb.Request {
+	return &ledgerpb.Request{
+		Type: &ledgerpb.Request_SetMetadataFieldType{
+			SetMetadataFieldType: &ledgerpb.SetMetadataFieldTypeRequest{
 				Ledger:     "L",
 				TargetType: target,
 				Key:        key,
@@ -158,10 +158,10 @@ func SetFieldTypeReq(target commonpb.TargetType, key string, t commonpb.Metadata
 }
 
 // RemoveFieldTypeReq drops the (target, key) declaration on ledger "L".
-func RemoveFieldTypeReq(target commonpb.TargetType, key string) *commonpb.Request {
-	return &commonpb.Request{
-		Type: &commonpb.Request_RemoveMetadataFieldType{
-			RemoveMetadataFieldType: &commonpb.RemoveMetadataFieldTypeRequest{
+func RemoveFieldTypeReq(target ledgerpb.TargetType, key string) *ledgerpb.Request {
+	return &ledgerpb.Request{
+		Type: &ledgerpb.Request_RemoveMetadataFieldType{
+			RemoveMetadataFieldType: &ledgerpb.RemoveMetadataFieldTypeRequest{
 				Ledger:     "L",
 				TargetType: target,
 				Key:        key,
@@ -171,34 +171,34 @@ func RemoveFieldTypeReq(target commonpb.TargetType, key string) *commonpb.Reques
 }
 
 // CreateIndexReq creates an index on ledger "L".
-func CreateIndexReq(id *commonpb.IndexID) *commonpb.Request {
-	return &commonpb.Request{
-		Type: &commonpb.Request_CreateIndex{
-			CreateIndex: &commonpb.CreateIndexRequest{Ledger: "L", Id: id},
+func CreateIndexReq(id *ledgerpb.IndexID) *ledgerpb.Request {
+	return &ledgerpb.Request{
+		Type: &ledgerpb.Request_CreateIndex{
+			CreateIndex: &ledgerpb.CreateIndexRequest{Ledger: "L", Id: id},
 		},
 	}
 }
 
 // DropIndexReq drops an index on ledger "L".
-func DropIndexReq(id *commonpb.IndexID) *commonpb.Request {
-	return &commonpb.Request{
-		Type: &commonpb.Request_DropIndex{
-			DropIndex: &commonpb.DropIndexRequest{Ledger: "L", Id: id},
+func DropIndexReq(id *ledgerpb.IndexID) *ledgerpb.Request {
+	return &ledgerpb.Request{
+		Type: &ledgerpb.Request_DropIndex{
+			DropIndex: &ledgerpb.DropIndexRequest{Ledger: "L", Id: id},
 		},
 	}
 }
 
 // AddAccountMetaReq writes one metadata value on an account of ledger "L".
-func AddAccountMetaReq(addr, key string, v *commonpb.MetadataValue) *commonpb.Request {
-	return &commonpb.Request{
-		Type: &commonpb.Request_Apply{
-			Apply: &commonpb.LedgerApplyRequest{
+func AddAccountMetaReq(addr, key string, v *ledgerpb.MetadataValue) *ledgerpb.Request {
+	return &ledgerpb.Request{
+		Type: &ledgerpb.Request_Apply{
+			Apply: &ledgerpb.LedgerApplyRequest{
 				Ledger: "L",
-				Action: &commonpb.LedgerAction{
-					Data: &commonpb.LedgerAction_AddMetadata{
-						AddMetadata: &commonpb.SaveMetadataCommand{
-							Target:   &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: addr}}},
-							Metadata: map[string]*commonpb.MetadataValue{key: v},
+				Action: &ledgerpb.LedgerAction{
+					Data: &ledgerpb.LedgerAction_AddMetadata{
+						AddMetadata: &ledgerpb.SaveMetadataCommand{
+							Target:   &ledgerpb.Target{Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{Addr: addr}}},
+							Metadata: map[string]*ledgerpb.MetadataValue{key: v},
 						},
 					},
 				},

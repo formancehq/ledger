@@ -8,7 +8,7 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/cockroachdb/pebble/v2"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -67,8 +67,8 @@ func mainAppliedHorizon(ctx context.Context, mainReader dal.PebbleGetter) (uint6
 // transaction ID/reverted predicates and account-address predicates. LOGS is
 // not in that class even unfiltered: its universe is the read index's
 // per-ledger log limb.
-func AlignmentOwed(filter *commonpb.QueryFilter, target commonpb.QueryTarget) bool {
-	if target == commonpb.QueryTarget_QUERY_TARGET_LOGS {
+func AlignmentOwed(filter *ledgerpb.QueryFilter, target ledgerpb.QueryTarget) bool {
+	if target == ledgerpb.QueryTarget_QUERY_TARGET_LOGS {
 		return true
 	}
 
@@ -80,13 +80,13 @@ func AlignmentOwed(filter *commonpb.QueryFilter, target commonpb.QueryTarget) bo
 // universe, but ACCOUNTS and TRANSACTIONS universes come from the main store.
 // Unknown/malformed leaves are left to Compile's fail-loud validation and do
 // not acquire an otherwise unused projection wait first.
-func filterUsesReadIndex(filter *commonpb.QueryFilter, target commonpb.QueryTarget) bool {
+func filterUsesReadIndex(filter *ledgerpb.QueryFilter, target ledgerpb.QueryTarget) bool {
 	if filter == nil {
 		return false
 	}
 
 	switch f := filter.GetFilter().(type) {
-	case *commonpb.QueryFilter_And:
+	case *ledgerpb.QueryFilter_And:
 		for _, child := range f.And.GetFilters() {
 			if filterUsesReadIndex(child, target) {
 				return true
@@ -94,7 +94,7 @@ func filterUsesReadIndex(filter *commonpb.QueryFilter, target commonpb.QueryTarg
 		}
 
 		return false
-	case *commonpb.QueryFilter_Or:
+	case *ledgerpb.QueryFilter_Or:
 		for _, child := range f.Or.GetFilters() {
 			if filterUsesReadIndex(child, target) {
 				return true
@@ -102,22 +102,22 @@ func filterUsesReadIndex(filter *commonpb.QueryFilter, target commonpb.QueryTarg
 		}
 
 		return false
-	case *commonpb.QueryFilter_Not:
+	case *ledgerpb.QueryFilter_Not:
 		return filterUsesReadIndex(f.Not.GetFilter(), target)
-	case *commonpb.QueryFilter_Address:
-		return target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS
-	case *commonpb.QueryFilter_BuiltinUint:
-		return f.BuiltinUint.GetField() != commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID
-	case *commonpb.QueryFilter_Reverted:
+	case *ledgerpb.QueryFilter_Address:
+		return target == ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS
+	case *ledgerpb.QueryFilter_BuiltinUint:
+		return f.BuiltinUint.GetField() != ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID
+	case *ledgerpb.QueryFilter_Reverted:
 		return false
-	case *commonpb.QueryFilter_Field,
-		*commonpb.QueryFilter_Reference,
-		*commonpb.QueryFilter_LogId,
-		*commonpb.QueryFilter_LogBuiltinUint,
-		*commonpb.QueryFilter_AccountHasAsset:
+	case *ledgerpb.QueryFilter_Field,
+		*ledgerpb.QueryFilter_Reference,
+		*ledgerpb.QueryFilter_LogId,
+		*ledgerpb.QueryFilter_LogBuiltinUint,
+		*ledgerpb.QueryFilter_AccountHasAsset:
 		return true
-	case *commonpb.QueryFilter_Ledger:
-		return target == commonpb.QueryTarget_QUERY_TARGET_LOGS
+	case *ledgerpb.QueryFilter_Ledger:
+		return target == ledgerpb.QueryTarget_QUERY_TARGET_LOGS
 	default:
 		return false
 	}
@@ -333,14 +333,14 @@ func requireLedgerLive(mainReader *dal.ReadHandle, ledgerName string) error {
 // Returns nil for targets with no trimmable cross-store membership (callers
 // skip wrapping).
 func MainHorizonKeep(
-	target commonpb.QueryTarget,
+	target ledgerpb.QueryTarget,
 	handle dal.PebbleReader,
 	indexSnap dal.PebbleGetter,
 	ledgerName string,
 	mainSeq uint64,
 ) func([]byte) (bool, error) {
 	switch target {
-	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
 		return func(e []byte) (bool, error) {
 			if len(e) != 8 {
 				return false, fmt.Errorf("horizon probe: transaction entity of unexpected length %d (want 8)", len(e))
@@ -348,7 +348,7 @@ func MainHorizonKeep(
 
 			return pebbleTxExists(handle, ledgerName, binary.BigEndian.Uint64(e))
 		}
-	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_LOGS:
 		kb := dal.NewKeyBuilder()
 
 		return func(e []byte) (bool, error) {
@@ -392,7 +392,7 @@ func MainHorizonKeep(
 // to make the later Acquire un-refusable, which a read that never resolves an
 // event never performs, so it would hold the event GC's watermark for the life
 // of a request — or of a streaming cursor — in exchange for nothing.
-func OpenQueryHandle(rs *readstore.Store, store queryHandleStore, filter *commonpb.QueryFilter, target commonpb.QueryTarget) (*dal.ReadHandle, func(), error) {
+func OpenQueryHandle(rs *readstore.Store, store queryHandleStore, filter *ledgerpb.QueryFilter, target ledgerpb.QueryTarget) (*dal.ReadHandle, func(), error) {
 	return openQueryHandle(rs, store, AlignmentOwed(filter, target))
 }
 

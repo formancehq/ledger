@@ -7,7 +7,7 @@ import (
 	"crypto/ed25519"
 	"math/big"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
@@ -17,10 +17,10 @@ import (
 )
 
 // setMaintenanceModeAction creates a SetMaintenanceMode request.
-func setMaintenanceModeAction(enabled bool) *clusterpb.Request {
-	return &clusterpb.Request{
-		Type: &clusterpb.Request_SetMaintenanceMode{
-			SetMaintenanceMode: &clusterpb.SetMaintenanceModeRequest{
+func setMaintenanceModeAction(enabled bool) *ledgerpb.Request {
+	return &ledgerpb.Request{
+		Type: &ledgerpb.Request_SetMaintenanceMode{
+			SetMaintenanceMode: &ledgerpb.SetMaintenanceModeRequest{
 				Enabled: enabled,
 			},
 		},
@@ -32,8 +32,8 @@ var _ = Describe("Maintenance Mode", func() {
 	Context("Enable and disable maintenance mode", Ordered, func() {
 		var (
 			ctx           context.Context
-			client        clusterpb.BucketServiceClient
-			clusterClient clusterpb.ClusterServiceClient
+			client        ledgerpb.BucketServiceClient
+			clusterClient ledgerpb.ClusterServiceClient
 		)
 
 		const (
@@ -47,13 +47,13 @@ var _ = Describe("Maintenance Mode", func() {
 			clusterClient = node.ClusterClient
 
 			// Create a ledger before enabling maintenance mode
-			resp, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			resp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 		})
 
 		It("should allow all operations when maintenance mode is off", func() {
-			resp, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*clusterpb.Posting{
+			resp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil)))
 			Expect(err).To(Succeed())
@@ -61,19 +61,19 @@ var _ = Describe("Maintenance Mode", func() {
 		})
 
 		It("should enable maintenance mode", func() {
-			resp, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", setMaintenanceModeAction(true)))
+			resp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", setMaintenanceModeAction(true)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 		})
 
 		It("should show maintenance mode in cluster status", func() {
-			state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+			state, err := clusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 			Expect(err).To(Succeed())
 			Expect(state.MaintenanceMode).To(BeTrue())
 		})
 
 		It("should reject create ledger requests in maintenance mode", func() {
-			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction("should-fail", nil)))
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction("should-fail", nil)))
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
@@ -81,7 +81,7 @@ var _ = Describe("Maintenance Mode", func() {
 		})
 
 		It("should reject create transaction requests in maintenance mode", func() {
-			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*clusterpb.Posting{
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "bob", big.NewInt(50), "USD"),
 			}, nil)))
 			Expect(err).To(HaveOccurred())
@@ -91,7 +91,7 @@ var _ = Describe("Maintenance Mode", func() {
 		})
 
 		It("should reject delete ledger requests in maintenance mode", func() {
-			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.DeleteLedgerAction(ledgerName)))
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.DeleteLedgerAction(ledgerName)))
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
@@ -99,7 +99,7 @@ var _ = Describe("Maintenance Mode", func() {
 		})
 
 		It("should reject save metadata requests in maintenance mode", func() {
-			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"key": "value"})))
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"key": "value"})))
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
@@ -108,7 +108,7 @@ var _ = Describe("Maintenance Mode", func() {
 
 		It("should allow read operations in maintenance mode", func() {
 			// GetLedger is a read operation, should work
-			ledger, err := client.GetLedger(ctx, &clusterpb.GetLedgerRequest{
+			ledger, err := client.GetLedger(ctx, &ledgerpb.GetLedgerRequest{
 				Ledger: ledgerName,
 			})
 			Expect(err).To(Succeed())
@@ -116,19 +116,19 @@ var _ = Describe("Maintenance Mode", func() {
 		})
 
 		It("should allow disabling maintenance mode while in maintenance mode", func() {
-			resp, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", setMaintenanceModeAction(false)))
+			resp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", setMaintenanceModeAction(false)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 		})
 
 		It("should show maintenance mode off in cluster status after disabling", func() {
-			state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+			state, err := clusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 			Expect(err).To(Succeed())
 			Expect(state.MaintenanceMode).To(BeFalse())
 		})
 
 		It("should allow write operations after maintenance mode is disabled", func() {
-			resp, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*clusterpb.Posting{
+			resp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "charlie", big.NewInt(200), "USD"),
 			}, nil)))
 			Expect(err).To(Succeed())
@@ -139,7 +139,7 @@ var _ = Describe("Maintenance Mode", func() {
 	Context("Maintenance mode with bulk requests", Ordered, func() {
 		var (
 			ctx    context.Context
-			client clusterpb.BucketServiceClient
+			client ledgerpb.BucketServiceClient
 		)
 
 		const (
@@ -152,18 +152,18 @@ var _ = Describe("Maintenance Mode", func() {
 			client = node.Client
 
 			// Create a ledger
-			resp, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			resp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 
 			// Enable maintenance mode
-			resp, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("", setMaintenanceModeAction(true)))
+			resp, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", setMaintenanceModeAction(true)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 		})
 
 		It("should reject bulk requests containing non-maintenance operations", func() {
-			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", setMaintenanceModeAction(false),
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", setMaintenanceModeAction(false),
 				actions.CreateLedgerAction("should-fail-bulk", nil)))
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
@@ -173,7 +173,7 @@ var _ = Describe("Maintenance Mode", func() {
 
 		It("should allow bulk requests containing only maintenance mode operations", func() {
 			// Disable then re-enable in a single batch
-			resp, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", setMaintenanceModeAction(false)))
+			resp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", setMaintenanceModeAction(false)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 		})
@@ -182,7 +182,7 @@ var _ = Describe("Maintenance Mode", func() {
 	Context("Maintenance mode with request signing", Ordered, func() {
 		var (
 			ctx     context.Context
-			client  clusterpb.BucketServiceClient
+			client  ledgerpb.BucketServiceClient
 			privKey ed25519.PrivateKey
 		)
 
@@ -202,19 +202,19 @@ var _ = Describe("Maintenance Mode", func() {
 			client = node.Client
 
 			// Bootstrap signing key
-			resp, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.RegisterSigningKeyAction(keyID, pubKey)))
+			resp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.RegisterSigningKeyAction(keyID, pubKey)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 
 			// Create a ledger
-			resp, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			resp, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 		})
 
 		It("should accept signed maintenance mode request", func() {
 			req := setMaintenanceModeAction(true)
-			signedEnv, err := actions.SignBatch(&clusterpb.ApplyBatch{Requests: []*clusterpb.Request{req}}, keyID, privKey)
+			signedEnv, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{req}}, keyID, privKey)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, signedEnv)
@@ -223,10 +223,10 @@ var _ = Describe("Maintenance Mode", func() {
 		})
 
 		It("should reject signed write requests in maintenance mode", func() {
-			req := actions.CreateForceTransactionAction(ledgerName, []*clusterpb.Posting{
+			req := actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "signed-user", big.NewInt(100), "USD"),
 			}, nil)
-			signedEnv1, err := actions.SignBatch(&clusterpb.ApplyBatch{Requests: []*clusterpb.Request{req}}, keyID, privKey)
+			signedEnv1, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{req}}, keyID, privKey)
 			Expect(err).To(Succeed())
 
 			_, err = client.Apply(ctx, signedEnv1)
@@ -238,7 +238,7 @@ var _ = Describe("Maintenance Mode", func() {
 
 		It("should allow signed disable maintenance mode request", func() {
 			req := setMaintenanceModeAction(false)
-			signedEnv2, err := actions.SignBatch(&clusterpb.ApplyBatch{Requests: []*clusterpb.Request{req}}, keyID, privKey)
+			signedEnv2, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{req}}, keyID, privKey)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, signedEnv2)
@@ -247,10 +247,10 @@ var _ = Describe("Maintenance Mode", func() {
 		})
 
 		It("should allow signed write requests after maintenance mode is disabled", func() {
-			req := actions.CreateForceTransactionAction(ledgerName, []*clusterpb.Posting{
+			req := actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "signed-user", big.NewInt(200), "USD"),
 			}, nil)
-			signedEnv3, err := actions.SignBatch(&clusterpb.ApplyBatch{Requests: []*clusterpb.Request{req}}, keyID, privKey)
+			signedEnv3, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{req}}, keyID, privKey)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, signedEnv3)

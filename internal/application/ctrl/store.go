@@ -6,7 +6,7 @@ import (
 	"sort"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -14,18 +14,18 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// assembleAccount builds a commonpb.Account from flushed volume and metadata accumulator entries.
+// assembleAccount builds a ledgerpb.Account from flushed volume and metadata accumulator entries.
 // When collapseColors is true, all colored buckets of the same asset are summed
 // into a single entry with Color = "" in the returned Account.volumes list.
 func assembleAccount(
 	address string,
 	volEntries []attributes.ComputedEntry[*raftcmdpb.VolumePair],
-	metaEntries []attributes.ComputedEntry[*commonpb.MetadataValue],
+	metaEntries []attributes.ComputedEntry[*ledgerpb.MetadataValue],
 	collapseColors bool,
-) (*commonpb.Account, error) {
-	account := &commonpb.Account{
+) (*ledgerpb.Account, error) {
+	account := &ledgerpb.Account{
 		Address:  address,
-		Metadata: map[string]*commonpb.MetadataValue{},
+		Metadata: map[string]*ledgerpb.MetadataValue{},
 	}
 
 	if len(volEntries) > 0 {
@@ -38,7 +38,7 @@ func assembleAccount(
 	}
 
 	if len(metaEntries) > 0 {
-		mdMap := make(map[string]*commonpb.MetadataValue, len(metaEntries))
+		mdMap := make(map[string]*ledgerpb.MetadataValue, len(metaEntries))
 		for _, entry := range metaEntries {
 			var mk domain.MetadataKey
 
@@ -66,7 +66,7 @@ func assembleAccount(
 // unmarshal errors, and silently dropping a row from GetAccount would
 // return a truncated balance the caller has no way to detect (CLAUDE.md
 // invariant #7).
-func buildAccountVolumes(volEntries []attributes.ComputedEntry[*raftcmdpb.VolumePair], collapseColors bool) ([]*commonpb.AccountVolume, error) {
+func buildAccountVolumes(volEntries []attributes.ComputedEntry[*raftcmdpb.VolumePair], collapseColors bool) ([]*ledgerpb.AccountVolume, error) {
 	type key struct {
 		asset string
 		color string
@@ -122,14 +122,14 @@ func buildAccountVolumes(volEntries []attributes.ComputedEntry[*raftcmdpb.Volume
 		acc.output.Add(acc.output, output)
 	}
 
-	out := make([]*commonpb.AccountVolume, 0, len(totals))
+	out := make([]*ledgerpb.AccountVolume, 0, len(totals))
 	for _, v := range totals {
 		// Format the accumulated sums once, and compute the balance from the
 		// *big.Int totals (after any color collapse).
-		out = append(out, &commonpb.AccountVolume{
+		out = append(out, &ledgerpb.AccountVolume{
 			Asset: v.asset,
 			Color: v.color,
-			Volumes: &commonpb.VolumesWithBalance{
+			Volumes: &ledgerpb.VolumesWithBalance{
 				Input:   v.input.String(),
 				Output:  v.output.String(),
 				Balance: new(big.Int).Sub(v.input, v.output).String(),
@@ -137,7 +137,7 @@ func buildAccountVolumes(volEntries []attributes.ComputedEntry[*raftcmdpb.Volume
 		})
 	}
 	sort.Slice(out, func(i, j int) bool {
-		return commonpb.LessByAssetColor(out[i], out[j])
+		return ledgerpb.LessByAssetColor(out[i], out[j])
 	})
 
 	return out, nil
@@ -156,7 +156,7 @@ func scanAccount(
 	address string,
 	collapseColors bool,
 	diagLogger ...logging.Logger,
-) (*commonpb.Account, error) {
+) (*ledgerpb.Account, error) {
 	var logger logging.Logger
 	if len(diagLogger) > 0 {
 		logger = diagLogger[0]

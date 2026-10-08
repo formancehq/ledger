@@ -8,7 +8,7 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -34,19 +34,19 @@ func TestDefaultController_InspectIndex_RefusesAPromotionInFlight(t *testing.T) 
 
 	store := newCtrlTestStore(t)
 	attrs := attributes.New()
-	indexID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)
+	indexID := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, key)
 	canonical := indexes.Canonical(indexID)
 
 	batch := store.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(batch, ledger, &commonpb.LedgerInfo{
+	require.NoError(t, state.SaveLedger(batch, ledger, &ledgerpb.LedgerInfo{
 		Name: ledger,
-		MetadataSchema: &commonpb.MetadataSchema{
-			AccountFields: map[string]*commonpb.MetadataFieldSchema{
-				key: {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
+		MetadataSchema: &ledgerpb.MetadataSchema{
+			AccountFields: map[string]*ledgerpb.MetadataFieldSchema{
+				key: {Type: ledgerpb.MetadataType_METADATA_TYPE_INT64},
 			},
 		},
 	}))
-	_, err := attrs.Index.Set(batch, indexes.KeyFor(ledger, indexID).Bytes(), &commonpb.Index{
+	_, err := attrs.Index.Set(batch, indexes.KeyFor(ledger, indexID).Bytes(), &ledgerpb.Index{
 		Id:     indexID,
 		Ledger: ledger,
 	})
@@ -63,15 +63,15 @@ func TestDefaultController_InspectIndex_RefusesAPromotionInFlight(t *testing.T) 
 	require.NoError(t, rs.WriteIndexVersionState(rsBatch, ledger, canonical, readstore.IndexVersionState{
 		CurrentVersion:      1,
 		HighWater:           1,
-		CurrentType:         commonpb.MetadataType_METADATA_TYPE_INT64,
+		CurrentType:         ledgerpb.MetadataType_METADATA_TYPE_INT64,
 		CurrentTypeDeclared: true,
 	}))
 	require.NoError(t, rsBatch.Commit())
 
 	c := NewDefaultController(nil, store, logger, attrs, rs, nil, meter)
-	req := &commonpb.InspectIndexRequest{
+	req := &ledgerpb.InspectIndexRequest{
 		Ledger:      ledger,
-		TargetType:  commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		TargetType:  ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 		MetadataKey: key,
 	}
 

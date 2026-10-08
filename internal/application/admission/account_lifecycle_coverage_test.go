@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/application/accountlifecycle"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -53,8 +53,8 @@ func TestAccountTypeMutationSerializesAllLifecycleStripes(t *testing.T) {
 	go func() {
 		release, err := admission.expandAccountLifecycleCoverage(t.Context(), plan.NewCoverage(), []*plan.Coverage{plan.NewCoverage()}, []*raftcmdpb.Order{
 			ledgerApplyOrder(&raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddAccountType{
-				AddAccountType: &raftcmdpb.AddAccountTypeOrder{AccountType: &commonpb.AccountType{
-					Name: "hold", Pattern: "hold:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+				AddAccountType: &raftcmdpb.AddAccountTypeOrder{AccountType: &ledgerpb.AccountType{
+					Name: "hold", Pattern: "hold:{id}", Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
 				}},
 			}}),
 		})
@@ -94,8 +94,8 @@ func TestAccountTypeMutationCancellationReleasesAcquiredLifecycleStripes(t *test
 	go func() {
 		_, err := admission.expandAccountLifecycleCoverage(ctx, plan.NewCoverage(), []*plan.Coverage{plan.NewCoverage()}, []*raftcmdpb.Order{
 			ledgerApplyOrder(&raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddAccountType{
-				AddAccountType: &raftcmdpb.AddAccountTypeOrder{AccountType: &commonpb.AccountType{
-					Name: "hold", Pattern: "hold:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+				AddAccountType: &raftcmdpb.AddAccountTypeOrder{AccountType: &ledgerpb.AccountType{
+					Name: "hold", Pattern: "hold:{id}", Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
 				}},
 			}}),
 		})
@@ -135,16 +135,16 @@ func TestAccountLifecycleTypeSnapshotsCoverProposalTypeTransitions(t *testing.T)
 	info, err := attrs.Ledger.Get(store, domain.LedgerKey{Name: testLedgerName}.Bytes())
 	require.NoError(t, err)
 	require.NotNil(t, info)
-	info.AccountTypes = map[string]*commonpb.AccountType{
+	info.AccountTypes = map[string]*ledgerpb.AccountType{
 		"fallback": {
 			Name:        "fallback",
 			Pattern:     "users:{id}",
-			Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+			Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
 		},
 		"specific": {
 			Name:        "specific",
 			Pattern:     "users:alice",
-			Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL,
+			Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL,
 		},
 	}
 	batch := store.OpenWriteSession()
@@ -157,10 +157,10 @@ func TestAccountLifecycleTypeSnapshotsCoverProposalTypeTransitions(t *testing.T)
 			RemoveAccountType: &raftcmdpb.RemoveAccountTypeOrder{Name: "specific"},
 		}}),
 		ledgerApplyOrder(&raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddAccountType{
-			AddAccountType: &raftcmdpb.AddAccountTypeOrder{AccountType: &commonpb.AccountType{
+			AddAccountType: &raftcmdpb.AddAccountTypeOrder{AccountType: &ledgerpb.AccountType{
 				Name:        "temporary",
 				Pattern:     "temporary:{id}",
-				Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+				Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
 			}},
 		}}),
 	}
@@ -168,10 +168,10 @@ func TestAccountLifecycleTypeSnapshotsCoverProposalTypeTransitions(t *testing.T)
 	metadata := domain.MetadataKey{AccountKey: volume.AccountKey, Key: "note"}
 	batch = store.OpenWriteSession()
 	_, err = attrs.Volume.Set(batch, volume.Bytes(), &raftcmdpb.VolumePair{
-		Input: commonpb.NewUint256FromUint64(0), Output: commonpb.NewUint256FromUint64(0),
+		Input: ledgerpb.NewUint256FromUint64(0), Output: ledgerpb.NewUint256FromUint64(0),
 	})
 	require.NoError(t, err)
-	_, err = attrs.Metadata.Set(batch, metadata.Bytes(), commonpb.NewStringValue("value"))
+	_, err = attrs.Metadata.Set(batch, metadata.Bytes(), ledgerpb.NewStringValue("value"))
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 
@@ -199,8 +199,8 @@ func TestAccountLifecycleTypeSnapshotsPreserveSkippedDuplicateAdd(t *testing.T) 
 	admission, attrs := createTestAdmission(t, store)
 	info, err := attrs.Ledger.Get(store, domain.LedgerKey{Name: testLedgerName}.Bytes())
 	require.NoError(t, err)
-	info.AccountTypes = map[string]*commonpb.AccountType{
-		"fallback": {Name: "fallback", Pattern: "users:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL},
+	info.AccountTypes = map[string]*ledgerpb.AccountType{
+		"fallback": {Name: "fallback", Pattern: "users:{id}", Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL},
 	}
 	batch := store.OpenWriteSession()
 	_, err = attrs.Ledger.Set(batch, domain.LedgerKey{Name: testLedgerName}.Bytes(), info)
@@ -209,8 +209,8 @@ func TestAccountLifecycleTypeSnapshotsPreserveSkippedDuplicateAdd(t *testing.T) 
 
 	snapshots, err := admission.accountLifecycleTypeSnapshots([]*raftcmdpb.Order{
 		ledgerApplyOrder(&raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddAccountType{
-			AddAccountType: &raftcmdpb.AddAccountTypeOrder{AccountType: &commonpb.AccountType{
-				Name: "fallback", Pattern: "users:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL,
+			AddAccountType: &raftcmdpb.AddAccountTypeOrder{AccountType: &ledgerpb.AccountType{
+				Name: "fallback", Pattern: "users:{id}", Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL,
 			}},
 		}}),
 	})

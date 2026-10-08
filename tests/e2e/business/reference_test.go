@@ -6,7 +6,7 @@ import (
 	"math/big"
 	"strconv"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
@@ -21,14 +21,14 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 		var ledgerName = "ref-test-ledger"
 
 		BeforeAll(func() {
-			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			resp, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 		})
 
 		It("Should create a transaction with a reference", func() {
-			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.WithReference(
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.WithReference(
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 				}, nil, nil),
 				"ref-001",
@@ -40,8 +40,8 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 
 		It("Should fail when creating a transaction with a duplicate reference", func() {
 			// First transaction with reference succeeds
-			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.WithReference(
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.WithReference(
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 				}, nil, nil),
 				"dup-ref",
@@ -50,8 +50,8 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 			Expect(resp.Logs).To(HaveLen(1))
 
 			// Second transaction with the same reference fails
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.WithReference(
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.WithReference(
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "account-2", big.NewInt(200), "USD"),
 				}, nil, nil),
 				"dup-ref",
@@ -71,10 +71,10 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 
 		It("Should allow transactions without a reference", func() {
 			// Multiple transactions without reference should all succeed
-			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 			}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "account-2", big.NewInt(200), "USD"),
 				}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -82,14 +82,14 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 		})
 
 		It("Should allow different references in the same ledger", func() {
-			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.WithReference(
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.WithReference(
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 				}, nil, nil),
 				"ref-a",
 			),
 				actions.WithReference(
-					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 						actions.NewPosting("world", "account-2", big.NewInt(200), "USD"),
 					}, nil, nil),
 					"ref-b",
@@ -103,20 +103,20 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 		var skipLedger = "ref-skip-ledger"
 
 		BeforeAll(func() {
-			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(skipLedger, nil)))
+			resp, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(skipLedger, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 		})
 
 		It("Should succeed normally when the reference does not pre-exist (skip is a no-op)", func() {
-			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.WithSkippableReasons(
+			resp, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.WithSkippableReasons(
 				actions.WithReference(
-					actions.CreateTransactionAction(skipLedger, []*commonpb.Posting{
+					actions.CreateTransactionAction(skipLedger, []*ledgerpb.Posting{
 						actions.NewPosting("world", "account-fresh", big.NewInt(100), "USD"),
 					}, nil, nil),
 					"skip-fresh-ref",
 				),
-				commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+				ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 			)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -127,8 +127,8 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 		})
 
 		It("Should convert the duplicate-reference failure into an OrderSkipped log", func() {
-			firstResp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.WithReference(
-				actions.CreateTransactionAction(skipLedger, []*commonpb.Posting{
+			firstResp, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.WithReference(
+				actions.CreateTransactionAction(skipLedger, []*ledgerpb.Posting{
 					actions.NewPosting("world", "account-skip", big.NewInt(100), "USD"),
 				}, nil, nil),
 				"skip-dup-ref",
@@ -144,14 +144,14 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 			Expect(firstLogID).NotTo(BeZero())
 
 			// Same reference, this time the caller authorises the skip.
-			skipResp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.WithSkippableReasons(
+			skipResp, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.WithSkippableReasons(
 				actions.WithReference(
-					actions.CreateTransactionAction(skipLedger, []*commonpb.Posting{
+					actions.CreateTransactionAction(skipLedger, []*ledgerpb.Posting{
 						actions.NewPosting("world", "account-skip", big.NewInt(200), "USD"),
 					}, nil, nil),
 					"skip-dup-ref",
 				),
-				commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+				ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 			)))
 			Expect(err).To(Succeed())
 			Expect(skipResp.Logs).To(HaveLen(1))
@@ -159,7 +159,7 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 			skipLog := skipResp.Logs[0].GetPayload().GetApply().GetLog()
 			skipped := skipLog.GetData().GetOrderSkipped()
 			Expect(skipped).NotTo(BeNil())
-			Expect(skipped.GetReason()).To(Equal(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT))
+			Expect(skipped.GetReason()).To(Equal(ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT))
 			Expect(skipped.GetContext()["reference"]).To(Equal("skip-dup-ref"))
 			Expect(skipped.GetContext()["existingTransactionId"]).To(Equal(strconv.FormatUint(firstTxID, 10)))
 
@@ -173,8 +173,8 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 		})
 
 		It("Should still fail loudly when skippable_reasons is empty (default behaviour preserved)", func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.WithReference(
-				actions.CreateTransactionAction(skipLedger, []*commonpb.Posting{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.WithReference(
+				actions.CreateTransactionAction(skipLedger, []*ledgerpb.Posting{
 					actions.NewPosting("world", "account-skip", big.NewInt(300), "USD"),
 				}, nil, nil),
 				"skip-dup-ref",
@@ -195,8 +195,8 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 
 			// Pre-create the colliding reference so the skip-tolerant order
 			// in the batch hits TRANSACTION_REFERENCE_CONFLICT.
-			seedResp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.WithReference(
-				actions.CreateTransactionAction(skipLedger, []*commonpb.Posting{
+			seedResp, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.WithReference(
+				actions.CreateTransactionAction(skipLedger, []*ledgerpb.Posting{
 					actions.NewPosting("world", account, big.NewInt(50), "USD"),
 				}, nil, nil),
 				"mixed-batch-dup-ref",
@@ -206,9 +206,9 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 
 			seedTxID := seedResp.Logs[0].GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction().GetTransaction().GetId()
 
-			batchResp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
+			batchResp, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("",
 				// Order 0 — strict, must succeed.
-				actions.CreateTransactionAction(skipLedger, []*commonpb.Posting{
+				actions.CreateTransactionAction(skipLedger, []*ledgerpb.Posting{
 					actions.NewPosting("world", account, big.NewInt(10), "USD"),
 				}, nil, nil),
 				// Order 1 — skip-tolerant, must convert the conflict and
@@ -216,17 +216,17 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 				// account's volume.
 				actions.WithSkippableReasons(
 					actions.WithReference(
-						actions.CreateTransactionAction(skipLedger, []*commonpb.Posting{
+						actions.CreateTransactionAction(skipLedger, []*ledgerpb.Posting{
 							actions.NewPosting("world", account, big.NewInt(11), "USD"),
 						}, nil, nil),
 						"mixed-batch-dup-ref",
 					),
-					commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+					ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 				),
 				// Order 2 — strict again, must still succeed even though
 				// the previous order produced a skip log (atomic batch
 				// continues on whitelisted business failures).
-				actions.CreateTransactionAction(skipLedger, []*commonpb.Posting{
+				actions.CreateTransactionAction(skipLedger, []*ledgerpb.Posting{
 					actions.NewPosting("world", account, big.NewInt(12), "USD"),
 				}, nil, nil),
 			))
@@ -237,7 +237,7 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 
 			skipped := batchResp.Logs[1].GetPayload().GetApply().GetLog().GetData().GetOrderSkipped()
 			Expect(skipped).NotTo(BeNil())
-			Expect(skipped.GetReason()).To(Equal(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT))
+			Expect(skipped.GetReason()).To(Equal(ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT))
 			Expect(skipped.GetContext()["existingTransactionId"]).To(Equal(strconv.FormatUint(seedTxID, 10)))
 
 			// The skip log carries a real per-ledger id and date even
@@ -252,7 +252,7 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 			// Volume invariant: the skipped order's 11 units must NOT have
 			// landed. Expected total received = 50 (seed) + 10 (order 0)
 			// + 12 (order 2) = 72.
-			accountResp, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
+			accountResp, err := sharedClient.GetAccount(sharedCtx, &ledgerpb.GetAccountRequest{
 				Ledger:  skipLedger,
 				Address: account,
 			})
@@ -261,14 +261,14 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 		})
 
 		It("Should reject a skippable_reasons entry that is not in the operation's whitelist", func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.WithSkippableReasons(
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.WithSkippableReasons(
 				actions.WithReference(
-					actions.CreateTransactionAction(skipLedger, []*commonpb.Posting{
+					actions.CreateTransactionAction(skipLedger, []*ledgerpb.Posting{
 						actions.NewPosting("world", "account-skip", big.NewInt(400), "USD"),
 					}, nil, nil),
 					"never-existed",
 				),
-				commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+				ledgerpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
 			)))
 			Expect(err).To(HaveOccurred())
 
@@ -285,7 +285,7 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 		)
 
 		BeforeAll(func() {
-			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerA, nil),
+			resp, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerA, nil),
 				actions.CreateLedgerAction(ledgerB, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(2))
@@ -293,8 +293,8 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 
 		It("Should allow the same reference in different ledgers", func() {
 			// Create transaction with reference in ledger A
-			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.WithReference(
-				actions.CreateTransactionAction(ledgerA, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.WithReference(
+				actions.CreateTransactionAction(ledgerA, []*ledgerpb.Posting{
 					actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 				}, nil, nil),
 				"shared-ref",
@@ -303,8 +303,8 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 			Expect(resp.Logs).To(HaveLen(1))
 
 			// Same reference in ledger B should succeed
-			resp, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.WithReference(
-				actions.CreateTransactionAction(ledgerB, []*commonpb.Posting{
+			resp, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.WithReference(
+				actions.CreateTransactionAction(ledgerB, []*ledgerpb.Posting{
 					actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 				}, nil, nil),
 				"shared-ref",

@@ -1,18 +1,18 @@
 package actions
 
 import (
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // StringMetadataFilter creates a filter matching a metadata string field with an exact value.
-func StringMetadataFilter(key, value string) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Field{
-			Field: &commonpb.FieldCondition{
-				Field: &commonpb.FieldRef{Metadata: key},
-				Condition: &commonpb.FieldCondition_StringCond{
-					StringCond: &commonpb.StringCondition{
-						Value: &commonpb.StringCondition_Hardcoded{
+func StringMetadataFilter(key, value string) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Field{
+			Field: &ledgerpb.FieldCondition{
+				Field: &ledgerpb.FieldRef{Metadata: key},
+				Condition: &ledgerpb.FieldCondition_StringCond{
+					StringCond: &ledgerpb.StringCondition{
+						Value: &ledgerpb.StringCondition_Hardcoded{
 							Hardcoded: value,
 						},
 					},
@@ -23,11 +23,11 @@ func StringMetadataFilter(key, value string) *commonpb.QueryFilter {
 }
 
 // AddressPrefixFilter creates a filter matching accounts by address prefix.
-func AddressPrefixFilter(prefix string) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Address{
-			Address: &commonpb.AddressMatch{
-				Match: &commonpb.AddressMatch_HardcodedPrefix{
+func AddressPrefixFilter(prefix string) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Address{
+			Address: &ledgerpb.AddressMatch{
+				Match: &ledgerpb.AddressMatch_HardcodedPrefix{
 					HardcodedPrefix: prefix,
 				},
 			},
@@ -36,11 +36,11 @@ func AddressPrefixFilter(prefix string) *commonpb.QueryFilter {
 }
 
 // AddressExactFilter creates a filter matching accounts by exact address.
-func AddressExactFilter(addr string) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Address{
-			Address: &commonpb.AddressMatch{
-				Match: &commonpb.AddressMatch_HardcodedExact{
+func AddressExactFilter(addr string) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Address{
+			Address: &ledgerpb.AddressMatch{
+				Match: &ledgerpb.AddressMatch_HardcodedExact{
 					HardcodedExact: addr,
 				},
 			},
@@ -49,12 +49,12 @@ func AddressExactFilter(addr string) *commonpb.QueryFilter {
 }
 
 // ReferenceFilter creates a filter matching transactions by reference (exact match).
-func ReferenceFilter(ref string) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Reference{
-			Reference: &commonpb.ReferenceCondition{
-				Cond: &commonpb.StringCondition{
-					Value: &commonpb.StringCondition_Hardcoded{
+func ReferenceFilter(ref string) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Reference{
+			Reference: &ledgerpb.ReferenceCondition{
+				Cond: &ledgerpb.StringCondition{
+					Value: &ledgerpb.StringCondition_Hardcoded{
 						Hardcoded: ref,
 					},
 				},
@@ -64,39 +64,39 @@ func ReferenceFilter(ref string) *commonpb.QueryFilter {
 }
 
 // AndFilter creates a logical AND filter combining multiple filters.
-func AndFilter(filters ...*commonpb.QueryFilter) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_And{
-			And: &commonpb.AndFilter{Filters: filters},
+func AndFilter(filters ...*ledgerpb.QueryFilter) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_And{
+			And: &ledgerpb.AndFilter{Filters: filters},
 		},
 	}
 }
 
 // OrFilter creates a logical OR filter combining multiple filters.
-func OrFilter(filters ...*commonpb.QueryFilter) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Or{
-			Or: &commonpb.OrFilter{Filters: filters},
+func OrFilter(filters ...*ledgerpb.QueryFilter) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Or{
+			Or: &ledgerpb.OrFilter{Filters: filters},
 		},
 	}
 }
 
 // NotFilter creates a logical NOT filter.
-func NotFilter(f *commonpb.QueryFilter) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Not{
-			Not: &commonpb.NotFilter{Filter: f},
+func NotFilter(f *ledgerpb.QueryFilter) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Not{
+			Not: &ledgerpb.NotFilter{Filter: f},
 		},
 	}
 }
 
 // LedgerFilter creates a filter matching entries by ledger name.
-func LedgerFilter(ledger string) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Ledger{
-			Ledger: &commonpb.LedgerCondition{
-				Cond: &commonpb.StringCondition{
-					Value: &commonpb.StringCondition_Hardcoded{
+func LedgerFilter(ledger string) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Ledger{
+			Ledger: &ledgerpb.LedgerCondition{
+				Cond: &ledgerpb.StringCondition{
+					Value: &ledgerpb.StringCondition_Hardcoded{
 						Hardcoded: ledger,
 					},
 				},
@@ -114,11 +114,11 @@ func LedgerFilter(ledger string) *commonpb.QueryFilter {
 // ledgers (or ledger creation) advance the global sequence, passing
 // Log.GetSequence() here skips too many rows. Always pass the ledger-local
 // LedgerLog.Id.
-func LogIdGreaterThanFilter(ledgerLocalLogID uint64) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_LogId{
-			LogId: &commonpb.LogIdCondition{
-				Cond: &commonpb.UintCondition{
+func LogIdGreaterThanFilter(ledgerLocalLogID uint64) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_LogId{
+			LogId: &ledgerpb.LogIdCondition{
+				Cond: &ledgerpb.UintCondition{
 					Min:          &ledgerLocalLogID,
 					MinExclusive: true,
 				},
@@ -129,11 +129,11 @@ func LogIdGreaterThanFilter(ledgerLocalLogID uint64) *commonpb.QueryFilter {
 
 // ParamAddressPrefixFilter creates a filter matching accounts by a parameterized address prefix.
 // The actual prefix value is supplied at execution time via parameters map.
-func ParamAddressPrefixFilter(paramName string) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Address{
-			Address: &commonpb.AddressMatch{
-				Match: &commonpb.AddressMatch_ParamPrefix{
+func ParamAddressPrefixFilter(paramName string) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Address{
+			Address: &ledgerpb.AddressMatch{
+				Match: &ledgerpb.AddressMatch_ParamPrefix{
 					ParamPrefix: paramName,
 				},
 			},
@@ -142,11 +142,11 @@ func ParamAddressPrefixFilter(paramName string) *commonpb.QueryFilter {
 }
 
 // ParamAddressExactFilter creates a filter matching accounts by a parameterized exact address.
-func ParamAddressExactFilter(paramName string) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Address{
-			Address: &commonpb.AddressMatch{
-				Match: &commonpb.AddressMatch_ParamExact{
+func ParamAddressExactFilter(paramName string) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Address{
+			Address: &ledgerpb.AddressMatch{
+				Match: &ledgerpb.AddressMatch_ParamExact{
 					ParamExact: paramName,
 				},
 			},
@@ -155,14 +155,14 @@ func ParamAddressExactFilter(paramName string) *commonpb.QueryFilter {
 }
 
 // ParamStringMetadataFilter creates a filter matching a metadata string field with a parameterized value.
-func ParamStringMetadataFilter(key, paramName string) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Field{
-			Field: &commonpb.FieldCondition{
-				Field: &commonpb.FieldRef{Metadata: key},
-				Condition: &commonpb.FieldCondition_StringCond{
-					StringCond: &commonpb.StringCondition{
-						Value: &commonpb.StringCondition_Param{
+func ParamStringMetadataFilter(key, paramName string) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Field{
+			Field: &ledgerpb.FieldCondition{
+				Field: &ledgerpb.FieldRef{Metadata: key},
+				Condition: &ledgerpb.FieldCondition_StringCond{
+					StringCond: &ledgerpb.StringCondition{
+						Value: &ledgerpb.StringCondition_Param{
 							Param: paramName,
 						},
 					},
@@ -173,14 +173,14 @@ func ParamStringMetadataFilter(key, paramName string) *commonpb.QueryFilter {
 }
 
 // ParamBoolMetadataFilter creates a filter matching a metadata bool field with a parameterized value.
-func ParamBoolMetadataFilter(key, paramName string) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Field{
-			Field: &commonpb.FieldCondition{
-				Field: &commonpb.FieldRef{Metadata: key},
-				Condition: &commonpb.FieldCondition_BoolCond{
-					BoolCond: &commonpb.BoolCondition{
-						Value: &commonpb.BoolCondition_Param{
+func ParamBoolMetadataFilter(key, paramName string) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Field{
+			Field: &ledgerpb.FieldCondition{
+				Field: &ledgerpb.FieldRef{Metadata: key},
+				Condition: &ledgerpb.FieldCondition_BoolCond{
+					BoolCond: &ledgerpb.BoolCondition{
+						Value: &ledgerpb.BoolCondition_Param{
 							Param: paramName,
 						},
 					},
@@ -192,13 +192,13 @@ func ParamBoolMetadataFilter(key, paramName string) *commonpb.QueryFilter {
 
 // ParamInt64RangeMetadataFilter creates a filter matching a metadata int64 field
 // with parameterized min/max bounds.
-func ParamInt64RangeMetadataFilter(key, paramMin, paramMax string) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Field{
-			Field: &commonpb.FieldCondition{
-				Field: &commonpb.FieldRef{Metadata: key},
-				Condition: &commonpb.FieldCondition_IntCond{
-					IntCond: &commonpb.IntCondition{
+func ParamInt64RangeMetadataFilter(key, paramMin, paramMax string) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Field{
+			Field: &ledgerpb.FieldCondition{
+				Field: &ledgerpb.FieldRef{Metadata: key},
+				Condition: &ledgerpb.FieldCondition_IntCond{
+					IntCond: &ledgerpb.IntCondition{
 						ParamMin: paramMin,
 						ParamMax: paramMax,
 					},
@@ -210,14 +210,14 @@ func ParamInt64RangeMetadataFilter(key, paramMin, paramMax string) *commonpb.Que
 
 // Int64RangeMetadataFilter creates a filter matching a metadata int64 field
 // with hardcoded min/max bounds (inclusive).
-func Int64RangeMetadataFilter(key string, minVal, maxVal *int64) *commonpb.QueryFilter {
+func Int64RangeMetadataFilter(key string, minVal, maxVal *int64) *ledgerpb.QueryFilter {
 	return Int64RangeMetadataFilterExclusive(key, minVal, maxVal, false, false)
 }
 
 // Int64RangeMetadataFilterExclusive creates a filter matching a metadata int64 field
 // with hardcoded min/max bounds and configurable exclusivity.
-func Int64RangeMetadataFilterExclusive(key string, minVal, maxVal *int64, minExclusive, maxExclusive bool) *commonpb.QueryFilter {
-	cond := &commonpb.IntCondition{
+func Int64RangeMetadataFilterExclusive(key string, minVal, maxVal *int64, minExclusive, maxExclusive bool) *ledgerpb.QueryFilter {
+	cond := &ledgerpb.IntCondition{
 		MinExclusive: minExclusive,
 		MaxExclusive: maxExclusive,
 	}
@@ -228,11 +228,11 @@ func Int64RangeMetadataFilterExclusive(key string, minVal, maxVal *int64, minExc
 		cond.Max = maxVal
 	}
 
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Field{
-			Field: &commonpb.FieldCondition{
-				Field: &commonpb.FieldRef{Metadata: key},
-				Condition: &commonpb.FieldCondition_IntCond{
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Field{
+			Field: &ledgerpb.FieldCondition{
+				Field: &ledgerpb.FieldRef{Metadata: key},
+				Condition: &ledgerpb.FieldCondition_IntCond{
 					IntCond: cond,
 				},
 			},
@@ -242,15 +242,15 @@ func Int64RangeMetadataFilterExclusive(key string, minVal, maxVal *int64, minExc
 
 // UintMetadataFilter creates a filter matching a metadata uint64 field with
 // a single exact value (closed range [val, val]).
-func UintMetadataFilter(key string, val uint64) *commonpb.QueryFilter {
+func UintMetadataFilter(key string, val uint64) *ledgerpb.QueryFilter {
 	v := val
 
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Field{
-			Field: &commonpb.FieldCondition{
-				Field: &commonpb.FieldRef{Metadata: key},
-				Condition: &commonpb.FieldCondition_UintCond{
-					UintCond: &commonpb.UintCondition{
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Field{
+			Field: &ledgerpb.FieldCondition{
+				Field: &ledgerpb.FieldRef{Metadata: key},
+				Condition: &ledgerpb.FieldCondition_UintCond{
+					UintCond: &ledgerpb.UintCondition{
 						Min: &v,
 						Max: &v,
 					},
@@ -261,14 +261,14 @@ func UintMetadataFilter(key string, val uint64) *commonpb.QueryFilter {
 }
 
 // BoolMetadataFilter creates a filter matching a metadata bool field with a hardcoded value.
-func BoolMetadataFilter(key string, val bool) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Field{
-			Field: &commonpb.FieldCondition{
-				Field: &commonpb.FieldRef{Metadata: key},
-				Condition: &commonpb.FieldCondition_BoolCond{
-					BoolCond: &commonpb.BoolCondition{
-						Value: &commonpb.BoolCondition_Hardcoded{
+func BoolMetadataFilter(key string, val bool) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Field{
+			Field: &ledgerpb.FieldCondition{
+				Field: &ledgerpb.FieldRef{Metadata: key},
+				Condition: &ledgerpb.FieldCondition_BoolCond{
+					BoolCond: &ledgerpb.BoolCondition{
+						Value: &ledgerpb.BoolCondition_Hardcoded{
 							Hardcoded: val,
 						},
 					},
@@ -279,86 +279,86 @@ func BoolMetadataFilter(key string, val bool) *commonpb.QueryFilter {
 }
 
 // StringParam creates a ParameterValue with a string value.
-func StringParam(s string) *commonpb.ParameterValue {
-	return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_StringValue{StringValue: s}}
+func StringParam(s string) *ledgerpb.ParameterValue {
+	return &ledgerpb.ParameterValue{Value: &ledgerpb.ParameterValue_StringValue{StringValue: s}}
 }
 
 // Int64Param creates a ParameterValue with an int64 value.
-func Int64Param(v int64) *commonpb.ParameterValue {
-	return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Int64Value{Int64Value: v}}
+func Int64Param(v int64) *ledgerpb.ParameterValue {
+	return &ledgerpb.ParameterValue{Value: &ledgerpb.ParameterValue_Int64Value{Int64Value: v}}
 }
 
 // Uint64Param creates a ParameterValue with a uint64 value.
-func Uint64Param(v uint64) *commonpb.ParameterValue {
-	return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: v}}
+func Uint64Param(v uint64) *ledgerpb.ParameterValue {
+	return &ledgerpb.ParameterValue{Value: &ledgerpb.ParameterValue_Uint64Value{Uint64Value: v}}
 }
 
 // BoolParam creates a ParameterValue with a bool value.
-func BoolParam(v bool) *commonpb.ParameterValue {
-	return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_BoolValue{BoolValue: v}}
+func BoolParam(v bool) *ledgerpb.ParameterValue {
+	return &ledgerpb.ParameterValue{Value: &ledgerpb.ParameterValue_BoolValue{BoolValue: v}}
 }
 
 // ExistsMetadataFilter creates a filter that checks for metadata key existence.
-func ExistsMetadataFilter(key string) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Field{
-			Field: &commonpb.FieldCondition{
-				Field:     &commonpb.FieldRef{Metadata: key},
-				Condition: &commonpb.FieldCondition_ExistsCond{ExistsCond: &commonpb.ExistsCondition{}},
+func ExistsMetadataFilter(key string) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Field{
+			Field: &ledgerpb.FieldCondition{
+				Field:     &ledgerpb.FieldRef{Metadata: key},
+				Condition: &ledgerpb.FieldCondition_ExistsCond{ExistsCond: &ledgerpb.ExistsCondition{}},
 			},
 		},
 	}
 }
 
 // BuiltinUintRangeFilter creates a filter matching a builtin uint field within a range.
-func BuiltinUintRangeFilter(field commonpb.TransactionBuiltinIndex, minVal, maxVal uint64) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_BuiltinUint{
-			BuiltinUint: &commonpb.BuiltinUintCondition{
+func BuiltinUintRangeFilter(field ledgerpb.TransactionBuiltinIndex, minVal, maxVal uint64) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_BuiltinUint{
+			BuiltinUint: &ledgerpb.BuiltinUintCondition{
 				Field: field,
-				Cond:  &commonpb.UintCondition{Min: &minVal, Max: &maxVal},
+				Cond:  &ledgerpb.UintCondition{Min: &minVal, Max: &maxVal},
 			},
 		},
 	}
 }
 
 // TimestampRangeFilter creates a filter matching transactions by timestamp range.
-func TimestampRangeFilter(minVal, maxVal uint64) *commonpb.QueryFilter {
-	return BuiltinUintRangeFilter(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP, minVal, maxVal)
+func TimestampRangeFilter(minVal, maxVal uint64) *ledgerpb.QueryFilter {
+	return BuiltinUintRangeFilter(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP, minVal, maxVal)
 }
 
 // InsertedAtRangeFilter creates a filter matching transactions by inserted-at range.
-func InsertedAtRangeFilter(minVal, maxVal uint64) *commonpb.QueryFilter {
-	return BuiltinUintRangeFilter(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT, minVal, maxVal)
+func InsertedAtRangeFilter(minVal, maxVal uint64) *ledgerpb.QueryFilter {
+	return BuiltinUintRangeFilter(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT, minVal, maxVal)
 }
 
 // RevertedAtRangeFilter creates a filter matching transactions by reverted-at range.
-func RevertedAtRangeFilter(minVal, maxVal uint64) *commonpb.QueryFilter {
-	return BuiltinUintRangeFilter(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT, minVal, maxVal)
+func RevertedAtRangeFilter(minVal, maxVal uint64) *ledgerpb.QueryFilter {
+	return BuiltinUintRangeFilter(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT, minVal, maxVal)
 }
 
 // RevertedFilter creates a filter matching transactions by revert status.
-func RevertedFilter(reverted bool) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Reverted{
-			Reverted: &commonpb.RevertedCondition{Value: reverted},
+func RevertedFilter(reverted bool) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Reverted{
+			Reverted: &ledgerpb.RevertedCondition{Value: reverted},
 		},
 	}
 }
 
 // TxIDRangeFilter creates a filter matching transactions by ID range.
-func TxIDRangeFilter(minVal, maxVal uint64) *commonpb.QueryFilter {
-	return BuiltinUintRangeFilter(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID, minVal, maxVal)
+func TxIDRangeFilter(minVal, maxVal uint64) *ledgerpb.QueryFilter {
+	return BuiltinUintRangeFilter(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID, minVal, maxVal)
 }
 
 // TxIDExactFilter creates a filter matching a single transaction by exact ID.
-func TxIDExactFilter(id uint64) *commonpb.QueryFilter {
+func TxIDExactFilter(id uint64) *ledgerpb.QueryFilter {
 	return TxIDRangeFilter(id, id)
 }
 
 // AddressExactRoleFilter creates a filter matching transactions whose posting
 // has addr in the given role (source, destination, or either).
-func AddressExactRoleFilter(addr string, role commonpb.AddressRole) *commonpb.QueryFilter {
+func AddressExactRoleFilter(addr string, role ledgerpb.AddressRole) *ledgerpb.QueryFilter {
 	f := AddressExactFilter(addr)
 	f.GetAddress().Role = role
 

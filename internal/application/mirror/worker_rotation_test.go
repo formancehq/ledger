@@ -10,7 +10,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -87,7 +87,7 @@ func TestWorker_RotationPreloadsReadOnlyLedger(t *testing.T) {
 			writeMirrorMetadataPolicy(t, store, mirrorMetadataPolicy())
 			require.NoError(t, state.NewRecovery(machine, store).RecoverState())
 			key := domain.LedgerKey{Name: "mirrored"}
-			info := &commonpb.LedgerInfo{Name: key.Name, Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR}
+			info := &ledgerpb.LedgerInfo{Name: key.Name, Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR}
 			batch := store.OpenWriteSession()
 			_, identity, err := registry.Ledgers.PutWithCache(batch, 0, key.Bytes(), info)
 			require.NoError(t, err)
@@ -115,7 +115,7 @@ func TestWorker_RotationPreloadsReadOnlyLedger(t *testing.T) {
 							continue
 						}
 						require.NotNil(t, entry.GetValue(), "Gen1-only ledger must be loaded from durable storage before rotation")
-						seeded := &commonpb.LedgerInfo{}
+						seeded := &ledgerpb.LedgerInfo{}
 						require.NoError(t, seeded.UnmarshalVT(entry.GetValue().GetRawValue()))
 						require.Equal(t, info.GetName(), seeded.GetName())
 						require.Equal(t, info.GetMode(), seeded.GetMode())

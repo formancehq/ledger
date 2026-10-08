@@ -17,7 +17,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/apierr"
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
@@ -30,10 +30,10 @@ func TestForwardedCursorPreservesCanceledLedgerStatus(t *testing.T) {
 
 	constructors := []struct {
 		name string
-		new  func(context.Context, ggrpc.ServerStreamingClient[commonpb.Account]) cursor.Cursor[*commonpb.Account]
+		new  func(context.Context, ggrpc.ServerStreamingClient[ledgerpb.Account]) cursor.Cursor[*ledgerpb.Account]
 	}{
-		{"upstream peek", NewUpstreamPeekCursor[commonpb.Account]},
-		{"generic identity", NewGRPCIdentityCursor[commonpb.Account]},
+		{"upstream peek", NewUpstreamPeekCursor[ledgerpb.Account]},
+		{"generic identity", NewGRPCIdentityCursor[ledgerpb.Account]},
 	}
 	for _, constructor := range constructors {
 		for _, structured := range []bool{true, false} {
@@ -54,7 +54,7 @@ func TestForwardedCursorPreservesCanceledLedgerStatus(t *testing.T) {
 				client := dialCursorBoundaryServer(t, &endingBucketServer{rows: 2, endErr: upstream.Err()})
 				ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 				t.Cleanup(cancel)
-				stream, err := client.ListAccounts(ctx, &commonpb.ListAccountsRequest{Ledger: "ledger"})
+				stream, err := client.ListAccounts(ctx, &ledgerpb.ListAccountsRequest{Ledger: "ledger"})
 				require.NoError(t, err)
 				cur := constructor.new(ctx, stream)
 				t.Cleanup(func() { require.NoError(t, cur.Close()) })
@@ -100,11 +100,11 @@ func TestForwardedCursorPreservesCanceledLedgerStatus(t *testing.T) {
 	}
 }
 
-func dialCursorBoundaryServer(t *testing.T, srv commonpb.BucketServiceServer) commonpb.BucketServiceClient {
+func dialCursorBoundaryServer(t *testing.T, srv ledgerpb.BucketServiceServer) ledgerpb.BucketServiceClient {
 	t.Helper()
 	listener := bufconn.Listen(1 << 20)
 	server := ggrpc.NewServer()
-	commonpb.RegisterBucketServiceServer(server, srv)
+	ledgerpb.RegisterBucketServiceServer(server, srv)
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- server.Serve(listener) }()
 	t.Cleanup(func() {
@@ -120,5 +120,5 @@ func dialCursorBoundaryServer(t *testing.T, srv commonpb.BucketServiceServer) co
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
 
-	return commonpb.NewBucketServiceClient(grpcerr.NewConn(conn))
+	return ledgerpb.NewBucketServiceClient(grpcerr.NewConn(conn))
 }

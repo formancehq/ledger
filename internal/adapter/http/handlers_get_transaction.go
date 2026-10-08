@@ -3,13 +3,13 @@ package http
 import (
 	"net/http"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // getTransactionData is the `data` envelope of GET
 // /{ledgerName}/transactions/{transactionId}.
 type getTransactionData struct {
-	Transaction *commonpb.Transaction `json:"transaction"`
+	Transaction *ledgerpb.Transaction `json:"transaction"`
 }
 
 // handleGetTransaction handles GET /{ledgerName}/transactions/{transactionId} to retrieve a transaction.

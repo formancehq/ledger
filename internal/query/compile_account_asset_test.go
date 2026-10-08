@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -18,9 +18,9 @@ import (
 
 // staticIndexLookup is an in-memory indexes.Lookup for the account-by-asset
 // compile tests. Keyed exactly like the production registry.
-type staticIndexLookup map[domain.IndexKey]*commonpb.Index
+type staticIndexLookup map[domain.IndexKey]*ledgerpb.Index
 
-func (s staticIndexLookup) Get(key domain.IndexKey) (commonpb.IndexReader, error) {
+func (s staticIndexLookup) Get(key domain.IndexKey) (ledgerpb.IndexReader, error) {
 	idx, ok := s[key]
 	if !ok {
 		return nil, domain.ErrNotFound
@@ -29,9 +29,9 @@ func (s staticIndexLookup) Get(key domain.IndexKey) (commonpb.IndexReader, error
 	return idx.AsReader(), nil
 }
 
-func accountHasAssetFilter(assetBase string, precision uint32) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_AccountHasAsset{
-		AccountHasAsset: &commonpb.AccountHasAssetCondition{
+func accountHasAssetFilter(assetBase string, precision uint32) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_AccountHasAsset{
+		AccountHasAsset: &ledgerpb.AccountHasAssetCondition{
 			AssetBase: assetBase,
 			Precision: precision,
 		},
@@ -48,8 +48,8 @@ func TestCompile_AccountHasAsset_RequiresReady(t *testing.T) {
 
 	const ledgerName = "ledger1"
 
-	assetID := indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
-	info := &commonpb.LedgerInfo{Name: ledgerName}
+	assetID := indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
+	info := &ledgerpb.LedgerInfo{Name: ledgerName}
 
 	// Index IS declared, but the local replica reports CurrentVersion == 0.
 	registry := staticIndexLookup{
@@ -61,7 +61,7 @@ func TestCompile_AccountHasAsset_RequiresReady(t *testing.T) {
 
 	_, err := query.Compile(
 		nil, dal.NewKeyBuilder(), accountHasAssetFilter("USD", 2),
-		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerName,
+		ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerName,
 		nil, nil, info, registry, resolverZero, nil, nil, 0)
 	require.Error(t, err, "compiler must refuse when CurrentVersion=0")
 
@@ -106,8 +106,8 @@ func TestCompile_AccountHasAsset_PrefixScan(t *testing.T) {
 
 	reader := store.DB()
 
-	assetID := indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
-	info := &commonpb.LedgerInfo{Name: ledgerName}
+	assetID := indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
+	info := &ledgerpb.LedgerInfo{Name: ledgerName}
 	registry := staticIndexLookup{
 		indexes.KeyFor(ledgerName, assetID): {Ledger: ledgerName, Id: assetID},
 	}
@@ -117,7 +117,7 @@ func TestCompile_AccountHasAsset_PrefixScan(t *testing.T) {
 
 	iter, err := query.Compile(
 		reader, dal.NewKeyBuilder(), accountHasAssetFilter("USD", 2),
-		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerName,
+		ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerName,
 		nil, nil, info, registry, resolverReady, nil, reader, 0)
 	require.NoError(t, err)
 
@@ -167,8 +167,8 @@ func TestCompile_AccountHasAsset_PinExcludesLaterFirstTouch(t *testing.T) {
 
 	reader := store.DB()
 
-	assetID := indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
-	info := &commonpb.LedgerInfo{Name: ledgerName}
+	assetID := indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
+	info := &ledgerpb.LedgerInfo{Name: ledgerName}
 	registry := staticIndexLookup{
 		indexes.KeyFor(ledgerName, assetID): {Ledger: ledgerName, Id: assetID},
 	}
@@ -179,7 +179,7 @@ func TestCompile_AccountHasAsset_PinExcludesLaterFirstTouch(t *testing.T) {
 	scan := func(pin uint64) []string {
 		iter, cErr := query.Compile(
 			reader, dal.NewKeyBuilder(), accountHasAssetFilter("USD", 2),
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerName,
+			ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerName,
 			nil, nil, info, registry, resolverReady, nil, reader, pin)
 		require.NoError(t, cErr)
 
@@ -235,8 +235,8 @@ func TestCompile_RevertedAt_PinExcludesLaterRevert(t *testing.T) {
 
 	reader := store.DB()
 
-	rvatID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT)
-	info := &commonpb.LedgerInfo{Name: ledgerName}
+	rvatID := indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT)
+	info := &ledgerpb.LedgerInfo{Name: ledgerName}
 	registry := staticIndexLookup{
 		indexes.KeyFor(ledgerName, rvatID): {Ledger: ledgerName, Id: rvatID},
 	}
@@ -244,17 +244,17 @@ func TestCompile_RevertedAt_PinExcludesLaterRevert(t *testing.T) {
 		return readstore.ResolvedIndexVersion{Version: 1, BindingKnown: true}, true, nil
 	}
 
-	filter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
-		BuiltinUint: &commonpb.BuiltinUintCondition{
-			Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT,
-			Cond:  &commonpb.UintCondition{},
+	filter := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_BuiltinUint{
+		BuiltinUint: &ledgerpb.BuiltinUintCondition{
+			Field: ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT,
+			Cond:  &ledgerpb.UintCondition{},
 		},
 	}}
 
 	scan := func(pin uint64) []uint64 {
 		iter, cErr := query.Compile(
 			reader, dal.NewKeyBuilder(), filter,
-			commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, ledgerName,
+			ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, ledgerName,
 			nil, nil, info, registry, resolverReady, nil, reader, pin)
 		require.NoError(t, cErr)
 

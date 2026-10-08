@@ -15,7 +15,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -463,7 +463,7 @@ func TestBackup_MultipleIncrementalsChain_RoundTrips(t *testing.T) {
 		b := src.OpenWriteSession()
 		require.NoError(t, b.SetProto(coldLogKey(seq), createLedgerLog(seq, name, uint32(seq))))
 		audit := auditSuccess(seq, seq, seq)
-		audit.Timestamp = &commonpb.Timestamp{Data: seq * 100}
+		audit.Timestamp = &ledgerpb.Timestamp{Data: seq * 100}
 		require.NoError(t, b.SetProto(coldAuditKey(seq), audit))
 		require.NoError(t, state.StoreLastAppliedTimestamp(b, seq*100))
 		saveNextLedgerIDForBackupTest(t, b, uint32(seq+1))
@@ -506,7 +506,7 @@ func TestBackup_MultipleIncrementalsChain_RoundTrips(t *testing.T) {
 	seedBatch := dst.OpenWriteSession()
 	require.NoError(t, seedBatch.SetProto(coldLogKey(1), createLedgerLog(1, "ledger-0", 1)))
 	seedAudit := auditSuccess(1, 1, 1)
-	seedAudit.Timestamp = &commonpb.Timestamp{Data: 100}
+	seedAudit.Timestamp = &ledgerpb.Timestamp{Data: 100}
 	require.NoError(t, seedBatch.SetProto(coldAuditKey(1), seedAudit))
 	require.NoError(t, state.StoreLastAppliedTimestamp(seedBatch, 100))
 	saveNextLedgerIDForBackupTest(t, seedBatch, 2)
@@ -642,14 +642,14 @@ func TestBackup_PreparedQueryMutationsRoundTrip(t *testing.T) {
 
 	ctx := context.Background()
 	attrs := attributes.New()
-	oldFilter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reverted{Reverted: &commonpb.RevertedCondition{Value: false}}}
-	newFilter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reverted{Reverted: &commonpb.RevertedCondition{Value: true}}}
-	queryQ := &commonpb.PreparedQuery{Name: "q", Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, Filter: oldFilter}
-	queryR := &commonpb.PreparedQuery{Name: "r", Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, Filter: oldFilter}
-	queryS := &commonpb.PreparedQuery{Name: "s", Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, Filter: oldFilter}
+	oldFilter := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Reverted{Reverted: &ledgerpb.RevertedCondition{Value: false}}}
+	newFilter := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Reverted{Reverted: &ledgerpb.RevertedCondition{Value: true}}}
+	queryQ := &ledgerpb.PreparedQuery{Name: "q", Target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, Filter: oldFilter}
+	queryR := &ledgerpb.PreparedQuery{Name: "r", Target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, Filter: oldFilter}
+	queryS := &ledgerpb.PreparedQuery{Name: "s", Target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, Filter: oldFilter}
 
-	preparedQueryLog := func(seq uint64, payload *commonpb.LogPayload) *commonpb.Log {
-		return &commonpb.Log{Sequence: seq, Payload: payload}
+	preparedQueryLog := func(seq uint64, payload *ledgerpb.LogPayload) *ledgerpb.Log {
+		return &ledgerpb.Log{Sequence: seq, Payload: payload}
 	}
 
 	src := newBackupTestStore(t)
@@ -667,11 +667,11 @@ func TestBackup_PreparedQueryMutationsRoundTrip(t *testing.T) {
 	require.EqualValues(t, 1, full.LastLogSequence)
 
 	delta := src.OpenWriteSession()
-	require.NoError(t, delta.SetProto(coldLogKey(2), preparedQueryLog(2, &commonpb.LogPayload{Type: &commonpb.LogPayload_UpdatedPreparedQuery{UpdatedPreparedQuery: &commonpb.UpdatedPreparedQueryLog{Ledger: ledger, Name: "q", PreviousFilter: oldFilter, NewFilter: newFilter}}})))
-	require.NoError(t, delta.SetProto(coldLogKey(3), preparedQueryLog(3, &commonpb.LogPayload{Type: &commonpb.LogPayload_DeletedPreparedQuery{DeletedPreparedQuery: &commonpb.DeletedPreparedQueryLog{Ledger: ledger, Name: "r"}}})))
-	require.NoError(t, delta.SetProto(coldLogKey(4), preparedQueryLog(4, &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedPreparedQuery{CreatedPreparedQuery: &commonpb.CreatedPreparedQueryLog{Ledger: ledger, Query: queryS}}})))
-	require.NoError(t, delta.SetProto(coldLogKey(5), preparedQueryLog(5, &commonpb.LogPayload{Type: &commonpb.LogPayload_UpdatedPreparedQuery{UpdatedPreparedQuery: &commonpb.UpdatedPreparedQueryLog{Ledger: ledger, Name: "s", PreviousFilter: oldFilter, NewFilter: newFilter}}})))
-	require.NoError(t, delta.SetProto(coldLogKey(6), preparedQueryLog(6, &commonpb.LogPayload{Type: &commonpb.LogPayload_DeletedPreparedQuery{DeletedPreparedQuery: &commonpb.DeletedPreparedQueryLog{Ledger: ledger, Name: "s"}}})))
+	require.NoError(t, delta.SetProto(coldLogKey(2), preparedQueryLog(2, &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_UpdatedPreparedQuery{UpdatedPreparedQuery: &ledgerpb.UpdatedPreparedQueryLog{Ledger: ledger, Name: "q", PreviousFilter: oldFilter, NewFilter: newFilter}}})))
+	require.NoError(t, delta.SetProto(coldLogKey(3), preparedQueryLog(3, &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_DeletedPreparedQuery{DeletedPreparedQuery: &ledgerpb.DeletedPreparedQueryLog{Ledger: ledger, Name: "r"}}})))
+	require.NoError(t, delta.SetProto(coldLogKey(4), preparedQueryLog(4, &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreatedPreparedQuery{CreatedPreparedQuery: &ledgerpb.CreatedPreparedQueryLog{Ledger: ledger, Query: queryS}}})))
+	require.NoError(t, delta.SetProto(coldLogKey(5), preparedQueryLog(5, &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_UpdatedPreparedQuery{UpdatedPreparedQuery: &ledgerpb.UpdatedPreparedQueryLog{Ledger: ledger, Name: "s", PreviousFilter: oldFilter, NewFilter: newFilter}}})))
+	require.NoError(t, delta.SetProto(coldLogKey(6), preparedQueryLog(6, &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_DeletedPreparedQuery{DeletedPreparedQuery: &ledgerpb.DeletedPreparedQueryLog{Ledger: ledger, Name: "s"}}})))
 	for seq := uint64(2); seq <= 6; seq++ {
 		require.NoError(t, delta.SetProto(coldAuditKey(seq), auditSuccess(seq, seq, seq)))
 	}
@@ -742,19 +742,19 @@ func TestBackup_RemovedEventSinkDoesNotSurviveIncrementalRestore(t *testing.T) {
 	storage := newInMemoryBackupStorage()
 	src := newBackupTestStore(t)
 	attrs := attributes.New()
-	sink := &commonpb.SinkConfig{
+	sink := &ledgerpb.SinkConfig{
 		Name:         sinkName,
 		Format:       "json",
 		BatchSize:    1,
 		BatchDelayMs: 1,
-		Type: &commonpb.SinkConfig_Http{
-			Http: &commonpb.HttpSinkConfig{Endpoint: "https://example.invalid/events"},
+		Type: &ledgerpb.SinkConfig_Http{
+			Http: &ledgerpb.HttpSinkConfig{Endpoint: "https://example.invalid/events"},
 		},
 	}
-	addLog := &commonpb.Log{
+	addLog := &ledgerpb.Log{
 		Sequence: 1,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_AddedEventsSink{
-			AddedEventsSink: &commonpb.AddedEventsSinkLog{Config: sink},
+		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_AddedEventsSink{
+			AddedEventsSink: &ledgerpb.AddedEventsSinkLog{Config: sink},
 		}},
 	}
 
@@ -770,10 +770,10 @@ func TestBackup_RemovedEventSinkDoesNotSurviveIncrementalRestore(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, 1, fullResult.LastLogSequence)
 
-	removeLog := &commonpb.Log{
+	removeLog := &ledgerpb.Log{
 		Sequence: 2,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_RemovedEventsSink{
-			RemovedEventsSink: &commonpb.RemovedEventsSinkLog{Name: sinkName},
+		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_RemovedEventsSink{
+			RemovedEventsSink: &ledgerpb.RemovedEventsSinkLog{Name: sinkName},
 		}},
 	}
 	deltaBatch := src.OpenWriteSession()

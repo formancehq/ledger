@@ -22,7 +22,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -2297,7 +2297,7 @@ func (node *Node) LastPersistedIndex() uint64 {
 // rawNode.Applied = I. So this closure can run in the window between the
 // FSM publish and the raft-side Step and observe lpi = I, Applied = I-1
 // — but the reverse (Applied ahead of persisted) no longer happens.
-func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState, error) {
+func (node *Node) GetClusterState(ctx context.Context) (*ledgerpb.ClusterState, error) {
 	var (
 		status             raft.Status
 		lastPersistedIndex uint64
@@ -2319,9 +2319,9 @@ func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState,
 	stateStr := strings.TrimPrefix(status.RaftState.String(), "State")
 
 	// Build progress information map and nodes list only if this node is the leader
-	var nodes []*clusterpb.NodeInfo
+	var nodes []*ledgerpb.NodeInfo
 
-	progress := make(map[uint64]*clusterpb.ProgressInfo)
+	progress := make(map[uint64]*ledgerpb.ProgressInfo)
 
 	if status.RaftState == raft.StateLeader {
 		// Build progress information map first
@@ -2338,7 +2338,7 @@ func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState,
 				stateStr = "Snapshot"
 			}
 
-			progress[id] = &clusterpb.ProgressInfo{
+			progress[id] = &ledgerpb.ProgressInfo{
 				Match:            prog.Match,
 				Next:             prog.Next,
 				State:            stateStr,
@@ -2351,14 +2351,14 @@ func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState,
 		}
 
 		// Build nodes list with progress information
-		nodes = make([]*clusterpb.NodeInfo, 0, len(status.Progress))
+		nodes = make([]*ledgerpb.NodeInfo, 0, len(status.Progress))
 		for id, prog := range status.Progress {
 			suffrage := "Voter"
 			if prog.IsLearner {
 				suffrage = "Learner"
 			}
 
-			nodeInfo := &clusterpb.NodeInfo{
+			nodeInfo := &ledgerpb.NodeInfo{
 				Id:       uint32(id),
 				Suffrage: suffrage,
 			}
@@ -2403,7 +2403,7 @@ func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState,
 	// which is what those readers actually need. Gating on Applied works
 	// too now, but couples the reader to a Raft-consensus cursor when the
 	// semantic they want is "is Pebble caught up".
-	raftStatus := &clusterpb.RaftStatus{
+	raftStatus := &ledgerpb.RaftStatus{
 		State:              stateStr,
 		Term:               hardState.GetTerm(),
 		Leader:             leaderID,
@@ -2415,7 +2415,7 @@ func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState,
 		LastPersistedIndex: lastPersistedIndex,
 	}
 
-	clusterState := &clusterpb.ClusterState{
+	clusterState := &ledgerpb.ClusterState{
 		State:      stateStr,
 		Leader:     uint32(leaderID),
 		Nodes:      nodes,
@@ -2424,7 +2424,7 @@ func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState,
 	}
 
 	// Populate local sync progress
-	clusterState.SyncProgress = &clusterpb.SyncProgress{
+	clusterState.SyncProgress = &ledgerpb.SyncProgress{
 		Status: node.applier.StatusString(),
 	}
 	if sp := node.applier.GetSyncProgress(); sp != nil {

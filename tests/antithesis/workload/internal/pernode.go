@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 )
 
@@ -36,8 +36,8 @@ type PerNodeConn struct {
 	NodeID uint32
 
 	conn    *grpc.ClientConn
-	Bucket  clusterpb.BucketServiceClient
-	Cluster clusterpb.ClusterServiceClient
+	Bucket  ledgerpb.BucketServiceClient
+	Cluster ledgerpb.ClusterServiceClient
 }
 
 // Close releases the underlying gRPC connection.
@@ -128,8 +128,8 @@ func DialPerNode(ctx context.Context) (PerNodeConns, error) {
 		conns = append(conns, &PerNodeConn{
 			Addr:    addr,
 			conn:    conn,
-			Bucket:  clusterpb.NewBucketServiceClient(conn),
-			Cluster: clusterpb.NewClusterServiceClient(conn),
+			Bucket:  ledgerpb.NewBucketServiceClient(conn),
+			Cluster: ledgerpb.NewClusterServiceClient(conn),
 		})
 	}
 
@@ -142,7 +142,7 @@ func DialPerNode(ctx context.Context) (PerNodeConns, error) {
 	// routes to that node), so a connection whose ID cannot be resolved is left
 	// at 0 and callers skip it rather than compare at the leader's index.
 	for _, c := range conns {
-		state, err := c.Cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+		state, err := c.Cluster.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 		if err != nil {
 			continue
 		}

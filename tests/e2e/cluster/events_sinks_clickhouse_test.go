@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
@@ -20,7 +20,7 @@ import (
 var _ = Describe("Events Sinks ClickHouse", Ordered, func() {
 	var (
 		ctx    context.Context
-		client commonpb.BucketServiceClient
+		client ledgerpb.BucketServiceClient
 
 		chDSN string
 	)
@@ -49,12 +49,12 @@ var _ = Describe("Events Sinks ClickHouse", Ordered, func() {
 
 	It("Should deliver events to ClickHouse when transactions are created", func() {
 		// Add ClickHouse sink via Apply
-		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", addEventsSinkAction(&commonpb.SinkConfig{
+		_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", addEventsSinkAction(&ledgerpb.SinkConfig{
 			Name:         "ch-e2e",
 			BatchSize:    10,
 			BatchDelayMs: 50,
-			Type: &commonpb.SinkConfig_Clickhouse{
-				Clickhouse: &commonpb.ClickHouseSinkConfig{
+			Type: &ledgerpb.SinkConfig_Clickhouse{
+				Clickhouse: &ledgerpb.ClickHouseSinkConfig{
 					Dsn:   chDSN,
 					Table: table,
 				},
@@ -63,12 +63,12 @@ var _ = Describe("Events Sinks ClickHouse", Ordered, func() {
 		Expect(err).To(Succeed())
 
 		// Create a ledger
-		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction("ch-test", nil)))
+		_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction("ch-test", nil)))
 		Expect(err).To(Succeed())
 
 		// Create a transaction (force=true to bypass balance checks)
-		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("ch-test",
-			[]*commonpb.Posting{
+		_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("ch-test",
+			[]*ledgerpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 			},
 			nil,
@@ -136,7 +136,7 @@ var _ = Describe("Events Sinks ClickHouse", Ordered, func() {
 
 		// Verify sink status shows healthy
 		Eventually(func(g Gomega) {
-			resp, err := client.GetEventsSinks(ctx, &commonpb.GetEventsSinksRequest{})
+			resp, err := client.GetEventsSinks(ctx, &ledgerpb.GetEventsSinksRequest{})
 			g.Expect(err).To(Succeed())
 			g.Expect(resp.Sinks).To(HaveLen(1))
 			g.Expect(resp.Sinks[0].Name).To(Equal("ch-e2e"))

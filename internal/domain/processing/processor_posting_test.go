@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -26,8 +26,8 @@ func TestApplyPosting_WorldAccount_SkipsBalanceCheck(t *testing.T) {
 	destKey := domain.NewVolumeKey("test", "users:001", "USD", "")
 
 	zeroVol := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(0),
-		Output: commonpb.NewUint256FromUint64(0),
+		Input:  ledgerpb.NewUint256FromUint64(0),
+		Output: ledgerpb.NewUint256FromUint64(0),
 	}
 
 	expectGetVolume(mockStore, sourceKey, zeroVol.AsReader(), nil)
@@ -36,10 +36,10 @@ func TestApplyPosting_WorldAccount_SkipsBalanceCheck(t *testing.T) {
 	expectGetVolume(mockStore, destKey, zeroVol.AsReader(), nil)
 	expectPutVolume(t, mockStore, destKey, nil)
 
-	posting := &commonpb.Posting{
+	posting := &ledgerpb.Posting{
 		Source:      "world",
 		Destination: "users:001",
-		Amount:      commonpb.NewUint256FromUint64(500),
+		Amount:      ledgerpb.NewUint256FromUint64(500),
 		Asset:       "USD",
 	}
 
@@ -59,16 +59,16 @@ func TestApplyPosting_InsufficientFunds(t *testing.T) {
 
 	// Source has input=100, output=50, balance=50, but posting is 200
 	sourceVol := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(100),
-		Output: commonpb.NewUint256FromUint64(50),
+		Input:  ledgerpb.NewUint256FromUint64(100),
+		Output: ledgerpb.NewUint256FromUint64(50),
 	}
 
 	expectGetVolume(mockStore, sourceKey, sourceVol.AsReader(), nil)
 
-	posting := &commonpb.Posting{
+	posting := &ledgerpb.Posting{
 		Source:      "bank",
 		Destination: "users:001",
-		Amount:      commonpb.NewUint256FromUint64(200),
+		Amount:      ledgerpb.NewUint256FromUint64(200),
 		Asset:       "USD",
 	}
 
@@ -93,16 +93,16 @@ func TestApplyPosting_ZeroInputBalance(t *testing.T) {
 
 	// Source has zero input balance, Output=0
 	sourceVol := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(0),
-		Output: commonpb.NewUint256FromUint64(0),
+		Input:  ledgerpb.NewUint256FromUint64(0),
+		Output: ledgerpb.NewUint256FromUint64(0),
 	}
 
 	expectGetVolume(mockStore, sourceKey, sourceVol.AsReader(), nil)
 
-	posting := &commonpb.Posting{
+	posting := &ledgerpb.Posting{
 		Source:      "bank",
 		Destination: "users:001",
-		Amount:      commonpb.NewUint256FromUint64(100),
+		Amount:      ledgerpb.NewUint256FromUint64(100),
 		Asset:       "USD",
 	}
 
@@ -129,12 +129,12 @@ func TestApplyPosting_ForceSkipsBalanceCheck(t *testing.T) {
 
 	// Source has insufficient balance, but force=true skips the check
 	sourceVol := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(10),
-		Output: commonpb.NewUint256FromUint64(0),
+		Input:  ledgerpb.NewUint256FromUint64(10),
+		Output: ledgerpb.NewUint256FromUint64(0),
 	}
 	destVol := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(0),
-		Output: commonpb.NewUint256FromUint64(0),
+		Input:  ledgerpb.NewUint256FromUint64(0),
+		Output: ledgerpb.NewUint256FromUint64(0),
 	}
 
 	expectGetVolume(mockStore, sourceKey, sourceVol.AsReader(), nil)
@@ -142,10 +142,10 @@ func TestApplyPosting_ForceSkipsBalanceCheck(t *testing.T) {
 	expectGetVolume(mockStore, destKey, destVol.AsReader(), nil)
 	expectPutVolume(t, mockStore, destKey, nil)
 
-	posting := &commonpb.Posting{
+	posting := &ledgerpb.Posting{
 		Source:      "bank",
 		Destination: "users:001",
-		Amount:      commonpb.NewUint256FromUint64(500),
+		Amount:      ledgerpb.NewUint256FromUint64(500),
 		Asset:       "USD",
 	}
 
@@ -165,10 +165,10 @@ func TestApplyPosting_NotPreloaded(t *testing.T) {
 
 	expectGetVolume(mockStore, sourceKey, nil, nil) //nolint:nilnil // test: nil volume
 
-	posting := &commonpb.Posting{
+	posting := &ledgerpb.Posting{
 		Source:      "bank",
 		Destination: "users:001",
-		Amount:      commonpb.NewUint256FromUint64(100),
+		Amount:      ledgerpb.NewUint256FromUint64(100),
 		Asset:       "USD",
 	}
 
@@ -183,30 +183,30 @@ func TestApplyPosting_PartialVolumeNotPreloaded(t *testing.T) {
 	tests := []struct {
 		name          string
 		partialSource bool
-		input         *commonpb.Uint256
-		output        *commonpb.Uint256
+		input         *ledgerpb.Uint256
+		output        *ledgerpb.Uint256
 		account       string
 	}{
 		{
 			name:          "source input missing",
 			partialSource: true,
-			output:        commonpb.NewUint256FromUint64(0),
+			output:        ledgerpb.NewUint256FromUint64(0),
 			account:       "world",
 		},
 		{
 			name:          "source output missing",
 			partialSource: true,
-			input:         commonpb.NewUint256FromUint64(0),
+			input:         ledgerpb.NewUint256FromUint64(0),
 			account:       "world",
 		},
 		{
 			name:    "destination input missing",
-			output:  commonpb.NewUint256FromUint64(0),
+			output:  ledgerpb.NewUint256FromUint64(0),
 			account: "users:001",
 		},
 		{
 			name:    "destination output missing",
-			input:   commonpb.NewUint256FromUint64(0),
+			input:   ledgerpb.NewUint256FromUint64(0),
 			account: "users:001",
 		},
 	}
@@ -224,8 +224,8 @@ func TestApplyPosting_PartialVolumeNotPreloaded(t *testing.T) {
 			sourceKey := domain.NewVolumeKey("test", "world", "USD", "")
 			destKey := domain.NewVolumeKey("test", "users:001", "USD", "")
 			completeVolume := &raftcmdpb.VolumePair{
-				Input:  commonpb.NewUint256FromUint64(0),
-				Output: commonpb.NewUint256FromUint64(0),
+				Input:  ledgerpb.NewUint256FromUint64(0),
+				Output: ledgerpb.NewUint256FromUint64(0),
 			}
 			partialVolume := &raftcmdpb.VolumePair{
 				Input:  tt.input,
@@ -239,10 +239,10 @@ func TestApplyPosting_PartialVolumeNotPreloaded(t *testing.T) {
 				volumes.expectGet(destKey, partialVolume.AsReader(), nil)
 			}
 
-			posting := &commonpb.Posting{
+			posting := &ledgerpb.Posting{
 				Source:      "world",
 				Destination: "users:001",
-				Amount:      commonpb.NewUint256FromUint64(1),
+				Amount:      ledgerpb.NewUint256FromUint64(1),
 				Asset:       "USD",
 			}
 
@@ -283,10 +283,10 @@ func TestApplyPosting_AbsentVolumes_TreatedAsZero(t *testing.T) {
 	expectPutVolume(t, mockStore, sourceKey, nil)
 	expectPutVolume(t, mockStore, destKey, nil)
 
-	posting := &commonpb.Posting{
+	posting := &ledgerpb.Posting{
 		Source:      "world",
 		Destination: "users:001",
-		Amount:      commonpb.NewUint256FromUint64(500),
+		Amount:      ledgerpb.NewUint256FromUint64(500),
 		Asset:       "USD",
 	}
 
@@ -314,10 +314,10 @@ func TestApplyPosting_AbsentNonWorldSource_InsufficientFunds(t *testing.T) {
 	// path must fail before reaching the destination side).
 	expectGetVolume(mockStore, sourceKey, nil, domain.ErrNotFound)
 
-	posting := &commonpb.Posting{
+	posting := &ledgerpb.Posting{
 		Source:      "bank",
 		Destination: "users:001",
-		Amount:      commonpb.NewUint256FromUint64(100),
+		Amount:      ledgerpb.NewUint256FromUint64(100),
 		Asset:       "USD",
 	}
 
@@ -358,14 +358,14 @@ func TestApplyPosting_DestinationInputOverflow_Rejects(t *testing.T) {
 
 	// world output is 0 — safe to add anything on the source side.
 	worldVol := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(0),
-		Output: commonpb.NewUint256FromUint64(0),
+		Input:  ledgerpb.NewUint256FromUint64(0),
+		Output: ledgerpb.NewUint256FromUint64(0),
 	}
 	// Destination Input already at 2^256-1, so any positive amount
 	// overflows on Input.
 	destVol := &raftcmdpb.VolumePair{
 		Input:  protohelpers.NewUint256(uint256Max()),
-		Output: commonpb.NewUint256FromUint64(0),
+		Output: ledgerpb.NewUint256FromUint64(0),
 	}
 
 	volumes := setupVolumesStub(mockStore)
@@ -375,10 +375,10 @@ func TestApplyPosting_DestinationInputOverflow_Rejects(t *testing.T) {
 	// detected — left unchecked here; the assertion below is on the
 	// returned error type.
 
-	posting := &commonpb.Posting{
+	posting := &ledgerpb.Posting{
 		Source:      "world",
 		Destination: "users:001",
-		Amount:      commonpb.NewUint256FromUint64(1),
+		Amount:      ledgerpb.NewUint256FromUint64(1),
 		Asset:       "USD",
 	}
 
@@ -408,17 +408,17 @@ func TestApplyPosting_SourceOutputOverflow_Rejects(t *testing.T) {
 	sourceKey := domain.NewVolumeKey("test", "world", "USD", "")
 
 	worldVol := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(0),
+		Input:  ledgerpb.NewUint256FromUint64(0),
 		Output: protohelpers.NewUint256(uint256Max()),
 	}
 
 	expectGetVolume(mockStore, sourceKey, worldVol.AsReader(), nil)
 	// source PutVolume must NOT be called once the overflow is detected.
 
-	posting := &commonpb.Posting{
+	posting := &ledgerpb.Posting{
 		Source:      "world",
 		Destination: "users:001",
-		Amount:      commonpb.NewUint256FromUint64(1),
+		Amount:      ledgerpb.NewUint256FromUint64(1),
 		Asset:       "USD",
 	}
 

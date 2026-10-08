@@ -9,7 +9,7 @@ import (
 	"github.com/alecthomas/participle/v2"
 	"github.com/alecthomas/participle/v2/lexer"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
@@ -103,7 +103,7 @@ var filterParser = participle.MustBuild[OrExpr](
 //	address_cond   := ("address" | "source" | "destination") ("==" VALUE | "^=" VALUE | "in" "(" VALUE ("," VALUE)* ")")
 //	field_cond     := FIELD ("==" VALUE | ">" VALUE | ">=" VALUE | "<" VALUE | "<=" VALUE | "between" VALUE "and" VALUE | "in" "(" VALUE ("," VALUE)* ")")
 //	value          := "$" Ident | "true" | "false" | String | Number | Ident
-func Parse(input string, target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
+func Parse(input string, target ledgerpb.QueryTarget) (*ledgerpb.QueryFilter, error) {
 	// Reject pathologically nested inputs BEFORE handing them to
 	// participle. Participle's recursive-descent parser would
 	// otherwise stack-overflow on counts beyond a few thousand,
@@ -127,12 +127,12 @@ type OrExpr struct {
 	Operands []*AndExpr `parser:"@@ ('or' @@)*"`
 }
 
-func (e *OrExpr) toProto(target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
+func (e *OrExpr) toProto(target ledgerpb.QueryTarget) (*ledgerpb.QueryFilter, error) {
 	if len(e.Operands) == 1 {
 		return e.Operands[0].toProto(target)
 	}
 
-	filters := make([]*commonpb.QueryFilter, len(e.Operands))
+	filters := make([]*ledgerpb.QueryFilter, len(e.Operands))
 	for i, op := range e.Operands {
 		f, err := op.toProto(target)
 		if err != nil {
@@ -142,9 +142,9 @@ func (e *OrExpr) toProto(target commonpb.QueryTarget) (*commonpb.QueryFilter, er
 		filters[i] = f
 	}
 
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Or{
-			Or: &commonpb.OrFilter{Filters: filters},
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Or{
+			Or: &ledgerpb.OrFilter{Filters: filters},
 		},
 	}, nil
 }
@@ -153,12 +153,12 @@ type AndExpr struct {
 	Operands []*UnaryExpr `parser:"@@ ('and' @@)*"`
 }
 
-func (e *AndExpr) toProto(target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
+func (e *AndExpr) toProto(target ledgerpb.QueryTarget) (*ledgerpb.QueryFilter, error) {
 	if len(e.Operands) == 1 {
 		return e.Operands[0].toProto(target)
 	}
 
-	filters := make([]*commonpb.QueryFilter, len(e.Operands))
+	filters := make([]*ledgerpb.QueryFilter, len(e.Operands))
 	for i, op := range e.Operands {
 		f, err := op.toProto(target)
 		if err != nil {
@@ -178,22 +178,22 @@ func (e *AndExpr) toProto(target commonpb.QueryTarget) (*commonpb.QueryFilter, e
 		return folded, nil
 	}
 
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_And{
-			And: &commonpb.AndFilter{Filters: filters},
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_And{
+			And: &ledgerpb.AndFilter{Filters: filters},
 		},
 	}, nil
 }
 
 // foldDateRangeAnd merges exactly two complementary single-bound range clauses on
 // the same builtin date field into one range condition. It is the textual-parser
-// counterpart of commonpb.foldRangeAnd (which folds the JSON `$and` of a $gt/$gte
+// counterpart of ledgerpb.foldRangeAnd (which folds the JSON `$and` of a $gt/$gte
 // and a $lt/$lte), so both DSLs collapse a closed range to the identical proto.
 // It only fires on the EN-1544 date fields — transaction `timestamp`
 // (QueryFilter_BuiltinUint) and log `date` (QueryFilter_LogBuiltinUint) — the
 // only builtin ranges the textual grammar produces. ok=false leaves the `and`
 // untouched.
-func foldDateRangeAnd(filters []*commonpb.QueryFilter) (*commonpb.QueryFilter, bool) {
+func foldDateRangeAnd(filters []*ledgerpb.QueryFilter) (*ledgerpb.QueryFilter, bool) {
 	if len(filters) != 2 {
 		return nil, false
 	}
@@ -208,8 +208,8 @@ func foldDateRangeAnd(filters []*commonpb.QueryFilter) (*commonpb.QueryFilter, b
 			return nil, false
 		}
 
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
-			BuiltinUint: &commonpb.BuiltinUintCondition{Field: a.GetField(), Cond: uc},
+		return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_BuiltinUint{
+			BuiltinUint: &ledgerpb.BuiltinUintCondition{Field: a.GetField(), Cond: uc},
 		}}, true
 	}
 
@@ -223,8 +223,8 @@ func foldDateRangeAnd(filters []*commonpb.QueryFilter) (*commonpb.QueryFilter, b
 			return nil, false
 		}
 
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogBuiltinUint{
-			LogBuiltinUint: &commonpb.LogBuiltinUintCondition{Field: a.GetField(), Cond: uc},
+		return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_LogBuiltinUint{
+			LogBuiltinUint: &ledgerpb.LogBuiltinUintCondition{Field: a.GetField(), Cond: uc},
 		}}, true
 	}
 
@@ -236,7 +236,7 @@ func foldDateRangeAnd(filters []*commonpb.QueryFilter) (*commonpb.QueryFilter, b
 // preserving each side's exclusivity. Returns ok=false unless the pair is exactly
 // one lower + one upper single-bound condition (e.g. two lower bounds, an
 // already-closed range, or an equality do not fold).
-func mergeComplementaryBounds(x, y *commonpb.UintCondition) (*commonpb.UintCondition, bool) {
+func mergeComplementaryBounds(x, y *ledgerpb.UintCondition) (*ledgerpb.UintCondition, bool) {
 	lower, upper := x, y
 	if isSingleLowerBound(y) && isSingleUpperBound(x) {
 		lower, upper = y, x
@@ -249,7 +249,7 @@ func mergeComplementaryBounds(x, y *commonpb.UintCondition) (*commonpb.UintCondi
 	lo := lower.GetMin()
 	hi := upper.GetMax()
 
-	return &commonpb.UintCondition{
+	return &ledgerpb.UintCondition{
 		Min:          &lo,
 		Max:          &hi,
 		MinExclusive: lower.GetMinExclusive(),
@@ -259,11 +259,11 @@ func mergeComplementaryBounds(x, y *commonpb.UintCondition) (*commonpb.UintCondi
 
 // isSingleLowerBound reports whether uc carries only a lower bound (Min set, Max
 // unset). isSingleUpperBound is the symmetric check.
-func isSingleLowerBound(uc *commonpb.UintCondition) bool {
+func isSingleLowerBound(uc *ledgerpb.UintCondition) bool {
 	return uc.Min != nil && uc.Max == nil
 }
 
-func isSingleUpperBound(uc *commonpb.UintCondition) bool {
+func isSingleUpperBound(uc *ledgerpb.UintCondition) bool {
 	return uc.Max != nil && uc.Min == nil
 }
 
@@ -272,16 +272,16 @@ type UnaryExpr struct {
 	Primary *Primary   `parser:"| @@"`
 }
 
-func (e *UnaryExpr) toProto(target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
+func (e *UnaryExpr) toProto(target ledgerpb.QueryTarget) (*ledgerpb.QueryFilter, error) {
 	if e.Not != nil {
 		inner, err := e.Not.toProto(target)
 		if err != nil {
 			return nil, err
 		}
 
-		return &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Not{
-				Not: &commonpb.NotFilter{Filter: inner},
+		return &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Not{
+				Not: &ledgerpb.NotFilter{Filter: inner},
 			},
 		}, nil
 	}
@@ -294,7 +294,7 @@ type Primary struct {
 	Condition *Condition `parser:"| @@"`
 }
 
-func (p *Primary) toProto(target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
+func (p *Primary) toProto(target ledgerpb.QueryTarget) (*ledgerpb.QueryFilter, error) {
 	if p.Group != nil {
 		return p.Group.toProto(target)
 	}
@@ -315,7 +315,7 @@ type Condition struct {
 	Field    *FieldCond    `parser:"| @@"`
 }
 
-func (c *Condition) toProto(target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
+func (c *Condition) toProto(target ledgerpb.QueryTarget) (*ledgerpb.QueryFilter, error) {
 	if c.Asset != nil {
 		return c.Asset.toProto()
 	}
@@ -348,12 +348,12 @@ type FieldCond struct {
 	Op    *MetadataOp `parser:"@@"`
 }
 
-func (a *FieldCond) toProto(target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
+func (a *FieldCond) toProto(target ledgerpb.QueryTarget) (*ledgerpb.QueryFilter, error) {
 	if a.Op == nil {
 		return nil, fmt.Errorf("field %q requires an operator", a.Field)
 	}
 
-	if target == commonpb.QueryTarget_QUERY_TARGET_AUDIT {
+	if target == ledgerpb.QueryTarget_QUERY_TARGET_AUDIT {
 		return a.auditToProto()
 	}
 
@@ -372,7 +372,7 @@ const (
 )
 
 type auditFieldSpec struct {
-	field commonpb.AuditField
+	field ledgerpb.AuditField
 	kind  auditFieldKind
 }
 
@@ -380,20 +380,20 @@ type auditFieldSpec struct {
 // exactly the fields the audit access path can resolve efficiently (index
 // lookup or key-range bound) — see AuditField in common.proto.
 var auditFieldKeys = map[string]auditFieldSpec{
-	"seq":             {commonpb.AuditField_AUDIT_FIELD_SEQUENCE, auditKindUint},
-	"proposal_id":     {commonpb.AuditField_AUDIT_FIELD_PROPOSAL_ID, auditKindUint},
-	"timestamp":       {commonpb.AuditField_AUDIT_FIELD_TIMESTAMP, auditKindDatetime},
-	"log_seq":         {commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, auditKindUint},
-	"outcome":         {commonpb.AuditField_AUDIT_FIELD_OUTCOME, auditKindString},
-	"caller_subject":  {commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT, auditKindString},
-	"ledger":          {commonpb.AuditField_AUDIT_FIELD_LEDGER, auditKindString},
-	"order_type":      {commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, auditKindString},
-	"idempotency_key": {commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY, auditKindString},
+	"seq":             {ledgerpb.AuditField_AUDIT_FIELD_SEQUENCE, auditKindUint},
+	"proposal_id":     {ledgerpb.AuditField_AUDIT_FIELD_PROPOSAL_ID, auditKindUint},
+	"timestamp":       {ledgerpb.AuditField_AUDIT_FIELD_TIMESTAMP, auditKindDatetime},
+	"log_seq":         {ledgerpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, auditKindUint},
+	"outcome":         {ledgerpb.AuditField_AUDIT_FIELD_OUTCOME, auditKindString},
+	"caller_subject":  {ledgerpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT, auditKindString},
+	"ledger":          {ledgerpb.AuditField_AUDIT_FIELD_LEDGER, auditKindString},
+	"order_type":      {ledgerpb.AuditField_AUDIT_FIELD_ORDER_TYPE, auditKindString},
+	"idempotency_key": {ledgerpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY, auditKindString},
 }
 
 // auditToProto resolves a bare field on the AUDIT target into the matching
 // AuditCondition arm.
-func (a *FieldCond) auditToProto() (*commonpb.QueryFilter, error) {
+func (a *FieldCond) auditToProto() (*ledgerpb.QueryFilter, error) {
 	spec, ok := auditFieldKeys[a.Field]
 	if !ok {
 		return nil, fmt.Errorf("unknown audit field %q", a.Field)
@@ -420,7 +420,7 @@ func (a *FieldCond) auditToProto() (*commonpb.QueryFilter, error) {
 // transactions) is not decided here — the downstream per-target validity gate
 // (domain.ValidateFilterForTarget) handles that, the same way the structured JSON
 // DSL does.
-func (a *FieldCond) intrinsicToProto() (*commonpb.QueryFilter, error) {
+func (a *FieldCond) intrinsicToProto() (*ledgerpb.QueryFilter, error) {
 	switch a.Field {
 	case "timestamp", "date":
 		return a.dateToProto()
@@ -431,13 +431,13 @@ func (a *FieldCond) intrinsicToProto() (*commonpb.QueryFilter, error) {
 	}
 }
 
-func auditQF(field commonpb.AuditField, cond *commonpb.AuditCondition) *commonpb.QueryFilter {
+func auditQF(field ledgerpb.AuditField, cond *ledgerpb.AuditCondition) *ledgerpb.QueryFilter {
 	cond.Field = field
 
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Audit{Audit: cond}}
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Audit{Audit: cond}}
 }
 
-func (a *FieldCond) uintToProto(field commonpb.AuditField) (*commonpb.QueryFilter, error) {
+func (a *FieldCond) uintToProto(field ledgerpb.AuditField) (*ledgerpb.QueryFilter, error) {
 	parse := func(v *Value) (uint64, error) {
 		if v.Param != "" {
 			return 0, fmt.Errorf("audit field %q does not support parameters", a.Field)
@@ -457,9 +457,9 @@ func (a *FieldCond) uintToProto(field commonpb.AuditField) (*commonpb.QueryFilte
 // datetimeToProto builds a uint audit condition whose operands may be written as
 // an RFC3339 timestamp (quoted, e.g. "2023-11-14T22:13:20Z") or as raw unsigned
 // microseconds. Both forms coerce to the uint64 microseconds the audit index
-// stores, through the shared commonpb.CoerceDatetimeMicros (the same coercion the
+// stores, through the shared ledgerpb.CoerceDatetimeMicros (the same coercion the
 // structured JSON DSL and the top-level date/timestamp fields use, EN-1544).
-func (a *FieldCond) datetimeToProto(field commonpb.AuditField) (*commonpb.QueryFilter, error) {
+func (a *FieldCond) datetimeToProto(field ledgerpb.AuditField) (*ledgerpb.QueryFilter, error) {
 	parse := func(v *Value) (uint64, error) {
 		if v.Param != "" {
 			return 0, fmt.Errorf("audit field %q does not support parameters", a.Field)
@@ -473,36 +473,36 @@ func (a *FieldCond) datetimeToProto(field commonpb.AuditField) (*commonpb.QueryF
 
 // coerceDatetimeValue turns a resolved DSL Value into the uint64 microseconds a
 // date index stores, accepting an RFC3339 timestamp or raw unsigned microseconds
-// through the single shared coercion (commonpb.CoerceDatetimeMicros). Pre-epoch
+// through the single shared coercion (ledgerpb.CoerceDatetimeMicros). Pre-epoch
 // RFC3339 values are rejected there. Shared by the audit timestamp field and the
 // top-level date/timestamp fields (EN-1544) so all three define the accepted
 // forms once. Callers reject $param operands before calling this.
 func coerceDatetimeValue(v *Value) (uint64, error) {
-	return commonpb.CoerceDatetimeMicros(v.resolve())
+	return ledgerpb.CoerceDatetimeMicros(v.resolve())
 }
 
 // uintProtoWithParse assembles a uint audit condition from the operator, using
 // parse to turn each operand into a uint64. Shared by plain-uint fields and the
 // datetime timestamp field.
-func (a *FieldCond) uintProtoWithParse(field commonpb.AuditField, parse func(*Value) (uint64, error)) (*commonpb.QueryFilter, error) {
+func (a *FieldCond) uintProtoWithParse(field ledgerpb.AuditField, parse func(*Value) (uint64, error)) (*ledgerpb.QueryFilter, error) {
 	uc, err := uintConditionFromOp(a.Op, parse)
 	if err != nil {
 		return nil, fmt.Errorf("audit field %q: %w", a.Field, err)
 	}
 
-	return auditQF(field, &commonpb.AuditCondition{Condition: &commonpb.AuditCondition_UintCond{UintCond: uc}}), nil
+	return auditQF(field, &ledgerpb.AuditCondition{Condition: &ledgerpb.AuditCondition_UintCond{UintCond: uc}}), nil
 }
 
 // uintConditionFromOp folds a comparison operator (==, >, >=, <, <=, between)
-// into a single commonpb.UintCondition, using parse to turn each operand Value
+// into a single ledgerpb.UintCondition, using parse to turn each operand Value
 // into a uint64. It is the shared range assembler for every textual uint range
 // field — the audit uint/datetime fields and the top-level date/timestamp fields
 // (EN-1544) — so the operator-to-bound mapping lives in one place. Parameters
 // ($param) are not accepted here: the fields that use this helper are evaluated
 // without a parameter-resolution context, and each parse closure rejects a param
 // operand with a field-specific message.
-func uintConditionFromOp(op *MetadataOp, parse func(*Value) (uint64, error)) (*commonpb.UintCondition, error) {
-	uc := &commonpb.UintCondition{}
+func uintConditionFromOp(op *MetadataOp, parse func(*Value) (uint64, error)) (*ledgerpb.UintCondition, error) {
+	uc := &ledgerpb.UintCondition{}
 
 	switch {
 	// op.Prefix is routed to auditToProto before reaching this helper for the
@@ -556,35 +556,35 @@ func uintConditionFromOp(op *MetadataOp, parse func(*Value) (uint64, error)) (*c
 	return uc, nil
 }
 
-func (a *FieldCond) stringToProto(field commonpb.AuditField) (*commonpb.QueryFilter, error) {
+func (a *FieldCond) stringToProto(field ledgerpb.AuditField) (*ledgerpb.QueryFilter, error) {
 	op := a.Op
 
 	// Audit filters are evaluated without a parameter-resolution context, so a
 	// $param value cannot be honored — reject it rather than degrading to a
 	// match against the empty string.
-	mk := func(v *Value) (*commonpb.QueryFilter, error) {
+	mk := func(v *Value) (*ledgerpb.QueryFilter, error) {
 		if v.Param != "" {
 			return nil, fmt.Errorf("audit field %q does not support parameters", a.Field)
 		}
 
-		return auditQF(field, &commonpb.AuditCondition{Condition: &commonpb.AuditCondition_StringCond{
-			StringCond: &commonpb.StringCondition{Value: &commonpb.StringCondition_Hardcoded{Hardcoded: v.resolve()}},
+		return auditQF(field, &ledgerpb.AuditCondition{Condition: &ledgerpb.AuditCondition_StringCond{
+			StringCond: &ledgerpb.StringCondition{Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: v.resolve()}},
 		}}), nil
 	}
 
 	switch {
 	case op.Eq != nil:
 		return mk(op.Eq)
-	case op.Prefix != nil && field == commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY:
+	case op.Prefix != nil && field == ledgerpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY:
 		if op.Prefix.Param != "" {
 			return nil, fmt.Errorf("audit field %q does not support parameters", a.Field)
 		}
 
-		return auditQF(field, &commonpb.AuditCondition{Condition: &commonpb.AuditCondition_StringPrefix{
+		return auditQF(field, &ledgerpb.AuditCondition{Condition: &ledgerpb.AuditCondition_StringPrefix{
 			StringPrefix: op.Prefix.resolve(),
 		}}), nil
 	case len(op.In) > 0:
-		filters := make([]*commonpb.QueryFilter, len(op.In))
+		filters := make([]*ledgerpb.QueryFilter, len(op.In))
 		for i, v := range op.In {
 			f, err := mk(v)
 			if err != nil {
@@ -593,9 +593,9 @@ func (a *FieldCond) stringToProto(field commonpb.AuditField) (*commonpb.QueryFil
 			filters[i] = f
 		}
 
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Or{Or: &commonpb.OrFilter{Filters: filters}}}, nil
+		return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Or{Or: &ledgerpb.OrFilter{Filters: filters}}}, nil
 	default:
-		if field == commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY {
+		if field == ledgerpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY {
 			return nil, fmt.Errorf("audit field %q supports ==, ^= and in only", a.Field)
 		}
 
@@ -624,7 +624,7 @@ func (a *FieldCond) stringToProto(field commonpb.AuditField) (*commonpb.QueryFil
 // continues with an Ident-continuation char (`-`, `:`, `.`, `/`) — e.g.
 // `metadata[date-range]` — because the keyword `\b` boundary matches before those
 // characters, breaking filters that parsed before.
-func (d *FieldCond) dateToProto() (*commonpb.QueryFilter, error) {
+func (d *FieldCond) dateToProto() (*ledgerpb.QueryFilter, error) {
 	parse := func(v *Value) (uint64, error) {
 		if v.Param != "" {
 			return 0, fmt.Errorf("%s field does not support parameters", d.Field)
@@ -640,16 +640,16 @@ func (d *FieldCond) dateToProto() (*commonpb.QueryFilter, error) {
 
 	switch d.Field {
 	case "date":
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogBuiltinUint{
-			LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
-				Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
+		return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_LogBuiltinUint{
+			LogBuiltinUint: &ledgerpb.LogBuiltinUintCondition{
+				Field: ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
 				Cond:  uc,
 			},
 		}}, nil
 	case "timestamp":
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
-			BuiltinUint: &commonpb.BuiltinUintCondition{
-				Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
+		return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_BuiltinUint{
+			BuiltinUint: &ledgerpb.BuiltinUintCondition{
+				Field: ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
 				Cond:  uc,
 			},
 		}}, nil
@@ -671,15 +671,15 @@ type AssetCond struct {
 	Asset string `parser:"'has' 'asset' @(AssetRef | Ident)"`
 }
 
-func (a *AssetCond) toProto() (*commonpb.QueryFilter, error) {
+func (a *AssetCond) toProto() (*ledgerpb.QueryFilter, error) {
 	base, precision, err := splitAsset(a.Asset)
 	if err != nil {
 		return nil, err
 	}
 
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_AccountHasAsset{
-			AccountHasAsset: &commonpb.AccountHasAssetCondition{
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_AccountHasAsset{
+			AccountHasAsset: &ledgerpb.AccountHasAssetCondition{
 				AssetBase: base,
 				Precision: uint32(precision),
 			},
@@ -715,16 +715,16 @@ type MetadataCond struct {
 	Compare *MetadataOp `parser:"| @@ )"`
 }
 
-func (m *MetadataCond) toProto() (*commonpb.QueryFilter, error) {
+func (m *MetadataCond) toProto() (*ledgerpb.QueryFilter, error) {
 	key := unquote(m.Key)
-	field := &commonpb.FieldRef{Metadata: key}
+	field := &ledgerpb.FieldRef{Metadata: key}
 
 	if m.Exists {
-		return &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Field{
-				Field: &commonpb.FieldCondition{
+		return &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Field{
+				Field: &ledgerpb.FieldCondition{
 					Field:     field,
-					Condition: &commonpb.FieldCondition_ExistsCond{ExistsCond: &commonpb.ExistsCondition{}},
+					Condition: &ledgerpb.FieldCondition_ExistsCond{ExistsCond: &ledgerpb.ExistsCondition{}},
 				},
 			},
 		}, nil
@@ -754,7 +754,7 @@ type BetweenRange struct {
 	High *Value `parser:"'and' @@"`
 }
 
-func (op *MetadataOp) toProto(field *commonpb.FieldRef) (*commonpb.QueryFilter, error) {
+func (op *MetadataOp) toProto(field *ledgerpb.FieldRef) (*ledgerpb.QueryFilter, error) {
 	switch {
 	case op.Eq != nil:
 		return metadataEqualityToProto(field, op.Eq)
@@ -768,9 +768,9 @@ func (op *MetadataOp) toProto(field *commonpb.FieldRef) (*commonpb.QueryFilter, 
 			return nil, err
 		}
 
-		return &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Not{
-				Not: &commonpb.NotFilter{Filter: inner},
+		return &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Not{
+				Not: &ledgerpb.NotFilter{Filter: inner},
 			},
 		}, nil
 	case op.Gt != nil:
@@ -798,21 +798,21 @@ func (op *MetadataOp) toProto(field *commonpb.FieldRef) (*commonpb.QueryFilter, 
 // operator is rejected — mirroring the pre-EN-1549 `ledger == VALUE`-only
 // grammar. On the audit target the same `ledger ==` shape resolves to the audit
 // ledger arm instead (see auditToProto).
-func (l *FieldCond) ledgerToProto() (*commonpb.QueryFilter, error) {
+func (l *FieldCond) ledgerToProto() (*ledgerpb.QueryFilter, error) {
 	if l.Op.Eq == nil {
 		return nil, errors.New("ledger field supports == only")
 	}
 
-	cond := &commonpb.StringCondition{}
+	cond := &ledgerpb.StringCondition{}
 	if l.Op.Eq.Param != "" {
-		cond.Value = &commonpb.StringCondition_Param{Param: l.Op.Eq.Param}
+		cond.Value = &ledgerpb.StringCondition_Param{Param: l.Op.Eq.Param}
 	} else {
-		cond.Value = &commonpb.StringCondition_Hardcoded{Hardcoded: l.Op.Eq.resolve()}
+		cond.Value = &ledgerpb.StringCondition_Hardcoded{Hardcoded: l.Op.Eq.resolve()}
 	}
 
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Ledger{
-			Ledger: &commonpb.LedgerCondition{Cond: cond},
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Ledger{
+			Ledger: &ledgerpb.LedgerCondition{Cond: cond},
 		},
 	}, nil
 }
@@ -826,42 +826,42 @@ type AddressCond struct {
 	In      []*Value `parser:"| 'in' '(' @@ (',' @@)* ')' )"`
 }
 
-func (a *AddressCond) toProto() (*commonpb.QueryFilter, error) {
+func (a *AddressCond) toProto() (*ledgerpb.QueryFilter, error) {
 	role := addressRole(a.Keyword)
 
 	if len(a.In) > 0 {
 		return addressInToProto(role, a.In)
 	}
 
-	am := &commonpb.AddressMatch{Role: role}
+	am := &ledgerpb.AddressMatch{Role: role}
 
 	if a.Exact != nil {
 		if a.Exact.Param != "" {
-			am.Match = &commonpb.AddressMatch_ParamExact{ParamExact: a.Exact.Param}
+			am.Match = &ledgerpb.AddressMatch_ParamExact{ParamExact: a.Exact.Param}
 		} else {
-			am.Match = &commonpb.AddressMatch_HardcodedExact{HardcodedExact: a.Exact.resolve()}
+			am.Match = &ledgerpb.AddressMatch_HardcodedExact{HardcodedExact: a.Exact.resolve()}
 		}
 	} else {
 		if a.Prefix.Param != "" {
-			am.Match = &commonpb.AddressMatch_ParamPrefix{ParamPrefix: a.Prefix.Param}
+			am.Match = &ledgerpb.AddressMatch_ParamPrefix{ParamPrefix: a.Prefix.Param}
 		} else {
-			am.Match = &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: a.Prefix.resolve()}
+			am.Match = &ledgerpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: a.Prefix.resolve()}
 		}
 	}
 
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Address{Address: am},
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Address{Address: am},
 	}, nil
 }
 
-func addressRole(keyword string) commonpb.AddressRole {
+func addressRole(keyword string) ledgerpb.AddressRole {
 	switch keyword {
 	case "source":
-		return commonpb.AddressRole_ADDRESS_ROLE_SOURCE
+		return ledgerpb.AddressRole_ADDRESS_ROLE_SOURCE
 	case "destination":
-		return commonpb.AddressRole_ADDRESS_ROLE_DESTINATION
+		return ledgerpb.AddressRole_ADDRESS_ROLE_DESTINATION
 	default:
-		return commonpb.AddressRole_ADDRESS_ROLE_ANY
+		return ledgerpb.AddressRole_ADDRESS_ROLE_ANY
 	}
 }
 
@@ -904,19 +904,19 @@ func (v *Value) resolve() string {
 
 // --- Proto conversion helpers ---
 
-func metadataEqualityToProto(field *commonpb.FieldRef, val *Value) (*commonpb.QueryFilter, error) {
-	fc := &commonpb.FieldCondition{Field: field}
+func metadataEqualityToProto(field *ledgerpb.FieldRef, val *Value) (*ledgerpb.QueryFilter, error) {
+	fc := &ledgerpb.FieldCondition{Field: field}
 
 	if val.Param != "" {
 		// Parameterized: default to string
-		fc.Condition = &commonpb.FieldCondition_StringCond{
-			StringCond: &commonpb.StringCondition{
-				Value: &commonpb.StringCondition_Param{Param: val.Param},
+		fc.Condition = &ledgerpb.FieldCondition_StringCond{
+			StringCond: &ledgerpb.StringCondition{
+				Value: &ledgerpb.StringCondition_Param{Param: val.Param},
 			},
 		}
 
-		return &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Field{Field: fc},
+		return &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Field{Field: fc},
 		}, nil
 	}
 
@@ -924,42 +924,42 @@ func metadataEqualityToProto(field *commonpb.FieldRef, val *Value) (*commonpb.Qu
 
 	switch raw {
 	case "true":
-		fc.Condition = &commonpb.FieldCondition_BoolCond{
-			BoolCond: &commonpb.BoolCondition{
-				Value: &commonpb.BoolCondition_Hardcoded{Hardcoded: true},
+		fc.Condition = &ledgerpb.FieldCondition_BoolCond{
+			BoolCond: &ledgerpb.BoolCondition{
+				Value: &ledgerpb.BoolCondition_Hardcoded{Hardcoded: true},
 			},
 		}
 	case "false":
-		fc.Condition = &commonpb.FieldCondition_BoolCond{
-			BoolCond: &commonpb.BoolCondition{
-				Value: &commonpb.BoolCondition_Hardcoded{Hardcoded: false},
+		fc.Condition = &ledgerpb.FieldCondition_BoolCond{
+			BoolCond: &ledgerpb.BoolCondition{
+				Value: &ledgerpb.BoolCondition_Hardcoded{Hardcoded: false},
 			},
 		}
 	default:
 		if intVal, intErr := strconv.ParseInt(raw, 10, 64); intErr == nil {
-			fc.Condition = &commonpb.FieldCondition_IntCond{
-				IntCond: &commonpb.IntCondition{
+			fc.Condition = &ledgerpb.FieldCondition_IntCond{
+				IntCond: &ledgerpb.IntCondition{
 					Min: &intVal,
 					Max: &intVal,
 				},
 			}
 		} else {
-			fc.Condition = &commonpb.FieldCondition_StringCond{
-				StringCond: &commonpb.StringCondition{
-					Value: &commonpb.StringCondition_Hardcoded{Hardcoded: raw},
+			fc.Condition = &ledgerpb.FieldCondition_StringCond{
+				StringCond: &ledgerpb.StringCondition{
+					Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: raw},
 				},
 			}
 		}
 	}
 
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Field{Field: fc},
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Field{Field: fc},
 	}, nil
 }
 
-func metadataRangeToProto(field *commonpb.FieldRef, val *Value, op string) (*commonpb.QueryFilter, error) {
+func metadataRangeToProto(field *ledgerpb.FieldRef, val *Value, op string) (*ledgerpb.QueryFilter, error) {
 	if val.Param != "" {
-		ic := &commonpb.IntCondition{}
+		ic := &ledgerpb.IntCondition{}
 
 		switch op {
 		case ">":
@@ -974,11 +974,11 @@ func metadataRangeToProto(field *commonpb.FieldRef, val *Value, op string) (*com
 			ic.ParamMax = val.Param
 		}
 
-		return &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Field{
-				Field: &commonpb.FieldCondition{
+		return &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Field{
+				Field: &ledgerpb.FieldCondition{
 					Field:     field,
-					Condition: &commonpb.FieldCondition_IntCond{IntCond: ic},
+					Condition: &ledgerpb.FieldCondition_IntCond{IntCond: ic},
 				},
 			},
 		}, nil
@@ -991,7 +991,7 @@ func metadataRangeToProto(field *commonpb.FieldRef, val *Value, op string) (*com
 		return nil, fmt.Errorf("range operators only support integer values, got %q", raw)
 	}
 
-	ic := &commonpb.IntCondition{}
+	ic := &ledgerpb.IntCondition{}
 
 	switch op {
 	case ">":
@@ -1006,11 +1006,11 @@ func metadataRangeToProto(field *commonpb.FieldRef, val *Value, op string) (*com
 		ic.Max = &intVal
 	}
 
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Field{
-			Field: &commonpb.FieldCondition{
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Field{
+			Field: &ledgerpb.FieldCondition{
 				Field:     field,
-				Condition: &commonpb.FieldCondition_IntCond{IntCond: ic},
+				Condition: &ledgerpb.FieldCondition_IntCond{IntCond: ic},
 			},
 		},
 	}, nil
@@ -1021,12 +1021,12 @@ func metadataRangeToProto(field *commonpb.FieldRef, val *Value, op string) (*com
 // semantics: LOW <= value <= HIGH). Hardcoded bounds with LOW > HIGH return
 // a parse error — a transposed pair is almost certainly a bug, not a request
 // for the empty result.
-func metadataBetweenToProto(field *commonpb.FieldRef, r *BetweenRange) (*commonpb.QueryFilter, error) {
+func metadataBetweenToProto(field *ledgerpb.FieldRef, r *BetweenRange) (*ledgerpb.QueryFilter, error) {
 	low := r.Low
 	high := r.High
 
 	if low.Param != "" || high.Param != "" {
-		ic := &commonpb.IntCondition{}
+		ic := &ledgerpb.IntCondition{}
 
 		if low.Param != "" {
 			ic.ParamMin = low.Param
@@ -1065,7 +1065,7 @@ func metadataBetweenToProto(field *commonpb.FieldRef, r *BetweenRange) (*commonp
 		return nil, fmt.Errorf("between bounds out of order: %d > %d", lowVal, highVal)
 	}
 
-	return wrapIntCondition(field, &commonpb.IntCondition{
+	return wrapIntCondition(field, &ledgerpb.IntCondition{
 		Min: &lowVal,
 		Max: &highVal,
 	}), nil
@@ -1086,12 +1086,12 @@ func parseIntValue(v *Value) (int64, error) {
 }
 
 // wrapIntCondition packages an IntCondition as a leaf FieldCondition.
-func wrapIntCondition(field *commonpb.FieldRef, ic *commonpb.IntCondition) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Field{
-			Field: &commonpb.FieldCondition{
+func wrapIntCondition(field *ledgerpb.FieldRef, ic *ledgerpb.IntCondition) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Field{
+			Field: &ledgerpb.FieldCondition{
 				Field:     field,
-				Condition: &commonpb.FieldCondition_IntCond{IntCond: ic},
+				Condition: &ledgerpb.FieldCondition_IntCond{IntCond: ic},
 			},
 		},
 	}
@@ -1099,8 +1099,8 @@ func wrapIntCondition(field *commonpb.FieldRef, ic *commonpb.IntCondition) *comm
 
 // metadataInToProto desugars `metadata[key] in (v1, v2, ...)` into
 // an OrFilter of equality conditions, one per value.
-func metadataInToProto(field *commonpb.FieldRef, values []*Value) (*commonpb.QueryFilter, error) {
-	filters := make([]*commonpb.QueryFilter, len(values))
+func metadataInToProto(field *ledgerpb.FieldRef, values []*Value) (*ledgerpb.QueryFilter, error) {
+	filters := make([]*ledgerpb.QueryFilter, len(values))
 	for i, v := range values {
 		f, err := metadataEqualityToProto(field, v)
 		if err != nil {
@@ -1115,18 +1115,18 @@ func metadataInToProto(field *commonpb.FieldRef, values []*Value) (*commonpb.Que
 
 // addressInToProto desugars `address in (v1, v2, ...)` into
 // an OrFilter of exact address matches, one per value.
-func addressInToProto(role commonpb.AddressRole, values []*Value) (*commonpb.QueryFilter, error) {
-	filters := make([]*commonpb.QueryFilter, len(values))
+func addressInToProto(role ledgerpb.AddressRole, values []*Value) (*ledgerpb.QueryFilter, error) {
+	filters := make([]*ledgerpb.QueryFilter, len(values))
 	for i, v := range values {
-		am := &commonpb.AddressMatch{Role: role}
+		am := &ledgerpb.AddressMatch{Role: role}
 		if v.Param != "" {
-			am.Match = &commonpb.AddressMatch_ParamExact{ParamExact: v.Param}
+			am.Match = &ledgerpb.AddressMatch_ParamExact{ParamExact: v.Param}
 		} else {
-			am.Match = &commonpb.AddressMatch_HardcodedExact{HardcodedExact: v.resolve()}
+			am.Match = &ledgerpb.AddressMatch_HardcodedExact{HardcodedExact: v.resolve()}
 		}
 
-		filters[i] = &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Address{Address: am},
+		filters[i] = &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Address{Address: am},
 		}
 	}
 
@@ -1134,14 +1134,14 @@ func addressInToProto(role commonpb.AddressRole, values []*Value) (*commonpb.Que
 }
 
 // wrapOrFilter returns the single filter if len==1, otherwise wraps in OrFilter.
-func wrapOrFilter(filters []*commonpb.QueryFilter) *commonpb.QueryFilter {
+func wrapOrFilter(filters []*ledgerpb.QueryFilter) *ledgerpb.QueryFilter {
 	if len(filters) == 1 {
 		return filters[0]
 	}
 
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Or{
-			Or: &commonpb.OrFilter{Filters: filters},
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Or{
+			Or: &ledgerpb.OrFilter{Filters: filters},
 		},
 	}
 }

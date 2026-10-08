@@ -6,14 +6,14 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_transient_accounts", func(ctx context.Context, client commonpb.BucketServiceClient, _ string) {
+	internal.RunDriver("parallel_driver_transient_accounts", func(ctx context.Context, client ledgerpb.BucketServiceClient, _ string) {
 		r := internal.Rand()
 
 		// Use a dedicated ledger with a transient account type.
@@ -27,14 +27,14 @@ func main() {
 		details := internal.Details{"ledger": ledger, "typeName": typeName, "pattern": pattern}
 
 		// 1. Add an account type with TRANSIENT persistence.
-		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_AddAccountType{
-				AddAccountType: &commonpb.AddAccountTypeLedgerRequest{
+		_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_AddAccountType{
+				AddAccountType: &ledgerpb.AddAccountTypeLedgerRequest{
 					Ledger: ledger,
-					AccountType: &commonpb.AccountType{
+					AccountType: &ledgerpb.AccountType{
 						Name:        typeName,
 						Pattern:     pattern,
-						Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
+						Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
 					},
 				},
 			},
@@ -57,17 +57,17 @@ func main() {
 
 		// 2. Balanced batch: fund clearing account, then drain it in the same Apply.
 		//    The transient account must end at zero — should succeed.
-		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("",
-			&commonpb.Request{
-				Type: &commonpb.Request_Apply{
-					Apply: &commonpb.LedgerApplyRequest{
+		_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("",
+			&ledgerpb.Request{
+				Type: &ledgerpb.Request_Apply{
+					Apply: &ledgerpb.LedgerApplyRequest{
 						Ledger: ledger,
-						Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
-							CreateTransaction: &commonpb.CreateTransactionPayload{
-								Postings: []*commonpb.Posting{{
+						Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
+							CreateTransaction: &ledgerpb.CreateTransactionPayload{
+								Postings: []*ledgerpb.Posting{{
 									Source:      "world",
 									Destination: clearingAddr,
-									Amount:      commonpb.NewUint256FromUint64(amount),
+									Amount:      ledgerpb.NewUint256FromUint64(amount),
 									Asset:       "USD/2",
 								}},
 								Force: true,
@@ -76,16 +76,16 @@ func main() {
 					},
 				},
 			},
-			&commonpb.Request{
-				Type: &commonpb.Request_Apply{
-					Apply: &commonpb.LedgerApplyRequest{
+			&ledgerpb.Request{
+				Type: &ledgerpb.Request_Apply{
+					Apply: &ledgerpb.LedgerApplyRequest{
 						Ledger: ledger,
-						Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
-							CreateTransaction: &commonpb.CreateTransactionPayload{
-								Postings: []*commonpb.Posting{{
+						Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
+							CreateTransaction: &ledgerpb.CreateTransactionPayload{
+								Postings: []*ledgerpb.Posting{{
 									Source:      clearingAddr,
 									Destination: "world",
-									Amount:      commonpb.NewUint256FromUint64(amount),
+									Amount:      ledgerpb.NewUint256FromUint64(amount),
 									Asset:       "USD/2",
 								}},
 								Force: true,
@@ -109,16 +109,16 @@ func main() {
 		clearingAddr2 := fmt.Sprintf("%s:%d", typeName, r.Uint64()%1000+1000)
 		details["clearingAddr2"] = clearingAddr2
 
-		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_Apply{
-				Apply: &commonpb.LedgerApplyRequest{
+		_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
-						CreateTransaction: &commonpb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{{
+					Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &ledgerpb.CreateTransactionPayload{
+							Postings: []*ledgerpb.Posting{{
 								Source:      "world",
 								Destination: clearingAddr2,
-								Amount:      commonpb.NewUint256FromUint64(amount),
+								Amount:      ledgerpb.NewUint256FromUint64(amount),
 								Asset:       "USD/2",
 							}},
 							Force: true,

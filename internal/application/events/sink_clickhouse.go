@@ -11,14 +11,14 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 )
 
 func init() {
-	registerSinkFactory("clickhouse", func(sc *commonpb.SinkConfig, _ Format) (Sink, error) {
-		s := sc.GetType().(*commonpb.SinkConfig_Clickhouse)
+	registerSinkFactory("clickhouse", func(sc *ledgerpb.SinkConfig, _ Format) (Sink, error) {
+		s := sc.GetType().(*ledgerpb.SinkConfig_Clickhouse)
 
 		return NewClickHouseSink(context.Background(), ClickHouseSinkConfig{
 			DSN:   s.Clickhouse.GetDsn(),

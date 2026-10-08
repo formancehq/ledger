@@ -14,7 +14,7 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/pebblecfg"
@@ -593,14 +593,14 @@ type IndexVersionState struct {
 	// key had no schema entry when the version was built; rows carry each
 	// value's natural encoding) from METADATA_TYPE_STRING, which is enum
 	// value zero. Only meaningful on metadata indexes.
-	CurrentType         commonpb.MetadataType
+	CurrentType         ledgerpb.MetadataType
 	CurrentTypeDeclared bool
 
 	// PendingType is the declared type PendingVersion's rows are encoded
 	// under: the retype's target, bound when the rewrite starts. Live
 	// dual-writes encode each value once per version, under that version's
 	// bound type.
-	PendingType         commonpb.MetadataType
+	PendingType         ledgerpb.MetadataType
 	PendingTypeDeclared bool
 
 	// PreviousVersion is the version CurrentVersion replaced, retained until
@@ -616,7 +616,7 @@ type IndexVersionState struct {
 	// last log the retained keyspace received, so the fallback is refused
 	// to a pin beyond it.
 	PreviousVersion            uint32
-	PreviousType               commonpb.MetadataType
+	PreviousType               ledgerpb.MetadataType
 	PreviousTypeDeclared       bool
 	PreviousActivationSequence uint64
 	PreviousValidThrough       uint64
@@ -663,7 +663,7 @@ func encodeIndexVersionState(s IndexVersionState) []byte {
 
 const indexVersionStateHeaderLen = 43
 
-func encodeBoundType(t commonpb.MetadataType, declared bool) byte {
+func encodeBoundType(t ledgerpb.MetadataType, declared bool) byte {
 	if !declared {
 		return 0
 	}
@@ -671,12 +671,12 @@ func encodeBoundType(t commonpb.MetadataType, declared bool) byte {
 	return byte(t) + 1
 }
 
-func decodeBoundType(b byte) (commonpb.MetadataType, bool) {
+func decodeBoundType(b byte) (ledgerpb.MetadataType, bool) {
 	if b == 0 {
 		return 0, false
 	}
 
-	return commonpb.MetadataType(b - 1), true
+	return ledgerpb.MetadataType(b - 1), true
 }
 
 // decodeIndexVersionState parses a stored value back to IndexVersionState.
@@ -781,7 +781,7 @@ type ResolvedIndexVersion struct {
 	// Type/TypeDeclared are the resolved version's binding
 	// (IndexVersionState.CurrentType* or PreviousType*): the type Version's
 	// rows carry, or "none was declared when it was built".
-	Type         commonpb.MetadataType
+	Type         ledgerpb.MetadataType
 	TypeDeclared bool
 	// BindingKnown is true for every resolution built from a stored version
 	// state — TypeDeclared=false is then an affirmative "built with no

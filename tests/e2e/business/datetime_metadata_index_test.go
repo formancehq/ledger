@@ -6,7 +6,7 @@ import (
 	"math/big"
 	"time"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -29,18 +29,18 @@ var _ = Describe("DatetimeMetadataIndex", Ordered, func() {
 
 	BeforeAll(func() {
 		// Declare the datetime field at creation (status COMPLETE), then index it.
-		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+		_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*ledgerpb.SetMetadataFieldTypeCommand{
 			{
-				TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+				TargetType: ledgerpb.TargetType_TARGET_TYPE_TRANSACTION,
 				Key:        key,
-				Type:       commonpb.MetadataType_METADATA_TYPE_DATETIME,
+				Type:       ledgerpb.MetadataType_METADATA_TYPE_DATETIME,
 			},
 		})))
 		Expect(err).To(Succeed())
 
-		_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionMetadataIndexAction(ledgerName, key)))
+		_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionMetadataIndexAction(ledgerName, key)))
 		Expect(err).To(Succeed())
-		Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, key)).To(Succeed())
+		Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, key)).To(Succeed())
 	})
 
 	It("Should range-select transactions by datetime metadata", func() {
@@ -56,7 +56,7 @@ var _ = Describe("DatetimeMetadataIndex", Ordered, func() {
 
 		ids := map[string]uint64{}
 		for _, s := range seeds {
-			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", s.actor, big.NewInt(100), "USD"),
 			}, map[string]string{key: s.dueDate})))
 			Expect(err).To(Succeed())
@@ -82,7 +82,7 @@ var _ = Describe("DatetimeMetadataIndex", Ordered, func() {
 	})
 
 	It("Should treat an unparseable datetime value as non-matching (NullValue)", func() {
-		resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+		resp, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 			actions.NewPosting("world", "garbage", big.NewInt(100), "USD"),
 		}, map[string]string{key: "not-a-date"})))
 		Expect(err).To(Succeed())

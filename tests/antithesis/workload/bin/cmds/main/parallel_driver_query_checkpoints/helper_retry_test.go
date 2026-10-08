@@ -17,7 +17,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
@@ -31,14 +31,14 @@ import (
 // successful mutation is observed through the real registry before its response
 // is discarded. The workload's normal retry policy then resubmits the request.
 type checkpointResponseLossProxy struct {
-	clusterpb.UnimplementedBucketServiceServer
+	ledgerpb.UnimplementedBucketServiceServer
 
-	backend clusterpb.BucketServiceClient
-	cluster clusterpb.ClusterServiceClient
+	backend ledgerpb.BucketServiceClient
+	cluster ledgerpb.ClusterServiceClient
 
 	mu            sync.Mutex
-	requests      []*clusterpb.ApplyRequest
-	responses     []*clusterpb.ApplyResponse
+	requests      []*ledgerpb.ApplyRequest
+	responses     []*ledgerpb.ApplyResponse
 	errors        []error
 	afterFirst    []uint64
 	registryError error
@@ -46,10 +46,10 @@ type checkpointResponseLossProxy struct {
 	terminalError error
 }
 
-func (p *checkpointResponseLossProxy) Apply(ctx context.Context, req *clusterpb.ApplyRequest) (*clusterpb.ApplyResponse, error) {
+func (p *checkpointResponseLossProxy) Apply(ctx context.Context, req *ledgerpb.ApplyRequest) (*ledgerpb.ApplyResponse, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.requests = append(p.requests, proto.Clone(req).(*clusterpb.ApplyRequest))
+	p.requests = append(p.requests, proto.Clone(req).(*ledgerpb.ApplyRequest))
 	if p.terminalError != nil {
 		return nil, p.terminalError
 	}
@@ -57,7 +57,7 @@ func (p *checkpointResponseLossProxy) Apply(ctx context.Context, req *clusterpb.
 	p.responses = append(p.responses, resp)
 	p.errors = append(p.errors, err)
 	if len(p.requests) == 1 && err == nil {
-		registry, readErr := p.cluster.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
+		registry, readErr := p.cluster.ListQueryCheckpoints(ctx, &ledgerpb.ListQueryCheckpointsRequest{})
 		if readErr != nil {
 			p.registryError = fmt.Errorf("read checkpoint registry after committed Apply: %w", readErr)
 
@@ -110,8 +110,8 @@ func TestQueryCheckpointLostResponse(t *testing.T) {
 			}
 
 			proxy.mu.Lock()
-			requests := append([]*clusterpb.ApplyRequest(nil), proxy.requests...)
-			responses := append([]*clusterpb.ApplyResponse(nil), proxy.responses...)
+			requests := append([]*ledgerpb.ApplyRequest(nil), proxy.requests...)
+			responses := append([]*ledgerpb.ApplyResponse(nil), proxy.responses...)
 			attemptErrors := append([]error(nil), proxy.errors...)
 			afterFirst := append([]uint64(nil), proxy.afterFirst...)
 			registryError := proxy.registryError
@@ -147,7 +147,7 @@ func TestQueryCheckpointLostResponse(t *testing.T) {
 				require.True(t, proto.Equal(first, responses[i]), "retry %d must replay original logs and sequences", i)
 				require.Equal(t, firstKey, requests[i].GetUnsigned().GetIdempotencyKey())
 			}
-			registry, listErr := cluster.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
+			registry, listErr := cluster.ListQueryCheckpoints(ctx, &ledgerpb.ListQueryCheckpointsRequest{})
 			require.NoError(t, listErr)
 			var afterRetry []uint64
 			for _, checkpoint := range registry.GetCheckpoints() {
@@ -181,12 +181,12 @@ func TestQueryCheckpointIdempotencyControls(t *testing.T) {
 	_, _, err = actions.CreateQueryCheckpoint(ctx, client)
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
 	require.True(t, workloadinternal.HasErrorReason(err, "CHECKPOINT_LIMIT_REACHED"))
-	registry, err := cluster.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
+	registry, err := cluster.ListQueryCheckpoints(ctx, &ledgerpb.ListQueryCheckpointsRequest{})
 	require.NoError(t, err)
 	require.Len(t, registry.GetCheckpoints(), 10)
 
 	proxy.mu.Lock()
-	requests := append([]*clusterpb.ApplyRequest(nil), proxy.requests...)
+	requests := append([]*ledgerpb.ApplyRequest(nil), proxy.requests...)
 	proxy.mu.Unlock()
 	require.Len(t, requests, 16, "only the lost first response should add a retry")
 	require.Equal(t, requests[0].GetUnsigned().GetIdempotencyKey(), requests[1].GetUnsigned().GetIdempotencyKey())
@@ -217,7 +217,7 @@ func TestQueryCheckpointIdempotencyControls(t *testing.T) {
 	}
 }
 
-func checkpointRetryServer(t *testing.T) (context.Context, clusterpb.BucketServiceClient, clusterpb.ClusterServiceClient, clusterpb.BucketServiceClient, *checkpointResponseLossProxy) {
+func checkpointRetryServer(t *testing.T) (context.Context, ledgerpb.BucketServiceClient, ledgerpb.ClusterServiceClient, ledgerpb.BucketServiceClient, *checkpointResponseLossProxy) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
@@ -241,19 +241,19 @@ func checkpointRetryServer(t *testing.T) (context.Context, clusterpb.BucketServi
 	conn, err := grpc.NewClient(fmt.Sprintf("localhost:%d", lease.Ports().GRPC()), grpcprotocol.ClientOption(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
-	cluster := clusterpb.NewClusterServiceClient(conn)
+	cluster := ledgerpb.NewClusterServiceClient(conn)
 	require.Eventually(t, func() bool {
-		state, err := cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+		state, err := cluster.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 
 		return err == nil && state.GetLeader() != 0
 	}, 5*time.Second, 10*time.Millisecond)
-	backend := clusterpb.NewBucketServiceClient(conn)
+	backend := ledgerpb.NewBucketServiceClient(conn)
 	testserver.WaitForWriteAdmission(t, ctx, backend)
 	proxy := &checkpointResponseLossProxy{backend: backend, cluster: cluster, lostResponses: 1}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	grpcServer := grpc.NewServer()
-	clusterpb.RegisterBucketServiceServer(grpcServer, proxy)
+	ledgerpb.RegisterBucketServiceServer(grpcServer, proxy)
 	done := make(chan error, 1)
 	go func() { done <- grpcServer.Serve(listener) }()
 	t.Cleanup(func() {
@@ -267,5 +267,5 @@ func checkpointRetryServer(t *testing.T) (context.Context, clusterpb.BucketServi
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, workloadConn.Close()) })
 
-	return ctx, backend, cluster, clusterpb.NewBucketServiceClient(workloadConn), proxy
+	return ctx, backend, cluster, ledgerpb.NewBucketServiceClient(workloadConn), proxy
 }

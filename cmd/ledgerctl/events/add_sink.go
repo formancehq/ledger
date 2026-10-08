@@ -9,7 +9,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -202,7 +202,7 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("--batch-size must be in [0, %d] (got %d)", domain.MaxSinkBatchSize, batchSize)
 	}
 
-	config := &commonpb.SinkConfig{
+	config := &ledgerpb.SinkConfig{
 		Name:         name,
 		ControllerId: controllerID,
 		Format:       format,
@@ -228,16 +228,16 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 			return errors.New("--nats-url and --nats-topic are both required for NATS sinks")
 		}
 
-		config.Type = &commonpb.SinkConfig_Nats{
-			Nats: &commonpb.NatsSinkConfig{
+		config.Type = &ledgerpb.SinkConfig_Nats{
+			Nats: &ledgerpb.NatsSinkConfig{
 				Url:   natsURL,
 				Topic: natsTopic,
 			},
 		}
 		sinkType = "NATS"
 	case hasCH:
-		config.Type = &commonpb.SinkConfig_Clickhouse{
-			Clickhouse: &commonpb.ClickHouseSinkConfig{
+		config.Type = &ledgerpb.SinkConfig_Clickhouse{
+			Clickhouse: &ledgerpb.ClickHouseSinkConfig{
 				Dsn:   chDSN,
 				Table: chTable,
 			},
@@ -249,8 +249,8 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 		}
 
 		brokers := strings.Split(kafkaBrokersStr, ",")
-		config.Type = &commonpb.SinkConfig_Kafka{
-			Kafka: &commonpb.KafkaSinkConfig{
+		config.Type = &ledgerpb.SinkConfig_Kafka{
+			Kafka: &ledgerpb.KafkaSinkConfig{
 				Brokers:       brokers,
 				Topic:         kafkaTopic,
 				Tls:           kafkaTLS,
@@ -261,8 +261,8 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 		}
 		sinkType = "Kafka"
 	case hasHTTP:
-		config.Type = &commonpb.SinkConfig_Http{
-			Http: &commonpb.HttpSinkConfig{
+		config.Type = &ledgerpb.SinkConfig_Http{
+			Http: &ledgerpb.HttpSinkConfig{
 				Endpoint: httpEndpoint,
 				Secret:   httpSecret,
 			},
@@ -300,7 +300,7 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 			return errors.New("--databricks-client-id and --databricks-client-secret must both be set for OAuth M2M authentication")
 		}
 
-		dbConfig := &commonpb.DatabricksSinkConfig{
+		dbConfig := &ledgerpb.DatabricksSinkConfig{
 			ServerHostname: dbHost,
 			HttpPath:       dbHTTPPath,
 			Catalog:        dbCatalog,
@@ -309,17 +309,17 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 			Port:           dbPort,
 		}
 		if hasPAT {
-			dbConfig.Auth = &commonpb.DatabricksSinkConfig_Token{Token: dbToken}
+			dbConfig.Auth = &ledgerpb.DatabricksSinkConfig_Token{Token: dbToken}
 		} else {
-			dbConfig.Auth = &commonpb.DatabricksSinkConfig_OauthM2M{
-				OauthM2M: &commonpb.DatabricksOAuthM2M{
+			dbConfig.Auth = &ledgerpb.DatabricksSinkConfig_OauthM2M{
+				OauthM2M: &ledgerpb.DatabricksOAuthM2M{
 					ClientId:     dbClientID,
 					ClientSecret: dbClientSecret,
 				},
 			}
 		}
 
-		config.Type = &commonpb.SinkConfig_Databricks{
+		config.Type = &ledgerpb.SinkConfig_Databricks{
 			Databricks: dbConfig,
 		}
 		sinkType = "Databricks"
@@ -337,10 +337,10 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 
 	spinner := cmdutil.StartSpinner(fmt.Sprintf("Adding event sink %s...", name))
 
-	requests := []*commonpb.Request{
+	requests := []*ledgerpb.Request{
 		{
-			Type: &commonpb.Request_AddEventsSink{
-				AddEventsSink: &commonpb.AddEventsSinkRequest{
+			Type: &ledgerpb.Request_AddEventsSink{
+				AddEventsSink: &ledgerpb.AddEventsSinkRequest{
 					Config: config,
 				},
 			},
@@ -404,14 +404,14 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 }
 
 // validEventTypes maps event type names (excluding UNSPECIFIED) to their proto values.
-var validEventTypes = func() map[string]commonpb.EventType {
-	m := make(map[string]commonpb.EventType, len(commonpb.EventType_name)-1)
-	for v, name := range commonpb.EventType_name {
-		if commonpb.EventType(v) == commonpb.EventType_EVENT_TYPE_UNSPECIFIED {
+var validEventTypes = func() map[string]ledgerpb.EventType {
+	m := make(map[string]ledgerpb.EventType, len(ledgerpb.EventType_name)-1)
+	for v, name := range ledgerpb.EventType_name {
+		if ledgerpb.EventType(v) == ledgerpb.EventType_EVENT_TYPE_UNSPECIFIED {
 			continue
 		}
 
-		m[name] = commonpb.EventType(v)
+		m[name] = ledgerpb.EventType(v)
 	}
 
 	return m
@@ -453,10 +453,10 @@ func completeEventTypes(_ *cobra.Command, _ []string, toComplete string) ([]stri
 }
 
 // parseEventTypes parses a comma-separated list of event type names into proto enum values.
-func parseEventTypes(s string) ([]commonpb.EventType, error) {
+func parseEventTypes(s string) ([]ledgerpb.EventType, error) {
 	parts := strings.Split(s, ",")
 
-	result := make([]commonpb.EventType, 0, len(parts))
+	result := make([]ledgerpb.EventType, 0, len(parts))
 	for _, p := range parts {
 		name := strings.TrimSpace(p)
 		if name == "" {
@@ -480,7 +480,7 @@ func parseEventTypes(s string) ([]commonpb.EventType, error) {
 }
 
 // formatEventTypes returns a human-readable string for the event types filter.
-func formatEventTypes(types []commonpb.EventType) string {
+func formatEventTypes(types []ledgerpb.EventType) string {
 	if len(types) == 0 {
 		return "all"
 	}

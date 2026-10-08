@@ -6,7 +6,7 @@ import (
 	"math/big"
 	"time"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -22,9 +22,9 @@ var _ = Describe("AccountHasAssetIndex", Ordered, func() {
 		// hasUSD2Filter builds a `has asset USD/2` condition: accounts that
 		// have ever touched a volume cell for the exact (asset base "USD",
 		// precision 2) pair.
-		hasUSD2Filter := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_AccountHasAsset{
-				AccountHasAsset: &commonpb.AccountHasAssetCondition{
+		hasUSD2Filter := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_AccountHasAsset{
+				AccountHasAsset: &ledgerpb.AccountHasAssetCondition{
 					AssetBase: "USD",
 					Precision: 2,
 				},
@@ -32,19 +32,19 @@ var _ = Describe("AccountHasAssetIndex", Ordered, func() {
 		}
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// alice & bob touch USD/2; carol touches only EUR. The asset
 			// cell key carries (base, precision), so "EUR" (precision 0) is
 			// distinct from "USD/2" and carol must never match has-asset USD/2.
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "accounts:alice", big.NewInt(100), "USD/2"),
 			}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "accounts:bob", big.NewInt(200), "USD/2"),
 				}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "accounts:carol", big.NewInt(300), "EUR"),
 				}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -61,7 +61,7 @@ var _ = Describe("AccountHasAssetIndex", Ordered, func() {
 		})
 
 		It("Should return exactly the accounts that touched USD/2 once the index is READY", func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateAccountAssetIndexAction(ledgerName)))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateAccountAssetIndexAction(ledgerName)))
 			Expect(err).To(Succeed())
 
 			Expect(actions.WaitForAccountAssetIndexReady(sharedCtx, sharedClient, ledgerName)).To(Succeed())
@@ -96,16 +96,16 @@ var _ = Describe("AccountHasAssetIndex", Ordered, func() {
 			// already READY: this rides the live runtime path (processLogs →
 			// indexCreatedTransaction → indexPostingAddressMappings(cfg, ...)),
 			// which a backfill-only test would never cover.
-			hasCHF2Filter := &commonpb.QueryFilter{
-				Filter: &commonpb.QueryFilter_AccountHasAsset{
-					AccountHasAsset: &commonpb.AccountHasAssetCondition{
+			hasCHF2Filter := &ledgerpb.QueryFilter{
+				Filter: &ledgerpb.QueryFilter_AccountHasAsset{
+					AccountHasAsset: &ledgerpb.AccountHasAssetCondition{
 						AssetBase: "CHF",
 						Precision: 2,
 					},
 				},
 			}
 
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "accounts:dave", big.NewInt(400), "CHF/2"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())

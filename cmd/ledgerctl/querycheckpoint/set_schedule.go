@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -55,10 +55,10 @@ func runSetSchedule(cmd *cobra.Command, args []string) error {
 
 	spinner := cmdutil.StartSpinner(fmt.Sprintf("Setting query checkpoint schedule to %q...", cronExpr))
 
-	requests := []*servicepb.Request{
+	requests := []*ledgerpb.Request{
 		{
-			Type: &servicepb.Request_SetQueryCheckpointSchedule{
-				SetQueryCheckpointSchedule: &servicepb.SetQueryCheckpointScheduleRequest{
+			Type: &ledgerpb.Request_SetQueryCheckpointSchedule{
+				SetQueryCheckpointSchedule: &ledgerpb.SetQueryCheckpointScheduleRequest{
 					Cron: cronExpr,
 				},
 			},

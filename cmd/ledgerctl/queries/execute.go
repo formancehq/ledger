@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/formancehq/invariants"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -100,7 +100,7 @@ func runExecute(cmd *cobra.Command, args []string) error {
 
 		var trailer metadata.MD
 
-		resp, err := client.ExecutePreparedQuery(ctx, &commonpb.ExecutePreparedQueryRequest{
+		resp, err := client.ExecutePreparedQuery(ctx, &ledgerpb.ExecutePreparedQueryRequest{
 			Ledger:     ledgerName,
 			QueryName:  queryName,
 			Parameters: params,
@@ -116,7 +116,7 @@ func runExecute(cmd *cobra.Command, args []string) error {
 		}
 
 		switch result := resp.GetResult().(type) {
-		case *commonpb.ExecutePreparedQueryResponse_Cursor:
+		case *ledgerpb.ExecutePreparedQueryResponse_Cursor:
 			renderCursorPage(cmd, result.Cursor, pageNum)
 
 			if showProfile {
@@ -146,7 +146,7 @@ func runExecute(cmd *cobra.Command, args []string) error {
 			cursor = result.Cursor.GetNext()
 			pageNum++
 
-		case *commonpb.ExecutePreparedQueryResponse_Aggregate:
+		case *ledgerpb.ExecutePreparedQueryResponse_Aggregate:
 			err := renderAggregate(cmd, result.Aggregate)
 			if err != nil {
 				return err
@@ -166,7 +166,7 @@ func runExecute(cmd *cobra.Command, args []string) error {
 	}
 }
 
-func renderCursorPage(cmd *cobra.Command, cursor *commonpb.PreparedQueryCursor, pageNum int) {
+func renderCursorPage(cmd *cobra.Command, cursor *ledgerpb.PreparedQueryCursor, pageNum int) {
 	if len(cursor.GetAccountData()) > 0 {
 		if handled, err := cmdutil.EncodeStructured(cmd, cursor.GetAccountData()); handled || err != nil {
 			return
@@ -225,7 +225,7 @@ func renderCursorPage(cmd *cobra.Command, cursor *commonpb.PreparedQueryCursor, 
 	}
 }
 
-func renderAggregate(cmd *cobra.Command, result *commonpb.AggregateResult) error {
+func renderAggregate(cmd *cobra.Command, result *ledgerpb.AggregateResult) error {
 	if handled, err := cmdutil.EncodeStructured(cmd, result); handled || err != nil {
 		return err
 	}
@@ -237,7 +237,7 @@ func renderAggregate(cmd *cobra.Command, result *commonpb.AggregateResult) error
 	// bucket but differ only in precision are summed and re-expressed at the
 	// requested scale (matching accounts aggregate-volumes); otherwise each row is
 	// rendered raw.
-	volumesTable := func(vols []*commonpb.AggregatedVolume) (pterm.TableData, error) {
+	volumesTable := func(vols []*ledgerpb.AggregatedVolume) (pterm.TableData, error) {
 		tableData := pterm.TableData{{"ASSET", "COLOR", "INPUT", "OUTPUT"}}
 
 		if rescale != nil {
@@ -328,12 +328,12 @@ func renderAggregate(cmd *cobra.Command, result *commonpb.AggregateResult) error
 // extractUint64 / extractBool. The CLI used to infer the type from the raw
 // value, but that broke any string-typed param whose contents happened to
 // parse as an int (e.g. a hex hash made of digits — see #249).
-func parseParams(flags []string) (map[string]*commonpb.ParameterValue, error) {
+func parseParams(flags []string) (map[string]*ledgerpb.ParameterValue, error) {
 	if len(flags) == 0 {
 		return nil, nil
 	}
 
-	params := make(map[string]*commonpb.ParameterValue, len(flags))
+	params := make(map[string]*ledgerpb.ParameterValue, len(flags))
 
 	for _, f := range flags {
 		k, v, ok := strings.Cut(f, "=")
@@ -341,18 +341,18 @@ func parseParams(flags []string) (map[string]*commonpb.ParameterValue, error) {
 			return nil, fmt.Errorf("invalid parameter %q (expected key=value)", f)
 		}
 
-		params[k] = &commonpb.ParameterValue{Value: &commonpb.ParameterValue_StringValue{StringValue: v}}
+		params[k] = &ledgerpb.ParameterValue{Value: &ledgerpb.ParameterValue_StringValue{StringValue: v}}
 	}
 
 	return params, nil
 }
 
-func parseMode(s string) (commonpb.QueryMode, error) {
+func parseMode(s string) (ledgerpb.QueryMode, error) {
 	switch s {
 	case "list", "":
-		return commonpb.QueryMode_QUERY_MODE_LIST, nil
+		return ledgerpb.QueryMode_QUERY_MODE_LIST, nil
 	case "aggregate", "agg":
-		return commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES, nil
+		return ledgerpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES, nil
 	default:
 		return 0, fmt.Errorf("unknown mode %q (use list or aggregate)", s)
 	}

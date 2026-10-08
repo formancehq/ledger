@@ -3,7 +3,7 @@ package grpc_test
 import (
 	"testing"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // BenchmarkReader_AsReader confirms that obtaining a Reader view is zero-alloc.
@@ -11,8 +11,8 @@ import (
 // AsReader() does a pointer type-conversion — the resulting *xReadonly fits in
 // the interface data word and never escapes to the heap.
 func BenchmarkReader_AsReader(b *testing.B) {
-	tx := &commonpb.Transaction{
-		Postings: []*commonpb.Posting{{Source: "world", Destination: "user:1", Asset: "USD"}},
+	tx := &ledgerpb.Transaction{
+		Postings: []*ledgerpb.Posting{{Source: "world", Destination: "user:1", Asset: "USD"}},
 	}
 
 	b.ReportAllocs()
@@ -25,8 +25,8 @@ func BenchmarkReader_AsReader(b *testing.B) {
 // getters allocates nothing: each transitive AsReader() is likewise a pointer
 // type-conversion.
 func BenchmarkReader_GetChain(b *testing.B) {
-	tx := &commonpb.Transaction{
-		Postings: []*commonpb.Posting{{Source: "world", Destination: "user:1", Asset: "USD"}},
+	tx := &ledgerpb.Transaction{
+		Postings: []*ledgerpb.Posting{{Source: "world", Destination: "user:1", Asset: "USD"}},
 	}
 
 	b.ReportAllocs()
@@ -43,16 +43,16 @@ func BenchmarkReader_GetChain(b *testing.B) {
 // BenchmarkReader_ListRange confirms that ListReader.Range yields Reader views
 // without per-element allocation.
 func BenchmarkReader_ListRange(b *testing.B) {
-	postings := make([]*commonpb.Posting, 32)
+	postings := make([]*ledgerpb.Posting, 32)
 	for i := range postings {
-		postings[i] = &commonpb.Posting{Source: "world", Destination: "user:1", Asset: "USD"}
+		postings[i] = &ledgerpb.Posting{Source: "world", Destination: "user:1", Asset: "USD"}
 	}
-	tx := &commonpb.Transaction{Postings: postings}
+	tx := &ledgerpb.Transaction{Postings: postings}
 
 	b.ReportAllocs()
 	for b.Loop() {
 		var acc int
-		tx.AsReader().GetPostings().Range(func(_ int, p commonpb.PostingReader) bool {
+		tx.AsReader().GetPostings().Range(func(_ int, p ledgerpb.PostingReader) bool {
 			acc += len(p.GetSource())
 
 			return true

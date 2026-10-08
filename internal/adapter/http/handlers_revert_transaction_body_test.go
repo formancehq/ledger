@@ -13,7 +13,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -25,23 +25,23 @@ import (
 func TestHandleRevertTransaction_BodyFraming(t *testing.T) {
 	t.Parallel()
 
-	metadata, err := commonpb.MetadataFromAnyMap(map[string]any{
+	metadata, err := ledgerpb.MetadataFromAnyMap(map[string]any{
 		"reason": "duplicate", "count": uint64(42), "negative": int64(-7), "active": true,
 	})
 	require.NoError(t, err)
-	options := &commonpb.RevertTransactionPayload{
+	options := &ledgerpb.RevertTransactionPayload{
 		TransactionId: 1, Force: true, AtEffectiveDate: true, Metadata: metadata,
 	}
-	defaults := &commonpb.RevertTransactionPayload{TransactionId: 1}
-	controlMetadata, err := commonpb.MetadataFromAnyMap(map[string]any{"reason": "a\x00b"})
+	defaults := &ledgerpb.RevertTransactionPayload{TransactionId: 1}
+	controlMetadata, err := ledgerpb.MetadataFromAnyMap(map[string]any{"reason": "a\x00b"})
 	require.NoError(t, err)
-	escapedControl := &commonpb.RevertTransactionPayload{TransactionId: 1, Metadata: controlMetadata}
+	escapedControl := &ledgerpb.RevertTransactionPayload{TransactionId: 1, Metadata: controlMetadata}
 
 	for _, tc := range []struct {
 		name   string
 		body   string
 		status int
-		want   *commonpb.RevertTransactionPayload
+		want   *ledgerpb.RevertTransactionPayload
 	}{
 		{"options", `{"force":true,"atEffectiveDate":true,"metadata":{"reason":"duplicate","count":42,"negative":-7,"active":true}}`, http.StatusCreated, options},
 		{"empty", "", http.StatusCreated, defaults},
@@ -63,16 +63,16 @@ func TestHandleRevertTransaction_BodyFraming(t *testing.T) {
 			t.Run(tc.name+"/"+framing, func(t *testing.T) {
 				t.Parallel()
 
-				calls := make(chan *commonpb.ApplyRequest, 1)
+				calls := make(chan *ledgerpb.ApplyRequest, 1)
 				backend := NewMockBackend(gomock.NewController(t))
 				backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-					func(_ context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+					func(_ context.Context, req *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 						calls <- req
 
-						return &domain.ApplyResult{Logs: []*commonpb.Log{{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-							Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{
-								Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
-									RevertedTransaction: &commonpb.RevertedTransaction{RevertTransaction: &commonpb.Transaction{Id: 2}},
+						return &domain.ApplyResult{Logs: []*ledgerpb.Log{{Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
+							Apply: &ledgerpb.ApplyLedgerLog{Log: &ledgerpb.LedgerLog{Data: &ledgerpb.LedgerLogPayload{
+								Payload: &ledgerpb.LedgerLogPayload_RevertedTransaction{
+									RevertedTransaction: &ledgerpb.RevertedTransaction{RevertTransaction: &ledgerpb.Transaction{Id: 2}},
 								},
 							}}},
 						}}}}}, nil

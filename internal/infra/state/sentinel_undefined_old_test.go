@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -36,8 +36,8 @@ func TestVerifyVolumeUpdateMonotonicity_UndefinedOldIsAllowed(t *testing.T) {
 			CanonicalKey: key.Bytes(),
 			Old:          kv.None[*raftcmdpb.VolumePair](), // first-write: no prior entry
 			New: &raftcmdpb.VolumePair{
-				Input:  commonpb.NewUint256FromUint64(500),
-				Output: commonpb.NewUint256FromUint64(0),
+				Input:  ledgerpb.NewUint256FromUint64(500),
+				Output: ledgerpb.NewUint256FromUint64(0),
 			},
 		},
 	}
@@ -70,8 +70,8 @@ func TestVerifyVolumeDeltasMatchPostings_UndefinedOldZeroBaseline(t *testing.T) 
 			CanonicalKey: srcKey.Bytes(),
 			Old:          kv.None[*raftcmdpb.VolumePair](),
 			New: &raftcmdpb.VolumePair{
-				Input:  commonpb.NewUint256FromUint64(0),
-				Output: commonpb.NewUint256FromUint64(amount),
+				Input:  ledgerpb.NewUint256FromUint64(0),
+				Output: ledgerpb.NewUint256FromUint64(amount),
 			},
 		},
 		{
@@ -79,21 +79,21 @@ func TestVerifyVolumeDeltasMatchPostings_UndefinedOldZeroBaseline(t *testing.T) 
 			CanonicalKey: dstKey.Bytes(),
 			Old:          kv.None[*raftcmdpb.VolumePair](),
 			New: &raftcmdpb.VolumePair{
-				Input:  commonpb.NewUint256FromUint64(amount),
-				Output: commonpb.NewUint256FromUint64(0),
+				Input:  ledgerpb.NewUint256FromUint64(amount),
+				Output: ledgerpb.NewUint256FromUint64(0),
 			},
 		},
 	}
 
-	logs := []*commonpb.Log{
+	logs := []*ledgerpb.Log{
 		{
 			Sequence: 1,
-			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-				Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
+				Apply: &ledgerpb.ApplyLedgerLog{
 					LedgerName: ledger,
-					Log: protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&commonpb.LedgerLogPayload{
-						Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-							CreatedTransaction: &commonpb.CreatedTransaction{
+					Log: protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+						Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+							CreatedTransaction: &ledgerpb.CreatedTransaction{
 								Transaction: protohelpers.WithTransactionID(protohelpers.WithTransactionPostings(protohelpers.NewTransaction(), protohelpers.NewPosting("world", "users:bob", "USD", new(big.Int).SetUint64(amount))), 1),
 							},
 						},

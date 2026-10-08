@@ -6,7 +6,7 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"math/big"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -16,42 +16,42 @@ var _ = Describe("CreateCheckpoint", Ordered, func() {
 	BeforeAll(func() {
 
 		// Create a ledger with some data so the checkpoint is non-trivial
-		_, err := sharedClient.Apply(sharedCtx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction("checkpoint-test", nil)))
+		_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction("checkpoint-test", nil)))
 		Expect(err).To(Succeed())
 
-		_, err = sharedClient.Apply(sharedCtx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction("checkpoint-test", []*clusterpb.Posting{
+		_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction("checkpoint-test", []*ledgerpb.Posting{
 			actions.NewPosting("world", "bank", big.NewInt(10000), "USD"),
 		}, nil, nil)))
 		Expect(err).To(Succeed())
 	})
 
 	It("should create a checkpoint and return a valid checkpoint ID", func() {
-		resp, err := sharedClusterClient.CreateCheckpoint(sharedCtx, &clusterpb.CreateCheckpointRequest{})
+		resp, err := sharedClusterClient.CreateCheckpoint(sharedCtx, &ledgerpb.CreateCheckpointRequest{})
 		Expect(err).To(Succeed())
 		Expect(resp.CheckpointId).To(BeNumerically(">", 0))
 	})
 
 	It("should create monotonically increasing checkpoint IDs", func() {
-		resp1, err := sharedClusterClient.CreateCheckpoint(sharedCtx, &clusterpb.CreateCheckpointRequest{})
+		resp1, err := sharedClusterClient.CreateCheckpoint(sharedCtx, &ledgerpb.CreateCheckpointRequest{})
 		Expect(err).To(Succeed())
 
-		resp2, err := sharedClusterClient.CreateCheckpoint(sharedCtx, &clusterpb.CreateCheckpointRequest{})
+		resp2, err := sharedClusterClient.CreateCheckpoint(sharedCtx, &ledgerpb.CreateCheckpointRequest{})
 		Expect(err).To(Succeed())
 
 		Expect(resp2.CheckpointId).To(BeNumerically(">", resp1.CheckpointId))
 	})
 
 	It("should not interfere with normal cluster operations", func() {
-		_, err := sharedClusterClient.CreateCheckpoint(sharedCtx, &clusterpb.CreateCheckpointRequest{})
+		_, err := sharedClusterClient.CreateCheckpoint(sharedCtx, &ledgerpb.CreateCheckpointRequest{})
 		Expect(err).To(Succeed())
 
 		// Verify the cluster is still healthy after checkpoint
-		state, err := sharedClusterClient.GetClusterState(sharedCtx, &clusterpb.GetClusterStateRequest{})
+		state, err := sharedClusterClient.GetClusterState(sharedCtx, &ledgerpb.GetClusterStateRequest{})
 		Expect(err).To(Succeed())
 		Expect(state.Leader).NotTo(BeZero())
 
 		// Verify we can still create transactions after checkpoint
-		_, err = sharedClient.Apply(sharedCtx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction("checkpoint-test", []*clusterpb.Posting{
+		_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction("checkpoint-test", []*ledgerpb.Posting{
 			actions.NewPosting("world", "user", big.NewInt(500), "USD"),
 		}, nil, nil)))
 		Expect(err).To(Succeed())

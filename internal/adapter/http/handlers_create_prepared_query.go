@@ -5,7 +5,7 @@ import (
 	"errors"
 	"net/http"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
 )
@@ -59,11 +59,11 @@ func (s *Server) handleCreatePreparedQuery(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	_, err = s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &commonpb.Request{
-		Type: &commonpb.Request_CreatePreparedQuery{
-			CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
+	_, err = s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &ledgerpb.Request{
+		Type: &ledgerpb.Request_CreatePreparedQuery{
+			CreatePreparedQuery: &ledgerpb.CreatePreparedQueryRequest{
 				Ledger: ledgerName,
-				Query: &commonpb.PreparedQuery{
+				Query: &ledgerpb.PreparedQuery{
 					Name:   body.Name,
 					Filter: filter,
 					Target: target,

@@ -8,7 +8,7 @@ import (
 	"math/big"
 	"time"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/metadata"
@@ -24,13 +24,13 @@ var _ = Describe("QueryProfile", Ordered, func() {
 		const ledgerName = "profile-accounts"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
 				}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -40,7 +40,7 @@ var _ = Describe("QueryProfile", Ordered, func() {
 			Eventually(func(g Gomega) {
 				profileCtx := metadata.AppendToOutgoingContext(sharedCtx, "x-query-profile", "true")
 
-				stream, err := sharedClient.ListAccounts(profileCtx, &commonpb.ListAccountsRequest{
+				stream, err := sharedClient.ListAccounts(profileCtx, &ledgerpb.ListAccountsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -59,7 +59,7 @@ var _ = Describe("QueryProfile", Ordered, func() {
 				profileData := trailer.Get("x-query-profile-result-bin")
 				g.Expect(profileData).NotTo(BeEmpty(), "trailing metadata should contain profile")
 
-				var profile commonpb.QueryProfile
+				var profile ledgerpb.QueryProfile
 				g.Expect(proto.Unmarshal([]byte(profileData[0]), &profile)).To(Succeed())
 
 				// Profile should have meaningful data
@@ -83,7 +83,7 @@ var _ = Describe("QueryProfile", Ordered, func() {
 
 		It("Should NOT return profile when not requested", func() {
 			Eventually(func(g Gomega) {
-				stream, err := sharedClient.ListAccounts(sharedCtx, &commonpb.ListAccountsRequest{
+				stream, err := sharedClient.ListAccounts(sharedCtx, &ledgerpb.ListAccountsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -110,10 +110,10 @@ var _ = Describe("QueryProfile", Ordered, func() {
 		const ledgerName = "profile-transactions"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -123,7 +123,7 @@ var _ = Describe("QueryProfile", Ordered, func() {
 			Eventually(func(g Gomega) {
 				profileCtx := metadata.AppendToOutgoingContext(sharedCtx, "x-query-profile", "true")
 
-				stream, err := sharedClient.ListTransactions(profileCtx, &commonpb.ListTransactionsRequest{
+				stream, err := sharedClient.ListTransactions(profileCtx, &ledgerpb.ListTransactionsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -140,7 +140,7 @@ var _ = Describe("QueryProfile", Ordered, func() {
 				profileData := trailer.Get("x-query-profile-result-bin")
 				g.Expect(profileData).NotTo(BeEmpty(), "trailing metadata should contain profile")
 
-				var profile commonpb.QueryProfile
+				var profile ledgerpb.QueryProfile
 				g.Expect(proto.Unmarshal([]byte(profileData[0]), &profile)).To(Succeed())
 				g.Expect(profile.ItemsCollected).To(BeNumerically(">", 0), "should have collected items")
 
@@ -165,35 +165,35 @@ var _ = Describe("QueryProfile", Ordered, func() {
 		const ledgerName = "profile-prepared-query"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*ledgerpb.SetMetadataFieldTypeCommand{
 				{
-					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "role",
-					Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+					Type:       ledgerpb.MetadataType_METADATA_TYPE_STRING,
 				},
 			}),
 				actions.CreateAccountMetadataIndexAction(ledgerName, "role")))
 			Expect(err).To(Succeed())
 
-			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")).To(Succeed())
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role")).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil),
-				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
 				}, nil),
 				actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "admin"}),
 				actions.SaveAccountMetadataAction(ledgerName, "bob", map[string]string{"role": "user"})))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_CreatePreparedQuery{CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_CreatePreparedQuery{CreatePreparedQuery: &ledgerpb.CreatePreparedQueryRequest{
 					Ledger: ledgerName,
 
-					Query: &commonpb.PreparedQuery{
+					Query: &ledgerpb.PreparedQuery{
 						Name:   "find-admins",
-						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 						Filter: actions.StringMetadataFilter("role", "admin"),
 					},
 				}},
@@ -205,10 +205,10 @@ var _ = Describe("QueryProfile", Ordered, func() {
 			Eventually(func(g Gomega) {
 				profileCtx := metadata.AppendToOutgoingContext(sharedCtx, "x-query-profile", "true")
 
-				resp, err := sharedClient.ExecutePreparedQuery(profileCtx, &commonpb.ExecutePreparedQueryRequest{
+				resp, err := sharedClient.ExecutePreparedQuery(profileCtx, &ledgerpb.ExecutePreparedQueryRequest{
 					Ledger:    ledgerName,
 					QueryName: "find-admins",
-					Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+					Mode:      ledgerpb.QueryMode_QUERY_MODE_LIST,
 				})
 				g.Expect(err).To(Succeed())
 
@@ -224,10 +224,10 @@ var _ = Describe("QueryProfile", Ordered, func() {
 			// For ExecutePreparedQuery (unary RPC), profile is sent via SetTrailer
 			// which requires a special header interceptor. For now, we just verify
 			// the query works correctly with the profile context.
-			resp, err := sharedClient.ExecutePreparedQuery(profileCtx, &commonpb.ExecutePreparedQueryRequest{
+			resp, err := sharedClient.ExecutePreparedQuery(profileCtx, &ledgerpb.ExecutePreparedQueryRequest{
 				Ledger:    ledgerName,
 				QueryName: "find-admins",
-				Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+				Mode:      ledgerpb.QueryMode_QUERY_MODE_LIST,
 			})
 			Expect(err).To(Succeed())
 
@@ -245,16 +245,16 @@ var _ = Describe("QueryProfile", Ordered, func() {
 		const ledgerName = "profile-filter"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "users:alice", big.NewInt(100), "USD"),
 			}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "users:bob", big.NewInt(200), "USD"),
 				}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "merchants:shop1", big.NewInt(50), "USD"),
 				}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -264,15 +264,15 @@ var _ = Describe("QueryProfile", Ordered, func() {
 			Eventually(func(g Gomega) {
 				profileCtx := metadata.AppendToOutgoingContext(sharedCtx, "x-query-profile", "true")
 
-				stream, err := sharedClient.ListAccounts(profileCtx, &commonpb.ListAccountsRequest{
+				stream, err := sharedClient.ListAccounts(profileCtx, &ledgerpb.ListAccountsRequest{
 					Ledger: ledgerName,
-					Options: &commonpb.ListOptions{
+					Options: &ledgerpb.ListOptions{
 						Filter: actions.AddressPrefixFilter("users:"),
 					},
 				})
 				g.Expect(err).To(Succeed())
 
-				var accounts []*commonpb.Account
+				var accounts []*ledgerpb.Account
 				for {
 					account, err := stream.Recv()
 					if err == io.EOF {
@@ -288,7 +288,7 @@ var _ = Describe("QueryProfile", Ordered, func() {
 				profileData := trailer.Get("x-query-profile-result-bin")
 				g.Expect(profileData).NotTo(BeEmpty())
 
-				var profile commonpb.QueryProfile
+				var profile ledgerpb.QueryProfile
 				g.Expect(proto.Unmarshal([]byte(profileData[0]), &profile)).To(Succeed())
 
 				g.Expect(profile.ItemsCollected).To(BeNumerically("==", 2))

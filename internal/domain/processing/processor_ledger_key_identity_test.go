@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -41,8 +41,8 @@ func TestProcessDeleteLedger_KeysOffEnvelopeNotProjection(t *testing.T) {
 
 	// Loaded projection reports a DIFFERENT name than the envelope.
 	expectGetLedger(mockStore, domain.LedgerKey{Name: envelopeLedger},
-		(&commonpb.LedgerInfo{Name: divergentLedger, Id: 7}).AsReader(), nil)
-	mockStore.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1}).AsReader())
+		(&ledgerpb.LedgerInfo{Name: divergentLedger, Id: 7}).AsReader(), nil)
+	mockStore.EXPECT().GetDate().Return((&ledgerpb.Timestamp{Data: 1}).AsReader())
 	// PutLedger and the gated Boundary delete MUST both use the envelope key.
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: envelopeLedger}, nil)
 	expectDeleteBoundaries(t, mockStore, domain.LedgerKey{Name: envelopeLedger})
@@ -67,19 +67,19 @@ func TestProcessAddLedgerMetadata_KeysOffEnvelope(t *testing.T) {
 	expectDefaultMetadataLimits(mockStore)
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: envelopeLedger},
-		(&commonpb.LedgerInfo{Name: divergentLedger, Id: 7}).AsReader(), nil)
+		(&ledgerpb.LedgerInfo{Name: divergentLedger, Id: 7}).AsReader(), nil)
 
-	lm := &kindStub[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]{}
+	lm := &kindStub[domain.LedgerMetadataKey, *ledgerpb.MetadataValue, ledgerpb.MetadataValueReader]{}
 	mockStore.EXPECT().LedgerMetadata().Return(lm).AnyTimes()
 
 	var wroteKeys []domain.LedgerMetadataKey
-	lm.onPut(func(k domain.LedgerMetadataKey, _ *commonpb.MetadataValue) {
+	lm.onPut(func(k domain.LedgerMetadataKey, _ *ledgerpb.MetadataValue) {
 		wroteKeys = append(wroteKeys, k)
 	})
 
 	order := &raftcmdpb.SaveLedgerMetadataOrder{
-		Metadata: map[string]*commonpb.MetadataValue{
-			"color": commonpb.NewStringValue("blue"),
+		Metadata: map[string]*ledgerpb.MetadataValue{
+			"color": ledgerpb.NewStringValue("blue"),
 		},
 	}
 
@@ -104,14 +104,14 @@ func TestProcessDeleteLedgerMetadata_KeysOffEnvelope(t *testing.T) {
 	expectDefaultMetadataLimits(mockStore)
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: envelopeLedger},
-		(&commonpb.LedgerInfo{Name: divergentLedger, Id: 7}).AsReader(), nil)
+		(&ledgerpb.LedgerInfo{Name: divergentLedger, Id: 7}).AsReader(), nil)
 
-	lm := &kindStub[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]{}
+	lm := &kindStub[domain.LedgerMetadataKey, *ledgerpb.MetadataValue, ledgerpb.MetadataValueReader]{}
 	mockStore.EXPECT().LedgerMetadata().Return(lm).AnyTimes()
 
 	// Existence check must resolve for the envelope key.
 	envKey := domain.LedgerMetadataKey{LedgerName: envelopeLedger, Key: "color"}
-	lm.expectGet(envKey, commonpb.NewStringValue("blue").AsReader(), nil)
+	lm.expectGet(envKey, ledgerpb.NewStringValue("blue").AsReader(), nil)
 
 	var deletedKey domain.LedgerMetadataKey
 	lm.onDelete(func(k domain.LedgerMetadataKey) { deletedKey = k })
@@ -140,17 +140,17 @@ func TestProcessCreateIndex_KeysOffEnvelope(t *testing.T) {
 
 	mockStore := NewMockScope(ctrl)
 
-	indexID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	indexID := indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: envelopeLedger},
-		(&commonpb.LedgerInfo{Name: divergentLedger, Id: 7}).AsReader(), nil)
-	mockStore.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1}).AsReader())
+		(&ledgerpb.LedgerInfo{Name: divergentLedger, Id: 7}).AsReader(), nil)
+	mockStore.EXPECT().GetDate().Return((&ledgerpb.Timestamp{Data: 1}).AsReader())
 
 	var wroteKey domain.IndexKey
-	var wroteIdx *commonpb.Index
+	var wroteIdx *ledgerpb.Index
 
 	idxStub := setupIndexesStub(mockStore)
-	idxStub.onPut(func(k domain.IndexKey, idx *commonpb.Index) {
+	idxStub.onPut(func(k domain.IndexKey, idx *ledgerpb.Index) {
 		wroteKey = k
 		wroteIdx = idx
 	})
@@ -177,10 +177,10 @@ func TestProcessDropIndex_KeysOffEnvelope(t *testing.T) {
 
 	mockStore := NewMockScope(ctrl)
 
-	indexID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	indexID := indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: envelopeLedger},
-		(&commonpb.LedgerInfo{Name: divergentLedger, Id: 7}).AsReader(), nil)
+		(&ledgerpb.LedgerInfo{Name: divergentLedger, Id: 7}).AsReader(), nil)
 
 	var deletedKey domain.IndexKey
 	idxStub := setupIndexesStub(mockStore)
@@ -207,10 +207,10 @@ func TestProcessSetMetadataFieldType_IndexCascadeKeysOffEnvelope(t *testing.T) {
 	expectDefaultMetadataLimits(mockStore)
 
 	const field = "color"
-	indexID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, field)
+	indexID := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, field)
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: envelopeLedger},
-		(&commonpb.LedgerInfo{Name: divergentLedger, Id: 7}).AsReader(), nil)
+		(&ledgerpb.LedgerInfo{Name: divergentLedger, Id: 7}).AsReader(), nil)
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: envelopeLedger}, nil)
 
 	// An index already covers the field, so the BUILDING re-flip cascade runs.
@@ -218,21 +218,21 @@ func TestProcessSetMetadataFieldType_IndexCascadeKeysOffEnvelope(t *testing.T) {
 	var wroteKey domain.IndexKey
 
 	idxStub := setupIndexesStub(mockStore)
-	idxStub.onGet(func(k domain.IndexKey) (commonpb.IndexReader, error) {
+	idxStub.onGet(func(k domain.IndexKey) (ledgerpb.IndexReader, error) {
 		probedKeys = append(probedKeys, k)
 
-		return (&commonpb.Index{
+		return (&ledgerpb.Index{
 			Id:                     indexID,
 			Ledger:                 envelopeLedger,
 			ForwardEncodingVersion: 1,
 		}).AsReader(), nil
 	})
-	idxStub.onPut(func(k domain.IndexKey, _ *commonpb.Index) { wroteKey = k })
+	idxStub.onPut(func(k domain.IndexKey, _ *ledgerpb.Index) { wroteKey = k })
 
 	order := &raftcmdpb.SetMetadataFieldTypeOrder{
-		TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 		Key:        field,
-		Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+		Type:       ledgerpb.MetadataType_METADATA_TYPE_STRING,
 	}
 
 	payload, derr := processSetMetadataFieldType(envelopeLedger, order, &Context{Scope: mockStore})
@@ -257,25 +257,25 @@ func TestProcessRemoveMetadataFieldType_IndexCascadeKeysOffEnvelope(t *testing.T
 	expectDefaultMetadataLimits(mockStore)
 
 	const field = "color"
-	indexID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, field)
+	indexID := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, field)
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: envelopeLedger},
-		(&commonpb.LedgerInfo{Name: divergentLedger, Id: 7}).AsReader(), nil)
+		(&ledgerpb.LedgerInfo{Name: divergentLedger, Id: 7}).AsReader(), nil)
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: envelopeLedger}, nil)
 
 	var probedKeys []domain.IndexKey
 	var deletedKey domain.IndexKey
 
 	idxStub := setupIndexesStub(mockStore)
-	idxStub.onGet(func(k domain.IndexKey) (commonpb.IndexReader, error) {
+	idxStub.onGet(func(k domain.IndexKey) (ledgerpb.IndexReader, error) {
 		probedKeys = append(probedKeys, k)
 
-		return (&commonpb.Index{Id: indexID, Ledger: envelopeLedger}).AsReader(), nil
+		return (&ledgerpb.Index{Id: indexID, Ledger: envelopeLedger}).AsReader(), nil
 	})
 	idxStub.onDelete(func(k domain.IndexKey) { deletedKey = k })
 
 	order := &raftcmdpb.RemoveMetadataFieldTypeOrder{
-		TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 		Key:        field,
 	}
 
@@ -302,10 +302,10 @@ func TestProcessPromoteLedger_KeysOffEnvelope(t *testing.T) {
 	mockStore := NewMockScope(ctrl)
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: envelopeLedger},
-		(&commonpb.LedgerInfo{
+		(&ledgerpb.LedgerInfo{
 			Name: divergentLedger,
 			Id:   7,
-			Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+			Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR,
 		}).AsReader(), nil)
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: envelopeLedger}, nil)
 

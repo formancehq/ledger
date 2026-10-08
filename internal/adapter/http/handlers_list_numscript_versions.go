@@ -6,14 +6,14 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // numscriptVersionEntryDTO renders one stored version for the REST API.
 // createdAt reuses the proto Timestamp, whose MarshalJSON emits RFC3339.
 type numscriptVersionEntryDTO struct {
 	Version   string              `json:"version"`
-	CreatedAt *commonpb.Timestamp `json:"createdAt,omitempty"`
+	CreatedAt *ledgerpb.Timestamp `json:"createdAt,omitempty"`
 }
 
 // numscriptVersionsDTO is the numscript history response: the current latest

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"math/big"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
@@ -15,9 +15,9 @@ import (
 )
 
 // waitForNodeRemoved polls the cluster state on the leader until the given node is no longer present.
-func waitForNodeRemoved(clusterClient clusterpb.ClusterServiceClient, leaderID uint64, removedNodeID uint32) {
+func waitForNodeRemoved(clusterClient ledgerpb.ClusterServiceClient, leaderID uint64, removedNodeID uint32) {
 	Eventually(func(g Gomega) {
-		state, err := clusterClient.GetClusterState(context.Background(), &clusterpb.GetClusterStateRequest{
+		state, err := clusterClient.GetClusterState(context.Background(), &ledgerpb.GetClusterStateRequest{
 			NodeId: uint32(leaderID),
 		})
 		g.Expect(err).To(Succeed())
@@ -52,7 +52,7 @@ var _ = Describe("Remove node", func() {
 			// Pick a follower to remove
 			followerID := uint64(((lid) % countInstances) + 1)
 
-			_, err := servers[lid-1].ClusterClient.RemoveNode(ctx, &clusterpb.RemoveNodeRequest{
+			_, err := servers[lid-1].ClusterClient.RemoveNode(ctx, &ledgerpb.RemoveNodeRequest{
 				NodeId: followerID,
 			})
 			Expect(err).To(Succeed())
@@ -62,7 +62,7 @@ var _ = Describe("Remove node", func() {
 
 		It("should have 2 nodes after removal", func() {
 			lid := *leaderID
-			state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
+			state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{
 				NodeId: uint32(lid),
 			})
 			Expect(err).To(Succeed())
@@ -73,11 +73,11 @@ var _ = Describe("Remove node", func() {
 			lid := *leaderID
 			ledgerName := "remove-voter-test"
 
-			_, err := servers[lid-1].Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := servers[lid-1].Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			for i := range 3 {
-				_, err := servers[lid-1].Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*clusterpb.Posting{
+				_, err := servers[lid-1].Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", fmt.Sprintf("user-%d", i), big.NewInt(100), "USD"),
 				}, nil, nil)))
 				Expect(err).To(Succeed())
@@ -98,7 +98,7 @@ var _ = Describe("Remove node", func() {
 			// Add a learner node (phantom, not a real process)
 			raftAddr, serviceAddr := phantomPeer()
 
-			_, err := servers[*leaderID-1].ClusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
+			_, err := servers[*leaderID-1].ClusterClient.AddLearner(ctx, &ledgerpb.AddLearnerRequest{
 				NodeId:         4,
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
@@ -114,7 +114,7 @@ var _ = Describe("Remove node", func() {
 
 		It("should remove the learner from the cluster", func() {
 			lid := *leaderID
-			_, err := servers[lid-1].ClusterClient.RemoveNode(ctx, &clusterpb.RemoveNodeRequest{
+			_, err := servers[lid-1].ClusterClient.RemoveNode(ctx, &ledgerpb.RemoveNodeRequest{
 				NodeId: 4,
 			})
 			Expect(err).To(Succeed())
@@ -124,7 +124,7 @@ var _ = Describe("Remove node", func() {
 
 		It("should have 3 voters and 0 learners after learner removal", func() {
 			lid := *leaderID
-			state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
+			state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{
 				NodeId: uint32(lid),
 			})
 			Expect(err).To(Succeed())
@@ -171,7 +171,7 @@ var _ = Describe("Remove node", func() {
 			testutil.StopNode(ctx, servers[followerIdx])
 
 			// Force-remove the stopped follower via the leader
-			_, err := servers[lid-1].ClusterClient.RemoveNode(ctx, &clusterpb.RemoveNodeRequest{
+			_, err := servers[lid-1].ClusterClient.RemoveNode(ctx, &ledgerpb.RemoveNodeRequest{
 				NodeId: followerID,
 				Force:  true,
 			})
@@ -184,11 +184,11 @@ var _ = Describe("Remove node", func() {
 			lid := *leaderID
 			ledgerName := "force-remove-test"
 
-			_, err := servers[lid-1].Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := servers[lid-1].Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			for i := range 3 {
-				_, err := servers[lid-1].Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*clusterpb.Posting{
+				_, err := servers[lid-1].Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", fmt.Sprintf("user-%d", i), big.NewInt(100), "USD"),
 				}, nil, nil)))
 				Expect(err).To(Succeed())
@@ -226,7 +226,7 @@ var _ = Describe("Remove node", func() {
 
 			// Force-remove both stopped followers
 			for _, fid := range followerIDs {
-				_, err := servers[lid-1].ClusterClient.RemoveNode(ctx, &clusterpb.RemoveNodeRequest{
+				_, err := servers[lid-1].ClusterClient.RemoveNode(ctx, &ledgerpb.RemoveNodeRequest{
 					NodeId: fid,
 					Force:  true,
 				})
@@ -235,7 +235,7 @@ var _ = Describe("Remove node", func() {
 
 			// Verify leader can operate as single-node cluster
 			Eventually(func(g Gomega) {
-				state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
+				state, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{
 					NodeId: uint32(lid),
 				})
 				g.Expect(err).To(Succeed())
@@ -247,10 +247,10 @@ var _ = Describe("Remove node", func() {
 			lid := *leaderID
 			ledgerName := "quorum-restore-test"
 
-			_, err := servers[lid-1].Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := servers[lid-1].Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = servers[lid-1].Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*clusterpb.Posting{
+			_, err = servers[lid-1].Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(500), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -274,7 +274,7 @@ var _ = Describe("Remove node", func() {
 
 		It("should reject force-removing the leader itself", func() {
 			lid := *leaderID
-			_, err := servers[lid-1].ClusterClient.RemoveNode(ctx, &clusterpb.RemoveNodeRequest{
+			_, err := servers[lid-1].ClusterClient.RemoveNode(ctx, &ledgerpb.RemoveNodeRequest{
 				NodeId: lid,
 				Force:  true,
 			})
@@ -283,7 +283,7 @@ var _ = Describe("Remove node", func() {
 
 		It("should reject force-removing a non-existent node", func() {
 			lid := *leaderID
-			_, err := servers[lid-1].ClusterClient.RemoveNode(ctx, &clusterpb.RemoveNodeRequest{
+			_, err := servers[lid-1].ClusterClient.RemoveNode(ctx, &ledgerpb.RemoveNodeRequest{
 				NodeId: 99,
 				Force:  true,
 			})
@@ -292,7 +292,7 @@ var _ = Describe("Remove node", func() {
 
 		It("should reject force-removing with zero node ID", func() {
 			lid := *leaderID
-			_, err := servers[lid-1].ClusterClient.RemoveNode(ctx, &clusterpb.RemoveNodeRequest{
+			_, err := servers[lid-1].ClusterClient.RemoveNode(ctx, &ledgerpb.RemoveNodeRequest{
 				NodeId: 0,
 				Force:  true,
 			})
@@ -317,7 +317,7 @@ var _ = Describe("Remove node", func() {
 
 		It("should reject removing the leader itself", func() {
 			lid := *leaderID
-			_, err := servers[lid-1].ClusterClient.RemoveNode(ctx, &clusterpb.RemoveNodeRequest{
+			_, err := servers[lid-1].ClusterClient.RemoveNode(ctx, &ledgerpb.RemoveNodeRequest{
 				NodeId: lid,
 			})
 			Expect(err).To(HaveOccurred())
@@ -325,7 +325,7 @@ var _ = Describe("Remove node", func() {
 
 		It("should reject removing a node that is not in the cluster", func() {
 			lid := *leaderID
-			_, err := servers[lid-1].ClusterClient.RemoveNode(ctx, &clusterpb.RemoveNodeRequest{
+			_, err := servers[lid-1].ClusterClient.RemoveNode(ctx, &ledgerpb.RemoveNodeRequest{
 				NodeId: 99,
 			})
 			Expect(err).To(HaveOccurred())
@@ -333,7 +333,7 @@ var _ = Describe("Remove node", func() {
 
 		It("should reject removing with zero node ID", func() {
 			lid := *leaderID
-			_, err := servers[lid-1].ClusterClient.RemoveNode(ctx, &clusterpb.RemoveNodeRequest{
+			_, err := servers[lid-1].ClusterClient.RemoveNode(ctx, &ledgerpb.RemoveNodeRequest{
 				NodeId: 0,
 			})
 			Expect(err).To(HaveOccurred())
@@ -345,7 +345,7 @@ var _ = Describe("Remove node", func() {
 			// Add a learner to remove
 			raftAddr, serviceAddr := phantomPeer()
 
-			_, err := servers[lid-1].ClusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
+			_, err := servers[lid-1].ClusterClient.AddLearner(ctx, &ledgerpb.AddLearnerRequest{
 				NodeId:         6,
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
@@ -355,7 +355,7 @@ var _ = Describe("Remove node", func() {
 
 			// Send remove request via a follower
 			followerID := ((lid) % countInstances) + 1
-			_, err = servers[followerID-1].ClusterClient.RemoveNode(ctx, &clusterpb.RemoveNodeRequest{
+			_, err = servers[followerID-1].ClusterClient.RemoveNode(ctx, &ledgerpb.RemoveNodeRequest{
 				NodeId: 6,
 			})
 			Expect(err).To(Succeed())

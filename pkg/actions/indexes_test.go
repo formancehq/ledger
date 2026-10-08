@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 )
@@ -18,9 +18,9 @@ func TestIndexVersionAdvancedOnReplica(t *testing.T) {
 		preVersion = uint32(1)
 	)
 
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")
 	canonical := indexes.Canonical(id)
-	matches := func(got *commonpb.IndexID) bool {
+	matches := func(got *ledgerpb.IndexID) bool {
 		return indexes.Canonical(got) == canonical
 	}
 
@@ -57,11 +57,11 @@ func TestIndexVersionAdvancedOnReplica(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			resp := &commonpb.GetIndexStatusResponse{
-				Indexes: []*commonpb.IndexEntry{
+			resp := &ledgerpb.GetIndexStatusResponse{
+				Indexes: []*ledgerpb.IndexEntry{
 					{
 						Ledger:         ledger,
-						Index:          &commonpb.Index{Id: id},
+						Index:          &ledgerpb.Index{Id: id},
 						CurrentVersion: tt.current,
 						PendingVersion: tt.pending,
 					},

@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -480,7 +480,7 @@ func TestCache_Reset(t *testing.T) {
 	// Add data and advance generation
 	key := attributes.NewU128(1, 1)
 	cache.Volumes.Put(key, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 1})
-	cache.AccountMetadata.Put(key, attributes.Entry[*commonpb.MetadataValue]{Tag: 2})
+	cache.AccountMetadata.Put(key, attributes.Entry[*ledgerpb.MetadataValue]{Tag: 2})
 	cache.CheckRotationNeeded(11)
 	require.Equal(t, uint64(1), cache.CurrentGeneration())
 
@@ -566,7 +566,7 @@ func TestCache_AllAttributeCachesRotate(t *testing.T) {
 	// Add data to all caches
 	key := attributes.NewU128(1, 1)
 	cache.Volumes.Put(key, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 1})
-	cache.AccountMetadata.Put(key, attributes.Entry[*commonpb.MetadataValue]{Tag: 2})
+	cache.AccountMetadata.Put(key, attributes.Entry[*ledgerpb.MetadataValue]{Tag: 2})
 
 	// Trigger rotation
 	cache.CheckRotationNeeded(11)

@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/queries"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/querycheckpoint"
@@ -51,10 +51,10 @@ func TestQueryMutationResponseSignatures(t *testing.T) {
 			} {
 				t.Run(signature.name, func(t *testing.T) {
 					signer := signing.NewResponseSigner(make([]byte, ed25519.SeedSize))
-					log := &commonpb.Log{
+					log := &ledgerpb.Log{
 						Sequence: 7,
-						Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{
-							CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{CheckpointId: 42, MaxSequence: 7},
+						Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreatedQueryCheckpoint{
+							CreatedQueryCheckpoint: &ledgerpb.CreatedQueryCheckpointLog{CheckpointId: 42, MaxSequence: 7},
 						}},
 					}
 					if signature.signed {
@@ -68,8 +68,8 @@ func TestQueryMutationResponseSignatures(t *testing.T) {
 					listener, err := net.Listen("tcp4", "127.0.0.1:0")
 					require.NoError(t, err)
 					server := grpc.NewServer()
-					fixture := &queryMutationSignatureServer{response: &commonpb.ApplyResponse{Logs: []*commonpb.Log{log}}}
-					commonpb.RegisterBucketServiceServer(server, fixture)
+					fixture := &queryMutationSignatureServer{response: &ledgerpb.ApplyResponse{Logs: []*ledgerpb.Log{log}}}
+					ledgerpb.RegisterBucketServiceServer(server, fixture)
 					go func() { _ = server.Serve(listener) }() // Stop closes the owned listener.
 					t.Cleanup(server.Stop)
 
@@ -99,13 +99,13 @@ func TestQueryMutationResponseSignatures(t *testing.T) {
 }
 
 type queryMutationSignatureServer struct {
-	commonpb.UnimplementedBucketServiceServer
+	ledgerpb.UnimplementedBucketServiceServer
 
-	response *commonpb.ApplyResponse
+	response *ledgerpb.ApplyResponse
 	calls    atomic.Int32
 }
 
-func (s *queryMutationSignatureServer) Apply(context.Context, *commonpb.ApplyRequest) (*commonpb.ApplyResponse, error) {
+func (s *queryMutationSignatureServer) Apply(context.Context, *ledgerpb.ApplyRequest) (*ledgerpb.ApplyResponse, error) {
 	s.calls.Add(1)
 
 	return s.response, nil

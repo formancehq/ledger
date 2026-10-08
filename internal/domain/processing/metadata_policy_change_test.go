@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
@@ -14,7 +14,7 @@ import (
 )
 
 func metadataPolicyChangeOrder(kind string) *raftcmdpb.Order {
-	metadata := map[string]*commonpb.MetadataValue{"k": commonpb.NewStringValue("12345")}
+	metadata := map[string]*ledgerpb.MetadataValue{"k": ledgerpb.NewStringValue("12345")}
 	scoped := &raftcmdpb.LedgerScopedOrder{Ledger: "test-ledger"}
 
 	var technical *raftcmdpb.OrderTechnical
@@ -28,17 +28,17 @@ func metadataPolicyChangeOrder(kind string) *raftcmdpb.Order {
 		// target; apply rejects one that does not. Match the state the fixture
 		// serves below so the order reaches the metadata check under test.
 		technical = &raftcmdpb.OrderTechnical{
-			RevertTargetDigest: domain.RevertTargetDigest([]*commonpb.Posting{{
+			RevertTargetDigest: domain.RevertTargetDigest([]*ledgerpb.Posting{{
 				Source:      "world",
 				Destination: "users:alice",
 				Asset:       "USD",
-				Amount:      commonpb.NewUint256FromUint64(1),
+				Amount:      ledgerpb.NewUint256FromUint64(1),
 			}}, true),
 		}
 	default:
-		target := &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: "users:alice"}}}
+		target := &ledgerpb.Target{Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{Addr: "users:alice"}}}
 		if kind == "transaction" {
-			target = &commonpb.Target{Target: &commonpb.Target_TransactionId{TransactionId: 3}}
+			target = &ledgerpb.Target{Target: &ledgerpb.Target_TransactionId{TransactionId: 3}}
 		}
 		scoped.Payload = &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{AddMetadata: &raftcmdpb.SaveMetadataOrder{Target: target, Metadata: metadata}}}}
 	}
@@ -73,7 +73,7 @@ func TestProcessOrdersMetadataPolicyTightenedAfterAdmission(t *testing.T) {
 				require.NoError(t, domain.MetadataLimitsFromPolicy(policy).Validate())
 				scope.EXPECT().GetClusterPolicy().Return(policy)
 				ledgerKey := domain.LedgerKey{Name: "test-ledger"}
-				expectGetLedger(scope, ledgerKey, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+				expectGetLedger(scope, ledgerKey, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 				boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 5, NextLogId: 10}
 				if kind != "ledger" {
 					expectGetBoundaries(scope, ledgerKey, boundaries.AsReader(), nil)
@@ -84,7 +84,7 @@ func TestProcessOrdersMetadataPolicyTightenedAfterAdmission(t *testing.T) {
 				if kind == "revert" {
 					key := domain.TransactionKey{LedgerName: "test-ledger", ID: 3}
 					scope.EXPECT().GetReverted(key).Return(false, nil)
-					expectGetTransactionState(scope, key, (&internalstatepb.TransactionState{Postings: []*commonpb.Posting{{Source: "world", Destination: "users:alice", Asset: "USD", Amount: commonpb.NewUint256FromUint64(1)}}}).AsReader(), nil)
+					expectGetTransactionState(scope, key, (&internalstatepb.TransactionState{Postings: []*ledgerpb.Posting{{Source: "world", Destination: "users:alice", Asset: "USD", Amount: ledgerpb.NewUint256FromUint64(1)}}}).AsReader(), nil)
 					stub, _ := stubsFor(scope).transactionStatesStubFor(scope)
 					stub.onPut(func(domain.TransactionKey, *internalstatepb.TransactionState) {
 						t.Fatal("rejected metadata must not change transaction state")
@@ -125,16 +125,16 @@ func TestProcessOrdersSavedMetadataExactCommandBoundary(t *testing.T) {
 	policy.MetadataMaxKeyBytes = 1
 	require.NoError(t, domain.MetadataLimitsFromPolicy(policy).Validate())
 	scope.EXPECT().GetClusterPolicy().Return(policy).Times(2)
-	scope.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 100}).AsReader()).AnyTimes()
+	scope.EXPECT().GetDate().Return((&ledgerpb.Timestamp{Data: 100}).AsReader()).AnyTimes()
 	scope.EXPECT().IncrementNextSequenceID().Return(uint64(1), nil).Times(2)
 	boundaries := &raftcmdpb.LedgerBoundaries{NextLogId: 1, NextTransactionId: 1}
 	stub := setupBoundariesStub(scope)
 	stub.onGet(func(domain.LedgerKey) (raftcmdpb.LedgerBoundariesReader, error) { return boundaries.AsReader(), nil })
 	stub.onPut(func(_ domain.LedgerKey, b *raftcmdpb.LedgerBoundaries) { boundaries = b })
-	expectGetLedger(scope, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(scope, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	metadataStub, _ := stubsFor(scope).accountMetadataStubFor(scope)
 	writes := 0
-	metadataStub.onPut(func(_ domain.MetadataKey, v *commonpb.MetadataValue) {
+	metadataStub.onPut(func(_ domain.MetadataKey, v *ledgerpb.MetadataValue) {
 		require.Equal(t, "12345", v.GetStringValue())
 		writes++
 	})

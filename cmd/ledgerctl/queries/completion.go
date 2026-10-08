@@ -3,7 +3,7 @@ package queries
 import (
 	"github.com/spf13/cobra"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -49,7 +49,7 @@ func completeQueryNames(cmd *cobra.Command, args []string, _ string) ([]string, 
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	resp, err := client.ListPreparedQueries(ctx, &servicepb.ListPreparedQueriesRequest{
+	resp, err := client.ListPreparedQueries(ctx, &ledgerpb.ListPreparedQueriesRequest{
 		Ledger: ledgerName,
 	})
 	if err != nil {

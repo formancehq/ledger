@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -85,7 +85,7 @@ func TestRecoverStateRejectsPersistedExhaustedSequencesAtomically(t *testing.T) 
 			name:    "global log",
 			counter: domain.SequenceCounterLog,
 			seed: func(t *testing.T, store *dal.Store) {
-				appendLogs(t, store, 1, &auditpb.Log{Sequence: math.MaxUint64})
+				appendLogs(t, store, 1, &ledgerpb.Log{Sequence: math.MaxUint64})
 			},
 		},
 		{
@@ -93,7 +93,7 @@ func TestRecoverStateRejectsPersistedExhaustedSequencesAtomically(t *testing.T) 
 			counter: domain.SequenceCounterAudit,
 			seed: func(t *testing.T, store *dal.Store) {
 				batch := store.OpenWriteSession()
-				require.NoError(t, appendAuditEntries(batch, &auditpb.AuditEntry{Sequence: math.MaxUint64}))
+				require.NoError(t, appendAuditEntries(batch, &ledgerpb.AuditEntry{Sequence: math.MaxUint64}))
 				require.NoError(t, batch.Commit())
 			},
 		},

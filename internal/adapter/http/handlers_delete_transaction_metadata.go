@@ -3,7 +3,7 @@ package http
 import (
 	"net/http"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // handleDeleteTransactionMetadata handles DELETE /{ledgerName}/transactions/{transactionId}/metadata/{key} to delete transaction metadata.
@@ -23,15 +23,15 @@ func (s *Server) handleDeleteTransactionMetadata(w http.ResponseWriter, r *http.
 		return
 	}
 
-	_, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &commonpb.Request{
-		Type: &commonpb.Request_Apply{
-			Apply: &commonpb.LedgerApplyRequest{
+	_, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &ledgerpb.Request{
+		Type: &ledgerpb.Request_Apply{
+			Apply: &ledgerpb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Action: &commonpb.LedgerAction{
-					Data: &commonpb.LedgerAction_DeleteMetadata{
-						DeleteMetadata: &commonpb.DeleteMetadataCommand{
-							Target: &commonpb.Target{
-								Target: &commonpb.Target_TransactionId{TransactionId: transactionID},
+				Action: &ledgerpb.LedgerAction{
+					Data: &ledgerpb.LedgerAction_DeleteMetadata{
+						DeleteMetadata: &ledgerpb.DeleteMetadataCommand{
+							Target: &ledgerpb.Target{
+								Target: &ledgerpb.Target_TransactionId{TransactionId: transactionID},
 							},
 							Key: key,
 						},

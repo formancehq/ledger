@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
 )
@@ -18,7 +18,7 @@ import (
 func dropWorkerRewriter(t *testing.T) *celrewrite.Rewriter {
 	t.Helper()
 
-	r, err := celrewrite.NewRewriter([]*commonpb.MirrorRewriteRule{
+	r, err := celrewrite.NewRewriter([]*ledgerpb.MirrorRewriteRule{
 		anyRule("", rewriteAddress(":worker:\\d+", "")),
 	})
 	require.NoError(t, err)
@@ -28,26 +28,26 @@ func dropWorkerRewriter(t *testing.T) *celrewrite.Rewriter {
 
 // Rule + action constructors, isolated so tests read like a config file.
 
-func anyRule(match string, actions ...*commonpb.AnyVariantAction) *commonpb.MirrorRewriteRule {
-	return &commonpb.MirrorRewriteRule{Scope: &commonpb.MirrorRewriteRule_AnyVariant{
-		AnyVariant: &commonpb.AnyVariantRule{Match: match, Actions: actions},
+func anyRule(match string, actions ...*ledgerpb.AnyVariantAction) *ledgerpb.MirrorRewriteRule {
+	return &ledgerpb.MirrorRewriteRule{Scope: &ledgerpb.MirrorRewriteRule_AnyVariant{
+		AnyVariant: &ledgerpb.AnyVariantRule{Match: match, Actions: actions},
 	}}
 }
 
-func createdRule(match string, actions ...*commonpb.CreatedTransactionAction) *commonpb.MirrorRewriteRule {
-	return &commonpb.MirrorRewriteRule{Scope: &commonpb.MirrorRewriteRule_CreatedTransaction{
-		CreatedTransaction: &commonpb.CreatedTransactionRule{Match: match, Actions: actions},
+func createdRule(match string, actions ...*ledgerpb.CreatedTransactionAction) *ledgerpb.MirrorRewriteRule {
+	return &ledgerpb.MirrorRewriteRule{Scope: &ledgerpb.MirrorRewriteRule_CreatedTransaction{
+		CreatedTransaction: &ledgerpb.CreatedTransactionRule{Match: match, Actions: actions},
 	}}
 }
 
-func rewriteAddress(pattern, replacement string) *commonpb.AnyVariantAction {
-	return &commonpb.AnyVariantAction{Action: &commonpb.AnyVariantAction_RewriteAddress{
-		RewriteAddress: &commonpb.RewriteAddressAction{Pattern: pattern, Replacement: replacement},
+func rewriteAddress(pattern, replacement string) *ledgerpb.AnyVariantAction {
+	return &ledgerpb.AnyVariantAction{Action: &ledgerpb.AnyVariantAction_RewriteAddress{
+		RewriteAddress: &ledgerpb.RewriteAddressAction{Pattern: pattern, Replacement: replacement},
 	}}
 }
 
-func dropCreated() *commonpb.CreatedTransactionAction {
-	return &commonpb.CreatedTransactionAction{Action: &commonpb.CreatedTransactionAction_Drop{Drop: &commonpb.DropAction{}}}
+func dropCreated() *ledgerpb.CreatedTransactionAction {
+	return &ledgerpb.CreatedTransactionAction{Action: &ledgerpb.CreatedTransactionAction_Drop{Drop: &ledgerpb.DropAction{}}}
 }
 
 func TestTranslateBatch_Rewrite_CreatedTransaction(t *testing.T) {
@@ -199,7 +199,7 @@ func TestTranslateBatch_Rewrite_AccountMetadataCollisionMerges(t *testing.T) {
 func TestTranslateBatch_Rewrite_InvalidResultErrors(t *testing.T) {
 	t.Parallel()
 
-	r, err := celrewrite.NewRewriter([]*commonpb.MirrorRewriteRule{
+	r, err := celrewrite.NewRewriter([]*ledgerpb.MirrorRewriteRule{
 		anyRule("", rewriteAddress(".+", "")),
 	})
 	require.NoError(t, err)
@@ -227,7 +227,7 @@ func TestTranslateBatch_Rewrite_InvalidResultErrors(t *testing.T) {
 func TestTranslateBatch_Rewrite_DropBecomesFillGap(t *testing.T) {
 	t.Parallel()
 
-	r, err := celrewrite.NewRewriter([]*commonpb.MirrorRewriteRule{
+	r, err := celrewrite.NewRewriter([]*ledgerpb.MirrorRewriteRule{
 		createdRule(`log.metadata["skip"].string_value == "yes"`, dropCreated()),
 	})
 	require.NoError(t, err)

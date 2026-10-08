@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/metrics"
@@ -193,7 +193,7 @@ type Config struct {
 	AuditIndexConfig            AuditIndexConfig
 	QueryProfileThreshold       time.Duration
 	GRPCSlowThreshold           time.Duration
-	BloomConfig                 *commonpb.ClusterConfig
+	BloomConfig                 *ledgerpb.ClusterConfig
 	IdempotencyTTL              time.Duration
 	IdempotencyEvictionInterval time.Duration
 	// ClusterPolicyRevision is the desired revision of the replicated cluster

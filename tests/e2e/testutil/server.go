@@ -14,7 +14,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/pkg/actions"
@@ -29,8 +29,8 @@ var (
 // ServiceWithClient holds a test service instance along with its gRPC clients and directory paths.
 type ServiceWithClient struct {
 	Service       *testservice.Service
-	Client        clusterpb.BucketServiceClient
-	ClusterClient clusterpb.ClusterServiceClient
+	Client        ledgerpb.BucketServiceClient
+	ClusterClient ledgerpb.ClusterServiceClient
 	GRPCConn      *grpc.ClientConn
 	WalDir        string
 	DataDir       string
@@ -43,12 +43,12 @@ type ServiceWithClient struct {
 }
 
 // NewGRPCClient creates a new gRPC client connection for a given port with automatic retry on Unavailable errors.
-func NewGRPCClient(grpcPort int) (clusterpb.BucketServiceClient, clusterpb.ClusterServiceClient, *grpc.ClientConn, error) {
+func NewGRPCClient(grpcPort int) (ledgerpb.BucketServiceClient, ledgerpb.ClusterServiceClient, *grpc.ClientConn, error) {
 	return NewGRPCClientWithRetry(grpcPort, true)
 }
 
 // NewGRPCClientWithRetry creates a new gRPC client with optional retry policy.
-func NewGRPCClientWithRetry(grpcPort int, withRetry bool, extraDialOptions ...grpc.DialOption) (clusterpb.BucketServiceClient, clusterpb.ClusterServiceClient, *grpc.ClientConn, error) {
+func NewGRPCClientWithRetry(grpcPort int, withRetry bool, extraDialOptions ...grpc.DialOption) (ledgerpb.BucketServiceClient, ledgerpb.ClusterServiceClient, *grpc.ClientConn, error) {
 	opts := []grpc.DialOption{
 		grpcprotocol.ClientOption(),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -68,7 +68,7 @@ func NewGRPCClientWithRetry(grpcPort int, withRetry bool, extraDialOptions ...gr
 		return nil, nil, nil, err
 	}
 
-	return clusterpb.NewBucketServiceClient(conn), clusterpb.NewClusterServiceClient(conn), conn, nil
+	return ledgerpb.NewBucketServiceClient(conn), ledgerpb.NewClusterServiceClient(conn), conn, nil
 }
 
 // MultiNodeOptions holds configuration options for SetupMultiNodeCluster.
@@ -250,7 +250,7 @@ func SetupMultiNodeCluster(
 	// Wait for node 0 to become leader before joining other nodes
 	var leaderID uint64
 	Eventually(func(g Gomega) {
-		state, err := servers[0].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+		state, err := servers[0].ClusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 		g.Expect(err).To(Succeed())
 		g.Expect(state.GetLeader()).NotTo(BeZero())
 		leaderID = uint64(state.GetLeader())
@@ -268,7 +268,7 @@ func SetupMultiNodeCluster(
 	// Wait for all nodes to be promoted to voters
 	if countInstances > 1 {
 		Eventually(func(g Gomega) {
-			state, err := servers[0].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+			state, err := servers[0].ClusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 			g.Expect(err).To(Succeed())
 			voterCount := 0
 			for _, n := range state.GetNodes() {
@@ -387,7 +387,7 @@ func SetupSingleNode(extra ...testservice.Instrumentation) (context.Context, *Se
 
 	// Wait for leader election (single node elects itself)
 	Eventually(func(g Gomega) bool {
-		state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+		state, err := clusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 		g.Expect(err).To(Succeed())
 
 		return state.GetLeader() != 0

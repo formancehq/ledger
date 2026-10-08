@@ -6,7 +6,7 @@ import (
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestUint256ServerAdapter(t *testing.T) {
@@ -24,7 +24,7 @@ func TestUint256ServerAdapter(t *testing.T) {
 		require.True(t, value.Eq(&got))
 		require.Equal(t, value.Dec(), proto.Dec())
 
-		var next commonpb.Uint256
+		var next ledgerpb.Uint256
 		SetFromUint256(&next, value)
 		IntoUint256(next.AsReader(), &got)
 		require.True(t, value.Eq(&got))
@@ -32,6 +32,6 @@ func TestUint256ServerAdapter(t *testing.T) {
 
 	var dst uint256.Int
 	dst.SetUint64(42)
-	IntoUint256((*commonpb.Uint256)(nil), &dst)
+	IntoUint256((*ledgerpb.Uint256)(nil), &dst)
 	require.True(t, dst.IsZero())
 }

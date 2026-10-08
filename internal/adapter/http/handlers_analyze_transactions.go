@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // analyzeTransactionsResponseJSON is the camelCase JSON DTO for AnalyzeTransactionsResponse.
@@ -57,22 +57,22 @@ type assetVolumeStatsJSON struct {
 	TransactionCount uint64 `json:"transactionCount"`
 }
 
-func postingStructureToString(s servicepb.PostingStructure) string {
+func postingStructureToString(s ledgerpb.PostingStructure) string {
 	switch s {
-	case servicepb.PostingStructure_POSTING_STRUCTURE_SIMPLE:
+	case ledgerpb.PostingStructure_POSTING_STRUCTURE_SIMPLE:
 		return "simple"
-	case servicepb.PostingStructure_POSTING_STRUCTURE_MULTI_SOURCE:
+	case ledgerpb.PostingStructure_POSTING_STRUCTURE_MULTI_SOURCE:
 		return "multiSource"
-	case servicepb.PostingStructure_POSTING_STRUCTURE_MULTI_DESTINATION:
+	case ledgerpb.PostingStructure_POSTING_STRUCTURE_MULTI_DESTINATION:
 		return "multiDestination"
-	case servicepb.PostingStructure_POSTING_STRUCTURE_COMPLEX:
+	case ledgerpb.PostingStructure_POSTING_STRUCTURE_COMPLEX:
 		return "complex"
 	default:
 		return "unknown"
 	}
 }
 
-func toAnalyzeTransactionsJSON(resp *servicepb.AnalyzeTransactionsResponse) *analyzeTransactionsResponseJSON {
+func toAnalyzeTransactionsJSON(resp *ledgerpb.AnalyzeTransactionsResponse) *analyzeTransactionsResponseJSON {
 	result := &analyzeTransactionsResponseJSON{
 		TotalTransactions: resp.GetTotalTransactions(),
 		TotalReverted:     resp.GetTotalReverted(),
@@ -86,7 +86,7 @@ func toAnalyzeTransactionsJSON(resp *servicepb.AnalyzeTransactionsResponse) *ana
 	return result
 }
 
-func toFlowPatternJSON(fp *servicepb.FlowPattern) *flowPatternJSON {
+func toFlowPatternJSON(fp *ledgerpb.FlowPattern) *flowPatternJSON {
 	result := &flowPatternJSON{
 		Signature:        fp.GetSignature(),
 		Structure:        postingStructureToString(fp.GetStructure()),

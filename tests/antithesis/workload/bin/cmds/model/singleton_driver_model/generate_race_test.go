@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
@@ -52,19 +52,19 @@ func TestActiveLedgersExcludesMirrorsUntilPromotion(t *testing.T) {
 	t.Parallel()
 
 	state := oracle.NewGlobalState()
-	create := func(name string, mode commonpb.LedgerMode) {
-		result := state.Apply(oracle.Bulk{Requests: []*commonpb.Request{{Type: &commonpb.Request_CreateLedger{
-			CreateLedger: &commonpb.CreateLedgerRequest{Name: name, Mode: mode},
+	create := func(name string, mode ledgerpb.LedgerMode) {
+		result := state.Apply(oracle.Bulk{Requests: []*ledgerpb.Request{{Type: &ledgerpb.Request_CreateLedger{
+			CreateLedger: &ledgerpb.CreateLedgerRequest{Name: name, Mode: mode},
 		}}}})
 		require.True(t, result.OK)
 		state = result.State
 	}
-	create("normal", commonpb.LedgerMode_LEDGER_MODE_NORMAL)
-	create("mirror", commonpb.LedgerMode_LEDGER_MODE_MIRROR)
+	create("normal", ledgerpb.LedgerMode_LEDGER_MODE_NORMAL)
+	create("mirror", ledgerpb.LedgerMode_LEDGER_MODE_MIRROR)
 
 	require.Equal(t, []string{"normal"}, activeLedgers(state, []string{"normal", "mirror"}))
-	promoted := state.Apply(oracle.Bulk{Requests: []*commonpb.Request{{Type: &commonpb.Request_PromoteLedger{
-		PromoteLedger: &commonpb.PromoteLedgerRequest{Ledger: "mirror"},
+	promoted := state.Apply(oracle.Bulk{Requests: []*ledgerpb.Request{{Type: &ledgerpb.Request_PromoteLedger{
+		PromoteLedger: &ledgerpb.PromoteLedgerRequest{Ledger: "mirror"},
 	}}}})
 	require.True(t, promoted.OK)
 	require.Equal(t, []string{"normal", "mirror"}, activeLedgers(promoted.State, []string{"normal", "mirror"}))

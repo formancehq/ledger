@@ -4,7 +4,7 @@ import (
 	"maps"
 	"slices"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
@@ -12,7 +12,7 @@ import (
 )
 
 // processAddAccountType adds a new account type to a ledger.
-func processAddAccountType(ledger string, order *raftcmdpb.AddAccountTypeOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
+func processAddAccountType(ledger string, order *raftcmdpb.AddAccountTypeOrder, ctx *Context) (*ledgerpb.LedgerLogPayload, domain.SerializableError) {
 	info, loadErr := loadLedger(ctx.Scope, ledger)
 	if loadErr != nil {
 		return nil, loadErr
@@ -33,7 +33,7 @@ func processAddAccountType(ledger string, order *raftcmdpb.AddAccountTypeOrder, 
 	}
 
 	if info.AccountTypes == nil {
-		info.AccountTypes = make(map[string]*commonpb.AccountType)
+		info.AccountTypes = make(map[string]*ledgerpb.AccountType)
 	}
 
 	if _, exists := info.GetAccountTypes()[at.GetName()]; exists {
@@ -65,9 +65,9 @@ func processAddAccountType(ledger string, order *raftcmdpb.AddAccountTypeOrder, 
 	ctx.Scope.Ledgers().Put(domain.LedgerKey{Name: ledger}, info)
 	invalidateCompiledTypes(ctx.CompiledTypes, ledger)
 
-	return &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_AddedAccountType{
-			AddedAccountType: &commonpb.AddedAccountTypeLog{
+	return &ledgerpb.LedgerLogPayload{
+		Payload: &ledgerpb.LedgerLogPayload_AddedAccountType{
+			AddedAccountType: &ledgerpb.AddedAccountTypeLog{
 				AccountType: at,
 			},
 		},
@@ -75,7 +75,7 @@ func processAddAccountType(ledger string, order *raftcmdpb.AddAccountTypeOrder, 
 }
 
 // processRemoveAccountType removes an account type from a ledger.
-func processRemoveAccountType(ledger string, order *raftcmdpb.RemoveAccountTypeOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
+func processRemoveAccountType(ledger string, order *raftcmdpb.RemoveAccountTypeOrder, ctx *Context) (*ledgerpb.LedgerLogPayload, domain.SerializableError) {
 	info, loadErr := loadLedger(ctx.Scope, ledger)
 	if loadErr != nil {
 		return nil, loadErr
@@ -100,9 +100,9 @@ func processRemoveAccountType(ledger string, order *raftcmdpb.RemoveAccountTypeO
 	ctx.Scope.Ledgers().Put(domain.LedgerKey{Name: ledger}, info)
 	invalidateCompiledTypes(ctx.CompiledTypes, ledger)
 
-	return &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_RemovedAccountType{
-			RemovedAccountType: &commonpb.RemovedAccountTypeLog{
+	return &ledgerpb.LedgerLogPayload{
+		Payload: &ledgerpb.LedgerLogPayload_RemovedAccountType{
+			RemovedAccountType: &ledgerpb.RemovedAccountTypeLog{
 				Name: order.GetName(),
 			},
 		},
@@ -114,9 +114,9 @@ func processRemoveAccountType(ledger string, order *raftcmdpb.RemoveAccountTypeO
 // When an address doesn't match any type, defaultMode controls the behavior:
 // STRICT rejects the transaction, AUDIT silently allows it.
 func validatePostingsAgainstAccountTypes(
-	postings []*commonpb.Posting,
+	postings []*ledgerpb.Posting,
 	compiled []accounttype.CompiledType,
-	defaultMode commonpb.ChartEnforcementMode,
+	defaultMode ledgerpb.ChartEnforcementMode,
 ) domain.SerializableError {
 	if len(compiled) == 0 {
 		return nil
@@ -138,7 +138,7 @@ func validatePostingsAgainstAccountTypes(
 		seen[address] = struct{}{}
 
 		if accounttype.FindMatchingType(address, compiled) == nil {
-			if defaultMode == commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT {
+			if defaultMode == ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT {
 				return &domain.ErrAccountNotMatchingType{Address: address}
 			}
 
@@ -154,14 +154,14 @@ func validatePostingsAgainstAccountTypes(
 func validateAccountAgainstAccountTypes(
 	address string,
 	compiled []accounttype.CompiledType,
-	defaultMode commonpb.ChartEnforcementMode,
+	defaultMode ledgerpb.ChartEnforcementMode,
 ) domain.SerializableError {
 	if len(compiled) == 0 || address == "world" {
 		return nil
 	}
 
 	if accounttype.FindMatchingType(address, compiled) == nil {
-		if defaultMode == commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT {
+		if defaultMode == ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT {
 			return &domain.ErrAccountNotMatchingType{Address: address}
 		}
 	}
@@ -170,7 +170,7 @@ func validateAccountAgainstAccountTypes(
 }
 
 // processUpdateDefaultEnforcementMode updates the ledger's default enforcement mode.
-func processUpdateDefaultEnforcementMode(ledger string, order *raftcmdpb.UpdateDefaultEnforcementModeOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
+func processUpdateDefaultEnforcementMode(ledger string, order *raftcmdpb.UpdateDefaultEnforcementModeOrder, ctx *Context) (*ledgerpb.LedgerLogPayload, domain.SerializableError) {
 	info, loadErr := loadLedger(ctx.Scope, ledger)
 	if loadErr != nil {
 		return nil, loadErr
@@ -179,9 +179,9 @@ func processUpdateDefaultEnforcementMode(ledger string, order *raftcmdpb.UpdateD
 	info.DefaultEnforcementMode = order.GetEnforcementMode()
 	ctx.Scope.Ledgers().Put(domain.LedgerKey{Name: ledger}, info)
 
-	return &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_UpdatedDefaultEnforcementMode{
-			UpdatedDefaultEnforcementMode: &commonpb.UpdatedDefaultEnforcementModeLog{
+	return &ledgerpb.LedgerLogPayload{
+		Payload: &ledgerpb.LedgerLogPayload_UpdatedDefaultEnforcementMode{
+			UpdatedDefaultEnforcementMode: &ledgerpb.UpdatedDefaultEnforcementModeLog{
 				EnforcementMode: order.GetEnforcementMode(),
 			},
 		},

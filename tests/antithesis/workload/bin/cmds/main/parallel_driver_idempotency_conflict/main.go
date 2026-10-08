@@ -6,28 +6,28 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_idempotency_conflict", func(ctx context.Context, client commonpb.BucketServiceClient, ledger string) {
+	internal.RunDriver("parallel_driver_idempotency_conflict", func(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string) {
 		idemKey := fmt.Sprintf("idem-conflict-%d", internal.Rand().Uint64())
 		details := internal.Details{"ledger": ledger, "idempotencyKey": idemKey}
 
 		// 1. Create a transaction with an idempotency key.
-		resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest(idemKey, &commonpb.Request{
-			Type: &commonpb.Request_Apply{
-				Apply: &commonpb.LedgerApplyRequest{
+		resp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest(idemKey, &ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
-						CreateTransaction: &commonpb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{{
+					Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &ledgerpb.CreateTransactionPayload{
+							Postings: []*ledgerpb.Posting{{
 								Source:      "world",
 								Destination: "users:0",
-								Amount:      commonpb.NewUint256FromUint64(100),
+								Amount:      ledgerpb.NewUint256FromUint64(100),
 								Asset:       "USD/2",
 							}},
 							Force: true,
@@ -53,16 +53,16 @@ func main() {
 
 		// 2. Reuse the same idempotency key with a DIFFERENT payload.
 		//    This must return IDEMPOTENCY_KEY_CONFLICT.
-		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest(idemKey, &commonpb.Request{
-			Type: &commonpb.Request_Apply{
-				Apply: &commonpb.LedgerApplyRequest{
+		_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest(idemKey, &ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
-						CreateTransaction: &commonpb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{{
+					Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &ledgerpb.CreateTransactionPayload{
+							Postings: []*ledgerpb.Posting{{
 								Source:      "world",
 								Destination: "users:1",
-								Amount:      commonpb.NewUint256FromUint64(999),
+								Amount:      ledgerpb.NewUint256FromUint64(999),
 								Asset:       "EUR/2",
 							}},
 							Force: true,

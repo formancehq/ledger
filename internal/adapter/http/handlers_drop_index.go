@@ -3,7 +3,7 @@ package http
 import (
 	"net/http"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 )
@@ -29,9 +29,9 @@ func (s *Server) handleDropIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{
-		Type: &servicepb.Request_DropIndex{
-			DropIndex: &servicepb.DropIndexRequest{
+	if _, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &ledgerpb.Request{
+		Type: &ledgerpb.Request_DropIndex{
+			DropIndex: &ledgerpb.DropIndexRequest{
 				Ledger: ledgerName,
 				Id:     id,
 			},

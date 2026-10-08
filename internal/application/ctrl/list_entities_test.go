@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -51,8 +51,8 @@ func TestListDescFilteredStopsAtLookahead(t *testing.T) {
 
 	encode := func(id uint64) []byte { return binary.BigEndian.AppendUint64(nil, id) }
 
-	filter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Ledger{Ledger: &commonpb.LedgerCondition{
-		Cond: &commonpb.StringCondition{Value: &commonpb.StringCondition_Hardcoded{Hardcoded: ledger}},
+	filter := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Ledger{Ledger: &ledgerpb.LedgerCondition{
+		Cond: &ledgerpb.StringCondition{Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: ledger}},
 	}}}
 
 	for _, tc := range []struct {
@@ -79,7 +79,7 @@ func TestListDescFilteredStopsAtLookahead(t *testing.T) {
 			var out [][]byte
 
 			err := listDescFiltered(rs.DB(), entityListParams[uint64]{
-				target:     commonpb.QueryTarget_QUERY_TARGET_LOGS,
+				target:     ledgerpb.QueryTarget_QUERY_TARGET_LOGS,
 				ledgerName: ledger, pageSize: 3, after: tc.after, afterToBytes: encode,
 				filter: filter, profile: profile,
 				horizonKeep: func([]byte) (bool, error) {

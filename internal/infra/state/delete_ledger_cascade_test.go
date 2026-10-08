@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -83,7 +83,7 @@ func TestDeleteLedger_MissingBoundaryCoverageSurfacesCoverageMiss(t *testing.T) 
 	proposal := &raftcmdpb.Proposal{
 		Id:     2,
 		Orders: []*raftcmdpb.Order{deleteLedgerOrder(ledgerName)},
-		Date:   &commonpb.Timestamp{Data: 1700000002},
+		Date:   &ledgerpb.Timestamp{Data: 1700000002},
 		ExecutionPlan: &raftcmdpb.ExecutionPlan{
 			Attributes: []*raftcmdpb.AttributeCoverage{
 				declareTestPlan(ledgerID, dal.SubAttrLedger),

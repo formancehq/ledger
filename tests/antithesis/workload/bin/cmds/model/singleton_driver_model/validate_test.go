@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
@@ -66,13 +66,13 @@ func TestAccountVolumesMatch(t *testing.T) {
 func TestSuccessfulBusinessWriteClassification(t *testing.T) {
 	t.Parallel()
 
-	committed := replayApplyLog("L", 1, &commonpb.LedgerLogPayload{})
-	skipped := replayApplyLog("L", 1, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_OrderSkipped{
-		OrderSkipped: &commonpb.OrderSkippedLog{},
+	committed := replayApplyLog("L", 1, &ledgerpb.LedgerLogPayload{})
+	skipped := replayApplyLog("L", 1, &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_OrderSkipped{
+		OrderSkipped: &ledgerpb.OrderSkippedLog{},
 	}})
 	tx := oracletest.TxReqRefL("L", "ref", "world", "account", "USD", 1)
-	mode := enforcementModeRequest("L", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, true)
-	create := &commonpb.Request{Type: &commonpb.Request_CreateLedger{CreateLedger: &commonpb.CreateLedgerRequest{Name: "L"}}}
+	mode := enforcementModeRequest("L", ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, true)
+	create := &ledgerpb.Request{Type: &ledgerpb.Request_CreateLedger{CreateLedger: &ledgerpb.CreateLedgerRequest{Name: "L"}}}
 
 	require.True(t, isSuccessfulBusinessWrite(tx, committed))
 	require.False(t, isSuccessfulBusinessWrite(tx, skipped))

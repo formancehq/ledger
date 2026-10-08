@@ -6,7 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 )
 
@@ -116,7 +116,7 @@ type Checker struct {
 type observation struct {
 	ticket          uint64
 	bulk            oracle.Bulk
-	resp            *commonpb.ApplyResponse
+	resp            *ledgerpb.ApplyResponse
 	err             error
 	ambiguousEnable bool
 	recoverySeq     uint64
@@ -141,14 +141,14 @@ type pendingObservation struct {
 // records the identical declared types at creation (populateInitialSchema), so
 // the model's schema state matches the server's from the first bulk. They are
 // seeded rather than applied: at creation they produce no ledger log.
-func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadataFieldTypeCommand) *Checker {
+func NewChecker(ledgerNames []string, schemas map[string][]*ledgerpb.SetMetadataFieldTypeCommand) *Checker {
 	modelState := oracle.NewGlobalState()
 	for _, ledger := range ledgerNames {
 		// setupLedgers created these outside the modeled Apply stream. Seed their
 		// identities so lifecycle generation can delete or otherwise target even
 		// a still-empty initial ledger without predicting LEDGER_NOT_FOUND.
-		created := modelState.Apply(oracle.Bulk{Requests: []*commonpb.Request{{
-			Type: &commonpb.Request_CreateLedger{CreateLedger: &commonpb.CreateLedgerRequest{Name: ledger}},
+		created := modelState.Apply(oracle.Bulk{Requests: []*ledgerpb.Request{{
+			Type: &ledgerpb.Request_CreateLedger{CreateLedger: &ledgerpb.CreateLedgerRequest{Name: ledger}},
 		}}})
 		modelState = created.State
 
@@ -157,11 +157,11 @@ func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadata
 			continue
 		}
 
-		reqs := make([]*commonpb.Request, 0, len(cmds))
+		reqs := make([]*ledgerpb.Request, 0, len(cmds))
 		for _, cmd := range cmds {
-			reqs = append(reqs, &commonpb.Request{
-				Type: &commonpb.Request_SetMetadataFieldType{
-					SetMetadataFieldType: &commonpb.SetMetadataFieldTypeRequest{
+			reqs = append(reqs, &ledgerpb.Request{
+				Type: &ledgerpb.Request_SetMetadataFieldType{
+					SetMetadataFieldType: &ledgerpb.SetMetadataFieldTypeRequest{
 						Ledger:     ledger,
 						TargetType: cmd.GetTargetType(),
 						Key:        cmd.GetKey(),

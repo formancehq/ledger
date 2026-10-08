@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	protoerr "github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -20,12 +20,12 @@ func TestHandleGetAccount_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
-			return &commonpb.LedgerInfo{Name: "ledger1"}, nil
+		func(_ context.Context, _ string) (*ledgerpb.LedgerInfo, error) {
+			return &ledgerpb.LedgerInfo{Name: "ledger1"}, nil
 		}).AnyTimes()
 	backend.EXPECT().GetAccount(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, addr string, _ ctrl.GetAccountOptions) (*commonpb.Account, error) {
-			return &commonpb.Account{Address: addr}, nil
+		func(_ context.Context, _ string, addr string, _ ctrl.GetAccountOptions) (*ledgerpb.Account, error) {
+			return &ledgerpb.Account{Address: addr}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -49,13 +49,13 @@ func TestHandleGetAccount_PropagatesCollapseColors(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
-			return &commonpb.LedgerInfo{Name: "ledger1"}, nil
+		func(_ context.Context, _ string) (*ledgerpb.LedgerInfo, error) {
+			return &ledgerpb.LedgerInfo{Name: "ledger1"}, nil
 		}).AnyTimes()
 	// The matcher rejects the call if opts.CollapseColors is not true.
 	backend.EXPECT().GetAccount(gomock.Any(), gomock.Any(), gomock.Any(), ctrl.GetAccountOptions{CollapseColors: true}).
-		DoAndReturn(func(_ context.Context, _ string, addr string, _ ctrl.GetAccountOptions) (*commonpb.Account, error) {
-			return &commonpb.Account{Address: addr}, nil
+		DoAndReturn(func(_ context.Context, _ string, addr string, _ ctrl.GetAccountOptions) (*ledgerpb.Account, error) {
+			return &ledgerpb.Account{Address: addr}, nil
 		})
 	srv := newTestServer(t, backend)
 
@@ -80,18 +80,18 @@ func TestHandleGetAccount_VolumesInJSON(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
-			return &commonpb.LedgerInfo{Name: "ledger1"}, nil
+		func(_ context.Context, _ string) (*ledgerpb.LedgerInfo, error) {
+			return &ledgerpb.LedgerInfo{Name: "ledger1"}, nil
 		}).AnyTimes()
 	backend.EXPECT().GetAccount(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, addr string, _ ctrl.GetAccountOptions) (*commonpb.Account, error) {
-			return &commonpb.Account{
+		func(_ context.Context, _ string, addr string, _ ctrl.GetAccountOptions) (*ledgerpb.Account, error) {
+			return &ledgerpb.Account{
 				Address: addr,
-				Volumes: []*commonpb.AccountVolume{
+				Volumes: []*ledgerpb.AccountVolume{
 					{
 						Asset: "USD/2",
 						Color: "", // uncolored bucket — must appear in JSON with color:""
-						Volumes: &commonpb.VolumesWithBalance{
+						Volumes: &ledgerpb.VolumesWithBalance{
 							Input:   "100",
 							Output:  "30",
 							Balance: "70",
@@ -100,7 +100,7 @@ func TestHandleGetAccount_VolumesInJSON(t *testing.T) {
 					{
 						Asset: "USD/2",
 						Color: "GRANTS",
-						Volumes: &commonpb.VolumesWithBalance{
+						Volumes: &ledgerpb.VolumesWithBalance{
 							Input:   "50",
 							Output:  "0",
 							Balance: "50",
@@ -149,7 +149,7 @@ func TestHandleGetAccount_LedgerNotFound(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
+		func(_ context.Context, _ string) (*ledgerpb.LedgerInfo, error) {
 			return nil, protoerr.ErrNoLeader
 		}).AnyTimes()
 	srv := newTestServer(t, backend)

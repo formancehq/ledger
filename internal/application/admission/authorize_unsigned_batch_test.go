@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
@@ -32,9 +32,9 @@ import (
 func TestAuthorizeUnsignedBatch_BootstrapExceptionClosesOnUndecodableRows(t *testing.T) {
 	t.Parallel()
 
-	registerRequest := []*servicepb.Request{{
-		Type: &servicepb.Request_RegisterSigningKey{
-			RegisterSigningKey: &servicepb.RegisterSigningKeyRequest{
+	registerRequest := []*ledgerpb.Request{{
+		Type: &ledgerpb.Request_RegisterSigningKey{
+			RegisterSigningKey: &ledgerpb.RegisterSigningKeyRequest{
 				KeyId:     "bootstrap",
 				PublicKey: make([]byte, ed25519.PublicKeySize),
 			},
@@ -119,9 +119,9 @@ func TestKeyStoreUndecodableRowsResetWithKeys(t *testing.T) {
 func TestAuthorizeUnsignedBatch_ExemptsSystemActor(t *testing.T) {
 	t.Parallel()
 
-	businessReq := []*servicepb.Request{{
-		Type: &servicepb.Request_CreateLedger{
-			CreateLedger: &servicepb.CreateLedgerRequest{Name: "l"},
+	businessReq := []*ledgerpb.Request{{
+		Type: &ledgerpb.Request_CreateLedger{
+			CreateLedger: &ledgerpb.CreateLedgerRequest{Name: "l"},
 		},
 	}}
 

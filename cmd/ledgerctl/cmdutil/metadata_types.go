@@ -4,28 +4,28 @@ import (
 	"fmt"
 	"strings"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
-// ParseTargetType converts "account"/"transaction" to commonpb.TargetType.
-func ParseTargetType(s string) (commonpb.TargetType, error) {
+// ParseTargetType converts "account"/"transaction" to ledgerpb.TargetType.
+func ParseTargetType(s string) (ledgerpb.TargetType, error) {
 	return protohelpers.ParseTargetType(s)
 }
 
-// ParseMetadataType converts "string"/"int64"/"bool"/etc to commonpb.MetadataType.
-func ParseMetadataType(s string) (commonpb.MetadataType, error) {
+// ParseMetadataType converts "string"/"int64"/"bool"/etc to ledgerpb.MetadataType.
+func ParseMetadataType(s string) (ledgerpb.MetadataType, error) {
 	return protohelpers.ParseMetadataType(s)
 }
 
 // MetadataTypeString returns user-friendly name for a MetadataType.
-func MetadataTypeString(t commonpb.MetadataType) string {
+func MetadataTypeString(t ledgerpb.MetadataType) string {
 	return protohelpers.MetadataTypeToString(t)
 }
 
 // TargetTypeString returns user-friendly name for a TargetType.
-func TargetTypeString(t commonpb.TargetType) string {
+func TargetTypeString(t ledgerpb.TargetType) string {
 	return protohelpers.TargetTypeToString(t)
 }
 
@@ -40,7 +40,7 @@ func TargetTypeOptions() []string {
 }
 
 // ParseSchemaEntry parses a "target:key:type" string into its components.
-func ParseSchemaEntry(s string) (commonpb.TargetType, string, commonpb.MetadataType, error) {
+func ParseSchemaEntry(s string) (ledgerpb.TargetType, string, ledgerpb.MetadataType, error) {
 	targetName, rest, ok := strings.Cut(s, ":")
 	separator := strings.LastIndex(rest, ":")
 	if !ok || separator < 0 {

@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/application/accountlifecycle"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -56,15 +56,15 @@ func TestExpandAccountLifecycleCoverageIncludesPersistedMirrorVolumes(t *testing
 	metadata := domain.MetadataKey{AccountKey: account, Key: "note"}
 
 	batch := store.OpenWriteSession()
-	_, err := attrs.Ledger.Set(batch, domain.LedgerKey{Name: ledgerName}.Bytes(), &commonpb.LedgerInfo{
+	_, err := attrs.Ledger.Set(batch, domain.LedgerKey{Name: ledgerName}.Bytes(), &ledgerpb.LedgerInfo{
 		Name: ledgerName,
-		AccountTypes: map[string]*commonpb.AccountType{
-			"hold": {Name: "hold", Pattern: "hold:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL},
+		AccountTypes: map[string]*ledgerpb.AccountType{
+			"hold": {Name: "hold", Pattern: "hold:{id}", Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL},
 		},
 	})
 	require.NoError(t, err)
 	_, err = attrs.Volume.Set(batch, volume.Bytes(), &raftcmdpb.VolumePair{
-		Input: commonpb.NewUint256FromUint64(10), Output: commonpb.NewUint256FromUint64(0),
+		Input: ledgerpb.NewUint256FromUint64(10), Output: ledgerpb.NewUint256FromUint64(0),
 	})
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())

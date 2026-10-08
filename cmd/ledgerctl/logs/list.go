@@ -7,7 +7,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -56,12 +56,12 @@ func runList(cmd *cobra.Command, _ []string) error {
 		return errors.New("--ledger flag is required")
 	}
 
-	filter, err := cmdutil.BuildQueryFilter(flt.Expr, flt.Prefix, commonpb.QueryTarget_QUERY_TARGET_LOGS)
+	filter, err := cmdutil.BuildQueryFilter(flt.Expr, flt.Prefix, ledgerpb.QueryTarget_QUERY_TARGET_LOGS)
 	if err != nil {
 		return err
 	}
 
-	stream, err := client.ListLogs(ctx, &commonpb.ListLogsRequest{
+	stream, err := client.ListLogs(ctx, &ledgerpb.ListLogsRequest{
 		Ledger:  ledger,
 		Options: cmdutil.BuildListOptions(pgn, cns, filter),
 	})
@@ -105,7 +105,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 }
 
 // printLog prints a single system log in a human-readable format.
-func printLog(log *commonpb.Log, expand bool) {
+func printLog(log *ledgerpb.Log, expand bool) {
 	desc := describeLog(log, expand)
 
 	if expand {
@@ -157,7 +157,7 @@ func printLog(log *commonpb.Log, expand bool) {
 }
 
 // describeLog uses protobuf reflection to describe the log payload type and fields.
-func describeLog(log *commonpb.Log, expand bool) cmdutil.OneofDescription {
+func describeLog(log *ledgerpb.Log, expand bool) cmdutil.OneofDescription {
 	payload := log.GetPayload()
 	if payload == nil {
 		return cmdutil.OneofDescription{Type: "Unknown"}

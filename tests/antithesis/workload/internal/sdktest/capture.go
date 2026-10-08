@@ -19,7 +19,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 type Event struct {
@@ -100,11 +100,11 @@ func Absent(t *testing.T, events []Event, message string) {
 }
 
 // Client uses the generated gRPC server/client contract without a live cluster.
-func Client(t *testing.T, implementation servicepb.BucketServiceServer, options ...grpc.DialOption) servicepb.BucketServiceClient {
+func Client(t *testing.T, implementation ledgerpb.BucketServiceServer, options ...grpc.DialOption) ledgerpb.BucketServiceClient {
 	t.Helper()
 	listener := bufconn.Listen(1024 * 1024)
 	server := grpc.NewServer()
-	servicepb.RegisterBucketServiceServer(server, implementation)
+	ledgerpb.RegisterBucketServiceServer(server, implementation)
 	serveDone := make(chan error, 1)
 	go func() { serveDone <- server.Serve(listener) }()
 	t.Cleanup(func() {
@@ -119,5 +119,5 @@ func Client(t *testing.T, implementation servicepb.BucketServiceServer, options 
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
 
-	return servicepb.NewBucketServiceClient(conn)
+	return ledgerpb.NewBucketServiceClient(conn)
 }

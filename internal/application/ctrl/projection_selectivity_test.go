@@ -9,7 +9,7 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -27,11 +27,11 @@ func testUint64Bytes(value uint64) []byte {
 	return ret
 }
 
-func testTxIDFilter(id uint64) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
-		BuiltinUint: &commonpb.BuiltinUintCondition{
-			Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID,
-			Cond:  &commonpb.UintCondition{Min: &id, Max: &id},
+func testTxIDFilter(id uint64) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_BuiltinUint{
+		BuiltinUint: &ledgerpb.BuiltinUintCondition{
+			Field: ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID,
+			Cond:  &ledgerpb.UintCondition{Min: &id, Max: &id},
 		},
 	}}
 }
@@ -53,7 +53,7 @@ func TestListEntitiesAppliesReverseMainStoreOnlyFilter(t *testing.T) {
 	defer func() { _ = rs.Close() }()
 
 	result, err := listEntities(context.Background(), rs, entityListParams[uint64]{
-		target:       commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		target:       ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 		ledgerName:   "ledger",
 		pageSize:     10,
 		filter:       testTxIDFilter(2),
@@ -67,10 +67,10 @@ func TestListEntitiesAppliesReverseMainStoreOnlyFilter(t *testing.T) {
 		"the reverse fast path must compile its main-store-only filter")
 
 	_, err = listEntities(context.Background(), rs, entityListParams[uint64]{
-		target:       commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		target:       ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 		ledgerName:   "ledger",
 		pageSize:     10,
-		filter:       &commonpb.QueryFilter{},
+		filter:       &ledgerpb.QueryFilter{},
 		reverse:      true,
 		pebbleReader: handle,
 		releaseHold:  func() {},
@@ -85,9 +85,9 @@ func TestAggregateVolumesMainStoreOnlyFilterDoesNotWaitForReadProjection(t *test
 	store := newCtrlTestStore(t)
 	attrs := attributes.New()
 	batch := store.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(batch, "ledger", &commonpb.LedgerInfo{Name: "ledger"}))
+	require.NoError(t, state.SaveLedger(batch, "ledger", &ledgerpb.LedgerInfo{Name: "ledger"}))
 	_, err := attrs.Volume.Set(batch, domain.NewVolumeKey("ledger", "alice", "USD", "").Bytes(), &raftcmdpb.VolumePair{
-		Input: commonpb.NewUint256FromUint64(10),
+		Input: ledgerpb.NewUint256FromUint64(10),
 	})
 	require.NoError(t, err)
 	require.NoError(t, state.SetAppliedIndex(batch, 10))
@@ -102,8 +102,8 @@ func TestAggregateVolumesMainStoreOnlyFilterDoesNotWaitForReadProjection(t *test
 
 	meter := noop.NewMeterProvider().Meter("test")
 	ctrl := NewDefaultController(nil, store, logging.NopZap(), attrs, rs, nil, meter)
-	filter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{Address: &commonpb.AddressMatch{
-		Match: &commonpb.AddressMatch_HardcodedExact{HardcodedExact: "alice"},
+	filter := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Address{Address: &ledgerpb.AddressMatch{
+		Match: &ledgerpb.AddressMatch_HardcodedExact{HardcodedExact: "alice"},
 	}}}
 
 	result, err := ctrl.AggregateVolumes(ctx, "ledger", filter, query.AggregateOptions{})

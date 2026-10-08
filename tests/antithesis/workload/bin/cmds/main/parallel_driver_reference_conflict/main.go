@@ -6,24 +6,24 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_reference_conflict", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+	internal.RunDriver("parallel_driver_reference_conflict", func(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string) {
 		ref := fmt.Sprintf("ref-%d", internal.Rand().Uint64())
 		details := internal.Details{"ledger": ledger, "reference": ref}
 
 		// 1. Create a transaction with a unique reference.
-		resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+		resp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-						CreateTransaction: &servicepb.CreateTransactionPayload{
+					Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &ledgerpb.CreateTransactionPayload{
 							Postings:  internal.RandomPostings(),
 							Reference: ref,
 							Force:     true,
@@ -48,12 +48,12 @@ func main() {
 		details["firstTxId"] = createdTx.GetTransaction().GetId()
 
 		// 2. Create a different transaction with the same reference — must fail.
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+		_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-						CreateTransaction: &servicepb.CreateTransactionPayload{
+					Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &ledgerpb.CreateTransactionPayload{
 							Postings:  internal.RandomPostings(),
 							Reference: ref,
 							Force:     true,

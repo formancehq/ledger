@@ -8,7 +8,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 )
@@ -18,7 +18,7 @@ import (
 // There is no authenticated-client bypass: internal forwarding also declares
 // the protocol of the binary encoding the forwarded request.
 func checkProtocolVersion(ctx context.Context, method string) error {
-	if method == servicepb.BucketService_Discovery_FullMethodName ||
+	if method == ledgerpb.BucketService_Discovery_FullMethodName ||
 		isInfrastructureRPCMethod(method) {
 		return nil
 	}

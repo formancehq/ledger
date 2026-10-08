@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // protojsonRoutes lists every HTTP route whose 200 body is serialized by
@@ -38,15 +38,15 @@ var protojsonRoutes = []struct {
 	file  string // Handler file containing this route's protojson call site.
 	msg   proto.Message
 }{
-	{"GET /v3/{ledgerName}/indexes", "handlers_list_ledger_indexes.go", &commonpb.Index{}},
-	{"GET /v3/{ledgerName}/indexes/{canonicalId}", "handlers_get_index.go", &commonpb.Index{}},
-	{"GET /v3/_/indexes", "handlers_list_bucket_indexes.go", &commonpb.Index{}},
-	{"GET /v3/_/indexes/{canonicalId}", "handlers_get_bucket_index.go", &commonpb.Index{}},
-	{"GET /v3/{ledgerName}/indexes/{canonicalId}/status", "handlers_get_index_entry_status.go", &commonpb.IndexEntry{}},
-	{"GET /v3/_/indexes/{canonicalId}/status", "handlers_get_bucket_index_entry_status.go", &commonpb.IndexEntry{}},
-	{"GET /v3/_/indexes/status", "handlers_get_index_status.go", &commonpb.GetIndexStatusResponse{}},
-	{"GET /v3/_/signing-keys", "handlers_list_signing_keys.go", &commonpb.SigningKey{}},
-	{"GET /v3/_/events-sinks", "handlers_get_events_sinks.go", &commonpb.GetEventsSinksResponse{}},
+	{"GET /v3/{ledgerName}/indexes", "handlers_list_ledger_indexes.go", &ledgerpb.Index{}},
+	{"GET /v3/{ledgerName}/indexes/{canonicalId}", "handlers_get_index.go", &ledgerpb.Index{}},
+	{"GET /v3/_/indexes", "handlers_list_bucket_indexes.go", &ledgerpb.Index{}},
+	{"GET /v3/_/indexes/{canonicalId}", "handlers_get_bucket_index.go", &ledgerpb.Index{}},
+	{"GET /v3/{ledgerName}/indexes/{canonicalId}/status", "handlers_get_index_entry_status.go", &ledgerpb.IndexEntry{}},
+	{"GET /v3/_/indexes/{canonicalId}/status", "handlers_get_bucket_index_entry_status.go", &ledgerpb.IndexEntry{}},
+	{"GET /v3/_/indexes/status", "handlers_get_index_status.go", &ledgerpb.GetIndexStatusResponse{}},
+	{"GET /v3/_/signing-keys", "handlers_list_signing_keys.go", &ledgerpb.SigningKey{}},
+	{"GET /v3/_/events-sinks", "handlers_get_events_sinks.go", &ledgerpb.GetEventsSinksResponse{}},
 }
 
 func TestProtojsonRoutes_PayloadHasNoCustomMarshalJSON(t *testing.T) {
@@ -75,8 +75,8 @@ func TestSonicRoutes_PayloadHasCustomMarshalJSON(t *testing.T) {
 	t.Parallel()
 
 	for _, msg := range []proto.Message{
-		&commonpb.Transaction{},
-		&commonpb.Log{},
+		&ledgerpb.Transaction{},
+		&ledgerpb.Log{},
 	} {
 		t.Run(reflect.TypeOf(msg).Elem().Name(), func(t *testing.T) {
 			t.Parallel()

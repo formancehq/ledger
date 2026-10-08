@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -32,7 +32,7 @@ var reverseMapFoldBenchmarkLayouts = []reverseMapFoldBenchmarkLayout{
 type reverseMapFoldBenchmarkTarget struct {
 	name       string
 	namespace  string
-	targetType commonpb.TargetType
+	targetType ledgerpb.TargetType
 	entity     func(uint64) []byte
 }
 
@@ -40,20 +40,20 @@ var reverseMapFoldBenchmarkTargets = []reverseMapFoldBenchmarkTarget{
 	{
 		name:       "account",
 		namespace:  readstore.NamespaceAccount,
-		targetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		targetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 		entity:     reverseMapFoldBenchmarkAccountEntity,
 	},
 	{
 		name:       "transaction",
 		namespace:  readstore.NamespaceTransaction,
-		targetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+		targetType: ledgerpb.TargetType_TARGET_TYPE_TRANSACTION,
 		entity:     reverseMapFoldBenchmarkTransactionEntity,
 	},
 }
 
-var reverseMapFoldBenchmarkValues = []*commonpb.MetadataValue{
-	{Type: &commonpb.MetadataValue_StringValue{StringValue: "value-a"}},
-	{Type: &commonpb.MetadataValue_StringValue{StringValue: "value-b"}},
+var reverseMapFoldBenchmarkValues = []*ledgerpb.MetadataValue{
+	{Type: &ledgerpb.MetadataValue_StringValue{StringValue: "value-a"}},
+	{Type: &ledgerpb.MetadataValue_StringValue{StringValue: "value-b"}},
 }
 
 // BenchmarkReverseMapKeyingFoldSavedMetadata measures the complete metadata

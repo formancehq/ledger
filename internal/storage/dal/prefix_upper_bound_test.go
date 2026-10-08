@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestPrefixUpperBound(t *testing.T) {
@@ -94,8 +94,8 @@ func TestZonePrefixUpperBound_IncludesMaxUint64Suffix(t *testing.T) {
 	}
 
 	batch := s.OpenWriteSession()
-	require.NoError(t, batch.SetProto(key(1), &commonpb.Log{Sequence: 1}))
-	require.NoError(t, batch.SetProto(key(math.MaxUint64), &commonpb.Log{Sequence: math.MaxUint64}))
+	require.NoError(t, batch.SetProto(key(1), &ledgerpb.Log{Sequence: 1}))
+	require.NoError(t, batch.SetProto(key(math.MaxUint64), &ledgerpb.Log{Sequence: math.MaxUint64}))
 	require.NoError(t, batch.Commit())
 
 	handle, err := s.NewReadHandle()
@@ -121,14 +121,14 @@ func TestZonePrefixUpperBound_IncludesMaxUint64Suffix(t *testing.T) {
 	})
 
 	t.Run("ReadLastEntry sees it", func(t *testing.T) {
-		last, err := ReadLastEntry[*commonpb.Log](handle, ZoneHistory, SubHistoryLog)
+		last, err := ReadLastEntry[*ledgerpb.Log](handle, ZoneHistory, SubHistoryLog)
 		require.NoError(t, err)
 		require.NotNil(t, last)
 		require.EqualValues(t, uint64(math.MaxUint64), last.GetSequence())
 	})
 
 	t.Run("ScanZone sees it", func(t *testing.T) {
-		logs, err := CollectZone[*commonpb.Log](handle, ZoneHistory, SubHistoryLog)
+		logs, err := CollectZone[*ledgerpb.Log](handle, ZoneHistory, SubHistoryLog)
 		require.NoError(t, err)
 		require.Len(t, logs, 2)
 		require.EqualValues(t, uint64(math.MaxUint64), logs[1].GetSequence())

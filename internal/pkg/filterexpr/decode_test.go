@@ -6,12 +6,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // TestDecodeDualFormat_Equivalence is the core EN-1511 acceptance check: the
 // textual filterexpr form and the structured v2 JSON DSL form of the SAME
-// logical filter decode to an identical *commonpb.QueryFilter.
+// logical filter decode to an identical *ledgerpb.QueryFilter.
 func TestDecodeDualFormat_Equivalence(t *testing.T) {
 	t.Parallel()
 
@@ -19,19 +19,19 @@ func TestDecodeDualFormat_Equivalence(t *testing.T) {
 		name   string
 		text   string
 		json   string
-		target commonpb.QueryTarget
+		target ledgerpb.QueryTarget
 	}{
 		{
 			name:   "metadata match",
 			text:   `metadata[status] == "active"`,
 			json:   `{"$match":{"metadata[status]":"active"}}`,
-			target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 		},
 		{
 			name:   "address prefix",
 			text:   `address ^= "users:"`,
 			json:   `{"$match":{"address":"users:"}}`,
-			target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 		},
 		{
 			// Values are non-numeric strings on purpose: the textual grammar
@@ -41,19 +41,19 @@ func TestDecodeDualFormat_Equivalence(t *testing.T) {
 			name:   "and of two conditions",
 			text:   `metadata[a] == "x" and metadata[b] == "y"`,
 			json:   `{"$and":[{"$match":{"metadata[a]":"x"}},{"$match":{"metadata[b]":"y"}}]}`,
-			target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 		},
 		{
 			name:   "or of two conditions",
 			text:   `metadata[a] == "x" or metadata[b] == "y"`,
 			json:   `{"$or":[{"$match":{"metadata[a]":"x"}},{"$match":{"metadata[b]":"y"}}]}`,
-			target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 		},
 		{
 			name:   "ledger condition on logs",
 			text:   `ledger == "main"`,
 			json:   `{"$match":{"ledger":"main"}}`,
-			target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
+			target: ledgerpb.QueryTarget_QUERY_TARGET_LOGS,
 		},
 		{
 			// EN-1544: the textual `date` field and the structured `date` bound both
@@ -61,7 +61,7 @@ func TestDecodeDualFormat_Equivalence(t *testing.T) {
 			name:   "date RFC3339 on logs",
 			text:   `date >= "2023-11-14T22:13:20Z"`,
 			json:   `{"$gte":{"date":"2023-11-14T22:13:20Z"}}`,
-			target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
+			target: ledgerpb.QueryTarget_QUERY_TARGET_LOGS,
 		},
 		{
 			// EN-1544: the textual `timestamp` field and the structured `timestamp`
@@ -69,7 +69,7 @@ func TestDecodeDualFormat_Equivalence(t *testing.T) {
 			name:   "timestamp RFC3339 on transactions",
 			text:   `timestamp >= "2023-11-14T22:13:20Z"`,
 			json:   `{"$gte":{"timestamp":"2023-11-14T22:13:20Z"}}`,
-			target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 		},
 	}
 
@@ -103,46 +103,46 @@ func TestDecodeDualFormat_DatePerTarget(t *testing.T) {
 	cases := []struct {
 		name    string
 		raw     string
-		target  commonpb.QueryTarget
+		target  ledgerpb.QueryTarget
 		wantErr string // empty => must succeed
 	}{
 		{
 			name:   "textual date on logs is valid",
 			raw:    `date >= "2023-11-14T22:13:20Z"`,
-			target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
+			target: ledgerpb.QueryTarget_QUERY_TARGET_LOGS,
 		},
 		{
 			name:   "structured date on logs is valid",
 			raw:    `{"$gte":{"date":"2023-11-14T22:13:20Z"}}`,
-			target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
+			target: ledgerpb.QueryTarget_QUERY_TARGET_LOGS,
 		},
 		{
 			name:    "textual date on transactions is rejected",
 			raw:     `date >= "2023-11-14T22:13:20Z"`,
-			target:  commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			target:  ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 			wantErr: "not valid on transactions",
 		},
 		{
 			name:    "structured date on transactions is rejected",
 			raw:     `{"$gte":{"date":"2023-11-14T22:13:20Z"}}`,
-			target:  commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			target:  ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 			wantErr: "not valid on transactions",
 		},
 		{
 			name:   "textual timestamp on transactions is valid",
 			raw:    `timestamp >= "2023-11-14T22:13:20Z"`,
-			target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 		},
 		{
 			name:    "textual timestamp on logs is rejected",
 			raw:     `timestamp >= "2023-11-14T22:13:20Z"`,
-			target:  commonpb.QueryTarget_QUERY_TARGET_LOGS,
+			target:  ledgerpb.QueryTarget_QUERY_TARGET_LOGS,
 			wantErr: "not valid on logs",
 		},
 		{
 			name:    "structured timestamp on accounts is rejected",
 			raw:     `{"$gte":{"timestamp":"2023-11-14T22:13:20Z"}}`,
-			target:  commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			target:  ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			wantErr: "not valid on accounts",
 		},
 	}
@@ -173,12 +173,12 @@ func TestDecodeDualFormat_DateRejectsPreEpoch(t *testing.T) {
 
 	cases := []struct {
 		raw    string
-		target commonpb.QueryTarget
+		target ledgerpb.QueryTarget
 	}{
-		{`date >= "1969-12-31T00:00:00Z"`, commonpb.QueryTarget_QUERY_TARGET_LOGS},
-		{`{"$gte":{"date":"1969-12-31T00:00:00Z"}}`, commonpb.QueryTarget_QUERY_TARGET_LOGS},
-		{`timestamp >= "1969-12-31T00:00:00Z"`, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS},
-		{`{"$gte":{"timestamp":"1969-12-31T00:00:00Z"}}`, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS},
+		{`date >= "1969-12-31T00:00:00Z"`, ledgerpb.QueryTarget_QUERY_TARGET_LOGS},
+		{`{"$gte":{"date":"1969-12-31T00:00:00Z"}}`, ledgerpb.QueryTarget_QUERY_TARGET_LOGS},
+		{`timestamp >= "1969-12-31T00:00:00Z"`, ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS},
+		{`{"$gte":{"timestamp":"1969-12-31T00:00:00Z"}}`, ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS},
 	}
 
 	for _, tc := range cases {
@@ -194,11 +194,11 @@ func TestDecodeDualFormat_JSONQuotedText(t *testing.T) {
 	t.Parallel()
 
 	quoted := []byte(`"metadata[status] == \"active\""`)
-	fromQuoted, err := DecodeDualFormat(quoted, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	fromQuoted, err := DecodeDualFormat(quoted, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	require.NoError(t, err)
 	require.NotNil(t, fromQuoted)
 
-	fromBare, err := DecodeDualFormat([]byte(`metadata[status] == "active"`), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	fromBare, err := DecodeDualFormat([]byte(`metadata[status] == "active"`), ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	require.NoError(t, err)
 
 	require.True(t, proto.Equal(fromQuoted, fromBare),
@@ -211,12 +211,12 @@ func TestDecodeDualFormat_Empty(t *testing.T) {
 	t.Parallel()
 
 	for _, raw := range []string{"", "   ", "null", `""`} {
-		filter, err := DecodeDualFormat([]byte(raw), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+		filter, err := DecodeDualFormat([]byte(raw), ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 		require.NoError(t, err, "empty-ish input %q must not error", raw)
 		require.Nil(t, filter, "empty-ish input %q must yield a nil filter", raw)
 	}
 
-	filter, err := DecodeDualFormat(nil, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	filter, err := DecodeDualFormat(nil, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	require.NoError(t, err)
 	require.Nil(t, filter)
 }
@@ -229,31 +229,31 @@ func TestDecodeDualFormat_Malformed(t *testing.T) {
 	cases := []struct {
 		name    string
 		raw     string
-		target  commonpb.QueryTarget
+		target  ledgerpb.QueryTarget
 		wantErr string
 	}{
 		{
 			name:    "malformed textual",
 			raw:     `metadata[k] ==`,
-			target:  commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			target:  ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			wantErr: "filter:",
 		},
 		{
 			name:    "malformed json - unknown operator",
 			raw:     `{"$bogus":{}}`,
-			target:  commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			target:  ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			wantErr: "unknown operator",
 		},
 		{
 			name:    "malformed json - empty object",
 			raw:     `{}`,
-			target:  commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			target:  ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			wantErr: "empty object",
 		},
 		{
 			name:    "malformed json - not an object body",
 			raw:     `{"$match":42}`,
-			target:  commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			target:  ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			wantErr: "filter:",
 		},
 		{
@@ -261,13 +261,13 @@ func TestDecodeDualFormat_Malformed(t *testing.T) {
 			// targets, so it is rejected on ACCOUNTS by the per-target gate.
 			name:    "condition invalid on target (textual)",
 			raw:     `ledger == "main"`,
-			target:  commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			target:  ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			wantErr: "not valid on accounts",
 		},
 		{
 			name:    "condition invalid on target (json)",
 			raw:     `{"$match":{"reference":"x"}}`,
-			target:  commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			target:  ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			wantErr: "not valid on accounts",
 		},
 	}
@@ -290,15 +290,15 @@ func TestDecodeDualFormat_Malformed(t *testing.T) {
 func TestDecodeDualFormat_AuditTextOnly(t *testing.T) {
 	t.Parallel()
 
-	fromText, err := DecodeDualFormat([]byte(`outcome == failure`), commonpb.QueryTarget_QUERY_TARGET_AUDIT)
+	fromText, err := DecodeDualFormat([]byte(`outcome == failure`), ledgerpb.QueryTarget_QUERY_TARGET_AUDIT)
 	require.NoError(t, err, "textual audit filter must decode")
 	require.NotNil(t, fromText)
-	require.IsType(t, &commonpb.QueryFilter_Audit{}, fromText.GetFilter())
+	require.IsType(t, &ledgerpb.QueryFilter_Audit{}, fromText.GetFilter())
 
 	// There is no structured JSON representation of an audit condition — the codec
 	// rejects any attempt to carry one (its field names collide with the
 	// transaction/log conditions the JSON DSL already claims).
-	_, err = DecodeDualFormat([]byte(`{"$match":{"outcome":"failure"}}`), commonpb.QueryTarget_QUERY_TARGET_AUDIT)
+	_, err = DecodeDualFormat([]byte(`{"$match":{"outcome":"failure"}}`), ledgerpb.QueryTarget_QUERY_TARGET_AUDIT)
 	require.Error(t, err, "audit has no structured JSON form; a structured filter must not decode to a valid audit condition")
 }
 
@@ -310,28 +310,28 @@ func TestDecodeDualFormat_BareFieldTargetAwareResolution(t *testing.T) {
 	t.Parallel()
 
 	// timestamp: audit arm on AUDIT, transaction builtin arm on TRANSACTIONS.
-	auditTs, err := DecodeDualFormat([]byte(`timestamp >= "2023-11-14T22:13:20Z"`), commonpb.QueryTarget_QUERY_TARGET_AUDIT)
+	auditTs, err := DecodeDualFormat([]byte(`timestamp >= "2023-11-14T22:13:20Z"`), ledgerpb.QueryTarget_QUERY_TARGET_AUDIT)
 	require.NoError(t, err)
 	require.NotNil(t, auditTs.GetAudit(), "timestamp on AUDIT must resolve to the audit arm")
-	require.Equal(t, commonpb.AuditField_AUDIT_FIELD_TIMESTAMP, auditTs.GetAudit().GetField())
+	require.Equal(t, ledgerpb.AuditField_AUDIT_FIELD_TIMESTAMP, auditTs.GetAudit().GetField())
 
-	txTs, err := DecodeDualFormat([]byte(`timestamp >= "2023-11-14T22:13:20Z"`), commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	txTs, err := DecodeDualFormat([]byte(`timestamp >= "2023-11-14T22:13:20Z"`), ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 	require.NoError(t, err)
 	require.NotNil(t, txTs.GetBuiltinUint(), "timestamp on TRANSACTIONS must resolve to the transaction builtin arm")
 
 	// ledger: audit ledger arm on AUDIT, LedgerCondition on LOGS.
-	auditLedger, err := DecodeDualFormat([]byte(`ledger == main`), commonpb.QueryTarget_QUERY_TARGET_AUDIT)
+	auditLedger, err := DecodeDualFormat([]byte(`ledger == main`), ledgerpb.QueryTarget_QUERY_TARGET_AUDIT)
 	require.NoError(t, err)
 	require.NotNil(t, auditLedger.GetAudit(), "ledger on AUDIT must resolve to the audit arm")
-	require.Equal(t, commonpb.AuditField_AUDIT_FIELD_LEDGER, auditLedger.GetAudit().GetField())
+	require.Equal(t, ledgerpb.AuditField_AUDIT_FIELD_LEDGER, auditLedger.GetAudit().GetField())
 
-	logLedger, err := DecodeDualFormat([]byte(`ledger == main`), commonpb.QueryTarget_QUERY_TARGET_LOGS)
+	logLedger, err := DecodeDualFormat([]byte(`ledger == main`), ledgerpb.QueryTarget_QUERY_TARGET_LOGS)
 	require.NoError(t, err)
 	require.NotNil(t, logLedger.GetLedger(), "ledger on LOGS must resolve to the LedgerCondition arm")
 
 	// An audit-only field name (outcome) has no meaning off the audit target: it
 	// is rejected at parse time on a non-audit target.
-	_, err = DecodeDualFormat([]byte(`outcome == failure`), commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	_, err = DecodeDualFormat([]byte(`outcome == failure`), ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 	require.Error(t, err, "outcome must not resolve on a non-audit target")
 	require.Contains(t, err.Error(), "unknown field")
 }
@@ -347,11 +347,11 @@ func TestDecodeDualFormatStructuralOnly_SkipsTargetGate(t *testing.T) {
 	// stored target) in both forms. The target is used only for bare-field
 	// resolution: on ACCOUNTS `ledger` resolves to the LedgerCondition arm,
 	// matching the JSON `$match` form.
-	fromText, err := DecodeDualFormatStructuralOnly([]byte(`ledger == "main"`), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	fromText, err := DecodeDualFormatStructuralOnly([]byte(`ledger == "main"`), ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	require.NoError(t, err)
 	require.NotNil(t, fromText)
 
-	fromJSON, err := DecodeDualFormatStructuralOnly([]byte(`{"$match":{"ledger":"main"}}`), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	fromJSON, err := DecodeDualFormatStructuralOnly([]byte(`{"$match":{"ledger":"main"}}`), ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	require.NoError(t, err)
 	require.NotNil(t, fromJSON)
 
@@ -365,9 +365,9 @@ func TestDecodeDualFormatStructuralOnly_SkipsTargetGate(t *testing.T) {
 func TestDecodeDualFormatStructuralOnly_AuditTargetResolvesAuditArm(t *testing.T) {
 	t.Parallel()
 
-	f, err := DecodeDualFormatStructuralOnly([]byte(`outcome == failure`), commonpb.QueryTarget_QUERY_TARGET_AUDIT)
+	f, err := DecodeDualFormatStructuralOnly([]byte(`outcome == failure`), ledgerpb.QueryTarget_QUERY_TARGET_AUDIT)
 	require.NoError(t, err)
 	require.NotNil(t, f)
 	require.NotNil(t, f.GetAudit())
-	require.Equal(t, commonpb.AuditField_AUDIT_FIELD_OUTCOME, f.GetAudit().GetField())
+	require.Equal(t, ledgerpb.AuditField_AUDIT_FIELD_OUTCOME, f.GetAudit().GetField())
 }

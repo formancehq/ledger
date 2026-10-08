@@ -13,24 +13,24 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 type eventsURLRedactionServer struct {
-	commonpb.UnimplementedBucketServiceServer
+	ledgerpb.UnimplementedBucketServiceServer
 
-	response      *commonpb.GetEventsSinksResponse
-	applyRequests chan *commonpb.ApplyRequest
+	response      *ledgerpb.GetEventsSinksResponse
+	applyRequests chan *ledgerpb.ApplyRequest
 }
 
-func (s *eventsURLRedactionServer) GetEventsSinks(context.Context, *commonpb.GetEventsSinksRequest) (*commonpb.GetEventsSinksResponse, error) {
+func (s *eventsURLRedactionServer) GetEventsSinks(context.Context, *ledgerpb.GetEventsSinksRequest) (*ledgerpb.GetEventsSinksResponse, error) {
 	return s.response, nil
 }
 
-func (s *eventsURLRedactionServer) Apply(_ context.Context, request *commonpb.ApplyRequest) (*commonpb.ApplyResponse, error) {
+func (s *eventsURLRedactionServer) Apply(_ context.Context, request *ledgerpb.ApplyRequest) (*ledgerpb.ApplyResponse, error) {
 	s.applyRequests <- request
 
-	return &commonpb.ApplyResponse{}, nil
+	return &ledgerpb.ApplyResponse{}, nil
 }
 
 // Sequential because command execution redirects process-global stdout and
@@ -46,11 +46,11 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 	)
 
 	fixture := &eventsURLRedactionServer{
-		response: &commonpb.GetEventsSinksResponse{
-			Sinks: []*commonpb.SinkConfig{
+		response: &ledgerpb.GetEventsSinksResponse{
+			Sinks: []*ledgerpb.SinkConfig{
 				{
 					Name: "stream",
-					Type: &commonpb.SinkConfig_Nats{Nats: &commonpb.NatsSinkConfig{
+					Type: &ledgerpb.SinkConfig_Nats{Nats: &ledgerpb.NatsSinkConfig{
 						Url: "nats://operator:" + natsPassword + "@one:4222,nats://" + natsToken + "@two:4222," +
 							"operator:" + natsNoSchemePass + "@three:4222," + natsNoSchemeToken + "@four:4222",
 						Topic: "events",
@@ -58,19 +58,19 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 				},
 				{
 					Name: "webhook",
-					Type: &commonpb.SinkConfig_Http{Http: &commonpb.HttpSinkConfig{
+					Type: &ledgerpb.SinkConfig_Http{Http: &ledgerpb.HttpSinkConfig{
 						Endpoint: "https://operator:" + httpPassword + "@hooks.example/events",
 					}},
 				},
 				{
 					Name: "analytics",
-					Type: &commonpb.SinkConfig_Clickhouse{Clickhouse: &commonpb.ClickHouseSinkConfig{
+					Type: &ledgerpb.SinkConfig_Clickhouse{Clickhouse: &ledgerpb.ClickHouseSinkConfig{
 						Dsn: "clickhouse://db.example:9000/ledger?password=" + clickHousePassword + "&secure=true",
 					}},
 				},
 				{
 					Name: "kafka-empty-secret",
-					Type: &commonpb.SinkConfig_Kafka{Kafka: &commonpb.KafkaSinkConfig{
+					Type: &ledgerpb.SinkConfig_Kafka{Kafka: &ledgerpb.KafkaSinkConfig{
 						Brokers:       []string{"kafka.example:9092"},
 						Topic:         "events",
 						SaslMechanism: "PLAIN",
@@ -78,23 +78,23 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 				},
 				{
 					Name: "databricks-empty-token",
-					Type: &commonpb.SinkConfig_Databricks{Databricks: &commonpb.DatabricksSinkConfig{
+					Type: &ledgerpb.SinkConfig_Databricks{Databricks: &ledgerpb.DatabricksSinkConfig{
 						ServerHostname: "databricks.example",
-						Auth:           &commonpb.DatabricksSinkConfig_Token{},
+						Auth:           &ledgerpb.DatabricksSinkConfig_Token{},
 					}},
 				},
 				{
 					Name: "databricks-empty-client-secret",
-					Type: &commonpb.SinkConfig_Databricks{Databricks: &commonpb.DatabricksSinkConfig{
+					Type: &ledgerpb.SinkConfig_Databricks{Databricks: &ledgerpb.DatabricksSinkConfig{
 						ServerHostname: "databricks.example",
-						Auth: &commonpb.DatabricksSinkConfig_OauthM2M{OauthM2M: &commonpb.DatabricksOAuthM2M{
+						Auth: &ledgerpb.DatabricksSinkConfig_OauthM2M{OauthM2M: &ledgerpb.DatabricksOAuthM2M{
 							ClientId: "client-id",
 						}},
 					}},
 				},
 			},
 		},
-		applyRequests: make(chan *commonpb.ApplyRequest, 16),
+		applyRequests: make(chan *ledgerpb.ApplyRequest, 16),
 	}
 	listControls := []string{
 		"stream", "operator", "events", "one:4222", "two:4222", "three:4222", "four:4222",
@@ -103,7 +103,7 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	server := grpc.NewServer()
-	commonpb.RegisterBucketServiceServer(server, fixture)
+	ledgerpb.RegisterBucketServiceServer(server, fixture)
 	serveResult := make(chan error, 1)
 	go func() { serveResult <- server.Serve(listener) }()
 	t.Cleanup(func() {

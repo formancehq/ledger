@@ -14,7 +14,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/numscript"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
@@ -135,8 +135,8 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 	}
 
 	var (
-		postings []*commonpb.Posting
-		script   *commonpb.Script
+		postings []*ledgerpb.Posting
+		script   *ledgerpb.Script
 	)
 
 	switch {
@@ -218,7 +218,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 			}
 		}
 
-		script = &commonpb.Script{
+		script = &ledgerpb.Script{
 			Plain: string(scriptContent),
 			Vars:  vars,
 		}
@@ -306,7 +306,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 				}
 			}
 
-			script = &commonpb.Script{
+			script = &ledgerpb.Script{
 				Plain: string(scriptContent),
 				Vars:  vars,
 			}
@@ -363,14 +363,14 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 
 	spinner := cmdutil.StartSpinner("Creating transaction...")
 
-	requests := []*commonpb.Request{
+	requests := []*ledgerpb.Request{
 		{
-			Type: &commonpb.Request_Apply{
-				Apply: &commonpb.LedgerApplyRequest{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: ledgerName,
-					Action: &commonpb.LedgerAction{
-						Data: &commonpb.LedgerAction_CreateTransaction{
-							CreateTransaction: &commonpb.CreateTransactionPayload{
+					Action: &ledgerpb.LedgerAction{
+						Data: &ledgerpb.LedgerAction_CreateTransaction{
+							CreateTransaction: &ledgerpb.CreateTransactionPayload{
 								Postings:  postings,
 								Script:    script,
 								Reference: reference,
@@ -532,7 +532,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 //   - "source,destination,amount,asset,color"      (colored,   5 fields)
 //
 // The color field is optional. An empty fifth field is treated as no color.
-func parsePosting(s string) (*commonpb.Posting, error) {
+func parsePosting(s string) (*ledgerpb.Posting, error) {
 	parts := strings.Split(s, ",")
 	if len(parts) != 4 && len(parts) != 5 {
 		return nil, errors.New("expected format: source,destination,amount,asset[,color]")
@@ -610,7 +610,7 @@ func promptVariable(name, varType string) (string, error) {
 }
 
 // promptPosting prompts the user to enter a posting interactively using pterm.
-func promptPosting(index int) (*commonpb.Posting, error) {
+func promptPosting(index int) (*ledgerpb.Posting, error) {
 	pterm.FgLightCyan.Printfln("Posting #%d", index)
 
 	// Source

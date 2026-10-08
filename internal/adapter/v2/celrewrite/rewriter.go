@@ -23,7 +23,7 @@ import (
 
 	"github.com/google/cel-go/cel"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -74,7 +74,7 @@ type regexResult struct {
 // set, expression too long, regex not a constant, invalid metadata literal,
 // bad RE2) so admission can call it to fail fast before the config reaches
 // the audit chain.
-func NewRewriter(rules []*commonpb.MirrorRewriteRule) (*Rewriter, error) {
+func NewRewriter(rules []*ledgerpb.MirrorRewriteRule) (*Rewriter, error) {
 	if len(rules) == 0 {
 		return nil, nil
 	}
@@ -146,17 +146,17 @@ func (r *Rewriter) Apply(entry *raftcmdpb.MirrorLogEntry) (*raftcmdpb.MirrorLogE
 // compileRule dispatches on the rule's scope. Each per-variant compiler builds
 // its own CEL env (with `log` typed as the specific variant), compiles the
 // match predicate, and prepares an ordered list of typed action closures.
-func (r *Rewriter) compileRule(rule *commonpb.MirrorRewriteRule) (applyRuleFn, error) {
+func (r *Rewriter) compileRule(rule *ledgerpb.MirrorRewriteRule) (applyRuleFn, error) {
 	switch scope := rule.GetScope().(type) {
-	case *commonpb.MirrorRewriteRule_CreatedTransaction:
+	case *ledgerpb.MirrorRewriteRule_CreatedTransaction:
 		return r.compileCreatedRule(scope.CreatedTransaction)
-	case *commonpb.MirrorRewriteRule_RevertedTransaction:
+	case *ledgerpb.MirrorRewriteRule_RevertedTransaction:
 		return r.compileRevertedRule(scope.RevertedTransaction)
-	case *commonpb.MirrorRewriteRule_SavedMetadata:
+	case *ledgerpb.MirrorRewriteRule_SavedMetadata:
 		return r.compileSavedMetadataRule(scope.SavedMetadata)
-	case *commonpb.MirrorRewriteRule_DeletedMetadata:
+	case *ledgerpb.MirrorRewriteRule_DeletedMetadata:
 		return r.compileDeletedMetadataRule(scope.DeletedMetadata)
-	case *commonpb.MirrorRewriteRule_AnyVariant:
+	case *ledgerpb.MirrorRewriteRule_AnyVariant:
 		return r.compileAnyVariantRule(scope.AnyVariant)
 	default:
 		return nil, errors.New("rule scope must be set (created_transaction | reverted_transaction | saved_metadata | deleted_metadata | any_variant)")
@@ -176,11 +176,11 @@ func (r *Rewriter) buildMatchEnv(variantType string) (*cel.Env, error) {
 			&raftcmdpb.MirrorSavedMetadata{},
 			&raftcmdpb.MirrorDeletedMetadata{},
 			&raftcmdpb.MirrorFillGap{},
-			&commonpb.Posting{},
-			&commonpb.Target{},
-			&commonpb.TargetAccount{},
-			&commonpb.MetadataValue{},
-			&commonpb.MetadataMap{},
+			&ledgerpb.Posting{},
+			&ledgerpb.Target{},
+			&ledgerpb.TargetAccount{},
+			&ledgerpb.MetadataValue{},
+			&ledgerpb.MetadataMap{},
 		),
 		cel.Variable("log", cel.ObjectType(variantType)),
 	)

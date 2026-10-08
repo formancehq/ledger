@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"time"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
@@ -40,8 +40,8 @@ var _ = Describe("Query Checkpoints", func() {
 	Context("Create, query, and delete checkpoints", Ordered, func() {
 		var (
 			ctx           context.Context
-			client        clusterpb.BucketServiceClient
-			clusterClient clusterpb.ClusterServiceClient
+			client        ledgerpb.BucketServiceClient
+			clusterClient ledgerpb.ClusterServiceClient
 		)
 
 		const (
@@ -55,12 +55,12 @@ var _ = Describe("Query Checkpoints", func() {
 			clusterClient = node.ClusterClient
 
 			// Create a ledger.
-			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
 		It("should list no checkpoints initially", func() {
-			resp, err := clusterClient.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
+			resp, err := clusterClient.ListQueryCheckpoints(ctx, &ledgerpb.ListQueryCheckpointsRequest{})
 			Expect(err).To(Succeed())
 			Expect(resp.GetCheckpoints()).To(BeEmpty())
 		})
@@ -68,7 +68,7 @@ var _ = Describe("Query Checkpoints", func() {
 		var checkpointID uint64
 
 		It("should create a transaction before the checkpoint", func() {
-			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*clusterpb.Posting{
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(1000), "USD"),
 			}, nil)))
 			Expect(err).To(Succeed())
@@ -84,14 +84,14 @@ var _ = Describe("Query Checkpoints", func() {
 		})
 
 		It("should list the checkpoint", func() {
-			resp, err := clusterClient.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
+			resp, err := clusterClient.ListQueryCheckpoints(ctx, &ledgerpb.ListQueryCheckpointsRequest{})
 			Expect(err).To(Succeed())
 			Expect(resp.GetCheckpoints()).To(HaveLen(1))
 			Expect(resp.GetCheckpoints()[0].GetCheckpointId()).To(Equal(checkpointID))
 		})
 
 		It("should get checkpoint info", func() {
-			info, err := clusterClient.GetQueryCheckpointInfo(ctx, &clusterpb.GetQueryCheckpointInfoRequest{
+			info, err := clusterClient.GetQueryCheckpointInfo(ctx, &ledgerpb.GetQueryCheckpointInfoRequest{
 				CheckpointId: checkpointID,
 			})
 			Expect(err).To(Succeed())
@@ -101,7 +101,7 @@ var _ = Describe("Query Checkpoints", func() {
 		})
 
 		It("should create a post-checkpoint transaction", func() {
-			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*clusterpb.Posting{
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "bob", big.NewInt(500), "EUR"),
 			}, nil)))
 			Expect(err).To(Succeed())
@@ -131,7 +131,7 @@ var _ = Describe("Query Checkpoints", func() {
 
 			txID := txs[0].GetId()
 
-			resp, err := client.GetTransaction(ctx, &clusterpb.GetTransactionRequest{
+			resp, err := client.GetTransaction(ctx, &ledgerpb.GetTransactionRequest{
 				Ledger:        ledgerName,
 				TransactionId: txID,
 				CheckpointId:  checkpointID,
@@ -142,11 +142,11 @@ var _ = Describe("Query Checkpoints", func() {
 
 		It("GetAccount reads checkpoint state, not live", func() {
 			// bob was funded (500 EUR) AFTER the checkpoint.
-			liveBob, err := client.GetAccount(ctx, &clusterpb.GetAccountRequest{Ledger: ledgerName, Address: "bob"})
+			liveBob, err := client.GetAccount(ctx, &ledgerpb.GetAccountRequest{Ledger: ledgerName, Address: "bob"})
 			Expect(err).To(Succeed())
 			Expect(liveBob.FindVolume("EUR", "")).NotTo(BeNil(), "live store has the post-checkpoint balance")
 
-			cpBob, err := client.GetAccount(ctx, &clusterpb.GetAccountRequest{
+			cpBob, err := client.GetAccount(ctx, &ledgerpb.GetAccountRequest{
 				Ledger:       ledgerName,
 				Address:      "bob",
 				CheckpointId: checkpointID,
@@ -157,11 +157,11 @@ var _ = Describe("Query Checkpoints", func() {
 		})
 
 		It("GetLedgerStats reads checkpoint state, not live", func() {
-			liveStats, err := client.GetLedgerStats(ctx, &clusterpb.GetLedgerStatsRequest{Ledger: ledgerName})
+			liveStats, err := client.GetLedgerStats(ctx, &ledgerpb.GetLedgerStatsRequest{Ledger: ledgerName})
 			Expect(err).To(Succeed())
 			Expect(liveStats.GetTransactionCount()).To(Equal(uint64(2)), "live store has both transactions")
 
-			cpStats, err := client.GetLedgerStats(ctx, &clusterpb.GetLedgerStatsRequest{
+			cpStats, err := client.GetLedgerStats(ctx, &ledgerpb.GetLedgerStatsRequest{
 				Ledger:       ledgerName,
 				CheckpointId: checkpointID,
 			})
@@ -171,11 +171,11 @@ var _ = Describe("Query Checkpoints", func() {
 		})
 
 		It("AggregateVolumes reads checkpoint state, not live", func() {
-			liveAgg, err := client.AggregateVolumes(ctx, &clusterpb.AggregateVolumesRequest{Ledger: ledgerName})
+			liveAgg, err := client.AggregateVolumes(ctx, &ledgerpb.AggregateVolumesRequest{Ledger: ledgerName})
 			Expect(err).To(Succeed())
 			Expect(aggregateAssets(liveAgg)).To(ContainElements("USD", "EUR"), "live store has both assets")
 
-			cpAgg, err := client.AggregateVolumes(ctx, &clusterpb.AggregateVolumesRequest{
+			cpAgg, err := client.AggregateVolumes(ctx, &ledgerpb.AggregateVolumesRequest{
 				Ledger:       ledgerName,
 				CheckpointId: checkpointID,
 			})
@@ -189,7 +189,7 @@ var _ = Describe("Query Checkpoints", func() {
 		})
 
 		It("should list no checkpoints after deletion", func() {
-			resp, err := clusterClient.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
+			resp, err := clusterClient.ListQueryCheckpoints(ctx, &ledgerpb.ListQueryCheckpointsRequest{})
 			Expect(err).To(Succeed())
 			Expect(resp.GetCheckpoints()).To(BeEmpty())
 		})
@@ -198,8 +198,8 @@ var _ = Describe("Query Checkpoints", func() {
 	Context("Multiple checkpoints capture progressive state", Ordered, func() {
 		var (
 			ctx           context.Context
-			client        clusterpb.BucketServiceClient
-			clusterClient clusterpb.ClusterServiceClient
+			client        ledgerpb.BucketServiceClient
+			clusterClient ledgerpb.ClusterServiceClient
 		)
 
 		const (
@@ -214,13 +214,13 @@ var _ = Describe("Query Checkpoints", func() {
 			client = node.Client
 			clusterClient = node.ClusterClient
 
-			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
 		It("should create tx1, checkpoint1, tx2, checkpoint2, tx3", func() {
 			// tx0: world -> alice 100
-			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*clusterpb.Posting{
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil)))
 			Expect(err).To(Succeed())
@@ -230,7 +230,7 @@ var _ = Describe("Query Checkpoints", func() {
 			Expect(err).To(Succeed())
 
 			// tx1: world -> bob 200
-			_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*clusterpb.Posting{
+			_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
 			}, nil)))
 			Expect(err).To(Succeed())
@@ -240,14 +240,14 @@ var _ = Describe("Query Checkpoints", func() {
 			Expect(err).To(Succeed())
 
 			// tx2: world -> charlie 300
-			_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*clusterpb.Posting{
+			_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "charlie", big.NewInt(300), "USD"),
 			}, nil)))
 			Expect(err).To(Succeed())
 		})
 
 		It("should list two checkpoints with sequential IDs", func() {
-			resp, err := clusterClient.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
+			resp, err := clusterClient.ListQueryCheckpoints(ctx, &ledgerpb.ListQueryCheckpointsRequest{})
 			Expect(err).To(Succeed())
 			Expect(resp.GetCheckpoints()).To(HaveLen(2))
 			Expect(checkpoint1ID).To(Equal(uint64(1)))
@@ -299,7 +299,7 @@ var _ = Describe("Query Checkpoints", func() {
 	Context("GetAccount(checkpoint_id) returns frozen balance for the same account across checkpoints", Ordered, func() {
 		var (
 			ctx    context.Context
-			client clusterpb.BucketServiceClient
+			client ledgerpb.BucketServiceClient
 		)
 
 		const (
@@ -315,13 +315,13 @@ var _ = Describe("Query Checkpoints", func() {
 			ctx, node = testutil.SetupSingleNode()
 			client = node.Client
 
-			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
 		It("builds three balance steps with a checkpoint after each credit", func() {
 			credit := func(amount int64) {
-				_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*clusterpb.Posting{
+				_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", acc, big.NewInt(amount), asset),
 				}, nil)))
 				Expect(err).To(Succeed())
@@ -347,7 +347,7 @@ var _ = Describe("Query Checkpoints", func() {
 		assertBalance := func(cp uint64, expected string) {
 			GinkgoHelper()
 
-			resp, err := client.GetAccount(ctx, &clusterpb.GetAccountRequest{
+			resp, err := client.GetAccount(ctx, &ledgerpb.GetAccountRequest{
 				Ledger:       ledgerName,
 				Address:      acc,
 				CheckpointId: cp,
@@ -373,7 +373,7 @@ var _ = Describe("Query Checkpoints", func() {
 		})
 
 		It("live store returns the current balance (400)", func() {
-			resp, err := client.GetAccount(ctx, &clusterpb.GetAccountRequest{
+			resp, err := client.GetAccount(ctx, &ledgerpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: acc,
 			})
@@ -393,7 +393,7 @@ var _ = Describe("Query Checkpoints", func() {
 	Context("immediate read after checkpoint creation is race-free", Ordered, func() {
 		var (
 			ctx    context.Context
-			client clusterpb.BucketServiceClient
+			client ledgerpb.BucketServiceClient
 		)
 
 		const (
@@ -405,7 +405,7 @@ var _ = Describe("Query Checkpoints", func() {
 			ctx, node = testutil.SetupSingleNode()
 			client = node.Client
 
-			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -413,7 +413,7 @@ var _ = Describe("Query Checkpoints", func() {
 			// Repeat create-then-read several times to shrink the odds the former
 			// race window is simply missed by chance.
 			for i := 0; i < 10; i++ {
-				_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*clusterpb.Posting{
+				_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 				}, nil)))
 				Expect(err).To(Succeed())
@@ -426,7 +426,7 @@ var _ = Describe("Query Checkpoints", func() {
 				// Read at the checkpoint with zero delay on the creator node.
 				// Before the fix this intermittently returned code=Unknown; now
 				// it must succeed because Create waited on the marker.
-				agg, err := client.AggregateVolumes(ctx, &clusterpb.AggregateVolumesRequest{
+				agg, err := client.AggregateVolumes(ctx, &ledgerpb.AggregateVolumesRequest{
 					Ledger:       ledgerName,
 					CheckpointId: cpID,
 				})
@@ -457,10 +457,10 @@ var _ = Describe("Query Checkpoints (multi-node readiness)", Ordered, func() {
 	BeforeAll(func() {
 		ctx, servers, _, _ = testutil.SetupMultiNodeCluster(countInstances)
 
-		_, err := servers[0].Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+		_, err := servers[0].Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())
 
-		_, err = servers[0].Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*clusterpb.Posting{
+		_, err = servers[0].Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 			actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 		}, nil)))
 		Expect(err).To(Succeed())
@@ -482,7 +482,7 @@ var _ = Describe("Query Checkpoints (multi-node readiness)", Ordered, func() {
 			// It must eventually succeed on every node (per-replica
 			// materialization).
 			Eventually(func(g Gomega) {
-				agg, aggErr := node.Client.AggregateVolumes(ctx, &clusterpb.AggregateVolumesRequest{
+				agg, aggErr := node.Client.AggregateVolumes(ctx, &ledgerpb.AggregateVolumesRequest{
 					Ledger:       ledgerName,
 					CheckpointId: cpID,
 				})
@@ -502,7 +502,7 @@ var _ = Describe("Query Checkpoints (multi-node readiness)", Ordered, func() {
 		It("replays a deleted checkpoint through the "+route+" without recreating it", func() {
 			ctx, cancelCase := context.WithTimeout(ctx, 2*time.Minute)
 			defer cancelCase()
-			state, err := servers[0].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+			state, err := servers[0].ClusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 			Expect(err).To(Succeed())
 			Expect(state.GetLeader()).NotTo(BeZero())
 
@@ -534,7 +534,7 @@ var _ = Describe("Query Checkpoints (multi-node readiness)", Ordered, func() {
 				}, 30*time.Second, 100*time.Millisecond).Should(Succeed())
 			}
 
-			deleted, err := servingNode.Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.DeleteQueryCheckpointAction(checkpointID)))
+			deleted, err := servingNode.Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.DeleteQueryCheckpointAction(checkpointID)))
 			Expect(err).To(Succeed())
 			Expect(deleted.GetLogs()).To(HaveLen(1))
 			for _, node := range servers {
@@ -554,14 +554,14 @@ var _ = Describe("Query Checkpoints (multi-node readiness)", Ordered, func() {
 			Expect(replayed.GetLogs()[0].GetPayload().GetCreatedQueryCheckpoint().GetCheckpointId()).To(Equal(checkpointID))
 
 			// A subsequent real mutation proves replay consumed no new log sequence.
-			barrier, err := servingNode.Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction("qcp-replay-barrier-"+route, nil)))
+			barrier, err := servingNode.Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction("qcp-replay-barrier-"+route, nil)))
 			Expect(err).To(Succeed())
 			Expect(barrier.GetLogs()).To(HaveLen(1))
 			Expect(barrier.GetLogs()[0].GetSequence()).To(Equal(deleted.GetLogs()[0].GetSequence() + 1))
 			for _, node := range servers {
 				_, err := os.Stat(marker(node))
 				Expect(os.IsNotExist(err)).To(BeTrue())
-				checkpoints, err := node.ClusterClient.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
+				checkpoints, err := node.ClusterClient.ListQueryCheckpoints(ctx, &ledgerpb.ListQueryCheckpointsRequest{})
 				Expect(err).To(Succeed())
 				for _, checkpoint := range checkpoints.GetCheckpoints() {
 					Expect(checkpoint.GetCheckpointId()).NotTo(Equal(checkpointID))
@@ -571,7 +571,7 @@ var _ = Describe("Query Checkpoints (multi-node readiness)", Ordered, func() {
 	}
 
 	It("returns NotFound (not Unavailable) for a checkpoint id that was never created", func() {
-		_, err := servers[0].Client.AggregateVolumes(ctx, &clusterpb.AggregateVolumesRequest{
+		_, err := servers[0].Client.AggregateVolumes(ctx, &ledgerpb.AggregateVolumesRequest{
 			Ledger:       ledgerName,
 			CheckpointId: 999999,
 		})
@@ -582,26 +582,26 @@ var _ = Describe("Query Checkpoints (multi-node readiness)", Ordered, func() {
 })
 
 // listAllTransactionsFromCheckpoint collects all transactions from a checkpoint via the streaming RPC.
-func listAllTransactionsFromCheckpoint(ctx context.Context, client clusterpb.BucketServiceClient, ledgerName string, pageSize uint32, afterTxID uint64, checkpointID uint64, filter *clusterpb.QueryFilter) ([]*clusterpb.Transaction, error) {
+func listAllTransactionsFromCheckpoint(ctx context.Context, client ledgerpb.BucketServiceClient, ledgerName string, pageSize uint32, afterTxID uint64, checkpointID uint64, filter *ledgerpb.QueryFilter) ([]*ledgerpb.Transaction, error) {
 	var cursor string
 	if afterTxID > 0 {
 		cursor = strconv.FormatUint(afterTxID, 10)
 	}
 
-	stream, err := client.ListTransactions(ctx, &clusterpb.ListTransactionsRequest{
+	stream, err := client.ListTransactions(ctx, &ledgerpb.ListTransactionsRequest{
 		Ledger: ledgerName,
-		Options: &clusterpb.ListOptions{
+		Options: &ledgerpb.ListOptions{
 			PageSize: pageSize,
 			Cursor:   cursor,
 			Filter:   filter,
-			Read:     &clusterpb.ReadOptions{CheckpointId: checkpointID},
+			Read:     &ledgerpb.ReadOptions{CheckpointId: checkpointID},
 		},
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	var transactions []*clusterpb.Transaction
+	var transactions []*ledgerpb.Transaction
 	for {
 		tx, err := stream.Recv()
 		if err == io.EOF {
@@ -619,7 +619,7 @@ func listAllTransactionsFromCheckpoint(ctx context.Context, client clusterpb.Buc
 }
 
 // aggregateAssets returns the asset codes present in an AggregateVolumes result.
-func aggregateAssets(result *clusterpb.AggregateResult) []string {
+func aggregateAssets(result *ledgerpb.AggregateResult) []string {
 	assets := make([]string, 0, len(result.GetVolumes()))
 	for _, v := range result.GetVolumes() {
 		assets = append(assets, v.GetAsset())
@@ -635,8 +635,8 @@ func aggregateAssets(result *clusterpb.AggregateResult) []string {
 var _ = Describe("Query Checkpoints live cap", Ordered, func() {
 	var (
 		ctx           context.Context
-		client        clusterpb.BucketServiceClient
-		clusterClient clusterpb.ClusterServiceClient
+		client        ledgerpb.BucketServiceClient
+		clusterClient ledgerpb.ClusterServiceClient
 	)
 
 	const (
@@ -650,7 +650,7 @@ var _ = Describe("Query Checkpoints live cap", Ordered, func() {
 		client = node.Client
 		clusterClient = node.ClusterClient
 
-		_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+		_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())
 	})
 
@@ -660,7 +660,7 @@ var _ = Describe("Query Checkpoints live cap", Ordered, func() {
 			Expect(err).To(Succeed(), "creation %d of %d must succeed", i+1, limit)
 		}
 
-		resp, err := clusterClient.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
+		resp, err := clusterClient.ListQueryCheckpoints(ctx, &ledgerpb.ListQueryCheckpointsRequest{})
 		Expect(err).To(Succeed())
 		Expect(resp.GetCheckpoints()).To(HaveLen(limit))
 	})
@@ -676,7 +676,7 @@ var _ = Describe("Query Checkpoints live cap", Ordered, func() {
 	})
 
 	It("frees a slot on delete so creation succeeds again", func() {
-		list, err := clusterClient.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
+		list, err := clusterClient.ListQueryCheckpoints(ctx, &ledgerpb.ListQueryCheckpointsRequest{})
 		Expect(err).To(Succeed())
 		Expect(list.GetCheckpoints()).NotTo(BeEmpty())
 

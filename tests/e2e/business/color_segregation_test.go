@@ -6,7 +6,7 @@ import (
 	"math/big"
 	"time"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -20,7 +20,7 @@ var _ = Describe("ColorSegregation", Ordered, func() {
 	const ledgerName = "color-segregation"
 
 	BeforeAll(func() {
-		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
+		_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("",
 			actions.CreateLedgerAction(ledgerName, nil),
 		))
 		Expect(err).To(Succeed())
@@ -29,8 +29,8 @@ var _ = Describe("ColorSegregation", Ordered, func() {
 		//   uncolored ""  : 100
 		//   GRANTS         :  50
 		//   OPS            :  25
-		_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
-			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+		_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("",
+			actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewColoredPosting("world", "alice", big.NewInt(100), "USD/2", ""),
 				actions.NewColoredPosting("world", "alice", big.NewInt(50), "USD/2", "GRANTS"),
 				actions.NewColoredPosting("world", "alice", big.NewInt(25), "USD/2", "OPS"),
@@ -41,7 +41,7 @@ var _ = Describe("ColorSegregation", Ordered, func() {
 
 	It("Should expose every (asset, color) bucket on GetAccount", func() {
 		Eventually(func(g Gomega) {
-			acct, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
+			acct, err := sharedClient.GetAccount(sharedCtx, &ledgerpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "alice",
 			})
@@ -69,7 +69,7 @@ var _ = Describe("ColorSegregation", Ordered, func() {
 	})
 
 	It("Should collapse colors into a single per-asset entry when requested", func() {
-		acct, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
+		acct, err := sharedClient.GetAccount(sharedCtx, &ledgerpb.GetAccountRequest{
 			Ledger:         ledgerName,
 			Address:        "alice",
 			CollapseColors: true,
@@ -86,8 +86,8 @@ var _ = Describe("ColorSegregation", Ordered, func() {
 
 	It("Should reject a draw from a color that has insufficient funds", func() {
 		// alice's OPS bucket has 25; ask for 100 OPS → MissingFunds.
-		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
-			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+		_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("",
+			actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewColoredPosting("alice", "bob", big.NewInt(100), "USD/2", "OPS"),
 			}, nil, nil),
 		))
@@ -97,8 +97,8 @@ var _ = Describe("ColorSegregation", Ordered, func() {
 	It("Should refuse drawing colored funds from the uncolored bucket", func() {
 		// alice's uncolored bucket has 100; drawing 100 from "" should succeed.
 		// But drawing 100 from "GRANTS" must NOT dip into the 100 uncolored.
-		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
-			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+		_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("",
+			actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewColoredPosting("alice", "bob", big.NewInt(100), "USD/2", "GRANTS"),
 			}, nil, nil),
 		))
@@ -107,15 +107,15 @@ var _ = Describe("ColorSegregation", Ordered, func() {
 
 	It("Should drain a color independently of the others", func() {
 		// Spend exactly the GRANTS bucket (50) → success.
-		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
-			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+		_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("",
+			actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewColoredPosting("alice", "bob", big.NewInt(50), "USD/2", "GRANTS"),
 			}, nil, nil),
 		))
 		Expect(err).To(Succeed())
 
 		Eventually(func(g Gomega) {
-			alice, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
+			alice, err := sharedClient.GetAccount(sharedCtx, &ledgerpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "alice",
 			})
@@ -127,7 +127,7 @@ var _ = Describe("ColorSegregation", Ordered, func() {
 			g.Expect(alice.FindVolume("USD/2", "OPS").GetBalance()).To(Equal("25"))
 
 			// bob received under GRANTS, color preserved on the destination side.
-			bob, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
+			bob, err := sharedClient.GetAccount(sharedCtx, &ledgerpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "bob",
 			})
@@ -141,9 +141,9 @@ var _ = Describe("ColorSegregation", Ordered, func() {
 	It("Should expose color on the emitted posting", func() {
 		// Re-fetch the GRANTS transfer we just executed and verify the
 		// posting still carries color = "GRANTS" on the wire.
-		resp, err := sharedClient.ListTransactions(sharedCtx, &commonpb.ListTransactionsRequest{
+		resp, err := sharedClient.ListTransactions(sharedCtx, &ledgerpb.ListTransactionsRequest{
 			Ledger:  ledgerName,
-			Options: &commonpb.ListOptions{PageSize: 32},
+			Options: &ledgerpb.ListOptions{PageSize: 32},
 		})
 		Expect(err).To(Succeed())
 

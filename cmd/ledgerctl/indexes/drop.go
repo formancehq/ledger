@@ -6,7 +6,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -79,7 +79,7 @@ func runDropIndex(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	req := &servicepb.DropIndexRequest{
+	req := &ledgerpb.DropIndexRequest{
 		Ledger: ledgerName,
 	}
 
@@ -104,9 +104,9 @@ func runDropIndex(cmd *cobra.Command, _ []string) error {
 
 	spinner := cmdutil.StartSpinner(fmt.Sprintf("Dropping index %s on %s...", indexDesc, ledgerName))
 
-	requests := []*servicepb.Request{
+	requests := []*ledgerpb.Request{
 		{
-			Type: &servicepb.Request_DropIndex{
+			Type: &ledgerpb.Request_DropIndex{
 				DropIndex: req,
 			},
 		},

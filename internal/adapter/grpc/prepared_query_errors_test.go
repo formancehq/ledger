@@ -8,7 +8,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -34,12 +34,12 @@ func TestExecutePreparedQueryErrorClassification(t *testing.T) {
 	}{
 		{
 			name:    "aggregate on a non-accounts target",
-			err:     &query.ErrPreparedQueryAggregateTarget{Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS},
+			err:     &query.ErrPreparedQueryAggregateTarget{Target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS},
 			message: "AGGREGATE_VOLUMES mode is only valid for ACCOUNTS target queries, this query targets transactions",
 		},
 		{
 			name:    "unsupported query mode",
-			err:     &query.ErrQueryModeUnsupported{Mode: commonpb.QueryMode(99)},
+			err:     &query.ErrQueryModeUnsupported{Mode: ledgerpb.QueryMode(99)},
 			message: "unsupported query mode: 99",
 		},
 	} {

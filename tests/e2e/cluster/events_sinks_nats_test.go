@@ -8,7 +8,7 @@ import (
 	"math/big"
 	"time"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	natsserver "github.com/nats-io/nats-server/v2/server"
@@ -21,7 +21,7 @@ import (
 var _ = Describe("Events Sinks NATS", Ordered, func() {
 	var (
 		ctx    context.Context
-		client commonpb.BucketServiceClient
+		client ledgerpb.BucketServiceClient
 
 		ns       *natsserver.Server
 		natsConn *nats.Conn
@@ -89,13 +89,13 @@ var _ = Describe("Events Sinks NATS", Ordered, func() {
 		Expect(err).To(Succeed())
 
 		// Add NATS sink via Apply
-		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", addEventsSinkAction(&commonpb.SinkConfig{
+		_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", addEventsSinkAction(&ledgerpb.SinkConfig{
 			Name:         "nats-e2e",
 			Format:       "json",
 			BatchSize:    10,
 			BatchDelayMs: 50,
-			Type: &commonpb.SinkConfig_Nats{
-				Nats: &commonpb.NatsSinkConfig{
+			Type: &ledgerpb.SinkConfig_Nats{
+				Nats: &ledgerpb.NatsSinkConfig{
 					Url:   ns.ClientURL(),
 					Topic: topic,
 				},
@@ -104,12 +104,12 @@ var _ = Describe("Events Sinks NATS", Ordered, func() {
 		Expect(err).To(Succeed())
 
 		// Create a ledger
-		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction("nats-test", nil)))
+		_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction("nats-test", nil)))
 		Expect(err).To(Succeed())
 
 		// Create a transaction (force=true to bypass balance checks)
-		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("nats-test",
-			[]*commonpb.Posting{
+		_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("nats-test",
+			[]*ledgerpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 			},
 			nil,
@@ -152,7 +152,7 @@ var _ = Describe("Events Sinks NATS", Ordered, func() {
 
 		// Verify sink status shows a healthy cursor
 		Eventually(func(g Gomega) {
-			resp, err := client.GetEventsSinks(ctx, &commonpb.GetEventsSinksRequest{})
+			resp, err := client.GetEventsSinks(ctx, &ledgerpb.GetEventsSinksRequest{})
 			g.Expect(err).To(Succeed())
 			g.Expect(resp.Sinks).To(HaveLen(1))
 			g.Expect(resp.Sinks[0].Name).To(Equal("nats-e2e"))

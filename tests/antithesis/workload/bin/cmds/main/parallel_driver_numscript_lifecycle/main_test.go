@@ -18,7 +18,7 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	ledgergrpc "github.com/formancehq/ledger/v3/internal/adapter/grpc"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl/ctrlmock"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
@@ -32,8 +32,8 @@ func TestNumscriptIsListedBeyondDefaultPage(t *testing.T) {
 	controller := ctrlmock.NewMockController(gomock.NewController(t))
 	scripts := numscriptNames(105)
 	controller.EXPECT().ListNumscripts(gomock.Any(), "default").DoAndReturn(
-		func(context.Context, string) ([]*commonpb.NumscriptInfo, error) {
-			return append([]*commonpb.NumscriptInfo(nil), scripts...), nil
+		func(context.Context, string) ([]*ledgerpb.NumscriptInfo, error) {
+			return append([]*ledgerpb.NumscriptInfo(nil), scripts...), nil
 		},
 	).AnyTimes()
 
@@ -43,7 +43,7 @@ func TestNumscriptIsListedBeyondDefaultPage(t *testing.T) {
 
 	// Control: the service returns exactly the default 100 items and provides
 	// the continuation token that the old workload discarded.
-	stream, err := client.ListNumscripts(ctx, &commonpb.ListNumscriptsRequest{Ledger: "default"})
+	stream, err := client.ListNumscripts(ctx, &ledgerpb.ListNumscriptsRequest{Ledger: "default"})
 	require.NoError(t, err)
 	var count int
 	for {
@@ -63,11 +63,11 @@ func TestNumscriptIsListedBeyondDefaultPage(t *testing.T) {
 	require.True(t, found, "saved numscript should appear in ListNumscripts: rank 102 of 105, default page 100")
 }
 
-func dialNumscriptServer(t *testing.T, service commonpb.BucketServiceServer, options ...grpc.ServerOption) commonpb.BucketServiceClient {
+func dialNumscriptServer(t *testing.T, service ledgerpb.BucketServiceServer, options ...grpc.ServerOption) ledgerpb.BucketServiceClient {
 	t.Helper()
 	listener := bufconn.Listen(1 << 20)
 	server := grpc.NewServer(options...)
-	commonpb.RegisterBucketServiceServer(server, service)
+	ledgerpb.RegisterBucketServiceServer(server, service)
 	serveDone := make(chan error, 1)
 	go func() { serveDone <- server.Serve(listener) }()
 	t.Cleanup(func() {
@@ -82,7 +82,7 @@ func dialNumscriptServer(t *testing.T, service commonpb.BucketServiceServer, opt
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
 
-	return commonpb.NewBucketServiceClient(conn)
+	return ledgerpb.NewBucketServiceClient(conn)
 }
 
 func TestNumscriptIsListedPagination(t *testing.T) {
@@ -106,7 +106,7 @@ func TestNumscriptIsListedPagination(t *testing.T) {
 			t.Parallel()
 			controller := ctrlmock.NewMockController(gomock.NewController(t))
 			controller.EXPECT().ListNumscripts(gomock.Any(), "default").DoAndReturn(
-				func(context.Context, string) ([]*commonpb.NumscriptInfo, error) {
+				func(context.Context, string) ([]*ledgerpb.NumscriptInfo, error) {
 					return numscriptNames(test.count), nil
 				},
 			).Times(test.pages)
@@ -175,7 +175,7 @@ func (s *failingNumscriptStream) SendMsg(msg any) error {
 	if err := s.ServerStream.SendMsg(msg); err != nil {
 		return err
 	}
-	if msg.(*commonpb.NumscriptInfo).GetName() == "lifecycle-102" {
+	if msg.(*ledgerpb.NumscriptInfo).GetName() == "lifecycle-102" {
 		return status.Error(codes.DataLoss, "injected mid-stream failure")
 	}
 
@@ -193,17 +193,17 @@ func TestNumscriptIsListedCanceled(t *testing.T) {
 	require.False(t, found)
 }
 
-func numscriptNames(count int) []*commonpb.NumscriptInfo {
-	scripts := make([]*commonpb.NumscriptInfo, count)
+func numscriptNames(count int) []*ledgerpb.NumscriptInfo {
+	scripts := make([]*ledgerpb.NumscriptInfo, count)
 	for i := range scripts {
 		// Return unsorted data so the production handler also exercises sorting.
-		scripts[i] = &commonpb.NumscriptInfo{Name: fmt.Sprintf("lifecycle-%03d", count-i), Version: "1.0.0"}
+		scripts[i] = &ledgerpb.NumscriptInfo{Name: fmt.Sprintf("lifecycle-%03d", count-i), Version: "1.0.0"}
 	}
 
 	return scripts
 }
 
-func numscriptServer(controller *ctrlmock.MockController) commonpb.BucketServiceServer {
+func numscriptServer(controller *ctrlmock.MockController) ledgerpb.BucketServiceServer {
 	return ledgergrpc.NewBucketServiceServer(logging.Testing(), controller, nil, nil, nil, nil, nil, nil,
 		0, "", noop.NewMeterProvider(), nil, nil, version.Info{})
 }

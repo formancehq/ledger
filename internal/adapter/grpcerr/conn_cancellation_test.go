@@ -16,7 +16,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
@@ -25,7 +25,7 @@ import (
 // A real handler keeps the RPC in flight until the owning peer connection is
 // removed. No authored Canceled status substitutes for grpc-go's close path.
 type interruptedUnaryServer struct {
-	servicepb.UnimplementedBucketServiceServer
+	ledgerpb.UnimplementedBucketServiceServer
 
 	entered       chan struct{}
 	attempts      atomic.Int32
@@ -42,24 +42,24 @@ func (s *interruptedUnaryServer) wait(ctx context.Context) error {
 	return ctx.Err()
 }
 
-func (s *interruptedUnaryServer) Apply(ctx context.Context, _ *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
-	return &servicepb.ApplyResponse{}, s.wait(ctx)
+func (s *interruptedUnaryServer) Apply(ctx context.Context, _ *ledgerpb.ApplyRequest) (*ledgerpb.ApplyResponse, error) {
+	return &ledgerpb.ApplyResponse{}, s.wait(ctx)
 }
 
-func (s *interruptedUnaryServer) GetIndexStatus(ctx context.Context, _ *servicepb.GetIndexStatusRequest) (*servicepb.GetIndexStatusResponse, error) {
-	return &servicepb.GetIndexStatusResponse{}, s.wait(ctx)
+func (s *interruptedUnaryServer) GetIndexStatus(ctx context.Context, _ *ledgerpb.GetIndexStatusRequest) (*ledgerpb.GetIndexStatusResponse, error) {
+	return &ledgerpb.GetIndexStatusResponse{}, s.wait(ctx)
 }
 
 func TestConn_PeerConnectionCloseIsNotCallerCancellation(t *testing.T) {
 	t.Parallel()
-	for _, method := range []string{servicepb.BucketService_Apply_FullMethodName, servicepb.BucketService_GetIndexStatus_FullMethodName} {
+	for _, method := range []string{ledgerpb.BucketService_Apply_FullMethodName, ledgerpb.BucketService_GetIndexStatus_FullMethodName} {
 		t.Run(method, func(t *testing.T) {
 			t.Parallel()
 			listener, err := net.Listen("tcp4", "127.0.0.1:0")
 			require.NoError(t, err)
 			server := grpc.NewServer()
 			handler := &interruptedUnaryServer{entered: make(chan struct{}, 2), blockAttempts: 2}
-			servicepb.RegisterBucketServiceServer(server, handler)
+			ledgerpb.RegisterBucketServiceServer(server, handler)
 			go func() { _ = server.Serve(listener) }()
 			t.Cleanup(server.Stop)
 
@@ -71,12 +71,12 @@ func TestConn_PeerConnectionCloseIsNotCallerCancellation(t *testing.T) {
 			t.Cleanup(cancel)
 
 			invoke := func(cc grpc.ClientConnInterface, result chan<- error) {
-				client := servicepb.NewBucketServiceClient(cc)
+				client := ledgerpb.NewBucketServiceClient(cc)
 				var callErr error
-				if method == servicepb.BucketService_Apply_FullMethodName {
-					_, callErr = client.Apply(ctx, &servicepb.ApplyRequest{})
+				if method == ledgerpb.BucketService_Apply_FullMethodName {
+					_, callErr = client.Apply(ctx, &ledgerpb.ApplyRequest{})
 				} else {
-					_, callErr = client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{})
+					_, callErr = client.GetIndexStatus(ctx, &ledgerpb.GetIndexStatusRequest{})
 				}
 				result <- callErr
 			}
@@ -119,7 +119,7 @@ func TestConn_UnaryCallerCancellationIsPreserved(t *testing.T) {
 	t.Cleanup(cancel)
 	result := make(chan error, 1)
 	go func() {
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{})
+		_, err := client.Apply(ctx, &ledgerpb.ApplyRequest{})
 		result <- err
 	}()
 	select {
@@ -138,13 +138,13 @@ func TestConn_UnaryServerStatusesArePreserved(t *testing.T) {
 	closeMessage := "grpc: the client connection is closing"
 	t.Run("peer-authored close status on a live connection", func(t *testing.T) {
 		client := dialWrapped(t, &rejectingServer{err: status.Error(codes.Canceled, closeMessage)})
-		_, err := client.GetTransaction(t.Context(), &servicepb.GetTransactionRequest{})
+		_, err := client.GetTransaction(t.Context(), &ledgerpb.GetTransactionRequest{})
 		require.ErrorIs(t, err, status.Error(codes.Canceled, closeMessage), "status equality alone does not establish local transport closure")
 	})
 	for _, code := range []codes.Code{codes.Canceled, codes.Unknown, codes.Internal, codes.Aborted, codes.FailedPrecondition} {
 		t.Run(code.String(), func(t *testing.T) {
 			client := dialWrapped(t, &rejectingServer{err: status.Error(code, "server operation failed")})
-			_, err := client.GetTransaction(t.Context(), &servicepb.GetTransactionRequest{})
+			_, err := client.GetTransaction(t.Context(), &ledgerpb.GetTransactionRequest{})
 			require.Equal(t, code, status.Code(err))
 			require.Equal(t, "server operation failed", status.Convert(err).Message())
 		})
@@ -157,14 +157,14 @@ func TestConn_UnaryServerStatusesArePreserved(t *testing.T) {
 			)
 			require.NoError(t, err)
 			client := dialWrapped(t, &rejectingServer{err: upstream.Err()})
-			_, got := client.GetTransaction(t.Context(), &servicepb.GetTransactionRequest{})
+			_, got := client.GetTransaction(t.Context(), &ledgerpb.GetTransactionRequest{})
 			require.True(t, proto.Equal(upstream.Proto(), status.Convert(got).Proto()), "details must not be mistaken for grpc-go's bare close status")
 		})
 	}
 	t.Run("definitive second revert", func(t *testing.T) {
 		upstream := businessStatus(t, codes.FailedPrecondition, "already reverted", domain.ErrReasonTransactionAlreadyReverted)
 		client := dialWrapped(t, &rejectingServer{err: upstream})
-		_, got := client.GetTransaction(t.Context(), &servicepb.GetTransactionRequest{})
+		_, got := client.GetTransaction(t.Context(), &ledgerpb.GetTransactionRequest{})
 		require.True(t, proto.Equal(status.Convert(upstream).Proto(), status.Convert(got).Proto()))
 	})
 }
@@ -205,7 +205,7 @@ func TestConn_ServerStatusBeforeLocalShutdown(t *testing.T) {
 			))
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			t.Cleanup(cancel)
-			_, err := client.GetTransaction(ctx, &servicepb.GetTransactionRequest{})
+			_, err := client.GetTransaction(ctx, &ledgerpb.GetTransactionRequest{})
 			require.True(t, proto.Equal(test.want.Proto(), status.Convert(err).Proto()), "local closure cannot prove the origin of an identical bare close status")
 		})
 	}

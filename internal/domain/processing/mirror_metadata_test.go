@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -17,7 +17,7 @@ func mirrorMetadataOrder(entry *raftcmdpb.MirrorLogEntry) *raftcmdpb.Order {
 }
 
 func mirrorMetadataEntry(value string) *raftcmdpb.MirrorLogEntry {
-	return &raftcmdpb.MirrorLogEntry{V2LogId: 1, Data: &raftcmdpb.MirrorLogEntry_SavedMetadata{SavedMetadata: &raftcmdpb.MirrorSavedMetadata{Target: &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: "a"}}}, Metadata: map[string]*commonpb.MetadataValue{"k": commonpb.NewStringValue(value)}}}}
+	return &raftcmdpb.MirrorLogEntry{V2LogId: 1, Data: &raftcmdpb.MirrorLogEntry_SavedMetadata{SavedMetadata: &raftcmdpb.MirrorSavedMetadata{Target: &ledgerpb.Target{Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{Addr: "a"}}}, Metadata: map[string]*ledgerpb.MetadataValue{"k": ledgerpb.NewStringValue(value)}}}}
 }
 
 func TestProcessOrdersMirrorMetadataRejectsBeforeMutation(t *testing.T) {
@@ -36,7 +36,7 @@ func TestProcessOrdersMirrorMetadataRejectsBeforeMutation(t *testing.T) {
 			t.Parallel()
 			ctrl := gomock.NewController(t)
 			scope := NewMockScope(ctrl)
-			policy := &commonpb.ClusterPolicy{Revision: 2, MetadataMaxEntriesPerEntity: 2, MetadataMaxKeyBytes: 4, MetadataMaxValueBytes: 8, MetadataMaxEntityBytes: 10, MetadataMaxCommandBytes: 12}
+			policy := &ledgerpb.ClusterPolicy{Revision: 2, MetadataMaxEntriesPerEntity: 2, MetadataMaxKeyBytes: 4, MetadataMaxValueBytes: 8, MetadataMaxEntityBytes: 10, MetadataMaxCommandBytes: 12}
 			if tc.unconfigured {
 				policy = nil
 			}
@@ -46,7 +46,7 @@ func TestProcessOrdersMirrorMetadataRejectsBeforeMutation(t *testing.T) {
 			setupBoundariesStub(scope).onPut(func(domain.LedgerKey, *raftcmdpb.LedgerBoundaries) {
 				t.Fatal("metadata rejection must precede boundary writes")
 			})
-			expectGetLedger(scope, domain.LedgerKey{Name: "mirrored"}, (&commonpb.LedgerInfo{Name: "mirrored", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR}).AsReader(), nil)
+			expectGetLedger(scope, domain.LedgerKey{Name: "mirrored"}, (&ledgerpb.LedgerInfo{Name: "mirrored", Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR}).AsReader(), nil)
 			orders := make([]*raftcmdpb.Order, tc.copies)
 			for i := range orders {
 				entry := mirrorMetadataEntry(tc.value)
@@ -84,17 +84,17 @@ func TestProcessOrdersMirrorMetadataExactCommandBoundary(t *testing.T) {
 	policy := tightMetadataPolicy(12)
 	policy.MetadataMaxKeyBytes = 4
 	scope.EXPECT().GetClusterPolicy().Return(policy).Times(2)
-	scope.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 100}).AsReader()).AnyTimes()
+	scope.EXPECT().GetDate().Return((&ledgerpb.Timestamp{Data: 100}).AsReader()).AnyTimes()
 	scope.EXPECT().GetNextSequenceID().Return(uint64(1)).AnyTimes()
 	scope.EXPECT().IncrementNextSequenceID().Return(uint64(1), nil).Times(2)
 	boundaries := &raftcmdpb.LedgerBoundaries{NextLogId: 1, NextTransactionId: 1}
 	stub := setupBoundariesStub(scope)
 	stub.onGet(func(domain.LedgerKey) (raftcmdpb.LedgerBoundariesReader, error) { return boundaries.AsReader(), nil })
 	stub.onPut(func(_ domain.LedgerKey, b *raftcmdpb.LedgerBoundaries) { boundaries = b })
-	expectGetLedger(scope, domain.LedgerKey{Name: "mirrored"}, (&commonpb.LedgerInfo{Name: "mirrored", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR}).AsReader(), nil).AnyTimes()
+	expectGetLedger(scope, domain.LedgerKey{Name: "mirrored"}, (&ledgerpb.LedgerInfo{Name: "mirrored", Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR}).AsReader(), nil).AnyTimes()
 	metadataStub, _ := stubsFor(scope).accountMetadataStubFor(scope)
 	writes := 0
-	metadataStub.onPut(func(_ domain.MetadataKey, v *commonpb.MetadataValue) {
+	metadataStub.onPut(func(_ domain.MetadataKey, v *ledgerpb.MetadataValue) {
 		require.Equal(t, "12345", v.GetStringValue())
 		writes++
 	})

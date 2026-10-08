@@ -11,7 +11,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	raftwal "github.com/formancehq/ledger/v3/internal/storage/wal"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
@@ -46,7 +46,7 @@ var _ = Describe("Simple cluster", func() {
 		It("should start successfully", func() {})
 
 		It("should create a ledger and delete it", func() {
-			_, err := servers[0].Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction("ledger0", nil)))
+			_, err := servers[0].Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction("ledger0", nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -55,11 +55,11 @@ var _ = Describe("Simple cluster", func() {
 
 			Eventually(servers[0]).To(HaveALeader(nil), "Timed out waiting for leader election")
 
-			_, err := servers[0].Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := servers[0].Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			for i := range countInstances {
-				_, err := servers[i].Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*clusterpb.Posting{
+				_, err := servers[i].Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", fmt.Sprintf("node-%d", i+1), big.NewInt(100*int64(i+1)), "USD"),
 				}, nil, nil)))
 				Expect(err).To(Succeed(), "Failed to create transaction through node %d", i+1)
@@ -134,11 +134,11 @@ var _ = Describe("Simple cluster", func() {
 			lid := *leaderID
 			Eventually(servers[lid-1]).To(HaveALeader(nil))
 
-			_, err := servers[lid-1].Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction("ledger1", nil)))
+			_, err := servers[lid-1].Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction("ledger1", nil)))
 			Expect(err).To(Succeed())
 
 			for i := 0; i < 5; i++ {
-				_, err := servers[lid-1].Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction("ledger1", []*clusterpb.Posting{
+				_, err := servers[lid-1].Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction("ledger1", []*ledgerpb.Posting{
 					actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 				}, nil, nil)))
 				Expect(err).To(Succeed())
@@ -148,7 +148,7 @@ var _ = Describe("Simple cluster", func() {
 		It("should restore the state after follower comes back", func() {
 			lid := *leaderID
 
-			_, err := servers[lid-1].Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := servers[lid-1].Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			testutil.RestartNode(ctx, servers[followerID-1])
@@ -164,7 +164,7 @@ var _ = Describe("Simple cluster", func() {
 				return found
 			}).To(BeTrue())
 
-			ledger, err := servers[followerID-1].Client.GetLedger(ctx, &clusterpb.GetLedgerRequest{
+			ledger, err := servers[followerID-1].Client.GetLedger(ctx, &ledgerpb.GetLedgerRequest{
 				Ledger: ledgerName,
 			})
 			Expect(err).To(Succeed())
@@ -177,12 +177,12 @@ var _ = Describe("Simple cluster", func() {
 			By("Capturing the caught-up follower progress before shutdown")
 			var followerLastIndex uint64
 			Eventually(func(g Gomega) {
-				leaderState, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
+				leaderState, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{
 					NodeId: uint32(lid),
 				})
 				g.Expect(err).To(Succeed())
 
-				followerState, err := servers[followerID-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
+				followerState, err := servers[followerID-1].ClusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{
 					NodeId: uint32(followerID),
 				})
 				g.Expect(err).To(Succeed())
@@ -198,7 +198,7 @@ var _ = Describe("Simple cluster", func() {
 
 			By("Creating state that cannot be replayed after compaction")
 			for i := 0; i < countTransactions; i++ {
-				_, err := servers[lid-1].Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*clusterpb.Posting{
+				_, err := servers[lid-1].Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", offlineAccountAddress, big.NewInt(100), "USD"),
 				}, nil, nil)))
 				Expect(err).To(Succeed())
@@ -207,7 +207,7 @@ var _ = Describe("Simple cluster", func() {
 			minimumSnapshotIndex := followerLastIndex + raftCompactionMargin + 1
 			var targetIndex uint64
 			Eventually(func(g Gomega) {
-				leaderState, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
+				leaderState, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{
 					NodeId: uint32(lid),
 				})
 				g.Expect(err).To(Succeed())
@@ -265,7 +265,7 @@ var _ = Describe("Simple cluster", func() {
 
 			By("Waiting for the follower's applied and durable indexes to pass the installed snapshot")
 			Eventually(func(g Gomega) {
-				followerState, err := servers[followerID-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
+				followerState, err := servers[followerID-1].ClusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{
 					NodeId: uint32(followerID),
 				})
 				g.Expect(err).To(Succeed())
@@ -276,7 +276,7 @@ var _ = Describe("Simple cluster", func() {
 
 			By("Reading state created while the follower was offline from that follower")
 			staleCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "stale")
-			account, err := servers[followerID-1].Client.GetAccount(staleCtx, &clusterpb.GetAccountRequest{
+			account, err := servers[followerID-1].Client.GetAccount(staleCtx, &ledgerpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: offlineAccountAddress,
 			})
@@ -318,7 +318,7 @@ var _ = Describe("Simple cluster", func() {
 
 			BeforeEach(func() {
 				ledgerName = "ledger2"
-				_, err := servers[*leaderID-1].Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+				_, err := servers[*leaderID-1].Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 				Expect(err).To(Succeed())
 
 				Expect(servers[*leaderID-1]).To(HaveALeader(nil))
@@ -345,7 +345,7 @@ var _ = Describe("Simple cluster", func() {
 					BeforeEach(func() {
 						lid := *leaderID
 						for i := 0; i < countTransactions; i++ {
-							_, err := servers[lid-1].Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*clusterpb.Posting{
+							_, err := servers[lid-1].Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 								actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 							}, nil, nil)))
 							Expect(err).To(Succeed())
@@ -357,7 +357,7 @@ var _ = Describe("Simple cluster", func() {
 						gateway.RemoveInterceptor()
 						By("Creating a transaction to trigger the delay detection by the leader", func() {
 							for i := 0; i < countTransactions; i++ {
-								_, err := servers[lid-1].Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*clusterpb.Posting{
+								_, err := servers[lid-1].Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 									actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 								}, nil, nil)))
 								Expect(err).To(Succeed())

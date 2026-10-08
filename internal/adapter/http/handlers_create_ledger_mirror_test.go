@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
@@ -19,19 +19,19 @@ import (
 func TestHandleCreateLedger_MirrorModeHTTP(t *testing.T) {
 	t.Parallel()
 
-	var capturedReq *commonpb.Request
+	var capturedReq *ledgerpb.Request
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, req *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedReq = req.GetUnsigned().GetRequests()[0]
 
-			return &domain.ApplyResult{Logs: []*commonpb.Log{{
-				Payload: &commonpb.LogPayload{
-					Type: &commonpb.LogPayload_CreateLedger{
-						CreateLedger: &commonpb.CreatedLedgerLog{
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{{
+				Payload: &ledgerpb.LogPayload{
+					Type: &ledgerpb.LogPayload_CreateLedger{
+						CreateLedger: &ledgerpb.CreatedLedgerLog{
 							Name: "mirror-ledger",
-							Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+							Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR,
 						},
 					},
 				},
@@ -52,7 +52,7 @@ func TestHandleCreateLedger_MirrorModeHTTP(t *testing.T) {
 	require.NotNil(t, capturedReq)
 
 	createReq := capturedReq.GetCreateLedger()
-	require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_MIRROR, createReq.GetMode())
+	require.Equal(t, ledgerpb.LedgerMode_LEDGER_MODE_MIRROR, createReq.GetMode())
 	require.NotNil(t, createReq.GetMirrorSource())
 	require.Equal(t, "default", createReq.GetMirrorSource().GetLedgerName())
 
@@ -69,19 +69,19 @@ func TestHandleCreateLedger_MirrorModeHTTP(t *testing.T) {
 func TestHandleCreateLedger_MirrorModePostgres(t *testing.T) {
 	t.Parallel()
 
-	var capturedReq *commonpb.Request
+	var capturedReq *ledgerpb.Request
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, req *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedReq = req.GetUnsigned().GetRequests()[0]
 
-			return &domain.ApplyResult{Logs: []*commonpb.Log{{
-				Payload: &commonpb.LogPayload{
-					Type: &commonpb.LogPayload_CreateLedger{
-						CreateLedger: &commonpb.CreatedLedgerLog{
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{{
+				Payload: &ledgerpb.LogPayload{
+					Type: &ledgerpb.LogPayload_CreateLedger{
+						CreateLedger: &ledgerpb.CreatedLedgerLog{
 							Name: "mirror-pg",
-							Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+							Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR,
 						},
 					},
 				},
@@ -102,7 +102,7 @@ func TestHandleCreateLedger_MirrorModePostgres(t *testing.T) {
 	require.NotNil(t, capturedReq)
 
 	createReq := capturedReq.GetCreateLedger()
-	require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_MIRROR, createReq.GetMode())
+	require.Equal(t, ledgerpb.LedgerMode_LEDGER_MODE_MIRROR, createReq.GetMode())
 
 	pgCfg := createReq.GetMirrorSource().GetPostgres()
 	require.NotNil(t, pgCfg)
@@ -112,17 +112,17 @@ func TestHandleCreateLedger_MirrorModePostgres(t *testing.T) {
 func TestHandleCreateLedger_MirrorModeDefaultType(t *testing.T) {
 	t.Parallel()
 
-	var capturedReq *commonpb.Request
+	var capturedReq *ledgerpb.Request
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, req *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedReq = req.GetUnsigned().GetRequests()[0]
 
-			return &domain.ApplyResult{Logs: []*commonpb.Log{{
-				Payload: &commonpb.LogPayload{
-					Type: &commonpb.LogPayload_CreateLedger{
-						CreateLedger: &commonpb.CreatedLedgerLog{
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{{
+				Payload: &ledgerpb.LogPayload{
+					Type: &ledgerpb.LogPayload_CreateLedger{
+						CreateLedger: &ledgerpb.CreatedLedgerLog{
 							Name: "mirror-default",
 						},
 					},
@@ -255,19 +255,19 @@ func TestMirrorSourceToProto_RewriteRules(t *testing.T) {
 func TestHandleCreateLedger_MirrorRewriteRules(t *testing.T) {
 	t.Parallel()
 
-	var capturedReq *commonpb.Request
+	var capturedReq *ledgerpb.Request
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, req *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedReq = req.GetUnsigned().GetRequests()[0]
 
-			return &domain.ApplyResult{Logs: []*commonpb.Log{{
-				Payload: &commonpb.LogPayload{
-					Type: &commonpb.LogPayload_CreateLedger{
-						CreateLedger: &commonpb.CreatedLedgerLog{
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{{
+				Payload: &ledgerpb.LogPayload{
+					Type: &ledgerpb.LogPayload_CreateLedger{
+						CreateLedger: &ledgerpb.CreatedLedgerLog{
 							Name: "mirror-rw",
-							Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+							Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR,
 						},
 					},
 				},

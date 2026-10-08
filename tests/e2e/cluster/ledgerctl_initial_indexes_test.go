@@ -6,7 +6,7 @@ import (
 	"context"
 	"time"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -39,7 +39,7 @@ var _ = Describe("LedgerctlInitialIndexes", Ordered, func() {
 				txs, err := actions.ListTransactionsFiltered(ctx, server.Client, ledger, 0, 0, actions.StringMetadataFilter("external:id", "source-0"))
 				g.Expect(err).To(Succeed())
 				g.Expect(txs).To(HaveLen(1))
-				status, err := server.Client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{Ledger: ledger})
+				status, err := server.Client.GetIndexStatus(ctx, &ledgerpb.GetIndexStatusRequest{Ledger: ledger})
 				g.Expect(err).To(Succeed())
 				g.Expect(status.GetIndexes()).To(HaveLen(3))
 				for _, entry := range status.GetIndexes() {
@@ -94,7 +94,7 @@ var _ = Describe("LedgerctlInitialIndexes", Ordered, func() {
 			"--index", "reference", "--index", "metadata:transaction:undeclared")
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("schema"))
-		_, err = servers[0].Client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledger})
+		_, err = servers[0].Client.GetLedger(ctx, &ledgerpb.GetLedgerRequest{Ledger: ledger})
 		Expect(err).To(HaveOccurred())
 		// Success with the same name proves that the preceding valid index and
 		// CreateLedger were discarded with the invalid declaration.

@@ -13,7 +13,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
@@ -32,7 +32,7 @@ import (
 // an independent oracle. The independent half is the round trip through
 // state.IdempotencyValueFromAudit — the same derivation
 // check.expectedIdempotencyOutcome builds its expectation with — which crosses
-// the auditpb.AuditFailure to internalstatepb.IdempotencyFailure field mapping
+// the ledgerpb.AuditFailure to internalstatepb.IdempotencyFailure field mapping
 // (Context to Metadata included) that describeFailure does not cover.
 func TestIdempotencyFailureMessageMatchesAudit(t *testing.T) {
 	t.Parallel()
@@ -78,15 +78,15 @@ func TestIdempotencyFailureMessageMatchesAudit(t *testing.T) {
 			// Side A — the hash-chained audit entry, round-tripped through the
 			// wire because that is how the checker reads it: a proto3 map with
 			// no entries comes back nil, so the empty Context does not survive.
-			entry := &auditpb.AuditEntry{
-				Timestamp: &auditpb.Timestamp{Data: proposalCreatedAt},
-				Outcome:   &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(tc.err)},
+			entry := &ledgerpb.AuditEntry{
+				Timestamp: &ledgerpb.Timestamp{Data: proposalCreatedAt},
+				Outcome:   &ledgerpb.AuditEntry_Failure{Failure: buildAuditFailure(tc.err)},
 			}
 
 			raw, err := entry.MarshalVT()
 			require.NoError(t, err)
 
-			audited := &auditpb.AuditEntry{}
+			audited := &ledgerpb.AuditEntry{}
 			require.NoError(t, audited.UnmarshalVT(raw))
 
 			// Side B — the SubIdempKeys projection, read back out of Pebble
@@ -397,7 +397,7 @@ func auditFailureCases() []auditFailureCase {
 			// The Provided enum is rendered through domain.ReasonString, so the
 			// projected value is the client-facing identifier, not the enum name.
 			name:        "InvalidSkippableReason",
-			err:         &domain.ErrInvalidSkippableReason{Provided: auditpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND},
+			err:         &domain.ErrInvalidSkippableReason{Provided: ledgerpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND},
 			wantReason:  domain.ErrReasonValidation,
 			wantContext: map[string]string{"reason": domain.ErrReasonLedgerNotFound},
 		},

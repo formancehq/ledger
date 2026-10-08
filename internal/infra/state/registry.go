@@ -1,7 +1,7 @@
 package state
 
 import (
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -26,18 +26,18 @@ type StateRegistry struct {
 	Cache             *cache.Cache
 	Attrs             *attributes.Attributes
 	Volumes           *CacheAwareEntry[domain.VolumeKey, *raftcmdpb.VolumePair]
-	AccountMetadata   *CacheAwareEntry[domain.MetadataKey, *commonpb.MetadataValue]
+	AccountMetadata   *CacheAwareEntry[domain.MetadataKey, *ledgerpb.MetadataValue]
 	Idempotency       *IdempotencyStore
 	References        *CacheAwareEntry[domain.TransactionReferenceKey, *internalstatepb.TransactionReferenceValue]
-	Ledgers           *CacheAwareEntry[domain.LedgerKey, *commonpb.LedgerInfo]
+	Ledgers           *CacheAwareEntry[domain.LedgerKey, *ledgerpb.LedgerInfo]
 	Boundaries        *CacheAwareEntry[domain.LedgerKey, *raftcmdpb.LedgerBoundaries]
-	SinkConfigs       *CacheAwareEntry[domain.SinkConfigKey, *commonpb.SinkConfig]
+	SinkConfigs       *CacheAwareEntry[domain.SinkConfigKey, *ledgerpb.SinkConfig]
 	NumscriptVersions *CacheAwareEntry[domain.NumscriptVersionKey, *internalstatepb.NumscriptVersionValue]
 	Transactions      *CacheAwareEntry[domain.TransactionKey, *internalstatepb.TransactionState]
-	NumscriptContents *CacheAwareEntry[domain.NumscriptEntryKey, *commonpb.NumscriptInfo]
-	PreparedQueries   *CacheAwareEntry[domain.PreparedQueryKey, *commonpb.PreparedQuery]
-	LedgerMetadata    *CacheAwareEntry[domain.LedgerMetadataKey, *commonpb.MetadataValue]
-	Indexes           *CacheAwareEntry[domain.IndexKey, *commonpb.Index]
+	NumscriptContents *CacheAwareEntry[domain.NumscriptEntryKey, *ledgerpb.NumscriptInfo]
+	PreparedQueries   *CacheAwareEntry[domain.PreparedQueryKey, *ledgerpb.PreparedQuery]
+	LedgerMetadata    *CacheAwareEntry[domain.LedgerMetadataKey, *ledgerpb.MetadataValue]
+	Indexes           *CacheAwareEntry[domain.IndexKey, *ledgerpb.Index]
 
 	// Reversions uses a compact bitset per ledger instead of a KeyStore.
 	// Bit N being set means transaction N in that ledger has been reverted.
@@ -66,7 +66,7 @@ func NewStateRegistry(c *cache.Cache, attrs *attributes.Attributes) *StateRegist
 			dal.SubAttrVolume,
 		),
 		AccountMetadata: NewCacheAwareEntry(
-			attributes.NewKeyStore[domain.MetadataKey, *commonpb.MetadataValue](c.AccountMetadata),
+			attributes.NewKeyStore[domain.MetadataKey, *ledgerpb.MetadataValue](c.AccountMetadata),
 			attrs.Metadata,
 			dal.SubAttrMetadata,
 		),
@@ -77,7 +77,7 @@ func NewStateRegistry(c *cache.Cache, attrs *attributes.Attributes) *StateRegist
 			dal.SubAttrReference,
 		),
 		Ledgers: NewCacheAwareEntry(
-			attributes.NewKeyStore[domain.LedgerKey, *commonpb.LedgerInfo](c.Ledgers),
+			attributes.NewKeyStore[domain.LedgerKey, *ledgerpb.LedgerInfo](c.Ledgers),
 			attrs.Ledger,
 			dal.SubAttrLedger,
 		),
@@ -87,7 +87,7 @@ func NewStateRegistry(c *cache.Cache, attrs *attributes.Attributes) *StateRegist
 			dal.SubAttrBoundary,
 		),
 		SinkConfigs: NewCacheAwareEntry(
-			attributes.NewKeyStore[domain.SinkConfigKey, *commonpb.SinkConfig](c.SinkConfigs),
+			attributes.NewKeyStore[domain.SinkConfigKey, *ledgerpb.SinkConfig](c.SinkConfigs),
 			attrs.SinkConfig,
 			dal.SubAttrSinkConfig,
 		),
@@ -102,22 +102,22 @@ func NewStateRegistry(c *cache.Cache, attrs *attributes.Attributes) *StateRegist
 			dal.SubAttrTransaction,
 		),
 		NumscriptContents: NewCacheAwareEntry(
-			attributes.NewKeyStore[domain.NumscriptEntryKey, *commonpb.NumscriptInfo](c.NumscriptContents),
+			attributes.NewKeyStore[domain.NumscriptEntryKey, *ledgerpb.NumscriptInfo](c.NumscriptContents),
 			attrs.NumscriptContent,
 			dal.SubAttrNumscriptContent,
 		),
 		PreparedQueries: NewCacheAwareEntry(
-			attributes.NewKeyStore[domain.PreparedQueryKey, *commonpb.PreparedQuery](c.PreparedQueries),
+			attributes.NewKeyStore[domain.PreparedQueryKey, *ledgerpb.PreparedQuery](c.PreparedQueries),
 			attrs.PreparedQuery,
 			dal.SubAttrPreparedQuery,
 		),
 		LedgerMetadata: NewCacheAwareEntry(
-			attributes.NewKeyStore[domain.LedgerMetadataKey, *commonpb.MetadataValue](c.LedgerMetadata),
+			attributes.NewKeyStore[domain.LedgerMetadataKey, *ledgerpb.MetadataValue](c.LedgerMetadata),
 			attrs.LedgerMetadata,
 			dal.SubAttrLedgerMetadata,
 		),
 		Indexes: NewCacheAwareEntry(
-			attributes.NewKeyStore[domain.IndexKey, *commonpb.Index](c.Indexes),
+			attributes.NewKeyStore[domain.IndexKey, *ledgerpb.Index](c.Indexes),
 			attrs.Index,
 			dal.SubAttrIndex,
 		),

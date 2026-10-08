@@ -10,7 +10,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 )
@@ -21,7 +21,7 @@ import (
 var _ = Describe("Degenerate range bounds resolve to the empty match", Ordered, func() {
 	var (
 		ctx    context.Context
-		client commonpb.BucketServiceClient
+		client ledgerpb.BucketServiceClient
 	)
 
 	const ledger = "degenerate-bounds"
@@ -32,10 +32,10 @@ var _ = Describe("Degenerate range bounds resolve to the empty match", Ordered, 
 		client = node.Client
 	})
 
-	countLogs := func(g Gomega, filter *commonpb.QueryFilter) int {
-		stream, err := client.ListLogs(ctx, &commonpb.ListLogsRequest{
+	countLogs := func(g Gomega, filter *ledgerpb.QueryFilter) int {
+		stream, err := client.ListLogs(ctx, &ledgerpb.ListLogsRequest{
 			Ledger:  ledger,
-			Options: &commonpb.ListOptions{Filter: filter},
+			Options: &ledgerpb.ListOptions{Filter: filter},
 		})
 		g.Expect(err).To(Succeed())
 
@@ -53,21 +53,21 @@ var _ = Describe("Degenerate range bounds resolve to the empty match", Ordered, 
 	}
 
 	It("lists the whole universe under not() of an empty interval", func() {
-		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledger, nil)))
+		_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledger, nil)))
 		Expect(err).To(Succeed())
 
 		for range 3 {
-			_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("",
-				actions.CreateForceTransactionAction(ledger, []*commonpb.Posting{
+			_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("",
+				actions.CreateForceTransactionAction(ledger, []*ledgerpb.Posting{
 					actions.NewPosting("world", "acc:1", big.NewInt(10), "USD"),
 				}, nil)))
 			Expect(err).To(Succeed())
 		}
 
 		bound := uint64(2)
-		notEmptyInterval := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Not{Not: &commonpb.NotFilter{
-			Filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{LogId: &commonpb.LogIdCondition{
-				Cond: &commonpb.UintCondition{
+		notEmptyInterval := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Not{Not: &ledgerpb.NotFilter{
+			Filter: &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_LogId{LogId: &ledgerpb.LogIdCondition{
+				Cond: &ledgerpb.UintCondition{
 					Min: &bound, MinExclusive: true,
 					Max: &bound, MaxExclusive: true,
 				},

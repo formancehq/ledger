@@ -11,7 +11,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // QueryProfile collects execution statistics for a read query.
@@ -379,12 +379,12 @@ func (p *QueryProfile) WallDuration() time.Duration {
 }
 
 // ToProto converts the profile to its protobuf representation.
-func (p *QueryProfile) ToProto() *servicepb.QueryProfile {
+func (p *QueryProfile) ToProto() *ledgerpb.QueryProfile {
 	if p == nil {
 		return nil
 	}
 
-	pb := &servicepb.QueryProfile{
+	pb := &ledgerpb.QueryProfile{
 		IndexDurationUs:      p.IndexDuration.Microseconds(),
 		EnrichmentDurationUs: p.EnrichmentDuration.Microseconds(),
 		ItemsCollected:       int32(p.ItemsCollected),
@@ -407,12 +407,12 @@ func (p *QueryProfile) ToProto() *servicepb.QueryProfile {
 }
 
 // ToProto converts iterator stats to protobuf.
-func (s *IteratorStats) ToProto() *servicepb.IteratorProfile {
+func (s *IteratorStats) ToProto() *ledgerpb.IteratorProfile {
 	if s == nil {
 		return nil
 	}
 
-	pb := &servicepb.IteratorProfile{
+	pb := &ledgerpb.IteratorProfile{
 		Label:              s.Label,
 		Kind:               s.Kind,
 		Bucket:             s.Prefix,

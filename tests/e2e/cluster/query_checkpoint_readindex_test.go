@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"time"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -46,25 +46,25 @@ var _ = Describe("Query Checkpoints (frozen read index completeness)", Ordered, 
 		wantTxIDs   []uint64
 	)
 
-	destinationIs := func(address string) *commonpb.QueryFilter {
-		return actions.AddressExactRoleFilter(address, commonpb.AddressRole_ADDRESS_ROLE_DESTINATION)
+	destinationIs := func(address string) *ledgerpb.QueryFilter {
+		return actions.AddressExactRoleFilter(address, ledgerpb.AddressRole_ADDRESS_ROLE_DESTINATION)
 	}
 
 	BeforeAll(func() {
 		ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(countInstances)
 		leader := servers[*leaderID-1].Client
 
-		_, err := leader.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+		_, err := leader.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())
 
 		// The account→transaction index is opt-in; declaring it before any
 		// posting keeps the builder on its inline path (no backfill).
-		_, err = leader.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS)))
+		_, err = leader.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateBuiltinTxIndexAction(ledgerName, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS)))
 		Expect(err).To(Succeed())
-		Expect(actions.WaitForBuiltinIndexReady(ctx, leader, ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS)).To(Succeed())
+		Expect(actions.WaitForBuiltinIndexReady(ctx, leader, ledgerName, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS)).To(Succeed())
 
 		for i := range txCount {
-			_, err := leader.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err := leader.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", fmt.Sprintf("acc-%d", i%8), big.NewInt(int64(i+1)), "USD"),
 			}, nil)))
 			Expect(err).To(Succeed())
@@ -96,8 +96,8 @@ var _ = Describe("Query Checkpoints (frozen read index completeness)", Ordered, 
 
 	It("serves every pre-checkpoint log through the checkpoint on every replica", func() {
 		for i, node := range servers {
-			logs := awaitCheckpointRead(func() ([]*commonpb.Log, error) {
-				return listLogs(ctx, node.Client, ledgerName, &commonpb.ReadOptions{CheckpointId: cpID})
+			logs := awaitCheckpointRead(func() ([]*ledgerpb.Log, error) {
+				return listLogs(ctx, node.Client, ledgerName, &ledgerpb.ReadOptions{CheckpointId: cpID})
 			})
 			Expect(logSequences(logs)).To(Equal(wantLogSeqs),
 				"node %d: the frozen read index must hold every log committed before the checkpoint", i+1)
@@ -106,7 +106,7 @@ var _ = Describe("Query Checkpoints (frozen read index completeness)", Ordered, 
 
 	It("serves the pre-checkpoint filtered transactions through the checkpoint on every replica", func() {
 		for i, node := range servers {
-			txs := awaitCheckpointRead(func() ([]*commonpb.Transaction, error) {
+			txs := awaitCheckpointRead(func() ([]*ledgerpb.Transaction, error) {
 				return listAllTransactionsFromCheckpoint(ctx, node.Client, ledgerName, 1000, 0, cpID, destinationIs(filteredAccount))
 			})
 			Expect(transactionIDs(txs)).To(Equal(wantTxIDs),
@@ -126,21 +126,21 @@ var _ = Describe("Query Checkpoints (frozen read index completeness)", Ordered, 
 		Expect(os.RemoveAll(mainDir)).To(Succeed())
 		testutil.RestartNode(ctx, follower)
 
-		logs := awaitCheckpointRead(func() ([]*commonpb.Log, error) {
-			return listLogs(ctx, follower.Client, ledgerName, &commonpb.ReadOptions{CheckpointId: cpID})
+		logs := awaitCheckpointRead(func() ([]*ledgerpb.Log, error) {
+			return listLogs(ctx, follower.Client, ledgerName, &ledgerpb.ReadOptions{CheckpointId: cpID})
 		})
 		Expect(logSequences(logs)).To(Equal(wantLogSeqs), "the rebuilt main store must serve the checkpoint's pages")
 		Expect(mainDir + ".tmp").NotTo(BeADirectory())
 	})
 
 	It("keeps serving the same pages after a post-checkpoint write", func() {
-		_, err := servers[*leaderID-1].Client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+		_, err := servers[*leaderID-1].Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 			actions.NewPosting("world", filteredAccount, big.NewInt(1), "USD"),
 		}, nil)))
 		Expect(err).To(Succeed())
 
 		for i, node := range servers {
-			logs, err := listLogs(ctx, node.Client, ledgerName, &commonpb.ReadOptions{CheckpointId: cpID})
+			logs, err := listLogs(ctx, node.Client, ledgerName, &ledgerpb.ReadOptions{CheckpointId: cpID})
 			Expect(err).To(Succeed())
 			Expect(logSequences(logs)).To(Equal(wantLogSeqs), "node %d", i+1)
 
@@ -177,16 +177,16 @@ func awaitCheckpointRead[T any](read func() (T, error)) T {
 }
 
 // listLogs drains one ledger log page (live when read is nil).
-func listLogs(ctx context.Context, client commonpb.BucketServiceClient, ledgerName string, read *commonpb.ReadOptions) ([]*commonpb.Log, error) {
-	stream, err := client.ListLogs(ctx, &commonpb.ListLogsRequest{
+func listLogs(ctx context.Context, client ledgerpb.BucketServiceClient, ledgerName string, read *ledgerpb.ReadOptions) ([]*ledgerpb.Log, error) {
+	stream, err := client.ListLogs(ctx, &ledgerpb.ListLogsRequest{
 		Ledger:  ledgerName,
-		Options: &commonpb.ListOptions{PageSize: 1000, Read: read},
+		Options: &ledgerpb.ListOptions{PageSize: 1000, Read: read},
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	var logs []*commonpb.Log
+	var logs []*ledgerpb.Log
 
 	for {
 		log, err := stream.Recv()
@@ -202,7 +202,7 @@ func listLogs(ctx context.Context, client commonpb.BucketServiceClient, ledgerNa
 	}
 }
 
-func logSequences(logs []*commonpb.Log) []uint64 {
+func logSequences(logs []*ledgerpb.Log) []uint64 {
 	seqs := make([]uint64, 0, len(logs))
 	for _, l := range logs {
 		seqs = append(seqs, l.GetSequence())
@@ -211,7 +211,7 @@ func logSequences(logs []*commonpb.Log) []uint64 {
 	return seqs
 }
 
-func transactionIDs(txs []*commonpb.Transaction) []uint64 {
+func transactionIDs(txs []*ledgerpb.Transaction) []uint64 {
 	ids := make([]uint64, 0, len(txs))
 	for _, tx := range txs {
 		ids = append(ids, tx.GetId())

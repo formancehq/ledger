@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/scenario"
 	"github.com/stretchr/testify/require"
@@ -38,7 +38,7 @@ func TestOperationsLifecycle(t *testing.T) {
 		scenariotest.ApplyActions(t, ctx, client, scenario.OperationsLifecycleSetupActions()...)
 
 		// Create a few transactions
-		reqs := make([]*commonpb.Request, 0, numDeposits)
+		reqs := make([]*ledgerpb.Request, 0, numDeposits)
 		for i := 1; i <= numDeposits; i++ {
 			reqs = append(reqs, actions.CreateScriptRefTransactionAction(ledger, "deposit", "1.0.0", map[string]string{
 				"account": fmt.Sprintf("ops:%d", i),
@@ -88,7 +88,7 @@ func TestOperationsLifecycle(t *testing.T) {
 
 		// 1 failing transaction (insufficient funds: ops:1 sending more than it has to ops:2)
 		_ = scenariotest.ApplyActionsExpectError(ctx, client,
-			actions.CreateTransactionAction(ledger, []*commonpb.Posting{
+			actions.CreateTransactionAction(ledger, []*ledgerpb.Posting{
 				actions.NewPosting("ops:1", "ops:2", big.NewInt(999_999_999), "USD/2"),
 			}, nil, nil),
 		)
@@ -156,7 +156,7 @@ func TestOperationsLifecycle(t *testing.T) {
 
 		// Register second key (must be signed by existing key)
 		regReq := actions.RegisterSigningKeyAction("key-2", pubKey2)
-		regEnv, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{regReq}}, "key-1", privKey1)
+		regEnv, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{regReq}}, "key-1", privKey1)
 		require.NoError(t, err)
 		scenariotest.ApplyBatch(t, ctx, client, regEnv)
 
@@ -172,7 +172,7 @@ func TestOperationsLifecycle(t *testing.T) {
 
 		// Revoke key-2 (must be signed since keys exist)
 		revokeReq := actions.RevokeSigningKeyAction("key-2", false)
-		revokeEnv, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{revokeReq}}, "key-1", privKey1)
+		revokeEnv, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{revokeReq}}, "key-1", privKey1)
 		require.NoError(t, err)
 		scenariotest.ApplyBatch(t, ctx, client, revokeEnv)
 
@@ -185,10 +185,10 @@ func TestOperationsLifecycle(t *testing.T) {
 		// Signed transaction is accepted. The batch signature lives on
 		// AppliedProposal (proposal.proto); no public read endpoint yet — only
 		// acceptance of the signed batch is observable here.
-		signedTxReq := actions.CreateTransactionAction(ledger, []*commonpb.Posting{
+		signedTxReq := actions.CreateTransactionAction(ledger, []*ledgerpb.Posting{
 			actions.NewPosting("world", "ops:1", big.NewInt(10), "USD/2"),
 		}, nil, nil)
-		signedTxEnv, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{signedTxReq}}, "key-1", privKey1)
+		signedTxEnv, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{signedTxReq}}, "key-1", privKey1)
 		require.NoError(t, err)
 		txResp := scenariotest.ApplyBatch(t, ctx, client, signedTxEnv)
 		require.NotEmpty(t, txResp.Logs)
@@ -208,7 +208,7 @@ func TestOperationsLifecycle(t *testing.T) {
 
 		// Make 1 transaction
 		scenariotest.ApplyActions(t, ctx, client,
-			actions.CreateForceTransactionAction("temp-ledger", []*commonpb.Posting{
+			actions.CreateForceTransactionAction("temp-ledger", []*ledgerpb.Posting{
 				actions.NewPosting("world", "user:1", big.NewInt(1000), "USD/2"),
 			}, nil),
 		)
@@ -240,20 +240,20 @@ func TestOperationsLifecycle(t *testing.T) {
 	})
 
 	// --- Tail phases: StoreCheck, Backup, Restart+Verify, BackupRestore+Verify ---
-	scenariotest.RunPostTestPhases(t, sc, func(t *testing.T, client commonpb.BucketServiceClient) {
+	scenariotest.RunPostTestPhases(t, sc, func(t *testing.T, client ledgerpb.BucketServiceClient) {
 		scenariotest.CheckDoubleEntryBalance(t, ctx, client, ledger)
 		scenariotest.CheckNoNegativeBalances(t, ctx, client, ledger, []string{"world"})
 	})
 }
 
 // listSigningKeys collects all signing keys without depending on Gomega.
-func listSigningKeys(t *testing.T, ctx context.Context, client commonpb.BucketServiceClient) []*commonpb.SigningKey {
+func listSigningKeys(t *testing.T, ctx context.Context, client ledgerpb.BucketServiceClient) []*ledgerpb.SigningKey {
 	t.Helper()
 
-	stream, err := client.ListSigningKeys(ctx, &commonpb.ListSigningKeysRequest{})
+	stream, err := client.ListSigningKeys(ctx, &ledgerpb.ListSigningKeysRequest{})
 	require.NoError(t, err, "ListSigningKeys failed")
 
-	var keys []*commonpb.SigningKey
+	var keys []*ledgerpb.SigningKey
 	for {
 		key, err := stream.Recv()
 		if errors.Is(err, io.EOF) {

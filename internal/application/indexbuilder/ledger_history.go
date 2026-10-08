@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"slices"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/proto/publicpolicy"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -94,7 +94,7 @@ func (b *Builder) observeCreatedLedger(ledger string) error {
 	return nil
 }
 
-func (b *Builder) observeLedgerPayload(ledger string, payload *commonpb.LedgerLogPayload) error {
+func (b *Builder) observeLedgerPayload(ledger string, payload *ledgerpb.LedgerLogPayload) error {
 	category := publicpolicy.LedgerLogCategoryOf(payload)
 	if category == publicpolicy.LedgerLogCategory_LEDGER_LOG_CATEGORY_UNSPECIFIED {
 		return historyReplayInvariantf("ledger %q emitted an unclassified ledger log payload %T", ledger, payload.GetPayload())

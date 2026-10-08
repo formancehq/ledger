@@ -7,20 +7,20 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_logs", func(ctx context.Context, client commonpb.BucketServiceClient, ledger string) {
+	internal.RunDriver("parallel_driver_logs", func(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string) {
 		// 1. Create a transaction to generate a log entry.
-		resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_Apply{
-				Apply: &commonpb.LedgerApplyRequest{
+		resp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
-						CreateTransaction: &commonpb.CreateTransactionPayload{
+					Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &ledgerpb.CreateTransactionPayload{
 							Postings: internal.RandomPostings(),
 							Force:    true,
 						},
@@ -46,9 +46,9 @@ func main() {
 		}
 
 		// 2. List logs; the default read aligns the asynchronous index.
-		stream, err := client.ListLogs(ctx, &commonpb.ListLogsRequest{
+		stream, err := client.ListLogs(ctx, &ledgerpb.ListLogsRequest{
 			Ledger: ledger,
-			Options: &commonpb.ListOptions{
+			Options: &ledgerpb.ListOptions{
 				PageSize: 20,
 			},
 		})
@@ -100,7 +100,7 @@ func main() {
 		}
 
 		// 3. GetLog for the first sequence we found.
-		logEntry, err := client.GetLog(ctx, &commonpb.GetLogRequest{
+		logEntry, err := client.GetLog(ctx, &ledgerpb.GetLogRequest{
 			Sequence: firstSeq,
 		})
 		if err != nil {

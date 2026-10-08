@@ -3,7 +3,7 @@ package http
 import (
 	"net/http"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // handleListAccounts handles GET /{ledgerName}/accounts to list accounts.
@@ -29,7 +29,7 @@ func (s *Server) handleListAccounts(w http.ResponseWriter, r *http.Request) {
 	// or the structured v2 JSON DSL (EN-1511). An address-prefix selection is
 	// expressed through it as the textual `address ^= "<prefix>"` (or structured
 	// `{"$match":{"address":"<prefix>:"}}`); there is no separate `prefix` alias.
-	filter, ok := parseListFilter(w, r, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	filter, ok := parseListFilter(w, r, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	if !ok {
 		return
 	}

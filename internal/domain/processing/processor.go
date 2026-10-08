@@ -9,7 +9,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
@@ -83,7 +83,7 @@ type Context struct {
 	// consume it directly and only configuration-mutating handlers call
 	// Mutate() to acquire an owned clone.
 	Boundaries *raftcmdpb.LedgerBoundaries
-	LedgerInfo commonpb.LedgerInfoReader
+	LedgerInfo ledgerpb.LedgerInfoReader
 
 	// Per-batch — owned by *RequestProcessor; passed by reference so
 	// handlers see the same cache across orders. NumscriptCache lives
@@ -122,7 +122,7 @@ func NewRequestProcessor(m metric.Meter, numscriptCacheSize int) (*RequestProces
 // across orders. The cache map is mutated in place. Free function (not
 // a method on RequestProcessor) so handlers reach for it via explicit
 // parameter — see the isolation goal of the processor refactor.
-func compiledTypesFor(cache map[string][]accounttype.CompiledType, ledger string, info commonpb.LedgerInfoReader) []accounttype.CompiledType {
+func compiledTypesFor(cache map[string][]accounttype.CompiledType, ledger string, info ledgerpb.LedgerInfoReader) []accounttype.CompiledType {
 	if info == nil || info.GetAccountTypes().Len() == 0 {
 		return nil
 	}
@@ -161,7 +161,7 @@ type OrdersResult struct {
 	// payload form. With idempotency out of ProcessOrders this is a
 	// trivial fold over Logs, but exposing it as a field lets
 	// applyProposal skip the rebuild walk.
-	CreatedLogs []*commonpb.Log
+	CreatedLogs []*ledgerpb.Log
 
 	// MinLogSequence / MaxLogSequence are the min/max sequence among
 	// CreatedLogs. Both are 0 when CreatedLogs is empty.
@@ -189,7 +189,7 @@ type OrdersResult struct {
 // counters today — but that is a property of the oneof, not something the
 // caller should have to know, and the second walk this replaces was immune to
 // the question by construction.
-func (r *OrdersResult) recordCreatedLog(log *commonpb.Log) bool {
+func (r *OrdersResult) recordCreatedLog(log *ledgerpb.Log) bool {
 	r.CreatedLogs = append(r.CreatedLogs, log)
 
 	sequence := log.GetSequence()
@@ -323,7 +323,7 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 				if sequenceErr != nil {
 					return nil, sequenceErr
 				}
-				skipLog := &commonpb.Log{
+				skipLog := &ledgerpb.Log{
 					Sequence: nextSequenceID,
 					Payload:  skippedPayload,
 				}
@@ -385,7 +385,7 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 		if sequenceErr != nil {
 			return nil, sequenceErr
 		}
-		log := &commonpb.Log{
+		log := &ledgerpb.Log{
 			Sequence: nextSequenceID,
 			Payload:  payload,
 		}
@@ -514,7 +514,7 @@ func hashOrder(order *raftcmdpb.Order, buf []byte) (hash []byte, grownBuf []byte
 // This entry point is kept for callers that don't already hold a Context
 // (tests, recovery flows). It allocates a transient Context wrapping the
 // processor's per-batch caches and forwards to processOrder.
-func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s Scope) (*commonpb.LogPayload, domain.SerializableError) {
+func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s Scope) (*ledgerpb.LogPayload, domain.SerializableError) {
 	ctx := &Context{
 		metadataBudget:       &commandMetadataBudget{bytes: domain.OrderMetadataSize(order)},
 		NumscriptCache:       p.numscriptCache,
@@ -530,7 +530,7 @@ func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s Scope) (*commo
 // (and clears per-apply fields) before delegating to a wrapper-level
 // dispatcher. The ledger name is passed explicitly to ledger-scoped
 // handlers; system-scoped handlers don't receive it.
-func (p *RequestProcessor) processOrder(order *raftcmdpb.Order, s Scope, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func (p *RequestProcessor) processOrder(order *raftcmdpb.Order, s Scope, ctx *Context) (*ledgerpb.LogPayload, domain.SerializableError) {
 	ctx.Scope = s
 	// Stage this order's admission-derived inputs hash (from OrderTechnical) for
 	// the stale-inputs check in the numscript producer, which only sees the
@@ -570,7 +570,7 @@ func (p *RequestProcessor) processOrder(order *raftcmdpb.Order, s Scope, ctx *Co
 // extracts the wrapper-level ledger name once and passes it explicitly
 // to each handler — keeping ctx free of an "always present for half the
 // dispatch table" field.
-func processLedgerScoped(ls *raftcmdpb.LedgerScopedOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func processLedgerScoped(ls *raftcmdpb.LedgerScopedOrder, ctx *Context) (*ledgerpb.LogPayload, domain.SerializableError) {
 	ledger := ls.GetLedger()
 	switch payload := ls.GetPayload().(type) {
 	case *raftcmdpb.LedgerScopedOrder_Apply:
@@ -602,7 +602,7 @@ func processLedgerScoped(ls *raftcmdpb.LedgerScopedOrder, ctx *Context) (*common
 
 // processSystemScoped dispatches a system-scoped order payload. These commands
 // affect cluster or global state and are never attributed to a single ledger.
-func processSystemScoped(ss *raftcmdpb.SystemScopedOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func processSystemScoped(ss *raftcmdpb.SystemScopedOrder, ctx *Context) (*ledgerpb.LogPayload, domain.SerializableError) {
 	switch payload := ss.GetPayload().(type) {
 	case *raftcmdpb.SystemScopedOrder_RegisterSigningKey:
 		return processRegisterSigningKey(payload.RegisterSigningKey, ctx)

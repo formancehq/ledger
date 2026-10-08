@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // handleListLedgerLogs handles GET /{ledgerName}/logs to list logs for a specific ledger.
@@ -22,7 +22,7 @@ func (s *Server) handleListLedgerLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var filters []*commonpb.QueryFilter
+	var filters []*ledgerpb.QueryFilter
 
 	if after := r.URL.Query().Get("after"); after != "" {
 		parsed, err := strconv.ParseUint(after, 10, 64)
@@ -32,10 +32,10 @@ func (s *Server) handleListLedgerLogs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		filters = append(filters, &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_LogId{
-				LogId: &commonpb.LogIdCondition{
-					Cond: &commonpb.UintCondition{
+		filters = append(filters, &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_LogId{
+				LogId: &ledgerpb.LogIdCondition{
+					Cond: &ledgerpb.UintCondition{
 						Min:          &parsed,
 						MinExclusive: true,
 					},
@@ -45,7 +45,7 @@ func (s *Server) handleListLedgerLogs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build date range filter from startDate/endDate query parameters (RFC3339).
-	dateCond := &commonpb.UintCondition{}
+	dateCond := &ledgerpb.UintCondition{}
 	hasDateFilter := false
 
 	if sd := r.URL.Query().Get("startDate"); sd != "" {
@@ -70,10 +70,10 @@ func (s *Server) handleListLedgerLogs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if hasDateFilter {
-		filters = append(filters, &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_LogBuiltinUint{
-				LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
-					Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
+		filters = append(filters, &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_LogBuiltinUint{
+				LogBuiltinUint: &ledgerpb.LogBuiltinUintCondition{
+					Field: ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
 					Cond:  dateCond,
 				},
 			},
@@ -83,7 +83,7 @@ func (s *Server) handleListLedgerLogs(w http.ResponseWriter, r *http.Request) {
 	// The generic `filter` query parameter accepts either the textual filterexpr
 	// grammar or the structured v2 JSON DSL (EN-1511); it is AND-combined with the
 	// after/startDate/endDate convenience params above.
-	generic, ok := parseListFilter(w, r, commonpb.QueryTarget_QUERY_TARGET_LOGS)
+	generic, ok := parseListFilter(w, r, ledgerpb.QueryTarget_QUERY_TARGET_LOGS)
 	if !ok {
 		return
 	}

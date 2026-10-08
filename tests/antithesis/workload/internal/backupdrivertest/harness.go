@@ -21,7 +21,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // driverConn runs the generated gRPC client against a deterministic transport
@@ -51,7 +51,7 @@ type driverCase struct {
 
 // Run checks each stage's error classification in isolated SDK subprocesses.
 // runDriver must execute the same post-connection path used by the real driver.
-func Run(t *testing.T, runDriver func(context.Context, commonpb.ClusterServiceClient), stages ...Stage) {
+func Run(t *testing.T, runDriver func(context.Context, ledgerpb.ClusterServiceClient), stages ...Stage) {
 	t.Helper()
 	require.NotEmpty(t, stages)
 	// The SDK selects its output file at package initialization. A fresh process
@@ -64,7 +64,7 @@ func Run(t *testing.T, runDriver func(context.Context, commonpb.ClusterServiceCl
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		calls := 0
-		client := commonpb.NewClusterServiceClient(driverConn(func(_ context.Context, method string, _, reply any, _ ...grpc.CallOption) error {
+		client := ledgerpb.NewClusterServiceClient(driverConn(func(_ context.Context, method string, _, reply any, _ ...grpc.CallOption) error {
 			calls++
 			require.LessOrEqual(t, calls, len(stages), "unexpected RPC after the final driver stage")
 			require.Equal(t, stages[calls-1].GRPCMethod, method)
@@ -93,9 +93,9 @@ func Run(t *testing.T, runDriver func(context.Context, commonpb.ClusterServiceCl
 				}
 			}
 			switch response := reply.(type) {
-			case *commonpb.BackupResponse:
+			case *ledgerpb.BackupResponse:
 				response.TotalFiles = 1
-			case *commonpb.IncrementalBackupResponse:
+			case *ledgerpb.IncrementalBackupResponse:
 				response.LastLogSequence, response.LastAuditSequence = 1, 1
 			default:
 				t.Fatalf("unexpected response type %T", reply)

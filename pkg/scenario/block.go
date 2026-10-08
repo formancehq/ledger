@@ -5,7 +5,7 @@ import (
 	"errors"
 	"math/big"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // ErrSkip is returned by a block's Run function when its precondition is not met.
@@ -36,13 +36,13 @@ type Block struct {
 	Name string
 	// Run executes the block. Returns the Apply response (for invariant checks)
 	// and ErrSkip if the precondition is not met.
-	Run func(ctx context.Context, client commonpb.BucketServiceClient, rand RandFunc) (*commonpb.ApplyResponse, error)
+	Run func(ctx context.Context, client ledgerpb.BucketServiceClient, rand RandFunc) (*ledgerpb.ApplyResponse, error)
 }
 
 // BlockGroup groups blocks that share the same setup actions.
 type BlockGroup struct {
 	// Setup returns the idempotent setup actions (create ledger, account types, numscripts).
-	Setup  func() []*commonpb.Request
+	Setup  func() []*ledgerpb.Request
 	Blocks []*Block
 }
 
@@ -62,14 +62,14 @@ func BlockScenario(name string) string {
 // GetAccountBalance reads the uncolored balance of an account for a given asset.
 // Returns (balance, true) if available, or (zero, false) otherwise. For a
 // colored balance, see GetColoredAccountBalance.
-func GetAccountBalance(ctx context.Context, client commonpb.BucketServiceClient, ledger, address, asset string) (*big.Int, bool) {
+func GetAccountBalance(ctx context.Context, client ledgerpb.BucketServiceClient, ledger, address, asset string) (*big.Int, bool) {
 	return GetColoredAccountBalance(ctx, client, ledger, address, asset, "")
 }
 
 // GetColoredAccountBalance reads the balance of an account for a given
 // (asset, color) bucket. Color "" is the uncolored bucket.
-func GetColoredAccountBalance(ctx context.Context, client commonpb.BucketServiceClient, ledger, address, asset, color string) (*big.Int, bool) {
-	acct, err := client.GetAccount(ctx, &commonpb.GetAccountRequest{
+func GetColoredAccountBalance(ctx context.Context, client ledgerpb.BucketServiceClient, ledger, address, asset, color string) (*big.Int, bool) {
+	acct, err := client.GetAccount(ctx, &ledgerpb.GetAccountRequest{
 		Ledger:  ledger,
 		Address: address,
 	})
@@ -92,16 +92,16 @@ func GetColoredAccountBalance(ctx context.Context, client commonpb.BucketService
 }
 
 // GetNonRevertedTransaction finds a random non-reverted transaction in a ledger.
-func GetNonRevertedTransaction(ctx context.Context, client commonpb.BucketServiceClient, ledger string, randFn RandFunc) (*commonpb.Transaction, bool) {
-	stream, err := client.ListTransactions(ctx, &commonpb.ListTransactionsRequest{
+func GetNonRevertedTransaction(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string, randFn RandFunc) (*ledgerpb.Transaction, bool) {
+	stream, err := client.ListTransactions(ctx, &ledgerpb.ListTransactionsRequest{
 		Ledger:  ledger,
-		Options: &commonpb.ListOptions{PageSize: 100},
+		Options: &ledgerpb.ListOptions{PageSize: 100},
 	})
 	if err != nil {
 		return nil, false
 	}
 
-	var candidates []*commonpb.Transaction
+	var candidates []*ledgerpb.Transaction
 	for {
 		tx, err := stream.Recv()
 		if err != nil {
@@ -119,6 +119,6 @@ func GetNonRevertedTransaction(ctx context.Context, client commonpb.BucketServic
 }
 
 // ApplyActions sends a batch of actions and returns the response.
-func ApplyActions(ctx context.Context, client commonpb.BucketServiceClient, reqs ...*commonpb.Request) (*commonpb.ApplyResponse, error) {
-	return client.Apply(ctx, commonpb.UnsignedApplyRequest("", reqs...))
+func ApplyActions(ctx context.Context, client ledgerpb.BucketServiceClient, reqs ...*ledgerpb.Request) (*ledgerpb.ApplyResponse, error) {
+	return client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", reqs...))
 }

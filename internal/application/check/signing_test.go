@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -84,13 +84,13 @@ func openSigningReader(t *testing.T, store *dal.Store) dal.PebbleReader {
 // collectSigningErrors runs the comparison and returns the errors it emitted, in
 // emission order. Every event a signing finding produces is an error event, so a
 // non-error event is a bug rather than something to filter out.
-func collectSigningErrors(t *testing.T, verifier *signingVerifier, reader dal.PebbleReader) []*servicepb.CheckStoreError {
+func collectSigningErrors(t *testing.T, verifier *signingVerifier, reader dal.PebbleReader) []*ledgerpb.CheckStoreError {
 	t.Helper()
 
-	var got []*servicepb.CheckStoreError
+	var got []*ledgerpb.CheckStoreError
 
-	require.NoError(t, verifier.compare(reader, func(event *servicepb.CheckStoreEvent) {
-		errEvent, ok := event.GetType().(*servicepb.CheckStoreEvent_Error)
+	require.NoError(t, verifier.compare(reader, func(event *ledgerpb.CheckStoreEvent) {
+		errEvent, ok := event.GetType().(*ledgerpb.CheckStoreEvent_Error)
 		require.True(t, ok, "signing findings must be error events")
 
 		got = append(got, errEvent.Error)
@@ -407,7 +407,7 @@ func TestSigningVerifier_Compare(t *testing.T) {
 		// write lays down the persisted projection under judgement.
 		write func(t *testing.T, store *dal.Store)
 		// wantTypes is the exact emitted error-type sequence.
-		wantTypes []servicepb.CheckStoreErrorType
+		wantTypes []ledgerpb.CheckStoreErrorType
 		// wantSubstrings[i] must all appear in the i-th emitted message.
 		wantSubstrings [][]string
 		// wantAbsent must appear in no emitted message at all.
@@ -439,8 +439,8 @@ func TestSigningVerifier_Compare(t *testing.T) {
 				writeSigningKey(t, store, "root", rootKey, "")
 				writeSigningKey(t, store, "ghost", tamperedKey, "root")
 			},
-			wantTypes: []servicepb.CheckStoreErrorType{
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
+			wantTypes: []ledgerpb.CheckStoreErrorType{
+				ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
 			},
 			wantSubstrings: [][]string{{"ghost", "no audited registration"}},
 		},
@@ -453,8 +453,8 @@ func TestSigningVerifier_Compare(t *testing.T) {
 			write: func(t *testing.T, store *dal.Store) {
 				writeSigningKey(t, store, "root", rootKey, "")
 			},
-			wantTypes: []servicepb.CheckStoreErrorType{
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
+			wantTypes: []ledgerpb.CheckStoreErrorType{
+				ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
 			},
 			wantSubstrings: [][]string{{"child", "missing from the store"}},
 		},
@@ -466,8 +466,8 @@ func TestSigningVerifier_Compare(t *testing.T) {
 			write: func(t *testing.T, store *dal.Store) {
 				writeSigningKey(t, store, "root", tamperedKey, "")
 			},
-			wantTypes: []servicepb.CheckStoreErrorType{
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
+			wantTypes: []ledgerpb.CheckStoreErrorType{
+				ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
 			},
 			wantSubstrings: [][]string{{"root", "public-key bytes"}},
 			// The key ID plus the diverging field name is all an operator needs;
@@ -489,8 +489,8 @@ func TestSigningVerifier_Compare(t *testing.T) {
 				writeSigningKey(t, store, "root", rootKey, "")
 				writeSigningKey(t, store, "child", childKey, "attacker")
 			},
-			wantTypes: []servicepb.CheckStoreErrorType{
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
+			wantTypes: []ledgerpb.CheckStoreErrorType{
+				ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
 			},
 			wantSubstrings: [][]string{{"child", "parent", "attacker", "root"}},
 		},
@@ -500,8 +500,8 @@ func TestSigningVerifier_Compare(t *testing.T) {
 			write: func(t *testing.T, store *dal.Store) {
 				writeSigningConfig(t, store, true)
 			},
-			wantTypes: []servicepb.CheckStoreErrorType{
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH,
+			wantTypes: []ledgerpb.CheckStoreErrorType{
+				ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH,
 			},
 			wantSubstrings: [][]string{{"require-signatures", "true", "false"}},
 		},
@@ -511,8 +511,8 @@ func TestSigningVerifier_Compare(t *testing.T) {
 			write: func(t *testing.T, store *dal.Store) {
 				writeSigningConfig(t, store, false)
 			},
-			wantTypes: []servicepb.CheckStoreErrorType{
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH,
+			wantTypes: []ledgerpb.CheckStoreErrorType{
+				ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH,
 			},
 			wantSubstrings: [][]string{{"require-signatures", "false", "true"}},
 		},
@@ -527,9 +527,9 @@ func TestSigningVerifier_Compare(t *testing.T) {
 			write: func(t *testing.T, store *dal.Store) {
 				writeRawSigningKeyRow(t, store, "root", []byte{0x01, 0x02, 0x03})
 			},
-			wantTypes: []servicepb.CheckStoreErrorType{
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
+			wantTypes: []ledgerpb.CheckStoreErrorType{
+				ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
+				ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
 			},
 			wantSubstrings: [][]string{
 				{"root", "undecodable", "shorter than an Ed25519 public key", "3"},
@@ -544,8 +544,8 @@ func TestSigningVerifier_Compare(t *testing.T) {
 			name:          "a truncated fold is reported on an otherwise clean store",
 			liveTruncated: true,
 			write:         func(_ *testing.T, _ *dal.Store) {},
-			wantTypes: []servicepb.CheckStoreErrorType{
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE,
+			wantTypes: []ledgerpb.CheckStoreErrorType{
+				ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE,
 			},
 			wantSubstrings: [][]string{
 				{"could not be verified over the whole history", "hash chain break", "skipped for this run"},
@@ -563,8 +563,8 @@ func TestSigningVerifier_Compare(t *testing.T) {
 			write: func(t *testing.T, store *dal.Store) {
 				writeSigningKey(t, store, "past-the-break", tamperedKey, "")
 			},
-			wantTypes: []servicepb.CheckStoreErrorType{
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE,
+			wantTypes: []ledgerpb.CheckStoreErrorType{
+				ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE,
 			},
 			wantSubstrings: [][]string{
 				{"could not be verified over the whole history", "hash chain break"},
@@ -578,9 +578,9 @@ func TestSigningVerifier_Compare(t *testing.T) {
 			write: func(t *testing.T, store *dal.Store) {
 				writeRawSigningKeyRow(t, store, "stub", []byte{0x01, 0x02})
 			},
-			wantTypes: []servicepb.CheckStoreErrorType{
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE,
+			wantTypes: []ledgerpb.CheckStoreErrorType{
+				ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
+				ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE,
 			},
 			wantSubstrings: [][]string{
 				{"stub", "undecodable stored row"},
@@ -605,7 +605,7 @@ func TestSigningVerifier_Compare(t *testing.T) {
 
 			got := collectSigningErrors(t, verifier, openSigningReader(t, store))
 
-			gotTypes := make([]servicepb.CheckStoreErrorType, 0, len(got))
+			gotTypes := make([]ledgerpb.CheckStoreErrorType, 0, len(got))
 			for _, event := range got {
 				gotTypes = append(gotTypes, event.GetErrorType())
 			}
@@ -630,7 +630,7 @@ func TestSigningVerifier_Compare(t *testing.T) {
 
 // nonEmptyErrorTypes normalizes an empty slice to nil so a case that expects no
 // events can leave wantTypes unset.
-func nonEmptyErrorTypes(types []servicepb.CheckStoreErrorType) []servicepb.CheckStoreErrorType {
+func nonEmptyErrorTypes(types []ledgerpb.CheckStoreErrorType) []ledgerpb.CheckStoreErrorType {
 	if len(types) == 0 {
 		return nil
 	}
@@ -638,7 +638,7 @@ func nonEmptyErrorTypes(types []servicepb.CheckStoreErrorType) []servicepb.Check
 	return types
 }
 
-func renderSigningMessages(events []*servicepb.CheckStoreError) string {
+func renderSigningMessages(events []*ledgerpb.CheckStoreError) string {
 	messages := make([]string, 0, len(events))
 	for _, event := range events {
 		messages = append(messages, event.GetMessage())
@@ -715,7 +715,7 @@ func TestSigningVerifier_CompareEmissionIsDeterministic(t *testing.T) {
 func TestCheck_SigningProjections_EmptyAuditWiring(t *testing.T) {
 	t.Parallel()
 
-	runCheck := func(t *testing.T, seed func(*dal.Store)) []*servicepb.CheckStoreError {
+	runCheck := func(t *testing.T, seed func(*dal.Store)) []*ledgerpb.CheckStoreError {
 		t.Helper()
 
 		store := createTestStore(t)
@@ -727,10 +727,10 @@ func TestCheck_SigningProjections_EmptyAuditWiring(t *testing.T) {
 		// loudly, keeping the events attributable to the signing comparison alone.
 		checker := NewChecker(store, attributes.New(), nil, logging.Testing())
 
-		var got []*servicepb.CheckStoreError
+		var got []*ledgerpb.CheckStoreError
 
-		require.NoError(t, checker.Check(context.Background(), func(event *servicepb.CheckStoreEvent) {
-			if errEvent, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
+		require.NoError(t, checker.Check(context.Background(), func(event *ledgerpb.CheckStoreEvent) {
+			if errEvent, ok := event.GetType().(*ledgerpb.CheckStoreEvent_Error); ok {
 				got = append(got, errEvent.Error)
 			}
 		}))
@@ -746,7 +746,7 @@ func TestCheck_SigningProjections_EmptyAuditWiring(t *testing.T) {
 		})
 
 		require.Len(t, got, 1, "a signing key with no audited registration must be reported")
-		require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH, got[0].GetErrorType())
+		require.Equal(t, ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH, got[0].GetErrorType())
 		require.Contains(t, got[0].GetMessage(), "no audited registration")
 		require.Contains(t, got[0].GetMessage(), "injected")
 		require.NotContains(t, got[0].GetMessage(), hex.EncodeToString(signingTestKey(0x11)),
@@ -761,7 +761,7 @@ func TestCheck_SigningProjections_EmptyAuditWiring(t *testing.T) {
 		})
 
 		require.Len(t, got, 1, "a require-signatures flag with no audited order behind it must be reported")
-		require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH, got[0].GetErrorType())
+		require.Equal(t, ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH, got[0].GetErrorType())
 	})
 
 	t.Run("untouched store stays clean", func(t *testing.T) {

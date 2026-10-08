@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	protoerr "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -19,14 +19,14 @@ func TestHandleGetMetadataSchema_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetMetadataSchemaStatus(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) (*commonpb.GetMetadataSchemaStatusResponse, error) {
-			return &commonpb.GetMetadataSchemaStatusResponse{
-				AccountFields: map[string]*commonpb.MetadataFieldStatus{
-					"role": {DeclaredType: commonpb.MetadataType_METADATA_TYPE_STRING},
+		func(_ context.Context, _ string) (*ledgerpb.GetMetadataSchemaStatusResponse, error) {
+			return &ledgerpb.GetMetadataSchemaStatusResponse{
+				AccountFields: map[string]*ledgerpb.MetadataFieldStatus{
+					"role": {DeclaredType: ledgerpb.MetadataType_METADATA_TYPE_STRING},
 				},
-				TransactionFields: map[string]*commonpb.MetadataFieldStatus{},
-				LedgerFields: map[string]*commonpb.MetadataFieldStatus{
-					"env": {DeclaredType: commonpb.MetadataType_METADATA_TYPE_STRING},
+				TransactionFields: map[string]*ledgerpb.MetadataFieldStatus{},
+				LedgerFields: map[string]*ledgerpb.MetadataFieldStatus{
+					"env": {DeclaredType: ledgerpb.MetadataType_METADATA_TYPE_STRING},
 				},
 			}, nil
 		}).AnyTimes()
@@ -69,7 +69,7 @@ func TestHandleGetMetadataSchema_BackendError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetMetadataSchemaStatus(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) (*commonpb.GetMetadataSchemaStatusResponse, error) {
+		func(_ context.Context, _ string) (*ledgerpb.GetMetadataSchemaStatusResponse, error) {
 			return nil, protoerr.ErrNoLeader
 		}).AnyTimes()
 	srv := newTestServer(t, backend)

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"math/big"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -24,13 +24,13 @@ var _ = Describe("Reverted filter set logic", Ordered, func() {
 	var revertedIDs []uint64
 
 	BeforeAll(func() {
-		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+		_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())
 
 		// Six funding transactions to distinct accounts (ids assigned in order).
 		var ids []uint64
 		for i := 0; i < 6; i++ {
-			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", fmt.Sprintf("acc:%d", i), big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -40,7 +40,7 @@ var _ = Describe("Reverted filter set logic", Ordered, func() {
 		// Revert two originals so the reversion bitset is non-empty (each revert
 		// also commits a compensating transaction, which is itself not reverted).
 		for _, idx := range []int{1, 3} {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.RevertTransactionAction(ledgerName, ids[idx], true, false, nil)))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.RevertTransactionAction(ledgerName, ids[idx], true, false, nil)))
 			Expect(err).To(Succeed())
 			revertedIDs = append(revertedIDs, ids[idx])
 		}

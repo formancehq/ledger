@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -66,10 +66,10 @@ func runRequire(cmd *cobra.Command, args []string) error {
 
 	spinner := cmdutil.StartSpinner(action + " mandatory signatures...")
 
-	requests := []*servicepb.Request{
+	requests := []*ledgerpb.Request{
 		{
-			Type: &servicepb.Request_SetSigningConfig{
-				SetSigningConfig: &servicepb.SetSigningConfigRequest{
+			Type: &ledgerpb.Request_SetSigningConfig{
+				SetSigningConfig: &ledgerpb.SetSigningConfigRequest{
 					RequireSignatures: require,
 				},
 			},

@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
@@ -19,11 +19,11 @@ func TestHandlePromoteLedger_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
-			return &domain.ApplyResult{Logs: []*commonpb.Log{{
-				Payload: &commonpb.LogPayload{
-					Type: &commonpb.LogPayload_PromoteLedger{
-						PromoteLedger: &commonpb.PromotedLedgerLog{
+		func(_ context.Context, _ *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{{
+				Payload: &ledgerpb.LogPayload{
+					Type: &ledgerpb.LogPayload_PromoteLedger{
+						PromoteLedger: &ledgerpb.PromotedLedgerLog{
 							Name: "mirror-ledger",
 						},
 					},
@@ -62,7 +62,7 @@ func TestHandlePromoteLedger_NotMirrorMode(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, &domain.ErrLedgerNotInMirrorMode{Name: "normal-ledger"}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -87,22 +87,22 @@ func TestHandlePromoteLedger_NotMirrorMode(t *testing.T) {
 func TestHandlePromoteLedger_LogContractViolations(t *testing.T) {
 	t.Parallel()
 
-	promoted := &commonpb.Log{Payload: &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_PromoteLedger{PromoteLedger: &commonpb.PromotedLedgerLog{Name: "mirror-ledger"}},
+	promoted := &ledgerpb.Log{Payload: &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_PromoteLedger{PromoteLedger: &ledgerpb.PromotedLedgerLog{Name: "mirror-ledger"}},
 	}}
-	wrongPayload := &commonpb.Log{Payload: &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "mirror-ledger"}},
+	wrongPayload := &ledgerpb.Log{Payload: &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_CreateLedger{CreateLedger: &ledgerpb.CreatedLedgerLog{Name: "mirror-ledger"}},
 	}}
 
 	cases := []struct {
 		name    string
-		logs    []*commonpb.Log
+		logs    []*ledgerpb.Log
 		wantMsg string
 	}{
-		{"zero logs", []*commonpb.Log{}, "apply did not return exactly one log"},
-		{"two logs", []*commonpb.Log{promoted, promoted}, "apply did not return exactly one log"},
-		{"nil sole log", []*commonpb.Log{nil}, "apply returned a nil log"},
-		{"wrong payload type", []*commonpb.Log{wrongPayload}, "apply returned an unexpected log payload type"},
+		{"zero logs", []*ledgerpb.Log{}, "apply did not return exactly one log"},
+		{"two logs", []*ledgerpb.Log{promoted, promoted}, "apply did not return exactly one log"},
+		{"nil sole log", []*ledgerpb.Log{nil}, "apply returned a nil log"},
+		{"wrong payload type", []*ledgerpb.Log{wrongPayload}, "apply returned an unexpected log payload type"},
 	}
 
 	for _, tc := range cases {
@@ -128,7 +128,7 @@ func TestHandlePromoteLedger_LedgerNotFound(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, &domain.ErrLedgerNotFound{Name: "missing"}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)

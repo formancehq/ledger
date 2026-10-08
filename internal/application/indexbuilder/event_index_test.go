@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -68,7 +68,7 @@ func requireMetadataDead(t *testing.T, b *Builder, ledger, ns, metaKey string, v
 func seedRewriteSequence(t *testing.T, b *Builder, seq uint64) {
 	t.Helper()
 
-	writeLogToFSM(t, b, &commonpb.Log{Sequence: seq})
+	writeLogToFSM(t, b, &ledgerpb.Log{Sequence: seq})
 
 	progress := b.readStore.NewBatch()
 	require.NoError(t, b.readStore.WriteProgress(progress, seq))

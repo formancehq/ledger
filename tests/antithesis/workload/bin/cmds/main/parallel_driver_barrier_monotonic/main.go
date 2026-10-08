@@ -13,7 +13,7 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	antirandom "github.com/antithesishq/antithesis-sdk-go/random"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -43,7 +43,7 @@ func main() {
 	}
 	defer func() { _ = conn.Close() }()
 
-	clusterClient := clusterpb.NewClusterServiceClient(conn)
+	clusterClient := ledgerpb.NewClusterServiceClient(conn)
 
 	// Shape axis: vary the per-invocation barrier count across timelines so
 	// some timelines probe a single barrier and others a long session.
@@ -62,7 +62,7 @@ func main() {
 		// after a change steer exploration toward the forwarding-during-
 		// election window where a deposed leader could answer.
 		if internal.Rand().Uint64()%2 == 0 {
-			if state, stateErr := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{}); stateErr == nil {
+			if state, stateErr := clusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{}); stateErr == nil {
 				leader := uint64(state.GetLeader())
 				if prevLeader != 0 && leader != 0 && leader != prevLeader {
 					leaderChanged = true
@@ -77,7 +77,7 @@ func main() {
 		// barriers that completed before this call starts are valid floors.
 		floor, hasFloor := readHWM()
 
-		resp, err := client.Barrier(ctx, &clusterpb.BarrierRequest{})
+		resp, err := client.Barrier(ctx, &ledgerpb.BarrierRequest{})
 		if err != nil {
 			if internal.IsTransient(err) || ctx.Err() != nil {
 				continue

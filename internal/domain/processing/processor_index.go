@@ -1,14 +1,14 @@
 package processing
 
 import (
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func processCreateIndex(ledger string, order *raftcmdpb.CreateIndexOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
+func processCreateIndex(ledger string, order *raftcmdpb.CreateIndexOrder, ctx *Context) (*ledgerpb.LedgerLogPayload, domain.SerializableError) {
 	info, loadErr := loadLedgerReader(ctx.Scope, ledger)
 	if loadErr != nil {
 		return nil, loadErr
@@ -35,7 +35,7 @@ func processCreateIndex(ledger string, order *raftcmdpb.CreateIndexOrder, ctx *C
 	// any registry mutation or CreatedIndexLog is produced.
 	boundType, boundTypeDeclared := indexBoundType(info, id)
 
-	indexes.Put(ctx.Scope.Indexes(), ledger, &commonpb.Index{
+	indexes.Put(ctx.Scope.Indexes(), ledger, &ledgerpb.Index{
 		Id:        id,
 		CreatedAt: ctx.Scope.GetDate().Mutate(),
 		Ledger:    ledger,
@@ -47,7 +47,7 @@ func processCreateIndex(ledger string, order *raftcmdpb.CreateIndexOrder, ctx *C
 	return buildCreatedIndexLogPayload(id, boundType, boundTypeDeclared), nil
 }
 
-func processDropIndex(ledger string, order *raftcmdpb.DropIndexOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
+func processDropIndex(ledger string, order *raftcmdpb.DropIndexOrder, ctx *Context) (*ledgerpb.LedgerLogPayload, domain.SerializableError) {
 	// The loaded projection is only needed to validate that the ledger exists
 	// and is not soft-deleted; the registry key comes from the envelope below.
 	if _, loadErr := loadLedgerReader(ctx.Scope, ledger); loadErr != nil {
@@ -61,9 +61,9 @@ func processDropIndex(ledger string, order *raftcmdpb.DropIndexOrder, ctx *Conte
 		return nil, domain.StoreFailure("dropping index", err)
 	}
 
-	return &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_DropIndex{
-			DropIndex: &commonpb.DroppedIndexLog{Id: id},
+	return &ledgerpb.LedgerLogPayload{
+		Payload: &ledgerpb.LedgerLogPayload_DropIndex{
+			DropIndex: &ledgerpb.DroppedIndexLog{Id: id},
 		},
 	}, nil
 }
@@ -72,12 +72,12 @@ func processDropIndex(ledger string, order *raftcmdpb.DropIndexOrder, ctx *Conte
 // before an Index entry is persisted. Built-in indexes are always valid by
 // virtue of the enum; metadata indexes require that the schema field has been
 // declared with SetMetadataFieldType first.
-func validateIndexTarget(info commonpb.LedgerInfoReader, id *commonpb.IndexID) domain.SerializableError {
+func validateIndexTarget(info ledgerpb.LedgerInfoReader, id *ledgerpb.IndexID) domain.SerializableError {
 	if id == nil {
 		return nil
 	}
 
-	meta, ok := id.GetKind().(*commonpb.IndexID_Metadata)
+	meta, ok := id.GetKind().(*ledgerpb.IndexID_Metadata)
 	if !ok {
 		return nil
 	}
@@ -94,10 +94,10 @@ func validateIndexTarget(info commonpb.LedgerInfoReader, id *commonpb.IndexID) d
 }
 
 // schemaFieldForTarget is the reader-based twin of
-// commonpb.SchemaFieldForTarget: it resolves the declared metadata field
+// ledgerpb.SchemaFieldForTarget: it resolves the declared metadata field
 // for (targetType, key) from the immutable LedgerInfo reader without
 // cloning the schema.
-func schemaFieldForTarget(info commonpb.LedgerInfoReader, targetType commonpb.TargetType, key string) (commonpb.MetadataFieldSchemaReader, bool) {
+func schemaFieldForTarget(info ledgerpb.LedgerInfoReader, targetType ledgerpb.TargetType, key string) (ledgerpb.MetadataFieldSchemaReader, bool) {
 	if info == nil {
 		return nil, false
 	}
@@ -107,14 +107,14 @@ func schemaFieldForTarget(info commonpb.LedgerInfoReader, targetType commonpb.Ta
 		return nil, false
 	}
 
-	var field commonpb.MetadataFieldSchemaReader
+	var field ledgerpb.MetadataFieldSchemaReader
 
 	switch targetType {
-	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+	case ledgerpb.TargetType_TARGET_TYPE_ACCOUNT:
 		field, _ = schema.GetAccountFields().Get(key)
-	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+	case ledgerpb.TargetType_TARGET_TYPE_TRANSACTION:
 		field, _ = schema.GetTransactionFields().Get(key)
-	case commonpb.TargetType_TARGET_TYPE_LEDGER:
+	case ledgerpb.TargetType_TARGET_TYPE_LEDGER:
 		field, _ = schema.GetLedgerFields().Get(key)
 	}
 
@@ -126,8 +126,8 @@ func schemaFieldForTarget(info commonpb.LedgerInfoReader, targetType commonpb.Ta
 // order stream. The log carries the binding so replicas folding it at any
 // replay distance bind the same type (see CreatedIndexLog.bound_type).
 // Builtin indexes have no metadata field and carry no binding.
-func indexBoundType(info commonpb.LedgerInfoReader, id *commonpb.IndexID) (commonpb.MetadataType, bool) {
-	meta, ok := id.GetKind().(*commonpb.IndexID_Metadata)
+func indexBoundType(info ledgerpb.LedgerInfoReader, id *ledgerpb.IndexID) (ledgerpb.MetadataType, bool) {
+	meta, ok := id.GetKind().(*ledgerpb.IndexID_Metadata)
 	if !ok || meta.Metadata == nil {
 		return 0, false
 	}
@@ -140,10 +140,10 @@ func indexBoundType(info commonpb.LedgerInfoReader, id *commonpb.IndexID) (commo
 	return field.GetType(), true
 }
 
-func buildCreatedIndexLogPayload(id *commonpb.IndexID, boundType commonpb.MetadataType, boundTypeDeclared bool) *commonpb.LedgerLogPayload {
-	return &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_CreateIndex{
-			CreateIndex: &commonpb.CreatedIndexLog{
+func buildCreatedIndexLogPayload(id *ledgerpb.IndexID, boundType ledgerpb.MetadataType, boundTypeDeclared bool) *ledgerpb.LedgerLogPayload {
+	return &ledgerpb.LedgerLogPayload{
+		Payload: &ledgerpb.LedgerLogPayload_CreateIndex{
+			CreateIndex: &ledgerpb.CreatedIndexLog{
 				Id:                id,
 				BoundType:         boundType,
 				BoundTypeDeclared: boundTypeDeclared,

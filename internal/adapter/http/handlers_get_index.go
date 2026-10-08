@@ -3,7 +3,7 @@ package http
 import (
 	"net/http"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 )
@@ -28,7 +28,7 @@ func (s *Server) handleGetIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	idx, err := s.backend.GetIndex(r.Context(), &servicepb.GetIndexRequest{
+	idx, err := s.backend.GetIndex(r.Context(), &ledgerpb.GetIndexRequest{
 		Ledger: ledgerName,
 		Id:     id,
 	})

@@ -10,7 +10,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
@@ -133,13 +133,13 @@ func TestAdmitRecordsEnteredPhasesOnFailure(t *testing.T) {
 		// (ErrTransactionTargetMissing) inside requestsToOrders — i.e. during the
 		// orders_preparation phase, after resolve_batch has completed but before
 		// the scripts phase is entered.
-		_, err := a.Admit(attributedTestContext(context.Background()), servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+		_, err := a.Admit(attributedTestContext(context.Background()), ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: testLedgerName,
-					Action: &servicepb.LedgerAction{
-						Data: &servicepb.LedgerAction_RevertTransaction{
-							RevertTransaction: &servicepb.RevertTransactionPayload{
+					Action: &ledgerpb.LedgerAction{
+						Data: &ledgerpb.LedgerAction_RevertTransaction{
+							RevertTransaction: &ledgerpb.RevertTransactionPayload{
 								TransactionId: 0,
 							},
 						},
@@ -170,14 +170,14 @@ func TestAdmitRecordsEnteredPhasesOnFailure(t *testing.T) {
 		// A CreateTransaction referencing a numscript that does not exist fails in
 		// resolveScriptsAndEnrichNeeds (resolveNumscriptReference) — i.e. during
 		// the scripts phase, after orders_preparation has completed.
-		_, err := a.Admit(attributedTestContext(context.Background()), servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+		_, err := a.Admit(attributedTestContext(context.Background()), ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: testLedgerName,
-					Action: &servicepb.LedgerAction{
-						Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
-								ScriptReference: &servicepb.ScriptReference{
+					Action: &ledgerpb.LedgerAction{
+						Data: &ledgerpb.LedgerAction_CreateTransaction{
+							CreateTransaction: &ledgerpb.CreateTransactionPayload{
+								ScriptReference: &ledgerpb.ScriptReference{
 									Name:    "does-not-exist",
 									Version: "latest",
 								},
@@ -207,13 +207,13 @@ func TestAdmitRecordsEnteredPhasesOnFailure(t *testing.T) {
 		store := createTestStore(t)
 		a, reader := createTestAdmissionWithReader(t, store, nil)
 
-		_, err := a.Admit(attributedTestContext(context.Background()), servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+		_, err := a.Admit(attributedTestContext(context.Background()), ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: testLedgerName,
-					Action: &servicepb.LedgerAction{
-						Data: &servicepb.LedgerAction_RevertTransaction{
-							RevertTransaction: &servicepb.RevertTransactionPayload{TransactionId: 0},
+					Action: &ledgerpb.LedgerAction{
+						Data: &ledgerpb.LedgerAction_RevertTransaction{
+							RevertTransaction: &ledgerpb.RevertTransactionPayload{TransactionId: 0},
 						},
 					},
 				},
@@ -250,9 +250,9 @@ func TestAdmitRecordsEnteredPhasesOnFailure(t *testing.T) {
 
 		// A CreateLedger request reaches builder.Run (nothing rejects it earlier),
 		// so Propose is actually attempted and fails.
-		_, err := a.Admit(attributedTestContext(context.Background()), servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_CreateLedger{
-				CreateLedger: &servicepb.CreateLedgerRequest{Name: "ledger-propose-fail"},
+		_, err := a.Admit(attributedTestContext(context.Background()), ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_CreateLedger{
+				CreateLedger: &ledgerpb.CreateLedgerRequest{Name: "ledger-propose-fail"},
 			},
 		}))
 		require.ErrorIs(t, err, protoerr.ErrNoLeader)

@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // ErrNotFound is a sentinel error for missing records in storage lookups. It
@@ -698,7 +698,7 @@ type ErrInvalidSkippableReason struct {
 	// Carried as the typed enum (not a free string) so wire roundtrips are
 	// lossless and the gRPC adapter renders the same identifier the client
 	// shipped.
-	Provided commonpb.ErrorReason
+	Provided ledgerpb.ErrorReason
 }
 
 func (e *ErrInvalidSkippableReason) Error() string {

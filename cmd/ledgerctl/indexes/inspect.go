@@ -10,7 +10,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/protohelpers"
@@ -75,25 +75,25 @@ func runInspectIndex(cmd *cobra.Command, _ []string) error {
 	pageSize, _ := cmd.Flags().GetUint32("page-size")
 	cursor, _ := cmd.Flags().GetString("cursor")
 
-	targetType := commonpb.TargetType_TARGET_TYPE_ACCOUNT
+	targetType := ledgerpb.TargetType_TARGET_TYPE_ACCOUNT
 	if target == "transaction" {
-		targetType = commonpb.TargetType_TARGET_TYPE_TRANSACTION
+		targetType = ledgerpb.TargetType_TARGET_TYPE_TRANSACTION
 	}
 
-	var inspectMode commonpb.InspectIndexMode
+	var inspectMode ledgerpb.InspectIndexMode
 	switch mode {
 	case "distinct-values", "distinctValues":
-		inspectMode = commonpb.InspectIndexMode_INSPECT_INDEX_MODE_DISTINCT_VALUES
+		inspectMode = ledgerpb.InspectIndexMode_INSPECT_INDEX_MODE_DISTINCT_VALUES
 	case "facets":
-		inspectMode = commonpb.InspectIndexMode_INSPECT_INDEX_MODE_FACETS
+		inspectMode = ledgerpb.InspectIndexMode_INSPECT_INDEX_MODE_FACETS
 	default:
-		inspectMode = commonpb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY
+		inspectMode = ledgerpb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY
 	}
 
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	resp, err := client.InspectIndex(ctx, &commonpb.InspectIndexRequest{
+	resp, err := client.InspectIndex(ctx, &ledgerpb.InspectIndexRequest{
 		Ledger:      ledgerName,
 		TargetType:  targetType,
 		MetadataKey: key,
@@ -116,11 +116,11 @@ func runInspectIndex(cmd *cobra.Command, _ []string) error {
 	pterm.Println(pterm.Gray("─────────────────────────────────"))
 
 	switch result := resp.GetResult().(type) {
-	case *commonpb.InspectIndexResponse_Summary:
+	case *ledgerpb.InspectIndexResponse_Summary:
 		printSummary(result.Summary, declaredType)
-	case *commonpb.InspectIndexResponse_DistinctValues:
+	case *ledgerpb.InspectIndexResponse_DistinctValues:
 		printDistinctValues(result.DistinctValues, declaredType)
-	case *commonpb.InspectIndexResponse_Facets:
+	case *ledgerpb.InspectIndexResponse_Facets:
 		printFacets(result.Facets, declaredType)
 	}
 
@@ -136,14 +136,14 @@ func runInspectIndex(cmd *cobra.Command, _ []string) error {
 // degrades to the default integer rendering rather than erroring.
 func declaredMetadataType(
 	ctx context.Context,
-	client commonpb.BucketServiceClient,
+	client ledgerpb.BucketServiceClient,
 	ledgerName string,
-	targetType commonpb.TargetType,
+	targetType ledgerpb.TargetType,
 	key string,
-) commonpb.MetadataType {
-	ledger, err := client.GetLedger(ctx, &commonpb.GetLedgerRequest{Ledger: ledgerName})
+) ledgerpb.MetadataType {
+	ledger, err := client.GetLedger(ctx, &ledgerpb.GetLedgerRequest{Ledger: ledgerName})
 	if err != nil {
-		return commonpb.MetadataType_METADATA_TYPE_STRING
+		return ledgerpb.MetadataType_METADATA_TYPE_STRING
 	}
 
 	_, fs := protohelpers.SchemaFieldForTarget(ledger.GetMetadataSchema(), targetType, key)
@@ -151,7 +151,7 @@ func declaredMetadataType(
 	return fs.GetType()
 }
 
-func printSummary(s *commonpb.InspectSummary, declaredType commonpb.MetadataType) {
+func printSummary(s *ledgerpb.InspectSummary, declaredType ledgerpb.MetadataType) {
 	pterm.Printf("Cardinality:       %d\n", s.GetCardinality())
 	pterm.Printf("Min:               %s\n", formatMetadataValue(s.GetMin(), declaredType))
 	pterm.Printf("Max:               %s\n", formatMetadataValue(s.GetMax(), declaredType))
@@ -159,7 +159,7 @@ func printSummary(s *commonpb.InspectSummary, declaredType commonpb.MetadataType
 	pterm.Printf("Entities null:     %d\n", s.GetEntitiesWithNull())
 }
 
-func printDistinctValues(dv *commonpb.InspectDistinctValues, declaredType commonpb.MetadataType) {
+func printDistinctValues(dv *ledgerpb.InspectDistinctValues, declaredType ledgerpb.MetadataType) {
 	table := pterm.TableData{{"VALUE"}}
 	for _, v := range dv.GetValues() {
 		table = append(table, []string{formatMetadataValue(v, declaredType)})
@@ -173,8 +173,8 @@ func printDistinctValues(dv *commonpb.InspectDistinctValues, declaredType common
 	}
 }
 
-func printFacets(f *commonpb.InspectFacets, declaredType commonpb.MetadataType) {
-	facets := make([]*commonpb.InspectFacet, len(f.GetFacets()))
+func printFacets(f *ledgerpb.InspectFacets, declaredType ledgerpb.MetadataType) {
+	facets := make([]*ledgerpb.InspectFacet, len(f.GetFacets()))
 	copy(facets, f.GetFacets())
 
 	sort.Slice(facets, func(i, j int) bool {
@@ -197,15 +197,15 @@ func printFacets(f *commonpb.InspectFacets, declaredType commonpb.MetadataType) 
 	}
 }
 
-func formatMetadataValue(v *commonpb.MetadataValue, declaredType commonpb.MetadataType) string {
+func formatMetadataValue(v *ledgerpb.MetadataValue, declaredType ledgerpb.MetadataType) string {
 	if v == nil {
 		return pterm.Gray("(none)")
 	}
 
 	switch t := v.GetType().(type) {
-	case *commonpb.MetadataValue_StringValue:
+	case *ledgerpb.MetadataValue_StringValue:
 		return fmt.Sprintf("%q", t.StringValue)
-	case *commonpb.MetadataValue_IntValue:
+	case *ledgerpb.MetadataValue_IntValue:
 		// Datetime index keys share the int64 encoding, so the server returns an
 		// int_value for them; render as RFC3339 when the field is declared datetime.
 		if protohelpers.IsDatetimeType(declaredType) {
@@ -213,13 +213,13 @@ func formatMetadataValue(v *commonpb.MetadataValue, declaredType commonpb.Metada
 		}
 
 		return strconv.FormatInt(t.IntValue, 10)
-	case *commonpb.MetadataValue_UintValue:
+	case *ledgerpb.MetadataValue_UintValue:
 		return strconv.FormatUint(t.UintValue, 10)
-	case *commonpb.MetadataValue_DatetimeValue:
+	case *ledgerpb.MetadataValue_DatetimeValue:
 		return protohelpers.MetadataValueToString(v)
-	case *commonpb.MetadataValue_BoolValue:
+	case *ledgerpb.MetadataValue_BoolValue:
 		return strconv.FormatBool(t.BoolValue)
-	case *commonpb.MetadataValue_NullValue:
+	case *ledgerpb.MetadataValue_NullValue:
 		return pterm.Gray("null")
 	default:
 		return pterm.Gray("(unknown)")

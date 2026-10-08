@@ -5,14 +5,14 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
-func bulkOf(reqs ...*commonpb.Request) oracle.Bulk { return oracle.Bulk{Requests: reqs} }
+func bulkOf(reqs ...*ledgerpb.Request) oracle.Bulk { return oracle.Bulk{Requests: reqs} }
 
 func collectBases(c *Checker) []oracle.GlobalState {
 	var out []oracle.GlobalState
@@ -94,7 +94,7 @@ func TestCandidateBases_PinsPendingOrder(t *testing.T) {
 	t.Parallel()
 
 	c := NewChecker([]string{"L"}, nil)
-	p1 := bulkOf(oracletest.AddTypeReqP("a", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL))
+	p1 := bulkOf(oracletest.AddTypeReqP("a", ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL))
 	p2 := bulkOf(oracletest.TxReq("world", "a:1", "USD", 5), oracletest.TxReq("a:1", "world", "USD", 5))
 	c.pending = []*pendingObservation{
 		{minSeq: 1, obs: observation{bulk: p1}},

@@ -6,7 +6,7 @@ import (
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -324,8 +324,8 @@ func TestVolumeAggregator_UseMaxPrecision_FactorBoundary(t *testing.T) {
 		result, err := va.result()
 		require.NoError(t, err)
 		require.Len(t, result.GetVolumes(), 1)
-		require.Equal(t, commonpb.NewUint256FromUint64(1), result.GetVolumes()[0].GetInput())
-		require.Equal(t, commonpb.NewUint256FromUint64(1), result.GetVolumes()[0].GetOutput())
+		require.Equal(t, ledgerpb.NewUint256FromUint64(1), result.GetVolumes()[0].GetInput())
+		require.Equal(t, ledgerpb.NewUint256FromUint64(1), result.GetVolumes()[0].GetOutput())
 	})
 }
 
@@ -379,7 +379,7 @@ func TestVolumeAggregator_SegregatesColorsByDefault(t *testing.T) {
 	require.Len(t, result.GetVolumes(), 3,
 		"each (asset, color) bucket must yield its own AggregatedVolume entry by default")
 
-	byColor := map[string]*commonpb.AggregatedVolume{}
+	byColor := map[string]*ledgerpb.AggregatedVolume{}
 	for _, v := range result.GetVolumes() {
 		byColor[v.GetColor()] = v
 	}

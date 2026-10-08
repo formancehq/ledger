@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 )
@@ -27,15 +27,15 @@ func TestMetadataIntegers_BulkDecoders(t *testing.T) {
 			t.Run(action+"/"+tc.token, func(t *testing.T) {
 				t.Parallel()
 				data := fmt.Sprintf(`{"id":1,"targetType":"ACCOUNT","targetId":"users:001","metadata":{"count":%s}}`, tc.token)
-				for _, decode := range []func() (*commonpb.LedgerAction, error){
-					func() (*commonpb.LedgerAction, error) {
+				for _, decode := range []func() (*ledgerpb.LedgerAction, error){
+					func() (*ledgerpb.LedgerAction, error) {
 						var element BulkElement
 						err := json.Unmarshal([]byte(fmt.Sprintf(`{"action":%q,"data":%s}`, action, data)), &element)
 
 						return element.Action, err
 					},
-					func() (*commonpb.LedgerAction, error) {
-						var element commonpb.LedgerAction
+					func() (*ledgerpb.LedgerAction, error) {
+						var element ledgerpb.LedgerAction
 						err := json.Unmarshal([]byte(fmt.Sprintf(`{"action":%q,"data":%s}`, action, data)), &element)
 
 						return &element, err
@@ -48,7 +48,7 @@ func TestMetadataIntegers_BulkDecoders(t *testing.T) {
 						continue
 					}
 					require.NoError(t, err)
-					var md map[string]*commonpb.MetadataValue
+					var md map[string]*ledgerpb.MetadataValue
 					switch action {
 					case "CREATE_TRANSACTION":
 						md = got.GetCreateTransaction().GetMetadata()
@@ -57,7 +57,7 @@ func TestMetadataIntegers_BulkDecoders(t *testing.T) {
 					case "REVERT_TRANSACTION":
 						md = got.GetRevertTransaction().GetMetadata()
 					}
-					require.Equal(t, tc.want, commonpb.MetadataValueToAny(md["count"]))
+					require.Equal(t, tc.want, ledgerpb.MetadataValueToAny(md["count"]))
 				}
 			})
 		}

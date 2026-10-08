@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // handleDeletePreparedQuery handles DELETE /{ledgerName}/prepared-queries/{name}.
@@ -23,9 +23,9 @@ func (s *Server) handleDeletePreparedQuery(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	_, err := s.applyUnsigned(r.Context(), "", &servicepb.Request{
-		Type: &servicepb.Request_DeletePreparedQuery{
-			DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{
+	_, err := s.applyUnsigned(r.Context(), "", &ledgerpb.Request{
+		Type: &ledgerpb.Request_DeletePreparedQuery{
+			DeletePreparedQuery: &ledgerpb.DeletePreparedQueryRequest{
 				Ledger: ledgerName,
 				Name:   queryName,
 			},

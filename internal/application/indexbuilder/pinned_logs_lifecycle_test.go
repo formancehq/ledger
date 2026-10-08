@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -42,23 +42,23 @@ func TestListLogsRejectsLedgerDeletedDuringAlignment(t *testing.T) {
 	b.batchSize = DefaultBatchSize
 	b.notifications = signal.NewNotifications()
 	const ledger = "pinned-logs"
-	logs := []*commonpb.Log{{
+	logs := []*ledgerpb.Log{{
 		Sequence: 1,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
-			CreateLedger: &commonpb.CreatedLedgerLog{Name: ledger},
+		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{
+			CreateLedger: &ledgerpb.CreatedLedgerLog{Name: ledger},
 		}},
 	}}
 	for id := uint64(1); id <= 3; id++ {
-		logs = append(logs, &commonpb.Log{
+		logs = append(logs, &ledgerpb.Log{
 			Sequence: id + 1,
-			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-				Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
+				Apply: &ledgerpb.ApplyLedgerLog{
 					LedgerName: ledger,
-					Log: &commonpb.LedgerLog{
+					Log: &ledgerpb.LedgerLog{
 						Id:   id,
-						Date: &commonpb.Timestamp{Data: id},
-						Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_AddedAccountType{
-							AddedAccountType: &commonpb.AddedAccountTypeLog{},
+						Date: &ledgerpb.Timestamp{Data: id},
+						Data: &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_AddedAccountType{
+							AddedAccountType: &ledgerpb.AddedAccountTypeLog{},
 						}},
 					},
 				},
@@ -66,7 +66,7 @@ func TestListLogsRejectsLedgerDeletedDuringAlignment(t *testing.T) {
 		})
 	}
 	batch := b.pebbleStore.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(batch, ledger, &commonpb.LedgerInfo{Name: ledger}))
+	require.NoError(t, state.SaveLedger(batch, ledger, &ledgerpb.LedgerInfo{Name: ledger}))
 	require.NoError(t, state.AppendLogs(batch, logs))
 	require.NoError(t, state.SetAppliedIndex(batch, 4))
 	require.NoError(t, batch.Commit())
@@ -99,7 +99,7 @@ func TestListLogsRejectsLedgerDeletedDuringAlignment(t *testing.T) {
 	deadlineCtx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	observed := &pinnedLogsWaitContext{Context: query.WithReadBarrierHorizon(deadlineCtx, 5), waiting: make(chan struct{})}
 	type queryResult struct {
-		logs []*commonpb.Log
+		logs []*ledgerpb.Log
 		err  error
 	}
 	result := make(chan queryResult, 1)
@@ -134,12 +134,12 @@ func TestListLogsRejectsLedgerDeletedDuringAlignment(t *testing.T) {
 	// Commit the real deletion representation, then run the actual indexbuilder
 	// deletion branch. The query's main snapshot must still see the old ledger.
 	batch = b.pebbleStore.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(batch, ledger, &commonpb.LedgerInfo{Name: ledger, DeletedAt: &commonpb.Timestamp{Data: 6}}))
+	require.NoError(t, state.SaveLedger(batch, ledger, &ledgerpb.LedgerInfo{Name: ledger, DeletedAt: &ledgerpb.Timestamp{Data: 6}}))
 	require.NoError(t, state.DeleteLedgerData(batch, ledger))
-	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{
+	require.NoError(t, state.AppendLogs(batch, []*ledgerpb.Log{{
 		Sequence: 5,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_DeleteLedger{
-			DeleteLedger: &commonpb.DeletedLedgerLog{Name: ledger},
+		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_DeleteLedger{
+			DeleteLedger: &ledgerpb.DeletedLedgerLog{Name: ledger},
 		}},
 	}}))
 	require.NoError(t, state.SetAppliedIndex(batch, 6))

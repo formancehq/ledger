@@ -10,7 +10,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -64,7 +64,7 @@ func runAnalyzeTransactions(cmd *cobra.Command, _ []string) error {
 
 	spinner := cmdutil.StartSpinner("Analyzing transactions...")
 
-	stream, err := client.AnalyzeTransactions(ctx, &commonpb.AnalyzeTransactionsRequest{
+	stream, err := client.AnalyzeTransactions(ctx, &ledgerpb.AnalyzeTransactionsRequest{
 		Ledger:            ledgerName,
 		VariableThreshold: threshold,
 	})
@@ -74,7 +74,7 @@ func runAnalyzeTransactions(cmd *cobra.Command, _ []string) error {
 		return cmdutil.FormatGRPCError("failed to analyze transactions", err)
 	}
 
-	var resp *commonpb.AnalyzeTransactionsResponse
+	var resp *ledgerpb.AnalyzeTransactionsResponse
 
 	for {
 		event, err := stream.Recv()
@@ -89,7 +89,7 @@ func runAnalyzeTransactions(cmd *cobra.Command, _ []string) error {
 		}
 
 		switch t := event.GetType().(type) {
-		case *commonpb.AnalyzeTransactionsEvent_Progress:
+		case *ledgerpb.AnalyzeTransactionsEvent_Progress:
 			p := t.Progress
 			if p.GetTotal() > 0 {
 				pct := p.GetProcessed() * 100 / p.GetTotal()
@@ -97,7 +97,7 @@ func runAnalyzeTransactions(cmd *cobra.Command, _ []string) error {
 			} else {
 				spinner.UpdateText(fmt.Sprintf("Analyzing transactions... %d logs scanned", p.GetProcessed()))
 			}
-		case *commonpb.AnalyzeTransactionsEvent_Result:
+		case *ledgerpb.AnalyzeTransactionsEvent_Result:
 			resp = t.Result
 		}
 
@@ -117,7 +117,7 @@ func runAnalyzeTransactions(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func renderTransactionAnalysisResult(resp *commonpb.AnalyzeTransactionsResponse) {
+func renderTransactionAnalysisResult(resp *ledgerpb.AnalyzeTransactionsResponse) {
 	// Summary
 	pterm.DefaultHeader.WithFullWidth().Println("Transaction Flow Analysis")
 	pterm.Info.Printfln("Total transactions: %d", resp.GetTotalTransactions())
@@ -198,22 +198,22 @@ func renderTransactionAnalysisResult(resp *commonpb.AnalyzeTransactionsResponse)
 	}
 }
 
-func postingStructureName(s commonpb.PostingStructure) string {
+func postingStructureName(s ledgerpb.PostingStructure) string {
 	switch s {
-	case commonpb.PostingStructure_POSTING_STRUCTURE_SIMPLE:
+	case ledgerpb.PostingStructure_POSTING_STRUCTURE_SIMPLE:
 		return "simple"
-	case commonpb.PostingStructure_POSTING_STRUCTURE_MULTI_SOURCE:
+	case ledgerpb.PostingStructure_POSTING_STRUCTURE_MULTI_SOURCE:
 		return "multi-source"
-	case commonpb.PostingStructure_POSTING_STRUCTURE_MULTI_DESTINATION:
+	case ledgerpb.PostingStructure_POSTING_STRUCTURE_MULTI_DESTINATION:
 		return "multi-destination"
-	case commonpb.PostingStructure_POSTING_STRUCTURE_COMPLEX:
+	case ledgerpb.PostingStructure_POSTING_STRUCTURE_COMPLEX:
 		return "complex"
 	default:
 		return "unknown"
 	}
 }
 
-func formatTimestamp(ts *commonpb.Timestamp) string {
+func formatTimestamp(ts *ledgerpb.Timestamp) string {
 	if ts == nil {
 		return "N/A"
 	}

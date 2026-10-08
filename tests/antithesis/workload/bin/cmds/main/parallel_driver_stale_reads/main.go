@@ -32,7 +32,7 @@ import (
 	antirandom "github.com/antithesishq/antithesis-sdk-go/random"
 	"google.golang.org/grpc/metadata"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -58,7 +58,7 @@ func parseAmount(s string) *big.Int {
 }
 
 func main() {
-	internal.RunDriver("parallel_driver_stale_reads", func(ctx context.Context, client commonpb.BucketServiceClient, _ string) {
+	internal.RunDriver("parallel_driver_stale_reads", func(ctx context.Context, client ledgerpb.BucketServiceClient, _ string) {
 		r := internal.Rand()
 
 		run := r.Uint64()
@@ -84,16 +84,16 @@ func main() {
 		for i := range rounds {
 			attempted++
 
-			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_Apply{
-					Apply: &commonpb.LedgerApplyRequest{
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_Apply{
+					Apply: &ledgerpb.LedgerApplyRequest{
 						Ledger: ledger,
-						Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
-							CreateTransaction: &commonpb.CreateTransactionPayload{
-								Postings: []*commonpb.Posting{{
+						Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
+							CreateTransaction: &ledgerpb.CreateTransactionPayload{
+								Postings: []*ledgerpb.Posting{{
 									Source:      "world",
 									Destination: probeAccount,
-									Amount:      commonpb.NewUint256FromUint64(1),
+									Amount:      ledgerpb.NewUint256FromUint64(1),
 									Asset:       probeAsset,
 								}},
 								Reference: fmt.Sprintf("stale-%d-%d", run, i),
@@ -116,7 +116,7 @@ func main() {
 				// counts it, keeping the upper bound sound.
 			}
 
-			account, err := client.GetAccount(staleCtx, &commonpb.GetAccountRequest{
+			account, err := client.GetAccount(staleCtx, &ledgerpb.GetAccountRequest{
 				Ledger:  ledger,
 				Address: probeAccount,
 			})

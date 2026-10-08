@@ -4,7 +4,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -55,7 +55,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	info, err := client.GetNumscript(ctx, &servicepb.GetNumscriptRequest{
+	info, err := client.GetNumscript(ctx, &ledgerpb.GetNumscriptRequest{
 		Ledger:  ledgerName,
 		Name:    name,
 		Version: version,

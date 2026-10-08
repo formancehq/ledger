@@ -1,7 +1,7 @@
 package query
 
 import (
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -14,7 +14,7 @@ import (
 // to the WriteSet-backed lookup used by the FSM hot path: both implement
 // indexes.Lookup, so callers of query.Compile can pass either.
 type pebbleIndexReader struct {
-	attr   *attributes.Attribute[*commonpb.Index]
+	attr   *attributes.Attribute[*ledgerpb.Index]
 	reader dal.PebbleGetter
 }
 
@@ -23,11 +23,11 @@ type pebbleIndexReader struct {
 // A nil attribute or reader returns a Lookup that reports
 // (nil, domain.ErrNotFound) — useful for tests and ad-hoc Compile callers
 // that have no index registry to consult.
-func NewPebbleIndexReader(attr *attributes.Attribute[*commonpb.Index], reader dal.PebbleGetter) indexes.Lookup {
+func NewPebbleIndexReader(attr *attributes.Attribute[*ledgerpb.Index], reader dal.PebbleGetter) indexes.Lookup {
 	return &pebbleIndexReader{attr: attr, reader: reader}
 }
 
-func (r *pebbleIndexReader) Get(key domain.IndexKey) (commonpb.IndexReader, error) {
+func (r *pebbleIndexReader) Get(key domain.IndexKey) (ledgerpb.IndexReader, error) {
 	if r == nil || r.attr == nil || r.reader == nil {
 		return nil, domain.ErrNotFound
 	}

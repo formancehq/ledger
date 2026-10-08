@@ -3,7 +3,7 @@ package internal
 import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // CreatedTransactionFromLog extracts the CreatedTransaction carried by one log,
@@ -14,7 +14,7 @@ import (
 // indistinguishable from a real one. It is reported and treated as nil so a
 // caller's nil guard covers it. Every path reaching a CreatedTransaction goes
 // through here, including the bulk drivers selecting one log out of many.
-func CreatedTransactionFromLog(log *commonpb.Log) *commonpb.CreatedTransaction {
+func CreatedTransactionFromLog(log *ledgerpb.Log) *ledgerpb.CreatedTransaction {
 	applyLog := log.GetPayload().GetApply()
 	if applyLog == nil {
 		return nil
@@ -36,7 +36,7 @@ func CreatedTransactionFromLog(log *commonpb.Log) *commonpb.CreatedTransaction {
 
 // ExtractCreatedTransaction extracts the CreatedTransaction from the first log
 // of an Apply response.
-func ExtractCreatedTransaction(resp *commonpb.ApplyResponse) *commonpb.CreatedTransaction {
+func ExtractCreatedTransaction(resp *ledgerpb.ApplyResponse) *ledgerpb.CreatedTransaction {
 	if resp == nil || len(resp.GetLogs()) == 0 {
 		return nil
 	}
@@ -49,7 +49,7 @@ func ExtractCreatedTransaction(resp *commonpb.ApplyResponse) *commonpb.CreatedTr
 // every account it touches. Returns the extracted transaction so callers can
 // reuse its fields (TxId, postings, …), or nil if the response did not carry
 // one (ambiguous error path).
-func CheckCreatedTransaction(resp *commonpb.ApplyResponse, details Details) *commonpb.CreatedTransaction {
+func CheckCreatedTransaction(resp *ledgerpb.ApplyResponse, details Details) *ledgerpb.CreatedTransaction {
 	ct := ExtractCreatedTransaction(resp)
 	if ct == nil {
 		return nil

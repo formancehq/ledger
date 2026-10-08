@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 )
@@ -50,7 +50,7 @@ func LoadResponseVerifyKey(cmd *cobra.Command) (ed25519.PublicKey, error) {
 
 // VerifyResponseSignatures verifies the response signatures on the given logs.
 // If no verify key is configured (--response-verify-key), this is a no-op.
-func VerifyResponseSignatures(cmd *cobra.Command, logs []*commonpb.Log) error {
+func VerifyResponseSignatures(cmd *cobra.Command, logs []*ledgerpb.Log) error {
 	pubKey, err := LoadResponseVerifyKey(cmd)
 	if err != nil {
 		return err
@@ -78,7 +78,7 @@ func VerifyResponseSignatures(cmd *cobra.Command, logs []*commonpb.Log) error {
 // returns the ApplyRequest to pass to Apply — signed as a whole when a signing
 // key is configured on the command flags, unsigned otherwise. Signing the batch
 // authenticates its composition and ordering.
-func BuildApplyRequest(cmd *cobra.Command, requests ...*commonpb.Request) (*commonpb.ApplyRequest, error) {
+func BuildApplyRequest(cmd *cobra.Command, requests ...*ledgerpb.Request) (*ledgerpb.ApplyRequest, error) {
 	// Commands that expose batch retries register this flag. Resolve it before
 	// signing so the authenticated batch includes its idempotency key.
 	var idempotencyKey string
@@ -94,20 +94,20 @@ func BuildApplyRequest(cmd *cobra.Command, requests ...*commonpb.Request) (*comm
 }
 
 // BuildApplyRequestWithIdempotencyKey binds the key into the batch before signing.
-func BuildApplyRequestWithIdempotencyKey(cmd *cobra.Command, idempotencyKey string, requests ...*commonpb.Request) (*commonpb.ApplyRequest, error) {
+func BuildApplyRequestWithIdempotencyKey(cmd *cobra.Command, idempotencyKey string, requests ...*ledgerpb.Request) (*ledgerpb.ApplyRequest, error) {
 	keyID, privKey, err := LoadSigningKey(cmd)
 	if err != nil {
 		return nil, err
 	}
 
 	if privKey == nil {
-		return commonpb.UnsignedApplyRequest(idempotencyKey, requests...), nil
+		return ledgerpb.UnsignedApplyRequest(idempotencyKey, requests...), nil
 	}
 
-	sb, err := signing.Sign(&commonpb.ApplyBatch{Requests: requests, IdempotencyKey: idempotencyKey}, keyID, privKey)
+	sb, err := signing.Sign(&ledgerpb.ApplyBatch{Requests: requests, IdempotencyKey: idempotencyKey}, keyID, privKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign batch: %w", err)
 	}
 
-	return commonpb.SignedApplyRequest(sb), nil
+	return ledgerpb.SignedApplyRequest(sb), nil
 }

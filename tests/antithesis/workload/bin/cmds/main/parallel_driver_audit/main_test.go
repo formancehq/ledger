@@ -21,7 +21,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestAuditDriverStream(t *testing.T) {
@@ -58,7 +58,7 @@ func TestAuditDriverStream(t *testing.T) {
 			listener, err := net.Listen("tcp", "127.0.0.1:0")
 			require.NoError(t, err)
 			server := grpc.NewServer()
-			auditpb.RegisterBucketServiceServer(server, fixture)
+			ledgerpb.RegisterBucketServiceServer(server, fixture)
 			serverDone := make(chan error, 1)
 			go func() { serverDone <- server.Serve(listener) }()
 			t.Cleanup(func() {
@@ -145,7 +145,7 @@ func runAuditCancellation(t *testing.T, mode string) {
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithStreamInterceptor(func(ctx context.Context, desc *grpc.StreamDesc, conn *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
 			stream, err := streamer(ctx, desc, conn, method, opts...)
-			if err != nil || method != auditpb.BucketService_ListAuditEntries_FullMethodName {
+			if err != nil || method != ledgerpb.BucketService_ListAuditEntries_FullMethodName {
 				return stream, err
 			}
 			receiver = &cancelingAuditStream{ClientStream: stream, cancel: cancel, mode: mode, prefix: entries}
@@ -155,7 +155,7 @@ func runAuditCancellation(t *testing.T, mode string) {
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
-	runAuditCycle(ctx, auditpb.NewBucketServiceClient(conn), "default")
+	runAuditCycle(ctx, ledgerpb.NewBucketServiceClient(conn), "default")
 	require.NotNil(t, receiver, "must enter the audit receive loop")
 	require.Equal(t, entries, receiver.received, "must receive the prefix before canceling")
 	require.ErrorIs(t, ctx.Err(), context.Canceled, "must cancel the actual caller context")
@@ -230,7 +230,7 @@ func readAuditAssertions(t *testing.T, path string) map[string][]auditAssertion 
 }
 
 type auditStreamServer struct {
-	auditpb.UnimplementedBucketServiceServer
+	ledgerpb.UnimplementedBucketServiceServer
 
 	entries       int
 	terminal      error
@@ -240,21 +240,21 @@ type auditStreamServer struct {
 	sentEntries   atomic.Int32
 }
 
-func (s *auditStreamServer) ListLedgers(_ *auditpb.ListLedgersRequest, stream grpc.ServerStreamingServer[auditpb.LedgerInfo]) error {
-	return stream.Send(&auditpb.LedgerInfo{Name: "default"})
+func (s *auditStreamServer) ListLedgers(_ *ledgerpb.ListLedgersRequest, stream grpc.ServerStreamingServer[ledgerpb.LedgerInfo]) error {
+	return stream.Send(&ledgerpb.LedgerInfo{Name: "default"})
 }
 
-func (s *auditStreamServer) Apply(_ context.Context, request *auditpb.ApplyRequest) (*auditpb.ApplyResponse, error) {
+func (s *auditStreamServer) Apply(_ context.Context, request *ledgerpb.ApplyRequest) (*ledgerpb.ApplyResponse, error) {
 	requests := request.GetUnsigned().GetRequests()
 	if len(requests) != 1 || requests[0].GetApply().GetLedger() != "default" || requests[0].GetApply().GetAction().GetCreateTransaction() == nil {
 		return nil, status.Error(codes.InvalidArgument, "fixture expected one audit setup transaction")
 	}
 	s.applyCalls.Add(1)
 
-	return &auditpb.ApplyResponse{Logs: []*auditpb.Log{{Sequence: 1}}}, nil
+	return &ledgerpb.ApplyResponse{Logs: []*ledgerpb.Log{{Sequence: 1}}}, nil
 }
 
-func (s *auditStreamServer) ListAuditEntries(request *auditpb.ListAuditEntriesRequest, stream grpc.ServerStreamingServer[auditpb.AuditEntry]) error {
+func (s *auditStreamServer) ListAuditEntries(request *ledgerpb.ListAuditEntriesRequest, stream grpc.ServerStreamingServer[ledgerpb.AuditEntry]) error {
 	if request.GetOptions().GetPageSize() != 10 || s.applyCalls.Load() != 1 {
 		return status.Error(codes.InvalidArgument, "fixture expected audit page after the confirmed transaction")
 	}
@@ -265,7 +265,7 @@ func (s *auditStreamServer) ListAuditEntries(request *auditpb.ListAuditEntriesRe
 		return err
 	}
 	for i := range s.entries {
-		if err := stream.Send(&auditpb.AuditEntry{Sequence: uint64(i + 1)}); err != nil {
+		if err := stream.Send(&ledgerpb.AuditEntry{Sequence: uint64(i + 1)}); err != nil {
 			return err
 		}
 		s.sentEntries.Add(1)

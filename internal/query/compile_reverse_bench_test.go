@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -75,7 +75,7 @@ func drainPage(b *testing.B, store *readstore.Store, after []byte) (rowsVisited,
 
 	iter, err := query.Compile(
 		reader, dal.NewKeyBuilder(), stringFieldFilter("colour", "red"),
-		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, parityLedger,
+		ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, parityLedger,
 		nil, paritySchema(), parityInfo(), parityRegistry(), parityResolver(), nil, reader, parityPin)
 	require.NoError(b, err)
 
@@ -127,7 +127,7 @@ func streamPage(b *testing.B, store *readstore.Store, before []byte) (rowsVisite
 
 	iter, err := query.CompileReverse(
 		reader, dal.NewKeyBuilder(), stringFieldFilter("colour", "red"),
-		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, parityLedger,
+		ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, parityLedger,
 		nil, paritySchema(), parityInfo(), parityRegistry(), parityResolver(), profile, reader, parityPin)
 	require.NoError(b, err)
 

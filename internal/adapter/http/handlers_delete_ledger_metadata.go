@@ -3,7 +3,7 @@ package http
 import (
 	"net/http"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // handleDeleteLedgerMetadata handles DELETE /{ledgerName}/metadata/{key} to delete ledger metadata.
@@ -18,9 +18,9 @@ func (s *Server) handleDeleteLedgerMetadata(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	_, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{
-		Type: &servicepb.Request_DeleteLedgerMetadata{
-			DeleteLedgerMetadata: &servicepb.DeleteLedgerMetadataRequest{
+	_, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &ledgerpb.Request{
+		Type: &ledgerpb.Request_DeleteLedgerMetadata{
+			DeleteLedgerMetadata: &ledgerpb.DeleteLedgerMetadataRequest{
 				Ledger: ledgerName,
 				Key:    key,
 			},

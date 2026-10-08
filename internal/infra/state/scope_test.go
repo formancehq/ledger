@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -21,13 +21,13 @@ func TestScope_DeclaredAccessAndRejectedAccess(t *testing.T) {
 	fsm, _, _ := newTestMachine(t)
 	key := domain.LedgerKey{Name: "declared"}
 	id, _ := attributes.MakeKey(key.Bytes())
-	fsm.writeSet.Reset(&commonpb.Timestamp{Data: 1})
+	fsm.writeSet.Reset(&ledgerpb.Timestamp{Data: 1})
 	factory := NewScopeFactory(fsm.writeSet, &raftcmdpb.ExecutionPlan{
 		Attributes: []*raftcmdpb.AttributeCoverage{declareTestPlan(id, dal.SubAttrLedger)},
 	}, fsm.logger, fsm.preloadMissCounter, 42)
 	scope, err := factory.NewScope([]byte{1})
 	require.NoError(t, err)
-	info := &commonpb.LedgerInfo{Id: 7, Name: key.Name}
+	info := &ledgerpb.LedgerInfo{Id: 7, Name: key.Name}
 	scope.Ledgers().Put(key, info)
 	got, err := scope.Ledgers().Get(key)
 	require.NoError(t, err)
@@ -60,7 +60,7 @@ func TestScope_CoverageMissDoesNotFreezeIdempotency(t *testing.T) {
 
 	fsm, store, _ := newTestMachine(t)
 	proposal := makeProposal(1, createLedgerOrder("coverage"))
-	proposal.Idempotency = &commonpb.Idempotency{Key: "retryable"}
+	proposal.Idempotency = &ledgerpb.Idempotency{Key: "retryable"}
 	proposal.ExecutionPlan.Attributes = nil // Deliberately omit the ledger read.
 	result, err := fsm.ApplyEntries(context.Background(), store, makeEntry(t, 1, proposal))
 	require.NoError(t, err, "a coverage miss must not become a fatal apply failure")
@@ -73,7 +73,7 @@ func TestScope_CoverageMissDoesNotFreezeIdempotency(t *testing.T) {
 	// Repair only the admission declaration and retry the identical business
 	// request under the same key. It must execute, not replay a frozen failure.
 	proposal = makeProposal(2, createLedgerOrder("coverage"))
-	proposal.Idempotency = &commonpb.Idempotency{Key: "retryable"}
+	proposal.Idempotency = &ledgerpb.Idempotency{Key: "retryable"}
 	result, err = fsm.ApplyEntries(context.Background(), store, makeEntry(t, 2, proposal))
 	require.NoError(t, err)
 	require.NoError(t, result.Results[0].Error)
@@ -96,7 +96,7 @@ func TestScope_TechnicalUpdate_CoverageMissShortCircuits(t *testing.T) {
 	// Seed the "ok" ledger in the cache + global store so the second
 	// handler would have a real entry to read if it were reached.
 	okKey := domain.LedgerKey{Name: "ok"}
-	okInfo := &commonpb.LedgerInfo{Id: 1, Name: "ok"}
+	okInfo := &ledgerpb.LedgerInfo{Id: 1, Name: "ok"}
 
 	seedBatch := dataStore.OpenWriteSession()
 	_, _, err := fsm.Registry.Ledgers.PutWithCache(seedBatch, gen0Byte, okKey.Bytes(), okInfo)
@@ -121,7 +121,7 @@ func TestScope_TechnicalUpdate_CoverageMissShortCircuits(t *testing.T) {
 	// from the same code path the historical IndexReady test exercised.
 	proposal := &raftcmdpb.Proposal{
 		Id:            1,
-		Date:          &commonpb.Timestamp{Data: 1700000000},
+		Date:          &ledgerpb.Timestamp{Data: 1700000000},
 		ExecutionPlan: executionPlan,
 		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{
 			{Kind: &raftcmdpb.TechnicalUpdate_MirrorSync{MirrorSync: &raftcmdpb.MirrorSyncUpdate{LedgerName: "missed"}}},
@@ -169,8 +169,8 @@ func TestScope_TechnicalUpdate_PerUpdateCoverageIsolation(t *testing.T) {
 	// if coverage admitted the access.
 	aKey := domain.LedgerKey{Name: "A"}
 	bKey := domain.LedgerKey{Name: "B"}
-	aInfo := &commonpb.LedgerInfo{Id: 1, Name: "A"}
-	bInfo := &commonpb.LedgerInfo{Id: 2, Name: "B"}
+	aInfo := &ledgerpb.LedgerInfo{Id: 1, Name: "A"}
+	bInfo := &ledgerpb.LedgerInfo{Id: 2, Name: "B"}
 
 	seedBatch := dataStore.OpenWriteSession()
 	_, _, err := fsm.Registry.Ledgers.PutWithCache(seedBatch, gen0Byte, aKey.Bytes(), aInfo)
@@ -201,7 +201,7 @@ func TestScope_TechnicalUpdate_PerUpdateCoverageIsolation(t *testing.T) {
 	// declared elsewhere in the plan.
 	proposal := &raftcmdpb.Proposal{
 		Id:            1,
-		Date:          &commonpb.Timestamp{Data: 1700000000},
+		Date:          &ledgerpb.Timestamp{Data: 1700000000},
 		ExecutionPlan: executionPlan,
 		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{
 			CoverageBits: []byte{0b00000001}, // only "A"
@@ -240,13 +240,13 @@ func TestScope_OrderRead_RequiresCoverageEvenForOverlayHit(t *testing.T) {
 	// Empty ExecutionPlan → no plans declared → all reads must miss.
 	plan := &raftcmdpb.ExecutionPlan{}
 
-	fsm.writeSet.Reset(&commonpb.Timestamp{Data: 1})
+	fsm.writeSet.Reset(&ledgerpb.Timestamp{Data: 1})
 	buffer := fsm.writeSet
 	scope, err := NewScopeFactory(buffer, plan, fsm.logger, fsm.preloadMissCounter, 42).NewScope(nil)
 	require.NoError(t, err)
 
 	// Simulate a prior handler write inside this batch.
-	scope.Ledgers().Put(domain.LedgerKey{Name: "K"}, &commonpb.LedgerInfo{Id: 7, Name: "K"})
+	scope.Ledgers().Put(domain.LedgerKey{Name: "K"}, &ledgerpb.LedgerInfo{Id: 7, Name: "K"})
 
 	// A later handler reads "K" through the same Scope. The overlay HAS it,
 	// but coverage doesn't — the wrapper must gate before the engine reads
@@ -270,7 +270,7 @@ func TestScope_OrderDelete_RequiresCoverage(t *testing.T) {
 	// Empty ExecutionPlan → no plans declared → every gated operation must miss.
 	plan := &raftcmdpb.ExecutionPlan{}
 
-	fsm.writeSet.Reset(&commonpb.Timestamp{Data: 1})
+	fsm.writeSet.Reset(&ledgerpb.Timestamp{Data: 1})
 	buffer := fsm.writeSet
 	scope, err := NewScopeFactory(buffer, plan, fsm.logger, fsm.preloadMissCounter, 42).NewScope(nil)
 	require.NoError(t, err)

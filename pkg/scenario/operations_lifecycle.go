@@ -1,7 +1,7 @@
 package scenario
 
 import (
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
@@ -11,8 +11,8 @@ const OperationsLifecycleLedger = "ops-test"
 
 // OperationsLifecycleSetupActions returns the Apply requests that create the ledger,
 // account types, and numscript library for the operations lifecycle scenario.
-func OperationsLifecycleSetupActions() []*servicepb.Request {
-	return []*servicepb.Request{
+func OperationsLifecycleSetupActions() []*ledgerpb.Request {
+	return []*ledgerpb.Request{
 		actions.CreateLedgerAction(OperationsLifecycleLedger, nil),
 		actions.AddAccountTypeAction(OperationsLifecycleLedger, "ops-account", "ops:{id}"),
 		actions.SaveNumscriptWithVersionAction(OperationsLifecycleLedger, "deposit", `vars {

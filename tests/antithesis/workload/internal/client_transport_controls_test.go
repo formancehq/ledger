@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 
@@ -20,14 +20,14 @@ import (
 )
 
 type terminalApplyServer struct {
-	commonpb.UnimplementedBucketServiceServer
+	ledgerpb.UnimplementedBucketServiceServer
 
 	attempts atomic.Int32
 	entered  chan struct{}
 	err      error
 }
 
-func (s *terminalApplyServer) Apply(ctx context.Context, _ *commonpb.ApplyRequest) (*commonpb.ApplyResponse, error) {
+func (s *terminalApplyServer) Apply(ctx context.Context, _ *ledgerpb.ApplyRequest) (*ledgerpb.ApplyResponse, error) {
 	s.attempts.Add(1)
 	if s.entered != nil {
 		s.entered <- struct{}{}
@@ -39,7 +39,7 @@ func (s *terminalApplyServer) Apply(ctx context.Context, _ *commonpb.ApplyReques
 	return nil, s.err
 }
 
-func factoryForwardingClient(t *testing.T, server commonpb.BucketServiceServer) commonpb.BucketServiceClient {
+func factoryForwardingClient(t *testing.T, server ledgerpb.BucketServiceServer) ledgerpb.BucketServiceClient {
 	t.Helper()
 	pool := transport.NewConnectionPool(transport.TLSPolicy{}, transport.PoolConfig{})
 	t.Cleanup(func() { require.NoError(t, pool.Close()) })
@@ -49,7 +49,7 @@ func factoryForwardingClient(t *testing.T, server commonpb.BucketServiceServer) 
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
 
-	return commonpb.NewBucketServiceClient(conn)
+	return ledgerpb.NewBucketServiceClient(conn)
 }
 
 func TestNewGRPCConn_CallerCancellationIsPreserved(t *testing.T) {
@@ -59,7 +59,7 @@ func TestNewGRPCConn_CallerCancellationIsPreserved(t *testing.T) {
 	t.Cleanup(cancel)
 	finished := make(chan error, 1)
 	go func() {
-		_, err := client.Apply(ctx, &commonpb.ApplyRequest{})
+		_, err := client.Apply(ctx, &ledgerpb.ApplyRequest{})
 		finished <- err
 	}()
 	select {
@@ -99,7 +99,7 @@ func TestNewGRPCConn_ServerStatusesAreNotRetried(t *testing.T) {
 			client := factoryForwardingClient(t, server)
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			t.Cleanup(cancel)
-			_, err := client.Apply(ctx, &commonpb.ApplyRequest{})
+			_, err := client.Apply(ctx, &ledgerpb.ApplyRequest{})
 			require.NoError(t, ctx.Err())
 			require.True(t, proto.Equal(test.st.Proto(), status.Convert(err).Proto()))
 			require.Equal(t, int32(1), server.attempts.Load())

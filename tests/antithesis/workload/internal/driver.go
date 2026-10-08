@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // driverTimeout bounds a single parallel driver execution. Retries under fault
@@ -43,7 +43,7 @@ func DriverContext() (context.Context, context.CancelFunc) {
 
 // RunDriver is the common boilerplate for parallel drivers:
 // connect, pick a random ledger, run fn once.
-func RunDriver(name string, fn func(ctx context.Context, client servicepb.BucketServiceClient, ledger string)) {
+func RunDriver(name string, fn func(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string)) {
 	log.Printf("composer: %s", name)
 
 	ctx, cancel := context.WithTimeout(context.Background(), driverTimeout)

@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/antithesistest"
@@ -74,7 +74,7 @@ func TestIdempotencyCoverageExclusions(t *testing.T) {
 			t.Parallel()
 			fsm, store, _ := newTestMachine(t)
 			proposal := makeProposal(1, createLedgerOrder("idempotency-coverage"))
-			proposal.Idempotency = &commonpb.Idempotency{Key: "key"}
+			proposal.Idempotency = &ledgerpb.Idempotency{Key: "key"}
 			stored := &internalstatepb.IdempotencyKeyValue{
 				Hash: fsm.processor.HashProposal(proposal), CreatedAt: 1,
 				FirstLogSequence: 1, LogCount: 1,
@@ -119,7 +119,7 @@ func TestPreparedBatchOutcomeFacts(t *testing.T) {
 	proposal := makeProposal(2,
 		createTransactionOrder("outcomes", true, newPosting("world", "alice", "EUR", 20)),
 		createTransactionOrder("outcomes", true, newPosting("world", "bob", "EUR", 10)))
-	proposal.Idempotency = &commonpb.Idempotency{Key: "bulk"}
+	proposal.Idempotency = &ledgerpb.Idempotency{Key: "bulk"}
 	first, err := fsm.PrepareEntries(ctx, store, makeEntry(t, 2, proposal))
 	require.NoError(t, err)
 	defer first.Close()

@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -32,7 +32,7 @@ func TestMergeKeysGlobalLedgerRowOffCanonicalKey(t *testing.T) {
 
 	// The row's identity is the envelope key; its payload carries a name that
 	// disagrees with it.
-	buf.Ledgers().Put(domain.LedgerKey{Name: envelope}, &commonpb.LedgerInfo{
+	buf.Ledgers().Put(domain.LedgerKey{Name: envelope}, &ledgerpb.LedgerInfo{
 		Id:   1,
 		Name: divergent,
 	})

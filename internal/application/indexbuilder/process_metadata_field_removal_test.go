@@ -6,7 +6,7 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -52,31 +52,31 @@ func testReverseMapNamespacePrefix(kb *dal.KeyBuilder, ledger, ns string) []byte
 		Snapshot()
 }
 
-func savedAccountMetadata(account, key string, value int64) *commonpb.SavedMetadata {
-	return &commonpb.SavedMetadata{
-		Target: &commonpb.Target{
-			Target: &commonpb.Target_Account{
-				Account: &commonpb.TargetAccount{Addr: account},
+func savedAccountMetadata(account, key string, value int64) *ledgerpb.SavedMetadata {
+	return &ledgerpb.SavedMetadata{
+		Target: &ledgerpb.Target{
+			Target: &ledgerpb.Target_Account{
+				Account: &ledgerpb.TargetAccount{Addr: account},
 			},
 		},
-		Metadata: map[string]*commonpb.MetadataValue{key: commonpb.NewIntValue(value)},
+		Metadata: map[string]*ledgerpb.MetadataValue{key: ledgerpb.NewIntValue(value)},
 	}
 }
 
-func savedTransactionMetadata(txID uint64, key string, value int64) *commonpb.SavedMetadata {
-	return &commonpb.SavedMetadata{
-		Target: &commonpb.Target{
-			Target: &commonpb.Target_TransactionId{TransactionId: txID},
+func savedTransactionMetadata(txID uint64, key string, value int64) *ledgerpb.SavedMetadata {
+	return &ledgerpb.SavedMetadata{
+		Target: &ledgerpb.Target{
+			Target: &ledgerpb.Target_TransactionId{TransactionId: txID},
 		},
-		Metadata: map[string]*commonpb.MetadataValue{key: commonpb.NewIntValue(value)},
+		Metadata: map[string]*ledgerpb.MetadataValue{key: ledgerpb.NewIntValue(value)},
 	}
 }
 
-func deletedAccountMetadata(account, key string) *commonpb.DeletedMetadata {
-	return &commonpb.DeletedMetadata{
-		Target: &commonpb.Target{
-			Target: &commonpb.Target_Account{
-				Account: &commonpb.TargetAccount{Addr: account},
+func deletedAccountMetadata(account, key string) *ledgerpb.DeletedMetadata {
+	return &ledgerpb.DeletedMetadata{
+		Target: &ledgerpb.Target{
+			Target: &ledgerpb.Target_Account{
+				Account: &ledgerpb.TargetAccount{Addr: account},
 			},
 		},
 		Key: key,
@@ -103,8 +103,8 @@ func TestHandleRemovedMetadataFieldType_PurgesReverseMap(t *testing.T) {
 	newActiveCfg := func() *ledgerIndexConfig {
 		cfg := newLedgerIndexConfig()
 		for _, k := range []string{removedKey, keepKey} {
-			id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, k)
-			cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
+			id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, k)
+			cfg.byCanonical[indexes.Canonical(id)] = &ledgerpb.Index{Id: id}
 		}
 
 		return cfg
@@ -113,8 +113,8 @@ func TestHandleRemovedMetadataFieldType_PurgesReverseMap(t *testing.T) {
 	removeRole := func(t *testing.T, b *Builder, cfg *ledgerIndexConfig) {
 		t.Helper()
 
-		removed := &commonpb.RemovedMetadataFieldTypeLog{
-			DroppedIndex: indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, removedKey),
+		removed := &ledgerpb.RemovedMetadataFieldTypeLog{
+			DroppedIndex: indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, removedKey),
 		}
 		require.NoError(t, b.handleRemovedMetadataFieldType(b.kb, cfg, ledger, removed))
 	}
@@ -267,8 +267,8 @@ func TestHandleRemovedMetadataFieldType_PurgesReverseMap_Transaction(t *testing.
 
 	newActiveCfg := func() *ledgerIndexConfig {
 		cfg := newLedgerIndexConfig()
-		id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, removedKey)
-		cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
+		id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, removedKey)
+		cfg.byCanonical[indexes.Canonical(id)] = &ledgerpb.Index{Id: id}
 
 		return cfg
 	}
@@ -276,8 +276,8 @@ func TestHandleRemovedMetadataFieldType_PurgesReverseMap_Transaction(t *testing.
 	removeRole := func(t *testing.T, b *Builder, cfg *ledgerIndexConfig) {
 		t.Helper()
 
-		removed := &commonpb.RemovedMetadataFieldTypeLog{
-			DroppedIndex: indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, removedKey),
+		removed := &ledgerpb.RemovedMetadataFieldTypeLog{
+			DroppedIndex: indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, removedKey),
 		}
 		require.NoError(t, b.handleRemovedMetadataFieldType(b.kb, cfg, ledger, removed))
 	}
@@ -351,7 +351,7 @@ func TestPurgeReverseMapForKeyIsFieldBoundedAcrossVersions(t *testing.T) {
 		removedKey  = "status"
 		keepKey     = "team"
 	)
-	encoded := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("open"))
+	encoded := readstore.EncodeMetadataValue(nil, ledgerpb.NewStringValue("open"))
 
 	tests := []struct {
 		name       string
@@ -442,15 +442,15 @@ func TestHandleRemovedMetadataFieldType_NoBatchFailsLoudly(t *testing.T) {
 
 	b := newTestBuilderWithStore(t)
 
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, removedKey)
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, removedKey)
 	cfg := newLedgerIndexConfig()
-	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
+	cfg.byCanonical[indexes.Canonical(id)] = &ledgerpb.Index{Id: id}
 
 	// No initBatch: b.wb holds no session, so Batch() returns nil.
 	b.wb.Reset()
 	require.Nil(t, b.wb.Batch(), "precondition: the write batch must be unbound")
 
-	err := b.handleRemovedMetadataFieldType(b.kb, cfg, ledger, &commonpb.RemovedMetadataFieldTypeLog{
+	err := b.handleRemovedMetadataFieldType(b.kb, cfg, ledger, &ledgerpb.RemovedMetadataFieldTypeLog{
 		DroppedIndex: id,
 	})
 

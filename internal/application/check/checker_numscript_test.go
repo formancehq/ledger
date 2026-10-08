@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
@@ -21,7 +21,7 @@ func saveNumscriptOrder(ledger, name, content, version string) *raftcmdpb.Order 
 	}}}
 }
 
-func tamperNumscriptContent(t *testing.T, e *testEngine, info *commonpb.NumscriptInfo) {
+func tamperNumscriptContent(t *testing.T, e *testEngine, info *ledgerpb.NumscriptInfo) {
 	t.Helper()
 
 	batch := e.store.OpenWriteSession()
@@ -50,10 +50,10 @@ func tamperNumscriptLatest(t *testing.T, e *testEngine, ledger, name, version st
 	require.NoError(t, batch.Commit())
 }
 
-func numscriptMismatches(errs []*commonpb.CheckStoreError) []*commonpb.CheckStoreError {
-	var out []*commonpb.CheckStoreError
+func numscriptMismatches(errs []*ledgerpb.CheckStoreError) []*ledgerpb.CheckStoreError {
+	var out []*ledgerpb.CheckStoreError
 	for _, e := range errs {
-		if e.GetErrorType() == commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_NUMSCRIPT_MISMATCH {
+		if e.GetErrorType() == ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_NUMSCRIPT_MISMATCH {
 			out = append(out, e)
 		}
 	}
@@ -129,7 +129,7 @@ func TestCheckerNumscript_ExtraContentDetected(t *testing.T) {
 	e := newTestEngine(t)
 	e.processAndCommit(createLedgerOrder("main"))
 
-	tamperNumscriptContent(t, e, &commonpb.NumscriptInfo{Name: "ghost", Version: "1.0.0", Content: numscriptTestContent, Ledger: "main"})
+	tamperNumscriptContent(t, e, &ledgerpb.NumscriptInfo{Name: "ghost", Version: "1.0.0", Content: numscriptTestContent, Ledger: "main"})
 
 	require.NotEmpty(t, numscriptMismatches(collectCheckErrors(t, e.store, e.attrs)))
 }

@@ -3,10 +3,10 @@ package indexbuilder
 import (
 	"google.golang.org/protobuf/proto"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
-// resetLogForReuse prepares a *commonpb.Log for reuse by UnmarshalVT without
+// resetLogForReuse prepares a *ledgerpb.Log for reuse by UnmarshalVT without
 // calling proto.Reset. This preserves nested message allocations across
 // iterations, avoiding ~15-20 heap allocations per log entry in the hot loop.
 //
@@ -20,7 +20,7 @@ import (
 // Fields always present in the wire format are safe to skip (UnmarshalVT
 // overwrites them), but optional fields MUST be nil'd/zeroed.
 func resetLogForReuse(msg proto.Message) {
-	m, ok := msg.(*commonpb.Log)
+	m, ok := msg.(*ledgerpb.Log)
 	if !ok {
 		proto.Reset(msg)
 
@@ -39,8 +39,8 @@ func resetLogForReuse(msg proto.Message) {
 	resetLogPayload(m.GetPayload())
 }
 
-func resetLogPayload(p *commonpb.LogPayload) {
-	apply, ok := p.GetType().(*commonpb.LogPayload_Apply)
+func resetLogPayload(p *ledgerpb.LogPayload) {
+	apply, ok := p.GetType().(*ledgerpb.LogPayload_Apply)
 	if !ok {
 		// Non-Apply log type: nil the oneof to force reallocation.
 		// These are rare (CreateLedger, DeleteLedger, etc.).
@@ -65,7 +65,7 @@ func resetLogPayload(p *commonpb.LogPayload) {
 	resetLedgerLog(a.GetLog())
 }
 
-func resetLedgerLog(ll *commonpb.LedgerLog) {
+func resetLedgerLog(ll *ledgerpb.LedgerLog) {
 	ll.Id = 0
 	// The volume-annotation lists are absent from the wire on most logs, so a
 	// leftover would survive the next unmarshal and poison excludedForLog —
@@ -85,18 +85,18 @@ func resetLedgerLog(ll *commonpb.LedgerLog) {
 	resetLedgerLogPayload(ll.GetData())
 }
 
-func resetLedgerLogPayload(p *commonpb.LedgerLogPayload) {
+func resetLedgerLogPayload(p *ledgerpb.LedgerLogPayload) {
 	// Handle each oneof variant. Preserve the wrapper and inner message
 	// for the common types (CreatedTransaction, RevertedTransaction) so
 	// UnmarshalVT reuses them when the next log is the same type.
 	switch v := p.GetPayload().(type) {
-	case *commonpb.LedgerLogPayload_CreatedTransaction:
+	case *ledgerpb.LedgerLogPayload_CreatedTransaction:
 		resetCreatedTransaction(v.CreatedTransaction)
-	case *commonpb.LedgerLogPayload_RevertedTransaction:
+	case *ledgerpb.LedgerLogPayload_RevertedTransaction:
 		resetRevertedTransaction(v.RevertedTransaction)
-	case *commonpb.LedgerLogPayload_SavedMetadata:
+	case *ledgerpb.LedgerLogPayload_SavedMetadata:
 		resetSavedMetadata(v.SavedMetadata)
-	case *commonpb.LedgerLogPayload_DeletedMetadata:
+	case *ledgerpb.LedgerLogPayload_DeletedMetadata:
 		resetDeletedMetadata(v.DeletedMetadata)
 	default:
 		// Rare types (SetMetadataFieldType, CreateIndex, etc.): nil the
@@ -105,7 +105,7 @@ func resetLedgerLogPayload(p *commonpb.LedgerLogPayload) {
 	}
 }
 
-func resetCreatedTransaction(ct *commonpb.CreatedTransaction) {
+func resetCreatedTransaction(ct *ledgerpb.CreatedTransaction) {
 	if ct == nil {
 		return
 	}
@@ -115,7 +115,7 @@ func resetCreatedTransaction(ct *commonpb.CreatedTransaction) {
 	resetTransaction(ct.GetTransaction())
 }
 
-func resetRevertedTransaction(rt *commonpb.RevertedTransaction) {
+func resetRevertedTransaction(rt *ledgerpb.RevertedTransaction) {
 	if rt == nil {
 		return
 	}
@@ -125,7 +125,7 @@ func resetRevertedTransaction(rt *commonpb.RevertedTransaction) {
 	resetTransaction(rt.GetRevertTransaction())
 }
 
-func resetTransaction(txn *commonpb.Transaction) {
+func resetTransaction(txn *ledgerpb.Transaction) {
 	if txn == nil {
 		return
 	}
@@ -142,7 +142,7 @@ func resetTransaction(txn *commonpb.Transaction) {
 	// Preserve txn.Timestamp and txn.InsertedAt (always present).
 }
 
-func resetSavedMetadata(sm *commonpb.SavedMetadata) {
+func resetSavedMetadata(sm *ledgerpb.SavedMetadata) {
 	if sm == nil {
 		return
 	}
@@ -151,7 +151,7 @@ func resetSavedMetadata(sm *commonpb.SavedMetadata) {
 	clear(sm.GetMetadata())
 }
 
-func resetDeletedMetadata(dm *commonpb.DeletedMetadata) {
+func resetDeletedMetadata(dm *ledgerpb.DeletedMetadata) {
 	if dm == nil {
 		return
 	}

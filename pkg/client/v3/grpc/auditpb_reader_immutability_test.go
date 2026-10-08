@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // These tests pin the immutability contract of protoc-gen-reader: a Reader view
@@ -16,7 +16,7 @@ func TestAuditEntryReader_GetLedgers_ReturnsIndependentSlice(t *testing.T) {
 	t.Parallel()
 
 	original := []string{"main", "staging", "audit"}
-	entry := &auditpb.AuditEntry{Ledgers: original}
+	entry := &ledgerpb.AuditEntry{Ledgers: original}
 	r := entry.AsReader()
 
 	got := r.GetLedgers()
@@ -29,7 +29,7 @@ func TestAuditEntryReader_GetLedgers_ReturnsIndependentSlice(t *testing.T) {
 func TestAuditEntryReader_GetHash_ReturnsIndependentBytes(t *testing.T) {
 	t.Parallel()
 
-	entry := &auditpb.AuditEntry{Hash: []byte{0x01, 0x02, 0x03, 0x04}}
+	entry := &ledgerpb.AuditEntry{Hash: []byte{0x01, 0x02, 0x03, 0x04}}
 	r := entry.AsReader()
 
 	got := r.GetHash()
@@ -41,8 +41,8 @@ func TestAuditEntryReader_GetHash_ReturnsIndependentBytes(t *testing.T) {
 func TestAuditEntryReader_GetItems_ListReaderProtectsElements(t *testing.T) {
 	t.Parallel()
 
-	item := &auditpb.AuditItem{OrderIndex: 1, LogSequence: 42}
-	entry := &auditpb.AuditEntry{Items: []*auditpb.AuditItem{item}}
+	item := &ledgerpb.AuditItem{OrderIndex: 1, LogSequence: 42}
+	entry := &ledgerpb.AuditEntry{Items: []*ledgerpb.AuditItem{item}}
 	r := entry.AsReader()
 
 	list := r.GetItems()
@@ -61,8 +61,8 @@ func TestAuditEntryReader_GetItems_ListReaderProtectsElements(t *testing.T) {
 func TestAuditEntryReader_GetItems_RangeYieldsReaderViews(t *testing.T) {
 	t.Parallel()
 
-	entry := &auditpb.AuditEntry{
-		Items: []*auditpb.AuditItem{
+	entry := &ledgerpb.AuditEntry{
+		Items: []*ledgerpb.AuditItem{
 			{OrderIndex: 1},
 			{OrderIndex: 2},
 			nil,
@@ -72,7 +72,7 @@ func TestAuditEntryReader_GetItems_RangeYieldsReaderViews(t *testing.T) {
 
 	var indices []int
 	var orders []uint32
-	r.GetItems().Range(func(i int, item auditpb.AuditItemReader) bool {
+	r.GetItems().Range(func(i int, item ledgerpb.AuditItemReader) bool {
 		indices = append(indices, i)
 		if item == nil {
 			orders = append(orders, 0)
@@ -91,7 +91,7 @@ func TestAuditEntryReader_GetItems_RangeYieldsReaderViews(t *testing.T) {
 func TestAuditEntryReader_GetLedgers_NilStaysNil(t *testing.T) {
 	t.Parallel()
 
-	entry := &auditpb.AuditEntry{}
+	entry := &ledgerpb.AuditEntry{}
 	r := entry.AsReader()
 
 	require.Nil(t, r.GetLedgers())

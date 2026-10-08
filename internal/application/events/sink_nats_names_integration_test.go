@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/application/events"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -78,8 +78,8 @@ func TestNATSSinkIntegration_AdmittedLedgerNames(t *testing.T) {
 			require.NoError(t, err)
 			store := newTestStore(t)
 			appendTestLogs(t, store,
-				&commonpb.Log{Sequence: 1, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: tc.name}}}},
-				&commonpb.Log{Sequence: 2, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "normal"}}}},
+				&ledgerpb.Log{Sequence: 1, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{CreateLedger: &ledgerpb.CreatedLedgerLog{Name: tc.name}}}},
+				&ledgerpb.Log{Sequence: 2, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{CreateLedger: &ledgerpb.CreatedLedgerLog{Name: "normal"}}}},
 			)
 			realSink, err := events.NewNATSSink(events.NATSSinkConfig{URL: ns.ClientURL(), Topic: "events", Format: events.FormatJSON})
 			require.NoError(t, err)
@@ -163,9 +163,9 @@ func TestNATSSinkIntegration_NameRetryAfterStreamRecovery(t *testing.T) {
 	js, err := jetstream.New(conn)
 	require.NoError(t, err)
 	store := newTestStore(t)
-	logs := []*commonpb.Log{
-		{Sequence: 1, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "a..b"}}}},
-		{Sequence: 2, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "normal"}}}},
+	logs := []*ledgerpb.Log{
+		{Sequence: 1, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{CreateLedger: &ledgerpb.CreatedLedgerLog{Name: "a..b"}}}},
+		{Sequence: 2, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{CreateLedger: &ledgerpb.CreatedLedgerLog{Name: "normal"}}}},
 	}
 	appendTestLogs(t, store, logs...)
 	realSink, err := events.NewNATSSink(events.NATSSinkConfig{URL: ns.ClientURL(), Topic: "events", Format: events.FormatProto})
@@ -174,7 +174,7 @@ func TestNATSSinkIntegration_NameRetryAfterStreamRecovery(t *testing.T) {
 	sink := &observedNATSSink{NATSSink: realSink, results: make(chan error), resume: make(chan struct{})}
 	cfg := events.DefaultEmitterConfig()
 	cfg.BatchSize = 2
-	cfg.EventTypes = map[commonpb.EventType]struct{}{} // Empty also selects all events.
+	cfg.EventTypes = map[ledgerpb.EventType]struct{}{} // Empty also selects all events.
 	emitter := events.NewEmitter(store, sink, "retry", &directProposer{store: store}, newPlanBuilder(t, store), logging.Testing(), cfg)
 	emitter.Start()
 	defer emitter.Stop()

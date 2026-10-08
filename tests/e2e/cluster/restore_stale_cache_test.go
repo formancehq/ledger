@@ -14,7 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
@@ -118,8 +118,8 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 	Describe("Phase 1: fund, checkpoint, drain, export", Ordered, func() {
 		var (
 			sourceServer  *testservice.Service
-			client        clusterpb.BucketServiceClient
-			clusterClient clusterpb.ClusterServiceClient
+			client        ledgerpb.BucketServiceClient
+			clusterClient ledgerpb.ClusterServiceClient
 			grpcConn      *grpc.ClientConn
 		)
 
@@ -146,18 +146,18 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) bool {
-				state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+				state, err := clusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 				g.Expect(err).To(Succeed())
 				return state.Leader != 0
 			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
 
-			_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// mallory's VolumePair (input=1000, output=0) is cache-resident when
 			// the checkpoint is taken: the threshold guarantees no rotation
 			// evicts it between this order and the backup.
-			_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*clusterpb.Posting{
+			_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "mallory", big.NewInt(1000), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -171,8 +171,8 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 		})
 
 		It("should take a full backup to S3", func() {
-			resp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
-				Storage: testutil.S3BackupStorage(&clusterpb.S3StorageConfig{
+			resp, err := clusterClient.Backup(ctx, &ledgerpb.BackupRequest{
+				Storage: testutil.S3BackupStorage(&ledgerpb.S3StorageConfig{
 					Bucket:   staleS3Bucket,
 					Region:   restoreS3Region,
 					Endpoint: minioEndpoint,
@@ -186,13 +186,13 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 			// The drain lives only in the incremental export: after restore,
 			// 0xF1 says (1000, 1000) while the checkpoint's 0xFF cache entry
 			// still says (1000, 0).
-			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*clusterpb.Posting{
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("mallory", "world", big.NewInt(1000), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 
-			resp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
-				Storage: testutil.S3BackupStorage(&clusterpb.S3StorageConfig{
+			resp, err := clusterClient.IncrementalBackup(ctx, &ledgerpb.IncrementalBackupRequest{
+				Storage: testutil.S3BackupStorage(&ledgerpb.S3StorageConfig{
 					Bucket:   staleS3Bucket,
 					Region:   restoreS3Region,
 					Endpoint: minioEndpoint,
@@ -206,7 +206,7 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 	// Phase 2: download and finalize the restore on fresh directories.
 	Describe("Phase 2: restore from backup", Ordered, func() {
 		var (
-			restoreClient clusterpb.RestoreServiceClient
+			restoreClient ledgerpb.RestoreServiceClient
 			grpcConn      *grpc.ClientConn
 			server        *testservice.Service
 		)
@@ -241,8 +241,8 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 		})
 
 		It("should download and finalize", func() {
-			startResp, err := restoreClient.StartDownloadBackup(ctx, &clusterpb.StartDownloadBackupRequest{
-				Storage: testutil.S3BackupStorage(&clusterpb.S3StorageConfig{
+			startResp, err := restoreClient.StartDownloadBackup(ctx, &ledgerpb.StartDownloadBackupRequest{
+				Storage: testutil.S3BackupStorage(&ledgerpb.S3StorageConfig{
 					Bucket:   staleS3Bucket,
 					Region:   restoreS3Region,
 					Endpoint: minioEndpoint,
@@ -250,17 +250,17 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 
-			Eventually(func() clusterpb.DownloadState {
-				resp, statusErr := restoreClient.GetDownloadStatus(ctx, &clusterpb.GetDownloadStatusRequest{
+			Eventually(func() ledgerpb.DownloadState {
+				resp, statusErr := restoreClient.GetDownloadStatus(ctx, &ledgerpb.GetDownloadStatusRequest{
 					JobId: startResp.GetJobId(),
 				})
 				Expect(statusErr).To(Succeed())
 				return resp.GetState()
-			}, 2*time.Minute, 500*time.Millisecond).Should(Equal(clusterpb.DownloadState_DOWNLOAD_STATE_SUCCEEDED))
+			}, 2*time.Minute, 500*time.Millisecond).Should(Equal(ledgerpb.DownloadState_DOWNLOAD_STATE_SUCCEEDED))
 
 			Expect(validateRestoreWithoutErrors(ctx, restoreClient)).To(Succeed())
 
-			_, err = restoreClient.FinalizeRestore(ctx, &clusterpb.FinalizeRestoreRequest{})
+			_, err = restoreClient.FinalizeRestore(ctx, &ledgerpb.FinalizeRestoreRequest{})
 			Expect(err).To(Succeed())
 		})
 	})
@@ -269,8 +269,8 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 	// delta-rebuilt volumes, not the checkpoint-era cache entry.
 	Describe("Phase 3: verify the apply path after restore", Ordered, func() {
 		var (
-			client        clusterpb.BucketServiceClient
-			clusterClient clusterpb.ClusterServiceClient
+			client        ledgerpb.BucketServiceClient
+			clusterClient ledgerpb.ClusterServiceClient
 			grpcConn      *grpc.ClientConn
 			server        *testservice.Service
 		)
@@ -302,7 +302,7 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) bool {
-				state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+				state, err := clusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 				g.Expect(err).To(Succeed())
 				return state.Leader != 0
 			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
@@ -321,19 +321,19 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 			// 0xF1 sanity check: RebuildDelta replayed the drain, so the
 			// query path (which reads 0xF1 directly) must see it. This
 			// isolates any failure below to the cache, not the rebuild.
-			resp, err := client.GetAccount(ctx, &clusterpb.GetAccountRequest{Ledger: ledgerName, Address: "mallory"})
+			resp, err := client.GetAccount(ctx, &ledgerpb.GetAccountRequest{Ledger: ledgerName, Address: "mallory"})
 			Expect(err).To(Succeed())
 			Expect(resp.FindVolume("USD", "").GetInput()).To(Equal("1000"))
 			Expect(resp.FindVolume("USD", "").GetOutput()).To(Equal("1000"))
 		})
 
 		It("should apply against the drained volumes, not the checkpoint-era cache entry", func() {
-			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*clusterpb.Posting{
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "mallory", big.NewInt(500), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 
-			resp, err := client.GetAccount(ctx, &clusterpb.GetAccountRequest{Ledger: ledgerName, Address: "mallory"})
+			resp, err := client.GetAccount(ctx, &ledgerpb.GetAccountRequest{Ledger: ledgerName, Address: "mallory"})
 			Expect(err).To(Succeed())
 			Expect(resp.FindVolume("USD", "").GetInput()).To(Equal("1500"))
 			Expect(resp.FindVolume("USD", "").GetOutput()).To(Equal("1000"),

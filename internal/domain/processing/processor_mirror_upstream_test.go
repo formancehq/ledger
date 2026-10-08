@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -49,9 +49,9 @@ func TestMirrorIngest_UpstreamRevertPreservesOriginalIdentity(t *testing.T) {
 	expectDefaultMetadataLimits(store)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
-	info := &commonpb.LedgerInfo{Name: ledger, Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR}
+	info := &ledgerpb.LedgerInfo{Name: ledger, Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR}
 	expectGetLedger(store, domain.LedgerKey{Name: ledger}, info.AsReader(), nil).AnyTimes()
-	store.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1}).AsReader()).AnyTimes()
+	store.EXPECT().GetDate().Return((&ledgerpb.Timestamp{Data: 1}).AsReader()).AnyTimes()
 	store.EXPECT().GetNextSequenceID().Return(uint64(1)).Times(3)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextLogId: 1}

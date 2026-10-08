@@ -6,7 +6,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -53,7 +53,7 @@ func runStats(cmd *cobra.Command, _ []string) error {
 
 	checkpointID, _ := cmd.Flags().GetUint64("checkpoint-id")
 
-	stats, err := client.GetLedgerStats(ctx, &servicepb.GetLedgerStatsRequest{
+	stats, err := client.GetLedgerStats(ctx, &ledgerpb.GetLedgerStatsRequest{
 		Ledger:       ledgerName,
 		CheckpointId: checkpointID,
 	})

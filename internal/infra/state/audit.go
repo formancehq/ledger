@@ -4,7 +4,7 @@ import (
 	"maps"
 	"slices"
 
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
@@ -29,7 +29,7 @@ import (
 // cannot produce a false mismatch. On the checker's actual read path it never
 // even shows: a proto3 map with no entries emits no bytes, so an empty Context
 // unmarshals back as nil and both sides read nil out of Pebble.
-func describeFailure(d domain.SerializableError) (auditpb.ErrorReason, string) {
+func describeFailure(d domain.SerializableError) (ledgerpb.ErrorReason, string) {
 	return domain.ReasonCode(d.Reason()), d.Error()
 }
 
@@ -39,10 +39,10 @@ func describeFailure(d domain.SerializableError) (auditpb.ErrorReason, string) {
 // is no ERROR_REASON_UNSPECIFIED fallback: a non-Describable failure is an FSM
 // invariant violation that must fail loudly at its origin, never be downgraded
 // to an unspecified business outcome in the authoritative chain.
-func buildAuditFailure(d domain.SerializableError) *auditpb.AuditFailure {
+func buildAuditFailure(d domain.SerializableError) *ledgerpb.AuditFailure {
 	reason, message := describeFailure(d)
 
-	failure := &auditpb.AuditFailure{
+	failure := &ledgerpb.AuditFailure{
 		Reason:  reason,
 		Message: message,
 		Context: make(map[string]string),
@@ -79,11 +79,11 @@ func marshalOrdersForAudit(orders []*raftcmdpb.Order) [][]byte {
 // buildAuditItems creates AuditItem entries from the pre-marshalled
 // order payloads and their associated logs. For failure cases (logs is
 // nil), all items get LogSequence=0.
-func buildAuditItems(serializedOrders [][]byte, logs []*raftcmdpb.CreatedLogOrReference) []*auditpb.AuditItem {
-	items := make([]*auditpb.AuditItem, len(serializedOrders))
+func buildAuditItems(serializedOrders [][]byte, logs []*raftcmdpb.CreatedLogOrReference) []*ledgerpb.AuditItem {
+	items := make([]*ledgerpb.AuditItem, len(serializedOrders))
 
 	for i, payload := range serializedOrders {
-		item := &auditpb.AuditItem{
+		item := &ledgerpb.AuditItem{
 			OrderIndex:      uint32(i),
 			SerializedOrder: payload,
 		}

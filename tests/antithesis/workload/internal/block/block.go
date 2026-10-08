@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/scenario"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -73,7 +73,7 @@ func Scenarios() []string {
 
 // RunLoop picks random blocks and runs them in a loop.
 // It calls Setup once per group, then loops forever picking random blocks.
-func RunLoop(ctx context.Context, client servicepb.BucketServiceClient, groups []*scenario.BlockGroup) {
+func RunLoop(ctx context.Context, client ledgerpb.BucketServiceClient, groups []*scenario.BlockGroup) {
 	// Collect all blocks and run setups. Retry on Unavailable since the
 	// cluster may not have elected a leader yet at startup.
 	var allBlocks []*scenario.Block
@@ -87,7 +87,7 @@ func RunLoop(ctx context.Context, client servicepb.BucketServiceClient, groups [
 						return
 					}
 
-					_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions...))
+					_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions...))
 					if err == nil || isAlreadyExists(err) {
 						break
 					}
@@ -202,7 +202,7 @@ func isFailedPrecondition(err error) bool {
 }
 
 // CheckPostCommitVolumes verifies volume consistency on a transaction response.
-func CheckPostCommitVolumes(resp *servicepb.ApplyResponse, details internal.Details) {
+func CheckPostCommitVolumes(resp *ledgerpb.ApplyResponse, details internal.Details) {
 	ct := internal.ExtractCreatedTransaction(resp)
 	if ct == nil {
 		return

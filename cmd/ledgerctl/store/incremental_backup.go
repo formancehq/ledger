@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -57,7 +57,7 @@ func runIncrementalBackup(cmd *cobra.Command, _ []string) error {
 		spinner = cmdutil.StartSpinner("Running incremental backup...")
 	}
 
-	resp, err := client.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
+	resp, err := client.IncrementalBackup(ctx, &ledgerpb.IncrementalBackupRequest{
 		Storage:  storage,
 		BasePath: basePath,
 		BucketId: bucketID,

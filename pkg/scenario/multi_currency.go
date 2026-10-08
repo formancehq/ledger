@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math/big"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
@@ -50,7 +50,7 @@ func MultiCurrencyBlocks() *BlockGroup {
 	}
 }
 
-func multiCurrencyFund(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
+func multiCurrencyFund(ctx context.Context, client ledgerpb.BucketServiceClient, r RandFunc) (*ledgerpb.ApplyResponse, error) {
 	currencies := MultiCurrencyCurrencies()
 	cur := currencies[RandIntN(r, len(currencies))]
 	amount := int64(100_000 + RandIntN(r, 900_000))
@@ -63,7 +63,7 @@ func multiCurrencyFund(ctx context.Context, client commonpb.BucketServiceClient,
 	)
 }
 
-func multiCurrencyFX(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
+func multiCurrencyFX(ctx context.Context, client ledgerpb.BucketServiceClient, r RandFunc) (*ledgerpb.ApplyResponse, error) {
 	currencies := MultiCurrencyCurrencies()
 	srcIdx := RandIntN(r, len(currencies))
 	dstIdx := (srcIdx + 1 + RandIntN(r, len(currencies)-1)) % len(currencies)
@@ -92,13 +92,13 @@ func multiCurrencyFX(ctx context.Context, client commonpb.BucketServiceClient, r
 
 	// Leg 2: fx:clearing -> target (force, different currency).
 	return ApplyActions(ctx, client,
-		actions.CreateForceTransactionAction(MultiCurrencyLedger, []*commonpb.Posting{
+		actions.CreateForceTransactionAction(MultiCurrencyLedger, []*ledgerpb.Posting{
 			actions.NewPosting("fx:clearing", dst.Treasury, big.NewInt(dstAmount), dst.Asset),
 		}, nil),
 	)
 }
 
-func multiCurrencyVendorPay(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
+func multiCurrencyVendorPay(ctx context.Context, client ledgerpb.BucketServiceClient, r RandFunc) (*ledgerpb.ApplyResponse, error) {
 	currencies := MultiCurrencyCurrencies()
 	vendors := MultiCurrencyVendors()
 	cur := currencies[RandIntN(r, len(currencies))]
@@ -122,8 +122,8 @@ func multiCurrencyVendorPay(ctx context.Context, client commonpb.BucketServiceCl
 
 // MultiCurrencySetupActions returns the Apply requests that create the ledger,
 // account types, and numscript library for the multi-currency scenario.
-func MultiCurrencySetupActions() []*commonpb.Request {
-	return []*commonpb.Request{
+func MultiCurrencySetupActions() []*ledgerpb.Request {
+	return []*ledgerpb.Request{
 		actions.CreateLedgerAction(MultiCurrencyLedger, nil),
 		actions.AddAccountTypeAction(MultiCurrencyLedger, "treasury", "treasury:{currency}"),
 		actions.AddEphemeralAccountTypeAction(MultiCurrencyLedger, "fx-clearing", "fx:clearing"),
@@ -154,18 +154,18 @@ send $amount (
   source = $treasury
   destination = $vendor
 )`, "1.0.0"),
-		actions.CreateBuiltinTxIndexAction(MultiCurrencyLedger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
-		actions.CreateBuiltinTxIndexAction(MultiCurrencyLedger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
+		actions.CreateBuiltinTxIndexAction(MultiCurrencyLedger, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
+		actions.CreateBuiltinTxIndexAction(MultiCurrencyLedger, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
 		actions.CreatePreparedQueryAction("accounts-by-prefix", MultiCurrencyLedger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			actions.ParamAddressPrefixFilter("prefix"),
 		),
 		actions.CreatePreparedQueryAction("account-exact", MultiCurrencyLedger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			actions.ParamAddressExactFilter("addr"),
 		),
 		actions.CreatePreparedQueryAction("volumes-by-prefix", MultiCurrencyLedger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			actions.ParamAddressPrefixFilter("prefix"),
 		),
 	}
@@ -266,7 +266,7 @@ func RunMultiCurrency(r *Runner) error {
 	// --- FX Operations (batched: leg1+leg2 pairs) ---
 	{
 		numFXOps := min(r.Iterations(len(fxOps)), len(fxOps))
-		reqs := make([]*commonpb.Request, 0, numFXOps*2)
+		reqs := make([]*ledgerpb.Request, 0, numFXOps*2)
 		for _, fx := range fxOps[:numFXOps] {
 			reqs = append(reqs,
 				actions.CreateScriptRefTransactionAction(ledger, "fx_convert", "1.0.0", map[string]string{
@@ -274,7 +274,7 @@ func RunMultiCurrency(r *Runner) error {
 					"clearing_account": "fx:clearing",
 					"amount":           fmt.Sprintf("%s %d", fx.sourceAsset, fx.sourceAmount),
 				}, nil),
-				actions.CreateForceTransactionAction(ledger, []*commonpb.Posting{
+				actions.CreateForceTransactionAction(ledger, []*ledgerpb.Posting{
 					actions.NewPosting("fx:clearing", fx.targetAccount, big.NewInt(fx.targetAmount), fx.targetAsset),
 				}, nil),
 			)
@@ -286,7 +286,7 @@ func RunMultiCurrency(r *Runner) error {
 
 	// --- Vendor Payments (batched) ---
 	{
-		reqs := make([]*commonpb.Request, 0, len(eurPayments)+len(gbpPayments))
+		reqs := make([]*ledgerpb.Request, 0, len(eurPayments)+len(gbpPayments))
 		for _, vp := range eurPayments {
 			reqs = append(reqs, actions.CreateScriptRefTransactionAction(ledger, "vendor_payment", "1.0.0", map[string]string{
 				"treasury": vp.treasury,

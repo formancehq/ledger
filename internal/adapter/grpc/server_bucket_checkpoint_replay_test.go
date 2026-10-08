@@ -10,7 +10,7 @@ import (
 	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/proto"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -34,7 +34,7 @@ func (c *checkpointWaitObservedContext) Done() <-chan struct{} {
 
 type checkpointAuthenticatedPeer struct{ *BucketServiceServerImpl }
 
-func (s checkpointAuthenticatedPeer) Apply(ctx context.Context, req *commonpb.ApplyRequest) (*commonpb.ApplyResponse, error) {
+func (s checkpointAuthenticatedPeer) Apply(ctx context.Context, req *ledgerpb.ApplyRequest) (*ledgerpb.ApplyResponse, error) {
 	return s.BucketServiceServerImpl.Apply(internalauth.WithClusterInternal(ctx, true), req)
 }
 
@@ -48,10 +48,10 @@ func TestApplyCheckpointReplayWhileOriginalWaits(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			leader, mockCtrl := newCheckpointWaitHarness(t)
-			logs := []*commonpb.Log{{Sequence: 7, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{CheckpointId: 1, MaxSequence: 7}}}}}
+			logs := []*ledgerpb.Log{{Sequence: 7, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreatedQueryCheckpoint{CreatedQueryCheckpoint: &ledgerpb.CreatedQueryCheckpointLog{CheckpointId: 1, MaxSequence: 7}}}}}
 			gomock.InOrder(
-				mockCtrl.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(&domain.ApplyResult{Logs: []*commonpb.Log{logs[0].CloneVT()}}, nil),
-				mockCtrl.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(&domain.ApplyResult{Logs: []*commonpb.Log{logs[0].CloneVT()}, Replayed: true}, nil),
+				mockCtrl.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(&domain.ApplyResult{Logs: []*ledgerpb.Log{logs[0].CloneVT()}}, nil),
+				mockCtrl.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(&domain.ApplyResult{Logs: []*ledgerpb.Log{logs[0].CloneVT()}, Replayed: true}, nil),
 			)
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
@@ -59,8 +59,8 @@ func TestApplyCheckpointReplayWhileOriginalWaits(t *testing.T) {
 			require.NoError(t, err)
 			observed := &checkpointWaitObservedContext{Context: ctx, observed: make(chan struct{})}
 			originalDone := make(chan error, 1)
-			request := func() *commonpb.ApplyRequest {
-				return commonpb.UnsignedApplyRequest("same-key", &commonpb.Request{Type: &commonpb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &commonpb.CreateQueryCheckpointRequest{}}})
+			request := func() *ledgerpb.ApplyRequest {
+				return ledgerpb.UnsignedApplyRequest("same-key", &ledgerpb.Request{Type: &ledgerpb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &ledgerpb.CreateQueryCheckpointRequest{}}})
 			}
 			go func() { _, err := leader.Apply(observed, request()); originalDone <- err }()
 			select {
@@ -126,18 +126,18 @@ func TestApplyCheckpointDeletedWhileFreshCreationWaits(t *testing.T) {
 	require.NoError(t, state.SaveQueryCheckpoint(batch, &raftcmdpb.QueryCheckpointState{CheckpointId: 1}))
 	require.NoError(t, state.StoreNextQueryCheckpointID(batch, 2))
 	require.NoError(t, batch.Commit())
-	log := &commonpb.Log{Sequence: 7, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{CheckpointId: 1, MaxSequence: 7}}}}
-	mockCtrl.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(&domain.ApplyResult{Logs: []*commonpb.Log{log.CloneVT()}}, nil)
+	log := &ledgerpb.Log{Sequence: 7, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreatedQueryCheckpoint{CreatedQueryCheckpoint: &ledgerpb.CreatedQueryCheckpointLog{CheckpointId: 1, MaxSequence: 7}}}}
+	mockCtrl.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(&domain.ApplyResult{Logs: []*ledgerpb.Log{log.CloneVT()}}, nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	observed := &checkpointWaitObservedContext{Context: ctx, observed: make(chan struct{})}
 	type applyOutcome struct {
-		response *commonpb.ApplyResponse
+		response *ledgerpb.ApplyResponse
 		err      error
 	}
 	done := make(chan applyOutcome, 1)
 	go func() {
-		response, err := impl.Apply(observed, commonpb.UnsignedApplyRequest("delete-during-wait", &commonpb.Request{Type: &commonpb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &commonpb.CreateQueryCheckpointRequest{}}}))
+		response, err := impl.Apply(observed, ledgerpb.UnsignedApplyRequest("delete-during-wait", &ledgerpb.Request{Type: &ledgerpb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &ledgerpb.CreateQueryCheckpointRequest{}}}))
 		done <- applyOutcome{response, err}
 	}()
 	select {

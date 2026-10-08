@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -55,11 +55,11 @@ func TestRetypeDuringBackfill_RefillsAFreshVersion(t *testing.T) {
 		account = "acct:1"
 	)
 
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, metaKey)
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, metaKey)
 	canonical := indexes.Canonical(id)
 
 	cfg := newLedgerIndexConfig()
-	cfg.byCanonical[canonical] = &commonpb.Index{Id: id}
+	cfg.byCanonical[canonical] = &ledgerpb.Index{Id: id}
 
 	// Creation backfill in flight: {cur:0, pend:1}, one log already folded
 	// into v1 at its own sequence.
@@ -87,10 +87,10 @@ func TestRetypeDuringBackfill_RefillsAFreshVersion(t *testing.T) {
 	// The retype lands mid-backfill, inside the next fold batch.
 	batch = b.readStore.NewBatch()
 	b.initBatch(batch)
-	require.NoError(t, b.addSchemaRewriteTask(cfg, ledger, &commonpb.SetMetadataFieldTypeLog{
-		TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+	require.NoError(t, b.addSchemaRewriteTask(cfg, ledger, &ledgerpb.SetMetadataFieldTypeLog{
+		TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 		Key:        metaKey,
-		Type:       commonpb.MetadataType_METADATA_TYPE_UINT32,
+		Type:       ledgerpb.MetadataType_METADATA_TYPE_UINT32,
 	}))
 
 	state, ok := b.versionStateFor(ledger, canonical)
@@ -125,16 +125,16 @@ func TestRetypeDuringBackfill_NewTransactionMetadataReplaysIntoFreshVersion(t *t
 	tests := []struct {
 		name  string
 		txID  uint64
-		index func(*Builder, *ledgerIndexConfig, *commonpb.MetadataValue) error
+		index func(*Builder, *ledgerIndexConfig, *ledgerpb.MetadataValue) error
 	}{
 		{
 			name: "CreatedTransaction",
 			txID: 21,
-			index: func(b *Builder, cfg *ledgerIndexConfig, value *commonpb.MetadataValue) error {
-				return b.indexCreatedTransaction(b.kb, cfg, ledger, &commonpb.CreatedTransaction{
-					Transaction: &commonpb.Transaction{
+			index: func(b *Builder, cfg *ledgerIndexConfig, value *ledgerpb.MetadataValue) error {
+				return b.indexCreatedTransaction(b.kb, cfg, ledger, &ledgerpb.CreatedTransaction{
+					Transaction: &ledgerpb.Transaction{
 						Id:       21,
-						Metadata: map[string]*commonpb.MetadataValue{metaKey: value},
+						Metadata: map[string]*ledgerpb.MetadataValue{metaKey: value},
 					},
 				}, nil, nil)
 			},
@@ -142,11 +142,11 @@ func TestRetypeDuringBackfill_NewTransactionMetadataReplaysIntoFreshVersion(t *t
 		{
 			name: "RevertedTransaction",
 			txID: 22,
-			index: func(b *Builder, cfg *ledgerIndexConfig, value *commonpb.MetadataValue) error {
-				return b.indexRevertedTransaction(b.kb, cfg, ledger, &commonpb.RevertedTransaction{
-					RevertTransaction: &commonpb.Transaction{
+			index: func(b *Builder, cfg *ledgerIndexConfig, value *ledgerpb.MetadataValue) error {
+				return b.indexRevertedTransaction(b.kb, cfg, ledger, &ledgerpb.RevertedTransaction{
+					RevertTransaction: &ledgerpb.Transaction{
 						Id:       22,
-						Metadata: map[string]*commonpb.MetadataValue{metaKey: value},
+						Metadata: map[string]*ledgerpb.MetadataValue{metaKey: value},
 					},
 				}, nil, nil)
 			},
@@ -161,10 +161,10 @@ func TestRetypeDuringBackfill_NewTransactionMetadataReplaysIntoFreshVersion(t *t
 			b.seedBatchSchema(t)
 			b.accounts = make(map[string]struct{})
 
-			id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, metaKey)
+			id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, metaKey)
 			canonical := indexes.Canonical(id)
 			cfg := newLedgerIndexConfig()
-			cfg.byCanonical[canonical] = &commonpb.Index{Id: id}
+			cfg.byCanonical[canonical] = &ledgerpb.Index{Id: id}
 
 			b.putVersionState(ledger, canonical, readstore.IndexVersionState{
 				CurrentVersion: 0,
@@ -178,9 +178,9 @@ func TestRetypeDuringBackfill_NewTransactionMetadataReplaysIntoFreshVersion(t *t
 				bbKey:  backfillBBKey(ledger, id),
 			}}
 
-			rawValue := commonpb.NewStringValue("030")
+			rawValue := ledgerpb.NewStringValue("030")
 			oldEncoded := readstore.EncodeMetadataValue(nil, rawValue)
-			newEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewUintValue(30))
+			newEncoded := readstore.EncodeMetadataValue(nil, ledgerpb.NewUintValue(30))
 			entityID := readstore.EncodeTxID(make([]byte, 0, 8), tt.txID)
 			v1Rmap := cloneBytes(readstore.TransactionReverseMapKeyV(b.kb, ledger, tt.txID, metaKey, 1))
 			v2Rmap := cloneBytes(readstore.TransactionReverseMapKeyV(b.kb, ledger, tt.txID, metaKey, 2))
@@ -200,10 +200,10 @@ func TestRetypeDuringBackfill_NewTransactionMetadataReplaysIntoFreshVersion(t *t
 			// encountered again.
 			batch = b.readStore.NewBatch()
 			b.initBatch(batch)
-			require.NoError(t, b.addSchemaRewriteTask(cfg, ledger, &commonpb.SetMetadataFieldTypeLog{
-				TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+			require.NoError(t, b.addSchemaRewriteTask(cfg, ledger, &ledgerpb.SetMetadataFieldTypeLog{
+				TargetType: ledgerpb.TargetType_TARGET_TYPE_TRANSACTION,
 				Key:        metaKey,
-				Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
+				Type:       ledgerpb.MetadataType_METADATA_TYPE_UINT64,
 			}))
 
 			state, ok := b.versionStateFor(ledger, canonical)

@@ -9,31 +9,31 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	ledgerjson "github.com/formancehq/ledger/pkg/client/v3/internal/json"
 )
 
 func TestLedgerLogJSONOutput(t *testing.T) {
 	t.Parallel()
-	timestamp := &commonpb.Timestamp{Data: 1_700_000_000_123_456}
-	metadata := map[string]*commonpb.MetadataValue{
-		"label": commonpb.NewStringValue("customer"), "active": commonpb.NewBoolValue(true),
-		"count": commonpb.NewUintValue(math.MaxUint64), "debt": commonpb.NewIntValue(math.MinInt64),
-		"null": commonpb.NewNullValue(""),
+	timestamp := &ledgerpb.Timestamp{Data: 1_700_000_000_123_456}
+	metadata := map[string]*ledgerpb.MetadataValue{
+		"label": ledgerpb.NewStringValue("customer"), "active": ledgerpb.NewBoolValue(true),
+		"count": ledgerpb.NewUintValue(math.MaxUint64), "debt": ledgerpb.NewIntValue(math.MinInt64),
+		"null": ledgerpb.NewNullValue(""),
 	}
-	transaction := &commonpb.Transaction{
+	transaction := &ledgerpb.Transaction{
 		Id: 9007199254740993, Reference: "ref-1", Timestamp: timestamp, InsertedAt: timestamp, UpdatedAt: timestamp,
 		Reverted: true, RevertedAt: timestamp, RevertedByTransaction: 9007199254740994,
 		Metadata: metadata,
-		Postings: []*commonpb.Posting{{Source: "world", Destination: "users:alice", Asset: "USD/2", Color: "GOLD", Amount: &commonpb.Uint256{V1: 1 << 36}}},
-		PostCommitVolumes: &commonpb.PostCommitVolumes{VolumesByAccount: map[string]*commonpb.VolumesByAssets{
-			"users:alice": {Volumes: []*commonpb.VolumeEntry{
-				{Asset: "USD/2", Color: "", Volumes: &commonpb.Volumes{Input: "123", Output: "0"}},
-				{Asset: "USD/2", Color: "GOLD", Volumes: &commonpb.Volumes{Input: "1267650600228229401496703205376", Output: "0"}},
+		Postings: []*ledgerpb.Posting{{Source: "world", Destination: "users:alice", Asset: "USD/2", Color: "GOLD", Amount: &ledgerpb.Uint256{V1: 1 << 36}}},
+		PostCommitVolumes: &ledgerpb.PostCommitVolumes{VolumesByAccount: map[string]*ledgerpb.VolumesByAssets{
+			"users:alice": {Volumes: []*ledgerpb.VolumeEntry{
+				{Asset: "USD/2", Color: "", Volumes: &ledgerpb.Volumes{Input: "123", Output: "0"}},
+				{Asset: "USD/2", Color: "GOLD", Volumes: &ledgerpb.Volumes{Input: "1267650600228229401496703205376", Output: "0"}},
 			}},
 		}},
 	}
-	revert := proto.Clone(transaction).(*commonpb.Transaction)
+	revert := proto.Clone(transaction).(*ledgerpb.Transaction)
 	revert.Id = 9007199254740994
 	revert.Reverted = false
 	revert.RevertedAt = nil
@@ -41,45 +41,45 @@ func TestLedgerLogJSONOutput(t *testing.T) {
 	revert.RevertsTransaction = transaction.GetId()
 	type logCase struct {
 		name    string
-		kind    commonpb.LogType
-		payload *commonpb.LedgerLogPayload
+		kind    ledgerpb.LogType
+		payload *ledgerpb.LedgerLogPayload
 	}
 	cases := []logCase{
-		{"created", commonpb.NewTransactionLogType, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{Transaction: transaction, AccountMetadata: map[string]*commonpb.MetadataMap{"users:alice": {Values: metadata}}}}}},
-		{"reverted", commonpb.RevertedTransactionLogType, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_RevertedTransaction{RevertedTransaction: &commonpb.RevertedTransaction{RevertedTransactionId: transaction.GetId(), RevertTransaction: revert}}}},
-		{"set-field", commonpb.SetMetadataFieldTypeLogType, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_SetMetadataFieldType{SetMetadataFieldType: &commonpb.SetMetadataFieldTypeLog{TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION, Key: "count", Type: commonpb.MetadataType_METADATA_TYPE_UINT64}}}},
-		{"remove-field", commonpb.RemovedMetadataFieldTypeLogType, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_RemovedMetadataFieldType{RemovedMetadataFieldType: &commonpb.RemovedMetadataFieldTypeLog{TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION, Key: "count", DroppedIndex: &commonpb.IndexID{Kind: &commonpb.IndexID_Metadata{Metadata: &commonpb.MetadataIndexID{Target: commonpb.TargetType_TARGET_TYPE_TRANSACTION, Key: "count"}}}}}}},
-		{"skipped", commonpb.OrderSkippedLogType, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_OrderSkipped{OrderSkipped: &commonpb.OrderSkippedLog{Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, Context: map[string]string{"reference": "ref-1", "existingTransactionId": "9007199254740993"}}}}},
+		{"created", ledgerpb.NewTransactionLogType, &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &ledgerpb.CreatedTransaction{Transaction: transaction, AccountMetadata: map[string]*ledgerpb.MetadataMap{"users:alice": {Values: metadata}}}}}},
+		{"reverted", ledgerpb.RevertedTransactionLogType, &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_RevertedTransaction{RevertedTransaction: &ledgerpb.RevertedTransaction{RevertedTransactionId: transaction.GetId(), RevertTransaction: revert}}}},
+		{"set-field", ledgerpb.SetMetadataFieldTypeLogType, &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_SetMetadataFieldType{SetMetadataFieldType: &ledgerpb.SetMetadataFieldTypeLog{TargetType: ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, Key: "count", Type: ledgerpb.MetadataType_METADATA_TYPE_UINT64}}}},
+		{"remove-field", ledgerpb.RemovedMetadataFieldTypeLogType, &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_RemovedMetadataFieldType{RemovedMetadataFieldType: &ledgerpb.RemovedMetadataFieldTypeLog{TargetType: ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, Key: "count", DroppedIndex: &ledgerpb.IndexID{Kind: &ledgerpb.IndexID_Metadata{Metadata: &ledgerpb.MetadataIndexID{Target: ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, Key: "count"}}}}}}},
+		{"skipped", ledgerpb.OrderSkippedLogType, &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_OrderSkipped{OrderSkipped: &ledgerpb.OrderSkippedLog{Reason: ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, Context: map[string]string{"reference": "ref-1", "existingTransactionId": "9007199254740993"}}}}},
 	}
-	for name, target := range map[string]*commonpb.Target{
-		"zero":        {Target: &commonpb.Target_TransactionId{TransactionId: 0}},
-		"account":     {Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: "users:alice"}}},
-		"transaction": {Target: &commonpb.Target_TransactionId{TransactionId: transaction.GetId()}},
+	for name, target := range map[string]*ledgerpb.Target{
+		"zero":        {Target: &ledgerpb.Target_TransactionId{TransactionId: 0}},
+		"account":     {Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{Addr: "users:alice"}}},
+		"transaction": {Target: &ledgerpb.Target_TransactionId{TransactionId: transaction.GetId()}},
 	} {
 		cases = append(
 			cases,
-			logCase{"saved-" + name, commonpb.SetMetadataLogType, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &commonpb.SavedMetadata{Target: target, Metadata: metadata}}}},
-			logCase{"deleted-" + name, commonpb.DeleteMetadataLogType, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_DeletedMetadata{DeletedMetadata: &commonpb.DeletedMetadata{Target: target, Key: "label"}}}},
+			logCase{"saved-" + name, ledgerpb.SetMetadataLogType, &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &ledgerpb.SavedMetadata{Target: target, Metadata: metadata}}}},
+			logCase{"deleted-" + name, ledgerpb.DeleteMetadataLogType, &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_DeletedMetadata{DeletedMetadata: &ledgerpb.DeletedMetadata{Target: target, Key: "label"}}}},
 		)
 	}
 	for _, tc := range []struct {
-		kind commonpb.LogType
+		kind ledgerpb.LogType
 		wire string
 	}{
-		{commonpb.FillGapLogType, `{"fillGap":{"originalId":"18446744073709551615"}}`},
-		{commonpb.CreateIndexLogType, `{"createIndex":{"id":{"metadata":{"target":"TARGET_TYPE_TRANSACTION","key":"label"}},"boundType":"METADATA_TYPE_UINT64","boundTypeDeclared":true}}`},
-		{commonpb.DropIndexLogType, `{"dropIndex":{"id":{"metadata":{"target":"TARGET_TYPE_ACCOUNT","key":"label"}}}}`},
-		{commonpb.AddedAccountTypeLogType, `{"addedAccountType":{"accountType":{"name":"users","pattern":"users:{id}","persistence":"ACCOUNT_TYPE_EPHEMERAL","segmentTypes":{"id":{"uint64":{}}}}}}`},
-		{commonpb.RemovedAccountTypeLogType, `{"removedAccountType":{"name":"users"}}`},
-		{commonpb.UpdatedDefaultEnforcementModeLogType, `{"updatedDefaultEnforcementMode":{"enforcementMode":"CHART_ENFORCEMENT_AUDIT"}}`},
+		{ledgerpb.FillGapLogType, `{"fillGap":{"originalId":"18446744073709551615"}}`},
+		{ledgerpb.CreateIndexLogType, `{"createIndex":{"id":{"metadata":{"target":"TARGET_TYPE_TRANSACTION","key":"label"}},"boundType":"METADATA_TYPE_UINT64","boundTypeDeclared":true}}`},
+		{ledgerpb.DropIndexLogType, `{"dropIndex":{"id":{"metadata":{"target":"TARGET_TYPE_ACCOUNT","key":"label"}}}}`},
+		{ledgerpb.AddedAccountTypeLogType, `{"addedAccountType":{"accountType":{"name":"users","pattern":"users:{id}","persistence":"ACCOUNT_TYPE_EPHEMERAL","segmentTypes":{"id":{"uint64":{}}}}}}`},
+		{ledgerpb.RemovedAccountTypeLogType, `{"removedAccountType":{"name":"users"}}`},
+		{ledgerpb.UpdatedDefaultEnforcementModeLogType, `{"updatedDefaultEnforcementMode":{"enforcementMode":"CHART_ENFORCEMENT_AUDIT"}}`},
 	} {
-		payload := &commonpb.LedgerLogPayload{}
+		payload := &ledgerpb.LedgerLogPayload{}
 		require.NoError(t, protojson.Unmarshal([]byte(tc.wire), payload))
 		field := payload.ProtoReflect().WhichOneof(payload.ProtoReflect().Descriptor().Oneofs().Get(0))
 		cases = append(cases, logCase{field.JSONName(), tc.kind, payload})
 	}
 	covered := map[string]bool{}
-	discriminators := map[commonpb.LogType]string{}
+	discriminators := map[ledgerpb.LogType]string{}
 	for _, tc := range cases {
 		field := tc.payload.ProtoReflect().WhichOneof(tc.payload.ProtoReflect().Descriptor().Oneofs().Get(0))
 		covered[string(field.Name())] = true
@@ -88,11 +88,11 @@ func TestLedgerLogJSONOutput(t *testing.T) {
 		}
 		discriminators[tc.kind] = string(field.Name())
 	}
-	require.Len(t, covered, (&commonpb.LedgerLogPayload{}).ProtoReflect().Descriptor().Oneofs().Get(0).Fields().Len(), "extend the matrix for each new variant")
+	require.Len(t, covered, (&ledgerpb.LedgerLogPayload{}).ProtoReflect().Descriptor().Oneofs().Get(0).Fields().Len(), "extend the matrix for each new variant")
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			original := &commonpb.LedgerLog{Id: 9007199254740995, Date: timestamp, Data: tc.payload}
+			original := &ledgerpb.LedgerLog{Id: 9007199254740995, Date: timestamp, Data: tc.payload}
 			for name, codec := range map[string]struct {
 				marshal func(any) ([]byte, error)
 			}{
@@ -102,7 +102,7 @@ func TestLedgerLogJSONOutput(t *testing.T) {
 					encoded, err := codec.marshal(original)
 					require.NoError(t, err)
 					var envelope struct {
-						Type commonpb.LogType `json:"type"`
+						Type ledgerpb.LogType `json:"type"`
 						Data json.RawMessage  `json:"data"`
 						ID   json.RawMessage  `json:"id"`
 						Date string           `json:"date"`
@@ -146,7 +146,7 @@ func TestLedgerLogJSONOutput(t *testing.T) {
 						require.Equal(t, `"GOLD"`, string(postings[0]["color"]))
 						require.JSONEq(t, `{"users:alice":[{"asset":"USD/2","color":"","input":"123","output":"0"},{"asset":"USD/2","color":"GOLD","input":"1267650600228229401496703205376","output":"0"}]}`, string(tx["postCommitVolumes"]))
 					}
-					if tc.kind == commonpb.SetMetadataLogType || tc.kind == commonpb.DeleteMetadataLogType {
+					if tc.kind == ledgerpb.SetMetadataLogType || tc.kind == ledgerpb.DeleteMetadataLogType {
 						require.Contains(t, wireData, "targetId")
 						require.NotContains(t, wireData, "accountId")
 						require.NotContains(t, wireData, "transactionId")
@@ -159,7 +159,7 @@ func TestLedgerLogJSONOutput(t *testing.T) {
 							require.Equal(t, `"users:alice"`, string(wireData["targetId"]))
 						}
 					}
-					if tc.kind == commonpb.SetMetadataLogType {
+					if tc.kind == ledgerpb.SetMetadataLogType {
 						var values map[string]json.RawMessage
 						require.NoError(t, json.Unmarshal(wireData["metadata"], &values))
 						require.Equal(t, "18446744073709551615", string(values["count"]))
@@ -177,10 +177,10 @@ func TestLedgerLogJSONOutput(t *testing.T) {
 // provenance that MarshalJSON omits (signed-positive/datetime/null originals).
 func TestLedgerLogJSONMetadataProjection(t *testing.T) {
 	t.Parallel()
-	original := &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &commonpb.SavedMetadata{
-		Target: &commonpb.Target{Target: &commonpb.Target_TransactionId{TransactionId: 0}},
-		Metadata: map[string]*commonpb.MetadataValue{
-			"signed": commonpb.NewIntValue(42), "datetime": commonpb.NewDatetimeValue(1700000000123456), "null": commonpb.NewNullValue("invalid original"),
+	original := &ledgerpb.LedgerLog{Data: &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &ledgerpb.SavedMetadata{
+		Target: &ledgerpb.Target{Target: &ledgerpb.Target_TransactionId{TransactionId: 0}},
+		Metadata: map[string]*ledgerpb.MetadataValue{
+			"signed": ledgerpb.NewIntValue(42), "datetime": ledgerpb.NewDatetimeValue(1700000000123456), "null": ledgerpb.NewNullValue("invalid original"),
 		},
 	}}}}
 	encoded, err := json.Marshal(original)
@@ -190,8 +190,8 @@ func TestLedgerLogJSONMetadataProjection(t *testing.T) {
 
 func TestLedgerLogJSONNullAccountMetadata(t *testing.T) {
 	t.Parallel()
-	original := &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{
-		AccountMetadata: map[string]*commonpb.MetadataMap{"nil": nil, "nil-values": {}, "empty": {Values: map[string]*commonpb.MetadataValue{}}},
+	original := &ledgerpb.LedgerLog{Data: &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &ledgerpb.CreatedTransaction{
+		AccountMetadata: map[string]*ledgerpb.MetadataMap{"nil": nil, "nil-values": {}, "empty": {Values: map[string]*ledgerpb.MetadataValue{}}},
 	}}}}
 	encoded, err := json.Marshal(original)
 	require.NoError(t, err)
@@ -200,10 +200,10 @@ func TestLedgerLogJSONNullAccountMetadata(t *testing.T) {
 
 func TestMetadataJSONRejectsNilAccount(t *testing.T) {
 	t.Parallel()
-	target := &commonpb.Target{Target: &commonpb.Target_Account{}}
+	target := &ledgerpb.Target{Target: &ledgerpb.Target_Account{}}
 	for name, message := range map[string]json.Marshaler{
-		"saved":   &commonpb.SavedMetadata{Target: target},
-		"deleted": &commonpb.DeletedMetadata{Target: target},
+		"saved":   &ledgerpb.SavedMetadata{Target: target},
+		"deleted": &ledgerpb.DeletedMetadata{Target: target},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -215,10 +215,10 @@ func TestMetadataJSONRejectsNilAccount(t *testing.T) {
 
 func TestMetadataJSONRejectsNilTransaction(t *testing.T) {
 	t.Parallel()
-	target := &commonpb.Target{Target: (*commonpb.Target_TransactionId)(nil)}
+	target := &ledgerpb.Target{Target: (*ledgerpb.Target_TransactionId)(nil)}
 	for name, message := range map[string]json.Marshaler{
-		"saved":   &commonpb.SavedMetadata{Target: target},
-		"deleted": &commonpb.DeletedMetadata{Target: target},
+		"saved":   &ledgerpb.SavedMetadata{Target: target},
+		"deleted": &ledgerpb.DeletedMetadata{Target: target},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/application/events"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -16,10 +16,10 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-func saveSinkConfig(t *testing.T, s *dal.Store, config *commonpb.SinkConfig) {
+func saveSinkConfig(t *testing.T, s *dal.Store, config *ledgerpb.SinkConfig) {
 	t.Helper()
 
-	attr := attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig)
+	attr := attributes.NewAttribute[*ledgerpb.SinkConfig](dal.SubAttrSinkConfig)
 	batch := s.OpenWriteSession()
 	_, err := attr.Set(batch, domain.SinkConfigKey{Name: config.GetName()}.Bytes(), config)
 	require.NoError(t, err)
@@ -29,7 +29,7 @@ func saveSinkConfig(t *testing.T, s *dal.Store, config *commonpb.SinkConfig) {
 func deleteSinkConfig(t *testing.T, s *dal.Store, name string) {
 	t.Helper()
 
-	attr := attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig)
+	attr := attributes.NewAttribute[*ledgerpb.SinkConfig](dal.SubAttrSinkConfig)
 	batch := s.OpenWriteSession()
 	require.NoError(t, attr.Delete(batch, domain.SinkConfigKey{Name: name}.Bytes()))
 	require.NoError(t, batch.Commit())
@@ -49,7 +49,7 @@ func TestManager_AddRemoveSink(t *testing.T) {
 	defer manager.Stop()
 
 	// Add a sink config (noop sink type = nil, manager skips unsupported types)
-	saveSinkConfig(t, store, &commonpb.SinkConfig{
+	saveSinkConfig(t, store, &ledgerpb.SinkConfig{
 		Name:   "primary",
 		Format: "json",
 	})
@@ -84,7 +84,7 @@ func TestManager_LeadershipChange(t *testing.T) {
 	notifications := signal.NewNotifications()
 
 	// Pre-save a sink config
-	saveSinkConfig(t, store, &commonpb.SinkConfig{
+	saveSinkConfig(t, store, &ledgerpb.SinkConfig{
 		Name:   "primary",
 		Format: "json",
 	})
@@ -118,7 +118,7 @@ func TestManager_ConfigChangeWhileFollower(t *testing.T) {
 	defer manager.Stop()
 
 	// Save a sink config while not leader
-	saveSinkConfig(t, store, &commonpb.SinkConfig{
+	saveSinkConfig(t, store, &ledgerpb.SinkConfig{
 		Name:   "primary",
 		Format: "json",
 	})
@@ -157,7 +157,7 @@ func TestManager_LogNotificationForwarding(t *testing.T) {
 	notifications := signal.NewNotifications()
 
 	// Pre-save a sink config
-	saveSinkConfig(t, store, &commonpb.SinkConfig{
+	saveSinkConfig(t, store, &ledgerpb.SinkConfig{
 		Name:   "primary",
 		Format: "json",
 	})

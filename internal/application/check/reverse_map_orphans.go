@@ -12,7 +12,7 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/cockroachdb/pebble/v2"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -98,7 +98,7 @@ type reverseMapOrphanScope struct {
 	// Every oracle term below is frozen at lastSequence, which is why the pass
 	// only reaches a verdict on an exactly aligned peer view.
 	liveLedgers     map[string]struct{}
-	replayedSchemas map[string]*commonpb.MetadataSchema
+	replayedSchemas map[string]*ledgerpb.MetadataSchema
 }
 
 // compareReverseMapOrphans reports reverse-map (rmap, prefix 0x03) rows in the
@@ -201,7 +201,7 @@ type reverseMapOrphanScope struct {
 // leave the peer behind is sufficient, because behind is already a skip.
 func (c *Checker) compareReverseMapOrphans(
 	scope reverseMapOrphanScope,
-	callback func(*commonpb.CheckStoreEvent),
+	callback func(*ledgerpb.CheckStoreEvent),
 ) {
 	if c.readStore == nil || scope.peer == nil {
 		c.logger.Infof("Reverse-map orphan check skipped: no peer read-index store is attached to this checker")
@@ -212,7 +212,7 @@ func (c *Checker) compareReverseMapOrphans(
 	indexedSequence, err := c.readStore.LastIndexedSequenceFrom(scope.peer)
 	if err != nil {
 		callback(errorEvent(
-			commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
+			ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
 			fmt.Sprintf("reading the read-index progress cursor: %v", err),
 			0, "", "", "",
 		))
@@ -241,7 +241,7 @@ func (c *Checker) compareReverseMapOrphans(
 		})
 
 		callback(errorEvent(
-			commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
+			ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
 			fmt.Sprintf(
 				"read index is ahead of the verified log range (indexed %d > verified %d): the primary store was replaced beneath a surviving read index, so the read index holds rows for logs the primary no longer has",
 				indexedSequence, scope.lastSequence,
@@ -270,7 +270,7 @@ func (c *Checker) compareReverseMapOrphans(
 	})
 	if err != nil {
 		callback(errorEvent(
-			commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
+			ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
 			fmt.Sprintf("opening the reverse-map iterator: %v", err),
 			0, "", "", "",
 		))
@@ -389,7 +389,7 @@ func (c *Checker) compareReverseMapOrphans(
 
 	if err := iter.Error(); err != nil {
 		callback(errorEvent(
-			commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
+			ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
 			fmt.Sprintf("scanning the reverse map: %v", err),
 			0, "", "", "",
 		))
@@ -408,12 +408,12 @@ func (c *Checker) compareReverseMapOrphans(
 // positives.
 func (c *Checker) collectIndexedFields(
 	reader dal.PebbleReader,
-	callback func(*commonpb.CheckStoreEvent),
+	callback func(*ledgerpb.CheckStoreEvent),
 ) (map[domain.IndexKey]struct{}, bool) {
 	iter, err := c.attrs.Index.NewStreamingIter(reader, nil)
 	if err != nil {
 		callback(errorEvent(
-			commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
+			ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
 			fmt.Sprintf("opening index registry iterator: %v", err),
 			0, "", "", "",
 		))
@@ -439,7 +439,7 @@ func (c *Checker) collectIndexedFields(
 			// same field, which is a second symptom of the same corruption
 			// rather than an independent false positive.
 			callback(errorEvent(
-				commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
+				ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
 				fmt.Sprintf("stored index has unparsable canonical key %x: %v", entry.CanonicalKey, err),
 				0, entry.Value.GetLedger(), "", "",
 			))
@@ -459,7 +459,7 @@ func (c *Checker) collectIndexedFields(
 
 	if err := iter.Err(); err != nil {
 		callback(errorEvent(
-			commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
+			ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
 			fmt.Sprintf("scanning index registry: %v", err),
 			0, "", "", "",
 		))
@@ -477,7 +477,7 @@ func emitReverseMapFindings(
 	orphanLifecycleLabels map[reverseMapFieldKey]string,
 	unknownLedgers map[string]*reverseMapAggregate,
 	malformed map[string]*reverseMapAggregate,
-	callback func(*commonpb.CheckStoreEvent),
+	callback func(*ledgerpb.CheckStoreEvent),
 ) {
 	findings := make([]reverseMapFinding, 0, len(orphaned)+len(unknownLedgers)+len(malformed))
 
@@ -521,7 +521,7 @@ func emitReverseMapFindings(
 
 	for _, finding := range findings {
 		callback(errorEvent(
-			commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
+			ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
 			finding.message,
 			0, finding.ledger, "", "",
 		))
@@ -530,15 +530,15 @@ func emitReverseMapFindings(
 
 // targetTypeForReverseMapNamespace maps a reverse-map namespace to the index
 // target it addresses. The returned target is meaningless when ok is false.
-func targetTypeForReverseMapNamespace(ns string) (commonpb.TargetType, bool) {
+func targetTypeForReverseMapNamespace(ns string) (ledgerpb.TargetType, bool) {
 	switch ns {
 	case readstore.NamespaceAccount:
-		return commonpb.TargetType_TARGET_TYPE_ACCOUNT, true
+		return ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, true
 	case readstore.NamespaceTransaction:
-		return commonpb.TargetType_TARGET_TYPE_TRANSACTION, true
+		return ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, true
 	}
 
-	return commonpb.TargetType_TARGET_TYPE_ACCOUNT, false
+	return ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, false
 }
 
 // renderReverseMapEntity renders a decoded row's entity for an operator: a

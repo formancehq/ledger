@@ -29,13 +29,13 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	antirandom "github.com/antithesishq/antithesis-sdk-go/random"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_list_completeness", func(ctx context.Context, client commonpb.BucketServiceClient, _ string) {
+	internal.RunDriver("parallel_driver_list_completeness", func(ctx context.Context, client ledgerpb.BucketServiceClient, _ string) {
 		r := internal.Rand()
 
 		run := r.Uint64()
@@ -53,16 +53,16 @@ func main() {
 		)
 
 		for i := range txCount {
-			resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_Apply{
-					Apply: &commonpb.LedgerApplyRequest{
+			resp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_Apply{
+					Apply: &ledgerpb.LedgerApplyRequest{
 						Ledger: ledger,
-						Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
-							CreateTransaction: &commonpb.CreateTransactionPayload{
-								Postings: []*commonpb.Posting{{
+						Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
+							CreateTransaction: &ledgerpb.CreateTransactionPayload{
+								Postings: []*ledgerpb.Posting{{
 									Source:      "world",
 									Destination: fmt.Sprintf("listcomp-dst:%d", i%4),
-									Amount:      commonpb.NewUint256FromUint64(1),
+									Amount:      ledgerpb.NewUint256FromUint64(1),
 									Asset:       "USD/2",
 								}},
 								Reference: fmt.Sprintf("listcomp-%d-%d", run, i),
@@ -120,9 +120,9 @@ func main() {
 			if afterTxID > 0 {
 				cursor = strconv.FormatUint(afterTxID, 10)
 			}
-			stream, err := client.ListTransactions(ctx, &commonpb.ListTransactionsRequest{
+			stream, err := client.ListTransactions(ctx, &ledgerpb.ListTransactionsRequest{
 				Ledger: ledger,
-				Options: &commonpb.ListOptions{
+				Options: &ledgerpb.ListOptions{
 					PageSize: pageSize,
 					Cursor:   cursor,
 					Reverse:  true, // oldest-first, so IDs must increase across pages

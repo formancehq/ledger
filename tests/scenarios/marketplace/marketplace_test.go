@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/scenario"
 	"github.com/stretchr/testify/require"
@@ -115,7 +115,7 @@ func TestMarketplaceLifecycle(t *testing.T) {
 		// Account type violation: using an address that doesn't match any registered type
 		// should fail when enforcement is STRICT
 		violationErr := scenariotest.ApplyActionsExpectError(ctx, client,
-			actions.CreateTransactionAction(ledger, []*commonpb.Posting{
+			actions.CreateTransactionAction(ledger, []*ledgerpb.Posting{
 				actions.NewPosting("world", "unknown:address", big.NewInt(100), "USD/2"),
 			}, nil, nil),
 		)
@@ -124,7 +124,7 @@ func TestMarketplaceLifecycle(t *testing.T) {
 
 	// --- Phase 2: Customer Deposits (50 Apply calls) ---
 	t.Run("CustomerDeposits", func(t *testing.T) {
-		reqs := make([]*commonpb.Request, 0, numCustomers)
+		reqs := make([]*ledgerpb.Request, 0, numCustomers)
 		for i := 1; i <= numCustomers; i++ {
 			reqs = append(reqs, actions.CreateScriptRefTransactionAction(ledger, "deposit", "1.0.0", map[string]string{
 				"customer": fmt.Sprintf("customer:%d", i),
@@ -196,7 +196,7 @@ func TestMarketplaceLifecycle(t *testing.T) {
 
 		scenariotest.ApplyActions(t, ctx, client,
 			actions.WithTimestamp(
-				actions.CreateForceTransactionAction(ledger, []*commonpb.Posting{
+				actions.CreateForceTransactionAction(ledger, []*ledgerpb.Posting{
 					actions.NewPosting("world", "platform:payouts", big.NewInt(100), "USD/2"),
 				}, map[string]string{"backdated": "true"}),
 				pastTime1,
@@ -205,7 +205,7 @@ func TestMarketplaceLifecycle(t *testing.T) {
 
 		scenariotest.ApplyActions(t, ctx, client,
 			actions.WithTimestamp(
-				actions.CreateForceTransactionAction(ledger, []*commonpb.Posting{
+				actions.CreateForceTransactionAction(ledger, []*ledgerpb.Posting{
 					actions.NewPosting("world", "platform:payouts", big.NewInt(200), "USD/2"),
 				}, map[string]string{"backdated": "true"}),
 				pastTime2,
@@ -214,7 +214,7 @@ func TestMarketplaceLifecycle(t *testing.T) {
 
 		// Post-commit volumes ride on every transaction; verify the response carries them.
 		expandResp := scenariotest.ApplyActions(t, ctx, client,
-			actions.CreateForceTransactionAction(ledger, []*commonpb.Posting{
+			actions.CreateForceTransactionAction(ledger, []*ledgerpb.Posting{
 				actions.NewPosting("world", "platform:payouts", big.NewInt(50), "USD/2"),
 			}, nil),
 		)
@@ -340,7 +340,7 @@ send $amount (
 
 		// Raw postings (balance-checked, non-force)
 		scenariotest.ApplyActions(t, ctx, client,
-			actions.CreateTransactionAction(ledger, []*commonpb.Posting{
+			actions.CreateTransactionAction(ledger, []*ledgerpb.Posting{
 				actions.NewPosting("customer:2", "customer:3", big.NewInt(50), "USD/2"),
 			}, nil, nil),
 		)
@@ -349,7 +349,7 @@ send $amount (
 
 		// Raw postings insufficient funds — should fail
 		err := scenariotest.ApplyActionsExpectError(ctx, client,
-			actions.CreateTransactionAction(ledger, []*commonpb.Posting{
+			actions.CreateTransactionAction(ledger, []*ledgerpb.Posting{
 				actions.NewPosting("customer:50", "customer:49", big.NewInt(999_999_999), "USD/2"),
 			}, nil, nil),
 		)
@@ -464,14 +464,14 @@ send $amount (
 		require.True(t, found, "customer-query should be in the list")
 
 		execResp, err := actions.ExecutePreparedQuery(ctx, client, ledger, "customer-query",
-			commonpb.QueryMode_QUERY_MODE_LIST, 10)
+			ledgerpb.QueryMode_QUERY_MODE_LIST, 10)
 		require.NoError(t, err, "ExecutePreparedQuery failed")
 		require.NotNil(t, execResp, "execute response should not be nil")
 
 		// 2. Parameterized address prefix — reusable query, different prefixes at runtime
 		// Execute with prefix=customer: → should return all customers
 		resp, err := actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100, map[string]*commonpb.ParameterValue{"prefix": actions.StringParam("customer:")})
+			ledgerpb.QueryMode_QUERY_MODE_LIST, 100, map[string]*ledgerpb.ParameterValue{"prefix": actions.StringParam("customer:")})
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(customer:) failed")
 		cursor := resp.GetCursor()
 		require.NotNil(t, cursor, "expected cursor result")
@@ -480,7 +480,7 @@ send $amount (
 
 		// Execute same query with prefix=merchant: → should return all merchants
 		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100, map[string]*commonpb.ParameterValue{"prefix": actions.StringParam("merchant:")})
+			ledgerpb.QueryMode_QUERY_MODE_LIST, 100, map[string]*ledgerpb.ParameterValue{"prefix": actions.StringParam("merchant:")})
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(merchant:) failed")
 		cursor = resp.GetCursor()
 		require.NotNil(t, cursor, "expected cursor result for merchants")
@@ -489,7 +489,7 @@ send $amount (
 
 		// Execute with prefix=platform: → should return platform accounts
 		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100, map[string]*commonpb.ParameterValue{"prefix": actions.StringParam("platform:")})
+			ledgerpb.QueryMode_QUERY_MODE_LIST, 100, map[string]*ledgerpb.ParameterValue{"prefix": actions.StringParam("platform:")})
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(platform:) failed")
 		cursor = resp.GetCursor()
 		require.NotNil(t, cursor, "expected cursor result for platform")
@@ -591,7 +591,7 @@ send $amount (
 	})
 
 	// --- Tail phases: StoreCheck, Backup, Restart+Verify, BackupRestore+Verify ---
-	scenariotest.RunPostTestPhases(t, sc, func(t *testing.T, client commonpb.BucketServiceClient) {
+	scenariotest.RunPostTestPhases(t, sc, func(t *testing.T, client ledgerpb.BucketServiceClient) {
 		scenariotest.CheckDoubleEntryBalance(t, ctx, client, ledger)
 		scenariotest.CheckNoNegativeBalances(t, ctx, client, ledger, []string{"world"})
 		scenariotest.CheckAccountBalance(t, ctx, client, ledger, "platform:fees", "USD/2", totalFees)

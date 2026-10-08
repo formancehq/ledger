@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
@@ -32,9 +32,9 @@ func TestListAuditEntriesTrimsProjectionAheadOfMainSnapshot(t *testing.T) {
 
 	mainBatch := store.OpenWriteSession()
 	mainKey := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(1).Build()
-	require.NoError(t, mainBatch.SetProto(mainKey, &auditpb.AuditEntry{
+	require.NoError(t, mainBatch.SetProto(mainKey, &ledgerpb.AuditEntry{
 		Sequence: 1,
-		Outcome:  &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
+		Outcome:  &ledgerpb.AuditEntry_Success{Success: &ledgerpb.AuditSuccess{}},
 		Ledgers:  []string{"main"},
 	}))
 	require.NoError(t, mainBatch.Commit())
@@ -48,10 +48,10 @@ func TestListAuditEntriesTrimsProjectionAheadOfMainSnapshot(t *testing.T) {
 	require.NoError(t, indexBatch.SetBytes(readstore.AuditIndexStringKey(kb, readstore.AuditFieldLedger, "main", 2), nil))
 	require.NoError(t, indexBatch.Commit())
 
-	filter := &auditpb.QueryFilter{Filter: &auditpb.QueryFilter_Audit{Audit: &auditpb.AuditCondition{
-		Field: auditpb.AuditField_AUDIT_FIELD_LEDGER,
-		Condition: &auditpb.AuditCondition_StringCond{StringCond: &auditpb.StringCondition{
-			Value: &auditpb.StringCondition_Hardcoded{Hardcoded: "main"},
+	filter := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Audit{Audit: &ledgerpb.AuditCondition{
+		Field: ledgerpb.AuditField_AUDIT_FIELD_LEDGER,
+		Condition: &ledgerpb.AuditCondition_StringCond{StringCond: &ledgerpb.StringCondition{
+			Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: "main"},
 		}},
 	}}}
 	ctrl := NewDefaultController(nil, store, logger, attributes.New(), rs, nil, meter)
@@ -64,6 +64,6 @@ func TestListAuditEntriesTrimsProjectionAheadOfMainSnapshot(t *testing.T) {
 	require.Len(t, entries, 1, "audit candidates beyond the main-store audit head must be trimmed before materialization")
 	require.Equal(t, uint64(1), entries[0].GetSequence())
 
-	_, err = ctrl.ListAuditEntriesFrom(context.Background(), store, rs, 10, 0, &auditpb.QueryFilter{}, false)
+	_, err = ctrl.ListAuditEntriesFrom(context.Background(), store, rs, 10, 0, &ledgerpb.QueryFilter{}, false)
 	require.Equal(t, codes.InvalidArgument, status.Code(err), "a malformed filter must fail in audit-filter compilation")
 }

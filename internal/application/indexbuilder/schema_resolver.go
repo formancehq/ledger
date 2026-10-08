@@ -3,7 +3,7 @@ package indexbuilder
 import (
 	"fmt"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -31,8 +31,8 @@ import (
 // served in steady state. The lookup is dominant only on cold batches.
 type schemaResolver struct {
 	reader dal.PebbleGetter
-	attr   *attributes.Attribute[*commonpb.LedgerInfo]
-	cache  map[string]*commonpb.MetadataSchema
+	attr   *attributes.Attribute[*ledgerpb.LedgerInfo]
+	cache  map[string]*ledgerpb.MetadataSchema
 }
 
 // newSchemaResolver builds a resolver bound to a Pebble reader and the
@@ -47,7 +47,7 @@ func newSchemaResolver(reader dal.PebbleGetter, attrs *attributes.Attributes) *s
 	return &schemaResolver{
 		reader: reader,
 		attr:   attrs.Ledger,
-		cache:  make(map[string]*commonpb.MetadataSchema, 4),
+		cache:  make(map[string]*ledgerpb.MetadataSchema, 4),
 	}
 }
 
@@ -59,7 +59,7 @@ func newSchemaResolver(reader dal.PebbleGetter, attrs *attributes.Attributes) *s
 // would commit forward-index entries under the raw client type and no
 // downstream path would ever repair them (the schema-rewrite task fires only
 // on SetMetadataFieldType, never on read failures).
-func (r *schemaResolver) For(ledger string) (*commonpb.MetadataSchema, error) {
+func (r *schemaResolver) For(ledger string) (*ledgerpb.MetadataSchema, error) {
 	if r == nil {
 		return nil, nil
 	}
@@ -83,7 +83,7 @@ func (r *schemaResolver) For(ledger string) (*commonpb.MetadataSchema, error) {
 
 // coerceFor returns v coerced to the declared type for (target, key) on the
 // resolved ledger schema. Convenience wrapper for indexer write sites.
-func (r *schemaResolver) coerceFor(ledger string, target commonpb.TargetType, key string, v *commonpb.MetadataValue) (*commonpb.MetadataValue, error) {
+func (r *schemaResolver) coerceFor(ledger string, target ledgerpb.TargetType, key string, v *ledgerpb.MetadataValue) (*ledgerpb.MetadataValue, error) {
 	schema, err := r.For(ledger)
 	if err != nil {
 		return nil, err

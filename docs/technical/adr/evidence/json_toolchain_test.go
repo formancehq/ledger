@@ -17,7 +17,7 @@ import (
 	"testing"
 
 	"github.com/bytedance/sonic"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 type framing struct {
@@ -29,20 +29,20 @@ type framing struct {
 	False bool           `json:"false,omitempty"`
 }
 
-func transactions() []*commonpb.Transaction {
-	result := make([]*commonpb.Transaction, 100)
+func transactions() []*ledgerpb.Transaction {
+	result := make([]*ledgerpb.Transaction, 100)
 	for i := range result {
-		result[i] = &commonpb.Transaction{
+		result[i] = &ledgerpb.Transaction{
 			Id:        uint64(i + 1),
 			Reference: fmt.Sprintf("invoice-%d", i),
-			Timestamp: &commonpb.Timestamp{Data: 1788825600000000},
-			Postings: []*commonpb.Posting{{
+			Timestamp: &ledgerpb.Timestamp{Data: 1788825600000000},
+			Postings: []*ledgerpb.Posting{{
 				Source: "world", Destination: "users:alice", Asset: "USD/2", Color: "",
-				Amount: commonpb.NewUint256FromUint64(9007199254740993),
+				Amount: ledgerpb.NewUint256FromUint64(9007199254740993),
 			}},
-			Metadata: map[string]*commonpb.MetadataValue{
-				"reference": commonpb.NewStringValue("invoice"),
-				"customer":  commonpb.NewStringValue("alice"),
+			Metadata: map[string]*ledgerpb.MetadataValue{
+				"reference": ledgerpb.NewStringValue("invoice"),
+				"customer":  ledgerpb.NewStringValue("alice"),
 			},
 		}
 	}
@@ -119,7 +119,7 @@ func TestCompatibility(t *testing.T) {
 	t.Logf("v2 bare=%s", bare)
 	tx := transactions()[0]
 	tx.Reference = "<>&\u2028\u2029"
-	tx.Metadata = map[string]*commonpb.MetadataValue{"z": commonpb.NewStringValue("last"), "a": commonpb.NewStringValue("first"), "m": commonpb.NewStringValue("middle")}
+	tx.Metadata = map[string]*ledgerpb.MetadataValue{"z": ledgerpb.NewStringValue("last"), "a": ledgerpb.NewStringValue("first"), "m": ledgerpb.NewStringValue("middle")}
 	nestedShapes := map[string]bool{}
 	for i := 0; i < 64; i++ {
 		stream.Reset()
@@ -157,7 +157,7 @@ func TestCompatibility(t *testing.T) {
 	}
 	t.Logf("distinct Default shapes=%d nested Std shapes=%d (sampled, not a portable ordering guarantee)", len(defaultShapes), len(nestedShapes))
 	calls := 0
-	override := jsonv2.WithMarshalers(jsonv2.MarshalFunc(func(v *commonpb.Uint256) ([]byte, error) { calls++; return []byte(`"` + v.Dec() + `"`), nil }))
+	override := jsonv2.WithMarshalers(jsonv2.MarshalFunc(func(v *ledgerpb.Uint256) ([]byte, error) { calls++; return []byte(`"` + v.Dec() + `"`), nil }))
 	direct, err := jsonv2.Marshal(tx.Postings[0].Amount, override)
 	if err != nil {
 		t.Fatal(err)

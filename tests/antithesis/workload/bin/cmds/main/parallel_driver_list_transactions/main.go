@@ -8,20 +8,20 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_list_transactions", func(ctx context.Context, client commonpb.BucketServiceClient, ledger string) {
+	internal.RunDriver("parallel_driver_list_transactions", func(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string) {
 		// 1. Create a transaction so there is at least one.
-		resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_Apply{
-				Apply: &commonpb.LedgerApplyRequest{
+		resp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
-						CreateTransaction: &commonpb.CreateTransactionPayload{
+					Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &ledgerpb.CreateTransactionPayload{
 							Postings: internal.RandomPostings(),
 							Force:    true,
 						},
@@ -56,9 +56,9 @@ func main() {
 			if afterTxID > 0 {
 				cursor = strconv.FormatUint(afterTxID, 10)
 			}
-			stream, err := client.ListTransactions(ctx, &commonpb.ListTransactionsRequest{
+			stream, err := client.ListTransactions(ctx, &ledgerpb.ListTransactionsRequest{
 				Ledger: ledger,
-				Options: &commonpb.ListOptions{
+				Options: &ledgerpb.ListOptions{
 					PageSize: 50,
 					Cursor:   cursor,
 				},
@@ -111,9 +111,9 @@ func main() {
 		}
 
 		// 3. List transactions in reverse order.
-		reverseStream, err := client.ListTransactions(ctx, &commonpb.ListTransactionsRequest{
+		reverseStream, err := client.ListTransactions(ctx, &ledgerpb.ListTransactionsRequest{
 			Ledger: ledger,
-			Options: &commonpb.ListOptions{
+			Options: &ledgerpb.ListOptions{
 				PageSize: 10,
 				Reverse:  true,
 			},

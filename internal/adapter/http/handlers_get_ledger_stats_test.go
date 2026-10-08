@@ -11,7 +11,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -24,10 +24,10 @@ func TestHandleGetLedgerStats_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLedgerStats(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, ledgerName string) (*commonpb.LedgerStats, error) {
+		func(_ context.Context, ledgerName string) (*ledgerpb.LedgerStats, error) {
 			require.Equal(t, "my-ledger", ledgerName)
 
-			return &commonpb.LedgerStats{
+			return &ledgerpb.LedgerStats{
 				TransactionCount: 100,
 				VolumeCount:      42,
 				ReferenceCount:   5,
@@ -57,8 +57,8 @@ func TestHandleGetLedgerStats_EmptyLedger(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLedgerStats(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) (*commonpb.LedgerStats, error) {
-			return &commonpb.LedgerStats{}, nil
+		func(_ context.Context, _ string) (*ledgerpb.LedgerStats, error) {
+			return &ledgerpb.LedgerStats{}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -98,7 +98,7 @@ func TestHandleGetLedgerStats_BackendError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLedgerStats(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) (*commonpb.LedgerStats, error) {
+		func(_ context.Context, _ string) (*ledgerpb.LedgerStats, error) {
 			return nil, errors.New("internal error")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -118,7 +118,7 @@ func TestHandleGetLedgerStats_LedgerNotFound(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLedgerStats(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) (*commonpb.LedgerStats, error) {
+		func(_ context.Context, _ string) (*ledgerpb.LedgerStats, error) {
 			return nil, &domain.ErrLedgerNotFound{Name: "missing"}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -139,7 +139,7 @@ func TestHandleGetLedgerStats_NoLeaderError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLedgerStats(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) (*commonpb.LedgerStats, error) {
+		func(_ context.Context, _ string) (*ledgerpb.LedgerStats, error) {
 			return nil, protoerr.ErrNoLeader
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -161,8 +161,8 @@ func TestHandleGetLedgerStats_FullRouteIntegration(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLedgerStats(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) (*commonpb.LedgerStats, error) {
-			return &commonpb.LedgerStats{
+		func(_ context.Context, _ string) (*ledgerpb.LedgerStats, error) {
+			return &ledgerpb.LedgerStats{
 				TransactionCount: 10,
 				VolumeCount:      5,
 			}, nil

@@ -3,7 +3,7 @@ package http
 import (
 	"net/http"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
@@ -20,13 +20,13 @@ type metadataSchemaStatusJSON struct {
 	LedgerFields      map[string]*metadataFieldStatusJSON `json:"ledgerFields"`
 }
 
-func toFieldStatusJSON(fs *commonpb.MetadataFieldStatus) *metadataFieldStatusJSON {
+func toFieldStatusJSON(fs *ledgerpb.MetadataFieldStatus) *metadataFieldStatusJSON {
 	return &metadataFieldStatusJSON{
 		DeclaredType: protohelpers.MetadataTypeToString(fs.GetDeclaredType()),
 	}
 }
 
-func toSchemaStatusJSON(resp *commonpb.GetMetadataSchemaStatusResponse) *metadataSchemaStatusJSON {
+func toSchemaStatusJSON(resp *ledgerpb.GetMetadataSchemaStatusResponse) *metadataSchemaStatusJSON {
 	result := &metadataSchemaStatusJSON{
 		AccountFields:     make(map[string]*metadataFieldStatusJSON, len(resp.GetAccountFields())),
 		TransactionFields: make(map[string]*metadataFieldStatusJSON, len(resp.GetTransactionFields())),

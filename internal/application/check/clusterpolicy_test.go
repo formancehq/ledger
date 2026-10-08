@@ -7,14 +7,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-func writeClusterPolicyRow(t *testing.T, store *dal.Store, policy *commonpb.ClusterPolicy) {
+func writeClusterPolicyRow(t *testing.T, store *dal.Store, policy *ledgerpb.ClusterPolicy) {
 	t.Helper()
 
 	batch := store.OpenWriteSession()
@@ -22,7 +22,7 @@ func writeClusterPolicyRow(t *testing.T, store *dal.Store, policy *commonpb.Clus
 	require.NoError(t, batch.Commit())
 }
 
-func setClusterPolicyOrder(policy *commonpb.ClusterPolicy) *raftcmdpb.Order {
+func setClusterPolicyOrder(policy *ledgerpb.ClusterPolicy) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_SystemScoped{
 			SystemScoped: &raftcmdpb.SystemScopedOrder{
@@ -34,7 +34,7 @@ func setClusterPolicyOrder(policy *commonpb.ClusterPolicy) *raftcmdpb.Order {
 	}
 }
 
-func collectClusterPolicyEvents(t *testing.T, store *dal.Store, v *clusterPolicyVerifier) []*commonpb.CheckStoreError {
+func collectClusterPolicyEvents(t *testing.T, store *dal.Store, v *clusterPolicyVerifier) []*ledgerpb.CheckStoreError {
 	t.Helper()
 
 	handle, err := store.NewReadHandle()
@@ -42,10 +42,10 @@ func collectClusterPolicyEvents(t *testing.T, store *dal.Store, v *clusterPolicy
 
 	defer func() { _ = handle.Close() }()
 
-	var got []*commonpb.CheckStoreError
+	var got []*ledgerpb.CheckStoreError
 
-	require.NoError(t, v.compare(handle, func(event *commonpb.CheckStoreEvent) {
-		if e, ok := event.GetType().(*commonpb.CheckStoreEvent_Error); ok {
+	require.NoError(t, v.compare(handle, func(event *ledgerpb.CheckStoreEvent) {
+		if e, ok := event.GetType().(*ledgerpb.CheckStoreEvent_Error); ok {
 			got = append(got, e.Error)
 		}
 	}))
@@ -58,7 +58,7 @@ func TestClusterPolicyVerifier_Consistent(t *testing.T) {
 	t.Parallel()
 
 	store := createTestStore(t)
-	policy := &commonpb.ClusterPolicy{Revision: 3, IdempotencyTtlMicros: 1000, QueryCheckpointLimit: 5}
+	policy := &ledgerpb.ClusterPolicy{Revision: 3, IdempotencyTtlMicros: 1000, QueryCheckpointLimit: 5}
 	writeClusterPolicyRow(t, store, policy)
 
 	v := newClusterPolicyVerifier()
@@ -83,13 +83,13 @@ func TestClusterPolicyVerifier_InjectedFlagged(t *testing.T) {
 	t.Parallel()
 
 	store := createTestStore(t)
-	writeClusterPolicyRow(t, store, &commonpb.ClusterPolicy{Revision: 2, QueryCheckpointLimit: 3})
+	writeClusterPolicyRow(t, store, &ledgerpb.ClusterPolicy{Revision: 2, QueryCheckpointLimit: 3})
 
 	v := newClusterPolicyVerifier()
 
 	events := collectClusterPolicyEvents(t, store, v)
 	require.Len(t, events, 1)
-	require.Equal(t, commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH, events[0].GetErrorType())
+	require.Equal(t, ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH, events[0].GetErrorType())
 }
 
 // An audited policy with no stored row is flagged as lost.
@@ -99,7 +99,7 @@ func TestClusterPolicyVerifier_MissingFlagged(t *testing.T) {
 	store := createTestStore(t)
 
 	v := newClusterPolicyVerifier()
-	v.applyOrder(setClusterPolicyOrder(&commonpb.ClusterPolicy{Revision: 4, QueryCheckpointLimit: 1}))
+	v.applyOrder(setClusterPolicyOrder(&ledgerpb.ClusterPolicy{Revision: 4, QueryCheckpointLimit: 1}))
 
 	events := collectClusterPolicyEvents(t, store, v)
 	require.Len(t, events, 1)
@@ -111,14 +111,14 @@ func TestClusterPolicyVerifier_ContentMismatch(t *testing.T) {
 	t.Parallel()
 
 	store := createTestStore(t)
-	writeClusterPolicyRow(t, store, &commonpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 9})
+	writeClusterPolicyRow(t, store, &ledgerpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 9})
 
 	v := newClusterPolicyVerifier()
-	v.applyOrder(setClusterPolicyOrder(&commonpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 5}))
+	v.applyOrder(setClusterPolicyOrder(&ledgerpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 5}))
 
 	events := collectClusterPolicyEvents(t, store, v)
 	require.Len(t, events, 1)
-	require.Equal(t, commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH, events[0].GetErrorType())
+	require.Equal(t, ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH, events[0].GetErrorType())
 }
 
 // The fold keeps the highest revision regardless of the order orders arrive in.
@@ -126,13 +126,13 @@ func TestClusterPolicyVerifier_MaxRevisionWins(t *testing.T) {
 	t.Parallel()
 
 	store := createTestStore(t)
-	latest := &commonpb.ClusterPolicy{Revision: 5, QueryCheckpointLimit: 8}
+	latest := &ledgerpb.ClusterPolicy{Revision: 5, QueryCheckpointLimit: 8}
 	writeClusterPolicyRow(t, store, latest)
 
 	v := newClusterPolicyVerifier()
-	v.applyOrder(setClusterPolicyOrder(&commonpb.ClusterPolicy{Revision: 2, QueryCheckpointLimit: 1}))
+	v.applyOrder(setClusterPolicyOrder(&ledgerpb.ClusterPolicy{Revision: 2, QueryCheckpointLimit: 1}))
 	v.applyOrder(setClusterPolicyOrder(latest))
-	v.applyOrder(setClusterPolicyOrder(&commonpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 1}))
+	v.applyOrder(setClusterPolicyOrder(&ledgerpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 1}))
 
 	require.Empty(t, collectClusterPolicyEvents(t, store, v))
 }
@@ -143,14 +143,14 @@ func TestClusterPolicyVerifier_IncompleteReported(t *testing.T) {
 	t.Parallel()
 
 	store := createTestStore(t)
-	writeClusterPolicyRow(t, store, &commonpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 5})
+	writeClusterPolicyRow(t, store, &ledgerpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 5})
 
 	v := newClusterPolicyVerifier()
 	v.markLiveTruncated()
 
 	events := collectClusterPolicyEvents(t, store, v)
 	require.Len(t, events, 1)
-	require.Equal(t, commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE, events[0].GetErrorType())
+	require.Equal(t, ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE, events[0].GetErrorType())
 }
 
 // TestCheck_ClusterPolicyProjection_EmptyAuditWiring pins that the cluster
@@ -163,7 +163,7 @@ func TestClusterPolicyVerifier_IncompleteReported(t *testing.T) {
 func TestCheck_ClusterPolicyProjection_EmptyAuditWiring(t *testing.T) {
 	t.Parallel()
 
-	runCheck := func(t *testing.T, seed func(*dal.Store)) []*commonpb.CheckStoreError {
+	runCheck := func(t *testing.T, seed func(*dal.Store)) []*ledgerpb.CheckStoreError {
 		t.Helper()
 
 		store := createTestStore(t)
@@ -175,10 +175,10 @@ func TestCheck_ClusterPolicyProjection_EmptyAuditWiring(t *testing.T) {
 		// events attributable to the policy comparison alone.
 		checker := NewChecker(store, attributes.New(), nil, logging.Testing())
 
-		var got []*commonpb.CheckStoreError
+		var got []*ledgerpb.CheckStoreError
 
-		require.NoError(t, checker.Check(context.Background(), func(event *commonpb.CheckStoreEvent) {
-			if e, ok := event.GetType().(*commonpb.CheckStoreEvent_Error); ok {
+		require.NoError(t, checker.Check(context.Background(), func(event *ledgerpb.CheckStoreEvent) {
+			if e, ok := event.GetType().(*ledgerpb.CheckStoreEvent_Error); ok {
 				got = append(got, e.Error)
 			}
 		}))
@@ -190,7 +190,7 @@ func TestCheck_ClusterPolicyProjection_EmptyAuditWiring(t *testing.T) {
 		t.Parallel()
 
 		got := runCheck(t, func(store *dal.Store) {
-			writeClusterPolicyRow(t, store, &commonpb.ClusterPolicy{
+			writeClusterPolicyRow(t, store, &ledgerpb.ClusterPolicy{
 				Revision:             3,
 				IdempotencyTtlMicros: 1000,
 				QueryCheckpointLimit: 5,
@@ -198,7 +198,7 @@ func TestCheck_ClusterPolicyProjection_EmptyAuditWiring(t *testing.T) {
 		})
 
 		require.Len(t, got, 1, "a cluster policy row with no audited order behind it must be reported")
-		require.Equal(t, commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH, got[0].GetErrorType())
+		require.Equal(t, ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH, got[0].GetErrorType())
 	})
 
 	t.Run("untouched store stays clean", func(t *testing.T) {

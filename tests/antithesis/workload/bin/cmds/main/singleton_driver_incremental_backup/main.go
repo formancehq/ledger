@@ -6,15 +6,15 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
-func s3Storage() *clusterpb.BackupStorage {
-	return &clusterpb.BackupStorage{
-		Provider: &clusterpb.BackupStorage_S3{
-			S3: &clusterpb.S3StorageConfig{
+func s3Storage() *ledgerpb.BackupStorage {
+	return &ledgerpb.BackupStorage{
+		Provider: &ledgerpb.BackupStorage_S3{
+			S3: &ledgerpb.S3StorageConfig{
 				Bucket:   "backups",
 				Region:   "us-east-1",
 				Endpoint: "http://minio:9000",
@@ -36,10 +36,10 @@ func main() {
 	}
 	defer func() { _ = conn.Close() }()
 
-	run(ctx, clusterpb.NewClusterServiceClient(conn))
+	run(ctx, ledgerpb.NewClusterServiceClient(conn))
 }
 
-func run(ctx context.Context, client clusterpb.ClusterServiceClient) {
+func run(ctx context.Context, client ledgerpb.ClusterServiceClient) {
 	// 0. Establish a full checkpoint first. An incremental backup is only
 	//    meaningful layered on a full checkpoint (EN-888): the checkpoint carries
 	//    the Global-zone persisted config, last-applied index, and timestamp that
@@ -47,8 +47,8 @@ func run(ctx context.Context, client clusterpb.ClusterServiceClient) {
 	//    checkpoint-less destination with FailedPrecondition. Antithesis schedules
 	//    drivers randomly, so this driver cannot assume the full-backup driver ran
 	//    first — it takes its own full backup to guarantee the precondition holds.
-	if _, err := internal.RetryBackup(ctx, "Backup (pre-incremental)", func(ctx context.Context) (*clusterpb.BackupResponse, error) {
-		return client.Backup(ctx, &clusterpb.BackupRequest{Storage: s3Storage()})
+	if _, err := internal.RetryBackup(ctx, "Backup (pre-incremental)", func(ctx context.Context) (*ledgerpb.BackupResponse, error) {
+		return client.Backup(ctx, &ledgerpb.BackupRequest{Storage: s3Storage()})
 	}); err != nil {
 		if internal.IsBackupCallerCancellation(ctx, err) || internal.IsTransient(err) || internal.IsBackupInProgress(err) {
 			log.Printf("Backup (pre-incremental) inconclusive error after retries: %v", err)
@@ -63,8 +63,8 @@ func run(ctx context.Context, client clusterpb.ClusterServiceClient) {
 	}
 
 	// 1. Run an incremental backup (exports log/audit entries since last export).
-	resp, err := internal.RetryBackup(ctx, "IncrementalBackup", func(ctx context.Context) (*clusterpb.IncrementalBackupResponse, error) {
-		return client.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{Storage: s3Storage()})
+	resp, err := internal.RetryBackup(ctx, "IncrementalBackup", func(ctx context.Context) (*ledgerpb.IncrementalBackupResponse, error) {
+		return client.IncrementalBackup(ctx, &ledgerpb.IncrementalBackupRequest{Storage: s3Storage()})
 	})
 	if err != nil {
 		if internal.IsBackupCallerCancellation(ctx, err) || internal.IsTransient(err) || internal.IsBackupInProgress(err) {
@@ -108,8 +108,8 @@ func run(ctx context.Context, client clusterpb.ClusterServiceClient) {
 
 	// 2. Run a second incremental backup immediately.
 	//    Should succeed with fewer or zero new entries.
-	resp2, err := internal.RetryBackup(ctx, "second IncrementalBackup", func(ctx context.Context) (*clusterpb.IncrementalBackupResponse, error) {
-		return client.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{Storage: s3Storage()})
+	resp2, err := internal.RetryBackup(ctx, "second IncrementalBackup", func(ctx context.Context) (*ledgerpb.IncrementalBackupResponse, error) {
+		return client.IncrementalBackup(ctx, &ledgerpb.IncrementalBackupRequest{Storage: s3Storage()})
 	})
 	if err != nil {
 		if internal.IsBackupCallerCancellation(ctx, err) || internal.IsTransient(err) || internal.IsExternalServiceError(err) ||

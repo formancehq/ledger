@@ -6,7 +6,7 @@ import (
 	"maps"
 	"slices"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -18,7 +18,7 @@ import (
 // LedgerScoped.Apply chain. Getters are nil-safe: non-Apply orders
 // (SystemScoped, CreateLedger, etc.) return an empty slice which the
 // caller interprets as "no opt-in".
-func orderSkippableReasons(order *raftcmdpb.Order) []commonpb.ErrorReason {
+func orderSkippableReasons(order *raftcmdpb.Order) []ledgerpb.ErrorReason {
 	return order.GetLedgerScoped().GetApply().GetSkippableReasons()
 }
 
@@ -36,14 +36,14 @@ func orderSkippableReasons(order *raftcmdpb.Order) []commonpb.ErrorReason {
 // skip-tolerant order and discards it (no Commit) on skip. Sub-processors do
 // not need to perform their reads "dry" anymore; the overlay buffers their
 // reads-after-writes and drops the buffer on rollback.
-func matchOrderSkip(order *raftcmdpb.Order, err domain.SerializableError) (*commonpb.LogPayload, bool) {
+func matchOrderSkip(order *raftcmdpb.Order, err domain.SerializableError) (*ledgerpb.LogPayload, bool) {
 	allowed := orderSkippableReasons(order)
 	if len(allowed) == 0 {
 		return nil, false
 	}
 
 	target := domain.ReasonCode(err.Reason())
-	if target == commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED {
+	if target == ledgerpb.ErrorReason_ERROR_REASON_UNSPECIFIED {
 		return nil, false
 	}
 
@@ -66,7 +66,7 @@ func matchOrderSkip(order *raftcmdpb.Order, err domain.SerializableError) (*comm
 		ctx = maps.Clone(md)
 	}
 
-	skipPayload := &commonpb.OrderSkippedLog{
+	skipPayload := &ledgerpb.OrderSkippedLog{
 		Reason:  target,
 		Context: ctx,
 	}
@@ -81,20 +81,20 @@ func matchOrderSkip(order *raftcmdpb.Order, err domain.SerializableError) (*comm
 // here — assignSkipLogIDAndDate fills them once ProcessOrders has the
 // parent Scope in hand (the inner LedgerLog must carry a per-ledger id
 // because the read-side index keys per-ledger logs by it).
-func wrapSkippedPayloadForOrder(order *raftcmdpb.Order, skipped *commonpb.OrderSkippedLog) *commonpb.LogPayload {
+func wrapSkippedPayloadForOrder(order *raftcmdpb.Order, skipped *ledgerpb.OrderSkippedLog) *ledgerpb.LogPayload {
 	ledgerName := ""
 
 	if lso, ok := order.GetType().(*raftcmdpb.Order_LedgerScoped); ok && lso.LedgerScoped != nil {
 		ledgerName = lso.LedgerScoped.GetLedger()
 	}
 
-	return &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_Apply{
-			Apply: &commonpb.ApplyLedgerLog{
+	return &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_Apply{
+			Apply: &ledgerpb.ApplyLedgerLog{
 				LedgerName: ledgerName,
-				Log: &commonpb.LedgerLog{
-					Data: &commonpb.LedgerLogPayload{
-						Payload: &commonpb.LedgerLogPayload_OrderSkipped{
+				Log: &ledgerpb.LedgerLog{
+					Data: &ledgerpb.LedgerLogPayload{
+						Payload: &ledgerpb.LedgerLogPayload_OrderSkipped{
 							OrderSkipped: skipped,
 						},
 					},
@@ -121,7 +121,7 @@ func wrapSkippedPayloadForOrder(order *raftcmdpb.Order, skipped *commonpb.OrderS
 // expects a LedgerScoped order with a non-empty ledger name. Anything else
 // is a structural invariant violation: surface it loudly instead of
 // silently shipping a log with Id=0.
-func assignSkipLogIDAndDate(parent Scope, order *raftcmdpb.Order, payload *commonpb.LogPayload) domain.SerializableError {
+func assignSkipLogIDAndDate(parent Scope, order *raftcmdpb.Order, payload *ledgerpb.LogPayload) domain.SerializableError {
 	lso, ok := order.GetType().(*raftcmdpb.Order_LedgerScoped)
 	if !ok || lso.LedgerScoped == nil || lso.LedgerScoped.GetLedger() == "" {
 		return &domain.ErrInvalidExecutionPlan{Reason_: fmt.Sprintf("skip allocated for non-LedgerScoped order %T", order.GetType())}

@@ -7,7 +7,7 @@ import (
 	"crypto/ed25519"
 	"math/big"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
@@ -21,7 +21,7 @@ var _ = Describe("Request Signing", func() {
 	Context("Bootstrap and key management via API", Ordered, func() {
 		var (
 			ctx     context.Context
-			client  commonpb.BucketServiceClient
+			client  ledgerpb.BucketServiceClient
 			pubKey  ed25519.PublicKey
 			privKey ed25519.PrivateKey
 		)
@@ -40,13 +40,13 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should accept unsigned requests when no keys exist", func() {
-			resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction("signing-bootstrap", nil)))
+			resp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction("signing-bootstrap", nil)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 		})
 
 		It("should allow unsigned RegisterSigningKey as bootstrap (first key)", func() {
-			resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.RegisterSigningKeyAction(keyID, pubKey)))
+			resp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.RegisterSigningKeyAction(keyID, pubKey)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 		})
@@ -54,7 +54,7 @@ var _ = Describe("Request Signing", func() {
 		It("should reject unsigned RegisterSigningKey once keys exist", func() {
 			newPubKey, _, err := actions.GenerateTestKeypair()
 			Expect(err).To(Succeed())
-			_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.RegisterSigningKeyAction("another-key", newPubKey)))
+			_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.RegisterSigningKeyAction("another-key", newPubKey)))
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
@@ -65,7 +65,7 @@ var _ = Describe("Request Signing", func() {
 			newPubKey, _, err := actions.GenerateTestKeypair()
 			Expect(err).To(Succeed())
 			req := actions.RegisterSigningKeyAction("second-key", newPubKey)
-			signedEnv, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{req}}, keyID, privKey)
+			signedEnv, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{req}}, keyID, privKey)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, signedEnv)
@@ -74,7 +74,7 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should reject unsigned RevokeSigningKey", func() {
-			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.RevokeSigningKeyAction("second-key", false)))
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.RevokeSigningKeyAction("second-key", false)))
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
@@ -83,7 +83,7 @@ var _ = Describe("Request Signing", func() {
 
 		It("should accept signed RevokeSigningKey", func() {
 			req := actions.RevokeSigningKeyAction("second-key", false)
-			signedEnv1, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{req}}, keyID, privKey)
+			signedEnv1, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{req}}, keyID, privKey)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, signedEnv1)
@@ -92,7 +92,7 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should reject unsigned SetSigningConfig", func() {
-			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.SetSigningConfigAction(true)))
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.SetSigningConfigAction(true)))
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
@@ -101,7 +101,7 @@ var _ = Describe("Request Signing", func() {
 
 		It("should accept signed SetSigningConfig to enable require-signatures", func() {
 			req := actions.SetSigningConfigAction(true)
-			signedEnv2, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{req}}, keyID, privKey)
+			signedEnv2, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{req}}, keyID, privKey)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, signedEnv2)
@@ -110,7 +110,7 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should reject unsigned regular requests after require-signatures is enabled", func() {
-			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction("signing-should-fail", nil)))
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction("signing-should-fail", nil)))
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
@@ -119,7 +119,7 @@ var _ = Describe("Request Signing", func() {
 
 		It("should accept signed regular requests after require-signatures is enabled", func() {
 			req := actions.CreateLedgerAction("signing-required-ok", nil)
-			signedEnv3, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{req}}, keyID, privKey)
+			signedEnv3, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{req}}, keyID, privKey)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, signedEnv3)
@@ -132,7 +132,7 @@ var _ = Describe("Request Signing", func() {
 
 		It("should disable require-signatures via signed config change", func() {
 			req := actions.SetSigningConfigAction(false)
-			signedEnv4, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{req}}, keyID, privKey)
+			signedEnv4, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{req}}, keyID, privKey)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, signedEnv4)
@@ -140,7 +140,7 @@ var _ = Describe("Request Signing", func() {
 			Expect(resp.Logs).To(HaveLen(1))
 
 			// Now unsigned requests should work again
-			resp, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction("signing-disabled-again", nil)))
+			resp, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction("signing-disabled-again", nil)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 		})
@@ -149,7 +149,7 @@ var _ = Describe("Request Signing", func() {
 	Context("Signature verification", Ordered, func() {
 		var (
 			ctx     context.Context
-			client  commonpb.BucketServiceClient
+			client  ledgerpb.BucketServiceClient
 			privKey ed25519.PrivateKey
 		)
 
@@ -169,21 +169,21 @@ var _ = Describe("Request Signing", func() {
 			client = node.Client
 
 			// Bootstrap: register the first key (unsigned)
-			resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.RegisterSigningKeyAction(keyID, pubKey)))
+			resp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.RegisterSigningKeyAction(keyID, pubKey)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 
 			// Create a ledger for transaction tests
-			resp, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			resp, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 		})
 
 		It("should accept signed requests with a valid signature", func() {
-			req := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			req := actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil, nil)
-			signedEnv5, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{req}}, keyID, privKey)
+			signedEnv5, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{req}}, keyID, privKey)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, signedEnv5)
@@ -195,10 +195,10 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should reject requests signed with an unknown key ID", func() {
-			req := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			req := actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "bob", big.NewInt(50), "USD"),
 			}, nil, nil)
-			signedEnv6, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{req}}, "unknown-key-id", privKey)
+			signedEnv6, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{req}}, "unknown-key-id", privKey)
 			Expect(err).To(Succeed())
 
 			_, err = client.Apply(ctx, signedEnv6)
@@ -212,10 +212,10 @@ var _ = Describe("Request Signing", func() {
 			_, wrongPrivKey, err := actions.GenerateTestKeypair()
 			Expect(err).To(Succeed())
 
-			req := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			req := actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "charlie", big.NewInt(50), "USD"),
 			}, nil, nil)
-			signedEnv7, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{req}}, keyID, wrongPrivKey)
+			signedEnv7, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{req}}, keyID, wrongPrivKey)
 			Expect(err).To(Succeed())
 
 			_, err = client.Apply(ctx, signedEnv7)
@@ -226,10 +226,10 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should reject requests with tampered signed_payload", func() {
-			req := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			req := actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "dave", big.NewInt(50), "USD"),
 			}, nil, nil)
-			signedEnv8, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{req}}, keyID, privKey)
+			signedEnv8, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{req}}, keyID, privKey)
 			Expect(err).To(Succeed())
 
 			// Tamper with the signed envelope's payload bytes
@@ -244,17 +244,17 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should handle signed bulk operations", func() {
-			req1 := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			req1 := actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "bulk-alice", big.NewInt(100), "USD"),
 			}, nil, nil)
-			req2 := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			req2 := actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "bulk-bob", big.NewInt(200), "USD"),
 			}, nil, nil)
 
 			// One signed batch carrying both requests. The batch signature lives
 			// on AppliedProposal (proposal.proto); no public read endpoint yet —
 			// acceptance and the resulting two logs are what's observable here.
-			signedEnv9, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{req1, req2}}, keyID, privKey)
+			signedEnv9, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{req1, req2}}, keyID, privKey)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, signedEnv9)
@@ -268,21 +268,21 @@ var _ = Describe("Request Signing", func() {
 			// not required, both are accepted. The batch signature lives on
 			// AppliedProposal (proposal.proto); no public read endpoint yet — only
 			// acceptance of both batches is observable here.
-			signedReq := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			signedReq := actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "mixed-signed", big.NewInt(100), "USD"),
 			}, nil, nil)
-			signedEnv11, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{signedReq}}, keyID, privKey)
+			signedEnv11, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{signedReq}}, keyID, privKey)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, signedEnv11)
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 
-			unsignedReq := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			unsignedReq := actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "mixed-unsigned", big.NewInt(100), "USD"),
 			}, nil, nil)
 
-			resp, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", unsignedReq))
+			resp, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", unsignedReq))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 		})
@@ -291,7 +291,7 @@ var _ = Describe("Request Signing", func() {
 	Context("Multiple signing keys via API", Ordered, func() {
 		var (
 			ctx      context.Context
-			client   commonpb.BucketServiceClient
+			client   ledgerpb.BucketServiceClient
 			privKey1 ed25519.PrivateKey
 			privKey2 ed25519.PrivateKey
 		)
@@ -315,13 +315,13 @@ var _ = Describe("Request Signing", func() {
 			client = node.Client
 
 			// Bootstrap: register the first key (unsigned)
-			resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.RegisterSigningKeyAction(keyID1, pubKey1)))
+			resp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.RegisterSigningKeyAction(keyID1, pubKey1)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 
 			// Register the second key (signed by first key)
 			req := actions.RegisterSigningKeyAction(keyID2, pubKey2)
-			signedEnv12, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{req}}, keyID1, privKey1)
+			signedEnv12, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{req}}, keyID1, privKey1)
 			Expect(err).To(Succeed())
 
 			resp, err = client.Apply(ctx, signedEnv12)
@@ -330,7 +330,7 @@ var _ = Describe("Request Signing", func() {
 
 			// Enable require-signatures (signed by first key)
 			configReq := actions.SetSigningConfigAction(true)
-			signedEnv13, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{configReq}}, keyID1, privKey1)
+			signedEnv13, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{configReq}}, keyID1, privKey1)
 			Expect(err).To(Succeed())
 
 			resp, err = client.Apply(ctx, signedEnv13)
@@ -340,7 +340,7 @@ var _ = Describe("Request Signing", func() {
 
 		It("should accept requests signed with the first key", func() {
 			req := actions.CreateLedgerAction(ledgerName, nil)
-			signedEnv14, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{req}}, keyID1, privKey1)
+			signedEnv14, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{req}}, keyID1, privKey1)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, signedEnv14)
@@ -349,10 +349,10 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should accept requests signed with the second key", func() {
-			req := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			req := actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "multi-key-test", big.NewInt(100), "USD"),
 			}, nil, nil)
-			signedEnv15, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{req}}, keyID2, privKey2)
+			signedEnv15, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{req}}, keyID2, privKey2)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, signedEnv15)
@@ -365,20 +365,20 @@ var _ = Describe("Request Signing", func() {
 			// in its own Apply call; both keys are accepted signers. The batch
 			// signature lives on AppliedProposal (proposal.proto); no public read
 			// endpoint yet — acceptance of each batch is what's observable here.
-			req1 := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			req1 := actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "multi-key-1", big.NewInt(100), "USD"),
 			}, nil, nil)
-			signedEnv16, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{req1}}, keyID1, privKey1)
+			signedEnv16, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{req1}}, keyID1, privKey1)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, signedEnv16)
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 
-			req2 := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			req2 := actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "multi-key-2", big.NewInt(200), "USD"),
 			}, nil, nil)
-			signedEnv17, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{req2}}, keyID2, privKey2)
+			signedEnv17, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{req2}}, keyID2, privKey2)
 			Expect(err).To(Succeed())
 
 			resp, err = client.Apply(ctx, signedEnv17)
@@ -390,7 +390,7 @@ var _ = Describe("Request Signing", func() {
 	Context("ListSigningKeys non-cascade revoke", Ordered, func() {
 		var (
 			ctx      context.Context
-			client   commonpb.BucketServiceClient
+			client   ledgerpb.BucketServiceClient
 			privKeyA ed25519.PrivateKey
 		)
 
@@ -415,13 +415,13 @@ var _ = Describe("Request Signing", func() {
 			client = node.Client
 
 			// Register root key A (bootstrap, unsigned)
-			resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.RegisterSigningKeyAction(keyIDA, pubKeyA)))
+			resp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.RegisterSigningKeyAction(keyIDA, pubKeyA)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 
 			// Register child key B (signed by A)
 			reqB := actions.RegisterSigningKeyAction(keyIDB, pubKeyB)
-			signedEnv18, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{reqB}}, keyIDA, privKeyA)
+			signedEnv18, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{reqB}}, keyIDA, privKeyA)
 			Expect(err).To(Succeed())
 			resp, err = client.Apply(ctx, signedEnv18)
 			Expect(err).To(Succeed())
@@ -430,7 +430,7 @@ var _ = Describe("Request Signing", func() {
 			// Register grandchild key C (signed by A, parent is A -- not B)
 			// This makes C a child of A, so revoking B (non-cascade) leaves C
 			reqC := actions.RegisterSigningKeyAction(keyIDC, pubKeyC)
-			signedEnv19, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{reqC}}, keyIDA, privKeyA)
+			signedEnv19, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{reqC}}, keyIDA, privKeyA)
 			Expect(err).To(Succeed())
 			resp, err = client.Apply(ctx, signedEnv19)
 			Expect(err).To(Succeed())
@@ -448,7 +448,7 @@ var _ = Describe("Request Signing", func() {
 
 		It("should list A and C after non-cascade revoke of B", func() {
 			req := actions.RevokeSigningKeyAction(keyIDB, false)
-			signedEnv20, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{req}}, keyIDA, privKeyA)
+			signedEnv20, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{req}}, keyIDA, privKeyA)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, signedEnv20)
@@ -467,7 +467,7 @@ var _ = Describe("Request Signing", func() {
 	Context("Hierarchical key management", Ordered, func() {
 		var (
 			ctx      context.Context
-			client   commonpb.BucketServiceClient
+			client   ledgerpb.BucketServiceClient
 			privKeyA ed25519.PrivateKey
 			privKeyB ed25519.PrivateKey
 			privKeyC ed25519.PrivateKey
@@ -494,13 +494,13 @@ var _ = Describe("Request Signing", func() {
 			client = node.Client
 
 			// Register root key A (bootstrap, unsigned)
-			resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.RegisterSigningKeyAction(keyIDA, pubKeyA)))
+			resp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.RegisterSigningKeyAction(keyIDA, pubKeyA)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 
 			// Register child key B (signed by A -> B is child of A)
 			reqB := actions.RegisterSigningKeyAction(keyIDB, pubKeyB)
-			signedEnv21, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{reqB}}, keyIDA, privKeyA)
+			signedEnv21, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{reqB}}, keyIDA, privKeyA)
 			Expect(err).To(Succeed())
 
 			resp, err = client.Apply(ctx, signedEnv21)
@@ -513,7 +513,7 @@ var _ = Describe("Request Signing", func() {
 
 			// Register grandchild key C (signed by B -> C is child of B)
 			reqC := actions.RegisterSigningKeyAction(keyIDC, pubKeyC)
-			signedEnv22, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{reqC}}, keyIDB, privKeyB)
+			signedEnv22, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{reqC}}, keyIDB, privKeyB)
 			Expect(err).To(Succeed())
 
 			resp, err = client.Apply(ctx, signedEnv22)
@@ -526,7 +526,7 @@ var _ = Describe("Request Signing", func() {
 
 			// Create a ledger using key A for later tests
 			ledgerReq := actions.CreateLedgerAction("hierarchy-test", nil)
-			signedEnv23, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{ledgerReq}}, keyIDA, privKeyA)
+			signedEnv23, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{ledgerReq}}, keyIDA, privKeyA)
 			Expect(err).To(Succeed())
 			resp, err = client.Apply(ctx, signedEnv23)
 			Expect(err).To(Succeed())
@@ -552,10 +552,10 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should accept requests signed by child key B", func() {
-			req := actions.CreateTransactionAction("hierarchy-test", []*commonpb.Posting{
+			req := actions.CreateTransactionAction("hierarchy-test", []*ledgerpb.Posting{
 				actions.NewPosting("world", "h-bob", big.NewInt(100), "USD"),
 			}, nil, nil)
-			signedEnv24, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{req}}, keyIDB, privKeyB)
+			signedEnv24, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{req}}, keyIDB, privKeyB)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, signedEnv24)
@@ -564,10 +564,10 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should accept requests signed by grandchild key C", func() {
-			req := actions.CreateTransactionAction("hierarchy-test", []*commonpb.Posting{
+			req := actions.CreateTransactionAction("hierarchy-test", []*ledgerpb.Posting{
 				actions.NewPosting("world", "h-charlie", big.NewInt(100), "USD"),
 			}, nil, nil)
-			signedEnv25, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{req}}, keyIDC, privKeyC)
+			signedEnv25, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{req}}, keyIDC, privKeyC)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, signedEnv25)
@@ -577,7 +577,7 @@ var _ = Describe("Request Signing", func() {
 
 		It("should cascade revoke B and C when B is revoked with cascade (signed by A)", func() {
 			req := actions.RevokeSigningKeyAction(keyIDB, true)
-			signedEnv26, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{req}}, keyIDA, privKeyA)
+			signedEnv26, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{req}}, keyIDA, privKeyA)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, signedEnv26)
@@ -605,10 +605,10 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should still accept requests signed by root key A", func() {
-			req := actions.CreateTransactionAction("hierarchy-test", []*commonpb.Posting{
+			req := actions.CreateTransactionAction("hierarchy-test", []*ledgerpb.Posting{
 				actions.NewPosting("world", "h-post-revoke", big.NewInt(50), "USD"),
 			}, nil, nil)
-			signedEnv27, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{req}}, keyIDA, privKeyA)
+			signedEnv27, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{req}}, keyIDA, privKeyA)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, signedEnv27)
@@ -617,10 +617,10 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should reject requests signed by revoked key B", func() {
-			req := actions.CreateTransactionAction("hierarchy-test", []*commonpb.Posting{
+			req := actions.CreateTransactionAction("hierarchy-test", []*ledgerpb.Posting{
 				actions.NewPosting("world", "h-revoked-b", big.NewInt(50), "USD"),
 			}, nil, nil)
-			signedEnv28, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{req}}, keyIDB, privKeyB)
+			signedEnv28, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{req}}, keyIDB, privKeyB)
 			Expect(err).To(Succeed())
 
 			_, err = client.Apply(ctx, signedEnv28)
@@ -631,10 +631,10 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should reject requests signed by cascade-revoked key C", func() {
-			req := actions.CreateTransactionAction("hierarchy-test", []*commonpb.Posting{
+			req := actions.CreateTransactionAction("hierarchy-test", []*ledgerpb.Posting{
 				actions.NewPosting("world", "h-revoked-c", big.NewInt(50), "USD"),
 			}, nil, nil)
-			signedEnv29, err := actions.SignBatch(&commonpb.ApplyBatch{Requests: []*commonpb.Request{req}}, keyIDC, privKeyC)
+			signedEnv29, err := actions.SignBatch(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{req}}, keyIDC, privKeyC)
 			Expect(err).To(Succeed())
 
 			_, err = client.Apply(ctx, signedEnv29)

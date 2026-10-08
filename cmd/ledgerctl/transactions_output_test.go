@@ -16,17 +16,17 @@ import (
 	"go.yaml.in/yaml/v3"
 	"google.golang.org/grpc"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 type transactionOutputServer struct {
-	commonpb.UnimplementedBucketServiceServer
+	ledgerpb.UnimplementedBucketServiceServer
 
-	response *commonpb.GetTransactionResponse
-	requests chan *commonpb.GetTransactionRequest
+	response *ledgerpb.GetTransactionResponse
+	requests chan *ledgerpb.GetTransactionRequest
 }
 
-func (s *transactionOutputServer) GetTransaction(_ context.Context, request *commonpb.GetTransactionRequest) (*commonpb.GetTransactionResponse, error) {
+func (s *transactionOutputServer) GetTransaction(_ context.Context, request *ledgerpb.GetTransactionRequest) (*ledgerpb.GetTransactionResponse, error) {
 	s.requests <- request
 
 	return s.response, nil
@@ -41,21 +41,21 @@ func TestTransactionsGetStructuredOutputPreservesIntegers(t *testing.T) {
 	// Seed the transport fixture with typed protobuf values. Passing through
 	// HTTP/JSON on the way in could round the input before this CLI regression.
 	fixture := &transactionOutputServer{
-		response: &commonpb.GetTransactionResponse{
-			Transaction: &commonpb.Transaction{
+		response: &ledgerpb.GetTransactionResponse{
+			Transaction: &ledgerpb.Transaction{
 				Id: positive,
-				Metadata: map[string]*commonpb.MetadataValue{
-					"positive": commonpb.NewUintValue(positive),
-					"negative": commonpb.NewIntValue(negative),
+				Metadata: map[string]*ledgerpb.MetadataValue{
+					"positive": ledgerpb.NewUintValue(positive),
+					"negative": ledgerpb.NewIntValue(negative),
 				},
 			},
 		},
-		requests: make(chan *commonpb.GetTransactionRequest, 2),
+		requests: make(chan *ledgerpb.GetTransactionRequest, 2),
 	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	server := grpc.NewServer()
-	commonpb.RegisterBucketServiceServer(server, fixture)
+	ledgerpb.RegisterBucketServiceServer(server, fixture)
 	serveResult := make(chan error, 1)
 	go func() { serveResult <- server.Serve(listener) }()
 	t.Cleanup(func() {

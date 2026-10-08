@@ -16,7 +16,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -125,8 +125,8 @@ func TestNewHandler_SanitizesPanicEndToEnd(t *testing.T) {
 	// sanitized JSON 500 (see TestHandleCreateLedger_LogContractViolations).
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
-			return &domain.ApplyResult{Logs: []*commonpb.Log{}}, nil
+		func(_ context.Context, _ *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{}}, nil
 		}).AnyTimes()
 
 	handler := NewHandler(logger, backend, internalauth.AuthConfig{}, version.Info{})

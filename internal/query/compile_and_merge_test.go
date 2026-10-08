@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestMergeFieldRanges(t *testing.T) {
@@ -16,7 +16,7 @@ func TestMergeFieldRanges(t *testing.T) {
 	t.Run("single filter passes through", func(t *testing.T) {
 		t.Parallel()
 
-		in := []*commonpb.QueryFilter{intRange("a", new(int64(10)), false, nil, false)}
+		in := []*ledgerpb.QueryFilter{intRange("a", new(int64(10)), false, nil, false)}
 		got := mergeFieldRanges(in)
 
 		require.Len(t, got, 1)
@@ -27,7 +27,7 @@ func TestMergeFieldRanges(t *testing.T) {
 		t.Parallel()
 
 		// a >= 10 AND a < 20  -> a in [10, 20)
-		in := []*commonpb.QueryFilter{
+		in := []*ledgerpb.QueryFilter{
 			intRange("a", new(int64(10)), false, nil, false),
 			intRange("a", nil, false, new(int64(20)), true),
 		}
@@ -48,7 +48,7 @@ func TestMergeFieldRanges(t *testing.T) {
 		t.Parallel()
 
 		// a >= 10 AND a <= 19  -> a in [10, 19]
-		in := []*commonpb.QueryFilter{
+		in := []*ledgerpb.QueryFilter{
 			intRange("a", new(int64(10)), false, nil, false),
 			intRange("a", nil, false, new(int64(19)), false),
 		}
@@ -65,7 +65,7 @@ func TestMergeFieldRanges(t *testing.T) {
 		t.Parallel()
 
 		// a > 10 AND a < 20  -> a in [11, 19]
-		in := []*commonpb.QueryFilter{
+		in := []*ledgerpb.QueryFilter{
 			intRange("a", new(int64(10)), true, nil, false),
 			intRange("a", nil, false, new(int64(20)), true),
 		}
@@ -84,7 +84,7 @@ func TestMergeFieldRanges(t *testing.T) {
 		t.Parallel()
 
 		// a >= 10 AND a >= 20  -> a >= 20
-		in := []*commonpb.QueryFilter{
+		in := []*ledgerpb.QueryFilter{
 			intRange("a", new(int64(10)), false, nil, false),
 			intRange("a", new(int64(20)), false, nil, false),
 		}
@@ -102,7 +102,7 @@ func TestMergeFieldRanges(t *testing.T) {
 		t.Parallel()
 
 		// a >= 20 AND a < 10  -> impossible interval
-		in := []*commonpb.QueryFilter{
+		in := []*ledgerpb.QueryFilter{
 			intRange("a", new(int64(20)), false, nil, false),
 			intRange("a", nil, false, new(int64(10)), true),
 		}
@@ -121,7 +121,7 @@ func TestMergeFieldRanges(t *testing.T) {
 		t.Parallel()
 
 		// a >= 10 AND b < 20  -> two filters, unchanged
-		in := []*commonpb.QueryFilter{
+		in := []*ledgerpb.QueryFilter{
 			intRange("a", new(int64(10)), false, nil, false),
 			intRange("b", nil, false, new(int64(20)), true),
 		}
@@ -136,20 +136,20 @@ func TestMergeFieldRanges(t *testing.T) {
 		t.Parallel()
 
 		// a >= 10 AND c == "x" AND a < 20  -> [a in [10,20), c == "x"]
-		strFilter := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Field{
-				Field: &commonpb.FieldCondition{
-					Field: &commonpb.FieldRef{Metadata: "c"},
-					Condition: &commonpb.FieldCondition_StringCond{
-						StringCond: &commonpb.StringCondition{
-							Value: &commonpb.StringCondition_Hardcoded{Hardcoded: "x"},
+		strFilter := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Field{
+				Field: &ledgerpb.FieldCondition{
+					Field: &ledgerpb.FieldRef{Metadata: "c"},
+					Condition: &ledgerpb.FieldCondition_StringCond{
+						StringCond: &ledgerpb.StringCondition{
+							Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: "x"},
 						},
 					},
 				},
 			},
 		}
 
-		in := []*commonpb.QueryFilter{
+		in := []*ledgerpb.QueryFilter{
 			intRange("a", new(int64(10)), false, nil, false),
 			strFilter,
 			intRange("a", nil, false, new(int64(20)), true),
@@ -174,17 +174,17 @@ func TestMergeFieldRanges(t *testing.T) {
 
 		// a == 5 AND a >= 3  -> unchanged (equality already optimal)
 		five := int64(5)
-		eqFilter := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Field{
-				Field: &commonpb.FieldCondition{
-					Field: &commonpb.FieldRef{Metadata: "a"},
-					Condition: &commonpb.FieldCondition_IntCond{
-						IntCond: &commonpb.IntCondition{Min: &five, Max: &five},
+		eqFilter := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Field{
+				Field: &ledgerpb.FieldCondition{
+					Field: &ledgerpb.FieldRef{Metadata: "a"},
+					Condition: &ledgerpb.FieldCondition_IntCond{
+						IntCond: &ledgerpb.IntCondition{Min: &five, Max: &five},
 					},
 				},
 			},
 		}
-		in := []*commonpb.QueryFilter{
+		in := []*ledgerpb.QueryFilter{
 			eqFilter,
 			intRange("a", new(int64(3)), false, nil, false),
 		}
@@ -198,17 +198,17 @@ func TestMergeFieldRanges(t *testing.T) {
 	t.Run("parameterized bounds are not merged", func(t *testing.T) {
 		t.Parallel()
 
-		paramFilter := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Field{
-				Field: &commonpb.FieldCondition{
-					Field: &commonpb.FieldRef{Metadata: "a"},
-					Condition: &commonpb.FieldCondition_IntCond{
-						IntCond: &commonpb.IntCondition{ParamMin: "lo"},
+		paramFilter := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Field{
+				Field: &ledgerpb.FieldCondition{
+					Field: &ledgerpb.FieldRef{Metadata: "a"},
+					Condition: &ledgerpb.FieldCondition_IntCond{
+						IntCond: &ledgerpb.IntCondition{ParamMin: "lo"},
 					},
 				},
 			},
 		}
-		in := []*commonpb.QueryFilter{
+		in := []*ledgerpb.QueryFilter{
 			paramFilter,
 			intRange("a", nil, false, new(int64(20)), true),
 		}
@@ -223,7 +223,7 @@ func TestMergeFieldRanges(t *testing.T) {
 		t.Parallel()
 
 		// a >= 10 AND a < 100 AND a >= 20  -> [20, 100)
-		in := []*commonpb.QueryFilter{
+		in := []*ledgerpb.QueryFilter{
 			intRange("a", new(int64(10)), false, nil, false),
 			intRange("a", nil, false, new(int64(100)), true),
 			intRange("a", new(int64(20)), false, nil, false),
@@ -241,8 +241,8 @@ func TestMergeFieldRanges(t *testing.T) {
 
 // intRange builds a metadata IntCondition filter on `field`. Pass nil for an
 // absent bound; (value, exclusive) for a present one.
-func intRange(field string, low *int64, lowExcl bool, high *int64, highExcl bool) *commonpb.QueryFilter {
-	ic := &commonpb.IntCondition{}
+func intRange(field string, low *int64, lowExcl bool, high *int64, highExcl bool) *ledgerpb.QueryFilter {
+	ic := &ledgerpb.IntCondition{}
 	if low != nil {
 		ic.Min = low
 		ic.MinExclusive = lowExcl
@@ -252,11 +252,11 @@ func intRange(field string, low *int64, lowExcl bool, high *int64, highExcl bool
 		ic.MaxExclusive = highExcl
 	}
 
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Field{
-			Field: &commonpb.FieldCondition{
-				Field:     &commonpb.FieldRef{Metadata: field},
-				Condition: &commonpb.FieldCondition_IntCond{IntCond: ic},
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Field{
+			Field: &ledgerpb.FieldCondition{
+				Field:     &ledgerpb.FieldRef{Metadata: field},
+				Condition: &ledgerpb.FieldCondition_IntCond{IntCond: ic},
 			},
 		},
 	}
@@ -269,7 +269,7 @@ func TestMergeFieldRanges_Uint(t *testing.T) {
 		t.Parallel()
 
 		// a >= 10 AND a < 20  -> a in [10, 19]
-		in := []*commonpb.QueryFilter{
+		in := []*ledgerpb.QueryFilter{
 			uintRange("a", new(uint64(10)), false, nil, false),
 			uintRange("a", nil, false, new(uint64(20)), true),
 		}
@@ -290,7 +290,7 @@ func TestMergeFieldRanges_Uint(t *testing.T) {
 		t.Parallel()
 
 		// a > 10 AND a < 20  -> a in [11, 19]
-		in := []*commonpb.QueryFilter{
+		in := []*ledgerpb.QueryFilter{
 			uintRange("a", new(uint64(10)), true, nil, false),
 			uintRange("a", nil, false, new(uint64(20)), true),
 		}
@@ -309,7 +309,7 @@ func TestMergeFieldRanges_Uint(t *testing.T) {
 		t.Parallel()
 
 		// a <= 50 AND a <= 20  -> a <= 20
-		in := []*commonpb.QueryFilter{
+		in := []*ledgerpb.QueryFilter{
 			uintRange("a", nil, false, new(uint64(50)), false),
 			uintRange("a", nil, false, new(uint64(20)), false),
 		}
@@ -327,7 +327,7 @@ func TestMergeFieldRanges_Uint(t *testing.T) {
 		t.Parallel()
 
 		// a >= 20 AND a < 10
-		in := []*commonpb.QueryFilter{
+		in := []*ledgerpb.QueryFilter{
 			uintRange("a", new(uint64(20)), false, nil, false),
 			uintRange("a", nil, false, new(uint64(10)), true),
 		}
@@ -346,7 +346,7 @@ func TestMergeFieldRanges_Uint(t *testing.T) {
 		// is a pure half-range, so the merger leaves them alone (intersection
 		// is correct but the input isn't a merge candidate).
 		boundedFilter := uintRange("a", new(uint64(10)), false, new(uint64(20)), false)
-		in := []*commonpb.QueryFilter{
+		in := []*ledgerpb.QueryFilter{
 			boundedFilter,
 			uintRange("a", new(uint64(5)), false, nil, false),
 		}
@@ -360,17 +360,17 @@ func TestMergeFieldRanges_Uint(t *testing.T) {
 	t.Run("uint parameterized bounds are not merged", func(t *testing.T) {
 		t.Parallel()
 
-		paramFilter := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Field{
-				Field: &commonpb.FieldCondition{
-					Field: &commonpb.FieldRef{Metadata: "a"},
-					Condition: &commonpb.FieldCondition_UintCond{
-						UintCond: &commonpb.UintCondition{ParamMin: "lo"},
+		paramFilter := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Field{
+				Field: &ledgerpb.FieldCondition{
+					Field: &ledgerpb.FieldRef{Metadata: "a"},
+					Condition: &ledgerpb.FieldCondition_UintCond{
+						UintCond: &ledgerpb.UintCondition{ParamMin: "lo"},
 					},
 				},
 			},
 		}
-		in := []*commonpb.QueryFilter{
+		in := []*ledgerpb.QueryFilter{
 			paramFilter,
 			uintRange("a", nil, false, new(uint64(20)), true),
 		}
@@ -387,7 +387,7 @@ func TestMergeFieldRanges_Uint(t *testing.T) {
 		// IntCond and UintCond would never coexist for the same field in
 		// practice (schema fixes the type), but the merger keys by Int/Uint
 		// kind so the two pass through unchanged if they ever did.
-		in := []*commonpb.QueryFilter{
+		in := []*ledgerpb.QueryFilter{
 			intRange("a", new(int64(10)), false, nil, false),
 			uintRange("a", nil, false, new(uint64(20)), true),
 		}
@@ -401,14 +401,14 @@ func TestMergeFieldRanges_Uint(t *testing.T) {
 
 		// AddressMatch isn't a FieldCondition, so the merger lets it through
 		// without inspection — that's the address-filter pass-through path.
-		addr := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Address{
-				Address: &commonpb.AddressMatch{
-					Match: &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: "users:"},
+		addr := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Address{
+				Address: &ledgerpb.AddressMatch{
+					Match: &ledgerpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: "users:"},
 				},
 			},
 		}
-		in := []*commonpb.QueryFilter{
+		in := []*ledgerpb.QueryFilter{
 			addr,
 			intRange("a", new(int64(10)), false, nil, false),
 		}
@@ -423,17 +423,17 @@ func TestMergeFieldRanges_Uint(t *testing.T) {
 
 		// Builtin-like FieldCondition with empty Metadata key — defensive
 		// branch ensuring mergeableFieldKey rejects entries without a key.
-		fc := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Field{
-				Field: &commonpb.FieldCondition{
-					Field: &commonpb.FieldRef{},
-					Condition: &commonpb.FieldCondition_IntCond{
-						IntCond: &commonpb.IntCondition{Min: new(int64(10))},
+		fc := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Field{
+				Field: &ledgerpb.FieldCondition{
+					Field: &ledgerpb.FieldRef{},
+					Condition: &ledgerpb.FieldCondition_IntCond{
+						IntCond: &ledgerpb.IntCondition{Min: new(int64(10))},
 					},
 				},
 			},
 		}
-		in := []*commonpb.QueryFilter{
+		in := []*ledgerpb.QueryFilter{
 			fc,
 			intRange("a", nil, false, new(int64(20)), true),
 		}
@@ -454,16 +454,16 @@ func TestMergeFieldRanges_ExclusiveExtremaRemainEmpty(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		filters []*commonpb.QueryFilter
-		resolve func(*commonpb.QueryFilter) (bool, error)
+		filters []*ledgerpb.QueryFilter
+		resolve func(*ledgerpb.QueryFilter) (bool, error)
 	}{
 		{
 			name: "uint max exclusive minimum",
-			filters: []*commonpb.QueryFilter{
+			filters: []*ledgerpb.QueryFilter{
 				uintRange("a", new(uint64(math.MaxUint64)), true, nil, false),
 				uintRange("a", new(uint64(0)), false, nil, false),
 			},
-			resolve: func(filter *commonpb.QueryFilter) (bool, error) {
+			resolve: func(filter *ledgerpb.QueryFilter) (bool, error) {
 				bounds, err := resolveUintBounds(filter.GetField().GetUintCond(), nil)
 
 				return bounds.empty, err
@@ -471,11 +471,11 @@ func TestMergeFieldRanges_ExclusiveExtremaRemainEmpty(t *testing.T) {
 		},
 		{
 			name: "uint zero exclusive maximum",
-			filters: []*commonpb.QueryFilter{
+			filters: []*ledgerpb.QueryFilter{
 				uintRange("a", new(uint64(0)), false, nil, false),
 				uintRange("a", nil, false, new(uint64(0)), true),
 			},
-			resolve: func(filter *commonpb.QueryFilter) (bool, error) {
+			resolve: func(filter *ledgerpb.QueryFilter) (bool, error) {
 				bounds, err := resolveUintBounds(filter.GetField().GetUintCond(), nil)
 
 				return bounds.empty, err
@@ -483,11 +483,11 @@ func TestMergeFieldRanges_ExclusiveExtremaRemainEmpty(t *testing.T) {
 		},
 		{
 			name: "int max exclusive minimum",
-			filters: []*commonpb.QueryFilter{
+			filters: []*ledgerpb.QueryFilter{
 				intRange("a", new(int64(math.MaxInt64)), true, nil, false),
 				intRange("a", new(int64(0)), false, nil, false),
 			},
-			resolve: func(filter *commonpb.QueryFilter) (bool, error) {
+			resolve: func(filter *ledgerpb.QueryFilter) (bool, error) {
 				bounds, err := resolveIntBounds(filter.GetField().GetIntCond(), nil)
 
 				return bounds.empty, err
@@ -495,11 +495,11 @@ func TestMergeFieldRanges_ExclusiveExtremaRemainEmpty(t *testing.T) {
 		},
 		{
 			name: "int min exclusive maximum",
-			filters: []*commonpb.QueryFilter{
+			filters: []*ledgerpb.QueryFilter{
 				intRange("a", new(int64(math.MinInt64)), false, nil, false),
 				intRange("a", nil, false, new(int64(math.MinInt64)), true),
 			},
-			resolve: func(filter *commonpb.QueryFilter) (bool, error) {
+			resolve: func(filter *ledgerpb.QueryFilter) (bool, error) {
 				bounds, err := resolveIntBounds(filter.GetField().GetIntCond(), nil)
 
 				return bounds.empty, err
@@ -511,7 +511,7 @@ func TestMergeFieldRanges_ExclusiveExtremaRemainEmpty(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			for _, filters := range [][]*commonpb.QueryFilter{test.filters, {test.filters[1], test.filters[0]}} {
+			for _, filters := range [][]*ledgerpb.QueryFilter{test.filters, {test.filters[1], test.filters[0]}} {
 				merged := mergeFieldRanges(filters)
 
 				require.Len(t, merged, 1)
@@ -525,8 +525,8 @@ func TestMergeFieldRanges_ExclusiveExtremaRemainEmpty(t *testing.T) {
 
 // uintRange builds a metadata UintCondition filter on `field`. Mirror of
 // intRange for the unsigned path.
-func uintRange(field string, low *uint64, lowExcl bool, high *uint64, highExcl bool) *commonpb.QueryFilter {
-	uc := &commonpb.UintCondition{}
+func uintRange(field string, low *uint64, lowExcl bool, high *uint64, highExcl bool) *ledgerpb.QueryFilter {
+	uc := &ledgerpb.UintCondition{}
 	if low != nil {
 		uc.Min = low
 		uc.MinExclusive = lowExcl
@@ -536,11 +536,11 @@ func uintRange(field string, low *uint64, lowExcl bool, high *uint64, highExcl b
 		uc.MaxExclusive = highExcl
 	}
 
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Field{
-			Field: &commonpb.FieldCondition{
-				Field:     &commonpb.FieldRef{Metadata: field},
-				Condition: &commonpb.FieldCondition_UintCond{UintCond: uc},
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Field{
+			Field: &ledgerpb.FieldCondition{
+				Field:     &ledgerpb.FieldRef{Metadata: field},
+				Condition: &ledgerpb.FieldCondition_UintCond{UintCond: uc},
 			},
 		},
 	}

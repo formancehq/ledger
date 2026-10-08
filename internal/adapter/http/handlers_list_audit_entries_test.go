@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 )
@@ -22,8 +22,8 @@ func TestHandleListAuditEntries_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ uint32, _ uint64, _ *auditpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
-			return cursor.NewSliceCursor([]*auditpb.AuditEntry{
+		func(_ context.Context, _ uint32, _ uint64, _ *ledgerpb.QueryFilter, _ bool) (cursor.Cursor[*ledgerpb.AuditEntry], error) {
+			return cursor.NewSliceCursor([]*ledgerpb.AuditEntry{
 				{Sequence: 1},
 				{Sequence: 2},
 			}), nil
@@ -48,8 +48,8 @@ func TestHandleListAuditEntries_Empty(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ uint32, _ uint64, _ *auditpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
-			return cursor.NewSliceCursor[*auditpb.AuditEntry](nil), nil
+		func(_ context.Context, _ uint32, _ uint64, _ *ledgerpb.QueryFilter, _ bool) (cursor.Cursor[*ledgerpb.AuditEntry], error) {
+			return cursor.NewSliceCursor[*ledgerpb.AuditEntry](nil), nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -69,11 +69,11 @@ func TestHandleListAuditEntries_Pagination(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListAuditEntries(gomock.Any(), uint32(10), uint64(42), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, pageSize uint32, afterSequence uint64, _ *auditpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+		func(_ context.Context, pageSize uint32, afterSequence uint64, _ *ledgerpb.QueryFilter, _ bool) (cursor.Cursor[*ledgerpb.AuditEntry], error) {
 			require.EqualValues(t, 10, pageSize)
 			require.EqualValues(t, 42, afterSequence)
 
-			return cursor.NewSliceCursor[*auditpb.AuditEntry](nil), nil
+			return cursor.NewSliceCursor[*ledgerpb.AuditEntry](nil), nil
 		}).Times(1)
 	srv := newTestServer(t, backend)
 
@@ -90,10 +90,10 @@ func TestHandleListAuditEntries_Reverse(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), true).DoAndReturn(
-		func(_ context.Context, _ uint32, _ uint64, _ *auditpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+		func(_ context.Context, _ uint32, _ uint64, _ *ledgerpb.QueryFilter, reverse bool) (cursor.Cursor[*ledgerpb.AuditEntry], error) {
 			require.True(t, reverse)
 
-			return cursor.NewSliceCursor[*auditpb.AuditEntry](nil), nil
+			return cursor.NewSliceCursor[*ledgerpb.AuditEntry](nil), nil
 		}).Times(1)
 	srv := newTestServer(t, backend)
 
@@ -115,12 +115,12 @@ func TestHandleListAuditEntries_MarshalFailureIsClean500(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ uint32, _ uint64, _ *auditpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
-			return cursor.NewSliceCursor([]*auditpb.AuditEntry{
+		func(_ context.Context, _ uint32, _ uint64, _ *ledgerpb.QueryFilter, _ bool) (cursor.Cursor[*ledgerpb.AuditEntry], error) {
+			return cursor.NewSliceCursor([]*ledgerpb.AuditEntry{
 				{
 					Sequence: 1,
-					CallerSnapshot: &auditpb.CallerSnapshot{Principal: &auditpb.CallerSnapshot_Anonymous{
-						Anonymous: &auditpb.AnonymousCaller{Scopes: []string{"\xff\xfe"}},
+					CallerSnapshot: &ledgerpb.CallerSnapshot{Principal: &ledgerpb.CallerSnapshot_Anonymous{
+						Anonymous: &ledgerpb.AnonymousCaller{Scopes: []string{"\xff\xfe"}},
 					}},
 				},
 			}), nil
@@ -172,14 +172,14 @@ func TestHandleListAuditEntries_LedgerFilter(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ uint32, _ uint64, filter *auditpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+		func(_ context.Context, _ uint32, _ uint64, filter *ledgerpb.QueryFilter, _ bool) (cursor.Cursor[*ledgerpb.AuditEntry], error) {
 			require.NotNil(t, filter)
 			audit := filter.GetAudit()
 			require.NotNil(t, audit)
-			require.Equal(t, auditpb.AuditField_AUDIT_FIELD_LEDGER, audit.GetField())
+			require.Equal(t, ledgerpb.AuditField_AUDIT_FIELD_LEDGER, audit.GetField())
 			require.Equal(t, "main", audit.GetStringCond().GetHardcoded())
 
-			return cursor.NewSliceCursor[*auditpb.AuditEntry](nil), nil
+			return cursor.NewSliceCursor[*ledgerpb.AuditEntry](nil), nil
 		}).Times(1)
 	srv := newTestServer(t, backend)
 
@@ -198,11 +198,11 @@ func TestHandleListAuditEntries_OutcomeFilter(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ uint32, _ uint64, filter *auditpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+		func(_ context.Context, _ uint32, _ uint64, filter *ledgerpb.QueryFilter, _ bool) (cursor.Cursor[*ledgerpb.AuditEntry], error) {
 			require.NotNil(t, filter)
-			require.Equal(t, auditpb.AuditField_AUDIT_FIELD_OUTCOME, filter.GetAudit().GetField())
+			require.Equal(t, ledgerpb.AuditField_AUDIT_FIELD_OUTCOME, filter.GetAudit().GetField())
 
-			return cursor.NewSliceCursor[*auditpb.AuditEntry](nil), nil
+			return cursor.NewSliceCursor[*ledgerpb.AuditEntry](nil), nil
 		}).Times(1)
 	srv := newTestServer(t, backend)
 
@@ -219,13 +219,13 @@ func TestHandleListAuditEntries_IdempotencyKeyPrefixFilter(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ uint32, _ uint64, filter *auditpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+		func(_ context.Context, _ uint32, _ uint64, filter *ledgerpb.QueryFilter, _ bool) (cursor.Cursor[*ledgerpb.AuditEntry], error) {
 			audit := filter.GetAudit()
 			require.NotNil(t, audit)
-			require.Equal(t, auditpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY, audit.GetField())
+			require.Equal(t, ledgerpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY, audit.GetField())
 			require.Equal(t, "import-2026-", audit.GetStringPrefix())
 
-			return cursor.NewSliceCursor[*auditpb.AuditEntry](nil), nil
+			return cursor.NewSliceCursor[*ledgerpb.AuditEntry](nil), nil
 		}).Times(1)
 	srv := newTestServer(t, backend)
 
@@ -259,7 +259,7 @@ func TestHandleListAuditEntries_UnsupportedFilterMapsTo400(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ uint32, _ uint64, _ *auditpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+		func(_ context.Context, _ uint32, _ uint64, _ *ledgerpb.QueryFilter, _ bool) (cursor.Cursor[*ledgerpb.AuditEntry], error) {
 			return nil, status.Error(codes.InvalidArgument, "unsupported filter for audit entries")
 		}).Times(1)
 	srv := newTestServer(t, backend)

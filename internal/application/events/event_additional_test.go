@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestLogToEvent_SchemaOperations(t *testing.T) {
@@ -13,26 +13,26 @@ func TestLogToEvent_SchemaOperations(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		payload *commonpb.LedgerLogPayload
+		payload *ledgerpb.LedgerLogPayload
 	}{
 		{
 			name: "set_metadata_field_type",
-			payload: &commonpb.LedgerLogPayload{
-				Payload: &commonpb.LedgerLogPayload_SetMetadataFieldType{
-					SetMetadataFieldType: &commonpb.SetMetadataFieldTypeLog{
-						TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+			payload: &ledgerpb.LedgerLogPayload{
+				Payload: &ledgerpb.LedgerLogPayload_SetMetadataFieldType{
+					SetMetadataFieldType: &ledgerpb.SetMetadataFieldTypeLog{
+						TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 						Key:        "age",
-						Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+						Type:       ledgerpb.MetadataType_METADATA_TYPE_INT64,
 					},
 				},
 			},
 		},
 		{
 			name: "removed_metadata_field_type",
-			payload: &commonpb.LedgerLogPayload{
-				Payload: &commonpb.LedgerLogPayload_RemovedMetadataFieldType{
-					RemovedMetadataFieldType: &commonpb.RemovedMetadataFieldTypeLog{
-						TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+			payload: &ledgerpb.LedgerLogPayload{
+				Payload: &ledgerpb.LedgerLogPayload_RemovedMetadataFieldType{
+					RemovedMetadataFieldType: &ledgerpb.RemovedMetadataFieldTypeLog{
+						TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 						Key:        "age",
 					},
 				},
@@ -44,15 +44,15 @@ func TestLogToEvent_SchemaOperations(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			log := &commonpb.Log{
+			log := &ledgerpb.Log{
 				Sequence: 100,
-				Payload: &commonpb.LogPayload{
-					Type: &commonpb.LogPayload_Apply{
-						Apply: &commonpb.ApplyLedgerLog{
+				Payload: &ledgerpb.LogPayload{
+					Type: &ledgerpb.LogPayload_Apply{
+						Apply: &ledgerpb.ApplyLedgerLog{
 							LedgerName: "test-ledger",
-							Log: &commonpb.LedgerLog{
+							Log: &ledgerpb.LedgerLog{
 								Id:   10,
-								Date: &commonpb.Timestamp{Data: 1700000000},
+								Date: &ledgerpb.Timestamp{Data: 1700000000},
 								Data: tc.payload,
 							},
 						},
@@ -63,7 +63,7 @@ func TestLogToEvent_SchemaOperations(t *testing.T) {
 			event := LogToEvent(log)
 
 			// Schema operations produce EVENT_TYPE_UNSPECIFIED
-			require.Equal(t, commonpb.EventType_EVENT_TYPE_UNSPECIFIED, event.GetType())
+			require.Equal(t, ledgerpb.EventType_EVENT_TYPE_UNSPECIFIED, event.GetType())
 			require.Equal(t, "test-ledger", event.GetLedger())
 			require.Equal(t, uint64(100), event.GetLogSequence())
 		})
@@ -73,11 +73,11 @@ func TestLogToEvent_SchemaOperations(t *testing.T) {
 func TestLogToEvent_RegisterSigningKey(t *testing.T) {
 	t.Parallel()
 
-	log := &commonpb.Log{
+	log := &ledgerpb.Log{
 		Sequence: 200,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_RegisterSigningKey{
-				RegisterSigningKey: &commonpb.RegisteredSigningKeyLog{
+		Payload: &ledgerpb.LogPayload{
+			Type: &ledgerpb.LogPayload_RegisterSigningKey{
+				RegisterSigningKey: &ledgerpb.RegisteredSigningKeyLog{
 					KeyId:     "key-001",
 					PublicKey: []byte{0xab, 0xcd},
 				},
@@ -89,23 +89,23 @@ func TestLogToEvent_RegisterSigningKey(t *testing.T) {
 
 	// Signing key operations don't match any Apply sub-case,
 	// they fall through to the top-level switch without matching Apply.
-	require.Equal(t, commonpb.EventType_EVENT_TYPE_UNSPECIFIED, event.GetType())
+	require.Equal(t, ledgerpb.EventType_EVENT_TYPE_UNSPECIFIED, event.GetType())
 }
 
 func TestLogToEvent_AddedEventsSink(t *testing.T) {
 	t.Parallel()
 
-	log := &commonpb.Log{
+	log := &ledgerpb.Log{
 		Sequence: 201,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_AddedEventsSink{
-				AddedEventsSink: &commonpb.AddedEventsSinkLog{
-					Config: &commonpb.SinkConfig{Name: "my-sink"},
+		Payload: &ledgerpb.LogPayload{
+			Type: &ledgerpb.LogPayload_AddedEventsSink{
+				AddedEventsSink: &ledgerpb.AddedEventsSinkLog{
+					Config: &ledgerpb.SinkConfig{Name: "my-sink"},
 				},
 			},
 		},
 	}
 
 	event := LogToEvent(log)
-	require.Equal(t, commonpb.EventType_EVENT_TYPE_UNSPECIFIED, event.GetType())
+	require.Equal(t, ledgerpb.EventType_EVENT_TYPE_UNSPECIFIED, event.GetType())
 }

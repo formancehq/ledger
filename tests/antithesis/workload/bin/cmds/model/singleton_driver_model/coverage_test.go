@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
@@ -51,8 +51,8 @@ func TestCoverageMetadataMessage_DistinguishesTargets(t *testing.T) {
 	t.Parallel()
 
 	require.NotEqual(t,
-		coverageMetadataMessage(commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS),
-		coverageMetadataMessage(commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS))
+		coverageMetadataMessage(ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS),
+		coverageMetadataMessage(ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS))
 }
 
 // The metadata probe is satisfied by a metadata-field leaf and nothing else: a
@@ -79,8 +79,8 @@ func TestRetypeWindowOpenFor(t *testing.T) {
 
 	const key = "k1"
 
-	target := commonpb.TargetType_TARGET_TYPE_ACCOUNT
-	canon := metadataCanonical(commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, key)
+	target := ledgerpb.TargetType_TARGET_TYPE_ACCOUNT
+	canon := metadataCanonical(ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, key)
 	needed := map[string]struct{}{canon: {}}
 
 	c := NewChecker([]string{"L"}, nil)
@@ -89,7 +89,7 @@ func TestRetypeWindowOpenFor(t *testing.T) {
 	// A window opens only once the index exists over a declared field and the
 	// declaration then changes: the served version may still be bound to the
 	// superseded type.
-	apply := func(reqs ...*commonpb.Request) {
+	apply := func(reqs ...*ledgerpb.Request) {
 		t.Helper()
 
 		res := c.modelState.Apply(oracle.Bulk{Requests: reqs})
@@ -97,11 +97,11 @@ func TestRetypeWindowOpenFor(t *testing.T) {
 		c.modelState = res.State
 	}
 
-	apply(oracletest.SetFieldTypeReq(target, key, commonpb.MetadataType_METADATA_TYPE_STRING))
+	apply(oracletest.SetFieldTypeReq(target, key, ledgerpb.MetadataType_METADATA_TYPE_STRING))
 	apply(oracletest.CreateIndexReq(indexes.MetadataID(target, key)))
 	require.False(t, c.retypeWindowOpenFor("L", needed), "declaring and indexing opens no window")
 
-	apply(oracletest.SetFieldTypeReq(target, key, commonpb.MetadataType_METADATA_TYPE_INT64))
+	apply(oracletest.SetFieldTypeReq(target, key, ledgerpb.MetadataType_METADATA_TYPE_INT64))
 	require.True(t, c.retypeWindowOpenFor("L", needed), "the retype opens it")
 
 	// A window open somewhere in the ledger is not the claim: only a query that
@@ -109,11 +109,11 @@ func TestRetypeWindowOpenFor(t *testing.T) {
 	// that was never retyped must read as closed.
 	const other = "k2"
 
-	apply(oracletest.SetFieldTypeReq(target, other, commonpb.MetadataType_METADATA_TYPE_STRING))
+	apply(oracletest.SetFieldTypeReq(target, other, ledgerpb.MetadataType_METADATA_TYPE_STRING))
 	apply(oracletest.CreateIndexReq(indexes.MetadataID(target, other)))
 
 	require.False(t, c.retypeWindowOpenFor("L", map[string]struct{}{
-		metadataCanonical(commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, other): {},
+		metadataCanonical(ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, other): {},
 	}), "another field's open window says nothing about this one")
 
 	require.False(t, c.retypeWindowOpenFor("L", map[string]struct{}{assetIndexCanonical: {}}),
@@ -127,7 +127,7 @@ func TestRetypeWindowOpenFor(t *testing.T) {
 func TestCoverageHits_NeedsAcceptedNonEmptyAndNeeded(t *testing.T) {
 	t.Parallel()
 
-	accounts := commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS
+	accounts := ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS
 	assetProbe := coverageIndexMessage(assetIndexCanonical)
 	needed := map[string]struct{}{assetIndexCanonical: {}}
 	filter := filterMetaExists("k1")
@@ -157,14 +157,14 @@ func TestCoverageHits_NeedsAcceptedNonEmptyAndNeeded(t *testing.T) {
 func TestCoverageHits_DecidesEveryEntityProbe(t *testing.T) {
 	t.Parallel()
 
-	accounts := commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS
+	accounts := ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS
 
 	hits := coverageHits(accounts, filterMetaExists("k1"), nil, true, 1, false)
 	for _, msg := range queryCoverageMessages() {
 		if slices.Contains(applyCoverageMessages(), msg) {
 			continue // Apply probes are decided below from Apply outcomes.
 		}
-		if msg == coverageMetadataMessage(commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS) {
+		if msg == coverageMetadataMessage(ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS) {
 			continue // the other target's probe is decided by its own queries
 		}
 
@@ -186,17 +186,17 @@ func TestApplyCoverageHits_DecidesEveryApplyProbe(t *testing.T) {
 func TestBulkHasInvalidSkippableReason_RequiresDisallowedReason(t *testing.T) {
 	t.Parallel()
 
-	validReason := commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT
-	validButOtherwiseInvalid := oracle.Bulk{Requests: []*commonpb.Request{
-		applyCreate("L", &commonpb.CreateTransactionPayload{}, validReason),
-		applyCreate("L", &commonpb.CreateTransactionPayload{Reference: "valid-opt-in"}, validReason),
+	validReason := ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT
+	validButOtherwiseInvalid := oracle.Bulk{Requests: []*ledgerpb.Request{
+		applyCreate("L", &ledgerpb.CreateTransactionPayload{}, validReason),
+		applyCreate("L", &ledgerpb.CreateTransactionPayload{Reference: "valid-opt-in"}, validReason),
 	}}
 	require.False(t, bulkHasInvalidSkippableReason(validButOtherwiseInvalid),
 		"a valid opt-in must not receive credit for an unrelated validation failure")
 
-	disallowed := enforcementModeRequest("L", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, true)
-	disallowed.GetApply().SkippableReasons = []commonpb.ErrorReason{
-		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND,
+	disallowed := enforcementModeRequest("L", ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, true)
+	disallowed.GetApply().SkippableReasons = []ledgerpb.ErrorReason{
+		ledgerpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND,
 	}
-	require.True(t, bulkHasInvalidSkippableReason(oracle.Bulk{Requests: []*commonpb.Request{disallowed}}))
+	require.True(t, bulkHasInvalidSkippableReason(oracle.Bulk{Requests: []*ledgerpb.Request{disallowed}}))
 }

@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -25,9 +25,9 @@ func TestWriteSetAbsorb_CoversEveryDerivedPayload(t *testing.T) {
 	t.Run("AddedEventsSink → SinkConfigs + sinkConfigChanged", func(t *testing.T) {
 		t.Parallel()
 		b, _, _ := newTestBuffer(t)
-		cfg := &commonpb.SinkConfig{Name: "my-sink"}
-		b.Absorb(&raftcmdpb.Order{}, &commonpb.Log{Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_AddedEventsSink{AddedEventsSink: &commonpb.AddedEventsSinkLog{Config: cfg}},
+		cfg := &ledgerpb.SinkConfig{Name: "my-sink"}
+		b.Absorb(&raftcmdpb.Order{}, &ledgerpb.Log{Payload: &ledgerpb.LogPayload{
+			Type: &ledgerpb.LogPayload_AddedEventsSink{AddedEventsSink: &ledgerpb.AddedEventsSinkLog{Config: cfg}},
 		}})
 		require.True(t, b.SinkConfigChanged())
 		got, err := b.GetSinkConfig("my-sink")
@@ -38,8 +38,8 @@ func TestWriteSetAbsorb_CoversEveryDerivedPayload(t *testing.T) {
 	t.Run("RemovedEventsSink → sinkConfigChanged", func(t *testing.T) {
 		t.Parallel()
 		b, _, _ := newTestBuffer(t)
-		b.Absorb(&raftcmdpb.Order{}, &commonpb.Log{Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_RemovedEventsSink{RemovedEventsSink: &commonpb.RemovedEventsSinkLog{Name: "gone"}},
+		b.Absorb(&raftcmdpb.Order{}, &ledgerpb.Log{Payload: &ledgerpb.LogPayload{
+			Type: &ledgerpb.LogPayload_RemovedEventsSink{RemovedEventsSink: &ledgerpb.RemovedEventsSinkLog{Name: "gone"}},
 		}})
 		require.True(t, b.SinkConfigChanged())
 	})
@@ -47,8 +47,8 @@ func TestWriteSetAbsorb_CoversEveryDerivedPayload(t *testing.T) {
 	t.Run("SetQueryCheckpointSchedule → queryCheckpointScheduleUpdate", func(t *testing.T) {
 		t.Parallel()
 		b, _, _ := newTestBuffer(t)
-		b.Absorb(&raftcmdpb.Order{}, &commonpb.Log{Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_SetQueryCheckpointSchedule{SetQueryCheckpointSchedule: &commonpb.SetQueryCheckpointScheduleLog{Cron: "0 * * * *"}},
+		b.Absorb(&raftcmdpb.Order{}, &ledgerpb.Log{Payload: &ledgerpb.LogPayload{
+			Type: &ledgerpb.LogPayload_SetQueryCheckpointSchedule{SetQueryCheckpointSchedule: &ledgerpb.SetQueryCheckpointScheduleLog{Cron: "0 * * * *"}},
 		}})
 		require.NotNil(t, b.queryCheckpointScheduleUpdate)
 		require.Equal(t, "0 * * * *", *b.queryCheckpointScheduleUpdate)
@@ -57,8 +57,8 @@ func TestWriteSetAbsorb_CoversEveryDerivedPayload(t *testing.T) {
 	t.Run("DeleteQueryCheckpointSchedule → empty queryCheckpointScheduleUpdate", func(t *testing.T) {
 		t.Parallel()
 		b, _, _ := newTestBuffer(t)
-		b.Absorb(&raftcmdpb.Order{}, &commonpb.Log{Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_DeleteQueryCheckpointSchedule{DeleteQueryCheckpointSchedule: &commonpb.DeletedQueryCheckpointScheduleLog{}},
+		b.Absorb(&raftcmdpb.Order{}, &ledgerpb.Log{Payload: &ledgerpb.LogPayload{
+			Type: &ledgerpb.LogPayload_DeleteQueryCheckpointSchedule{DeleteQueryCheckpointSchedule: &ledgerpb.DeletedQueryCheckpointScheduleLog{}},
 		}})
 		require.NotNil(t, b.queryCheckpointScheduleUpdate)
 		require.Empty(t, *b.queryCheckpointScheduleUpdate)
@@ -68,8 +68,8 @@ func TestWriteSetAbsorb_CoversEveryDerivedPayload(t *testing.T) {
 		t.Parallel()
 		b, _, _ := newTestBuffer(t)
 		b.Boundaries().Put(domain.LedgerKey{Name: "L"}, &raftcmdpb.LedgerBoundaries{NextTransactionId: 1})
-		b.Absorb(&raftcmdpb.Order{}, &commonpb.Log{Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_DeleteLedger{DeleteLedger: &commonpb.DeletedLedgerLog{Name: "L"}},
+		b.Absorb(&raftcmdpb.Order{}, &ledgerpb.Log{Payload: &ledgerpb.LogPayload{
+			Type: &ledgerpb.LogPayload_DeleteLedger{DeleteLedger: &ledgerpb.DeletedLedgerLog{Name: "L"}},
 		}})
 		// Absorb records signals only, never the overlay write: the Boundary
 		// deletion moved to processDeleteLedger's gated Scope (EN-1522), so
@@ -92,10 +92,10 @@ func TestWriteSetAbsorb_CoversEveryDerivedPayload(t *testing.T) {
 		b, _, _ := newTestBuffer(t)
 		order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 			Ledger:  "mir",
-			Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR}},
+			Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR}},
 		}}}
-		b.Absorb(order, &commonpb.Log{Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "mir"}},
+		b.Absorb(order, &ledgerpb.Log{Payload: &ledgerpb.LogPayload{
+			Type: &ledgerpb.LogPayload_CreateLedger{CreateLedger: &ledgerpb.CreatedLedgerLog{Name: "mir"}},
 		}})
 		require.True(t, b.MirrorConfigChanged())
 	})
@@ -105,10 +105,10 @@ func TestWriteSetAbsorb_CoversEveryDerivedPayload(t *testing.T) {
 		b, _, _ := newTestBuffer(t)
 		order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 			Ledger:  "n",
-			Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{Mode: commonpb.LedgerMode_LEDGER_MODE_NORMAL}},
+			Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{Mode: ledgerpb.LedgerMode_LEDGER_MODE_NORMAL}},
 		}}}
-		b.Absorb(order, &commonpb.Log{Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "n"}},
+		b.Absorb(order, &ledgerpb.Log{Payload: &ledgerpb.LogPayload{
+			Type: &ledgerpb.LogPayload_CreateLedger{CreateLedger: &ledgerpb.CreatedLedgerLog{Name: "n"}},
 		}})
 		require.False(t, b.MirrorConfigChanged())
 	})
@@ -116,8 +116,8 @@ func TestWriteSetAbsorb_CoversEveryDerivedPayload(t *testing.T) {
 	t.Run("PromoteLedger → mirrorConfigChanged", func(t *testing.T) {
 		t.Parallel()
 		b, _, _ := newTestBuffer(t)
-		b.Absorb(&raftcmdpb.Order{}, &commonpb.Log{Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_PromoteLedger{PromoteLedger: &commonpb.PromotedLedgerLog{Name: "p"}},
+		b.Absorb(&raftcmdpb.Order{}, &ledgerpb.Log{Payload: &ledgerpb.LogPayload{
+			Type: &ledgerpb.LogPayload_PromoteLedger{PromoteLedger: &ledgerpb.PromotedLedgerLog{Name: "p"}},
 		}})
 		require.True(t, b.MirrorConfigChanged())
 	})
@@ -125,8 +125,8 @@ func TestWriteSetAbsorb_CoversEveryDerivedPayload(t *testing.T) {
 	t.Run("CreatedQueryCheckpoint → queryCheckpointCreated", func(t *testing.T) {
 		t.Parallel()
 		b, _, _ := newTestBuffer(t)
-		b.Absorb(&raftcmdpb.Order{}, &commonpb.Log{Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_CreatedQueryCheckpoint{CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{CheckpointId: 99}},
+		b.Absorb(&raftcmdpb.Order{}, &ledgerpb.Log{Payload: &ledgerpb.LogPayload{
+			Type: &ledgerpb.LogPayload_CreatedQueryCheckpoint{CreatedQueryCheckpoint: &ledgerpb.CreatedQueryCheckpointLog{CheckpointId: 99}},
 		}})
 		require.Equal(t, uint64(99), b.QueryCheckpointCreated())
 	})
@@ -134,8 +134,8 @@ func TestWriteSetAbsorb_CoversEveryDerivedPayload(t *testing.T) {
 	t.Run("DeletedQueryCheckpoint → queryCheckpointDeleted", func(t *testing.T) {
 		t.Parallel()
 		b, _, _ := newTestBuffer(t)
-		b.Absorb(&raftcmdpb.Order{}, &commonpb.Log{Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_DeletedQueryCheckpoint{DeletedQueryCheckpoint: &commonpb.DeletedQueryCheckpointLog{CheckpointId: 100}},
+		b.Absorb(&raftcmdpb.Order{}, &ledgerpb.Log{Payload: &ledgerpb.LogPayload{
+			Type: &ledgerpb.LogPayload_DeletedQueryCheckpoint{DeletedQueryCheckpoint: &ledgerpb.DeletedQueryCheckpointLog{CheckpointId: 100}},
 		}})
 		require.Equal(t, uint64(100), b.QueryCheckpointDeleted())
 	})
@@ -148,14 +148,14 @@ func TestWriteSetAbsorb_CoversEveryDerivedPayload(t *testing.T) {
 func TestWriteSetAbsorb_NoOpForUnmappedPayloads(t *testing.T) {
 	t.Parallel()
 
-	cases := []*commonpb.LogPayload{
-		{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{}}},
-		{Type: &commonpb.LogPayload_SetMaintenanceMode{SetMaintenanceMode: &commonpb.SetMaintenanceModeLog{}}},
+	cases := []*ledgerpb.LogPayload{
+		{Type: &ledgerpb.LogPayload_Apply{Apply: &ledgerpb.ApplyLedgerLog{}}},
+		{Type: &ledgerpb.LogPayload_SetMaintenanceMode{SetMaintenanceMode: &ledgerpb.SetMaintenanceModeLog{}}},
 	}
 
 	for _, p := range cases {
 		b, _, _ := newTestBuffer(t)
-		b.Absorb(&raftcmdpb.Order{}, &commonpb.Log{Payload: p})
+		b.Absorb(&raftcmdpb.Order{}, &ledgerpb.Log{Payload: p})
 		require.False(t, b.SinkConfigChanged())
 		require.Nil(t, b.queryCheckpointScheduleUpdate)
 		require.Empty(t, b.deletedLedgers)

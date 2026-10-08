@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -73,14 +73,14 @@ func TestApplyProposalRejectsLogSequenceExhaustionWithoutPublishingBusinessWrite
 	entries := listAuditEntries(t, dataStore, 0)
 	require.Len(t, entries, 2)
 	for _, entry := range entries {
-		require.Equal(t, auditpb.ErrorReason_ERROR_REASON_SEQUENCE_EXHAUSTED, entry.GetFailure().GetReason())
+		require.Equal(t, ledgerpb.ErrorReason_ERROR_REASON_SEQUENCE_EXHAUSTED, entry.GetFailure().GetReason())
 		require.Equal(t, "logSequence", entry.GetFailure().GetContext()["counter"])
 	}
 }
 
 // listAuditEntries collects all audit entries from the store into a slice.
 // Pass afterSequence=0 to return all entries.
-func listAuditEntries(t *testing.T, store *dal.Store, afterSequence uint64) []*auditpb.AuditEntry {
+func listAuditEntries(t *testing.T, store *dal.Store, afterSequence uint64) []*ledgerpb.AuditEntry {
 	t.Helper()
 
 	var filter *uint64
@@ -98,7 +98,7 @@ func listAuditEntries(t *testing.T, store *dal.Store, afterSequence uint64) []*a
 
 	defer func() { _ = cursor.Close() }()
 
-	var entries []*auditpb.AuditEntry
+	var entries []*ledgerpb.AuditEntry
 
 	for {
 		entry, err := cursor.Next()

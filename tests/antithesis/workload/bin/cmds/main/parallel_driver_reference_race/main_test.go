@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -27,7 +27,7 @@ func TestReferenceOracleDetectsInjectedDuplicate(t *testing.T) {
 	const injection = "second transaction ID injected after a successful real reference query"
 	drivertest.CheckEmissions(t, func() {
 		ctx, client := drivertest.StartServer(t)
-		require.NoError(t, internal.CreateQueryOracleLedger(ctx, client, ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE))
+		require.NoError(t, internal.CreateQueryOracleLedger(ctx, client, ledger, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE))
 		resp, err := createWithReference(ctx, client, ledger, reference, "refrace-sensitivity-destination")
 		require.NoError(t, err)
 		txID, ok := actions.GetCreatedTransactionID(resp)
@@ -70,13 +70,13 @@ func TestReferenceOracleDetectsInjectedDuplicate(t *testing.T) {
 // successful filtered response gains a second distinct ID for oracle sensitivity;
 // this does not claim that the engine committed a duplicate reference.
 type duplicateReferenceClient struct {
-	commonpb.BucketServiceClient
+	ledgerpb.BucketServiceClient
 
 	injectedID uint64
 	stream     *duplicateReferenceStream
 }
 
-func (c *duplicateReferenceClient) ListTransactions(ctx context.Context, req *commonpb.ListTransactionsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Transaction], error) {
+func (c *duplicateReferenceClient) ListTransactions(ctx context.Context, req *ledgerpb.ListTransactionsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ledgerpb.Transaction], error) {
 	stream, err := c.BucketServiceClient.ListTransactions(ctx, req, opts...)
 	if err != nil {
 		return nil, err
@@ -87,15 +87,15 @@ func (c *duplicateReferenceClient) ListTransactions(ctx context.Context, req *co
 }
 
 type duplicateReferenceStream struct {
-	grpc.ServerStreamingClient[commonpb.Transaction]
+	grpc.ServerStreamingClient[ledgerpb.Transaction]
 
-	first      *commonpb.Transaction
+	first      *ledgerpb.Transaction
 	injectedID uint64
 	injected   bool
 	finished   bool
 }
 
-func (s *duplicateReferenceStream) Recv() (*commonpb.Transaction, error) {
+func (s *duplicateReferenceStream) Recv() (*ledgerpb.Transaction, error) {
 	if s.finished {
 		return nil, io.EOF
 	}
@@ -110,7 +110,7 @@ func (s *duplicateReferenceStream) Recv() (*commonpb.Transaction, error) {
 	if errors.Is(err, io.EOF) {
 		s.finished = true
 		if s.first != nil {
-			duplicate := proto.Clone(s.first).(*commonpb.Transaction)
+			duplicate := proto.Clone(s.first).(*ledgerpb.Transaction)
 			duplicate.Id = s.injectedID
 			s.injected = true
 

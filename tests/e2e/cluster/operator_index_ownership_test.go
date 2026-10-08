@@ -18,7 +18,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
@@ -62,9 +62,9 @@ func TestOperatorIndexOwnership(t *testing.T) {
 	conn, err := grpc.NewClient(endpoint, grpcprotocol.ClientOption(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
-	cluster := clusterpb.NewClusterServiceClient(conn)
+	cluster := ledgerpb.NewClusterServiceClient(conn)
 	require.Eventually(t, func() bool {
-		state, err := cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+		state, err := cluster.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 		return err == nil && state.GetLeader() != 0
 	}, 10*time.Second, 10*time.Millisecond)
 

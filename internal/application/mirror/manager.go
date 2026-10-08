@@ -9,7 +9,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
 	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
@@ -237,7 +237,7 @@ func (m *Manager) reconcileGeneration(leadership managerLeadership) {
 	}
 
 	// Build desired state as a set of ledger names
-	desired := make(map[string]*commonpb.LedgerInfo, len(mirrorLedgers))
+	desired := make(map[string]*ledgerpb.LedgerInfo, len(mirrorLedgers))
 	for _, info := range mirrorLedgers {
 		desired[info.GetName()] = info
 	}
@@ -325,16 +325,16 @@ func (m *Manager) teardown() {
 
 // createSource builds a Source from a MirrorSourceConfig oneof.
 // todo: add pluggable source factory
-func createSource(ctx context.Context, cfg *commonpb.MirrorSourceConfig) (v2.Source, error) {
+func createSource(ctx context.Context, cfg *ledgerpb.MirrorSourceConfig) (v2.Source, error) {
 	switch s := cfg.GetType().(type) {
-	case *commonpb.MirrorSourceConfig_Http:
+	case *ledgerpb.MirrorSourceConfig_Http:
 		var httpClient *http.Client
 		if cc := s.Http.GetOauth2ClientCredentials(); cc != nil {
 			httpClient = v2.NewOAuth2ClientCredentialsClient(cc.GetClientId(), cc.GetClientSecret(), cc.GetTokenEndpoint(), cc.GetScopes())
 		}
 
 		return v2.NewHTTPSource(s.Http.GetBaseUrl(), cfg.GetLedgerName(), httpClient), nil
-	case *commonpb.MirrorSourceConfig_Postgres:
+	case *ledgerpb.MirrorSourceConfig_Postgres:
 		return v2.NewPostgresSource(ctx, s.Postgres, cfg.GetLedgerName())
 	default:
 		return nil, fmt.Errorf("unsupported mirror source type: %T", s)

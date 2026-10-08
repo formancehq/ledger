@@ -7,7 +7,7 @@ import (
 	"math/big"
 	"time"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -21,27 +21,27 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 		const ledgerName = "transient-zero-balance"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// Add transient account type for staging accounts
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_AddAccountType{
-					AddAccountType: &commonpb.AddAccountTypeLedgerRequest{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_AddAccountType{
+					AddAccountType: &ledgerpb.AddAccountTypeLedgerRequest{
 						Ledger: ledgerName,
-						AccountType: &commonpb.AccountType{
+						AccountType: &ledgerpb.AccountType{
 							Name:        "staging",
 							Pattern:     "staging:{id}",
-							Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
+							Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
 						},
 					},
 				},
 			},
-				&commonpb.Request{
-					Type: &commonpb.Request_AddAccountType{
-						AddAccountType: &commonpb.AddAccountTypeLedgerRequest{
+				&ledgerpb.Request{
+					Type: &ledgerpb.Request_AddAccountType{
+						AddAccountType: &ledgerpb.AddAccountTypeLedgerRequest{
 							Ledger: ledgerName,
-							AccountType: &commonpb.AccountType{
+							AccountType: &ledgerpb.AccountType{
 								Name:    "wallet",
 								Pattern: "wallet:{id}",
 							},
@@ -52,10 +52,10 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 
 			// Batch: world → staging:tx1 100 USD, staging:tx1 → wallet:main 100 USD
 			// staging:tx1 ends at zero balance (input=100, output=100)
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "staging:tx1", big.NewInt(100), "USD"),
 			}, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("staging:tx1", "wallet:main", big.NewInt(100), "USD"),
 				}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -63,7 +63,7 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 
 		It("Should not persist transient account volumes", func() {
 			Eventually(func(g Gomega) {
-				account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
+				account, err := sharedClient.GetAccount(sharedCtx, &ledgerpb.GetAccountRequest{
 					Ledger:  ledgerName,
 					Address: "staging:tx1",
 				})
@@ -75,7 +75,7 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 
 		It("Should persist normal account volumes", func() {
 			Eventually(func(g Gomega) {
-				account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
+				account, err := sharedClient.GetAccount(sharedCtx, &ledgerpb.GetAccountRequest{
 					Ledger:  ledgerName,
 					Address: "wallet:main",
 				})
@@ -101,26 +101,26 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 		const ledgerName = "ephemeral-audit"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_AddAccountType{
-					AddAccountType: &commonpb.AddAccountTypeLedgerRequest{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_AddAccountType{
+					AddAccountType: &ledgerpb.AddAccountTypeLedgerRequest{
 						Ledger: ledgerName,
-						AccountType: &commonpb.AccountType{
+						AccountType: &ledgerpb.AccountType{
 							Name:        "clearing",
 							Pattern:     "clearing:{id}",
-							Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+							Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
 						},
 					},
 				},
 			},
-				&commonpb.Request{
-					Type: &commonpb.Request_SetDefaultEnforcementMode{
-						SetDefaultEnforcementMode: &commonpb.SetDefaultEnforcementModeLedgerRequest{
+				&ledgerpb.Request{
+					Type: &ledgerpb.Request_SetDefaultEnforcementMode{
+						SetDefaultEnforcementMode: &ledgerpb.SetDefaultEnforcementModeLedgerRequest{
 							Ledger:          ledgerName,
-							EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
+							EnforcementMode: ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
 						},
 					},
 				}))
@@ -130,10 +130,10 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 		It("Should record purged accounts on the logs that touched them", func() {
 			// Batch: world → clearing:ep1 75 USD, clearing:ep1 → dest 75 USD
 			// clearing:ep1 ends at zero → purged
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "clearing:ep1", big.NewInt(75), "USD"),
 			}, nil),
-				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("clearing:ep1", "dest", big.NewInt(75), "USD"),
 				}, nil)))
 			Expect(err).To(Succeed())
@@ -143,7 +143,7 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 			// other read-after-write assertion in this file).
 			type touched struct{ Account, Asset string }
 			Eventually(func(g Gomega) {
-				stream, err := sharedClient.ListLogs(sharedCtx, &commonpb.ListLogsRequest{
+				stream, err := sharedClient.ListLogs(sharedCtx, &ledgerpb.ListLogsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -184,17 +184,17 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 		const ledgerName = "transient-non-zero"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_AddAccountType{
-					AddAccountType: &commonpb.AddAccountTypeLedgerRequest{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_AddAccountType{
+					AddAccountType: &ledgerpb.AddAccountTypeLedgerRequest{
 						Ledger: ledgerName,
-						AccountType: &commonpb.AccountType{
+						AccountType: &ledgerpb.AccountType{
 							Name:        "staging",
 							Pattern:     "staging:{id}",
-							Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
+							Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
 						},
 					},
 				},
@@ -205,7 +205,7 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 		It("Should reject the batch", func() {
 			// world → staging:tx1 100 USD but staging:tx1 is never drained
 			// staging:tx1 ends with non-zero balance → batch must be rejected
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "staging:tx1", big.NewInt(100), "USD"),
 			}, nil)))
 			Expect(err).To(HaveOccurred())
@@ -218,18 +218,18 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 
 		BeforeAll(func() {
 			// Create ledger
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// Fund staging:a with 100 USD (no account type yet → normal persistence)
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "staging:a", big.NewInt(100), "USD"),
 			}, nil)))
 			Expect(err).To(Succeed())
 
 			// Verify staging:a has input=100 before marking transient
 			Eventually(func(g Gomega) {
-				account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
+				account, err := sharedClient.GetAccount(sharedCtx, &ledgerpb.GetAccountRequest{
 					Ledger:  ledgerName,
 					Address: "staging:a",
 				})
@@ -240,23 +240,23 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
 			// Now mark staging:{id} as transient
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_AddAccountType{
-					AddAccountType: &commonpb.AddAccountTypeLedgerRequest{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_AddAccountType{
+					AddAccountType: &ledgerpb.AddAccountTypeLedgerRequest{
 						Ledger: ledgerName,
-						AccountType: &commonpb.AccountType{
+						AccountType: &ledgerpb.AccountType{
 							Name:        "staging",
 							Pattern:     "staging:{id}",
-							Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
+							Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
 						},
 					},
 				},
 			},
-				&commonpb.Request{
-					Type: &commonpb.Request_AddAccountType{
-						AddAccountType: &commonpb.AddAccountTypeLedgerRequest{
+				&ledgerpb.Request{
+					Type: &ledgerpb.Request_AddAccountType{
+						AddAccountType: &ledgerpb.AddAccountTypeLedgerRequest{
 							Ledger: ledgerName,
-							AccountType: &commonpb.AccountType{
+							AccountType: &ledgerpb.AccountType{
 								Name:    "wallet",
 								Pattern: "wallet:{id}",
 							},
@@ -267,7 +267,7 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 
 			// Transfer staging:a → wallet:b 100 USD
 			// staging:a is now transient; within this batch output=100, so delta nets to zero
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("staging:a", "wallet:b", big.NewInt(100), "USD"),
 			}, nil)))
 			Expect(err).To(Succeed())
@@ -279,7 +279,7 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 			// is purged at that point — staging:a returns to "fresh transient"
 			// state and GetAccount returns empty.
 			Eventually(func(g Gomega) {
-				account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
+				account, err := sharedClient.GetAccount(sharedCtx, &ledgerpb.GetAccountRequest{
 					Ledger:  ledgerName,
 					Address: "staging:a",
 				})
@@ -291,7 +291,7 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 
 		It("Should persist wallet:b volumes normally", func() {
 			Eventually(func(g Gomega) {
-				account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
+				account, err := sharedClient.GetAccount(sharedCtx, &ledgerpb.GetAccountRequest{
 					Ledger:  ledgerName,
 					Address: "wallet:b",
 				})
@@ -309,11 +309,11 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 
 		BeforeAll(func() {
 			// Create ledger and account types upfront
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// Fund staging:x with 200 USD (normal persistence, no account type yet)
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "staging:x", big.NewInt(200), "USD"),
 			}, nil)))
 			Expect(err).To(Succeed())
@@ -322,41 +322,41 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 			// past the snapshot threshold (default=10). This evicts staging:x from
 			// the in-memory cache, forcing a Pebble re-read on the next batch.
 			for i := 0; i < 20; i++ {
-				_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", fmt.Sprintf("filler:%d", i), big.NewInt(1), "USD"),
 				}, nil)))
 				Expect(err).To(Succeed())
 			}
 
 			// Now mark staging as transient and add wallet type
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_AddAccountType{
-					AddAccountType: &commonpb.AddAccountTypeLedgerRequest{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_AddAccountType{
+					AddAccountType: &ledgerpb.AddAccountTypeLedgerRequest{
 						Ledger: ledgerName,
-						AccountType: &commonpb.AccountType{
+						AccountType: &ledgerpb.AccountType{
 							Name:        "staging",
 							Pattern:     "staging:{id}",
-							Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
+							Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
 						},
 					},
 				},
 			},
-				&commonpb.Request{
-					Type: &commonpb.Request_AddAccountType{
-						AddAccountType: &commonpb.AddAccountTypeLedgerRequest{
+				&ledgerpb.Request{
+					Type: &ledgerpb.Request_AddAccountType{
+						AddAccountType: &ledgerpb.AddAccountTypeLedgerRequest{
 							Ledger: ledgerName,
-							AccountType: &commonpb.AccountType{
+							AccountType: &ledgerpb.AccountType{
 								Name:    "wallet",
 								Pattern: "wallet:{id}",
 							},
 						},
 					},
 				},
-				&commonpb.Request{
-					Type: &commonpb.Request_AddAccountType{
-						AddAccountType: &commonpb.AddAccountTypeLedgerRequest{
+				&ledgerpb.Request{
+					Type: &ledgerpb.Request_AddAccountType{
+						AddAccountType: &ledgerpb.AddAccountTypeLedgerRequest{
 							Ledger: ledgerName,
-							AccountType: &commonpb.AccountType{
+							AccountType: &ledgerpb.AccountType{
 								Name:    "filler",
 								Pattern: "filler:{id}",
 							},
@@ -367,7 +367,7 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 
 			// Transfer staging:x → wallet:y 200 USD
 			// staging:x base was evicted from cache → must be re-read from Pebble
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("staging:x", "wallet:y", big.NewInt(200), "USD"),
 			}, nil)))
 			Expect(err).To(Succeed())
@@ -379,7 +379,7 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 			// {200, 0}, computes New = {200, 200}, and the partition mirrors
 			// ephemeral: 0xF1 purged, KS.M zeroed. GetAccount must return empty.
 			Eventually(func(g Gomega) {
-				account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
+				account, err := sharedClient.GetAccount(sharedCtx, &ledgerpb.GetAccountRequest{
 					Ledger:  ledgerName,
 					Address: "staging:x",
 				})
@@ -391,7 +391,7 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 
 		It("Should persist wallet:y volumes", func() {
 			Eventually(func(g Gomega) {
-				account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
+				account, err := sharedClient.GetAccount(sharedCtx, &ledgerpb.GetAccountRequest{
 					Ledger:  ledgerName,
 					Address: "wallet:y",
 				})
@@ -414,11 +414,11 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 		const ledgerName = "transient-stranded-row"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// Fund staging:s with 100 USD (no account type yet → normal persistence).
-			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "staging:s", big.NewInt(100), "USD"),
 			}, nil)))
 			Expect(err).To(Succeed())
@@ -426,11 +426,11 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 
 			// Revert the funding: staging:s lands at input=100, output=100 — zero
 			// balance, still normal → the row is legitimately kept.
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.RevertTransactionAction(ledgerName, txID, false, false, nil)))
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.RevertTransactionAction(ledgerName, txID, false, false, nil)))
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
+				account, err := sharedClient.GetAccount(sharedCtx, &ledgerpb.GetAccountRequest{
 					Ledger:  ledgerName,
 					Address: "staging:s",
 				})
@@ -442,16 +442,16 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
 			// Now mark staging:{id} as transient.
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.AddAccountTypeWithPersistenceAction(ledgerName, "staging", "staging:{id}",
-				commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.AddAccountTypeWithPersistenceAction(ledgerName, "staging", "staging:{id}",
+				ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
 				actions.AddAccountTypeAction(ledgerName, "wallet", "wallet:{id}")))
 			Expect(err).To(Succeed())
 
 			// Zero-balance wash on staging:s under the transient type.
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "staging:s", big.NewInt(50), "USD"),
 			}, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("staging:s", "wallet:c", big.NewInt(50), "USD"),
 				}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -459,7 +459,7 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 
 		It("Should purge the stranded row once a transient batch touches the account", func() {
 			Eventually(func(g Gomega) {
-				account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
+				account, err := sharedClient.GetAccount(sharedCtx, &ledgerpb.GetAccountRequest{
 					Ledger:  ledgerName,
 					Address: "staging:s",
 				})
@@ -492,20 +492,20 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 		const ledgerName = "transient-cross-batch-pcv"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.AddAccountTypeWithPersistenceAction(ledgerName, "staging", "staging:{id}",
-				commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.AddAccountTypeWithPersistenceAction(ledgerName, "staging", "staging:{id}",
+				ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
 				actions.AddAccountTypeAction(ledgerName, "wallet", "wallet:{id}")))
 			Expect(err).To(Succeed())
 
 			// Batch 1: world → staging:reuse 100 USD, staging:reuse → wallet:a 100 USD.
 			// Zero-balance bulk on staging:reuse.
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "staging:reuse", big.NewInt(100), "USD"),
 			}, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("staging:reuse", "wallet:a", big.NewInt(100), "USD"),
 				}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -515,10 +515,10 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 			// Batch 2: same staging:reuse, balanced again with a different amount.
 			// Post-commit volumes ride on every transaction, so we read them back
 			// from the response directly.
-			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "staging:reuse", big.NewInt(50), "USD"),
 			}, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("staging:reuse", "wallet:b", big.NewInt(50), "USD"),
 				}, nil, nil)))
 			Expect(err).To(Succeed())

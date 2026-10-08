@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"runtime/pprof"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/apierr"
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
@@ -120,23 +120,23 @@ type bulkOptions struct {
 
 // bulkResult represents the result of a single bulk element.
 type bulkResult struct {
-	log *commonpb.LedgerLog
+	log *ledgerpb.LedgerLog
 	err error
 }
 
-// convertBulkElementToRequest converts a restbulk.BulkElement to a commonpb.Request.
+// convertBulkElementToRequest converts a restbulk.BulkElement to a ledgerpb.Request.
 // The per-entry SkippableReasons list is hoisted onto the LedgerApplyRequest so
 // admission validates it against the per-action whitelist and the FSM records
 // an OrderSkippedLog when a matching business failure fires.
-func convertBulkElementToRequest(ledgerName string, elem *restbulk.BulkElement) *commonpb.Request {
-	applyRequest := &commonpb.LedgerApplyRequest{
+func convertBulkElementToRequest(ledgerName string, elem *restbulk.BulkElement) *ledgerpb.Request {
+	applyRequest := &ledgerpb.LedgerApplyRequest{
 		Ledger:           ledgerName,
 		Action:           elem.Action,
 		SkippableReasons: elem.SkippableReasons,
 	}
 
-	return &commonpb.Request{
-		Type: &commonpb.Request_Apply{
+	return &ledgerpb.Request{
+		Type: &ledgerpb.Request_Apply{
 			Apply: applyRequest,
 		},
 	}
@@ -150,7 +150,7 @@ func (s *Server) runBulk(ctx context.Context, ledgerName string, elements []*res
 
 	// Build requests slice + parallel per-element idempotency keys (used only in
 	// non-atomic mode, where each element is its own proposal).
-	requests := make([]*commonpb.Request, len(elements))
+	requests := make([]*ledgerpb.Request, len(elements))
 	keys := make([]string, len(elements))
 	for i, elem := range elements {
 		requests[i] = convertBulkElementToRequest(ledgerName, elem)
@@ -166,7 +166,7 @@ func (s *Server) runBulk(ctx context.Context, ledgerName string, elements []*res
 
 // runBulkAtomic applies all requests as one atomic batch under a single
 // idempotency key (the bulk-level Idempotency-Key header).
-func (s *Server) runBulkAtomic(ctx context.Context, idempotencyKey string, requests []*commonpb.Request) []bulkResult {
+func (s *Server) runBulkAtomic(ctx context.Context, idempotencyKey string, requests []*ledgerpb.Request) []bulkResult {
 	results := make([]bulkResult, len(requests))
 
 	logs, err := s.applyUnsigned(ctx, idempotencyKey, requests...)
@@ -188,7 +188,7 @@ func (s *Server) runBulkAtomic(ctx context.Context, idempotencyKey string, reque
 
 // runBulkSequential applies requests one by one, each as its own proposal under
 // its per-element idempotency key.
-func (s *Server) runBulkSequential(ctx context.Context, requests []*commonpb.Request, keys []string, continueOnFailure bool) []bulkResult {
+func (s *Server) runBulkSequential(ctx context.Context, requests []*ledgerpb.Request, keys []string, continueOnFailure bool) []bulkResult {
 	results := make([]bulkResult, len(requests))
 	hasError := false
 
@@ -240,7 +240,7 @@ func writeBulkResponse(w http.ResponseWriter, r *http.Request, elements []*restb
 	apiResults := make([]bulkAPIResult, len(results))
 
 	for i, result := range results {
-		responseType := commonpb.GetLedgerActionType(elements[i].Action)
+		responseType := ledgerpb.GetLedgerActionType(elements[i].Action)
 
 		var data any
 
@@ -305,9 +305,9 @@ func writeBulkResponse(w http.ResponseWriter, r *http.Request, elements []*restb
 			apiResults[i].LogID = log.GetId()
 			if payload := log.GetData(); payload != nil {
 				switch p := payload.GetPayload().(type) {
-				case *commonpb.LedgerLogPayload_CreatedTransaction:
+				case *ledgerpb.LedgerLogPayload_CreatedTransaction:
 					data = p.CreatedTransaction.GetTransaction()
-				case *commonpb.LedgerLogPayload_OrderSkipped:
+				case *ledgerpb.LedgerLogPayload_OrderSkipped:
 					data = OrderSkippedResponse{
 						Skipped: true,
 						Reason:  domain.ReasonString(p.OrderSkipped.GetReason()),

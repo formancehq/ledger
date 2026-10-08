@@ -25,7 +25,7 @@ import (
 	"strconv"
 	"strings"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/oracle"
 )
@@ -34,7 +34,7 @@ type batch struct {
 	ticket  uint64 // dispatch order (single-worker serialization)
 	seq     uint64 // min committed log sequence (server serialization); 0 if not committed
 	outcome string // "OK", a rejection reason, or "TRANSIENT" ("" for legacy dumps)
-	req     *commonpb.ApplyRequest
+	req     *ledgerpb.ApplyRequest
 }
 
 func main() {
@@ -80,7 +80,7 @@ func replaySubmits(submits []batch, target string) {
 			continue // the model drops transient/uncertain outcomes (processor.go)
 		}
 
-		ab, err := commonpb.PeekBatch(b.req)
+		ab, err := ledgerpb.PeekBatch(b.req)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "seq=%d PeekBatch: %v\n", b.seq, err)
 			os.Exit(1)
@@ -148,7 +148,7 @@ func replayCommitted(batches []batch, target string) {
 			continue
 		}
 
-		ab, err := commonpb.PeekBatch(b.req)
+		ab, err := ledgerpb.PeekBatch(b.req)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "seq=%d PeekBatch: %v\n", b.seq, err)
 			os.Exit(1)
@@ -238,7 +238,7 @@ func parse(path string) ([]batch, error) {
 		if err != nil {
 			continue
 		}
-		req := &commonpb.ApplyRequest{}
+		req := &ledgerpb.ApplyRequest{}
 		if err := req.UnmarshalVT(raw); err != nil {
 			continue
 		}
@@ -267,22 +267,22 @@ func renderKinds(b oracle.Bulk) string {
 	kinds := make([]string, 0, len(b.Requests))
 	for _, r := range b.Requests {
 		switch t := r.GetType().(type) {
-		case *commonpb.Request_Apply:
+		case *ledgerpb.Request_Apply:
 			switch t.Apply.GetAction().GetData().(type) {
-			case *commonpb.LedgerAction_CreateTransaction:
+			case *ledgerpb.LedgerAction_CreateTransaction:
 				kinds = append(kinds, "tx")
-			case *commonpb.LedgerAction_AddMetadata:
+			case *ledgerpb.LedgerAction_AddMetadata:
 				kinds = append(kinds, "addMeta")
-			case *commonpb.LedgerAction_DeleteMetadata:
+			case *ledgerpb.LedgerAction_DeleteMetadata:
 				kinds = append(kinds, "delMeta")
-			case *commonpb.LedgerAction_RevertTransaction:
+			case *ledgerpb.LedgerAction_RevertTransaction:
 				kinds = append(kinds, "revert")
 			default:
 				kinds = append(kinds, "apply?")
 			}
-		case *commonpb.Request_AddAccountType:
+		case *ledgerpb.Request_AddAccountType:
 			kinds = append(kinds, "+"+t.AddAccountType.GetAccountType().GetName())
-		case *commonpb.Request_RemoveAccountType:
+		case *ledgerpb.Request_RemoveAccountType:
 			kinds = append(kinds, "-"+t.RemoveAccountType.GetName())
 		default:
 			kinds = append(kinds, "other")
@@ -311,7 +311,7 @@ func renderTypes(gs oracle.GlobalState, b oracle.Bulk) string {
 	return "[" + strings.Join(out, " ") + "]"
 }
 
-func renderMeta(m oracle.Map[string, *commonpb.MetadataValue]) string {
+func renderMeta(m oracle.Map[string, *ledgerpb.MetadataValue]) string {
 	parts := make([]string, 0, m.Len())
 	for k, v := range m.All() {
 		parts = append(parts, k+"="+oracle.MetaValueString(v))

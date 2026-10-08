@@ -13,7 +13,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 const (
@@ -47,13 +47,13 @@ func ProfileContext(ctx context.Context) context.Context {
 
 // ExtractProfile reads the query profile from gRPC trailing metadata.
 // The trailer is obtained from the stream after all messages have been received.
-func ExtractProfile(trailer metadata.MD) *servicepb.QueryProfile {
+func ExtractProfile(trailer metadata.MD) *ledgerpb.QueryProfile {
 	vals := trailer.Get(MetadataKeyQueryProfileResult)
 	if len(vals) == 0 {
 		return nil
 	}
 
-	var profile servicepb.QueryProfile
+	var profile ledgerpb.QueryProfile
 
 	err := proto.Unmarshal([]byte(vals[0]), &profile)
 	if err != nil {
@@ -64,7 +64,7 @@ func ExtractProfile(trailer metadata.MD) *servicepb.QueryProfile {
 }
 
 // RenderProfile displays a query profile in a human-readable format.
-func RenderProfile(profile *servicepb.QueryProfile) {
+func RenderProfile(profile *ledgerpb.QueryProfile) {
 	if profile == nil {
 		pterm.Warning.Println("No profile data received from server.")
 
@@ -143,7 +143,7 @@ func RenderProfile(profile *servicepb.QueryProfile) {
 // impossible if the server's bookkeeping is sound — the phases are windows inside
 // the total — so the caller must report it rather than render a clamped 0 that
 // looks like a normal reading.
-func residualDurationUs(profile *servicepb.QueryProfile) (int64, bool) {
+func residualDurationUs(profile *ledgerpb.QueryProfile) (int64, bool) {
 	residual := profile.GetServerDurationUs() - profile.GetPrepareDurationUs() - profile.GetExecuteDurationUs()
 	if residual < 0 {
 		return 0, false
@@ -161,7 +161,7 @@ func formatDurationUs(us int64) string {
 	return fmt.Sprintf("%.2fms", float64(us)/1000.0)
 }
 
-func renderIteratorTree(iter *servicepb.IteratorProfile, depth int) {
+func renderIteratorTree(iter *ledgerpb.IteratorProfile, depth int) {
 	indent := strings.Repeat("  ", depth)
 
 	label := iter.GetLabel()
@@ -205,7 +205,7 @@ func renderIteratorTree(iter *servicepb.IteratorProfile, depth int) {
 // selfDurationUs returns the duration spent strictly in this node, excluding
 // time charged to descendants. Returns the node's own duration when there are
 // no children.
-func selfDurationUs(iter *servicepb.IteratorProfile) int64 {
+func selfDurationUs(iter *ledgerpb.IteratorProfile) int64 {
 	self := iter.GetDurationUs()
 	for _, child := range iter.GetChildren() {
 		self -= child.GetDurationUs()

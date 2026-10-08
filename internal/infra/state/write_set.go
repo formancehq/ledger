@@ -10,7 +10,7 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/holiman/uint256"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
@@ -43,13 +43,13 @@ type maintenanceModeUpdate struct {
 
 // clusterPolicyUpdate represents a pending cluster-policy change.
 type clusterPolicyUpdate struct {
-	policy *commonpb.ClusterPolicy
+	policy *ledgerpb.ClusterPolicy
 }
 
 type WriteSet struct {
 	fsm                 *Machine
 	attrs               *attributes.Attributes
-	Date                *commonpb.Timestamp
+	Date                *ledgerpb.Timestamp
 	NextSequenceID      uint64
 	NextAuditSequenceID uint64
 	// LastAuditHash is the audit chain head as this proposal began — the
@@ -99,7 +99,7 @@ type WriteSet struct {
 	// ledger, populated during Merge for inclusion in the AppliedProposal
 	// entry. The asset dimension is preserved so a multi-asset account is
 	// correctly described when only some of its assets are transient.
-	transientVolumes map[string][]*commonpb.TouchedVolume
+	transientVolumes map[string][]*ledgerpb.TouchedVolume
 
 	// gatedLedgerTypes holds the account types ValidateTransientVolumes
 	// resolved through the gated Scope, keyed by ledger name. partitionVolumes
@@ -121,14 +121,14 @@ type WriteSet struct {
 	// from Pebble) by the log produced by order i. DISJOINT from
 	// newKeptByLog and ephemeralByLog. Injected into each
 	// LedgerLog.purged_volumes before AppendLogs.
-	purgedByLog [][]*commonpb.TouchedVolume
+	purgedByLog [][]*ledgerpb.TouchedVolume
 
 	// newKeptByLog[i] is the deduplicated list of (account, asset) volumes
 	// whose persistent entry was newly created by order i AND survived
 	// past commit. DISJOINT from purgedByLog and ephemeralByLog. Injected
 	// into each LedgerLog.new_kept_volumes before AppendLogs. Feeds the
 	// usagebuilder's VolumeCount projection.
-	newKeptByLog [][]*commonpb.TouchedVolume
+	newKeptByLog [][]*ledgerpb.TouchedVolume
 
 	// ephemeralByLog[i] is the deduplicated list of (account, asset)
 	// volumes that were both newly created AND purged by order i — pure
@@ -136,7 +136,7 @@ type WriteSet struct {
 	// into each LedgerLog.ephemeral_volumes before AppendLogs. Consumed
 	// by the index builder (skip acct->tx mappings) alongside
 	// purgedByLog; contributes 0 to VolumeCount.
-	ephemeralByLog [][]*commonpb.TouchedVolume
+	ephemeralByLog [][]*ledgerpb.TouchedVolume
 	// purgedAccounts is the deterministic set of EPHEMERAL addresses whose
 	// complete current state is removed at this proposal boundary.
 	purgedAccounts            map[domain.AccountKey]struct{}
@@ -172,15 +172,15 @@ type WriteSet struct {
 	// raw store in a recorderAccessor: every Put records the touched key
 	// under the current slot (set via BeginOrder) so Merge can compute
 	// the per-log subset of purged ephemeral accounts (purgedByLog).
-	ledgers               *rawAccessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader]
+	ledgers               *rawAccessor[domain.LedgerKey, *ledgerpb.LedgerInfo, ledgerpb.LedgerInfoReader]
 	boundaries            *rawAccessor[domain.LedgerKey, *raftcmdpb.LedgerBoundaries, raftcmdpb.LedgerBoundariesReader]
 	volumes               *recorderAccessor[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader]
-	accountMetadata       *rawAccessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]
-	ledgerMetadata        *rawAccessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]
+	accountMetadata       *rawAccessor[domain.MetadataKey, *ledgerpb.MetadataValue, ledgerpb.MetadataValueReader]
+	ledgerMetadata        *rawAccessor[domain.LedgerMetadataKey, *ledgerpb.MetadataValue, ledgerpb.MetadataValueReader]
 	transactionReferences *rawAccessor[domain.TransactionReferenceKey, *internalstatepb.TransactionReferenceValue, internalstatepb.TransactionReferenceValueReader]
 	transactionStates     *rawAccessor[domain.TransactionKey, *internalstatepb.TransactionState, internalstatepb.TransactionStateReader]
-	preparedQueries       *rawAccessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader]
-	indexes               *rawAccessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]
+	preparedQueries       *rawAccessor[domain.PreparedQueryKey, *ledgerpb.PreparedQuery, ledgerpb.PreparedQueryReader]
+	indexes               *rawAccessor[domain.IndexKey, *ledgerpb.Index, ledgerpb.IndexReader]
 }
 
 // MirrorSyncWrite captures one queued mirror-sync update. applyMirrorSyncUpdate
@@ -195,7 +195,7 @@ type MirrorSyncWrite struct {
 	LedgerName     string
 	SourceLogCount uint64
 	ClearError     bool
-	Error          *commonpb.MirrorSyncError
+	Error          *ledgerpb.MirrorSyncError
 }
 
 // QueueMirrorSync enqueues a mirror-sync write so it lands in Pebble only if
@@ -499,7 +499,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	b.newKeptByLog = buildTouchedByLog(slots, newKeptSet)
 	b.ephemeralByLog = buildTouchedByLog(slots, ephemeralSet)
 
-	createdLogs := make([]*commonpb.Log, 0, len(logsOrRefs))
+	createdLogs := make([]*ledgerpb.Log, 0, len(logsOrRefs))
 	for i, lr := range logsOrRefs {
 		log := lr.GetCreatedLog()
 		if log == nil {
@@ -538,7 +538,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	// Emit each account-wide purge exactly once, on the last fresh ledger log
 	// for that ledger. This covers metadata-only orders and ensures replay folds
 	// every proposal-local payload before applying the terminal deletion.
-	lastLogByLedger := make(map[string]*commonpb.LedgerLog)
+	lastLogByLedger := make(map[string]*ledgerpb.LedgerLog)
 	for _, log := range createdLogs {
 		apply := log.GetPayload().GetApply()
 		if apply != nil && apply.GetLog() != nil {
@@ -561,7 +561,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		if ledgerLog == nil {
 			return fmt.Errorf("invariant: covered volume deletion for account %q in ledger %q has no fresh ledger log", deletion.Key.Account, deletion.Key.LedgerName)
 		}
-		ledgerLog.PurgedVolumes = append(ledgerLog.PurgedVolumes, &commonpb.TouchedVolume{
+		ledgerLog.PurgedVolumes = append(ledgerLog.PurgedVolumes, &ledgerpb.TouchedVolume{
 			Account: deletion.Key.Account,
 			Asset:   deletion.Key.Asset,
 			Color:   deletion.Key.Color,
@@ -903,17 +903,17 @@ func NewWriteSet(fsm *Machine) *WriteSet {
 		Derived: NewDerivedRegistry(fsm.Registry),
 	}
 
-	ws.ledgers = newRawAccessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader](ws.Derived.Ledgers)
+	ws.ledgers = newRawAccessor[domain.LedgerKey, *ledgerpb.LedgerInfo, ledgerpb.LedgerInfoReader](ws.Derived.Ledgers)
 	ws.boundaries = newRawAccessor[domain.LedgerKey, *raftcmdpb.LedgerBoundaries, raftcmdpb.LedgerBoundariesReader](ws.Derived.Boundaries)
 	ws.volumes = newRecorderAccessor[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader](
 		newRawAccessor[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader](ws.Derived.Volumes),
 	)
-	ws.accountMetadata = newRawAccessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader](ws.Derived.AccountMetadata)
-	ws.ledgerMetadata = newRawAccessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader](ws.Derived.LedgerMetadata)
+	ws.accountMetadata = newRawAccessor[domain.MetadataKey, *ledgerpb.MetadataValue, ledgerpb.MetadataValueReader](ws.Derived.AccountMetadata)
+	ws.ledgerMetadata = newRawAccessor[domain.LedgerMetadataKey, *ledgerpb.MetadataValue, ledgerpb.MetadataValueReader](ws.Derived.LedgerMetadata)
 	ws.transactionReferences = newRawAccessor[domain.TransactionReferenceKey, *internalstatepb.TransactionReferenceValue, internalstatepb.TransactionReferenceValueReader](ws.Derived.References)
 	ws.transactionStates = newRawAccessor[domain.TransactionKey, *internalstatepb.TransactionState, internalstatepb.TransactionStateReader](ws.Derived.Transactions)
-	ws.preparedQueries = newRawAccessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader](ws.Derived.PreparedQueries)
-	ws.indexes = newRawAccessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader](ws.Derived.Indexes)
+	ws.preparedQueries = newRawAccessor[domain.PreparedQueryKey, *ledgerpb.PreparedQuery, ledgerpb.PreparedQueryReader](ws.Derived.PreparedQueries)
+	ws.indexes = newRawAccessor[domain.IndexKey, *ledgerpb.Index, ledgerpb.IndexReader](ws.Derived.Indexes)
 
 	return ws
 }
@@ -922,7 +922,7 @@ func NewWriteSet(fsm *Machine) *WriteSet {
 // state while preserving allocated maps and slice backing arrays. The
 // coverage gate lives one layer up on gatedScope; WriteSet itself is the
 // raw engine (Derived → KeyStore → cache).
-func (b *WriteSet) Reset(at *commonpb.Timestamp) {
+func (b *WriteSet) Reset(at *ledgerpb.Timestamp) {
 	b.Date = at
 	b.NextSequenceID = b.fsm.State.NextSequenceID
 	b.NextAuditSequenceID = b.fsm.State.NextAuditSequenceID
@@ -971,22 +971,22 @@ func (b *WriteSet) Reset(at *commonpb.Timestamp) {
 //
 // Hot-path note: zero allocation per signal; the (order, log) pointers
 // already exist and the dispatch is a single type switch.
-func (b *WriteSet) Absorb(order *raftcmdpb.Order, log *commonpb.Log) {
+func (b *WriteSet) Absorb(order *raftcmdpb.Order, log *ledgerpb.Log) {
 	switch p := log.GetPayload().GetType().(type) {
-	case *commonpb.LogPayload_AddedEventsSink:
+	case *ledgerpb.LogPayload_AddedEventsSink:
 		cfg := p.AddedEventsSink.GetConfig()
 		b.Derived.SinkConfigs.Put(domain.SinkConfigKey{Name: cfg.GetName()}, cfg)
 		b.sinkConfigChanged = true
-	case *commonpb.LogPayload_RemovedEventsSink:
+	case *ledgerpb.LogPayload_RemovedEventsSink:
 		b.Derived.SinkConfigs.Delete(domain.SinkConfigKey{Name: p.RemovedEventsSink.GetName()})
 		b.sinkConfigChanged = true
-	case *commonpb.LogPayload_SetQueryCheckpointSchedule:
+	case *ledgerpb.LogPayload_SetQueryCheckpointSchedule:
 		cron := p.SetQueryCheckpointSchedule.GetCron()
 		b.queryCheckpointScheduleUpdate = &cron
-	case *commonpb.LogPayload_DeleteQueryCheckpointSchedule:
+	case *ledgerpb.LogPayload_DeleteQueryCheckpointSchedule:
 		empty := ""
 		b.queryCheckpointScheduleUpdate = &empty
-	case *commonpb.LogPayload_DeleteLedger:
+	case *ledgerpb.LogPayload_DeleteLedger:
 		// Only the cleanup signal is recorded here (drives the phase-4
 		// range deletes). The Boundary deletion happens in processDeleteLedger
 		// through the gated Scope with the command-envelope key, so the
@@ -1010,27 +1010,27 @@ func (b *WriteSet) Absorb(order *raftcmdpb.Order, log *commonpb.Log) {
 		// dispatches to all of them, so it is a read handle each, not one
 		// overall. Idempotent, and ledger deletion is rare.
 		b.mirrorConfigChanged = true
-	case *commonpb.LogPayload_CreateLedger:
+	case *ledgerpb.LogPayload_CreateLedger:
 		// Only mirror creations reshape the mirror worker set. Reading
 		// order.Mode matches the legacy hasMirrorConfigChange walk and
 		// is robust to future log-shape changes.
 		if ls := order.GetLedgerScoped(); ls != nil {
 			if cl, ok := ls.GetPayload().(*raftcmdpb.LedgerScopedOrder_CreateLedger); ok &&
-				cl.CreateLedger.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
+				cl.CreateLedger.GetMode() == ledgerpb.LedgerMode_LEDGER_MODE_MIRROR {
 				b.mirrorConfigChanged = true
 			}
 		}
-	case *commonpb.LogPayload_PromoteLedger:
+	case *ledgerpb.LogPayload_PromoteLedger:
 		// Promoting a mirror to normal reshapes the mirror worker set
 		// the same way a fresh mirror creation does.
 		b.mirrorConfigChanged = true
-	case *commonpb.LogPayload_CreatedQueryCheckpoint:
+	case *ledgerpb.LogPayload_CreatedQueryCheckpoint:
 		// CreateQueryCheckpoint is also a checkpoint-trigger order, so
 		// at most one per proposal — the assignment matches the legacy
 		// walk that iterated pendingQueryCheckpointSaves and took the
 		// last seen id.
 		b.queryCheckpointCreated = p.CreatedQueryCheckpoint.GetCheckpointId()
-	case *commonpb.LogPayload_DeletedQueryCheckpoint:
+	case *ledgerpb.LogPayload_DeletedQueryCheckpoint:
 		b.queryCheckpointDeleted = p.DeletedQueryCheckpoint.GetCheckpointId()
 	}
 }
@@ -1063,7 +1063,7 @@ func (b *WriteSet) QueryCheckpointDeleted() uint64 {
 // around the gate.
 
 // Ledgers returns the bare ledger accessor — no coverage gate.
-func (b *WriteSet) Ledgers() processing.Accessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader] {
+func (b *WriteSet) Ledgers() processing.Accessor[domain.LedgerKey, *ledgerpb.LedgerInfo, ledgerpb.LedgerInfoReader] {
 	return b.ledgers
 }
 
@@ -1079,12 +1079,12 @@ func (b *WriteSet) Volumes() processing.Accessor[domain.VolumeKey, *raftcmdpb.Vo
 }
 
 // AccountMetadata returns the bare account-metadata accessor.
-func (b *WriteSet) AccountMetadata() processing.Accessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader] {
+func (b *WriteSet) AccountMetadata() processing.Accessor[domain.MetadataKey, *ledgerpb.MetadataValue, ledgerpb.MetadataValueReader] {
 	return b.accountMetadata
 }
 
 // LedgerMetadata returns the bare ledger-metadata accessor.
-func (b *WriteSet) LedgerMetadata() processing.Accessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader] {
+func (b *WriteSet) LedgerMetadata() processing.Accessor[domain.LedgerMetadataKey, *ledgerpb.MetadataValue, ledgerpb.MetadataValueReader] {
 	return b.ledgerMetadata
 }
 
@@ -1099,12 +1099,12 @@ func (b *WriteSet) TransactionStates() processing.Accessor[domain.TransactionKey
 }
 
 // PreparedQueries returns the bare prepared-query accessor.
-func (b *WriteSet) PreparedQueries() processing.Accessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader] {
+func (b *WriteSet) PreparedQueries() processing.Accessor[domain.PreparedQueryKey, *ledgerpb.PreparedQuery, ledgerpb.PreparedQueryReader] {
 	return b.preparedQueries
 }
 
 // Indexes returns the bare index-registry accessor.
-func (b *WriteSet) Indexes() processing.Accessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader] {
+func (b *WriteSet) Indexes() processing.Accessor[domain.IndexKey, *ledgerpb.Index, ledgerpb.IndexReader] {
 	return b.indexes
 }
 
@@ -1114,7 +1114,7 @@ func (b *WriteSet) Indexes() processing.Accessor[domain.IndexKey, *commonpb.Inde
 // the Scope-facing accessor would otherwise impose. External callers MUST
 // go through Ledgers().Get — only state-package code is trusted not to
 // mutate the cache pointer in place.
-func (b *WriteSet) getLedgerData(name string) (*commonpb.LedgerInfo, error) {
+func (b *WriteSet) getLedgerData(name string) (*ledgerpb.LedgerInfo, error) {
 	info, err := b.Derived.Ledgers.Get(domain.LedgerKey{Name: name})
 	if err != nil {
 		return nil, err
@@ -1129,7 +1129,7 @@ func (b *WriteSet) getLedgerData(name string) (*commonpb.LedgerInfo, error) {
 
 // ResolveNumscriptContent stays as a discrete method on Scope — its
 // (ledgerName, name, version) signature does not fit the Accessor trio.
-func (b *WriteSet) ResolveNumscriptContent(ledgerName string, name, version string) (commonpb.NumscriptInfoReader, error) {
+func (b *WriteSet) ResolveNumscriptContent(ledgerName string, name, version string) (ledgerpb.NumscriptInfoReader, error) {
 	info, err := b.Derived.NumscriptContents.Get(domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: version})
 	// Treat a cache miss as "doesn't exist" — same pattern as GetPreparedQuery
 	// and GetNumscriptLatestVersion. Admission emits a Declare plan for absent
@@ -1246,7 +1246,7 @@ func (b *WriteSet) ValidateTransientVolumes(scope processing.Scope) domain.Seria
 		}
 
 		matched := accounttype.FindMatchingType(key.Account, entry.compiled)
-		if matched == nil || matched.GetPersistence() != commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT {
+		if matched == nil || matched.GetPersistence() != ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT {
 			continue
 		}
 
@@ -1460,7 +1460,7 @@ func (b *WriteSet) SetMaintenanceMode(enabled bool) {
 // GetClusterPolicy returns the effective cluster policy for the revision check:
 // the update staged earlier in this proposal if any, otherwise the committed
 // policy in FSMState. Never nil (NewFSMState seeds the default).
-func (b *WriteSet) GetClusterPolicy() *commonpb.ClusterPolicy {
+func (b *WriteSet) GetClusterPolicy() *ledgerpb.ClusterPolicy {
 	if b.pendingClusterPolicyUpdate != nil {
 		return b.pendingClusterPolicyUpdate.policy
 	}
@@ -1468,13 +1468,13 @@ func (b *WriteSet) GetClusterPolicy() *commonpb.ClusterPolicy {
 	return b.fsm.State.ClusterPolicy
 }
 
-func (b *WriteSet) SetClusterPolicy(policy *commonpb.ClusterPolicy) {
+func (b *WriteSet) SetClusterPolicy(policy *ledgerpb.ClusterPolicy) {
 	b.pendingClusterPolicyUpdate = &clusterPolicyUpdate{
 		policy: policy,
 	}
 }
 
-func (b *WriteSet) GetSinkConfig(name string) (commonpb.SinkConfigReader, error) {
+func (b *WriteSet) GetSinkConfig(name string) (ledgerpb.SinkConfigReader, error) {
 	cfg, err := b.Derived.SinkConfigs.Get(domain.SinkConfigKey{Name: name})
 	// A cache miss is the documented "no sink config" outcome; any other
 	// error is a real storage/cache fault and must surface (invariant #7).
@@ -1540,7 +1540,7 @@ func (b *WriteSet) IncrementNextLedgerID() uint32 {
 	return id
 }
 
-func (b *WriteSet) GetDate() commonpb.TimestampReader {
+func (b *WriteSet) GetDate() ledgerpb.TimestampReader {
 	if b.Date == nil {
 		return nil
 	}
@@ -1557,14 +1557,14 @@ func (b *WriteSet) GetRaftIndex() uint64 { return 0 }
 // orders follow, applyProposal computes the HLC-advanced effective date and
 // pushes it here so order handlers see the monotonic timestamp. The overlay
 // (Derived) is preserved — only the timestamp field is rewired.
-func (b *WriteSet) SetDate(date *commonpb.Timestamp) {
+func (b *WriteSet) SetDate(date *ledgerpb.Timestamp) {
 	b.Date = date
 }
 
 // addVolumeSideDelta extracts the net delta for one side (input or output) of a VolumePair update.
 // Known values are always non-nil (preloaders send explicit 0).
 // Uses the provided tmp and scratch uint256.Ints for intermediate computations to avoid heap allocations.
-func addVolumeSideDelta(acc *uint256.Int, tmp *uint256.Int, scratch *uint256.Int, newKnown, oldKnown *commonpb.Uint256) {
+func addVolumeSideDelta(acc *uint256.Int, tmp *uint256.Int, scratch *uint256.Int, newKnown, oldKnown *ledgerpb.Uint256) {
 	protohelpers.IntoUint256(newKnown, tmp)
 
 	if oldKnown != nil {
@@ -1589,7 +1589,7 @@ func checkDoubleEntryInvariant(
 	)
 
 	for _, update := range volumeUpdates {
-		var oldInput, oldOutput *commonpb.Uint256
+		var oldInput, oldOutput *ledgerpb.Uint256
 
 		if update.Old.IsDefined() {
 			if old := update.Old.Value(); old != nil {
@@ -1632,7 +1632,7 @@ func (b *WriteSet) GetNumscriptLatestVersion(ledgerName string, name string) (st
 	return val.GetVersion(), nil
 }
 
-func (b *WriteSet) PutNumscript(ledgerName string, info *commonpb.NumscriptInfo) {
+func (b *WriteSet) PutNumscript(ledgerName string, info *ledgerpb.NumscriptInfo) {
 	b.Derived.NumscriptVersions.Put(domain.NumscriptVersionKey{LedgerName: ledgerName, Name: info.GetName()}, &internalstatepb.NumscriptVersionValue{Version: info.GetVersion()})
 	b.Derived.NumscriptContents.Put(domain.NumscriptEntryKey{LedgerName: ledgerName, Name: info.GetName(), Version: info.GetVersion()}, info)
 }
@@ -1746,15 +1746,15 @@ func (b *WriteSet) DeletedLedgerNames() []string {
 // TransientVolumes returns the unique transient (account, asset, color)
 // volumes per ledger, collected during Merge from the transient volume
 // partition.
-func (b *WriteSet) TransientVolumes() map[string][]*commonpb.TouchedVolume {
+func (b *WriteSet) TransientVolumes() map[string][]*ledgerpb.TouchedVolume {
 	return b.transientVolumes
 }
 
 // collectUniqueVolumes extracts unique (account, asset, color) tuples per
 // ledger from volume updates and emits them as deterministically-ordered
-// commonpb.TouchedVolume slices. Color is part of the identity so two color
+// ledgerpb.TouchedVolume slices. Color is part of the identity so two color
 // buckets of the same (account, asset) stay distinct in the audit log.
-func collectUniqueVolumes(updates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]) map[string][]*commonpb.TouchedVolume {
+func collectUniqueVolumes(updates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]) map[string][]*ledgerpb.TouchedVolume {
 	type accAssetColor struct{ Account, Asset, Color string }
 	seen := make(map[string]map[accAssetColor]struct{})
 
@@ -1769,7 +1769,7 @@ func collectUniqueVolumes(updates []attributes.Update[domain.VolumeKey, *raftcmd
 		seen[ledgerName][k] = struct{}{}
 	}
 
-	result := make(map[string][]*commonpb.TouchedVolume, len(seen))
+	result := make(map[string][]*ledgerpb.TouchedVolume, len(seen))
 	for ledgerName, vols := range seen {
 		list := make([]accAssetColor, 0, len(vols))
 		for k := range vols {
@@ -1787,9 +1787,9 @@ func collectUniqueVolumes(updates []attributes.Update[domain.VolumeKey, *raftcmd
 			return list[a].Color < list[b].Color
 		})
 
-		out := make([]*commonpb.TouchedVolume, len(list))
+		out := make([]*ledgerpb.TouchedVolume, len(list))
 		for i, k := range list {
-			out[i] = &commonpb.TouchedVolume{Account: k.Account, Asset: k.Asset, Color: k.Color}
+			out[i] = &ledgerpb.TouchedVolume{Account: k.Account, Asset: k.Asset, Color: k.Color}
 		}
 
 		result[ledgerName] = out

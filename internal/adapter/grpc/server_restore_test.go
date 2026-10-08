@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -32,7 +32,7 @@ func TestFinalizeRestoreRequiresSuccessfulValidation(t *testing.T) {
 	server.mu.Unlock()
 	t.Cleanup(server.Shutdown)
 
-	_, err = server.FinalizeRestore(context.Background(), &auditpb.FinalizeRestoreRequest{})
+	_, err = server.FinalizeRestore(context.Background(), &ledgerpb.FinalizeRestoreRequest{})
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
 	require.Contains(t, status.Convert(err).Message(), "has not passed validation")
 }
@@ -71,40 +71,40 @@ func TestInvalidCallerAttributionPreventsRestoreFinalization(t *testing.T) {
 
 	configBytes, err := proto.Marshal(&internalstatepb.PersistedConfig{ClusterId: clusterID})
 	require.NoError(t, err)
-	entry := &auditpb.AuditEntry{
+	entry := &ledgerpb.AuditEntry{
 		Sequence:       1,
-		Timestamp:      &auditpb.Timestamp{Data: 1},
+		Timestamp:      &ledgerpb.Timestamp{Data: 1},
 		ProposalId:     1,
-		HashVersion:    uint32(auditpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
-		CallerSnapshot: &auditpb.CallerSnapshot{},
-		Outcome: &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{
-			Reason:  auditpb.ErrorReason_ERROR_REASON_VALIDATION,
+		HashVersion:    uint32(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		CallerSnapshot: &ledgerpb.CallerSnapshot{},
+		Outcome: &ledgerpb.AuditEntry_Failure{Failure: &ledgerpb.AuditFailure{
+			Reason:  ledgerpb.ErrorReason_ERROR_REASON_VALIDATION,
 			Message: "rejected",
 		}},
 	}
 	header, err := state.BuildHashedHeaderPayload(entry)
 	require.NoError(t, err)
-	_, entry.Hash = processing.NewHashGenerator(auditpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, auditKey).
+	_, entry.Hash = processing.NewHashGenerator(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, auditKey).
 		Compute(nil, nil, [][]byte{header})
 
 	batch := store.OpenWriteSession()
 	require.NoError(t, batch.SetBytes([]byte{dal.ZoneClusterPersistent, dal.SubGlobPersistedConfig}, configBytes))
 	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobAuditKey}, []byte(auditKey)))
-	require.NoError(t, state.AppendLogs(batch, []*auditpb.Log{{Sequence: 1}}))
+	require.NoError(t, state.AppendLogs(batch, []*ledgerpb.Log{{Sequence: 1}}))
 	batch.KeyBuilder.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(entry.GetSequence())
 	require.NoError(t, batch.SetProto(batch.KeyBuilder.Consume(), entry))
 	require.NoError(t, batch.Commit())
 
-	stream := NewMockServerStreamingServer[auditpb.ValidateRestoreEvent](gomock.NewController(t))
+	stream := NewMockServerStreamingServer[ledgerpb.ValidateRestoreEvent](gomock.NewController(t))
 	stream.EXPECT().Context().Return(context.Background()).AnyTimes()
 	stream.EXPECT().Send(gomock.Any()).Return(nil).AnyTimes()
-	require.NoError(t, server.ValidateRestore(&auditpb.ValidateRestoreRequest{}, stream))
+	require.NoError(t, server.ValidateRestore(&ledgerpb.ValidateRestoreRequest{}, stream))
 
 	server.mu.Lock()
 	validated := server.validated
 	server.mu.Unlock()
 	require.False(t, validated)
-	_, err = server.FinalizeRestore(context.Background(), &auditpb.FinalizeRestoreRequest{})
+	_, err = server.FinalizeRestore(context.Background(), &ledgerpb.FinalizeRestoreRequest{})
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
 }
 
@@ -128,16 +128,16 @@ func TestCanceledValidationPreventsRestoreFinalization(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	stream := NewMockServerStreamingServer[auditpb.ValidateRestoreEvent](gomock.NewController(t))
+	stream := NewMockServerStreamingServer[ledgerpb.ValidateRestoreEvent](gomock.NewController(t))
 	stream.EXPECT().Context().Return(ctx).AnyTimes()
 	stream.EXPECT().Send(gomock.Any()).Return(nil).AnyTimes()
-	require.ErrorIs(t, server.ValidateRestore(&auditpb.ValidateRestoreRequest{}, stream), context.Canceled)
+	require.ErrorIs(t, server.ValidateRestore(&ledgerpb.ValidateRestoreRequest{}, stream), context.Canceled)
 
 	server.mu.Lock()
 	validated := server.validated
 	server.mu.Unlock()
 	require.False(t, validated)
-	_, err = server.FinalizeRestore(context.Background(), &auditpb.FinalizeRestoreRequest{})
+	_, err = server.FinalizeRestore(context.Background(), &ledgerpb.FinalizeRestoreRequest{})
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
 }
 

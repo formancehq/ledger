@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/storage/usagestore"
 )
@@ -124,9 +124,9 @@ func TestStore_TemplateUsageRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, usage, "missing template must return (nil, nil)")
 
-	want := &commonpb.TemplateUsage{
+	want := &ledgerpb.TemplateUsage{
 		Count:    7,
-		LastUsed: &commonpb.Timestamp{Data: 1_700_000_000_000_000_000},
+		LastUsed: &ledgerpb.Timestamp{Data: 1_700_000_000_000_000_000},
 	}
 
 	batch := s.NewBatch()
@@ -147,9 +147,9 @@ func TestStore_ClosePersistsProgressCountersAndTemplates(t *testing.T) {
 	s, err := usagestore.New(dir, logging.NopZap(), usagestore.DefaultConfig())
 	require.NoError(t, err)
 
-	wantUsage := &commonpb.TemplateUsage{
+	wantUsage := &ledgerpb.TemplateUsage{
 		Count:    7,
-		LastUsed: &commonpb.Timestamp{Data: 1_700_000_000_000_000_000},
+		LastUsed: &ledgerpb.Timestamp{Data: 1_700_000_000_000_000_000},
 	}
 	batch := s.NewBatch()
 	require.NoError(t, s.PutCounter(batch, "l1", usagestore.CounterPosting, 123))
@@ -206,9 +206,9 @@ func TestStore_DeleteLedgerCascade(t *testing.T) {
 	// Seed both scopes for two ledgers.
 	batch := s.NewBatch()
 	require.NoError(t, s.PutCounter(batch, "l1", usagestore.CounterPosting, 10))
-	require.NoError(t, s.PutTemplateUsage(batch, "l1", "t1", &commonpb.TemplateUsage{Count: 3}))
+	require.NoError(t, s.PutTemplateUsage(batch, "l1", "t1", &ledgerpb.TemplateUsage{Count: 3}))
 	require.NoError(t, s.PutCounter(batch, "l2", usagestore.CounterPosting, 20))
-	require.NoError(t, s.PutTemplateUsage(batch, "l2", "t2", &commonpb.TemplateUsage{Count: 5}))
+	require.NoError(t, s.PutTemplateUsage(batch, "l2", "t2", &ledgerpb.TemplateUsage{Count: 5}))
 	require.NoError(t, batch.Commit())
 
 	// Drop l1 only.
@@ -249,9 +249,9 @@ func TestStore_Reset(t *testing.T) {
 	batch := s.NewBatch()
 	require.NoError(t, s.PutCounter(batch, "l1", usagestore.CounterPosting, 10))
 	require.NoError(t, s.PutCounter(batch, "l1", usagestore.CounterVolume, 3))
-	require.NoError(t, s.PutTemplateUsage(batch, "l1", "t1", &commonpb.TemplateUsage{Count: 3}))
+	require.NoError(t, s.PutTemplateUsage(batch, "l1", "t1", &ledgerpb.TemplateUsage{Count: 3}))
 	require.NoError(t, s.PutCounter(batch, "l2", usagestore.CounterPosting, 20))
-	require.NoError(t, s.PutTemplateUsage(batch, "l2", "t2", &commonpb.TemplateUsage{Count: 5}))
+	require.NoError(t, s.PutTemplateUsage(batch, "l2", "t2", &ledgerpb.TemplateUsage{Count: 5}))
 	require.NoError(t, s.WriteProgress(batch, 500))
 	require.NoError(t, batch.Commit())
 
@@ -291,7 +291,7 @@ func TestStore_ResetFlushesBeforeReturn(t *testing.T) {
 
 	batch := s.NewBatch()
 	require.NoError(t, s.PutCounter(batch, "l1", usagestore.CounterPosting, 10))
-	require.NoError(t, s.PutTemplateUsage(batch, "l1", "t1", &commonpb.TemplateUsage{Count: 3}))
+	require.NoError(t, s.PutTemplateUsage(batch, "l1", "t1", &ledgerpb.TemplateUsage{Count: 3}))
 	require.NoError(t, s.WriteProgress(batch, 500))
 	require.NoError(t, batch.Commit())
 	require.NoError(t, s.Flush(), "seed the old cursor in an SST before resetting")

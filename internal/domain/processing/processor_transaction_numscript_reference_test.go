@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -60,12 +60,12 @@ func TestProcessCreateTransaction_NumscriptReference_ResolvesContent(t *testing.
 			}
 
 			mockStore.EXPECT().ResolveNumscriptContent(ledger, name, tt.resolvedVersion).Return(
-				(&commonpb.NumscriptInfo{Content: content}).AsReader(),
+				(&ledgerpb.NumscriptInfo{Content: content}).AsReader(),
 				nil,
 			)
 			setupNumscriptVolumeMocks(mockStore)
 			mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-			mockStore.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1234567890}).AsReader()).AnyTimes()
+			mockStore.EXPECT().GetDate().Return((&ledgerpb.Timestamp{Data: 1234567890}).AsReader()).AnyTimes()
 			expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: ledger, ID: 1}, nil)
 
 			payload, processErr := processCreateTransaction(ledger, &raftcmdpb.CreateTransactionOrder{
@@ -77,7 +77,7 @@ func TestProcessCreateTransaction_NumscriptReference_ResolvesContent(t *testing.
 			}, &Context{
 				Scope:          mockStore,
 				Boundaries:     &raftcmdpb.LedgerBoundaries{NextTransactionId: 1},
-				LedgerInfo:     (&commonpb.LedgerInfo{Name: ledger, Id: 1}).AsReader(),
+				LedgerInfo:     (&ledgerpb.LedgerInfo{Name: ledger, Id: 1}).AsReader(),
 				NumscriptCache: processor.numscriptCache,
 			})
 			require.NoError(t, processErr)

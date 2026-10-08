@@ -10,7 +10,7 @@ import (
 	"go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -651,8 +651,8 @@ func buildProposalWithLeaderPreloads(
 						vol, _, err := leader.Registry.Volumes.Get(volCanonical)
 						if err != nil || vol == nil {
 							vol = &raftcmdpb.VolumePair{
-								Input:  commonpb.NewUint256FromUint64(0),
-								Output: commonpb.NewUint256FromUint64(0),
+								Input:  ledgerpb.NewUint256FromUint64(0),
+								Output: ledgerpb.NewUint256FromUint64(0),
 							}
 						}
 						attrID := &raftcmdpb.AttributeID{Id: volU128[:], Tag: volTag}
@@ -667,7 +667,7 @@ func buildProposalWithLeaderPreloads(
 		Id:             nextIndex,
 		PredictedIndex: nextIndex,
 		Orders:         orders,
-		Date:           &commonpb.Timestamp{Data: 1700000000 + nextIndex},
+		Date:           &ledgerpb.Timestamp{Data: 1700000000 + nextIndex},
 		ExecutionPlan: &raftcmdpb.ExecutionPlan{
 			Attributes:         plans,
 			LastPersistedIndex: boundary,

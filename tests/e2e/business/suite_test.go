@@ -9,15 +9,15 @@ import (
 	"time"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
 var (
-	sharedClient        clusterpb.BucketServiceClient
-	sharedClusterClient clusterpb.ClusterServiceClient
+	sharedClient        ledgerpb.BucketServiceClient
+	sharedClusterClient ledgerpb.ClusterServiceClient
 	sharedCtx           context.Context
 	sharedHTTPPort      int
 )

@@ -16,7 +16,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -64,8 +64,8 @@ func azureBlobExists(ctx context.Context, client *azblob.Client, key string) boo
 var _ = Describe("Azure Blob Backup", Ordered, func() {
 	var (
 		ctx           context.Context
-		client        clusterpb.BucketServiceClient
-		clusterClient clusterpb.ClusterServiceClient
+		client        ledgerpb.BucketServiceClient
+		clusterClient ledgerpb.ClusterServiceClient
 		azureClient   *azblob.Client
 		azureEndpoint string
 	)
@@ -114,8 +114,8 @@ var _ = Describe("Azure Blob Backup", Ordered, func() {
 		clusterClient = node.ClusterClient
 	})
 
-	azureStorage := func() *clusterpb.BackupStorage {
-		return testutil.AzureBackupStorage(&clusterpb.AzureStorageConfig{
+	azureStorage := func() *ledgerpb.BackupStorage {
+		return testutil.AzureBackupStorage(&ledgerpb.AzureStorageConfig{
 			AccountName: azuriteAccountName,
 			AccountKey:  azuriteAccountKey,
 			Container:   backupAzureContainer,
@@ -124,18 +124,18 @@ var _ = Describe("Azure Blob Backup", Ordered, func() {
 	}
 
 	It("should create a full backup on Azure with checkpoint manifest", func() {
-		_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction("azure-backup-test", nil)))
+		_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction("azure-backup-test", nil)))
 		Expect(err).To(Succeed())
 
-		_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("azure-backup-test",
-			[]*clusterpb.Posting{
+		_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("azure-backup-test",
+			[]*ledgerpb.Posting{
 				actions.NewPosting("world", "users:alice", big.NewInt(1000), "USD"),
 			},
 			nil,
 		)))
 		Expect(err).To(Succeed())
 
-		resp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
+		resp, err := clusterClient.Backup(ctx, &ledgerpb.BackupRequest{
 			Storage:  azureStorage(),
 			BucketId: "test-cluster",
 		})
@@ -158,22 +158,22 @@ var _ = Describe("Azure Blob Backup", Ordered, func() {
 	})
 
 	It("should export new entries incrementally after a full backup", func() {
-		fullResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
+		fullResp, err := clusterClient.Backup(ctx, &ledgerpb.BackupRequest{
 			Storage:  azureStorage(),
 			BucketId: "test-cluster",
 		})
 		Expect(err).To(Succeed())
 		checkpointLogSeq := fullResp.GetLastLogSequence()
 
-		_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("azure-backup-test",
-			[]*clusterpb.Posting{
+		_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("azure-backup-test",
+			[]*ledgerpb.Posting{
 				actions.NewPosting("world", "users:charlie", big.NewInt(500), "GBP"),
 			},
 			nil,
 		)))
 		Expect(err).To(Succeed())
 
-		incrResp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
+		incrResp, err := clusterClient.IncrementalBackup(ctx, &ledgerpb.IncrementalBackupRequest{
 			Storage:  azureStorage(),
 			BucketId: "test-cluster",
 		})

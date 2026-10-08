@@ -8,7 +8,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -54,7 +54,7 @@ func runTransferLeader(cmd *cobra.Command, args []string) error {
 	defer cancel()
 
 	// Transfer leadership
-	resp, err := client.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
+	resp, err := client.TransferLeadership(ctx, &ledgerpb.TransferLeadershipRequest{
 		Transferee: uint32(nodeID),
 	})
 	if err != nil {

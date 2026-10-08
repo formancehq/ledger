@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 	"github.com/formancehq/ledger/v3/internal/protohelpers"
@@ -49,9 +49,9 @@ func (s *Server) handleSetMetadataType(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = s.applyUnsigned(r.Context(), "", &commonpb.Request{
-		Type: &commonpb.Request_SetMetadataFieldType{
-			SetMetadataFieldType: &commonpb.SetMetadataFieldTypeRequest{
+	_, err = s.applyUnsigned(r.Context(), "", &ledgerpb.Request{
+		Type: &ledgerpb.Request_SetMetadataFieldType{
+			SetMetadataFieldType: &ledgerpb.SetMetadataFieldTypeRequest{
 				Ledger:     ledgerName,
 				TargetType: targetType,
 				Key:        key,

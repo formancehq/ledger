@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // testOrderBytes returns arbitrary fixed byte slices that stand in for
@@ -22,27 +22,27 @@ func testOrderBytes() [][]byte {
 func TestHashGenerator_BLAKE3_OutputSize(t *testing.T) {
 	t.Parallel()
 
-	g := NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, "cluster-A")
+	g := NewHashGenerator(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, "cluster-A")
 
 	_, hash := g.Compute(nil, nil, testOrderBytes())
 	require.Len(t, hash, 32, "BLAKE3 should produce 32-byte hash")
-	require.Equal(t, commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, g.Algorithm())
+	require.Equal(t, ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, g.Algorithm())
 }
 
 func TestHashGenerator_XXH3_OutputSize(t *testing.T) {
 	t.Parallel()
 
-	g := NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3, "cluster-A")
+	g := NewHashGenerator(ledgerpb.HashAlgorithm_HASH_ALGORITHM_XXH3, "cluster-A")
 
 	_, hash := g.Compute(nil, nil, testOrderBytes()[:1])
 	require.Len(t, hash, 16, "XXH3 should produce 16-byte hash")
-	require.Equal(t, commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3, g.Algorithm())
+	require.Equal(t, ledgerpb.HashAlgorithm_HASH_ALGORITHM_XXH3, g.Algorithm())
 }
 
 func TestHashGenerator_Chaining(t *testing.T) {
 	t.Parallel()
 
-	g := NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, "cluster-A")
+	g := NewHashGenerator(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, "cluster-A")
 	orders := testOrderBytes()
 
 	_, hash1 := g.Compute(nil, nil, orders)
@@ -53,7 +53,7 @@ func TestHashGenerator_Chaining(t *testing.T) {
 func TestHashGenerator_EmptyOrders(t *testing.T) {
 	t.Parallel()
 
-	g := NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, "cluster-A")
+	g := NewHashGenerator(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, "cluster-A")
 
 	_, hash := g.Compute(nil, nil, nil)
 	require.Len(t, hash, 32, "empty orders should still produce a hash")
@@ -62,7 +62,7 @@ func TestHashGenerator_EmptyOrders(t *testing.T) {
 func TestHashGenerator_Deterministic(t *testing.T) {
 	t.Parallel()
 
-	g := NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, "cluster-A")
+	g := NewHashGenerator(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, "cluster-A")
 	orders := testOrderBytes()
 	lastHash := []byte("chain")
 
@@ -78,9 +78,9 @@ func TestHashGenerator_Deterministic(t *testing.T) {
 func TestHashGenerator_PerAuditKey(t *testing.T) {
 	t.Parallel()
 
-	for _, algo := range []commonpb.HashAlgorithm{
-		commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3,
-		commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3,
+	for _, algo := range []ledgerpb.HashAlgorithm{
+		ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3,
+		ledgerpb.HashAlgorithm_HASH_ALGORITHM_XXH3,
 	} {
 		gA := NewHashGenerator(algo, "cluster-A")
 		gB := NewHashGenerator(algo, "cluster-B")
@@ -122,8 +122,8 @@ func TestHashGenerator_DomainSeparation(t *testing.T) {
 func TestHashGenerator_UnknownAlgorithmFallsBackToBLAKE3(t *testing.T) {
 	t.Parallel()
 
-	g := NewHashGenerator(commonpb.HashAlgorithm(99), "cluster-A")
-	require.Equal(t, commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, g.Algorithm())
+	g := NewHashGenerator(ledgerpb.HashAlgorithm(99), "cluster-A")
+	require.Equal(t, ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, g.Algorithm())
 
 	_, hash := g.Compute(nil, nil, testOrderBytes())
 	require.Len(t, hash, 32)
@@ -137,8 +137,8 @@ func TestHashGenerator_MixedAlgorithmChain(t *testing.T) {
 	t.Parallel()
 
 	const auditKey = "0123456789abcdef0123456789abcdef"
-	xxh3Gen := NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3, auditKey)
-	blake3Gen := NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, auditKey)
+	xxh3Gen := NewHashGenerator(ledgerpb.HashAlgorithm_HASH_ALGORITHM_XXH3, auditKey)
+	blake3Gen := NewHashGenerator(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, auditKey)
 
 	// Entry 1 under XXH3.
 	_, hash1 := xxh3Gen.Compute(nil, nil, testOrderBytes())
@@ -150,7 +150,7 @@ func TestHashGenerator_MixedAlgorithmChain(t *testing.T) {
 
 	// Re-verifying entry 2 with the same generator + the same lastHash
 	// must reproduce hash2 exactly. This is the path the checker walks.
-	verifyGen := NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, auditKey)
+	verifyGen := NewHashGenerator(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, auditKey)
 	_, recomputed := verifyGen.Compute(nil, hash1, testOrderBytes()[:1])
 	require.Equal(t, hash2, recomputed)
 }

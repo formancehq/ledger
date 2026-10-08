@@ -3,7 +3,7 @@ package admission
 import (
 	"slices"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -54,14 +54,14 @@ func (a *Admission) predictOrderSkip(order *raftcmdpb.Order, ledgerName string, 
 			return false, nil
 		}
 
-		if !slices.Contains(allowed, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT) {
+		if !slices.Contains(allowed, ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT) {
 			return false, nil
 		}
 
 		return a.referenceExists(ledgerName, ref, effects)
 
 	case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
-		if !slices.Contains(allowed, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED) {
+		if !slices.Contains(allowed, ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED) {
 			return false, nil
 		}
 
@@ -70,12 +70,12 @@ func (a *Admission) predictOrderSkip(order *raftcmdpb.Order, ledgerName string, 
 	case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
 		// Only account-targeted deletes leave a fold-relevant tombstone; a
 		// transaction-targeted delete is not observable by a later meta().
-		acct, isAcct := data.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_Account)
+		acct, isAcct := data.DeleteMetadata.GetTarget().GetTarget().(*ledgerpb.Target_Account)
 		if !isAcct {
 			return false, nil
 		}
 
-		if !slices.Contains(allowed, commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND) {
+		if !slices.Contains(allowed, ledgerpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND) {
 			return false, nil
 		}
 

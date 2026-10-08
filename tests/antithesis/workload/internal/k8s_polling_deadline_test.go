@@ -13,7 +13,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // pollingConn exercises the generated client and observes the context delivered
@@ -28,10 +28,10 @@ func (c pollingConn) Invoke(ctx context.Context, _ string, _, reply any, _ ...gr
 	if err := c.request(ctx); err != nil {
 		return err
 	}
-	state := reply.(*commonpb.ClusterState)
+	state := reply.(*ledgerpb.ClusterState)
 	state.Leader = 1
-	state.Nodes = []*commonpb.NodeInfo{{Id: 1, Suffrage: "Voter"}}
-	state.ClusterConfig = &commonpb.ClusterConfig{}
+	state.Nodes = []*ledgerpb.NodeInfo{{Id: 1, Suffrage: "Voter"}}
+	state.ClusterConfig = &ledgerpb.ClusterConfig{}
 
 	return nil
 }
@@ -47,8 +47,8 @@ type pollingCase struct {
 
 func pollingCases(t *testing.T) []pollingCase {
 	t.Helper()
-	clusterClient := func(request func(context.Context) error) commonpb.ClusterServiceClient {
-		return commonpb.NewClusterServiceClient(pollingConn{request: request})
+	clusterClient := func(request func(context.Context) error) ledgerpb.ClusterServiceClient {
+		return ledgerpb.NewClusterServiceClient(pollingConn{request: request})
 	}
 	kubeClient := func(request func(context.Context) error, body string) kubernetes.Interface {
 		client, err := kubernetes.NewForConfigAndClient(&rest.Config{Host: "http://polling.test", QPS: -1}, &http.Client{
@@ -72,10 +72,10 @@ func pollingCases(t *testing.T) []pollingCase {
 			return WaitForVoters(ctx, clusterClient(request), 1, timeout, nil)
 		}},
 		{"leader_config", func(ctx context.Context, timeout time.Duration, request func(context.Context) error) bool {
-			return WaitForClusterConfig(ctx, clusterClient(request), func(*commonpb.ClusterConfig) bool { return true }, timeout)
+			return WaitForClusterConfig(ctx, clusterClient(request), func(*ledgerpb.ClusterConfig) bool { return true }, timeout)
 		}},
 		{"node_config", func(ctx context.Context, timeout time.Duration, request func(context.Context) error) bool {
-			return WaitForClusterConfigOnNode(ctx, clusterClient(request), 1, func(*commonpb.ClusterConfig) bool { return true }, timeout)
+			return WaitForClusterConfigOnNode(ctx, clusterClient(request), 1, func(*ledgerpb.ClusterConfig) bool { return true }, timeout)
 		}},
 		{"pod_gone", func(ctx context.Context, timeout time.Duration, request func(context.Context) error) bool {
 			client := kubeClient(request, `{"metadata":{"uid":"replacement"}}`)

@@ -15,7 +15,7 @@
 package processing
 
 import (
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // HashGenerator computes the chained audit hash for FSM proposals using
@@ -37,7 +37,7 @@ type HashGenerator interface {
 	Compute(buf []byte, lastHash []byte, slices [][]byte) (resBuf []byte, hash []byte)
 	// Algorithm returns the enum stamped on each AuditEntry's
 	// HashVersion field, so the checker can replay using the same impl.
-	Algorithm() commonpb.HashAlgorithm
+	Algorithm() ledgerpb.HashAlgorithm
 }
 
 // NewHashGenerator selects the implementation matching algorithm and
@@ -49,9 +49,9 @@ type HashGenerator interface {
 // BLAKE3 (the default, value 0). This preserves the lenient behavior of
 // the previous free-function code path and keeps the checker robust
 // against future enum values or stale data.
-func NewHashGenerator(algorithm commonpb.HashAlgorithm, auditKey string) HashGenerator {
+func NewHashGenerator(algorithm ledgerpb.HashAlgorithm, auditKey string) HashGenerator {
 	switch algorithm {
-	case commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3:
+	case ledgerpb.HashAlgorithm_HASH_ALGORITHM_XXH3:
 		return newXXH3HashGenerator(auditKey)
 	default:
 		return newBLAKE3HashGenerator(auditKey)

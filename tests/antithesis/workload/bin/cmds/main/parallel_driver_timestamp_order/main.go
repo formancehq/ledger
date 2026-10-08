@@ -37,7 +37,7 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	antirandom "github.com/antithesishq/antithesis-sdk-go/random"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -50,7 +50,7 @@ import (
 const backdatedEpochMicros = 1
 
 func main() {
-	internal.RunDriver("parallel_driver_timestamp_order", func(ctx context.Context, client commonpb.BucketServiceClient, _ string) {
+	internal.RunDriver("parallel_driver_timestamp_order", func(ctx context.Context, client ledgerpb.BucketServiceClient, _ string) {
 		r := internal.Rand()
 
 		run := r.Uint64()
@@ -68,11 +68,11 @@ func main() {
 		)
 
 		for i := range txCount {
-			payload := &commonpb.CreateTransactionPayload{
-				Postings: []*commonpb.Posting{{
+			payload := &ledgerpb.CreateTransactionPayload{
+				Postings: []*ledgerpb.Posting{{
 					Source:      "world",
 					Destination: "tsorder-dst:probe",
-					Amount:      commonpb.NewUint256FromUint64(1),
+					Amount:      ledgerpb.NewUint256FromUint64(1),
 					Asset:       "USD/2",
 				}},
 				Reference: fmt.Sprintf("tsorder-%d-%d", run, i),
@@ -82,14 +82,14 @@ func main() {
 			// Every third write carries a backdated user timestamp — input
 			// variety only: stored verbatim, no effect on HLC log dates.
 			if i%3 == 1 {
-				payload.Timestamp = &commonpb.Timestamp{Data: backdatedEpochMicros}
+				payload.Timestamp = &ledgerpb.Timestamp{Data: backdatedEpochMicros}
 			}
 
-			resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_Apply{
-					Apply: &commonpb.LedgerApplyRequest{
+			resp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_Apply{
+					Apply: &ledgerpb.LedgerApplyRequest{
 						Ledger: ledger,
-						Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+						Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
 							CreateTransaction: payload,
 						}},
 					},
@@ -139,9 +139,9 @@ func main() {
 			if afterLocalID > 0 {
 				cursor = strconv.FormatUint(afterLocalID, 10) // ledger-local log ID, exclusive
 			}
-			stream, err := client.ListLogs(ctx, &commonpb.ListLogsRequest{
+			stream, err := client.ListLogs(ctx, &ledgerpb.ListLogsRequest{
 				Ledger: ledger,
-				Options: &commonpb.ListOptions{
+				Options: &ledgerpb.ListOptions{
 					PageSize: pageSize,
 					Cursor:   cursor,
 				},

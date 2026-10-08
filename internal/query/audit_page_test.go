@@ -7,7 +7,7 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -28,14 +28,14 @@ func newAuditStore(t *testing.T, seqs ...uint64) *dal.Store {
 	batch := s.OpenWriteSession()
 	for _, seq := range seqs {
 		key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(seq).Build()
-		require.NoError(t, batch.SetProto(key, &auditpb.AuditEntry{Sequence: seq}))
+		require.NoError(t, batch.SetProto(key, &ledgerpb.AuditEntry{Sequence: seq}))
 	}
 	require.NoError(t, batch.Commit())
 
 	return s
 }
 
-func collectSeqs(t *testing.T, c cursor.Cursor[*auditpb.AuditEntry]) []uint64 {
+func collectSeqs(t *testing.T, c cursor.Cursor[*ledgerpb.AuditEntry]) []uint64 {
 	t.Helper()
 
 	entries, err := cursor.Collect(c)

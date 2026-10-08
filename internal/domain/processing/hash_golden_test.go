@@ -8,7 +8,7 @@ import (
 	"github.com/zeebo/blake3"
 	"github.com/zeebo/xxh3"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // Golden tests pin the entire audit-hash specification against an
@@ -59,13 +59,13 @@ func TestHashGenerator_BLAKE3_Golden(t *testing.T) {
 
 	expected := hasher.Sum(nil)
 
-	g := NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, goldenAuditKey)
+	g := NewHashGenerator(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, goldenAuditKey)
 	_, got := g.Compute(nil, goldenLastHash, goldenOrders)
 
 	require.Equal(t, expected, got,
 		"BLAKE3 audit-hash spec drifted: the generator no longer produces "+
 			"BLAKE3-Keyed(BLAKE3-Sum256(\"audit-hash:blake3:v1:\"+auditKey), concat(orders)||lastHash). "+
-			"If this drift is intentional, bump commonpb.HashAlgorithm and add a new generator.")
+			"If this drift is intentional, bump ledgerpb.HashAlgorithm and add a new generator.")
 }
 
 func TestHashGenerator_XXH3_Golden(t *testing.T) {
@@ -89,13 +89,13 @@ func TestHashGenerator_XXH3_Golden(t *testing.T) {
 	binary.LittleEndian.PutUint64(expected[:8], h.Lo)
 	binary.LittleEndian.PutUint64(expected[8:], h.Hi)
 
-	g := NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3, goldenAuditKey)
+	g := NewHashGenerator(ledgerpb.HashAlgorithm_HASH_ALGORITHM_XXH3, goldenAuditKey)
 	_, got := g.Compute(nil, goldenLastHash, goldenOrders)
 
 	require.Equal(t, expected[:], got,
 		"XXH3 audit-hash spec drifted: the generator no longer produces "+
 			"LE(XXH3-128(concat(orders)||lastHash, seed=BE-u64(BLAKE3-Sum256(\"audit-hash:xxh3:v1:\"+auditKey)[:8]))). "+
-			"If this drift is intentional, bump commonpb.HashAlgorithm and add a new generator.")
+			"If this drift is intentional, bump ledgerpb.HashAlgorithm and add a new generator.")
 }
 
 // TestHashGenerator_PayloadIsBytesOnly pins that the generator never
@@ -112,9 +112,9 @@ func TestHashGenerator_PayloadIsBytesOnly(t *testing.T) {
 		{0x01},
 	}
 
-	for _, algo := range []commonpb.HashAlgorithm{
-		commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3,
-		commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3,
+	for _, algo := range []ledgerpb.HashAlgorithm{
+		ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3,
+		ledgerpb.HashAlgorithm_HASH_ALGORITHM_XXH3,
 	} {
 		g := NewHashGenerator(algo, goldenAuditKey)
 

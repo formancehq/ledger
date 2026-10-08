@@ -5,18 +5,18 @@ import (
 	"errors"
 	"io"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // CheckStoreResult holds the errors and progress events from a CheckStore RPC call.
 type CheckStoreResult struct {
-	Errors   []*servicepb.CheckStoreError
-	Progress []*servicepb.CheckStoreProgress
+	Errors   []*ledgerpb.CheckStoreError
+	Progress []*ledgerpb.CheckStoreProgress
 }
 
 // CollectCheckStoreEvents runs the CheckStore RPC and returns all errors and progress events.
-func CollectCheckStoreEvents(ctx context.Context, client servicepb.BucketServiceClient) (*CheckStoreResult, error) {
-	stream, err := client.CheckStore(ctx, &servicepb.CheckStoreRequest{})
+func CollectCheckStoreEvents(ctx context.Context, client ledgerpb.BucketServiceClient) (*CheckStoreResult, error) {
+	stream, err := client.CheckStore(ctx, &ledgerpb.CheckStoreRequest{})
 	if err != nil {
 		return nil, err
 	}
@@ -32,9 +32,9 @@ func CollectCheckStoreEvents(ctx context.Context, client servicepb.BucketService
 		}
 
 		switch t := event.GetType().(type) {
-		case *servicepb.CheckStoreEvent_Error:
+		case *ledgerpb.CheckStoreEvent_Error:
 			result.Errors = append(result.Errors, t.Error)
-		case *servicepb.CheckStoreEvent_Progress:
+		case *ledgerpb.CheckStoreEvent_Progress:
 			result.Progress = append(result.Progress, t.Progress)
 		}
 	}

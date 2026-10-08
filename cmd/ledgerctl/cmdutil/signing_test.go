@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 )
@@ -33,14 +33,14 @@ func TestBuildApplyRequestBindsIdempotencyKey(t *testing.T) {
 				require.NoError(t, os.WriteFile(path, privateKey.Seed(), 0600))
 				require.NoError(t, cmd.Flags().Set("signing-key", path))
 			}
-			request, err := BuildApplyRequest(cmd, &servicepb.Request{Type: &servicepb.Request_CreateLedger{
-				CreateLedger: &servicepb.CreateLedgerRequest{Name: "L"},
+			request, err := BuildApplyRequest(cmd, &ledgerpb.Request{Type: &ledgerpb.Request_CreateLedger{
+				CreateLedger: &ledgerpb.CreateLedgerRequest{Name: "L"},
 			}})
 			require.NoError(t, err)
 			batch := request.GetUnsigned()
 			if signed {
 				require.NoError(t, signing.Verify(request.GetSigned(), privateKey.Public().(ed25519.PublicKey)))
-				batch = new(servicepb.ApplyBatch)
+				batch = new(ledgerpb.ApplyBatch)
 				require.NoError(t, proto.Unmarshal(request.GetSigned().GetPayload(), batch))
 			}
 			require.Equal(t, "creation-uid", batch.GetIdempotencyKey())
@@ -62,7 +62,7 @@ func TestBuildApplyRequestWithIdempotencyKey(t *testing.T) {
 				require.NoError(t, os.WriteFile(path, seed, 0600))
 				require.NoError(t, cmd.Flags().Set("signing-key", path))
 			}
-			req, err := BuildApplyRequestWithIdempotencyKey(cmd, "operator/uid/attempt", &servicepb.Request{Type: &servicepb.Request_CreateIndex{CreateIndex: &servicepb.CreateIndexRequest{Ledger: "main"}}})
+			req, err := BuildApplyRequestWithIdempotencyKey(cmd, "operator/uid/attempt", &ledgerpb.Request{Type: &ledgerpb.Request_CreateIndex{CreateIndex: &ledgerpb.CreateIndexRequest{Ledger: "main"}}})
 			require.NoError(t, err)
 			batch := req.GetUnsigned()
 			if signed {

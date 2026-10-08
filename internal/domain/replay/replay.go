@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math/big"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
@@ -21,21 +21,21 @@ import (
 func ReplayLedgerLog(
 	ledger string,
 	seq uint64,
-	payload *commonpb.LedgerLogPayload,
+	payload *ledgerpb.LedgerLogPayload,
 	purgedAccounts []string,
-	date *commonpb.Timestamp,
+	date *ledgerpb.Timestamp,
 	w Writer,
-	rawLedgerTypes map[string]map[string]*commonpb.AccountType,
+	rawLedgerTypes map[string]map[string]*ledgerpb.AccountType,
 	ledgerAccountTypes map[string][]accounttype.CompiledType,
 	ephemeralPurgeBuffer *EphemeralPurgeBuffer,
 ) error {
 	switch p := payload.GetPayload().(type) {
-	case *commonpb.LedgerLogPayload_AddedAccountType:
+	case *ledgerpb.LedgerLogPayload_AddedAccountType:
 		if p.AddedAccountType != nil && p.AddedAccountType.GetAccountType() != nil {
 			at := p.AddedAccountType.GetAccountType()
 			types := rawLedgerTypes[ledger]
 			if types == nil {
-				types = make(map[string]*commonpb.AccountType)
+				types = make(map[string]*ledgerpb.AccountType)
 				rawLedgerTypes[ledger] = types
 			}
 
@@ -50,7 +50,7 @@ func ReplayLedgerLog(
 			}
 		}
 
-	case *commonpb.LedgerLogPayload_RemovedAccountType:
+	case *ledgerpb.LedgerLogPayload_RemovedAccountType:
 		if p.RemovedAccountType != nil {
 			if types := rawLedgerTypes[ledger]; types != nil {
 				delete(types, p.RemovedAccountType.GetName())
@@ -65,7 +65,7 @@ func ReplayLedgerLog(
 			}
 		}
 
-	case *commonpb.LedgerLogPayload_CreatedTransaction:
+	case *ledgerpb.LedgerLogPayload_CreatedTransaction:
 		if p.CreatedTransaction == nil || p.CreatedTransaction.GetTransaction() == nil {
 			return nil
 		}
@@ -114,7 +114,7 @@ func ReplayLedgerLog(
 			}
 		}
 
-	case *commonpb.LedgerLogPayload_RevertedTransaction:
+	case *ledgerpb.LedgerLogPayload_RevertedTransaction:
 		if p.RevertedTransaction == nil || p.RevertedTransaction.GetRevertTransaction() == nil {
 			return nil
 		}
@@ -148,13 +148,13 @@ func ReplayLedgerLog(
 			}
 		}
 
-	case *commonpb.LedgerLogPayload_SavedMetadata:
+	case *ledgerpb.LedgerLogPayload_SavedMetadata:
 		if p.SavedMetadata == nil || p.SavedMetadata.GetTarget() == nil {
 			return nil
 		}
 
 		switch target := p.SavedMetadata.GetTarget().GetTarget().(type) {
-		case *commonpb.Target_Account:
+		case *ledgerpb.Target_Account:
 			if ephemeralPurgeBuffer != nil && len(p.SavedMetadata.GetMetadata()) > 0 {
 				ephemeralPurgeBuffer.TouchAccount(ledger, target.Account.GetAddr())
 			}
@@ -175,7 +175,7 @@ func ReplayLedgerLog(
 					}
 				}
 			}
-		case *commonpb.Target_TransactionId:
+		case *ledgerpb.Target_TransactionId:
 			if len(p.SavedMetadata.GetMetadata()) > 0 {
 				txCanonical := domain.TransactionKey{LedgerName: ledger, ID: target.TransactionId}.Bytes()
 
@@ -185,13 +185,13 @@ func ReplayLedgerLog(
 			}
 		}
 
-	case *commonpb.LedgerLogPayload_DeletedMetadata:
+	case *ledgerpb.LedgerLogPayload_DeletedMetadata:
 		if p.DeletedMetadata == nil || p.DeletedMetadata.GetTarget() == nil {
 			return nil
 		}
 
 		switch target := p.DeletedMetadata.GetTarget().GetTarget().(type) {
-		case *commonpb.Target_Account:
+		case *ledgerpb.Target_Account:
 			if ephemeralPurgeBuffer != nil {
 				ephemeralPurgeBuffer.TouchAccount(ledger, target.Account.GetAddr())
 			}
@@ -206,7 +206,7 @@ func ReplayLedgerLog(
 			if err := w.DeleteMetadata(mk.Bytes()); err != nil {
 				return fmt.Errorf("deleting metadata: %w", err)
 			}
-		case *commonpb.Target_TransactionId:
+		case *ledgerpb.Target_TransactionId:
 			txCanonical := domain.TransactionKey{LedgerName: ledger, ID: target.TransactionId}.Bytes()
 
 			if err := w.DeleteTxMetadata(txCanonical, p.DeletedMetadata.GetKey()); err != nil {
@@ -214,13 +214,13 @@ func ReplayLedgerLog(
 			}
 		}
 
-	case *commonpb.LedgerLogPayload_SetMetadataFieldType:
+	case *ledgerpb.LedgerLogPayload_SetMetadataFieldType:
 		if l := p.SetMetadataFieldType; l != nil {
 			if err := w.SetMetadataFieldType(ledger, l.GetTargetType(), l.GetKey(), l.GetType()); err != nil {
 				return fmt.Errorf("replaying set metadata field type: %w", err)
 			}
 		}
-	case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
+	case *ledgerpb.LedgerLogPayload_RemovedMetadataFieldType:
 		if l := p.RemovedMetadataFieldType; l != nil {
 			if err := w.RemoveMetadataFieldType(ledger, l.GetTargetType(), l.GetKey()); err != nil {
 				return fmt.Errorf("replaying removed metadata field type: %w", err)
@@ -234,23 +234,23 @@ func ReplayLedgerLog(
 				}
 			}
 		}
-	case *commonpb.LedgerLogPayload_FillGap:
+	case *ledgerpb.LedgerLogPayload_FillGap:
 		// The log carries only the original v2 id; the skipped transaction
 		// ids live on the MirrorFillGap order, which the restore rebuild
 		// folds in from AuditItem.serialized_order (applyAuditOrderEffects).
-	case *commonpb.LedgerLogPayload_CreateIndex:
+	case *ledgerpb.LedgerLogPayload_CreateIndex:
 		if l := p.CreateIndex; l != nil && l.GetId() != nil {
 			if err := w.CreateIndex(ledger, l.GetId(), date); err != nil {
 				return fmt.Errorf("replaying created index: %w", err)
 			}
 		}
-	case *commonpb.LedgerLogPayload_DropIndex:
+	case *ledgerpb.LedgerLogPayload_DropIndex:
 		if l := p.DropIndex; l != nil && l.GetId() != nil {
 			if err := w.DropIndex(ledger, l.GetId()); err != nil {
 				return fmt.Errorf("replaying dropped index: %w", err)
 			}
 		}
-	case *commonpb.LedgerLogPayload_UpdatedDefaultEnforcementMode:
+	case *ledgerpb.LedgerLogPayload_UpdatedDefaultEnforcementMode:
 		if p.UpdatedDefaultEnforcementMode == nil {
 			return nil
 		}
@@ -294,7 +294,7 @@ func touchLedgerAccounts(buffer *EphemeralPurgeBuffer, w Writer, ledger string) 
 }
 
 type pendingEphemeralPurge struct {
-	postings        []*commonpb.Posting
+	postings        []*ledgerpb.Posting
 	accounts        map[string]struct{}
 	touchedAccounts map[string]struct{}
 }
@@ -363,7 +363,7 @@ func NewEphemeralPurgeBuffer() *EphemeralPurgeBuffer {
 }
 
 // Add records postings for a ledger in the current replay batch.
-func (b *EphemeralPurgeBuffer) Add(ledger string, postings []*commonpb.Posting) {
+func (b *EphemeralPurgeBuffer) Add(ledger string, postings []*ledgerpb.Posting) {
 	if b == nil || len(postings) == 0 {
 		return
 	}
@@ -405,7 +405,7 @@ func (b *EphemeralPurgeBuffer) Flush(
 			compiled := ledgerAccountTypes[ledger]
 			for account := range pending.touchedAccounts {
 				matched := accounttype.FindMatchingType(account, compiled)
-				if matched == nil || matched.GetPersistence() != commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL {
+				if matched == nil || matched.GetPersistence() != ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL {
 					continue
 				}
 				live, err := liveness.AccountHasNonZeroVolume(ledger, account)
@@ -438,7 +438,7 @@ func (b *EphemeralPurgeBuffer) Flush(
 
 func replayEphemeralPurge(
 	ledger string,
-	postings []*commonpb.Posting,
+	postings []*ledgerpb.Posting,
 	w Writer,
 	ledgerAccountTypes map[string][]accounttype.CompiledType,
 	ephemeralPurgeBuffer *EphemeralPurgeBuffer,
@@ -482,7 +482,7 @@ func (t *ProposalBoundaryTracker) Accept(maxLogSequence uint64) (uint64, bool) {
 // ApplyPostings applies postings to the writer as volume deltas.
 func ApplyPostings(
 	ledger string,
-	postings []*commonpb.Posting,
+	postings []*ledgerpb.Posting,
 	w Writer,
 ) error {
 	for _, posting := range postings {
@@ -528,7 +528,7 @@ func ApplyPostings(
 // AppliedProposal / LedgerLog proto records.
 func SimulateEphemeralPurge(
 	ledger string,
-	postings []*commonpb.Posting,
+	postings []*ledgerpb.Posting,
 	w Writer,
 	ledgerAccountTypes map[string][]accounttype.CompiledType,
 	collector ExclusionCollector,
@@ -553,7 +553,7 @@ func SimulateEphemeralPurge(
 			seen[addr] = struct{}{}
 
 			matched := accounttype.FindMatchingType(addr, compiled)
-			if matched == nil || matched.GetPersistence() == commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL {
+			if matched == nil || matched.GetPersistence() == ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL {
 				continue
 			}
 

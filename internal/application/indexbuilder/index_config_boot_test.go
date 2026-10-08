@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -54,15 +54,15 @@ func TestBootInitPreservesAddressQueryPinnedBeforeDrop(t *testing.T) {
 	b := NewBuilder(initialMain, initialRead, attributes.New(), noopLogger{}, noop.NewMeterProvider().Meter("test"), DefaultBatchSize)
 	b.notifications = signal.NewNotifications()
 	const ledger, account = "boot-address", "t-3:162"
-	id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS)
+	id := indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS)
 	canonical := indexes.Canonical(id)
-	logs := []*commonpb.Log{
-		{Sequence: 1, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: ledger}}}},
-		bootQueryApplyLog(ledger, 2, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreateIndex{CreateIndex: &commonpb.CreatedIndexLog{Id: id}}}),
+	logs := []*ledgerpb.Log{
+		{Sequence: 1, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{CreateLedger: &ledgerpb.CreatedLedgerLog{Name: ledger}}}},
+		bootQueryApplyLog(ledger, 2, &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_CreateIndex{CreateIndex: &ledgerpb.CreatedIndexLog{Id: id}}}),
 	}
 	commitBootQueryState(t, b, 2, logs, func(batch *dal.WriteSession) {
-		require.NoError(t, state.SaveLedger(batch, ledger, &commonpb.LedgerInfo{Name: ledger}))
-		_, err := b.attrs.Index.Set(batch, indexes.KeyFor(ledger, id).Bytes(), &commonpb.Index{Id: id, Ledger: ledger, ForwardEncodingVersion: 1})
+		require.NoError(t, state.SaveLedger(batch, ledger, &ledgerpb.LedgerInfo{Name: ledger}))
+		_, err := b.attrs.Index.Set(batch, indexes.KeyFor(ledger, id).Bytes(), &ledgerpb.Index{Id: id, Ledger: ledger, ForwardEncodingVersion: 1})
 		require.NoError(t, err)
 	})
 	before, err := b.processLogs(ctx, 0, time.Time{})
@@ -73,13 +73,13 @@ func TestBootInitPreservesAddressQueryPinnedBeforeDrop(t *testing.T) {
 	require.Zero(t, pending)
 	require.NoError(t, b.readStore.DB().Flush())
 
-	tx := &commonpb.Transaction{Id: 162, Postings: []*commonpb.Posting{{Source: "world", Destination: account, Asset: "USD", Amount: commonpb.NewUint256FromUint64(1)}}}
-	commitBootQueryState(t, b, 3, []*commonpb.Log{
-		bootQueryApplyLog(ledger, 3, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{Transaction: tx}}}),
+	tx := &ledgerpb.Transaction{Id: 162, Postings: []*ledgerpb.Posting{{Source: "world", Destination: account, Asset: "USD", Amount: ledgerpb.NewUint256FromUint64(1)}}}
+	commitBootQueryState(t, b, 3, []*ledgerpb.Log{
+		bootQueryApplyLog(ledger, 3, &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &ledgerpb.CreatedTransaction{Transaction: tx}}}),
 	}, func(batch *dal.WriteSession) {
 		_, err := b.attrs.Transaction.Set(batch, (domain.TransactionKey{LedgerName: ledger, ID: 162}).Bytes(), &internalstatepb.TransactionState{CreatedByLog: 3})
 		require.NoError(t, err)
-		_, err = b.attrs.Volume.Set(batch, domain.NewVolumeKey(ledger, account, "USD", "").Bytes(), &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(1)})
+		_, err = b.attrs.Volume.Set(batch, domain.NewVolumeKey(ledger, account, "USD", "").Bytes(), &raftcmdpb.VolumePair{Input: ledgerpb.NewUint256FromUint64(1)})
 		require.NoError(t, err)
 	})
 	// Reopen both durable stores before starting the request. No in-memory
@@ -99,7 +99,7 @@ func TestBootInitPreservesAddressQueryPinnedBeforeDrop(t *testing.T) {
 	b = NewBuilder(mainStore, readStore, attributes.New(), b.logger, noop.NewMeterProvider().Meter("test"), DefaultBatchSize)
 	b.notifications = signal.NewNotifications()
 	c := ctrl.NewDefaultController(nil, b.pebbleStore, b.logger, b.attrs, b.readStore, nil, noop.NewMeterProvider().Meter("test"))
-	filter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{Address: &commonpb.AddressMatch{Match: &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: "t-3:"}}}}
+	filter := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Address{Address: &ledgerpb.AddressMatch{Match: &ledgerpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: "t-3:"}}}}
 	observed := &bootQueryWaitContext{Context: query.WithReadBarrierHorizon(ctx, 3), waiting: make(chan struct{})}
 	type result struct {
 		ids []uint64
@@ -140,11 +140,11 @@ func TestBootInitPreservesAddressQueryPinnedBeforeDrop(t *testing.T) {
 
 	// A checkpoint and a later drop commit before boot reads the registry.
 	// The live reader already holds the H=3 main snapshot where ADDRESS exists.
-	commitBootQueryState(t, b, 4, []*commonpb.Log{createCheckpointLog(4, 1, 4)}, func(batch *dal.WriteSession) {
+	commitBootQueryState(t, b, 4, []*ledgerpb.Log{createCheckpointLog(4, 1, 4)}, func(batch *dal.WriteSession) {
 		require.NoError(t, state.SaveQueryCheckpoint(batch, &raftcmdpb.QueryCheckpointState{CheckpointId: 1, AppliedIndex: 4, MaxSequence: 3}))
 	})
-	commitBootQueryState(t, b, 5, []*commonpb.Log{
-		bootQueryApplyLog(ledger, 5, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_DropIndex{DropIndex: &commonpb.DroppedIndexLog{Id: id}}}),
+	commitBootQueryState(t, b, 5, []*ledgerpb.Log{
+		bootQueryApplyLog(ledger, 5, &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_DropIndex{DropIndex: &ledgerpb.DroppedIndexLog{Id: id}}}),
 	}, func(batch *dal.WriteSession) {
 		require.NoError(t, b.attrs.Index.Delete(batch, indexes.KeyFor(ledger, id).Bytes()))
 	})
@@ -214,7 +214,7 @@ func (c *bootQueryWaitContext) Done() <-chan struct{} {
 
 // commitBootQueryState installs synthetic committed output atomically,
 // including the AppliedProposal coverage required by the real posting fold.
-func commitBootQueryState(t *testing.T, b *Builder, horizon uint64, logs []*commonpb.Log, mutate func(*dal.WriteSession)) {
+func commitBootQueryState(t *testing.T, b *Builder, horizon uint64, logs []*ledgerpb.Log, mutate func(*dal.WriteSession)) {
 	t.Helper()
 	batch := b.pebbleStore.OpenWriteSession()
 	if mutate != nil {
@@ -231,12 +231,12 @@ func commitBootQueryState(t *testing.T, b *Builder, horizon uint64, logs []*comm
 	require.NoError(t, batch.Commit())
 }
 
-func bootQueryApplyLog(ledger string, sequence uint64, payload *commonpb.LedgerLogPayload) *commonpb.Log {
-	return &commonpb.Log{
+func bootQueryApplyLog(ledger string, sequence uint64, payload *ledgerpb.LedgerLogPayload) *ledgerpb.Log {
+	return &ledgerpb.Log{
 		Sequence: sequence,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{Apply: &ledgerpb.ApplyLedgerLog{
 			LedgerName: ledger,
-			Log:        &commonpb.LedgerLog{Id: sequence - 1, Date: &commonpb.Timestamp{Data: sequence}, Data: payload},
+			Log:        &ledgerpb.LedgerLog{Id: sequence - 1, Date: &ledgerpb.Timestamp{Data: sequence}, Data: payload},
 		}}},
 	}
 }
@@ -245,14 +245,14 @@ func TestBootInitRestoresIndexStateWithoutMainRegistry(t *testing.T) {
 	t.Parallel()
 	indexesToTest := []struct {
 		name string
-		id   *commonpb.IndexID
+		id   *ledgerpb.IndexID
 	}{
-		{"transaction address", indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS)},
-		{"transaction reference", indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)},
-		{"account asset", indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)},
-		{"log date", indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)},
-		{"account metadata", indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")},
-		{"transaction metadata", indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, "role")},
+		{"transaction address", indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS)},
+		{"transaction reference", indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)},
+		{"account asset", indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)},
+		{"log date", indexes.LogBuiltinID(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)},
+		{"account metadata", indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role")},
+		{"transaction metadata", indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, "role")},
 	}
 	states := []struct {
 		name     string
@@ -265,8 +265,8 @@ func TestBootInitRestoresIndexStateWithoutMainRegistry(t *testing.T) {
 		{name: "tombstone", version: readstore.IndexVersionState{HighWater: 1}},
 		{name: "rewrite", version: readstore.IndexVersionState{
 			CurrentVersion: 1, PendingVersion: 2, HighWater: 2,
-			CurrentType: commonpb.MetadataType_METADATA_TYPE_STRING, CurrentTypeDeclared: true,
-			PendingType: commonpb.MetadataType_METADATA_TYPE_INT64, PendingTypeDeclared: true,
+			CurrentType: ledgerpb.MetadataType_METADATA_TYPE_STRING, CurrentTypeDeclared: true,
+			PendingType: ledgerpb.MetadataType_METADATA_TYPE_INT64, PendingTypeDeclared: true,
 		}, rewrite: true},
 	}
 	for _, index := range indexesToTest {
@@ -281,29 +281,29 @@ func TestBootInitRestoresIndexStateWithoutMainRegistry(t *testing.T) {
 				b := newTestBuilderWithStore(t)
 				const ledger = "boot-index-state"
 				canonical := indexes.Canonical(index.id)
-				logs := []*commonpb.Log{
-					{Sequence: 1, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
-						CreateLedger: &commonpb.CreatedLedgerLog{Name: ledger},
+				logs := []*ledgerpb.Log{
+					{Sequence: 1, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{
+						CreateLedger: &ledgerpb.CreatedLedgerLog{Name: ledger},
 					}}},
 					makeSavedAccountMetadataLog(2, ledger, "seed", "seed", "history"),
-					bootQueryApplyLog(ledger, 3, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreateIndex{
-						CreateIndex: &commonpb.CreatedIndexLog{Id: index.id},
+					bootQueryApplyLog(ledger, 3, &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_CreateIndex{
+						CreateIndex: &ledgerpb.CreatedIndexLog{Id: index.id},
 					}}),
 				}
 				if test.rewrite {
-					logs = append(logs, bootQueryApplyLog(ledger, 4, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_SetMetadataFieldType{
-						SetMetadataFieldType: &commonpb.SetMetadataFieldTypeLog{
-							TargetType: index.id.GetMetadata().GetTarget(), Key: "role", Type: commonpb.MetadataType_METADATA_TYPE_INT64,
+					logs = append(logs, bootQueryApplyLog(ledger, 4, &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_SetMetadataFieldType{
+						SetMetadataFieldType: &ledgerpb.SetMetadataFieldTypeLog{
+							TargetType: index.id.GetMetadata().GetTarget(), Key: "role", Type: ledgerpb.MetadataType_METADATA_TYPE_INT64,
 						},
 					}}))
 				}
 				folded := uint64(len(logs))
 				dropped := folded + 1
-				logs = append(logs, bootQueryApplyLog(ledger, dropped, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_DropIndex{
-					DropIndex: &commonpb.DroppedIndexLog{Id: index.id},
+				logs = append(logs, bootQueryApplyLog(ledger, dropped, &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_DropIndex{
+					DropIndex: &ledgerpb.DroppedIndexLog{Id: index.id},
 				}}))
 				commitBootQueryState(t, b, dropped, logs, func(batch *dal.WriteSession) {
-					require.NoError(t, state.SaveLedger(batch, ledger, &commonpb.LedgerInfo{Name: ledger}))
+					require.NoError(t, state.SaveLedger(batch, ledger, &ledgerpb.LedgerInfo{Name: ledger}))
 				})
 				// Seed only the durable local recovery records. The main registry
 				// has already applied DropIndex, while active local states precede it.
@@ -378,26 +378,26 @@ func TestBootInitRetainsDeletedLedgerUntilDeleteReplay(t *testing.T) {
 	b.batchSize = DefaultBatchSize
 	b.notifications = signal.NewNotifications()
 	const ledger = "boot-deleted-ledger"
-	id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS)
-	commitBootQueryState(t, b, 2, []*commonpb.Log{
-		{Sequence: 1, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
-			CreateLedger: &commonpb.CreatedLedgerLog{Name: ledger},
+	id := indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS)
+	commitBootQueryState(t, b, 2, []*ledgerpb.Log{
+		{Sequence: 1, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{
+			CreateLedger: &ledgerpb.CreatedLedgerLog{Name: ledger},
 		}}},
-		bootQueryApplyLog(ledger, 2, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreateIndex{
-			CreateIndex: &commonpb.CreatedIndexLog{Id: id},
+		bootQueryApplyLog(ledger, 2, &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_CreateIndex{
+			CreateIndex: &ledgerpb.CreatedIndexLog{Id: id},
 		}}),
 	}, func(batch *dal.WriteSession) {
-		require.NoError(t, state.SaveLedger(batch, ledger, &commonpb.LedgerInfo{Name: ledger}))
-		_, err := b.attrs.Index.Set(batch, indexes.KeyFor(ledger, id).Bytes(), &commonpb.Index{Ledger: ledger, Id: id, ForwardEncodingVersion: 1})
+		require.NoError(t, state.SaveLedger(batch, ledger, &ledgerpb.LedgerInfo{Name: ledger}))
+		_, err := b.attrs.Index.Set(batch, indexes.KeyFor(ledger, id).Bytes(), &ledgerpb.Index{Ledger: ledger, Id: id, ForwardEncodingVersion: 1})
 		require.NoError(t, err)
 	})
 	before, err := b.processLogs(ctx, 0, time.Time{})
 	require.NoError(t, err)
 	require.Equal(t, uint64(2), before)
-	commitBootQueryState(t, b, 3, []*commonpb.Log{{Sequence: 3, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_DeleteLedger{
-		DeleteLedger: &commonpb.DeletedLedgerLog{Name: ledger},
+	commitBootQueryState(t, b, 3, []*ledgerpb.Log{{Sequence: 3, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_DeleteLedger{
+		DeleteLedger: &ledgerpb.DeletedLedgerLog{Name: ledger},
 	}}}}, func(batch *dal.WriteSession) {
-		require.NoError(t, state.SaveLedger(batch, ledger, &commonpb.LedgerInfo{Name: ledger, DeletedAt: &commonpb.Timestamp{Data: 3}}))
+		require.NoError(t, state.SaveLedger(batch, ledger, &ledgerpb.LedgerInfo{Name: ledger, DeletedAt: &ledgerpb.Timestamp{Data: 3}}))
 		require.NoError(t, state.DeleteLedgerData(batch, ledger))
 	})
 	bootCursor, _, err := b.bootInit(ctx)

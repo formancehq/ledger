@@ -9,7 +9,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -61,8 +61,8 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 
 	spinner := cmdutil.StartSpinner(fmt.Sprintf("Fetching indexes for %s...", ledgerName))
 
-	stream, err := client.ListIndexes(ctx, &commonpb.ListIndexesRequest{
-		Scope:  commonpb.ListIndexesRequest_SCOPE_LEDGER,
+	stream, err := client.ListIndexes(ctx, &ledgerpb.ListIndexesRequest{
+		Scope:  ledgerpb.ListIndexesRequest_SCOPE_LEDGER,
 		Ledger: ledgerName,
 	})
 	if err != nil {
@@ -71,7 +71,7 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 		return cmdutil.FormatGRPCError("failed to list indexes", err)
 	}
 
-	var entries []*commonpb.Index
+	var entries []*ledgerpb.Index
 
 	for {
 		idx, recvErr := stream.Recv()
@@ -120,7 +120,7 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 		lastLogSeq         uint64
 	)
 
-	idxStatus, statusErr := client.GetIndexStatus(ctx, &commonpb.GetIndexStatusRequest{Ledger: ledgerName})
+	idxStatus, statusErr := client.GetIndexStatus(ctx, &ledgerpb.GetIndexStatusRequest{Ledger: ledgerName})
 	if statusErr != nil {
 		spinner.Fail(fmt.Sprintf("Failed to fetch index status: %v", statusErr))
 	} else {
@@ -157,7 +157,7 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Sort indexes by canonical id for stable output.
-	sorted := append([]*commonpb.Index(nil), entries...)
+	sorted := append([]*ledgerpb.Index(nil), entries...)
 	sort.Slice(sorted, func(i, j int) bool {
 		return indexes.Canonical(sorted[i].GetId()) < indexes.Canonical(sorted[j].GetId())
 	})
@@ -187,45 +187,45 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 }
 
 // describeIndex returns the CLI-facing tuple (type, target, key) for an IndexID.
-func describeIndex(id *commonpb.IndexID) (typeName, target, key string) {
+func describeIndex(id *ledgerpb.IndexID) (typeName, target, key string) {
 	switch k := id.GetKind().(type) {
-	case *commonpb.IndexID_TxBuiltin:
+	case *ledgerpb.IndexID_TxBuiltin:
 		switch k.TxBuiltin {
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE:
 			return "reference", "-", "-"
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
 			return "timestamp", "-", "-"
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS:
 			return "address", "-", "-"
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS:
 			return "source-address", "-", "-"
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS:
 			return "destination-address", "-", "-"
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
 			return "inserted-at", "-", "-"
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
 			return "reverted-at", "-", "-"
 		}
 
 		return "tx-builtin", "-", k.TxBuiltin.String()
-	case *commonpb.IndexID_LogBuiltin:
+	case *ledgerpb.IndexID_LogBuiltin:
 		return "log-" + k.LogBuiltin.String(), "-", "-"
-	case *commonpb.IndexID_AccountBuiltin:
+	case *ledgerpb.IndexID_AccountBuiltin:
 		return "account-builtin", "-", k.AccountBuiltin.String()
-	case *commonpb.IndexID_Metadata:
+	case *ledgerpb.IndexID_Metadata:
 		return "metadata", targetName(k.Metadata.GetTarget()), k.Metadata.GetKey()
 	}
 
 	return "unknown", "-", "-"
 }
 
-func targetName(t commonpb.TargetType) string {
+func targetName(t ledgerpb.TargetType) string {
 	switch t {
-	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+	case ledgerpb.TargetType_TARGET_TYPE_ACCOUNT:
 		return "account"
-	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+	case ledgerpb.TargetType_TARGET_TYPE_TRANSACTION:
 		return "transaction"
-	case commonpb.TargetType_TARGET_TYPE_LEDGER:
+	case ledgerpb.TargetType_TARGET_TYPE_LEDGER:
 		return "ledger"
 	}
 

@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
@@ -28,17 +28,17 @@ type Sentinel struct {
 // The transaction uses `world -> sentinel:<uniq>` with a fixed amount so it
 // never depends on prior state, and so it doesn't interfere with other drivers
 // that touch `users:N`.
-func PreCommitSentinel(ctx context.Context, client commonpb.BucketServiceClient, ledger string) (*Sentinel, error) {
+func PreCommitSentinel(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string) (*Sentinel, error) {
 	ref := fmt.Sprintf("sentinel-%d-%d", Rand().Uint64(), Rand().Uint64())
 	destination := fmt.Sprintf("sentinel:%d", Rand().Uint64())
 
-	resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-		Type: &commonpb.Request_Apply{
-			Apply: &commonpb.LedgerApplyRequest{
+	resp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+		Type: &ledgerpb.Request_Apply{
+			Apply: &ledgerpb.LedgerApplyRequest{
 				Ledger: ledger,
-				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
-					CreateTransaction: &commonpb.CreateTransactionPayload{
-						Postings:  []*commonpb.Posting{protohelpers.NewPosting("world", destination, "COIN", RandomBigInt())},
+				Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &ledgerpb.CreateTransactionPayload{
+						Postings:  []*ledgerpb.Posting{protohelpers.NewPosting("world", destination, "COIN", RandomBigInt())},
 						Reference: ref,
 						Force:     true,
 					},
@@ -66,7 +66,7 @@ func PreCommitSentinel(ctx context.Context, client commonpb.BucketServiceClient,
 // client. Transient failures are recorded separately; a NotFound on a previously
 // committed transaction is a forbidden outcome. Successful reads have their own
 // required coverage, so the failure-only observation must not require a hit.
-func (s *Sentinel) Verify(ctx context.Context, client commonpb.BucketServiceClient, label string) {
+func (s *Sentinel) Verify(ctx context.Context, client ledgerpb.BucketServiceClient, label string) {
 	details := Details{
 		"label":     label,
 		"ledger":    s.Ledger,
@@ -74,7 +74,7 @@ func (s *Sentinel) Verify(ctx context.Context, client commonpb.BucketServiceClie
 		"txId":      s.TxID,
 	}
 
-	_, err := client.GetTransaction(ctx, &commonpb.GetTransactionRequest{
+	_, err := client.GetTransaction(ctx, &ledgerpb.GetTransactionRequest{
 		Ledger:        s.Ledger,
 		TransactionId: s.TxID,
 	})

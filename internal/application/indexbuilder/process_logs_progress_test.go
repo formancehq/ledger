@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
@@ -22,9 +22,9 @@ import (
 func seedLogTarget(t *testing.T, b *Builder, appliedIndex uint64, count int) {
 	t.Helper()
 
-	logs := make([]*commonpb.Log, 0, count)
+	logs := make([]*ledgerpb.Log, 0, count)
 	for sequence := 1; sequence <= count; sequence++ {
-		logs = append(logs, &commonpb.Log{Sequence: uint64(sequence)})
+		logs = append(logs, &ledgerpb.Log{Sequence: uint64(sequence)})
 	}
 
 	batch := b.pebbleStore.OpenWriteSession()
@@ -129,7 +129,7 @@ func TestProcessLogsPublishesRaftHorizonOnlyAfterFinalNativeBatch(t *testing.T) 
 	// must finish the original (H=23, seq=3) target rather than chase this newer
 	// head; the next target is captured only after H=23 is published.
 	batch := b.pebbleStore.OpenWriteSession()
-	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{Sequence: 4}}))
+	require.NoError(t, state.AppendLogs(batch, []*ledgerpb.Log{{Sequence: 4}}))
 	require.NoError(t, state.SetAppliedIndex(batch, 24))
 	require.NoError(t, batch.Commit())
 
@@ -183,10 +183,10 @@ func TestProcessLogsEmptyBatchDoesNotCrossFixedTargetOnContinuation(t *testing.T
 	// target. The continuation must consume only sequences 3..5 even though its
 	// first batch (3..4) produces no projection writes.
 	batch := b.pebbleStore.OpenWriteSession()
-	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{
+	require.NoError(t, state.AppendLogs(batch, []*ledgerpb.Log{{
 		Sequence: 6,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{
-			CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{
+		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreatedQueryCheckpoint{
+			CreatedQueryCheckpoint: &ledgerpb.CreatedQueryCheckpointLog{
 				CheckpointId: checkpointID,
 				MaxSequence:  6,
 				AppliedIndex: checkpointHorizon,
@@ -235,10 +235,10 @@ func TestProcessLogsWaitsForAuditBeforeFreezingQueryCheckpoint(t *testing.T) {
 		horizon      = uint64(31)
 	)
 	batch := b.pebbleStore.OpenWriteSession()
-	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{
+	require.NoError(t, state.AppendLogs(batch, []*ledgerpb.Log{{
 		Sequence: 1,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{
-			CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{
+		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreatedQueryCheckpoint{
+			CreatedQueryCheckpoint: &ledgerpb.CreatedQueryCheckpointLog{
 				CheckpointId: checkpointID,
 				MaxSequence:  1,
 				AppliedIndex: horizon,
@@ -304,10 +304,10 @@ func TestProcessLogsWaitsWhenAuditStartsRebuilding(t *testing.T) {
 		horizon      = uint64(32)
 	)
 	batch := b.pebbleStore.OpenWriteSession()
-	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{
+	require.NoError(t, state.AppendLogs(batch, []*ledgerpb.Log{{
 		Sequence: 1,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{
-			CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{
+		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreatedQueryCheckpoint{
+			CreatedQueryCheckpoint: &ledgerpb.CreatedQueryCheckpointLog{
 				CheckpointId: checkpointID,
 				MaxSequence:  1,
 				AppliedIndex: horizon,
@@ -377,10 +377,10 @@ func TestProcessLogsLeavesCheckpointUnavailableWhenAuditIsDisabled(t *testing.T)
 		horizon      = uint64(33)
 	)
 	batch := b.pebbleStore.OpenWriteSession()
-	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{
+	require.NoError(t, state.AppendLogs(batch, []*ledgerpb.Log{{
 		Sequence: 1,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{
-			CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{
+		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreatedQueryCheckpoint{
+			CreatedQueryCheckpoint: &ledgerpb.CreatedQueryCheckpointLog{
 				CheckpointId: checkpointID,
 				MaxSequence:  1,
 				AppliedIndex: horizon,
@@ -411,17 +411,17 @@ func TestProcessLogsRetriesCheckpointMaterializationWithoutReplayingCommittedBat
 		laterLedger  = "after-checkpoint"
 	)
 	batch := b.pebbleStore.OpenWriteSession()
-	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{
+	require.NoError(t, state.AppendLogs(batch, []*ledgerpb.Log{
 		{
 			Sequence: 1,
-			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
-				CreateLedger: &commonpb.CreatedLedgerLog{Name: ledger},
+			Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{
+				CreateLedger: &ledgerpb.CreatedLedgerLog{Name: ledger},
 			}},
 		},
 		{
 			Sequence: 2,
-			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{
-				CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{
+			Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreatedQueryCheckpoint{
+				CreatedQueryCheckpoint: &ledgerpb.CreatedQueryCheckpointLog{
 					CheckpointId: checkpointID,
 					MaxSequence:  2,
 					AppliedIndex: horizon,
@@ -430,8 +430,8 @@ func TestProcessLogsRetriesCheckpointMaterializationWithoutReplayingCommittedBat
 		},
 		{
 			Sequence: 3,
-			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
-				CreateLedger: &commonpb.CreatedLedgerLog{Name: laterLedger},
+			Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{
+				CreateLedger: &ledgerpb.CreatedLedgerLog{Name: laterLedger},
 			}},
 		},
 	}))
@@ -494,11 +494,11 @@ func TestProcessLogsContinuesPastCheckpointWhenAuditFails(t *testing.T) {
 		horizon      = uint64(36)
 	)
 	batch := b.pebbleStore.OpenWriteSession()
-	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{
+	require.NoError(t, state.AppendLogs(batch, []*ledgerpb.Log{
 		{
 			Sequence: 1,
-			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{
-				CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{
+			Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreatedQueryCheckpoint{
+				CreatedQueryCheckpoint: &ledgerpb.CreatedQueryCheckpointLog{
 					CheckpointId: checkpointID,
 					MaxSequence:  1,
 					AppliedIndex: horizon,
@@ -531,11 +531,11 @@ func TestProcessLogsCertifiesCheckpointHorizonBeforeLaterTarget(t *testing.T) {
 		targetHorizon     = uint64(35)
 	)
 	batch := b.pebbleStore.OpenWriteSession()
-	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{
+	require.NoError(t, state.AppendLogs(batch, []*ledgerpb.Log{
 		{
 			Sequence: 1,
-			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{
-				CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{
+			Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreatedQueryCheckpoint{
+				CreatedQueryCheckpoint: &ledgerpb.CreatedQueryCheckpointLog{
 					CheckpointId: checkpointID,
 					MaxSequence:  1,
 					AppliedIndex: checkpointHorizon,
@@ -587,11 +587,11 @@ func TestProcessLogsUsesRestoreProvenanceAfterNewRaftOvertakesSourceCheckpoint(t
 		restoredTargetHorizon   = uint64(120)
 	)
 	batch := b.pebbleStore.OpenWriteSession()
-	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{
+	require.NoError(t, state.AppendLogs(batch, []*ledgerpb.Log{
 		{
 			Sequence: 1,
-			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{
-				CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{
+			Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreatedQueryCheckpoint{
+				CreatedQueryCheckpoint: &ledgerpb.CreatedQueryCheckpointLog{
 					CheckpointId: checkpointID,
 					MaxSequence:  1,
 					AppliedIndex: sourceCheckpointHorizon,

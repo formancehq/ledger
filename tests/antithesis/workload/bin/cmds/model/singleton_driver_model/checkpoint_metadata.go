@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -47,20 +47,20 @@ func (failures checkpointSetupProbeFailures) allTransient() bool {
 // Cluster metadata RPCs read local storage. A routed GetLedger can succeed on
 // the leader while this node still lags, so fence the pinned node's durably
 // persisted cursor before opening its registry or schedule snapshot.
-func readCheckpointRegistry(ctx context.Context, node *internal.PerNodeConn) (*commonpb.ListQueryCheckpointsResponse, error) {
+func readCheckpointRegistry(ctx context.Context, node *internal.PerNodeConn) (*ledgerpb.ListQueryCheckpointsResponse, error) {
 	if err := fenceCheckpointMetadata(ctx, node); err != nil {
 		return nil, err
 	}
 
-	return node.Cluster.ListQueryCheckpoints(ctx, &commonpb.ListQueryCheckpointsRequest{})
+	return node.Cluster.ListQueryCheckpoints(ctx, &ledgerpb.ListQueryCheckpointsRequest{})
 }
 
-func readCheckpointSchedule(ctx context.Context, node *internal.PerNodeConn) (*commonpb.GetQueryCheckpointScheduleResponse, error) {
+func readCheckpointSchedule(ctx context.Context, node *internal.PerNodeConn) (*ledgerpb.GetQueryCheckpointScheduleResponse, error) {
 	if err := fenceCheckpointMetadata(ctx, node); err != nil {
 		return nil, err
 	}
 
-	return node.Cluster.GetQueryCheckpointSchedule(ctx, &commonpb.GetQueryCheckpointScheduleRequest{})
+	return node.Cluster.GetQueryCheckpointSchedule(ctx, &ledgerpb.GetQueryCheckpointScheduleRequest{})
 }
 
 func fenceCheckpointMetadata(ctx context.Context, node *internal.PerNodeConn) error {
@@ -68,7 +68,7 @@ func fenceCheckpointMetadata(ctx context.Context, node *internal.PerNodeConn) er
 	if err != nil {
 		return err
 	}
-	barrier, err := node.Bucket.Barrier(ctx, &commonpb.BarrierRequest{})
+	barrier, err := node.Bucket.Barrier(ctx, &ledgerpb.BarrierRequest{})
 	if err != nil {
 		return err
 	}
@@ -81,7 +81,7 @@ func fenceCheckpointMetadata(ctx context.Context, node *internal.PerNodeConn) er
 	ticker := time.NewTicker(20 * time.Millisecond)
 	defer ticker.Stop()
 	for {
-		state, err := node.Cluster.GetClusterState(ctx, &commonpb.GetClusterStateRequest{NodeId: nodeID})
+		state, err := node.Cluster.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{NodeId: nodeID})
 		if err != nil {
 			return err
 		}
@@ -109,7 +109,7 @@ func checkpointMetadataNodeID(ctx context.Context, node *internal.PerNodeConn) (
 	if node.Addr == "" {
 		return 0, errors.New("checkpoint metadata node has no pinned address")
 	}
-	topology, err := node.Cluster.GetClusterState(ctx, &commonpb.GetClusterStateRequest{})
+	topology, err := node.Cluster.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 	if err != nil {
 		return 0, err
 	}

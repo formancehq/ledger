@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // handleListAuditEntries handles GET /v3/_/audit-entries.
@@ -95,6 +95,6 @@ func (s *Server) handleListAuditEntries(w http.ResponseWriter, r *http.Request) 
 // rejects them. The decoder still accepts the structured form as input; it just
 // cannot carry an audit condition, so the textual form is the canonical one for
 // this endpoint. See the handler doc above and commonpb/query_filter.go.
-func parseAuditFilter(w http.ResponseWriter, r *http.Request) (*commonpb.QueryFilter, bool) {
-	return parseListFilter(w, r, commonpb.QueryTarget_QUERY_TARGET_AUDIT)
+func parseAuditFilter(w http.ResponseWriter, r *http.Request) (*ledgerpb.QueryFilter, bool) {
+	return parseListFilter(w, r, ledgerpb.QueryTarget_QUERY_TARGET_AUDIT)
 }

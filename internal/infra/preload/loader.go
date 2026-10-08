@@ -3,7 +3,7 @@ package preload
 import (
 	"sync"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
@@ -163,16 +163,16 @@ func (al *AttributeLoader[T]) Release(key attributes.U128) {
 type Loaders struct {
 	Volumes           *AttributeLoader[*raftcmdpb.VolumePair]
 	References        *AttributeLoader[*internalstatepb.TransactionReferenceValue]
-	Ledgers           *AttributeLoader[*commonpb.LedgerInfo]
+	Ledgers           *AttributeLoader[*ledgerpb.LedgerInfo]
 	Boundaries        *AttributeLoader[*raftcmdpb.LedgerBoundaries]
-	SinkConfigs       *AttributeLoader[*commonpb.SinkConfig]
-	AccountMetadata   *AttributeLoader[*commonpb.MetadataValue]
+	SinkConfigs       *AttributeLoader[*ledgerpb.SinkConfig]
+	AccountMetadata   *AttributeLoader[*ledgerpb.MetadataValue]
 	NumscriptVersions *AttributeLoader[*internalstatepb.NumscriptVersionValue]
 	Transactions      *AttributeLoader[*internalstatepb.TransactionState]
-	NumscriptContents *AttributeLoader[*commonpb.NumscriptInfo]
-	PreparedQueries   *AttributeLoader[*commonpb.PreparedQuery]
-	LedgerMetadata    *AttributeLoader[*commonpb.MetadataValue]
-	Indexes           *AttributeLoader[*commonpb.Index]
+	NumscriptContents *AttributeLoader[*ledgerpb.NumscriptInfo]
+	PreparedQueries   *AttributeLoader[*ledgerpb.PreparedQuery]
+	LedgerMetadata    *AttributeLoader[*ledgerpb.MetadataValue]
+	Indexes           *AttributeLoader[*ledgerpb.Index]
 }
 
 // NewLoaders creates a new Loaders instance with all attribute loaders initialized.
@@ -180,16 +180,16 @@ func NewLoaders() *Loaders {
 	return &Loaders{
 		Volumes:           NewAttributeLoader[*raftcmdpb.VolumePair](),
 		References:        NewAttributeLoader[*internalstatepb.TransactionReferenceValue](),
-		Ledgers:           NewAttributeLoader[*commonpb.LedgerInfo](),
+		Ledgers:           NewAttributeLoader[*ledgerpb.LedgerInfo](),
 		Boundaries:        NewAttributeLoader[*raftcmdpb.LedgerBoundaries](),
-		SinkConfigs:       NewAttributeLoader[*commonpb.SinkConfig](),
-		AccountMetadata:   NewAttributeLoader[*commonpb.MetadataValue](),
+		SinkConfigs:       NewAttributeLoader[*ledgerpb.SinkConfig](),
+		AccountMetadata:   NewAttributeLoader[*ledgerpb.MetadataValue](),
 		NumscriptVersions: NewAttributeLoader[*internalstatepb.NumscriptVersionValue](),
 		Transactions:      NewAttributeLoader[*internalstatepb.TransactionState](),
-		NumscriptContents: NewAttributeLoader[*commonpb.NumscriptInfo](),
-		PreparedQueries:   NewAttributeLoader[*commonpb.PreparedQuery](),
-		LedgerMetadata:    NewAttributeLoader[*commonpb.MetadataValue](),
-		Indexes:           NewAttributeLoader[*commonpb.Index](),
+		NumscriptContents: NewAttributeLoader[*ledgerpb.NumscriptInfo](),
+		PreparedQueries:   NewAttributeLoader[*ledgerpb.PreparedQuery](),
+		LedgerMetadata:    NewAttributeLoader[*ledgerpb.MetadataValue](),
+		Indexes:           NewAttributeLoader[*ledgerpb.Index](),
 	}
 }
 

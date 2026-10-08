@@ -6,7 +6,7 @@ import (
 	"github.com/zeebo/blake3"
 	"github.com/zeebo/xxh3"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // xxh3AuditKeyContext domain-separates the XXH3 audit-hash seed from
@@ -39,6 +39,6 @@ func (g *xxh3HashGenerator) Compute(buf []byte, lastHash []byte, slices [][]byte
 	return buf, out[:]
 }
 
-func (g *xxh3HashGenerator) Algorithm() commonpb.HashAlgorithm {
-	return commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3
+func (g *xxh3HashGenerator) Algorithm() ledgerpb.HashAlgorithm {
+	return ledgerpb.HashAlgorithm_HASH_ALGORITHM_XXH3
 }

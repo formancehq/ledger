@@ -3,7 +3,7 @@ package check
 import (
 	"fmt"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -27,7 +27,7 @@ import (
 type clusterPolicyVerifier struct {
 	// policy is the highest-revision SetClusterPolicy order folded so far, or nil
 	// if none was seen (no policy ever committed).
-	policy *commonpb.ClusterPolicy
+	policy *ledgerpb.ClusterPolicy
 	// liveTruncated records that the audit fold stopped short of the range
 	// end (an audit chain break); the accumulated prefix cannot be compared.
 	liveTruncated bool
@@ -66,7 +66,7 @@ func (v *clusterPolicyVerifier) applyOrder(order *raftcmdpb.Order) {
 // compare reads the stored cluster policy and reports any divergence from the
 // audit-derived expectation. An incomplete fold (a truncated live range)
 // reports coverage instead of a mismatch it cannot substantiate.
-func (v *clusterPolicyVerifier) compare(reader dal.PebbleReader, callback func(*commonpb.CheckStoreEvent)) error {
+func (v *clusterPolicyVerifier) compare(reader dal.PebbleReader, callback func(*ledgerpb.CheckStoreEvent)) error {
 	stored, err := query.ReadClusterPolicy(reader)
 	if err != nil {
 		return fmt.Errorf("reading the stored cluster policy: %w", err)
@@ -74,7 +74,7 @@ func (v *clusterPolicyVerifier) compare(reader dal.PebbleReader, callback func(*
 
 	if v.liveTruncated {
 		callback(errorEvent(
-			commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE,
+			ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE,
 			"the cluster policy could not be verified over the whole history: the audit range was cut "+
 				"short by a hash chain break, so any policy update after it is unread. The comparison is "+
 				"skipped for this run rather than reported against a partial expectation",
@@ -88,17 +88,17 @@ func (v *clusterPolicyVerifier) compare(reader dal.PebbleReader, callback func(*
 		// No policy ever committed and none stored: consistent.
 	case v.policy == nil:
 		callback(errorEvent(
-			commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH,
+			ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH,
 			"a cluster policy is stored but no audited SetClusterPolicy order set one (injected, or an audited update was lost)",
 			0, "", "", ""))
 	case stored == nil:
 		callback(errorEvent(
-			commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH,
+			ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH,
 			fmt.Sprintf("the audited cluster policy (revision %d) is missing from the store", v.policy.GetRevision()),
 			0, "", "", ""))
 	case !v.policy.EqualVT(stored):
 		callback(errorEvent(
-			commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH,
+			ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH,
 			fmt.Sprintf("the stored cluster policy (revision %d) differs from the audited SetClusterPolicy orders (revision %d)",
 				stored.GetRevision(), v.policy.GetRevision()),
 			0, "", "", ""))

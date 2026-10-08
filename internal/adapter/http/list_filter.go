@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
 )
@@ -21,7 +21,7 @@ import (
 // ok=false; the caller must return immediately.
 //
 // The RFC3339 coercion + pre-epoch rejection is the same one the DSL date/
-// timestamp fields use (commonpb.CoerceDatetimeMicros, EN-1544); this transport
+// timestamp fields use (ledgerpb.CoerceDatetimeMicros, EN-1544); this transport
 // helper adds the 400-writing on top. Unlike the DSL coercion it rejects raw
 // microseconds: startDate/endDate are documented RFC3339-only convenience
 // parameters, so a bare integer is a client error here.
@@ -35,7 +35,7 @@ func parseFilterDateMicros(w http.ResponseWriter, param, raw string) (uint64, bo
 		return 0, false
 	}
 
-	micros, err := commonpb.CoerceDatetimeMicros(raw)
+	micros, err := ledgerpb.CoerceDatetimeMicros(raw)
 	if err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid %s parameter, dates before 1970-01-01 are not supported", param))
 
@@ -54,7 +54,7 @@ func parseFilterDateMicros(w http.ResponseWriter, param, raw string) (uint64, bo
 // NOTE: it compacts in place over the passed slice's backing array, so a caller
 // that spreads a slice (combineFilters(s...)) must treat s as consumed and not
 // read it afterward. All current callers do this as their last use of the slice.
-func combineFilters(filters ...*commonpb.QueryFilter) *commonpb.QueryFilter {
+func combineFilters(filters ...*ledgerpb.QueryFilter) *ledgerpb.QueryFilter {
 	compact := filters[:0]
 	for _, f := range filters {
 		if f != nil {
@@ -68,9 +68,9 @@ func combineFilters(filters ...*commonpb.QueryFilter) *commonpb.QueryFilter {
 	case 1:
 		return compact[0]
 	default:
-		return &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_And{
-				And: &commonpb.AndFilter{Filters: compact},
+		return &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_And{
+				And: &ledgerpb.AndFilter{Filters: compact},
 			},
 		}
 	}
@@ -90,7 +90,7 @@ func combineFilters(filters ...*commonpb.QueryFilter) *commonpb.QueryFilter {
 // passed verbatim (`?filter=metadata[k]==v`). Both compile through the same
 // downstream path as the endpoint's structured query-param filters, which the
 // caller AND-combines via combineFilters.
-func parseListFilter(w http.ResponseWriter, r *http.Request, target commonpb.QueryTarget) (*commonpb.QueryFilter, bool) {
+func parseListFilter(w http.ResponseWriter, r *http.Request, target ledgerpb.QueryTarget) (*ledgerpb.QueryFilter, bool) {
 	raw := r.URL.Query().Get("filter")
 	if raw == "" {
 		return nil, true

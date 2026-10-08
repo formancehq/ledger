@@ -8,7 +8,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -47,7 +47,7 @@ func runPrimaryMetrics(cmd *cobra.Command, _ []string) error {
 
 	spinner := cmdutil.StartSpinner("Fetching store metrics...")
 
-	resp, err := client.GetPrimaryMetrics(ctx, &servicepb.GetPrimaryMetricsRequest{
+	resp, err := client.GetPrimaryMetrics(ctx, &ledgerpb.GetPrimaryMetricsRequest{
 		NodeId: nodeID,
 	})
 	if err != nil {
@@ -75,7 +75,7 @@ func runPrimaryMetrics(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func printFormattedMetrics(m *servicepb.PebbleMetrics) {
+func printFormattedMetrics(m *ledgerpb.PebbleMetrics) {
 	// General
 	pterm.DefaultSection.Println("General")
 	pterm.Printf("Disk Space Usage: %s\n\n", cmdutil.FormatBytes(m.GetDiskSpaceUsage()))

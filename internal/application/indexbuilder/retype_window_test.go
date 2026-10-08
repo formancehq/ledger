@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/protohelpers"
@@ -56,20 +56,20 @@ func TestRetypeWindow_LiveWriteIsCoercedPerVersion(t *testing.T) {
 		account = "acct:1"
 	)
 
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, metaKey)
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, metaKey)
 	canonical := indexes.Canonical(id)
 
 	cfg := newLedgerIndexConfig()
-	cfg.byCanonical[canonical] = &commonpb.Index{Id: id}
+	cfg.byCanonical[canonical] = &ledgerpb.Index{Id: id}
 
 	// Mid-window state: v1 was built under INT64, the retype to UINT32 is
 	// rewriting into v2.
 	b.putVersionState(ledger, canonical, readstore.IndexVersionState{
 		CurrentVersion:      1,
 		PendingVersion:      2,
-		CurrentType:         commonpb.MetadataType_METADATA_TYPE_INT64,
+		CurrentType:         ledgerpb.MetadataType_METADATA_TYPE_INT64,
 		CurrentTypeDeclared: true,
-		PendingType:         commonpb.MetadataType_METADATA_TYPE_UINT32,
+		PendingType:         ledgerpb.MetadataType_METADATA_TYPE_UINT32,
 		PendingTypeDeclared: true,
 	})
 
@@ -81,8 +81,8 @@ func TestRetypeWindow_LiveWriteIsCoercedPerVersion(t *testing.T) {
 	require.NoError(t, b.indexSavedMetadata(b.kb, cfg, ledger, savedAccountMetadata(account, metaKey, -1)))
 	require.NoError(t, b.wb.Flush())
 
-	oldEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewIntValue(-1))
-	newEncoded := readstore.EncodeMetadataValue(nil, protohelpers.ConvertMetadataValue(commonpb.NewIntValue(-1), commonpb.MetadataType_METADATA_TYPE_UINT32))
+	oldEncoded := readstore.EncodeMetadataValue(nil, ledgerpb.NewIntValue(-1))
+	newEncoded := readstore.EncodeMetadataValue(nil, protohelpers.ConvertMetadataValue(ledgerpb.NewIntValue(-1), ledgerpb.MetadataType_METADATA_TYPE_UINT32))
 
 	assert.True(t, eventGroupExists(t, b.readStore, ledger, readstore.NamespaceAccount, metaKey, 1, oldEncoded, []byte(account)),
 		"v_current must hold the OLD encoding: the window serves the index as if no retype had happened")
@@ -110,18 +110,18 @@ func TestRetypeWindow_NullOriginalRoundTripsIntoTheOldEncoding(t *testing.T) {
 		account = "acct:2"
 	)
 
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, metaKey)
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, metaKey)
 	canonical := indexes.Canonical(id)
 
 	cfg := newLedgerIndexConfig()
-	cfg.byCanonical[canonical] = &commonpb.Index{Id: id}
+	cfg.byCanonical[canonical] = &ledgerpb.Index{Id: id}
 
 	b.putVersionState(ledger, canonical, readstore.IndexVersionState{
 		CurrentVersion:      1,
 		PendingVersion:      2,
-		CurrentType:         commonpb.MetadataType_METADATA_TYPE_INT64,
+		CurrentType:         ledgerpb.MetadataType_METADATA_TYPE_INT64,
 		CurrentTypeDeclared: true,
-		PendingType:         commonpb.MetadataType_METADATA_TYPE_UINT32,
+		PendingType:         ledgerpb.MetadataType_METADATA_TYPE_UINT32,
 		PendingTypeDeclared: true,
 	})
 
@@ -130,20 +130,20 @@ func TestRetypeWindow_NullOriginalRoundTripsIntoTheOldEncoding(t *testing.T) {
 	b.wb.SetEventSequence(1)
 
 	// What the FSM stores for a post-retype write of -1 under UINT32.
-	stored := protohelpers.ConvertMetadataValue(commonpb.NewIntValue(-1), commonpb.MetadataType_METADATA_TYPE_UINT32)
-	_, isNull := stored.GetType().(*commonpb.MetadataValue_NullValue)
+	stored := protohelpers.ConvertMetadataValue(ledgerpb.NewIntValue(-1), ledgerpb.MetadataType_METADATA_TYPE_UINT32)
+	_, isNull := stored.GetType().(*ledgerpb.MetadataValue_NullValue)
 	require.True(t, isNull, "premise: -1 under UINT32 is stored as null-with-original")
 
-	sm := &commonpb.SavedMetadata{
-		Target: &commonpb.Target{Target: &commonpb.Target_Account{
-			Account: &commonpb.TargetAccount{Addr: account},
+	sm := &ledgerpb.SavedMetadata{
+		Target: &ledgerpb.Target{Target: &ledgerpb.Target_Account{
+			Account: &ledgerpb.TargetAccount{Addr: account},
 		}},
-		Metadata: map[string]*commonpb.MetadataValue{metaKey: stored},
+		Metadata: map[string]*ledgerpb.MetadataValue{metaKey: stored},
 	}
 	require.NoError(t, b.indexSavedMetadata(b.kb, cfg, ledger, sm))
 	require.NoError(t, b.wb.Flush())
 
-	oldEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewIntValue(-1))
+	oldEncoded := readstore.EncodeMetadataValue(nil, ledgerpb.NewIntValue(-1))
 
 	assert.True(t, eventGroupExists(t, b.readStore, ledger, readstore.NamespaceAccount, metaKey, 1, oldEncoded, []byte(account)),
 		"v_current recovers int(-1) through the null's original — the write lands exactly where the old world would have put it")

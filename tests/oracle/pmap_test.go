@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
@@ -101,8 +101,8 @@ func TestGlobalStateFingerprint_CommutingBulks(t *testing.T) {
 	t.Parallel()
 
 	base := NewGlobalState()
-	b1 := Bulk{Requests: []*commonpb.Request{oracletest.TxReq("world", "a:1", "USD", 5)}}
-	b2 := Bulk{Requests: []*commonpb.Request{oracletest.TxReqL("L2", "world", "b:1", "EUR", 7)}}
+	b1 := Bulk{Requests: []*ledgerpb.Request{oracletest.TxReq("world", "a:1", "USD", 5)}}
+	b2 := Bulk{Requests: []*ledgerpb.Request{oracletest.TxReqL("L2", "world", "b:1", "EUR", 7)}}
 
 	ab := base.Apply(b1).State.Apply(b2).State
 	ba := base.Apply(b2).State.Apply(b1).State
@@ -119,14 +119,14 @@ func TestGlobalStateFingerprint_CommutingBulks(t *testing.T) {
 func TestGlobalStateFingerprint_EmptyLedgerMaterialization(t *testing.T) {
 	t.Parallel()
 
-	base := NewGlobalState().Apply(Bulk{Requests: []*commonpb.Request{oracletest.TxReq("world", "a:1", "USD", 5)}}).State
+	base := NewGlobalState().Apply(Bulk{Requests: []*ledgerpb.Request{oracletest.TxReq("world", "a:1", "USD", 5)}}).State
 
 	// A rejected order leaves the prior state untouched — the entry it would
 	// have materialized is discarded with the fork, so identity is unchanged
 	// and the ledger does not appear at all.
-	rejected := base.Apply(Bulk{Requests: []*commonpb.Request{{
-		Type: &commonpb.Request_RemoveAccountType{
-			RemoveAccountType: &commonpb.RemoveAccountTypeLedgerRequest{
+	rejected := base.Apply(Bulk{Requests: []*ledgerpb.Request{{
+		Type: &ledgerpb.Request_RemoveAccountType{
+			RemoveAccountType: &ledgerpb.RemoveAccountTypeLedgerRequest{
 				Ledger: "untouched",
 				Name:   "never-declared",
 			},
@@ -140,11 +140,11 @@ func TestGlobalStateFingerprint_EmptyLedgerMaterialization(t *testing.T) {
 	// emits its log unconditionally (processRemoveMetadataFieldType returns a
 	// payload whether or not the key was declared), so the ledger gains a log
 	// and with it an identity.
-	noop := base.Apply(Bulk{Requests: []*commonpb.Request{{
-		Type: &commonpb.Request_RemoveMetadataFieldType{
-			RemoveMetadataFieldType: &commonpb.RemoveMetadataFieldTypeRequest{
+	noop := base.Apply(Bulk{Requests: []*ledgerpb.Request{{
+		Type: &ledgerpb.Request_RemoveMetadataFieldType{
+			RemoveMetadataFieldType: &ledgerpb.RemoveMetadataFieldTypeRequest{
 				Ledger:     "untouched",
-				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 				Key:        "k0",
 			},
 		},

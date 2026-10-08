@@ -9,7 +9,7 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -59,8 +59,8 @@ func TestCacheSnapshotter_BloomBootOrdering_RestoreIsSynchronous(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = dataStore.Close() })
 
-	bloomCfg := &commonpb.ClusterConfig{
-		BloomVolumes: &commonpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
+	bloomCfg := &ledgerpb.ClusterConfig{
+		BloomVolumes: &ledgerpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
 	}
 
 	// Shared attrs across the two "process incarnations" -- attrs carry
@@ -87,8 +87,8 @@ func TestCacheSnapshotter_BloomBootOrdering_RestoreIsSynchronous(t *testing.T) {
 	}
 	id := attributes.HashU128(volumeKey.Bytes())
 	pair := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(1_000_000),
-		Output: commonpb.NewUint256FromUint64(0),
+		Input:  ledgerpb.NewUint256FromUint64(1_000_000),
+		Output: ledgerpb.NewUint256FromUint64(0),
 	}
 
 	{
@@ -156,8 +156,8 @@ func TestCacheSnapshotter_BloomBootOrdering_PopulatePathStaysAsync(t *testing.T)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = dataStore.Close() })
 
-	bloomCfg := &commonpb.ClusterConfig{
-		BloomVolumes: &commonpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
+	bloomCfg := &ledgerpb.ClusterConfig{
+		BloomVolumes: &ledgerpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
 	}
 	bloomFilters := bloom.NewFilterSet(bloomCfg, meter)
 	require.NotNil(t, bloomFilters)
@@ -199,8 +199,8 @@ func TestCacheSnapshotter_EN1527_RestoreRejectsMalformedBloomBlock(t *testing.T)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = dataStore.Close() })
 
-	bloomCfg := &commonpb.ClusterConfig{
-		BloomVolumes: &commonpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
+	bloomCfg := &ledgerpb.ClusterConfig{
+		BloomVolumes: &ledgerpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
 	}
 	attrs := attributes.New()
 
@@ -283,9 +283,9 @@ func TestCacheSnapshotter_EN1527_RestoreToleratesConfigDrift(t *testing.T) {
 
 	// Incarnation #1: config A enables Volumes AND Metadata; persist a block for
 	// each so both sub-ranges carry rows.
-	cfgA := &commonpb.ClusterConfig{
-		BloomVolumes:  &commonpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
-		BloomMetadata: &commonpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
+	cfgA := &ledgerpb.ClusterConfig{
+		BloomVolumes:  &ledgerpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
+		BloomMetadata: &ledgerpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
 	}
 	bloomA := bloom.NewFilterSet(cfgA, meter)
 	require.NotNil(t, bloomA)
@@ -311,8 +311,8 @@ func TestCacheSnapshotter_EN1527_RestoreToleratesConfigDrift(t *testing.T) {
 
 	// Incarnation #2: config B disables Metadata. The persisted Metadata blocks
 	// are now orphans for the current config — config drift, not corruption.
-	cfgB := &commonpb.ClusterConfig{
-		BloomVolumes: &commonpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
+	cfgB := &ledgerpb.ClusterConfig{
+		BloomVolumes: &ledgerpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
 	}
 	bloomB := bloom.NewFilterSet(cfgB, meter)
 	require.NotNil(t, bloomB)

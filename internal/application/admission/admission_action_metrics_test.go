@@ -11,7 +11,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.uber.org/mock/gomock"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	protoerr "github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -176,14 +176,14 @@ func TestAdmitActionCounters(t *testing.T) {
 
 		// A CreateTransaction referencing a missing numscript fails in the scripts
 		// phase — after orders are built and the recorder defer is registered.
-		_, err := a.Admit(attributedTestContext(context.Background()), servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+		_, err := a.Admit(attributedTestContext(context.Background()), ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: testLedgerName,
-					Action: &servicepb.LedgerAction{
-						Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
-								ScriptReference: &servicepb.ScriptReference{Name: "does-not-exist", Version: "latest"},
+					Action: &ledgerpb.LedgerAction{
+						Data: &ledgerpb.LedgerAction_CreateTransaction{
+							CreateTransaction: &ledgerpb.CreateTransactionPayload{
+								ScriptReference: &ledgerpb.ScriptReference{Name: "does-not-exist", Version: "latest"},
 							},
 						},
 					},
@@ -212,9 +212,9 @@ func TestAdmitActionCounters(t *testing.T) {
 
 		a, reader := createTestAdmissionWithReader(t, store, proposer)
 
-		_, err := a.Admit(attributedTestContext(context.Background()), servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_CreateLedger{
-				CreateLedger: &servicepb.CreateLedgerRequest{Name: "ledger-propose-fail"},
+		_, err := a.Admit(attributedTestContext(context.Background()), ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_CreateLedger{
+				CreateLedger: &ledgerpb.CreateLedgerRequest{Name: "ledger-propose-fail"},
 			},
 		}))
 		require.ErrorIs(t, err, protoerr.ErrNoLeader)
@@ -241,12 +241,12 @@ func TestAdmitActionCounters(t *testing.T) {
 
 		// Two CreateLedger orders in one atomic batch: both are built, the batch
 		// fails at propose, so each is counted once under create_ledger.
-		_, err := a.Admit(attributedTestContext(context.Background()), servicepb.UnsignedApplyRequest("",
-			&servicepb.Request{Type: &servicepb.Request_CreateLedger{
-				CreateLedger: &servicepb.CreateLedgerRequest{Name: "ledger-a"},
+		_, err := a.Admit(attributedTestContext(context.Background()), ledgerpb.UnsignedApplyRequest("",
+			&ledgerpb.Request{Type: &ledgerpb.Request_CreateLedger{
+				CreateLedger: &ledgerpb.CreateLedgerRequest{Name: "ledger-a"},
 			}},
-			&servicepb.Request{Type: &servicepb.Request_CreateLedger{
-				CreateLedger: &servicepb.CreateLedgerRequest{Name: "ledger-b"},
+			&ledgerpb.Request{Type: &ledgerpb.Request_CreateLedger{
+				CreateLedger: &ledgerpb.CreateLedgerRequest{Name: "ledger-b"},
 			}},
 		))
 		require.ErrorIs(t, err, protoerr.ErrNoLeader)
@@ -265,13 +265,13 @@ func TestAdmitActionCounters(t *testing.T) {
 		// A revert with transaction id 0 is rejected inside requestsToOrders, before
 		// orders exist and before the recorder defer is registered — so no action
 		// counter is touched.
-		_, err := a.Admit(attributedTestContext(context.Background()), servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+		_, err := a.Admit(attributedTestContext(context.Background()), ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: testLedgerName,
-					Action: &servicepb.LedgerAction{
-						Data: &servicepb.LedgerAction_RevertTransaction{
-							RevertTransaction: &servicepb.RevertTransactionPayload{TransactionId: 0},
+					Action: &ledgerpb.LedgerAction{
+						Data: &ledgerpb.LedgerAction_RevertTransaction{
+							RevertTransaction: &ledgerpb.RevertTransactionPayload{TransactionId: 0},
 						},
 					},
 				},

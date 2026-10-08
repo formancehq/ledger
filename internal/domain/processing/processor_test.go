@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
@@ -64,7 +64,7 @@ func TestHashOrders_ExcludesInputsResolutionHash(t *testing.T) {
 						Apply: &raftcmdpb.LedgerApplyOrder{
 							Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-									Script: &commonpb.Script{Plain: "send [USD/2 10] (source = @a destination = @b)"},
+									Script: &ledgerpb.Script{Plain: "send [USD/2 10] (source = @a destination = @b)"},
 								},
 							},
 						},
@@ -98,7 +98,7 @@ func TestHashOrders_ExcludesPreloadUnavailable(t *testing.T) {
 					Apply: &raftcmdpb.LedgerApplyOrder{
 						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-								Script: &commonpb.Script{Plain: "send [USD/2 10] (source = @a destination = @b)"},
+								Script: &ledgerpb.Script{Plain: "send [USD/2 10] (source = @a destination = @b)"},
 							},
 						},
 					},
@@ -175,7 +175,7 @@ func TestProcessOrder_PreloadUnavailableRejected(t *testing.T) {
 					Apply: &raftcmdpb.LedgerApplyOrder{
 						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-								Script: &commonpb.Script{Plain: "send [USD/2 1] (source = @a destination = @b)"},
+								Script: &ledgerpb.Script{Plain: "send [USD/2 1] (source = @a destination = @b)"},
 							},
 						},
 					},
@@ -235,7 +235,7 @@ func TestProcessOrders_WithoutIdempotencyKey(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := &ledgerpb.Timestamp{Data: 1234567890}
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -288,23 +288,23 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := &ledgerpb.Timestamp{Data: 1234567890}
 
 	// Track the ledger info stored by CreateLedger so GetLedger can return it.
-	var storedLedgerInfo *commonpb.LedgerInfo
+	var storedLedgerInfo *ledgerpb.LedgerInfo
 
 	// Shared Ledgers stub: Get returns storedLedgerInfo (or ErrNotFound
 	// before CreateLedger runs); Put captures the info written by
 	// CreateLedger so the subsequent CreateTransaction order sees it.
 	ledgers := setupLedgersStub(mockStore)
-	ledgers.onGet(func(_ domain.LedgerKey) (commonpb.LedgerInfoReader, error) {
+	ledgers.onGet(func(_ domain.LedgerKey) (ledgerpb.LedgerInfoReader, error) {
 		if storedLedgerInfo == nil {
 			return nil, domain.ErrNotFound
 		}
 
 		return storedLedgerInfo.AsReader(), nil
 	})
-	ledgers.onPut(func(_ domain.LedgerKey, info *commonpb.LedgerInfo) {
+	ledgers.onPut(func(_ domain.LedgerKey, info *ledgerpb.LedgerInfo) {
 		storedLedgerInfo = info
 	})
 
@@ -330,8 +330,8 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 	dstKey := domain.NewVolumeKey("myled", "users:bob", "USD", "")
 
 	zeroVol := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(0),
-		Output: commonpb.NewUint256FromUint64(0),
+		Input:  ledgerpb.NewUint256FromUint64(0),
+		Output: ledgerpb.NewUint256FromUint64(0),
 	}
 
 	volumes := setupVolumesStub(mockStore)
@@ -358,11 +358,11 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 						CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-							Postings: []*commonpb.Posting{
+							Postings: []*ledgerpb.Posting{
 								{
 									Source:      "world",
 									Destination: "users:bob",
-									Amount:      commonpb.NewUint256FromUint64(100),
+									Amount:      ledgerpb.NewUint256FromUint64(100),
 									Asset:       "USD",
 								},
 							},
@@ -411,7 +411,7 @@ func TestProcessOrders_OrdersResultAccumulator(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1}
+	now := &ledgerpb.Timestamp{Data: 1}
 
 	// Two CreateLedger orders. Sequences assigned by IncrementNextSequenceID
 	// are 100 and 110 — chosen non-contiguous so the test catches a min/max
@@ -478,7 +478,7 @@ func TestProcessOrders_SkipOnReferenceConflict(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := &ledgerpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 42}
 
 	// Existing reference: the audit-bound claim recorded by an earlier
@@ -488,7 +488,7 @@ func TestProcessOrders_SkipOnReferenceConflict(t *testing.T) {
 	// callers can correlate without a follow-up read.
 	existingRef := &internalstatepb.TransactionReferenceValue{TransactionId: 7}
 
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil).AnyTimes()
 
 	// The overlay pre-wraps every accessor at construction; register the
@@ -499,8 +499,8 @@ func TestProcessOrders_SkipOnReferenceConflict(t *testing.T) {
 	stubs.accountMetadataStubFor(mockStore)
 	stubs.transactionStatesStubFor(mockStore)
 	stubs.indexesStubFor(mockStore)
-	mockStore.EXPECT().LedgerMetadata().Return(&kindStub[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]{}).AnyTimes()
-	mockStore.EXPECT().PreparedQueries().Return(&kindStub[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader]{}).AnyTimes()
+	mockStore.EXPECT().LedgerMetadata().Return(&kindStub[domain.LedgerMetadataKey, *ledgerpb.MetadataValue, ledgerpb.MetadataValueReader]{}).AnyTimes()
+	mockStore.EXPECT().PreparedQueries().Return(&kindStub[domain.PreparedQueryKey, *ledgerpb.PreparedQuery, ledgerpb.PreparedQueryReader]{}).AnyTimes()
 
 	trStub, _ := stubs.transactionReferencesStubFor(mockStore)
 	trStub.expectGet(domain.TransactionReferenceKey{LedgerName: "test-ledger", Reference: "ref-x"}, existingRef.AsReader(), nil)
@@ -526,16 +526,16 @@ func TestProcessOrders_SkipOnReferenceConflict(t *testing.T) {
 					Apply: &raftcmdpb.LedgerApplyOrder{
 						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-								Postings: []*commonpb.Posting{{
+								Postings: []*ledgerpb.Posting{{
 									Source:      "bank",
 									Destination: "users:123",
-									Amount:      commonpb.NewUint256FromUint64(100),
+									Amount:      ledgerpb.NewUint256FromUint64(100),
 									Asset:       "USD",
 								}},
 								Reference: "ref-x",
 							},
 						},
-						SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+						SkippableReasons: []ledgerpb.ErrorReason{ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 					},
 				},
 			},
@@ -561,7 +561,7 @@ func TestProcessOrders_SkipOnReferenceConflict(t *testing.T) {
 
 	skipped := apply.GetLog().GetData().GetOrderSkipped()
 	require.NotNil(t, skipped, "the log payload must be OrderSkipped, not the failed CreateTransaction")
-	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, skipped.GetReason())
+	require.Equal(t, ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, skipped.GetReason())
 	require.Equal(t, "test-ledger", skipped.GetContext()["ledger"])
 	require.Equal(t, "ref-x", skipped.GetContext()["reference"])
 
@@ -619,7 +619,7 @@ func TestProcessOrders_MirrorReplayEmitsNoLog(t *testing.T) {
 
 	// v2LogId 7 already applied.
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 43, NextLogId: 5, LastMirrorV2LogId: 7}
-	ledgerInfo := &commonpb.LedgerInfo{Name: "mirror-ledger", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR}
+	ledgerInfo := &ledgerpb.LedgerInfo{Name: "mirror-ledger", Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR}
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil).AnyTimes()
@@ -656,4 +656,4 @@ func TestProcessOrders_MirrorReplayEmitsNoLog(t *testing.T) {
 // assert a no-log order never reaches the sink.
 type countingSink struct{ count int }
 
-func (s *countingSink) Absorb(_ *raftcmdpb.Order, _ *commonpb.Log) { s.count++ }
+func (s *countingSink) Absorb(_ *raftcmdpb.Order, _ *ledgerpb.Log) { s.count++ }

@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -41,11 +41,11 @@ func TestSkipSafeScope_TrapsNonBufferedMutations(t *testing.T) {
 		{"RemoveSigningKey", func() { trap.RemoveSigningKey("k1") }},
 		{"SetRequireSignatures", func() { trap.SetRequireSignatures(true) }},
 		{"SetMaintenanceMode", func() { trap.SetMaintenanceMode(true) }},
-		{"PutNumscript", func() { trap.PutNumscript("L", &commonpb.NumscriptInfo{}) }},
+		{"PutNumscript", func() { trap.PutNumscript("L", &ledgerpb.NumscriptInfo{}) }},
 		{"SetNumscriptLatestVersion", func() { trap.SetNumscriptLatestVersion("L", "n", "1.0.0") }},
 		{"SaveQueryCheckpoint", func() { trap.SaveQueryCheckpoint(&raftcmdpb.QueryCheckpointState{}) }},
 		{"DeleteQueryCheckpoint", func() { trap.DeleteQueryCheckpoint(7) }},
-		{"SetClusterPolicy", func() { trap.SetClusterPolicy(&commonpb.ClusterPolicy{}) }},
+		{"SetClusterPolicy", func() { trap.SetClusterPolicy(&ledgerpb.ClusterPolicy{}) }},
 	}
 
 	for _, tc := range cases {
@@ -86,7 +86,7 @@ func TestSkipSafeScope_ReadsAndBufferedWritesPassThrough(t *testing.T) {
 	// Buffered accessor writes route through overlay's staged accessor.
 	// Read-your-write across the trap layer.
 	lk := domain.LedgerKey{Name: "L"}
-	trap.Ledgers().Put(lk, &commonpb.LedgerInfo{Name: "L"})
+	trap.Ledgers().Put(lk, &ledgerpb.LedgerInfo{Name: "L"})
 
 	got, err := trap.Ledgers().Get(lk)
 	require.NoError(t, err)
@@ -105,7 +105,7 @@ func TestSkipSafeScope_ReadsAndBufferedWritesPassThrough(t *testing.T) {
 	require.Equal(t, uint64(123), trap.GetRaftIndex())
 
 	// GetClusterPolicy is a read and passes through.
-	s.parent.EXPECT().GetClusterPolicy().Return(&commonpb.ClusterPolicy{Revision: 3}).Times(1)
+	s.parent.EXPECT().GetClusterPolicy().Return(&ledgerpb.ClusterPolicy{Revision: 3}).Times(1)
 	require.Equal(t, uint64(3), trap.GetClusterPolicy().GetRevision())
 
 	// PutReverted is buffered.
@@ -140,7 +140,7 @@ func TestSkipSafeScope_RollbackKeepsParentUntouched(t *testing.T) {
 	trap := newSkipSafeScope(overlay)
 
 	// Buffered mutations — end up in the overlay's staged buffer.
-	trap.Ledgers().Put(domain.LedgerKey{Name: "L"}, &commonpb.LedgerInfo{Name: "L"})
+	trap.Ledgers().Put(domain.LedgerKey{Name: "L"}, &ledgerpb.LedgerInfo{Name: "L"})
 	trap.Boundaries().Put(domain.LedgerKey{Name: "L"}, &raftcmdpb.LedgerBoundaries{})
 	trap.PutReverted(domain.TransactionKey{LedgerName: "L", ID: 1}, true)
 	_, err := trap.IncrementNextSequenceID()

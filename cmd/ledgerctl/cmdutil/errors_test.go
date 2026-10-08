@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
@@ -115,7 +115,7 @@ func TestFormatGRPCError_BusinessError_ReturnsDisplayed(t *testing.T) {
 func TestFormatGRPCError_BusinessError_UnknownReasonStillFormatted(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED,
+	require.Equal(t, ledgerpb.ErrorReason_ERROR_REASON_UNSPECIFIED,
 		domain.ReasonCode("SOME_REASON_FROM_A_NEWER_SERVER"),
 		"precondition: the reason must be unknown to this build")
 

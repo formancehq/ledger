@@ -9,7 +9,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -45,7 +45,7 @@ func runCheck(cmd *cobra.Command, _ []string) error {
 
 	structuredOutput := cmdutil.IsStructuredOutput(cmd)
 
-	stream, err := client.CheckStore(ctx, &servicepb.CheckStoreRequest{})
+	stream, err := client.CheckStore(ctx, &ledgerpb.CheckStoreRequest{})
 	if err != nil {
 		return cmdutil.FormatGRPCError("failed to start store check", err)
 	}
@@ -53,7 +53,7 @@ func runCheck(cmd *cobra.Command, _ []string) error {
 	var (
 		spinner     *cmdutil.Spinner
 		errorCount  int
-		checkErrors []*servicepb.CheckStoreError
+		checkErrors []*ledgerpb.CheckStoreError
 	)
 
 	if !structuredOutput {
@@ -75,14 +75,14 @@ func runCheck(cmd *cobra.Command, _ []string) error {
 		}
 
 		switch t := event.GetType().(type) {
-		case *servicepb.CheckStoreEvent_Progress:
+		case *ledgerpb.CheckStoreEvent_Progress:
 			if spinner != nil && t.Progress.GetTotalLogs() > 0 {
 				pct := float64(t.Progress.GetLogsChecked()) / float64(t.Progress.GetTotalLogs()) * 100
 				spinner.UpdateText(fmt.Sprintf("Checking store integrity... %d/%d logs (%.0f%%)",
 					t.Progress.GetLogsChecked(), t.Progress.GetTotalLogs(), pct))
 			}
 
-		case *servicepb.CheckStoreEvent_Error:
+		case *ledgerpb.CheckStoreEvent_Error:
 			errorCount++
 
 			checkErrors = append(checkErrors, t.Error)
@@ -99,7 +99,7 @@ func runCheck(cmd *cobra.Command, _ []string) error {
 	if handled, err := cmdutil.EncodeStructured(cmd, struct {
 		Valid      bool                         `json:"valid"`
 		ErrorCount int                          `json:"errorCount"`
-		Errors     []*servicepb.CheckStoreError `json:"errors,omitempty"`
+		Errors     []*ledgerpb.CheckStoreError `json:"errors,omitempty"`
 	}{
 		Valid:      errorCount == 0,
 		ErrorCount: errorCount,
@@ -119,7 +119,7 @@ func runCheck(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func printCheckError(e *servicepb.CheckStoreError) {
+func printCheckError(e *ledgerpb.CheckStoreError) {
 	prefix := pterm.Red("ERROR")
 	errorTypeName := strings.TrimPrefix(e.GetErrorType().String(), "CHECK_STORE_ERROR_TYPE_")
 	details := fmt.Sprintf("[%s]", errorTypeName)

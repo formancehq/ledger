@@ -12,7 +12,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/types/time"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -55,7 +55,7 @@ func commitClusterPolicy(t *testing.T, store *dal.Store, revision uint64) {
 	// The metadata ceilings are part of every committed policy: admission
 	// rejects a business write when they are absent, so a seed without them
 	// would fail every write path rather than the behaviour under test.
-	require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
+	require.NoError(t, state.SaveClusterPolicy(batch, &ledgerpb.ClusterPolicy{
 		Revision:                    revision,
 		QueryCheckpointLimit:        10,
 		MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
@@ -83,10 +83,10 @@ func createTestStoreWithoutPolicy(t *testing.T) *dal.Store {
 	// Register test ledger in both global zone (for GetLedgerByName queries)
 	// and attribute zone (for preloader's bloom → cache → Pebble resolution).
 	testAttrs := attributes.New()
-	info := &commonpb.LedgerInfo{
+	info := &ledgerpb.LedgerInfo{
 		Name:      testLedgerName,
 		Id:        1,
-		CreatedAt: commonpb.NewTimestamp(time.Now()),
+		CreatedAt: ledgerpb.NewTimestamp(time.Now()),
 	}
 	batch := s.OpenWriteSession()
 	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobAuditKey}, []byte("0123456789abcdef0123456789abcdef")))
@@ -149,11 +149,11 @@ func TestExtractNeededVolumes(t *testing.T) {
 						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-									Postings: []*commonpb.Posting{
+									Postings: []*ledgerpb.Posting{
 										{
 											Source:      "world",
 											Destination: "user:alice",
-											Amount:      commonpb.NewUint256FromUint64(100),
+											Amount:      ledgerpb.NewUint256FromUint64(100),
 											Asset:       "USD",
 										},
 									},
@@ -198,11 +198,11 @@ func TestExtractNeededVolumes(t *testing.T) {
 		overlay := newBulkOverlay()
 		overlay.recordRevertTarget(
 			testLedgerName, &raftcmdpb.RevertTransactionOrder{TransactionId: 1},
-			presentRevertTarget([]*commonpb.Posting{
+			presentRevertTarget([]*ledgerpb.Posting{
 				{
 					Source:      "world",
 					Destination: "user:alice",
-					Amount:      commonpb.NewUint256FromUint64(100),
+					Amount:      ledgerpb.NewUint256FromUint64(100),
 					Asset:       "USD",
 				},
 			}),
@@ -253,17 +253,17 @@ func TestExtractNeededVolumes(t *testing.T) {
 		overlay := newBulkOverlay()
 		overlay.recordRevertTarget(
 			testLedgerName, &raftcmdpb.RevertTransactionOrder{TransactionId: 1},
-			presentRevertTarget([]*commonpb.Posting{
+			presentRevertTarget([]*ledgerpb.Posting{
 				{
 					Source:      "world",
 					Destination: "user:alice",
-					Amount:      commonpb.NewUint256FromUint64(100),
+					Amount:      ledgerpb.NewUint256FromUint64(100),
 					Asset:       "USD",
 				},
 				{
 					Source:      "user:alice",
 					Destination: "user:bob",
-					Amount:      commonpb.NewUint256FromUint64(50),
+					Amount:      ledgerpb.NewUint256FromUint64(50),
 					Asset:       "USD",
 				},
 			}),
@@ -325,11 +325,11 @@ func TestExtractNeededVolumes(t *testing.T) {
 						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
 								AddMetadata: &raftcmdpb.SaveMetadataOrder{
-									Target: &commonpb.Target{
-										Target: &commonpb.Target_TransactionId{TransactionId: 7},
+									Target: &ledgerpb.Target{
+										Target: &ledgerpb.Target_TransactionId{TransactionId: 7},
 									},
-									Metadata: map[string]*commonpb.MetadataValue{
-										"status": commonpb.NewStringValue("paid"),
+									Metadata: map[string]*ledgerpb.MetadataValue{
+										"status": ledgerpb.NewStringValue("paid"),
 									},
 								},
 							},
@@ -358,11 +358,11 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 
 		// Setup: persist a TxState with Postings — the shape a post-EN-1242
 		// FSM would produce after applying a CreateTransaction.
-		expectedPostings := []*commonpb.Posting{
+		expectedPostings := []*ledgerpb.Posting{
 			{
 				Source:      "world",
 				Destination: "user:alice",
-				Amount:      commonpb.NewUint256FromUint64(100),
+				Amount:      ledgerpb.NewUint256FromUint64(100),
 				Asset:       "USD",
 			},
 		}
@@ -375,11 +375,11 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, batch.Commit())
 
-		applyRequest := &commonpb.LedgerApplyRequest{
+		applyRequest := &ledgerpb.LedgerApplyRequest{
 			Ledger: testLedgerName,
-			Action: &commonpb.LedgerAction{
-				Data: &commonpb.LedgerAction_RevertTransaction{
-					RevertTransaction: &commonpb.RevertTransactionPayload{
+			Action: &ledgerpb.LedgerAction{
+				Data: &ledgerpb.LedgerAction_RevertTransaction{
+					RevertTransaction: &ledgerpb.RevertTransactionPayload{
 						TransactionId:   1,
 						Force:           false,
 						AtEffectiveDate: true,
@@ -413,11 +413,11 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 		store := createTestStore(t)
 		admission, _ := createTestAdmission(t, store)
 
-		applyRequest := &commonpb.LedgerApplyRequest{
+		applyRequest := &ledgerpb.LedgerApplyRequest{
 			Ledger: testLedgerName,
-			Action: &commonpb.LedgerAction{
-				Data: &commonpb.LedgerAction_RevertTransaction{
-					RevertTransaction: &commonpb.RevertTransactionPayload{
+			Action: &ledgerpb.LedgerAction{
+				Data: &ledgerpb.LedgerAction_RevertTransaction{
+					RevertTransaction: &ledgerpb.RevertTransactionPayload{
 						TransactionId: 999,
 					},
 				},
@@ -454,11 +454,11 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 		store := createTestStore(t)
 		admission, _ := createTestAdmission(t, store)
 
-		applyRequest := &commonpb.LedgerApplyRequest{
+		applyRequest := &ledgerpb.LedgerApplyRequest{
 			Ledger: testLedgerName,
-			Action: &commonpb.LedgerAction{
-				Data: &commonpb.LedgerAction_RevertTransaction{
-					RevertTransaction: &commonpb.RevertTransactionPayload{},
+			Action: &ledgerpb.LedgerAction{
+				Data: &ledgerpb.LedgerAction_RevertTransaction{
+					RevertTransaction: &ledgerpb.RevertTransactionPayload{},
 				},
 			},
 		}
@@ -485,11 +485,11 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
 									Force: true,
-									Postings: []*commonpb.Posting{
+									Postings: []*ledgerpb.Posting{
 										{
 											Source:      "users:alice",
 											Destination: "users:bob",
-											Amount:      commonpb.NewUint256FromUint64(100),
+											Amount:      ledgerpb.NewUint256FromUint64(100),
 											Asset:       "USD",
 										},
 									},
@@ -535,11 +535,11 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
 									Force: false, // Default behavior
-									Postings: []*commonpb.Posting{
+									Postings: []*ledgerpb.Posting{
 										{
 											Source:      "users:alice",
 											Destination: "users:bob",
-											Amount:      commonpb.NewUint256FromUint64(100),
+											Amount:      ledgerpb.NewUint256FromUint64(100),
 											Asset:       "USD",
 										},
 									},
@@ -586,11 +586,11 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
 									Force: true,
-									Postings: []*commonpb.Posting{
+									Postings: []*ledgerpb.Posting{
 										{
 											Source:      "users:force_source",
 											Destination: "users:force_dest",
-											Amount:      commonpb.NewUint256FromUint64(100),
+											Amount:      ledgerpb.NewUint256FromUint64(100),
 											Asset:       "USD",
 										},
 									},
@@ -610,11 +610,11 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
 									Force: false,
-									Postings: []*commonpb.Posting{
+									Postings: []*ledgerpb.Posting{
 										{
 											Source:      "users:normal_source",
 											Destination: "users:normal_dest",
-											Amount:      commonpb.NewUint256FromUint64(200),
+											Amount:      ledgerpb.NewUint256FromUint64(200),
 											Asset:       "EUR",
 										},
 									},
@@ -667,11 +667,11 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 		overlay := newBulkOverlay()
 		overlay.recordRevertTarget(
 			testLedgerName, &raftcmdpb.RevertTransactionOrder{TransactionId: 1},
-			presentRevertTarget([]*commonpb.Posting{
+			presentRevertTarget([]*ledgerpb.Posting{
 				{
 					Source:      "world",
 					Destination: "user:alice",
-					Amount:      commonpb.NewUint256FromUint64(100),
+					Amount:      ledgerpb.NewUint256FromUint64(100),
 					Asset:       "USD",
 				},
 			}),
@@ -729,10 +729,10 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 func TestExtractPreloadNeeds_AccountMetadata_ScriptBacked(t *testing.T) {
 	t.Parallel()
 
-	makeAccountMetadata := func() map[string]*commonpb.MetadataMap {
-		return map[string]*commonpb.MetadataMap{
-			"users:alice": {Values: map[string]*commonpb.MetadataValue{
-				"vip": commonpb.NewStringValue("yes"),
+	makeAccountMetadata := func() map[string]*ledgerpb.MetadataMap {
+		return map[string]*ledgerpb.MetadataMap{
+			"users:alice": {Values: map[string]*ledgerpb.MetadataValue{
+				"vip": ledgerpb.NewStringValue("yes"),
 			}},
 		}
 	}
@@ -744,10 +744,10 @@ func TestExtractPreloadNeeds_AccountMetadata_ScriptBacked(t *testing.T) {
 		{
 			name: "postings + accountMetadata",
 			ct: &raftcmdpb.CreateTransactionOrder{
-				Postings: []*commonpb.Posting{{
+				Postings: []*ledgerpb.Posting{{
 					Source:      "world",
 					Destination: "users:alice",
-					Amount:      commonpb.NewUint256FromUint64(1),
+					Amount:      ledgerpb.NewUint256FromUint64(1),
 					Asset:       "USD",
 				}},
 				AccountMetadata: makeAccountMetadata(),
@@ -756,7 +756,7 @@ func TestExtractPreloadNeeds_AccountMetadata_ScriptBacked(t *testing.T) {
 		{
 			name: "inline script + accountMetadata",
 			ct: &raftcmdpb.CreateTransactionOrder{
-				Script:          &commonpb.Script{Plain: "send [USD 1] (source = @world destination = @users:alice)"},
+				Script:          &ledgerpb.Script{Plain: "send [USD 1] (source = @world destination = @users:alice)"},
 				AccountMetadata: makeAccountMetadata(),
 			},
 		},
@@ -813,17 +813,17 @@ func TestConvertApplyRequest_CreateTransaction_Force(t *testing.T) {
 		store := createTestStore(t)
 		admission, _ := createTestAdmission(t, store)
 
-		applyRequest := &commonpb.LedgerApplyRequest{
+		applyRequest := &ledgerpb.LedgerApplyRequest{
 			Ledger: testLedgerName,
-			Action: &commonpb.LedgerAction{
-				Data: &commonpb.LedgerAction_CreateTransaction{
-					CreateTransaction: &commonpb.CreateTransactionPayload{
+			Action: &ledgerpb.LedgerAction{
+				Data: &ledgerpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &ledgerpb.CreateTransactionPayload{
 						Force: true,
-						Postings: []*commonpb.Posting{
+						Postings: []*ledgerpb.Posting{
 							{
 								Source:      "users:alice",
 								Destination: "users:bob",
-								Amount:      commonpb.NewUint256FromUint64(100),
+								Amount:      ledgerpb.NewUint256FromUint64(100),
 								Asset:       "USD",
 							},
 						},
@@ -851,13 +851,13 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 
 		// The wire order carries only caller intent; the FSM reads
 		// TxState.Postings authoritatively at apply time.
-		request := &commonpb.Request{
-			Type: &commonpb.Request_Apply{
-				Apply: &commonpb.LedgerApplyRequest{
+		request := &ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: testLedgerName,
-					Action: &commonpb.LedgerAction{
-						Data: &commonpb.LedgerAction_RevertTransaction{
-							RevertTransaction: &commonpb.RevertTransactionPayload{
+					Action: &ledgerpb.LedgerAction{
+						Data: &ledgerpb.LedgerAction_RevertTransaction{
+							RevertTransaction: &ledgerpb.RevertTransactionPayload{
 								TransactionId: 42,
 								Force:         true,
 							},
@@ -891,13 +891,13 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 		// here, so it declares no volume coverage and binds what it saw. The FSM
 		// re-derives the digest from the state it reads through the coverage
 		// gate and rejects the order before reading an undeclared volume.
-		request := &commonpb.Request{
-			Type: &commonpb.Request_Apply{
-				Apply: &commonpb.LedgerApplyRequest{
+		request := &ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: testLedgerName,
-					Action: &commonpb.LedgerAction{
-						Data: &commonpb.LedgerAction_RevertTransaction{
-							RevertTransaction: &commonpb.RevertTransactionPayload{TransactionId: 42},
+					Action: &ledgerpb.LedgerAction{
+						Data: &ledgerpb.LedgerAction_RevertTransaction{
+							RevertTransaction: &ledgerpb.RevertTransactionPayload{TransactionId: 42},
 						},
 					},
 				},
@@ -918,17 +918,17 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 		store := createTestStore(t)
 		admission, _ := createTestAdmission(t, store)
 
-		request := &commonpb.Request{
-			Type: &commonpb.Request_Apply{
-				Apply: &commonpb.LedgerApplyRequest{
+		request := &ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: testLedgerName,
-					Action: &commonpb.LedgerAction{
-						Data: &commonpb.LedgerAction_CreateTransaction{
-							CreateTransaction: &commonpb.CreateTransactionPayload{
-								Postings: []*commonpb.Posting{{
+					Action: &ledgerpb.LedgerAction{
+						Data: &ledgerpb.LedgerAction_CreateTransaction{
+							CreateTransaction: &ledgerpb.CreateTransactionPayload{
+								Postings: []*ledgerpb.Posting{{
 									Source:      "world",
 									Destination: "user:alice",
-									Amount:      commonpb.NewUint256FromUint64(100),
+									Amount:      ledgerpb.NewUint256FromUint64(100),
 									Asset:       "USD",
 								}},
 							},
@@ -982,7 +982,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-									Script: &commonpb.Script{
+									Script: &ledgerpb.Script{
 										Plain: `
 										send [USD/2 1000] (
 											source = @users:alice
@@ -1035,7 +1035,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
 									Force: true,
-									Script: &commonpb.Script{
+									Script: &ledgerpb.Script{
 										Plain: `
 										send [USD/2 1000] (
 											source = @users:alice
@@ -1145,7 +1145,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-									Script: &commonpb.Script{
+									Script: &ledgerpb.Script{
 										Plain: `send [USD/2 invalid] ( source = @world destination = @users:alice )`,
 									},
 								},
@@ -1192,7 +1192,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-									Script: &commonpb.Script{
+									Script: &ledgerpb.Script{
 										Plain: `
 										vars {
 											monetary $amount
@@ -1256,7 +1256,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-									Script: &commonpb.Script{
+									Script: &ledgerpb.Script{
 										Plain: `
 										vars {
 											account $dst = meta(@cfg, "dest")
@@ -1305,7 +1305,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-									Script: &commonpb.Script{
+									Script: &ledgerpb.Script{
 										Plain: `send [USD/2 invalid] ( source = @world destination = @users:alice )`,
 									},
 								},
@@ -1345,14 +1345,14 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-									Script: &commonpb.Script{
+									Script: &ledgerpb.Script{
 										Plain: `send [USD/2 1000] ( source = @world destination = @treasury )`,
 									},
-									Postings: []*commonpb.Posting{
+									Postings: []*ledgerpb.Posting{
 										{
 											Source:      "bank",
 											Destination: "merchant",
-											Amount:      commonpb.NewUint256FromUint64(100),
+											Amount:      ledgerpb.NewUint256FromUint64(100),
 											Asset:       "EUR",
 										},
 									},
@@ -1416,32 +1416,32 @@ func TestValidateIdempotencyKey(t *testing.T) {
 func TestRequestsToOrders_CheckpointOrderPosition(t *testing.T) {
 	t.Parallel()
 
-	applyReq := func() *commonpb.Request {
-		return &commonpb.Request{
-			Type: &commonpb.Request_CreateLedger{
-				CreateLedger: &commonpb.CreateLedgerRequest{Name: "ledger-" + t.Name()},
+	applyReq := func() *ledgerpb.Request {
+		return &ledgerpb.Request{
+			Type: &ledgerpb.Request_CreateLedger{
+				CreateLedger: &ledgerpb.CreateLedgerRequest{Name: "ledger-" + t.Name()},
 			},
 		}
 	}
-	checkpointReq := func() *commonpb.Request {
-		return &commonpb.Request{
-			Type: &commonpb.Request_CreateQueryCheckpoint{
-				CreateQueryCheckpoint: &commonpb.CreateQueryCheckpointRequest{},
+	checkpointReq := func() *ledgerpb.Request {
+		return &ledgerpb.Request{
+			Type: &ledgerpb.Request_CreateQueryCheckpoint{
+				CreateQueryCheckpoint: &ledgerpb.CreateQueryCheckpointRequest{},
 			},
 		}
 	}
 
 	cases := []struct {
 		name    string
-		reqs    []*commonpb.Request
+		reqs    []*ledgerpb.Request
 		wantErr error
 	}{
 		{"empty batch", nil, nil},
-		{"single apply", []*commonpb.Request{applyReq()}, nil},
-		{"checkpoint alone", []*commonpb.Request{checkpointReq()}, nil},
-		{"apply then checkpoint", []*commonpb.Request{applyReq(), checkpointReq()}, nil},
-		{"checkpoint then apply", []*commonpb.Request{checkpointReq(), applyReq()}, ErrCheckpointOrderNotLast},
-		{"checkpoint mid-batch", []*commonpb.Request{applyReq(), checkpointReq(), applyReq()}, ErrCheckpointOrderNotLast},
+		{"single apply", []*ledgerpb.Request{applyReq()}, nil},
+		{"checkpoint alone", []*ledgerpb.Request{checkpointReq()}, nil},
+		{"apply then checkpoint", []*ledgerpb.Request{applyReq(), checkpointReq()}, nil},
+		{"checkpoint then apply", []*ledgerpb.Request{checkpointReq(), applyReq()}, ErrCheckpointOrderNotLast},
+		{"checkpoint mid-batch", []*ledgerpb.Request{applyReq(), checkpointReq(), applyReq()}, ErrCheckpointOrderNotLast},
 	}
 
 	for _, tc := range cases {
@@ -1472,13 +1472,13 @@ func generateTestKeyPair(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {
 
 // signedBatchRequest signs a single-request ApplyBatch and wraps it into the
 // signed ApplyRequest the Admit RPC carries.
-func signedBatchRequest(t *testing.T, req *commonpb.Request, keyID string, privKey ed25519.PrivateKey) *commonpb.ApplyRequest {
+func signedBatchRequest(t *testing.T, req *ledgerpb.Request, keyID string, privKey ed25519.PrivateKey) *ledgerpb.ApplyRequest {
 	t.Helper()
 
-	sb, err := signing.Sign(&commonpb.ApplyBatch{Requests: []*commonpb.Request{req}}, keyID, privKey)
+	sb, err := signing.Sign(&ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{req}}, keyID, privKey)
 	require.NoError(t, err)
 
-	return commonpb.SignedApplyRequest(sb)
+	return ledgerpb.SignedApplyRequest(sb)
 }
 
 func TestResolveBatch(t *testing.T) {
@@ -1491,9 +1491,9 @@ func TestResolveBatch(t *testing.T) {
 
 		pubKey, _ := generateTestKeyPair(t)
 
-		req := commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_RegisterSigningKey{
-				RegisterSigningKey: &commonpb.RegisterSigningKeyRequest{
+		req := ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_RegisterSigningKey{
+				RegisterSigningKey: &ledgerpb.RegisterSigningKeyRequest{
 					KeyId:     "first-key",
 					PublicKey: []byte(pubKey),
 				},
@@ -1516,9 +1516,9 @@ func TestResolveBatch(t *testing.T) {
 
 		newPubKey, _ := generateTestKeyPair(t)
 
-		req := commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_RegisterSigningKey{
-				RegisterSigningKey: &commonpb.RegisterSigningKeyRequest{
+		req := ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_RegisterSigningKey{
+				RegisterSigningKey: &ledgerpb.RegisterSigningKeyRequest{
 					KeyId:     "new-key",
 					PublicKey: []byte(newPubKey),
 				},
@@ -1537,9 +1537,9 @@ func TestResolveBatch(t *testing.T) {
 		pubKey, _ := generateTestKeyPair(t)
 		adm.keyStore.AddPublicKey("my-key", pubKey, "")
 
-		req := commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_RevokeSigningKey{
-				RevokeSigningKey: &commonpb.RevokeSigningKeyRequest{
+		req := ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_RevokeSigningKey{
+				RevokeSigningKey: &ledgerpb.RevokeSigningKeyRequest{
 					KeyId: "my-key",
 				},
 			},
@@ -1557,9 +1557,9 @@ func TestResolveBatch(t *testing.T) {
 		pubKey, _ := generateTestKeyPair(t)
 		adm.keyStore.AddPublicKey("my-key", pubKey, "")
 
-		req := commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_SetSigningConfig{
-				SetSigningConfig: &commonpb.SetSigningConfigRequest{
+		req := ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_SetSigningConfig{
+				SetSigningConfig: &ledgerpb.SetSigningConfigRequest{
 					RequireSignatures: true,
 				},
 			},
@@ -1579,9 +1579,9 @@ func TestResolveBatch(t *testing.T) {
 
 		newPubKey, _ := generateTestKeyPair(t)
 
-		req := &commonpb.Request{
-			Type: &commonpb.Request_RegisterSigningKey{
-				RegisterSigningKey: &commonpb.RegisterSigningKeyRequest{
+		req := &ledgerpb.Request{
+			Type: &ledgerpb.Request_RegisterSigningKey{
+				RegisterSigningKey: &ledgerpb.RegisterSigningKeyRequest{
 					KeyId:     "new-key",
 					PublicKey: []byte(newPubKey),
 				},
@@ -1599,9 +1599,9 @@ func TestResolveBatch(t *testing.T) {
 		store := createTestStore(t)
 		adm, _ := createTestAdmission(t, store)
 
-		req := commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_CreateLedger{
-				CreateLedger: &commonpb.CreateLedgerRequest{
+		req := ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_CreateLedger{
+				CreateLedger: &ledgerpb.CreateLedgerRequest{
 					Name: "test-ledger",
 				},
 			},
@@ -1619,9 +1619,9 @@ func TestResolveBatch(t *testing.T) {
 
 		adm.sharedState.SetRequireSignatures(true)
 
-		req := commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_CreateLedger{
-				CreateLedger: &commonpb.CreateLedgerRequest{
+		req := ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_CreateLedger{
+				CreateLedger: &ledgerpb.CreateLedgerRequest{
 					Name: "test-ledger",
 				},
 			},
@@ -1640,9 +1640,9 @@ func TestResolveBatch(t *testing.T) {
 		adm.keyStore.AddPublicKey("my-key", pubKey, "")
 		adm.sharedState.SetRequireSignatures(true)
 
-		req := &commonpb.Request{
-			Type: &commonpb.Request_CreateLedger{
-				CreateLedger: &commonpb.CreateLedgerRequest{
+		req := &ledgerpb.Request{
+			Type: &ledgerpb.Request_CreateLedger{
+				CreateLedger: &ledgerpb.CreateLedgerRequest{
 					Name: "signed-ledger",
 				},
 			},
@@ -1661,9 +1661,9 @@ func TestResolveBatch(t *testing.T) {
 
 		_, privKey := generateTestKeyPair(t)
 
-		req := &commonpb.Request{
-			Type: &commonpb.Request_CreateLedger{
-				CreateLedger: &commonpb.CreateLedgerRequest{
+		req := &ledgerpb.Request{
+			Type: &ledgerpb.Request_CreateLedger{
+				CreateLedger: &ledgerpb.CreateLedgerRequest{
 					Name: "test",
 				},
 			},
@@ -1683,9 +1683,9 @@ func TestResolveBatch(t *testing.T) {
 
 		adm.keyStore.AddPublicKey("my-key", pubKey, "")
 
-		req := &commonpb.Request{
-			Type: &commonpb.Request_CreateLedger{
-				CreateLedger: &commonpb.CreateLedgerRequest{
+		req := &ledgerpb.Request{
+			Type: &ledgerpb.Request_CreateLedger{
+				CreateLedger: &ledgerpb.CreateLedgerRequest{
 					Name: "test",
 				},
 			},
@@ -1715,9 +1715,9 @@ func TestResolveBatch(t *testing.T) {
 
 		adm.keyStore.AddPublicKey("P", parentPubKey, "")
 
-		req := &commonpb.Request{
-			Type: &commonpb.Request_RevokeSigningKey{
-				RevokeSigningKey: &commonpb.RevokeSigningKeyRequest{KeyId: "P", Cascade: true},
+		req := &ledgerpb.Request{
+			Type: &ledgerpb.Request_RevokeSigningKey{
+				RevokeSigningKey: &ledgerpb.RevokeSigningKeyRequest{KeyId: "P", Cascade: true},
 			},
 		}
 

@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // specialChars are the characters that used to be legal in a bare Ident and are
@@ -49,31 +49,31 @@ func TestQuoting_ValueRequiresQuotingForSpecialChars(t *testing.T) {
 		name       string
 		quotedTmpl string
 		bareTmpl   string
-		get        func(*commonpb.QueryFilter) string
+		get        func(*ledgerpb.QueryFilter) string
 	}{
 		{
 			name:       "metadata value",
 			quotedTmpl: `metadata[k] == "%s"`,
 			bareTmpl:   `metadata[k] == %s`,
-			get:        func(f *commonpb.QueryFilter) string { return f.GetField().GetStringCond().GetHardcoded() },
+			get:        func(f *ledgerpb.QueryFilter) string { return f.GetField().GetStringCond().GetHardcoded() },
 		},
 		{
 			name:       "address exact",
 			quotedTmpl: `address == "%s"`,
 			bareTmpl:   `address == %s`,
-			get:        func(f *commonpb.QueryFilter) string { return f.GetAddress().GetHardcodedExact() },
+			get:        func(f *ledgerpb.QueryFilter) string { return f.GetAddress().GetHardcodedExact() },
 		},
 		{
 			name:       "address prefix",
 			quotedTmpl: `address ^= "%s"`,
 			bareTmpl:   `address ^= %s`,
-			get:        func(f *commonpb.QueryFilter) string { return f.GetAddress().GetHardcodedPrefix() },
+			get:        func(f *ledgerpb.QueryFilter) string { return f.GetAddress().GetHardcodedPrefix() },
 		},
 		{
 			name:       "ledger value",
 			quotedTmpl: `ledger == "%s"`,
 			bareTmpl:   `ledger == %s`,
-			get:        func(f *commonpb.QueryFilter) string { return f.GetLedger().GetCond().GetHardcoded() },
+			get:        func(f *ledgerpb.QueryFilter) string { return f.GetLedger().GetCond().GetHardcoded() },
 		},
 	}
 

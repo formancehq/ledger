@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/health"
@@ -16,26 +16,26 @@ import (
 func TestCheckQueryCheckpointProjectionReady(t *testing.T) {
 	t.Parallel()
 
-	checkpoint := &servicepb.Request{Type: &servicepb.Request_CreateQueryCheckpoint{
-		CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{},
+	checkpoint := &ledgerpb.Request{Type: &ledgerpb.Request_CreateQueryCheckpoint{
+		CreateQueryCheckpoint: &ledgerpb.CreateQueryCheckpointRequest{},
 	}}
-	nonCheckpoint := &servicepb.Request{Type: &servicepb.Request_CreateLedger{
-		CreateLedger: &servicepb.CreateLedgerRequest{Name: "ledger"},
+	nonCheckpoint := &ledgerpb.Request{Type: &ledgerpb.Request_CreateLedger{
+		CreateLedger: &ledgerpb.CreateLedgerRequest{Name: "ledger"},
 	}}
 
 	for _, tc := range []struct {
 		name       string
-		reqs       []*servicepb.Request
+		reqs       []*ledgerpb.Request
 		disabled   bool
 		rebuilding bool
 		wantReason string
 		wantKind   domain.ErrorKind
 	}{
-		{name: "ready", reqs: []*servicepb.Request{checkpoint}},
-		{name: "disabled", reqs: []*servicepb.Request{checkpoint}, disabled: true, wantReason: domain.ErrReasonAuditDisabled, wantKind: domain.KindPrecondition},
-		{name: "rebuilding", reqs: []*servicepb.Request{checkpoint}, rebuilding: true, wantReason: domain.ErrReasonIndexBuilding, wantKind: domain.KindUnavailable},
-		{name: "mixed batch", reqs: []*servicepb.Request{nonCheckpoint, checkpoint}, disabled: true, wantReason: domain.ErrReasonAuditDisabled, wantKind: domain.KindPrecondition},
-		{name: "unrelated request", reqs: []*servicepb.Request{nonCheckpoint}, disabled: true},
+		{name: "ready", reqs: []*ledgerpb.Request{checkpoint}},
+		{name: "disabled", reqs: []*ledgerpb.Request{checkpoint}, disabled: true, wantReason: domain.ErrReasonAuditDisabled, wantKind: domain.KindPrecondition},
+		{name: "rebuilding", reqs: []*ledgerpb.Request{checkpoint}, rebuilding: true, wantReason: domain.ErrReasonIndexBuilding, wantKind: domain.KindUnavailable},
+		{name: "mixed batch", reqs: []*ledgerpb.Request{nonCheckpoint, checkpoint}, disabled: true, wantReason: domain.ErrReasonAuditDisabled, wantKind: domain.KindPrecondition},
+		{name: "unrelated request", reqs: []*ledgerpb.Request{nonCheckpoint}, disabled: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -78,10 +78,10 @@ func TestAdmitRejectsCheckpointWhenAuditProjectionIsUnavailable(t *testing.T) {
 	a.writeGate = writeGate
 	WithAuditProjectionState(func() (bool, bool) { return false, true })(a)
 
-	_, err := a.Admit(attributedTestContext(context.Background()), &servicepb.ApplyRequest{
-		Variant: &servicepb.ApplyRequest_Unsigned{Unsigned: &servicepb.ApplyBatch{Requests: []*servicepb.Request{{
-			Type: &servicepb.Request_CreateQueryCheckpoint{
-				CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{},
+	_, err := a.Admit(attributedTestContext(context.Background()), &ledgerpb.ApplyRequest{
+		Variant: &ledgerpb.ApplyRequest_Unsigned{Unsigned: &ledgerpb.ApplyBatch{Requests: []*ledgerpb.Request{{
+			Type: &ledgerpb.Request_CreateQueryCheckpoint{
+				CreateQueryCheckpoint: &ledgerpb.CreateQueryCheckpointRequest{},
 			},
 		}}}},
 	})

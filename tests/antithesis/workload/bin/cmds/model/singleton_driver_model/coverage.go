@@ -3,7 +3,7 @@ package main
 import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -49,14 +49,14 @@ func coverageIndexMessage(canonical string) string {
 // indexes are one per declared field, a set that churns as the schema changes,
 // so they are covered by shape rather than by identity: an unbounded, unstable
 // family of names cannot be registered up front.
-func coverageMetadataMessage(target commonpb.QueryTarget) string {
+func coverageMetadataMessage(target ledgerpb.QueryTarget) string {
 	return coveragePrefix + "a metadata-field index served a model-verified page on " + coverageTargetName(target)
 }
 
 // coverageTargetName names one of the two entity targets; metadata probes exist
 // for no others.
-func coverageTargetName(target commonpb.QueryTarget) string {
-	if target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
+func coverageTargetName(target ledgerpb.QueryTarget) string {
+	if target == ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
 		return "transactions"
 	}
 
@@ -87,8 +87,8 @@ func queryCoverageMessages() []string {
 	out = append(out, applyCoverageMessages()...)
 
 	return append(out,
-		coverageMetadataMessage(commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS),
-		coverageMetadataMessage(commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS),
+		coverageMetadataMessage(ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS),
+		coverageMetadataMessage(ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS),
 		coverageRetypeMessage,
 	)
 }
@@ -136,7 +136,7 @@ func assertCoverage(cond bool, msg string, details internal.Details, reached boo
 // probe is evaluated on every call, not only the satisfied one — the false
 // evaluations are what let Antithesis bias toward a starved index. The caller
 // must not hold c.mu.
-func (c *Checker) noteQueryCoverage(ledger string, target commonpb.QueryTarget, filter *commonpb.QueryFilter, needed map[string]struct{}, verified bool, rows int) {
+func (c *Checker) noteQueryCoverage(ledger string, target ledgerpb.QueryTarget, filter *ledgerpb.QueryFilter, needed map[string]struct{}, verified bool, rows int) {
 	details := internal.Details{"ledger": ledger}
 
 	for msg, cond := range coverageHits(target, filter, needed, verified, rows,
@@ -154,7 +154,7 @@ func (c *Checker) noteQueryCoverage(ledger string, target commonpb.QueryTarget, 
 // matching record — and the generator emits deliberately unmatchable filters,
 // so empty pages are the common case; and the filter must have NEEDED that
 // index, so a page served through one index cannot vouch for another.
-func coverageHits(target commonpb.QueryTarget, filter *commonpb.QueryFilter, needed map[string]struct{}, verified bool, rows int, retypeOpen bool) map[string]bool {
+func coverageHits(target ledgerpb.QueryTarget, filter *ledgerpb.QueryFilter, needed map[string]struct{}, verified bool, rows int, retypeOpen bool) map[string]bool {
 	served := verified && rows > 0
 	out := make(map[string]bool, len(coverageIndexes)+2)
 
@@ -166,7 +166,7 @@ func coverageHits(target commonpb.QueryTarget, filter *commonpb.QueryFilter, nee
 	// Only the entity targets have metadata fields; a LOGS filter cannot need a
 	// metadata index, so folding it in would report against an entity probe it
 	// can never satisfy.
-	if target != commonpb.QueryTarget_QUERY_TARGET_LOGS {
+	if target != ledgerpb.QueryTarget_QUERY_TARGET_LOGS {
 		out[coverageMetadataMessage(target)] = served && filterNeedsMetadataIndex(filter)
 	}
 
@@ -179,11 +179,11 @@ func coverageHits(target commonpb.QueryTarget, filter *commonpb.QueryFilter, nee
 // condition — the leaves neededIndexCanonicals maps to a per-(target, key)
 // metadata index. Read off the filter rather than sniffed out of the canonical
 // strings, so it stays exact as the IndexID encoding changes.
-func filterNeedsMetadataIndex(f *commonpb.QueryFilter) bool {
+func filterNeedsMetadataIndex(f *ledgerpb.QueryFilter) bool {
 	found := false
 
-	visitLeaves(f, func(leaf *commonpb.QueryFilter) {
-		if _, ok := leaf.GetFilter().(*commonpb.QueryFilter_Field); ok {
+	visitLeaves(f, func(leaf *ledgerpb.QueryFilter) {
+		if _, ok := leaf.GetFilter().(*ledgerpb.QueryFilter_Field); ok {
 			found = true
 		}
 	})

@@ -5,7 +5,7 @@ import (
 	"maps"
 	"strconv"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -25,7 +25,7 @@ func validateTransactionTarget(txID uint64, boundaries *raftcmdpb.LedgerBoundari
 	return nil
 }
 
-func processAddMetadata(ledger string, order *raftcmdpb.SaveMetadataOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
+func processAddMetadata(ledger string, order *raftcmdpb.SaveMetadataOrder, ctx *Context) (*ledgerpb.LedgerLogPayload, domain.SerializableError) {
 	boundaries := ctx.Boundaries
 	s := ctx.Scope
 	info := ctx.LedgerInfo
@@ -41,7 +41,7 @@ func processAddMetadata(ledger string, order *raftcmdpb.SaveMetadataOrder, ctx *
 	loggedTarget := order.GetTarget()
 
 	// Validate account address against account types.
-	if acct, isAcct := order.GetTarget().GetTarget().(*commonpb.Target_Account); isAcct {
+	if acct, isAcct := order.GetTarget().GetTarget().(*ledgerpb.Target_Account); isAcct {
 		if compiled := compiledTypesFor(ctx.CompiledTypes, ledger, info); len(compiled) > 0 {
 			if typeErr := validateAccountAgainstAccountTypes(acct.Account.GetAddr(), compiled, info.GetDefaultEnforcementMode()); typeErr != nil {
 				return nil, typeErr
@@ -56,7 +56,7 @@ func processAddMetadata(ledger string, order *raftcmdpb.SaveMetadataOrder, ctx *
 	// the FSM no longer captures previous values for it.
 
 	switch target := order.GetTarget().GetTarget().(type) {
-	case *commonpb.Target_Account:
+	case *ledgerpb.Target_Account:
 		for key, value := range order.GetMetadata() {
 			metaKey := domain.MetadataKey{
 				AccountKey: domain.AccountKey{
@@ -68,7 +68,7 @@ func processAddMetadata(ledger string, order *raftcmdpb.SaveMetadataOrder, ctx *
 
 			s.AccountMetadata().Put(metaKey, value)
 		}
-	case *commonpb.Target_TransactionId:
+	case *ledgerpb.Target_TransactionId:
 		txID := target.TransactionId
 		if resolveErr := validateTransactionTarget(txID, boundaries); resolveErr != nil {
 			return nil, resolveErr
@@ -91,7 +91,7 @@ func processAddMetadata(ledger string, order *raftcmdpb.SaveMetadataOrder, ctx *
 
 		// Add metadata entries to the transaction state
 		if state.GetMetadata() == nil {
-			state.Metadata = make(map[string]*commonpb.MetadataValue)
+			state.Metadata = make(map[string]*ledgerpb.MetadataValue)
 		}
 
 		maps.Copy(state.GetMetadata(), order.GetMetadata())
@@ -99,9 +99,9 @@ func processAddMetadata(ledger string, order *raftcmdpb.SaveMetadataOrder, ctx *
 		s.TransactionStates().Put(txKey, state)
 	}
 
-	return &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_SavedMetadata{
-			SavedMetadata: &commonpb.SavedMetadata{
+	return &ledgerpb.LedgerLogPayload{
+		Payload: &ledgerpb.LedgerLogPayload_SavedMetadata{
+			SavedMetadata: &ledgerpb.SavedMetadata{
 				Target:   loggedTarget,
 				Metadata: order.GetMetadata(),
 			},
@@ -109,7 +109,7 @@ func processAddMetadata(ledger string, order *raftcmdpb.SaveMetadataOrder, ctx *
 	}, nil
 }
 
-func processDeleteMetadata(ledger string, order *raftcmdpb.DeleteMetadataOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
+func processDeleteMetadata(ledger string, order *raftcmdpb.DeleteMetadataOrder, ctx *Context) (*ledgerpb.LedgerLogPayload, domain.SerializableError) {
 	boundaries := ctx.Boundaries
 	s := ctx.Scope
 
@@ -128,7 +128,7 @@ func processDeleteMetadata(ledger string, order *raftcmdpb.DeleteMetadataOrder, 
 	loggedTarget := order.GetTarget()
 
 	switch target := order.GetTarget().GetTarget().(type) {
-	case *commonpb.Target_Account:
+	case *ledgerpb.Target_Account:
 		metaKey := domain.MetadataKey{
 			AccountKey: domain.AccountKey{
 				LedgerName: ledger,
@@ -154,7 +154,7 @@ func processDeleteMetadata(ledger string, order *raftcmdpb.DeleteMetadataOrder, 
 		if err := s.AccountMetadata().Delete(metaKey); err != nil {
 			return nil, domain.StoreFailure("deleting account metadata", err)
 		}
-	case *commonpb.Target_TransactionId:
+	case *ledgerpb.Target_TransactionId:
 		txID := target.TransactionId
 		if resolveErr := validateTransactionTarget(txID, boundaries); resolveErr != nil {
 			return nil, resolveErr
@@ -187,9 +187,9 @@ func processDeleteMetadata(ledger string, order *raftcmdpb.DeleteMetadataOrder, 
 		s.TransactionStates().Put(txKey, state)
 	}
 
-	return &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_DeletedMetadata{
-			DeletedMetadata: &commonpb.DeletedMetadata{
+	return &ledgerpb.LedgerLogPayload{
+		Payload: &ledgerpb.LedgerLogPayload_DeletedMetadata{
+			DeletedMetadata: &ledgerpb.DeletedMetadata{
 				Target: loggedTarget,
 				Key:    order.GetKey(),
 			},

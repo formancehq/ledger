@@ -7,7 +7,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -41,7 +41,7 @@ func runDiskUsage(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	usage, err := client.GetDiskUsage(ctx, &clusterpb.GetDiskUsageRequest{})
+	usage, err := client.GetDiskUsage(ctx, &ledgerpb.GetDiskUsageRequest{})
 	if err != nil {
 		return cmdutil.FormatGRPCError("failed to get disk usage", err)
 	}
@@ -55,7 +55,7 @@ func runDiskUsage(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func displayDiskUsage(usage *clusterpb.DiskUsage) {
+func displayDiskUsage(usage *ledgerpb.DiskUsage) {
 	pterm.DefaultSection.Println("Volumes")
 
 	volumeData := [][]string{
@@ -68,7 +68,7 @@ func displayDiskUsage(usage *clusterpb.DiskUsage) {
 	pterm.Println()
 }
 
-func diskUsageVolumeRow(name string, volume *clusterpb.VolumeUsage) []string {
+func diskUsageVolumeRow(name string, volume *ledgerpb.VolumeUsage) []string {
 	if volume == nil {
 		return []string{name, "invalid", "0 B", "0 B", "-", "-", "missing volume"}
 	}

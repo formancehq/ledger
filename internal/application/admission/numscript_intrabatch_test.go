@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -23,7 +23,7 @@ func scriptOrder(ledger, plain string) *raftcmdpb.Order {
 					Apply: &raftcmdpb.LedgerApplyOrder{
 						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-								Script: &commonpb.Script{Plain: plain},
+								Script: &ledgerpb.Script{Plain: plain},
 							},
 						},
 					},
@@ -57,7 +57,7 @@ func applyOrder(ledger string, data *raftcmdpb.LedgerApplyOrder) *raftcmdpb.Orde
 // postings in the overlay sidecar (admission normally resolves them from the
 // store at order-build time), so the FSM's reversed-posting balance
 // effect is deterministic in tests.
-func revertOrder(overlay *bulkOverlay, ledger string, txID uint64, original ...*commonpb.Posting) *raftcmdpb.Order {
+func revertOrder(overlay *bulkOverlay, ledger string, txID uint64, original ...*ledgerpb.Posting) *raftcmdpb.Order {
 	revert := &raftcmdpb.RevertTransactionOrder{TransactionId: txID}
 	overlay.recordRevertTarget(ledger, revert, presentRevertTarget(original))
 
@@ -71,10 +71,10 @@ func addAccountMetaOrder(ledger, account, key, value string) *raftcmdpb.Order {
 	return applyOrder(ledger, &raftcmdpb.LedgerApplyOrder{
 		Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
 			AddMetadata: &raftcmdpb.SaveMetadataOrder{
-				Target: &commonpb.Target{
-					Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: account}},
+				Target: &ledgerpb.Target{
+					Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{Addr: account}},
 				},
-				Metadata: map[string]*commonpb.MetadataValue{key: commonpb.NewStringValue(value)},
+				Metadata: map[string]*ledgerpb.MetadataValue{key: ledgerpb.NewStringValue(value)},
 			},
 		},
 	})
@@ -85,8 +85,8 @@ func deleteAccountMetaOrder(ledger, account, key string) *raftcmdpb.Order {
 	return applyOrder(ledger, &raftcmdpb.LedgerApplyOrder{
 		Data: &raftcmdpb.LedgerApplyOrder_DeleteMetadata{
 			DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
-				Target: &commonpb.Target{
-					Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: account}},
+				Target: &ledgerpb.Target{
+					Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{Addr: account}},
 				},
 				Key: key,
 			},
@@ -95,12 +95,12 @@ func deleteAccountMetaOrder(ledger, account, key string) *raftcmdpb.Order {
 }
 
 // posting is a small helper for a world->account original posting.
-func posting(source, dest, asset string, amount uint64) *commonpb.Posting {
-	return &commonpb.Posting{
+func posting(source, dest, asset string, amount uint64) *ledgerpb.Posting {
+	return &ledgerpb.Posting{
 		Source:      source,
 		Destination: dest,
 		Asset:       asset,
-		Amount:      commonpb.NewUint256FromUint64(amount),
+		Amount:      ledgerpb.NewUint256FromUint64(amount),
 	}
 }
 
@@ -111,8 +111,8 @@ func writeVolume(t *testing.T, admission *Admission, ledger, account, asset stri
 	key := domain.NewVolumeKey(ledger, account, asset, "")
 	batch := admission.store.OpenWriteSession()
 	_, err := admission.attrs.Volume.Set(batch, key.Bytes(), &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(input),
-		Output: commonpb.NewUint256FromUint64(output),
+		Input:  ledgerpb.NewUint256FromUint64(input),
+		Output: ledgerpb.NewUint256FromUint64(output),
 	})
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
@@ -334,7 +334,7 @@ func TestResolveScripts_IntraBatchDeleteMetadataTombstone(t *testing.T) {
 	admission, _ := createTestAdmission(t, store)
 
 	// Pre-batch snapshot holds dm:cfg/dest = "dm:old" — a valid meta() target.
-	writeAccountMetadata(t, admission, testLedgerName, "dm:cfg", "dest", commonpb.NewStringValue("dm:old"))
+	writeAccountMetadata(t, admission, testLedgerName, "dm:cfg", "dest", ledgerpb.NewStringValue("dm:old"))
 
 	// Sanity: without any preceding delete, the script resolves against the
 	// pre-batch value.

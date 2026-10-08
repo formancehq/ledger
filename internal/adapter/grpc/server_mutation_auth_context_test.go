@@ -16,7 +16,7 @@ import (
 
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -42,44 +42,44 @@ func TestMutationRequestsPropagateAuthenticatedContext(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		request     *commonpb.Request
-		assertBatch func(*testing.T, *commonpb.Request)
+		request     *ledgerpb.Request
+		assertBatch func(*testing.T, *ledgerpb.Request)
 	}{
 		{
 			name: "CreateQueryCheckpoint",
-			request: &commonpb.Request{
-				Type: &commonpb.Request_CreateQueryCheckpoint{
-					CreateQueryCheckpoint: &commonpb.CreateQueryCheckpointRequest{},
+			request: &ledgerpb.Request{
+				Type: &ledgerpb.Request_CreateQueryCheckpoint{
+					CreateQueryCheckpoint: &ledgerpb.CreateQueryCheckpointRequest{},
 				},
 			},
-			assertBatch: func(t *testing.T, req *commonpb.Request) {
+			assertBatch: func(t *testing.T, req *ledgerpb.Request) {
 				t.Helper()
 				require.NotNil(t, req.GetCreateQueryCheckpoint())
 			},
 		},
 		{
 			name: "DeleteQueryCheckpoint",
-			request: &commonpb.Request{
-				Type: &commonpb.Request_DeleteQueryCheckpoint{
-					DeleteQueryCheckpoint: &commonpb.DeleteQueryCheckpointRequest{CheckpointId: 42},
+			request: &ledgerpb.Request{
+				Type: &ledgerpb.Request_DeleteQueryCheckpoint{
+					DeleteQueryCheckpoint: &ledgerpb.DeleteQueryCheckpointRequest{CheckpointId: 42},
 				},
 			},
-			assertBatch: func(t *testing.T, req *commonpb.Request) {
+			assertBatch: func(t *testing.T, req *ledgerpb.Request) {
 				t.Helper()
 				require.Equal(t, uint64(42), req.GetDeleteQueryCheckpoint().GetCheckpointId())
 			},
 		},
 		{
 			name: "CreatePreparedQuery",
-			request: &commonpb.Request{
-				Type: &commonpb.Request_CreatePreparedQuery{
-					CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
+			request: &ledgerpb.Request{
+				Type: &ledgerpb.Request_CreatePreparedQuery{
+					CreatePreparedQuery: &ledgerpb.CreatePreparedQueryRequest{
 						Ledger: "main",
-						Query:  &commonpb.PreparedQuery{Name: "accounts-by-owner"},
+						Query:  &ledgerpb.PreparedQuery{Name: "accounts-by-owner"},
 					},
 				},
 			},
-			assertBatch: func(t *testing.T, req *commonpb.Request) {
+			assertBatch: func(t *testing.T, req *ledgerpb.Request) {
 				t.Helper()
 				prepared := req.GetCreatePreparedQuery()
 				require.Equal(t, "main", prepared.GetLedger())
@@ -88,15 +88,15 @@ func TestMutationRequestsPropagateAuthenticatedContext(t *testing.T) {
 		},
 		{
 			name: "UpdatePreparedQuery",
-			request: &commonpb.Request{
-				Type: &commonpb.Request_UpdatePreparedQuery{
-					UpdatePreparedQuery: &commonpb.UpdatePreparedQueryRequest{
+			request: &ledgerpb.Request{
+				Type: &ledgerpb.Request_UpdatePreparedQuery{
+					UpdatePreparedQuery: &ledgerpb.UpdatePreparedQueryRequest{
 						Ledger: "main",
 						Name:   "accounts-by-owner",
 					},
 				},
 			},
-			assertBatch: func(t *testing.T, req *commonpb.Request) {
+			assertBatch: func(t *testing.T, req *ledgerpb.Request) {
 				t.Helper()
 				prepared := req.GetUpdatePreparedQuery()
 				require.Equal(t, "main", prepared.GetLedger())
@@ -105,15 +105,15 @@ func TestMutationRequestsPropagateAuthenticatedContext(t *testing.T) {
 		},
 		{
 			name: "DeletePreparedQuery",
-			request: &commonpb.Request{
-				Type: &commonpb.Request_DeletePreparedQuery{
-					DeletePreparedQuery: &commonpb.DeletePreparedQueryRequest{
+			request: &ledgerpb.Request{
+				Type: &ledgerpb.Request_DeletePreparedQuery{
+					DeletePreparedQuery: &ledgerpb.DeletePreparedQueryRequest{
 						Ledger: "main",
 						Name:   "accounts-by-owner",
 					},
 				},
 			},
-			assertBatch: func(t *testing.T, req *commonpb.Request) {
+			assertBatch: func(t *testing.T, req *ledgerpb.Request) {
 				t.Helper()
 				prepared := req.GetDeletePreparedQuery()
 				require.Equal(t, "main", prepared.GetLedger())
@@ -126,10 +126,10 @@ func TestMutationRequestsPropagateAuthenticatedContext(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			var captured *commonpb.CallerSnapshot
+			var captured *ledgerpb.CallerSnapshot
 			controller := NewMockController(gomock.NewController(t))
 			controller.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-				func(ctx context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+				func(ctx context.Context, req *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 					requests := req.GetUnsigned().GetRequests()
 					require.Len(t, requests, 1)
 					test.assertBatch(t, requests[0])
@@ -146,7 +146,7 @@ func TestMutationRequestsPropagateAuthenticatedContext(t *testing.T) {
 				ctrl:   controller,
 			}
 
-			_, err = bucket.Apply(ctx, commonpb.UnsignedApplyRequest("", test.request))
+			_, err = bucket.Apply(ctx, ledgerpb.UnsignedApplyRequest("", test.request))
 
 			require.ErrorIs(t, err, errCaptured)
 			require.NotNil(t, captured, "the downstream write path must receive the authenticated context")

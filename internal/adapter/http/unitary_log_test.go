@@ -7,20 +7,20 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestExactlyOneLog(t *testing.T) {
 	t.Parallel()
 
-	log := &commonpb.Log{Payload: &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "l"}},
+	log := &ledgerpb.Log{Payload: &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_CreateLedger{CreateLedger: &ledgerpb.CreatedLedgerLog{Name: "l"}},
 	}}
 
 	t.Run("single log is returned", func(t *testing.T) {
 		t.Parallel()
 
-		got := exactlyOneLog("op", []*commonpb.Log{log}, map[string]any{"ledger": "l"})
+		got := exactlyOneLog("op", []*ledgerpb.Log{log}, map[string]any{"ledger": "l"})
 		require.Same(t, log, got)
 	})
 
@@ -28,7 +28,7 @@ func TestExactlyOneLog(t *testing.T) {
 		t.Parallel()
 
 		requirePanicsContaining(t, "op apply did not return exactly one log", func() {
-			exactlyOneLog("op", []*commonpb.Log{}, map[string]any{"ledger": "l"})
+			exactlyOneLog("op", []*ledgerpb.Log{}, map[string]any{"ledger": "l"})
 		})
 	})
 
@@ -36,7 +36,7 @@ func TestExactlyOneLog(t *testing.T) {
 		t.Parallel()
 
 		requirePanicsContaining(t, "op apply did not return exactly one log", func() {
-			exactlyOneLog("op", []*commonpb.Log{log, log}, map[string]any{"ledger": "l"})
+			exactlyOneLog("op", []*ledgerpb.Log{log, log}, map[string]any{"ledger": "l"})
 		})
 	})
 
@@ -44,7 +44,7 @@ func TestExactlyOneLog(t *testing.T) {
 		t.Parallel()
 
 		requirePanicsContaining(t, "op apply returned a nil log", func() {
-			exactlyOneLog("op", []*commonpb.Log{nil}, map[string]any{"ledger": "l"})
+			exactlyOneLog("op", []*ledgerpb.Log{nil}, map[string]any{"ledger": "l"})
 		})
 	})
 
@@ -66,15 +66,15 @@ func TestExactlyOneLog(t *testing.T) {
 			require.Contains(t, msg, "operation:op")
 		}()
 
-		exactlyOneLog("op", []*commonpb.Log{log, log}, map[string]any{"ledger": "l"})
+		exactlyOneLog("op", []*ledgerpb.Log{log, log}, map[string]any{"ledger": "l"})
 	})
 }
 
 func TestUnexpectedLogPayload(t *testing.T) {
 	t.Parallel()
 
-	log := &commonpb.Log{Sequence: 3, Payload: &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{}},
+	log := &ledgerpb.Log{Sequence: 3, Payload: &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_CreateLedger{CreateLedger: &ledgerpb.CreatedLedgerLog{}},
 	}}
 
 	got := unexpectedLogPayload("create-transaction", log, map[string]any{"ledger": "l"})
@@ -89,9 +89,9 @@ func TestEmptyLogPayload(t *testing.T) {
 	t.Parallel()
 
 	// Correct outer type, but the Apply log carries no inner ledger-log payload.
-	log := &commonpb.Log{Sequence: 4, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-		Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{
-			Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: nil},
+	log := &ledgerpb.Log{Sequence: 4, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
+		Apply: &ledgerpb.ApplyLedgerLog{Log: &ledgerpb.LedgerLog{Data: &ledgerpb.LedgerLogPayload{
+			Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: nil},
 		}}},
 	}}}
 
@@ -106,18 +106,18 @@ func TestEmptyLogPayload(t *testing.T) {
 func TestObservedPayloadDetails(t *testing.T) {
 	t.Parallel()
 
-	createLedger := &commonpb.Log{Sequence: 7, Payload: &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{}},
+	createLedger := &ledgerpb.Log{Sequence: 7, Payload: &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_CreateLedger{CreateLedger: &ledgerpb.CreatedLedgerLog{}},
 	}}
-	applyReverted := &commonpb.Log{Sequence: 9, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-		Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{
-			Payload: &commonpb.LedgerLogPayload_RevertedTransaction{RevertedTransaction: &commonpb.RevertedTransaction{}},
+	applyReverted := &ledgerpb.Log{Sequence: 9, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
+		Apply: &ledgerpb.ApplyLedgerLog{Log: &ledgerpb.LedgerLog{Data: &ledgerpb.LedgerLogPayload{
+			Payload: &ledgerpb.LedgerLogPayload_RevertedTransaction{RevertedTransaction: &ledgerpb.RevertedTransaction{}},
 		}}},
 	}}}
 
 	cases := []struct {
 		name string
-		log  *commonpb.Log
+		log  *ledgerpb.Log
 		base map[string]any
 		want map[string]any
 	}{

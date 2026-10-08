@@ -4,7 +4,7 @@ import (
 	"context"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
@@ -31,8 +31,8 @@ func NewServer(logger logging.Logger, backend Backend, authCfg internalauth.Auth
 // applyUnsigned wraps Requests into unsigned Envelopes and forwards to the
 // backend. The HTTP API never signs requests itself — signing flows through
 // gRPC where the caller controls the envelope construction.
-func (s *Server) applyUnsigned(ctx context.Context, idempotencyKey string, reqs ...*clusterpb.Request) ([]*clusterpb.Log, error) {
-	result, err := s.backend.Apply(ctx, clusterpb.UnsignedApplyRequest(idempotencyKey, reqs...))
+func (s *Server) applyUnsigned(ctx context.Context, idempotencyKey string, reqs ...*ledgerpb.Request) ([]*ledgerpb.Log, error) {
+	result, err := s.backend.Apply(ctx, ledgerpb.UnsignedApplyRequest(idempotencyKey, reqs...))
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +44,7 @@ func (s *Server) applyUnsigned(ctx context.Context, idempotencyKey string, reqs 
 
 type Backend interface {
 	ctrl.Controller
-	GetClusterState(context context.Context) (*clusterpb.ClusterState, error)
+	GetClusterState(context context.Context) (*ledgerpb.ClusterState, error)
 	IsHealthy() bool
 	IsReady() bool
 	NotReadyReasons() []string
@@ -58,7 +58,7 @@ type DefaultBackend struct {
 	Node *node.Node
 }
 
-func (b *DefaultBackend) GetClusterState(ctx context.Context) (*clusterpb.ClusterState, error) {
+func (b *DefaultBackend) GetClusterState(ctx context.Context) (*ledgerpb.ClusterState, error) {
 	return b.Node.GetClusterState(ctx)
 }
 

@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
@@ -145,11 +145,11 @@ func TestAssetWindow(t *testing.T) {
 func TestIndexedQueryOutcomeLegal_MismatchAndAbsentCoexist(t *testing.T) {
 	t.Parallel()
 
-	acct := commonpb.TargetType_TARGET_TYPE_ACCOUNT
+	acct := ledgerpb.TargetType_TARGET_TYPE_ACCOUNT
 
 	// k0 declared UINT64 with an active index; k3 never declared, no index.
 	gs := buildGlobal(t,
-		oracletest.SetFieldTypeReq(acct, "k0", commonpb.MetadataType_METADATA_TYPE_UINT64),
+		oracletest.SetFieldTypeReq(acct, "k0", ledgerpb.MetadataType_METADATA_TYPE_UINT64),
 		oracletest.CreateIndexReq(indexes.MetadataID(acct, "k0")),
 	)
 	gs.SetIndexActive("L", indexes.Canonical(indexes.MetadataID(acct, "k0")))
@@ -161,24 +161,24 @@ func TestIndexedQueryOutcomeLegal_MismatchAndAbsentCoexist(t *testing.T) {
 
 	both := filterOr(mismatched, absent)
 	needed := map[string]struct{}{}
-	neededIndexCanonicals(both, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, needed)
+	neededIndexCanonicals(both, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, needed)
 
 	noWindow := func(oracle.LedgerState) bool { return false }
 
-	require.True(t, indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, both, needed, indexedErrCompilation, "", noWindow),
+	require.True(t, indexedQueryOutcomeLegal(ls, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, both, needed, indexedErrCompilation, "", noWindow),
 		"the mismatched leaf makes a compilation rejection legal even with an absent sibling index")
-	require.True(t, indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, both, needed, indexedErrNotReady, "", noWindow),
+	require.True(t, indexedQueryOutcomeLegal(ls, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, both, needed, indexedErrNotReady, "", noWindow),
 		"the absent index keeps a not-ready rejection legal too")
-	require.False(t, indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, both, needed, indexedErrNone, "", noWindow),
+	require.False(t, indexedQueryOutcomeLegal(ls, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, both, needed, indexedErrNone, "", noWindow),
 		"results are never legal while a leaf mismatches")
 
 	// Mismatch alone (all needed indexes active): compilation legal, not-ready illegal.
 	alone := filterOr(mismatched, mismatched)
 	neededAlone := map[string]struct{}{}
-	neededIndexCanonicals(alone, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, neededAlone)
+	neededIndexCanonicals(alone, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, neededAlone)
 
-	require.True(t, indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, alone, neededAlone, indexedErrCompilation, "", noWindow))
-	require.False(t, indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, alone, neededAlone, indexedErrNotReady, "", noWindow),
+	require.True(t, indexedQueryOutcomeLegal(ls, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, alone, neededAlone, indexedErrCompilation, "", noWindow))
+	require.False(t, indexedQueryOutcomeLegal(ls, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, alone, neededAlone, indexedErrNotReady, "", noWindow),
 		"with every needed index active, a not-ready rejection is unexplained")
 }
 
@@ -186,12 +186,12 @@ func TestIndexedQueryOutcomeLegal_MismatchAndAbsentCoexist(t *testing.T) {
 // node of PerNodeConns. Every other client method panics via the embedded nil
 // interface — the poller must not call anything else.
 type fakeStatusClient struct {
-	commonpb.BucketServiceClient
+	ledgerpb.BucketServiceClient
 
-	resp *commonpb.GetIndexStatusResponse
+	resp *ledgerpb.GetIndexStatusResponse
 }
 
-func (f fakeStatusClient) GetIndexStatus(context.Context, *commonpb.GetIndexStatusRequest, ...grpc.CallOption) (*commonpb.GetIndexStatusResponse, error) {
+func (f fakeStatusClient) GetIndexStatus(context.Context, *ledgerpb.GetIndexStatusRequest, ...grpc.CallOption) (*ledgerpb.GetIndexStatusResponse, error) {
 	return f.resp, nil
 }
 
@@ -210,21 +210,21 @@ func TestReconcileIndexes_IncarnationGuard(t *testing.T) {
 
 	newTracked := func(createSeq uint64) *Checker {
 		c := NewChecker([]string{"L"}, nil)
-		res := c.modelState.Apply(oracle.Bulk{Requests: []*commonpb.Request{oracletest.CreateIndexReq(id)}})
+		res := c.modelState.Apply(oracle.Bulk{Requests: []*ledgerpb.Request{oracletest.CreateIndexReq(id)}})
 		require.True(t, res.OK)
 		c.modelState = res.State
 		c.recordIndexCreates(
-			oracle.Bulk{Requests: []*commonpb.Request{oracletest.CreateIndexReq(id)}},
-			&commonpb.ApplyResponse{Logs: []*commonpb.Log{{Sequence: createSeq}}},
+			oracle.Bulk{Requests: []*ledgerpb.Request{oracletest.CreateIndexReq(id)}},
+			&ledgerpb.ApplyResponse{Logs: []*ledgerpb.Log{{Sequence: createSeq}}},
 		)
 
 		return c
 	}
 
 	statusConns := func(lastIndexed uint64, version uint32) internal.PerNodeConns {
-		return internal.PerNodeConns{{Bucket: fakeStatusClient{resp: &commonpb.GetIndexStatusResponse{
+		return internal.PerNodeConns{{Bucket: fakeStatusClient{resp: &ledgerpb.GetIndexStatusResponse{
 			LastIndexedSequence: lastIndexed,
-			Indexes:             []*commonpb.IndexEntry{{Ledger: "L", Index: &commonpb.Index{Id: id}, CurrentVersion: version}},
+			Indexes:             []*ledgerpb.IndexEntry{{Ledger: "L", Index: &ledgerpb.Index{Id: id}, CurrentVersion: version}},
 		}}}}
 	}
 
@@ -264,7 +264,7 @@ func TestTrackedIndexesExcludesDeletedLedgers(t *testing.T) {
 	t.Parallel()
 
 	c := NewChecker([]string{"deleted", "live"}, nil)
-	created := c.modelState.Apply(oracle.Bulk{Requests: []*commonpb.Request{
+	created := c.modelState.Apply(oracle.Bulk{Requests: []*ledgerpb.Request{
 		createIndexReq("deleted", assetIndexID()),
 		createIndexReq("live", assetIndexID()),
 	}})
@@ -272,8 +272,8 @@ func TestTrackedIndexesExcludesDeletedLedgers(t *testing.T) {
 	c.modelState = created.State
 	require.Len(t, c.trackedIndexes(), 2)
 
-	deleted := c.modelState.Apply(oracle.Bulk{Requests: []*commonpb.Request{{
-		Type: &commonpb.Request_DeleteLedger{DeleteLedger: &commonpb.DeleteLedgerRequest{Name: "deleted"}},
+	deleted := c.modelState.Apply(oracle.Bulk{Requests: []*ledgerpb.Request{{
+		Type: &ledgerpb.Request_DeleteLedger{DeleteLedger: &ledgerpb.DeleteLedgerRequest{Name: "deleted"}},
 	}}})
 	require.True(t, deleted.OK)
 	c.modelState = deleted.State
@@ -375,20 +375,20 @@ func TestIndexedQueryOutcomeLegal_RetypeRefusalAttribution(t *testing.T) {
 
 	for _, target := range []struct {
 		name   string
-		typeID commonpb.TargetType
-		query  commonpb.QueryTarget
+		typeID ledgerpb.TargetType
+		query  ledgerpb.QueryTarget
 	}{
-		{"accounts", commonpb.TargetType_TARGET_TYPE_ACCOUNT, accounts},
-		{"transactions", commonpb.TargetType_TARGET_TYPE_TRANSACTION, txns},
+		{"accounts", ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, accounts},
+		{"transactions", ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, txns},
 	} {
 		t.Run(target.name, func(t *testing.T) {
 			t.Parallel()
 			gs := buildGlobal(t,
-				oracletest.SetFieldTypeReq(target.typeID, "changing", commonpb.MetadataType_METADATA_TYPE_STRING),
+				oracletest.SetFieldTypeReq(target.typeID, "changing", ledgerpb.MetadataType_METADATA_TYPE_STRING),
 				oracletest.CreateIndexReq(indexes.MetadataID(target.typeID, "changing")),
-				oracletest.SetFieldTypeReq(target.typeID, "sibling", commonpb.MetadataType_METADATA_TYPE_STRING),
+				oracletest.SetFieldTypeReq(target.typeID, "sibling", ledgerpb.MetadataType_METADATA_TYPE_STRING),
 				oracletest.CreateIndexReq(indexes.MetadataID(target.typeID, "sibling")),
-				oracletest.SetFieldTypeReq(target.typeID, "changing", commonpb.MetadataType_METADATA_TYPE_INT64),
+				oracletest.SetFieldTypeReq(target.typeID, "changing", ledgerpb.MetadataType_METADATA_TYPE_INT64),
 			)
 			for _, key := range []string{"changing", "sibling"} {
 				gs.SetIndexActive("L", indexes.Canonical(indexes.MetadataID(target.typeID, key)))
@@ -440,7 +440,7 @@ func TestGenerateIndexOp_UndeclaredFieldsOnBothTargets(t *testing.T) {
 	t.Parallel()
 
 	gs := oracle.NewGlobalState()
-	seen := map[commonpb.TargetType]bool{}
+	seen := map[ledgerpb.TargetType]bool{}
 	for range 4096 {
 		req := generateIndexOp(gs, "L")
 		field := req.GetCreateIndex().GetId().GetMetadata()
@@ -448,12 +448,12 @@ func TestGenerateIndexOp_UndeclaredFieldsOnBothTargets(t *testing.T) {
 			continue
 		}
 		seen[field.GetTarget()] = true
-		res := gs.Apply(oracle.Bulk{Requests: []*commonpb.Request{req}})
+		res := gs.Apply(oracle.Bulk{Requests: []*ledgerpb.Request{req}})
 		require.False(t, res.OK)
 		require.Equal(t, "METADATA_FIELD_NOT_IN_SCHEMA", res.Reason)
 	}
-	require.Equal(t, map[commonpb.TargetType]bool{
-		commonpb.TargetType_TARGET_TYPE_ACCOUNT:     true,
-		commonpb.TargetType_TARGET_TYPE_TRANSACTION: true,
+	require.Equal(t, map[ledgerpb.TargetType]bool{
+		ledgerpb.TargetType_TARGET_TYPE_ACCOUNT:     true,
+		ledgerpb.TargetType_TARGET_TYPE_TRANSACTION: true,
 	}, seen)
 }

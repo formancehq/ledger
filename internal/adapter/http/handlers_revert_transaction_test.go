@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
@@ -20,17 +20,17 @@ func TestHandleRevertTransaction_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
-			return &domain.ApplyResult{Logs: []*commonpb.Log{
+		func(_ context.Context, _ *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{
 				{
-					Payload: &commonpb.LogPayload{
-						Type: &commonpb.LogPayload_Apply{
-							Apply: &commonpb.ApplyLedgerLog{
-								Log: &commonpb.LedgerLog{
-									Data: &commonpb.LedgerLogPayload{
-										Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
-											RevertedTransaction: &commonpb.RevertedTransaction{
-												RevertTransaction: &commonpb.Transaction{
+					Payload: &ledgerpb.LogPayload{
+						Type: &ledgerpb.LogPayload_Apply{
+							Apply: &ledgerpb.ApplyLedgerLog{
+								Log: &ledgerpb.LedgerLog{
+									Data: &ledgerpb.LedgerLogPayload{
+										Payload: &ledgerpb.LedgerLogPayload_RevertedTransaction{
+											RevertedTransaction: &ledgerpb.RevertedTransaction{
+												RevertTransaction: &ledgerpb.Transaction{
 													Id: 2,
 												},
 											},
@@ -65,40 +65,40 @@ func TestHandleRevertTransaction_Success(t *testing.T) {
 func TestHandleRevertTransaction_LogContractViolations(t *testing.T) {
 	t.Parallel()
 
-	reverted := &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-		Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{
-			Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
-				RevertedTransaction: &commonpb.RevertedTransaction{RevertTransaction: &commonpb.Transaction{Id: 2}},
+	reverted := &ledgerpb.Log{Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
+		Apply: &ledgerpb.ApplyLedgerLog{Log: &ledgerpb.LedgerLog{Data: &ledgerpb.LedgerLogPayload{
+			Payload: &ledgerpb.LedgerLogPayload_RevertedTransaction{
+				RevertedTransaction: &ledgerpb.RevertedTransaction{RevertTransaction: &ledgerpb.Transaction{Id: 2}},
 			},
 		}}},
 	}}}
-	wrongOuter := &commonpb.Log{Payload: &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "ledger1"}},
+	wrongOuter := &ledgerpb.Log{Payload: &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_CreateLedger{CreateLedger: &ledgerpb.CreatedLedgerLog{Name: "ledger1"}},
 	}}
-	wrongInner := &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-		Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{
-			Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-				CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Id: 1}},
+	wrongInner := &ledgerpb.Log{Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
+		Apply: &ledgerpb.ApplyLedgerLog{Log: &ledgerpb.LedgerLog{Data: &ledgerpb.LedgerLogPayload{
+			Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+				CreatedTransaction: &ledgerpb.CreatedTransaction{Transaction: &ledgerpb.Transaction{Id: 1}},
 			},
 		}}},
 	}}}
-	emptyBody := &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-		Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{
-			Payload: &commonpb.LedgerLogPayload_RevertedTransaction{RevertedTransaction: nil},
+	emptyBody := &ledgerpb.Log{Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
+		Apply: &ledgerpb.ApplyLedgerLog{Log: &ledgerpb.LedgerLog{Data: &ledgerpb.LedgerLogPayload{
+			Payload: &ledgerpb.LedgerLogPayload_RevertedTransaction{RevertedTransaction: nil},
 		}}},
 	}}}
 
 	cases := []struct {
 		name    string
-		logs    []*commonpb.Log
+		logs    []*ledgerpb.Log
 		wantMsg string
 	}{
-		{"zero logs", []*commonpb.Log{}, "apply did not return exactly one log"},
-		{"two logs", []*commonpb.Log{reverted, reverted}, "apply did not return exactly one log"},
-		{"nil sole log", []*commonpb.Log{nil}, "apply returned a nil log"},
-		{"wrong outer payload", []*commonpb.Log{wrongOuter}, "apply returned an unexpected log payload type"},
-		{"wrong inner payload", []*commonpb.Log{wrongInner}, "apply returned an unexpected log payload type"},
-		{"empty payload body", []*commonpb.Log{emptyBody}, "apply returned a log with no payload body"},
+		{"zero logs", []*ledgerpb.Log{}, "apply did not return exactly one log"},
+		{"two logs", []*ledgerpb.Log{reverted, reverted}, "apply did not return exactly one log"},
+		{"nil sole log", []*ledgerpb.Log{nil}, "apply returned a nil log"},
+		{"wrong outer payload", []*ledgerpb.Log{wrongOuter}, "apply returned an unexpected log payload type"},
+		{"wrong inner payload", []*ledgerpb.Log{wrongInner}, "apply returned an unexpected log payload type"},
+		{"empty payload body", []*ledgerpb.Log{emptyBody}, "apply returned a log with no payload body"},
 	}
 
 	for _, tc := range cases {
@@ -125,7 +125,7 @@ func TestHandleRevertTransaction_AlreadyReverted(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, &domain.ErrTransactionAlreadyReverted{TransactionID: 1}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -164,17 +164,17 @@ func TestHandleRevertTransaction_WithBody(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
-			return &domain.ApplyResult{Logs: []*commonpb.Log{
+		func(_ context.Context, _ *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{
 				{
-					Payload: &commonpb.LogPayload{
-						Type: &commonpb.LogPayload_Apply{
-							Apply: &commonpb.ApplyLedgerLog{
-								Log: &commonpb.LedgerLog{
-									Data: &commonpb.LedgerLogPayload{
-										Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
-											RevertedTransaction: &commonpb.RevertedTransaction{
-												RevertTransaction: &commonpb.Transaction{
+					Payload: &ledgerpb.LogPayload{
+						Type: &ledgerpb.LogPayload_Apply{
+							Apply: &ledgerpb.ApplyLedgerLog{
+								Log: &ledgerpb.LedgerLog{
+									Data: &ledgerpb.LedgerLogPayload{
+										Payload: &ledgerpb.LedgerLogPayload_RevertedTransaction{
+											RevertedTransaction: &ledgerpb.RevertedTransaction{
+												RevertTransaction: &ledgerpb.Transaction{
 													Id: 2,
 												},
 											},
@@ -204,39 +204,39 @@ func TestHandleRevertTransaction_WithBody(t *testing.T) {
 
 // revertPayloadFromApply extracts the RevertTransactionPayload that the handler
 // forwarded to the backend, so tests can assert the metadata mapping.
-func revertPayloadFromApply(t *testing.T, req *commonpb.ApplyRequest) *commonpb.RevertTransactionPayload {
+func revertPayloadFromApply(t *testing.T, req *ledgerpb.ApplyRequest) *ledgerpb.RevertTransactionPayload {
 	t.Helper()
 
 	requests := req.GetUnsigned().GetRequests()
 	require.Len(t, requests, 1)
 
 	action := requests[0].GetApply().GetAction()
-	rt, ok := action.GetData().(*commonpb.LedgerAction_RevertTransaction)
+	rt, ok := action.GetData().(*ledgerpb.LedgerAction_RevertTransaction)
 	require.True(t, ok, "expected a revert-transaction action")
 
 	return rt.RevertTransaction
 }
 
-func revertBackendReturningLog(t *testing.T, captured **commonpb.RevertTransactionPayload) *MockBackend {
+func revertBackendReturningLog(t *testing.T, captured **ledgerpb.RevertTransactionPayload) *MockBackend {
 	t.Helper()
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, req *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			if captured != nil {
 				*captured = revertPayloadFromApply(t, req)
 			}
 
-			return &domain.ApplyResult{Logs: []*commonpb.Log{
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{
 				{
-					Payload: &commonpb.LogPayload{
-						Type: &commonpb.LogPayload_Apply{
-							Apply: &commonpb.ApplyLedgerLog{
-								Log: &commonpb.LedgerLog{
-									Data: &commonpb.LedgerLogPayload{
-										Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
-											RevertedTransaction: &commonpb.RevertedTransaction{
-												RevertTransaction: &commonpb.Transaction{Id: 2},
+					Payload: &ledgerpb.LogPayload{
+						Type: &ledgerpb.LogPayload_Apply{
+							Apply: &ledgerpb.ApplyLedgerLog{
+								Log: &ledgerpb.LedgerLog{
+									Data: &ledgerpb.LedgerLogPayload{
+										Payload: &ledgerpb.LedgerLogPayload_RevertedTransaction{
+											RevertedTransaction: &ledgerpb.RevertedTransaction{
+												RevertTransaction: &ledgerpb.Transaction{Id: 2},
 											},
 										},
 									},
@@ -257,7 +257,7 @@ func revertBackendReturningLog(t *testing.T, captured **commonpb.RevertTransacti
 func TestHandleRevertTransaction_TypedMetadata(t *testing.T) {
 	t.Parallel()
 
-	var captured *commonpb.RevertTransactionPayload
+	var captured *ledgerpb.RevertTransactionPayload
 	backend := revertBackendReturningLog(t, &captured)
 	srv := newTestServer(t, backend)
 
@@ -274,7 +274,7 @@ func TestHandleRevertTransaction_TypedMetadata(t *testing.T) {
 	require.Equal(t, http.StatusCreated, w.Code)
 	require.NotNil(t, captured)
 
-	got := commonpb.MetadataToAnyMap(captured.GetMetadata())
+	got := ledgerpb.MetadataToAnyMap(captured.GetMetadata())
 	require.Equal(t, "fraud", got["reason"])
 	require.EqualValues(t, uint64(42), got["count"])
 	require.EqualValues(t, int64(-7), got["negative"])
@@ -287,7 +287,7 @@ func TestHandleRevertTransaction_TypedMetadata(t *testing.T) {
 func TestHandleRevertTransaction_StringMetadata(t *testing.T) {
 	t.Parallel()
 
-	var captured *commonpb.RevertTransactionPayload
+	var captured *ledgerpb.RevertTransactionPayload
 	backend := revertBackendReturningLog(t, &captured)
 	srv := newTestServer(t, backend)
 
@@ -304,7 +304,7 @@ func TestHandleRevertTransaction_StringMetadata(t *testing.T) {
 	require.Equal(t, http.StatusCreated, w.Code)
 	require.NotNil(t, captured)
 
-	got := commonpb.MetadataToAnyMap(captured.GetMetadata())
+	got := ledgerpb.MetadataToAnyMap(captured.GetMetadata())
 	require.Equal(t, "duplicate", got["reason"])
 }
 

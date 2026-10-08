@@ -10,7 +10,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
@@ -32,8 +32,8 @@ func ReadLastAuditSequence(reader dal.PebbleReader) (uint64, error) {
 }
 
 // ReadLastAuditEntry returns the last audit entry from the given reader, or nil if none exist.
-func ReadLastAuditEntry(reader dal.PebbleReader) (*auditpb.AuditEntry, error) {
-	entry, err := dal.ReadLastEntry[*auditpb.AuditEntry](reader, dal.ZoneHistory, dal.SubHistoryAudit)
+func ReadLastAuditEntry(reader dal.PebbleReader) (*ledgerpb.AuditEntry, error) {
+	entry, err := dal.ReadLastEntry[*ledgerpb.AuditEntry](reader, dal.ZoneHistory, dal.SubHistoryAudit)
 	if err != nil {
 		return nil, fmt.Errorf("reading last audit entry: %w", err)
 	}
@@ -43,7 +43,7 @@ func ReadLastAuditEntry(reader dal.PebbleReader) (*auditpb.AuditEntry, error) {
 
 // ReadAuditEntries returns a cursor over audit entries after the given sequence from the given reader.
 // Use afterSequence=nil to return all entries, or a pointer to a sequence to filter.
-func ReadAuditEntries(ctx context.Context, reader dal.PebbleReader, afterSequence *uint64) (cursor.Cursor[*auditpb.AuditEntry], error) {
+func ReadAuditEntries(ctx context.Context, reader dal.PebbleReader, afterSequence *uint64) (cursor.Cursor[*ledgerpb.AuditEntry], error) {
 	_, span := queryTracer.Start(ctx, "query.list_audit_entries")
 	defer span.End()
 
@@ -63,7 +63,7 @@ func ReadAuditEntries(ctx context.Context, reader dal.PebbleReader, afterSequenc
 		return nil, fmt.Errorf("creating iterator for audit entries: %w", err)
 	}
 
-	return dal.NewProtoCursor[*auditpb.AuditEntry](iter), nil
+	return dal.NewProtoCursor[*ledgerpb.AuditEntry](iter), nil
 }
 
 // ReadAuditEntriesPage returns a bounded page of audit entries honoring an
@@ -94,7 +94,7 @@ func ReadAuditEntriesPage(
 	afterSeq uint64,
 	reverse bool,
 	pageSize uint32,
-) (cursor.Cursor[*auditpb.AuditEntry], error) {
+) (cursor.Cursor[*ledgerpb.AuditEntry], error) {
 	_, span := queryTracer.Start(ctx, "query.list_audit_entries_page",
 		trace.WithAttributes(
 			attribute.Bool("narrowed", narrowed),
@@ -120,7 +120,7 @@ func readAuditPageFromSeqSet(
 	loSeq, hiSeq, afterSeq uint64,
 	reverse bool,
 	pageSize uint32,
-) (cursor.Cursor[*auditpb.AuditEntry], error) {
+) (cursor.Cursor[*ledgerpb.AuditEntry], error) {
 	// Restrict to the [loSeq, hiSeq] window carried by the compiled filter.
 	filtered := seqs[:0:0]
 	for _, s := range seqs {
@@ -149,7 +149,7 @@ func readAuditPageFromSeqSet(
 		filtered = filtered[idx:]
 	}
 
-	entries := make([]*auditpb.AuditEntry, 0, min(len(filtered), pageCap(pageSize)))
+	entries := make([]*ledgerpb.AuditEntry, 0, min(len(filtered), pageCap(pageSize)))
 	for _, s := range filtered {
 		// Audit history is permanent: an indexed sequence missing from the
 		// zone is a consistency failure, never a legitimate miss.
@@ -185,7 +185,7 @@ func readAuditPageFromZone(
 	loSeq, hiSeq, afterSeq uint64,
 	reverse bool,
 	pageSize uint32,
-) (cursor.Cursor[*auditpb.AuditEntry], error) {
+) (cursor.Cursor[*ledgerpb.AuditEntry], error) {
 	// Lower bound (inclusive): max(loSeq, afterSeq+1 in ascending).
 	lo := loSeq
 	hi := hiSeq
@@ -197,7 +197,7 @@ func readAuditPageFromZone(
 		hi = afterSeq - 1
 	}
 	if lo > hi {
-		return cursor.NewSliceCursor([]*auditpb.AuditEntry{}), nil
+		return cursor.NewSliceCursor([]*ledgerpb.AuditEntry{}), nil
 	}
 
 	kb := dal.NewKeyBuilder()
@@ -222,7 +222,7 @@ func readAuditPageFromZone(
 		return nil, fmt.Errorf("creating iterator for audit entries: %w", err)
 	}
 
-	entries := make([]*auditpb.AuditEntry, 0, pageCap(pageSize))
+	entries := make([]*ledgerpb.AuditEntry, 0, pageCap(pageSize))
 	valid := iter.Last
 	if !reverse {
 		valid = iter.First
@@ -236,7 +236,7 @@ func readAuditPageFromZone(
 			return nil, fmt.Errorf("reading audit entry value: %w", valErr)
 		}
 
-		entry := &auditpb.AuditEntry{}
+		entry := &ledgerpb.AuditEntry{}
 		if unmarshalErr := entry.UnmarshalVT(value); unmarshalErr != nil {
 			_ = iter.Close()
 
@@ -264,7 +264,7 @@ func readAuditPageFromZone(
 
 // ReadAuditItems returns all audit items for the given audit sequence.
 // Items are returned sorted by order_index (natural Pebble key order).
-func ReadAuditItems(ctx context.Context, reader dal.PebbleReader, auditSequence uint64) ([]*auditpb.AuditItem, error) {
+func ReadAuditItems(ctx context.Context, reader dal.PebbleReader, auditSequence uint64) ([]*ledgerpb.AuditItem, error) {
 	_, span := queryTracer.Start(ctx, "query.read_audit_items",
 		trace.WithAttributes(attribute.Int64("audit_sequence", int64(auditSequence))))
 	defer span.End()
@@ -294,7 +294,7 @@ func ReadAuditItems(ctx context.Context, reader dal.PebbleReader, auditSequence 
 
 	defer func() { _ = iter.Close() }()
 
-	var items []*auditpb.AuditItem
+	var items []*ledgerpb.AuditItem
 
 	for iter.First(); iter.Valid(); iter.Next() {
 		value, valErr := iter.ValueAndErr()
@@ -302,7 +302,7 @@ func ReadAuditItems(ctx context.Context, reader dal.PebbleReader, auditSequence 
 			return nil, fmt.Errorf("reading audit item value: %w", valErr)
 		}
 
-		item := &auditpb.AuditItem{}
+		item := &ledgerpb.AuditItem{}
 		if unmarshalErr := proto.Unmarshal(value, item); unmarshalErr != nil {
 			return nil, fmt.Errorf("unmarshaling audit item: %w", unmarshalErr)
 		}
@@ -315,7 +315,7 @@ func ReadAuditItems(ctx context.Context, reader dal.PebbleReader, auditSequence 
 
 // ReadAuditEntry returns a single audit entry by sequence number.
 // Returns domain.ErrNotFound if the entry does not exist.
-func ReadAuditEntry(ctx context.Context, reader dal.PebbleGetter, sequence uint64) (*auditpb.AuditEntry, error) {
+func ReadAuditEntry(ctx context.Context, reader dal.PebbleGetter, sequence uint64) (*ledgerpb.AuditEntry, error) {
 	_, span := queryTracer.Start(ctx, "query.get_audit_entry",
 		trace.WithAttributes(attribute.Int64("sequence", int64(sequence))))
 	defer span.End()
@@ -323,7 +323,7 @@ func ReadAuditEntry(ctx context.Context, reader dal.PebbleGetter, sequence uint6
 	kb := dal.NewKeyBuilder()
 	kb.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(sequence)
 
-	entry, err := dal.ReadProto[*auditpb.AuditEntry](reader, kb.Build())
+	entry, err := dal.ReadProto[*ledgerpb.AuditEntry](reader, kb.Build())
 	if err != nil {
 		return nil, fmt.Errorf("reading audit entry %d: %w", sequence, err)
 	}

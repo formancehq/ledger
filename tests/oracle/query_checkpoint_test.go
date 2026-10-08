@@ -5,20 +5,20 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
-func createCheckpointRequest() *servicepb.Request {
-	return &servicepb.Request{Type: &servicepb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{}}}
+func createCheckpointRequest() *ledgerpb.Request {
+	return &ledgerpb.Request{Type: &ledgerpb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &ledgerpb.CreateQueryCheckpointRequest{}}}
 }
-func deleteCheckpointRequest(id uint64) *servicepb.Request {
-	return &servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &servicepb.DeleteQueryCheckpointRequest{CheckpointId: id}}}
+func deleteCheckpointRequest(id uint64) *ledgerpb.Request {
+	return &ledgerpb.Request{Type: &ledgerpb.Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &ledgerpb.DeleteQueryCheckpointRequest{CheckpointId: id}}}
 }
-func scheduleCheckpointRequest(cron string) *servicepb.Request {
-	return &servicepb.Request{Type: &servicepb.Request_SetQueryCheckpointSchedule{SetQueryCheckpointSchedule: &servicepb.SetQueryCheckpointScheduleRequest{Cron: cron}}}
+func scheduleCheckpointRequest(cron string) *ledgerpb.Request {
+	return &ledgerpb.Request{Type: &ledgerpb.Request_SetQueryCheckpointSchedule{SetQueryCheckpointSchedule: &ledgerpb.SetQueryCheckpointScheduleRequest{Cron: cron}}}
 }
 func TestGlobalState_QueryCheckpointLifecycle(t *testing.T) {
 	t.Parallel()
@@ -64,7 +64,7 @@ func TestGlobalState_QueryCheckpointAtomicityAndSchedule(t *testing.T) {
 	invalid := set.State.Apply(bulkOf(scheduleCheckpointRequest("invalid")))
 	require.Equal(t, domain.ErrReasonInvalidCronExpression, invalid.Reason)
 	require.Equal(t, set.State.Fingerprint(), invalid.State.Fingerprint())
-	del := &servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpointSchedule{DeleteQueryCheckpointSchedule: &servicepb.DeleteQueryCheckpointScheduleRequest{}}}
+	del := &ledgerpb.Request{Type: &ledgerpb.Request_DeleteQueryCheckpointSchedule{DeleteQueryCheckpointSchedule: &ledgerpb.DeleteQueryCheckpointScheduleRequest{}}}
 	cleared := set.State.Apply(bulkOf(del, del))
 	require.True(t, cleared.OK)
 	require.Empty(t, cleared.State.QueryCheckpointSchedule())

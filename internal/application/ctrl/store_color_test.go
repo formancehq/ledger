@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -21,8 +21,8 @@ func volEntry(t *testing.T, ledgerName string, account, asset, color string, in,
 	return attributes.ComputedEntry[*raftcmdpb.VolumePair]{
 		CanonicalKey: vk.Bytes(),
 		Value: &raftcmdpb.VolumePair{
-			Input:  commonpb.NewUint256FromUint64(uint64(in)),
-			Output: commonpb.NewUint256FromUint64(uint64(out)),
+			Input:  ledgerpb.NewUint256FromUint64(uint64(in)),
+			Output: ledgerpb.NewUint256FromUint64(uint64(out)),
 		},
 	}
 }

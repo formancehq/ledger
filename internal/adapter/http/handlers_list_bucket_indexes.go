@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net/http"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // handleListBucketIndexes handles GET /indexes to list bucket-wide or
@@ -24,12 +24,12 @@ import (
 // EN-1481 with its own endpoint layout (GET /v3/audit-entries), not
 // through this route.
 func (s *Server) handleListBucketIndexes(w http.ResponseWriter, r *http.Request) {
-	var scope servicepb.ListIndexesRequest_Scope
+	var scope ledgerpb.ListIndexesRequest_Scope
 	switch r.URL.Query().Get("scope") {
 	case "", "all":
-		scope = servicepb.ListIndexesRequest_SCOPE_ALL
+		scope = ledgerpb.ListIndexesRequest_SCOPE_ALL
 	case "bucket":
-		scope = servicepb.ListIndexesRequest_SCOPE_BUCKET
+		scope = ledgerpb.ListIndexesRequest_SCOPE_BUCKET
 	case "ledger":
 		writeBadRequest(w, "INVALID_REQUEST", errors.New("scope=ledger is not supported here — use GET /v3/{ledgerName}/indexes"))
 
@@ -40,7 +40,7 @@ func (s *Server) handleListBucketIndexes(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	cursor, err := s.backend.ListIndexes(r.Context(), &servicepb.ListIndexesRequest{
+	cursor, err := s.backend.ListIndexes(r.Context(), &ledgerpb.ListIndexesRequest{
 		Scope: scope,
 	})
 	if err != nil {

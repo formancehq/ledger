@@ -8,7 +8,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -53,7 +53,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	resp, err := client.GetEventsSinks(ctx, &commonpb.GetEventsSinksRequest{})
+	resp, err := client.GetEventsSinks(ctx, &ledgerpb.GetEventsSinksRequest{})
 	if err != nil {
 		return cmdutil.FormatGRPCError("failed to get event sinks", err)
 	}
@@ -115,25 +115,25 @@ func runList(cmd *cobra.Command, _ []string) error {
 
 		// Sink type
 		switch s := sink.GetType().(type) {
-		case *commonpb.SinkConfig_Nats:
+		case *ledgerpb.SinkConfig_Nats:
 			data = append(data,
 				[]string{"Type", "NATS"},
 				[]string{"URL", s.Nats.GetUrl()},
 				[]string{"Topic", s.Nats.GetTopic()},
 			)
-		case *commonpb.SinkConfig_Http:
+		case *ledgerpb.SinkConfig_Http:
 			data = append(data,
 				[]string{"Type", "HTTP"},
 				[]string{"Endpoint", s.Http.GetEndpoint()},
 				[]string{"Secret", s.Http.GetSecret()},
 			)
-		case *commonpb.SinkConfig_Clickhouse:
+		case *ledgerpb.SinkConfig_Clickhouse:
 			data = append(data,
 				[]string{"Type", "ClickHouse"},
 				[]string{"DSN", s.Clickhouse.GetDsn()},
 				[]string{"Table", s.Clickhouse.GetTable()},
 			)
-		case *commonpb.SinkConfig_Kafka:
+		case *ledgerpb.SinkConfig_Kafka:
 			rows := [][]string{
 				{"Type", "Kafka"},
 				{"Brokers", strings.Join(s.Kafka.GetBrokers(), ",")},
@@ -149,7 +149,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 			}
 
 			data = append(data, rows...)
-		case *commonpb.SinkConfig_Databricks:
+		case *ledgerpb.SinkConfig_Databricks:
 			db := s.Databricks
 			rows := [][]string{
 				{"Type", "Databricks"},
@@ -162,12 +162,12 @@ func runList(cmd *cobra.Command, _ []string) error {
 			}
 
 			switch a := db.GetAuth().(type) {
-			case *commonpb.DatabricksSinkConfig_Token:
+			case *ledgerpb.DatabricksSinkConfig_Token:
 				rows = append(rows,
 					[]string{"Auth Mode", "PAT"},
 					[]string{"Token", a.Token},
 				)
-			case *commonpb.DatabricksSinkConfig_OauthM2M:
+			case *ledgerpb.DatabricksSinkConfig_OauthM2M:
 				rows = append(rows, []string{"Auth Mode", "OAuth M2M"})
 				if a.OauthM2M != nil {
 					rows = append(rows,

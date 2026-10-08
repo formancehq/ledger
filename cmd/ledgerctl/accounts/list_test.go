@@ -6,7 +6,7 @@ import (
 
 	"github.com/pterm/pterm"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestFormatAccountBalances(t *testing.T) {
@@ -16,11 +16,11 @@ func TestFormatAccountBalances(t *testing.T) {
 
 	// The server returns Account.volumes already sorted by (asset, color)
 	// ascending, so fixtures are written in that order.
-	entry := func(asset, color, input, output, balance string) *commonpb.AccountVolume {
-		return &commonpb.AccountVolume{
+	entry := func(asset, color, input, output, balance string) *ledgerpb.AccountVolume {
+		return &ledgerpb.AccountVolume{
 			Asset: asset,
 			Color: color,
-			Volumes: &commonpb.VolumesWithBalance{
+			Volumes: &ledgerpb.VolumesWithBalance{
 				Input:   input,
 				Output:  output,
 				Balance: balance,
@@ -42,7 +42,7 @@ func TestFormatAccountBalances(t *testing.T) {
 		}
 	}
 
-	mustFormat := func(t *testing.T, volumes []*commonpb.AccountVolume, rescale *uint8) []string {
+	mustFormat := func(t *testing.T, volumes []*ledgerpb.AccountVolume, rescale *uint8) []string {
 		t.Helper()
 
 		lines, err := formatAccountBalances(volumes, rescale)
@@ -69,7 +69,7 @@ func TestFormatAccountBalances(t *testing.T) {
 	t.Run("without --rescale, assets keep server order and are colored by sign", func(t *testing.T) {
 		t.Parallel()
 
-		volumes := []*commonpb.AccountVolume{
+		volumes := []*ledgerpb.AccountVolume{
 			entry("EUR/2", "", "", "", "-50"),
 			entry("GBP/2", "", "", "", "0"),
 			entry("USD/2", "", "", "", "1000"),
@@ -85,7 +85,7 @@ func TestFormatAccountBalances(t *testing.T) {
 	t.Run("colored buckets are labelled and stay segregated", func(t *testing.T) {
 		t.Parallel()
 
-		volumes := []*commonpb.AccountVolume{
+		volumes := []*ledgerpb.AccountVolume{
 			entry("USD/2", "", "1000", "0", "1000"),
 			entry("USD/2", "GREEN", "0", "250", "-250"),
 		}
@@ -104,7 +104,7 @@ func TestFormatAccountBalances(t *testing.T) {
 	t.Run("rescale to scale 0 sums currencies that differ only in precision", func(t *testing.T) {
 		t.Parallel()
 
-		volumes := []*commonpb.AccountVolume{
+		volumes := []*ledgerpb.AccountVolume{
 			entry("EUR/2", "", "250", "0", "250"),             // 2.50
 			entry("USD/4", "", "10000", "0", "10000"),         // 1.0000
 			entry("USD/8", "", "100000000", "0", "100000000"), // 1.00000000
@@ -119,7 +119,7 @@ func TestFormatAccountBalances(t *testing.T) {
 	t.Run("rescale to scale 0 divides by precision and drops the suffix", func(t *testing.T) {
 		t.Parallel()
 
-		volumes := []*commonpb.AccountVolume{
+		volumes := []*ledgerpb.AccountVolume{
 			entry("EUR/2", "", "0", "50", "-50"),
 			entry("JPY", "", "1000", "0", "1000"),
 			entry("USD/3", "", "1123456780", "0", "1123456780"),
@@ -136,7 +136,7 @@ func TestFormatAccountBalances(t *testing.T) {
 		t.Parallel()
 
 		// 12.34 (USD/2) + 56.789 (USD/3) = 69.129 USD; at scale 2 → 6912.9 USD/2.
-		volumes := []*commonpb.AccountVolume{
+		volumes := []*ledgerpb.AccountVolume{
 			entry("USD/2", "", "1234", "0", "1234"),
 			entry("USD/3", "", "56789", "0", "56789"),
 		}
@@ -151,7 +151,7 @@ func TestFormatAccountBalances(t *testing.T) {
 
 		// An absent Volumes message yields "" input/output; the non-rescale path
 		// still renders the row, so the rescale path must not silently hide it.
-		volumes := []*commonpb.AccountVolume{
+		volumes := []*ledgerpb.AccountVolume{
 			entry("EUR/2", "", "250", "100", "150"),
 			{Asset: "USD/2"},
 		}

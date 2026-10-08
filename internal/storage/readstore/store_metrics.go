@@ -1,21 +1,21 @@
 package readstore
 
 import (
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // GetMetrics returns the current Pebble metrics for the read index as a proto message.
-func (s *Store) GetMetrics() *servicepb.PebbleMetrics {
+func (s *Store) GetMetrics() *ledgerpb.PebbleMetrics {
 	m := s.db.Metrics()
 
-	result := &servicepb.PebbleMetrics{
-		BlockCache: &servicepb.BlockCacheMetrics{
+	result := &ledgerpb.PebbleMetrics{
+		BlockCache: &ledgerpb.BlockCacheMetrics{
 			Size:   m.BlockCache.Size,
 			Count:  m.BlockCache.Count,
 			Hits:   m.BlockCache.Hits,
 			Misses: m.BlockCache.Misses,
 		},
-		Compact: &servicepb.CompactMetrics{
+		Compact: &ledgerpb.CompactMetrics{
 			Count:            m.Compact.Count,
 			DefaultCount:     m.Compact.DefaultCount,
 			DeleteOnlyCount:  m.Compact.DeleteOnlyCount,
@@ -29,43 +29,43 @@ func (s *Store) GetMetrics() *servicepb.PebbleMetrics {
 			NumInProgress:    m.Compact.NumInProgress,
 			MarkedFiles:      int32(m.Compact.MarkedFiles),
 		},
-		Flush: &servicepb.FlushMetrics{
+		Flush: &ledgerpb.FlushMetrics{
 			Count:              m.Flush.Count,
 			NumInProgress:      m.Flush.NumInProgress,
 			AsIngestCount:      m.Flush.AsIngestCount,
 			AsIngestTableCount: m.Flush.AsIngestTableCount,
 			AsIngestBytes:      m.Flush.AsIngestBytes,
 		},
-		MemTable: &servicepb.MemTableMetrics{
+		MemTable: &ledgerpb.MemTableMetrics{
 			Size:        m.MemTable.Size,
 			Count:       m.MemTable.Count,
 			ZombieSize:  m.MemTable.ZombieSize,
 			ZombieCount: m.MemTable.ZombieCount,
 		},
-		Snapshots: &servicepb.SnapshotsMetrics{
+		Snapshots: &ledgerpb.SnapshotsMetrics{
 			Count:          int32(m.Snapshots.Count),
 			EarliestSeqNum: uint64(m.Snapshots.EarliestSeqNum),
 			PinnedKeys:     m.Snapshots.PinnedKeys,
 			PinnedSize:     m.Snapshots.PinnedSize,
 		},
-		Table: &servicepb.TableMetrics{
+		Table: &ledgerpb.TableMetrics{
 			ZombieSize:  m.Table.ZombieSize,
 			ZombieCount: m.Table.ZombieCount,
 		},
-		TableCache: &servicepb.TableCacheMetrics{
+		TableCache: &ledgerpb.TableCacheMetrics{
 			Size:   m.FileCache.Size,
 			Count:  m.FileCache.TableCount,
 			Hits:   m.FileCache.Hits,
 			Misses: m.FileCache.Misses,
 		},
-		Wal: &servicepb.WALMetrics{
+		Wal: &ledgerpb.WALMetrics{
 			Files:         m.WAL.Files,
 			ObsoleteFiles: m.WAL.ObsoleteFiles,
 			Size:          m.WAL.Size,
 			BytesIn:       m.WAL.BytesIn,
 			BytesWritten:  m.WAL.BytesWritten,
 		},
-		Keys: &servicepb.KeysMetrics{
+		Keys: &ledgerpb.KeysMetrics{
 			RangeKeySetsCount: m.Keys.RangeKeySetsCount,
 			TombstoneCount:    m.Keys.TombstoneCount,
 		},
@@ -73,7 +73,7 @@ func (s *Store) GetMetrics() *servicepb.PebbleMetrics {
 	}
 
 	for i, level := range m.Levels {
-		result.Levels = append(result.Levels, &servicepb.LevelMetrics{
+		result.Levels = append(result.Levels, &ledgerpb.LevelMetrics{
 			Level:           int32(i),
 			NumFiles:        level.TablesCount,
 			Size:            level.TablesSize,

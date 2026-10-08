@@ -8,7 +8,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -44,7 +44,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	resp, err := client.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
+	resp, err := client.ListQueryCheckpoints(ctx, &ledgerpb.ListQueryCheckpointsRequest{})
 	if err != nil {
 		return cmdutil.FormatGRPCError("listing query checkpoints failed", err)
 	}

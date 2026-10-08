@@ -6,7 +6,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -15,7 +15,7 @@ var _ = Describe("Ledger Metadata", Ordered, func() {
 	var ledgerName = "ledger-metadata-test"
 
 	BeforeAll(func() {
-		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+		_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())
 	})
 
@@ -25,7 +25,7 @@ var _ = Describe("Ledger Metadata", Ordered, func() {
 			"team":        "payments",
 			"region":      "eu-west-1",
 		}
-		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveLedgerMetadataAction(ledgerName, metadata)))
+		_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.SaveLedgerMetadataAction(ledgerName, metadata)))
 		Expect(err).To(Succeed())
 
 		ledger, err := actions.GetLedger(sharedCtx, sharedClient, ledgerName)
@@ -38,7 +38,7 @@ var _ = Describe("Ledger Metadata", Ordered, func() {
 	})
 
 	It("Should update existing metadata (merge behavior)", func() {
-		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveLedgerMetadataAction(ledgerName, map[string]string{
+		_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.SaveLedgerMetadataAction(ledgerName, map[string]string{
 			"team":    "platform",
 			"version": "v3",
 		})))
@@ -54,7 +54,7 @@ var _ = Describe("Ledger Metadata", Ordered, func() {
 	})
 
 	It("Should delete metadata and verify removal", func() {
-		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.DeleteLedgerMetadataAction(ledgerName, "region")))
+		_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.DeleteLedgerMetadataAction(ledgerName, "region")))
 		Expect(err).To(Succeed())
 
 		ledger, err := actions.GetLedger(sharedCtx, sharedClient, ledgerName)
@@ -67,12 +67,12 @@ var _ = Describe("Ledger Metadata", Ordered, func() {
 	})
 
 	It("Should return error when deleting non-existent key", func() {
-		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.DeleteLedgerMetadataAction(ledgerName, "does-not-exist")))
+		_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.DeleteLedgerMetadataAction(ledgerName, "does-not-exist")))
 		Expect(err).To(HaveOccurred())
 	})
 
 	It("Should return error when targeting non-existent ledger", func() {
-		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveLedgerMetadataAction("no-such-ledger", map[string]string{
+		_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.SaveLedgerMetadataAction("no-such-ledger", map[string]string{
 			"key": "value",
 		})))
 		Expect(err).To(HaveOccurred())
@@ -82,12 +82,12 @@ var _ = Describe("Ledger Metadata", Ordered, func() {
 		var otherLedger = "ledger-metadata-isolation"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(otherLedger, nil)))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(otherLedger, nil)))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should not leak metadata between ledgers", func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveLedgerMetadataAction(otherLedger, map[string]string{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.SaveLedgerMetadataAction(otherLedger, map[string]string{
 				"isolated": "true",
 			})))
 			Expect(err).To(Succeed())

@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
@@ -19,8 +19,8 @@ func TestHandleGetNumscript_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetNumscript(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _, _ string, _ string) (*commonpb.NumscriptInfo, error) {
-			return &commonpb.NumscriptInfo{
+		func(_ context.Context, _, _ string, _ string) (*ledgerpb.NumscriptInfo, error) {
+			return &ledgerpb.NumscriptInfo{
 				Name:    "my-script",
 				Content: "send [USD 100] ( source = @world destination = @alice )",
 				Version: "1.0.0",
@@ -46,10 +46,10 @@ func TestHandleGetNumscript_WithVersion(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetNumscript(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _, _ string, version string) (*commonpb.NumscriptInfo, error) {
+		func(_ context.Context, _, _ string, version string) (*ledgerpb.NumscriptInfo, error) {
 			capturedVersion = version
 
-			return &commonpb.NumscriptInfo{
+			return &ledgerpb.NumscriptInfo{
 				Name:    "my-script",
 				Version: "1.0.0",
 			}, nil
@@ -105,7 +105,7 @@ func TestHandleGetNumscript_NotFound(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetNumscript(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _, _ string, _ string) (*commonpb.NumscriptInfo, error) {
+		func(_ context.Context, _, _ string, _ string) (*ledgerpb.NumscriptInfo, error) {
 			return nil, &domain.ErrNumscriptNotFound{Name: "missing"}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)

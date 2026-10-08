@@ -8,7 +8,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -86,10 +86,10 @@ func runSave(cmd *cobra.Command, args []string) error {
 
 	spinner := cmdutil.StartSpinner(fmt.Sprintf("Saving numscript %s...", name))
 
-	requests := []*servicepb.Request{
+	requests := []*ledgerpb.Request{
 		{
-			Type: &servicepb.Request_SaveNumscript{
-				SaveNumscript: &servicepb.SaveNumscriptRequest{
+			Type: &ledgerpb.Request_SaveNumscript{
+				SaveNumscript: &ledgerpb.SaveNumscriptRequest{
 					Ledger:  ledgerName,
 					Name:    name,
 					Content: string(content),

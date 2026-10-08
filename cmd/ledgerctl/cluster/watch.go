@@ -8,7 +8,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -85,7 +85,7 @@ func runWatch(cmd *cobra.Command, _ []string) error {
 // On error, it returns a formatted error string instead of the status display.
 func pollClusterStatus(
 	ctx context.Context,
-	client clusterpb.ClusterServiceClient,
+	client ledgerpb.ClusterServiceClient,
 	nodeID uint32,
 	reqTimeout time.Duration,
 	interval time.Duration,
@@ -93,7 +93,7 @@ func pollClusterStatus(
 	reqCtx, cancel := context.WithTimeout(ctx, reqTimeout)
 	defer cancel()
 
-	state, err := client.GetClusterState(reqCtx, &clusterpb.GetClusterStateRequest{
+	state, err := client.GetClusterState(reqCtx, &ledgerpb.GetClusterStateRequest{
 		NodeId: nodeID,
 	})
 

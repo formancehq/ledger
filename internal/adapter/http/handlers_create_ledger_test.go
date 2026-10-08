@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
@@ -20,12 +20,12 @@ func TestHandleCreateLedger_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
-			return &domain.ApplyResult{Logs: []*commonpb.Log{
+		func(_ context.Context, _ *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{
 				{
-					Payload: &commonpb.LogPayload{
-						Type: &commonpb.LogPayload_CreateLedger{
-							CreateLedger: &commonpb.CreatedLedgerLog{
+					Payload: &ledgerpb.LogPayload{
+						Type: &ledgerpb.LogPayload_CreateLedger{
+							CreateLedger: &ledgerpb.CreatedLedgerLog{
 								Name: "test-ledger",
 							},
 						},
@@ -48,18 +48,18 @@ func TestHandleCreateLedger_Success(t *testing.T) {
 func TestHandleCreateLedger_InitialSchemaAndAccountTypes(t *testing.T) {
 	t.Parallel()
 
-	var captured *commonpb.CreateLedgerRequest
+	var captured *ledgerpb.CreateLedgerRequest
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, req *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			captured = req.GetUnsigned().GetRequests()[0].GetCreateLedger()
 
-			return &domain.ApplyResult{Logs: []*commonpb.Log{
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{
 				{
-					Payload: &commonpb.LogPayload{
-						Type: &commonpb.LogPayload_CreateLedger{
-							CreateLedger: &commonpb.CreatedLedgerLog{Name: "test-ledger"},
+					Payload: &ledgerpb.LogPayload{
+						Type: &ledgerpb.LogPayload_CreateLedger{
+							CreateLedger: &ledgerpb.CreatedLedgerLog{Name: "test-ledger"},
 						},
 					},
 				},
@@ -93,16 +93,16 @@ func TestHandleCreateLedger_InitialSchemaAndAccountTypes(t *testing.T) {
 	require.NotNil(t, captured)
 
 	require.Len(t, captured.GetInitialSchema(), 2)
-	require.Equal(t, commonpb.TargetType_TARGET_TYPE_ACCOUNT, captured.GetInitialSchema()[0].GetTargetType())
+	require.Equal(t, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, captured.GetInitialSchema()[0].GetTargetType())
 	require.Equal(t, "color", captured.GetInitialSchema()[0].GetKey())
-	require.Equal(t, commonpb.MetadataType_METADATA_TYPE_STRING, captured.GetInitialSchema()[0].GetType())
-	require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, captured.GetInitialSchema()[1].GetType())
+	require.Equal(t, ledgerpb.MetadataType_METADATA_TYPE_STRING, captured.GetInitialSchema()[0].GetType())
+	require.Equal(t, ledgerpb.MetadataType_METADATA_TYPE_INT64, captured.GetInitialSchema()[1].GetType())
 
 	at, ok := captured.GetAccountTypes()["user-checking"]
 	require.True(t, ok)
 	require.Equal(t, "users:{id}:checking", at.GetPattern())
-	require.Equal(t, commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL, at.GetPersistence())
-	require.IsType(t, &commonpb.SegmentType_Uint64{}, at.GetSegmentTypes()["id"].GetConstraint())
+	require.Equal(t, ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL, at.GetPersistence())
+	require.IsType(t, &ledgerpb.SegmentType_Uint64{}, at.GetSegmentTypes()["id"].GetConstraint())
 }
 
 func TestHandleCreateLedger_InvalidInitialSchema(t *testing.T) {
@@ -161,22 +161,22 @@ func TestHandleCreateLedger_MissingName(t *testing.T) {
 func TestHandleCreateLedger_LogContractViolations(t *testing.T) {
 	t.Parallel()
 
-	created := &commonpb.Log{Payload: &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "test-ledger"}},
+	created := &ledgerpb.Log{Payload: &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_CreateLedger{CreateLedger: &ledgerpb.CreatedLedgerLog{Name: "test-ledger"}},
 	}}
-	wrongPayload := &commonpb.Log{Payload: &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_PromoteLedger{PromoteLedger: &commonpb.PromotedLedgerLog{Name: "test-ledger"}},
+	wrongPayload := &ledgerpb.Log{Payload: &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_PromoteLedger{PromoteLedger: &ledgerpb.PromotedLedgerLog{Name: "test-ledger"}},
 	}}
 
 	cases := []struct {
 		name    string
-		logs    []*commonpb.Log
+		logs    []*ledgerpb.Log
 		wantMsg string
 	}{
-		{"zero logs", []*commonpb.Log{}, "apply did not return exactly one log"},
-		{"two logs", []*commonpb.Log{created, created}, "apply did not return exactly one log"},
-		{"nil sole log", []*commonpb.Log{nil}, "apply returned a nil log"},
-		{"wrong payload type", []*commonpb.Log{wrongPayload}, "apply returned an unexpected log payload type"},
+		{"zero logs", []*ledgerpb.Log{}, "apply did not return exactly one log"},
+		{"two logs", []*ledgerpb.Log{created, created}, "apply did not return exactly one log"},
+		{"nil sole log", []*ledgerpb.Log{nil}, "apply returned a nil log"},
+		{"wrong payload type", []*ledgerpb.Log{wrongPayload}, "apply returned an unexpected log payload type"},
 	}
 
 	for _, tc := range cases {
@@ -202,7 +202,7 @@ func TestHandleCreateLedger_AlreadyExists(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, &domain.ErrLedgerAlreadyExists{Name: "test-ledger"}
 		})
 	srv := newTestServer(t, backend)

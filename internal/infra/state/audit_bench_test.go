@@ -7,7 +7,7 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -23,11 +23,11 @@ func makeRealisticOrder(i int) *raftcmdpb.Order {
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 						CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-							Postings: []*auditpb.Posting{
+							Postings: []*ledgerpb.Posting{
 								{
 									Source:      fmt.Sprintf("users:%06d", i),
 									Destination: "merchants:shop-42",
-									Amount:      auditpb.NewUint256FromUint64(100),
+									Amount:      ledgerpb.NewUint256FromUint64(100),
 									Asset:       "EUR/2",
 								},
 							},
@@ -50,9 +50,9 @@ func BenchmarkAuditWrite(b *testing.B) {
 			orders[i] = makeRealisticOrder(i)
 		}
 
-		items := make([]*auditpb.AuditItem, n)
+		items := make([]*ledgerpb.AuditItem, n)
 		for i, order := range orders {
-			items[i] = &auditpb.AuditItem{
+			items[i] = &ledgerpb.AuditItem{
 				OrderIndex:      uint32(i),
 				SerializedOrder: order.MarshalDeterministicVT(nil),
 				LogSequence:     uint64(i + 1),
@@ -75,14 +75,14 @@ func BenchmarkAuditWrite(b *testing.B) {
 			for b.Loop() {
 				seq++
 
-				entry := &auditpb.AuditEntry{
+				entry := &ledgerpb.AuditEntry{
 					Sequence:   seq,
 					ProposalId: seq,
 					OrderCount: uint32(n),
 					Items:      items,
 					Ledgers:    []string{"bench-ledger"},
-					Outcome: &auditpb.AuditEntry_Success{
-						Success: &auditpb.AuditSuccess{
+					Outcome: &ledgerpb.AuditEntry_Success{
+						Success: &ledgerpb.AuditSuccess{
 							MinLogSequence: 1,
 							MaxLogSequence: uint64(n),
 						},
@@ -117,13 +117,13 @@ func BenchmarkAuditWrite(b *testing.B) {
 			for b.Loop() {
 				seq++
 
-				header := &auditpb.AuditEntry{
+				header := &ledgerpb.AuditEntry{
 					Sequence:   seq,
 					ProposalId: seq,
 					OrderCount: uint32(n),
 					Ledgers:    []string{"bench-ledger"},
-					Outcome: &auditpb.AuditEntry_Success{
-						Success: &auditpb.AuditSuccess{
+					Outcome: &ledgerpb.AuditEntry_Success{
+						Success: &ledgerpb.AuditSuccess{
 							MinLogSequence: 1,
 							MaxLogSequence: uint64(n),
 						},

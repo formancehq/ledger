@@ -4,7 +4,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
 )
@@ -12,9 +12,9 @@ import (
 // storageConfigFromProto maps the BackupStorage oneof to the backup package's
 // StorageConfig. The provider oneof is the single source of truth for the
 // driver, so an unset provider is an InvalidArgument error.
-func storageConfigFromProto(s *commonpb.BackupStorage) (backup.StorageConfig, error) {
+func storageConfigFromProto(s *ledgerpb.BackupStorage) (backup.StorageConfig, error) {
 	switch p := s.GetProvider().(type) {
-	case *commonpb.BackupStorage_S3:
+	case *ledgerpb.BackupStorage_S3:
 		return backup.StorageConfig{
 			Driver:            "s3",
 			S3Bucket:          p.S3.GetBucket(),
@@ -23,7 +23,7 @@ func storageConfigFromProto(s *commonpb.BackupStorage) (backup.StorageConfig, er
 			S3AccessKeyID:     p.S3.GetAccessKeyId(),
 			S3SecretAccessKey: p.S3.GetSecretAccessKey(),
 		}, nil
-	case *commonpb.BackupStorage_Azure:
+	case *ledgerpb.BackupStorage_Azure:
 		return backup.StorageConfig{
 			Driver:           "azure",
 			AzureAccountName: p.Azure.GetAccountName(),

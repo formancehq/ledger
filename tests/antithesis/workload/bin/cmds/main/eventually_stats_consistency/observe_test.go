@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestAwaitUsageIndependentWitnessAndExactCounters(t *testing.T) {
@@ -37,26 +37,26 @@ func TestAwaitUsageIndependentWitnessAndExactCounters(t *testing.T) {
 			var targetReads atomic.Int64
 			var wrongConsistency atomic.Bool
 			server := &oracleTestServer{
-				getLedgerFn: func(ctx context.Context, req *commonpb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
+				getLedgerFn: func(ctx context.Context, req *ledgerpb.GetLedgerRequest) (*ledgerpb.LedgerInfo, error) {
 					md, _ := metadata.FromIncomingContext(ctx)
 					if values := md.Get("x-consistency"); len(values) != 1 || values[0] != "stale" {
 						wrongConsistency.Store(true)
 					}
 
-					return &commonpb.LedgerInfo{Name: req.GetLedger(), Id: 7}, nil
+					return &ledgerpb.LedgerInfo{Name: req.GetLedger(), Id: 7}, nil
 				},
-				statsFn: func(ctx context.Context, req *commonpb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
+				statsFn: func(ctx context.Context, req *ledgerpb.GetLedgerStatsRequest) (*ledgerpb.LedgerStats, error) {
 					if req.GetLedger() == "witness" {
-						return &commonpb.LedgerStats{ReferenceCount: tt.marker}, nil
+						return &ledgerpb.LedgerStats{ReferenceCount: tt.marker}, nil
 					}
 					targetReads.Add(1)
 
-					return &commonpb.LedgerStats{LogCount: 2, PostingCount: tt.postings, RevertCount: tt.reverts}, nil
+					return &ledgerpb.LedgerStats{LogCount: 2, PostingCount: tt.postings, RevertCount: tt.reverts}, nil
 				},
 			}
 			client := newSourceTestClient(t, server)
 			var waits int
-			result := awaitUsage(context.Background(), client, &commonpb.LedgerInfo{Name: "witness", Id: 7}, map[string]expectedLedger{"target": {ID: 7, Counts: counts{Logs: 2, Postings: 3, Reverts: 1}}}, func(context.Context) error {
+			result := awaitUsage(context.Background(), client, &ledgerpb.LedgerInfo{Name: "witness", Id: 7}, map[string]expectedLedger{"target": {ID: 7, Counts: counts{Logs: 2, Postings: 3, Reverts: 1}}}, func(context.Context) error {
 				waits++
 				if waits == 3 {
 					return context.DeadlineExceeded
@@ -91,26 +91,26 @@ func TestAwaitUsageRecoversFromLagAndTransientError(t *testing.T) {
 			var released atomic.Bool
 			var targetReads atomic.Int64
 			client := newSourceTestClient(t, &oracleTestServer{
-				getLedgerFn: func(_ context.Context, req *commonpb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
-					return &commonpb.LedgerInfo{Name: req.GetLedger(), Id: 1}, nil
+				getLedgerFn: func(_ context.Context, req *ledgerpb.GetLedgerRequest) (*ledgerpb.LedgerInfo, error) {
+					return &ledgerpb.LedgerInfo{Name: req.GetLedger(), Id: 1}, nil
 				},
-				statsFn: func(_ context.Context, req *commonpb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
+				statsFn: func(_ context.Context, req *ledgerpb.GetLedgerStatsRequest) (*ledgerpb.LedgerStats, error) {
 					if !released.Load() {
 						if transient {
 							return nil, status.Error(codes.Unavailable, "replica restarting")
 						}
 
-						return &commonpb.LedgerStats{}, nil
+						return &ledgerpb.LedgerStats{}, nil
 					}
 					if req.GetLedger() == "witness" {
-						return &commonpb.LedgerStats{ReferenceCount: 1}, nil
+						return &ledgerpb.LedgerStats{ReferenceCount: 1}, nil
 					}
 					targetReads.Add(1)
 
-					return &commonpb.LedgerStats{LogCount: 1, PostingCount: 1}, nil
+					return &ledgerpb.LedgerStats{LogCount: 1, PostingCount: 1}, nil
 				},
 			})
-			result := awaitUsage(context.Background(), client, &commonpb.LedgerInfo{Name: "witness", Id: 1}, map[string]expectedLedger{"target": {ID: 1, Counts: counts{Logs: 1, Postings: 1}}}, func(context.Context) error {
+			result := awaitUsage(context.Background(), client, &ledgerpb.LedgerInfo{Name: "witness", Id: 1}, map[string]expectedLedger{"target": {ID: 1, Counts: counts{Logs: 1, Postings: 1}}}, func(context.Context) error {
 				released.Store(true)
 
 				return nil
@@ -126,22 +126,22 @@ func TestAwaitUsageRejectsDisappearingWitness(t *testing.T) {
 	t.Parallel()
 	var markerReads atomic.Int64
 	client := newSourceTestClient(t, &oracleTestServer{
-		getLedgerFn: func(_ context.Context, req *commonpb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
-			return &commonpb.LedgerInfo{Name: req.GetLedger(), Id: 1}, nil
+		getLedgerFn: func(_ context.Context, req *ledgerpb.GetLedgerRequest) (*ledgerpb.LedgerInfo, error) {
+			return &ledgerpb.LedgerInfo{Name: req.GetLedger(), Id: 1}, nil
 		},
-		statsFn: func(_ context.Context, req *commonpb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
+		statsFn: func(_ context.Context, req *ledgerpb.GetLedgerStatsRequest) (*ledgerpb.LedgerStats, error) {
 			if req.GetLedger() == "witness" {
 				if markerReads.Add(1)%2 == 1 {
-					return &commonpb.LedgerStats{ReferenceCount: 1}, nil
+					return &ledgerpb.LedgerStats{ReferenceCount: 1}, nil
 				}
 
-				return &commonpb.LedgerStats{}, nil
+				return &ledgerpb.LedgerStats{}, nil
 			}
 
-			return &commonpb.LedgerStats{LogCount: 1, PostingCount: 1}, nil
+			return &ledgerpb.LedgerStats{LogCount: 1, PostingCount: 1}, nil
 		},
 	})
-	result := awaitUsage(context.Background(), client, &commonpb.LedgerInfo{Name: "witness", Id: 1}, map[string]expectedLedger{"target": {ID: 1, Counts: counts{Logs: 1, Postings: 1}}}, func(context.Context) error { return context.DeadlineExceeded })
+	result := awaitUsage(context.Background(), client, &ledgerpb.LedgerInfo{Name: "witness", Id: 1}, map[string]expectedLedger{"target": {ID: 1, Counts: counts{Logs: 1, Postings: 1}}}, func(context.Context) error { return context.DeadlineExceeded })
 	require.False(t, result.Converged)
 	require.Zero(t, result.WitnessReferences)
 	require.Equal(t, int64(2), markerReads.Load())
@@ -153,24 +153,24 @@ func TestAwaitUsageRetainsErrorsAndIncarnationMismatch(t *testing.T) {
 		t.Run(scenario, func(t *testing.T) {
 			t.Parallel()
 			client := newSourceTestClient(t, &oracleTestServer{
-				getLedgerFn: func(_ context.Context, req *commonpb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
+				getLedgerFn: func(_ context.Context, req *ledgerpb.GetLedgerRequest) (*ledgerpb.LedgerInfo, error) {
 					id := uint32(1)
 					if scenario == req.GetLedger()+" incarnation" {
 						id = 2
 					}
 
-					return &commonpb.LedgerInfo{Name: req.GetLedger(), Id: id}, nil
+					return &ledgerpb.LedgerInfo{Name: req.GetLedger(), Id: id}, nil
 				},
-				statsFn: func(_ context.Context, req *commonpb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
+				statsFn: func(_ context.Context, req *ledgerpb.GetLedgerStatsRequest) (*ledgerpb.LedgerStats, error) {
 					if req.GetLedger() == "witness" {
-						return &commonpb.LedgerStats{ReferenceCount: 1}, nil
+						return &ledgerpb.LedgerStats{ReferenceCount: 1}, nil
 					}
 
 					return nil, status.Error(codes.Internal, "corrupt usage record")
 				},
 			})
 			var waited bool
-			result := awaitUsage(context.Background(), client, &commonpb.LedgerInfo{Name: "witness", Id: 1}, map[string]expectedLedger{"target": {ID: 1, Counts: counts{Logs: 1, Postings: 1}}}, func(context.Context) error {
+			result := awaitUsage(context.Background(), client, &ledgerpb.LedgerInfo{Name: "witness", Id: 1}, map[string]expectedLedger{"target": {ID: 1, Counts: counts{Logs: 1, Postings: 1}}}, func(context.Context) error {
 				waited = true
 
 				return errors.New("must not wait")
@@ -190,22 +190,22 @@ func TestAwaitUsageRetainsMismatchWhenLaterRPCFails(t *testing.T) {
 	t.Parallel()
 	var unavailable atomic.Bool
 	client := newSourceTestClient(t, &oracleTestServer{
-		getLedgerFn: func(_ context.Context, req *commonpb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
+		getLedgerFn: func(_ context.Context, req *ledgerpb.GetLedgerRequest) (*ledgerpb.LedgerInfo, error) {
 			if unavailable.Load() {
 				return nil, status.Error(codes.Unavailable, "replica stopped responding")
 			}
 
-			return &commonpb.LedgerInfo{Name: req.GetLedger(), Id: 1}, nil
+			return &ledgerpb.LedgerInfo{Name: req.GetLedger(), Id: 1}, nil
 		},
-		statsFn: func(_ context.Context, req *commonpb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
+		statsFn: func(_ context.Context, req *ledgerpb.GetLedgerStatsRequest) (*ledgerpb.LedgerStats, error) {
 			if req.GetLedger() == "witness" {
-				return &commonpb.LedgerStats{ReferenceCount: 1}, nil
+				return &ledgerpb.LedgerStats{ReferenceCount: 1}, nil
 			}
 
-			return &commonpb.LedgerStats{LogCount: 1}, nil
+			return &ledgerpb.LedgerStats{LogCount: 1}, nil
 		},
 	})
-	result := awaitUsage(context.Background(), client, &commonpb.LedgerInfo{Name: "witness", Id: 1}, map[string]expectedLedger{"target": {ID: 1, Counts: counts{Logs: 1, Postings: 1}}}, func(context.Context) error {
+	result := awaitUsage(context.Background(), client, &ledgerpb.LedgerInfo{Name: "witness", Id: 1}, map[string]expectedLedger{"target": {ID: 1, Counts: counts{Logs: 1, Postings: 1}}}, func(context.Context) error {
 		if unavailable.Swap(true) {
 			return context.DeadlineExceeded
 		}
@@ -224,21 +224,21 @@ func TestAwaitUsageAllowsAFullSweepWithinConvergenceWindow(t *testing.T) {
 	// deadline. Check the budget reaching the server without sleeping in tests.
 	var truncatedBudget atomic.Bool
 	client := newSourceTestClient(t, &oracleTestServer{
-		getLedgerFn: func(ctx context.Context, req *commonpb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
+		getLedgerFn: func(ctx context.Context, req *ledgerpb.GetLedgerRequest) (*ledgerpb.LedgerInfo, error) {
 			deadline, ok := ctx.Deadline()
 			if !ok || time.Until(deadline) < 30*time.Second {
 				truncatedBudget.Store(true)
 			}
 
-			return &commonpb.LedgerInfo{Name: req.GetLedger(), Id: 1}, nil
+			return &ledgerpb.LedgerInfo{Name: req.GetLedger(), Id: 1}, nil
 		},
-		statsFn: func(_ context.Context, req *commonpb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
-			return &commonpb.LedgerStats{ReferenceCount: 1}, nil
+		statsFn: func(_ context.Context, req *ledgerpb.GetLedgerStatsRequest) (*ledgerpb.LedgerStats, error) {
+			return &ledgerpb.LedgerStats{ReferenceCount: 1}, nil
 		},
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	result := awaitUsage(ctx, client, &commonpb.LedgerInfo{Name: "witness", Id: 1}, map[string]expectedLedger{"target": {ID: 1}}, func(context.Context) error { return errors.New("unexpected retry") })
+	result := awaitUsage(ctx, client, &ledgerpb.LedgerInfo{Name: "witness", Id: 1}, map[string]expectedLedger{"target": {ID: 1}}, func(context.Context) error { return errors.New("unexpected retry") })
 	require.True(t, result.Converged, result.Error)
 	require.False(t, truncatedBudget.Load(), "the full sweep must retain its convergence budget")
 }

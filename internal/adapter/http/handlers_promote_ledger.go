@@ -3,7 +3,7 @@ package http
 import (
 	"net/http"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // handlePromoteLedger handles POST /{ledgerName}/promote to promote a mirror ledger to normal mode.
@@ -13,9 +13,9 @@ func (s *Server) handlePromoteLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logs, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &commonpb.Request{
-		Type: &commonpb.Request_PromoteLedger{
-			PromoteLedger: &commonpb.PromoteLedgerRequest{
+	logs, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &ledgerpb.Request{
+		Type: &ledgerpb.Request_PromoteLedger{
+			PromoteLedger: &ledgerpb.PromoteLedgerRequest{
 				Ledger: ledgerName,
 			},
 		},
@@ -35,5 +35,5 @@ func (s *Server) handlePromoteLedger(w http.ResponseWriter, r *http.Request) {
 		panic(unexpectedLogPayload("promote-ledger", logEntry, details))
 	}
 
-	writeCreated(w, &commonpb.LedgerInfo{Name: promoteLedgerLog.GetName(), Mode: commonpb.LedgerMode_LEDGER_MODE_NORMAL})
+	writeCreated(w, &ledgerpb.LedgerInfo{Name: promoteLedgerLog.GetName(), Mode: ledgerpb.LedgerMode_LEDGER_MODE_NORMAL})
 }

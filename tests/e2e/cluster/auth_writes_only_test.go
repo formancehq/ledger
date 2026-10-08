@@ -15,7 +15,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
@@ -31,8 +31,8 @@ var _ = Describe("Auth writes-only mode", Ordered, func() {
 	var (
 		ctx        context.Context
 		grpcConn   *grpc.ClientConn
-		client     clusterpb.BucketServiceClient
-		clusterCli clusterpb.ClusterServiceClient
+		client     ledgerpb.BucketServiceClient
+		clusterCli ledgerpb.ClusterServiceClient
 		privKey    *rsa.PrivateKey
 		oidcServer *httptest.Server
 		httpAddr   string
@@ -111,7 +111,7 @@ var _ = Describe("Auth writes-only mode", Ordered, func() {
 			g.Expect(err).To(Succeed())
 			authCtx := withAuthToken(ctx, token)
 
-			state, err := clusterCli.GetClusterState(authCtx, &clusterpb.GetClusterStateRequest{})
+			state, err := clusterCli.GetClusterState(authCtx, &ledgerpb.GetClusterStateRequest{})
 			g.Expect(err).To(Succeed())
 			return state.Leader != 0
 		}).Within(30 * time.Second).ProbeEvery(200 * time.Millisecond).Should(BeTrue())
@@ -119,19 +119,19 @@ var _ = Describe("Auth writes-only mode", Ordered, func() {
 		// Seed a ledger that the read tests can target.
 		writeToken, err := signJWT(privKey, makeAuthClaims(oidcServer.URL, "ledger:write"))
 		Expect(err).To(Succeed())
-		_, err = client.Apply(withAuthToken(ctx, writeToken), clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction("writes-only-ledger", nil)))
+		_, err = client.Apply(withAuthToken(ctx, writeToken), ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction("writes-only-ledger", nil)))
 		Expect(err).To(Succeed())
 	})
 
 	Context("gRPC", func() {
 		It("allows reads without a token (anonymous grants *:read)", func() {
-			_, err := client.GetLedger(ctx, &clusterpb.GetLedgerRequest{Ledger: "writes-only-ledger"})
+			_, err := client.GetLedger(ctx, &ledgerpb.GetLedgerRequest{Ledger: "writes-only-ledger"})
 			Expect(err).To(Succeed())
 		})
 
 		It("rejects reads with an invalid token (token errors are not swallowed)", func() {
 			authCtx := withAuthToken(ctx, "this-is-not-a-jwt")
-			_, err := client.GetLedger(authCtx, &clusterpb.GetLedgerRequest{Ledger: "writes-only-ledger"})
+			_, err := client.GetLedger(authCtx, &ledgerpb.GetLedgerRequest{Ledger: "writes-only-ledger"})
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
@@ -139,7 +139,7 @@ var _ = Describe("Auth writes-only mode", Ordered, func() {
 		})
 
 		It("rejects writes without a token", func() {
-			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction("writes-only-ledger", []*clusterpb.Posting{
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction("writes-only-ledger", []*ledgerpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(HaveOccurred())
@@ -153,7 +153,7 @@ var _ = Describe("Auth writes-only mode", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := withAuthToken(ctx, token)
 
-			_, err = client.Apply(authCtx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction("writes-only-ledger", []*clusterpb.Posting{
+			_, err = client.Apply(authCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction("writes-only-ledger", []*ledgerpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())

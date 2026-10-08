@@ -17,7 +17,7 @@ import (
 	reflectionpb "google.golang.org/grpc/reflection/grpc_reflection_v1"
 	"google.golang.org/grpc/status"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
@@ -35,9 +35,9 @@ func TestServiceServerProtocolVersion(t *testing.T) {
 	require.NoError(t, err)
 	srv, err := NewServiceServer(ServiceAuthPolicyRestore, internalauth.AuthConfig{}, "", 0, noopLogger{}, false, time.Second, nil, true, WithListener(listener))
 	require.NoError(t, err)
-	clusterpb.RegisterBucketServiceServer(srv.GetServer(), &clusterpb.UnimplementedBucketServiceServer{})
-	clusterpb.RegisterClusterServiceServer(srv.GetServer(), &clusterpb.UnimplementedClusterServiceServer{})
-	clusterpb.RegisterRestoreServiceServer(srv.GetServer(), &clusterpb.UnimplementedRestoreServiceServer{})
+	ledgerpb.RegisterBucketServiceServer(srv.GetServer(), &ledgerpb.UnimplementedBucketServiceServer{})
+	ledgerpb.RegisterClusterServiceServer(srv.GetServer(), &ledgerpb.UnimplementedClusterServiceServer{})
+	ledgerpb.RegisterRestoreServiceServer(srv.GetServer(), &ledgerpb.UnimplementedRestoreServiceServer{})
 	healthpb.RegisterHealthServer(srv.GetServer(), health.NewServer())
 	require.NoError(t, srv.Listen())
 	go func() {
@@ -54,12 +54,12 @@ func TestServiceServerProtocolVersion(t *testing.T) {
 		call func(context.Context) error
 	}{
 		{"apply", func(ctx context.Context) error {
-			_, err := clusterpb.NewBucketServiceClient(conn).Apply(ctx, &clusterpb.ApplyRequest{})
+			_, err := ledgerpb.NewBucketServiceClient(conn).Apply(ctx, &ledgerpb.ApplyRequest{})
 
 			return err
 		}},
 		{"list", func(ctx context.Context) error {
-			stream, err := clusterpb.NewBucketServiceClient(conn).ListLedgers(ctx, &clusterpb.ListLedgersRequest{})
+			stream, err := ledgerpb.NewBucketServiceClient(conn).ListLedgers(ctx, &ledgerpb.ListLedgersRequest{})
 			if err != nil {
 				return err
 			}
@@ -68,17 +68,17 @@ func TestServiceServerProtocolVersion(t *testing.T) {
 			return err
 		}},
 		{"cluster", func(ctx context.Context) error {
-			_, err := clusterpb.NewClusterServiceClient(conn).GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+			_, err := ledgerpb.NewClusterServiceClient(conn).GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 
 			return err
 		}},
 		{"restore", func(ctx context.Context) error {
-			_, err := clusterpb.NewRestoreServiceClient(conn).FinalizeRestore(ctx, &clusterpb.FinalizeRestoreRequest{})
+			_, err := ledgerpb.NewRestoreServiceClient(conn).FinalizeRestore(ctx, &ledgerpb.FinalizeRestoreRequest{})
 
 			return err
 		}},
 		{"restore-stream", func(ctx context.Context) error {
-			stream, err := clusterpb.NewRestoreServiceClient(conn).ValidateRestore(ctx, &clusterpb.ValidateRestoreRequest{})
+			stream, err := ledgerpb.NewRestoreServiceClient(conn).ValidateRestore(ctx, &ledgerpb.ValidateRestoreRequest{})
 			if err != nil {
 				return err
 			}
@@ -130,7 +130,7 @@ func TestServiceServerProtocolVersion(t *testing.T) {
 		defer cancel()
 		_, err := healthpb.NewHealthClient(conn).Check(ctx, &healthpb.HealthCheckRequest{})
 		require.NoError(t, err)
-		_, err = clusterpb.NewBucketServiceClient(conn).Discovery(ctx, &clusterpb.DiscoveryRequest{})
+		_, err = ledgerpb.NewBucketServiceClient(conn).Discovery(ctx, &ledgerpb.DiscoveryRequest{})
 		require.Equal(t, codes.Unimplemented, status.Code(err), "Discovery must reach its handler without version metadata")
 		reflection, err := reflectionpb.NewServerReflectionClient(conn).ServerReflectionInfo(ctx)
 		require.NoError(t, err)

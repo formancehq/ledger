@@ -3,18 +3,18 @@ package main
 import (
 	"errors"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // validateLifecycleLog checks the top-level payloads that carry no ledger-local
 // log. An absent payload is never equivalent to a false maintenance toggle.
-func validateLifecycleLog(req *commonpb.Request, expectedPreparedQuery, payload *commonpb.LogPayload) error {
+func validateLifecycleLog(req *ledgerpb.Request, expectedPreparedQuery, payload *ledgerpb.LogPayload) error {
 	if expectedPreparedQuery != nil && !expectedPreparedQuery.EqualVT(payload) {
 		return errors.New("prepared-query response does not match committed change")
 	}
 
 	switch r := req.GetType().(type) {
-	case *commonpb.Request_CreateLedger:
+	case *ledgerpb.Request_CreateLedger:
 		log := payload.GetCreateLedger()
 		if log == nil || log.GetId() == 0 || log.GetCreatedAt() == nil || log.GetName() != r.CreateLedger.GetName() ||
 			log.GetMode() != r.CreateLedger.GetMode() || !log.GetMirrorSource().EqualVT(r.CreateLedger.GetMirrorSource()) ||
@@ -23,17 +23,17 @@ func validateLifecycleLog(req *commonpb.Request, expectedPreparedQuery, payload 
 			log.GetDefaultEnforcementMode() != r.CreateLedger.GetDefaultEnforcementMode() {
 			return errors.New("create-ledger response does not match request")
 		}
-	case *commonpb.Request_DeleteLedger:
+	case *ledgerpb.Request_DeleteLedger:
 		log := payload.GetDeleteLedger()
 		if log == nil || log.GetName() != r.DeleteLedger.GetName() || log.GetDeletedAt() == nil {
 			return errors.New("delete-ledger response does not match request")
 		}
-	case *commonpb.Request_PromoteLedger:
+	case *ledgerpb.Request_PromoteLedger:
 		log := payload.GetPromoteLedger()
 		if log == nil || log.GetName() != r.PromoteLedger.GetLedger() {
 			return errors.New("promote-ledger response does not match request")
 		}
-	case *commonpb.Request_SetMaintenanceMode:
+	case *ledgerpb.Request_SetMaintenanceMode:
 		log := payload.GetSetMaintenanceMode()
 		if log == nil || log.GetEnabled() != r.SetMaintenanceMode.GetEnabled() {
 			return errors.New("maintenance response does not match requested mode")
@@ -43,27 +43,27 @@ func validateLifecycleLog(req *commonpb.Request, expectedPreparedQuery, payload 
 	return nil
 }
 
-func lifecycleMetadataSchema(commands []*commonpb.SetMetadataFieldTypeCommand) *commonpb.MetadataSchema {
+func lifecycleMetadataSchema(commands []*ledgerpb.SetMetadataFieldTypeCommand) *ledgerpb.MetadataSchema {
 	if len(commands) == 0 {
 		return nil
 	}
-	schema := &commonpb.MetadataSchema{}
+	schema := &ledgerpb.MetadataSchema{}
 	for _, cmd := range commands {
-		field := &commonpb.MetadataFieldSchema{Type: cmd.GetType()}
+		field := &ledgerpb.MetadataFieldSchema{Type: cmd.GetType()}
 		switch cmd.GetTargetType() {
-		case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+		case ledgerpb.TargetType_TARGET_TYPE_ACCOUNT:
 			if schema.AccountFields == nil {
-				schema.AccountFields = map[string]*commonpb.MetadataFieldSchema{}
+				schema.AccountFields = map[string]*ledgerpb.MetadataFieldSchema{}
 			}
 			schema.AccountFields[cmd.GetKey()] = field
-		case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+		case ledgerpb.TargetType_TARGET_TYPE_TRANSACTION:
 			if schema.TransactionFields == nil {
-				schema.TransactionFields = map[string]*commonpb.MetadataFieldSchema{}
+				schema.TransactionFields = map[string]*ledgerpb.MetadataFieldSchema{}
 			}
 			schema.TransactionFields[cmd.GetKey()] = field
-		case commonpb.TargetType_TARGET_TYPE_LEDGER:
+		case ledgerpb.TargetType_TARGET_TYPE_LEDGER:
 			if schema.LedgerFields == nil {
-				schema.LedgerFields = map[string]*commonpb.MetadataFieldSchema{}
+				schema.LedgerFields = map[string]*ledgerpb.MetadataFieldSchema{}
 			}
 			schema.LedgerFields[cmd.GetKey()] = field
 		}
@@ -72,7 +72,7 @@ func lifecycleMetadataSchema(commands []*commonpb.SetMetadataFieldTypeCommand) *
 	return schema
 }
 
-func accountTypesEqual(got, want map[string]*commonpb.AccountType) bool {
+func accountTypesEqual(got, want map[string]*ledgerpb.AccountType) bool {
 	if len(got) != len(want) {
 		return false
 	}

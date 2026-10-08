@@ -11,7 +11,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/accounttypes"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
@@ -73,7 +73,7 @@ func runConfiguration(cmd *cobra.Command, args []string) error {
 	// Fetch ledger info (metadata schema, account types). Indexes are fetched
 	// separately via BucketService.ListIndexes since they no longer live in
 	// LedgerInfo.
-	ledger, err := client.GetLedger(ctx, &commonpb.GetLedgerRequest{Ledger: ledgerName})
+	ledger, err := client.GetLedger(ctx, &ledgerpb.GetLedgerRequest{Ledger: ledgerName})
 	if err != nil {
 		spinner.Fail("Failed to get ledger")
 
@@ -81,8 +81,8 @@ func runConfiguration(cmd *cobra.Command, args []string) error {
 	}
 
 	// Fetch indexes for this ledger from the bucket index registry.
-	idxStream, err := client.ListIndexes(ctx, &commonpb.ListIndexesRequest{
-		Scope:  commonpb.ListIndexesRequest_SCOPE_LEDGER,
+	idxStream, err := client.ListIndexes(ctx, &ledgerpb.ListIndexesRequest{
+		Scope:  ledgerpb.ListIndexesRequest_SCOPE_LEDGER,
 		Ledger: ledgerName,
 	})
 	if err != nil {
@@ -91,7 +91,7 @@ func runConfiguration(cmd *cobra.Command, args []string) error {
 		return cmdutil.FormatGRPCError("failed to list indexes", err)
 	}
 
-	var ledgerIndexes []*commonpb.Index
+	var ledgerIndexes []*ledgerpb.Index
 	for {
 		idx, recvErr := idxStream.Recv()
 		if errors.Is(recvErr, io.EOF) {
@@ -108,7 +108,7 @@ func runConfiguration(cmd *cobra.Command, args []string) error {
 	}
 
 	// Fetch prepared queries
-	pqResp, err := client.ListPreparedQueries(ctx, &commonpb.ListPreparedQueriesRequest{Ledger: ledgerName})
+	pqResp, err := client.ListPreparedQueries(ctx, &ledgerpb.ListPreparedQueriesRequest{Ledger: ledgerName})
 	if err != nil {
 		spinner.Fail("Failed to list prepared queries")
 
@@ -171,7 +171,7 @@ func runConfiguration(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func renderConfigurationAccountTypes(ledger *commonpb.LedgerInfo) {
+func renderConfigurationAccountTypes(ledger *ledgerpb.LedgerInfo) {
 	pterm.Println()
 	pterm.DefaultSection.Printf("Account Types (%d)\n", len(ledger.GetAccountTypes()))
 
@@ -204,7 +204,7 @@ func renderConfigurationAccountTypes(ledger *commonpb.LedgerInfo) {
 	_ = pterm.DefaultTable.WithHasHeader().WithData(table).Render()
 }
 
-func renderConfigurationIndexes(ledgerIndexes []*commonpb.Index) {
+func renderConfigurationIndexes(ledgerIndexes []*ledgerpb.Index) {
 	pterm.Println()
 	pterm.DefaultSection.Println("Indexes")
 
@@ -246,40 +246,40 @@ func renderConfigurationIndexes(ledgerIndexes []*commonpb.Index) {
 
 // describeIndex returns a (type, target, key) tuple for an IndexID, suitable
 // for tabular display.
-func describeIndex(id *commonpb.IndexID) (typeName, target, key string) {
+func describeIndex(id *ledgerpb.IndexID) (typeName, target, key string) {
 	switch k := id.GetKind().(type) {
-	case *commonpb.IndexID_TxBuiltin:
+	case *ledgerpb.IndexID_TxBuiltin:
 		switch k.TxBuiltin {
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE:
 			return "reference", "-", "-"
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
 			return "timestamp", "-", "-"
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS:
 			return "address", "-", "-"
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS:
 			return "source-address", "-", "-"
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS:
 			return "destination-address", "-", "-"
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
 			return "inserted-at", "-", "-"
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
 			return "reverted-at", "-", "-"
 		}
 
 		return "tx-builtin", "-", k.TxBuiltin.String()
-	case *commonpb.IndexID_LogBuiltin:
+	case *ledgerpb.IndexID_LogBuiltin:
 		return "log-" + k.LogBuiltin.String(), "-", "-"
-	case *commonpb.IndexID_AccountBuiltin:
+	case *ledgerpb.IndexID_AccountBuiltin:
 		return "account-builtin", "-", k.AccountBuiltin.String()
-	case *commonpb.IndexID_Metadata:
+	case *ledgerpb.IndexID_Metadata:
 		var t string
 
 		switch k.Metadata.GetTarget() {
-		case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+		case ledgerpb.TargetType_TARGET_TYPE_ACCOUNT:
 			t = "account"
-		case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+		case ledgerpb.TargetType_TARGET_TYPE_TRANSACTION:
 			t = "transaction"
-		case commonpb.TargetType_TARGET_TYPE_LEDGER:
+		case ledgerpb.TargetType_TARGET_TYPE_LEDGER:
 			t = "ledger"
 		default:
 			t = "-"
@@ -291,7 +291,7 @@ func describeIndex(id *commonpb.IndexID) (typeName, target, key string) {
 	return "unknown", "-", "-"
 }
 
-func renderConfigurationPreparedQueries(queries []*commonpb.PreparedQuery, expand bool) {
+func renderConfigurationPreparedQueries(queries []*ledgerpb.PreparedQuery, expand bool) {
 	pterm.Println()
 	pterm.DefaultSection.Printf("Prepared Queries (%d)\n", len(queries))
 
@@ -332,20 +332,20 @@ func renderConfigurationPreparedQueries(queries []*commonpb.PreparedQuery, expan
 	}
 }
 
-func queryTargetString(target commonpb.QueryTarget) string {
+func queryTargetString(target ledgerpb.QueryTarget) string {
 	switch target {
-	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
 		return "accounts"
-	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
 		return "transactions"
-	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_LOGS:
 		return "logs"
 	default:
 		return "unknown"
 	}
 }
 
-func renderConfigurationNumscripts(numscripts []*commonpb.NumscriptInfo, expand bool) {
+func renderConfigurationNumscripts(numscripts []*ledgerpb.NumscriptInfo, expand bool) {
 	pterm.Println()
 	pterm.DefaultSection.Printf("Numscript Library (%d)\n", len(numscripts))
 

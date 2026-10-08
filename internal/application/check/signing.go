@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"slices"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -43,7 +43,7 @@ type signingKeyExpectation struct {
 type signingFinding struct {
 	class     int
 	keyID     string
-	errorType servicepb.CheckStoreErrorType
+	errorType ledgerpb.CheckStoreErrorType
 	message   string
 }
 
@@ -194,7 +194,7 @@ func (v *signingVerifier) descendantsOf(keyID string) []string {
 // Public-key bytes never appear in a message. The key ID plus the name of the
 // diverging field identifies the problem completely, and the material is
 // sensitive-adjacent.
-func (v *signingVerifier) compare(reader dal.PebbleReader, callback func(*servicepb.CheckStoreEvent)) error {
+func (v *signingVerifier) compare(reader dal.PebbleReader, callback func(*ledgerpb.CheckStoreEvent)) error {
 	stored, malformed, err := query.ReadSigningKeys(reader)
 	if err != nil {
 		return fmt.Errorf("reading the stored signing keys: %w", err)
@@ -215,7 +215,7 @@ func (v *signingVerifier) compare(reader dal.PebbleReader, callback func(*servic
 		findings = append(findings, signingFinding{
 			class:     signingClassUndecodable,
 			keyID:     row.KeyID,
-			errorType: servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
+			errorType: ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
 			message: fmt.Sprintf(
 				"signing key %q has an undecodable stored row: %s (value length %d)",
 				row.KeyID, row.Reason, row.ValueLength),
@@ -236,7 +236,7 @@ func (v *signingVerifier) compare(reader dal.PebbleReader, callback func(*servic
 	if v.liveTruncated {
 		findings = append(findings, signingFinding{
 			class:     signingClassIncomplete,
-			errorType: servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE,
+			errorType: ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE,
 			message: "signing state could not be verified over the whole history: the audit range was " +
 				"cut short by a hash chain break, so every signing order recorded after it is unread. " +
 				"The key and config comparisons are skipped for this run rather than reported against " +
@@ -254,7 +254,7 @@ func (v *signingVerifier) compare(reader dal.PebbleReader, callback func(*servic
 			findings = append(findings, signingFinding{
 				class:     signingClassMissing,
 				keyID:     keyID,
-				errorType: servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
+				errorType: ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
 				message: fmt.Sprintf(
 					"signing key %q was registered by an audited order but missing from the store",
 					keyID),
@@ -270,7 +270,7 @@ func (v *signingVerifier) compare(reader dal.PebbleReader, callback func(*servic
 			findings = append(findings, signingFinding{
 				class:     signingClassPublicKey,
 				keyID:     keyID,
-				errorType: servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
+				errorType: ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
 				message: fmt.Sprintf(
 					"signing key %q has stored public-key bytes that differ from the audited registration",
 					keyID),
@@ -281,7 +281,7 @@ func (v *signingVerifier) compare(reader dal.PebbleReader, callback func(*servic
 			findings = append(findings, signingFinding{
 				class:     signingClassParent,
 				keyID:     keyID,
-				errorType: servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
+				errorType: ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
 				message: fmt.Sprintf(
 					"signing key %q has stored parent_key_id %q, but the audited registration declares %q",
 					keyID, actual.ParentKeyID, expected.parentKeyID),
@@ -297,7 +297,7 @@ func (v *signingVerifier) compare(reader dal.PebbleReader, callback func(*servic
 		findings = append(findings, signingFinding{
 			class:     signingClassUnaudited,
 			keyID:     keyID,
-			errorType: servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
+			errorType: ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
 			message: fmt.Sprintf(
 				"stored signing key %q has no audited registration (injected, or an audited revocation was lost)",
 				keyID),
@@ -307,7 +307,7 @@ func (v *signingVerifier) compare(reader dal.PebbleReader, callback func(*servic
 	if storedRequireSignatures != v.requireSignatures {
 		findings = append(findings, signingFinding{
 			class:     signingClassConfig,
-			errorType: servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH,
+			errorType: ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH,
 			message: fmt.Sprintf(
 				"stored require-signatures flag is %t, but the audited SetSigningConfig orders derive %t",
 				storedRequireSignatures, v.requireSignatures),
@@ -325,7 +325,7 @@ func (v *signingVerifier) compare(reader dal.PebbleReader, callback func(*servic
 // discovered would make two Check() runs over the same store produce different
 // event streams. Shared by the complete and incomplete-coverage exits so neither
 // can drift into emitting unsorted.
-func emitSigningFindings(findings []signingFinding, callback func(*servicepb.CheckStoreEvent)) {
+func emitSigningFindings(findings []signingFinding, callback func(*ledgerpb.CheckStoreEvent)) {
 	slices.SortFunc(findings, func(a, b signingFinding) int {
 		return cmp.Or(
 			cmp.Compare(a.class, b.class),

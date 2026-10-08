@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -74,9 +74,9 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 
 	const ledgerName = "test-ledger"
 
-	createdAt := commonpb.NewTimestamp(libtime.Now())
+	createdAt := ledgerpb.NewTimestamp(libtime.Now())
 	batch := s.OpenWriteSession()
-	err := state.SaveLedger(batch, ledgerName, &commonpb.LedgerInfo{
+	err := state.SaveLedger(batch, ledgerName, &ledgerpb.LedgerInfo{
 		Name:      ledgerName,
 		CreatedAt: createdAt,
 	})
@@ -88,13 +88,13 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	worldKey := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "world"}, Asset: "USD"}
 	worldCanonicalKey := worldKey.Bytes()
 	_, err = attrs.Volume.Set(batch, worldCanonicalKey, &raftcmdpb.VolumePair{
-		Output: commonpb.NewUint256FromUint64(100),
+		Output: ledgerpb.NewUint256FromUint64(100),
 	})
 	require.NoError(t, err)
 
 	metadataKey := domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "bank"}, Key: "key"}
 	metadataCanonicalKey := metadataKey.Bytes()
-	_, err = attrs.Metadata.Set(batch, metadataCanonicalKey, commonpb.NewStringValue("value"))
+	_, err = attrs.Metadata.Set(batch, metadataCanonicalKey, ledgerpb.NewStringValue("value"))
 	require.NoError(t, err)
 	txKey := domain.TransactionKey{LedgerName: "test-ledger", ID: 1}
 	_, err = attrs.Transaction.Set(batch, txKey.Bytes(), &internalstatepb.TransactionState{
@@ -116,9 +116,9 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	require.Nil(t, ledgers[0].GetDeletedAt())
 
 	// Soft delete ledger
-	deletedAt := commonpb.NewTimestamp(libtime.Now())
+	deletedAt := ledgerpb.NewTimestamp(libtime.Now())
 	batch = s.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(batch, ledgerName, &commonpb.LedgerInfo{
+	require.NoError(t, state.SaveLedger(batch, ledgerName, &ledgerpb.LedgerInfo{
 		Name:      ledgerName,
 		CreatedAt: createdAt,
 		DeletedAt: deletedAt,

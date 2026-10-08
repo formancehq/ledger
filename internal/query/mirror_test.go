@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -51,7 +51,7 @@ func TestReadMirrorSyncProgress_Syncing(t *testing.T) {
 
 	progress, err := query.ReadMirrorSyncProgress(context.Background(), s, attrs.Boundary, "my-ledger")
 	require.NoError(t, err)
-	require.Equal(t, commonpb.MirrorSyncState_MIRROR_SYNC_STATE_SYNCING, progress.GetState())
+	require.Equal(t, ledgerpb.MirrorSyncState_MIRROR_SYNC_STATE_SYNCING, progress.GetState())
 	require.Equal(t, uint64(5), progress.GetCursor())
 	require.Equal(t, uint64(100), progress.GetSourceLogCount())
 	require.Equal(t, uint64(95), progress.GetRemainingLogs())
@@ -73,7 +73,7 @@ func TestReadMirrorSyncProgress_Following(t *testing.T) {
 
 	progress, err := query.ReadMirrorSyncProgress(context.Background(), s, attrs.Boundary, "my-ledger")
 	require.NoError(t, err)
-	require.Equal(t, commonpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING, progress.GetState())
+	require.Equal(t, ledgerpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING, progress.GetState())
 	require.Equal(t, uint64(100), progress.GetCursor())
 	require.Equal(t, uint64(100), progress.GetSourceLogCount())
 	require.Equal(t, uint64(0), progress.GetRemainingLogs())
@@ -90,14 +90,14 @@ func TestReadMirrorSyncProgress_WithError(t *testing.T) {
 	_, err := attrs.Boundary.Set(batch, []byte("my-ledger"), &raftcmdpb.LedgerBoundaries{LastMirrorV2LogId: 10})
 	require.NoError(t, err)
 	require.NoError(t, state.SetMirrorSourceHead(batch, "my-ledger", 50))
-	require.NoError(t, state.SetMirrorStatus(batch, "my-ledger", &commonpb.MirrorSyncError{
+	require.NoError(t, state.SetMirrorStatus(batch, "my-ledger", &ledgerpb.MirrorSyncError{
 		Message: "connection refused",
 	}))
 	require.NoError(t, batch.Commit())
 
 	progress, err := query.ReadMirrorSyncProgress(context.Background(), s, attrs.Boundary, "my-ledger")
 	require.NoError(t, err)
-	require.Equal(t, commonpb.MirrorSyncState_MIRROR_SYNC_STATE_SYNCING, progress.GetState())
+	require.Equal(t, ledgerpb.MirrorSyncState_MIRROR_SYNC_STATE_SYNCING, progress.GetState())
 	require.Equal(t, uint64(40), progress.GetRemainingLogs())
 	require.NotNil(t, progress.GetError())
 	require.Equal(t, "connection refused", progress.GetError().GetMessage())
@@ -112,7 +112,7 @@ func TestReadMirrorSyncProgress_NoData(t *testing.T) {
 	// No data written — should return SYNCING with zeros
 	progress, err := query.ReadMirrorSyncProgress(context.Background(), s, attrs.Boundary, "my-ledger")
 	require.NoError(t, err)
-	require.Equal(t, commonpb.MirrorSyncState_MIRROR_SYNC_STATE_SYNCING, progress.GetState())
+	require.Equal(t, ledgerpb.MirrorSyncState_MIRROR_SYNC_STATE_SYNCING, progress.GetState())
 	require.Equal(t, uint64(0), progress.GetCursor())
 	require.Equal(t, uint64(0), progress.GetSourceLogCount())
 	require.Equal(t, uint64(0), progress.GetRemainingLogs())
@@ -142,5 +142,5 @@ func TestReadMirrorSyncProgress_IgnoresOrphanCursorRow(t *testing.T) {
 	progress, err := query.ReadMirrorSyncProgress(context.Background(), s, attrs.Boundary, "my-ledger")
 	require.NoError(t, err)
 	require.Equal(t, uint64(5), progress.GetCursor(), "orphan 0x05 row must be ignored")
-	require.Equal(t, commonpb.MirrorSyncState_MIRROR_SYNC_STATE_SYNCING, progress.GetState())
+	require.Equal(t, ledgerpb.MirrorSyncState_MIRROR_SYNC_STATE_SYNCING, progress.GetState())
 }

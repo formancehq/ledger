@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/restbulk"
 )
@@ -26,7 +26,7 @@ func TestBulkElement_UnmarshalsSkippableReasons(t *testing.T) {
 	var e restbulk.BulkElement
 	require.NoError(t, json.Unmarshal(body, &e))
 	require.Equal(t,
-		[]commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+		[]ledgerpb.ErrorReason{ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 		e.SkippableReasons,
 	)
 }
@@ -78,7 +78,7 @@ func TestCreateTransactionPayload_IgnoresSkippableReasons(t *testing.T) {
 
 	body := []byte(`{"reference":"r","skippableReasons":["TRANSACTION_REFERENCE_CONFLICT"]}`)
 
-	var p commonpb.CreateTransactionPayload
+	var p ledgerpb.CreateTransactionPayload
 	require.NoError(t, json.Unmarshal(body, &p))
 	require.Equal(t, "r", p.GetReference())
 }

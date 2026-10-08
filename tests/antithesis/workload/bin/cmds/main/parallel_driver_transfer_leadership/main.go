@@ -6,7 +6,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -24,10 +24,10 @@ func main() {
 	}
 	defer func() { _ = conn.Close() }()
 
-	client := clusterpb.NewClusterServiceClient(conn)
+	client := ledgerpb.NewClusterServiceClient(conn)
 
 	// 1. Get current cluster state to find leader and a non-leader voter.
-	state, err := client.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+	state, err := client.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 	if err != nil {
 		if internal.IsTransient(err) {
 			return
@@ -68,7 +68,7 @@ func main() {
 	}
 
 	// 2. Transfer leadership to the target node.
-	resp, err := client.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
+	resp, err := client.TransferLeadership(ctx, &ledgerpb.TransferLeadershipRequest{
 		Transferee: targetID,
 	})
 
@@ -87,13 +87,13 @@ func main() {
 	// 3. Verify the cluster is still functional by getting state again.
 	//    A concurrent network fault may trigger a new election right after the
 	//    transfer, so we retry a few times before giving up.
-	var stateAfter *clusterpb.ClusterState
+	var stateAfter *ledgerpb.ClusterState
 	for attempt := range 5 {
 		if attempt > 0 {
 			time.Sleep(200 * time.Millisecond)
 		}
 
-		stateAfter, err = client.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+		stateAfter, err = client.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 		if err != nil {
 			internal.LogCleanupError("get cluster state after leadership transfer", err)
 

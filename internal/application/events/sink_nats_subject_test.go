@@ -10,7 +10,7 @@ import (
 	"github.com/nats-io/nats-server/v2/server"
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
@@ -28,7 +28,7 @@ func TestNATSSinkSubjectLedgerToken(t *testing.T) {
 	seen := map[string]string{}
 	for _, name := range names {
 		require.Nil(t, domain.ValidateLedgerName(name))
-		subject := sink.subject(&eventspb.Event{Ledger: name, Type: commonpb.EventType_CREATED_LEDGER})
+		subject := sink.subject(&eventspb.Event{Ledger: name, Type: ledgerpb.EventType_CREATED_LEDGER})
 		require.True(t, server.IsValidSubject(subject), subject)
 		parts := strings.Split(subject, ".")
 		require.Len(t, parts, 3)
@@ -40,7 +40,7 @@ func TestNATSSinkSubjectLedgerToken(t *testing.T) {
 		require.False(t, exists, "collision between %q and %q", previous, name)
 		seen[subject] = name
 	}
-	require.Equal(t, "events._system.created_ledger", sink.subject(&eventspb.Event{Type: commonpb.EventType_CREATED_LEDGER}))
+	require.Equal(t, "events._system.created_ledger", sink.subject(&eventspb.Event{Type: ledgerpb.EventType_CREATED_LEDGER}))
 	// Percent is not currently admitted, but must never alias an escaped dot.
-	require.Equal(t, "events.%252E.created_ledger", sink.subject(&eventspb.Event{Ledger: "%2E", Type: commonpb.EventType_CREATED_LEDGER}))
+	require.Equal(t, "events.%252E.created_ledger", sink.subject(&eventspb.Event{Ledger: "%2E", Type: ledgerpb.EventType_CREATED_LEDGER}))
 }

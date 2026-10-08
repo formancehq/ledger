@@ -18,7 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/otel"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 var mirrorTracer = otel.Tracer("mirror.v2.postgres")
@@ -38,7 +38,7 @@ type PostgresSource struct {
 // When cfg.AwsIamAuth is set, the pool refreshes an AWS RDS IAM token on every
 // new connection; ambient AWS credentials (IRSA, instance profile, env, profile)
 // are loaded via the default AWS SDK chain.
-func NewPostgresSource(ctx context.Context, cfg *commonpb.PostgresMirrorSourceConfig, ledgerName string) (*PostgresSource, error) {
+func NewPostgresSource(ctx context.Context, cfg *ledgerpb.PostgresMirrorSourceConfig, ledgerName string) (*PostgresSource, error) {
 	poolCfg, err := buildPgxPoolConfig(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -158,7 +158,7 @@ func (s *PostgresSource) Close() error {
 // wires a BeforeConnect hook that refreshes a fresh RDS IAM token per new
 // pool connection (token TTL is 15 minutes; pgxpool fires BeforeConnect on
 // every new connection it opens, so rotation is automatic).
-func buildPgxPoolConfig(ctx context.Context, cfg *commonpb.PostgresMirrorSourceConfig) (*pgxpool.Config, error) {
+func buildPgxPoolConfig(ctx context.Context, cfg *ledgerpb.PostgresMirrorSourceConfig) (*pgxpool.Config, error) {
 	poolCfg, err := pgxpool.ParseConfig(cfg.GetDsn())
 	if err != nil {
 		return nil, fmt.Errorf("parsing mirror DSN: %w", err)

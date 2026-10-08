@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
@@ -43,7 +43,7 @@ func TestApplyClusterConfig_ThresholdChangePersistsGeneration(t *testing.T) {
 	)
 
 	batch := dataStore.OpenWriteSession()
-	require.NoError(t, fsm.applyClusterConfig(batch, raftIndex, &commonpb.ClusterConfig{
+	require.NoError(t, fsm.applyClusterConfig(batch, raftIndex, &ledgerpb.ClusterConfig{
 		RotationThreshold: newThreshold,
 	}))
 	require.NoError(t, batch.Commit())

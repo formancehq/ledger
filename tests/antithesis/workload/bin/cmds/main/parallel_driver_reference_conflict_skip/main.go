@@ -26,7 +26,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -36,7 +36,7 @@ func main() {
 	internal.RunDriver("parallel_driver_reference_conflict_skip", run)
 }
 
-func run(ctx context.Context, client commonpb.BucketServiceClient, ledger string) {
+func run(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string) {
 	ref := fmt.Sprintf("skipref-%d", internal.Rand().Uint64())
 	// The client retries ambiguous failures. Each logical step needs its own
 	// stable key so a lost response replays the committed outcome. Sharing one
@@ -45,12 +45,12 @@ func run(ctx context.Context, client commonpb.BucketServiceClient, ledger string
 	details := internal.Details{"ledger": ledger, "reference": ref, "idempotencyKey": keyPrefix + ":first"}
 
 	// 1. Prime the reference with a first successful transaction.
-	firstReq := commonpb.UnsignedApplyRequest(keyPrefix+":first", &commonpb.Request{
-		Type: &commonpb.Request_Apply{
-			Apply: &commonpb.LedgerApplyRequest{
+	firstReq := ledgerpb.UnsignedApplyRequest(keyPrefix+":first", &ledgerpb.Request{
+		Type: &ledgerpb.Request_Apply{
+			Apply: &ledgerpb.LedgerApplyRequest{
 				Ledger: ledger,
-				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
-					CreateTransaction: &commonpb.CreateTransactionPayload{
+				Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &ledgerpb.CreateTransactionPayload{
 						Postings:  internal.RandomPostings(),
 						Reference: ref,
 						Force:     true,
@@ -79,13 +79,13 @@ func run(ctx context.Context, client commonpb.BucketServiceClient, ledger string
 	// 2. Replay with the SAME reference AND skippable_reasons opt-in — the
 	// FSM must convert the reference-conflict failure into an
 	// OrderSkipped log carrying the first tx id in its context.
-	skipReq := commonpb.UnsignedApplyRequest(keyPrefix+":duplicate", actions.WithSkippableReasons(
-		&commonpb.Request{
-			Type: &commonpb.Request_Apply{
-				Apply: &commonpb.LedgerApplyRequest{
+	skipReq := ledgerpb.UnsignedApplyRequest(keyPrefix+":duplicate", actions.WithSkippableReasons(
+		&ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
-						CreateTransaction: &commonpb.CreateTransactionPayload{
+					Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &ledgerpb.CreateTransactionPayload{
 							Postings:  internal.RandomPostings(),
 							Reference: ref,
 							Force:     true,
@@ -94,7 +94,7 @@ func run(ctx context.Context, client commonpb.BucketServiceClient, ledger string
 				},
 			},
 		},
-		commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+		ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 	))
 
 	skipResp, err := client.Apply(ctx, skipReq)
@@ -135,7 +135,7 @@ func run(ctx context.Context, client commonpb.BucketServiceClient, ledger string
 	}
 
 	reason := skipped.GetReason()
-	assert.AlwaysOrUnreachable(reason == commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+	assert.AlwaysOrUnreachable(reason == ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 		"OrderSkipped reason must be TRANSACTION_REFERENCE_CONFLICT",
 		details.With(internal.Details{"reason": reason.String()}))
 
@@ -166,13 +166,13 @@ func run(ctx context.Context, client commonpb.BucketServiceClient, ledger string
 	freshRef := fmt.Sprintf("skipref-fresh-tx-%d", firstTx.GetTransaction().GetId())
 	freshDetails := internal.Details{"ledger": ledger, "reference": freshRef, "idempotencyKey": keyPrefix + ":fresh"}
 
-	freshReq := commonpb.UnsignedApplyRequest(keyPrefix+":fresh", actions.WithSkippableReasons(
-		&commonpb.Request{
-			Type: &commonpb.Request_Apply{
-				Apply: &commonpb.LedgerApplyRequest{
+	freshReq := ledgerpb.UnsignedApplyRequest(keyPrefix+":fresh", actions.WithSkippableReasons(
+		&ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
-						CreateTransaction: &commonpb.CreateTransactionPayload{
+					Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &ledgerpb.CreateTransactionPayload{
 							Postings:  internal.RandomPostings(),
 							Reference: freshRef,
 							Force:     true,
@@ -181,7 +181,7 @@ func run(ctx context.Context, client commonpb.BucketServiceClient, ledger string
 				},
 			},
 		},
-		commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+		ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 	))
 
 	freshResp, err := client.Apply(ctx, freshReq)

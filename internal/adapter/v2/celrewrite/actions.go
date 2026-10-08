@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/cel-go/cel"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/protohelpers"
@@ -19,7 +19,7 @@ import (
 // at Apply time, checks the log's actual variant, evaluates the predicate,
 // and runs the pre-built action closures.
 
-func (r *Rewriter) compileCreatedRule(rule *commonpb.CreatedTransactionRule) (applyRuleFn, error) {
+func (r *Rewriter) compileCreatedRule(rule *ledgerpb.CreatedTransactionRule) (applyRuleFn, error) {
 	env, err := r.buildMatchEnv(createdVariantType)
 	if err != nil {
 		return nil, fmt.Errorf("env: %w", err)
@@ -54,7 +54,7 @@ func (r *Rewriter) compileCreatedRule(rule *commonpb.CreatedTransactionRule) (ap
 	}, nil
 }
 
-func (r *Rewriter) compileRevertedRule(rule *commonpb.RevertedTransactionRule) (applyRuleFn, error) {
+func (r *Rewriter) compileRevertedRule(rule *ledgerpb.RevertedTransactionRule) (applyRuleFn, error) {
 	env, err := r.buildMatchEnv(revertedVariantType)
 	if err != nil {
 		return nil, fmt.Errorf("env: %w", err)
@@ -89,7 +89,7 @@ func (r *Rewriter) compileRevertedRule(rule *commonpb.RevertedTransactionRule) (
 	}, nil
 }
 
-func (r *Rewriter) compileSavedMetadataRule(rule *commonpb.SavedMetadataRule) (applyRuleFn, error) {
+func (r *Rewriter) compileSavedMetadataRule(rule *ledgerpb.SavedMetadataRule) (applyRuleFn, error) {
 	env, err := r.buildMatchEnv(savedMetaVariantType)
 	if err != nil {
 		return nil, fmt.Errorf("env: %w", err)
@@ -124,7 +124,7 @@ func (r *Rewriter) compileSavedMetadataRule(rule *commonpb.SavedMetadataRule) (a
 	}, nil
 }
 
-func (r *Rewriter) compileDeletedMetadataRule(rule *commonpb.DeletedMetadataRule) (applyRuleFn, error) {
+func (r *Rewriter) compileDeletedMetadataRule(rule *ledgerpb.DeletedMetadataRule) (applyRuleFn, error) {
 	env, err := r.buildMatchEnv(deletedMetaVariantType)
 	if err != nil {
 		return nil, fmt.Errorf("env: %w", err)
@@ -159,7 +159,7 @@ func (r *Rewriter) compileDeletedMetadataRule(rule *commonpb.DeletedMetadataRule
 	}, nil
 }
 
-func (r *Rewriter) compileAnyVariantRule(rule *commonpb.AnyVariantRule) (applyRuleFn, error) {
+func (r *Rewriter) compileAnyVariantRule(rule *ledgerpb.AnyVariantRule) (applyRuleFn, error) {
 	env, err := r.buildMatchEnv(logType)
 	if err != nil {
 		return nil, fmt.Errorf("env: %w", err)
@@ -212,7 +212,7 @@ func runActions(entry *raftcmdpb.MirrorLogEntry, acts []actionFn) error {
 
 // -------------------- Created --------------------
 
-func (r *Rewriter) buildCreatedActions(env *cel.Env, actions []*commonpb.CreatedTransactionAction) ([]actionFn, error) {
+func (r *Rewriter) buildCreatedActions(env *cel.Env, actions []*ledgerpb.CreatedTransactionAction) ([]actionFn, error) {
 	out := make([]actionFn, 0, len(actions))
 	for i, a := range actions {
 		fn, err := r.buildCreatedAction(env, a)
@@ -226,21 +226,21 @@ func (r *Rewriter) buildCreatedActions(env *cel.Env, actions []*commonpb.Created
 	return out, nil
 }
 
-func (r *Rewriter) buildCreatedAction(env *cel.Env, a *commonpb.CreatedTransactionAction) (actionFn, error) {
+func (r *Rewriter) buildCreatedAction(env *cel.Env, a *ledgerpb.CreatedTransactionAction) (actionFn, error) {
 	switch v := a.GetAction().(type) {
-	case *commonpb.CreatedTransactionAction_RewriteAddress:
+	case *ledgerpb.CreatedTransactionAction_RewriteAddress:
 		return r.actionRewriteAddress(v.RewriteAddress)
-	case *commonpb.CreatedTransactionAction_SetMetadata:
+	case *ledgerpb.CreatedTransactionAction_SetMetadata:
 		return actionSetMetadataOn(env, getCreatedMetadata, v.SetMetadata)
-	case *commonpb.CreatedTransactionAction_DeleteMetadata:
+	case *ledgerpb.CreatedTransactionAction_DeleteMetadata:
 		return actionDeleteMetadataOn(getCreatedMetadata, v.DeleteMetadata)
-	case *commonpb.CreatedTransactionAction_SetAccountMetadata:
+	case *ledgerpb.CreatedTransactionAction_SetAccountMetadata:
 		return actionSetAccountMetadata(env, v.SetAccountMetadata)
-	case *commonpb.CreatedTransactionAction_DeleteAccountMetadata:
+	case *ledgerpb.CreatedTransactionAction_DeleteAccountMetadata:
 		return actionDeleteAccountMetadata(v.DeleteAccountMetadata)
-	case *commonpb.CreatedTransactionAction_SetAccountMetadataFromAddress:
+	case *ledgerpb.CreatedTransactionAction_SetAccountMetadataFromAddress:
 		return r.actionSetAccountMetadataFromAddress(v.SetAccountMetadataFromAddress)
-	case *commonpb.CreatedTransactionAction_Drop:
+	case *ledgerpb.CreatedTransactionAction_Drop:
 		return actionDropCreated, nil
 	default:
 		return nil, errors.New("unset action variant on created_transaction rule")
@@ -249,7 +249,7 @@ func (r *Rewriter) buildCreatedAction(env *cel.Env, a *commonpb.CreatedTransacti
 
 // -------------------- Reverted --------------------
 
-func (r *Rewriter) buildRevertedActions(env *cel.Env, actions []*commonpb.RevertedTransactionAction) ([]actionFn, error) {
+func (r *Rewriter) buildRevertedActions(env *cel.Env, actions []*ledgerpb.RevertedTransactionAction) ([]actionFn, error) {
 	out := make([]actionFn, 0, len(actions))
 	for i, a := range actions {
 		fn, err := r.buildRevertedAction(env, a)
@@ -263,15 +263,15 @@ func (r *Rewriter) buildRevertedActions(env *cel.Env, actions []*commonpb.Revert
 	return out, nil
 }
 
-func (r *Rewriter) buildRevertedAction(env *cel.Env, a *commonpb.RevertedTransactionAction) (actionFn, error) {
+func (r *Rewriter) buildRevertedAction(env *cel.Env, a *ledgerpb.RevertedTransactionAction) (actionFn, error) {
 	switch v := a.GetAction().(type) {
-	case *commonpb.RevertedTransactionAction_RewriteAddress:
+	case *ledgerpb.RevertedTransactionAction_RewriteAddress:
 		return r.actionRewriteAddress(v.RewriteAddress)
-	case *commonpb.RevertedTransactionAction_SetMetadata:
+	case *ledgerpb.RevertedTransactionAction_SetMetadata:
 		return actionSetMetadataOn(env, getRevertedMetadata, v.SetMetadata)
-	case *commonpb.RevertedTransactionAction_DeleteMetadata:
+	case *ledgerpb.RevertedTransactionAction_DeleteMetadata:
 		return actionDeleteMetadataOn(getRevertedMetadata, v.DeleteMetadata)
-	case *commonpb.RevertedTransactionAction_Drop:
+	case *ledgerpb.RevertedTransactionAction_Drop:
 		return actionDropReverted, nil
 	default:
 		return nil, errors.New("unset action variant on reverted_transaction rule")
@@ -280,7 +280,7 @@ func (r *Rewriter) buildRevertedAction(env *cel.Env, a *commonpb.RevertedTransac
 
 // -------------------- SavedMetadata --------------------
 
-func (r *Rewriter) buildSavedMetadataActions(env *cel.Env, actions []*commonpb.SavedMetadataAction) ([]actionFn, error) {
+func (r *Rewriter) buildSavedMetadataActions(env *cel.Env, actions []*ledgerpb.SavedMetadataAction) ([]actionFn, error) {
 	out := make([]actionFn, 0, len(actions))
 	for i, a := range actions {
 		fn, err := r.buildSavedMetadataAction(env, a)
@@ -294,15 +294,15 @@ func (r *Rewriter) buildSavedMetadataActions(env *cel.Env, actions []*commonpb.S
 	return out, nil
 }
 
-func (r *Rewriter) buildSavedMetadataAction(env *cel.Env, a *commonpb.SavedMetadataAction) (actionFn, error) {
+func (r *Rewriter) buildSavedMetadataAction(env *cel.Env, a *ledgerpb.SavedMetadataAction) (actionFn, error) {
 	switch v := a.GetAction().(type) {
-	case *commonpb.SavedMetadataAction_RewriteAddress:
+	case *ledgerpb.SavedMetadataAction_RewriteAddress:
 		return r.actionRewriteAddress(v.RewriteAddress)
-	case *commonpb.SavedMetadataAction_SetMetadata:
+	case *ledgerpb.SavedMetadataAction_SetMetadata:
 		return actionSetMetadataOn(env, getSavedMetadata, v.SetMetadata)
-	case *commonpb.SavedMetadataAction_DeleteMetadata:
+	case *ledgerpb.SavedMetadataAction_DeleteMetadata:
 		return actionDeleteMetadataOn(getSavedMetadata, v.DeleteMetadata)
-	case *commonpb.SavedMetadataAction_Drop:
+	case *ledgerpb.SavedMetadataAction_Drop:
 		return actionDropSimple, nil
 	default:
 		return nil, errors.New("unset action variant on saved_metadata rule")
@@ -311,7 +311,7 @@ func (r *Rewriter) buildSavedMetadataAction(env *cel.Env, a *commonpb.SavedMetad
 
 // -------------------- DeletedMetadata --------------------
 
-func (r *Rewriter) buildDeletedMetadataActions(env *cel.Env, actions []*commonpb.DeletedMetadataAction) ([]actionFn, error) {
+func (r *Rewriter) buildDeletedMetadataActions(env *cel.Env, actions []*ledgerpb.DeletedMetadataAction) ([]actionFn, error) {
 	out := make([]actionFn, 0, len(actions))
 	for i, a := range actions {
 		fn, err := r.buildDeletedMetadataAction(env, a)
@@ -325,11 +325,11 @@ func (r *Rewriter) buildDeletedMetadataActions(env *cel.Env, actions []*commonpb
 	return out, nil
 }
 
-func (r *Rewriter) buildDeletedMetadataAction(env *cel.Env, a *commonpb.DeletedMetadataAction) (actionFn, error) {
+func (r *Rewriter) buildDeletedMetadataAction(env *cel.Env, a *ledgerpb.DeletedMetadataAction) (actionFn, error) {
 	switch v := a.GetAction().(type) {
-	case *commonpb.DeletedMetadataAction_RewriteAddress:
+	case *ledgerpb.DeletedMetadataAction_RewriteAddress:
 		return r.actionRewriteAddress(v.RewriteAddress)
-	case *commonpb.DeletedMetadataAction_Drop:
+	case *ledgerpb.DeletedMetadataAction_Drop:
 		return actionDropSimple, nil
 	default:
 		return nil, errors.New("unset action variant on deleted_metadata rule")
@@ -338,7 +338,7 @@ func (r *Rewriter) buildDeletedMetadataAction(env *cel.Env, a *commonpb.DeletedM
 
 // -------------------- AnyVariant --------------------
 
-func (r *Rewriter) buildAnyVariantActions(env *cel.Env, actions []*commonpb.AnyVariantAction) ([]actionFn, error) {
+func (r *Rewriter) buildAnyVariantActions(env *cel.Env, actions []*ledgerpb.AnyVariantAction) ([]actionFn, error) {
 	out := make([]actionFn, 0, len(actions))
 	for i, a := range actions {
 		fn, err := r.buildAnyVariantAction(env, a)
@@ -352,11 +352,11 @@ func (r *Rewriter) buildAnyVariantActions(env *cel.Env, actions []*commonpb.AnyV
 	return out, nil
 }
 
-func (r *Rewriter) buildAnyVariantAction(env *cel.Env, a *commonpb.AnyVariantAction) (actionFn, error) {
+func (r *Rewriter) buildAnyVariantAction(env *cel.Env, a *ledgerpb.AnyVariantAction) (actionFn, error) {
 	switch v := a.GetAction().(type) {
-	case *commonpb.AnyVariantAction_RewriteAddress:
+	case *ledgerpb.AnyVariantAction_RewriteAddress:
 		return r.actionRewriteAddress(v.RewriteAddress)
-	case *commonpb.AnyVariantAction_Drop:
+	case *ledgerpb.AnyVariantAction_Drop:
 		return actionDropCurrentVariant, nil
 	default:
 		return nil, errors.New("unset action variant on any_variant rule")
@@ -368,30 +368,30 @@ func (r *Rewriter) buildAnyVariantAction(env *cel.Env, a *commonpb.AnyVariantAct
 // metadataAccessor returns the metadata map slot for the log's current variant,
 // creating it if nil. Callers guarantee (via variant scoping) that the entry
 // carries the expected variant when the action fires.
-type metadataAccessor func(entry *raftcmdpb.MirrorLogEntry) *map[string]*commonpb.MetadataValue
+type metadataAccessor func(entry *raftcmdpb.MirrorLogEntry) *map[string]*ledgerpb.MetadataValue
 
-func getCreatedMetadata(entry *raftcmdpb.MirrorLogEntry) *map[string]*commonpb.MetadataValue {
+func getCreatedMetadata(entry *raftcmdpb.MirrorLogEntry) *map[string]*ledgerpb.MetadataValue {
 	ct := entry.GetCreatedTransaction()
 	if ct.Metadata == nil {
-		ct.Metadata = map[string]*commonpb.MetadataValue{}
+		ct.Metadata = map[string]*ledgerpb.MetadataValue{}
 	}
 
 	return &ct.Metadata
 }
 
-func getRevertedMetadata(entry *raftcmdpb.MirrorLogEntry) *map[string]*commonpb.MetadataValue {
+func getRevertedMetadata(entry *raftcmdpb.MirrorLogEntry) *map[string]*ledgerpb.MetadataValue {
 	rt := entry.GetRevertedTransaction()
 	if rt.Metadata == nil {
-		rt.Metadata = map[string]*commonpb.MetadataValue{}
+		rt.Metadata = map[string]*ledgerpb.MetadataValue{}
 	}
 
 	return &rt.Metadata
 }
 
-func getSavedMetadata(entry *raftcmdpb.MirrorLogEntry) *map[string]*commonpb.MetadataValue {
+func getSavedMetadata(entry *raftcmdpb.MirrorLogEntry) *map[string]*ledgerpb.MetadataValue {
 	sm := entry.GetSavedMetadata()
 	if sm.Metadata == nil {
-		sm.Metadata = map[string]*commonpb.MetadataValue{}
+		sm.Metadata = map[string]*ledgerpb.MetadataValue{}
 	}
 
 	return &sm.Metadata
@@ -403,7 +403,7 @@ func getSavedMetadata(entry *raftcmdpb.MirrorLogEntry) *map[string]*commonpb.Met
 // (evaluated at commit time against the current variant). An optional `type`
 // token coerces the produced string into a typed MetadataValue via the
 // platform conversion matrix; empty type = plain string.
-func actionSetMetadataOn(env *cel.Env, accessor metadataAccessor, spec *commonpb.SetMetadataAction) (actionFn, error) {
+func actionSetMetadataOn(env *cel.Env, accessor metadataAccessor, spec *ledgerpb.SetMetadataAction) (actionFn, error) {
 	key := spec.GetKey()
 	if err := validateKey(key); err != nil {
 		return nil, fmt.Errorf("set_metadata: invalid key %q: %w", key, err)
@@ -432,7 +432,7 @@ func actionSetMetadataOn(env *cel.Env, accessor metadataAccessor, spec *commonpb
 	}, nil
 }
 
-func actionDeleteMetadataOn(accessor metadataAccessor, spec *commonpb.DeleteMetadataAction) (actionFn, error) {
+func actionDeleteMetadataOn(accessor metadataAccessor, spec *ledgerpb.DeleteMetadataAction) (actionFn, error) {
 	key := spec.GetKey()
 	if err := validateKey(key); err != nil {
 		return nil, fmt.Errorf("delete_metadata: invalid key %q: %w", key, err)
@@ -446,7 +446,7 @@ func actionDeleteMetadataOn(accessor metadataAccessor, spec *commonpb.DeleteMeta
 	}, nil
 }
 
-func actionSetAccountMetadata(env *cel.Env, spec *commonpb.SetAccountMetadataAction) (actionFn, error) {
+func actionSetAccountMetadata(env *cel.Env, spec *ledgerpb.SetAccountMetadataAction) (actionFn, error) {
 	account, key := spec.GetAccount(), spec.GetKey()
 	if err := validateAccountAddress(account); err != nil {
 		return nil, fmt.Errorf("set_account_metadata: invalid account %q: %w", account, err)
@@ -474,17 +474,17 @@ func actionSetAccountMetadata(env *cel.Env, spec *commonpb.SetAccountMetadataAct
 
 		ct := entry.GetCreatedTransaction()
 		if ct.AccountMetadata == nil {
-			ct.AccountMetadata = map[string]*commonpb.MetadataMap{}
+			ct.AccountMetadata = map[string]*ledgerpb.MetadataMap{}
 		}
 
 		mm, ok := ct.GetAccountMetadata()[account]
 		if !ok || mm == nil {
-			mm = &commonpb.MetadataMap{Values: map[string]*commonpb.MetadataValue{}}
+			mm = &ledgerpb.MetadataMap{Values: map[string]*ledgerpb.MetadataValue{}}
 			ct.AccountMetadata[account] = mm
 		}
 
 		if mm.Values == nil {
-			mm.Values = map[string]*commonpb.MetadataValue{}
+			mm.Values = map[string]*ledgerpb.MetadataValue{}
 		}
 
 		mm.Values[key] = coerceValue(value, typ, typed)
@@ -493,7 +493,7 @@ func actionSetAccountMetadata(env *cel.Env, spec *commonpb.SetAccountMetadataAct
 	}, nil
 }
 
-func actionDeleteAccountMetadata(spec *commonpb.DeleteAccountMetadataAction) (actionFn, error) {
+func actionDeleteAccountMetadata(spec *ledgerpb.DeleteAccountMetadataAction) (actionFn, error) {
 	account, key := spec.GetAccount(), spec.GetKey()
 	if err := validateAccountAddress(account); err != nil {
 		return nil, fmt.Errorf("delete_account_metadata: invalid account %q: %w", account, err)
@@ -520,11 +520,11 @@ func actionDeleteAccountMetadata(spec *commonpb.DeleteAccountMetadataAction) (ac
 type compiledReplacement struct {
 	key         string
 	replacement string
-	typ         commonpb.MetadataType
+	typ         ledgerpb.MetadataType
 	typed       bool
 }
 
-func (r *Rewriter) actionSetAccountMetadataFromAddress(spec *commonpb.SetAccountMetadataFromAddressAction) (actionFn, error) {
+func (r *Rewriter) actionSetAccountMetadataFromAddress(spec *ledgerpb.SetAccountMetadataFromAddressAction) (actionFn, error) {
 	re, err := r.compileRegex(spec.GetPattern())
 	if err != nil {
 		return nil, fmt.Errorf("set_account_metadata_from_address: %w", err)
@@ -581,18 +581,18 @@ func (r *Rewriter) actionSetAccountMetadataFromAddress(spec *commonpb.SetAccount
 		sort.Strings(matched)
 
 		if ct.AccountMetadata == nil {
-			ct.AccountMetadata = map[string]*commonpb.MetadataMap{}
+			ct.AccountMetadata = map[string]*ledgerpb.MetadataMap{}
 		}
 
 		for _, addr := range matched {
 			mm, ok := ct.GetAccountMetadata()[addr]
 			if !ok || mm == nil {
-				mm = &commonpb.MetadataMap{Values: map[string]*commonpb.MetadataValue{}}
+				mm = &ledgerpb.MetadataMap{Values: map[string]*ledgerpb.MetadataValue{}}
 				ct.AccountMetadata[addr] = mm
 			}
 
 			if mm.Values == nil {
-				mm.Values = map[string]*commonpb.MetadataValue{}
+				mm.Values = map[string]*ledgerpb.MetadataValue{}
 			}
 
 			for _, rep := range reps {
@@ -601,7 +601,7 @@ func (r *Rewriter) actionSetAccountMetadataFromAddress(spec *commonpb.SetAccount
 					return fmt.Errorf("set_account_metadata_from_address: replacement %q produced invalid value %q for %q: %w", rep.key, value, addr, err)
 				}
 
-				sv := commonpb.NewStringValue(value)
+				sv := ledgerpb.NewStringValue(value)
 				if rep.typed {
 					sv = protohelpers.ConvertMetadataValue(sv, rep.typ)
 				}
@@ -617,7 +617,7 @@ func (r *Rewriter) actionSetAccountMetadataFromAddress(spec *commonpb.SetAccount
 // actionRewriteAddress builds a closure that rewrites every account address
 // slot on the entry, regardless of variant. Which slots exist depends on the
 // variant at Apply time.
-func (r *Rewriter) actionRewriteAddress(spec *commonpb.RewriteAddressAction) (actionFn, error) {
+func (r *Rewriter) actionRewriteAddress(spec *ledgerpb.RewriteAddressAction) (actionFn, error) {
 	pattern, replacement := spec.GetPattern(), spec.GetReplacement()
 
 	re, err := r.compileRegex(pattern)
@@ -692,7 +692,7 @@ func actionDropCurrentVariant(entry *raftcmdpb.MirrorLogEntry) error {
 // -------------------- Address rewrite primitives --------------------
 
 // rewritePostings mutates every posting's source/destination in place.
-func rewritePostings(re *regexp.Regexp, replacement string, postings []*commonpb.Posting) {
+func rewritePostings(re *regexp.Regexp, replacement string, postings []*ledgerpb.Posting) {
 	for _, p := range postings {
 		if p == nil {
 			continue
@@ -705,7 +705,7 @@ func rewritePostings(re *regexp.Regexp, replacement string, postings []*commonpb
 
 // rewriteTargetAddr rewrites the address on a Target (no-op for TransactionId
 // targets or nil).
-func rewriteTargetAddr(re *regexp.Regexp, replacement string, t *commonpb.Target) {
+func rewriteTargetAddr(re *regexp.Regexp, replacement string, t *ledgerpb.Target) {
 	if t == nil {
 		return
 	}
@@ -718,7 +718,7 @@ func rewriteTargetAddr(re *regexp.Regexp, replacement string, t *commonpb.Target
 // rewriteAccountMetadataKeys re-keys every entry by applying the replacement.
 // Sorted iteration + last-writer-wins on the inner value map keeps merges
 // deterministic when two rewritten keys collapse.
-func rewriteAccountMetadataKeys(re *regexp.Regexp, replacement string, in map[string]*commonpb.MetadataMap) map[string]*commonpb.MetadataMap {
+func rewriteAccountMetadataKeys(re *regexp.Regexp, replacement string, in map[string]*ledgerpb.MetadataMap) map[string]*ledgerpb.MetadataMap {
 	if len(in) == 0 {
 		return in
 	}
@@ -730,7 +730,7 @@ func rewriteAccountMetadataKeys(re *regexp.Regexp, replacement string, in map[st
 
 	sort.Strings(keys)
 
-	out := make(map[string]*commonpb.MetadataMap, len(in))
+	out := make(map[string]*ledgerpb.MetadataMap, len(in))
 
 	for _, k := range keys {
 		newKey := re.ReplaceAllString(k, replacement)
@@ -738,13 +738,13 @@ func rewriteAccountMetadataKeys(re *regexp.Regexp, replacement string, in map[st
 
 		existing, ok := out[newKey]
 		if !ok || existing == nil {
-			out[newKey] = &commonpb.MetadataMap{Values: cloneMetadataValues(src.GetValues())}
+			out[newKey] = &ledgerpb.MetadataMap{Values: cloneMetadataValues(src.GetValues())}
 
 			continue
 		}
 
 		if existing.Values == nil {
-			existing.Values = map[string]*commonpb.MetadataValue{}
+			existing.Values = map[string]*ledgerpb.MetadataValue{}
 		}
 
 		maps.Copy(existing.GetValues(), src.GetValues())
@@ -753,12 +753,12 @@ func rewriteAccountMetadataKeys(re *regexp.Regexp, replacement string, in map[st
 	return out
 }
 
-func cloneMetadataValues(in map[string]*commonpb.MetadataValue) map[string]*commonpb.MetadataValue {
+func cloneMetadataValues(in map[string]*ledgerpb.MetadataValue) map[string]*ledgerpb.MetadataValue {
 	if in == nil {
 		return nil
 	}
 
-	out := make(map[string]*commonpb.MetadataValue, len(in))
+	out := make(map[string]*ledgerpb.MetadataValue, len(in))
 	maps.Copy(out, in)
 
 	return out

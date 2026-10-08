@@ -6,7 +6,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -105,7 +105,7 @@ func runConfigurationApply(cmd *cobra.Command, args []string) error {
 	}
 
 	// Build Apply request
-	requests := make([]*servicepb.Request, len(actions))
+	requests := make([]*ledgerpb.Request, len(actions))
 	for i, a := range actions {
 		requests[i] = a.Request
 	}

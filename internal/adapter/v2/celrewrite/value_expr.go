@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/cel-go/cel"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/protohelpers"
@@ -40,9 +40,9 @@ const (
 // agnostic of the specific proto type.
 func extractSetMetadataSource(src any) valueSource {
 	switch s := src.(type) {
-	case *commonpb.SetMetadataAction_Value:
+	case *ledgerpb.SetMetadataAction_Value:
 		return valueSource{kind: valueSourceLiteral, literal: s.Value}
-	case *commonpb.SetMetadataAction_ValueExpr:
+	case *ledgerpb.SetMetadataAction_ValueExpr:
 		return valueSource{kind: valueSourceExpr, expr: s.ValueExpr}
 	default:
 		return valueSource{kind: valueSourceUnset}
@@ -51,9 +51,9 @@ func extractSetMetadataSource(src any) valueSource {
 
 func extractSetAccountMetadataSource(src any) valueSource {
 	switch s := src.(type) {
-	case *commonpb.SetAccountMetadataAction_Value:
+	case *ledgerpb.SetAccountMetadataAction_Value:
 		return valueSource{kind: valueSourceLiteral, literal: s.Value}
-	case *commonpb.SetAccountMetadataAction_ValueExpr:
+	case *ledgerpb.SetAccountMetadataAction_ValueExpr:
 		return valueSource{kind: valueSourceExpr, expr: s.ValueExpr}
 	default:
 		return valueSource{kind: valueSourceUnset}
@@ -162,9 +162,9 @@ func evalStringExpr(prog cel.Program, entry *raftcmdpb.MirrorLogEntry) (string, 
 // "int64", "bool", "datetime"). An empty token means the default STRING and
 // returns `typed=false` so callers can skip the coercion step entirely. An
 // unknown token is rejected loudly at admission.
-func parseOptionalMetadataType(token string) (commonpb.MetadataType, bool, error) {
+func parseOptionalMetadataType(token string) (ledgerpb.MetadataType, bool, error) {
 	if token == "" {
-		return commonpb.MetadataType_METADATA_TYPE_STRING, false, nil
+		return ledgerpb.MetadataType_METADATA_TYPE_STRING, false, nil
 	}
 
 	t, err := protohelpers.ParseMetadataType(token)
@@ -180,8 +180,8 @@ func parseOptionalMetadataType(token string) (commonpb.MetadataType, bool, error
 // callers pass through untouched. A value that doesn't parse as the declared
 // type becomes a null value preserving the original string (consistent with
 // how the platform handles typed-metadata writes elsewhere).
-func coerceValue(value string, typ commonpb.MetadataType, typed bool) *commonpb.MetadataValue {
-	sv := commonpb.NewStringValue(value)
+func coerceValue(value string, typ ledgerpb.MetadataType, typed bool) *ledgerpb.MetadataValue {
+	sv := ledgerpb.NewStringValue(value)
 	if !typed {
 		return sv
 	}

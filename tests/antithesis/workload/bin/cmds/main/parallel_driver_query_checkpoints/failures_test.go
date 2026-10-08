@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
@@ -21,23 +21,23 @@ import (
 // successful mutations still reach the real Ledger node. This is not a model
 // of the cap or checkpoint lifecycle.
 type checkpointProxy struct {
-	clusterpb.UnimplementedBucketServiceServer
-	clusterpb.UnimplementedClusterServiceServer
+	ledgerpb.UnimplementedBucketServiceServer
+	ledgerpb.UnimplementedClusterServiceServer
 
-	apply func(context.Context, *clusterpb.ApplyRequest) (*clusterpb.ApplyResponse, error)
-	list  func(context.Context, *clusterpb.ListQueryCheckpointsRequest) (*clusterpb.ListQueryCheckpointsResponse, error)
-	info  func(context.Context, *clusterpb.GetQueryCheckpointInfoRequest) (*clusterpb.QueryCheckpointInfo, error)
+	apply func(context.Context, *ledgerpb.ApplyRequest) (*ledgerpb.ApplyResponse, error)
+	list  func(context.Context, *ledgerpb.ListQueryCheckpointsRequest) (*ledgerpb.ListQueryCheckpointsResponse, error)
+	info  func(context.Context, *ledgerpb.GetQueryCheckpointInfoRequest) (*ledgerpb.QueryCheckpointInfo, error)
 }
 
-func (p *checkpointProxy) Apply(ctx context.Context, req *clusterpb.ApplyRequest) (*clusterpb.ApplyResponse, error) {
+func (p *checkpointProxy) Apply(ctx context.Context, req *ledgerpb.ApplyRequest) (*ledgerpb.ApplyResponse, error) {
 	return p.apply(ctx, req)
 }
 
-func (p *checkpointProxy) ListQueryCheckpoints(ctx context.Context, req *clusterpb.ListQueryCheckpointsRequest) (*clusterpb.ListQueryCheckpointsResponse, error) {
+func (p *checkpointProxy) ListQueryCheckpoints(ctx context.Context, req *ledgerpb.ListQueryCheckpointsRequest) (*ledgerpb.ListQueryCheckpointsResponse, error) {
 	return p.list(ctx, req)
 }
 
-func (p *checkpointProxy) GetQueryCheckpointInfo(ctx context.Context, req *clusterpb.GetQueryCheckpointInfoRequest) (*clusterpb.QueryCheckpointInfo, error) {
+func (p *checkpointProxy) GetQueryCheckpointInfo(ctx context.Context, req *ledgerpb.GetQueryCheckpointInfoRequest) (*ledgerpb.QueryCheckpointInfo, error) {
 	return p.info(ctx, req)
 }
 
@@ -46,8 +46,8 @@ func serveCheckpointProxy(t *testing.T, proxy *checkpointProxy) string {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	server := grpc.NewServer()
-	clusterpb.RegisterBucketServiceServer(server, proxy)
-	clusterpb.RegisterClusterServiceServer(server, proxy)
+	ledgerpb.RegisterBucketServiceServer(server, proxy)
+	ledgerpb.RegisterClusterServiceServer(server, proxy)
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(listener) }()
 	t.Cleanup(func() {
@@ -91,7 +91,7 @@ func TestQueryCheckpointDriverRejectsOtherErrors(t *testing.T) {
 				require.NoError(t, err)
 			}
 			var calls atomic.Int32
-			address := serveCheckpointProxy(t, &checkpointProxy{apply: func(context.Context, *clusterpb.ApplyRequest) (*clusterpb.ApplyResponse, error) {
+			address := serveCheckpointProxy(t, &checkpointProxy{apply: func(context.Context, *ledgerpb.ApplyRequest) (*ledgerpb.ApplyResponse, error) {
 				calls.Add(1)
 
 				return nil, response.Err()
@@ -134,7 +134,7 @@ func TestQueryCheckpointDriverCleansOwnedCheckpointAfterReadFailure(t *testing.T
 			var createdID atomic.Uint64
 			var deletes atomic.Int32
 			proxy := &checkpointProxy{
-				apply: func(callCtx context.Context, req *clusterpb.ApplyRequest) (*clusterpb.ApplyResponse, error) {
+				apply: func(callCtx context.Context, req *ledgerpb.ApplyRequest) (*ledgerpb.ApplyResponse, error) {
 					for _, request := range req.GetUnsigned().GetRequests() {
 						if deleted := request.GetDeleteQueryCheckpoint(); deleted != nil {
 							deletes.Add(1)
@@ -153,17 +153,17 @@ func TestQueryCheckpointDriverCleansOwnedCheckpointAfterReadFailure(t *testing.T
 
 					return response, err
 				},
-				list: func(callCtx context.Context, req *clusterpb.ListQueryCheckpointsRequest) (*clusterpb.ListQueryCheckpointsResponse, error) {
+				list: func(callCtx context.Context, req *ledgerpb.ListQueryCheckpointsRequest) (*ledgerpb.ListQueryCheckpointsResponse, error) {
 					if tc.listError != nil {
 						return nil, tc.listError
 					}
 					if tc.omitList {
-						return &clusterpb.ListQueryCheckpointsResponse{}, nil
+						return &ledgerpb.ListQueryCheckpointsResponse{}, nil
 					}
 
 					return cluster.ListQueryCheckpoints(callCtx, req)
 				},
-				info: func(callCtx context.Context, req *clusterpb.GetQueryCheckpointInfoRequest) (*clusterpb.QueryCheckpointInfo, error) {
+				info: func(callCtx context.Context, req *ledgerpb.GetQueryCheckpointInfoRequest) (*ledgerpb.QueryCheckpointInfo, error) {
 					if tc.infoError != nil {
 						return nil, tc.infoError
 					}
@@ -213,7 +213,7 @@ func TestQueryCheckpointDriversCompeteForLastSlot(t *testing.T) {
 	var creates, successes, rejections atomic.Int32
 	createsFinished := make(chan struct{})
 	proxyAddress := serveCheckpointProxy(t, &checkpointProxy{
-		apply: func(callCtx context.Context, req *clusterpb.ApplyRequest) (*clusterpb.ApplyResponse, error) {
+		apply: func(callCtx context.Context, req *ledgerpb.ApplyRequest) (*ledgerpb.ApplyResponse, error) {
 			resp, err := client.Apply(callCtx, req)
 			for _, request := range req.GetUnsigned().GetRequests() {
 				if request.GetCreateQueryCheckpoint() != nil && creates.Add(1) == 2 {
@@ -223,7 +223,7 @@ func TestQueryCheckpointDriversCompeteForLastSlot(t *testing.T) {
 
 			return resp, err
 		},
-		list: func(callCtx context.Context, req *clusterpb.ListQueryCheckpointsRequest) (*clusterpb.ListQueryCheckpointsResponse, error) {
+		list: func(callCtx context.Context, req *ledgerpb.ListQueryCheckpointsRequest) (*ledgerpb.ListQueryCheckpointsResponse, error) {
 			// Hold the successful owner's lifecycle before its delete, so the
 			// second create necessarily competes for the same final slot.
 			select {
@@ -233,7 +233,7 @@ func TestQueryCheckpointDriversCompeteForLastSlot(t *testing.T) {
 				return nil, status.FromContextError(callCtx.Err()).Err()
 			}
 		},
-		info: func(callCtx context.Context, req *clusterpb.GetQueryCheckpointInfoRequest) (*clusterpb.QueryCheckpointInfo, error) {
+		info: func(callCtx context.Context, req *ledgerpb.GetQueryCheckpointInfoRequest) (*ledgerpb.QueryCheckpointInfo, error) {
 			return cluster.GetQueryCheckpointInfo(callCtx, req)
 		},
 	})

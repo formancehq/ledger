@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 )
@@ -21,7 +21,7 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 	// from the public camelCase contract (scriptReference, accountMetadata,
 	// …) — the default protoc-gen-go tags are snake_case and would silently
 	// drop multi-word keys (#452).
-	req := &commonpb.CreateTransactionPayload{}
+	req := &ledgerpb.CreateTransactionPayload{}
 
 	err := json.UnmarshalRead(r.Body, req)
 	if err != nil {
@@ -33,12 +33,12 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 	// The unitary endpoint intentionally does NOT expose skippableReasons: a
 	// single-transaction caller can catch the 4xx directly. The opt-in lives
 	// on the bulk endpoint (per-entry) and on the gRPC LedgerApplyRequest.
-	logs, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &commonpb.Request{
-		Type: &commonpb.Request_Apply{
-			Apply: &commonpb.LedgerApplyRequest{
+	logs, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &ledgerpb.Request{
+		Type: &ledgerpb.Request_Apply{
+			Apply: &ledgerpb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Action: &commonpb.LedgerAction{
-					Data: &commonpb.LedgerAction_CreateTransaction{
+				Action: &ledgerpb.LedgerAction{
+					Data: &ledgerpb.LedgerAction_CreateTransaction{
 						CreateTransaction: req,
 					},
 				},
@@ -57,7 +57,7 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 	logEntry := exactlyOneLog("create-transaction", logs, details)
 
 	ledgerLog := logEntry.GetPayload().GetApply().GetLog()
-	created, ok := ledgerLog.GetData().GetPayload().(*commonpb.LedgerLogPayload_CreatedTransaction)
+	created, ok := ledgerLog.GetData().GetPayload().(*ledgerpb.LedgerLogPayload_CreatedTransaction)
 	if !ok {
 		panic(unexpectedLogPayload("create-transaction", logEntry, details))
 	}

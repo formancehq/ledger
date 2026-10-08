@@ -11,7 +11,7 @@ import (
 
 	"github.com/holiman/uint256"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	numscriptlib "github.com/formancehq/numscript"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -30,7 +30,7 @@ type numscriptPostingProducer struct {
 	inputsResolutionHash []byte
 }
 
-func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *raftcmdpb.CreateTransactionOrder, script *commonpb.Script) (*produceResult, domain.SerializableError) {
+func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *raftcmdpb.CreateTransactionOrder, script *ledgerpb.Script) (*produceResult, domain.SerializableError) {
 	if script == nil || script.GetPlain() == "" {
 		return nil, domain.ErrScriptRequired
 	}
@@ -130,7 +130,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	}
 
 	// Convert numscript postings to commonpb postings and update buffer
-	postings := make([]*commonpb.Posting, len(result.Postings))
+	postings := make([]*ledgerpb.Posting, len(result.Postings))
 
 	var (
 		scratch    uint256.Int // reused across all postings
@@ -140,9 +140,9 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 
 	for i, posting := range result.Postings {
 		// Authoritative rejection of scope-qualified postings. Color IS modelled —
-		// posting.Color flows into the commonpb.Posting and NewVolumeKey below, so
+		// posting.Color flows into the ledgerpb.Posting and NewVolumeKey below, so
 		// a colored posting materialises its own segregated volume bucket. Scope is
-		// NOT modelled: building a commonpb.Posting would silently drop the scope
+		// NOT modelled: building a ledgerpb.Posting would silently drop the scope
 		// qualifier and collapse onto the unscoped volume — a silent semantic loss.
 		// Reject deterministically so every node produces the same definitive
 		// failure. Mirrors admission's discover-side rejection.
@@ -162,7 +162,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 			}
 		}
 
-		postings[i] = &commonpb.Posting{
+		postings[i] = &ledgerpb.Posting{
 			Source:      posting.Source,
 			Destination: posting.Destination,
 			Amount:      protohelpers.NewUint256(&u256Amount),
@@ -250,9 +250,9 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	// never pass through admission's ValidateMetadataKey, so an empty or
 	// NUL-bearing key from a Numscript program would otherwise corrupt
 	// read-index entries (#322).
-	var accountsMeta map[string]map[string]*commonpb.MetadataValue
+	var accountsMeta map[string]map[string]*ledgerpb.MetadataValue
 	if len(result.AccountsMetadata) > 0 {
-		accountsMeta = make(map[string]map[string]*commonpb.MetadataValue, len(result.AccountsMetadata))
+		accountsMeta = make(map[string]map[string]*ledgerpb.MetadataValue, len(result.AccountsMetadata))
 		for _, row := range result.AccountsMetadata {
 			// Ledger account metadata has no scope dimension; a scoped write would
 			// silently collapse onto the unscoped key. Reject deterministically,
@@ -280,18 +280,18 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 
 			mdMap := accountsMeta[row.Account]
 			if mdMap == nil {
-				mdMap = make(map[string]*commonpb.MetadataValue)
+				mdMap = make(map[string]*ledgerpb.MetadataValue)
 				accountsMeta[row.Account] = mdMap
 			}
 
-			mdMap[row.Key] = commonpb.NewStringValue(value)
+			mdMap[row.Key] = ledgerpb.NewStringValue(value)
 		}
 	}
 
 	// Convert transaction metadata from Numscript values to typed map.
-	var txMeta map[string]*commonpb.MetadataValue
+	var txMeta map[string]*ledgerpb.MetadataValue
 	if len(result.Metadata) > 0 {
-		txMeta = make(map[string]*commonpb.MetadataValue, len(result.Metadata))
+		txMeta = make(map[string]*ledgerpb.MetadataValue, len(result.Metadata))
 		// A validation failure becomes hash-chained audit state. Select the
 		// first invalid key canonically on every replica.
 		keys := slices.Sorted(maps.Keys(result.Metadata))
@@ -312,7 +312,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 				return nil, &domain.ErrMetadataKeyValidation{Key: key, Cause: err}
 			}
 
-			txMeta[key] = commonpb.NewStringValue(stringValue)
+			txMeta[key] = ledgerpb.NewStringValue(stringValue)
 		}
 	}
 

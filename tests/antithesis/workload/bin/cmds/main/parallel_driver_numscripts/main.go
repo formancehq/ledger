@@ -6,22 +6,22 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_numscripts", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+	internal.RunDriver("parallel_driver_numscripts", func(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string) {
 		r := internal.Rand()
 		scriptName := fmt.Sprintf("transfer-%d", r.Uint64())
 		version := fmt.Sprintf("%d.0.0", r.Uint64()%10+1)
 
 		details := internal.Details{"ledger": ledger, "scriptName": scriptName, "version": version}
 
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_SaveNumscript{
-				SaveNumscript: &servicepb.SaveNumscriptRequest{
+		_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_SaveNumscript{
+				SaveNumscript: &ledgerpb.SaveNumscriptRequest{
 					Name:    scriptName,
 					Content: transferScript,
 					Version: version,
@@ -35,7 +35,7 @@ func main() {
 			return
 		}
 
-		info, err := client.GetNumscript(ctx, &servicepb.GetNumscriptRequest{
+		info, err := client.GetNumscript(ctx, &ledgerpb.GetNumscriptRequest{
 			Name:   scriptName,
 			Ledger: ledger,
 		})
@@ -53,13 +53,13 @@ func main() {
 			"amount": fmt.Sprintf("COIN %v", internal.RandomBigInt().String()),
 		}
 
-		resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+		resp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-						CreateTransaction: &servicepb.CreateTransactionPayload{
-							ScriptReference: &servicepb.ScriptReference{
+					Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &ledgerpb.CreateTransactionPayload{
+							ScriptReference: &ledgerpb.ScriptReference{
 								Name:    scriptName,
 								Version: "latest",
 								Vars:    vars,

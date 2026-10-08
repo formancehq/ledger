@@ -8,7 +8,7 @@ import (
 	"maps"
 	"slices"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -21,13 +21,13 @@ import (
 // stored Index carries the identity needed by the fold. Boot reconstructs it
 // without importing newer audit metadata from the main-store registry.
 type ledgerIndexConfig struct {
-	byCanonical map[string]*commonpb.Index
+	byCanonical map[string]*ledgerpb.Index
 }
 
 // newLedgerIndexConfig creates a new ledgerIndexConfig with the map initialized.
 func newLedgerIndexConfig() *ledgerIndexConfig {
 	return &ledgerIndexConfig{
-		byCanonical: make(map[string]*commonpb.Index),
+		byCanonical: make(map[string]*ledgerpb.Index),
 	}
 }
 
@@ -72,7 +72,7 @@ func (b *Builder) initIndexConfigAfterHistory(ctx context.Context, reader dal.Pe
 	b.backfillTasks = nil
 	b.schemaRewriteTasks = nil
 	b.indexVersions = nil
-	b.unresolvedIndexes = make(map[string]map[string]*commonpb.Index)
+	b.unresolvedIndexes = make(map[string]map[string]*ledgerpb.Index)
 	b.pendingLedgerDeletes = make(map[string]struct{})
 
 	handle, err := b.pebbleStore.NewReadHandle()
@@ -203,7 +203,7 @@ func (b *Builder) restoreIndexConfigFromVersions() error {
 			}
 
 			cfg := b.getOrCreateLedgerConfig(ledger)
-			cfg.byCanonical[canonical] = &commonpb.Index{Ledger: ledger, Id: id}
+			cfg.byCanonical[canonical] = &ledgerpb.Index{Ledger: ledger, Id: id}
 			if version.CurrentVersion == 0 {
 				b.scheduleBackfillForIndex(ledger, id)
 			}
@@ -273,9 +273,9 @@ func (b *Builder) loadIndexRegistry(handle *dal.ReadHandle) error {
 
 		if b.unresolvedIndexes[ledgerName] == nil {
 			if b.unresolvedIndexes == nil {
-				b.unresolvedIndexes = make(map[string]map[string]*commonpb.Index)
+				b.unresolvedIndexes = make(map[string]map[string]*ledgerpb.Index)
 			}
-			b.unresolvedIndexes[ledgerName] = make(map[string]*commonpb.Index)
+			b.unresolvedIndexes[ledgerName] = make(map[string]*ledgerpb.Index)
 		}
 		b.unresolvedIndexes[ledgerName][canonical] = idx
 	}
@@ -311,23 +311,23 @@ func (b *Builder) validateHistoryReplayState() error {
 // scheduleBackfillForIndex dispatches a backfill task for a freshly-created or
 // recovered BUILDING index. Unknown kinds are silently ignored — future kinds
 // (e.g. account_type) plug in their own scheduler here.
-func (b *Builder) scheduleBackfillForIndex(ledgerName string, id *commonpb.IndexID) {
+func (b *Builder) scheduleBackfillForIndex(ledgerName string, id *ledgerpb.IndexID) {
 	switch k := id.GetKind().(type) {
-	case *commonpb.IndexID_TxBuiltin:
+	case *ledgerpb.IndexID_TxBuiltin:
 		b.addBackfillTaskForTxBuiltin(ledgerName, k.TxBuiltin)
-	case *commonpb.IndexID_LogBuiltin:
+	case *ledgerpb.IndexID_LogBuiltin:
 		b.addBackfillTaskForLogBuiltin(ledgerName, k.LogBuiltin)
-	case *commonpb.IndexID_AccountBuiltin:
+	case *ledgerpb.IndexID_AccountBuiltin:
 		// Only the account has-asset index has a posting-replay backfill;
 		// other account builtin kinds plug in here as they land.
-		if k.AccountBuiltin == commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET {
+		if k.AccountBuiltin == ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET {
 			b.addBackfillTaskForAccountBuiltin(ledgerName, k.AccountBuiltin)
 		}
-	case *commonpb.IndexID_Metadata:
+	case *ledgerpb.IndexID_Metadata:
 		switch k.Metadata.GetTarget() {
-		case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+		case ledgerpb.TargetType_TARGET_TYPE_ACCOUNT:
 			b.addBackfillTaskForAcctMetadata(ledgerName, k.Metadata.GetKey())
-		case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+		case ledgerpb.TargetType_TARGET_TYPE_TRANSACTION:
 			b.addBackfillTaskForTxMetadata(ledgerName, k.Metadata.GetKey())
 		}
 	}
@@ -341,7 +341,7 @@ func (b *Builder) stripBuildingIndexes() func() {
 	type stripped struct {
 		ledger string
 		key    string
-		entry  *commonpb.Index
+		entry  *ledgerpb.Index
 		task   *backfillTask
 	}
 
@@ -381,7 +381,7 @@ func (b *Builder) stripBuildingIndexes() func() {
 
 // isIndexed returns true iff the index identified by id is registered in the
 // cache (READY or BUILDING). Nil-safe on the receiver.
-func (c *ledgerIndexConfig) isIndexed(id *commonpb.IndexID) bool {
+func (c *ledgerIndexConfig) isIndexed(id *ledgerpb.IndexID) bool {
 	if c == nil || id == nil {
 		return false
 	}
@@ -393,20 +393,20 @@ func (c *ledgerIndexConfig) isIndexed(id *commonpb.IndexID) bool {
 
 // isMetadataIndexed checks if a specific metadata index is enabled.
 // Returns false if the receiver is nil (unknown ledger).
-func (c *ledgerIndexConfig) isMetadataIndexed(target commonpb.TargetType, key string) bool {
+func (c *ledgerIndexConfig) isMetadataIndexed(target ledgerpb.TargetType, key string) bool {
 	return c.isIndexed(indexes.MetadataID(target, key))
 }
 
 // isBuiltinIndexed checks if a specific transaction builtin index is enabled.
 // Returns false if the receiver is nil (unknown ledger).
-func (c *ledgerIndexConfig) isBuiltinIndexed(index commonpb.TransactionBuiltinIndex) bool {
+func (c *ledgerIndexConfig) isBuiltinIndexed(index ledgerpb.TransactionBuiltinIndex) bool {
 	return c.isIndexed(indexes.TxBuiltinID(index))
 }
 
 func (c *ledgerIndexConfig) indexesPostingAddressMappings() bool {
-	return c.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS) ||
-		c.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS) ||
-		c.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS)
+	return c.isBuiltinIndexed(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS) ||
+		c.isBuiltinIndexed(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS) ||
+		c.isBuiltinIndexed(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS)
 }
 
 // indexesPostingDerived reports whether any enabled index is derived from
@@ -417,28 +417,28 @@ func (c *ledgerIndexConfig) indexesPostingAddressMappings() bool {
 // for transient/purged volumes on ledgers that enable only that index.
 func (c *ledgerIndexConfig) indexesPostingDerived() bool {
 	return c.indexesPostingAddressMappings() ||
-		c.isAccountBuiltinIndexed(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
+		c.isAccountBuiltinIndexed(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
 }
 
 // isLogDateIndex reports whether id is the log date builtin — the one index
 // whose rows are per-log rather than per-entity, so its history is every log
 // of the ledger.
-func isLogDateIndex(id *commonpb.IndexID) bool {
-	k, ok := id.GetKind().(*commonpb.IndexID_LogBuiltin)
+func isLogDateIndex(id *ledgerpb.IndexID) bool {
+	k, ok := id.GetKind().(*ledgerpb.IndexID_LogBuiltin)
 
-	return ok && k.LogBuiltin == commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE
+	return ok && k.LogBuiltin == ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE
 }
 
 // isLogBuiltinIndexed checks if a specific log builtin index is enabled.
 // Returns false if the receiver is nil (unknown ledger).
-func (c *ledgerIndexConfig) isLogBuiltinIndexed(index commonpb.LogBuiltinIndex) bool {
+func (c *ledgerIndexConfig) isLogBuiltinIndexed(index ledgerpb.LogBuiltinIndex) bool {
 	return c.isIndexed(indexes.LogBuiltinID(index))
 }
 
 // isAccountBuiltinIndexed reports whether the given account builtin index is
 // registered (regardless of build status) for this ledger config.
 // Returns false if the receiver is nil (unknown ledger).
-func (c *ledgerIndexConfig) isAccountBuiltinIndexed(index commonpb.AccountBuiltinIndex) bool {
+func (c *ledgerIndexConfig) isAccountBuiltinIndexed(index ledgerpb.AccountBuiltinIndex) bool {
 	return c.isIndexed(indexes.AccountBuiltinID(index))
 }
 
@@ -467,7 +467,7 @@ func (b *Builder) getOrCreateLedgerConfig(ledger string) *ledgerIndexConfig {
 // backfill scheduling so the builder does not redo work that has already
 // completed — and, more importantly, does not knock a live index back into
 // ErrIndexBuilding.
-func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.CreatedIndexLog) error {
+func (b *Builder) handleCreatedIndexLog(ledgerName string, log *ledgerpb.CreatedIndexLog) error {
 	id := log.GetId()
 	if id == nil {
 		return nil
@@ -538,7 +538,7 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 		}
 	})
 
-	cfg.byCanonical[canonical] = &commonpb.Index{
+	cfg.byCanonical[canonical] = &ledgerpb.Index{
 		Id:                     id,
 		ForwardEncodingVersion: 1,
 	}
@@ -613,11 +613,11 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 	return nil
 }
 
-func cloneIndexMap(in map[string]*commonpb.Index) map[string]*commonpb.Index {
+func cloneIndexMap(in map[string]*ledgerpb.Index) map[string]*ledgerpb.Index {
 	if in == nil {
 		return nil
 	}
-	out := make(map[string]*commonpb.Index, len(in))
+	out := make(map[string]*ledgerpb.Index, len(in))
 	maps.Copy(out, in)
 
 	return out
@@ -628,7 +628,7 @@ func cloneIndexMap(in map[string]*commonpb.Index) map[string]*commonpb.Index {
 // active backfill / schema-rewrite task tied to the index — without that, a
 // rewrite finishing post-drop would atomic-switch a keyspace live for an
 // index that no longer exists.
-func (b *Builder) handleDroppedIndexLog(kb *dal.KeyBuilder, ledger string, log *commonpb.DroppedIndexLog) error {
+func (b *Builder) handleDroppedIndexLog(kb *dal.KeyBuilder, ledger string, log *ledgerpb.DroppedIndexLog) error {
 	id := log.GetId()
 	if id == nil {
 		return nil
@@ -664,7 +664,7 @@ func (b *Builder) handleDroppedIndexLog(kb *dal.KeyBuilder, ledger string, log *
 		return err
 	}
 
-	if meta, ok := id.GetKind().(*commonpb.IndexID_Metadata); ok && meta.Metadata != nil {
+	if meta, ok := id.GetKind().(*ledgerpb.IndexID_Metadata); ok && meta.Metadata != nil {
 		if err := b.removeSchemaRewriteTaskByField(ledger, meta.Metadata.GetTarget(), meta.Metadata.GetKey()); err != nil {
 			return err
 		}

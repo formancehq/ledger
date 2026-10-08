@@ -3,7 +3,7 @@ package accounttype
 import (
 	"slices"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // CompiledType holds an account type with its pre-parsed pattern segments,
@@ -14,14 +14,14 @@ import (
 type CompiledType struct {
 	Segments    []PatternSegment
 	Specificity int
-	Original    commonpb.AccountTypeReader
+	Original    ledgerpb.AccountTypeReader
 }
 
 // CompileTypes pre-parses all account types into CompiledType entries.
 // Types with invalid patterns are silently skipped.
 // Variable segments are annotated with constraints from the proto segment_types map.
 // The output is sorted by name for deterministic ordering across nodes.
-func CompileTypes(types map[string]*commonpb.AccountType) []CompiledType {
+func CompileTypes(types map[string]*ledgerpb.AccountType) []CompiledType {
 	// Sort keys for deterministic iteration order.
 	names := make([]string, 0, len(types))
 	for name := range types {
@@ -30,7 +30,7 @@ func CompileTypes(types map[string]*commonpb.AccountType) []CompiledType {
 
 	slices.Sort(names)
 
-	return compileTypes(names, func(name string) (commonpb.AccountTypeReader, bool) {
+	return compileTypes(names, func(name string) (ledgerpb.AccountTypeReader, bool) {
 		at := types[name]
 		if at == nil {
 			return nil, false
@@ -43,13 +43,13 @@ func CompileTypes(types map[string]*commonpb.AccountType) []CompiledType {
 // CompileTypesReader pre-parses account types without cloning the owning
 // ledger. It consumes the immutable LedgerInfo account-types reader directly,
 // so read-only validation paths never materialise a mutable AccountTypes map.
-func CompileTypesReader(types commonpb.LedgerInfo_AccountTypesMapReader) []CompiledType {
+func CompileTypesReader(types ledgerpb.LedgerInfo_AccountTypesMapReader) []CompiledType {
 	if types == nil {
 		return nil
 	}
 
 	names := make([]string, 0, types.Len())
-	types.Range(func(name string, _ commonpb.AccountTypeReader) bool {
+	types.Range(func(name string, _ ledgerpb.AccountTypeReader) bool {
 		names = append(names, name)
 
 		return true
@@ -60,7 +60,7 @@ func CompileTypesReader(types commonpb.LedgerInfo_AccountTypesMapReader) []Compi
 	return compileTypes(names, types.Get)
 }
 
-func compileTypes(names []string, get func(name string) (commonpb.AccountTypeReader, bool)) []CompiledType {
+func compileTypes(names []string, get func(name string) (ledgerpb.AccountTypeReader, bool)) []CompiledType {
 	compiled := make([]CompiledType, 0, len(names))
 
 	for _, name := range names {
@@ -120,9 +120,9 @@ func PatternsConflict(a, b []PatternSegment) bool {
 func FindMatchingType(
 	address string,
 	compiled []CompiledType,
-) commonpb.AccountTypeReader {
+) ledgerpb.AccountTypeReader {
 	var (
-		best     commonpb.AccountTypeReader
+		best     ledgerpb.AccountTypeReader
 		bestSpec = -1
 		bestLen  = 0
 	)

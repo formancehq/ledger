@@ -11,7 +11,7 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/pebblecfg"
@@ -250,7 +250,7 @@ func (s *Store) Reset() error {
 
 // GetTemplateUsage reads the current usage record for (ledger, template).
 // Returns (nil, nil) if no entry exists.
-func (s *Store) GetTemplateUsage(ledgerName, templateName string) (*commonpb.TemplateUsage, error) {
+func (s *Store) GetTemplateUsage(ledgerName, templateName string) (*ledgerpb.TemplateUsage, error) {
 	kb := dal.NewKeyBuilder()
 	key := TemplateUsageKey(kb, ledgerName, templateName)
 
@@ -265,7 +265,7 @@ func (s *Store) GetTemplateUsage(ledgerName, templateName string) (*commonpb.Tem
 
 	defer func() { _ = closer.Close() }()
 
-	usage := &commonpb.TemplateUsage{}
+	usage := &ledgerpb.TemplateUsage{}
 	if err := usage.UnmarshalVT(v); err != nil {
 		return nil, fmt.Errorf("unmarshaling template usage: %w", err)
 	}
@@ -274,7 +274,7 @@ func (s *Store) GetTemplateUsage(ledgerName, templateName string) (*commonpb.Tem
 }
 
 // PutTemplateUsage persists a template usage record into the pending batch.
-func (s *Store) PutTemplateUsage(batch *dal.WriteSession, ledgerName, templateName string, usage *commonpb.TemplateUsage) error {
+func (s *Store) PutTemplateUsage(batch *dal.WriteSession, ledgerName, templateName string, usage *ledgerpb.TemplateUsage) error {
 	key := TemplateUsageKey(batch.KeyBuilder, ledgerName, templateName)
 
 	return batch.SetProto(key, usage)

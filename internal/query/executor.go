@@ -10,7 +10,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -24,8 +24,8 @@ const defaultPageSize = 100
 
 // EntityEnricher provides functions to hydrate raw entity IDs into full objects.
 type EntityEnricher struct {
-	EnrichAccount     func(reader dal.PebbleReader, ledgerName string, address string) (*commonpb.Account, error)
-	EnrichTransaction func(ctx context.Context, reader dal.PebbleReader, ledgerName string, txID uint64) (*commonpb.Transaction, error)
+	EnrichAccount     func(reader dal.PebbleReader, ledgerName string, address string) (*ledgerpb.Account, error)
+	EnrichTransaction func(ctx context.Context, reader dal.PebbleReader, ledgerName string, txID uint64) (*ledgerpb.Transaction, error)
 }
 
 // Execute runs a prepared query against the read index and, for
@@ -35,12 +35,12 @@ func Execute(
 	rs *readstore.Store,
 	pebbleStore queryHandleStore,
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
-	preparedQueryAttr *attributes.Attribute[*commonpb.PreparedQuery],
-	indexAttr *attributes.Attribute[*commonpb.Index],
-	req *commonpb.ExecutePreparedQueryRequest,
+	preparedQueryAttr *attributes.Attribute[*ledgerpb.PreparedQuery],
+	indexAttr *attributes.Attribute[*ledgerpb.Index],
+	req *ledgerpb.ExecutePreparedQueryRequest,
 	profile *QueryProfile,
 	enricher *EntityEnricher,
-) (*commonpb.ExecutePreparedQueryResponse, error) {
+) (*ledgerpb.ExecutePreparedQueryResponse, error) {
 	ctx, span := queryTracer.Start(ctx, "query.execute_prepared",
 		trace.WithAttributes(
 			attribute.String("ledger", req.GetLedger()),
@@ -91,10 +91,10 @@ func Execute(
 	// invalid parameters. Compile can only be reached for LIST and
 	// AGGREGATE_VOLUMES.
 	switch req.GetMode() {
-	case commonpb.QueryMode_QUERY_MODE_LIST:
+	case ledgerpb.QueryMode_QUERY_MODE_LIST:
 		// no additional constraint
-	case commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES:
-		if pq.GetTarget() != commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
+	case ledgerpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES:
+		if pq.GetTarget() != ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
 			return nil, &ErrPreparedQueryAggregateTarget{Target: pq.GetTarget()}
 		}
 	default:
@@ -105,15 +105,15 @@ func Execute(
 	// An exactly nil filter needs neither account enumeration nor a read-index
 	// snapshot. Release the event-history reservation before the single volume
 	// scan; non-nil filters keep the normal compilation and alignment path.
-	if req.GetMode() == commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES && pq.GetFilter() == nil {
+	if req.GetMode() == ledgerpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES && pq.GetFilter() == nil {
 		releaseHold()
 		aggResult, aggErr := AggregateAllVolumes(handle, volumeAttr, ledgerInfo.GetName(), AggregateOptions{})
 		if aggErr != nil {
 			return nil, aggErr
 		}
 
-		return &commonpb.ExecutePreparedQueryResponse{
-			Result: &commonpb.ExecutePreparedQueryResponse_Aggregate{
+		return &ledgerpb.ExecutePreparedQueryResponse{
+			Result: &ledgerpb.ExecutePreparedQueryResponse_Aggregate{
 				Aggregate: aggResult,
 			},
 		}, nil
@@ -179,7 +179,7 @@ func Execute(
 	}
 	defer iter.Close()
 
-	if req.GetMode() == commonpb.QueryMode_QUERY_MODE_LIST {
+	if req.GetMode() == ledgerpb.QueryMode_QUERY_MODE_LIST {
 		return executeList(ctx, iter, pq.GetTarget(), req, profile, handle, indexSnap, ledgerInfo.GetName(), enricher)
 	}
 
@@ -189,8 +189,8 @@ func Execute(
 		return nil, aggErr
 	}
 
-	return &commonpb.ExecutePreparedQueryResponse{
-		Result: &commonpb.ExecutePreparedQueryResponse_Aggregate{
+	return &ledgerpb.ExecutePreparedQueryResponse{
+		Result: &ledgerpb.ExecutePreparedQueryResponse_Aggregate{
 			Aggregate: aggResult,
 		},
 	}, nil
@@ -201,14 +201,14 @@ func Execute(
 func executeList(
 	ctx context.Context,
 	iter readstore.EntityIterator,
-	target commonpb.QueryTarget,
-	req *commonpb.ExecutePreparedQueryRequest,
+	target ledgerpb.QueryTarget,
+	req *ledgerpb.ExecutePreparedQueryRequest,
 	profile *QueryProfile,
 	reader dal.PebbleReader,
 	indexReader dal.PebbleReader,
 	ledgerName string,
 	enricher *EntityEnricher,
-) (*commonpb.ExecutePreparedQueryResponse, error) {
+) (*ledgerpb.ExecutePreparedQueryResponse, error) {
 	pageSize := req.GetPageSize()
 	if pageSize == 0 {
 		pageSize = defaultPageSize
@@ -240,27 +240,27 @@ func executeList(
 	}
 
 	// Build response cursor
-	cursor := &commonpb.PreparedQueryCursor{
+	cursor := &ledgerpb.PreparedQueryCursor{
 		PageSize: pageSize,
 		HasMore:  hasMore,
 	}
 
 	switch target {
-	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
 		accounts, err := EnrichAccounts(entities, enricher, reader, ledgerName)
 		if err != nil {
 			return nil, err
 		}
 
 		cursor.AccountData = accounts
-	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
 		txns, err := EnrichTransactions(ctx, entities, enricher, reader, ledgerName)
 		if err != nil {
 			return nil, err
 		}
 
 		cursor.TransactionData = txns
-	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_LOGS:
 		logs, err := EnrichLogs(ctx, reader, indexReader, ledgerName, entities)
 		if err != nil {
 			return nil, err
@@ -283,16 +283,16 @@ func executeList(
 		cursor.Previous = req.GetCursor()
 	}
 
-	return &commonpb.ExecutePreparedQueryResponse{
-		Result: &commonpb.ExecutePreparedQueryResponse_Cursor{
+	return &ledgerpb.ExecutePreparedQueryResponse{
+		Result: &ledgerpb.ExecutePreparedQueryResponse_Cursor{
 			Cursor: cursor,
 		},
 	}, nil
 }
 
 // EnrichAccounts hydrates a slice of raw entity bytes into full Account objects.
-func EnrichAccounts(entityIDs [][]byte, enricher *EntityEnricher, reader dal.PebbleReader, ledgerName string) ([]*commonpb.Account, error) {
-	accounts := make([]*commonpb.Account, len(entityIDs))
+func EnrichAccounts(entityIDs [][]byte, enricher *EntityEnricher, reader dal.PebbleReader, ledgerName string) ([]*ledgerpb.Account, error) {
+	accounts := make([]*ledgerpb.Account, len(entityIDs))
 	for i, e := range entityIDs {
 		acc, err := enricher.EnrichAccount(reader, ledgerName, string(e))
 		if err != nil {
@@ -306,8 +306,8 @@ func EnrichAccounts(entityIDs [][]byte, enricher *EntityEnricher, reader dal.Peb
 }
 
 // EnrichTransactions hydrates a slice of raw entity bytes into full Transaction objects.
-func EnrichTransactions(ctx context.Context, entityIDs [][]byte, enricher *EntityEnricher, reader dal.PebbleReader, ledgerName string) ([]*commonpb.Transaction, error) {
-	txns := make([]*commonpb.Transaction, len(entityIDs))
+func EnrichTransactions(ctx context.Context, entityIDs [][]byte, enricher *EntityEnricher, reader dal.PebbleReader, ledgerName string) ([]*ledgerpb.Transaction, error) {
+	txns := make([]*ledgerpb.Transaction, len(entityIDs))
 	for i, e := range entityIDs {
 		txID := binary.BigEndian.Uint64(e)
 
@@ -329,7 +329,7 @@ func EnrichTransactions(ctx context.Context, entityIDs [][]byte, enricher *Entit
 // payloads from Pebble. pebbleReader reads the log payloads (History zone);
 // indexReader resolves logID → sequence through the same snapshot used for
 // iteration.
-func EnrichLogs(ctx context.Context, pebbleReader dal.PebbleReader, indexReader dal.PebbleReader, ledgerName string, logIDs [][]byte) ([]*commonpb.Log, error) {
+func EnrichLogs(ctx context.Context, pebbleReader dal.PebbleReader, indexReader dal.PebbleReader, ledgerName string, logIDs [][]byte) ([]*ledgerpb.Log, error) {
 	c, err := ReadLedgerLogsCompiled(ctx, pebbleReader, indexReader, ledgerName, logIDs)
 	if err != nil {
 		return nil, fmt.Errorf("reading ledger logs: %w", err)
@@ -343,10 +343,10 @@ func EnrichLogs(ctx context.Context, pebbleReader dal.PebbleReader, indexReader 
 	return logs, nil
 }
 
-func emptyListResponse(pageSize uint32) *commonpb.ExecutePreparedQueryResponse {
-	return &commonpb.ExecutePreparedQueryResponse{
-		Result: &commonpb.ExecutePreparedQueryResponse_Cursor{
-			Cursor: &commonpb.PreparedQueryCursor{
+func emptyListResponse(pageSize uint32) *ledgerpb.ExecutePreparedQueryResponse {
+	return &ledgerpb.ExecutePreparedQueryResponse{
+		Result: &ledgerpb.ExecutePreparedQueryResponse_Cursor{
+			Cursor: &ledgerpb.PreparedQueryCursor{
 				PageSize: pageSize,
 			},
 		},

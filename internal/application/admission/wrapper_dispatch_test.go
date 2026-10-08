@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
@@ -30,7 +30,7 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 	revertOverlay := newBulkOverlay()
 	revertOverlay.recordRevertTarget(
 		wrapperTestLedger, &raftcmdpb.RevertTransactionOrder{TransactionId: 13},
-		presentRevertTarget([]*commonpb.Posting{{Source: "world", Destination: "user:eve", Asset: "USD"}}),
+		presentRevertTarget([]*ledgerpb.Posting{{Source: "world", Destination: "user:eve", Asset: "USD"}}),
 	)
 
 	cases := []struct {
@@ -77,12 +77,12 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 					Entry: &raftcmdpb.MirrorLogEntry{
 						Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{
 							CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
-								Postings: []*commonpb.Posting{
+								Postings: []*ledgerpb.Posting{
 									{Source: "world", Destination: "user:alice", Asset: "USD"},
 								},
-								AccountMetadata: map[string]*commonpb.MetadataMap{
-									"user:alice": {Values: map[string]*commonpb.MetadataValue{
-										"tag": {Type: &commonpb.MetadataValue_StringValue{StringValue: "vip"}},
+								AccountMetadata: map[string]*ledgerpb.MetadataMap{
+									"user:alice": {Values: map[string]*ledgerpb.MetadataValue{
+										"tag": {Type: &ledgerpb.MetadataValue_StringValue{StringValue: "vip"}},
 									}},
 								},
 							},
@@ -115,11 +115,11 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 					Entry: &raftcmdpb.MirrorLogEntry{
 						Data: &raftcmdpb.MirrorLogEntry_SavedMetadata{
 							SavedMetadata: &raftcmdpb.MirrorSavedMetadata{
-								Target: &commonpb.Target{Target: &commonpb.Target_Account{
-									Account: &commonpb.TargetAccount{Addr: "user:bob"},
+								Target: &ledgerpb.Target{Target: &ledgerpb.Target_Account{
+									Account: &ledgerpb.TargetAccount{Addr: "user:bob"},
 								}},
-								Metadata: map[string]*commonpb.MetadataValue{
-									"score": {Type: &commonpb.MetadataValue_IntValue{IntValue: 42}},
+								Metadata: map[string]*ledgerpb.MetadataValue{
+									"score": {Type: &ledgerpb.MetadataValue_IntValue{IntValue: 42}},
 								},
 							},
 						},
@@ -141,7 +141,7 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 					Entry: &raftcmdpb.MirrorLogEntry{
 						Data: &raftcmdpb.MirrorLogEntry_SavedMetadata{
 							SavedMetadata: &raftcmdpb.MirrorSavedMetadata{
-								Target: &commonpb.Target{Target: &commonpb.Target_TransactionId{TransactionId: 7}},
+								Target: &ledgerpb.Target{Target: &ledgerpb.Target_TransactionId{TransactionId: 7}},
 							},
 						},
 					},
@@ -159,8 +159,8 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 					Entry: &raftcmdpb.MirrorLogEntry{
 						Data: &raftcmdpb.MirrorLogEntry_DeletedMetadata{
 							DeletedMetadata: &raftcmdpb.MirrorDeletedMetadata{
-								Target: &commonpb.Target{Target: &commonpb.Target_Account{
-									Account: &commonpb.TargetAccount{Addr: "user:carol"},
+								Target: &ledgerpb.Target{Target: &ledgerpb.Target_Account{
+									Account: &ledgerpb.TargetAccount{Addr: "user:carol"},
 								}},
 								Key: "score",
 							},
@@ -183,7 +183,7 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 					Entry: &raftcmdpb.MirrorLogEntry{
 						Data: &raftcmdpb.MirrorLogEntry_DeletedMetadata{
 							DeletedMetadata: &raftcmdpb.MirrorDeletedMetadata{
-								Target: &commonpb.Target{Target: &commonpb.Target_TransactionId{TransactionId: 9}},
+								Target: &ledgerpb.Target{Target: &ledgerpb.Target_TransactionId{TransactionId: 9}},
 							},
 						},
 					},
@@ -202,7 +202,7 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 						Data: &raftcmdpb.MirrorLogEntry_RevertedTransaction{
 							RevertedTransaction: &raftcmdpb.MirrorRevertedTransaction{
 								RevertedTransactionId: 11,
-								ReversePostings: []*commonpb.Posting{
+								ReversePostings: []*ledgerpb.Posting{
 									{Source: "user:alice", Destination: "world", Asset: "USD"},
 								},
 							},
@@ -224,7 +224,7 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 				Ledger: wrapperTestLedger,
 				Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
 					CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{
-						Query: &commonpb.PreparedQuery{Name: "q1", Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS},
+						Query: &ledgerpb.PreparedQuery{Name: "q1", Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS},
 					},
 				},
 			},
@@ -282,8 +282,8 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 				Ledger: wrapperTestLedger,
 				Payload: &raftcmdpb.LedgerScopedOrder_SaveLedgerMetadata{
 					SaveLedgerMetadata: &raftcmdpb.SaveLedgerMetadataOrder{
-						Metadata: map[string]*commonpb.MetadataValue{
-							"owner": {Type: &commonpb.MetadataValue_StringValue{StringValue: "team"}},
+						Metadata: map[string]*ledgerpb.MetadataValue{
+							"owner": {Type: &ledgerpb.MetadataValue_StringValue{StringValue: "team"}},
 						},
 					},
 				},
@@ -313,7 +313,7 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
 								Reference: "order-42",
-								Postings: []*commonpb.Posting{
+								Postings: []*ledgerpb.Posting{
 									{Source: "world", Destination: "user:dan", Asset: "EUR"},
 								},
 							},
@@ -360,11 +360,11 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 					Apply: &raftcmdpb.LedgerApplyOrder{
 						Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
 							AddMetadata: &raftcmdpb.SaveMetadataOrder{
-								Target: &commonpb.Target{Target: &commonpb.Target_Account{
-									Account: &commonpb.TargetAccount{Addr: "user:fran"},
+								Target: &ledgerpb.Target{Target: &ledgerpb.Target_Account{
+									Account: &ledgerpb.TargetAccount{Addr: "user:fran"},
 								}},
-								Metadata: map[string]*commonpb.MetadataValue{
-									"badge": {Type: &commonpb.MetadataValue_StringValue{StringValue: "gold"}},
+								Metadata: map[string]*ledgerpb.MetadataValue{
+									"badge": {Type: &ledgerpb.MetadataValue_StringValue{StringValue: "gold"}},
 								},
 							},
 						},
@@ -386,7 +386,7 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 					Apply: &raftcmdpb.LedgerApplyOrder{
 						Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
 							AddMetadata: &raftcmdpb.SaveMetadataOrder{
-								Target: &commonpb.Target{Target: &commonpb.Target_TransactionId{TransactionId: 17}},
+								Target: &ledgerpb.Target{Target: &ledgerpb.Target_TransactionId{TransactionId: 17}},
 							},
 						},
 					},
@@ -404,8 +404,8 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 					Apply: &raftcmdpb.LedgerApplyOrder{
 						Data: &raftcmdpb.LedgerApplyOrder_DeleteMetadata{
 							DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
-								Target: &commonpb.Target{Target: &commonpb.Target_Account{
-									Account: &commonpb.TargetAccount{Addr: "user:gina"},
+								Target: &ledgerpb.Target{Target: &ledgerpb.Target_Account{
+									Account: &ledgerpb.TargetAccount{Addr: "user:gina"},
 								}},
 								Key: "badge",
 							},
@@ -428,7 +428,7 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 					Apply: &raftcmdpb.LedgerApplyOrder{
 						Data: &raftcmdpb.LedgerApplyOrder_DeleteMetadata{
 							DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
-								Target: &commonpb.Target{Target: &commonpb.Target_TransactionId{TransactionId: 19}},
+								Target: &ledgerpb.Target{Target: &ledgerpb.Target_TransactionId{TransactionId: 19}},
 								Key:    "score",
 							},
 						},
@@ -470,7 +470,7 @@ func TestExtractSystemScopedNeeds_OnlySinkConfigsContribute(t *testing.T) {
 		needs := plan.NewCoverage()
 		extractSystemScopedNeeds(needs, &raftcmdpb.SystemScopedOrder{
 			Payload: &raftcmdpb.SystemScopedOrder_AddEventsSink{AddEventsSink: &raftcmdpb.AddEventsSinkOrder{
-				Config: &commonpb.SinkConfig{Name: "kafka-main"},
+				Config: &ledgerpb.SinkConfig{Name: "kafka-main"},
 			}},
 		})
 		require.True(t, needs.Has(dal.SubAttrSinkConfig, domain.SinkConfigKey{Name: "kafka-main"}.Bytes()))

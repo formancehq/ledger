@@ -6,7 +6,7 @@ import (
 	"math/big"
 	"time"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -22,40 +22,40 @@ var _ = Describe("InspectIndex", Ordered, func() {
 
 		BeforeAll(func() {
 			// Create ledger with a string metadata field + index.
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*ledgerpb.SetMetadataFieldTypeCommand{
 				{
-					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "category",
-					Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+					Type:       ledgerpb.MetadataType_METADATA_TYPE_STRING,
 				},
 			})))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateAccountMetadataIndexAction(ledgerName, "category")))
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateAccountMetadataIndexAction(ledgerName, "category")))
 			Expect(err).To(Succeed())
-			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "category")).To(Succeed())
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "category")).To(Succeed())
 
 			// Create accounts with varied metadata values.
 			// 3 premium, 2 basic, 1 enterprise, 1 without metadata.
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "user1", big.NewInt(100), "USD"),
 			}, nil),
-				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "user2", big.NewInt(100), "USD"),
 				}, nil),
-				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "user3", big.NewInt(100), "USD"),
 				}, nil),
-				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "user4", big.NewInt(100), "USD"),
 				}, nil),
-				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "user5", big.NewInt(100), "USD"),
 				}, nil),
-				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "user6", big.NewInt(100), "USD"),
 				}, nil),
-				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "nocat", big.NewInt(100), "USD"),
 				}, nil),
 				actions.SaveAccountMetadataAction(ledgerName, "user1", map[string]string{"category": "premium"}),
@@ -75,11 +75,11 @@ var _ = Describe("InspectIndex", Ordered, func() {
 		})
 
 		It("Should return correct summary", func() {
-			resp, err := sharedClient.InspectIndex(sharedCtx, &commonpb.InspectIndexRequest{
+			resp, err := sharedClient.InspectIndex(sharedCtx, &ledgerpb.InspectIndexRequest{
 				Ledger:      ledgerName,
-				TargetType:  commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				TargetType:  ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 				MetadataKey: "category",
-				Mode:        commonpb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY,
+				Mode:        ledgerpb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY,
 			})
 			Expect(err).To(Succeed())
 
@@ -92,11 +92,11 @@ var _ = Describe("InspectIndex", Ordered, func() {
 		})
 
 		It("Should return all distinct values in sorted order", func() {
-			resp, err := sharedClient.InspectIndex(sharedCtx, &commonpb.InspectIndexRequest{
+			resp, err := sharedClient.InspectIndex(sharedCtx, &ledgerpb.InspectIndexRequest{
 				Ledger:      ledgerName,
-				TargetType:  commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				TargetType:  ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 				MetadataKey: "category",
-				Mode:        commonpb.InspectIndexMode_INSPECT_INDEX_MODE_DISTINCT_VALUES,
+				Mode:        ledgerpb.InspectIndexMode_INSPECT_INDEX_MODE_DISTINCT_VALUES,
 			})
 			Expect(err).To(Succeed())
 
@@ -111,11 +111,11 @@ var _ = Describe("InspectIndex", Ordered, func() {
 
 		It("Should paginate distinct values", func() {
 			// Page 1: 2 values.
-			resp, err := sharedClient.InspectIndex(sharedCtx, &commonpb.InspectIndexRequest{
+			resp, err := sharedClient.InspectIndex(sharedCtx, &ledgerpb.InspectIndexRequest{
 				Ledger:      ledgerName,
-				TargetType:  commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				TargetType:  ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 				MetadataKey: "category",
-				Mode:        commonpb.InspectIndexMode_INSPECT_INDEX_MODE_DISTINCT_VALUES,
+				Mode:        ledgerpb.InspectIndexMode_INSPECT_INDEX_MODE_DISTINCT_VALUES,
 				PageSize:    2,
 			})
 			Expect(err).To(Succeed())
@@ -128,11 +128,11 @@ var _ = Describe("InspectIndex", Ordered, func() {
 			Expect(dv.GetNextCursor()).NotTo(BeEmpty())
 
 			// Page 2: remaining value.
-			resp, err = sharedClient.InspectIndex(sharedCtx, &commonpb.InspectIndexRequest{
+			resp, err = sharedClient.InspectIndex(sharedCtx, &ledgerpb.InspectIndexRequest{
 				Ledger:      ledgerName,
-				TargetType:  commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				TargetType:  ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 				MetadataKey: "category",
-				Mode:        commonpb.InspectIndexMode_INSPECT_INDEX_MODE_DISTINCT_VALUES,
+				Mode:        ledgerpb.InspectIndexMode_INSPECT_INDEX_MODE_DISTINCT_VALUES,
 				PageSize:    2,
 				Cursor:      dv.GetNextCursor(),
 			})
@@ -145,11 +145,11 @@ var _ = Describe("InspectIndex", Ordered, func() {
 		})
 
 		It("Should return correct facets", func() {
-			resp, err := sharedClient.InspectIndex(sharedCtx, &commonpb.InspectIndexRequest{
+			resp, err := sharedClient.InspectIndex(sharedCtx, &ledgerpb.InspectIndexRequest{
 				Ledger:      ledgerName,
-				TargetType:  commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				TargetType:  ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 				MetadataKey: "category",
-				Mode:        commonpb.InspectIndexMode_INSPECT_INDEX_MODE_FACETS,
+				Mode:        ledgerpb.InspectIndexMode_INSPECT_INDEX_MODE_FACETS,
 			})
 			Expect(err).To(Succeed())
 
@@ -174,32 +174,32 @@ var _ = Describe("InspectIndex", Ordered, func() {
 		const ledgerName = "inspect-idx-errors"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*ledgerpb.SetMetadataFieldTypeCommand{
 				{
-					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "indexed",
-					Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+					Type:       ledgerpb.MetadataType_METADATA_TYPE_STRING,
 				},
 			})))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should fail for non-indexed metadata key", func() {
-			_, err := sharedClient.InspectIndex(sharedCtx, &commonpb.InspectIndexRequest{
+			_, err := sharedClient.InspectIndex(sharedCtx, &ledgerpb.InspectIndexRequest{
 				Ledger:      ledgerName,
-				TargetType:  commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				TargetType:  ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 				MetadataKey: "indexed",
-				Mode:        commonpb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY,
+				Mode:        ledgerpb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY,
 			})
 			Expect(err).To(HaveOccurred())
 		})
 
 		It("Should fail for non-existent ledger", func() {
-			_, err := sharedClient.InspectIndex(sharedCtx, &commonpb.InspectIndexRequest{
+			_, err := sharedClient.InspectIndex(sharedCtx, &ledgerpb.InspectIndexRequest{
 				Ledger:      "nonexistent-ledger",
-				TargetType:  commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				TargetType:  ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 				MetadataKey: "foo",
-				Mode:        commonpb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY,
+				Mode:        ledgerpb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY,
 			})
 			Expect(err).To(HaveOccurred())
 		})

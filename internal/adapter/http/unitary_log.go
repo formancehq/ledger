@@ -6,7 +6,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // exactlyOneLog enforces the unitary-handler backend contract: one admitted
@@ -22,7 +22,7 @@ import (
 // statically resolving that argument, and anything else degrades to a single
 // anonymous catalog entry. Per-operation context therefore travels in the
 // details map and in the panic value's message prefix.
-func exactlyOneLog(operation string, logs []*commonpb.Log, details map[string]any) *commonpb.Log {
+func exactlyOneLog(operation string, logs []*ledgerpb.Log, details map[string]any) *ledgerpb.Log {
 	if len(logs) != 1 {
 		d := mergeDetails(details, map[string]any{"operation": operation, "log_count": len(logs)})
 		assert.Unreachable("unitary apply did not return exactly one log", d)
@@ -41,7 +41,7 @@ func exactlyOneLog(operation string, logs []*commonpb.Log, details map[string]an
 // unexpectedLogPayload builds the invariant signal for a sole log whose payload
 // type is not the one the request implies, and returns the value the caller must
 // raise: panic(unexpectedLogPayload(...)).
-func unexpectedLogPayload(operation string, log *commonpb.Log, details map[string]any) string {
+func unexpectedLogPayload(operation string, log *ledgerpb.Log, details map[string]any) string {
 	d := observedPayloadDetails(log, mergeDetails(details, map[string]any{"operation": operation}))
 	assert.Unreachable("unitary apply returned an unexpected log payload type", d)
 
@@ -52,7 +52,7 @@ func unexpectedLogPayload(operation string, log *commonpb.Log, details map[strin
 // whose meaningful body is nil — an impossible backend response that would
 // otherwise serialize to a 2xx with a null data body. Returns the value the
 // caller must raise: panic(emptyLogPayload(...)).
-func emptyLogPayload(operation string, log *commonpb.Log, details map[string]any) string {
+func emptyLogPayload(operation string, log *ledgerpb.Log, details map[string]any) string {
 	d := observedPayloadDetails(log, mergeDetails(details, map[string]any{"operation": operation}))
 	assert.Unreachable("unitary apply returned a log with no payload body", d)
 
@@ -74,7 +74,7 @@ func invariantPanicValue(message string, details map[string]any) string {
 // base: the outer payload type always, and — for an Apply log — the inner
 // ledger-log payload type. Kept a pure function so the diagnostics are unit
 // testable without raising a panic.
-func observedPayloadDetails(log *commonpb.Log, base map[string]any) map[string]any {
+func observedPayloadDetails(log *ledgerpb.Log, base map[string]any) map[string]any {
 	extra := map[string]any{
 		"sequence":           log.GetSequence(),
 		"outer_payload_type": fmt.Sprintf("%T", log.GetPayload().GetType()),

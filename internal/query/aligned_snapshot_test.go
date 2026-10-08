@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -42,56 +42,56 @@ func setReadStoreProgress(t *testing.T, rs *readstore.Store, seq uint64) {
 func TestAlignmentOwedWaitsOnlyForUsedReadProjection(t *testing.T) {
 	t.Parallel()
 
-	txID := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
-		BuiltinUint: &commonpb.BuiltinUintCondition{Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID},
+	txID := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_BuiltinUint{
+		BuiltinUint: &ledgerpb.BuiltinUintCondition{Field: ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID},
 	}}
-	timestamp := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
-		BuiltinUint: &commonpb.BuiltinUintCondition{Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP},
+	timestamp := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_BuiltinUint{
+		BuiltinUint: &ledgerpb.BuiltinUintCondition{Field: ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP},
 	}}
-	reverted := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reverted{
-		Reverted: &commonpb.RevertedCondition{},
+	reverted := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Reverted{
+		Reverted: &ledgerpb.RevertedCondition{},
 	}}
-	address := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{
-		Address: &commonpb.AddressMatch{},
+	address := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Address{
+		Address: &ledgerpb.AddressMatch{},
 	}}
-	metadata := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Field{
-		Field: &commonpb.FieldCondition{},
+	metadata := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Field{
+		Field: &ledgerpb.FieldCondition{},
 	}}
 
 	tests := []struct {
 		name   string
-		target commonpb.QueryTarget
-		filter *commonpb.QueryFilter
+		target ledgerpb.QueryTarget
+		filter *ledgerpb.QueryFilter
 		owed   bool
 	}{
-		{name: "unfiltered accounts", target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS},
-		{name: "unfiltered transactions", target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS},
-		{name: "unfiltered logs", target: commonpb.QueryTarget_QUERY_TARGET_LOGS, owed: true},
-		{name: "transaction id", target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, filter: txID},
-		{name: "transaction reverted", target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, filter: reverted},
-		{name: "account address", target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter: address},
-		{name: "transaction address", target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, filter: address, owed: true},
-		{name: "transaction timestamp", target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, filter: timestamp, owed: true},
-		{name: "account metadata", target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter: metadata, owed: true},
+		{name: "unfiltered accounts", target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS},
+		{name: "unfiltered transactions", target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS},
+		{name: "unfiltered logs", target: ledgerpb.QueryTarget_QUERY_TARGET_LOGS, owed: true},
+		{name: "transaction id", target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, filter: txID},
+		{name: "transaction reverted", target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, filter: reverted},
+		{name: "account address", target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter: address},
+		{name: "transaction address", target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, filter: address, owed: true},
+		{name: "transaction timestamp", target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, filter: timestamp, owed: true},
+		{name: "account metadata", target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter: metadata, owed: true},
 		{
 			name:   "main-only and tree",
-			target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_And{And: &commonpb.AndFilter{
-				Filters: []*commonpb.QueryFilter{txID, reverted},
+			target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			filter: &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_And{And: &ledgerpb.AndFilter{
+				Filters: []*ledgerpb.QueryFilter{txID, reverted},
 			}}},
 		},
 		{
 			name:   "mixed or tree",
-			target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Or{Or: &commonpb.OrFilter{
-				Filters: []*commonpb.QueryFilter{txID, timestamp},
+			target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			filter: &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Or{Or: &ledgerpb.OrFilter{
+				Filters: []*ledgerpb.QueryFilter{txID, timestamp},
 			}}},
 			owed: true,
 		},
 		{
 			name:   "indexed leaf under not",
-			target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Not{Not: &commonpb.NotFilter{
+			target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			filter: &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Not{Not: &ledgerpb.NotFilter{
 				Filter: metadata,
 			}}},
 			owed: true,
@@ -281,7 +281,7 @@ func TestMainHorizonKeep_Transactions(t *testing.T) {
 	snap := rs.NewSnapshot()
 	defer func() { _ = snap.Close() }()
 
-	keep := query.MainHorizonKeep(commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, handle, snap, "l", 5)
+	keep := query.MainHorizonKeep(ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, handle, snap, "l", 5)
 	require.NotNil(t, keep)
 
 	ok, err := keep(txIDBytesQ(1))
@@ -312,14 +312,14 @@ func TestOpenQueryHandle_PinSurvivesAConcurrentSweep(t *testing.T) {
 	rs := newTestReadStore(t)
 
 	// Any filtered shape is owed alignment, so the handle takes a reservation.
-	filter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Field{
-		Field: &commonpb.FieldCondition{
-			Field:     &commonpb.FieldRef{Metadata: "tier"},
-			Condition: &commonpb.FieldCondition_ExistsCond{ExistsCond: &commonpb.ExistsCondition{}},
+	filter := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Field{
+		Field: &ledgerpb.FieldCondition{
+			Field:     &ledgerpb.FieldRef{Metadata: "tier"},
+			Condition: &ledgerpb.FieldCondition_ExistsCond{ExistsCond: &ledgerpb.ExistsCondition{}},
 		},
 	}}
 
-	handle, releaseHold, err := query.OpenQueryHandle(rs, store, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	handle, releaseHold, err := query.OpenQueryHandle(rs, store, filter, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	require.NoError(t, err)
 
 	defer releaseHold()
@@ -356,7 +356,7 @@ func TestOpenQueryHandle_UnalignedReadHoldsNoFloor(t *testing.T) {
 
 	rs := newTestReadStore(t)
 
-	handle, releaseHold, err := query.OpenQueryHandle(rs, store, nil, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	handle, releaseHold, err := query.OpenQueryHandle(rs, store, nil, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	require.NoError(t, err)
 
 	defer releaseHold()
@@ -400,16 +400,16 @@ func TestAlignedIndexSnapshot_ReleasesTheReservationOnceThePinExists(t *testing.
 	rs := newTestReadStore(t)
 	setReadStoreProgress(t, rs, 0)
 
-	filter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Field{
-		Field: &commonpb.FieldCondition{
-			Field:     &commonpb.FieldRef{Metadata: "tier"},
-			Condition: &commonpb.FieldCondition_ExistsCond{ExistsCond: &commonpb.ExistsCondition{}},
+	filter := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Field{
+		Field: &ledgerpb.FieldCondition{
+			Field:     &ledgerpb.FieldRef{Metadata: "tier"},
+			Condition: &ledgerpb.FieldCondition_ExistsCond{ExistsCond: &ledgerpb.ExistsCondition{}},
 		},
 	}}
 
 	// Reserved while the fold is still at 0, so the reservation sits well
 	// below the pin the read ends up with.
-	handle, releaseHold, err := query.OpenQueryHandle(rs, store, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	handle, releaseHold, err := query.OpenQueryHandle(rs, store, filter, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	require.NoError(t, err)
 
 	defer releaseHold()
@@ -442,14 +442,14 @@ func TestOpenQueryHandle_ReservesAtTheFoldCursor(t *testing.T) {
 	rs := newTestReadStore(t)
 	setReadStoreProgress(t, rs, 2)
 
-	filter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Field{
-		Field: &commonpb.FieldCondition{
-			Field:     &commonpb.FieldRef{Metadata: "tier"},
-			Condition: &commonpb.FieldCondition_ExistsCond{ExistsCond: &commonpb.ExistsCondition{}},
+	filter := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Field{
+		Field: &ledgerpb.FieldCondition{
+			Field:     &ledgerpb.FieldRef{Metadata: "tier"},
+			Condition: &ledgerpb.FieldCondition_ExistsCond{ExistsCond: &ledgerpb.ExistsCondition{}},
 		},
 	}}
 
-	handle, releaseHold, err := query.OpenQueryHandle(rs, store, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	handle, releaseHold, err := query.OpenQueryHandle(rs, store, filter, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	require.NoError(t, err)
 
 	defer releaseHold()

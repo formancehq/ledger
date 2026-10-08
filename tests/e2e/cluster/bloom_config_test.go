@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 
@@ -61,7 +61,7 @@ func rollingUpdateBloomConfig(
 		}
 	}
 
-	resp, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
+	resp, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, &ledgerpb.TransferLeadershipRequest{
 		Transferee: uint32(targetID),
 	})
 	Expect(err).To(Succeed())
@@ -73,7 +73,7 @@ func rollingUpdateBloomConfig(
 		Eventually(func(g Gomega) uint64 {
 			state, err := servers[i].ClusterClient.GetClusterState(
 				context.Background(),
-				&clusterpb.GetClusterStateRequest{NodeId: servers[i].NodeID},
+				&ledgerpb.GetClusterStateRequest{NodeId: servers[i].NodeID},
 			)
 			g.Expect(err).To(Succeed())
 
@@ -86,7 +86,7 @@ func rollingUpdateBloomConfig(
 		Eventually(func(g Gomega) uint64 {
 			state, err := servers[i].ClusterClient.GetClusterState(
 				context.Background(),
-				&clusterpb.GetClusterStateRequest{NodeId: servers[i].NodeID},
+				&ledgerpb.GetClusterStateRequest{NodeId: servers[i].NodeID},
 			)
 			g.Expect(err).To(Succeed())
 
@@ -129,7 +129,7 @@ var _ = Describe("Bloom filter config change preserves data", Ordered, func() {
 	It("should create data with initial bloom config", func() {
 		client := servers[*leaderID-1].Client
 
-		_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction("bloom-test", nil)))
+		_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction("bloom-test", nil)))
 		Expect(err).To(Succeed())
 
 		// Create enough transactions to populate bloom filters and trigger rotations.
@@ -137,7 +137,7 @@ var _ = Describe("Bloom filter config change preserves data", Ordered, func() {
 		expectVolumeAllNodes(ctx, servers, "bloom-test", "2000")
 
 		// Also set metadata to exercise the metadata bloom filter.
-		_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction("bloom-test", "bank", map[string]string{
+		_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction("bloom-test", "bank", map[string]string{
 			"category": "main",
 		})))
 		Expect(err).To(Succeed())
@@ -190,10 +190,10 @@ var _ = Describe("Bloom filter config change preserves data", Ordered, func() {
 	It("should handle new ledger after bloom config changes", func() {
 		client := servers[*leaderID-1].Client
 
-		_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction("post-bloom-change", nil)))
+		_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction("post-bloom-change", nil)))
 		Expect(err).To(Succeed())
 
-		_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction("post-bloom-change", []*clusterpb.Posting{
+		_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction("post-bloom-change", []*ledgerpb.Posting{
 			actions.NewPosting("world", "user:1", big.NewInt(999), "EUR"),
 		}, nil, nil)))
 		Expect(err).To(Succeed())

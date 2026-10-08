@@ -6,7 +6,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -24,15 +24,15 @@ func main() {
 	}
 	defer func() { _ = conn.Close() }()
 
-	run(ctx, clusterpb.NewClusterServiceClient(conn))
+	run(ctx, ledgerpb.NewClusterServiceClient(conn))
 }
 
-func run(ctx context.Context, client clusterpb.ClusterServiceClient) {
-	resp, err := internal.RetryBackup(ctx, "Backup", func(ctx context.Context) (*clusterpb.BackupResponse, error) {
-		return client.Backup(ctx, &clusterpb.BackupRequest{
-			Storage: &clusterpb.BackupStorage{
-				Provider: &clusterpb.BackupStorage_S3{
-					S3: &clusterpb.S3StorageConfig{
+func run(ctx context.Context, client ledgerpb.ClusterServiceClient) {
+	resp, err := internal.RetryBackup(ctx, "Backup", func(ctx context.Context) (*ledgerpb.BackupResponse, error) {
+		return client.Backup(ctx, &ledgerpb.BackupRequest{
+			Storage: &ledgerpb.BackupStorage{
+				Provider: &ledgerpb.BackupStorage_S3{
+					S3: &ledgerpb.S3StorageConfig{
 						Bucket:   "backups",
 						Region:   "us-east-1",
 						Endpoint: "http://minio:9000",

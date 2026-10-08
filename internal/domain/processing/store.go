@@ -1,7 +1,7 @@
 package processing
 
 import (
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
@@ -50,15 +50,15 @@ type Scope interface {
 	// Delete records a tombstone. All four operate against the in-batch
 	// overlay (attributes.DerivedKeyStore); reads fall through to the
 	// parent registry on overlay miss.
-	Ledgers() Accessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader]
+	Ledgers() Accessor[domain.LedgerKey, *ledgerpb.LedgerInfo, ledgerpb.LedgerInfoReader]
 	Boundaries() Accessor[domain.LedgerKey, *raftcmdpb.LedgerBoundaries, raftcmdpb.LedgerBoundariesReader]
 	Volumes() Accessor[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader]
-	AccountMetadata() Accessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]
-	LedgerMetadata() Accessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]
+	AccountMetadata() Accessor[domain.MetadataKey, *ledgerpb.MetadataValue, ledgerpb.MetadataValueReader]
+	LedgerMetadata() Accessor[domain.LedgerMetadataKey, *ledgerpb.MetadataValue, ledgerpb.MetadataValueReader]
 	TransactionReferences() Accessor[domain.TransactionReferenceKey, *internalstatepb.TransactionReferenceValue, internalstatepb.TransactionReferenceValueReader]
 	TransactionStates() Accessor[domain.TransactionKey, *internalstatepb.TransactionState, internalstatepb.TransactionStateReader]
-	PreparedQueries() Accessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader]
-	Indexes() Accessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]
+	PreparedQueries() Accessor[domain.PreparedQueryKey, *ledgerpb.PreparedQuery, ledgerpb.PreparedQueryReader]
+	Indexes() Accessor[domain.IndexKey, *ledgerpb.Index, ledgerpb.IndexReader]
 
 	// Transaction reversion status — bool-valued, no Reader, kept discrete.
 	GetReverted(key domain.TransactionKey) (bool, error)
@@ -76,11 +76,11 @@ type Scope interface {
 	// Cluster policy operations. GetClusterPolicy returns the effective policy
 	// for the FSM revision check (never nil); SetClusterPolicy stages the new
 	// policy after the handler has validated its revision.
-	GetClusterPolicy() *commonpb.ClusterPolicy
-	SetClusterPolicy(policy *commonpb.ClusterPolicy)
+	GetClusterPolicy() *ledgerpb.ClusterPolicy
+	SetClusterPolicy(policy *ledgerpb.ClusterPolicy)
 
 	// Events sink reads (writes moved to the WriteSet sink via Absorb).
-	GetSinkConfig(name string) (commonpb.SinkConfigReader, error)
+	GetSinkConfig(name string) (ledgerpb.SinkConfigReader, error)
 
 	// Counters and timestamps
 	GetNextSequenceID() uint64
@@ -91,7 +91,7 @@ type Scope interface {
 	GetLastAuditHash() []byte
 	GetNextLedgerID() uint32
 	IncrementNextLedgerID() uint32
-	GetDate() commonpb.TimestampReader
+	GetDate() ledgerpb.TimestampReader
 	// GetRaftIndex returns the committed Raft entry currently being applied.
 	// It is deterministic proposal input and is used to bind derived snapshots
 	// to the same causal horizon as the primary store.
@@ -101,9 +101,9 @@ type Scope interface {
 	// multi-arg keys). Kept discrete; the Accessor trio does not fit.
 	GetNumscriptLatestVersion(ledgerName string, name string) (string, error)
 	NumscriptVersionExists(ledgerName string, name, version string) (bool, error)
-	PutNumscript(ledgerName string, info *commonpb.NumscriptInfo)
+	PutNumscript(ledgerName string, info *ledgerpb.NumscriptInfo)
 	SetNumscriptLatestVersion(ledgerName string, name, version string)
-	ResolveNumscriptContent(ledgerName string, name, version string) (commonpb.NumscriptInfoReader, error)
+	ResolveNumscriptContent(ledgerName string, name, version string) (ledgerpb.NumscriptInfoReader, error)
 
 	// Query checkpoint operations
 	GetNextQueryCheckpointID() uint64
@@ -190,5 +190,5 @@ type ScopeFactory interface {
 // type and the 13 virtual calls of a per-signal interface — Absorb
 // passes pointers and dispatches once.
 type SignalSink interface {
-	Absorb(order *raftcmdpb.Order, log *commonpb.Log)
+	Absorb(order *raftcmdpb.Order, log *ledgerpb.Log)
 }

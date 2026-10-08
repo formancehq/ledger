@@ -3,7 +3,7 @@ package processing
 import (
 	"github.com/robfig/cron/v3"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -17,7 +17,7 @@ var CronParser = cron.NewParser(cron.SecondOptional | cron.Minute | cron.Hour | 
 // processSetQueryCheckpointSchedule handles the SetQueryCheckpointSchedule order.
 // It validates the cron expression; the schedule-set signal is derived
 // from the produced log by deriveSignals.
-func processSetQueryCheckpointSchedule(order *raftcmdpb.SetQueryCheckpointScheduleOrder, _ *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func processSetQueryCheckpointSchedule(order *raftcmdpb.SetQueryCheckpointScheduleOrder, _ *Context) (*ledgerpb.LogPayload, domain.SerializableError) {
 	if _, err := CronParser.Parse(order.GetCron()); err != nil {
 		return nil, &domain.ErrInvalidCronExpression{
 			Expression: order.GetCron(),
@@ -25,9 +25,9 @@ func processSetQueryCheckpointSchedule(order *raftcmdpb.SetQueryCheckpointSchedu
 		}
 	}
 
-	return &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_SetQueryCheckpointSchedule{
-			SetQueryCheckpointSchedule: &commonpb.SetQueryCheckpointScheduleLog{
+	return &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_SetQueryCheckpointSchedule{
+			SetQueryCheckpointSchedule: &ledgerpb.SetQueryCheckpointScheduleLog{
 				Cron: order.GetCron(),
 			},
 		},
@@ -36,10 +36,10 @@ func processSetQueryCheckpointSchedule(order *raftcmdpb.SetQueryCheckpointSchedu
 
 // processDeleteQueryCheckpointSchedule handles the DeleteQueryCheckpointSchedule order.
 // The framework derives the schedule-deleted signal from the log.
-func processDeleteQueryCheckpointSchedule(_ *Context) (*commonpb.LogPayload, domain.SerializableError) {
-	return &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_DeleteQueryCheckpointSchedule{
-			DeleteQueryCheckpointSchedule: &commonpb.DeletedQueryCheckpointScheduleLog{},
+func processDeleteQueryCheckpointSchedule(_ *Context) (*ledgerpb.LogPayload, domain.SerializableError) {
+	return &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_DeleteQueryCheckpointSchedule{
+			DeleteQueryCheckpointSchedule: &ledgerpb.DeletedQueryCheckpointScheduleLog{},
 		},
 	}, nil
 }

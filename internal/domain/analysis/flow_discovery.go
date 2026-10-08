@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // txGroupAccum accumulates statistics for a group of transactions sharing
@@ -23,8 +23,8 @@ type txGroupAccum struct {
 	// FlowPattern.signature (e.g. "world -> bank:main [USD]" or, colored,
 	// "world -> bank:main [USD/RED]").
 	displaySignature string
-	postings         []*commonpb.NormalizedPosting
-	structure        commonpb.PostingStructure
+	postings         []*ledgerpb.NormalizedPosting
+	structure        ledgerpb.PostingStructure
 	count            uint64
 	// Temporal accumulators
 	firstSeen, lastSeen uint64
@@ -97,8 +97,8 @@ func (g *txGroupAccum) addTransaction(ct CompactTransaction) {
 }
 
 // toFlowPattern materializes the accumulated statistics into a FlowPattern.
-func (g *txGroupAccum) toFlowPattern() *commonpb.FlowPattern {
-	pattern := &commonpb.FlowPattern{
+func (g *txGroupAccum) toFlowPattern() *ledgerpb.FlowPattern {
+	pattern := &ledgerpb.FlowPattern{
 		Signature:        g.displaySignature,
 		Structure:        g.structure,
 		TransactionCount: g.count,
@@ -108,10 +108,10 @@ func (g *txGroupAccum) toFlowPattern() *commonpb.FlowPattern {
 
 	// Temporal stats
 	if g.count > 0 {
-		stats := &commonpb.TemporalStats{}
+		stats := &ledgerpb.TemporalStats{}
 		if g.hasSeen {
-			stats.FirstSeen = &commonpb.Timestamp{Data: g.firstSeen}
-			stats.LastSeen = &commonpb.Timestamp{Data: g.lastSeen}
+			stats.FirstSeen = &ledgerpb.Timestamp{Data: g.firstSeen}
+			stats.LastSeen = &ledgerpb.Timestamp{Data: g.lastSeen}
 
 			first := time.UnixMicro(int64(g.firstSeen))
 			last := time.UnixMicro(int64(g.lastSeen))
@@ -126,7 +126,7 @@ func (g *txGroupAccum) toFlowPattern() *commonpb.FlowPattern {
 
 		for h := range 24 {
 			if g.hours[h] > 0 {
-				stats.PeakHours = append(stats.PeakHours, &commonpb.HourBucket{
+				stats.PeakHours = append(stats.PeakHours, &ledgerpb.HourBucket{
 					Hour:  uint32(h),
 					Count: g.hours[h],
 				})
@@ -137,7 +137,7 @@ func (g *txGroupAccum) toFlowPattern() *commonpb.FlowPattern {
 	}
 
 	// Volume stats
-	var volumeStats []*commonpb.AssetVolumeStats
+	var volumeStats []*ledgerpb.AssetVolumeStats
 
 	for asset, acc := range g.volumes {
 		avg := new(big.Int)
@@ -145,7 +145,7 @@ func (g *txGroupAccum) toFlowPattern() *commonpb.FlowPattern {
 			avg.Div(acc.total, big.NewInt(int64(acc.count)))
 		}
 
-		volumeStats = append(volumeStats, &commonpb.AssetVolumeStats{
+		volumeStats = append(volumeStats, &ledgerpb.AssetVolumeStats{
 			Asset:            asset,
 			TotalVolume:      acc.total.String(),
 			AverageVolume:    avg.String(),
@@ -178,7 +178,7 @@ func AnalyzeTransactionsFromIterators(
 	revertedCount func() uint64,
 	variableThreshold uint32,
 	onProgress func(processed, total uint64),
-) (*commonpb.AnalyzeTransactionsResponse, error) {
+) (*ledgerpb.AnalyzeTransactionsResponse, error) {
 	if variableThreshold == 0 {
 		variableThreshold = DefaultVariableThreshold
 	}
@@ -214,7 +214,7 @@ func AnalyzeTransactionsFromIterators(
 		}
 	}
 
-	resp := &commonpb.AnalyzeTransactionsResponse{
+	resp := &ledgerpb.AnalyzeTransactionsResponse{
 		TotalTransactions: totalTransactions,
 		TotalReverted:     revertedCount(),
 	}
@@ -350,10 +350,10 @@ func cachedNormalizeAddress(address string, root *trieNode, cache map[string]str
 }
 
 // normalizePostings normalizes all postings of a transaction.
-func normalizePostings(postings []CompactPosting, root *trieNode, addrCache map[string]string) []*commonpb.NormalizedPosting {
-	normalized := make([]*commonpb.NormalizedPosting, len(postings))
+func normalizePostings(postings []CompactPosting, root *trieNode, addrCache map[string]string) []*ledgerpb.NormalizedPosting {
+	normalized := make([]*ledgerpb.NormalizedPosting, len(postings))
 	for i := range postings {
-		normalized[i] = &commonpb.NormalizedPosting{
+		normalized[i] = &ledgerpb.NormalizedPosting{
 			SourcePattern:      cachedNormalizeAddress(postings[i].Source, root, addrCache),
 			DestinationPattern: cachedNormalizeAddress(postings[i].Destination, root, addrCache),
 			Asset:              postings[i].Asset,
@@ -373,7 +373,7 @@ func normalizePostings(postings []CompactPosting, root *trieNode, addrCache map[
 // inside any component. This keeps the signature unambiguous even if a
 // component contains characters previously used as separators (`->`, `[`,
 // `|`, `]`).
-func flowSignaturePart(p *commonpb.NormalizedPosting) string {
+func flowSignaturePart(p *ledgerpb.NormalizedPosting) string {
 	return p.GetSourcePattern() + "\x00" + p.GetDestinationPattern() + "\x00" + p.GetAsset() + "\x00" + p.GetColor()
 }
 
@@ -381,7 +381,7 @@ func flowSignaturePart(p *commonpb.NormalizedPosting) string {
 // normalized postings. It is NUL-delimited and NOT human-readable — it is used
 // only as the groups map key and the deterministic sort tiebreaker, never as a
 // wire value. The public, human-readable signature is computeFlowDisplaySignature.
-func computeFlowSignature(postings []*commonpb.NormalizedPosting) string {
+func computeFlowSignature(postings []*ledgerpb.NormalizedPosting) string {
 	if len(postings) == 1 {
 		// Fast path: single posting, no sorting needed.
 		return flowSignaturePart(postings[0])
@@ -404,7 +404,7 @@ func computeFlowSignature(postings []*commonpb.NormalizedPosting) string {
 // appending "/color" inside the brackets ("source->destination[asset/color]");
 // the uncolored bucket (empty color) keeps the bare "[asset]". Unlike
 // flowSignaturePart this is NOT collision-safe and must never be a grouping key.
-func flowDisplayPart(p *commonpb.NormalizedPosting) string {
+func flowDisplayPart(p *ledgerpb.NormalizedPosting) string {
 	asset := p.GetAsset()
 	if color := p.GetColor(); color != "" {
 		asset += "/" + color
@@ -417,7 +417,7 @@ func flowDisplayPart(p *commonpb.NormalizedPosting) string {
 // from normalized postings. Multi-posting flows join their fragments with ";"
 // (the legacy separator) in the same sorted order as the internal grouping key,
 // so two flows with the same shape produce the same display string.
-func computeFlowDisplaySignature(postings []*commonpb.NormalizedPosting) string {
+func computeFlowDisplaySignature(postings []*ledgerpb.NormalizedPosting) string {
 	if len(postings) == 1 {
 		return flowDisplayPart(postings[0])
 	}
@@ -473,9 +473,9 @@ func mergeTrieNodesStructure(dst, src *trieNode) {
 }
 
 // classifyPostingStructure determines the posting structure type.
-func classifyPostingStructure(postings []*commonpb.NormalizedPosting) commonpb.PostingStructure {
+func classifyPostingStructure(postings []*ledgerpb.NormalizedPosting) ledgerpb.PostingStructure {
 	if len(postings) == 1 {
-		return commonpb.PostingStructure_POSTING_STRUCTURE_SIMPLE
+		return ledgerpb.PostingStructure_POSTING_STRUCTURE_SIMPLE
 	}
 
 	sources := make(map[string]struct{})
@@ -491,10 +491,10 @@ func classifyPostingStructure(postings []*commonpb.NormalizedPosting) commonpb.P
 
 	switch {
 	case singleSource && !singleDestination:
-		return commonpb.PostingStructure_POSTING_STRUCTURE_MULTI_DESTINATION
+		return ledgerpb.PostingStructure_POSTING_STRUCTURE_MULTI_DESTINATION
 	case !singleSource && singleDestination:
-		return commonpb.PostingStructure_POSTING_STRUCTURE_MULTI_SOURCE
+		return ledgerpb.PostingStructure_POSTING_STRUCTURE_MULTI_SOURCE
 	default:
-		return commonpb.PostingStructure_POSTING_STRUCTURE_COMPLEX
+		return ledgerpb.PostingStructure_POSTING_STRUCTURE_COMPLEX
 	}
 }

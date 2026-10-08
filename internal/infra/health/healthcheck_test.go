@@ -13,7 +13,7 @@ import (
 	"google.golang.org/grpc"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/diskusage"
@@ -21,7 +21,7 @@ import (
 )
 
 type diskUsageTestServer struct {
-	clusterpb.UnimplementedClusterServiceServer
+	ledgerpb.UnimplementedClusterServiceServer
 
 	calls atomic.Int64
 }
@@ -42,17 +42,17 @@ func newFreshCollector(t *testing.T) *diskusage.Collector {
 	return collector
 }
 
-func (s *diskUsageTestServer) GetDiskUsage(context.Context, *clusterpb.GetDiskUsageRequest) (*clusterpb.DiskUsage, error) {
+func (s *diskUsageTestServer) GetDiskUsage(context.Context, *ledgerpb.GetDiskUsageRequest) (*ledgerpb.DiskUsage, error) {
 	s.calls.Add(1)
 
-	return &clusterpb.DiskUsage{
-		WalVolume: &clusterpb.VolumeUsage{
+	return &ledgerpb.DiskUsage{
+		WalVolume: &ledgerpb.VolumeUsage{
 			UsedBytes:    10,
 			TotalBytes:   100,
 			ObservedAtUs: 1,
 			Valid:        true,
 		},
-		DataVolume: &clusterpb.VolumeUsage{
+		DataVolume: &ledgerpb.VolumeUsage{
 			UsedBytes:    20,
 			TotalBytes:   100,
 			ObservedAtUs: 1,
@@ -96,7 +96,7 @@ func TestHealthChecker_LeaderUsesFreshLocalAndRemoteSamples(t *testing.T) {
 	require.NoError(t, err)
 	server := grpc.NewServer()
 	handler := &diskUsageTestServer{}
-	clusterpb.RegisterClusterServiceServer(server, handler)
+	ledgerpb.RegisterClusterServiceServer(server, handler)
 	serveErr := make(chan error, 1)
 	go func() {
 		serveErr <- server.Serve(listener)
@@ -266,7 +266,7 @@ func TestSampleAge(t *testing.T) {
 func TestRemoteVolumeValidity(t *testing.T) {
 	t.Parallel()
 
-	valid := &clusterpb.VolumeUsage{
+	valid := &ledgerpb.VolumeUsage{
 		TotalBytes:   100,
 		ObservedAtUs: uint64(time.Now().UnixMicro()),
 		SampleAgeMs:  uint64(diskusage.MaximumSampleAge.Milliseconds()),
@@ -278,17 +278,17 @@ func TestRemoteVolumeValidity(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		volume     *clusterpb.VolumeUsage
+		volume     *ledgerpb.VolumeUsage
 		diagnostic string
 	}{
 		{name: "missing volume", diagnostic: "missing"},
-		{name: "failed collection", volume: &clusterpb.VolumeUsage{Error: "input/output error"}, diagnostic: "input/output error"},
-		{name: "failed collection without diagnostic", volume: &clusterpb.VolumeUsage{}, diagnostic: "latest collection attempt failed"},
-		{name: "zero total", volume: &clusterpb.VolumeUsage{Valid: true, ObservedAtUs: 1}, diagnostic: "totalBytes"},
-		{name: "missing observation time", volume: &clusterpb.VolumeUsage{Valid: true, TotalBytes: 100}, diagnostic: "observedAtUs"},
+		{name: "failed collection", volume: &ledgerpb.VolumeUsage{Error: "input/output error"}, diagnostic: "input/output error"},
+		{name: "failed collection without diagnostic", volume: &ledgerpb.VolumeUsage{}, diagnostic: "latest collection attempt failed"},
+		{name: "zero total", volume: &ledgerpb.VolumeUsage{Valid: true, ObservedAtUs: 1}, diagnostic: "totalBytes"},
+		{name: "missing observation time", volume: &ledgerpb.VolumeUsage{Valid: true, TotalBytes: 100}, diagnostic: "observedAtUs"},
 		{
 			name: "stale sample",
-			volume: &clusterpb.VolumeUsage{
+			volume: &ledgerpb.VolumeUsage{
 				Valid:        true,
 				TotalBytes:   100,
 				ObservedAtUs: 1,

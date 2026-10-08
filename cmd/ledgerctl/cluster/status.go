@@ -10,7 +10,7 @@ import (
 	"github.com/pterm/pterm/putils"
 	"github.com/spf13/cobra"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -51,7 +51,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	nodeID, _ := cmd.Flags().GetUint32("node-id")
 
 	// Get cluster state
-	state, err := client.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
+	state, err := client.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{
 		NodeId: nodeID,
 	})
 	if err != nil {
@@ -68,13 +68,13 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func displayClusterStatus(state *clusterpb.ClusterState) {
+func displayClusterStatus(state *ledgerpb.ClusterState) {
 	pterm.Print(renderClusterStatus(state, true))
 }
 
 // renderClusterStatus builds the full cluster status display as a string.
 // When showBanner is true, the large "CLUSTER" banner is included.
-func renderClusterStatus(state *clusterpb.ClusterState, showBanner bool) string {
+func renderClusterStatus(state *ledgerpb.ClusterState, showBanner bool) string {
 	var b strings.Builder
 
 	if showBanner {
@@ -151,7 +151,7 @@ func renderClusterStatus(state *clusterpb.ClusterState, showBanner bool) string 
 		}
 
 		// Sort nodes by ID for consistent display
-		sortedNodes := make([]*clusterpb.NodeInfo, len(state.GetNodes()))
+		sortedNodes := make([]*ledgerpb.NodeInfo, len(state.GetNodes()))
 		copy(sortedNodes, state.GetNodes())
 		sort.Slice(sortedNodes, func(i, j int) bool {
 			return sortedNodes[i].GetId() < sortedNodes[j].GetId()
@@ -216,7 +216,7 @@ func renderClusterStatus(state *clusterpb.ClusterState, showBanner bool) string 
 }
 
 // formatNodeProgress returns a visual progress indicator for a cluster node.
-func formatNodeProgress(prog *clusterpb.ProgressInfo, commitIndex uint64, isLeader bool) string {
+func formatNodeProgress(prog *ledgerpb.ProgressInfo, commitIndex uint64, isLeader bool) string {
 	if prog.GetState() == "Snapshot" {
 		return pterm.Cyan("receiving snapshot...")
 	}
@@ -267,7 +267,7 @@ func getSyncStatusColor(status string) string {
 	}
 }
 
-func formatSyncStatus(sp *clusterpb.SyncProgress) string {
+func formatSyncStatus(sp *ledgerpb.SyncProgress) string {
 	switch sp.GetStatus() {
 	case "normal":
 		return pterm.Green("ok")
@@ -292,7 +292,7 @@ func formatSyncStatus(sp *clusterpb.SyncProgress) string {
 }
 
 // renderSyncProgress builds the sync progress display as a string.
-func renderSyncProgress(sp *clusterpb.SyncProgress) string {
+func renderSyncProgress(sp *ledgerpb.SyncProgress) string {
 	pct := float64(0)
 	if sp.GetBytesTotal() > 0 {
 		pct = float64(sp.GetBytesReceived()) / float64(sp.GetBytesTotal()) * 100
@@ -338,7 +338,7 @@ func getLeaderDisplay(leaderID uint32) string {
 }
 
 // formatIndexProgress formats index builder progress for the node table.
-func formatIndexProgress(ip *clusterpb.IndexProgress) string {
+func formatIndexProgress(ip *ledgerpb.IndexProgress) string {
 	if ip == nil {
 		return pterm.Gray("unknown")
 	}

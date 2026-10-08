@@ -8,7 +8,7 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -61,7 +61,7 @@ func TestProposeTechnical_RetriesStaleProposal(t *testing.T) {
 	cmd := commands.NewCommand()
 	cmd.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentClusterConfig)
 	cmd.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
-		Kind: &raftcmdpb.TechnicalUpdate_ClusterConfig{ClusterConfig: &commonpb.ClusterConfig{}},
+		Kind: &raftcmdpb.TechnicalUpdate_ClusterConfig{ClusterConfig: &ledgerpb.ClusterConfig{}},
 	}}
 	ops := []plan.WriteOperation{{Target: &cmd.GetTechnicalUpdates()[0].CoverageBits}}
 

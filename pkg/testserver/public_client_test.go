@@ -14,7 +14,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoregistry"
 
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
-	ledgergrpc "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
@@ -41,20 +41,20 @@ func TestPublicClientSharesServerDescriptorRegistry(t *testing.T) {
 
 	registered, err := protoregistry.GlobalFiles.FindFileByPath("signature.proto")
 	require.NoError(t, err)
-	require.Equal(t, ledgergrpc.File_signature_proto, registered)
-	require.Equal(t, grpcprotocol.Version, ledgergrpc.ProtocolVersion)
+	require.Equal(t, ledgerpb.File_signature_proto, registered)
+	require.Equal(t, grpcprotocol.Version, ledgerpb.ProtocolVersion)
 
 	conn, err := grpc.NewClient(fmt.Sprintf("localhost:%d", lease.Ports().GRPC()),
-		grpc.WithTransportCredentials(insecure.NewCredentials()), ledgergrpc.ClientOption())
+		grpc.WithTransportCredentials(insecure.NewCredentials()), ledgerpb.ClientOption())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
-	client := ledgergrpc.NewBucketServiceClient(conn)
-	discovery, err := client.Discovery(ctx, &ledgergrpc.DiscoveryRequest{})
+	client := ledgerpb.NewBucketServiceClient(conn)
+	discovery, err := client.Discovery(ctx, &ledgerpb.DiscoveryRequest{})
 	require.NoError(t, err)
 	require.Equal(t, grpcprotocol.Version, discovery.GetServerInfo().GetProtocolVersion())
 
 	require.Eventually(t, func() bool {
-		stream, err := client.ListLedgers(ctx, &ledgergrpc.ListLedgersRequest{})
+		stream, err := client.ListLedgers(ctx, &ledgerpb.ListLedgersRequest{})
 		if err != nil {
 			return false
 		}

@@ -27,7 +27,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -54,7 +54,7 @@ type configChange struct {
 	category  string
 	value     any
 	apply     func(ctx context.Context, lsClient dynamic.ResourceInterface) error
-	predicate func(cfg *clusterpb.ClusterConfig) bool
+	predicate func(cfg *ledgerpb.ClusterConfig) bool
 }
 
 func main() {
@@ -83,7 +83,7 @@ func main() {
 	}
 	defer func() { _ = conn.Close() }()
 
-	clusterClient := clusterpb.NewClusterServiceClient(conn)
+	clusterClient := ledgerpb.NewClusterServiceClient(conn)
 	lsClient := dynClient.Resource(internal.ClusterGVR).Namespace(internal.ClusterNamespace())
 
 	if err := internal.CreateLedger(ctx, client, ccSentinelLedger); err != nil && !internal.IsTransient(err) {
@@ -101,7 +101,7 @@ func main() {
 	}
 }
 
-func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset kubernetes.Interface, clusterClient clusterpb.ClusterServiceClient, client clusterpb.BucketServiceClient) {
+func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset kubernetes.Interface, clusterClient ledgerpb.ClusterServiceClient, client ledgerpb.BucketServiceClient) {
 	change := pickChange(internal.Rand())
 
 	sentinel, err := internal.PreCommitSentinel(ctx, client, ccSentinelLedger)
@@ -182,7 +182,7 @@ func pickChange(r *rand.Rand) configChange {
 			apply: func(ctx context.Context, lsClient dynamic.ResourceInterface) error {
 				return internal.PatchCacheRotationThreshold(ctx, lsClient, internal.ClusterName, v)
 			},
-			predicate: func(cfg *clusterpb.ClusterConfig) bool {
+			predicate: func(cfg *ledgerpb.ClusterConfig) bool {
 				return cfg.GetRotationThreshold() == uint64(v)
 			},
 		}
@@ -215,27 +215,27 @@ func pickChange(r *rand.Rand) configChange {
 	}
 }
 
-func bloomKeysPredicate(category string, want uint64) func(cfg *clusterpb.ClusterConfig) bool {
-	return func(cfg *clusterpb.ClusterConfig) bool {
+func bloomKeysPredicate(category string, want uint64) func(cfg *ledgerpb.ClusterConfig) bool {
+	return func(cfg *ledgerpb.ClusterConfig) bool {
 		bt := bloomForCategory(cfg, category)
 
 		return bt != nil && bt.GetExpectedKeys() == want
 	}
 }
 
-func bloomFPRatePredicate(category, want string) func(cfg *clusterpb.ClusterConfig) bool {
+func bloomFPRatePredicate(category, want string) func(cfg *ledgerpb.ClusterConfig) bool {
 	// We only assert the persisted FP rate exists and parses to a non-zero
 	// value: comparing the raw float bit-for-bit would be brittle.
 	_ = want
 
-	return func(cfg *clusterpb.ClusterConfig) bool {
+	return func(cfg *ledgerpb.ClusterConfig) bool {
 		bt := bloomForCategory(cfg, category)
 
 		return bt != nil && bt.GetFpRate() > 0
 	}
 }
 
-func bloomForCategory(cfg *clusterpb.ClusterConfig, category string) *clusterpb.BloomTypeConfig {
+func bloomForCategory(cfg *ledgerpb.ClusterConfig, category string) *ledgerpb.BloomTypeConfig {
 	switch category {
 	case "volumes":
 		return cfg.GetBloomVolumes()

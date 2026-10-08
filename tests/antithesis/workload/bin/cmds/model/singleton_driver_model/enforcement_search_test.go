@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
@@ -21,15 +21,15 @@ func TestCandidateBasesExplainsRevertAfterEnforcementAndChartChanges(t *testing.
 		oracletest.AddTypeReq("known"),
 		oracletest.AddTypeReq("other"),
 		oracletest.TxReq("world", "known:1", "USD", 10),
-		enforcementModeRequest("L", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, false),
+		enforcementModeRequest("L", ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, false),
 	))
 	require.True(t, seeded.OK)
 	c.modelState = seeded.State
 	c.pending = []*pendingObservation{
 		{minSeq: 5, obs: observation{bulk: bulkOf(oracletest.RemoveTypeReq("known")), ticket: 5}},
-		{minSeq: 6, obs: observation{bulk: bulkOf(enforcementModeRequest("L", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT, true)), ticket: 6}},
+		{minSeq: 6, obs: observation{bulk: bulkOf(enforcementModeRequest("L", ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT, true)), ticket: 6}},
 	}
-	failed := bulkOf(oracletest.RevertReqL("L", 1, false), enforcementModeRequest("L", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, true))
+	failed := bulkOf(oracletest.RevertReqL("L", 1, false), enforcementModeRequest("L", ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, true))
 	explains := func(maxTicket uint64) bool {
 		matched := false
 		c.candidateBases(maxTicket, func(base oracle.GlobalState) bool {

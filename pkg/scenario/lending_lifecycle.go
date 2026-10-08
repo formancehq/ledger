@@ -6,7 +6,7 @@ import (
 	"math/big"
 	"strconv"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
@@ -34,7 +34,7 @@ func LendingLifecycleBlocks() *BlockGroup {
 	}
 }
 
-func lendingFundPool(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
+func lendingFundPool(ctx context.Context, client ledgerpb.BucketServiceClient, r RandFunc) (*ledgerpb.ApplyResponse, error) {
 	amount := int64(LendingLifecycleLoanAmount) * (1 + RandInt64N(r, 5))
 
 	return ApplyActions(ctx, client,
@@ -44,7 +44,7 @@ func lendingFundPool(ctx context.Context, client commonpb.BucketServiceClient, r
 	)
 }
 
-func lendingDisburse(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
+func lendingDisburse(ctx context.Context, client ledgerpb.BucketServiceClient, r RandFunc) (*ledgerpb.ApplyResponse, error) {
 	poolBal, ok := GetAccountBalance(ctx, client, LendingLifecycleLedger, "funding:pool", "USD/2")
 	if !ok || poolBal.Cmp(big.NewInt(LendingLifecycleLoanAmount)) < 0 {
 		return nil, ErrSkip
@@ -61,7 +61,7 @@ func lendingDisburse(ctx context.Context, client commonpb.BucketServiceClient, r
 	)
 }
 
-func lendingRepay(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
+func lendingRepay(ctx context.Context, client ledgerpb.BucketServiceClient, r RandFunc) (*ledgerpb.ApplyResponse, error) {
 	borrowerID := 1 + RandIntN(r, LendingLifecycleNumBorrowers)
 	loanAddr := fmt.Sprintf("borrower:%d:loan", borrowerID)
 	walletAddr := fmt.Sprintf("borrower:%d:wallet", borrowerID)
@@ -95,7 +95,7 @@ func lendingRepay(ctx context.Context, client commonpb.BucketServiceClient, r Ra
 		return nil, ErrSkip
 	}
 
-	var reqs []*commonpb.Request
+	var reqs []*ledgerpb.Request
 	if interest.Sign() > 0 {
 		reqs = append(reqs, actions.CreateScriptRefTransactionAction(LendingLifecycleLedger, "accrue_interest", "1.0.0", map[string]string{
 			"borrower_wallet": walletAddr,
@@ -111,7 +111,7 @@ func lendingRepay(ctx context.Context, client commonpb.BucketServiceClient, r Ra
 	return ApplyActions(ctx, client, reqs...)
 }
 
-func lendingProvision(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
+func lendingProvision(ctx context.Context, client ledgerpb.BucketServiceClient, r RandFunc) (*ledgerpb.ApplyResponse, error) {
 	borrowerID := 1 + RandIntN(r, LendingLifecycleNumBorrowers)
 	loanAddr := fmt.Sprintf("borrower:%d:loan", borrowerID)
 
@@ -127,7 +127,7 @@ func lendingProvision(ctx context.Context, client commonpb.BucketServiceClient, 
 	)
 }
 
-func lendingWriteOff(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
+func lendingWriteOff(ctx context.Context, client ledgerpb.BucketServiceClient, r RandFunc) (*ledgerpb.ApplyResponse, error) {
 	borrowerID := 1 + RandIntN(r, LendingLifecycleNumBorrowers)
 	loanAddr := fmt.Sprintf("borrower:%d:loan", borrowerID)
 
@@ -146,13 +146,13 @@ func lendingWriteOff(ctx context.Context, client commonpb.BucketServiceClient, r
 
 // LendingLifecycleSetupActions returns the Apply requests that create the ledger,
 // account types, and numscript library for the lending lifecycle scenario.
-func LendingLifecycleSetupActions() []*commonpb.Request {
-	return []*commonpb.Request{
-		actions.CreateLedgerWithSchemaAction(LendingLifecycleLedger, nil, []*commonpb.SetMetadataFieldTypeCommand{
+func LendingLifecycleSetupActions() []*ledgerpb.Request {
+	return []*ledgerpb.Request{
+		actions.CreateLedgerWithSchemaAction(LendingLifecycleLedger, nil, []*ledgerpb.SetMetadataFieldTypeCommand{
 			{
-				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 				Key:        "status",
-				Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+				Type:       ledgerpb.MetadataType_METADATA_TYPE_STRING,
 			},
 		}),
 		actions.AddAccountTypeAction(LendingLifecycleLedger, "funding", "funding:{type}"),
@@ -219,11 +219,11 @@ send $amount (
 )`, "1.0.0"),
 		actions.CreateAccountMetadataIndexAction(LendingLifecycleLedger, "status"),
 		actions.CreatePreparedQueryAction("loans-by-status", LendingLifecycleLedger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			actions.ParamStringMetadataFilter("status", "status_value"),
 		),
 		actions.CreatePreparedQueryAction("accounts-by-prefix", LendingLifecycleLedger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			actions.ParamAddressPrefixFilter("prefix"),
 		),
 	}
@@ -272,7 +272,7 @@ func RunLendingLifecycle(r *Runner) error {
 
 	// --- Disbursements ---
 	{
-		reqs := make([]*commonpb.Request, 0, numBorrowers)
+		reqs := make([]*ledgerpb.Request, 0, numBorrowers)
 		for i := 1; i <= numBorrowers; i++ {
 			action := actions.CreateScriptRefTransactionAction(ledger, "disburse_loan", "1.0.0", map[string]string{
 				"borrower_loan":   fmt.Sprintf("borrower:%d:loan", i),
@@ -293,7 +293,7 @@ func RunLendingLifecycle(r *Runner) error {
 
 	// --- Monthly Repayment Cycles ---
 	for month := 1; month <= numMonths; month++ {
-		var reqs []*commonpb.Request
+		var reqs []*ledgerpb.Request
 
 		for i := 1; i <= numBorrowers; i++ {
 			outstanding := borrowerLoanBalance[i]
@@ -395,7 +395,7 @@ func RunLendingLifecycle(r *Runner) error {
 
 	// --- Provisions for Doubtful Debts ---
 	{
-		var reqs []*commonpb.Request
+		var reqs []*ledgerpb.Request
 		for id := range defaulters {
 			outstanding := borrowerLoanBalance[id]
 			if outstanding.Sign() > 0 {
@@ -418,7 +418,7 @@ func RunLendingLifecycle(r *Runner) error {
 
 	// --- Write-offs ---
 	{
-		var reqs []*commonpb.Request
+		var reqs []*ledgerpb.Request
 		for id := range defaulters {
 			outstanding := borrowerLoanBalance[id]
 			if outstanding.Sign() > 0 {
@@ -442,7 +442,7 @@ func RunLendingLifecycle(r *Runner) error {
 
 	// --- Metadata Enrichment ---
 	{
-		var metaReqs []*commonpb.Request
+		var metaReqs []*ledgerpb.Request
 		for id := range defaulters {
 			metaReqs = append(metaReqs,
 				actions.SaveAccountMetadataAction(ledger, fmt.Sprintf("borrower:%d:loan", id), map[string]string{

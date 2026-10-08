@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // DefaultVariableThreshold is the maximum number of distinct children at a trie
@@ -100,7 +100,7 @@ const progressReportInterval = 500
 // Each account is discarded after insertion, so memory is O(unique address segments)
 // instead of O(N accounts).
 // If onProgress is non-nil, it is called periodically with (processed, total) counts.
-func AnalyzeFromIterator(next func() (CompactAccount, error), variableThreshold uint32, onProgress func(processed, total uint64)) (*commonpb.AnalyzeAccountsResponse, error) {
+func AnalyzeFromIterator(next func() (CompactAccount, error), variableThreshold uint32, onProgress func(processed, total uint64)) (*ledgerpb.AnalyzeAccountsResponse, error) {
 	if variableThreshold == 0 {
 		variableThreshold = DefaultVariableThreshold
 	}
@@ -162,14 +162,14 @@ func AnalyzeFromIterator(next func() (CompactAccount, error), variableThreshold 
 	}
 
 	if totalAccounts == 0 {
-		return &commonpb.AnalyzeAccountsResponse{}, nil
+		return &ledgerpb.AnalyzeAccountsResponse{}, nil
 	}
 
 	// Extract patterns from the trie.
-	var patterns []*commonpb.AccountPattern
+	var patterns []*ledgerpb.AccountPattern
 	extractPatterns(root, nil, nil, variableThreshold, &patterns)
 
-	return &commonpb.AnalyzeAccountsResponse{
+	return &ledgerpb.AnalyzeAccountsResponse{
 		Patterns:      patterns,
 		TotalAccounts: totalAccounts,
 	}, nil
@@ -200,10 +200,10 @@ func mergeTrieNodes(dst, src *trieNode) {
 }
 
 // extractPatterns walks the trie and emits one AccountPattern per leaf path.
-func extractPatterns(node *trieNode, pathParts []string, pathSegments []*commonpb.PatternSegment, threshold uint32, out *[]*commonpb.AccountPattern) {
+func extractPatterns(node *trieNode, pathParts []string, pathSegments []*ledgerpb.PatternSegment, threshold uint32, out *[]*ledgerpb.AccountPattern) {
 	if node.terminating > 0 {
 		pattern := strings.Join(pathParts, ":")
-		*out = append(*out, &commonpb.AccountPattern{
+		*out = append(*out, &ledgerpb.AccountPattern{
 			Pattern:      pattern,
 			AccountCount: uint64(node.terminating),
 			Assets:       sortedCopy(node.assets),
@@ -226,9 +226,9 @@ func extractPatterns(node *trieNode, pathParts []string, pathSegments []*commonp
 		keys := sortedKeys(node.children)
 		for _, key := range keys {
 			child := node.children[key]
-			seg := &commonpb.PatternSegment{
+			seg := &ledgerpb.PatternSegment{
 				Position:     position,
-				Type:         commonpb.PatternSegmentType_PATTERN_SEGMENT_TYPE_FIXED,
+				Type:         ledgerpb.PatternSegmentType_PATTERN_SEGMENT_TYPE_FIXED,
 				FixedValue:   key,
 				UniqueValues: 1,
 				Examples:     []string{key},
@@ -253,9 +253,9 @@ func extractPatterns(node *trieNode, pathParts []string, pathSegments []*commonp
 	varName := inferVariableName(allKeys)
 	varPattern := inferPattern(allKeys)
 
-	seg := &commonpb.PatternSegment{
+	seg := &ledgerpb.PatternSegment{
 		Position:        position,
-		Type:            commonpb.PatternSegmentType_PATTERN_SEGMENT_TYPE_VARIABLE,
+		Type:            ledgerpb.PatternSegmentType_PATTERN_SEGMENT_TYPE_VARIABLE,
 		VariableName:    varName,
 		InferredPattern: varPattern,
 		UniqueValues:    uint64(effectiveCount),
@@ -407,12 +407,12 @@ func sortedCopy(s []string) []string {
 	return c
 }
 
-func cloneSegments(segs []*commonpb.PatternSegment) []*commonpb.PatternSegment {
+func cloneSegments(segs []*ledgerpb.PatternSegment) []*ledgerpb.PatternSegment {
 	if segs == nil {
 		return nil
 	}
 
-	c := make([]*commonpb.PatternSegment, len(segs))
+	c := make([]*ledgerpb.PatternSegment, len(segs))
 	copy(c, segs)
 
 	return c
@@ -421,13 +421,13 @@ func cloneSegments(segs []*commonpb.PatternSegment) []*commonpb.PatternSegment {
 // SuggestAccountTypes converts discovered patterns from an analysis result into
 // a slice of AccountType suggestions. Each pattern becomes an account type with
 // an auto-generated name derived from its fixed segments.
-func SuggestAccountTypes(resp *commonpb.AnalyzeAccountsResponse) []*commonpb.AccountType {
+func SuggestAccountTypes(resp *ledgerpb.AnalyzeAccountsResponse) []*ledgerpb.AccountType {
 	if resp == nil || len(resp.GetPatterns()) == 0 {
 		return nil
 	}
 
 	seen := make(map[string]int) // track name collisions
-	types := make([]*commonpb.AccountType, 0, len(resp.GetPatterns()))
+	types := make([]*ledgerpb.AccountType, 0, len(resp.GetPatterns()))
 
 	for _, p := range resp.GetPatterns() {
 		name := deriveTypeName(p)
@@ -440,7 +440,7 @@ func SuggestAccountTypes(resp *commonpb.AnalyzeAccountsResponse) []*commonpb.Acc
 			seen[name] = 1
 		}
 
-		types = append(types, &commonpb.AccountType{
+		types = append(types, &ledgerpb.AccountType{
 			Name:    name,
 			Pattern: p.GetPattern(),
 		})
@@ -452,7 +452,7 @@ func SuggestAccountTypes(resp *commonpb.AnalyzeAccountsResponse) []*commonpb.Acc
 // deriveTypeName generates a human-readable name from pattern segments.
 // Fixed segments are joined with hyphens; variable segments are omitted.
 // Example: "users:{id}:checking" → "users-checking".
-func deriveTypeName(p *commonpb.AccountPattern) string {
+func deriveTypeName(p *ledgerpb.AccountPattern) string {
 	parts := strings.Split(p.GetPattern(), ":")
 	var fixed []string
 	for _, part := range parts {

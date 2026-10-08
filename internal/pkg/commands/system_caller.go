@@ -1,7 +1,7 @@
 package commands
 
 import (
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/attribution"
 )
@@ -21,7 +21,7 @@ const (
 
 // SystemCallerSnapshot builds the CallerSnapshot stamped onto a
 // system-initiated proposal.
-func SystemCallerSnapshot(component attribution.SystemActor) *commonpb.CallerSnapshot {
+func SystemCallerSnapshot(component attribution.SystemActor) *ledgerpb.CallerSnapshot {
 	capability, err := attribution.NewSystem(component)
 	if err != nil {
 		panic(err)

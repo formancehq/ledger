@@ -7,7 +7,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/protohelpers"
@@ -142,14 +142,14 @@ func runRevert(cmd *cobra.Command, args []string) error {
 	spinner := cmdutil.StartSpinner(fmt.Sprintf("Reverting transaction #%d...", txID))
 
 	// Build revert request
-	requests := []*commonpb.Request{
+	requests := []*ledgerpb.Request{
 		{
-			Type: &commonpb.Request_Apply{
-				Apply: &commonpb.LedgerApplyRequest{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: ledgerName,
-					Action: &commonpb.LedgerAction{
-						Data: &commonpb.LedgerAction_RevertTransaction{
-							RevertTransaction: &commonpb.RevertTransactionPayload{
+					Action: &ledgerpb.LedgerAction{
+						Data: &ledgerpb.LedgerAction_RevertTransaction{
+							RevertTransaction: &ledgerpb.RevertTransactionPayload{
 								TransactionId:   txID,
 								Force:           force,
 								AtEffectiveDate: atEffectiveDate,

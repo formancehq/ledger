@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
@@ -17,9 +17,9 @@ import (
 // WaitForWriteAdmission waits for a new leader's first disk-health verdict.
 // A non-empty batch with an invalid ledger name reaches the write gate but
 // cannot mutate state once admission is ready.
-func WaitForWriteAdmission(t *testing.T, ctx context.Context, client clusterpb.BucketServiceClient) {
+func WaitForWriteAdmission(t *testing.T, ctx context.Context, client ledgerpb.BucketServiceClient) {
 	t.Helper()
-	request := clusterpb.UnsignedApplyRequest("write-gate-probe", actions.CreateLedgerAction("", nil))
+	request := ledgerpb.UnsignedApplyRequest("write-gate-probe", actions.CreateLedgerAction("", nil))
 	require.Eventually(t, func() bool {
 		_, err := client.Apply(ctx, request)
 

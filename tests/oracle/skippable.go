@@ -5,29 +5,29 @@ import (
 	"strconv"
 	"strings"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
 
 // The oracle declares the documented whitelist independently of the generated
 // admission table, so changing that table cannot silently change expectations.
-func validSkippableReasons(req *commonpb.LedgerApplyRequest) bool {
-	var allowed commonpb.ErrorReason
+func validSkippableReasons(req *ledgerpb.LedgerApplyRequest) bool {
+	var allowed ledgerpb.ErrorReason
 	switch req.GetAction().GetData().(type) {
-	case *commonpb.LedgerAction_CreateTransaction:
-		allowed = commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT
-	case *commonpb.LedgerAction_RevertTransaction:
-		allowed = commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED
-	case *commonpb.LedgerAction_DeleteMetadata:
-		allowed = commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
-	case *commonpb.LedgerAction_AddAccountType:
-		allowed = commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
-	case *commonpb.LedgerAction_RemoveAccountType:
-		allowed = commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
+	case *ledgerpb.LedgerAction_CreateTransaction:
+		allowed = ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT
+	case *ledgerpb.LedgerAction_RevertTransaction:
+		allowed = ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED
+	case *ledgerpb.LedgerAction_DeleteMetadata:
+		allowed = ledgerpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	case *ledgerpb.LedgerAction_AddAccountType:
+		allowed = ledgerpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
+	case *ledgerpb.LedgerAction_RemoveAccountType:
+		allowed = ledgerpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
 	}
 	for _, reason := range req.GetSkippableReasons() {
-		if allowed == commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED || reason != allowed {
+		if allowed == ledgerpb.ErrorReason_ERROR_REASON_UNSPECIFIED || reason != allowed {
 			return false
 		}
 	}
@@ -37,18 +37,18 @@ func validSkippableReasons(req *commonpb.LedgerApplyRequest) bool {
 
 // chartRequest lets both wire forms share chart prediction without mutating
 // the request retained for idempotency and replay.
-func chartRequest(req *commonpb.Request) *commonpb.Request {
+func chartRequest(req *ledgerpb.Request) *ledgerpb.Request {
 	switch a := req.GetApply().GetAction().GetData().(type) {
-	case *commonpb.LedgerAction_AddAccountType:
-		return &commonpb.Request{Type: &commonpb.Request_AddAccountType{AddAccountType: &commonpb.AddAccountTypeLedgerRequest{Ledger: req.GetApply().GetLedger(), AccountType: a.AddAccountType.GetAccountType()}}}
-	case *commonpb.LedgerAction_RemoveAccountType:
-		return &commonpb.Request{Type: &commonpb.Request_RemoveAccountType{RemoveAccountType: &commonpb.RemoveAccountTypeLedgerRequest{Ledger: req.GetApply().GetLedger(), Name: a.RemoveAccountType.GetName()}}}
+	case *ledgerpb.LedgerAction_AddAccountType:
+		return &ledgerpb.Request{Type: &ledgerpb.Request_AddAccountType{AddAccountType: &ledgerpb.AddAccountTypeLedgerRequest{Ledger: req.GetApply().GetLedger(), AccountType: a.AddAccountType.GetAccountType()}}}
+	case *ledgerpb.LedgerAction_RemoveAccountType:
+		return &ledgerpb.Request{Type: &ledgerpb.Request_RemoveAccountType{RemoveAccountType: &ledgerpb.RemoveAccountTypeLedgerRequest{Ledger: req.GetApply().GetLedger(), Name: a.RemoveAccountType.GetName()}}}
 	default:
 		return req
 	}
 }
 
-func predictSkippedLog(s LedgerState, req *commonpb.Request, reason string) *commonpb.OrderSkippedLog {
+func predictSkippedLog(s LedgerState, req *ledgerpb.Request, reason string) *ledgerpb.OrderSkippedLog {
 	context := map[string]string{}
 	action := req.GetApply().GetAction()
 	switch reason {
@@ -79,10 +79,10 @@ func predictSkippedLog(s LedgerState, req *commonpb.Request, reason string) *com
 		panic("model: unmodeled skipped reason " + reason)
 	}
 
-	return &commonpb.OrderSkippedLog{Reason: domain.ReasonCode(reason), Context: context}
+	return &ledgerpb.OrderSkippedLog{Reason: domain.ReasonCode(reason), Context: context}
 }
 
-func canonicalSkippedLog(log *commonpb.OrderSkippedLog) string {
+func canonicalSkippedLog(log *ledgerpb.OrderSkippedLog) string {
 	keys := make([]string, 0, len(log.GetContext()))
 	for key := range log.GetContext() {
 		keys = append(keys, key)

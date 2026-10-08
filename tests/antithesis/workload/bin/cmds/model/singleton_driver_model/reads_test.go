@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
@@ -27,8 +27,8 @@ func TestLiveLedgerNamesFiltersTombstones(t *testing.T) {
 	t.Parallel()
 
 	c := NewChecker([]string{"L", "L2"}, nil)
-	deleted := c.modelState.Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_DeleteLedger{
-		DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "L"},
+	deleted := c.modelState.Apply(bulkOf(&ledgerpb.Request{Type: &ledgerpb.Request_DeleteLedger{
+		DeleteLedger: &ledgerpb.DeleteLedgerRequest{Name: "L"},
 	}}))
 	require.True(t, deleted.OK)
 	require.Equal(t, []string{"L2"}, liveLedgerNames(deleted.State, []string{"L", "L2"}))

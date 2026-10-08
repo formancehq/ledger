@@ -8,7 +8,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -93,10 +93,10 @@ func runDelete(cmd *cobra.Command, args []string) error {
 
 	spinner := cmdutil.StartSpinner(fmt.Sprintf("Deleting ledger %s...", name))
 
-	requests := []*servicepb.Request{
+	requests := []*ledgerpb.Request{
 		{
-			Type: &servicepb.Request_DeleteLedger{
-				DeleteLedger: &servicepb.DeleteLedgerRequest{
+			Type: &ledgerpb.Request_DeleteLedger{
+				DeleteLedger: &ledgerpb.DeleteLedgerRequest{
 					Name: name,
 				},
 			},

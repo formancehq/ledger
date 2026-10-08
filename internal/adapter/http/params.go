@@ -11,7 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -144,7 +144,7 @@ func parsePageSize(w http.ResponseWriter, r *http.Request) (uint32, bool) {
 
 // parseMetadataBody reads and validates a metadata JSON body from the request.
 // Returns the parsed metadata map and true on success; writes a 400 response and returns false on failure.
-func parseMetadataBody(w http.ResponseWriter, r *http.Request) (map[string]*commonpb.MetadataValue, bool) {
+func parseMetadataBody(w http.ResponseWriter, r *http.Request) (map[string]*ledgerpb.MetadataValue, bool) {
 	var inputMetadata map[string]any
 	if err := json.UnmarshalReadUseNumber(r.Body, &inputMetadata); err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
@@ -152,7 +152,7 @@ func parseMetadataBody(w http.ResponseWriter, r *http.Request) (map[string]*comm
 		return nil, false
 	}
 
-	ms, err := commonpb.MetadataFromAnyMap(inputMetadata)
+	ms, err := ledgerpb.MetadataFromAnyMap(inputMetadata)
 	if err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid metadata: %w", err))
 

@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestHandleGetIndexStatus_Success(t *testing.T) {
@@ -21,10 +21,10 @@ func TestHandleGetIndexStatus_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetIndexStatus(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.GetIndexStatusRequest) (*servicepb.GetIndexStatusResponse, error) {
+		func(_ context.Context, req *ledgerpb.GetIndexStatusRequest) (*ledgerpb.GetIndexStatusResponse, error) {
 			capturedLedger = req.GetLedger()
 
-			return &servicepb.GetIndexStatusResponse{LastIndexedSequence: 42}, nil
+			return &ledgerpb.GetIndexStatusResponse{LastIndexedSequence: 42}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -53,10 +53,10 @@ func TestHandleGetIndexStatus_NoLedgerFilter(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetIndexStatus(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.GetIndexStatusRequest) (*servicepb.GetIndexStatusResponse, error) {
+		func(_ context.Context, req *ledgerpb.GetIndexStatusRequest) (*ledgerpb.GetIndexStatusResponse, error) {
 			capturedLedger = req.GetLedger()
 
-			return &servicepb.GetIndexStatusResponse{}, nil
+			return &ledgerpb.GetIndexStatusResponse{}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -74,7 +74,7 @@ func TestHandleGetIndexStatus_BackendError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetIndexStatus(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.GetIndexStatusRequest) (*servicepb.GetIndexStatusResponse, error) {
+		func(_ context.Context, _ *ledgerpb.GetIndexStatusRequest) (*ledgerpb.GetIndexStatusResponse, error) {
 			return nil, errors.New("boom")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)

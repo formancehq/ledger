@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -44,7 +44,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid sequence number %q: %w", args[0], err)
 	}
 
-	entry, err := client.GetAuditEntry(ctx, &servicepb.GetAuditEntryRequest{
+	entry, err := client.GetAuditEntry(ctx, &ledgerpb.GetAuditEntryRequest{
 		Sequence: sequence,
 	})
 	if err != nil {

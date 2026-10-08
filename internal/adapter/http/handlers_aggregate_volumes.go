@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/query"
 )
@@ -32,7 +32,7 @@ type groupedAggregateResultJSON struct {
 	Volumes []*aggregatedVolumeJSON `json:"volumes"`
 }
 
-func toAggregatedVolumeJSON(v *commonpb.AggregatedVolume) *aggregatedVolumeJSON {
+func toAggregatedVolumeJSON(v *ledgerpb.AggregatedVolume) *aggregatedVolumeJSON {
 	input := v.GetInput().ToBigInt()
 	output := v.GetOutput().ToBigInt()
 	balance := new(big.Int).Sub(input, output)
@@ -46,7 +46,7 @@ func toAggregatedVolumeJSON(v *commonpb.AggregatedVolume) *aggregatedVolumeJSON 
 	}
 }
 
-func toAggregateVolumesJSON(result *commonpb.AggregateResult) *aggregateVolumesResponseJSON {
+func toAggregateVolumesJSON(result *ledgerpb.AggregateResult) *aggregateVolumesResponseJSON {
 	resp := &aggregateVolumesResponseJSON{}
 
 	resp.Volumes = make([]*aggregatedVolumeJSON, 0, len(result.GetVolumes()))
@@ -95,7 +95,7 @@ func (s *Server) handleAggregateVolumes(w http.ResponseWriter, r *http.Request) 
 	// or the structured v2 JSON DSL (EN-1511) and is the sole account selector.
 	// It is compiled for the Accounts target and forwarded unchanged; aggregation
 	// options (precision, grouping, color collapsing) stay independent of it.
-	filter, ok := parseListFilter(w, r, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	filter, ok := parseListFilter(w, r, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	if !ok {
 		return
 	}

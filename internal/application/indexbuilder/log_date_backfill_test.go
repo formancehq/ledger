@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -25,8 +25,8 @@ import (
 
 func logDateConfig() *ledgerIndexConfig {
 	cfg := newLedgerIndexConfig()
-	id := indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
-	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
+	id := indexes.LogBuiltinID(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
+	cfg.byCanonical[indexes.Canonical(id)] = &ledgerpb.Index{Id: id}
 
 	return cfg
 }
@@ -34,22 +34,22 @@ func logDateConfig() *ledgerIndexConfig {
 // makeSchemaLog builds a config-mutation log: an Apply log carrying a ledger
 // log whose payload declares a metadata field type. isHistoryLog rejects it, and
 // its date belongs in the log date index all the same.
-func makeSchemaLog(seq uint64, ledger string, logID, date uint64) *commonpb.Log {
-	return &commonpb.Log{
+func makeSchemaLog(seq uint64, ledger string, logID, date uint64) *ledgerpb.Log {
+	return &ledgerpb.Log{
 		Sequence: seq,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_Apply{
-				Apply: &commonpb.ApplyLedgerLog{
+		Payload: &ledgerpb.LogPayload{
+			Type: &ledgerpb.LogPayload_Apply{
+				Apply: &ledgerpb.ApplyLedgerLog{
 					LedgerName: ledger,
-					Log: &commonpb.LedgerLog{
+					Log: &ledgerpb.LedgerLog{
 						Id:   logID,
-						Date: &commonpb.Timestamp{Data: date},
-						Data: &commonpb.LedgerLogPayload{
-							Payload: &commonpb.LedgerLogPayload_SetMetadataFieldType{
-								SetMetadataFieldType: &commonpb.SetMetadataFieldTypeLog{
-									TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+						Date: &ledgerpb.Timestamp{Data: date},
+						Data: &ledgerpb.LedgerLogPayload{
+							Payload: &ledgerpb.LedgerLogPayload_SetMetadataFieldType{
+								SetMetadataFieldType: &ledgerpb.SetMetadataFieldTypeLog{
+									TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 									Key:        "tier",
-									Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+									Type:       ledgerpb.MetadataType_METADATA_TYPE_STRING,
 								},
 							},
 						},
@@ -97,7 +97,7 @@ func TestBackfillLogDateRow(t *testing.T) {
 	cases := []struct {
 		name string
 		cfg  *ledgerIndexConfig
-		log  *commonpb.Log
+		log  *ledgerpb.Log
 		want [][2]uint64
 	}{
 		{
@@ -109,8 +109,8 @@ func TestBackfillLogDateRow(t *testing.T) {
 		{
 			name: "data log of a date task",
 			cfg:  logDateConfig(),
-			log: ledgerPayloadLog(1, ledger, 8, &commonpb.LedgerLogPayload_OrderSkipped{
-				OrderSkipped: &commonpb.OrderSkippedLog{},
+			log: ledgerPayloadLog(1, ledger, 8, &ledgerpb.LedgerLogPayload_OrderSkipped{
+				OrderSkipped: &ledgerpb.OrderSkippedLog{},
 			}, 4243),
 			want: [][2]uint64{{4243, 8}},
 		},
@@ -127,8 +127,8 @@ func TestBackfillLogDateRow(t *testing.T) {
 		{
 			name: "Apply log with no ledger log",
 			cfg:  logDateConfig(),
-			log: &commonpb.Log{Sequence: 1, Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{LedgerName: ledger}},
+			log: &ledgerpb.Log{Sequence: 1, Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_Apply{Apply: &ledgerpb.ApplyLedgerLog{LedgerName: ledger}},
 			}},
 		},
 	}
@@ -155,11 +155,11 @@ func TestHandleCreatedIndexLog_EmptyLogDateReady(t *testing.T) {
 	t.Parallel()
 	b := newTestBuilderWithStore(t)
 	const ledger = "test"
-	id := indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
+	id := indexes.LogBuiltinID(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
 	batch := b.readStore.NewBatch()
 	b.initFoldBatch(batch)
 	require.NoError(t, b.observeCreatedLedger(ledger))
-	require.NoError(t, b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id}))
+	require.NoError(t, b.handleCreatedIndexLog(ledger, &ledgerpb.CreatedIndexLog{Id: id}))
 	require.NoError(t, b.wb.Flush())
 	b.commitFoldBatch()
 	require.Empty(t, b.backfillTasks)
@@ -184,11 +184,11 @@ func TestLogDateBackfillIndexesConfigMutationLogs(t *testing.T) {
 	// carries both (processing.assignLogIDAndDate), and the log cursor reuses
 	// its decoded message, so an unstamped fixture would read back the
 	// previous log's date.
-	txLog := makeCreatedTxLog(2, ledger, 100, []*commonpb.Posting{
+	txLog := makeCreatedTxLog(2, ledger, 100, []*ledgerpb.Posting{
 		{Source: "accounts:alice", Destination: "accounts:bob", Asset: "USD/2"},
 	})
 	txLog.GetPayload().GetApply().GetLog().Id = 2
-	txLog.GetPayload().GetApply().GetLog().Date = &commonpb.Timestamp{Data: 1002}
+	txLog.GetPayload().GetApply().GetLog().Date = &ledgerpb.Timestamp{Data: 1002}
 	writeLogToFSM(t, b, txLog)
 
 	writeLogToFSM(t, b, makeSchemaLog(3, ledger, 3, 1003))
@@ -200,8 +200,8 @@ func TestLogDateBackfillIndexesConfigMutationLogs(t *testing.T) {
 	batch := b.readStore.NewBatch()
 	b.initBatch(batch)
 	b.wb.SetEventSequence(1)
-	require.NoError(t, b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{
-		Id: indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
+	require.NoError(t, b.handleCreatedIndexLog(ledger, &ledgerpb.CreatedIndexLog{
+		Id: indexes.LogBuiltinID(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
 	}))
 	require.NoError(t, b.wb.Flush())
 	require.Len(t, b.backfillTasks, 1)

@@ -9,16 +9,16 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 )
 
-func businessWrite(name string) *commonpb.ApplyRequest {
-	return commonpb.UnsignedApplyRequest("", &commonpb.Request{
-		Type: &commonpb.Request_CreateLedger{
-			CreateLedger: &commonpb.CreateLedgerRequest{Name: name},
+func businessWrite(name string) *ledgerpb.ApplyRequest {
+	return ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+		Type: &ledgerpb.Request_CreateLedger{
+			CreateLedger: &ledgerpb.CreateLedgerRequest{Name: name},
 		},
 	})
 }
@@ -124,7 +124,7 @@ func TestAdmit_ClusterPolicyWriteReadinessGate(t *testing.T) {
 		)
 		defer cancel()
 
-		_, err := a.AdmitClusterPolicy(ctx, &commonpb.ClusterPolicy{Revision: 1, QueryCheckpointLimit: 10})
+		_, err := a.AdmitClusterPolicy(ctx, &ledgerpb.ClusterPolicy{Revision: 1, QueryCheckpointLimit: 10})
 		require.ErrorIs(t, err, sentinel)
 	})
 }

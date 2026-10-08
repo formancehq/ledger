@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -31,15 +31,15 @@ func TestProcessCreatePreparedQuery_TreatsNotFoundAsMiss(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger"}).AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger"}).AsReader(), nil)
 
 	pq := setupPreparedQueriesStub(mockStore)
-	pq.onGet(func(_ domain.PreparedQueryKey) (commonpb.PreparedQueryReader, error) {
+	pq.onGet(func(_ domain.PreparedQueryKey) (ledgerpb.PreparedQueryReader, error) {
 		return nil, domain.ErrNotFound
 	})
 
 	order := &raftcmdpb.CreatePreparedQueryOrder{
-		Query: &commonpb.PreparedQuery{Name: "q1", Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS},
+		Query: &ledgerpb.PreparedQuery{Name: "q1", Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS},
 	}
 
 	payload, derr := processCreatePreparedQuery("test-ledger", order, &Context{Scope: mockStore})
@@ -59,10 +59,10 @@ func TestProcessUpdatePreparedQuery_NotFoundReturnsTypedError(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger"}).AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger"}).AsReader(), nil)
 
 	pq := setupPreparedQueriesStub(mockStore)
-	pq.onGet(func(_ domain.PreparedQueryKey) (commonpb.PreparedQueryReader, error) {
+	pq.onGet(func(_ domain.PreparedQueryKey) (ledgerpb.PreparedQueryReader, error) {
 		return nil, domain.ErrNotFound
 	})
 
@@ -88,20 +88,20 @@ func TestProcessUpdatePreparedQuery_RejectsFilterInvalidForStoredTarget(t *testi
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger"}).AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger"}).AsReader(), nil)
 
 	pq := setupPreparedQueriesStub(mockStore)
-	pq.onGet(func(_ domain.PreparedQueryKey) (commonpb.PreparedQueryReader, error) {
-		return (&commonpb.PreparedQuery{
+	pq.onGet(func(_ domain.PreparedQueryKey) (ledgerpb.PreparedQueryReader, error) {
+		return (&ledgerpb.PreparedQuery{
 			Name:   "q1",
-			Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 		}).AsReader(), nil
 	})
-	pq.onPut(func(domain.PreparedQueryKey, *commonpb.PreparedQuery) {
+	pq.onPut(func(domain.PreparedQueryKey, *ledgerpb.PreparedQuery) {
 		t.Fatal("Put must not be called when the new filter is invalid for the stored target")
 	})
 
-	newFilter := &commonpb.QueryFilter{}
+	newFilter := &ledgerpb.QueryFilter{}
 	require.NoError(t, json.Unmarshal([]byte(`{"$match":{"reference":"r"}}`), newFilter))
 
 	order := &raftcmdpb.UpdatePreparedQueryOrder{Name: "q1", Filter: newFilter}
@@ -125,17 +125,17 @@ func TestProcessUpdatePreparedQuery_RejectsNilFilter(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger"}).AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger"}).AsReader(), nil)
 
 	pq := setupPreparedQueriesStub(mockStore)
-	pq.onGet(func(_ domain.PreparedQueryKey) (commonpb.PreparedQueryReader, error) {
-		return (&commonpb.PreparedQuery{
+	pq.onGet(func(_ domain.PreparedQueryKey) (ledgerpb.PreparedQueryReader, error) {
+		return (&ledgerpb.PreparedQuery{
 			Name:   "q1",
-			Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-			Filter: &commonpb.QueryFilter{},
+			Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			Filter: &ledgerpb.QueryFilter{},
 		}).AsReader(), nil
 	})
-	pq.onPut(func(domain.PreparedQueryKey, *commonpb.PreparedQuery) {
+	pq.onPut(func(domain.PreparedQueryKey, *ledgerpb.PreparedQuery) {
 		t.Fatal("Put must not be called when the update carries a nil filter")
 	})
 
@@ -160,16 +160,16 @@ func TestProcessUpdatePreparedQuery_RejectsNonExecutableStoredTarget(t *testing.
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger"}).AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger"}).AsReader(), nil)
 
 	pq := setupPreparedQueriesStub(mockStore)
-	pq.onGet(func(_ domain.PreparedQueryKey) (commonpb.PreparedQueryReader, error) {
-		return (&commonpb.PreparedQuery{
+	pq.onGet(func(_ domain.PreparedQueryKey) (ledgerpb.PreparedQueryReader, error) {
+		return (&ledgerpb.PreparedQuery{
 			Name:   "legacy-audit",
-			Target: commonpb.QueryTarget_QUERY_TARGET_AUDIT,
+			Target: ledgerpb.QueryTarget_QUERY_TARGET_AUDIT,
 		}).AsReader(), nil
 	})
-	pq.onPut(func(domain.PreparedQueryKey, *commonpb.PreparedQuery) {
+	pq.onPut(func(domain.PreparedQueryKey, *ledgerpb.PreparedQuery) {
 		t.Fatal("Put must not be called when the stored target is not executable")
 	})
 
@@ -177,7 +177,7 @@ func TestProcessUpdatePreparedQuery_RejectsNonExecutableStoredTarget(t *testing.
 	// even evaluated, so the filter's own validity is irrelevant here — any
 	// structurally decodable filter must be rejected on the non-executable
 	// stored target.
-	newFilter := &commonpb.QueryFilter{}
+	newFilter := &ledgerpb.QueryFilter{}
 	require.NoError(t, json.Unmarshal([]byte(`{"$exists":{"metadata":"x"}}`), newFilter))
 
 	order := &raftcmdpb.UpdatePreparedQueryOrder{Name: "legacy-audit", Filter: newFilter}

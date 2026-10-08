@@ -1,7 +1,7 @@
 package processing
 
 import (
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -19,7 +19,7 @@ import (
 // If an index covers this field, its forward_encoding_version is bumped so
 // the indexer schedules a rewrite to re-encode forward entries under the
 // new declared_type.
-func processSetMetadataFieldType(ledger string, order *raftcmdpb.SetMetadataFieldTypeOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
+func processSetMetadataFieldType(ledger string, order *raftcmdpb.SetMetadataFieldTypeOrder, ctx *Context) (*ledgerpb.LedgerLogPayload, domain.SerializableError) {
 	s := ctx.Scope
 
 	info, loadErr := loadLedger(s, ledger)
@@ -32,27 +32,27 @@ func processSetMetadataFieldType(ledger string, order *raftcmdpb.SetMetadataFiel
 	}
 
 	if info.GetMetadataSchema() == nil {
-		info.MetadataSchema = &commonpb.MetadataSchema{}
+		info.MetadataSchema = &ledgerpb.MetadataSchema{}
 	}
 
-	field := &commonpb.MetadataFieldSchema{Type: order.GetType()}
+	field := &ledgerpb.MetadataFieldSchema{Type: order.GetType()}
 
 	switch order.GetTargetType() {
-	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+	case ledgerpb.TargetType_TARGET_TYPE_ACCOUNT:
 		if info.MetadataSchema.AccountFields == nil {
-			info.MetadataSchema.AccountFields = make(map[string]*commonpb.MetadataFieldSchema)
+			info.MetadataSchema.AccountFields = make(map[string]*ledgerpb.MetadataFieldSchema)
 		}
 
 		info.MetadataSchema.AccountFields[order.GetKey()] = field
-	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+	case ledgerpb.TargetType_TARGET_TYPE_TRANSACTION:
 		if info.MetadataSchema.TransactionFields == nil {
-			info.MetadataSchema.TransactionFields = make(map[string]*commonpb.MetadataFieldSchema)
+			info.MetadataSchema.TransactionFields = make(map[string]*ledgerpb.MetadataFieldSchema)
 		}
 
 		info.MetadataSchema.TransactionFields[order.GetKey()] = field
-	case commonpb.TargetType_TARGET_TYPE_LEDGER:
+	case ledgerpb.TargetType_TARGET_TYPE_LEDGER:
 		if info.MetadataSchema.LedgerFields == nil {
-			info.MetadataSchema.LedgerFields = make(map[string]*commonpb.MetadataFieldSchema)
+			info.MetadataSchema.LedgerFields = make(map[string]*ledgerpb.MetadataFieldSchema)
 		}
 
 		info.MetadataSchema.LedgerFields[order.GetKey()] = field
@@ -84,9 +84,9 @@ func processSetMetadataFieldType(ledger string, order *raftcmdpb.SetMetadataFiel
 		indexes.Put(s.Indexes(), ledger, updated)
 	}
 
-	return &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_SetMetadataFieldType{
-			SetMetadataFieldType: &commonpb.SetMetadataFieldTypeLog{
+	return &ledgerpb.LedgerLogPayload{
+		Payload: &ledgerpb.LedgerLogPayload_SetMetadataFieldType{
+			SetMetadataFieldType: &ledgerpb.SetMetadataFieldTypeLog{
 				TargetType: order.GetTargetType(),
 				Key:        order.GetKey(),
 				Type:       order.GetType(),
@@ -99,7 +99,7 @@ func processSetMetadataFieldType(ledger string, order *raftcmdpb.SetMetadataFiel
 // O(1) on the apply path: the field is removed from the schema and any index
 // attached to it is dropped. Existing stored values are untouched (they remain
 // in their original type; reads no longer coerce them).
-func processRemoveMetadataFieldType(ledger string, order *raftcmdpb.RemoveMetadataFieldTypeOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
+func processRemoveMetadataFieldType(ledger string, order *raftcmdpb.RemoveMetadataFieldTypeOrder, ctx *Context) (*ledgerpb.LedgerLogPayload, domain.SerializableError) {
 	s := ctx.Scope
 
 	info, loadErr := loadLedger(s, ledger)
@@ -112,15 +112,15 @@ func processRemoveMetadataFieldType(ledger string, order *raftcmdpb.RemoveMetada
 	}
 
 	if info.GetMetadataSchema() == nil {
-		info.MetadataSchema = &commonpb.MetadataSchema{}
+		info.MetadataSchema = &ledgerpb.MetadataSchema{}
 	}
 
 	switch order.GetTargetType() {
-	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+	case ledgerpb.TargetType_TARGET_TYPE_ACCOUNT:
 		delete(info.GetMetadataSchema().GetAccountFields(), order.GetKey())
-	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+	case ledgerpb.TargetType_TARGET_TYPE_TRANSACTION:
 		delete(info.GetMetadataSchema().GetTransactionFields(), order.GetKey())
-	case commonpb.TargetType_TARGET_TYPE_LEDGER:
+	case ledgerpb.TargetType_TARGET_TYPE_LEDGER:
 		delete(info.GetMetadataSchema().GetLedgerFields(), order.GetKey())
 	}
 
@@ -131,7 +131,7 @@ func processRemoveMetadataFieldType(ledger string, order *raftcmdpb.RemoveMetada
 	// read-store entries within the same handler pass. We probe the registry
 	// for an entry before deleting so the log only carries DroppedIndex when
 	// an index actually existed.
-	var droppedIndex *commonpb.IndexID
+	var droppedIndex *ledgerpb.IndexID
 
 	// Keyed off the command envelope, never the loaded projection's mutable
 	// name field (see processSetMetadataFieldType).
@@ -148,9 +148,9 @@ func processRemoveMetadataFieldType(ledger string, order *raftcmdpb.RemoveMetada
 		droppedIndex = id
 	}
 
-	return &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_RemovedMetadataFieldType{
-			RemovedMetadataFieldType: &commonpb.RemovedMetadataFieldTypeLog{
+	return &ledgerpb.LedgerLogPayload{
+		Payload: &ledgerpb.LedgerLogPayload_RemovedMetadataFieldType{
+			RemovedMetadataFieldType: &ledgerpb.RemovedMetadataFieldTypeLog{
 				TargetType:   order.GetTargetType(),
 				Key:          order.GetKey(),
 				DroppedIndex: droppedIndex,
@@ -162,31 +162,31 @@ func processRemoveMetadataFieldType(ledger string, order *raftcmdpb.RemoveMetada
 // populateInitialSchema builds a MetadataSchema from initial_schema commands
 // at ledger creation time. No conversion lifecycle is needed: a brand-new
 // ledger has no stored values to convert.
-func populateInitialSchema(commands []*commonpb.SetMetadataFieldTypeCommand) *commonpb.MetadataSchema {
+func populateInitialSchema(commands []*ledgerpb.SetMetadataFieldTypeCommand) *ledgerpb.MetadataSchema {
 	if len(commands) == 0 {
 		return nil
 	}
 
-	schema := &commonpb.MetadataSchema{}
+	schema := &ledgerpb.MetadataSchema{}
 
 	for _, cmd := range commands {
-		field := &commonpb.MetadataFieldSchema{Type: cmd.GetType()}
+		field := &ledgerpb.MetadataFieldSchema{Type: cmd.GetType()}
 		switch cmd.GetTargetType() {
-		case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+		case ledgerpb.TargetType_TARGET_TYPE_ACCOUNT:
 			if schema.AccountFields == nil {
-				schema.AccountFields = make(map[string]*commonpb.MetadataFieldSchema)
+				schema.AccountFields = make(map[string]*ledgerpb.MetadataFieldSchema)
 			}
 
 			schema.AccountFields[cmd.GetKey()] = field
-		case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+		case ledgerpb.TargetType_TARGET_TYPE_TRANSACTION:
 			if schema.TransactionFields == nil {
-				schema.TransactionFields = make(map[string]*commonpb.MetadataFieldSchema)
+				schema.TransactionFields = make(map[string]*ledgerpb.MetadataFieldSchema)
 			}
 
 			schema.TransactionFields[cmd.GetKey()] = field
-		case commonpb.TargetType_TARGET_TYPE_LEDGER:
+		case ledgerpb.TargetType_TARGET_TYPE_LEDGER:
 			if schema.LedgerFields == nil {
-				schema.LedgerFields = make(map[string]*commonpb.MetadataFieldSchema)
+				schema.LedgerFields = make(map[string]*ledgerpb.MetadataFieldSchema)
 			}
 
 			schema.LedgerFields[cmd.GetKey()] = field

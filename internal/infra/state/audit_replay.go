@@ -9,7 +9,7 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
@@ -120,7 +120,7 @@ func (r *AuditReplayer) Close() error {
 
 // Replay applies one successful audited proposal and returns the exact logs
 // produced by the canonical request processor. Call proposals in audit order.
-func (r *AuditReplayer) Replay(at *commonpb.Timestamp, orders []*raftcmdpb.Order) ([]*commonpb.Log, error) {
+func (r *AuditReplayer) Replay(at *ledgerpb.Timestamp, orders []*raftcmdpb.Order) ([]*ledgerpb.Log, error) {
 	// Historical/unit-test stores may start their retained audit range before
 	// the first replicated policy entry. Give revision 0 the legacy defaults
 	// only when this proposal is not itself installing the real policy; a
@@ -135,7 +135,7 @@ func (r *AuditReplayer) Replay(at *commonpb.Timestamp, orders []*raftcmdpb.Order
 			}
 		}
 		if !installsPolicy {
-			r.machine.State.UpdateClusterPolicy(&commonpb.ClusterPolicy{
+			r.machine.State.UpdateClusterPolicy(&ledgerpb.ClusterPolicy{
 				Revision:                    0,
 				QueryCheckpointLimit:        10,
 				MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
@@ -170,7 +170,7 @@ func (r *AuditReplayer) Replay(at *commonpb.Timestamp, orders []*raftcmdpb.Order
 		if order.GetTechnical() == nil {
 			order.Technical = &raftcmdpb.OrderTechnical{}
 		}
-		var postings []*commonpb.Posting
+		var postings []*ledgerpb.Posting
 		if stored != nil {
 			postings = stored.Mutate().GetPostings()
 		}
@@ -200,7 +200,7 @@ func (r *AuditReplayer) Replay(at *commonpb.Timestamp, orders []*raftcmdpb.Order
 		return nil, fmt.Errorf("committing audited orders: %w", err)
 	}
 
-	logs := make([]*commonpb.Log, len(result.CreatedLogs))
+	logs := make([]*ledgerpb.Log, len(result.CreatedLogs))
 	for i, log := range result.CreatedLogs {
 		logs[i] = log.CloneVT()
 	}

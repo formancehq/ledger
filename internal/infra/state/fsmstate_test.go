@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestAppendAuditEntryRejectsExhaustedSequenceWithoutMutation(t *testing.T) {
@@ -37,7 +37,7 @@ func TestUpdateClusterConfig(t *testing.T) {
 		s := NewFSMState("test-cluster")
 		originalHG := s.HashGenerator
 
-		cfg := &commonpb.ClusterConfig{HashAlgorithm: commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3}
+		cfg := &ledgerpb.ClusterConfig{HashAlgorithm: ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3}
 		s.UpdateClusterConfig(cfg)
 
 		require.Same(t, originalHG, s.HashGenerator, "HashGenerator must be reused when algorithm unchanged")
@@ -50,11 +50,11 @@ func TestUpdateClusterConfig(t *testing.T) {
 		s := NewFSMState("test-cluster")
 		originalHG := s.HashGenerator
 
-		cfg := &commonpb.ClusterConfig{HashAlgorithm: commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3}
+		cfg := &ledgerpb.ClusterConfig{HashAlgorithm: ledgerpb.HashAlgorithm_HASH_ALGORITHM_XXH3}
 		s.UpdateClusterConfig(cfg)
 
 		require.NotSame(t, originalHG, s.HashGenerator, "HashGenerator must be rebuilt when algorithm changes")
-		require.Equal(t, commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3, s.HashGenerator.Algorithm())
+		require.Equal(t, ledgerpb.HashAlgorithm_HASH_ALGORITHM_XXH3, s.HashGenerator.Algorithm())
 		require.Same(t, cfg, s.LastClusterConfig)
 	})
 
@@ -63,13 +63,13 @@ func TestUpdateClusterConfig(t *testing.T) {
 
 		s := NewFSMState("test-cluster")
 
-		s.UpdateClusterConfig(&commonpb.ClusterConfig{HashAlgorithm: commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3})
+		s.UpdateClusterConfig(&ledgerpb.ClusterConfig{HashAlgorithm: ledgerpb.HashAlgorithm_HASH_ALGORITHM_XXH3})
 		hgAfterFirstSwap := s.HashGenerator
 
-		s.UpdateClusterConfig(&commonpb.ClusterConfig{HashAlgorithm: commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3})
+		s.UpdateClusterConfig(&ledgerpb.ClusterConfig{HashAlgorithm: ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3})
 
 		require.NotSame(t, hgAfterFirstSwap, s.HashGenerator)
-		require.Equal(t, commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, s.HashGenerator.Algorithm())
+		require.Equal(t, ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, s.HashGenerator.Algorithm())
 	})
 }
 

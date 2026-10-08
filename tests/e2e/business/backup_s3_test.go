@@ -20,7 +20,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -73,8 +73,8 @@ func backupS3ObjectExists(ctx context.Context, client *s3.Client, key string) bo
 var _ = Describe("S3 Backup", Ordered, func() {
 	var (
 		ctx           context.Context
-		client        clusterpb.BucketServiceClient
-		clusterClient clusterpb.ClusterServiceClient
+		client        ledgerpb.BucketServiceClient
+		clusterClient ledgerpb.ClusterServiceClient
 		s3Client      *s3.Client
 		minioEndpoint string
 	)
@@ -129,23 +129,23 @@ var _ = Describe("S3 Backup", Ordered, func() {
 		clusterClient = node.ClusterClient
 	})
 
-	s3Storage := func() *clusterpb.BackupStorage {
-		return testutil.S3BackupStorage(&clusterpb.S3StorageConfig{
+	s3Storage := func() *ledgerpb.BackupStorage {
+		return testutil.S3BackupStorage(&ledgerpb.S3StorageConfig{
 			Bucket:   backupS3Bucket,
 			Region:   backupS3Region,
 			Endpoint: minioEndpoint,
 		})
 	}
 
-	backupRequest := func() *clusterpb.BackupRequest {
-		return &clusterpb.BackupRequest{
+	backupRequest := func() *ledgerpb.BackupRequest {
+		return &ledgerpb.BackupRequest{
 			Storage:  s3Storage(),
 			BucketId: "test-cluster",
 		}
 	}
 
-	incrementalBackupRequest := func() *clusterpb.IncrementalBackupRequest {
-		return &clusterpb.IncrementalBackupRequest{
+	incrementalBackupRequest := func() *ledgerpb.IncrementalBackupRequest {
+		return &ledgerpb.IncrementalBackupRequest{
 			Storage:  s3Storage(),
 			BucketId: "test-cluster",
 		}
@@ -153,11 +153,11 @@ var _ = Describe("S3 Backup", Ordered, func() {
 
 	It("should create a full backup on S3 with checkpoint manifest", func() {
 		// Create a ledger with data
-		_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction("s3-backup-test", nil)))
+		_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction("s3-backup-test", nil)))
 		Expect(err).To(Succeed())
 
-		_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("s3-backup-test",
-			[]*clusterpb.Posting{
+		_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("s3-backup-test",
+			[]*ledgerpb.Posting{
 				actions.NewPosting("world", "users:alice", big.NewInt(1000), "USD"),
 			},
 			nil,
@@ -198,8 +198,8 @@ var _ = Describe("S3 Backup", Ordered, func() {
 
 		// Add more data
 		for i := range 5 {
-			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("s3-backup-test",
-				[]*clusterpb.Posting{
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("s3-backup-test",
+				[]*ledgerpb.Posting{
 					actions.NewPosting("world", "users:bob", big.NewInt(int64(100*(i+1))), "EUR"),
 				},
 				nil,
@@ -230,7 +230,7 @@ var _ = Describe("S3 Backup", Ordered, func() {
 		// carries the Global-zone persisted config, last-applied index, and
 		// timestamp restore needs, so an export-only artifact cannot be restored.
 		// The server must reject this, not publish an unrestorable artifact.
-		_, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
+		_, err := clusterClient.IncrementalBackup(ctx, &ledgerpb.IncrementalBackupRequest{
 			Storage:  s3Storage(),
 			BucketId: "no-prior",
 		})
@@ -267,8 +267,8 @@ var _ = Describe("S3 Backup", Ordered, func() {
 		checkpointAuditSeq := fullResp.GetLastAuditSequence()
 
 		// Add more data
-		_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("s3-backup-test",
-			[]*clusterpb.Posting{
+		_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("s3-backup-test",
+			[]*ledgerpb.Posting{
 				actions.NewPosting("world", "users:charlie", big.NewInt(500), "GBP"),
 			},
 			nil,
@@ -304,8 +304,8 @@ var _ = Describe("S3 Backup", Ordered, func() {
 		exportCountBefore := len(manifestBefore.Exports)
 
 		// Add more data
-		_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("s3-backup-test",
-			[]*clusterpb.Posting{
+		_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("s3-backup-test",
+			[]*ledgerpb.Posting{
 				actions.NewPosting("world", "users:dave", big.NewInt(200), "JPY"),
 			},
 			nil,

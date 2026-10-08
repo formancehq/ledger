@@ -13,7 +13,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
@@ -27,7 +27,7 @@ import (
 )
 
 // newTLSGRPCClient creates a gRPC client that uses TLS with the given CA cert file.
-func newTLSGRPCClient(grpcPort int, caCertFile string) (clusterpb.BucketServiceClient, clusterpb.ClusterServiceClient, *grpc.ClientConn, error) {
+func newTLSGRPCClient(grpcPort int, caCertFile string) (ledgerpb.BucketServiceClient, ledgerpb.ClusterServiceClient, *grpc.ClientConn, error) {
 	caPEM, err := os.ReadFile(caCertFile)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("reading CA cert: %w", err)
@@ -53,12 +53,12 @@ func newTLSGRPCClient(grpcPort int, caCertFile string) (clusterpb.BucketServiceC
 		return nil, nil, nil, err
 	}
 
-	return clusterpb.NewBucketServiceClient(conn), clusterpb.NewClusterServiceClient(conn), conn, nil
+	return ledgerpb.NewBucketServiceClient(conn), ledgerpb.NewClusterServiceClient(conn), conn, nil
 }
 
 // setupTLSSingleNode creates a single-node TLS-enabled server and returns the context,
 // a TLS-capable gRPC client, and the generated certs for further use.
-func setupTLSSingleNode(lease *testserver.NodeLease) (context.Context, clusterpb.BucketServiceClient, clusterpb.ClusterServiceClient, *testserver.TestCerts) {
+func setupTLSSingleNode(lease *testserver.NodeLease) (context.Context, ledgerpb.BucketServiceClient, ledgerpb.ClusterServiceClient, *testserver.TestCerts) {
 	ctx := logging.TestingContext()
 
 	// Generate test certificates
@@ -109,7 +109,7 @@ func setupTLSSingleNode(lease *testserver.NodeLease) (context.Context, clusterpb
 
 	// Wait for leader election
 	Eventually(func(g Gomega) bool {
-		state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+		state, err := clusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 		g.Expect(err).To(Succeed())
 		return state.Leader != 0
 	}).Within(5 * time.Second).To(BeTrue())
@@ -120,8 +120,8 @@ func setupTLSSingleNode(lease *testserver.NodeLease) (context.Context, clusterpb
 // tlsServiceWithClient extends serviceWithClient with TLS-specific fields.
 type tlsServiceWithClient struct {
 	service       *testservice.Service
-	client        clusterpb.BucketServiceClient
-	clusterClient clusterpb.ClusterServiceClient
+	client        ledgerpb.BucketServiceClient
+	clusterClient ledgerpb.ClusterServiceClient
 	grpcConn      *grpc.ClientConn
 	grpcPort      int
 	nodeID        uint32
@@ -210,7 +210,7 @@ func setupTLSMultiNodeCluster(countInstances int) (context.Context, []*tlsServic
 
 	// Wait for node 0 to become leader
 	Eventually(func(g Gomega) {
-		state, err := servers[0].clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+		state, err := servers[0].clusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 		g.Expect(err).To(Succeed())
 		g.Expect(state.Leader).NotTo(BeZero())
 	}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
@@ -226,7 +226,7 @@ func setupTLSMultiNodeCluster(countInstances int) (context.Context, []*tlsServic
 	// Wait for all nodes to be promoted to voters
 	if countInstances > 1 {
 		Eventually(func(g Gomega) {
-			state, err := servers[0].clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+			state, err := servers[0].clusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 			g.Expect(err).To(Succeed())
 			voterCount := 0
 			for _, n := range state.Nodes {
@@ -258,8 +258,8 @@ func setupTLSMultiNodeCluster(countInstances int) (context.Context, []*tlsServic
 var _ = Describe("TLS", Ordered, func() {
 	var (
 		ctx           context.Context
-		client        clusterpb.BucketServiceClient
-		clusterClient clusterpb.ClusterServiceClient
+		client        ledgerpb.BucketServiceClient
+		clusterClient ledgerpb.ClusterServiceClient
 		certs         *testserver.TestCerts
 		ports         testserver.NodePorts
 	)
@@ -274,14 +274,14 @@ var _ = Describe("TLS", Ordered, func() {
 		It("should accept connections from a TLS client with the correct CA", func() {
 			// The client was already created with the correct CA in setupTLSSingleNode.
 			// Verify it can perform actual operations.
-			resp, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction("tls-test-ledger", nil)))
+			resp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction("tls-test-ledger", nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 		})
 
 		It("should serve data over TLS", func() {
 			// Create a transaction to verify full round-trip
-			resp, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction("tls-test-ledger", []*clusterpb.Posting{
+			resp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction("tls-test-ledger", []*ledgerpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -289,7 +289,7 @@ var _ = Describe("TLS", Ordered, func() {
 		})
 
 		It("should return cluster state over TLS", func() {
-			state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+			state, err := clusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 			Expect(err).To(Succeed())
 			Expect(state.Leader).NotTo(BeZero())
 			Expect(state.Nodes).NotTo(BeEmpty())
@@ -305,8 +305,8 @@ var _ = Describe("TLS", Ordered, func() {
 			Expect(err).To(Succeed())
 			defer func() { _ = conn.Close() }()
 
-			insecureClient := clusterpb.NewClusterServiceClient(conn)
-			_, err = insecureClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+			insecureClient := ledgerpb.NewClusterServiceClient(conn)
+			_, err = insecureClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 			Expect(err).To(HaveOccurred())
 		})
 
@@ -325,8 +325,8 @@ var _ = Describe("TLS", Ordered, func() {
 			Expect(err).To(Succeed())
 			defer func() { _ = conn.Close() }()
 
-			wrongCAClient := clusterpb.NewClusterServiceClient(conn)
-			_, err = wrongCAClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+			wrongCAClient := ledgerpb.NewClusterServiceClient(conn)
+			_, err = wrongCAClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 			Expect(err).To(HaveOccurred())
 		})
 
@@ -336,7 +336,7 @@ var _ = Describe("TLS", Ordered, func() {
 			Expect(err).To(Succeed())
 			defer func() { _ = conn2.Close() }()
 
-			resp, err := client2.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction("tls-test-ledger-2", nil)))
+			resp, err := client2.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction("tls-test-ledger-2", nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 		})
@@ -355,7 +355,7 @@ var _ = Describe("TLS Multi-Node", Ordered, func() {
 
 	Context("with a TLS-enabled multi-node cluster", func() {
 		It("should elect a leader across TLS nodes", func() {
-			state, err := servers[0].clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+			state, err := servers[0].clusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 			Expect(err).To(Succeed())
 			Expect(state.Leader).NotTo(BeZero())
 			Expect(state.Nodes).To(HaveLen(3))
@@ -363,7 +363,7 @@ var _ = Describe("TLS Multi-Node", Ordered, func() {
 
 		It("should replicate ledger creation across TLS nodes", func() {
 			// Create a ledger via node 0
-			resp, err := servers[0].client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction("tls-multi-ledger", nil)))
+			resp, err := servers[0].client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction("tls-multi-ledger", nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 
@@ -382,10 +382,10 @@ var _ = Describe("TLS Multi-Node", Ordered, func() {
 			// Create a transaction via node 0.
 			// Use Eventually because TLS handshake overhead can delay leader
 			// stabilisation after voter promotions, causing transient "ledger not found".
-			var resp *clusterpb.ApplyResponse
+			var resp *ledgerpb.ApplyResponse
 			Eventually(func(g Gomega) {
 				var err error
-				resp, err = servers[0].client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction("tls-multi-ledger", []*clusterpb.Posting{
+				resp, err = servers[0].client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction("tls-multi-ledger", []*ledgerpb.Posting{
 					actions.NewPosting("world", "bank", big.NewInt(5000), "USD"),
 				}, nil, nil)))
 				g.Expect(err).To(Succeed())
@@ -403,7 +403,7 @@ var _ = Describe("TLS Multi-Node", Ordered, func() {
 			// Verify the transaction is visible from all nodes
 			for i, srv := range servers {
 				Eventually(func(g Gomega) {
-					txResp, err := srv.client.GetTransaction(ctx, &clusterpb.GetTransactionRequest{
+					txResp, err := srv.client.GetTransaction(ctx, &ledgerpb.GetTransactionRequest{
 						Ledger:        "tls-multi-ledger",
 						TransactionId: txID,
 					})
@@ -417,12 +417,12 @@ var _ = Describe("TLS Multi-Node", Ordered, func() {
 
 		It("should allow operations through any TLS node", func() {
 			// Create a ledger via node 1 (non-bootstrap)
-			resp, err := servers[1].client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction("tls-multi-ledger-node1", nil)))
+			resp, err := servers[1].client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction("tls-multi-ledger-node1", nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 
 			// Create a transaction via node 2
-			resp, err = servers[2].client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction("tls-multi-ledger-node1", []*clusterpb.Posting{
+			resp, err = servers[2].client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction("tls-multi-ledger-node1", []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "EUR"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -431,7 +431,7 @@ var _ = Describe("TLS Multi-Node", Ordered, func() {
 
 		It("should return consistent cluster state from all TLS nodes", func() {
 			for i, srv := range servers {
-				state, err := srv.clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+				state, err := srv.clusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 				Expect(err).To(Succeed(), "node %d should return cluster state", i+1)
 				Expect(state.Leader).NotTo(BeZero(), "node %d should report a leader", i+1)
 				Expect(state.Nodes).To(HaveLen(3), "node %d should see all 3 nodes", i+1)

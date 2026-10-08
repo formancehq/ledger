@@ -7,7 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // templateUsageJSON is the camelCase JSON DTO for TemplateUsage. It
@@ -23,7 +23,7 @@ type templateUsageJSON struct {
 	LastUsed *string `json:"lastUsed,omitempty"`
 }
 
-func toTemplateUsageJSON(usage *commonpb.TemplateUsage) *templateUsageJSON {
+func toTemplateUsageJSON(usage *ledgerpb.TemplateUsage) *templateUsageJSON {
 	out := &templateUsageJSON{Count: usage.GetCount()}
 
 	// Gate on nil only: a non-nil Timestamp is a real value even when Data==0

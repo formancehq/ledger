@@ -11,7 +11,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestResponseSigner(t *testing.T) {
@@ -43,11 +43,11 @@ func TestResponseSigner(t *testing.T) {
 	t.Run("sign and verify log", func(t *testing.T) {
 		t.Parallel()
 
-		log := &commonpb.Log{
+		log := &ledgerpb.Log{
 			Sequence: 42,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_CreateLedger{
-					CreateLedger: &commonpb.CreatedLedgerLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_CreateLedger{
+					CreateLedger: &ledgerpb.CreatedLedgerLog{
 						Name: "test-ledger",
 					},
 				},
@@ -68,11 +68,11 @@ func TestResponseSigner(t *testing.T) {
 	t.Run("verify fails with wrong public key", func(t *testing.T) {
 		t.Parallel()
 
-		log := &commonpb.Log{
+		log := &ledgerpb.Log{
 			Sequence: 1,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_CreateLedger{
-					CreateLedger: &commonpb.CreatedLedgerLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_CreateLedger{
+					CreateLedger: &ledgerpb.CreatedLedgerLog{
 						Name: "test",
 					},
 				},
@@ -96,11 +96,11 @@ func TestResponseSigner(t *testing.T) {
 	t.Run("verify fails with tampered payload", func(t *testing.T) {
 		t.Parallel()
 
-		log := &commonpb.Log{
+		log := &ledgerpb.Log{
 			Sequence: 1,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_CreateLedger{
-					CreateLedger: &commonpb.CreatedLedgerLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_CreateLedger{
+					CreateLedger: &ledgerpb.CreatedLedgerLog{
 						Name: "test",
 					},
 				},
@@ -134,7 +134,7 @@ func TestVerifyResponseSignature_EmptyPayload(t *testing.T) {
 
 	signer := NewResponseSigner(seed)
 
-	sig := &commonpb.SignedLog{
+	sig := &ledgerpb.SignedLog{
 		KeyId:     signer.KeyID(),
 		Signature: make([]byte, ed25519.SignatureSize),
 		Payload:   nil,
@@ -154,7 +154,7 @@ func TestVerifyResponseSignature_InvalidSignatureLength(t *testing.T) {
 
 	signer := NewResponseSigner(seed)
 
-	sig := &commonpb.SignedLog{
+	sig := &ledgerpb.SignedLog{
 		KeyId:     signer.KeyID(),
 		Signature: []byte("bad"),
 		Payload:   []byte("some payload"),

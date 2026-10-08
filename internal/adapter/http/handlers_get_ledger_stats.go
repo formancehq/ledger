@@ -3,7 +3,7 @@ package http
 import (
 	"net/http"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // ledgerStatsJSON is the camelCase JSON DTO for LedgerStats.
@@ -19,7 +19,7 @@ type ledgerStatsJSON struct {
 	NumscriptExecutionCount uint64 `json:"numscriptExecutionCount"`
 }
 
-func toLedgerStatsJSON(stats *commonpb.LedgerStats) *ledgerStatsJSON {
+func toLedgerStatsJSON(stats *ledgerpb.LedgerStats) *ledgerStatsJSON {
 	return &ledgerStatsJSON{
 		TransactionCount:        stats.GetTransactionCount(),
 		VolumeCount:             stats.GetVolumeCount(),

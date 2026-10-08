@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -53,11 +53,11 @@ func TestVerifyAuditHashChain_KeyedNumscriptTxBindsAcceptedOrder(t *testing.T) {
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 						CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-							Metadata: map[string]*auditpb.MetadataValue{
-								"type":        auditpb.NewStringValue("caller-wins"),
-								"caller-only": auditpb.NewStringValue("kept"),
+							Metadata: map[string]*ledgerpb.MetadataValue{
+								"type":        ledgerpb.NewStringValue("caller-wins"),
+								"caller-only": ledgerpb.NewStringValue("kept"),
 							},
-							Script: &auditpb.Script{Plain: `
+							Script: &ledgerpb.Script{Plain: `
 								set_tx_meta("type", "payment")
 								set_tx_meta("category", "purchase")
 								send [USD/2 100] (
@@ -103,18 +103,18 @@ func TestVerifyAuditHashChain_KeyedNumscriptTxBindsAcceptedOrder(t *testing.T) {
 	// would persist for this keyed proposal, then run the checker.
 	store := createTestStore(t)
 
-	entry := &auditpb.AuditEntry{
+	entry := &ledgerpb.AuditEntry{
 		Sequence:    1,
-		Timestamp:   &auditpb.Timestamp{Data: createdAt},
+		Timestamp:   &ledgerpb.Timestamp{Data: createdAt},
 		ProposalId:  2,
 		OrderCount:  1,
-		HashVersion: uint32(auditpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
-		Idempotency: &auditpb.Idempotency{Key: idemKey},
-		Outcome: &auditpb.AuditEntry_Success{
-			Success: &auditpb.AuditSuccess{MinLogSequence: logSeq, MaxLogSequence: logSeq},
+		HashVersion: uint32(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		Idempotency: &ledgerpb.Idempotency{Key: idemKey},
+		Outcome: &ledgerpb.AuditEntry_Success{
+			Success: &ledgerpb.AuditSuccess{MinLogSequence: logSeq, MaxLogSequence: logSeq},
 		},
 	}
-	items := []*auditpb.AuditItem{{OrderIndex: 0, SerializedOrder: serialized, LogSequence: logSeq}}
+	items := []*ledgerpb.AuditItem{{OrderIndex: 0, SerializedOrder: serialized, LogSequence: logSeq}}
 	persistAuditEntry(t, store, entry, items, clusterID)
 
 	writeIdempotencyEntry(t, store, idemKey, &internalstatepb.IdempotencyKeyValue{
@@ -130,7 +130,7 @@ func TestVerifyAuditHashChain_KeyedNumscriptTxBindsAcceptedOrder(t *testing.T) {
 
 // collectIdempotencyMismatches runs the audit-chain verifier and returns only
 // the idempotency-mismatch events, isolating the projection check under test.
-func collectIdempotencyMismatches(t *testing.T, store *dal.Store, clusterID string) []*auditpb.CheckStoreError {
+func collectIdempotencyMismatches(t *testing.T, store *dal.Store, clusterID string) []*ledgerpb.CheckStoreError {
 	t.Helper()
 
 	checker := NewChecker(store, attributes.New(), nil, logging.Testing())
@@ -140,12 +140,12 @@ func collectIdempotencyMismatches(t *testing.T, store *dal.Store, clusterID stri
 
 	defer func() { _ = handle.Close() }()
 
-	var got []*auditpb.CheckStoreError
+	var got []*ledgerpb.CheckStoreError
 
 	_, err = checker.verifyAuditHashChain(context.Background(), handle, checkerTestAuditKey, newChainBoundState(), newChainVerifierFolds(),
-		func(event *auditpb.CheckStoreEvent) {
-			if e, ok := event.GetType().(*auditpb.CheckStoreEvent_Error); ok &&
-				e.Error.GetErrorType() == auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH {
+		func(event *ledgerpb.CheckStoreEvent) {
+			if e, ok := event.GetType().(*ledgerpb.CheckStoreEvent_Error); ok &&
+				e.Error.GetErrorType() == ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH {
 				got = append(got, e.Error)
 			}
 		})

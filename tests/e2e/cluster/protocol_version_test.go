@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -36,7 +36,7 @@ var _ = Describe("gRPC protocol version", Ordered, func() {
 		servers    []*testutil.ServiceWithClient
 		leaderID   *uint64
 		rawConn    *grpc.ClientConn
-		rawClient  clusterpb.BucketServiceClient
+		rawClient  ledgerpb.BucketServiceClient
 		leader     *testutil.ServiceWithClient
 	)
 
@@ -49,7 +49,7 @@ var _ = Describe("gRPC protocol version", Ordered, func() {
 			grpc.WithTransportCredentials(insecure.NewCredentials()))
 		Expect(err).To(Succeed())
 		DeferCleanup(func() { Expect(rawConn.Close()).To(Succeed()) })
-		rawClient = clusterpb.NewBucketServiceClient(rawConn)
+		rawClient = ledgerpb.NewBucketServiceClient(rawConn)
 	})
 
 	AfterAll(func() {
@@ -69,19 +69,19 @@ var _ = Describe("gRPC protocol version", Ordered, func() {
 			requestCtx = metadata.NewOutgoingContext(ctx, metadata.MD{grpcprotocol.MetadataKey: versions})
 		}
 		ledgerName := "protocol-" + name
-		req := clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil))
+		req := ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil))
 		_, err := rawClient.Apply(requestCtx, req)
 		expectProtocolRejection(err)
 
 		// A real, valid write must leave no business effect when refused.
-		_, err = leader.Client.GetLedger(ctx, &clusterpb.GetLedgerRequest{Ledger: ledgerName})
+		_, err = leader.Client.GetLedger(ctx, &ledgerpb.GetLedgerRequest{Ledger: ledgerName})
 		Expect(status.Code(err)).To(Equal(codes.NotFound))
 
 		// Submit the identical payload with the supported protocol and observe it.
 		resp, err := leader.Client.Apply(ctx, req)
 		Expect(err).To(Succeed())
 		Expect(resp.Logs).To(HaveLen(1))
-		ledgerInfo, err := leader.Client.GetLedger(ctx, &clusterpb.GetLedgerRequest{Ledger: ledgerName})
+		ledgerInfo, err := leader.Client.GetLedger(ctx, &ledgerpb.GetLedgerRequest{Ledger: ledgerName})
 		Expect(err).To(Succeed())
 		Expect(ledgerInfo.Name).To(Equal(ledgerName))
 	},
@@ -92,7 +92,7 @@ var _ = Describe("gRPC protocol version", Ordered, func() {
 	)
 
 	It("checks each stream and Cluster RPC while allowing diagnostic RPCs", func() {
-		info, err := rawClient.Discovery(ctx, &clusterpb.DiscoveryRequest{})
+		info, err := rawClient.Discovery(ctx, &ledgerpb.DiscoveryRequest{})
 		Expect(err).To(Succeed())
 		Expect(info.GetServerInfo().GetProtocolVersion()).To(Equal(grpcprotocol.Version))
 		// Health can report NOT_SERVING while projections warm up. The contract
@@ -101,20 +101,20 @@ var _ = Describe("gRPC protocol version", Ordered, func() {
 		Expect(err).To(Succeed())
 
 		// Successful discovery on this connection does not authorize later RPCs.
-		_, err = clusterpb.NewClusterServiceClient(rawConn).GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+		_, err = ledgerpb.NewClusterServiceClient(rawConn).GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 		expectProtocolRejection(err)
-		stream, err := rawClient.ListLedgers(ctx, &clusterpb.ListLedgersRequest{})
+		stream, err := rawClient.ListLedgers(ctx, &ledgerpb.ListLedgersRequest{})
 		if err == nil {
 			_, err = stream.Recv()
 		}
 		expectProtocolRejection(err)
 
-		_, err = leader.Client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction("protocol-stream", nil)))
+		_, err = leader.Client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction("protocol-stream", nil)))
 		Expect(err).To(Succeed())
 		ledgers, err := actions.ListLedgers(ctx, leader.Client)
 		Expect(err).To(Succeed())
 		Expect(ledgers).To(HaveKey("protocol-stream"))
-		state, err := leader.ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+		state, err := leader.ClusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 		Expect(err).To(Succeed())
 		Expect(state.Nodes).To(HaveLen(3))
 	})
@@ -123,7 +123,7 @@ var _ = Describe("gRPC protocol version", Ordered, func() {
 		currentLeaderID := *leaderID
 		follower := servers[currentLeaderID%uint64(len(servers))]
 		Expect(uint64(follower.NodeID)).NotTo(Equal(currentLeaderID))
-		state, err := follower.ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+		state, err := follower.ClusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 		Expect(err).To(Succeed())
 		Expect(uint64(state.Leader)).To(Equal(currentLeaderID))
 
@@ -138,10 +138,10 @@ var _ = Describe("gRPC protocol version", Ordered, func() {
 		Expect(err).To(Succeed())
 		Expect(resp.StatusCode).To(Equal(http.StatusCreated), string(body))
 
-		ledgerInfo, err := servers[currentLeaderID-1].Client.GetLedger(ctx, &clusterpb.GetLedgerRequest{Ledger: ledgerName})
+		ledgerInfo, err := servers[currentLeaderID-1].Client.GetLedger(ctx, &ledgerpb.GetLedgerRequest{Ledger: ledgerName})
 		Expect(err).To(Succeed())
 		Expect(ledgerInfo.Name).To(Equal(ledgerName))
-		state, err = follower.ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+		state, err = follower.ClusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 		Expect(err).To(Succeed())
 		Expect(uint64(state.Leader)).To(Equal(currentLeaderID), "the request must have used the follower-to-leader path")
 	})

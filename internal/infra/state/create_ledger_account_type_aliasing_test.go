@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -17,7 +17,7 @@ import (
 // AccountType.Name values deliberately do NOT match their map keys (one blank,
 // one mismatched), so the test can prove the FSM preserves the submitted bytes
 // verbatim while canonicalizing derived state to the map key.
-func createLedgerOrderWithAccountTypes(name string, accountTypes map[string]*auditpb.AccountType) *raftcmdpb.Order {
+func createLedgerOrderWithAccountTypes(name string, accountTypes map[string]*ledgerpb.AccountType) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
@@ -32,7 +32,7 @@ func createLedgerOrderWithAccountTypes(name string, accountTypes map[string]*aud
 	}
 }
 
-func readAuditItemsForSequence(t *testing.T, ctx context.Context, store *dal.Store, seq uint64) []*auditpb.AuditItem {
+func readAuditItemsForSequence(t *testing.T, ctx context.Context, store *dal.Store, seq uint64) []*ledgerpb.AuditItem {
 	t.Helper()
 
 	handle, err := store.NewDirectReadHandle()
@@ -61,13 +61,13 @@ func TestCreateLedger_AuditPreservesSubmittedAccountTypeNames(t *testing.T) {
 
 	const ledgerName = "aliasing"
 
-	order := createLedgerOrderWithAccountTypes(ledgerName, map[string]*auditpb.AccountType{
+	order := createLedgerOrderWithAccountTypes(ledgerName, map[string]*ledgerpb.AccountType{
 		"canonical-a": {Name: "", Pattern: "a:{id}"},
 		"canonical-b": {Name: "wrong-embedded-name", Pattern: "b:{id}"},
 	})
 
 	proposal := makeProposal(2, order)
-	proposal.Idempotency = &auditpb.Idempotency{Key: "create-key"}
+	proposal.Idempotency = &ledgerpb.Idempotency{Key: "create-key"}
 
 	r, err := machine.ApplyEntries(ctx, dataStore, makeEntry(t, 1, proposal))
 	require.NoError(t, err)
@@ -110,12 +110,12 @@ func TestCreateLedger_AuditPreservesSubmittedAccountTypeNames(t *testing.T) {
 	// Replaying the identical keyed proposal must replay cleanly, with no
 	// idempotency conflict: the frozen outcome hash re-derived from the accepted
 	// order agrees with what the chain recorded.
-	replayOrder := createLedgerOrderWithAccountTypes(ledgerName, map[string]*auditpb.AccountType{
+	replayOrder := createLedgerOrderWithAccountTypes(ledgerName, map[string]*ledgerpb.AccountType{
 		"canonical-a": {Name: "", Pattern: "a:{id}"},
 		"canonical-b": {Name: "wrong-embedded-name", Pattern: "b:{id}"},
 	})
 	replay := makeProposal(4, replayOrder)
-	replay.Idempotency = &auditpb.Idempotency{Key: "create-key"}
+	replay.Idempotency = &ledgerpb.Idempotency{Key: "create-key"}
 
 	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 3, replay))
 	require.NoError(t, err)

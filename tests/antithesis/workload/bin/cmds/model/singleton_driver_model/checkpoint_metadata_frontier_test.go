@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // Global checkpoint metadata remains observable after the last ledger is
@@ -28,8 +28,8 @@ func TestCheckpointMetadataReadsKeepResponseFrontierWithoutLiveLedgers(t *testin
 				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 				defer cancel()
 				c := NewChecker([]string{"L"}, nil)
-				deleted := c.modelState.Apply(bulkOf(&clusterpb.Request{Type: &clusterpb.Request_DeleteLedger{
-					DeleteLedger: &clusterpb.DeleteLedgerRequest{Name: "L"},
+				deleted := c.modelState.Apply(bulkOf(&ledgerpb.Request{Type: &ledgerpb.Request_DeleteLedger{
+					DeleteLedger: &ledgerpb.DeleteLedgerRequest{Name: "L"},
 				}}))
 				require.True(t, deleted.OK)
 				c.modelState = deleted.State
@@ -63,15 +63,15 @@ func TestCheckpointMetadataReadsKeepResponseFrontierWithoutLiveLedgers(t *testin
 				} else {
 					runCheckpointScheduleRead(ctx, node, c)
 				}
-				wantCalls := []string{clusterpb.ClusterService_GetClusterState_FullMethodName, clusterpb.BucketService_Barrier_FullMethodName}
+				wantCalls := []string{ledgerpb.ClusterService_GetClusterState_FullMethodName, ledgerpb.BucketService_Barrier_FullMethodName}
 				if failFence {
 					require.Zero(t, handler.metadataReads.Load())
 				} else {
-					wantCalls = append(wantCalls, clusterpb.ClusterService_GetClusterState_FullMethodName)
+					wantCalls = append(wantCalls, ledgerpb.ClusterService_GetClusterState_FullMethodName)
 					if kind == "registry" {
-						wantCalls = append(wantCalls, clusterpb.ClusterService_ListQueryCheckpoints_FullMethodName)
+						wantCalls = append(wantCalls, ledgerpb.ClusterService_ListQueryCheckpoints_FullMethodName)
 					} else {
-						wantCalls = append(wantCalls, clusterpb.ClusterService_GetQueryCheckpointSchedule_FullMethodName)
+						wantCalls = append(wantCalls, ledgerpb.ClusterService_GetQueryCheckpointSchedule_FullMethodName)
 					}
 					require.Equal(t, int32(1), handler.metadataReads.Load(), "global metadata must still be read with no live ledgers")
 				}
@@ -93,14 +93,14 @@ type checkpointEmptyMetadataServer struct {
 	checkpointMetadataServer
 }
 
-func (s *checkpointEmptyMetadataServer) ListQueryCheckpoints(context.Context, *clusterpb.ListQueryCheckpointsRequest) (*clusterpb.ListQueryCheckpointsResponse, error) {
+func (s *checkpointEmptyMetadataServer) ListQueryCheckpoints(context.Context, *ledgerpb.ListQueryCheckpointsRequest) (*ledgerpb.ListQueryCheckpointsResponse, error) {
 	s.metadataReads.Add(1)
 
-	return &clusterpb.ListQueryCheckpointsResponse{}, nil
+	return &ledgerpb.ListQueryCheckpointsResponse{}, nil
 }
 
-func (s *checkpointEmptyMetadataServer) GetQueryCheckpointSchedule(context.Context, *clusterpb.GetQueryCheckpointScheduleRequest) (*clusterpb.GetQueryCheckpointScheduleResponse, error) {
+func (s *checkpointEmptyMetadataServer) GetQueryCheckpointSchedule(context.Context, *ledgerpb.GetQueryCheckpointScheduleRequest) (*ledgerpb.GetQueryCheckpointScheduleResponse, error) {
 	s.metadataReads.Add(1)
 
-	return &clusterpb.GetQueryCheckpointScheduleResponse{}, nil
+	return &ledgerpb.GetQueryCheckpointScheduleResponse{}, nil
 }

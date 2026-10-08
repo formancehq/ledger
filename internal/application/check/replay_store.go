@@ -14,7 +14,7 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/holiman/uint256"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	domainreplay "github.com/formancehq/ledger/v3/internal/domain/replay"
@@ -276,7 +276,7 @@ func (s *replayStore) MoveMetadata(oldCanonicalKey, newCanonicalKey []byte) erro
 // typed value is kept intact — a marshaled MetadataValue after the flag byte —
 // so the compare pass can flag a live row whose type diverges from the log
 // (e.g. a bool stored as its string rendering).
-func (s *replayStore) SetMetadata(canonicalKey []byte, value *commonpb.MetadataValue) error {
+func (s *replayStore) SetMetadata(canonicalKey []byte, value *ledgerpb.MetadataValue) error {
 	var metadataKey domain.MetadataKey
 	if err := metadataKey.Unmarshal(canonicalKey); err == nil {
 		delete(s.purgedAccounts, metadataKey.AccountKey)
@@ -446,12 +446,12 @@ func (s *replayStore) AccountHasNonZeroVolume(ledger, account string) (bool, err
 // A 1-byte presence flag distinguishes a nil timestamp from a real
 // Timestamp{Data: 0} (Unix epoch) — the FSM persists the latter unchanged,
 // so collapsing both to 0 would surface as a CheckStore mismatch.
-func (s *replayStore) CreateTransaction(canonicalKey []byte, seq uint64, timestamp *commonpb.Timestamp, metadata map[string]*commonpb.MetadataValue, postings []*commonpb.Posting, revertsTransaction uint64) error {
+func (s *replayStore) CreateTransaction(canonicalKey []byte, seq uint64, timestamp *ledgerpb.Timestamp, metadata map[string]*ledgerpb.MetadataValue, postings []*ledgerpb.Posting, revertsTransaction uint64) error {
 	key := replayKey(replayPrefixTransaction, canonicalKey)
 
 	var metaBytes []byte
 	if len(metadata) > 0 {
-		mm := &commonpb.MetadataMap{Values: metadata}
+		mm := &ledgerpb.MetadataMap{Values: metadata}
 
 		var err error
 
@@ -467,7 +467,7 @@ func (s *replayStore) CreateTransaction(canonicalKey []byte, seq uint64, timesta
 		// framing for us; only Postings is populated. The container fields
 		// (id, timestamp, metadata) stay at zero — the merger only reads
 		// GetPostings().
-		container := &commonpb.Transaction{Postings: postings}
+		container := &ledgerpb.Transaction{Postings: postings}
 
 		var err error
 
@@ -516,12 +516,12 @@ func (s *replayStore) SetTransactionReference(ledgerName, reference string, txID
 // SetDefaultEnforcementMode is a no-op here because the enforcement mode lives
 // on LedgerInfo, not in the attribute merge store. Checker.Check folds the
 // update into its expectedEnforcementModes map and compares it separately.
-func (s *replayStore) SetDefaultEnforcementMode(_ string, _ commonpb.ChartEnforcementMode) error {
+func (s *replayStore) SetDefaultEnforcementMode(_ string, _ ledgerpb.ChartEnforcementMode) error {
 	return nil
 }
 
 // setRevertedBy records that a transaction was reverted via merge (no read).
-func (s *replayStore) SetRevertedBy(canonicalKey []byte, revertTxID uint64, revertedAt *commonpb.Timestamp) error {
+func (s *replayStore) SetRevertedBy(canonicalKey []byte, revertTxID uint64, revertedAt *ledgerpb.Timestamp) error {
 	key := replayKey(replayPrefixTransaction, canonicalKey)
 
 	buf := make([]byte, 1+8+1+8)
@@ -536,7 +536,7 @@ func (s *replayStore) SetRevertedBy(canonicalKey []byte, revertTxID uint64, reve
 }
 
 // SaveTxMetadata records a metadata upsert on a transaction via merge (no read).
-func (s *replayStore) SaveTxMetadata(canonicalKey []byte, metadata map[string]*commonpb.MetadataValue) error {
+func (s *replayStore) SaveTxMetadata(canonicalKey []byte, metadata map[string]*ledgerpb.MetadataValue) error {
 	key := replayKey(replayPrefixTransaction, canonicalKey)
 
 	for metaKey, metaValue := range metadata {
@@ -580,22 +580,22 @@ func (s *replayStore) DeleteTxMetadata(canonicalKey []byte, metaKey string) erro
 // lives on LedgerInfo, not in this attribute merge store. The checker re-derives
 // the expected schema in the Check() replay loop (as it does for index activity)
 // and verifies it against the stored LedgerInfo in compareSchema.
-func (s *replayStore) SetMetadataFieldType(string, commonpb.TargetType, string, commonpb.MetadataType) error {
+func (s *replayStore) SetMetadataFieldType(string, ledgerpb.TargetType, string, ledgerpb.MetadataType) error {
 	return nil
 }
 
-func (s *replayStore) RemoveMetadataFieldType(string, commonpb.TargetType, string) error {
+func (s *replayStore) RemoveMetadataFieldType(string, ledgerpb.TargetType, string) error {
 	return nil
 }
 
 // CreateIndex / DropIndex are no-ops here: the checker folds the index
 // registry itself (expectedIndexes in the Check() replay loop) and verifies
 // it against the stored rows in compareIndexes.
-func (s *replayStore) CreateIndex(string, *commonpb.IndexID, *commonpb.Timestamp) error {
+func (s *replayStore) CreateIndex(string, *ledgerpb.IndexID, *ledgerpb.Timestamp) error {
 	return nil
 }
 
-func (s *replayStore) DropIndex(string, *commonpb.IndexID) error {
+func (s *replayStore) DropIndex(string, *ledgerpb.IndexID) error {
 	return nil
 }
 
@@ -604,7 +604,7 @@ func (s *replayStore) DropIndex(string, *commonpb.IndexID) error {
 // store. The checker maintains the account-type chart via ReplayLedgerLog's
 // rawLedgerTypes and verifies it against the stored LedgerInfo in
 // compareAccountTypes.
-func (s *replayStore) AddAccountType(string, *commonpb.AccountType) error {
+func (s *replayStore) AddAccountType(string, *ledgerpb.AccountType) error {
 	return nil
 }
 
@@ -751,7 +751,7 @@ func (m *txMerger) Finish(includesBase bool) ([]byte, io.Closer, error) {
 			state.RevertsTransaction = binary.BigEndian.Uint64(op[9:17])
 
 			if op[17] == 1 {
-				state.Timestamp = &commonpb.Timestamp{Data: binary.BigEndian.Uint64(op[18:26])}
+				state.Timestamp = &ledgerpb.Timestamp{Data: binary.BigEndian.Uint64(op[18:26])}
 			}
 
 			metaLen := int(binary.BigEndian.Uint32(op[26:30]))
@@ -761,7 +761,7 @@ func (m *txMerger) Finish(includesBase bool) ([]byte, io.Closer, error) {
 			}
 
 			if metaLen > 0 {
-				mm := &commonpb.MetadataMap{}
+				mm := &ledgerpb.MetadataMap{}
 				if err := mm.UnmarshalVT(op[off : off+metaLen]); err != nil {
 					return nil, nil, fmt.Errorf("unmarshaling create metadata: %w", err)
 				}
@@ -777,7 +777,7 @@ func (m *txMerger) Finish(includesBase bool) ([]byte, io.Closer, error) {
 			}
 
 			if postingsLen > 0 {
-				container := &commonpb.Transaction{}
+				container := &ledgerpb.Transaction{}
 				if err := container.UnmarshalVT(op[off : off+postingsLen]); err != nil {
 					return nil, nil, fmt.Errorf("unmarshaling create postings: %w", err)
 				}
@@ -793,7 +793,7 @@ func (m *txMerger) Finish(includesBase bool) ([]byte, io.Closer, error) {
 			state.RevertedByTransaction = binary.BigEndian.Uint64(op[1:9])
 
 			if len(op) >= 18 && op[9] == 1 {
-				state.RevertedAt = &commonpb.Timestamp{Data: binary.BigEndian.Uint64(op[10:18])}
+				state.RevertedAt = &ledgerpb.Timestamp{Data: binary.BigEndian.Uint64(op[10:18])}
 			}
 
 		case txOpSetMeta:
@@ -807,7 +807,7 @@ func (m *txMerger) Finish(includesBase bool) ([]byte, io.Closer, error) {
 			metaKey := string(before)
 			valueBytes := after
 
-			value := &commonpb.MetadataValue{}
+			value := &ledgerpb.MetadataValue{}
 			if len(valueBytes) > 0 {
 				if err := value.UnmarshalVT(valueBytes); err != nil {
 					return nil, nil, fmt.Errorf("unmarshaling set-meta op: %w", err)
@@ -815,7 +815,7 @@ func (m *txMerger) Finish(includesBase bool) ([]byte, io.Closer, error) {
 			}
 
 			if state.Metadata == nil {
-				state.Metadata = make(map[string]*commonpb.MetadataValue)
+				state.Metadata = make(map[string]*ledgerpb.MetadataValue)
 			}
 
 			state.Metadata[metaKey] = value

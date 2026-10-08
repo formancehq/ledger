@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
@@ -17,7 +17,7 @@ import (
 // seedClusterState persists a cluster state whose config matches the desired
 // one, so proposeClusterConfigIfNeeded short-circuits at its equality check
 // and never reaches the proposal path (which needs a live *node.Node).
-func seedClusterState(t *testing.T, store *dal.Store, cfg *commonpb.ClusterConfig) {
+func seedClusterState(t *testing.T, store *dal.Store, cfg *ledgerpb.ClusterConfig) {
 	t.Helper()
 
 	batch := store.OpenWriteSession()
@@ -38,9 +38,9 @@ func TestProposeClusterConfigIfNeeded_DoesNotMutateSharedConfig(t *testing.T) {
 	t.Parallel()
 
 	store := newTestStore(t)
-	seedClusterState(t, store, &commonpb.ClusterConfig{RotationThreshold: 42})
+	seedClusterState(t, store, &ledgerpb.ClusterConfig{RotationThreshold: 42})
 
-	shared := &commonpb.ClusterConfig{}
+	shared := &ledgerpb.ClusterConfig{}
 	cfg := Config{
 		BloomConfig: shared,
 		RaftConfig:  node.NodeConfig{RotationThreshold: 42},
@@ -63,9 +63,9 @@ func TestProposeClusterConfigIfNeeded_ConcurrentCallsDoNotRace(t *testing.T) {
 	t.Parallel()
 
 	store := newTestStore(t)
-	seedClusterState(t, store, &commonpb.ClusterConfig{RotationThreshold: 42})
+	seedClusterState(t, store, &ledgerpb.ClusterConfig{RotationThreshold: 42})
 
-	shared := &commonpb.ClusterConfig{}
+	shared := &ledgerpb.ClusterConfig{}
 	cfg := Config{
 		BloomConfig: shared,
 		RaftConfig:  node.NodeConfig{RotationThreshold: 42},

@@ -7,14 +7,14 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestDatabricksConfigFromProto(t *testing.T) {
 	t.Parallel()
 
-	newBase := func() *commonpb.DatabricksSinkConfig {
-		return &commonpb.DatabricksSinkConfig{
+	newBase := func() *ledgerpb.DatabricksSinkConfig {
+		return &ledgerpb.DatabricksSinkConfig{
 			ServerHostname: "adb-123.azuredatabricks.net",
 			HttpPath:       "/sql/1.0/warehouses/abc",
 			Catalog:        "main",
@@ -28,7 +28,7 @@ func TestDatabricksConfigFromProto(t *testing.T) {
 		t.Parallel()
 
 		pb := newBase()
-		pb.Auth = &commonpb.DatabricksSinkConfig_Token{Token: "dapi123"}
+		pb.Auth = &ledgerpb.DatabricksSinkConfig_Token{Token: "dapi123"}
 
 		cfg, err := databricksConfigFromProto(pb)
 
@@ -44,8 +44,8 @@ func TestDatabricksConfigFromProto(t *testing.T) {
 		t.Parallel()
 
 		pb := newBase()
-		pb.Auth = &commonpb.DatabricksSinkConfig_OauthM2M{
-			OauthM2M: &commonpb.DatabricksOAuthM2M{
+		pb.Auth = &ledgerpb.DatabricksSinkConfig_OauthM2M{
+			OauthM2M: &ledgerpb.DatabricksOAuthM2M{
 				ClientId:     "client-id",
 				ClientSecret: "client-secret",
 			},
@@ -64,7 +64,7 @@ func TestDatabricksConfigFromProto(t *testing.T) {
 
 		pb := newBase()
 		pb.Port = 0
-		pb.Auth = &commonpb.DatabricksSinkConfig_Token{Token: "dapi123"}
+		pb.Auth = &ledgerpb.DatabricksSinkConfig_Token{Token: "dapi123"}
 
 		cfg, err := databricksConfigFromProto(pb)
 
@@ -78,8 +78,8 @@ func TestDatabricksConfigFromProto(t *testing.T) {
 		t.Parallel()
 
 		pb := newBase()
-		pb.Auth = &commonpb.DatabricksSinkConfig_OauthM2M{
-			OauthM2M: &commonpb.DatabricksOAuthM2M{},
+		pb.Auth = &ledgerpb.DatabricksSinkConfig_OauthM2M{
+			OauthM2M: &ledgerpb.DatabricksOAuthM2M{},
 		}
 
 		_, err := databricksConfigFromProto(pb)
@@ -92,7 +92,7 @@ func TestDatabricksConfigFromProto(t *testing.T) {
 		t.Parallel()
 
 		pb := newBase()
-		pb.Auth = &commonpb.DatabricksSinkConfig_OauthM2M{OauthM2M: nil}
+		pb.Auth = &ledgerpb.DatabricksSinkConfig_OauthM2M{OauthM2M: nil}
 
 		_, err := databricksConfigFromProto(pb)
 

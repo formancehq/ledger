@@ -7,7 +7,7 @@ import (
 	"math/big"
 	"testing"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/scenario"
 	"github.com/stretchr/testify/require"
@@ -41,7 +41,7 @@ func TestStressInvariants(t *testing.T) {
 
 	// --- Phase 2: Bulk Deposits (100 Apply calls) ---
 	t.Run("BulkDeposits", func(t *testing.T) {
-		reqs := make([]*servicepb.Request, 0, numAccounts)
+		reqs := make([]*ledgerpb.Request, 0, numAccounts)
 		for i := 1; i <= numAccounts; i++ {
 			reqs = append(reqs, actions.CreateScriptRefTransactionAction(ledger, "deposit", "1.0.0", map[string]string{
 				"account": fmt.Sprintf("trader:%d", i),
@@ -170,7 +170,7 @@ func TestStressInvariants(t *testing.T) {
 	})
 
 	// --- Tail phases: StoreCheck, Backup, Restart+Verify, BackupRestore+Verify ---
-	scenariotest.RunPostTestPhases(t, sc, func(t *testing.T, client servicepb.BucketServiceClient) {
+	scenariotest.RunPostTestPhases(t, sc, func(t *testing.T, client ledgerpb.BucketServiceClient) {
 		scenariotest.CheckDoubleEntryBalance(t, ctx, client, ledger)
 		scenariotest.CheckNoNegativeBalances(t, ctx, client, ledger, []string{"world"})
 		scenariotest.CheckPositiveBalance(t, ctx, client, ledger, "exchange:fees", "USD/2")

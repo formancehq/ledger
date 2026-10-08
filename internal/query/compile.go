@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strconv"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -39,11 +39,11 @@ type compileCtx struct {
 	kb           *dal.KeyBuilder
 	pebbleReader dal.PebbleReader
 	indexReader  dal.PebbleReader
-	target       commonpb.QueryTarget
+	target       ledgerpb.QueryTarget
 	ledgerName   string
-	params       map[string]*commonpb.ParameterValue
-	schema       map[string]*commonpb.MetadataFieldSchema
-	info         *commonpb.LedgerInfo
+	params       map[string]*ledgerpb.ParameterValue
+	schema       map[string]*ledgerpb.MetadataFieldSchema
+	info         *ledgerpb.LedgerInfo
 	// indexRegistry resolves the bucket-scoped Index registry for checkIndexed.
 	// Callers wire a Pebble-backed reader (see indexes.NewPebbleReader); a nil
 	// reader is treated as "no indexes registered" — every index-bound filter
@@ -98,12 +98,12 @@ type metadataCtx struct {
 func Compile(
 	indexReader dal.PebbleReader,
 	kb *dal.KeyBuilder,
-	filter *commonpb.QueryFilter,
-	target commonpb.QueryTarget,
+	filter *ledgerpb.QueryFilter,
+	target ledgerpb.QueryTarget,
 	ledgerName string,
-	params map[string]*commonpb.ParameterValue,
-	schema map[string]*commonpb.MetadataFieldSchema,
-	info *commonpb.LedgerInfo,
+	params map[string]*ledgerpb.ParameterValue,
+	schema map[string]*ledgerpb.MetadataFieldSchema,
+	info *ledgerpb.LedgerInfo,
 	indexRegistry indexes.Lookup,
 	indexVersionFor readstore.IndexVersionResolver,
 	profile *QueryProfile,
@@ -149,7 +149,7 @@ func Compile(
 
 // compile is the internal recursive entry point. The depth counter
 // guards against malicious deeply-nested QueryFilter protos (#341).
-func compile(ctx *compileCtx, filter *commonpb.QueryFilter) (readstore.EntityIterator, error) {
+func compile(ctx *compileCtx, filter *ledgerpb.QueryFilter) (readstore.EntityIterator, error) {
 	if filter == nil {
 		return compileUniverse(ctx)
 	}
@@ -166,7 +166,7 @@ func compile(ctx *compileCtx, filter *commonpb.QueryFilter) (readstore.EntityIte
 	// compiler. This replaces the per-compiler / per-arm target guards that used
 	// to be scattered across this switch and the individual compilers
 	// (reverted → TX, accountHasAsset → ACCOUNTS, builtin uint → TX, log
-	// fields → LOGS). The verdict comes from commonpb.targetConditionValidity,
+	// fields → LOGS). The verdict comes from ledgerpb.targetConditionValidity,
 	// which the REST decode layer also consults, so the two layers cannot drift.
 	// A ConditionKindUnknown (nil / unmapped arm) is never valid and is caught
 	// here loudly (invariant #7: never silently admit or drop a condition).
@@ -175,29 +175,29 @@ func compile(ctx *compileCtx, filter *commonpb.QueryFilter) (readstore.EntityIte
 	}
 
 	switch f := filter.GetFilter().(type) {
-	case *commonpb.QueryFilter_Field:
+	case *ledgerpb.QueryFilter_Field:
 		return compileFieldCondition(ctx, f.Field)
-	case *commonpb.QueryFilter_Address:
+	case *ledgerpb.QueryFilter_Address:
 		return compileAddressMatch(ctx, f.Address)
-	case *commonpb.QueryFilter_And:
+	case *ledgerpb.QueryFilter_And:
 		return compileAnd(ctx, f.And)
-	case *commonpb.QueryFilter_Or:
+	case *ledgerpb.QueryFilter_Or:
 		return compileOr(ctx, f.Or)
-	case *commonpb.QueryFilter_Not:
+	case *ledgerpb.QueryFilter_Not:
 		return compileNot(ctx, f.Not)
-	case *commonpb.QueryFilter_Reference:
+	case *ledgerpb.QueryFilter_Reference:
 		return compileReferenceCondition(ctx, f.Reference)
-	case *commonpb.QueryFilter_Reverted:
+	case *ledgerpb.QueryFilter_Reverted:
 		return compileRevertedCondition(ctx, f.Reverted)
-	case *commonpb.QueryFilter_AccountHasAsset:
+	case *ledgerpb.QueryFilter_AccountHasAsset:
 		return compileAccountHasAssetCondition(ctx, f.AccountHasAsset)
-	case *commonpb.QueryFilter_BuiltinUint:
+	case *ledgerpb.QueryFilter_BuiltinUint:
 		return compileBuiltinUintCondition(ctx, f.BuiltinUint)
-	case *commonpb.QueryFilter_LogBuiltinUint:
+	case *ledgerpb.QueryFilter_LogBuiltinUint:
 		return compileLogBuiltinUintCondition(ctx, f.LogBuiltinUint)
-	case *commonpb.QueryFilter_LogId:
+	case *ledgerpb.QueryFilter_LogId:
 		return compileLogIdCondition(ctx, f.LogId.GetCond())
-	case *commonpb.QueryFilter_Ledger:
+	case *ledgerpb.QueryFilter_Ledger:
 		return compileLedgerCondition(ctx, f.Ledger)
 	default:
 		return nil, domain.NewFilterCompilationError("unknown filter type: %T", filter.GetFilter())
@@ -205,12 +205,12 @@ func compile(ctx *compileCtx, filter *commonpb.QueryFilter) (readstore.EntityIte
 }
 
 // rejectInvalidCondition validates a single QueryFilter node against the
-// authoritative per-target validity table (commonpb.targetConditionValidity),
+// authoritative per-target validity table (ledgerpb.targetConditionValidity),
 // returning a uniform, actionable error when the condition is not valid on the
 // target. Combinators are always valid; recursion into their children is handled
 // by the compile* combinators, each of which re-enters compile() and thus
 // re-runs this check per child.
-func rejectInvalidCondition(target commonpb.QueryTarget, filter *commonpb.QueryFilter) error {
+func rejectInvalidCondition(target ledgerpb.QueryTarget, filter *ledgerpb.QueryFilter) error {
 	kind := publicpolicy.ConditionKindOf(filter)
 	if publicpolicy.ConditionValidForTarget(target, kind) {
 		return nil
@@ -226,7 +226,7 @@ func rejectInvalidCondition(target commonpb.QueryTarget, filter *commonpb.QueryF
 // For logs, reads from the Pebble read index.
 func compileUniverse(ctx *compileCtx) (readstore.EntityIterator, error) {
 	switch ctx.target {
-	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
 		iter, err := readstore.NewPebbleAccountIterator(ctx.pebbleReader, ctx.ledgerName)
 		if err != nil {
 			return nil, fmt.Errorf("creating account iterator: %w", err)
@@ -238,7 +238,7 @@ func compileUniverse(ctx *compileCtx) (readstore.EntityIterator, error) {
 			Prefix: "pebble:attributes",
 		}), nil
 
-	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
 		iter, err := readstore.NewPebbleTxIterator(ctx.pebbleReader, ctx.ledgerName)
 		if err != nil {
 			return nil, fmt.Errorf("creating tx iterator: %w", err)
@@ -250,7 +250,7 @@ func compileUniverse(ctx *compileCtx) (readstore.EntityIterator, error) {
 			Prefix: "pebble:txupdate",
 		}), nil
 
-	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_LOGS:
 		iter, err := readstore.NewLedgerLogIterator(ctx.indexReader, ctx.kb, ctx.ledgerName)
 		if err != nil {
 			return nil, fmt.Errorf("creating log iterator: %w", err)
@@ -280,7 +280,7 @@ func compileUniverse(ctx *compileCtx) (readstore.EntityIterator, error) {
 // unsatisfiable filter, not a silent "all logs" — see
 // prepared_query_filter.go / EN-1503). LedgerCondition is only valid on LOGS
 // per the validity table, so no cross-target concern arises.
-func compileLedgerCondition(ctx *compileCtx, lc *commonpb.LedgerCondition) (readstore.EntityIterator, error) {
+func compileLedgerCondition(ctx *compileCtx, lc *ledgerpb.LedgerCondition) (readstore.EntityIterator, error) {
 	if lc.GetCond() == nil {
 		return nil, domain.NewFilterCompilationError("ledger condition has no value")
 	}
@@ -299,7 +299,7 @@ func compileLedgerCondition(ctx *compileCtx, lc *commonpb.LedgerCondition) (read
 }
 
 // compileAnd compiles an AND filter into a merge-intersect iterator.
-func compileAnd(ctx *compileCtx, and *commonpb.AndFilter) (readstore.EntityIterator, error) {
+func compileAnd(ctx *compileCtx, and *ledgerpb.AndFilter) (readstore.EntityIterator, error) {
 	// Coalesce multiple range predicates on the same metadata field so that
 	// `a >= X AND a < Y` compiles to a single bounded IntCondition, not two
 	// materialized half-ranges. See mergeFieldRanges for the rules.
@@ -349,7 +349,7 @@ func compileAnd(ctx *compileCtx, and *commonpb.AndFilter) (readstore.EntityItera
 }
 
 // compileOr compiles an OR filter into a merge-union iterator.
-func compileOr(ctx *compileCtx, or *commonpb.OrFilter) (readstore.EntityIterator, error) {
+func compileOr(ctx *compileCtx, or *ledgerpb.OrFilter) (readstore.EntityIterator, error) {
 	children := make([]readstore.EntityIterator, 0, len(or.GetFilters()))
 
 	var childStats []*IteratorStats
@@ -388,7 +388,7 @@ func compileOr(ctx *compileCtx, or *commonpb.OrFilter) (readstore.EntityIterator
 }
 
 // compileNot compiles a NOT filter into a merge-difference iterator.
-func compileNot(ctx *compileCtx, not *commonpb.NotFilter) (readstore.EntityIterator, error) {
+func compileNot(ctx *compileCtx, not *ledgerpb.NotFilter) (readstore.EntityIterator, error) {
 	universe, err := compileUniverse(ctx)
 	if err != nil {
 		return nil, err
@@ -424,7 +424,7 @@ func compileNot(ctx *compileCtx, not *commonpb.NotFilter) (readstore.EntityItera
 // per-ledger reversion bitset. No index is required — the bitset is always
 // maintained by the FSM and covers all history. value=true yields reverted
 // originals; value=false yields the universe minus the reverted set.
-func compileRevertedCondition(ctx *compileCtx, cond *commonpb.RevertedCondition) (readstore.EntityIterator, error) {
+func compileRevertedCondition(ctx *compileCtx, cond *ledgerpb.RevertedCondition) (readstore.EntityIterator, error) {
 	// Target validity (TRANSACTIONS only) is enforced at the dispatch site by
 	// rejectInvalidCondition against the single source of truth; no local guard.
 	bs, err := ReadReversionBitset(ctx.pebbleReader, ctx.ledgerName)
@@ -476,7 +476,7 @@ func compileRevertedCondition(ctx *compileCtx, cond *commonpb.RevertedCondition)
 // those rules lands on the ascending and descending paths at once (EN-1966).
 // It returns the possibly-coerced condition together with the metadata
 // context the type-specific compilers consume.
-func resolveFieldMetadataCtx(ctx *compileCtx, fc *commonpb.FieldCondition) (*commonpb.FieldCondition, *metadataCtx, error) {
+func resolveFieldMetadataCtx(ctx *compileCtx, fc *ledgerpb.FieldCondition) (*ledgerpb.FieldCondition, *metadataCtx, error) {
 	if fc.GetField() == nil {
 		return nil, nil, domain.NewFilterCompilationError("field condition has no field reference")
 	}
@@ -522,7 +522,7 @@ func resolveFieldMetadataCtx(ctx *compileCtx, fc *commonpb.FieldCondition) (*com
 		// declared-type keyspace.
 		return nil, nil, &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)}}
 	default:
-		fieldSchema = &commonpb.MetadataFieldSchema{Type: resolved.Type}
+		fieldSchema = &ledgerpb.MetadataFieldSchema{Type: resolved.Type}
 	}
 
 	fc, err = validateAndCoerceCondition(fc, fieldSchema)
@@ -541,22 +541,22 @@ func resolveFieldMetadataCtx(ctx *compileCtx, fc *commonpb.FieldCondition) (*com
 }
 
 // compileFieldCondition compiles a FieldCondition (metadata filter) into a leaf iterator.
-func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readstore.EntityIterator, error) {
+func compileFieldCondition(ctx *compileCtx, fc *ledgerpb.FieldCondition) (readstore.EntityIterator, error) {
 	fc, mc, err := resolveFieldMetadataCtx(ctx, fc)
 	if err != nil {
 		return nil, err
 	}
 
 	switch cond := fc.GetCondition().(type) {
-	case *commonpb.FieldCondition_StringCond:
+	case *ledgerpb.FieldCondition_StringCond:
 		return compileStringCondition(ctx, mc, cond.StringCond)
-	case *commonpb.FieldCondition_IntCond:
+	case *ledgerpb.FieldCondition_IntCond:
 		return compileIntCondition(ctx, mc, cond.IntCond)
-	case *commonpb.FieldCondition_UintCond:
+	case *ledgerpb.FieldCondition_UintCond:
 		return compileUintCondition(ctx, mc, cond.UintCond)
-	case *commonpb.FieldCondition_BoolCond:
+	case *ledgerpb.FieldCondition_BoolCond:
 		return compileBoolCondition(ctx, mc, cond.BoolCond)
-	case *commonpb.FieldCondition_ExistsCond:
+	case *ledgerpb.FieldCondition_ExistsCond:
 		return compileExistsCondition(ctx, mc, cond.ExistsCond)
 	default:
 		return nil, domain.NewFilterCompilationError("unknown condition type: %T", fc.GetCondition())
@@ -565,7 +565,7 @@ func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readst
 
 // compileStringCondition -- point scan on exact string value.
 // Entities are naturally sorted (same value prefix -> entity suffix determines order).
-func compileStringCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.StringCondition) (readstore.EntityIterator, error) {
+func compileStringCondition(ctx *compileCtx, mc *metadataCtx, cond *ledgerpb.StringCondition) (readstore.EntityIterator, error) {
 	value, err := resolveString(cond, ctx.params)
 	if err != nil {
 		return nil, err
@@ -631,7 +631,7 @@ func applyMaxInclusive(v int64) (int64, bool) {
 
 // resolveIntBounds resolves an IntCondition's bounds from hardcoded values or parameters,
 // applying exclusivity adjustments. The returned bounds define a half-open range [min, max).
-func resolveIntBounds(cond *commonpb.IntCondition, params map[string]*commonpb.ParameterValue) (resolvedIntBounds, error) {
+func resolveIntBounds(cond *ledgerpb.IntCondition, params map[string]*ledgerpb.ParameterValue) (resolvedIntBounds, error) {
 	var b resolvedIntBounds
 
 	if cond.GetParamMin() != "" {
@@ -711,7 +711,7 @@ func resolveIntBounds(cond *commonpb.IntCondition, params map[string]*commonpb.P
 // For equality conditions (single value), uses streaming PrefixIterator.
 // For multi-value ranges, materializes + sorts because entities are not
 // sorted by entity ID across different values.
-func compileIntCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.IntCondition) (readstore.EntityIterator, error) {
+func compileIntCondition(ctx *compileCtx, mc *metadataCtx, cond *ledgerpb.IntCondition) (readstore.EntityIterator, error) {
 	bounds, err := resolveIntBounds(cond, ctx.params)
 	if err != nil {
 		return nil, err
@@ -800,7 +800,7 @@ func applyMaxInclusiveUint(v uint64) (uint64, bool) {
 
 // resolveUintBounds resolves a UintCondition's bounds from hardcoded values or parameters,
 // applying exclusivity adjustments. The returned bounds define a half-open range [min, max).
-func resolveUintBounds(cond *commonpb.UintCondition, params map[string]*commonpb.ParameterValue) (resolvedUintBounds, error) {
+func resolveUintBounds(cond *ledgerpb.UintCondition, params map[string]*ledgerpb.ParameterValue) (resolvedUintBounds, error) {
 	var b resolvedUintBounds
 
 	if cond.GetParamMin() != "" {
@@ -875,7 +875,7 @@ func resolveUintBounds(cond *commonpb.UintCondition, params map[string]*commonpb
 // compileUintCondition -- range scan on encoded uint64 values.
 // For equality conditions, uses streaming PrefixIterator (same optimization as int).
 // For multi-value ranges, materializes + sorts.
-func compileUintCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.UintCondition) (readstore.EntityIterator, error) {
+func compileUintCondition(ctx *compileCtx, mc *metadataCtx, cond *ledgerpb.UintCondition) (readstore.EntityIterator, error) {
 	bounds, err := resolveUintBounds(cond, ctx.params)
 	if err != nil {
 		return nil, err
@@ -923,7 +923,7 @@ func compileUintCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.UintC
 }
 
 // compileBoolCondition -- point scan on exact bool value.
-func compileBoolCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.BoolCondition) (readstore.EntityIterator, error) {
+func compileBoolCondition(ctx *compileCtx, mc *metadataCtx, cond *ledgerpb.BoolCondition) (readstore.EntityIterator, error) {
 	value, err := resolveBool(cond, ctx.params)
 	if err != nil {
 		return nil, err
@@ -945,7 +945,7 @@ func compileBoolCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.BoolC
 
 // compileExistsCondition -- streaming scan on the entity-ordered existence index (eidx).
 // Entities are stored in entity ID order, so no materialization or sorting is needed.
-func compileExistsCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.ExistsCondition) (readstore.EntityIterator, error) {
+func compileExistsCondition(ctx *compileCtx, mc *metadataCtx, cond *ledgerpb.ExistsCondition) (readstore.EntityIterator, error) {
 	nonNullPrefix := readstore.EntityExistsNonNullPrefixV(ctx.kb, ctx.ledgerName, mc.namespace, mc.metaKey, mc.version)
 	if !cond.GetIncludeNull() {
 		// Only non-null entries
@@ -1009,11 +1009,11 @@ func compileExistsCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.Exi
 }
 
 // addressRolePrefix returns the Pebble key prefix byte for the given address role.
-func addressRolePrefix(role commonpb.AddressRole) byte {
+func addressRolePrefix(role ledgerpb.AddressRole) byte {
 	switch role {
-	case commonpb.AddressRole_ADDRESS_ROLE_SOURCE:
+	case ledgerpb.AddressRole_ADDRESS_ROLE_SOURCE:
 		return readstore.PrefixSourceAccountTx
-	case commonpb.AddressRole_ADDRESS_ROLE_DESTINATION:
+	case ledgerpb.AddressRole_ADDRESS_ROLE_DESTINATION:
 		return readstore.PrefixDestinationAccountTx
 	default:
 		return readstore.PrefixAccountTx
@@ -1021,11 +1021,11 @@ func addressRolePrefix(role commonpb.AddressRole) byte {
 }
 
 // addressRoleBucketLabel returns the display label for the given address role bucket.
-func addressRoleBucketLabel(role commonpb.AddressRole) string {
+func addressRoleBucketLabel(role ledgerpb.AddressRole) string {
 	switch role {
-	case commonpb.AddressRole_ADDRESS_ROLE_SOURCE:
+	case ledgerpb.AddressRole_ADDRESS_ROLE_SOURCE:
 		return "satx"
-	case commonpb.AddressRole_ADDRESS_ROLE_DESTINATION:
+	case ledgerpb.AddressRole_ADDRESS_ROLE_DESTINATION:
 		return "datx"
 	default:
 		return "atxm"
@@ -1033,12 +1033,12 @@ func addressRoleBucketLabel(role commonpb.AddressRole) string {
 }
 
 // compileAddressMatch compiles an address filter.
-func compileAddressMatch(ctx *compileCtx, am *commonpb.AddressMatch) (readstore.EntityIterator, error) {
+func compileAddressMatch(ctx *compileCtx, am *ledgerpb.AddressMatch) (readstore.EntityIterator, error) {
 	role := am.GetRole()
 
 	// Address filtering on TRANSACTIONS target requires the account-tx index.
 	// For ACCOUNTS target, address matching uses the existence index (always on).
-	if ctx.target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
+	if ctx.target == ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
 		id, label := txAddressIndexID(role)
 		if _, err := requireIndexReady(ctx, id, label); err != nil {
 			return nil, err
@@ -1046,18 +1046,18 @@ func compileAddressMatch(ctx *compileCtx, am *commonpb.AddressMatch) (readstore.
 	}
 
 	switch m := am.GetMatch().(type) {
-	case *commonpb.AddressMatch_HardcodedPrefix:
+	case *ledgerpb.AddressMatch_HardcodedPrefix:
 		return compileAddressPrefix(ctx, m.HardcodedPrefix, role)
-	case *commonpb.AddressMatch_HardcodedExact:
+	case *ledgerpb.AddressMatch_HardcodedExact:
 		return compileAddressExact(ctx, m.HardcodedExact, role)
-	case *commonpb.AddressMatch_ParamPrefix:
+	case *ledgerpb.AddressMatch_ParamPrefix:
 		value, err := extractString(ctx.params, m.ParamPrefix)
 		if err != nil {
 			return nil, err
 		}
 
 		return compileAddressPrefix(ctx, value, role)
-	case *commonpb.AddressMatch_ParamExact:
+	case *ledgerpb.AddressMatch_ParamExact:
 		value, err := extractString(ctx.params, m.ParamExact)
 		if err != nil {
 			return nil, err
@@ -1069,8 +1069,8 @@ func compileAddressMatch(ctx *compileCtx, am *commonpb.AddressMatch) (readstore.
 	}
 }
 
-func compileAddressPrefix(ctx *compileCtx, addrPrefix string, role commonpb.AddressRole) (readstore.EntityIterator, error) {
-	if ctx.target == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
+func compileAddressPrefix(ctx *compileCtx, addrPrefix string, role ledgerpb.AddressRole) (readstore.EntityIterator, error) {
+	if ctx.target == ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
 		accountIter, err := readstore.NewPebbleAccountPrefixIterator(ctx.pebbleReader, ctx.ledgerName, addrPrefix)
 		if err != nil {
 			return nil, fmt.Errorf("creating account prefix iterator: %w", err)
@@ -1104,8 +1104,8 @@ func compileAddressPrefix(ctx *compileCtx, addrPrefix string, role commonpb.Addr
 	}), nil
 }
 
-func compileAddressExact(ctx *compileCtx, exactAddr string, role commonpb.AddressRole) (readstore.EntityIterator, error) {
-	if ctx.target == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
+func compileAddressExact(ctx *compileCtx, exactAddr string, role ledgerpb.AddressRole) (readstore.EntityIterator, error) {
+	if ctx.target == ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
 		exists, err := pebbleAccountExists(ctx.pebbleReader, ctx.ledgerName, exactAddr)
 		if err != nil {
 			return nil, fmt.Errorf("checking account existence: %w", err)
@@ -1146,13 +1146,13 @@ func compileAddressExact(ctx *compileCtx, exactAddr string, role commonpb.Addres
 
 // compileReferenceCondition compiles a ReferenceCondition into a prefix scan on the transaction reference index.
 // Requires the reference builtin index to be READY.
-func compileReferenceCondition(ctx *compileCtx, rc *commonpb.ReferenceCondition) (readstore.EntityIterator, error) {
+func compileReferenceCondition(ctx *compileCtx, rc *ledgerpb.ReferenceCondition) (readstore.EntityIterator, error) {
 	if rc.GetCond() == nil {
 		return nil, domain.NewFilterCompilationError("reference condition has no value")
 	}
 
 	if _, err := requireIndexReady(ctx,
-		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
+		indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
 		"reference"); err != nil {
 		return nil, err
 	}
@@ -1181,11 +1181,11 @@ func compileReferenceCondition(ctx *compileCtx, rc *commonpb.ReferenceCondition)
 // (the trailing key segment) for every account that has touched the exact
 // (assetBase, precision) cell. Valid only on the ACCOUNTS target. Requires the
 // account asset builtin index to be READY — there is no on-scan fallback.
-func compileAccountHasAssetCondition(ctx *compileCtx, c *commonpb.AccountHasAssetCondition) (readstore.EntityIterator, error) {
+func compileAccountHasAssetCondition(ctx *compileCtx, c *ledgerpb.AccountHasAssetCondition) (readstore.EntityIterator, error) {
 	// Target validity (ACCOUNTS only) is enforced at the dispatch site by
 	// rejectInvalidCondition against the single source of truth; no local guard.
 	if _, err := requireIndexReady(ctx,
-		indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
+		indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
 		"has asset"); err != nil {
 		return nil, err
 	}
@@ -1219,7 +1219,7 @@ func compileAccountHasAssetCondition(ctx *compileCtx, c *commonpb.AccountHasAsse
 }
 
 // compileBuiltinUintCondition dispatches to the appropriate builtin uint condition compiler.
-func compileBuiltinUintCondition(ctx *compileCtx, cond *commonpb.BuiltinUintCondition) (readstore.EntityIterator, error) {
+func compileBuiltinUintCondition(ctx *compileCtx, cond *ledgerpb.BuiltinUintCondition) (readstore.EntityIterator, error) {
 	if cond.GetCond() == nil {
 		return nil, domain.NewFilterCompilationError("builtin uint condition has no value")
 	}
@@ -1229,7 +1229,7 @@ func compileBuiltinUintCondition(ctx *compileCtx, cond *commonpb.BuiltinUintCond
 	// builtins (id/timestamp/insertedAt/revertedAt) read transaction indexes and
 	// yield transaction-keyed entities, so they are meaningful only on the
 	// transactions target; no local guard.
-	if cond.GetField() == commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID {
+	if cond.GetField() == ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID {
 		return compileTxIDCondition(ctx, cond.GetCond())
 	}
 
@@ -1243,7 +1243,7 @@ func compileBuiltinUintCondition(ctx *compileCtx, cond *commonpb.BuiltinUintCond
 
 // compileTxIDCondition filters transactions by ID using Pebble transaction updates.
 // No index is required -- the Pebble history zone is always present and sorted by txID.
-func compileTxIDCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readstore.EntityIterator, error) {
+func compileTxIDCondition(ctx *compileCtx, cond *ledgerpb.UintCondition) (readstore.EntityIterator, error) {
 	bounds, err := resolveUintBounds(cond, ctx.params)
 	if err != nil {
 		return nil, err
@@ -1319,7 +1319,7 @@ type timestampArm struct {
 
 // resolveTxTimestampArm gates the index and resolves the arm for a
 // timestamp-keyed transaction builtin.
-func resolveTxTimestampArm(ctx *compileCtx, field commonpb.TransactionBuiltinIndex) (timestampArm, error) {
+func resolveTxTimestampArm(ctx *compileCtx, field ledgerpb.TransactionBuiltinIndex) (timestampArm, error) {
 	var (
 		label       string
 		buildPrefix func() []byte
@@ -1328,15 +1328,15 @@ func resolveTxTimestampArm(ctx *compileCtx, field commonpb.TransactionBuiltinInd
 	)
 
 	switch field {
-	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
+	case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
 		label, bucket = "timestamp", "tstmp"
 		buildPrefix = func() []byte { return readstore.TransactionTimestampRangePrefix(ctx.kb, ctx.ledgerName) }
 
-	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
+	case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
 		label, bucket = "inserted_at", "txiat"
 		buildPrefix = func() []byte { return readstore.TransactionInsertedAtRangePrefix(ctx.kb, ctx.ledgerName) }
 
-	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
+	case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
 		label, bucket = "reverted_at", "rvat"
 		buildPrefix = func() []byte { return readstore.TransactionRevertedAtRangePrefix(ctx.kb, ctx.ledgerName) }
 		// reverted_at is the one transaction builtin written AFTER the
@@ -1365,7 +1365,7 @@ func resolveTxTimestampArm(ctx *compileCtx, field commonpb.TransactionBuiltinInd
 func resolveLogDateArm(ctx *compileCtx) (timestampArm, error) {
 	// Gate before building the prefix — see resolveTxTimestampArm.
 	if _, err := requireIndexReady(ctx,
-		indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
+		indexes.LogBuiltinID(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
 		"log date"); err != nil {
 		return timestampArm{}, err
 	}
@@ -1384,7 +1384,7 @@ func resolveLogDateArm(ctx *compileCtx) (timestampArm, error) {
 // horizon trim already excludes members past the main handle.
 func compileTimestampRangeCondition(
 	ctx *compileCtx,
-	cond *commonpb.UintCondition,
+	cond *ledgerpb.UintCondition,
 	ledgerPrefix []byte,
 	bucketLabel string,
 	stampPin uint64,
@@ -1419,12 +1419,12 @@ func compileTimestampRangeCondition(
 }
 
 // compileLogBuiltinUintCondition dispatches to the appropriate log builtin uint condition compiler.
-func compileLogBuiltinUintCondition(ctx *compileCtx, cond *commonpb.LogBuiltinUintCondition) (readstore.EntityIterator, error) {
+func compileLogBuiltinUintCondition(ctx *compileCtx, cond *ledgerpb.LogBuiltinUintCondition) (readstore.EntityIterator, error) {
 	if cond.GetCond() == nil {
 		return nil, domain.NewFilterCompilationError("log builtin uint condition has no value")
 	}
 
-	if cond.GetField() != commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE {
+	if cond.GetField() != ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE {
 		return nil, domain.NewFilterCompilationError("unsupported log builtin uint field: %v", cond.GetField())
 	}
 
@@ -1437,7 +1437,7 @@ func compileLogBuiltinUintCondition(ctx *compileCtx, cond *commonpb.LogBuiltinUi
 }
 
 // compileLogIdCondition filters logs by ledger-local log ID using the ledger logs index.
-func compileLogIdCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readstore.EntityIterator, error) {
+func compileLogIdCondition(ctx *compileCtx, cond *ledgerpb.UintCondition) (readstore.EntityIterator, error) {
 	if cond == nil {
 		return compileUniverse(ctx)
 	}
@@ -1517,7 +1517,7 @@ func compileLogIdCondition(ctx *compileCtx, cond *commonpb.UintCondition) (reads
 // Per-replica readiness is signalled by IndexVersionState (EN-1323) —
 // see requireIndexReady for the combined declaration + local-readiness
 // gate every indexed read should use.
-func checkIndexed(ctx *compileCtx, id *commonpb.IndexID, label string) error {
+func checkIndexed(ctx *compileCtx, id *ledgerpb.IndexID, label string) error {
 	idx, err := indexes.Find(ctx.indexRegistry, ctx.info.GetName(), id)
 	if err != nil {
 		return fmt.Errorf("looking up index %q: %w", label, err)
@@ -1553,7 +1553,7 @@ func checkIndexed(ctx *compileCtx, id *commonpb.IndexID, label string) error {
 // tracker (readstore.Store.PinnedVersionResolver), which serves the
 // version a promotion replaced while that promotion is committed but not
 // yet flushed, and refuses when nothing is retained.
-func requireIndexReady(ctx *compileCtx, id *commonpb.IndexID, label string) (readstore.ResolvedIndexVersion, error) {
+func requireIndexReady(ctx *compileCtx, id *ledgerpb.IndexID, label string) (readstore.ResolvedIndexVersion, error) {
 	if err := checkIndexed(ctx, id, label); err != nil {
 		return readstore.ResolvedIndexVersion{}, err
 	}
@@ -1592,14 +1592,14 @@ func requireIndexReady(ctx *compileCtx, id *commonpb.IndexID, label string) (rea
 // TARGET_TYPE_LEDGER for query targets without a corresponding metadata
 // namespace; callers must not invoke this helper outside the metadata
 // condition path.
-func targetTypeForQueryTarget(t commonpb.QueryTarget) commonpb.TargetType {
+func targetTypeForQueryTarget(t ledgerpb.QueryTarget) ledgerpb.TargetType {
 	switch t {
-	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
-		return commonpb.TargetType_TARGET_TYPE_ACCOUNT
-	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
-		return commonpb.TargetType_TARGET_TYPE_TRANSACTION
+	case ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
+		return ledgerpb.TargetType_TARGET_TYPE_ACCOUNT
+	case ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
+		return ledgerpb.TargetType_TARGET_TYPE_TRANSACTION
 	default:
-		return commonpb.TargetType_TARGET_TYPE_LEDGER
+		return ledgerpb.TargetType_TARGET_TYPE_LEDGER
 	}
 }
 
@@ -1709,11 +1709,11 @@ func trackIterator(iter readstore.EntityIterator, profile *QueryProfile, stats *
 // the given target. Kept as an explicit allow-list (not "!= 0") so a newly
 // added QueryTarget enum value is rejected until its iteration + enrichment
 // paths are wired, rather than silently falling through to an empty result.
-func isSupportedTarget(target commonpb.QueryTarget) bool {
+func isSupportedTarget(target ledgerpb.QueryTarget) bool {
 	switch target {
-	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-		commonpb.QueryTarget_QUERY_TARGET_LOGS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		ledgerpb.QueryTarget_QUERY_TARGET_LOGS:
 		return true
 	default:
 		return false
@@ -1723,54 +1723,54 @@ func isSupportedTarget(target commonpb.QueryTarget) bool {
 // targetHumanName returns a human-readable name for a query target. It
 // delegates to publicpolicy.TargetHumanName so the compile layer and the shared
 // validity table produce identical target labels.
-func targetHumanName(target commonpb.QueryTarget) string {
+func targetHumanName(target ledgerpb.QueryTarget) string {
 	return publicpolicy.TargetHumanName(target)
 }
 
 // targetNamespace returns the read-index namespace for a query target.
-func targetNamespace(target commonpb.QueryTarget) string {
+func targetNamespace(target ledgerpb.QueryTarget) string {
 	switch target {
-	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
 		return readstore.NamespaceTransaction
-	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_LOGS:
 		return readstore.NamespaceLog
 	default:
 		return readstore.NamespaceAccount
 	}
 }
 
-func resolveString(cond *commonpb.StringCondition, params map[string]*commonpb.ParameterValue) (string, error) {
+func resolveString(cond *ledgerpb.StringCondition, params map[string]*ledgerpb.ParameterValue) (string, error) {
 	switch v := cond.GetValue().(type) {
-	case *commonpb.StringCondition_Hardcoded:
+	case *ledgerpb.StringCondition_Hardcoded:
 		return v.Hardcoded, nil
-	case *commonpb.StringCondition_Param:
+	case *ledgerpb.StringCondition_Param:
 		return extractString(params, v.Param)
 	default:
 		return "", domain.NewFilterCompilationError("string condition has no value")
 	}
 }
 
-func resolveBool(cond *commonpb.BoolCondition, params map[string]*commonpb.ParameterValue) (bool, error) {
+func resolveBool(cond *ledgerpb.BoolCondition, params map[string]*ledgerpb.ParameterValue) (bool, error) {
 	switch v := cond.GetValue().(type) {
-	case *commonpb.BoolCondition_Hardcoded:
+	case *ledgerpb.BoolCondition_Hardcoded:
 		return v.Hardcoded, nil
-	case *commonpb.BoolCondition_Param:
+	case *ledgerpb.BoolCondition_Param:
 		return extractBool(params, v.Param)
 	default:
 		return false, domain.NewFilterCompilationError("bool condition has no value")
 	}
 }
 
-func resolveParamInt64(params map[string]*commonpb.ParameterValue, name string) (int64, error) {
+func resolveParamInt64(params map[string]*ledgerpb.ParameterValue, name string) (int64, error) {
 	return extractInt64(params, name)
 }
 
-func resolveParamUint64(params map[string]*commonpb.ParameterValue, name string) (uint64, error) {
+func resolveParamUint64(params map[string]*ledgerpb.ParameterValue, name string) (uint64, error) {
 	return extractUint64(params, name)
 }
 
 // extractString extracts a string parameter, returning a clear error on type mismatch or nil value.
-func extractString(params map[string]*commonpb.ParameterValue, name string) (string, error) {
+func extractString(params map[string]*ledgerpb.ParameterValue, name string) (string, error) {
 	val, ok := params[name]
 	if !ok {
 		return "", domain.NewFilterCompilationError("parameter %q not provided", name)
@@ -1781,7 +1781,7 @@ func extractString(params map[string]*commonpb.ParameterValue, name string) (str
 	}
 
 	switch v := val.GetValue().(type) {
-	case *commonpb.ParameterValue_StringValue:
+	case *ledgerpb.ParameterValue_StringValue:
 		return v.StringValue, nil
 	default:
 		return "", domain.NewFilterCompilationError("parameter %q: expected string value, got %s", name, paramTypeName(val))
@@ -1792,7 +1792,7 @@ func extractString(params map[string]*commonpb.ParameterValue, name string) (str
 // It also accepts string values that strconv.ParseBool recognises ("true",
 // "false", "1", "0", etc.), so a client that doesn't know the target type
 // can pass through the safe default of sending strings — see #249.
-func extractBool(params map[string]*commonpb.ParameterValue, name string) (bool, error) {
+func extractBool(params map[string]*ledgerpb.ParameterValue, name string) (bool, error) {
 	val, ok := params[name]
 	if !ok {
 		return false, domain.NewFilterCompilationError("parameter %q not provided", name)
@@ -1803,9 +1803,9 @@ func extractBool(params map[string]*commonpb.ParameterValue, name string) (bool,
 	}
 
 	switch v := val.GetValue().(type) {
-	case *commonpb.ParameterValue_BoolValue:
+	case *ledgerpb.ParameterValue_BoolValue:
 		return v.BoolValue, nil
-	case *commonpb.ParameterValue_StringValue:
+	case *ledgerpb.ParameterValue_StringValue:
 		b, err := strconv.ParseBool(v.StringValue)
 		if err != nil {
 			return false, domain.NewFilterCompilationError("parameter %q: cannot parse %q as bool: %v", name, v.StringValue, err)
@@ -1821,7 +1821,7 @@ func extractBool(params map[string]*commonpb.ParameterValue, name string) (bool,
 // that fit in int64, and string values that parse cleanly as int64 (so a
 // client that doesn't know the target type can pass through the safe
 // default of sending strings — see #249).
-func extractInt64(params map[string]*commonpb.ParameterValue, name string) (int64, error) {
+func extractInt64(params map[string]*ledgerpb.ParameterValue, name string) (int64, error) {
 	val, ok := params[name]
 	if !ok {
 		return 0, domain.NewFilterCompilationError("parameter %q not provided", name)
@@ -1832,15 +1832,15 @@ func extractInt64(params map[string]*commonpb.ParameterValue, name string) (int6
 	}
 
 	switch v := val.GetValue().(type) {
-	case *commonpb.ParameterValue_Int64Value:
+	case *ledgerpb.ParameterValue_Int64Value:
 		return v.Int64Value, nil
-	case *commonpb.ParameterValue_Uint64Value:
+	case *ledgerpb.ParameterValue_Uint64Value:
 		if v.Uint64Value > math.MaxInt64 {
 			return 0, domain.NewFilterCompilationError("parameter %q: uint64 value %d overflows int64", name, v.Uint64Value)
 		}
 
 		return int64(v.Uint64Value), nil
-	case *commonpb.ParameterValue_StringValue:
+	case *ledgerpb.ParameterValue_StringValue:
 		n, err := strconv.ParseInt(v.StringValue, 10, 64)
 		if err != nil {
 			return 0, domain.NewFilterCompilationError("parameter %q: cannot parse %q as int64: %v", name, v.StringValue, err)
@@ -1856,7 +1856,7 @@ func extractInt64(params map[string]*commonpb.ParameterValue, name string) (int6
 // int64 values and string values that parse cleanly as uint64 (so a client
 // that doesn't know the target type can pass through the safe default of
 // sending strings — see #249).
-func extractUint64(params map[string]*commonpb.ParameterValue, name string) (uint64, error) {
+func extractUint64(params map[string]*ledgerpb.ParameterValue, name string) (uint64, error) {
 	val, ok := params[name]
 	if !ok {
 		return 0, domain.NewFilterCompilationError("parameter %q not provided", name)
@@ -1867,15 +1867,15 @@ func extractUint64(params map[string]*commonpb.ParameterValue, name string) (uin
 	}
 
 	switch v := val.GetValue().(type) {
-	case *commonpb.ParameterValue_Uint64Value:
+	case *ledgerpb.ParameterValue_Uint64Value:
 		return v.Uint64Value, nil
-	case *commonpb.ParameterValue_Int64Value:
+	case *ledgerpb.ParameterValue_Int64Value:
 		if v.Int64Value < 0 {
 			return 0, domain.NewFilterCompilationError("parameter %q: negative int64 value %d cannot be used as uint64", name, v.Int64Value)
 		}
 
 		return uint64(v.Int64Value), nil
-	case *commonpb.ParameterValue_StringValue:
+	case *ledgerpb.ParameterValue_StringValue:
 		n, err := strconv.ParseUint(v.StringValue, 10, 64)
 		if err != nil {
 			return 0, domain.NewFilterCompilationError("parameter %q: cannot parse %q as uint64: %v", name, v.StringValue, err)
@@ -1888,15 +1888,15 @@ func extractUint64(params map[string]*commonpb.ParameterValue, name string) (uin
 }
 
 // paramTypeName returns a human-readable name for the type of a ParameterValue.
-func paramTypeName(pv *commonpb.ParameterValue) string {
+func paramTypeName(pv *ledgerpb.ParameterValue) string {
 	switch pv.GetValue().(type) {
-	case *commonpb.ParameterValue_StringValue:
+	case *ledgerpb.ParameterValue_StringValue:
 		return "string"
-	case *commonpb.ParameterValue_Int64Value:
+	case *ledgerpb.ParameterValue_Int64Value:
 		return "int64"
-	case *commonpb.ParameterValue_Uint64Value:
+	case *ledgerpb.ParameterValue_Uint64Value:
 		return "uint64"
-	case *commonpb.ParameterValue_BoolValue:
+	case *ledgerpb.ParameterValue_BoolValue:
 		return "bool"
 	default:
 		return "unknown"
@@ -2086,25 +2086,25 @@ func closeAll(iters []readstore.EntityIterator) {
 
 // txAddressIndexID maps an AddressRole to the IndexID covering it on the
 // transactions target, along with a human-readable label for error messages.
-func txAddressIndexID(role commonpb.AddressRole) (*commonpb.IndexID, string) {
+func txAddressIndexID(role ledgerpb.AddressRole) (*ledgerpb.IndexID, string) {
 	switch role {
-	case commonpb.AddressRole_ADDRESS_ROLE_SOURCE:
-		return indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS), "source"
-	case commonpb.AddressRole_ADDRESS_ROLE_DESTINATION:
-		return indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS), "destination"
+	case ledgerpb.AddressRole_ADDRESS_ROLE_SOURCE:
+		return indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS), "source"
+	case ledgerpb.AddressRole_ADDRESS_ROLE_DESTINATION:
+		return indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS), "destination"
 	default:
-		return indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS), "address"
+		return indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS), "address"
 	}
 }
 
 // SchemaFieldsForTarget extracts the relevant metadata fields map from a schema
 // based on the query target. Returns nil if schema is nil.
-func SchemaFieldsForTarget(schema *commonpb.MetadataSchema, target commonpb.QueryTarget) map[string]*commonpb.MetadataFieldSchema {
+func SchemaFieldsForTarget(schema *ledgerpb.MetadataSchema, target ledgerpb.QueryTarget) map[string]*ledgerpb.MetadataFieldSchema {
 	if schema == nil {
 		return nil
 	}
 
-	if target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
+	if target == ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
 		return schema.GetTransactionFields()
 	}
 
@@ -2114,15 +2114,15 @@ func SchemaFieldsForTarget(schema *commonpb.MetadataSchema, target commonpb.Quer
 // validateAndCoerceCondition validates a field condition against the declared schema type.
 // It returns the (possibly coerced) condition or an error for incompatible types.
 // ExistsCondition is always valid regardless of schema type.
-func validateAndCoerceCondition(fc *commonpb.FieldCondition, fieldSchema *commonpb.MetadataFieldSchema) (*commonpb.FieldCondition, error) {
+func validateAndCoerceCondition(fc *ledgerpb.FieldCondition, fieldSchema *ledgerpb.MetadataFieldSchema) (*ledgerpb.FieldCondition, error) {
 	fieldName := fc.GetField().GetMetadata()
 	schemaType := fieldSchema.GetType()
 
 	switch fc.GetCondition().(type) {
-	case *commonpb.FieldCondition_ExistsCond:
+	case *ledgerpb.FieldCondition_ExistsCond:
 		return fc, nil
 
-	case *commonpb.FieldCondition_IntCond:
+	case *ledgerpb.FieldCondition_IntCond:
 		// Datetime is stored as signed int64 micros, so it accepts integer
 		// bounds verbatim like any signed field (compileIntCondition uses the
 		// order-preserving EncodeInt64 path, matching the index encoding).
@@ -2136,22 +2136,22 @@ func validateAndCoerceCondition(fc *commonpb.FieldCondition, fieldSchema *common
 
 		return nil, domain.NewFilterCompilationError("field %q is declared as %s, cannot use integer condition", fieldName, schemaType)
 
-	case *commonpb.FieldCondition_UintCond:
+	case *ledgerpb.FieldCondition_UintCond:
 		if protohelpers.IsUnsignedType(schemaType) {
 			return fc, nil
 		}
 
 		return nil, domain.NewFilterCompilationError("field %q is declared as %s, cannot use unsigned integer condition", fieldName, schemaType)
 
-	case *commonpb.FieldCondition_StringCond:
-		if schemaType == commonpb.MetadataType_METADATA_TYPE_STRING {
+	case *ledgerpb.FieldCondition_StringCond:
+		if schemaType == ledgerpb.MetadataType_METADATA_TYPE_STRING {
 			return fc, nil
 		}
 
 		return nil, domain.NewFilterCompilationError("field %q is declared as %s, cannot use string condition", fieldName, schemaType)
 
-	case *commonpb.FieldCondition_BoolCond:
-		if schemaType == commonpb.MetadataType_METADATA_TYPE_BOOL {
+	case *ledgerpb.FieldCondition_BoolCond:
+		if schemaType == ledgerpb.MetadataType_METADATA_TYPE_BOOL {
 			return fc, nil
 		}
 
@@ -2164,11 +2164,11 @@ func validateAndCoerceCondition(fc *commonpb.FieldCondition, fieldSchema *common
 
 // coerceIntToUint converts an IntCondition to a UintCondition for unsigned schema fields.
 // Returns an error if any bound is negative.
-func coerceIntToUint(fc *commonpb.FieldCondition) (*commonpb.FieldCondition, error) {
+func coerceIntToUint(fc *ledgerpb.FieldCondition) (*ledgerpb.FieldCondition, error) {
 	fieldName := fc.GetField().GetMetadata()
 	intCond := fc.GetIntCond()
 
-	uintCond := &commonpb.UintCondition{
+	uintCond := &ledgerpb.UintCondition{
 		MinExclusive: intCond.GetMinExclusive(),
 		MaxExclusive: intCond.GetMaxExclusive(),
 		ParamMin:     intCond.GetParamMin(),
@@ -2195,8 +2195,8 @@ func coerceIntToUint(fc *commonpb.FieldCondition) (*commonpb.FieldCondition, err
 		uintCond.Max = &uv
 	}
 
-	return &commonpb.FieldCondition{
+	return &ledgerpb.FieldCondition{
 		Field:     fc.GetField(),
-		Condition: &commonpb.FieldCondition_UintCond{UintCond: uintCond},
+		Condition: &ledgerpb.FieldCondition_UintCond{UintCond: uintCond},
 	}, nil
 }

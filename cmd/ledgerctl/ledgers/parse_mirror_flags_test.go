@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestParseMirrorFlags_PostgresEmptyIAMRegionRejected(t *testing.T) {
@@ -94,7 +94,7 @@ func TestParseMirrorFlags_RewriteInfersMirrorMode(t *testing.T) {
 
 	mode, cfg, err := parseMirrorFlags(cmd, "ledger-x")
 	require.NoError(t, err)
-	require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_MIRROR, mode)
+	require.Equal(t, ledgerpb.LedgerMode_LEDGER_MODE_MIRROR, mode)
 	require.Len(t, cfg.GetRewriteRules(), 1)
 }
 

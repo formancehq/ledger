@@ -29,7 +29,7 @@ import (
 	otlppyroscopetraces "github.com/formancehq/go-libs/v5/pkg/observe/pyroscopetraces"
 	otlptraces "github.com/formancehq/go-libs/v5/pkg/observe/traces"
 	"github.com/formancehq/go-libs/v5/pkg/service"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/bootstrap"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -647,15 +647,15 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 
 	// Background checkpoint interval
 	// Bloom filter per-type config
-	cfg.BloomConfig = &commonpb.ClusterConfig{}
+	cfg.BloomConfig = &ledgerpb.ClusterConfig{}
 	loadBloomConfig(cmd, cfg.BloomConfig)
 
 	// Hash algorithm for log chain
 	switch getString("hash-algorithm", "blake3") {
 	case "xxh3":
-		cfg.BloomConfig.HashAlgorithm = commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3
+		cfg.BloomConfig.HashAlgorithm = ledgerpb.HashAlgorithm_HASH_ALGORITHM_XXH3
 	default:
-		cfg.BloomConfig.HashAlgorithm = commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3
+		cfg.BloomConfig.HashAlgorithm = ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3
 	}
 
 	// Read index configuration
@@ -863,7 +863,7 @@ func logMemoryEstimate(logger logging.Logger, cfg *bootstrap.Config, memlimit in
 
 	// Bloom filter memory: m = -n * ln(p) / (ln2)^2 bits per filter.
 	var bloomTotal int64
-	for _, tc := range []*commonpb.BloomTypeConfig{
+	for _, tc := range []*ledgerpb.BloomTypeConfig{
 		cfg.BloomConfig.GetBloomVolumes(), cfg.BloomConfig.GetBloomMetadata(),
 		cfg.BloomConfig.GetBloomReferences(), cfg.BloomConfig.GetBloomLedgers(),
 		cfg.BloomConfig.GetBloomBoundaries(), cfg.BloomConfig.GetBloomTransactions(),
@@ -1049,8 +1049,8 @@ func registerBloomFlags(cmd *cobra.Command) {
 
 // loadBloomConfig builds bloom filter configuration from per-type CLI flags
 // and writes them into a ClusterConfig proto.
-func loadBloomConfig(cmd *cobra.Command, cfg *commonpb.ClusterConfig) {
-	load := func(name string) *commonpb.BloomTypeConfig {
+func loadBloomConfig(cmd *cobra.Command, cfg *ledgerpb.ClusterConfig) {
+	load := func(name string) *ledgerpb.BloomTypeConfig {
 		expectedKeys, _ := cmd.Flags().GetUint(fmt.Sprintf("bloom-%s-expected-keys", name))
 		fpRate, _ := cmd.Flags().GetFloat64(fmt.Sprintf("bloom-%s-fp-rate", name))
 
@@ -1063,7 +1063,7 @@ func loadBloomConfig(cmd *cobra.Command, cfg *commonpb.ClusterConfig) {
 			fpRate = 0.01
 		}
 
-		return &commonpb.BloomTypeConfig{
+		return &ledgerpb.BloomTypeConfig{
 			ExpectedKeys: uint64(expectedKeys),
 			FpRate:       fpRate,
 		}

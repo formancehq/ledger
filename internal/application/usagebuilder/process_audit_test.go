@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/storage/usagestore"
 )
@@ -32,9 +32,9 @@ func TestBatchState_AddTemplateUsageMaxLastUsed(t *testing.T) {
 
 	s := newBatchState()
 
-	early := &commonpb.Timestamp{Data: 100}
-	mid := &commonpb.Timestamp{Data: 500}
-	late := &commonpb.Timestamp{Data: 900}
+	early := &ledgerpb.Timestamp{Data: 100}
+	mid := &ledgerpb.Timestamp{Data: 500}
+	late := &ledgerpb.Timestamp{Data: 900}
 
 	// Ordering shouldn't matter — the max of the three timestamps wins.
 	s.addTemplateUsage("l1", "payout", mid)
@@ -53,7 +53,7 @@ func TestBatchState_AddTemplateUsageNilTimestamp(t *testing.T) {
 
 	// A nil timestamp bumps the counter but must not overwrite an already-seen
 	// non-nil lastUsed.
-	s.addTemplateUsage("l1", "payout", &commonpb.Timestamp{Data: 500})
+	s.addTemplateUsage("l1", "payout", &ledgerpb.Timestamp{Data: 500})
 	s.addTemplateUsage("l1", "payout", nil)
 
 	got := s.templates[templateKey{ledger: "l1", template: "payout"}]
@@ -80,8 +80,8 @@ func TestApplyDelta(t *testing.T) {
 func TestTimestampGreater(t *testing.T) {
 	t.Parallel()
 
-	a := &commonpb.Timestamp{Data: 100}
-	b := &commonpb.Timestamp{Data: 200}
+	a := &ledgerpb.Timestamp{Data: 100}
+	b := &ledgerpb.Timestamp{Data: 200}
 
 	assert.True(t, timestampGreater(b, a))
 	assert.False(t, timestampGreater(a, b))
@@ -91,7 +91,7 @@ func TestTimestampGreater(t *testing.T) {
 func TestMergeTemplateUsage_NilCurrent(t *testing.T) {
 	t.Parallel()
 
-	ts := &commonpb.Timestamp{Data: 500}
+	ts := &ledgerpb.Timestamp{Data: 500}
 
 	got := mergeTemplateUsage(nil, templateDelta{count: 3, lastUsed: ts})
 	assert.Equal(t, uint64(3), got.GetCount())
@@ -101,18 +101,18 @@ func TestMergeTemplateUsage_NilCurrent(t *testing.T) {
 func TestMergeTemplateUsage_WithCurrent(t *testing.T) {
 	t.Parallel()
 
-	current := &commonpb.TemplateUsage{
+	current := &ledgerpb.TemplateUsage{
 		Count:    10,
-		LastUsed: &commonpb.Timestamp{Data: 500},
+		LastUsed: &ledgerpb.Timestamp{Data: 500},
 	}
 
 	// Newer batch timestamp wins.
-	got := mergeTemplateUsage(current, templateDelta{count: 5, lastUsed: &commonpb.Timestamp{Data: 900}})
+	got := mergeTemplateUsage(current, templateDelta{count: 5, lastUsed: &ledgerpb.Timestamp{Data: 900}})
 	assert.Equal(t, uint64(15), got.GetCount())
 	assert.Equal(t, uint64(900), got.GetLastUsed().GetData())
 
 	// Older batch timestamp is ignored.
-	got = mergeTemplateUsage(current, templateDelta{count: 2, lastUsed: &commonpb.Timestamp{Data: 200}})
+	got = mergeTemplateUsage(current, templateDelta{count: 2, lastUsed: &ledgerpb.Timestamp{Data: 200}})
 	assert.Equal(t, uint64(12), got.GetCount())
 	assert.Equal(t, uint64(500), got.GetLastUsed().GetData(), "current lastUsed is later — keep it")
 
@@ -139,9 +139,9 @@ func TestCommitBatch_SameBatchDeleteRecreateDoesNotResurrect(t *testing.T) {
 	// Seed the OLD incarnation: 100 postings and a template with count 7.
 	seed := newBatchState()
 	seed.addCounter("foo", usagestore.CounterPosting, 100)
-	seed.addTemplateUsage("foo", "tpl", &commonpb.Timestamp{Data: 111})
+	seed.addTemplateUsage("foo", "tpl", &ledgerpb.Timestamp{Data: 111})
 	for range 6 {
-		seed.addTemplateUsage("foo", "tpl", &commonpb.Timestamp{Data: 111})
+		seed.addTemplateUsage("foo", "tpl", &ledgerpb.Timestamp{Data: 111})
 	}
 	require.NoError(t, b.commitBatch(seed, 1))
 
@@ -155,7 +155,7 @@ func TestCommitBatch_SameBatchDeleteRecreateDoesNotResurrect(t *testing.T) {
 	batch := newBatchState()
 	batch.markLedgerDeleted("foo")
 	batch.addCounter("foo", usagestore.CounterPosting, 5)
-	batch.addTemplateUsage("foo", "tpl", &commonpb.Timestamp{Data: 999})
+	batch.addTemplateUsage("foo", "tpl", &ledgerpb.Timestamp{Data: 999})
 	require.NoError(t, b.commitBatch(batch, 2))
 
 	// The recycled ledger must reflect ONLY the post-recreate deltas, not

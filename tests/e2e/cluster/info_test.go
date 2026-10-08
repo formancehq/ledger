@@ -6,7 +6,7 @@ import (
 	"context"
 	"time"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -36,7 +36,7 @@ var _ = Describe("Cluster server version", Ordered, func() {
 		// after SetupMultiNodeCluster. Peer-version population can lag the join,
 		// so poll until every NodeInfo carries a version.
 		Eventually(func(g Gomega) {
-			state, err := servers[0].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+			state, err := servers[0].ClusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 			g.Expect(err).To(Succeed())
 
 			nodes := state.GetNodes()

@@ -6,7 +6,7 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -24,7 +24,7 @@ func TestWriteBatchReverseMapRangeOverlayHonorsOperationOrder(t *testing.T) {
 	kb := dal.NewKeyBuilder()
 	reverseKey := AccountReverseMapKeyV(kb, ledger, entity, field, 1)
 	otherKey := AccountReverseMapKeyV(kb, ledger, entity, "team", 1)
-	encoded := EncodeMetadataValue(nil, commonpb.NewStringValue("open"))
+	encoded := EncodeMetadataValue(nil, ledgerpb.NewStringValue("open"))
 
 	seed := store.NewBatch()
 	require.NoError(t, seed.SetBytes(reverseKey, encoded))
@@ -82,8 +82,8 @@ func TestWriteBatchReverseMapRangeOverlayMatchesCommittedOrder(t *testing.T) {
 						entity = []byte{0, 0, 0, 0, 0, 0, 0, 1}
 						reverseKey = TransactionReverseMapKeyV(kb, "test", 1, "status", 1)
 					}
-					oldValue := EncodeMetadataValue(nil, commonpb.NewStringValue("old"))
-					newValue := EncodeMetadataValue(nil, commonpb.NewStringValue("new"))
+					oldValue := EncodeMetadataValue(nil, ledgerpb.NewStringValue("old"))
+					newValue := EncodeMetadataValue(nil, ledgerpb.NewStringValue("new"))
 					seed := store.NewBatch()
 					require.NoError(t, seed.SetBytes(reverseKey, oldValue))
 					require.NoError(t, seed.Commit())
@@ -134,7 +134,7 @@ func TestWriteBatchSameSequenceDeleteOverridesAdd(t *testing.T) {
 	store := newTestStore(t)
 	kb := dal.NewKeyBuilder()
 	const ledger, field, entity = "test", "status", "ephemeral:1"
-	encoded := EncodeMetadataValue(nil, commonpb.NewStringValue("open"))
+	encoded := EncodeMetadataValue(nil, ledgerpb.NewStringValue("open"))
 	reverseKey := AccountReverseMapKeyV(kb, ledger, entity, field, 1)
 
 	session := store.NewBatch()

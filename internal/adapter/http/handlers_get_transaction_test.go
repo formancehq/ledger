@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
@@ -19,12 +19,12 @@ func TestHandleGetTransaction_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
-			return &commonpb.LedgerInfo{Name: "ledger1"}, nil
+		func(_ context.Context, _ string) (*ledgerpb.LedgerInfo, error) {
+			return &ledgerpb.LedgerInfo{Name: "ledger1"}, nil
 		}).AnyTimes()
 	backend.EXPECT().GetTransaction(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, txID uint64) (*commonpb.Transaction, error) {
-			return &commonpb.Transaction{Id: txID}, nil
+		func(_ context.Context, _ string, txID uint64) (*ledgerpb.Transaction, error) {
+			return &ledgerpb.Transaction{Id: txID}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -46,22 +46,22 @@ func TestHandleGetTransaction_RevertRelationshipFields(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
-			return &commonpb.LedgerInfo{Name: "ledger1"}, nil
+		func(_ context.Context, _ string) (*ledgerpb.LedgerInfo, error) {
+			return &ledgerpb.LedgerInfo{Name: "ledger1"}, nil
 		}).AnyTimes()
 	// Transaction 1 was reverted by transaction 2, which in turn reverts 1.
 	backend.EXPECT().GetTransaction(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, txID uint64) (*commonpb.Transaction, error) {
+		func(_ context.Context, _ string, txID uint64) (*ledgerpb.Transaction, error) {
 			if txID == 1 {
-				return &commonpb.Transaction{
+				return &ledgerpb.Transaction{
 					Id:                    1,
 					Reverted:              true,
 					RevertedByTransaction: 2,
-					RevertedAt:            &commonpb.Timestamp{Data: 1_700_000_000_000_000},
+					RevertedAt:            &ledgerpb.Timestamp{Data: 1_700_000_000_000_000},
 				}, nil
 			}
 
-			return &commonpb.Transaction{Id: 2, RevertsTransaction: 1}, nil
+			return &ledgerpb.Transaction{Id: 2, RevertsTransaction: 1}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -107,11 +107,11 @@ func TestHandleGetTransaction_NotFound(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
-			return &commonpb.LedgerInfo{Name: "ledger1"}, nil
+		func(_ context.Context, _ string) (*ledgerpb.LedgerInfo, error) {
+			return &ledgerpb.LedgerInfo{Name: "ledger1"}, nil
 		}).AnyTimes()
 	backend.EXPECT().GetTransaction(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint64) (*commonpb.Transaction, error) {
+		func(_ context.Context, _ string, _ uint64) (*ledgerpb.Transaction, error) {
 			return nil, &domain.ErrTransactionNotFound{TransactionID: 999}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)

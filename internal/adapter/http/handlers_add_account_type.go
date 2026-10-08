@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 )
@@ -21,27 +21,27 @@ type accountTypeBody struct {
 	Persistence string `json:"persistence,omitempty"`
 	// SegmentTypes maps a pattern variable name to a type constraint
 	// (regex/uuid/uint64/bytes).
-	SegmentTypes map[string]*commonpb.SegmentTypeJSON `json:"segmentTypes,omitempty"`
+	SegmentTypes map[string]*ledgerpb.SegmentTypeJSON `json:"segmentTypes,omitempty"`
 }
 
 // toProto converts the HTTP request body to a proto AccountType, reusing the
 // shared commonpb conversion helpers.
-func (b accountTypeBody) toProto() (*commonpb.AccountType, error) {
-	persistence, err := commonpb.ParsePersistence(b.Persistence)
+func (b accountTypeBody) toProto() (*ledgerpb.AccountType, error) {
+	persistence, err := ledgerpb.ParsePersistence(b.Persistence)
 	if err != nil {
 		return nil, err
 	}
 
-	at := &commonpb.AccountType{
+	at := &ledgerpb.AccountType{
 		Name:        b.Name,
 		Pattern:     b.Pattern,
 		Persistence: persistence,
 	}
 
 	if len(b.SegmentTypes) > 0 {
-		at.SegmentTypes = make(map[string]*commonpb.SegmentType, len(b.SegmentTypes))
+		at.SegmentTypes = make(map[string]*ledgerpb.SegmentType, len(b.SegmentTypes))
 		for name, st := range b.SegmentTypes {
-			converted, err := commonpb.SegmentTypeFromJSON(st)
+			converted, err := ledgerpb.SegmentTypeFromJSON(st)
 			if err != nil {
 				return nil, fmt.Errorf("segmentTypes[%q]: %w", name, err)
 			}
@@ -86,9 +86,9 @@ func (s *Server) handleAddAccountType(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = s.applyUnsigned(r.Context(), "", &commonpb.Request{
-		Type: &commonpb.Request_AddAccountType{
-			AddAccountType: &commonpb.AddAccountTypeLedgerRequest{
+	_, err = s.applyUnsigned(r.Context(), "", &ledgerpb.Request{
+		Type: &ledgerpb.Request_AddAccountType{
+			AddAccountType: &ledgerpb.AddAccountTypeLedgerRequest{
 				Ledger:      ledgerName,
 				AccountType: accountType,
 			},

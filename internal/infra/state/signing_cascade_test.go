@@ -8,7 +8,7 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
@@ -90,19 +90,19 @@ func newSigningBatchRunner(t *testing.T) *signingBatchRunner {
 // commit applies one batch: every order in sequence against a single WriteSet,
 // then Merge. It returns the emitted log payloads so cascaded_key_ids — which is
 // chain-hashed and consumed verbatim by the restore path — can be asserted.
-func (r *signingBatchRunner) commit(orders ...*raftcmdpb.Order) []*commonpb.LogPayload {
+func (r *signingBatchRunner) commit(orders ...*raftcmdpb.Order) []*ledgerpb.LogPayload {
 	r.t.Helper()
 
 	r.clock++
 
 	writeSet := NewWriteSet(r.machine)
-	writeSet.Reset(&commonpb.Timestamp{Data: r.clock})
+	writeSet.Reset(&ledgerpb.Timestamp{Data: r.clock})
 
 	// The production factory rather than the bare WriteSet: orders reach the
 	// engine through the coverage gate, and signing orders declare no coverage.
 	factory := NewScopeFactory(writeSet, nil, logging.Testing(), nil, 0)
 
-	payloads := make([]*commonpb.LogPayload, 0, len(orders))
+	payloads := make([]*ledgerpb.LogPayload, 0, len(orders))
 
 	for _, order := range orders {
 		scope, err := factory.NewScope(order.GetTechnical().GetCoverageBits())
@@ -128,7 +128,7 @@ func (r *signingBatchRunner) commit(orders ...*raftcmdpb.Order) []*commonpb.LogP
 func (r *signingBatchRunner) authenticates(keyID string, privKey ed25519.PrivateKey) bool {
 	r.t.Helper()
 
-	envelope, err := signing.Sign(&commonpb.ApplyBatch{IdempotencyKey: "cascade-probe"}, keyID, privKey)
+	envelope, err := signing.Sign(&ledgerpb.ApplyBatch{IdempotencyKey: "cascade-probe"}, keyID, privKey)
 	require.NoError(r.t, err)
 
 	pubKey := r.machine.keyStore.GetPublicKey(keyID)
@@ -209,7 +209,7 @@ func TestSigningCascadeReachesAReregisteredChild(t *testing.T) {
 				revokeOrder("P", true),
 			}
 
-			var payloads []*commonpb.LogPayload
+			var payloads []*ledgerpb.LogPayload
 
 			if tc.split {
 				for _, order := range orders {
@@ -532,7 +532,7 @@ func TestSigningCascadeRollbackLeavesCommittedStateIntact(t *testing.T) {
 
 	// The EN-2011 batch, staged in full and then abandoned without a Merge.
 	writeSet := NewWriteSet(runner.machine)
-	writeSet.Reset(&commonpb.Timestamp{Data: 1700001000})
+	writeSet.Reset(&ledgerpb.Timestamp{Data: 1700001000})
 
 	factory := NewScopeFactory(writeSet, nil, logging.Testing(), nil, 0)
 
@@ -550,7 +550,7 @@ func TestSigningCascadeRollbackLeavesCommittedStateIntact(t *testing.T) {
 
 	require.NotEmpty(t, writeSet.pendingSigningKeyUpdates, "the batch staged updates")
 
-	writeSet.Reset(&commonpb.Timestamp{Data: 1700002000})
+	writeSet.Reset(&ledgerpb.Timestamp{Data: 1700002000})
 	require.Empty(t, writeSet.pendingSigningKeyUpdates, "Reset drops the whole pending slice")
 
 	require.True(t, runner.authenticates("P", parentPriv), "an abandoned batch revokes nothing")
@@ -586,7 +586,7 @@ func TestSigningCascadeFailedOrderStagesNothing(t *testing.T) {
 	runner.commit(registerOrder("C", childPub, "P"))
 
 	writeSet := NewWriteSet(runner.machine)
-	writeSet.Reset(&commonpb.Timestamp{Data: 1700001000})
+	writeSet.Reset(&ledgerpb.Timestamp{Data: 1700001000})
 
 	factory := NewScopeFactory(writeSet, nil, logging.Testing(), nil, 0)
 

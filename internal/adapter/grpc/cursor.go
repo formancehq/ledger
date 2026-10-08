@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
@@ -171,7 +171,7 @@ type ListOptionsSupport struct {
 // non-default value on a field the handler does not yet implement. The opaque
 // cursor + page_size are always considered supported (they're
 // honored by every list handler).
-func ValidateListOptions(opts *commonpb.ListOptions, support ListOptionsSupport) error {
+func ValidateListOptions(opts *ledgerpb.ListOptions, support ListOptionsSupport) error {
 	if opts == nil {
 		return nil
 	}

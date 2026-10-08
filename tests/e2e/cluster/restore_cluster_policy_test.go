@@ -13,7 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
@@ -63,8 +63,8 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 		sourceDataDir  string
 	)
 
-	storage := func() *clusterpb.BackupStorage {
-		return testutil.S3BackupStorage(&clusterpb.S3StorageConfig{
+	storage := func() *ledgerpb.BackupStorage {
+		return testutil.S3BackupStorage(&ledgerpb.S3StorageConfig{
 			Bucket:   s3Bucket,
 			Region:   restoreS3Region,
 			Endpoint: minioEndpoint,
@@ -122,8 +122,8 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 	Describe("Phase 1: post-checkpoint policy revision in the exported delta", Ordered, func() {
 		var (
 			sourceServer  *testservice.Service
-			client        clusterpb.BucketServiceClient
-			clusterClient clusterpb.ClusterServiceClient
+			client        ledgerpb.BucketServiceClient
+			clusterClient ledgerpb.ClusterServiceClient
 			grpcConn      *grpc.ClientConn
 		)
 
@@ -155,7 +155,7 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) bool {
-				state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+				state, err := clusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 				g.Expect(err).To(Succeed())
 				return state.Leader != 0
 			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
@@ -163,10 +163,10 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 			// Full checkpoint before the post-checkpoint revision exists: the
 			// restore reconstructs that revision by replaying the exported log
 			// rather than copying checkpoint files.
-			var backupResp *clusterpb.BackupResponse
+			var backupResp *ledgerpb.BackupResponse
 			Eventually(func() error {
 				var err error
-				backupResp, err = clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: storage()})
+				backupResp, err = clusterClient.Backup(ctx, &ledgerpb.BackupRequest{Storage: storage()})
 				return err
 			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
 			Expect(backupResp.GetTotalFiles()).To(BeNumerically(">", 0))
@@ -188,7 +188,7 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 			cancel()
 			startSource(postCheckpointRevision, postCheckpointLimit)
 			Eventually(func(g Gomega) bool {
-				state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+				state, err := clusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 				g.Expect(err).To(Succeed())
 				return state.Leader != 0
 			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
@@ -196,12 +196,12 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 			// A business write proves the gate is open (policy committed) and puts
 			// a post-checkpoint ledger in the delta, so a dropped delta on restore
 			// surfaces as a missing ledger rather than passing silently.
-			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(deltaLedger, nil)))
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(deltaLedger, nil)))
 			Expect(err).To(Succeed())
 		})
 
 		It("exports a non-empty delta", func() {
-			incResp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{Storage: storage()})
+			incResp, err := clusterClient.IncrementalBackup(ctx, &ledgerpb.IncrementalBackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
 			Expect(incResp.GetLogEntriesExported()).To(BeNumerically(">", 0))
 		})
@@ -209,7 +209,7 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 
 	Describe("Phase 2: restore", Ordered, func() {
 		var (
-			restoreClient clusterpb.RestoreServiceClient
+			restoreClient ledgerpb.RestoreServiceClient
 			grpcConn      *grpc.ClientConn
 			server        *testservice.Service
 		)
@@ -244,26 +244,26 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 		})
 
 		It("downloads and finalizes the backup", func() {
-			startResp, err := restoreClient.StartDownloadBackup(ctx, &clusterpb.StartDownloadBackupRequest{Storage: storage()})
+			startResp, err := restoreClient.StartDownloadBackup(ctx, &ledgerpb.StartDownloadBackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
 
-			Eventually(func() clusterpb.DownloadState {
-				resp, statusErr := restoreClient.GetDownloadStatus(ctx, &clusterpb.GetDownloadStatusRequest{JobId: startResp.GetJobId()})
+			Eventually(func() ledgerpb.DownloadState {
+				resp, statusErr := restoreClient.GetDownloadStatus(ctx, &ledgerpb.GetDownloadStatusRequest{JobId: startResp.GetJobId()})
 				Expect(statusErr).To(Succeed())
 				return resp.GetState()
-			}, 2*time.Minute, 500*time.Millisecond).Should(Equal(clusterpb.DownloadState_DOWNLOAD_STATE_SUCCEEDED))
+			}, 2*time.Minute, 500*time.Millisecond).Should(Equal(ledgerpb.DownloadState_DOWNLOAD_STATE_SUCCEEDED))
 
 			Expect(validateRestoreWithoutErrors(ctx, restoreClient)).To(Succeed())
 
-			_, err = restoreClient.FinalizeRestore(ctx, &clusterpb.FinalizeRestoreRequest{})
+			_, err = restoreClient.FinalizeRestore(ctx, &ledgerpb.FinalizeRestoreRequest{})
 			Expect(err).To(Succeed())
 		})
 	})
 
 	Describe("Phase 3: verify the restored policy", Ordered, func() {
 		var (
-			client        clusterpb.BucketServiceClient
-			clusterClient clusterpb.ClusterServiceClient
+			client        ledgerpb.BucketServiceClient
+			clusterClient ledgerpb.ClusterServiceClient
 			grpcConn      *grpc.ClientConn
 			server        *testservice.Service
 		)
@@ -288,7 +288,7 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) bool {
-				state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+				state, err := clusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 				g.Expect(err).To(Succeed())
 				return state.Leader != 0
 			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
@@ -304,7 +304,7 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 		})
 
 		It("restored the post-checkpoint delta", func() {
-			_, err := client.GetLedger(ctx, &clusterpb.GetLedgerRequest{Ledger: deltaLedger})
+			_, err := client.GetLedger(ctx, &ledgerpb.GetLedgerRequest{Ledger: deltaLedger})
 			Expect(err).To(Succeed(), "the post-checkpoint ledger must be restored from the delta")
 		})
 
@@ -320,7 +320,7 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 			// is committed; a succeeding write is direct evidence the restored
 			// node carries the reconstructed policy.
 			Eventually(func(g Gomega) {
-				_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(seedLedger, nil)))
+				_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(seedLedger, nil)))
 				g.Expect(err).To(Succeed())
 			}).Within(15 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})

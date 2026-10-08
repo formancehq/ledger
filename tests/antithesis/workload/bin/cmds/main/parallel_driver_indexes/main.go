@@ -8,25 +8,25 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_indexes", func(ctx context.Context, client commonpb.BucketServiceClient, ledger string) {
+	internal.RunDriver("parallel_driver_indexes", func(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string) {
 		metadataKey := fmt.Sprintf("idx-key-%d", internal.Rand().Uint64()%50)
 		details := internal.Details{"ledger": ledger, "metadataKey": metadataKey}
 
 		// The metadata schema field must exist before its index — declare it
 		// (idempotent / harmless if already declared).
-		if _, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_SetMetadataFieldType{
-				SetMetadataFieldType: &commonpb.SetMetadataFieldTypeRequest{
+		if _, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_SetMetadataFieldType{
+				SetMetadataFieldType: &ledgerpb.SetMetadataFieldTypeRequest{
 					Ledger:     ledger,
-					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        metadataKey,
-					Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+					Type:       ledgerpb.MetadataType_METADATA_TYPE_STRING,
 				},
 			},
 		})); err != nil {
@@ -44,15 +44,15 @@ func main() {
 			}
 		}
 
-		indexID := &commonpb.IndexID{Kind: &commonpb.IndexID_Metadata{Metadata: &commonpb.MetadataIndexID{
-			Target: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		indexID := &ledgerpb.IndexID{Kind: &ledgerpb.IndexID_Metadata{Metadata: &ledgerpb.MetadataIndexID{
+			Target: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 			Key:    metadataKey,
 		}}}
 
 		// Create the account metadata index.
-		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_CreateIndex{
-				CreateIndex: &commonpb.CreateIndexRequest{
+		_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_CreateIndex{
+				CreateIndex: &ledgerpb.CreateIndexRequest{
 					Ledger: ledger,
 					Id:     indexID,
 				},
@@ -71,7 +71,7 @@ func main() {
 		}
 
 		// Check index status.
-		statusResp, err := client.GetIndexStatus(ctx, &commonpb.GetIndexStatusRequest{})
+		statusResp, err := client.GetIndexStatus(ctx, &ledgerpb.GetIndexStatusRequest{})
 		if err != nil {
 			if !internal.IsTransient(err) {
 				assert.Unreachable("GetIndexStatus returned unexpected error", details.With(internal.Details{"error": err}))
@@ -83,9 +83,9 @@ func main() {
 		assert.AlwaysOrUnreachable(statusResp != nil, "GetIndexStatus should return a response", details)
 
 		// Drop the index.
-		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_DropIndex{
-				DropIndex: &commonpb.DropIndexRequest{
+		_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_DropIndex{
+				DropIndex: &ledgerpb.DropIndexRequest{
 					Ledger: ledger,
 					Id:     indexID,
 				},

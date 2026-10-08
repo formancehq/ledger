@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -22,26 +22,26 @@ func sentinelVolume(account, asset, color string, oldInput, oldOutput, input, ou
 
 	return attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{
 		Key: key, CanonicalKey: key.Bytes(),
-		Old: kv.Some(&raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(oldInput), Output: commonpb.NewUint256FromUint64(oldOutput)}),
-		New: &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(input), Output: commonpb.NewUint256FromUint64(output)},
+		Old: kv.Some(&raftcmdpb.VolumePair{Input: ledgerpb.NewUint256FromUint64(oldInput), Output: ledgerpb.NewUint256FromUint64(oldOutput)}),
+		New: &raftcmdpb.VolumePair{Input: ledgerpb.NewUint256FromUint64(input), Output: ledgerpb.NewUint256FromUint64(output)},
 	}
 }
 
-func sentinelPosting(source, destination, asset, color string, amount int64) *commonpb.Posting {
+func sentinelPosting(source, destination, asset, color string, amount int64) *ledgerpb.Posting {
 	posting := protohelpers.NewPosting(source, destination, asset, big.NewInt(amount))
 	posting.Color = color
 
 	return posting
 }
 
-func sentinelLog(revert bool, postings ...*commonpb.Posting) *commonpb.Log {
+func sentinelLog(revert bool, postings ...*ledgerpb.Posting) *ledgerpb.Log {
 	transaction := protohelpers.WithTransactionID(protohelpers.WithTransactionPostings(protohelpers.NewTransaction(), postings...), 1)
-	payload := &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{Transaction: transaction}}}
+	payload := &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &ledgerpb.CreatedTransaction{Transaction: transaction}}}
 	if revert {
-		payload.Payload = &commonpb.LedgerLogPayload_RevertedTransaction{RevertedTransaction: &commonpb.RevertedTransaction{RevertedTransactionId: 0, RevertTransaction: transaction}}
+		payload.Payload = &ledgerpb.LedgerLogPayload_RevertedTransaction{RevertedTransaction: &ledgerpb.RevertedTransaction{RevertedTransactionId: 0, RevertTransaction: transaction}}
 	}
 
-	return &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{LedgerName: "test", Log: protohelpers.NewLedgerLog(payload)}}}}
+	return &ledgerpb.Log{Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{Apply: &ledgerpb.ApplyLedgerLog{LedgerName: "test", Log: protohelpers.NewLedgerLog(payload)}}}}
 }
 
 func TestVerifyVolumeDeltasMatchPostingsRejectsCorruption(t *testing.T) {
@@ -55,7 +55,7 @@ func TestVerifyVolumeDeltasMatchPostingsRejectsCorruption(t *testing.T) {
 			return u[:1]
 		}, "volume delta missing"},
 		{"wrong amount", func(u []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]) []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] {
-			u[1].New.Input = commonpb.NewUint256FromUint64(11)
+			u[1].New.Input = ledgerpb.NewUint256FromUint64(11)
 
 			return u
 		}, "volume delta mismatch"},
@@ -80,7 +80,7 @@ func TestVerifyVolumeDeltasMatchPostingsRejectsCorruption(t *testing.T) {
 			return u
 		}, "volume delta missing"},
 		{"decreasing gross", func(u []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]) []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] {
-			u[1].Old = kv.Some(&raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(20)})
+			u[1].Old = kv.Some(&raftcmdpb.VolumePair{Input: ledgerpb.NewUint256FromUint64(20)})
 
 			return u
 		}, "volume delta mismatch"},
@@ -91,7 +91,7 @@ func TestVerifyVolumeDeltasMatchPostingsRejectsCorruption(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			updates := tc.mutate([]attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{sentinelVolume("source", "USD", "red", 0, 0, 0, 10), sentinelVolume("destination", "USD", "red", 0, 0, 10, 0)})
-			require.ErrorContains(t, verifyVolumeDeltasMatchPostings(updates, []*commonpb.Log{sentinelLog(false, sentinelPosting("source", "destination", "USD", "red", 10))}), tc.want)
+			require.ErrorContains(t, verifyVolumeDeltasMatchPostings(updates, []*ledgerpb.Log{sentinelLog(false, sentinelPosting("source", "destination", "USD", "red", 10))}), tc.want)
 		})
 	}
 }
@@ -104,7 +104,7 @@ func TestVerifyVolumeDeltasMatchPostingsRejectsExtraBalancedPair(t *testing.T) {
 		sentinelVolume("unrelated:source", "USD", "", 0, 0, 0, 3), sentinelVolume("unrelated:destination", "USD", "", 0, 0, 3, 0),
 	}
 	require.NoError(t, checkDoubleEntryInvariant(updates))
-	require.ErrorContains(t, verifyVolumeDeltasMatchPostings(updates, []*commonpb.Log{sentinelLog(false, sentinelPosting("world", "destination", "USD", "", 10))}), "unexpected volume delta")
+	require.ErrorContains(t, verifyVolumeDeltasMatchPostings(updates, []*ledgerpb.Log{sentinelLog(false, sentinelPosting("world", "destination", "USD", "", 10))}), "unexpected volume delta")
 }
 
 func TestVerifyVolumeDeltasMatchPostingsValidScenarios(t *testing.T) {
@@ -112,12 +112,12 @@ func TestVerifyVolumeDeltasMatchPostingsValidScenarios(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		updates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
-		logs    []*commonpb.Log
+		logs    []*ledgerpb.Log
 	}{
-		{"world funding and unchanged touch", []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{sentinelVolume("world", "USD", "", 0, 0, 0, 10), sentinelVolume("destination", "USD", "", 0, 0, 10, 0), sentinelVolume("touch", "USD", "", 7, 2, 7, 2)}, []*commonpb.Log{sentinelLog(false, sentinelPosting("world", "destination", "USD", "", 10))}},
-		{"overlapping bulk and reversal", []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{sentinelVolume("source", "USD", "", 100, 0, 105, 20), sentinelVolume("destination", "USD", "", 0, 0, 20, 5)}, []*commonpb.Log{sentinelLog(false, sentinelPosting("source", "destination", "USD", "", 10)), sentinelLog(false, sentinelPosting("source", "destination", "USD", "", 10)), sentinelLog(true, sentinelPosting("destination", "source", "USD", "", 5))}},
-		{"self transfer", []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{sentinelVolume("self", "USD", "", 0, 0, 10, 10)}, []*commonpb.Log{sentinelLog(false, sentinelPosting("self", "self", "USD", "", 10))}},
-		{"forced overdraft multiple assets and colors", []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{sentinelVolume("source", "USD", "red", 0, 0, 0, 10), sentinelVolume("destination", "USD", "red", 0, 0, 10, 0), sentinelVolume("source", "USD", "blue", 0, 0, 0, 20), sentinelVolume("destination", "USD", "blue", 0, 0, 20, 0), sentinelVolume("source", "EUR", "red", 0, 0, 0, 30), sentinelVolume("destination", "EUR", "red", 0, 0, 30, 0)}, []*commonpb.Log{sentinelLog(false, sentinelPosting("source", "destination", "USD", "red", 10), sentinelPosting("source", "destination", "USD", "blue", 20), sentinelPosting("source", "destination", "EUR", "red", 30))}},
+		{"world funding and unchanged touch", []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{sentinelVolume("world", "USD", "", 0, 0, 0, 10), sentinelVolume("destination", "USD", "", 0, 0, 10, 0), sentinelVolume("touch", "USD", "", 7, 2, 7, 2)}, []*ledgerpb.Log{sentinelLog(false, sentinelPosting("world", "destination", "USD", "", 10))}},
+		{"overlapping bulk and reversal", []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{sentinelVolume("source", "USD", "", 100, 0, 105, 20), sentinelVolume("destination", "USD", "", 0, 0, 20, 5)}, []*ledgerpb.Log{sentinelLog(false, sentinelPosting("source", "destination", "USD", "", 10)), sentinelLog(false, sentinelPosting("source", "destination", "USD", "", 10)), sentinelLog(true, sentinelPosting("destination", "source", "USD", "", 5))}},
+		{"self transfer", []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{sentinelVolume("self", "USD", "", 0, 0, 10, 10)}, []*ledgerpb.Log{sentinelLog(false, sentinelPosting("self", "self", "USD", "", 10))}},
+		{"forced overdraft multiple assets and colors", []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{sentinelVolume("source", "USD", "red", 0, 0, 0, 10), sentinelVolume("destination", "USD", "red", 0, 0, 10, 0), sentinelVolume("source", "USD", "blue", 0, 0, 0, 20), sentinelVolume("destination", "USD", "blue", 0, 0, 20, 0), sentinelVolume("source", "EUR", "red", 0, 0, 0, 30), sentinelVolume("destination", "EUR", "red", 0, 0, 30, 0)}, []*ledgerpb.Log{sentinelLog(false, sentinelPosting("source", "destination", "USD", "red", 10), sentinelPosting("source", "destination", "USD", "blue", 20), sentinelPosting("source", "destination", "EUR", "red", 30))}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -143,13 +143,13 @@ func TestVerifyVolumeUpdateMonotonicityRejectsDecreasingGross(t *testing.T) {
 
 func TestSentinelMergePreservesLogicalPurgeDeltas(t *testing.T) {
 	t.Parallel()
-	for _, persistence := range []commonpb.AccountTypePersistence{commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL, commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT} {
+	for _, persistence := range []ledgerpb.AccountTypePersistence{ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL, ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT} {
 		t.Run(persistence.String(), func(t *testing.T) {
 			t.Parallel()
 			buf, machine, store := newTestBuffer(t)
 			machine.sentinelMode = true
 			machine.sentinelTracer = NewSentinelTracer(machine.logger)
-			buf.gatedLedgerTypes = gatedTypesFor(&commonpb.LedgerInfo{Name: "test", AccountTypes: map[string]*commonpb.AccountType{"clearing": {Name: "clearing", Pattern: "clearing:{id}", Persistence: persistence}}})
+			buf.gatedLedgerTypes = gatedTypesFor(&ledgerpb.LedgerInfo{Name: "test", AccountTypes: map[string]*ledgerpb.AccountType{"clearing": {Name: "clearing", Pattern: "clearing:{id}", Persistence: persistence}}})
 			updates := []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{sentinelVolume("world", "USD", "", 0, 0, 0, 10), sentinelVolume("clearing:1", "USD", "", 0, 0, 10, 10), sentinelVolume("destination", "USD", "", 0, 0, 10, 0)}
 			for _, update := range updates {
 				buf.Volumes().Put(update.Key, update.New)
@@ -159,7 +159,7 @@ func TestSentinelMergePreservesLogicalPurgeDeltas(t *testing.T) {
 			require.NoError(t, batch.Commit())
 			require.Len(t, buf.AllVolumeUpdates(), 3)
 			require.Len(t, buf.KeptVolumeUpdates(), 2)
-			require.NoError(t, verifyVolumeDeltasMatchPostings(buf.AllVolumeUpdates(), []*commonpb.Log{sentinelLog(false, sentinelPosting("world", "clearing:1", "USD", "", 10), sentinelPosting("clearing:1", "destination", "USD", "", 10))}))
+			require.NoError(t, verifyVolumeDeltasMatchPostings(buf.AllVolumeUpdates(), []*ledgerpb.Log{sentinelLog(false, sentinelPosting("world", "clearing:1", "USD", "", 10), sentinelPosting("clearing:1", "destination", "USD", "", 10))}))
 			key := domain.NewVolumeKey("test", "clearing:1", "USD", "")
 			// After a purge the cache entry is tombstoned, not zero-valued:
 			// GetKey returns ErrNotFound; GetEntry returns the tombstone.
@@ -180,14 +180,14 @@ func TestSentinelLaterPurgeWithinBatch(t *testing.T) {
 	buf, machine, store := newTestBuffer(t)
 	machine.sentinelMode = true
 	machine.sentinelTracer = NewSentinelTracer(machine.logger)
-	types := gatedTypesFor(&commonpb.LedgerInfo{Name: "test", AccountTypes: map[string]*commonpb.AccountType{"clearing": {Name: "clearing", Pattern: "clearing:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL}}})
+	types := gatedTypesFor(&ledgerpb.LedgerInfo{Name: "test", AccountTypes: map[string]*ledgerpb.AccountType{"clearing": {Name: "clearing", Pattern: "clearing:{id}", Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL}}})
 	batch := store.OpenWriteSession()
 	var results []ApplyResult
 	for i, updates := range [][]attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{
 		{sentinelVolume("world", "USD", "", 0, 0, 0, 10), sentinelVolume("clearing:1", "USD", "", 0, 0, 10, 0)},
 		{sentinelVolume("clearing:1", "USD", "", 10, 0, 10, 10), sentinelVolume("destination", "USD", "", 0, 0, 10, 0)},
 	} {
-		buf.Reset(&commonpb.Timestamp{Data: uint64(i + 1)})
+		buf.Reset(&ledgerpb.Timestamp{Data: uint64(i + 1)})
 		buf.gatedLedgerTypes = types
 		for _, update := range updates {
 			buf.Volumes().Put(update.Key, update.New)
@@ -197,7 +197,7 @@ func TestSentinelLaterPurgeWithinBatch(t *testing.T) {
 		if i == 1 {
 			source, destination = "clearing:1", "destination"
 		}
-		require.NoError(t, verifyVolumeDeltasMatchPostings(buf.AllVolumeUpdates(), []*commonpb.Log{sentinelLog(false, sentinelPosting(source, destination, "USD", "", 10))}))
+		require.NoError(t, verifyVolumeDeltasMatchPostings(buf.AllVolumeUpdates(), []*ledgerpb.Log{sentinelLog(false, sentinelPosting(source, destination, "USD", "", 10))}))
 		results = append(results, ApplyResult{volumeUpdates: buf.KeptVolumeUpdates(), purgedVolumeKeys: buf.PurgedVolumeKeys()})
 	}
 	require.NoError(t, batch.Commit())

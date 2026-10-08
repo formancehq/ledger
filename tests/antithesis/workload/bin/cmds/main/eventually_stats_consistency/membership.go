@@ -7,7 +7,7 @@ import (
 	"sort"
 	"time"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -21,7 +21,7 @@ func activeReplicas(ctx context.Context, source *internal.PerNodeConn, candidate
 	if len(candidates) == 0 {
 		return nil, errors.New("no replica candidates")
 	}
-	state, err := source.Cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+	state, err := source.Cluster.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 	if err != nil {
 		return nil, err
 	}

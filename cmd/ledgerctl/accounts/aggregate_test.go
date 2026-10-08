@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestAggregateVolumesTable(t *testing.T) {
@@ -12,18 +12,18 @@ func TestAggregateVolumesTable(t *testing.T) {
 
 	scale := func(u uint8) *uint8 { return &u }
 
-	vol := func(asset string, input, output uint64) *commonpb.AggregatedVolume {
-		return &commonpb.AggregatedVolume{
+	vol := func(asset string, input, output uint64) *ledgerpb.AggregatedVolume {
+		return &ledgerpb.AggregatedVolume{
 			Asset:  asset,
-			Input:  commonpb.NewUint256FromUint64(input),
-			Output: commonpb.NewUint256FromUint64(output),
+			Input:  ledgerpb.NewUint256FromUint64(input),
+			Output: ledgerpb.NewUint256FromUint64(output),
 		}
 	}
 
 	t.Run("with --rescale, rows are re-expressed at the requested scale", func(t *testing.T) {
 		t.Parallel()
 
-		got, err := aggregateVolumesTable([]*commonpb.AggregatedVolume{vol("USD/3", 69129, 0)}, scale(0))
+		got, err := aggregateVolumesTable([]*ledgerpb.AggregatedVolume{vol("USD/3", 69129, 0)}, scale(0))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -37,7 +37,7 @@ func TestAggregateVolumesTable(t *testing.T) {
 	t.Run("without --rescale, an invalid asset is rendered raw", func(t *testing.T) {
 		t.Parallel()
 
-		got, err := aggregateVolumesTable([]*commonpb.AggregatedVolume{vol("USD/x", 1, 0)}, nil)
+		got, err := aggregateVolumesTable([]*ledgerpb.AggregatedVolume{vol("USD/x", 1, 0)}, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -53,7 +53,7 @@ func TestAggregateVolumesTable(t *testing.T) {
 		t.Run("with --rescale, invalid asset "+asset+" fails", func(t *testing.T) {
 			t.Parallel()
 
-			got, err := aggregateVolumesTable([]*commonpb.AggregatedVolume{
+			got, err := aggregateVolumesTable([]*ledgerpb.AggregatedVolume{
 				vol("EUR/2", 250, 100),
 				vol(asset, 1, 0),
 			}, scale(0))

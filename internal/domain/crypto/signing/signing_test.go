@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func generateTestKeypair(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {
@@ -19,13 +19,13 @@ func generateTestKeypair(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {
 	return pub, priv
 }
 
-func createLedgerBatch(idempotencyKey, ledgerName string) *servicepb.ApplyBatch {
-	return &servicepb.ApplyBatch{
+func createLedgerBatch(idempotencyKey, ledgerName string) *ledgerpb.ApplyBatch {
+	return &ledgerpb.ApplyBatch{
 		IdempotencyKey: idempotencyKey,
-		Requests: []*servicepb.Request{
+		Requests: []*ledgerpb.Request{
 			{
-				Type: &servicepb.Request_CreateLedger{
-					CreateLedger: &servicepb.CreateLedgerRequest{Name: ledgerName},
+				Type: &ledgerpb.Request_CreateLedger{
+					CreateLedger: &ledgerpb.CreateLedgerRequest{Name: ledgerName},
 				},
 			},
 		},
@@ -121,7 +121,7 @@ func TestVerifyEmptyPayload(t *testing.T) {
 
 	pub, _ := generateTestKeypair(t)
 
-	sr := &servicepb.SignedApplyBatch{
+	sr := &ledgerpb.SignedApplyBatch{
 		KeyId:     "key-1",
 		Signature: make([]byte, ed25519.SignatureSize),
 		Payload:   nil,
@@ -136,12 +136,12 @@ func TestExtractBatchPreservesContent(t *testing.T) {
 
 	_, priv := generateTestKeypair(t)
 
-	original := &servicepb.ApplyBatch{
+	original := &ledgerpb.ApplyBatch{
 		IdempotencyKey: "idem-123",
-		Requests: []*servicepb.Request{
+		Requests: []*ledgerpb.Request{
 			{
-				Type: &servicepb.Request_DeleteLedger{
-					DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "old-ledger"},
+				Type: &ledgerpb.Request_DeleteLedger{
+					DeleteLedger: &ledgerpb.DeleteLedgerRequest{Name: "old-ledger"},
 				},
 			},
 		},
@@ -162,7 +162,7 @@ func TestVerifyInvalidSignatureLength(t *testing.T) {
 
 	pub, _ := generateTestKeypair(t)
 
-	sr := &servicepb.SignedApplyBatch{
+	sr := &ledgerpb.SignedApplyBatch{
 		KeyId:     "key-1",
 		Signature: []byte("too-short"),
 		Payload:   []byte("payload"),
@@ -182,7 +182,7 @@ func TestExtractBatchNil(t *testing.T) {
 func TestExtractBatchEmptyPayload(t *testing.T) {
 	t.Parallel()
 
-	sr := &servicepb.SignedApplyBatch{
+	sr := &ledgerpb.SignedApplyBatch{
 		KeyId:   "key-1",
 		Payload: nil,
 	}
@@ -194,7 +194,7 @@ func TestExtractBatchEmptyPayload(t *testing.T) {
 func TestExtractBatchInvalidPayload(t *testing.T) {
 	t.Parallel()
 
-	sr := &servicepb.SignedApplyBatch{
+	sr := &ledgerpb.SignedApplyBatch{
 		KeyId:   "key-1",
 		Payload: []byte("not-valid-proto"),
 	}

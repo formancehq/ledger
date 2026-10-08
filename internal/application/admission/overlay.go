@@ -5,7 +5,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/semver"
@@ -80,7 +80,7 @@ func (o *overlay[K, V]) Range(fn func(K, V) bool) {
 type bulkOverlay struct {
 	numscriptEntries *overlay[numscriptEntryKey, string]
 	numscriptLatest  *overlay[numscriptNameKey, string]
-	sinks            *overlay[string, *commonpb.SinkConfig]
+	sinks            *overlay[string, *ledgerpb.SinkConfig]
 	// What admission observed of each revert target, resolved once at
 	// order-build time from the transaction attribute and reused by the preload
 	// and intra-bulk effect passes. The postings stay off the wire order: the
@@ -125,7 +125,7 @@ const (
 // on the overlay map reads correctly without a second return value.
 type revertTargetObservation struct {
 	state    revertTargetState
-	postings []*commonpb.Posting
+	postings []*ledgerpb.Posting
 }
 
 // absentRevertTarget records that admission looked and the transaction was not
@@ -135,7 +135,7 @@ func absentRevertTarget() revertTargetObservation {
 }
 
 // presentRevertTarget records the postings admission read for the target.
-func presentRevertTarget(postings []*commonpb.Posting) revertTargetObservation {
+func presentRevertTarget(postings []*ledgerpb.Posting) revertTargetObservation {
 	return revertTargetObservation{state: revertTargetPresent, postings: postings}
 }
 
@@ -194,7 +194,7 @@ func newBulkOverlay() *bulkOverlay {
 	return &bulkOverlay{
 		numscriptEntries: newOverlay[numscriptEntryKey, string](),
 		numscriptLatest:  newOverlay[numscriptNameKey, string](),
-		sinks:            newOverlay[string, *commonpb.SinkConfig](),
+		sinks:            newOverlay[string, *ledgerpb.SinkConfig](),
 		revertTargets:    make(map[domain.TransactionKey]revertTargetObservation),
 	}
 }

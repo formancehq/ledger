@@ -9,7 +9,7 @@ import (
 	"math/big"
 	"time"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -27,11 +27,11 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 
 		BeforeAll(func() {
 			// Create ledger with schema but no indexes
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*ledgerpb.SetMetadataFieldTypeCommand{
 				{
-					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "category",
-					Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+					Type:       ledgerpb.MetadataType_METADATA_TYPE_STRING,
 				},
 			})))
 			Expect(err).To(Succeed())
@@ -39,13 +39,13 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 
 		It("Should reject queries on non-indexed metadata fields", func() {
 			// Create a prepared query that filters on a non-indexed field
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_CreatePreparedQuery{CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_CreatePreparedQuery{CreatePreparedQuery: &ledgerpb.CreatePreparedQueryRequest{
 					Ledger: ledgerName,
 
-					Query: &commonpb.PreparedQuery{
+					Query: &ledgerpb.PreparedQuery{
 						Name:   "category-filter",
-						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 						Filter: actions.StringMetadataFilter("category", "premium"),
 					},
 				}},
@@ -53,10 +53,10 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			// Execution should fail with index not found
-			_, err = sharedClient.ExecutePreparedQuery(sharedCtx, &commonpb.ExecutePreparedQueryRequest{
+			_, err = sharedClient.ExecutePreparedQuery(sharedCtx, &ledgerpb.ExecutePreparedQueryRequest{
 				Ledger:    ledgerName,
 				QueryName: "category-filter",
-				Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+				Mode:      ledgerpb.QueryMode_QUERY_MODE_LIST,
 			})
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
@@ -70,11 +70,11 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 
 		It("Should succeed after creating index and data", func() {
 			// Create the metadata index, then add data (index builder only indexes forward)
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateAccountMetadataIndexAction(ledgerName, "category")))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateAccountMetadataIndexAction(ledgerName, "category")))
 			Expect(err).To(Succeed())
 
 			// Create data AFTER the index exists
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil),
 				actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"category": "premium"})))
@@ -82,10 +82,10 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 
 			// Wait for the index builder to catch up and query to succeed
 			Eventually(func(g Gomega) {
-				result, err := sharedClient.ExecutePreparedQuery(sharedCtx, &commonpb.ExecutePreparedQueryRequest{
+				result, err := sharedClient.ExecutePreparedQuery(sharedCtx, &ledgerpb.ExecutePreparedQueryRequest{
 					Ledger:    ledgerName,
 					QueryName: "category-filter",
-					Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+					Mode:      ledgerpb.QueryMode_QUERY_MODE_LIST,
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(result.GetCursor()).NotTo(BeNil())
@@ -95,7 +95,7 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 		})
 
 		It("Should show index in GetLedger / ListIndexes responses", func() {
-			ledger, err := sharedClient.GetLedger(sharedCtx, &commonpb.GetLedgerRequest{Ledger: ledgerName})
+			ledger, err := sharedClient.GetLedger(sharedCtx, &ledgerpb.GetLedgerRequest{Ledger: ledgerName})
 			Expect(err).To(Succeed())
 			Expect(ledger.MetadataSchema).NotTo(BeNil())
 			field, ok := ledger.MetadataSchema.AccountFields["category"]
@@ -104,20 +104,20 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 
 			indexes, err := listLedgerIndexes(sharedCtx, sharedClient, ledgerName)
 			Expect(err).To(Succeed())
-			Expect(hasMetadataIndex(indexes, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "category")).To(BeTrue())
+			Expect(hasMetadataIndex(indexes, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "category")).To(BeTrue())
 		})
 
 		It("Should reject queries after dropping the index", func() {
 			// Drop the metadata index
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.DropAccountMetadataIndexAction(ledgerName, "category")))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.DropAccountMetadataIndexAction(ledgerName, "category")))
 			Expect(err).To(Succeed())
 
 			// Query should fail again
 			Eventually(func(g Gomega) {
-				_, err := sharedClient.ExecutePreparedQuery(sharedCtx, &commonpb.ExecutePreparedQueryRequest{
+				_, err := sharedClient.ExecutePreparedQuery(sharedCtx, &ledgerpb.ExecutePreparedQueryRequest{
 					Ledger:    ledgerName,
 					QueryName: "category-filter",
-					Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+					Mode:      ledgerpb.QueryMode_QUERY_MODE_LIST,
 				})
 				g.Expect(err).To(HaveOccurred())
 				st, ok := status.FromError(err)
@@ -134,14 +134,14 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 		const ledgerName = "idx-address"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// Create transactions
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil),
-				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
 				}, nil)))
 			Expect(err).To(Succeed())
@@ -149,41 +149,41 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 
 		It("Should create and use address index", func() {
 			// Create address index (any role)
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateAddressIndexAction(ledgerName, commonpb.AddressRole_ADDRESS_ROLE_ANY)))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateAddressIndexAction(ledgerName, ledgerpb.AddressRole_ADDRESS_ROLE_ANY)))
 			Expect(err).To(Succeed())
 
 			// Verify ListIndexes shows the index
 			Eventually(func(g Gomega) {
 				indexes, err := listLedgerIndexes(sharedCtx, sharedClient, ledgerName)
 				g.Expect(err).To(Succeed())
-				g.Expect(hasTxBuiltinIndex(indexes, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS)).To(BeTrue())
+				g.Expect(hasTxBuiltinIndex(indexes, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS)).To(BeTrue())
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
 		It("Should create source and destination indexes", func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateAddressIndexAction(ledgerName, commonpb.AddressRole_ADDRESS_ROLE_SOURCE),
-				actions.CreateAddressIndexAction(ledgerName, commonpb.AddressRole_ADDRESS_ROLE_DESTINATION)))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateAddressIndexAction(ledgerName, ledgerpb.AddressRole_ADDRESS_ROLE_SOURCE),
+				actions.CreateAddressIndexAction(ledgerName, ledgerpb.AddressRole_ADDRESS_ROLE_DESTINATION)))
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) {
 				indexes, err := listLedgerIndexes(sharedCtx, sharedClient, ledgerName)
 				g.Expect(err).To(Succeed())
-				g.Expect(hasTxBuiltinIndex(indexes, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS)).To(BeTrue())
-				g.Expect(hasTxBuiltinIndex(indexes, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS)).To(BeTrue())
+				g.Expect(hasTxBuiltinIndex(indexes, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS)).To(BeTrue())
+				g.Expect(hasTxBuiltinIndex(indexes, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS)).To(BeTrue())
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
 		It("Should drop address index", func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.DropAddressIndexAction(ledgerName, commonpb.AddressRole_ADDRESS_ROLE_ANY)))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.DropAddressIndexAction(ledgerName, ledgerpb.AddressRole_ADDRESS_ROLE_ANY)))
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) {
 				indexes, err := listLedgerIndexes(sharedCtx, sharedClient, ledgerName)
 				g.Expect(err).To(Succeed())
-				g.Expect(hasTxBuiltinIndex(indexes, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS)).To(BeFalse())
+				g.Expect(hasTxBuiltinIndex(indexes, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS)).To(BeFalse())
 				// Source and destination should still be enabled
-				g.Expect(hasTxBuiltinIndex(indexes, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS)).To(BeTrue())
-				g.Expect(hasTxBuiltinIndex(indexes, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS)).To(BeTrue())
+				g.Expect(hasTxBuiltinIndex(indexes, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS)).To(BeTrue())
+				g.Expect(hasTxBuiltinIndex(indexes, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS)).To(BeTrue())
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
@@ -195,28 +195,28 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 		const ledgerName = "idx-builtin-ref"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should reject reference filter queries when index does not exist", func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_CreatePreparedQuery{CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_CreatePreparedQuery{CreatePreparedQuery: &ledgerpb.CreatePreparedQueryRequest{
 					Ledger: ledgerName,
 
-					Query: &commonpb.PreparedQuery{
+					Query: &ledgerpb.PreparedQuery{
 						Name:   "by-reference",
-						Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+						Target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 						Filter: actions.ReferenceFilter("pay-001"),
 					},
 				}},
 			}))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.ExecutePreparedQuery(sharedCtx, &commonpb.ExecutePreparedQueryRequest{
+			_, err = sharedClient.ExecutePreparedQuery(sharedCtx, &ledgerpb.ExecutePreparedQueryRequest{
 				Ledger:    ledgerName,
 				QueryName: "by-reference",
-				Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+				Mode:      ledgerpb.QueryMode_QUERY_MODE_LIST,
 			})
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
@@ -226,27 +226,27 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 		})
 
 		It("Should create reference index and query transactions by reference", func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateBuiltinTxIndexAction(ledgerName, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.WithReference(actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.WithReference(actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil), "pay-001"),
-				actions.WithReference(actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.WithReference(actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
 				}, nil), "pay-002"),
-				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "charlie", big.NewInt(50), "USD"),
 				}, nil)))
 			Expect(err).To(Succeed())
 
-			Expect(actions.WaitForBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)).To(Succeed())
+			Expect(actions.WaitForBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				result, err := sharedClient.ExecutePreparedQuery(sharedCtx, &commonpb.ExecutePreparedQueryRequest{
+				result, err := sharedClient.ExecutePreparedQuery(sharedCtx, &ledgerpb.ExecutePreparedQueryRequest{
 					Ledger:    ledgerName,
 					QueryName: "by-reference",
-					Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+					Mode:      ledgerpb.QueryMode_QUERY_MODE_LIST,
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(result.GetCursor().TransactionData).To(HaveLen(1))
@@ -257,19 +257,19 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 			// Per-replica readiness lives in IndexEntry.current_version
 			// on GetIndexStatus (EN-1323). The registry entry itself is exercised by
 			// ListIndexes elsewhere.
-			Expect(actions.WaitForBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)).
+			Expect(actions.WaitForBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)).
 				To(Succeed())
 		})
 
 		It("Should reject reference filter queries after dropping the index", func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.DropBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.DropBuiltinTxIndexAction(ledgerName, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)))
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				_, err := sharedClient.ExecutePreparedQuery(sharedCtx, &commonpb.ExecutePreparedQueryRequest{
+				_, err := sharedClient.ExecutePreparedQuery(sharedCtx, &ledgerpb.ExecutePreparedQueryRequest{
 					Ledger:    ledgerName,
 					QueryName: "by-reference",
-					Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+					Mode:      ledgerpb.QueryMode_QUERY_MODE_LIST,
 				})
 				g.Expect(err).To(HaveOccurred())
 				st, ok := status.FromError(err)
@@ -292,29 +292,29 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 			ts2 = time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)
 			ts3 = time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should reject timestamp filter queries when index does not exist", func() {
 			minTs, maxTs := uint64(ts1.UnixMicro()), uint64(ts3.UnixMicro())
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_CreatePreparedQuery{CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_CreatePreparedQuery{CreatePreparedQuery: &ledgerpb.CreatePreparedQueryRequest{
 					Ledger: ledgerName,
 
-					Query: &commonpb.PreparedQuery{
+					Query: &ledgerpb.PreparedQuery{
 						Name:   "by-timestamp",
-						Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+						Target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 						Filter: actions.TimestampRangeFilter(minTs, maxTs),
 					},
 				}},
 			}))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.ExecutePreparedQuery(sharedCtx, &commonpb.ExecutePreparedQueryRequest{
+			_, err = sharedClient.ExecutePreparedQuery(sharedCtx, &ledgerpb.ExecutePreparedQueryRequest{
 				Ledger:    ledgerName,
 				QueryName: "by-timestamp",
-				Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+				Mode:      ledgerpb.QueryMode_QUERY_MODE_LIST,
 			})
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
@@ -324,22 +324,22 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 		})
 
 		It("Should create timestamp index and query transactions by time range", func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateBuiltinTxIndexAction(ledgerName, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.WithTimestamp(actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "a", big.NewInt(10), "USD")}, nil), ts1),
-				actions.WithTimestamp(actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "b", big.NewInt(20), "USD")}, nil), ts2),
-				actions.WithTimestamp(actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "c", big.NewInt(30), "USD")}, nil), ts3)))
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.WithTimestamp(actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{actions.NewPosting("world", "a", big.NewInt(10), "USD")}, nil), ts1),
+				actions.WithTimestamp(actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{actions.NewPosting("world", "b", big.NewInt(20), "USD")}, nil), ts2),
+				actions.WithTimestamp(actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{actions.NewPosting("world", "c", big.NewInt(30), "USD")}, nil), ts3)))
 			Expect(err).To(Succeed())
 
-			Expect(actions.WaitForBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)).To(Succeed())
+			Expect(actions.WaitForBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)).To(Succeed())
 
 			// Full range ts1..ts3 → 3 transactions
 			Eventually(func(g Gomega) {
-				result, err := sharedClient.ExecutePreparedQuery(sharedCtx, &commonpb.ExecutePreparedQueryRequest{
+				result, err := sharedClient.ExecutePreparedQuery(sharedCtx, &ledgerpb.ExecutePreparedQueryRequest{
 					Ledger:    ledgerName,
 					QueryName: "by-timestamp",
-					Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+					Mode:      ledgerpb.QueryMode_QUERY_MODE_LIST,
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(result.GetCursor().TransactionData).To(HaveLen(3))
@@ -348,23 +348,23 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 
 		It("Should return only transactions in a narrower timestamp range", func() {
 			minTs, maxTs := uint64(ts1.UnixMicro()), uint64(ts2.UnixMicro())
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_CreatePreparedQuery{CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_CreatePreparedQuery{CreatePreparedQuery: &ledgerpb.CreatePreparedQueryRequest{
 					Ledger: ledgerName,
 
-					Query: &commonpb.PreparedQuery{
+					Query: &ledgerpb.PreparedQuery{
 						Name:   "by-timestamp-narrow",
-						Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+						Target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 						Filter: actions.TimestampRangeFilter(minTs, maxTs),
 					},
 				}},
 			}))
 			Expect(err).To(Succeed())
 
-			result, err := sharedClient.ExecutePreparedQuery(sharedCtx, &commonpb.ExecutePreparedQueryRequest{
+			result, err := sharedClient.ExecutePreparedQuery(sharedCtx, &ledgerpb.ExecutePreparedQueryRequest{
 				Ledger:    ledgerName,
 				QueryName: "by-timestamp-narrow",
-				Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+				Mode:      ledgerpb.QueryMode_QUERY_MODE_LIST,
 			})
 			Expect(err).To(Succeed())
 			Expect(result.GetCursor().TransactionData).To(HaveLen(2))
@@ -373,7 +373,7 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 		It("Should show timestamp index as ready locally via GetIndexStatus", func() {
 			// Per-replica readiness lives in IndexEntry.current_version
 			// on GetIndexStatus since EN-1323.
-			Expect(actions.WaitForBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)).
+			Expect(actions.WaitForBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)).
 				To(Succeed())
 		})
 	})
@@ -385,30 +385,30 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 		const ledgerName = "idx-builtin-iat"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should reject inserted_at filter queries when index does not exist", func() {
 			// Use a wide range that covers any possible insertion time.
 			minTs, maxTs := uint64(0), uint64(time.Now().Add(time.Hour).UnixMicro())
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_CreatePreparedQuery{CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_CreatePreparedQuery{CreatePreparedQuery: &ledgerpb.CreatePreparedQueryRequest{
 					Ledger: ledgerName,
 
-					Query: &commonpb.PreparedQuery{
+					Query: &ledgerpb.PreparedQuery{
 						Name:   "by-inserted-at",
-						Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+						Target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 						Filter: actions.InsertedAtRangeFilter(minTs, maxTs),
 					},
 				}},
 			}))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.ExecutePreparedQuery(sharedCtx, &commonpb.ExecutePreparedQueryRequest{
+			_, err = sharedClient.ExecutePreparedQuery(sharedCtx, &ledgerpb.ExecutePreparedQueryRequest{
 				Ledger:    ledgerName,
 				QueryName: "by-inserted-at",
-				Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+				Mode:      ledgerpb.QueryMode_QUERY_MODE_LIST,
 			})
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
@@ -421,27 +421,27 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 			// Record time before creating transactions.
 			beforeCreate := time.Now()
 
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT)))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateBuiltinTxIndexAction(ledgerName, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT)))
 			Expect(err).To(Succeed())
 
 			// Create transactions — their inserted_at will be ~now (wall clock).
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "a", big.NewInt(10), "USD")}, nil),
-				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "b", big.NewInt(20), "USD")}, nil),
-				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "c", big.NewInt(30), "USD")}, nil)))
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{actions.NewPosting("world", "a", big.NewInt(10), "USD")}, nil),
+				actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{actions.NewPosting("world", "b", big.NewInt(20), "USD")}, nil),
+				actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{actions.NewPosting("world", "c", big.NewInt(30), "USD")}, nil)))
 			Expect(err).To(Succeed())
 
-			Expect(actions.WaitForBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT)).To(Succeed())
+			Expect(actions.WaitForBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT)).To(Succeed())
 
 			// Query all transactions created between beforeCreate and now+1h.
 			minTs := uint64(beforeCreate.UnixMicro())
 			maxTs := uint64(time.Now().Add(time.Hour).UnixMicro())
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_CreatePreparedQuery{CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_CreatePreparedQuery{CreatePreparedQuery: &ledgerpb.CreatePreparedQueryRequest{
 					Ledger: ledgerName,
 
-					Query: &commonpb.PreparedQuery{
+					Query: &ledgerpb.PreparedQuery{
 						Name:   "by-inserted-at-all",
-						Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+						Target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 						Filter: actions.InsertedAtRangeFilter(minTs, maxTs),
 					},
 				}},
@@ -449,10 +449,10 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				result, err := sharedClient.ExecutePreparedQuery(sharedCtx, &commonpb.ExecutePreparedQueryRequest{
+				result, err := sharedClient.ExecutePreparedQuery(sharedCtx, &ledgerpb.ExecutePreparedQueryRequest{
 					Ledger:    ledgerName,
 					QueryName: "by-inserted-at-all",
-					Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+					Mode:      ledgerpb.QueryMode_QUERY_MODE_LIST,
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(result.GetCursor().TransactionData).To(HaveLen(3))
@@ -463,23 +463,23 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 			// A range far in the past should match nothing.
 			pastMin := uint64(time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC).UnixMicro())
 			pastMax := uint64(time.Date(2000, 1, 2, 0, 0, 0, 0, time.UTC).UnixMicro())
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_CreatePreparedQuery{CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_CreatePreparedQuery{CreatePreparedQuery: &ledgerpb.CreatePreparedQueryRequest{
 					Ledger: ledgerName,
 
-					Query: &commonpb.PreparedQuery{
+					Query: &ledgerpb.PreparedQuery{
 						Name:   "by-inserted-at-past",
-						Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+						Target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 						Filter: actions.InsertedAtRangeFilter(pastMin, pastMax),
 					},
 				}},
 			}))
 			Expect(err).To(Succeed())
 
-			result, err := sharedClient.ExecutePreparedQuery(sharedCtx, &commonpb.ExecutePreparedQueryRequest{
+			result, err := sharedClient.ExecutePreparedQuery(sharedCtx, &ledgerpb.ExecutePreparedQueryRequest{
 				Ledger:    ledgerName,
 				QueryName: "by-inserted-at-past",
-				Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+				Mode:      ledgerpb.QueryMode_QUERY_MODE_LIST,
 			})
 			Expect(err).To(Succeed())
 			Expect(result.GetCursor().TransactionData).To(BeEmpty())
@@ -488,19 +488,19 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 		It("Should show inserted_at index as ready locally via GetIndexStatus", func() {
 			// Per-replica readiness lives in IndexEntry.current_version
 			// on GetIndexStatus since EN-1323.
-			Expect(actions.WaitForBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT)).
+			Expect(actions.WaitForBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT)).
 				To(Succeed())
 		})
 
 		It("Should reject inserted_at filter queries after dropping the index", func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.DropBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT)))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.DropBuiltinTxIndexAction(ledgerName, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT)))
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				_, err := sharedClient.ExecutePreparedQuery(sharedCtx, &commonpb.ExecutePreparedQueryRequest{
+				_, err := sharedClient.ExecutePreparedQuery(sharedCtx, &ledgerpb.ExecutePreparedQueryRequest{
 					Ledger:    ledgerName,
 					QueryName: "by-inserted-at",
-					Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+					Mode:      ledgerpb.QueryMode_QUERY_MODE_LIST,
 				})
 				g.Expect(err).To(HaveOccurred())
 				st, ok := status.FromError(err)
@@ -517,26 +517,26 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 		const ledgerName = "idx-id-filter"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// Create 5 transactions — IDs will be 1..5
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "a1", big.NewInt(10), "USD")}, nil),
-				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "a2", big.NewInt(20), "USD")}, nil),
-				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "a3", big.NewInt(30), "USD")}, nil),
-				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "a4", big.NewInt(40), "USD")}, nil),
-				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "a5", big.NewInt(50), "USD")}, nil)))
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{actions.NewPosting("world", "a1", big.NewInt(10), "USD")}, nil),
+				actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{actions.NewPosting("world", "a2", big.NewInt(20), "USD")}, nil),
+				actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{actions.NewPosting("world", "a3", big.NewInt(30), "USD")}, nil),
+				actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{actions.NewPosting("world", "a4", big.NewInt(40), "USD")}, nil),
+				actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{actions.NewPosting("world", "a5", big.NewInt(50), "USD")}, nil)))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should filter by exact ID", func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_CreatePreparedQuery{CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_CreatePreparedQuery{CreatePreparedQuery: &ledgerpb.CreatePreparedQueryRequest{
 					Ledger: ledgerName,
 
-					Query: &commonpb.PreparedQuery{
+					Query: &ledgerpb.PreparedQuery{
 						Name:   "by-id-exact",
-						Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+						Target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 						Filter: actions.TxIDExactFilter(3),
 					},
 				}},
@@ -544,10 +544,10 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				result, err := sharedClient.ExecutePreparedQuery(sharedCtx, &commonpb.ExecutePreparedQueryRequest{
+				result, err := sharedClient.ExecutePreparedQuery(sharedCtx, &ledgerpb.ExecutePreparedQueryRequest{
 					Ledger:    ledgerName,
 					QueryName: "by-id-exact",
-					Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+					Mode:      ledgerpb.QueryMode_QUERY_MODE_LIST,
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(transactionIDs(result.GetCursor().TransactionData)).To(ConsistOf(uint64(3)))
@@ -555,13 +555,13 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 		})
 
 		It("Should filter by ID range", func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_CreatePreparedQuery{CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_CreatePreparedQuery{CreatePreparedQuery: &ledgerpb.CreatePreparedQueryRequest{
 					Ledger: ledgerName,
 
-					Query: &commonpb.PreparedQuery{
+					Query: &ledgerpb.PreparedQuery{
 						Name:   "by-id-range",
-						Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+						Target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 						Filter: actions.TxIDRangeFilter(2, 4),
 					},
 				}},
@@ -569,10 +569,10 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				result, err := sharedClient.ExecutePreparedQuery(sharedCtx, &commonpb.ExecutePreparedQueryRequest{
+				result, err := sharedClient.ExecutePreparedQuery(sharedCtx, &ledgerpb.ExecutePreparedQueryRequest{
 					Ledger:    ledgerName,
 					QueryName: "by-id-range",
-					Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+					Mode:      ledgerpb.QueryMode_QUERY_MODE_LIST,
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(transactionIDs(result.GetCursor().TransactionData)).To(ConsistOf(uint64(2), uint64(3), uint64(4)))
@@ -580,23 +580,23 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 		})
 
 		It("Should return empty for a non-existent ID", func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_CreatePreparedQuery{CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_CreatePreparedQuery{CreatePreparedQuery: &ledgerpb.CreatePreparedQueryRequest{
 					Ledger: ledgerName,
 
-					Query: &commonpb.PreparedQuery{
+					Query: &ledgerpb.PreparedQuery{
 						Name:   "by-id-missing",
-						Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+						Target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 						Filter: actions.TxIDExactFilter(999),
 					},
 				}},
 			}))
 			Expect(err).To(Succeed())
 
-			result, err := sharedClient.ExecutePreparedQuery(sharedCtx, &commonpb.ExecutePreparedQueryRequest{
+			result, err := sharedClient.ExecutePreparedQuery(sharedCtx, &ledgerpb.ExecutePreparedQueryRequest{
 				Ledger:    ledgerName,
 				QueryName: "by-id-missing",
-				Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+				Mode:      ledgerpb.QueryMode_QUERY_MODE_LIST,
 			})
 			Expect(err).To(Succeed())
 			Expect(result.GetCursor().TransactionData).To(BeEmpty())
@@ -617,22 +617,22 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 		BeforeAll(func() {
 			// Create the ledger AND its reference index in ONE atomic Apply,
 			// before any transaction is ingested.
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("",
 				actions.CreateLedgerAction(ledgerName, nil),
-				actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
+				actions.CreateBuiltinTxIndexAction(ledgerName, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
 			))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should promote the initial index straight to live with no backfill", func() {
 			Eventually(func(g Gomega) {
-				resp, err := sharedClient.GetIndexStatus(sharedCtx, &commonpb.GetIndexStatusRequest{Ledger: ledgerName})
+				resp, err := sharedClient.GetIndexStatus(sharedCtx, &ledgerpb.GetIndexStatusRequest{Ledger: ledgerName})
 				g.Expect(err).To(Succeed())
 
-				var entry *commonpb.IndexEntry
+				var entry *ledgerpb.IndexEntry
 				for _, e := range resp.GetIndexes() {
-					b, ok := e.GetIndex().GetId().GetKind().(*commonpb.IndexID_TxBuiltin)
-					if e.GetLedger() == ledgerName && ok && b.TxBuiltin == commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE {
+					b, ok := e.GetIndex().GetId().GetKind().(*ledgerpb.IndexID_TxBuiltin)
+					if e.GetLedger() == ledgerName && ok && b.TxBuiltin == ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE {
 						entry = e
 
 						break
@@ -648,20 +648,20 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 		})
 
 		It("Should resolve a reference-backed query immediately after ingest, with no ErrIndexBuilding", func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
-				actions.WithReference(actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("",
+				actions.WithReference(actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "alice", big.NewInt(100), "USD/2"),
 				}, nil), "init-pay-001"),
 			))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_CreatePreparedQuery{CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_CreatePreparedQuery{CreatePreparedQuery: &ledgerpb.CreatePreparedQueryRequest{
 					Ledger: ledgerName,
 
-					Query: &commonpb.PreparedQuery{
+					Query: &ledgerpb.PreparedQuery{
 						Name:   "by-reference",
-						Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+						Target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 						Filter: actions.ReferenceFilter("init-pay-001"),
 					},
 				}},
@@ -669,10 +669,10 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				result, err := sharedClient.ExecutePreparedQuery(sharedCtx, &commonpb.ExecutePreparedQueryRequest{
+				result, err := sharedClient.ExecutePreparedQuery(sharedCtx, &ledgerpb.ExecutePreparedQueryRequest{
 					Ledger:    ledgerName,
 					QueryName: "by-reference",
-					Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+					Mode:      ledgerpb.QueryMode_QUERY_MODE_LIST,
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(result.GetCursor().TransactionData).To(HaveLen(1))
@@ -684,16 +684,16 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 // listLedgerIndexes streams BucketService.ListIndexes scoped to ledgerName and
 // collects the entries. Replaces the pre-#450 pattern of reading them off
 // LedgerInfo.Indexes, which no longer exists.
-func listLedgerIndexes(ctx context.Context, client commonpb.BucketServiceClient, ledgerName string) ([]*commonpb.Index, error) {
-	stream, err := client.ListIndexes(ctx, &commonpb.ListIndexesRequest{
-		Scope:  commonpb.ListIndexesRequest_SCOPE_LEDGER,
+func listLedgerIndexes(ctx context.Context, client ledgerpb.BucketServiceClient, ledgerName string) ([]*ledgerpb.Index, error) {
+	stream, err := client.ListIndexes(ctx, &ledgerpb.ListIndexesRequest{
+		Scope:  ledgerpb.ListIndexesRequest_SCOPE_LEDGER,
 		Ledger: ledgerName,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	var out []*commonpb.Index
+	var out []*ledgerpb.Index
 
 	for {
 		idx, recvErr := stream.Recv()
@@ -711,9 +711,9 @@ func listLedgerIndexes(ctx context.Context, client commonpb.BucketServiceClient,
 
 // findTxBuiltinIndex returns the Index entry in indexes matching the given
 // TransactionBuiltinIndex, or nil when absent.
-func findTxBuiltinIndex(indexes []*commonpb.Index, want commonpb.TransactionBuiltinIndex) *commonpb.Index {
+func findTxBuiltinIndex(indexes []*ledgerpb.Index, want ledgerpb.TransactionBuiltinIndex) *ledgerpb.Index {
 	for _, idx := range indexes {
-		b, ok := idx.GetId().GetKind().(*commonpb.IndexID_TxBuiltin)
+		b, ok := idx.GetId().GetKind().(*ledgerpb.IndexID_TxBuiltin)
 		if !ok {
 			continue
 		}
@@ -726,15 +726,15 @@ func findTxBuiltinIndex(indexes []*commonpb.Index, want commonpb.TransactionBuil
 }
 
 // hasTxBuiltinIndex reports whether the given slice declares the builtin tx index.
-func hasTxBuiltinIndex(indexes []*commonpb.Index, want commonpb.TransactionBuiltinIndex) bool {
+func hasTxBuiltinIndex(indexes []*ledgerpb.Index, want ledgerpb.TransactionBuiltinIndex) bool {
 	return findTxBuiltinIndex(indexes, want) != nil
 }
 
 // findLogBuiltinIndex returns the Index entry matching the given
 // LogBuiltinIndex, or nil when absent.
-func findLogBuiltinIndex(indexes []*commonpb.Index, want commonpb.LogBuiltinIndex) *commonpb.Index {
+func findLogBuiltinIndex(indexes []*ledgerpb.Index, want ledgerpb.LogBuiltinIndex) *ledgerpb.Index {
 	for _, idx := range indexes {
-		b, ok := idx.GetId().GetKind().(*commonpb.IndexID_LogBuiltin)
+		b, ok := idx.GetId().GetKind().(*ledgerpb.IndexID_LogBuiltin)
 		if !ok {
 			continue
 		}
@@ -748,9 +748,9 @@ func findLogBuiltinIndex(indexes []*commonpb.Index, want commonpb.LogBuiltinInde
 
 // hasMetadataIndex reports whether the given slice declares a metadata index
 // for the given (target, key) pair.
-func hasMetadataIndex(indexes []*commonpb.Index, target commonpb.TargetType, key string) bool {
+func hasMetadataIndex(indexes []*ledgerpb.Index, target ledgerpb.TargetType, key string) bool {
 	for _, idx := range indexes {
-		m, ok := idx.GetId().GetKind().(*commonpb.IndexID_Metadata)
+		m, ok := idx.GetId().GetKind().(*ledgerpb.IndexID_Metadata)
 		if !ok {
 			continue
 		}

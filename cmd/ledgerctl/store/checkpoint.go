@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -46,7 +46,7 @@ func runCheckpoint(cmd *cobra.Command, _ []string) error {
 		spinner = cmdutil.StartSpinner("Creating checkpoint...")
 	}
 
-	resp, err := client.CreateCheckpoint(ctx, &clusterpb.CreateCheckpointRequest{})
+	resp, err := client.CreateCheckpoint(ctx, &ledgerpb.CreateCheckpointRequest{})
 	if err != nil {
 		if spinner != nil {
 			_ = spinner.Stop()

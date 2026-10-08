@@ -16,7 +16,7 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"k8s.io/client-go/dynamic"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/protohelpers"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -54,7 +54,7 @@ func main() {
 	}
 	defer func() { _ = conn.Close() }()
 
-	clusterClient := clusterpb.NewClusterServiceClient(conn)
+	clusterClient := ledgerpb.NewClusterServiceClient(conn)
 	lsClient := dynClient.Resource(internal.ClusterGVR).Namespace(internal.ClusterNamespace())
 
 	if err := internal.CreateLedger(ctx, client, sentinelLedger); err != nil && !internal.IsTransient(err) {
@@ -72,7 +72,7 @@ func main() {
 	}
 }
 
-func runCycle(ctx context.Context, lsClient dynamic.ResourceInterface, clusterClient clusterpb.ClusterServiceClient, client clusterpb.BucketServiceClient) {
+func runCycle(ctx context.Context, lsClient dynamic.ResourceInterface, clusterClient ledgerpb.ClusterServiceClient, client ledgerpb.BucketServiceClient) {
 	// Capture a sentinel commit before scaling; it must survive every move.
 	sentinel, err := internal.PreCommitSentinel(ctx, client, sentinelLedger)
 	if err != nil {
@@ -116,14 +116,14 @@ func runCycle(ctx context.Context, lsClient dynamic.ResourceInterface, clusterCl
 	}
 }
 
-func verifyFreshCommit(ctx context.Context, client clusterpb.BucketServiceClient, details internal.Details) {
-	resp, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", &clusterpb.Request{
-		Type: &clusterpb.Request_Apply{
-			Apply: &clusterpb.LedgerApplyRequest{
+func verifyFreshCommit(ctx context.Context, client ledgerpb.BucketServiceClient, details internal.Details) {
+	resp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+		Type: &ledgerpb.Request_Apply{
+			Apply: &ledgerpb.LedgerApplyRequest{
 				Ledger: sentinelLedger,
-				Action: &clusterpb.LedgerAction{Data: &clusterpb.LedgerAction_CreateTransaction{
-					CreateTransaction: &clusterpb.CreateTransactionPayload{
-						Postings: []*clusterpb.Posting{protohelpers.NewPosting("world", "scaling:check", "COIN", internal.RandomBigInt())},
+				Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &ledgerpb.CreateTransactionPayload{
+						Postings: []*ledgerpb.Posting{protohelpers.NewPosting("world", "scaling:check", "COIN", internal.RandomBigInt())},
 						Force:    true,
 					},
 				}},

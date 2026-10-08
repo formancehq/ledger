@@ -3,7 +3,7 @@ package http
 import (
 	"net/http"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 )
@@ -29,7 +29,7 @@ func (s *Server) handleGetIndexEntryStatus(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	entry, err := s.backend.GetIndexEntryStatus(r.Context(), &servicepb.GetIndexEntryStatusRequest{
+	entry, err := s.backend.GetIndexEntryStatus(r.Context(), &ledgerpb.GetIndexEntryStatusRequest{
 		Ledger: ledgerName,
 		Id:     id,
 	})

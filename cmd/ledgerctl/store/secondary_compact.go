@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -45,7 +45,7 @@ func runSecondaryCompact(cmd *cobra.Command, _ []string) error {
 		spinner = cmdutil.StartSpinner("Compacting read index...")
 	}
 
-	resp, err := client.CompactSecondary(ctx, &clusterpb.CompactSecondaryRequest{})
+	resp, err := client.CompactSecondary(ctx, &ledgerpb.CompactSecondaryRequest{})
 	if err != nil {
 		if spinner != nil {
 			_ = spinner.Stop()

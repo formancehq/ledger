@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	ledgergrpc "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
@@ -40,12 +40,12 @@ func TestPublishedContractIsTheRegisteredPublicClosure(t *testing.T) {
 	var set descriptorpb.FileDescriptorSet
 	require.NoError(t, proto.Unmarshal(bytes, &set))
 	public := map[string]protoreflect.FileDescriptor{
-		"common.proto":    ledgergrpc.File_common_proto,
-		"signature.proto": ledgergrpc.File_signature_proto,
-		"audit.proto":     ledgergrpc.File_audit_proto,
-		"bucket.proto":    ledgergrpc.File_bucket_proto,
-		"cluster.proto":   ledgergrpc.File_cluster_proto,
-		"restore.proto":   ledgergrpc.File_restore_proto,
+		"common.proto":    ledgerpb.File_common_proto,
+		"signature.proto": ledgerpb.File_signature_proto,
+		"audit.proto":     ledgerpb.File_audit_proto,
+		"bucket.proto":    ledgerpb.File_bucket_proto,
+		"cluster.proto":   ledgerpb.File_cluster_proto,
+		"restore.proto":   ledgerpb.File_restore_proto,
 	}
 	private := map[string]struct{}{
 		"raft_transport.proto":   {},
@@ -83,7 +83,7 @@ func TestPublishedContractIsTheRegisteredPublicClosure(t *testing.T) {
 }
 
 func TestInternalCallerAttributionReasonIsAbsentFromPublicDescriptor(t *testing.T) {
-	reasons := ledgergrpc.File_common_proto.Enums().ByName("ErrorReason")
+	reasons := ledgerpb.File_common_proto.Enums().ByName("ErrorReason")
 	require.NotNil(t, reasons)
 	require.Nil(t, reasons.Values().ByName("ERROR_REASON_INVALID_CALLER_ATTRIBUTION"))
 	require.Nil(t, reasons.Values().ByNumber(72))

@@ -11,7 +11,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
 	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
@@ -212,21 +212,21 @@ func decodeValue(key, val []byte) string {
 		return tryProtoJSON(val, &internalstatepb.IdempotencyKeyValue{})
 	case dal.ZoneHistory:
 		if len(key) >= 2 && key[1] == dal.SubHistoryAuditItem {
-			return tryProtoJSON(val, &auditpb.AuditItem{})
+			return tryProtoJSON(val, &ledgerpb.AuditItem{})
 		}
 
 		if len(key) >= 2 && key[1] == dal.SubHistoryAudit {
-			return tryProtoJSON(val, &auditpb.AuditEntry{})
+			return tryProtoJSON(val, &ledgerpb.AuditEntry{})
 		}
 
 		if len(key) >= 2 && key[1] == dal.SubHistoryAppliedProposal {
 			return tryProtoJSON(val, &proposalpb.AppliedProposal{})
 		}
 
-		return tryProtoJSON(val, &auditpb.Log{})
+		return tryProtoJSON(val, &ledgerpb.Log{})
 	case dal.ZonePerLedger:
 		if len(key) >= 2 && key[1] == dal.SubPLPreparedQuery {
-			return tryProtoJSON(val, &auditpb.PreparedQuery{})
+			return tryProtoJSON(val, &ledgerpb.PreparedQuery{})
 		}
 
 		return hexVal(val)
@@ -247,11 +247,11 @@ func decodeGlobalValue(key, val []byte) string {
 
 	switch key[1] {
 	case dal.SubGlobLedgerInfo:
-		return tryProtoJSON(val, &auditpb.LedgerInfo{})
+		return tryProtoJSON(val, &ledgerpb.LedgerInfo{})
 	case dal.SubGlobEventsConfig:
-		return tryProtoJSON(val, &auditpb.SinkConfig{})
+		return tryProtoJSON(val, &ledgerpb.SinkConfig{})
 	case dal.SubGlobSinkStatus:
-		return tryProtoJSON(val, &auditpb.SinkStatus{})
+		return tryProtoJSON(val, &ledgerpb.SinkStatus{})
 	case dal.SubGlobQueryCheckpoint:
 		return tryProtoJSON(val, &raftcmdpb.QueryCheckpointState{})
 	case dal.SubGlobLastAppliedIndex, dal.SubGlobLastAppliedTimestamp,
@@ -296,11 +296,11 @@ func decodeAttributeValue(key, val []byte) string {
 	case dal.SubAttrVolume:
 		return tryProtoJSON(val, &raftcmdpb.VolumePair{})
 	case dal.SubAttrMetadata:
-		return tryProtoJSON(val, &auditpb.MetadataValue{})
+		return tryProtoJSON(val, &ledgerpb.MetadataValue{})
 	case dal.SubAttrReference:
 		return tryProtoJSON(val, &internalstatepb.TransactionReferenceValue{})
 	case dal.SubAttrLedger:
-		return tryProtoJSON(val, &auditpb.LedgerInfo{})
+		return tryProtoJSON(val, &ledgerpb.LedgerInfo{})
 	case dal.SubAttrBoundary:
 		return tryProtoJSON(val, &raftcmdpb.LedgerBoundaries{})
 	case dal.SubAttrTransaction:

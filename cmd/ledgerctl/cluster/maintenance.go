@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -70,10 +70,10 @@ func runMaintenance(cmd *cobra.Command, args []string) error {
 
 	spinner := cmdutil.StartSpinner(action + " maintenance mode...")
 
-	requests := []*servicepb.Request{
+	requests := []*ledgerpb.Request{
 		{
-			Type: &servicepb.Request_SetMaintenanceMode{
-				SetMaintenanceMode: &servicepb.SetMaintenanceModeRequest{
+			Type: &ledgerpb.Request_SetMaintenanceMode{
+				SetMaintenanceMode: &ledgerpb.SetMaintenanceModeRequest{
 					Enabled: enabled,
 				},
 			},

@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/proto/publicpolicy"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -28,10 +28,10 @@ func TestCompileEmptyCombinators(t *testing.T) {
 
 	store := parityStore(t)
 
-	for _, target := range []commonpb.QueryTarget{
-		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-		commonpb.QueryTarget_QUERY_TARGET_LOGS,
+	for _, target := range []ledgerpb.QueryTarget{
+		ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		ledgerpb.QueryTarget_QUERY_TARGET_LOGS,
 	} {
 		t.Run(publicpolicy.TargetHumanName(target), func(t *testing.T) {
 			t.Parallel()
@@ -89,17 +89,17 @@ func TestCompileEmptyCombinators(t *testing.T) {
 // targetParityLeaf returns a leaf valid on target that matches some but not
 // all of the fixture, so the identity case fails on a result that is neither
 // the universe nor empty.
-func targetParityLeaf(t *testing.T, target commonpb.QueryTarget) *commonpb.QueryFilter {
+func targetParityLeaf(t *testing.T, target ledgerpb.QueryTarget) *ledgerpb.QueryFilter {
 	t.Helper()
 
 	switch target {
-	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
 		return stringFieldFilter("colour", "red")
-	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
 		txIDs := parityTxIDs()
 
 		return txIDRangeFilter(txIDs[2], txIDs[len(txIDs)-3])
-	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_LOGS:
 		logIDs := parityLogIDs()
 
 		return logIDRangeFilter(logIDs[2], logIDs[len(logIDs)-3])
@@ -137,7 +137,7 @@ func TestCompileEmptyAnd_UniverseOperandOnAccounts(t *testing.T) {
 		stamp))
 	require.NoError(t, batch.Commit())
 
-	accounts := commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS
+	accounts := ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS
 	hasAsset := hasAssetFilter(parityAsset, uint32(parityAssetPrecision))
 
 	require.NotContains(t, ascendingReference(t, store, accounts, nil), drained)
@@ -145,7 +145,7 @@ func TestCompileEmptyAnd_UniverseOperandOnAccounts(t *testing.T) {
 
 	viaEmptyAnd := ascendingReference(t, store, accounts, andFilter(hasAsset, andFilter()))
 	viaNot := ascendingReference(t, store, accounts, andFilter(hasAsset,
-		notFilter(addressExactFilter("definitely-not-an-account", commonpb.AddressRole_ADDRESS_ROLE_ANY))))
+		notFilter(addressExactFilter("definitely-not-an-account", ledgerpb.AddressRole_ADDRESS_ROLE_ANY))))
 
 	require.NotContains(t, viaEmptyAnd, drained)
 	require.Equal(t, viaNot, viaEmptyAnd)

@@ -11,7 +11,7 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -287,7 +287,7 @@ func verifyVolumeUpdateMonotonicity(
 // deletions are lifecycle effects, not posting deltas.
 func verifyVolumeDeltasMatchPostings(
 	volumeUpdates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
-	logs []*commonpb.Log,
+	logs []*ledgerpb.Log,
 ) error {
 	// Compute expected deltas from postings
 	type delta struct {
@@ -302,7 +302,7 @@ func verifyVolumeDeltasMatchPostings(
 			continue
 		}
 
-		apply, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
+		apply, ok := log.GetPayload().GetType().(*ledgerpb.LogPayload_Apply)
 		if !ok || apply.Apply == nil || apply.Apply.GetLog() == nil || apply.Apply.GetLog().GetData() == nil {
 			continue
 		}
@@ -310,14 +310,14 @@ func verifyVolumeDeltasMatchPostings(
 		ledgerName := apply.Apply.GetLedgerName()
 		data := apply.Apply.GetLog().GetData()
 
-		var postings []*commonpb.Posting
+		var postings []*ledgerpb.Posting
 
 		switch p := data.GetPayload().(type) {
-		case *commonpb.LedgerLogPayload_CreatedTransaction:
+		case *ledgerpb.LedgerLogPayload_CreatedTransaction:
 			if p.CreatedTransaction != nil && p.CreatedTransaction.GetTransaction() != nil {
 				postings = p.CreatedTransaction.GetTransaction().GetPostings()
 			}
-		case *commonpb.LedgerLogPayload_RevertedTransaction:
+		case *ledgerpb.LedgerLogPayload_RevertedTransaction:
 			if p.RevertedTransaction != nil && p.RevertedTransaction.GetRevertTransaction() != nil {
 				postings = p.RevertedTransaction.GetRevertTransaction().GetPostings()
 			}

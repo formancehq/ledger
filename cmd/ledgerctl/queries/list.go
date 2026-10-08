@@ -4,7 +4,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
@@ -50,7 +50,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	resp, err := client.ListPreparedQueries(ctx, &commonpb.ListPreparedQueriesRequest{
+	resp, err := client.ListPreparedQueries(ctx, &ledgerpb.ListPreparedQueriesRequest{
 		Ledger: ledgerName,
 	})
 	if err != nil {
@@ -84,13 +84,13 @@ func runList(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func formatTarget(t commonpb.QueryTarget) string {
+func formatTarget(t ledgerpb.QueryTarget) string {
 	switch t {
-	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
 		return "accounts"
-	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
 		return "transactions"
-	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
+	case ledgerpb.QueryTarget_QUERY_TARGET_LOGS:
 		return "logs"
 	default:
 		return t.String()

@@ -54,7 +54,7 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"google.golang.org/protobuf/proto"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -155,10 +155,10 @@ type readyNode struct {
 // neither is part of IsTransient. Narrow IsUnavailable matching would trip
 // the assertion below on retry-safe fault-window noise and undermine the
 // cross-node identity oracle's reliability.
-func waitForQuiescence(ctx context.Context, client clusterpb.BucketServiceClient) uint64 {
+func waitForQuiescence(ctx context.Context, client ledgerpb.BucketServiceClient) uint64 {
 	var last uint64
 	for attempt := 1; attempt <= quiescenceAttempts; attempt++ {
-		resp, err := client.Barrier(ctx, &clusterpb.BarrierRequest{})
+		resp, err := client.Barrier(ctx, &ledgerpb.BarrierRequest{})
 		if err != nil {
 			if internal.IsTransient(err) {
 				continue
@@ -183,8 +183,8 @@ func waitForQuiescence(ctx context.Context, client clusterpb.BucketServiceClient
 }
 
 // singleBarrier issues one Barrier and returns its commit index (0 on error).
-func singleBarrier(ctx context.Context, client clusterpb.BucketServiceClient) uint64 {
-	resp, err := client.Barrier(ctx, &clusterpb.BarrierRequest{})
+func singleBarrier(ctx context.Context, client ledgerpb.BucketServiceClient) uint64 {
+	resp, err := client.Barrier(ctx, &ledgerpb.BarrierRequest{})
 	if err != nil {
 		return 0
 	}
@@ -231,7 +231,7 @@ func waitNodeAtIndex(ctx context.Context, c *internal.PerNodeConn, target uint64
 		// NodeId routes to this specific node, returning its local Raft status
 		// (the forwarder resolves a non-zero ID to that node, or serves locally
 		// when it is the receiver) — never the leader's view.
-		state, err := c.Cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{NodeId: c.NodeID})
+		state, err := c.Cluster.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{NodeId: c.NodeID})
 		if err != nil {
 			// Node down or transient — skip after a short wait.
 			time.Sleep(appliedPollInterval)
@@ -248,7 +248,7 @@ func waitNodeAtIndex(ctx context.Context, c *internal.PerNodeConn, target uint64
 		// last_persisted_index because it names the Pebble-durability
 		// contract the oracle actually depends on — the GetAccount read is
 		// a Pebble read, not a Raft-consensus read.
-		// See clusterpb.RaftStatus.last_persisted_index for the contract.
+		// See ledgerpb.RaftStatus.last_persisted_index for the contract.
 		persisted := state.GetRaftStatus().GetLastPersistedIndex()
 
 		// Only "normal" nodes are caught up; syncing/out_of_sync/snapshotting
@@ -278,7 +278,7 @@ func waitNodeAtIndex(ctx context.Context, c *internal.PerNodeConn, target uint64
 }
 
 // localIsLearner reports whether the local node is a learner, for triage tags.
-func localIsLearner(state *clusterpb.ClusterState) bool {
+func localIsLearner(state *ledgerpb.ClusterState) bool {
 	local := state.GetLocalNode()
 	for _, n := range state.GetNodes() {
 		if n.GetId() == local {
@@ -301,14 +301,14 @@ func compareAccounts(ctx context.Context, nodes []readyNode, ledger string, inde
 
 	for _, addr := range addrs {
 		var (
-			ref     *clusterpb.Account
+			ref     *ledgerpb.Account
 			refNode string
 			refOK   bool
 		)
 
 		for _, n := range nodes {
 			staleCtx := internal.WithStaleConsistency(ctx)
-			acc, err := n.conn.Bucket.GetAccount(staleCtx, &clusterpb.GetAccountRequest{
+			acc, err := n.conn.Bucket.GetAccount(staleCtx, &ledgerpb.GetAccountRequest{
 				Ledger:  ledger,
 				Address: addr,
 			})
@@ -349,7 +349,7 @@ func compareAccounts(ctx context.Context, nodes []readyNode, ledger string, inde
 // volumesString renders an account's per-asset balances in a stable form for
 // assertion details (proto map iteration order is irrelevant to this triage
 // string; it is not used for the equality decision).
-func volumesString(acc *clusterpb.Account) string {
+func volumesString(acc *ledgerpb.Account) string {
 	if acc == nil {
 		return "<nil>"
 	}
@@ -366,7 +366,7 @@ func volumesString(acc *clusterpb.Account) string {
 // node returns the same hash and
 // hash_version for it. Sequences that NotFound on any node (applied-index
 // skew) are skipped, never failed.
-func compareAuditHashes(ctx context.Context, nodes []readyNode, driver clusterpb.BucketServiceClient, index uint64) {
+func compareAuditHashes(ctx context.Context, nodes []readyNode, driver ledgerpb.BucketServiceClient, index uint64) {
 	seq, ok := pickRecentAuditSequence(ctx, driver)
 	if !ok {
 		log.Println("composer: no audit sequence available to compare, skipping audit-hash check")
@@ -383,7 +383,7 @@ func compareAuditHashes(ctx context.Context, nodes []readyNode, driver clusterpb
 
 	for _, n := range nodes {
 		staleCtx := internal.WithStaleConsistency(ctx)
-		entry, err := n.conn.Bucket.GetAuditEntry(staleCtx, &clusterpb.GetAuditEntryRequest{Sequence: seq})
+		entry, err := n.conn.Bucket.GetAuditEntry(staleCtx, &ledgerpb.GetAuditEntryRequest{Sequence: seq})
 		if err != nil {
 			// NotFound on a node = applied-index skew; skip.
 			if !internal.IsTransient(err) && !internal.IsNotFound(err) {
@@ -425,9 +425,9 @@ func compareAuditHashes(ctx context.Context, nodes []readyNode, driver clusterpb
 // pickRecentAuditSequence pages through the audit trail and returns the highest
 // sequence seen within auditSampleWindow entries, which is in the live window
 // and most likely present on every caught-up node.
-func pickRecentAuditSequence(ctx context.Context, driver clusterpb.BucketServiceClient) (uint64, bool) {
-	stream, err := driver.ListAuditEntries(ctx, &clusterpb.ListAuditEntriesRequest{
-		Options: &clusterpb.ListOptions{PageSize: auditSampleWindow},
+func pickRecentAuditSequence(ctx context.Context, driver ledgerpb.BucketServiceClient) (uint64, bool) {
+	stream, err := driver.ListAuditEntries(ctx, &ledgerpb.ListAuditEntriesRequest{
+		Options: &ledgerpb.ListOptions{PageSize: auditSampleWindow},
 	})
 	if err != nil {
 		return 0, false

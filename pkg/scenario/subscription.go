@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math/big"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
@@ -47,7 +47,7 @@ func SubscriptionBlocks() *BlockGroup {
 	}
 }
 
-func subscriptionFund(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
+func subscriptionFund(ctx context.Context, client ledgerpb.BucketServiceClient, r RandFunc) (*ledgerpb.ApplyResponse, error) {
 	subID := 1 + RandIntN(r, SubscriptionNumSubscribers)
 	tiers := SubscriptionTiers()
 	tier := tiers[RandIntN(r, len(tiers))]
@@ -61,7 +61,7 @@ func subscriptionFund(ctx context.Context, client commonpb.BucketServiceClient, 
 	)
 }
 
-func subscriptionCharge(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
+func subscriptionCharge(ctx context.Context, client ledgerpb.BucketServiceClient, r RandFunc) (*ledgerpb.ApplyResponse, error) {
 	subID := 1 + RandIntN(r, SubscriptionNumSubscribers)
 	tiers := SubscriptionTiers()
 	tier := tiers[(subID-1)%len(tiers)]
@@ -80,7 +80,7 @@ func subscriptionCharge(ctx context.Context, client commonpb.BucketServiceClient
 	)
 }
 
-func subscriptionRecognize(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
+func subscriptionRecognize(ctx context.Context, client ledgerpb.BucketServiceClient, r RandFunc) (*ledgerpb.ApplyResponse, error) {
 	bal, ok := GetAccountBalance(ctx, client, SubscriptionLedger, "revenue:deferred", "USD/2")
 	if !ok || bal.Sign() <= 0 {
 		return nil, ErrSkip
@@ -100,7 +100,7 @@ func subscriptionRecognize(ctx context.Context, client commonpb.BucketServiceCli
 	)
 }
 
-func subscriptionCredit(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
+func subscriptionCredit(ctx context.Context, client ledgerpb.BucketServiceClient, r RandFunc) (*ledgerpb.ApplyResponse, error) {
 	subID := 1 + RandIntN(r, SubscriptionNumSubscribers)
 	amount := int64(100 + RandIntN(r, 500))
 	address := fmt.Sprintf("subscriber:%d", subID)
@@ -115,23 +115,23 @@ func subscriptionCredit(ctx context.Context, client commonpb.BucketServiceClient
 
 // SubscriptionSetupActions returns the Apply requests that create the ledger,
 // schema, account types, and numscript library for the subscription scenario.
-func SubscriptionSetupActions() []*commonpb.Request {
-	return []*commonpb.Request{
-		actions.CreateLedgerWithSchemaAction(SubscriptionLedger, nil, []*commonpb.SetMetadataFieldTypeCommand{
+func SubscriptionSetupActions() []*ledgerpb.Request {
+	return []*ledgerpb.Request{
+		actions.CreateLedgerWithSchemaAction(SubscriptionLedger, nil, []*ledgerpb.SetMetadataFieldTypeCommand{
 			{
-				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 				Key:        "subscriber_plan",
-				Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+				Type:       ledgerpb.MetadataType_METADATA_TYPE_STRING,
 			},
 			{
-				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 				Key:        "billing_cycle",
-				Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+				Type:       ledgerpb.MetadataType_METADATA_TYPE_INT64,
 			},
 			{
-				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 				Key:        "retention_score",
-				Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+				Type:       ledgerpb.MetadataType_METADATA_TYPE_INT64,
 			},
 		}),
 		actions.AddAccountTypeAction(SubscriptionLedger, "subscriber", "subscriber:{id}"),
@@ -179,15 +179,15 @@ send $amount (
 		actions.CreateAccountMetadataIndexAction(SubscriptionLedger, "subscriber_plan"),
 		actions.CreateAccountMetadataIndexAction(SubscriptionLedger, "retention_score"),
 		actions.CreatePreparedQueryAction("accounts-by-prefix", SubscriptionLedger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			actions.ParamAddressPrefixFilter("prefix"),
 		),
 		actions.CreatePreparedQueryAction("by-plan", SubscriptionLedger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			actions.ParamStringMetadataFilter("subscriber_plan", "plan_value"),
 		),
 		actions.CreatePreparedQueryAction("high-retention", SubscriptionLedger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			actions.ParamInt64RangeMetadataFilter("retention_score", "min_score", "max_score"),
 		),
 	}
@@ -248,7 +248,7 @@ func RunSubscription(r *Runner) error {
 	// --- Billing Cycles ---
 	for cycle := 1; cycle <= numCycles; cycle++ {
 		// Fund wallets
-		fundReqs := make([]*commonpb.Request, 0, numSubscribers)
+		fundReqs := make([]*ledgerpb.Request, 0, numSubscribers)
 		for _, sub := range subscribers {
 			fundReqs = append(fundReqs, actions.CreateScriptRefTransactionAction(SubscriptionLedger, "fund_wallet", "1.0.0", map[string]string{
 				"subscriber": fmt.Sprintf("subscriber:%d", sub.id),
@@ -260,7 +260,7 @@ func RunSubscription(r *Runner) error {
 		}
 
 		// Billing: charge only successfully funded subscribers
-		var billingReqs []*commonpb.Request
+		var billingReqs []*ledgerpb.Request
 		for _, sub := range subscribers {
 			if sub.fundedAt < sub.amount {
 				continue // skip under-funded
@@ -292,12 +292,12 @@ func RunSubscription(r *Runner) error {
 		// Typed metadata on first cycle
 		if cycle == 1 {
 			if _, err := r.Step("Cycle1/TypedMetadata",
-				actions.SaveTypedAccountMetadataAction(SubscriptionLedger, "subscriber:6", map[string]*commonpb.MetadataValue{
-					"subscriber_plan": {Type: &commonpb.MetadataValue_StringValue{StringValue: "pro"}},
-					"billing_cycle":   {Type: &commonpb.MetadataValue_IntValue{IntValue: 1}},
+				actions.SaveTypedAccountMetadataAction(SubscriptionLedger, "subscriber:6", map[string]*ledgerpb.MetadataValue{
+					"subscriber_plan": {Type: &ledgerpb.MetadataValue_StringValue{StringValue: "pro"}},
+					"billing_cycle":   {Type: &ledgerpb.MetadataValue_IntValue{IntValue: 1}},
 				}),
-				actions.SaveTypedAccountMetadataAction(SubscriptionLedger, "subscriber:7", map[string]*commonpb.MetadataValue{
-					"subscriber_plan": {Type: &commonpb.MetadataValue_StringValue{StringValue: "enterprise"}},
+				actions.SaveTypedAccountMetadataAction(SubscriptionLedger, "subscriber:7", map[string]*ledgerpb.MetadataValue{
+					"subscriber_plan": {Type: &ledgerpb.MetadataValue_StringValue{StringValue: "enterprise"}},
 				}),
 			); err != nil {
 				return err

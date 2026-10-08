@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
@@ -20,8 +20,8 @@ func TestHandleUpdatePreparedQuery_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
-			return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
+		func(_ context.Context, _ *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{{}}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -43,13 +43,13 @@ func TestHandleUpdatePreparedQuery_Success(t *testing.T) {
 func TestHandleUpdatePreparedQuery_NestedOneofs(t *testing.T) {
 	t.Parallel()
 
-	var captured *commonpb.Request
+	var captured *ledgerpb.Request
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, reqs *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, reqs *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			captured = reqs.GetUnsigned().GetRequests()[0]
 
-			return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{{}}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -184,7 +184,7 @@ func TestHandleUpdatePreparedQuery_NotFound(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, &domain.ErrPreparedQueryNotFound{Ledger: "ledger1", Name: "missing"}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)

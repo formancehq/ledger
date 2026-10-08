@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestParsePattern(t *testing.T) {
@@ -238,8 +238,8 @@ func BenchmarkMatchAddress(b *testing.B) {
 	segments5Var, _ := ParsePattern("org:{a}:dept:{b}:team:{c}:proj:{d}:env:{e}")
 
 	segmentsUUID, _ := ParsePattern("player:{id}:wallet")
-	_ = ValidateSegmentTypes(segmentsUUID, map[string]*commonpb.SegmentType{
-		"id": {Constraint: &commonpb.SegmentType_Uuid{Uuid: &commonpb.UUIDConstraint{}}},
+	_ = ValidateSegmentTypes(segmentsUUID, map[string]*ledgerpb.SegmentType{
+		"id": {Constraint: &ledgerpb.SegmentType_Uuid{Uuid: &ledgerpb.UUIDConstraint{}}},
 	})
 
 	cases := []struct {
@@ -294,14 +294,14 @@ func BenchmarkMatchWithConstraint(b *testing.B) {
 
 	// Native UUID matcher via segment_types.
 	nativeSegs, _ := ParsePattern("player:{id}:wallet")
-	_ = ValidateSegmentTypes(nativeSegs, map[string]*commonpb.SegmentType{
-		"id": {Constraint: &commonpb.SegmentType_Uuid{Uuid: &commonpb.UUIDConstraint{}}},
+	_ = ValidateSegmentTypes(nativeSegs, map[string]*ledgerpb.SegmentType{
+		"id": {Constraint: &ledgerpb.SegmentType_Uuid{Uuid: &ledgerpb.UUIDConstraint{}}},
 	})
 
 	// Regex UUID matcher via segment_types regex constraint.
 	regexSegs, _ := ParsePattern("player:{id}:wallet")
-	_ = ValidateSegmentTypes(regexSegs, map[string]*commonpb.SegmentType{
-		"id": {Constraint: &commonpb.SegmentType_Regex{Regex: "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"}},
+	_ = ValidateSegmentTypes(regexSegs, map[string]*ledgerpb.SegmentType{
+		"id": {Constraint: &ledgerpb.SegmentType_Regex{Regex: "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"}},
 	})
 
 	addr := "player:" + uuid + ":wallet"
@@ -341,13 +341,13 @@ func BenchmarkMatchWithConstraint(b *testing.B) {
 
 	// Native uint64 vs regex.
 	nativeUint, _ := ParsePattern("customer:{id}")
-	_ = ValidateSegmentTypes(nativeUint, map[string]*commonpb.SegmentType{
-		"id": {Constraint: &commonpb.SegmentType_Uint64{Uint64: &commonpb.Uint64Constraint{}}},
+	_ = ValidateSegmentTypes(nativeUint, map[string]*ledgerpb.SegmentType{
+		"id": {Constraint: &ledgerpb.SegmentType_Uint64{Uint64: &ledgerpb.Uint64Constraint{}}},
 	})
 
 	regexUint, _ := ParsePattern("customer:{id}")
-	_ = ValidateSegmentTypes(regexUint, map[string]*commonpb.SegmentType{
-		"id": {Constraint: &commonpb.SegmentType_Regex{Regex: "[0-9]+"}},
+	_ = ValidateSegmentTypes(regexUint, map[string]*ledgerpb.SegmentType{
+		"id": {Constraint: &ledgerpb.SegmentType_Regex{Regex: "[0-9]+"}},
 	})
 
 	b.Run("uint64_native/match", func(b *testing.B) {

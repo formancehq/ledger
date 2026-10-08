@@ -13,7 +13,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
@@ -51,12 +51,12 @@ func newRequest(t *testing.T, method, target string, body io.Reader, chiParams m
 // backendReturningLogs builds a mock backend whose Apply returns the given logs
 // and no error, for exercising the unitary-handler log-response contract. Apply
 // is expected exactly once, so reaching the log-response path is itself checked.
-func backendReturningLogs(t *testing.T, logs []*commonpb.Log) *MockBackend {
+func backendReturningLogs(t *testing.T, logs []*ledgerpb.Log) *MockBackend {
 	t.Helper()
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return &domain.ApplyResult{Logs: logs}, nil
 		}).Times(1)
 

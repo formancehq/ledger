@@ -2,7 +2,7 @@ package eventspb
 
 import (
 	"github.com/formancehq/go-libs/v5/pkg/types/time"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 )
@@ -16,7 +16,7 @@ func (x *Event) MarshalJSON() ([]byte, error) {
 		Ledger      string        `json:"ledger"`
 		Date        *time.Time    `json:"date,omitempty"`
 		LogSequence uint64        `json:"logSequence"`
-		Log         *commonpb.Log `json:"log,omitempty"`
+		Log         *ledgerpb.Log `json:"log,omitempty"`
 	}
 
 	aux := Aux{

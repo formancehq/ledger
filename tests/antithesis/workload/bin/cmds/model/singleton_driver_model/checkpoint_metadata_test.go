@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -21,7 +21,7 @@ func TestCheckpointMetadataReadsFenceSameNode(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	server, bucket, cluster := checkpointMetadataClients(t)
-	stale, err := cluster.ListQueryCheckpoints(ctx, &commonpb.ListQueryCheckpointsRequest{})
+	stale, err := cluster.ListQueryCheckpoints(ctx, &ledgerpb.ListQueryCheckpointsRequest{})
 	require.NoError(t, err)
 	require.Empty(t, stale.GetCheckpoints())
 	registry, err := readCheckpointRegistry(ctx, checkpointTestNode(bucket, cluster))
@@ -29,7 +29,7 @@ func TestCheckpointMetadataReadsFenceSameNode(t *testing.T) {
 	require.Len(t, registry.GetCheckpoints(), 1)
 	require.Equal(t, uint64(7), registry.GetCheckpoints()[0].GetCheckpointId())
 	server.fenced.Store(false)
-	staleSchedule, err := cluster.GetQueryCheckpointSchedule(ctx, &commonpb.GetQueryCheckpointScheduleRequest{})
+	staleSchedule, err := cluster.GetQueryCheckpointSchedule(ctx, &ledgerpb.GetQueryCheckpointScheduleRequest{})
 	require.NoError(t, err)
 	require.Empty(t, staleSchedule.GetCron())
 	schedule, err := readCheckpointSchedule(ctx, checkpointTestNode(bucket, cluster))
@@ -50,7 +50,7 @@ func TestCheckpointMetadataFenceFailureStopsRead(t *testing.T) {
 	require.Zero(t, server.metadataReads.Load())
 }
 
-func checkpointMetadataClients(t *testing.T) (*checkpointMetadataServer, commonpb.BucketServiceClient, commonpb.ClusterServiceClient) {
+func checkpointMetadataClients(t *testing.T) (*checkpointMetadataServer, ledgerpb.BucketServiceClient, ledgerpb.ClusterServiceClient) {
 	t.Helper()
 	handler := &checkpointMetadataServer{addr: "node"}
 	bucket, cluster := serveCheckpointMetadata(t, handler, handler)
@@ -59,8 +59,8 @@ func checkpointMetadataClients(t *testing.T) (*checkpointMetadataServer, commonp
 }
 
 type checkpointMetadataServer struct {
-	commonpb.UnimplementedBucketServiceServer
-	commonpb.UnimplementedClusterServiceServer
+	ledgerpb.UnimplementedBucketServiceServer
+	ledgerpb.UnimplementedClusterServiceServer
 
 	addr                   string
 	denied                 bool
@@ -72,7 +72,7 @@ type checkpointMetadataServer struct {
 	metadataReads          atomic.Int32
 }
 
-func (s *checkpointMetadataServer) Barrier(context.Context, *commonpb.BarrierRequest) (*commonpb.BarrierResponse, error) {
+func (s *checkpointMetadataServer) Barrier(context.Context, *ledgerpb.BarrierRequest) (*ledgerpb.BarrierResponse, error) {
 	for remaining := s.remainingFenceFailures.Load(); remaining > 0; remaining = s.remainingFenceFailures.Load() {
 		if s.remainingFenceFailures.CompareAndSwap(remaining, remaining-1) {
 			return nil, status.Error(codes.Unavailable, "fence temporarily unavailable")
@@ -85,45 +85,45 @@ func (s *checkpointMetadataServer) Barrier(context.Context, *commonpb.BarrierReq
 		return nil, status.Error(codes.PermissionDenied, "fence denied")
 	}
 
-	return &commonpb.BarrierResponse{CommitIndex: 42}, nil
+	return &ledgerpb.BarrierResponse{CommitIndex: 42}, nil
 }
 
-func (s *checkpointMetadataServer) GetClusterState(_ context.Context, req *commonpb.GetClusterStateRequest) (*commonpb.ClusterState, error) {
+func (s *checkpointMetadataServer) GetClusterState(_ context.Context, req *ledgerpb.GetClusterStateRequest) (*ledgerpb.ClusterState, error) {
 	if req.GetNodeId() == 0 {
 		if s.remainingDemotions.CompareAndSwap(1, 0) {
-			return &commonpb.ClusterState{State: "Follower", LocalNode: 1}, nil
+			return &ledgerpb.ClusterState{State: "Follower", LocalNode: 1}, nil
 		}
 		if s.failDiscovery {
 			return nil, status.Error(codes.Unavailable, "node unavailable during identity discovery")
 		}
 
-		return &commonpb.ClusterState{State: "Leader", LocalNode: 1, Nodes: []*commonpb.NodeInfo{{Id: 2, ServiceAddress: s.addr}}}, nil
+		return &ledgerpb.ClusterState{State: "Leader", LocalNode: 1, Nodes: []*ledgerpb.NodeInfo{{Id: 2, ServiceAddress: s.addr}}}, nil
 	}
 	if req.GetNodeId() != 2 {
 		return nil, status.Error(codes.InvalidArgument, "expected pinned node ID")
 	}
 	s.fenced.Store(true)
 
-	return &commonpb.ClusterState{LocalNode: 2, RaftStatus: &commonpb.RaftStatus{LastPersistedIndex: 42}}, nil
+	return &ledgerpb.ClusterState{LocalNode: 2, RaftStatus: &ledgerpb.RaftStatus{LastPersistedIndex: 42}}, nil
 }
 
-func checkpointTestNode(bucket commonpb.BucketServiceClient, cluster commonpb.ClusterServiceClient) *internal.PerNodeConn {
+func checkpointTestNode(bucket ledgerpb.BucketServiceClient, cluster ledgerpb.ClusterServiceClient) *internal.PerNodeConn {
 	return &internal.PerNodeConn{Addr: "node", NodeID: 2, Bucket: bucket, Cluster: cluster}
 }
 
-func (s *checkpointMetadataServer) ListQueryCheckpoints(context.Context, *commonpb.ListQueryCheckpointsRequest) (*commonpb.ListQueryCheckpointsResponse, error) {
+func (s *checkpointMetadataServer) ListQueryCheckpoints(context.Context, *ledgerpb.ListQueryCheckpointsRequest) (*ledgerpb.ListQueryCheckpointsResponse, error) {
 	s.metadataReads.Add(1)
-	response := &commonpb.ListQueryCheckpointsResponse{}
+	response := &ledgerpb.ListQueryCheckpointsResponse{}
 	if s.fenced.Load() {
-		response.Checkpoints = []*commonpb.QueryCheckpointInfo{{CheckpointId: 7}}
+		response.Checkpoints = []*ledgerpb.QueryCheckpointInfo{{CheckpointId: 7}}
 	}
 
 	return response, nil
 }
 
-func (s *checkpointMetadataServer) GetQueryCheckpointSchedule(context.Context, *commonpb.GetQueryCheckpointScheduleRequest) (*commonpb.GetQueryCheckpointScheduleResponse, error) {
+func (s *checkpointMetadataServer) GetQueryCheckpointSchedule(context.Context, *ledgerpb.GetQueryCheckpointScheduleRequest) (*ledgerpb.GetQueryCheckpointScheduleResponse, error) {
 	s.metadataReads.Add(1)
-	response := &commonpb.GetQueryCheckpointScheduleResponse{}
+	response := &ledgerpb.GetQueryCheckpointScheduleResponse{}
 	if s.fenced.Load() {
 		response.Cron = modelCheckpointCrons[0]
 	}

@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestProtoCursor_Basic(t *testing.T) {
@@ -19,9 +19,9 @@ func TestProtoCursor_Basic(t *testing.T) {
 	// Write proto messages under a prefix
 	batch := s.OpenWriteSession()
 
-	ts1 := &commonpb.Timestamp{Data: 1000}
-	ts2 := &commonpb.Timestamp{Data: 2000}
-	ts3 := &commonpb.Timestamp{Data: 3000}
+	ts1 := &ledgerpb.Timestamp{Data: 1000}
+	ts2 := &ledgerpb.Timestamp{Data: 2000}
+	ts3 := &ledgerpb.Timestamp{Data: 3000}
 
 	kb := NewKeyBuilder()
 	key1 := kb.PutByte(0xAA).PutUint64(1).Build()
@@ -51,7 +51,7 @@ func TestProtoCursor_Basic(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	cursor := NewProtoCursor[*commonpb.Timestamp](iter)
+	cursor := NewProtoCursor[*ledgerpb.Timestamp](iter)
 
 	defer func() { _ = cursor.Close() }()
 
@@ -89,7 +89,7 @@ func TestProtoCursor_Empty(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	cursor := NewProtoCursor[*commonpb.Timestamp](iter)
+	cursor := NewProtoCursor[*ledgerpb.Timestamp](iter)
 
 	defer func() { _ = cursor.Close() }()
 
@@ -101,7 +101,7 @@ func TestProtoCursor_CloseNilIter(t *testing.T) {
 	t.Parallel()
 
 	// Test Close with nil iterator
-	cursor := &ProtoCursor[*commonpb.Timestamp]{}
+	cursor := &ProtoCursor[*ledgerpb.Timestamp]{}
 	require.NoError(t, cursor.Close())
 }
 
@@ -112,7 +112,7 @@ func TestProtoCursor_MultipleCallsAfterEOF(t *testing.T) {
 
 	// Write one item
 	batch := s.OpenWriteSession()
-	ts := &commonpb.Timestamp{Data: 42}
+	ts := &ledgerpb.Timestamp{Data: 42}
 	data, err := proto.Marshal(ts)
 	require.NoError(t, err)
 
@@ -131,7 +131,7 @@ func TestProtoCursor_MultipleCallsAfterEOF(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	cursor := NewProtoCursor[*commonpb.Timestamp](iter)
+	cursor := NewProtoCursor[*ledgerpb.Timestamp](iter)
 
 	defer func() { _ = cursor.Close() }()
 

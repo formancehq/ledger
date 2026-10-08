@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
@@ -86,11 +86,11 @@ func TestBuildPostCommitVolumesPropagatesCoverageMiss(t *testing.T) {
 	miss := coverageMissDescribable{}
 	expectGetVolume(mockStore, domain.NewVolumeKey("l-a", "alice", "USD", ""), nil, miss)
 
-	postings := []*commonpb.Posting{{
+	postings := []*ledgerpb.Posting{{
 		Source:      "alice",
 		Destination: "bob",
 		Asset:       "USD",
-		Amount:      commonpb.NewUint256FromUint64(10),
+		Amount:      ledgerpb.NewUint256FromUint64(10),
 	}}
 
 	volumes, err := buildPostCommitVolumes(mockStore, "l-a", postings)

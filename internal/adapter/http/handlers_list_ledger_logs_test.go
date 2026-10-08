@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 )
@@ -21,8 +21,8 @@ func TestHandleListLedgerLogs_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListLogs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint64, _ uint32, _ *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
-			return cursor.NewSliceCursor([]*commonpb.Log{
+		func(_ context.Context, _ string, _ uint64, _ uint32, _ *ledgerpb.QueryFilter) (cursor.Cursor[*ledgerpb.Log], error) {
+			return cursor.NewSliceCursor([]*ledgerpb.Log{
 				{Sequence: 1},
 				{Sequence: 2},
 			}), nil
@@ -42,13 +42,13 @@ func TestHandleListLedgerLogs_Success(t *testing.T) {
 
 func TestHandleListLedgerLogs_JSONOutput(t *testing.T) {
 	t.Parallel()
-	wantLog := &commonpb.LedgerLog{Id: 3, Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &commonpb.SavedMetadata{
-		Target:   &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: "alice"}}},
-		Metadata: map[string]*commonpb.MetadataValue{"tier": commonpb.NewStringValue("gold")},
+	wantLog := &ledgerpb.LedgerLog{Id: 3, Data: &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &ledgerpb.SavedMetadata{
+		Target:   &ledgerpb.Target{Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{Addr: "alice"}}},
+		Metadata: map[string]*ledgerpb.MetadataValue{"tier": ledgerpb.NewStringValue("gold")},
 	}}}}
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListLogs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(
-		cursor.NewSliceCursor([]*commonpb.Log{{Sequence: 7, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{LedgerName: "ledger1", Log: wantLog}}}}}), nil,
+		cursor.NewSliceCursor([]*ledgerpb.Log{{Sequence: 7, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{Apply: &ledgerpb.ApplyLedgerLog{LedgerName: "ledger1", Log: wantLog}}}}}), nil,
 	)
 	srv := newTestServer(t, backend)
 	w := httptest.NewRecorder()
@@ -79,8 +79,8 @@ func TestHandleListLedgerLogs_Empty(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListLogs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint64, _ uint32, _ *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
-			return cursor.NewSliceCursor[*commonpb.Log](nil), nil
+		func(_ context.Context, _ string, _ uint64, _ uint32, _ *ledgerpb.QueryFilter) (cursor.Cursor[*ledgerpb.Log], error) {
+			return cursor.NewSliceCursor[*ledgerpb.Log](nil), nil
 		},
 	).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -175,8 +175,8 @@ func TestHandleListLedgerLogs_WithDateFilters(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListLogs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint64, _ uint32, _ *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
-			return cursor.NewSliceCursor[*commonpb.Log](nil), nil
+		func(_ context.Context, _ string, _ uint64, _ uint32, _ *ledgerpb.QueryFilter) (cursor.Cursor[*ledgerpb.Log], error) {
+			return cursor.NewSliceCursor[*ledgerpb.Log](nil), nil
 		},
 	).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -299,15 +299,15 @@ func TestHandleListLedgerLogs_DateBounds(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			var capturedFilter *commonpb.QueryFilter
+			var capturedFilter *ledgerpb.QueryFilter
 
 			backend := NewMockBackend(gomock.NewController(t))
 			if tc.wantBackend {
 				backend.EXPECT().ListLogs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-					func(_ context.Context, _ string, _ uint64, _ uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
+					func(_ context.Context, _ string, _ uint64, _ uint32, filter *ledgerpb.QueryFilter) (cursor.Cursor[*ledgerpb.Log], error) {
 						capturedFilter = filter
 
-						return cursor.NewSliceCursor[*commonpb.Log](nil), nil
+						return cursor.NewSliceCursor[*ledgerpb.Log](nil), nil
 					},
 				).Times(1)
 			} else {
@@ -338,7 +338,7 @@ func TestHandleListLedgerLogs_DateBounds(t *testing.T) {
 			require.NotNil(t, capturedFilter)
 			cond := capturedFilter.GetLogBuiltinUint()
 			require.NotNil(t, cond, "expected a LogBuiltinUint date condition")
-			require.Equal(t, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE, cond.GetField())
+			require.Equal(t, ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE, cond.GetField())
 
 			uc := cond.GetCond()
 			require.NotNil(t, uc)
@@ -368,8 +368,8 @@ func TestHandleListLedgerLogs_WithAfterParam(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListLogs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint64, _ uint32, _ *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
-			return cursor.NewSliceCursor[*commonpb.Log](nil), nil
+		func(_ context.Context, _ string, _ uint64, _ uint32, _ *ledgerpb.QueryFilter) (cursor.Cursor[*ledgerpb.Log], error) {
+			return cursor.NewSliceCursor[*ledgerpb.Log](nil), nil
 		},
 	).AnyTimes()
 	srv := newTestServer(t, backend)

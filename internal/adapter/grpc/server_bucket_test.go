@@ -8,7 +8,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 )
@@ -21,18 +21,18 @@ import (
 func TestAdoptForwardedSnapshotIfTrusted_TrustsClusterInternal(t *testing.T) {
 	t.Parallel()
 
-	snapshot := &commonpb.CallerSnapshot{
-		Principal: &commonpb.CallerSnapshot_Authenticated{
-			Authenticated: &commonpb.AuthenticatedCaller{
-				Identity: &commonpb.CallerIdentity{
+	snapshot := &ledgerpb.CallerSnapshot{
+		Principal: &ledgerpb.CallerSnapshot_Authenticated{
+			Authenticated: &ledgerpb.AuthenticatedCaller{
+				Identity: &ledgerpb.CallerIdentity{
 					Subject: "alice",
-					Source:  &commonpb.CallerIdentity_Issuer{Issuer: "https://idp.example.com"},
+					Source:  &ledgerpb.CallerIdentity_Issuer{Issuer: "https://idp.example.com"},
 				},
 				Scopes: []string{"ledger:TransactionWrite"},
 			},
 		},
 	}
-	req := &commonpb.ApplyRequest{ForwardedCallerSnapshot: snapshot}
+	req := &ledgerpb.ApplyRequest{ForwardedCallerSnapshot: snapshot}
 	impl := &BucketServiceServerImpl{logger: testLogger()}
 
 	ctx := internalauth.WithClusterInternal(context.Background(), true)
@@ -47,9 +47,9 @@ func TestAdoptForwardedSnapshotIfTrusted_TrustsClusterInternal(t *testing.T) {
 func TestAdoptForwardedSnapshotIfTrusted_RejectsMalformedTrustedSnapshot(t *testing.T) {
 	t.Parallel()
 
-	req := &commonpb.ApplyRequest{ForwardedCallerSnapshot: &commonpb.CallerSnapshot{
-		Principal: &commonpb.CallerSnapshot_Authenticated{
-			Authenticated: &commonpb.AuthenticatedCaller{Identity: &commonpb.CallerIdentity{Subject: "alice"}},
+	req := &ledgerpb.ApplyRequest{ForwardedCallerSnapshot: &ledgerpb.CallerSnapshot{
+		Principal: &ledgerpb.CallerSnapshot_Authenticated{
+			Authenticated: &ledgerpb.AuthenticatedCaller{Identity: &ledgerpb.CallerIdentity{Subject: "alice"}},
 		},
 	}}
 	impl := &BucketServiceServerImpl{logger: testLogger()}
@@ -68,11 +68,11 @@ func TestAdoptForwardedSnapshotIfTrusted_RejectsMalformedTrustedSnapshot(t *test
 func TestAdoptForwardedSnapshotIfTrusted_RejectsFromRegularClient(t *testing.T) {
 	t.Parallel()
 
-	req := &commonpb.ApplyRequest{
-		ForwardedCallerSnapshot: &commonpb.CallerSnapshot{
-			Principal: &commonpb.CallerSnapshot_Authenticated{
-				Authenticated: &commonpb.AuthenticatedCaller{
-					Identity: &commonpb.CallerIdentity{Subject: "attacker"},
+	req := &ledgerpb.ApplyRequest{
+		ForwardedCallerSnapshot: &ledgerpb.CallerSnapshot{
+			Principal: &ledgerpb.CallerSnapshot_Authenticated{
+				Authenticated: &ledgerpb.AuthenticatedCaller{
+					Identity: &ledgerpb.CallerIdentity{Subject: "attacker"},
 				},
 			},
 		},
@@ -93,7 +93,7 @@ func TestAdoptForwardedSnapshotIfTrusted_RejectsFromRegularClient(t *testing.T) 
 func TestAdoptForwardedSnapshotIfTrusted_AllowsClusterCallerWithoutSnapshot(t *testing.T) {
 	t.Parallel()
 
-	req := &commonpb.ApplyRequest{}
+	req := &ledgerpb.ApplyRequest{}
 	impl := &BucketServiceServerImpl{logger: testLogger()}
 
 	ctx := internalauth.WithClusterInternal(context.Background(), true)

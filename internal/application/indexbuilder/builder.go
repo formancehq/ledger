@@ -11,7 +11,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -70,7 +70,7 @@ type Builder struct {
 	// unresolvedIndexes are registry entries whose local IndexVersionState is
 	// absent/tombstoned at boot. They remain inactive until replay reaches the
 	// corresponding CreatedIndexLog and can decide EMPTY versus NON_EMPTY.
-	unresolvedIndexes map[string]map[string]*commonpb.Index
+	unresolvedIndexes map[string]map[string]*ledgerpb.Index
 
 	// pendingLedgerDeletes records ledgers alive at the recovered fold cursor
 	// but already absent from main. Their configs remain active until replay
@@ -399,7 +399,7 @@ func (b *Builder) commitRetirement(ledgerName, canonical string, state readstore
 			state.PreviousVersion, ledgerName, canonical, err)
 	}
 
-	meta, ok := id.GetKind().(*commonpb.IndexID_Metadata)
+	meta, ok := id.GetKind().(*ledgerpb.IndexID_Metadata)
 	if !ok || meta.Metadata == nil {
 		return fmt.Errorf("invariant: retained version %d on non-metadata index %s/%s",
 			state.PreviousVersion, ledgerName, canonical)
@@ -479,7 +479,7 @@ func (b *Builder) pendingVersion(ledgerName, canonicalID string) uint32 {
 // pending version during backfill, or defaults an entirely untracked index to
 // its first v1 incarnation.
 // pending == 0 means no rewrite is in flight.
-func (b *Builder) metadataIndexVersions(ledger string, target commonpb.TargetType, key string) (current uint32, pending uint32) {
+func (b *Builder) metadataIndexVersions(ledger string, target ledgerpb.TargetType, key string) (current uint32, pending uint32) {
 	canonical := indexes.Canonical(indexes.MetadataID(target, key))
 
 	return b.effectiveCurrentVersion(ledger, canonical), b.pendingVersion(ledger, canonical)
@@ -510,8 +510,8 @@ type reverseKeyForVersion func(version uint32) []byte
 func (b *Builder) dualWriteMetadataIndex(
 	kb *dal.KeyBuilder,
 	ledger, ns, metaKey string,
-	target commonpb.TargetType,
-	value *commonpb.MetadataValue,
+	target ledgerpb.TargetType,
+	value *ledgerpb.MetadataValue,
 	entityID []byte,
 	rmapKeyAtVersion reverseKeyForVersion,
 ) error {
@@ -545,8 +545,8 @@ func (b *Builder) dualWriteMetadataIndex(
 func (b *Builder) dualInsertKnownAbsentMetadataIndex(
 	kb *dal.KeyBuilder,
 	ledger, ns, metaKey string,
-	target commonpb.TargetType,
-	value *commonpb.MetadataValue,
+	target ledgerpb.TargetType,
+	value *ledgerpb.MetadataValue,
 	entityID []byte,
 	rmapKeyAtVersion reverseKeyForVersion,
 ) error {
@@ -572,7 +572,7 @@ func (b *Builder) dualInsertKnownAbsentMetadataIndex(
 // the complete old-typed index until the atomic switch, while v_pending rows
 // carry the retype's target (EN-1724). A version bound to no declared type
 // encodes each value verbatim, exactly as writes did before any declaration.
-func (b *Builder) coerceForVersion(ledger string, target commonpb.TargetType, key string, version uint32, v *commonpb.MetadataValue) (*commonpb.MetadataValue, error) {
+func (b *Builder) coerceForVersion(ledger string, target ledgerpb.TargetType, key string, version uint32, v *ledgerpb.MetadataValue) (*ledgerpb.MetadataValue, error) {
 	canonical := indexes.Canonical(indexes.MetadataID(target, key))
 
 	state, ok := b.versionStateFor(ledger, canonical)
@@ -601,7 +601,7 @@ func (b *Builder) coerceForVersion(ledger string, target commonpb.TargetType, ke
 
 // coerceToBound is CoerceToDeclaredType with the version-bound type standing
 // in for the schema lookup.
-func coerceToBound(v *commonpb.MetadataValue, t commonpb.MetadataType, declared bool) *commonpb.MetadataValue {
+func coerceToBound(v *ledgerpb.MetadataValue, t ledgerpb.MetadataType, declared bool) *ledgerpb.MetadataValue {
 	if !declared || v == nil || protohelpers.TypeMatches(v, t) {
 		return v
 	}
@@ -617,9 +617,9 @@ func coerceToBound(v *commonpb.MetadataValue, t commonpb.MetadataType, declared 
 func (b *Builder) writeMetadataIndexAtVersion(
 	kb *dal.KeyBuilder,
 	ledger, ns, metaKey string,
-	target commonpb.TargetType,
+	target ledgerpb.TargetType,
 	version uint32,
-	value *commonpb.MetadataValue,
+	value *ledgerpb.MetadataValue,
 	entityID, reverseKey []byte,
 ) error {
 	coerced, err := b.coerceForVersion(ledger, target, metaKey, version, value)
@@ -640,9 +640,9 @@ func (b *Builder) writeMetadataIndexAtVersion(
 func (b *Builder) insertMetadataIndexAtVersion(
 	kb *dal.KeyBuilder,
 	ledger, ns, metaKey string,
-	target commonpb.TargetType,
+	target ledgerpb.TargetType,
 	version uint32,
-	value *commonpb.MetadataValue,
+	value *ledgerpb.MetadataValue,
 	entityID, reverseKey []byte,
 ) error {
 	coerced, err := b.coerceForVersion(ledger, target, metaKey, version, value)
@@ -661,7 +661,7 @@ func (b *Builder) insertMetadataIndexAtVersion(
 func (b *Builder) dualDeleteMetadataEntry(
 	kb *dal.KeyBuilder,
 	ledger, ns, metaKey string,
-	target commonpb.TargetType,
+	target ledgerpb.TargetType,
 	entityID []byte,
 	rmapKeyAtVersion reverseKeyForVersion,
 ) error {
@@ -705,7 +705,7 @@ func (b *Builder) deleteMetadataEntryAtVersion(
 // programming error rather than a runtime condition; we panic to surface
 // the missing setup loudly per CLAUDE.md invariant #7. Tests that exercise
 // indexer write helpers directly must seed b.batchSchema explicitly.
-func (b *Builder) coerceForLedger(ledger string, target commonpb.TargetType, key string, v *commonpb.MetadataValue) (*commonpb.MetadataValue, error) {
+func (b *Builder) coerceForLedger(ledger string, target ledgerpb.TargetType, key string, v *ledgerpb.MetadataValue) (*ledgerpb.MetadataValue, error) {
 	if b.batchSchema == nil {
 		panic("indexbuilder: coerceForLedger called outside an active batch (batchSchema not seeded)")
 	}

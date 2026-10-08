@@ -3,7 +3,7 @@ package state
 import (
 	"slices"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -17,18 +17,18 @@ import (
 // StateRegistry on commit.
 type DerivedRegistry struct {
 	Volumes           *attributes.DerivedKeyStore[domain.VolumeKey, *raftcmdpb.VolumePair]
-	AccountMetadata   *attributes.DerivedKeyStore[domain.MetadataKey, *commonpb.MetadataValue]
+	AccountMetadata   *attributes.DerivedKeyStore[domain.MetadataKey, *ledgerpb.MetadataValue]
 	Idempotency       *DerivedIdempotencyStore
 	References        *attributes.DerivedKeyStore[domain.TransactionReferenceKey, *internalstatepb.TransactionReferenceValue]
-	Ledgers           *attributes.DerivedKeyStore[domain.LedgerKey, *commonpb.LedgerInfo]
+	Ledgers           *attributes.DerivedKeyStore[domain.LedgerKey, *ledgerpb.LedgerInfo]
 	Boundaries        *attributes.DerivedKeyStore[domain.LedgerKey, *raftcmdpb.LedgerBoundaries]
-	SinkConfigs       *attributes.DerivedKeyStore[domain.SinkConfigKey, *commonpb.SinkConfig]
+	SinkConfigs       *attributes.DerivedKeyStore[domain.SinkConfigKey, *ledgerpb.SinkConfig]
 	NumscriptVersions *attributes.DerivedKeyStore[domain.NumscriptVersionKey, *internalstatepb.NumscriptVersionValue]
 	Transactions      *attributes.DerivedKeyStore[domain.TransactionKey, *internalstatepb.TransactionState]
-	NumscriptContents *attributes.DerivedKeyStore[domain.NumscriptEntryKey, *commonpb.NumscriptInfo]
-	PreparedQueries   *attributes.DerivedKeyStore[domain.PreparedQueryKey, *commonpb.PreparedQuery]
-	LedgerMetadata    *attributes.DerivedKeyStore[domain.LedgerMetadataKey, *commonpb.MetadataValue]
-	Indexes           *attributes.DerivedKeyStore[domain.IndexKey, *commonpb.Index]
+	NumscriptContents *attributes.DerivedKeyStore[domain.NumscriptEntryKey, *ledgerpb.NumscriptInfo]
+	PreparedQueries   *attributes.DerivedKeyStore[domain.PreparedQueryKey, *ledgerpb.PreparedQuery]
+	LedgerMetadata    *attributes.DerivedKeyStore[domain.LedgerMetadataKey, *ledgerpb.MetadataValue]
+	Indexes           *attributes.DerivedKeyStore[domain.IndexKey, *ledgerpb.Index]
 
 	// PendingReversions holds transaction keys marked as reverted in the
 	// current proposal. These are flushed to the parent bitset on Merge.

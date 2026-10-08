@@ -12,7 +12,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -31,8 +31,8 @@ func main() {
 
 	// Wait for the ledger service to become available
 	var (
-		client        commonpb.BucketServiceClient
-		clusterClient commonpb.ClusterServiceClient
+		client        ledgerpb.BucketServiceClient
+		clusterClient ledgerpb.ClusterServiceClient
 	)
 	for {
 		time.Sleep(time.Second)
@@ -51,7 +51,7 @@ func main() {
 			continue
 		}
 		client = c
-		clusterClient = commonpb.NewClusterServiceClient(conn)
+		clusterClient = ledgerpb.NewClusterServiceClient(conn)
 
 		break
 	}
@@ -62,7 +62,7 @@ func main() {
 	// Wait for the full cluster to be ready (leader elected, all nodes are voters)
 	for {
 		time.Sleep(time.Second)
-		state, err := clusterClient.GetClusterState(ctx, &commonpb.GetClusterStateRequest{})
+		state, err := clusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 		if err != nil {
 			fmt.Printf("Not ready (cluster state): %s\n", err)
 

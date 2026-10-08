@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 const (
@@ -152,10 +152,10 @@ func retypedInFlight() IndexVersionState {
 		CurrentVersion:             2,
 		HighWater:                  2,
 		ActivationSequence:         8,
-		CurrentType:                commonpb.MetadataType_METADATA_TYPE_INT64,
+		CurrentType:                ledgerpb.MetadataType_METADATA_TYPE_INT64,
 		CurrentTypeDeclared:        true,
 		PreviousVersion:            1,
-		PreviousType:               commonpb.MetadataType_METADATA_TYPE_STRING,
+		PreviousType:               ledgerpb.MetadataType_METADATA_TYPE_STRING,
 		PreviousTypeDeclared:       true,
 		PreviousActivationSequence: 3,
 		PreviousValidThrough:       12,
@@ -180,7 +180,7 @@ func TestServingTransition_InFlightRetypeServesTheRetainedVersion(t *testing.T) 
 	require.NoError(t, err)
 	require.True(t, primed)
 	assert.Equal(t, uint32(1), resolved.Version, "served from the retained version while the promotion is unflushed")
-	assert.Equal(t, commonpb.MetadataType_METADATA_TYPE_STRING, resolved.Type, "under the retained version's own binding")
+	assert.Equal(t, ledgerpb.MetadataType_METADATA_TYPE_STRING, resolved.Type, "under the retained version's own binding")
 	assert.True(t, resolved.TypeDeclared)
 	assert.True(t, resolved.BindingKnown)
 
@@ -189,7 +189,7 @@ func TestServingTransition_InFlightRetypeServesTheRetainedVersion(t *testing.T) 
 	resolved, _, err = s.PinnedVersionResolver(snap, servingLedger, 10)(servingCanonical)
 	require.NoError(t, err)
 	assert.Equal(t, uint32(2), resolved.Version)
-	assert.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, resolved.Type)
+	assert.Equal(t, ledgerpb.MetadataType_METADATA_TYPE_INT64, resolved.Type)
 }
 
 // The retained version is only good for the logs its keyspace received. A

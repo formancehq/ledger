@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestCreateSink_HTTP(t *testing.T) {
@@ -13,10 +13,10 @@ func TestCreateSink_HTTP(t *testing.T) {
 
 	m := &Manager{}
 
-	cfg := &commonpb.SinkConfig{
+	cfg := &ledgerpb.SinkConfig{
 		Name: "http-sink",
-		Type: &commonpb.SinkConfig_Http{
-			Http: &commonpb.HttpSinkConfig{
+		Type: &ledgerpb.SinkConfig_Http{
+			Http: &ledgerpb.HttpSinkConfig{
 				Endpoint: "https://example.com/webhook",
 				Secret:   "my-secret",
 			},
@@ -39,10 +39,10 @@ func TestCreateSink_HTTP_EmptyEndpoint(t *testing.T) {
 
 	m := &Manager{}
 
-	cfg := &commonpb.SinkConfig{
+	cfg := &ledgerpb.SinkConfig{
 		Name: "http-sink",
-		Type: &commonpb.SinkConfig_Http{
-			Http: &commonpb.HttpSinkConfig{
+		Type: &ledgerpb.SinkConfig_Http{
+			Http: &ledgerpb.HttpSinkConfig{
 				Endpoint: "",
 			},
 		},
@@ -59,10 +59,10 @@ func TestCreateSink_HTTP_DefaultFormat(t *testing.T) {
 
 	m := &Manager{}
 
-	cfg := &commonpb.SinkConfig{
+	cfg := &ledgerpb.SinkConfig{
 		Name: "http-sink",
-		Type: &commonpb.SinkConfig_Http{
-			Http: &commonpb.HttpSinkConfig{
+		Type: &ledgerpb.SinkConfig_Http{
+			Http: &ledgerpb.HttpSinkConfig{
 				Endpoint: "https://example.com/webhook",
 			},
 		},
@@ -84,7 +84,7 @@ func TestCreateSink_UnsupportedType(t *testing.T) {
 
 	m := &Manager{}
 
-	cfg := &commonpb.SinkConfig{
+	cfg := &ledgerpb.SinkConfig{
 		Name:   "unknown-sink",
 		Format: "json",
 		// No type set

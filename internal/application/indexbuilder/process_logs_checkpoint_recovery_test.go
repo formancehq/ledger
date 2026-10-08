@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
@@ -17,11 +17,11 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
-func createCheckpointLog(sequence, checkpointID, appliedIndex uint64) *commonpb.Log {
-	return &commonpb.Log{
+func createCheckpointLog(sequence, checkpointID, appliedIndex uint64) *ledgerpb.Log {
+	return &ledgerpb.Log{
 		Sequence: sequence,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{
-			CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{
+		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreatedQueryCheckpoint{
+			CreatedQueryCheckpoint: &ledgerpb.CreatedQueryCheckpointLog{
 				CheckpointId: checkpointID,
 				MaxSequence:  sequence - 1,
 				AppliedIndex: appliedIndex,
@@ -30,18 +30,18 @@ func createCheckpointLog(sequence, checkpointID, appliedIndex uint64) *commonpb.
 	}
 }
 
-func deleteCheckpointLog(sequence, checkpointID uint64) *commonpb.Log {
-	return &commonpb.Log{
+func deleteCheckpointLog(sequence, checkpointID uint64) *ledgerpb.Log {
+	return &ledgerpb.Log{
 		Sequence: sequence,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_DeletedQueryCheckpoint{
-			DeletedQueryCheckpoint: &commonpb.DeletedQueryCheckpointLog{CheckpointId: checkpointID},
+		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_DeletedQueryCheckpoint{
+			DeletedQueryCheckpoint: &ledgerpb.DeletedQueryCheckpointLog{CheckpointId: checkpointID},
 		}},
 	}
 }
 
 // seedCheckpointScenario writes the given logs at applied index appliedIndex
 // and registers every checkpoint created by them.
-func seedCheckpointScenario(t *testing.T, b *Builder, appliedIndex uint64, logs ...*commonpb.Log) {
+func seedCheckpointScenario(t *testing.T, b *Builder, appliedIndex uint64, logs ...*ledgerpb.Log) {
 	t.Helper()
 
 	batch := b.pebbleStore.OpenWriteSession()
@@ -50,7 +50,7 @@ func seedCheckpointScenario(t *testing.T, b *Builder, appliedIndex uint64, logs 
 	require.NoError(t, batch.Commit())
 
 	for _, log := range logs {
-		if cqc, ok := log.GetPayload().GetType().(*commonpb.LogPayload_CreatedQueryCheckpoint); ok {
+		if cqc, ok := log.GetPayload().GetType().(*ledgerpb.LogPayload_CreatedQueryCheckpoint); ok {
 			seedQueryCheckpointState(t, b, cqc.CreatedQueryCheckpoint.GetCheckpointId(), appliedIndex, false)
 		}
 	}
@@ -88,7 +88,7 @@ func TestProcessLogsResumesAtCheckpointLogAfterDyingDuringMaterialization(t *tes
 		checkpointID = uint64(51)
 		horizon      = uint64(31)
 	)
-	seedCheckpointScenario(t, b, horizon, &commonpb.Log{Sequence: 1}, createCheckpointLog(2, checkpointID, horizon))
+	seedCheckpointScenario(t, b, horizon, &ledgerpb.Log{Sequence: 1}, createCheckpointLog(2, checkpointID, horizon))
 
 	type result struct {
 		cursor uint64
@@ -162,7 +162,7 @@ func TestProcessLogsRecrossKeepsMarkedReadIndex(t *testing.T) {
 		checkpointID = uint64(52)
 		horizon      = uint64(32)
 	)
-	seedCheckpointScenario(t, b, horizon, &commonpb.Log{Sequence: 1}, createCheckpointLog(2, checkpointID, horizon))
+	seedCheckpointScenario(t, b, horizon, &ledgerpb.Log{Sequence: 1}, createCheckpointLog(2, checkpointID, horizon))
 	certifyAudit(t, b, horizon)
 
 	cursor, err := b.processLogs(context.Background(), 0, time.Time{})
@@ -202,12 +202,12 @@ func TestProcessLogsGivesCheckpointLogsTheirOwnBatch(t *testing.T) {
 		horizon   = uint64(33)
 	)
 	seedCheckpointScenario(t, b, horizon,
-		&commonpb.Log{Sequence: 1},
-		&commonpb.Log{Sequence: 2},
+		&ledgerpb.Log{Sequence: 1},
+		&ledgerpb.Log{Sequence: 2},
 		createCheckpointLog(3, createdID, horizon),
-		&commonpb.Log{Sequence: 4},
+		&ledgerpb.Log{Sequence: 4},
 		deleteCheckpointLog(5, deletedID),
-		&commonpb.Log{Sequence: 6},
+		&ledgerpb.Log{Sequence: 6},
 	)
 	certifyAudit(t, b, horizon)
 	// A stale directory for the deleted checkpoint, to observe the deletion.

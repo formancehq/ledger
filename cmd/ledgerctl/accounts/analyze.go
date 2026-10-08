@@ -10,7 +10,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/domain/analysis"
@@ -64,7 +64,7 @@ func runAnalyze(cmd *cobra.Command, _ []string) error {
 
 	spinner := cmdutil.StartSpinner("Analyzing accounts...")
 
-	stream, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
+	stream, err := client.AnalyzeAccounts(ctx, &ledgerpb.AnalyzeAccountsRequest{
 		Ledger:            ledgerName,
 		VariableThreshold: threshold,
 	})
@@ -74,7 +74,7 @@ func runAnalyze(cmd *cobra.Command, _ []string) error {
 		return cmdutil.FormatGRPCError("failed to analyze accounts", err)
 	}
 
-	var resp *servicepb.AnalyzeAccountsResponse
+	var resp *ledgerpb.AnalyzeAccountsResponse
 
 	for {
 		event, err := stream.Recv()
@@ -89,10 +89,10 @@ func runAnalyze(cmd *cobra.Command, _ []string) error {
 		}
 
 		switch t := event.GetType().(type) {
-		case *servicepb.AnalyzeAccountsEvent_Progress:
+		case *ledgerpb.AnalyzeAccountsEvent_Progress:
 			p := t.Progress
 			spinner.UpdateText(fmt.Sprintf("Analyzing accounts... %d scanned", p.GetProcessed()))
-		case *servicepb.AnalyzeAccountsEvent_Result:
+		case *ledgerpb.AnalyzeAccountsEvent_Result:
 			resp = t.Result
 		}
 
@@ -112,7 +112,7 @@ func runAnalyze(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func renderAnalysisResult(resp *servicepb.AnalyzeAccountsResponse) {
+func renderAnalysisResult(resp *ledgerpb.AnalyzeAccountsResponse) {
 	// Summary
 	pterm.DefaultHeader.WithFullWidth().Println("Account Analysis")
 	pterm.Info.Printfln("Total accounts: %d", resp.GetTotalAccounts())

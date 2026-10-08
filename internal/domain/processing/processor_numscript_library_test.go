@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -87,7 +87,7 @@ func TestProcessSaveNumscript_DuplicateVersionRejected(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	expectGetLedger(mockStore, domain.LedgerKey{Name: ledger}, (&commonpb.LedgerInfo{Name: ledger}).AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: ledger}, (&ledgerpb.LedgerInfo{Name: ledger}).AsReader(), nil)
 	mockStore.EXPECT().NumscriptVersionExists(ledger, "pay", "1.0.0").Return(true, nil)
 
 	result, perr := processor.ProcessOrder(saveNumscriptOrder(ledger, "pay", validNumscriptContent, "1.0.0"), mockStore)
@@ -108,11 +108,11 @@ func TestProcessSaveNumscript_KeepsGreatestPointer(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	expectGetLedger(mockStore, domain.LedgerKey{Name: ledger}, (&commonpb.LedgerInfo{Name: ledger}).AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: ledger}, (&ledgerpb.LedgerInfo{Name: ledger}).AsReader(), nil)
 	mockStore.EXPECT().NumscriptVersionExists(ledger, "pay", "1.0.0").Return(false, nil)
 	mockStore.EXPECT().GetNumscriptLatestVersion(ledger, "pay").Return("2.0.0", nil)
 	mockStore.EXPECT().PutNumscript(ledger, gomock.Any())
-	mockStore.EXPECT().GetDate().Return((&commonpb.Timestamp{}).AsReader())
+	mockStore.EXPECT().GetDate().Return((&ledgerpb.Timestamp{}).AsReader())
 	// New version (1.0.0) is lower than the current greatest (2.0.0): the pointer
 	// is restored to 2.0.0.
 	mockStore.EXPECT().SetNumscriptLatestVersion(ledger, "pay", "2.0.0")

@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // endingBucketServer streams `rows` accounts and then ends the stream with
@@ -22,15 +22,15 @@ import (
 // dying mid-stream (the wire shape of a forwarded read whose serving node
 // is torn down while the follower still waits for rows).
 type endingBucketServer struct {
-	commonpb.UnimplementedBucketServiceServer
+	ledgerpb.UnimplementedBucketServiceServer
 
 	rows   int
 	endErr error
 }
 
-func (s *endingBucketServer) ListAccounts(_ *commonpb.ListAccountsRequest, stream ggrpc.ServerStreamingServer[commonpb.Account]) error {
+func (s *endingBucketServer) ListAccounts(_ *ledgerpb.ListAccountsRequest, stream ggrpc.ServerStreamingServer[ledgerpb.Account]) error {
 	for i := range s.rows {
-		if err := stream.Send(&commonpb.Account{Address: fmt.Sprintf("acc-%d", i)}); err != nil {
+		if err := stream.Send(&ledgerpb.Account{Address: fmt.Sprintf("acc-%d", i)}); err != nil {
 			return err
 		}
 	}
@@ -40,12 +40,12 @@ func (s *endingBucketServer) ListAccounts(_ *commonpb.ListAccountsRequest, strea
 
 // dialBucketServer serves srv over an in-process bufconn listener and
 // returns a connected client.
-func dialBucketServer(t *testing.T, srv commonpb.BucketServiceServer) commonpb.BucketServiceClient {
+func dialBucketServer(t *testing.T, srv ledgerpb.BucketServiceServer) ledgerpb.BucketServiceClient {
 	t.Helper()
 
 	lis := bufconn.Listen(1 << 20)
 	server := ggrpc.NewServer()
-	commonpb.RegisterBucketServiceServer(server, srv)
+	ledgerpb.RegisterBucketServiceServer(server, srv)
 
 	go func() { _ = server.Serve(lis) }()
 	t.Cleanup(server.Stop)
@@ -62,17 +62,17 @@ func dialBucketServer(t *testing.T, srv commonpb.BucketServiceServer) commonpb.B
 
 	t.Cleanup(func() { _ = conn.Close() })
 
-	return commonpb.NewBucketServiceClient(conn)
+	return ledgerpb.NewBucketServiceClient(conn)
 }
 
 // drainPeekCursor consumes the cursor to its terminal error, the way
 // sendPagedToStream does, returning the items and that error.
-func drainPeekCursor(t *testing.T, ctx context.Context, stream ggrpc.ServerStreamingClient[commonpb.Account]) ([]*commonpb.Account, error) {
+func drainPeekCursor(t *testing.T, ctx context.Context, stream ggrpc.ServerStreamingClient[ledgerpb.Account]) ([]*ledgerpb.Account, error) {
 	t.Helper()
 
 	cur := NewUpstreamPeekCursor(ctx, stream)
 
-	var items []*commonpb.Account
+	var items []*ledgerpb.Account
 
 	for {
 		item, err := cur.Next()
@@ -95,7 +95,7 @@ func TestUpstreamPeekCursorStreamDeath(t *testing.T) {
 
 		ctx := context.Background()
 
-		stream, err := client.ListAccounts(ctx, &commonpb.ListAccountsRequest{Ledger: "l"})
+		stream, err := client.ListAccounts(ctx, &ledgerpb.ListAccountsRequest{Ledger: "l"})
 		if err != nil {
 			t.Fatalf("opening stream: %v", err)
 		}
@@ -129,7 +129,7 @@ func TestUpstreamPeekCursorStreamDeath(t *testing.T) {
 
 		ctx := context.Background()
 
-		stream, err := client.ListAccounts(ctx, &commonpb.ListAccountsRequest{Ledger: "l"})
+		stream, err := client.ListAccounts(ctx, &ledgerpb.ListAccountsRequest{Ledger: "l"})
 		if err != nil {
 			t.Fatalf("opening stream: %v", err)
 		}
@@ -145,7 +145,7 @@ func TestUpstreamPeekCursorStreamDeath(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(context.Background())
 
-		stream, err := client.ListAccounts(ctx, &commonpb.ListAccountsRequest{Ledger: "l"})
+		stream, err := client.ListAccounts(ctx, &ledgerpb.ListAccountsRequest{Ledger: "l"})
 		if err != nil {
 			t.Fatalf("opening stream: %v", err)
 		}

@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -25,9 +25,9 @@ func TestProcessCreateIndex_WritesRegistryNotLedgerInfo(t *testing.T) {
 
 	mockStore := NewMockScope(ctrl)
 
-	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 7}
-	indexID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
-	now := &commonpb.Timestamp{Data: 1}
+	ledgerInfo := &ledgerpb.LedgerInfo{Name: "test-ledger", Id: 7}
+	indexID := indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	now := &ledgerpb.Timestamp{Data: 1}
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil)
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
@@ -35,9 +35,9 @@ func TestProcessCreateIndex_WritesRegistryNotLedgerInfo(t *testing.T) {
 	// Shared Indexes stub: Put captures the entry written by
 	// processCreateIndex.
 	var seenKey domain.IndexKey
-	var seenIdx *commonpb.Index
+	var seenIdx *ledgerpb.Index
 	idxStub := setupIndexesStub(mockStore)
-	idxStub.putHook = func(key domain.IndexKey, idx *commonpb.Index) {
+	idxStub.putHook = func(key domain.IndexKey, idx *ledgerpb.Index) {
 		seenKey = key
 		seenIdx = idx
 	}
@@ -64,8 +64,8 @@ func TestProcessDropIndex_DeletesByRegistryKey(t *testing.T) {
 
 	mockStore := NewMockScope(ctrl)
 
-	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 3}
-	indexID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "color")
+	ledgerInfo := &ledgerpb.LedgerInfo{Name: "test-ledger", Id: 3}
+	indexID := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "color")
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil)
 	expectDeleteIndex(t, mockStore, domain.IndexKey{LedgerName: "test-ledger", Canonical: indexes.Canonical(indexID)})
@@ -96,8 +96,8 @@ func TestProcessDeleteLedger_DoesNotTouchIndexRegistry(t *testing.T) {
 
 	mockStore := NewMockScope(ctrl)
 
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 4}).AsReader(), nil)
-	mockStore.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1}).AsReader())
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 4}).AsReader(), nil)
+	mockStore.EXPECT().GetDate().Return((&ledgerpb.Timestamp{Data: 1}).AsReader())
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	// The Boundary cascade is now gated: processDeleteLedger deletes it
 	// through the Scope with the envelope key (EN-1522).
@@ -125,24 +125,24 @@ func TestProcessCreateIndex_StampsBoundTypeAtSequence(t *testing.T) {
 
 	mockStore := NewMockScope(ctrl)
 
-	ledgerInfo := &commonpb.LedgerInfo{
+	ledgerInfo := &ledgerpb.LedgerInfo{
 		Name: "test-ledger",
 		Id:   7,
-		MetadataSchema: &commonpb.MetadataSchema{
-			AccountFields: map[string]*commonpb.MetadataFieldSchema{
-				"score": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
+		MetadataSchema: &ledgerpb.MetadataSchema{
+			AccountFields: map[string]*ledgerpb.MetadataFieldSchema{
+				"score": {Type: ledgerpb.MetadataType_METADATA_TYPE_INT64},
 			},
 		},
 	}
-	indexID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score")
-	now := &commonpb.Timestamp{Data: 1}
+	indexID := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "score")
+	now := &ledgerpb.Timestamp{Data: 1}
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil)
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
 
 	idxStub := setupIndexesStub(mockStore)
 	idxStub.expectGet(domain.IndexKey{LedgerName: "test-ledger", Canonical: indexes.Canonical(indexID)}, nil, domain.ErrNotFound)
-	idxStub.putHook = func(domain.IndexKey, *commonpb.Index) {}
+	idxStub.putHook = func(domain.IndexKey, *ledgerpb.Index) {}
 
 	payload, derr := processCreateIndex("test-ledger", &raftcmdpb.CreateIndexOrder{Id: indexID}, &Context{Scope: mockStore})
 	require.Nil(t, derr)
@@ -150,7 +150,7 @@ func TestProcessCreateIndex_StampsBoundTypeAtSequence(t *testing.T) {
 	log := payload.GetCreateIndex()
 	require.NotNil(t, log)
 	require.True(t, log.GetBoundTypeDeclared())
-	require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, log.GetBoundType())
+	require.Equal(t, ledgerpb.MetadataType_METADATA_TYPE_INT64, log.GetBoundType())
 }
 
 // TestProcessCreateIndex_BuiltinCarriesNoBinding verifies a builtin index's
@@ -164,16 +164,16 @@ func TestProcessCreateIndex_BuiltinCarriesNoBinding(t *testing.T) {
 
 	mockStore := NewMockScope(ctrl)
 
-	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 7}
-	indexID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
-	now := &commonpb.Timestamp{Data: 1}
+	ledgerInfo := &ledgerpb.LedgerInfo{Name: "test-ledger", Id: 7}
+	indexID := indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	now := &ledgerpb.Timestamp{Data: 1}
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil)
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
 
 	idxStub := setupIndexesStub(mockStore)
 	idxStub.expectGet(domain.IndexKey{LedgerName: "test-ledger", Canonical: indexes.Canonical(indexID)}, nil, domain.ErrNotFound)
-	idxStub.putHook = func(domain.IndexKey, *commonpb.Index) {}
+	idxStub.putHook = func(domain.IndexKey, *ledgerpb.Index) {}
 
 	payload, derr := processCreateIndex("test-ledger", &raftcmdpb.CreateIndexOrder{Id: indexID}, &Context{Scope: mockStore})
 	require.Nil(t, derr)

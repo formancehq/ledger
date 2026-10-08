@@ -5,16 +5,16 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
-func posting(source, destination, asset, color string, amount uint64) *commonpb.Posting {
-	return &commonpb.Posting{
+func posting(source, destination, asset, color string, amount uint64) *ledgerpb.Posting {
+	return &ledgerpb.Posting{
 		Source:      source,
 		Destination: destination,
 		Asset:       asset,
 		Color:       color,
-		Amount:      commonpb.NewUint256FromUint64(amount),
+		Amount:      ledgerpb.NewUint256FromUint64(amount),
 	}
 }
 
@@ -25,13 +25,13 @@ func TestRevertTargetDigest_AbsentNeverCollidesWithPresent(t *testing.T) {
 
 	require.NotEqual(t, absent, RevertTargetDigest(nil, true),
 		"an absent target and a present one with no postings are different observations")
-	require.NotEqual(t, absent, RevertTargetDigest([]*commonpb.Posting{posting("world", "a", "USD", "", 1)}, true))
+	require.NotEqual(t, absent, RevertTargetDigest([]*ledgerpb.Posting{posting("world", "a", "USD", "", 1)}, true))
 }
 
 func TestRevertTargetDigest_IsDeterministic(t *testing.T) {
 	t.Parallel()
 
-	postings := []*commonpb.Posting{
+	postings := []*ledgerpb.Posting{
 		posting("world", "users:001", "USD/2", "", 646),
 		posting("users:001", "users:002", "USD/2", "GREEN", 10),
 	}
@@ -46,19 +46,19 @@ func TestRevertTargetDigest_IsDeterministic(t *testing.T) {
 func TestRevertTargetDigest_DistinguishesEveryField(t *testing.T) {
 	t.Parallel()
 
-	base := []*commonpb.Posting{posting("world", "users:001", "USD/2", "", 646)}
+	base := []*ledgerpb.Posting{posting("world", "users:001", "USD/2", "", 646)}
 	baseDigest := RevertTargetDigest(base, true)
 
 	for _, tc := range []struct {
 		name     string
-		postings []*commonpb.Posting
+		postings []*ledgerpb.Posting
 	}{
-		{"source", []*commonpb.Posting{posting("other", "users:001", "USD/2", "", 646)}},
-		{"destination", []*commonpb.Posting{posting("world", "users:002", "USD/2", "", 646)}},
-		{"asset", []*commonpb.Posting{posting("world", "users:001", "EUR/2", "", 646)}},
-		{"color", []*commonpb.Posting{posting("world", "users:001", "USD/2", "GREEN", 646)}},
-		{"amount", []*commonpb.Posting{posting("world", "users:001", "USD/2", "", 647)}},
-		{"extra posting", append(append([]*commonpb.Posting{}, base...), posting("a", "b", "USD/2", "", 1))},
+		{"source", []*ledgerpb.Posting{posting("other", "users:001", "USD/2", "", 646)}},
+		{"destination", []*ledgerpb.Posting{posting("world", "users:002", "USD/2", "", 646)}},
+		{"asset", []*ledgerpb.Posting{posting("world", "users:001", "EUR/2", "", 646)}},
+		{"color", []*ledgerpb.Posting{posting("world", "users:001", "USD/2", "GREEN", 646)}},
+		{"amount", []*ledgerpb.Posting{posting("world", "users:001", "USD/2", "", 647)}},
+		{"extra posting", append(append([]*ledgerpb.Posting{}, base...), posting("a", "b", "USD/2", "", 1))},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -78,8 +78,8 @@ func TestRevertTargetDigest_OrderIsSignificant(t *testing.T) {
 	second := posting("users:001", "users:002", "USD/2", "", 2)
 
 	require.NotEqual(t,
-		RevertTargetDigest([]*commonpb.Posting{first, second}, true),
-		RevertTargetDigest([]*commonpb.Posting{second, first}, true),
+		RevertTargetDigest([]*ledgerpb.Posting{first, second}, true),
+		RevertTargetDigest([]*ledgerpb.Posting{second, first}, true),
 	)
 }
 
@@ -91,8 +91,8 @@ func TestRevertTargetDigest_EncodingIsInjective(t *testing.T) {
 	t.Parallel()
 
 	// The same bytes, split differently across adjacent fields.
-	left := []*commonpb.Posting{posting("ab", "c", "USD", "", 1)}
-	right := []*commonpb.Posting{posting("a", "bc", "USD", "", 1)}
+	left := []*ledgerpb.Posting{posting("ab", "c", "USD", "", 1)}
+	right := []*ledgerpb.Posting{posting("a", "bc", "USD", "", 1)}
 
 	require.NotEqual(t, RevertTargetDigest(left, true), RevertTargetDigest(right, true))
 }
@@ -102,23 +102,23 @@ func TestRevertTargetDigest_EncodingIsInjective(t *testing.T) {
 func TestRevertTargetDigest_EveryAmountLimbIsSignificant(t *testing.T) {
 	t.Parallel()
 
-	withAmount := func(amount *commonpb.Uint256) []*commonpb.Posting {
+	withAmount := func(amount *ledgerpb.Uint256) []*ledgerpb.Posting {
 		p := posting("world", "users:001", "USD/2", "", 0)
 		p.Amount = amount
 
-		return []*commonpb.Posting{p}
+		return []*ledgerpb.Posting{p}
 	}
 
-	zeroDigest := RevertTargetDigest(withAmount(&commonpb.Uint256{}), true)
+	zeroDigest := RevertTargetDigest(withAmount(&ledgerpb.Uint256{}), true)
 
 	for _, tc := range []struct {
 		name   string
-		amount *commonpb.Uint256
+		amount *ledgerpb.Uint256
 	}{
-		{"v0", &commonpb.Uint256{V0: 1}},
-		{"v1", &commonpb.Uint256{V1: 1}},
-		{"v2", &commonpb.Uint256{V2: 1}},
-		{"v3", &commonpb.Uint256{V3: 1}},
+		{"v0", &ledgerpb.Uint256{V0: 1}},
+		{"v1", &ledgerpb.Uint256{V1: 1}},
+		{"v2", &ledgerpb.Uint256{V2: 1}},
+		{"v3", &ledgerpb.Uint256{V3: 1}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -128,8 +128,8 @@ func TestRevertTargetDigest_EveryAmountLimbIsSignificant(t *testing.T) {
 	}
 
 	require.NotEqual(t,
-		RevertTargetDigest(withAmount(&commonpb.Uint256{V0: 1}), true),
-		RevertTargetDigest(withAmount(&commonpb.Uint256{V1: 1}), true),
+		RevertTargetDigest(withAmount(&ledgerpb.Uint256{V0: 1}), true),
+		RevertTargetDigest(withAmount(&ledgerpb.Uint256{V1: 1}), true),
 		"the same limb value in a different position is a different amount",
 	)
 }
@@ -145,10 +145,10 @@ func TestRevertTargetDigest_NilAmountDigestsAsZero(t *testing.T) {
 	withNil.Amount = nil
 
 	withZero := posting("world", "users:001", "USD/2", "", 0)
-	withZero.Amount = &commonpb.Uint256{}
+	withZero.Amount = &ledgerpb.Uint256{}
 
 	require.Equal(t,
-		RevertTargetDigest([]*commonpb.Posting{withNil}, true),
-		RevertTargetDigest([]*commonpb.Posting{withZero}, true),
+		RevertTargetDigest([]*ledgerpb.Posting{withNil}, true),
+		RevertTargetDigest([]*ledgerpb.Posting{withZero}, true),
 	)
 }

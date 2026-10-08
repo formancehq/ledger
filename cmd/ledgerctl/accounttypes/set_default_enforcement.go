@@ -6,7 +6,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -60,10 +60,10 @@ func runSetDefaultEnforcement(cmd *cobra.Command, _ []string) error {
 
 	spinner := cmdutil.StartSpinner(fmt.Sprintf("Setting default enforcement mode to %s...", modeStr))
 
-	requests := []*servicepb.Request{
+	requests := []*ledgerpb.Request{
 		{
-			Type: &servicepb.Request_SetDefaultEnforcementMode{
-				SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeLedgerRequest{
+			Type: &ledgerpb.Request_SetDefaultEnforcementMode{
+				SetDefaultEnforcementMode: &ledgerpb.SetDefaultEnforcementModeLedgerRequest{
 					Ledger:          ledgerName,
 					EnforcementMode: mode,
 				},

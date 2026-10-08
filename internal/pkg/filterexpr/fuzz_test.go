@@ -3,7 +3,7 @@ package filterexpr
 import (
 	"testing"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // FuzzFilterExprParse fuzzes the filter expression DSL parser.
@@ -58,9 +58,9 @@ func FuzzFilterExprParse(f *testing.F) {
 		// Parse must not panic on any input, on any target. Errors are expected
 		// for invalid input; the audit target additionally exercises the bare
 		// audit-field resolution path.
-		for _, target := range []commonpb.QueryTarget{
-			commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-			commonpb.QueryTarget_QUERY_TARGET_AUDIT,
+		for _, target := range []ledgerpb.QueryTarget{
+			ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			ledgerpb.QueryTarget_QUERY_TARGET_AUDIT,
 		} {
 			_, _ = Parse(input, target)
 		}

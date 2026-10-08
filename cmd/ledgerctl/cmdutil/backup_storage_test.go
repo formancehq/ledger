@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -97,7 +97,7 @@ func TestBackupStorageFromFlags_DefaultDriverIsS3(t *testing.T) {
 	storage, err := cmdutil.BackupStorageFromFlags(cmd)
 	require.NoError(t, err)
 
-	_, ok := storage.GetProvider().(*commonpb.BackupStorage_S3)
+	_, ok := storage.GetProvider().(*ledgerpb.BackupStorage_S3)
 	require.True(t, ok, "default driver must populate the S3 provider oneof")
 	require.Equal(t, "my-bucket", storage.GetS3().GetBucket())
 }

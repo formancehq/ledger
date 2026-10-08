@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/query"
 )
@@ -30,11 +30,11 @@ func TestHandleError_ClassifiableWithoutReason(t *testing.T) {
 	}{
 		{
 			name: "aggregate on a non-accounts target",
-			err:  &query.ErrPreparedQueryAggregateTarget{Target: commonpb.QueryTarget_QUERY_TARGET_LOGS},
+			err:  &query.ErrPreparedQueryAggregateTarget{Target: ledgerpb.QueryTarget_QUERY_TARGET_LOGS},
 		},
 		{
 			name: "unsupported query mode",
-			err:  &query.ErrQueryModeUnsupported{Mode: commonpb.QueryMode(99)},
+			err:  &query.ErrQueryModeUnsupported{Mode: ledgerpb.QueryMode(99)},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

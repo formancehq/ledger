@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestPostgresFetchLogs_DateIsDateStyleIndependent(t *testing.T) {
@@ -32,7 +32,7 @@ func TestPostgresFetchLogs_DateIsDateStyleIndependent(t *testing.T) {
 func TestBuildPgxPoolConfig_NoIAMLeavesBeforeConnectNil(t *testing.T) {
 	t.Parallel()
 
-	cfg, err := buildPgxPoolConfig(context.Background(), &commonpb.PostgresMirrorSourceConfig{
+	cfg, err := buildPgxPoolConfig(context.Background(), &ledgerpb.PostgresMirrorSourceConfig{
 		Dsn: "postgres://user:pass@host:5432/db?sslmode=disable",
 	})
 	require.NoError(t, err)
@@ -43,9 +43,9 @@ func TestBuildPgxPoolConfig_NoIAMLeavesBeforeConnectNil(t *testing.T) {
 func TestBuildPgxPoolConfig_IAMRegionRequired(t *testing.T) {
 	t.Parallel()
 
-	_, err := buildPgxPoolConfig(context.Background(), &commonpb.PostgresMirrorSourceConfig{
+	_, err := buildPgxPoolConfig(context.Background(), &ledgerpb.PostgresMirrorSourceConfig{
 		Dsn:        "postgres://iam-user@host:5432/db?sslmode=require",
-		AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: ""},
+		AwsIamAuth: &ledgerpb.PostgresAwsIamAuth{Region: ""},
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "region is required")
@@ -63,9 +63,9 @@ func TestBuildPgxPoolConfig_IAMRejectsKeywordValueDSN(t *testing.T) {
 	//     hand-rolled libpq tokenizer.
 	dsn := `host=db.example.com user=iam-user dbname=ledger sslmode=require`
 
-	_, err := buildPgxPoolConfig(context.Background(), &commonpb.PostgresMirrorSourceConfig{
+	_, err := buildPgxPoolConfig(context.Background(), &ledgerpb.PostgresMirrorSourceConfig{
 		Dsn:        dsn,
-		AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
+		AwsIamAuth: &ledgerpb.PostgresAwsIamAuth{Region: "eu-west-1"},
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "URI-form")
@@ -81,9 +81,9 @@ func TestBuildPgxPoolConfig_IAMRejectsDSNWithoutExplicitSSLMode(t *testing.T) {
 
 	dsn := "postgres://iam-user@host:5432/db" // no sslmode= in the URI
 
-	_, err := buildPgxPoolConfig(context.Background(), &commonpb.PostgresMirrorSourceConfig{
+	_, err := buildPgxPoolConfig(context.Background(), &ledgerpb.PostgresMirrorSourceConfig{
 		Dsn:        dsn,
-		AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
+		AwsIamAuth: &ledgerpb.PostgresAwsIamAuth{Region: "eu-west-1"},
 	})
 	require.Error(t, err, "PGSSLMODE=require in the env must not satisfy the IAM TLS gate — the persisted DSN must carry sslmode= itself")
 	require.Contains(t, err.Error(), "sslmode")
@@ -103,9 +103,9 @@ func TestBuildPgxPoolConfig_IAMRejectsNonTLSSSLMode(t *testing.T) {
 				dsn += "?sslmode=" + mode
 			}
 
-			_, err := buildPgxPoolConfig(context.Background(), &commonpb.PostgresMirrorSourceConfig{
+			_, err := buildPgxPoolConfig(context.Background(), &ledgerpb.PostgresMirrorSourceConfig{
 				Dsn:        dsn,
-				AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
+				AwsIamAuth: &ledgerpb.PostgresAwsIamAuth{Region: "eu-west-1"},
 			})
 			require.Error(t, err, "sslmode=%q must be rejected when awsIamAuth is set", mode)
 			require.Contains(t, err.Error(), "sslmode")
@@ -121,9 +121,9 @@ func TestBuildPgxPoolConfig_IAMAcceptsTLSSSLModes(t *testing.T) {
 	t.Setenv("AWS_REGION", "eu-west-1")
 
 	for _, mode := range []string{"require", "verify-ca", "verify-full"} {
-		cfg, err := buildPgxPoolConfig(context.Background(), &commonpb.PostgresMirrorSourceConfig{
+		cfg, err := buildPgxPoolConfig(context.Background(), &ledgerpb.PostgresMirrorSourceConfig{
 			Dsn:        "postgres://iam-user@host:5432/db?sslmode=" + mode,
-			AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
+			AwsIamAuth: &ledgerpb.PostgresAwsIamAuth{Region: "eu-west-1"},
 		})
 		require.NoError(t, err, "sslmode=%q must be accepted with awsIamAuth", mode)
 		require.NotNil(t, cfg.BeforeConnect, "BeforeConnect must be installed for sslmode=%q", mode)
@@ -137,9 +137,9 @@ func TestBuildPgxPoolConfig_IAMAssumeRoleInstallsBeforeConnect(t *testing.T) {
 	// installing iamBeforeConnect. We only assert the hook is in place; the
 	// actual sts:AssumeRole call would only fire on connect (no real network
 	// here) and is mocked away by NewCredentialsCache's lazy semantics.
-	cfg, err := buildPgxPoolConfig(context.Background(), &commonpb.PostgresMirrorSourceConfig{
+	cfg, err := buildPgxPoolConfig(context.Background(), &ledgerpb.PostgresMirrorSourceConfig{
 		Dsn: "postgres://iam-user@host:5432/db?sslmode=require",
-		AwsIamAuth: &commonpb.PostgresAwsIamAuth{
+		AwsIamAuth: &ledgerpb.PostgresAwsIamAuth{
 			Region:        "eu-west-1",
 			AssumeRoleArn: "arn:aws:iam::222222222222:role/cross-tenant-mirror",
 		},
@@ -155,9 +155,9 @@ func TestBuildPgxPoolConfig_IAMWiresBeforeConnect(t *testing.T) {
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "SECRETTEST")
 	t.Setenv("AWS_REGION", "eu-west-1")
 
-	cfg, err := buildPgxPoolConfig(context.Background(), &commonpb.PostgresMirrorSourceConfig{
+	cfg, err := buildPgxPoolConfig(context.Background(), &ledgerpb.PostgresMirrorSourceConfig{
 		Dsn: "postgres://iam-user@db.example.com:5432/app?sslmode=require",
-		AwsIamAuth: &commonpb.PostgresAwsIamAuth{
+		AwsIamAuth: &ledgerpb.PostgresAwsIamAuth{
 			Region: "eu-west-1",
 		},
 	})

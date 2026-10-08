@@ -20,7 +20,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/query"
 )
@@ -220,7 +220,7 @@ func TestWriteProfileHeader(t *testing.T) {
 	data, err := base64.StdEncoding.DecodeString(headerVal)
 	require.NoError(t, err)
 
-	var pb servicepb.QueryProfile
+	var pb ledgerpb.QueryProfile
 	require.NoError(t, proto.Unmarshal(data, &pb))
 
 	assert.Equal(t, int64(5000), pb.GetIndexDurationUs())

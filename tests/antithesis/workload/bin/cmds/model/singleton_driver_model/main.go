@@ -46,7 +46,7 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/oracle"
@@ -99,14 +99,14 @@ func main() {
 	defer func() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if _, err := client.Apply(cleanupCtx, commonpb.UnsignedApplyRequest(idempotencyKey(), actions.SetMaintenanceModeAction(false))); err != nil {
+		if _, err := client.Apply(cleanupCtx, ledgerpb.UnsignedApplyRequest(idempotencyKey(), actions.SetMaintenanceModeAction(false))); err != nil {
 			log.Printf("disable maintenance during shutdown: %v", err)
 		}
 	}()
 
 	// A previous driver may have died after enabling the cluster-wide gate.
 	// Recover before setup so CreateLedger cannot wait behind maintenance forever.
-	if _, err := client.Apply(ctx, commonpb.UnsignedApplyRequest(idempotencyKey(), actions.SetMaintenanceModeAction(false))); err != nil {
+	if _, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest(idempotencyKey(), actions.SetMaintenanceModeAction(false))); err != nil {
 		log.Printf("disable maintenance during startup: %v", err)
 
 		return
@@ -122,7 +122,7 @@ func main() {
 	// Each ledger is created with a small, random initial metadata schema; the
 	// checker seeds the same declarations so the model's schema state matches
 	// the server's from the first bulk.
-	schemas := make(map[string][]*commonpb.SetMetadataFieldTypeCommand, len(names))
+	schemas := make(map[string][]*ledgerpb.SetMetadataFieldTypeCommand, len(names))
 	for _, name := range names {
 		schemas[name] = initialSchema()
 	}
@@ -211,7 +211,7 @@ func main() {
 // the Apply round-trip run lock-free, then the observation goes to the processor.
 func runWorker(
 	ctx context.Context,
-	client commonpb.BucketServiceClient,
+	client ledgerpb.BucketServiceClient,
 	checkpointNodes internal.PerNodeConns,
 	c *Checker,
 ) {
@@ -299,7 +299,7 @@ func runWorker(
 // dispatchBulk sends every generated request through the same inflight and
 // processor path. Maintenance enable schedules a modeled disable independently,
 // so a write-blocked worker fleet cannot stall the run permanently.
-func dispatchBulk(ctx context.Context, client commonpb.BucketServiceClient, checkpointNodes internal.PerNodeConns, c *Checker, bulk oracle.Bulk) {
+func dispatchBulk(ctx context.Context, client ledgerpb.BucketServiceClient, checkpointNodes internal.PerNodeConns, c *Checker, bulk oracle.Bulk) {
 	defer c.releaseLedgerCreate(bulk)
 	checkpointCreate := isCheckpointCreate(bulk)
 	if checkpointCreate {
@@ -340,7 +340,7 @@ func dispatchBulk(ctx context.Context, client commonpb.BucketServiceClient, chec
 	}
 
 	req := applyRequest(bulk)
-	var resp *commonpb.ApplyResponse
+	var resp *ledgerpb.ApplyResponse
 	var err error
 	hadAmbiguousAttempt := false
 	provisionalMaintenanceRecoveryScheduled := false
@@ -411,7 +411,7 @@ func dispatchBulk(ctx context.Context, client commonpb.BucketServiceClient, chec
 	}
 }
 
-func scheduleMaintenanceRecovery(ctx context.Context, client commonpb.BucketServiceClient, c *Checker) uint64 {
+func scheduleMaintenanceRecovery(ctx context.Context, client ledgerpb.BucketServiceClient, c *Checker) uint64 {
 	c.mu.Lock()
 	if c.maintenanceRecoveryActive {
 		if c.maintenanceRecoveryTicket != 0 {
@@ -478,9 +478,9 @@ func scheduleMaintenanceRecovery(ctx context.Context, client commonpb.BucketServ
 // remains blocked without preventing the disable observation from draining. A
 // fresh key prevents deliberate conflict injection from turning a temporary
 // maintenance window into a permanent stall.
-func dispatchMaintenanceRecovery(ctx context.Context, client commonpb.BucketServiceClient, c *Checker, recoveryID, recoverySeq uint64) {
+func dispatchMaintenanceRecovery(ctx context.Context, client ledgerpb.BucketServiceClient, c *Checker, recoveryID, recoverySeq uint64) {
 	bulk := oracle.Bulk{
-		Requests:       []*commonpb.Request{actions.SetMaintenanceModeAction(false)},
+		Requests:       []*ledgerpb.Request{actions.SetMaintenanceModeAction(false)},
 		IdempotencyKey: idempotencyKey(),
 	}
 
@@ -494,7 +494,7 @@ func dispatchMaintenanceRecovery(ctx context.Context, client commonpb.BucketServ
 	c.dispatchMu.Unlock()
 
 	req := applyRequest(bulk)
-	var resp *commonpb.ApplyResponse
+	var resp *ledgerpb.ApplyResponse
 	var err error
 	for {
 		resp, err = client.Apply(ctx, req)
@@ -564,11 +564,11 @@ func shouldScheduleMaintenanceRecovery(bulk oracle.Bulk, err error, hadAmbiguous
 // seeds the same declarations so the model's schema state matches the server's
 // from the start. Declaring a type creates no index (populateInitialSchema only
 // records the schema), so a later remove drops nothing.
-func initialSchema() []*commonpb.SetMetadataFieldTypeCommand {
+func initialSchema() []*ledgerpb.SetMetadataFieldTypeCommand {
 	n := int(random.RandomChoice([]uint8{0, 1, 2, 3}))
-	cmds := make([]*commonpb.SetMetadataFieldTypeCommand, 0, n)
+	cmds := make([]*ledgerpb.SetMetadataFieldTypeCommand, 0, n)
 	for range n {
-		cmds = append(cmds, &commonpb.SetMetadataFieldTypeCommand{
+		cmds = append(cmds, &ledgerpb.SetMetadataFieldTypeCommand{
 			TargetType: random.RandomChoice(metaTargetPool),
 			Key:        metaKey(),
 			Type:       random.RandomChoice(metaTypePool),
@@ -613,7 +613,7 @@ func envInt(key string, def int) int {
 // missing ledger, so it asserts Unreachable. Shutdown (ctx cancelled) is teardown,
 // not a finding. Returns false to stop the run; the chart is left empty for
 // workers to fill.
-func setupLedgers(ctx context.Context, client commonpb.BucketServiceClient, names []string, schemas map[string][]*commonpb.SetMetadataFieldTypeCommand) bool {
+func setupLedgers(ctx context.Context, client ledgerpb.BucketServiceClient, names []string, schemas map[string][]*ledgerpb.SetMetadataFieldTypeCommand) bool {
 	for _, name := range names {
 		err := internal.CreateLedger(ctx, client, name, schemas[name]...)
 		if err == nil {

@@ -7,7 +7,7 @@ import (
 	"time"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
@@ -23,7 +23,7 @@ const sinkStartupRetryDelay = time.Second
 type managedSink struct {
 	emitter *Emitter
 	sink    Sink
-	config  *commonpb.SinkConfig
+	config  *ledgerpb.SinkConfig
 }
 
 // Manager manages the lifecycle of event emitters and sinks based on
@@ -31,7 +31,7 @@ type managedSink struct {
 // named sink, each with its own cursor and error status.
 type Manager struct {
 	store          *dal.Store
-	sinkConfigAttr *attributes.Attribute[*commonpb.SinkConfig]
+	sinkConfigAttr *attributes.Attribute[*ledgerpb.SinkConfig]
 	proposer       Proposer
 	builder        *plan.Builder
 	logger         logging.Logger
@@ -202,7 +202,7 @@ func (m *Manager) reconcileGeneration(generation uint64, isLeader, stopped bool)
 	}
 
 	// Build desired state as a map keyed by sink name
-	desired := make(map[string]*commonpb.SinkConfig, len(sinkCfgs))
+	desired := make(map[string]*ledgerpb.SinkConfig, len(sinkCfgs))
 	for _, sc := range sinkCfgs {
 		if sc.GetName() == "" {
 			m.logger.Errorf("Sink config has empty name, skipping")
@@ -253,7 +253,7 @@ func (m *Manager) reconcileGeneration(generation uint64, isLeader, stopped bool)
 
 // startSink creates and starts an emitter+sink pair from a SinkConfig.
 // Returns nil if the sink type is unsupported or creation fails.
-func (m *Manager) startSink(sc *commonpb.SinkConfig) *managedSink {
+func (m *Manager) startSink(sc *ledgerpb.SinkConfig) *managedSink {
 	emitterCfg := DefaultEmitterConfig()
 	if sc.GetFormat() != "" {
 		emitterCfg.Format = Format(sc.GetFormat())
@@ -268,7 +268,7 @@ func (m *Manager) startSink(sc *commonpb.SinkConfig) *managedSink {
 	}
 
 	if len(sc.GetEventTypes()) > 0 {
-		emitterCfg.EventTypes = make(map[commonpb.EventType]struct{}, len(sc.GetEventTypes()))
+		emitterCfg.EventTypes = make(map[ledgerpb.EventType]struct{}, len(sc.GetEventTypes()))
 		for _, et := range sc.GetEventTypes() {
 			emitterCfg.EventTypes[et] = struct{}{}
 		}
@@ -359,14 +359,14 @@ func (m *Manager) teardown() {
 // createSink creates a single Sink from a SinkConfig entry.
 // HTTP sinks are always available. Other sink types (Kafka, NATS, ClickHouse)
 // are only available when compiled with their respective build tags.
-func (m *Manager) createSink(sc *commonpb.SinkConfig) (Sink, error) {
+func (m *Manager) createSink(sc *ledgerpb.SinkConfig) (Sink, error) {
 	format := Format(sc.GetFormat())
 	if format == "" {
 		format = FormatJSON
 	}
 
 	// HTTP sink is always available (no heavy dependencies).
-	if s, ok := sc.GetType().(*commonpb.SinkConfig_Http); ok {
+	if s, ok := sc.GetType().(*ledgerpb.SinkConfig_Http); ok {
 		return NewHTTPSink(HTTPSinkConfig{
 			Endpoint: s.Http.GetEndpoint(),
 			Secret:   s.Http.GetSecret(),

@@ -39,7 +39,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -70,9 +70,9 @@ func isDefinitiveBulkRejection(err error) bool {
 // aligned to the marker's Raft horizon; read errors are inconclusive.
 func listIsEmpty(
 	ctx context.Context,
-	client commonpb.BucketServiceClient,
+	client ledgerpb.BucketServiceClient,
 	ledger string,
-	filter *commonpb.QueryFilter,
+	filter *ledgerpb.QueryFilter,
 ) (bool, []uint64, bool) {
 	ids, err := internal.ReadOracleTransactions(ctx, client, ledger, filter)
 
@@ -80,12 +80,12 @@ func listIsEmpty(
 }
 
 func main() {
-	internal.RunDriver("parallel_driver_bulk_atomicity", func(ctx context.Context, client commonpb.BucketServiceClient, _ string) {
+	internal.RunDriver("parallel_driver_bulk_atomicity", func(ctx context.Context, client ledgerpb.BucketServiceClient, _ string) {
 		r := internal.Rand()
 
 		run := r.Uint64()
 		ledger := internal.PrefixBulkAtomicity.WithSeed(run)
-		if err := internal.CreateQueryOracleLedger(ctx, client, ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS); err != nil {
+		if err := internal.CreateQueryOracleLedger(ctx, client, ledger, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS); err != nil {
 			return
 		}
 
@@ -94,7 +94,7 @@ func main() {
 		bulkSize := antirandom.RandomChoice([]int{2, 5, 10})
 
 		var (
-			requests []*commonpb.Request
+			requests []*ledgerpb.Request
 			refs     []string
 			accounts []string
 		)
@@ -105,16 +105,16 @@ func main() {
 			refs = append(refs, ref)
 			accounts = append(accounts, account)
 
-			requests = append(requests, &commonpb.Request{
-				Type: &commonpb.Request_Apply{
-					Apply: &commonpb.LedgerApplyRequest{
+			requests = append(requests, &ledgerpb.Request{
+				Type: &ledgerpb.Request_Apply{
+					Apply: &ledgerpb.LedgerApplyRequest{
 						Ledger: ledger,
-						Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
-							CreateTransaction: &commonpb.CreateTransactionPayload{
-								Postings: []*commonpb.Posting{{
+						Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
+							CreateTransaction: &ledgerpb.CreateTransactionPayload{
+								Postings: []*ledgerpb.Posting{{
 									Source:      "world",
 									Destination: account,
-									Amount:      commonpb.NewUint256FromUint64(100),
+									Amount:      ledgerpb.NewUint256FromUint64(100),
 									Asset:       "USD/2",
 								}},
 								Reference: ref,
@@ -128,16 +128,16 @@ func main() {
 
 		// Last order: overdraft from a never-funded, driver-owned source
 		// without Force — deterministically rejected with INSUFFICIENT_FUNDS.
-		requests = append(requests, &commonpb.Request{
-			Type: &commonpb.Request_Apply{
-				Apply: &commonpb.LedgerApplyRequest{
+		requests = append(requests, &ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
-						CreateTransaction: &commonpb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{{
+					Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &ledgerpb.CreateTransactionPayload{
+							Postings: []*ledgerpb.Posting{{
 								Source:      fmt.Sprintf("bulkatom-void:%d", run%1_000_000),
 								Destination: "bulkatom-sink",
-								Amount:      commonpb.NewUint256FromUint64(1),
+								Amount:      ledgerpb.NewUint256FromUint64(1),
 								Asset:       "USD/2",
 							}},
 						},
@@ -146,7 +146,7 @@ func main() {
 			},
 		})
 
-		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", requests...))
+		_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", requests...))
 
 		details := internal.Details{"ledger": ledger, "bulkSize": bulkSize}
 
@@ -170,16 +170,16 @@ func main() {
 			return
 		}
 
-		markerResp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_Apply{
-				Apply: &commonpb.LedgerApplyRequest{
+		markerResp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: helper,
-					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
-						CreateTransaction: &commonpb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{{
+					Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &ledgerpb.CreateTransactionPayload{
+							Postings: []*ledgerpb.Posting{{
 								Source:      "world",
 								Destination: "bulkatom-marker",
-								Amount:      commonpb.NewUint256FromUint64(1),
+								Amount:      ledgerpb.NewUint256FromUint64(1),
 								Asset:       "USD/2",
 							}},
 							Force: true,
@@ -204,16 +204,16 @@ func main() {
 		// create fails AlreadyExists and cannot add a second), and Failure
 		// entries must be unique per ProposalId (a failed proposal writes
 		// exactly one Failure entry by design, machine.go:1163-1204).
-		auditStream, err := client.ListAuditEntries(ctx, &commonpb.ListAuditEntriesRequest{
-			Options: &commonpb.ListOptions{
+		auditStream, err := client.ListAuditEntries(ctx, &ledgerpb.ListAuditEntriesRequest{
+			Options: &ledgerpb.ListOptions{
 				// Audit has no dedicated ledger field — scope via the generic filter.
-				Filter: &commonpb.QueryFilter{
-					Filter: &commonpb.QueryFilter_Audit{
-						Audit: &commonpb.AuditCondition{
-							Field: commonpb.AuditField_AUDIT_FIELD_LEDGER,
-							Condition: &commonpb.AuditCondition_StringCond{
-								StringCond: &commonpb.StringCondition{
-									Value: &commonpb.StringCondition_Hardcoded{Hardcoded: ledger},
+				Filter: &ledgerpb.QueryFilter{
+					Filter: &ledgerpb.QueryFilter_Audit{
+						Audit: &ledgerpb.AuditCondition{
+							Field: ledgerpb.AuditField_AUDIT_FIELD_LEDGER,
+							Condition: &ledgerpb.AuditCondition_StringCond{
+								StringCond: &ledgerpb.StringCondition{
+									Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: ledger},
 								},
 							},
 						},
@@ -286,7 +286,7 @@ func main() {
 	})
 }
 
-func assertBulkEffectsAbsent(ctx context.Context, client commonpb.BucketServiceClient, ledger string, refs, accounts []string, details internal.Details) {
+func assertBulkEffectsAbsent(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string, refs, accounts []string, details internal.Details) {
 	for i, ref := range refs {
 		empty, ids, conclusive := listIsEmpty(ctx, client, ledger, actions.ReferenceFilter(ref))
 		if conclusive {

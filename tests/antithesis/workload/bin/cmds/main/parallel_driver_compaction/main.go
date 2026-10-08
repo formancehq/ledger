@@ -12,13 +12,13 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_compaction", func(ctx context.Context, client clusterpb.BucketServiceClient, ledger string) {
+	internal.RunDriver("parallel_driver_compaction", func(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string) {
 		details := internal.Details{"ledger": ledger}
 
 		conn, err := internal.NewGRPCConn()
@@ -29,7 +29,7 @@ func main() {
 		}
 		defer func() { _ = conn.Close() }()
 
-		clusterClient := clusterpb.NewClusterServiceClient(conn)
+		clusterClient := ledgerpb.NewClusterServiceClient(conn)
 
 		r := internal.Rand()
 
@@ -42,10 +42,10 @@ func main() {
 	})
 }
 
-func compactPrimary(ctx context.Context, clusterClient clusterpb.ClusterServiceClient, client clusterpb.BucketServiceClient, ledger string, details internal.Details) {
+func compactPrimary(ctx context.Context, clusterClient ledgerpb.ClusterServiceClient, client ledgerpb.BucketServiceClient, ledger string, details internal.Details) {
 	log.Printf("compaction: triggering primary compaction")
 
-	resp, err := clusterClient.CompactPrimary(ctx, &clusterpb.CompactPrimaryRequest{})
+	resp, err := clusterClient.CompactPrimary(ctx, &ledgerpb.CompactPrimaryRequest{})
 
 	assert.Sometimes(internal.IsTolerated(err), "primary compaction should succeed or be transiently unavailable", details.With(internal.Details{"error": err}))
 
@@ -65,10 +65,10 @@ func compactPrimary(ctx context.Context, clusterClient clusterpb.ClusterServiceC
 	verifyReadable(ctx, client, ledger, details)
 }
 
-func compactSecondary(ctx context.Context, clusterClient clusterpb.ClusterServiceClient, client clusterpb.BucketServiceClient, ledger string, details internal.Details) {
+func compactSecondary(ctx context.Context, clusterClient ledgerpb.ClusterServiceClient, client ledgerpb.BucketServiceClient, ledger string, details internal.Details) {
 	log.Printf("compaction: triggering secondary (read-index) compaction")
 
-	resp, err := clusterClient.CompactSecondary(ctx, &clusterpb.CompactSecondaryRequest{})
+	resp, err := clusterClient.CompactSecondary(ctx, &ledgerpb.CompactSecondaryRequest{})
 
 	assert.Sometimes(internal.IsTolerated(err), "secondary compaction should succeed or be transiently unavailable", details.With(internal.Details{"error": err}))
 
@@ -95,9 +95,9 @@ func compactSecondary(ctx context.Context, clusterClient clusterpb.ClusterServic
 	verifyReadable(ctx, client, ledger, details)
 }
 
-func verifyReadable(ctx context.Context, client clusterpb.BucketServiceClient, ledger string, details internal.Details) {
+func verifyReadable(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string, details internal.Details) {
 	// Stats should work.
-	_, err := client.GetLedgerStats(ctx, &clusterpb.GetLedgerStatsRequest{Ledger: ledger})
+	_, err := client.GetLedgerStats(ctx, &ledgerpb.GetLedgerStatsRequest{Ledger: ledger})
 	if err != nil {
 		if internal.IsTransient(err) {
 			return
@@ -109,7 +109,7 @@ func verifyReadable(ctx context.Context, client clusterpb.BucketServiceClient, l
 	}
 
 	// Read a well-known account.
-	_, err = client.GetAccount(ctx, &clusterpb.GetAccountRequest{
+	_, err = client.GetAccount(ctx, &ledgerpb.GetAccountRequest{
 		Ledger:  ledger,
 		Address: "world",
 	})

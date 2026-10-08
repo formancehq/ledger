@@ -7,7 +7,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -91,7 +91,7 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	req := &commonpb.CreateIndexRequest{
+	req := &ledgerpb.CreateIndexRequest{
 		Ledger: ledgerName,
 	}
 
@@ -116,9 +116,9 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 
 	spinner := cmdutil.StartSpinner(fmt.Sprintf("Creating index %s on %s...", indexDesc, ledgerName))
 
-	requests := []*commonpb.Request{
+	requests := []*ledgerpb.Request{
 		{
-			Type: &commonpb.Request_CreateIndex{
+			Type: &ledgerpb.Request_CreateIndex{
 				CreateIndex: req,
 			},
 		},
@@ -151,7 +151,7 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 }
 
 // resolveMetadataIndexFlags resolves the target and key for a metadata index.
-func resolveMetadataIndexFlags(cmd *cobra.Command) (commonpb.TargetType, string, error) {
+func resolveMetadataIndexFlags(cmd *cobra.Command) (ledgerpb.TargetType, string, error) {
 	targetStr, _ := cmd.Flags().GetString("target")
 	if targetStr == "" {
 		result, err := pterm.DefaultInteractiveSelect.

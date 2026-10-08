@@ -1,14 +1,14 @@
 package auth
 
 import (
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // RequiredScopeForRequest returns the granular scope required to execute the
 // given Request. Variants this build does not know about — malformed input, or
 // a proto variant added without a scope decision — fail closed on
 // ledger:OpsWrite, the most restrictive write scope.
-func RequiredScopeForRequest(req *servicepb.Request) Scope {
+func RequiredScopeForRequest(req *ledgerpb.Request) Scope {
 	scope, decided := requiredScopeForRequest(req)
 	if !decided {
 		return ScopeOpsWrite
@@ -27,67 +27,67 @@ func RequiredScopeForRequest(req *servicepb.Request) Scope {
 // TestRequiredScopeForRequest_ProtoExhaustive asserts decided=true for every
 // variant the proto declares, so a new oneof field fails CI until someone
 // decides its scope.
-func requiredScopeForRequest(req *servicepb.Request) (Scope, bool) {
+func requiredScopeForRequest(req *ledgerpb.Request) (Scope, bool) {
 	switch req.GetType().(type) {
-	case *servicepb.Request_Apply:
+	case *ledgerpb.Request_Apply:
 		return requiredScopeForLedgerApply(req.GetApply())
-	case *servicepb.Request_CreateLedger:
+	case *ledgerpb.Request_CreateLedger:
 		return ScopeLedgersWrite, true
-	case *servicepb.Request_DeleteLedger:
+	case *ledgerpb.Request_DeleteLedger:
 		return ScopeLedgersWrite, true
-	case *servicepb.Request_PromoteLedger:
+	case *ledgerpb.Request_PromoteLedger:
 		return ScopeLedgersWrite, true
-	case *servicepb.Request_CreateIndex:
+	case *ledgerpb.Request_CreateIndex:
 		// Index management is a per-ledger write; the HTTP routes
 		// (POST/DELETE /v3/{ledgerName}/indexes[/{canonicalId}]) sit under
 		// the ledger:LedgerWrite group, so gRPC must agree — otherwise the
 		// same operation demands ledger:OpsWrite over gRPC (default fallthrough)
 		// and ledger:LedgerWrite over HTTP.
 		return ScopeLedgersWrite, true
-	case *servicepb.Request_DropIndex:
+	case *ledgerpb.Request_DropIndex:
 		return ScopeLedgersWrite, true
-	case *servicepb.Request_SaveNumscript:
+	case *ledgerpb.Request_SaveNumscript:
 		// PUT /v3/{ledgerName}/numscripts/{name} is in the requireLedgersWrite
 		// group (handler.go:176). Saving a numscript is a per-ledger library
 		// write, not an ops action.
 		return ScopeLedgersWrite, true
-	case *servicepb.Request_RegisterSigningKey:
+	case *ledgerpb.Request_RegisterSigningKey:
 		return ScopeOpsWrite, true
-	case *servicepb.Request_RevokeSigningKey:
+	case *ledgerpb.Request_RevokeSigningKey:
 		return ScopeOpsWrite, true
-	case *servicepb.Request_SetSigningConfig:
+	case *ledgerpb.Request_SetSigningConfig:
 		return ScopeOpsWrite, true
-	case *servicepb.Request_AddEventsSink:
+	case *ledgerpb.Request_AddEventsSink:
 		return ScopeOpsWrite, true
-	case *servicepb.Request_RemoveEventsSink:
+	case *ledgerpb.Request_RemoveEventsSink:
 		return ScopeOpsWrite, true
-	case *servicepb.Request_SetMaintenanceMode:
+	case *ledgerpb.Request_SetMaintenanceMode:
 		return ScopeOpsWrite, true
-	case *servicepb.Request_SetMetadataFieldType:
+	case *ledgerpb.Request_SetMetadataFieldType:
 		return ScopeMetadataWrite, true
-	case *servicepb.Request_RemoveMetadataFieldType:
+	case *ledgerpb.Request_RemoveMetadataFieldType:
 		return ScopeMetadataWrite, true
-	case *servicepb.Request_SaveLedgerMetadata:
+	case *ledgerpb.Request_SaveLedgerMetadata:
 		// POST /v3/{ledgerName}/metadata — requireMetadataWrite (handler.go:193).
 		return ScopeMetadataWrite, true
-	case *servicepb.Request_DeleteLedgerMetadata:
+	case *ledgerpb.Request_DeleteLedgerMetadata:
 		// DELETE /v3/{ledgerName}/metadata/{key} — requireMetadataWrite (handler.go:194).
 		return ScopeMetadataWrite, true
-	case *servicepb.Request_AddAccountType:
+	case *ledgerpb.Request_AddAccountType:
 		// POST /v3/{ledgerName}/account-types — requireMetadataWrite (handler.go:197).
 		return ScopeMetadataWrite, true
-	case *servicepb.Request_RemoveAccountType:
+	case *ledgerpb.Request_RemoveAccountType:
 		// DELETE /v3/{ledgerName}/account-types/{typeName} — requireMetadataWrite (handler.go:198).
 		return ScopeMetadataWrite, true
-	case *servicepb.Request_SetDefaultEnforcementMode:
+	case *ledgerpb.Request_SetDefaultEnforcementMode:
 		// PUT /v3/{ledgerName}/account-types/default-enforcement-mode —
 		// requireMetadataWrite (handler.go:199).
 		return ScopeMetadataWrite, true
-	case *servicepb.Request_CreatePreparedQuery:
+	case *ledgerpb.Request_CreatePreparedQuery:
 		return ScopeQueriesWrite, true
-	case *servicepb.Request_UpdatePreparedQuery:
+	case *ledgerpb.Request_UpdatePreparedQuery:
 		return ScopeQueriesWrite, true
-	case *servicepb.Request_DeletePreparedQuery:
+	case *ledgerpb.Request_DeletePreparedQuery:
 		return ScopeQueriesWrite, true
 	// Query checkpoints are cluster-wide state, not per-ledger business data.
 	// ledger:ClusterWrite is what the removed ClusterService.CreateQueryCheckpoint
@@ -96,15 +96,15 @@ func requiredScopeForRequest(req *servicepb.Request) (Scope, bool) {
 	// ledger:OpsWrite here let a plain ledger:write token perform an admin-only
 	// operation through Apply — a privilege escalation, not merely a scope
 	// mismatch (EN-1506).
-	case *servicepb.Request_CreateQueryCheckpoint:
+	case *ledgerpb.Request_CreateQueryCheckpoint:
 		return ScopeClusterWrite, true
-	case *servicepb.Request_DeleteQueryCheckpoint:
+	case *ledgerpb.Request_DeleteQueryCheckpoint:
 		return ScopeClusterWrite, true
 	// ClusterWrite follows the two checkpoint variants above and the read
 	// counterpart GetQueryCheckpointSchedule, which requires ledger:ClusterRead.
-	case *servicepb.Request_SetQueryCheckpointSchedule:
+	case *ledgerpb.Request_SetQueryCheckpointSchedule:
 		return ScopeClusterWrite, true
-	case *servicepb.Request_DeleteQueryCheckpointSchedule:
+	case *ledgerpb.Request_DeleteQueryCheckpointSchedule:
 		return ScopeClusterWrite, true
 	default:
 		return ScopeOpsWrite, false
@@ -115,19 +115,19 @@ func requiredScopeForRequest(req *servicepb.Request) (Scope, bool) {
 // request types, and whether the action variant carries an explicit decision.
 // A nil request or nil action is malformed input, not an undecided variant,
 // but both fail closed the same way.
-func requiredScopeForLedgerApply(req *servicepb.LedgerApplyRequest) (Scope, bool) {
+func requiredScopeForLedgerApply(req *ledgerpb.LedgerApplyRequest) (Scope, bool) {
 	if req == nil {
 		return ScopeOpsWrite, false
 	}
 
 	switch req.GetAction().GetData().(type) {
-	case *servicepb.LedgerAction_CreateTransaction:
+	case *ledgerpb.LedgerAction_CreateTransaction:
 		return ScopeTransactionsWrite, true
-	case *servicepb.LedgerAction_RevertTransaction:
+	case *ledgerpb.LedgerAction_RevertTransaction:
 		return ScopeTransactionsWrite, true
-	case *servicepb.LedgerAction_AddMetadata:
+	case *ledgerpb.LedgerAction_AddMetadata:
 		return ScopeMetadataWrite, true
-	case *servicepb.LedgerAction_DeleteMetadata:
+	case *ledgerpb.LedgerAction_DeleteMetadata:
 		return ScopeMetadataWrite, true
 	// Chart-of-accounts edits. The HTTP routes POST/DELETE
 	// /v3/{ledgerName}/account-types and PUT
@@ -135,11 +135,11 @@ func requiredScopeForLedgerApply(req *servicepb.LedgerApplyRequest) (Scope, bool
 	// requireMetadataWrite group (handler.go:197-199), so the batch path must
 	// agree. These are the LedgerAction twins of the top-level variants
 	// classified in requiredScopeForRequest.
-	case *servicepb.LedgerAction_AddAccountType:
+	case *ledgerpb.LedgerAction_AddAccountType:
 		return ScopeMetadataWrite, true
-	case *servicepb.LedgerAction_RemoveAccountType:
+	case *ledgerpb.LedgerAction_RemoveAccountType:
 		return ScopeMetadataWrite, true
-	case *servicepb.LedgerAction_SetDefaultEnforcementMode:
+	case *ledgerpb.LedgerAction_SetDefaultEnforcementMode:
 		return ScopeMetadataWrite, true
 	default:
 		return ScopeOpsWrite, false

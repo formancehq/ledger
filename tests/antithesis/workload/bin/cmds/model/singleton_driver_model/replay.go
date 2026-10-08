@@ -6,7 +6,7 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -52,7 +52,7 @@ func (c *Checker) stampIdempotency(bulk *oracle.Bulk) {
 // re-send it. Only keyed bulks are eligible, and only until the registry is
 // full — the cap bounds the model's frozen idempotency map, which the model
 // never evicts (infinite TTL). Caller holds c.mu.
-func (c *Checker) rememberReplayable(bulk oracle.Bulk, logs []*commonpb.Log) {
+func (c *Checker) rememberReplayable(bulk oracle.Bulk, logs []*ledgerpb.Log) {
 	if bulk.IdempotencyKey == "" || len(c.replayable) >= replayRegistryCap {
 		return
 	}
@@ -70,7 +70,7 @@ func (c *Checker) rememberReplayable(bulk oracle.Bulk, logs []*commonpb.Log) {
 // sequences) and produces no fresh log, so it must NOT flow through the
 // log-sequence re-order buffer — it registers as a read and validates against
 // the candidate states, exactly like GetAccount/GetTransaction.
-func runReplay(ctx context.Context, client commonpb.BucketServiceClient, c *Checker) {
+func runReplay(ctx context.Context, client ledgerpb.BucketServiceClient, c *Checker) {
 	c.mu.Lock()
 	if len(c.replayable) == 0 {
 		c.mu.Unlock()
@@ -110,7 +110,7 @@ func runReplay(ctx context.Context, client commonpb.BucketServiceClient, c *Chec
 // re-executed, not replayed — an exactly-once violation), and its content must
 // match the model's frozen outcome under some candidate base (Apply replays the
 // bulk because the base holds the key, folded from modelState).
-func (c *Checker) validateReplay(maxTicket uint64, entry replayEntry, resp *commonpb.ApplyResponse) {
+func (c *Checker) validateReplay(maxTicket uint64, entry replayEntry, resp *ledgerpb.ApplyResponse) {
 	if !sequencesEqual(logSequences(resp.GetLogs()), entry.logSeqs) {
 		assert.Unreachable("singleton_driver_model: idempotency replay produced new log sequences", internal.Details{
 			"ledgers":  bulkLedgers(entry.bulk),
@@ -143,7 +143,7 @@ func (c *Checker) validateReplay(maxTicket uint64, entry replayEntry, resp *comm
 }
 
 // logSequences extracts the log sequences from a response, in order.
-func logSequences(logs []*commonpb.Log) []uint64 {
+func logSequences(logs []*ledgerpb.Log) []uint64 {
 	out := make([]uint64, len(logs))
 	for i, l := range logs {
 		out[i] = l.GetSequence()
@@ -173,7 +173,7 @@ func sequencesEqual(a, b []uint64) bool {
 // metadata. It reuses the leaf predicates crossCheckCommit asserts on; the two
 // stay separate because crossCheckCommit needs a distinct assert callsite per
 // field (Antithesis catalogues by callsite) while a replay diverges as a whole.
-func replayOrdersMatch(bulk oracle.Bulk, orders []oracle.OrderResult, logs []*commonpb.Log) bool {
+func replayOrdersMatch(bulk oracle.Bulk, orders []oracle.OrderResult, logs []*ledgerpb.Log) bool {
 	if !checkpointOrdersMatch(bulk, orders, logs) {
 		return false
 	}
@@ -253,7 +253,7 @@ func replayOrdersMatch(bulk oracle.Bulk, orders []oracle.OrderResult, logs []*co
 
 // pcvMatches reports whether every model cell equals the server's post-commit
 // volume for that cell.
-func pcvMatches(model map[oracle.VolumeKey]oracle.VolumePair, server *commonpb.PostCommitVolumes) bool {
+func pcvMatches(model map[oracle.VolumeKey]oracle.VolumePair, server *ledgerpb.PostCommitVolumes) bool {
 	for key, vp := range model {
 		gotIn, gotOut, ok := postCommitVolume(server, key)
 		if !ok || vp.Input.Cmp(&gotIn) != 0 || vp.Output.Cmp(&gotOut) != 0 {
@@ -268,7 +268,7 @@ func pcvMatches(model map[oracle.VolumeKey]oracle.VolumePair, server *commonpb.P
 // PCV rides on the transaction itself (CreatedTransaction.Transaction /
 // RevertedTransaction.RevertTransaction) and is present on every committed
 // transaction.
-func serverPCV(data *commonpb.LedgerLogPayload) *commonpb.PostCommitVolumes {
+func serverPCV(data *ledgerpb.LedgerLogPayload) *ledgerpb.PostCommitVolumes {
 	switch {
 	case data.GetCreatedTransaction() != nil:
 		return data.GetCreatedTransaction().GetTransaction().GetPostCommitVolumes()
@@ -282,20 +282,20 @@ func serverPCV(data *commonpb.LedgerLogPayload) *commonpb.PostCommitVolumes {
 // chartResponseMatches validates both chart request forms against their echoed
 // payloads, including normal outcomes of requests that opted into skipping.
 // Non-chart requests match by definition so callers can use it uniformly.
-func chartResponseMatches(req *commonpb.Request, data *commonpb.LedgerLogPayload) bool {
-	var added *commonpb.AccountType
+func chartResponseMatches(req *ledgerpb.Request, data *ledgerpb.LedgerLogPayload) bool {
+	var added *ledgerpb.AccountType
 	var removed *string
 	switch r := req.GetType().(type) {
-	case *commonpb.Request_AddAccountType:
+	case *ledgerpb.Request_AddAccountType:
 		added = r.AddAccountType.GetAccountType()
-	case *commonpb.Request_RemoveAccountType:
+	case *ledgerpb.Request_RemoveAccountType:
 		name := r.RemoveAccountType.GetName()
 		removed = &name
-	case *commonpb.Request_Apply:
+	case *ledgerpb.Request_Apply:
 		switch action := r.Apply.GetAction().GetData().(type) {
-		case *commonpb.LedgerAction_AddAccountType:
+		case *ledgerpb.LedgerAction_AddAccountType:
 			added = action.AddAccountType.GetAccountType()
-		case *commonpb.LedgerAction_RemoveAccountType:
+		case *ledgerpb.LedgerAction_RemoveAccountType:
 			name := action.RemoveAccountType.GetName()
 			removed = &name
 		}

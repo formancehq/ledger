@@ -8,10 +8,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
-func analyze(accounts []CompactAccount, variableThreshold uint32) *servicepb.AnalyzeAccountsResponse {
+func analyze(accounts []CompactAccount, variableThreshold uint32) *ledgerpb.AnalyzeAccountsResponse {
 	i := 0
 	next := func() (CompactAccount, error) {
 		if i >= len(accounts) {
@@ -106,7 +106,7 @@ func TestAnalyze_VariableDetection(t *testing.T) {
 
 	// Segments should describe the variable
 	require.Len(t, resp.GetPatterns()[0].GetSegments(), 2) // "users", then variable
-	assert.Equal(t, servicepb.PatternSegmentType_PATTERN_SEGMENT_TYPE_VARIABLE, resp.GetPatterns()[0].GetSegments()[1].GetType())
+	assert.Equal(t, ledgerpb.PatternSegmentType_PATTERN_SEGMENT_TYPE_VARIABLE, resp.GetPatterns()[0].GetSegments()[1].GetType())
 }
 
 func TestAnalyze_NumericPattern(t *testing.T) {
@@ -150,7 +150,7 @@ func TestAnalyze_AssetsAggregation(t *testing.T) {
 	resp := analyze(accounts, 0)
 
 	// Find the "bank:main" pattern
-	var mainPattern *servicepb.AccountPattern
+	var mainPattern *ledgerpb.AccountPattern
 
 	for _, p := range resp.GetPatterns() {
 		if p.GetPattern() == "bank:main" {
@@ -173,7 +173,7 @@ func TestAnalyze_MetadataKeysAggregation(t *testing.T) {
 	resp := analyze(accounts, 0)
 
 	// With 2 users, they're fixed segments
-	var alicePattern *servicepb.AccountPattern
+	var alicePattern *ledgerpb.AccountPattern
 
 	for _, p := range resp.GetPatterns() {
 		if p.GetPattern() == "users:alice" {

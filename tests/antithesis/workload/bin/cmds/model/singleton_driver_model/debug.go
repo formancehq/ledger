@@ -11,7 +11,7 @@ import (
 
 	"google.golang.org/grpc/status"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
@@ -37,7 +37,7 @@ func dbgf(format string, args ...any) {
 // the server's, reproducing a divergence deterministically.
 var dumpBatches = os.Getenv("MODEL_DUMP_BATCHES") != ""
 
-func dumpBatch(ticket uint64, req *commonpb.ApplyRequest, resp *commonpb.ApplyResponse, err error) {
+func dumpBatch(ticket uint64, req *ledgerpb.ApplyRequest, resp *ledgerpb.ApplyResponse, err error) {
 	if !dumpBatches {
 		return
 	}
@@ -86,42 +86,42 @@ func requestKinds(b oracle.Bulk) string {
 
 	for i, r := range b.Requests {
 		switch r.GetType().(type) {
-		case *commonpb.Request_CreateLedger:
+		case *ledgerpb.Request_CreateLedger:
 			parts[i] = "createLedger"
-		case *commonpb.Request_DeleteLedger:
+		case *ledgerpb.Request_DeleteLedger:
 			parts[i] = "deleteLedger"
-		case *commonpb.Request_PromoteLedger:
+		case *ledgerpb.Request_PromoteLedger:
 			parts[i] = "promoteLedger"
-		case *commonpb.Request_SetMaintenanceMode:
+		case *ledgerpb.Request_SetMaintenanceMode:
 			parts[i] = "maintenance"
-		case *commonpb.Request_Apply:
+		case *ledgerpb.Request_Apply:
 			switch r.GetApply().GetAction().GetData().(type) {
-			case *commonpb.LedgerAction_CreateTransaction:
+			case *ledgerpb.LedgerAction_CreateTransaction:
 				parts[i] = "tx"
-			case *commonpb.LedgerAction_AddMetadata:
+			case *ledgerpb.LedgerAction_AddMetadata:
 				parts[i] = "addMeta"
-			case *commonpb.LedgerAction_DeleteMetadata:
+			case *ledgerpb.LedgerAction_DeleteMetadata:
 				parts[i] = "delMeta"
-			case *commonpb.LedgerAction_RevertTransaction:
+			case *ledgerpb.LedgerAction_RevertTransaction:
 				parts[i] = "revert"
 			default:
 				parts[i] = "apply?"
 			}
-		case *commonpb.Request_AddAccountType:
+		case *ledgerpb.Request_AddAccountType:
 			parts[i] = "addType"
-		case *commonpb.Request_RemoveAccountType:
+		case *ledgerpb.Request_RemoveAccountType:
 			parts[i] = "removeType"
-		case *commonpb.Request_SaveLedgerMetadata:
+		case *ledgerpb.Request_SaveLedgerMetadata:
 			parts[i] = "saveLedgerMeta"
-		case *commonpb.Request_DeleteLedgerMetadata:
+		case *ledgerpb.Request_DeleteLedgerMetadata:
 			parts[i] = "delLedgerMeta"
-		case *commonpb.Request_SetMetadataFieldType:
+		case *ledgerpb.Request_SetMetadataFieldType:
 			parts[i] = "setFieldType"
-		case *commonpb.Request_RemoveMetadataFieldType:
+		case *ledgerpb.Request_RemoveMetadataFieldType:
 			parts[i] = "removeFieldType"
-		case *commonpb.Request_CreateIndex:
+		case *ledgerpb.Request_CreateIndex:
 			parts[i] = "createIndex"
-		case *commonpb.Request_DropIndex:
+		case *ledgerpb.Request_DropIndex:
 			parts[i] = "dropIndex"
 		default:
 			parts[i] = "other"
@@ -134,7 +134,7 @@ func requestKinds(b oracle.Bulk) string {
 // Metadata targets a bulk touches, for debug: account (add addr{k=v,...} /
 // del addr/key) and ledger (saveL ledger{k=v,...} / delL ledger/key).
 func bulkMeta(b oracle.Bulk) string {
-	kvList := func(m map[string]*commonpb.MetadataValue) string {
+	kvList := func(m map[string]*ledgerpb.MetadataValue) string {
 		kvs := make([]string, 0, len(m))
 		for k, v := range m {
 			kvs = append(kvs, k+"="+oracle.MetaValueString(v))
@@ -147,32 +147,32 @@ func bulkMeta(b oracle.Bulk) string {
 	var parts []string
 	for _, r := range b.Requests {
 		switch t := r.GetType().(type) {
-		case *commonpb.Request_Apply:
+		case *ledgerpb.Request_Apply:
 			switch a := t.Apply.GetAction().GetData().(type) {
-			case *commonpb.LedgerAction_CreateTransaction:
+			case *ledgerpb.LedgerAction_CreateTransaction:
 				ct := a.CreateTransaction
 				if ct.GetReference() != "" || len(ct.GetMetadata()) > 0 {
 					parts = append(parts, fmt.Sprintf("newtx:%s{%s}", ct.GetReference(), kvList(ct.GetMetadata())))
 				}
-			case *commonpb.LedgerAction_AddMetadata:
+			case *ledgerpb.LedgerAction_AddMetadata:
 				parts = append(parts, fmt.Sprintf("add %s{%s}", metaTargetLabel(a.AddMetadata.GetTarget()), kvList(a.AddMetadata.GetMetadata())))
-			case *commonpb.LedgerAction_DeleteMetadata:
+			case *ledgerpb.LedgerAction_DeleteMetadata:
 				parts = append(parts, fmt.Sprintf("del %s/%s", metaTargetLabel(a.DeleteMetadata.GetTarget()), a.DeleteMetadata.GetKey()))
 			}
-		case *commonpb.Request_SaveLedgerMetadata:
+		case *ledgerpb.Request_SaveLedgerMetadata:
 			parts = append(parts, fmt.Sprintf("saveL %s{%s}", t.SaveLedgerMetadata.GetLedger(), kvList(t.SaveLedgerMetadata.GetMetadata())))
-		case *commonpb.Request_DeleteLedgerMetadata:
+		case *ledgerpb.Request_DeleteLedgerMetadata:
 			parts = append(parts, fmt.Sprintf("delL %s/%s", t.DeleteLedgerMetadata.GetLedger(), t.DeleteLedgerMetadata.GetKey()))
-		case *commonpb.Request_SetMetadataFieldType:
+		case *ledgerpb.Request_SetMetadataFieldType:
 			ft := t.SetMetadataFieldType
 			parts = append(parts, fmt.Sprintf("setFT %s/tgt%d/%s=ty%d", ft.GetLedger(), ft.GetTargetType(), ft.GetKey(), ft.GetType()))
-		case *commonpb.Request_RemoveMetadataFieldType:
+		case *ledgerpb.Request_RemoveMetadataFieldType:
 			ft := t.RemoveMetadataFieldType
 			parts = append(parts, fmt.Sprintf("rmFT %s/tgt%d/%s", ft.GetLedger(), ft.GetTargetType(), ft.GetKey()))
-		case *commonpb.Request_CreateIndex:
+		case *ledgerpb.Request_CreateIndex:
 			ci := t.CreateIndex
 			parts = append(parts, fmt.Sprintf("crIdx %s/%s", ci.GetLedger(), indexes.Canonical(ci.GetId())))
-		case *commonpb.Request_DropIndex:
+		case *ledgerpb.Request_DropIndex:
 			di := t.DropIndex
 			parts = append(parts, fmt.Sprintf("drIdx %s/%s", di.GetLedger(), indexes.Canonical(di.GetId())))
 		}
@@ -187,9 +187,9 @@ func typeOps(b oracle.Bulk) string {
 	var ops []string
 	for _, r := range b.Requests {
 		switch t := r.GetType().(type) {
-		case *commonpb.Request_AddAccountType:
+		case *ledgerpb.Request_AddAccountType:
 			ops = append(ops, "+"+t.AddAccountType.GetAccountType().GetName())
-		case *commonpb.Request_RemoveAccountType:
+		case *ledgerpb.Request_RemoveAccountType:
 			ops = append(ops, "-"+t.RemoveAccountType.GetName())
 		}
 	}
@@ -256,11 +256,11 @@ func (c *Checker) failureDiag(b oracle.Bulk, maxTicket uint64) (postings, modelT
 
 // metaTargetLabel renders a metadata target for debug output: the account address
 // or "tx:<id>" for a transaction target.
-func metaTargetLabel(target *commonpb.Target) string {
+func metaTargetLabel(target *ledgerpb.Target) string {
 	switch t := target.GetTarget().(type) {
-	case *commonpb.Target_Account:
+	case *ledgerpb.Target_Account:
 		return t.Account.GetAddr()
-	case *commonpb.Target_TransactionId:
+	case *ledgerpb.Target_TransactionId:
 		return fmt.Sprintf("tx:%d", t.TransactionId)
 	default:
 		return "?"
@@ -268,7 +268,7 @@ func metaTargetLabel(target *commonpb.Target) string {
 }
 
 // renderMetaMap renders a server metadata map as {k=typed,...}, sorted.
-func renderMetaMap(m map[string]*commonpb.MetadataValue) string {
+func renderMetaMap(m map[string]*ledgerpb.MetadataValue) string {
 	parts := make([]string, 0, len(m))
 	for k, v := range m {
 		parts = append(parts, k+"="+oracle.MetaValueString(v))
@@ -367,7 +367,7 @@ func (c *Checker) modelChartDump(ledger string) string {
 
 // renderChart renders a server account-type map the same way as modelChartDump,
 // so the two can be diffed directly in a finding.
-func renderChart(types map[string]*commonpb.AccountType) string {
+func renderChart(types map[string]*ledgerpb.AccountType) string {
 	var parts []string
 	for name, t := range types {
 		parts = append(parts, fmt.Sprintf("%s=%s|%d", name, t.GetPattern(), t.GetPersistence()))
@@ -407,7 +407,7 @@ func (c *Checker) modelSchemaDump(ledger string) string {
 
 	ls := c.modelState.Ledger(ledger)
 
-	render := func(tag string, m oracle.Map[string, commonpb.MetadataType]) string {
+	render := func(tag string, m oracle.Map[string, ledgerpb.MetadataType]) string {
 		parts := make([]string, 0, m.Len())
 		for k, t := range m.All() {
 			parts = append(parts, fmt.Sprintf("%s/%s=%d", tag, k, t))
@@ -422,7 +422,7 @@ func (c *Checker) modelSchemaDump(ledger string) string {
 }
 
 // Server log sequences — for verifying drain order vs commit order.
-func logSeqs(logs []*commonpb.Log) string {
+func logSeqs(logs []*ledgerpb.Log) string {
 	ids := make([]string, len(logs))
 	for i, l := range logs {
 		ids[i] = strconv.FormatUint(l.GetSequence(), 10)
@@ -460,7 +460,7 @@ func (c *Checker) modelTxMetaDump(ledger string, id uint64) string {
 	parts := make([]string, 0, len(keys))
 	for _, k := range keys {
 		ft := "none"
-		if t, ok := ls.FieldTypeFor(commonpb.TargetType_TARGET_TYPE_TRANSACTION, k); ok {
+		if t, ok := ls.FieldTypeFor(ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, k); ok {
 			ft = fmt.Sprintf("%d", t)
 		}
 		parts = append(parts, fmt.Sprintf("%s=%s[ft=%s]", k, oracle.MetaValueString(meta[k]), ft))

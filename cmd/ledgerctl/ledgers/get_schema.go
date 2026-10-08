@@ -7,7 +7,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -54,7 +54,7 @@ func runGetSchema(cmd *cobra.Command, args []string) error {
 
 	spinner := cmdutil.StartSpinner(fmt.Sprintf("Fetching schema for %s...", ledgerName))
 
-	resp, err := client.GetMetadataSchemaStatus(ctx, &servicepb.GetMetadataSchemaStatusRequest{
+	resp, err := client.GetMetadataSchemaStatus(ctx, &ledgerpb.GetMetadataSchemaStatusRequest{
 		Ledger: ledgerName,
 	})
 	if err != nil {
@@ -104,7 +104,7 @@ func runGetSchema(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func renderSchemaStatusTable(fields map[string]*servicepb.MetadataFieldStatus) {
+func renderSchemaStatusTable(fields map[string]*ledgerpb.MetadataFieldStatus) {
 	table := pterm.TableData{
 		{"KEY", "TYPE"},
 	}

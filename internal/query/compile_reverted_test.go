@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // The reverted filter is transaction-only; on any other target it must fail to
@@ -13,11 +13,11 @@ import (
 func TestCompileRevertedCondition_RejectsNonTransactionTarget(t *testing.T) {
 	t.Parallel()
 
-	ctx := &compileCtx{target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS}
+	ctx := &compileCtx{target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS}
 
-	_, err := compile(ctx, &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Reverted{
-			Reverted: &commonpb.RevertedCondition{Value: true},
+	_, err := compile(ctx, &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Reverted{
+			Reverted: &ledgerpb.RevertedCondition{Value: true},
 		},
 	})
 	require.Error(t, err)

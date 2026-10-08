@@ -8,7 +8,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -44,7 +44,7 @@ func runInfo(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	info, err := client.GetQueryCheckpointInfo(ctx, &clusterpb.GetQueryCheckpointInfoRequest{
+	info, err := client.GetQueryCheckpointInfo(ctx, &ledgerpb.GetQueryCheckpointInfoRequest{
 		CheckpointId: checkpointID,
 	})
 	if err != nil {

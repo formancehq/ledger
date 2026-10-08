@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
@@ -29,14 +29,14 @@ func main() {
 	}
 	defer func() { _ = conn.Close() }()
 
-	client := clusterpb.NewClusterServiceClient(conn)
+	client := ledgerpb.NewClusterServiceClient(conn)
 	// Checkpoint mutations are audited writes: they travel as ledger.Request
 	// variants through BucketService.Apply. The read RPCs stay on ClusterService.
-	bucketClient := clusterpb.NewBucketServiceClient(conn)
+	bucketClient := ledgerpb.NewBucketServiceClient(conn)
 	runQueryCheckpointDriver(ctx, client, bucketClient)
 }
 
-func runQueryCheckpointDriver(ctx context.Context, client clusterpb.ClusterServiceClient, bucketClient clusterpb.BucketServiceClient) {
+func runQueryCheckpointDriver(ctx context.Context, client ledgerpb.ClusterServiceClient, bucketClient ledgerpb.BucketServiceClient) {
 	// 1. Create a query checkpoint.
 	cpID, maxSeq, err := actions.CreateQueryCheckpoint(ctx, bucketClient)
 	// Observe both outcomes so Antithesis can explore shared-pool saturation.
@@ -84,7 +84,7 @@ func runQueryCheckpointDriver(ctx context.Context, client clusterpb.ClusterServi
 	assert.Reachable("query checkpoint created", details)
 
 	// 2. List query checkpoints — the one we just created should appear.
-	listResp, err := client.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
+	listResp, err := client.ListQueryCheckpoints(ctx, &ledgerpb.ListQueryCheckpointsRequest{})
 	if err != nil {
 		if internal.IsTransient(err) {
 			return
@@ -115,7 +115,7 @@ func runQueryCheckpointDriver(ctx context.Context, client clusterpb.ClusterServi
 	}
 
 	// 3. Get checkpoint info.
-	infoResp, err := client.GetQueryCheckpointInfo(ctx, &clusterpb.GetQueryCheckpointInfoRequest{
+	infoResp, err := client.GetQueryCheckpointInfo(ctx, &ledgerpb.GetQueryCheckpointInfoRequest{
 		CheckpointId: cpID,
 	})
 	if err != nil {
@@ -157,7 +157,7 @@ func runQueryCheckpointDriver(ctx context.Context, client clusterpb.ClusterServi
 	}
 
 	// 5. Verify deletion — should no longer appear in list.
-	listAfter, err := client.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
+	listAfter, err := client.ListQueryCheckpoints(ctx, &ledgerpb.ListQueryCheckpointsRequest{})
 	if err != nil {
 		internal.LogCleanupError("list query checkpoints after delete", err)
 

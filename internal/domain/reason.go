@@ -3,10 +3,10 @@ package domain
 import (
 	"strings"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
-// errorReasonPrefix is the common prefix of every commonpb.ErrorReason enum
+// errorReasonPrefix is the common prefix of every ledgerpb.ErrorReason enum
 // name. The enum value for a reason is errorReasonPrefix + the Reason() string,
 // which makes ReasonCode/ReasonString a pure naming bijection — no
 // hand-maintained lookup table to drift.
@@ -22,7 +22,7 @@ const errorReasonPrefix = "ERROR_REASON_"
 // raised Describable, whose Reason() is always an enum name
 // (TestEveryDomainErrorImplementsDescribable pins it), but a decoder reading a
 // reason off the wire must tell the two apart: use LookupReasonCode.
-func ReasonCode(reason string) commonpb.ErrorReason {
+func ReasonCode(reason string) ledgerpb.ErrorReason {
 	code, _ := LookupReasonCode(reason)
 
 	return code
@@ -37,15 +37,15 @@ func ReasonCode(reason string) commonpb.ErrorReason {
 // latter — every Describable's Reason() names a real reason — so a decoder
 // that receives it received something no ledger server sends, which is a
 // protocol fault rather than a reason from the future.
-func LookupReasonCode(reason string) (commonpb.ErrorReason, bool) {
-	code, ok := commonpb.ErrorReason_value[errorReasonPrefix+reason]
+func LookupReasonCode(reason string) (ledgerpb.ErrorReason, bool) {
+	code, ok := ledgerpb.ErrorReason_value[errorReasonPrefix+reason]
 
-	return commonpb.ErrorReason(code), ok
+	return ledgerpb.ErrorReason(code), ok
 }
 
 // ReasonString is the inverse of ReasonCode: the stable, client-facing Reason()
 // identifier (the gRPC ErrorInfo.reason) for an ErrorReason enum value.
-func ReasonString(code commonpb.ErrorReason) string {
+func ReasonString(code ledgerpb.ErrorReason) string {
 	return strings.TrimPrefix(code.String(), errorReasonPrefix)
 }
 
@@ -55,99 +55,99 @@ func ReasonString(code commonpb.ErrorReason) string {
 // verify the stored failure projection against the hash-chained AuditFailure
 // without the kind ever being persisted. Every typed error's Kind() must agree
 // with this switch — enforced by TestKindForReasonMatchesTypedErrors.
-func KindForReason(code commonpb.ErrorReason) ErrorKind {
+func KindForReason(code ledgerpb.ErrorReason) ErrorKind {
 	//exhaustive:enforce
 	switch code {
-	case commonpb.ErrorReason_ERROR_REASON_VALIDATION,
-		commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_PARSE_ERROR,
-		commonpb.ErrorReason_ERROR_REASON_SINK_BATCH_SIZE_TOO_LARGE,
-		commonpb.ErrorReason_ERROR_REASON_INVALID_CRON_EXPRESSION,
-		commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_INVALID_VERSION,
-		commonpb.ErrorReason_ERROR_REASON_INVALID_PATTERN,
-		commonpb.ErrorReason_ERROR_REASON_FILTER_COMPILATION_ERROR,
-		commonpb.ErrorReason_ERROR_REASON_EXECUTION_PLAN_TOO_LARGE,
-		commonpb.ErrorReason_ERROR_REASON_CHECKPOINT_ID_REQUIRED,
-		commonpb.ErrorReason_ERROR_REASON_CLUSTER_POLICY_INVALID,
+	case ledgerpb.ErrorReason_ERROR_REASON_VALIDATION,
+		ledgerpb.ErrorReason_ERROR_REASON_NUMSCRIPT_PARSE_ERROR,
+		ledgerpb.ErrorReason_ERROR_REASON_SINK_BATCH_SIZE_TOO_LARGE,
+		ledgerpb.ErrorReason_ERROR_REASON_INVALID_CRON_EXPRESSION,
+		ledgerpb.ErrorReason_ERROR_REASON_NUMSCRIPT_INVALID_VERSION,
+		ledgerpb.ErrorReason_ERROR_REASON_INVALID_PATTERN,
+		ledgerpb.ErrorReason_ERROR_REASON_FILTER_COMPILATION_ERROR,
+		ledgerpb.ErrorReason_ERROR_REASON_EXECUTION_PLAN_TOO_LARGE,
+		ledgerpb.ErrorReason_ERROR_REASON_CHECKPOINT_ID_REQUIRED,
+		ledgerpb.ErrorReason_ERROR_REASON_CLUSTER_POLICY_INVALID,
 		// A metadata-limit violation is the caller sending too much metadata,
 		// not the server exhausting a resource: Validation (InvalidArgument /
 		// HTTP 400), never ResourceExhausted. Retrying the same payload cannot
 		// succeed, and a retryable code would make client retry policies
 		// re-drive a permanent rejection.
-		commonpb.ErrorReason_ERROR_REASON_METADATA_LIMIT_EXCEEDED,
+		ledgerpb.ErrorReason_ERROR_REASON_METADATA_LIMIT_EXCEEDED,
 		// Reverting a transaction the same batch creates is a property of how
 		// the caller composed the batch, not of ledger state: admission cannot
 		// declare the volume coverage apply will need. The whole batch is
 		// rejected, so the create never lands and re-admitting the identical
 		// batch reproduces the same observation — a retryable code would spin
 		// the client forever.
-		commonpb.ErrorReason_ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH:
+		ledgerpb.ErrorReason_ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH:
 		return KindValidation
-	case commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND,
-		commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_NOT_FOUND,
-		commonpb.ErrorReason_ERROR_REASON_TRANSACTION_NOT_FOUND,
-		commonpb.ErrorReason_ERROR_REASON_SINK_NOT_FOUND,
-		commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND,
-		commonpb.ErrorReason_ERROR_REASON_PREPARED_QUERY_NOT_FOUND,
-		commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_NOT_FOUND,
-		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND,
-		commonpb.ErrorReason_ERROR_REASON_CHECKPOINT_NOT_FOUND:
+	case ledgerpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND,
+		ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_NOT_FOUND,
+		ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_NOT_FOUND,
+		ledgerpb.ErrorReason_ERROR_REASON_SINK_NOT_FOUND,
+		ledgerpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND,
+		ledgerpb.ErrorReason_ERROR_REASON_PREPARED_QUERY_NOT_FOUND,
+		ledgerpb.ErrorReason_ERROR_REASON_NUMSCRIPT_NOT_FOUND,
+		ledgerpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND,
+		ledgerpb.ErrorReason_ERROR_REASON_CHECKPOINT_NOT_FOUND:
 		return KindNotFound
-	case commonpb.ErrorReason_ERROR_REASON_LEDGER_ALREADY_EXISTS,
-		commonpb.ErrorReason_ERROR_REASON_INDEX_ALREADY_EXISTS,
-		commonpb.ErrorReason_ERROR_REASON_IDEMPOTENCY_KEY_CONFLICT,
-		commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
-		commonpb.ErrorReason_ERROR_REASON_SINK_ALREADY_EXISTS,
-		commonpb.ErrorReason_ERROR_REASON_PREPARED_QUERY_ALREADY_EXISTS,
-		commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_VERSION_ALREADY_EXISTS,
-		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS:
+	case ledgerpb.ErrorReason_ERROR_REASON_LEDGER_ALREADY_EXISTS,
+		ledgerpb.ErrorReason_ERROR_REASON_INDEX_ALREADY_EXISTS,
+		ledgerpb.ErrorReason_ERROR_REASON_IDEMPOTENCY_KEY_CONFLICT,
+		ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+		ledgerpb.ErrorReason_ERROR_REASON_SINK_ALREADY_EXISTS,
+		ledgerpb.ErrorReason_ERROR_REASON_PREPARED_QUERY_ALREADY_EXISTS,
+		ledgerpb.ErrorReason_ERROR_REASON_NUMSCRIPT_VERSION_ALREADY_EXISTS,
+		ledgerpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS:
 		return KindAlreadyExists
-	case commonpb.ErrorReason_ERROR_REASON_LEDGER_DELETED,
-		commonpb.ErrorReason_ERROR_REASON_SINK_CONTROLLER_MISMATCH,
-		commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED,
-		commonpb.ErrorReason_ERROR_REASON_LEDGER_IN_MIRROR_MODE,
-		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_HAS_ACCOUNTS,
-		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_CONFLICT,
-		commonpb.ErrorReason_ERROR_REASON_STALE_CLUSTER_POLICY:
+	case ledgerpb.ErrorReason_ERROR_REASON_LEDGER_DELETED,
+		ledgerpb.ErrorReason_ERROR_REASON_SINK_CONTROLLER_MISMATCH,
+		ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED,
+		ledgerpb.ErrorReason_ERROR_REASON_LEDGER_IN_MIRROR_MODE,
+		ledgerpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_HAS_ACCOUNTS,
+		ledgerpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_CONFLICT,
+		ledgerpb.ErrorReason_ERROR_REASON_STALE_CLUSTER_POLICY:
 		return KindConflict
-	case commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
-		commonpb.ErrorReason_ERROR_REASON_VOLUME_OVERFLOW,
-		commonpb.ErrorReason_ERROR_REASON_AGGREGATE_OVERFLOW,
-		commonpb.ErrorReason_ERROR_REASON_BALANCE_NOT_FOUND,
-		commonpb.ErrorReason_ERROR_REASON_AUDIT_DISABLED,
-		commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_IN_MIRROR_MODE,
-		commonpb.ErrorReason_ERROR_REASON_INDEX_NOT_FOUND,
-		commonpb.ErrorReason_ERROR_REASON_METADATA_FIELD_NOT_IN_SCHEMA,
-		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_NOT_MATCHING_TYPE,
-		commonpb.ErrorReason_ERROR_REASON_TRANSIENT_ACCOUNT_NON_ZERO,
-		commonpb.ErrorReason_ERROR_REASON_CHECKPOINT_LIMIT_REACHED:
+	case ledgerpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+		ledgerpb.ErrorReason_ERROR_REASON_VOLUME_OVERFLOW,
+		ledgerpb.ErrorReason_ERROR_REASON_AGGREGATE_OVERFLOW,
+		ledgerpb.ErrorReason_ERROR_REASON_BALANCE_NOT_FOUND,
+		ledgerpb.ErrorReason_ERROR_REASON_AUDIT_DISABLED,
+		ledgerpb.ErrorReason_ERROR_REASON_LEDGER_NOT_IN_MIRROR_MODE,
+		ledgerpb.ErrorReason_ERROR_REASON_INDEX_NOT_FOUND,
+		ledgerpb.ErrorReason_ERROR_REASON_METADATA_FIELD_NOT_IN_SCHEMA,
+		ledgerpb.ErrorReason_ERROR_REASON_ACCOUNT_NOT_MATCHING_TYPE,
+		ledgerpb.ErrorReason_ERROR_REASON_TRANSIENT_ACCOUNT_NON_ZERO,
+		ledgerpb.ErrorReason_ERROR_REASON_CHECKPOINT_LIMIT_REACHED:
 		return KindPrecondition
-	case commonpb.ErrorReason_ERROR_REASON_BALANCE_NOT_PRELOADED,
-		commonpb.ErrorReason_ERROR_REASON_MAINTENANCE_MODE,
-		commonpb.ErrorReason_ERROR_REASON_STALE_PROPOSAL,
-		commonpb.ErrorReason_ERROR_REASON_STALE_INPUTS_RESOLUTION,
-		commonpb.ErrorReason_ERROR_REASON_PRELOAD_UNAVAILABLE,
-		commonpb.ErrorReason_ERROR_REASON_INDEX_BUILDING,
-		commonpb.ErrorReason_ERROR_REASON_CHECKPOINT_NOT_READY,
-		commonpb.ErrorReason_ERROR_REASON_CLUSTER_UNHEALTHY,
-		commonpb.ErrorReason_ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW:
+	case ledgerpb.ErrorReason_ERROR_REASON_BALANCE_NOT_PRELOADED,
+		ledgerpb.ErrorReason_ERROR_REASON_MAINTENANCE_MODE,
+		ledgerpb.ErrorReason_ERROR_REASON_STALE_PROPOSAL,
+		ledgerpb.ErrorReason_ERROR_REASON_STALE_INPUTS_RESOLUTION,
+		ledgerpb.ErrorReason_ERROR_REASON_PRELOAD_UNAVAILABLE,
+		ledgerpb.ErrorReason_ERROR_REASON_INDEX_BUILDING,
+		ledgerpb.ErrorReason_ERROR_REASON_CHECKPOINT_NOT_READY,
+		ledgerpb.ErrorReason_ERROR_REASON_CLUSTER_UNHEALTHY,
+		ledgerpb.ErrorReason_ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW:
 		return KindUnavailable
-	case commonpb.ErrorReason_ERROR_REASON_WRITES_BLOCKED_DISK_FULL,
-		commonpb.ErrorReason_ERROR_REASON_SEQUENCE_EXHAUSTED:
+	case ledgerpb.ErrorReason_ERROR_REASON_WRITES_BLOCKED_DISK_FULL,
+		ledgerpb.ErrorReason_ERROR_REASON_SEQUENCE_EXHAUSTED:
 		return KindResourceExhausted
-	case commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED,
-		commonpb.ErrorReason_ERROR_REASON_INDEX_INCONSISTENT,
-		commonpb.ErrorReason_ERROR_REASON_INVALID_ORDER_TYPE,
-		commonpb.ErrorReason_ERROR_REASON_INVALID_APPLY_TYPE,
-		commonpb.ErrorReason_ERROR_REASON_INVALID_EXECUTION_PLAN,
-		commonpb.ErrorReason_ERROR_REASON_COVERAGE_MISS,
-		commonpb.ErrorReason_ERROR_REASON_IDEMPOTENCY_CHECK_FAILED,
-		commonpb.ErrorReason_ERROR_REASON_STORAGE_OPERATION_FAILED,
-		commonpb.ErrorReason_ERROR_REASON_TRANSACTION_STATE_INCONSISTENT,
-		commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_RUNTIME,
-		commonpb.ErrorReason_ERROR_REASON_MIRROR_V2_LOG_ID_GAP,
-		commonpb.ErrorReason_ERROR_REASON_MIRROR_V2_LOG_ID_INVALID,
-		commonpb.ErrorReason_ERROR_REASON_VOLUME_NOT_MATERIALIZED,
-		commonpb.ErrorReason_ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT:
+	case ledgerpb.ErrorReason_ERROR_REASON_UNSPECIFIED,
+		ledgerpb.ErrorReason_ERROR_REASON_INDEX_INCONSISTENT,
+		ledgerpb.ErrorReason_ERROR_REASON_INVALID_ORDER_TYPE,
+		ledgerpb.ErrorReason_ERROR_REASON_INVALID_APPLY_TYPE,
+		ledgerpb.ErrorReason_ERROR_REASON_INVALID_EXECUTION_PLAN,
+		ledgerpb.ErrorReason_ERROR_REASON_COVERAGE_MISS,
+		ledgerpb.ErrorReason_ERROR_REASON_IDEMPOTENCY_CHECK_FAILED,
+		ledgerpb.ErrorReason_ERROR_REASON_STORAGE_OPERATION_FAILED,
+		ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_STATE_INCONSISTENT,
+		ledgerpb.ErrorReason_ERROR_REASON_NUMSCRIPT_RUNTIME,
+		ledgerpb.ErrorReason_ERROR_REASON_MIRROR_V2_LOG_ID_GAP,
+		ledgerpb.ErrorReason_ERROR_REASON_MIRROR_V2_LOG_ID_INVALID,
+		ledgerpb.ErrorReason_ERROR_REASON_VOLUME_NOT_MATERIALIZED,
+		ledgerpb.ErrorReason_ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT:
 		return KindInternal
 	default:
 		return KindInternal

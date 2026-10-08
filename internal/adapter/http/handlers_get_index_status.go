@@ -3,7 +3,7 @@ package http
 import (
 	"net/http"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // handleGetIndexStatus handles GET /indexes/status to fetch the aggregated
@@ -12,7 +12,7 @@ import (
 // (LastIndexedSequence, LastLogSequence, Lag, IndexFileSize) always cover
 // the bucket regardless.
 func (s *Server) handleGetIndexStatus(w http.ResponseWriter, r *http.Request) {
-	req := &servicepb.GetIndexStatusRequest{
+	req := &ledgerpb.GetIndexStatusRequest{
 		Ledger: r.URL.Query().Get("ledger"),
 	}
 

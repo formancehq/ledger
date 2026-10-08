@@ -7,14 +7,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
-func uintCond(lo, hi uint64, minExcl, maxExcl bool) *commonpb.UintCondition {
-	return &commonpb.UintCondition{Min: &lo, Max: &hi, MinExclusive: minExcl, MaxExclusive: maxExcl}
+func uintCond(lo, hi uint64, minExcl, maxExcl bool) *ledgerpb.UintCondition {
+	return &ledgerpb.UintCondition{Min: &lo, Max: &hi, MinExclusive: minExcl, MaxExclusive: maxExcl}
 }
 
 // TestResolveBounds_DegenerateRangesAreEmpty pins the crossed-bounds rule: max
@@ -27,7 +27,7 @@ func TestResolveBounds_DegenerateRangesAreEmpty(t *testing.T) {
 
 	cases := []struct {
 		name  string
-		cond  *commonpb.UintCondition
+		cond  *ledgerpb.UintCondition
 		empty bool
 	}{
 		{"exclusive-exclusive same value", uintCond(7, 7, true, true), true},
@@ -45,7 +45,7 @@ func TestResolveBounds_DegenerateRangesAreEmpty(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.empty, b.empty)
 
-			ic := &commonpb.IntCondition{
+			ic := &ledgerpb.IntCondition{
 				Min: new(int64(tc.cond.GetMin())), Max: new(int64(tc.cond.GetMax())),
 				MinExclusive: tc.cond.GetMinExclusive(), MaxExclusive: tc.cond.GetMaxExclusive(),
 			}
@@ -81,18 +81,18 @@ func TestCompile_NotOverDegenerateRange_YieldsUniverse(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	reader := store.DB()
-	info := &commonpb.LedgerInfo{Name: ledgerName}
+	info := &ledgerpb.LedgerInfo{Name: ledgerName}
 
 	two := uint64(2)
-	filter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Not{Not: &commonpb.NotFilter{
-		Filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{LogId: &commonpb.LogIdCondition{
-			Cond: &commonpb.UintCondition{Min: &two, Max: &two, MinExclusive: true, MaxExclusive: true},
+	filter := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Not{Not: &ledgerpb.NotFilter{
+		Filter: &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_LogId{LogId: &ledgerpb.LogIdCondition{
+			Cond: &ledgerpb.UintCondition{Min: &two, Max: &two, MinExclusive: true, MaxExclusive: true},
 		}}},
 	}}}
 
 	iter, err := Compile(
 		reader, dal.NewKeyBuilder(), filter,
-		commonpb.QueryTarget_QUERY_TARGET_LOGS, ledgerName,
+		ledgerpb.QueryTarget_QUERY_TARGET_LOGS, ledgerName,
 		nil, nil, info, nil, nil, nil, reader, 0)
 	require.NoError(t, err)
 

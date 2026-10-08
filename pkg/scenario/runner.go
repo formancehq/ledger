@@ -7,19 +7,19 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // Runner provides a simple interface for applying gRPC actions against a ledger cluster.
 type Runner struct {
 	ctx    context.Context
-	client servicepb.BucketServiceClient
+	client ledgerpb.BucketServiceClient
 	log    func(step string)
 	scale  float64
 }
 
 // NewRunner creates a new Runner with the given context and client.
-func NewRunner(ctx context.Context, client servicepb.BucketServiceClient) *Runner {
+func NewRunner(ctx context.Context, client ledgerpb.BucketServiceClient) *Runner {
 	return &Runner{
 		ctx:    ctx,
 		client: client,
@@ -54,12 +54,12 @@ func (r *Runner) Iterations(n int) int {
 }
 
 // Apply sends a batch of actions to the server.
-func (r *Runner) Apply(actions ...*servicepb.Request) (*servicepb.ApplyResponse, error) {
-	return r.client.Apply(r.ctx, servicepb.UnsignedApplyRequest("", actions...))
+func (r *Runner) Apply(actions ...*ledgerpb.Request) (*ledgerpb.ApplyResponse, error) {
+	return r.client.Apply(r.ctx, ledgerpb.UnsignedApplyRequest("", actions...))
 }
 
 // Step logs the step name, then applies the actions.
-func (r *Runner) Step(name string, actions ...*servicepb.Request) (*servicepb.ApplyResponse, error) {
+func (r *Runner) Step(name string, actions ...*ledgerpb.Request) (*ledgerpb.ApplyResponse, error) {
 	r.log(name)
 
 	return r.Apply(actions...)
@@ -67,7 +67,7 @@ func (r *Runner) Step(name string, actions ...*servicepb.Request) (*servicepb.Ap
 
 // Setup sends each action individually and ignores AlreadyExists errors,
 // making provisioning idempotent (safe to re-run against an existing cluster).
-func (r *Runner) Setup(actions ...*servicepb.Request) error {
+func (r *Runner) Setup(actions ...*ledgerpb.Request) error {
 	r.log("Setup")
 
 	for _, action := range actions {

@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // Each test in this file exercises the coercion path added for #249: the
@@ -43,8 +43,8 @@ func TestExtractInt64_StringCoercion(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			params := map[string]*commonpb.ParameterValue{
-				"p": {Value: &commonpb.ParameterValue_StringValue{StringValue: tt.raw}},
+			params := map[string]*ledgerpb.ParameterValue{
+				"p": {Value: &ledgerpb.ParameterValue_StringValue{StringValue: tt.raw}},
 			}
 
 			got, err := extractInt64(params, "p")
@@ -82,8 +82,8 @@ func TestExtractUint64_StringCoercion(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			params := map[string]*commonpb.ParameterValue{
-				"p": {Value: &commonpb.ParameterValue_StringValue{StringValue: tt.raw}},
+			params := map[string]*ledgerpb.ParameterValue{
+				"p": {Value: &ledgerpb.ParameterValue_StringValue{StringValue: tt.raw}},
 			}
 
 			got, err := extractUint64(params, "p")
@@ -122,8 +122,8 @@ func TestExtractBool_StringCoercion(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			params := map[string]*commonpb.ParameterValue{
-				"p": {Value: &commonpb.ParameterValue_StringValue{StringValue: tt.raw}},
+			params := map[string]*ledgerpb.ParameterValue{
+				"p": {Value: &ledgerpb.ParameterValue_StringValue{StringValue: tt.raw}},
 			}
 
 			got, err := extractBool(params, "p")
@@ -149,8 +149,8 @@ func TestExtract_NativeTypedPathsStillWork(t *testing.T) {
 	t.Run("int64 native", func(t *testing.T) {
 		t.Parallel()
 
-		params := map[string]*commonpb.ParameterValue{
-			"p": {Value: &commonpb.ParameterValue_Int64Value{Int64Value: -42}},
+		params := map[string]*ledgerpb.ParameterValue{
+			"p": {Value: &ledgerpb.ParameterValue_Int64Value{Int64Value: -42}},
 		}
 		got, err := extractInt64(params, "p")
 		require.NoError(t, err)
@@ -160,8 +160,8 @@ func TestExtract_NativeTypedPathsStillWork(t *testing.T) {
 	t.Run("uint64 native", func(t *testing.T) {
 		t.Parallel()
 
-		params := map[string]*commonpb.ParameterValue{
-			"p": {Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 42}},
+		params := map[string]*ledgerpb.ParameterValue{
+			"p": {Value: &ledgerpb.ParameterValue_Uint64Value{Uint64Value: 42}},
 		}
 		got, err := extractUint64(params, "p")
 		require.NoError(t, err)
@@ -171,8 +171,8 @@ func TestExtract_NativeTypedPathsStillWork(t *testing.T) {
 	t.Run("bool native", func(t *testing.T) {
 		t.Parallel()
 
-		params := map[string]*commonpb.ParameterValue{
-			"p": {Value: &commonpb.ParameterValue_BoolValue{BoolValue: true}},
+		params := map[string]*ledgerpb.ParameterValue{
+			"p": {Value: &ledgerpb.ParameterValue_BoolValue{BoolValue: true}},
 		}
 		got, err := extractBool(params, "p")
 		require.NoError(t, err)
@@ -189,8 +189,8 @@ func TestIssue249Repro(t *testing.T) {
 	t.Parallel()
 
 	hash := "0000000000000000000000000000000000000000000000000000000000000000"
-	params := map[string]*commonpb.ParameterValue{
-		"hash": {Value: &commonpb.ParameterValue_StringValue{StringValue: hash}},
+	params := map[string]*ledgerpb.ParameterValue{
+		"hash": {Value: &ledgerpb.ParameterValue_StringValue{StringValue: hash}},
 	}
 
 	// The originally-failing case: prepared query expects string.

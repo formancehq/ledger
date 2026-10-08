@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // handleDeleteAccountMetadata handles DELETE /{ledgerName}/accounts/{address}/metadata/{key} to delete account metadata.
@@ -28,16 +28,16 @@ func (s *Server) handleDeleteAccountMetadata(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	_, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &commonpb.Request{
-		Type: &commonpb.Request_Apply{
-			Apply: &commonpb.LedgerApplyRequest{
+	_, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &ledgerpb.Request{
+		Type: &ledgerpb.Request_Apply{
+			Apply: &ledgerpb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Action: &commonpb.LedgerAction{
-					Data: &commonpb.LedgerAction_DeleteMetadata{
-						DeleteMetadata: &commonpb.DeleteMetadataCommand{
-							Target: &commonpb.Target{
-								Target: &commonpb.Target_Account{
-									Account: &commonpb.TargetAccount{
+				Action: &ledgerpb.LedgerAction{
+					Data: &ledgerpb.LedgerAction_DeleteMetadata{
+						DeleteMetadata: &ledgerpb.DeleteMetadataCommand{
+							Target: &ledgerpb.Target{
+								Target: &ledgerpb.Target_Account{
+									Account: &ledgerpb.TargetAccount{
 										Addr: address,
 									},
 								},

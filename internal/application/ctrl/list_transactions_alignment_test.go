@@ -10,7 +10,7 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -42,11 +42,11 @@ func TestListTransactions_AlignsComplementWithPrimaryHorizon(t *testing.T) {
 	store := newCtrlTestStore(t)
 	attrs := attributes.New()
 
-	seedCreatedTransaction(t, store, attrs, ledger, txID, logSeq, &commonpb.Transaction{Id: txID})
+	seedCreatedTransaction(t, store, attrs, ledger, txID, logSeq, &ledgerpb.Transaction{Id: txID})
 
-	timestampID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)
+	timestampID := indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)
 	mainBatch := store.OpenWriteSession()
-	_, err := attrs.Index.Set(mainBatch, indexes.KeyFor(ledger, timestampID).Bytes(), &commonpb.Index{
+	_, err := attrs.Index.Set(mainBatch, indexes.KeyFor(ledger, timestampID).Bytes(), &ledgerpb.Index{
 		Id:                     timestampID,
 		Ledger:                 ledger,
 		ForwardEncodingVersion: 1,
@@ -66,11 +66,11 @@ func TestListTransactions_AlignsComplementWithPrimaryHorizon(t *testing.T) {
 	require.NoError(t, readyBatch.Commit())
 
 	ctrl := NewDefaultController(nil, store, logger, attrs, rs, nil, meter)
-	notTimestamp := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Not{Not: &commonpb.NotFilter{
-		Filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
-			BuiltinUint: &commonpb.BuiltinUintCondition{
-				Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
-				Cond:  &commonpb.UintCondition{Min: new(uint64), Max: new(uint64)},
+	notTimestamp := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Not{Not: &ledgerpb.NotFilter{
+		Filter: &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_BuiltinUint{
+			BuiltinUint: &ledgerpb.BuiltinUintCondition{
+				Field: ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
+				Cond:  &ledgerpb.UintCondition{Min: new(uint64), Max: new(uint64)},
 			},
 		}},
 	}}}
@@ -117,23 +117,23 @@ func seedCreatedTransaction(
 	attrs *attributes.Attributes,
 	ledger string,
 	txID, logSeq uint64,
-	tx *commonpb.Transaction,
+	tx *ledgerpb.Transaction,
 ) {
 	t.Helper()
 
 	batch := store.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(batch, ledger, &commonpb.LedgerInfo{Name: ledger}))
+	require.NoError(t, state.SaveLedger(batch, ledger, &ledgerpb.LedgerInfo{Name: ledger}))
 
 	txKey := domain.TransactionKey{LedgerName: ledger, ID: txID}
 	_, err := attrs.Transaction.Set(batch, txKey.Bytes(), &internalstatepb.TransactionState{CreatedByLog: logSeq})
 	require.NoError(t, err)
 
-	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{
+	require.NoError(t, state.AppendLogs(batch, []*ledgerpb.Log{{
 		Sequence: logSeq,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{Apply: &ledgerpb.ApplyLedgerLog{
 			LedgerName: ledger,
-			Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{
-				Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{Transaction: tx}},
+			Log: &ledgerpb.LedgerLog{Data: &ledgerpb.LedgerLogPayload{
+				Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &ledgerpb.CreatedTransaction{Transaction: tx}},
 			}},
 		}}},
 	}}))

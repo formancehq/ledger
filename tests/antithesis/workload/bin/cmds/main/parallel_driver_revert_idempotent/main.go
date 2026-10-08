@@ -7,21 +7,21 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_revert_idempotent", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+	internal.RunDriver("parallel_driver_revert_idempotent", func(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string) {
 		// 1. Create a transaction.
-		resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+		resp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-						CreateTransaction: &servicepb.CreateTransactionPayload{
+					Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &ledgerpb.CreateTransactionPayload{
 							Postings: internal.RandomPostings(),
 							Force:    true,
 						},
@@ -46,12 +46,12 @@ func main() {
 		details := internal.Details{"ledger": ledger, "txId": txID}
 
 		// 2. First revert — should succeed.
-		revertResp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+		revertResp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RevertTransaction{
-						RevertTransaction: &servicepb.RevertTransactionPayload{
+					Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_RevertTransaction{
+						RevertTransaction: &ledgerpb.RevertTransactionPayload{
 							TransactionId: txID,
 							Force:         true,
 						},
@@ -77,7 +77,7 @@ func main() {
 		}
 
 		// Verify the transaction is marked as reverted.
-		getTx, err := client.GetTransaction(ctx, &servicepb.GetTransactionRequest{
+		getTx, err := client.GetTransaction(ctx, &ledgerpb.GetTransactionRequest{
 			Ledger:        ledger,
 			TransactionId: txID,
 		})
@@ -96,12 +96,12 @@ func main() {
 			"transaction should be marked as reverted after first revert", details)
 
 		// 3. Second revert — must fail with TRANSACTION_ALREADY_REVERTED.
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+		_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RevertTransaction{
-						RevertTransaction: &servicepb.RevertTransactionPayload{
+					Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_RevertTransaction{
+						RevertTransaction: &ledgerpb.RevertTransactionPayload{
 							TransactionId: txID,
 							Force:         true,
 						},

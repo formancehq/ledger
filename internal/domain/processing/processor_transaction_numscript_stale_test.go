@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
@@ -67,15 +67,15 @@ func TestProduce_ChangedValueWithCompletedResolutionIsStale(t *testing.T) {
 	// @wallet has a real balance, so resolution completes; the recomputed hash
 	// will not equal the arbitrary stored hash, so the block rejects as stale.
 	walletVol := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(1000),
-		Output: commonpb.NewUint256FromUint64(0),
+		Input:  ledgerpb.NewUint256FromUint64(1000),
+		Output: ledgerpb.NewUint256FromUint64(0),
 	}
 	volumes.expectGet(domain.NewVolumeKey("test", "wallet", "USD/2", ""), walletVol.AsReader(), nil)
 
 	producer := newNumscriptProducer()
 	order := staleOrder()
 
-	_, err := producer.produce(mockStore, "test", order, &commonpb.Script{Plain: staleScript})
+	_, err := producer.produce(mockStore, "test", order, &ledgerpb.Script{Plain: staleScript})
 
 	require.NotNil(t, err)
 	require.ErrorIs(t, err, domain.ErrStaleInputsResolution,
@@ -104,7 +104,7 @@ func TestProduce_CoverageMissDuringResolutionIsLoudNotStale(t *testing.T) {
 	producer := newNumscriptProducer()
 	order := staleOrder()
 
-	_, err := producer.produce(mockStore, "test", order, &commonpb.Script{Plain: staleScript})
+	_, err := producer.produce(mockStore, "test", order, &ledgerpb.Script{Plain: staleScript})
 
 	require.NotNil(t, err)
 	require.NotErrorIs(t, err, domain.ErrStaleInputsResolution,
@@ -135,7 +135,7 @@ func TestProduce_InvalidExecutionPlanDuringResolutionIsLoudNotStale(t *testing.T
 	producer := newNumscriptProducer()
 	order := staleOrder()
 
-	_, err := producer.produce(mockStore, "test", order, &commonpb.Script{Plain: staleScript})
+	_, err := producer.produce(mockStore, "test", order, &ledgerpb.Script{Plain: staleScript})
 
 	require.NotNil(t, err)
 	require.NotErrorIs(t, err, domain.ErrStaleInputsResolution)

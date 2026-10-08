@@ -7,7 +7,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -57,10 +57,10 @@ func runRevokeKey(cmd *cobra.Command, _ []string) error {
 
 	spinner := cmdutil.StartSpinner(fmt.Sprintf("Revoking signing key %s...", keyID))
 
-	requests := []*servicepb.Request{
+	requests := []*ledgerpb.Request{
 		{
-			Type: &servicepb.Request_RevokeSigningKey{
-				RevokeSigningKey: &servicepb.RevokeSigningKeyRequest{
+			Type: &ledgerpb.Request_RevokeSigningKey{
+				RevokeSigningKey: &ledgerpb.RevokeSigningKeyRequest{
 					KeyId:   keyID,
 					Cascade: cascade,
 				},

@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -24,10 +24,10 @@ import (
 // primary store's SubAttrIndex registry (the oracle) and the peer read index's
 // raw reverse-map rows (the data under judgement).
 type reverseMapFixtureInput struct {
-	registry map[domain.IndexKey]*commonpb.Index
+	registry map[domain.IndexKey]*ledgerpb.Index
 	// schemas stands in for the Checker's audit-derived expectedSchemas — the
 	// replayed metadata schema per ledger, NOT the stored LedgerInfo.
-	schemas  map[string]*commonpb.MetadataSchema
+	schemas  map[string]*ledgerpb.MetadataSchema
 	rmapKeys [][]byte
 	// progress is the read index's last-folded log sequence, written to the
 	// progress cursor so the lag gate can be driven from a test.
@@ -42,13 +42,13 @@ type reverseMapFixtureInput struct {
 type reverseMapFixture struct {
 	checker *Checker
 	reader  dal.PebbleReader
-	schemas map[string]*commonpb.MetadataSchema
+	schemas map[string]*ledgerpb.MetadataSchema
 }
 
 // run drives the pass on the absence-based oracle only — no replayed
 // RemovedMetadataFieldType or DeleteLedger evidence — and collects every emitted
 // event, preserving order.
-func (f reverseMapFixture) run(lastSequence uint64, live map[string]struct{}) []*commonpb.CheckStoreEvent {
+func (f reverseMapFixture) run(lastSequence uint64, live map[string]struct{}) []*ledgerpb.CheckStoreEvent {
 	return f.runScope(reverseMapOrphanScope{
 		lastSequence: lastSequence,
 		liveLedgers:  live,
@@ -58,8 +58,8 @@ func (f reverseMapFixture) run(lastSequence uint64, live map[string]struct{}) []
 // runScope drives the pass with a caller-built scope, for the cases that need
 // the positive-evidence oracle terms or a deliberately misaligned peer cursor.
 // reader, peer and replayedSchemas always come from the fixture.
-func (f reverseMapFixture) runScope(scope reverseMapOrphanScope) []*commonpb.CheckStoreEvent {
-	var events []*commonpb.CheckStoreEvent
+func (f reverseMapFixture) runScope(scope reverseMapOrphanScope) []*ledgerpb.CheckStoreEvent {
+	var events []*ledgerpb.CheckStoreEvent
 
 	scope.reader = f.reader
 	scope.replayedSchemas = f.schemas
@@ -69,7 +69,7 @@ func (f reverseMapFixture) runScope(scope reverseMapOrphanScope) []*commonpb.Che
 		defer func() { _ = scope.peer.Close() }()
 	}
 
-	f.checker.compareReverseMapOrphans(scope, func(e *commonpb.CheckStoreEvent) {
+	f.checker.compareReverseMapOrphans(scope, func(e *ledgerpb.CheckStoreEvent) {
 		events = append(events, e)
 	})
 
@@ -129,28 +129,28 @@ func newReverseMapFixture(t *testing.T, in reverseMapFixtureInput) reverseMapFix
 // SetMetadataFieldType contributes to the checker's expectedSchemas.
 type schemaField struct {
 	ledger string
-	target commonpb.TargetType
+	target ledgerpb.TargetType
 	key    string
 }
 
 // replayedSchemas builds the audit-derived schema map through the same helper
 // the replay loop uses, so the fixture cannot drift from the real shape.
-func replayedSchemas(fields ...schemaField) map[string]*commonpb.MetadataSchema {
-	schemas := make(map[string]*commonpb.MetadataSchema)
+func replayedSchemas(fields ...schemaField) map[string]*ledgerpb.MetadataSchema {
+	schemas := make(map[string]*ledgerpb.MetadataSchema)
 	for _, field := range fields {
-		setExpectedSchemaField(schemas, field.ledger, field.target, field.key, commonpb.MetadataType_METADATA_TYPE_STRING)
+		setExpectedSchemaField(schemas, field.ledger, field.target, field.key, ledgerpb.MetadataType_METADATA_TYPE_STRING)
 	}
 
 	return schemas
 }
 
 // metadataRegistry builds registry rows for (ledger, target, key) triples.
-func metadataRegistry(ledger string, target commonpb.TargetType, keys ...string) map[domain.IndexKey]*commonpb.Index {
-	registry := make(map[domain.IndexKey]*commonpb.Index, len(keys))
+func metadataRegistry(ledger string, target ledgerpb.TargetType, keys ...string) map[domain.IndexKey]*ledgerpb.Index {
+	registry := make(map[domain.IndexKey]*ledgerpb.Index, len(keys))
 
 	for _, key := range keys {
 		id := indexes.MetadataID(target, key)
-		registry[indexes.KeyFor(ledger, id)] = &commonpb.Index{Id: id, Ledger: ledger}
+		registry[indexes.KeyFor(ledger, id)] = &ledgerpb.Index{Id: id, Ledger: ledger}
 	}
 
 	return registry
@@ -185,8 +185,8 @@ func TestCompareReverseMapOrphans_IndexedFieldsStaySilent(t *testing.T) {
 	// cannot pass via the schema term instead.
 	full := newReverseMapFixture(t, reverseMapFixtureInput{
 		registry: mergeRegistries(
-			metadataRegistry("L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
-			metadataRegistry("L1", commonpb.TargetType_TARGET_TYPE_TRANSACTION, "tier"),
+			metadataRegistry("L1", ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
+			metadataRegistry("L1", ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, "tier"),
 		),
 		rmapKeys: rows,
 		progress: 10,
@@ -204,8 +204,8 @@ func TestCompareReverseMapOrphans_IndexedFieldsStaySilent(t *testing.T) {
 		"the same rows with an empty registry must be flagged, proving the scan reached them")
 }
 
-func mergeRegistries(sets ...map[domain.IndexKey]*commonpb.Index) map[domain.IndexKey]*commonpb.Index {
-	merged := make(map[domain.IndexKey]*commonpb.Index)
+func mergeRegistries(sets ...map[domain.IndexKey]*ledgerpb.Index) map[domain.IndexKey]*ledgerpb.Index {
+	merged := make(map[domain.IndexKey]*ledgerpb.Index)
 	for _, set := range sets {
 		maps.Copy(merged, set)
 	}
@@ -223,7 +223,7 @@ func TestCompareReverseMapOrphans_IgnoresVersion(t *testing.T) {
 	kb := dal.NewKeyBuilder()
 
 	fixture := newReverseMapFixture(t, reverseMapFixtureInput{
-		registry: metadataRegistry("L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
+		registry: metadataRegistry("L1", ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
 		rmapKeys: [][]byte{
 			readstore.AccountReverseMapKeyV(kb, "L1", "users:1", "role", 1),
 			readstore.AccountReverseMapKeyV(kb, "L1", "users:1", "role", 2),
@@ -244,7 +244,7 @@ func TestCompareReverseMapOrphans_AccountOrphan(t *testing.T) {
 	kb := dal.NewKeyBuilder()
 
 	fixture := newReverseMapFixture(t, reverseMapFixtureInput{
-		registry: metadataRegistry("L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
+		registry: metadataRegistry("L1", ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
 		rmapKeys: [][]byte{
 			readstore.AccountReverseMapKeyV(kb, "L1", "users:1", "role", 1),
 			readstore.AccountReverseMapKeyV(kb, "L1", "users:1", "dropped", 1),
@@ -257,7 +257,7 @@ func TestCompareReverseMapOrphans_AccountOrphan(t *testing.T) {
 	require.Len(t, events, 1)
 	err := events[0].GetError()
 	require.Equal(t,
-		commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
+		ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
 		err.GetErrorType())
 	require.Equal(t, "L1", err.GetLedger())
 	require.Contains(t, err.GetMessage(), `"dropped"`)
@@ -324,7 +324,7 @@ func TestCompareReverseMapOrphans_IdentityIncludesTarget(t *testing.T) {
 	kb := dal.NewKeyBuilder()
 
 	input := reverseMapFixtureInput{
-		registry: metadataRegistry("L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "shared"),
+		registry: metadataRegistry("L1", ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "shared"),
 		progress: 3,
 		rmapKeys: [][]byte{
 			readstore.AccountReverseMapKeyV(kb, "L1", "users:1", "shared", 1),
@@ -354,7 +354,7 @@ func TestCompareReverseMapOrphans_LifecycleViolationFlaggedAndClassified(t *test
 
 	// Schema still declared ⇒ the index can only have gone away via DropIndex.
 	dropped := newReverseMapFixture(t, reverseMapFixtureInput{
-		schemas:  replayedSchemas(schemaField{"L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"}),
+		schemas:  replayedSchemas(schemaField{"L1", ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role"}),
 		rmapKeys: rows,
 		progress: 3,
 	})
@@ -389,8 +389,8 @@ func TestCompareReverseMapOrphans_RemovedFieldTypeResidueFlagged(t *testing.T) {
 	fixture := newReverseMapFixture(t, reverseMapFixtureInput{
 		// "kept" survived the removal; "removed" was dropped from the schema by
 		// RemovedMetadataFieldType, and its rmap rows should have gone with it.
-		registry: metadataRegistry("L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "kept"),
-		schemas:  replayedSchemas(schemaField{"L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "kept"}),
+		registry: metadataRegistry("L1", ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "kept"),
+		schemas:  replayedSchemas(schemaField{"L1", ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "kept"}),
 		rmapKeys: [][]byte{
 			readstore.AccountReverseMapKeyV(kb, "L1", "users:1", "kept", 1),
 			readstore.AccountReverseMapKeyV(kb, "L1", "users:1", "removed", 1),
@@ -404,7 +404,7 @@ func TestCompareReverseMapOrphans_RemovedFieldTypeResidueFlagged(t *testing.T) {
 	require.Len(t, events, 1)
 	err := events[0].GetError()
 	require.Equal(t,
-		commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
+		ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
 		err.GetErrorType())
 	require.Equal(t, "L1", err.GetLedger())
 	require.Contains(t, err.GetMessage(), `"removed"`)
@@ -428,7 +428,7 @@ func TestCompareReverseMapOrphans_StaleRegistryCannotMaskOrphans(t *testing.T) {
 	fixture := newReverseMapFixture(t, reverseMapFixtureInput{
 		// Stale registry entry for a field the replayed schema no longer
 		// declares.
-		registry: metadataRegistry("L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
+		registry: metadataRegistry("L1", ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
 		schemas:  nil,
 		rmapKeys: [][]byte{
 			readstore.AccountReverseMapKeyV(kb, "L1", "users:1", "role", 1),
@@ -449,17 +449,17 @@ func TestCompareReverseMapOrphans_StaleRegistryCannotMaskOrphans(t *testing.T) {
 	// entry the replay never touched. Check() is therefore NOT
 	// clean on this store: the two corrupted projections can no longer mask each
 	// other, which is what the review required.
-	var events []*commonpb.CheckStoreEvent
+	var events []*ledgerpb.CheckStoreEvent
 
 	fixture.checker.compareIndexes(compareIndexesScope{
 		reader:   fixture.reader,
-		expected: map[domain.IndexKey]*commonpb.Index{},
-	}, func(e *commonpb.CheckStoreEvent) { events = append(events, e) })
+		expected: map[domain.IndexKey]*ledgerpb.Index{},
+	}, func(e *ledgerpb.CheckStoreEvent) { events = append(events, e) })
 
 	require.Len(t, events, 1,
 		"the stale registry row that suppressed the orphan verdict must itself be reported")
 	require.Equal(t,
-		commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
+		ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
 		events[0].GetError().GetErrorType())
 	require.Equal(t, "L1", events[0].GetError().GetLedger())
 }
@@ -535,7 +535,7 @@ func TestCompareReverseMapOrphans_MalformedKeys(t *testing.T) {
 			require.Len(t, events, 1)
 			err := events[0].GetError()
 			require.Equal(t,
-				commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
+				ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
 				err.GetErrorType())
 			require.Equal(t, test.expectedLedger, err.GetLedger())
 			require.Contains(t, err.GetMessage(), "do not decode")
@@ -552,10 +552,10 @@ func TestCompareReverseMapOrphans_BucketScopedRegistryIgnored(t *testing.T) {
 	t.Parallel()
 
 	kb := dal.NewKeyBuilder()
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
 
 	fixture := newReverseMapFixture(t, reverseMapFixtureInput{
-		registry: map[domain.IndexKey]*commonpb.Index{
+		registry: map[domain.IndexKey]*ledgerpb.Index{
 			indexes.KeyFor("", id): {Id: id},
 		},
 		rmapKeys: [][]byte{
@@ -580,9 +580,9 @@ func TestCompareReverseMapOrphans_ZeroVersionCannotHideBehindRegisteredField(t *
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "statu")
+			id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "statu")
 			fixture := newReverseMapFixture(t, reverseMapFixtureInput{
-				registry: map[domain.IndexKey]*commonpb.Index{
+				registry: map[domain.IndexKey]*ledgerpb.Index{
 					indexes.KeyFor("L1", id): {Id: id},
 				},
 				// The embedded NUL otherwise re-splits as the registered field
@@ -593,7 +593,7 @@ func TestCompareReverseMapOrphans_ZeroVersionCannotHideBehindRegisteredField(t *
 
 			events := fixture.run(3, ledgerNameSet("L1"))
 			require.Len(t, events, 1)
-			require.Equal(t, commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN, events[0].GetError().GetErrorType())
+			require.Equal(t, ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN, events[0].GetError().GetErrorType())
 			require.Contains(t, events[0].GetError().GetMessage(), "do not decode")
 			require.Contains(t, events[0].GetError().GetMessage(), readstore.ErrReverseMapKeyVersion.Error())
 		})
@@ -657,11 +657,11 @@ func TestCompareReverseMapOrphans_LagGate(t *testing.T) {
 // caller to judge. An ahead cursor is reported because no runtime path
 // produces it, but it must never turn healthy rows into orphan findings — the
 // oracles simply cannot speak about them.
-func withoutAheadDiagnostic(t *testing.T, events []*commonpb.CheckStoreEvent) []*commonpb.CheckStoreEvent {
+func withoutAheadDiagnostic(t *testing.T, events []*ledgerpb.CheckStoreEvent) []*ledgerpb.CheckStoreEvent {
 	t.Helper()
 
 	ahead := 0
-	rest := make([]*commonpb.CheckStoreEvent, 0, len(events))
+	rest := make([]*ledgerpb.CheckStoreEvent, 0, len(events))
 
 	for _, e := range events {
 		if strings.Contains(e.GetError().GetMessage(), "ahead of the verified log range") {
@@ -774,8 +774,8 @@ func TestCompareReverseMapOrphans_RecreatedLedgerStaysSilent(t *testing.T) {
 	kb := dal.NewKeyBuilder()
 
 	fixture := newReverseMapFixture(t, reverseMapFixtureInput{
-		registry: metadataRegistry("L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
-		schemas:  replayedSchemas(schemaField{"L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"}),
+		registry: metadataRegistry("L1", ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
+		schemas:  replayedSchemas(schemaField{"L1", ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role"}),
 		rmapKeys: [][]byte{readstore.AccountReverseMapKeyV(kb, "L1", "users:1", "role", 1)},
 		progress: 10,
 	})
@@ -801,7 +801,7 @@ func TestCompareReverseMapOrphans_RedeclaredWithoutIndexStillOrphan(t *testing.T
 	redeclared := newReverseMapFixture(t, reverseMapFixtureInput{
 		rmapKeys: rows,
 		// The re-declaration is what the replayed schema ends up holding.
-		schemas:  replayedSchemas(schemaField{"L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"}),
+		schemas:  replayedSchemas(schemaField{"L1", ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role"}),
 		progress: 10,
 	})
 
@@ -810,8 +810,8 @@ func TestCompareReverseMapOrphans_RedeclaredWithoutIndexStillOrphan(t *testing.T
 		"re-declaring a field must not legitimise rows an earlier purge missed")
 
 	reindexed := newReverseMapFixture(t, reverseMapFixtureInput{
-		registry: metadataRegistry("L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
-		schemas:  replayedSchemas(schemaField{"L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"}),
+		registry: metadataRegistry("L1", ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
+		schemas:  replayedSchemas(schemaField{"L1", ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role"}),
 		rmapKeys: rows,
 		progress: 10,
 	})
@@ -857,7 +857,7 @@ func TestCheck_ReverseMapOrphans_EmptyAuditWiring(t *testing.T) {
 	logger := logging.FromContext(logging.TestingContext())
 	kb := dal.NewKeyBuilder()
 
-	runCheck := func(t *testing.T, seed bool) []*commonpb.CheckStoreEvent {
+	runCheck := func(t *testing.T, seed bool) []*ledgerpb.CheckStoreEvent {
 		t.Helper()
 
 		peer, err := readstore.New(t.TempDir(), logger, readstore.DefaultConfig())
@@ -872,8 +872,8 @@ func TestCheck_ReverseMapOrphans_EmptyAuditWiring(t *testing.T) {
 
 		checker := NewChecker(createTestStore(t), attributes.New(), peer, logger)
 
-		var events []*commonpb.CheckStoreEvent
-		require.NoError(t, checker.Check(context.Background(), func(e *commonpb.CheckStoreEvent) {
+		var events []*ledgerpb.CheckStoreEvent
+		require.NoError(t, checker.Check(context.Background(), func(e *ledgerpb.CheckStoreEvent) {
 			if e.GetError() != nil {
 				events = append(events, e)
 			}
@@ -943,8 +943,8 @@ func TestCompareReverseMapOrphans_DeterministicOrdering(t *testing.T) {
 }
 
 // setMetadataFieldTypeOrder builds a real SetMetadataFieldType order, mirroring
-// the shape admission.go produces for commonpb.Request_SetMetadataFieldType.
-func setMetadataFieldTypeOrder(ledger string, target commonpb.TargetType, key string, typ commonpb.MetadataType) *raftcmdpb.Order {
+// the shape admission.go produces for ledgerpb.Request_SetMetadataFieldType.
+func setMetadataFieldTypeOrder(ledger string, target ledgerpb.TargetType, key string, typ ledgerpb.MetadataType) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
@@ -965,11 +965,11 @@ func setMetadataFieldTypeOrder(ledger string, target commonpb.TargetType, key st
 
 // removeMetadataFieldTypeOrder builds a real RemoveMetadataFieldType order,
 // mirroring the shape admission.go produces for
-// commonpb.Request_RemoveMetadataFieldType. This is the log EN-1458 targets:
+// ledgerpb.Request_RemoveMetadataFieldType. This is the log EN-1458 targets:
 // processRemoveMetadataFieldType both drops the schema field AND (in
 // production) triggers the indexbuilder's field-bounded
 // purgeReverseMapForKey DeleteRange over the reverse map.
-func removeMetadataFieldTypeOrder(ledger string, target commonpb.TargetType, key string) *raftcmdpb.Order {
+func removeMetadataFieldTypeOrder(ledger string, target ledgerpb.TargetType, key string) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
@@ -1013,14 +1013,14 @@ func TestCheck_ReverseMapOrphans_EndToEnd(t *testing.T) {
 	// runCheck seeds a peer read index holding one orphaned row, sets its fold
 	// cursor via aheadBy relative to the store's own verified sequence, and runs a
 	// full Check().
-	runCheck := func(t *testing.T, aheadBy uint64) []*commonpb.CheckStoreEvent {
+	runCheck := func(t *testing.T, aheadBy uint64) []*ledgerpb.CheckStoreEvent {
 		t.Helper()
 
 		engine := newTestEngine(t)
 
 		engine.processAndCommit(createLedgerOrder(ledger))
-		engine.processAndCommit(setMetadataFieldTypeOrder(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role", commonpb.MetadataType_METADATA_TYPE_STRING))
-		engine.processAndCommit(removeMetadataFieldTypeOrder(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"))
+		engine.processAndCommit(setMetadataFieldTypeOrder(ledger, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role", ledgerpb.MetadataType_METADATA_TYPE_STRING))
+		engine.processAndCommit(removeMetadataFieldTypeOrder(ledger, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role"))
 
 		logger := logging.Testing()
 
@@ -1049,8 +1049,8 @@ func TestCheck_ReverseMapOrphans_EndToEnd(t *testing.T) {
 
 		checker := NewChecker(engine.store, engine.attrs, peer, logger)
 
-		var events []*commonpb.CheckStoreEvent
-		require.NoError(t, checker.Check(context.Background(), func(e *commonpb.CheckStoreEvent) {
+		var events []*ledgerpb.CheckStoreEvent
+		require.NoError(t, checker.Check(context.Background(), func(e *ledgerpb.CheckStoreEvent) {
 			if e.GetError() != nil {
 				events = append(events, e)
 			}
@@ -1066,7 +1066,7 @@ func TestCheck_ReverseMapOrphans_EndToEnd(t *testing.T) {
 		require.Len(t, events, 1, "the only integrity error in this store must be the reverse-map orphan")
 
 		err0 := events[0].GetError()
-		require.Equal(t, commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN, err0.GetErrorType())
+		require.Equal(t, ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN, err0.GetErrorType())
 		require.Equal(t, ledger, err0.GetLedger())
 		require.Contains(t, err0.GetMessage(), `"role"`)
 	})

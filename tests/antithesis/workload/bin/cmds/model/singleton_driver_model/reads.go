@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -20,7 +20,7 @@ import (
 // holds no state for — issues a linearizable GetAccount, and validates the result
 // (the picked asset's volumes and the account's whole metadata map) against the
 // model (see validateAccountRead).
-func runRead(ctx context.Context, client commonpb.BucketServiceClient, c *Checker) {
+func runRead(ctx context.Context, client ledgerpb.BucketServiceClient, c *Checker) {
 	c.mu.Lock()
 	state := c.modelState
 	readID := c.registerRead()
@@ -53,7 +53,7 @@ func runRead(ctx context.Context, client commonpb.BucketServiceClient, c *Checke
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 
 	responseFrontier := c.beginResponseFrontier()
-	acct, err := client.GetAccount(readCtx, &commonpb.GetAccountRequest{
+	acct, err := client.GetAccount(readCtx, &ledgerpb.GetAccountRequest{
 		Ledger:  ledger,
 		Address: addr,
 	})
@@ -215,7 +215,7 @@ func pickCell(g oracle.GlobalState, ledgers []string) (ledger, addr, asset strin
 // model state explains — a repeated bucket, or an unparseable amount — and the
 // caller's validation fails it outright rather than mistaking it for an empty
 // reading.
-func accountVolumeSet(acct *commonpb.Account) (map[assetColor]oracle.VolumePair, bool) {
+func accountVolumeSet(acct *ledgerpb.Account) (map[assetColor]oracle.VolumePair, bool) {
 	if acct == nil {
 		return nil, true
 	}
@@ -274,7 +274,7 @@ func pickLedgerReadTarget(ledgers []string, absentPct uint64) (ledger string, ab
 // sometimes on an absent one — and checks the result against the model: a fleet
 // ledger's whole snapshot (account types and ledger metadata, see
 // validateLedgerRead), or an absent ledger's mandatory NotFound.
-func runLedgerRead(ctx context.Context, client commonpb.BucketServiceClient, c *Checker) {
+func runLedgerRead(ctx context.Context, client ledgerpb.BucketServiceClient, c *Checker) {
 	ledger, absent := pickLedgerReadTarget(c.liveLedgerNamesSnapshot(), 2)
 
 	c.mu.Lock()
@@ -284,7 +284,7 @@ func runLedgerRead(ctx context.Context, client commonpb.BucketServiceClient, c *
 
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 	responseFrontier := c.beginResponseFrontier()
-	info, err := client.GetLedger(readCtx, &commonpb.GetLedgerRequest{Ledger: ledger})
+	info, err := client.GetLedger(readCtx, &ledgerpb.GetLedgerRequest{Ledger: ledger})
 	// High-water at the read's response: only bulks dispatched by now could be
 	// reflected in what the server returned.
 	maxTicket := responseFrontier()
@@ -345,7 +345,7 @@ func pickTransactionID(g oracle.GlobalState, ledgers []string) (ledger string, i
 // checks the observation — a returned transaction, or NotFound — against the
 // model (see validateTransactionRead). This is the only path that reads
 // accumulated transaction metadata back.
-func runTransactionRead(ctx context.Context, client commonpb.BucketServiceClient, c *Checker) {
+func runTransactionRead(ctx context.Context, client ledgerpb.BucketServiceClient, c *Checker) {
 	c.mu.Lock()
 	state := c.modelState
 	readID := c.registerRead()
@@ -366,7 +366,7 @@ func runTransactionRead(ctx context.Context, client commonpb.BucketServiceClient
 
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 	responseFrontier := c.beginResponseFrontier()
-	resp, err := client.GetTransaction(readCtx, &commonpb.GetTransactionRequest{Ledger: ledger, TransactionId: id})
+	resp, err := client.GetTransaction(readCtx, &ledgerpb.GetTransactionRequest{Ledger: ledger, TransactionId: id})
 	// High-water at the read's response: only bulks dispatched by now could be
 	// reflected in what the server returned.
 	maxTicket := responseFrontier()
@@ -397,7 +397,7 @@ func runTransactionRead(ctx context.Context, client commonpb.BucketServiceClient
 // field types (account / transaction / ledger) against the model (see
 // validateSchemaRead) — the read-back that verifies the declared-schema
 // projection, not just the per-op SetMetadataFieldType echo.
-func runSchemaRead(ctx context.Context, client commonpb.BucketServiceClient, c *Checker) {
+func runSchemaRead(ctx context.Context, client ledgerpb.BucketServiceClient, c *Checker) {
 	ledger, absent := pickLedgerReadTarget(c.liveLedgerNamesSnapshot(), 3)
 
 	c.mu.Lock()
@@ -407,7 +407,7 @@ func runSchemaRead(ctx context.Context, client commonpb.BucketServiceClient, c *
 
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 	responseFrontier := c.beginResponseFrontier()
-	resp, err := client.GetMetadataSchemaStatus(readCtx, &commonpb.GetMetadataSchemaStatusRequest{Ledger: ledger})
+	resp, err := client.GetMetadataSchemaStatus(readCtx, &ledgerpb.GetMetadataSchemaStatusRequest{Ledger: ledger})
 	// High-water at the read's response: only bulks dispatched by now could be
 	// reflected in what the server returned.
 	maxTicket := responseFrontier()

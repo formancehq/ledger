@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // Transaction builtins (id/timestamp/insertedAt/revertedAt) are transaction-only;
@@ -14,17 +14,17 @@ import (
 func TestCompileBuiltinUintCondition_RejectsNonTransactionTarget(t *testing.T) {
 	t.Parallel()
 
-	for _, target := range []commonpb.QueryTarget{
-		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-		commonpb.QueryTarget_QUERY_TARGET_LOGS,
+	for _, target := range []ledgerpb.QueryTarget{
+		ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		ledgerpb.QueryTarget_QUERY_TARGET_LOGS,
 	} {
 		ctx := &compileCtx{target: target}
 
-		_, err := compile(ctx, &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_BuiltinUint{
-				BuiltinUint: &commonpb.BuiltinUintCondition{
-					Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
-					Cond:  &commonpb.UintCondition{Min: new(uint64(1))},
+		_, err := compile(ctx, &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_BuiltinUint{
+				BuiltinUint: &ledgerpb.BuiltinUintCondition{
+					Field: ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
+					Cond:  &ledgerpb.UintCondition{Min: new(uint64(1))},
 				},
 			},
 		})

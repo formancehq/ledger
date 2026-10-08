@@ -7,7 +7,7 @@ import (
 	"math/big"
 	"testing"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/scenario"
 	"github.com/stretchr/testify/require"
@@ -149,7 +149,7 @@ func TestMultiCurrencyTreasury(t *testing.T) {
 
 			// Leg 2: fx:clearing → target (in target currency, force because clearing doesn't have target currency)
 			scenariotest.ApplyActions(t, ctx, client,
-				actions.CreateForceTransactionAction(ledger, []*commonpb.Posting{
+				actions.CreateForceTransactionAction(ledger, []*ledgerpb.Posting{
 					actions.NewPosting("fx:clearing", fx.targetAccount, big.NewInt(fx.targetAmount), fx.targetAsset),
 				}, nil),
 			)
@@ -192,18 +192,18 @@ send $amount (
 
 		// Verify builtin indexes (created by shared scenario) become READY
 		require.NoError(t, actions.WaitForBuiltinIndexReady(ctx, client, ledger,
-			commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
+			ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
 			"timestamp builtin index should become READY")
 		require.NoError(t, actions.WaitForBuiltinIndexReady(ctx, client, ledger,
-			commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
+			ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
 			"inserted_at builtin index should become READY")
 
 		// Drop and re-create to test index lifecycle
 		scenariotest.ApplyActions(t, ctx, client,
-			actions.DropBuiltinTxIndexAction(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
+			actions.DropBuiltinTxIndexAction(ledger, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
 		)
 		scenariotest.ApplyActions(t, ctx, client,
-			actions.DropBuiltinTxIndexAction(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
+			actions.DropBuiltinTxIndexAction(ledger, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
 		)
 	})
 
@@ -253,8 +253,8 @@ send $amount (
 		// 1. Parameterized address prefix — reusable query for different account types
 		// Query for all treasury accounts
 		resp, err := actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"prefix": actions.StringParam("treasury:")},
+			ledgerpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*ledgerpb.ParameterValue{"prefix": actions.StringParam("treasury:")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(treasury:) failed")
 		require.Equal(t, 3, len(resp.GetCursor().GetAccountData()),
@@ -262,8 +262,8 @@ send $amount (
 
 		// Query for all vendor accounts
 		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"prefix": actions.StringParam("vendor:")},
+			ledgerpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*ledgerpb.ParameterValue{"prefix": actions.StringParam("vendor:")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(vendor:) failed")
 		// 5 EUR vendors + 4 GBP vendors = 9 unique vendors
@@ -272,8 +272,8 @@ send $amount (
 
 		// Query for fx accounts
 		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"prefix": actions.StringParam("fx:")},
+			ledgerpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*ledgerpb.ParameterValue{"prefix": actions.StringParam("fx:")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(fx:) failed")
 		require.Equal(t, 1, len(resp.GetCursor().GetAccountData()),
@@ -282,8 +282,8 @@ send $amount (
 		// 2. Parameterized exact address — find specific accounts
 		// Query for a specific vendor
 		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "account-exact",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"addr": actions.StringParam("vendor:acme")},
+			ledgerpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*ledgerpb.ParameterValue{"addr": actions.StringParam("vendor:acme")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(vendor:acme) failed")
 		require.Equal(t, 1, len(resp.GetCursor().GetAccountData()),
@@ -291,8 +291,8 @@ send $amount (
 
 		// Query for nonexistent account
 		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "account-exact",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"addr": actions.StringParam("vendor:nonexistent")},
+			ledgerpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*ledgerpb.ParameterValue{"addr": actions.StringParam("vendor:nonexistent")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(nonexistent) failed")
 		require.Empty(t, resp.GetCursor().GetAccountData(),
@@ -301,8 +301,8 @@ send $amount (
 		// 3. Aggregate volumes with parameterized prefix — verify per-account-type volumes
 		// Aggregate volumes for treasury accounts
 		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "volumes-by-prefix",
-			commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES, 0,
-			map[string]*commonpb.ParameterValue{"prefix": actions.StringParam("treasury:")},
+			ledgerpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES, 0,
+			map[string]*ledgerpb.ParameterValue{"prefix": actions.StringParam("treasury:")},
 		)
 		require.NoError(t, err, "AGGREGATE_VOLUMES(treasury:) failed")
 		aggResult := resp.GetAggregate()
@@ -311,8 +311,8 @@ send $amount (
 
 		// Aggregate volumes for vendor accounts
 		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "volumes-by-prefix",
-			commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES, 0,
-			map[string]*commonpb.ParameterValue{"prefix": actions.StringParam("vendor:")},
+			ledgerpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES, 0,
+			map[string]*ledgerpb.ParameterValue{"prefix": actions.StringParam("vendor:")},
 		)
 		require.NoError(t, err, "AGGREGATE_VOLUMES(vendor:) failed")
 		aggResult = resp.GetAggregate()
@@ -350,7 +350,7 @@ send $amount (
 	})
 
 	// --- Tail phases: StoreCheck, Backup, Restart+Verify, BackupRestore+Verify ---
-	scenariotest.RunPostTestPhases(t, sc, func(t *testing.T, client commonpb.BucketServiceClient) {
+	scenariotest.RunPostTestPhases(t, sc, func(t *testing.T, client ledgerpb.BucketServiceClient) {
 		scenariotest.CheckDoubleEntryBalance(t, ctx, client, ledger)
 		scenariotest.CheckNoNegativeBalances(t, ctx, client, ledger, []string{"world", "fx:clearing"})
 

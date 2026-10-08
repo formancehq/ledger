@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"slices"
 
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // logBoundsVerifier re-derives the highest log sequence the audit chain
@@ -147,7 +147,7 @@ func (v *logBoundsVerifier) markIncomplete(reason string) {
 // short-circuit would otherwise absorb every inverted range whose max happens
 // to be 0, and the coverage check is only meaningful over a range the three
 // before it have already accepted.
-func (v *logBoundsVerifier) observeSuccess(entry *auditpb.AuditEntry, items []*auditpb.AuditItem) {
+func (v *logBoundsVerifier) observeSuccess(entry *ledgerpb.AuditEntry, items []*ledgerpb.AuditItem) {
 	if v.incompleteReason != "" {
 		return
 	}
@@ -239,7 +239,7 @@ func (v *logBoundsVerifier) observeSuccess(entry *auditpb.AuditEntry, items []*a
 // The range is never walked. A forged entry can declare 1..MaxUint64, and
 // enumerating that to find the first hole would hang the audit fold; the walk
 // below is over the items, so its cost is bounded by rows that actually exist.
-func rangeItemCoverage(entry *auditpb.AuditEntry, items []*auditpb.AuditItem, minSeq, maxSeq uint64) string {
+func rangeItemCoverage(entry *ledgerpb.AuditEntry, items []*ledgerpb.AuditItem, minSeq, maxSeq uint64) string {
 	// minSeq >= 1 here (maxSeq > 0 and the contiguity test above pinned minSeq
 	// to expectedMax+1), so the width cannot overflow.
 	width := maxSeq - minSeq + 1
@@ -337,10 +337,10 @@ type storedLogObservations struct {
 // proves the FSM allocated every position in it. On the unaudited side there is
 // no such proof — nothing says the planted rows are contiguous — so the count is
 // the rows actually observed.
-func (v *logBoundsVerifier) compare(observed storedLogObservations, callback func(*auditpb.CheckStoreEvent)) {
+func (v *logBoundsVerifier) compare(observed storedLogObservations, callback func(*ledgerpb.CheckStoreEvent)) {
 	if v.incompleteReason != "" {
 		callback(errorEvent(
-			auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE,
+			ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE,
 			v.incompleteReason, 0, "", "", ""))
 
 		return
@@ -353,7 +353,7 @@ func (v *logBoundsVerifier) compare(observed storedLogObservations, callback fun
 		first := observed.highestWithinBound + 1
 
 		callback(errorEvent(
-			auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP,
+			ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP,
 			fmt.Sprintf("log sequences %d..%d are missing: the audit chain accounts for logs up to %d "+
 				"but the highest stored log at or below that bound is %d (%d logs)",
 				first, v.expectedMax, v.expectedMax, observed.highestWithinBound,
@@ -367,7 +367,7 @@ func (v *logBoundsVerifier) compare(observed storedLogObservations, callback fun
 		first := v.expectedMax + 1
 
 		callback(errorEvent(
-			auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED,
+			ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED,
 			fmt.Sprintf("log sequences %d..%d have no audited origin: the audit chain accounts for logs "+
 				"up to %d but the store holds logs up to %d (%d logs)",
 				first, observed.highestKey, v.expectedMax, observed.highestKey, observed.rowsAboveBound),

@@ -10,7 +10,7 @@ import (
 	"math/big"
 	"net/http"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -38,10 +38,10 @@ var _ = Describe("Encoded metadata keys (EN-2015)", func() {
 
 	DescribeTable("deletes a JSON-created namespaced metadata key", func(target string) {
 		ledgerName := "encoded-meta-" + target
-		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+		_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())
-		logs, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName,
-			[]*commonpb.Posting{actions.NewPosting("world", "alice", big.NewInt(1), "USD")}, nil, nil)))
+		logs, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName,
+			[]*ledgerpb.Posting{actions.NewPosting("world", "alice", big.NewInt(1), "USD")}, nil, nil)))
 		Expect(err).To(Succeed())
 		txID := logs.GetLogs()[0].GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction().GetTransaction().GetId()
 
@@ -55,11 +55,11 @@ var _ = Describe("Encoded metadata keys (EN-2015)", func() {
 		readMetadata := func(g Gomega) map[string]string {
 			switch target {
 			case "account":
-				account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{Ledger: ledgerName, Address: "alice"})
+				account, err := sharedClient.GetAccount(sharedCtx, &ledgerpb.GetAccountRequest{Ledger: ledgerName, Address: "alice"})
 				g.Expect(err).To(Succeed())
 				return protohelpers.MetadataToGoMap(account.GetMetadata())
 			case "transaction":
-				tx, err := sharedClient.GetTransaction(sharedCtx, &commonpb.GetTransactionRequest{Ledger: ledgerName, TransactionId: txID})
+				tx, err := sharedClient.GetTransaction(sharedCtx, &ledgerpb.GetTransactionRequest{Ledger: ledgerName, TransactionId: txID})
 				g.Expect(err).To(Succeed())
 				return protohelpers.MetadataToGoMap(tx.GetTransaction().GetMetadata())
 			default:
@@ -92,10 +92,10 @@ var _ = Describe("Encoded metadata keys (EN-2015)", func() {
 
 	DescribeTable("addresses the decoded schema key on PUT and DELETE", func(target string) {
 		ledgerName := "encoded-schema-" + target
-		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+		_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())
-		readFields := func(g Gomega) map[string]*commonpb.MetadataFieldStatus {
-			schema, err := sharedClient.GetMetadataSchemaStatus(sharedCtx, &commonpb.GetMetadataSchemaStatusRequest{Ledger: ledgerName})
+		readFields := func(g Gomega) map[string]*ledgerpb.MetadataFieldStatus {
+			schema, err := sharedClient.GetMetadataSchemaStatus(sharedCtx, &ledgerpb.GetMetadataSchemaStatusRequest{Ledger: ledgerName})
 			g.Expect(err).To(Succeed())
 			switch target {
 			case "account":
@@ -120,7 +120,7 @@ var _ = Describe("Encoded metadata keys (EN-2015)", func() {
 				fields := readFields(g)
 				g.Expect(fields).To(HaveLen(2))
 				g.Expect(fields).To(HaveKey(key))
-				g.Expect(fields[key].GetDeclaredType()).To(Equal(commonpb.MetadataType_METADATA_TYPE_STRING))
+				g.Expect(fields[key].GetDeclaredType()).To(Equal(ledgerpb.MetadataType_METADATA_TYPE_STRING))
 			}).Should(Succeed())
 		}
 
@@ -128,7 +128,7 @@ var _ = Describe("Encoded metadata keys (EN-2015)", func() {
 		Eventually(func(g Gomega) {
 			fields := readFields(g)
 			g.Expect(fields).To(HaveKey(key))
-			g.Expect(fields[key].GetDeclaredType()).To(Equal(commonpb.MetadataType_METADATA_TYPE_BOOL))
+			g.Expect(fields[key].GetDeclaredType()).To(Equal(ledgerpb.MetadataType_METADATA_TYPE_BOOL))
 		}).Should(Succeed())
 		request(http.MethodDelete, ledgerName, path+"formance.com%2Freviewed", "", http.StatusNoContent)
 		Eventually(func(g Gomega) {

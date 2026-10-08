@@ -7,7 +7,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -25,7 +25,7 @@ func main() {
 	}
 	defer func() { _ = conn.Close() }()
 
-	stream, err := client.CheckStore(ctx, &servicepb.CheckStoreRequest{})
+	stream, err := client.CheckStore(ctx, &ledgerpb.CheckStoreRequest{})
 	if err != nil {
 		if internal.IsTransient(err) {
 			log.Printf("CheckStore transient: %s", err)
@@ -56,7 +56,7 @@ func main() {
 		}
 
 		switch e := event.GetType().(type) {
-		case *servicepb.CheckStoreEvent_Error:
+		case *ledgerpb.CheckStoreEvent_Error:
 			assert.AlwaysOrUnreachable(false, "CheckStore found integrity error", internal.Details{
 				"errorType":     e.Error.GetErrorType().String(),
 				"message":       e.Error.GetMessage(),
@@ -66,7 +66,7 @@ func main() {
 				"asset":         e.Error.GetAsset(),
 				"transactionId": e.Error.GetTransactionId(),
 			})
-		case *servicepb.CheckStoreEvent_Progress:
+		case *ledgerpb.CheckStoreEvent_Progress:
 			logsChecked = e.Progress.GetLogsChecked()
 		}
 	}

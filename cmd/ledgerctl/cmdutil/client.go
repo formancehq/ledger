@@ -17,7 +17,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
@@ -125,7 +125,7 @@ func buildClientTLSConfig(caCertPath, serverName string) (*tls.Config, error) {
 
 // GetClient creates a gRPC client connection and returns the client.
 // The caller is responsible for closing the connection.
-func GetClient(cmd *cobra.Command) (clusterpb.BucketServiceClient, *grpc.ClientConn, error) {
+func GetClient(cmd *cobra.Command) (ledgerpb.BucketServiceClient, *grpc.ClientConn, error) {
 	serverAddr, _ := cmd.Flags().GetString("server")
 
 	creds, err := GetClientTransportCredentials(cmd)
@@ -144,11 +144,11 @@ func GetClient(cmd *cobra.Command) (clusterpb.BucketServiceClient, *grpc.ClientC
 		return nil, nil, fmt.Errorf("failed to connect to gRPC server: %w", err)
 	}
 
-	return clusterpb.NewBucketServiceClient(conn), conn, nil
+	return ledgerpb.NewBucketServiceClient(conn), conn, nil
 }
 
 // GetClusterClient creates a gRPC client connection for cluster operations.
-func GetClusterClient(cmd *cobra.Command) (clusterpb.ClusterServiceClient, *grpc.ClientConn, error) {
+func GetClusterClient(cmd *cobra.Command) (ledgerpb.ClusterServiceClient, *grpc.ClientConn, error) {
 	serverAddr, _ := cmd.Flags().GetString("server")
 
 	creds, err := GetClientTransportCredentials(cmd)
@@ -166,7 +166,7 @@ func GetClusterClient(cmd *cobra.Command) (clusterpb.ClusterServiceClient, *grpc
 		return nil, nil, fmt.Errorf("failed to connect to gRPC server: %w", err)
 	}
 
-	return clusterpb.NewClusterServiceClient(conn), conn, nil
+	return ledgerpb.NewClusterServiceClient(conn), conn, nil
 }
 
 // GetContext returns a context with the configured timeout.

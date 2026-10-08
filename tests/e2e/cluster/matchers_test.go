@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	"github.com/onsi/gomega/types"
 )
@@ -23,7 +23,7 @@ func (matcher beFollowerMatcher) Match(actual any) (success bool, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	clusterState, err := srv.ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
+	clusterState, err := srv.ClusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{
 		NodeId: srv.NodeID,
 	})
 	if err != nil {
@@ -60,7 +60,7 @@ func (h haveALeaderMatcher) Match(actual any) (success bool, err error) {
 		return false, fmt.Errorf("expected *testutil.ServiceWithClient, got %T", actual)
 	}
 
-	clusterState, err := srv.ClusterClient.GetClusterState(context.Background(), &clusterpb.GetClusterStateRequest{
+	clusterState, err := srv.ClusterClient.GetClusterState(context.Background(), &ledgerpb.GetClusterStateRequest{
 		NodeId: srv.NodeID,
 	})
 	if err != nil {

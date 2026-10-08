@@ -8,28 +8,28 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_queries", func(ctx context.Context, client commonpb.BucketServiceClient, ledger string) {
+	internal.RunDriver("parallel_driver_queries", func(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string) {
 		queryName := fmt.Sprintf("q-%d", internal.Rand().Uint64()%100)
 		details := internal.Details{"ledger": ledger, "queryName": queryName}
 
-		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_CreatePreparedQuery{
-				CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
+		_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_CreatePreparedQuery{
+				CreatePreparedQuery: &ledgerpb.CreatePreparedQueryRequest{
 					Ledger: ledger,
 
-					Query: &commonpb.PreparedQuery{
+					Query: &ledgerpb.PreparedQuery{
 						Name:   queryName,
-						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-						Filter: &commonpb.QueryFilter{
-							Filter: &commonpb.QueryFilter_Address{
-								Address: &commonpb.AddressMatch{
-									Match: &commonpb.AddressMatch_HardcodedPrefix{
+						Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Filter: &ledgerpb.QueryFilter{
+							Filter: &ledgerpb.QueryFilter_Address{
+								Address: &ledgerpb.AddressMatch{
+									Match: &ledgerpb.AddressMatch_HardcodedPrefix{
 										HardcodedPrefix: "users:",
 									},
 								},
@@ -51,7 +51,7 @@ func main() {
 			}
 		}
 
-		execResp, err := client.ExecutePreparedQuery(ctx, &commonpb.ExecutePreparedQueryRequest{
+		execResp, err := client.ExecutePreparedQuery(ctx, &ledgerpb.ExecutePreparedQueryRequest{
 			Ledger:    ledger,
 			QueryName: queryName,
 			PageSize:  10,
@@ -71,9 +71,9 @@ func main() {
 
 		assert.AlwaysOrUnreachable(execResp != nil, "prepared query should return a response", details)
 
-		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_DeletePreparedQuery{
-				DeletePreparedQuery: &commonpb.DeletePreparedQueryRequest{
+		_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_DeletePreparedQuery{
+				DeletePreparedQuery: &ledgerpb.DeletePreparedQueryRequest{
 					Ledger: ledger,
 					Name:   queryName,
 				},

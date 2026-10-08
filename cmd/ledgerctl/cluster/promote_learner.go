@@ -8,7 +8,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -49,7 +49,7 @@ func runPromoteLearner(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	_, err = client.PromoteLearner(ctx, &clusterpb.PromoteLearnerRequest{
+	_, err = client.PromoteLearner(ctx, &ledgerpb.PromoteLearnerRequest{
 		NodeId: nodeID,
 	})
 	if err != nil {

@@ -14,19 +14,19 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
 
 type aggregateVolumesOutputServer struct {
-	commonpb.UnimplementedBucketServiceServer
+	ledgerpb.UnimplementedBucketServiceServer
 
 	asset string
 }
 
-func (s *aggregateVolumesOutputServer) AggregateVolumes(ctx context.Context, _ *commonpb.AggregateVolumesRequest) (*commonpb.AggregateResult, error) {
-	profile, err := proto.Marshal(&commonpb.QueryProfile{BarrierDurationUs: 1})
+func (s *aggregateVolumesOutputServer) AggregateVolumes(ctx context.Context, _ *ledgerpb.AggregateVolumesRequest) (*ledgerpb.AggregateResult, error) {
+	profile, err := proto.Marshal(&ledgerpb.QueryProfile{BarrierDurationUs: 1})
 	if err != nil {
 		return nil, err
 	}
@@ -35,11 +35,11 @@ func (s *aggregateVolumesOutputServer) AggregateVolumes(ctx context.Context, _ *
 		return nil, err
 	}
 
-	return &commonpb.AggregateResult{
-		Volumes: []*commonpb.AggregatedVolume{{
+	return &ledgerpb.AggregateResult{
+		Volumes: []*ledgerpb.AggregatedVolume{{
 			Asset:  s.asset,
-			Input:  commonpb.NewUint256FromUint64(1234),
-			Output: commonpb.NewUint256FromUint64(0),
+			Input:  ledgerpb.NewUint256FromUint64(1234),
+			Output: ledgerpb.NewUint256FromUint64(0),
 		}},
 	}, nil
 }
@@ -72,7 +72,7 @@ func TestAccountsAggregateVolumesRescaleInvalidAssetPrintsNothing(t *testing.T) 
 			listener, err := net.Listen("tcp", "127.0.0.1:0")
 			require.NoError(t, err)
 			server := grpc.NewServer()
-			commonpb.RegisterBucketServiceServer(server, &aggregateVolumesOutputServer{asset: tc.asset})
+			ledgerpb.RegisterBucketServiceServer(server, &aggregateVolumesOutputServer{asset: tc.asset})
 			serveResult := make(chan error, 1)
 			go func() { serveResult <- server.Serve(listener) }()
 			t.Cleanup(func() {

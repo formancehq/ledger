@@ -9,7 +9,7 @@ import (
 	ggrpc "google.golang.org/grpc"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	backupapp "github.com/formancehq/ledger/v3/internal/application/backup"
 	"github.com/formancehq/ledger/v3/internal/application/indexbuilder"
@@ -29,7 +29,7 @@ import (
 )
 
 type ClusterServiceServerImpl struct {
-	clusterpb.UnimplementedClusterServiceServer
+	ledgerpb.UnimplementedClusterServiceServer
 
 	node             *node.Node
 	raftTransport    *node.DefaultTransport
@@ -67,7 +67,7 @@ func NewClusterServiceServer(
 	localServiceAddr string,
 	clusterID string,
 	info version.Info,
-) clusterpb.ClusterServiceServer {
+) ledgerpb.ClusterServiceServer {
 	return &ClusterServiceServerImpl{
 		node:             node,
 		raftTransport:    raftTransport,
@@ -89,7 +89,7 @@ func NewClusterServiceServer(
 	}
 }
 
-func (impl *ClusterServiceServerImpl) GetClusterState(ctx context.Context, req *clusterpb.GetClusterStateRequest) (*clusterpb.ClusterState, error) {
+func (impl *ClusterServiceServerImpl) GetClusterState(ctx context.Context, req *ledgerpb.GetClusterStateRequest) (*ledgerpb.ClusterState, error) {
 	if req.GetNodeId() == 0 {
 		// No node ID specified, route to leader
 		if impl.node.IsLeader() {
@@ -110,7 +110,7 @@ func (impl *ClusterServiceServerImpl) GetClusterState(ctx context.Context, req *
 			return nil, protoerr.ErrNoLeader
 		}
 
-		return clusterpb.NewClusterServiceClient(conn).GetClusterState(ctx, req)
+		return ledgerpb.NewClusterServiceClient(conn).GetClusterState(ctx, req)
 	}
 
 	// Specific node ID requested — use shared resolver.
@@ -120,7 +120,7 @@ func (impl *ClusterServiceServerImpl) GetClusterState(ctx context.Context, req *
 	}
 
 	if conn != nil {
-		return clusterpb.NewClusterServiceClient(conn).GetClusterState(ctx, req)
+		return ledgerpb.NewClusterServiceClient(conn).GetClusterState(ctx, req)
 	}
 
 	return impl.getClusterStateLocal(ctx)
@@ -131,12 +131,12 @@ func (impl *ClusterServiceServerImpl) GetClusterState(ctx context.Context, req *
 // node_version field (empty NodeVersion). It deliberately does NOT fall back to
 // the local node's version — doing so would mask the very version skew this
 // per-node reporting exists to surface. GetNodeVersion is nil-safe.
-func mapNodeVersion(peerState *clusterpb.ClusterState) string {
+func mapNodeVersion(peerState *ledgerpb.ClusterState) string {
 	return peerState.GetNodeVersion()
 }
 
 // getClusterStateLocal returns cluster state with peer address information populated.
-func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) (*clusterpb.ClusterState, error) {
+func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) (*ledgerpb.ClusterState, error) {
 	clusterState, err := impl.node.GetClusterState(ctx)
 	if err != nil {
 		return nil, err
@@ -150,13 +150,13 @@ func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) 
 	if persistedState, err := query.ReadClusterState(impl.store); err == nil && persistedState != nil {
 		clusterState.ClusterConfig = persistedState.GetConfig()
 	} else {
-		clusterState.ClusterConfig = &clusterpb.ClusterConfig{
+		clusterState.ClusterConfig = &ledgerpb.ClusterConfig{
 			RotationThreshold: impl.cache.GenerationThreshold(),
 		}
 	}
 
 	// Populate local index builder progress on ClusterState (for backward compat / single-node view)
-	localIndexProgress := &clusterpb.IndexProgress{
+	localIndexProgress := &ledgerpb.IndexProgress{
 		LastIndexedSequence: impl.indexBuilder.LastIndexedSequence(),
 		PebbleLastSequence:  impl.indexBuilder.PebbleLastSequence(),
 	}
@@ -192,7 +192,7 @@ func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) 
 
 // fetchPeerState queries a peer node for its local cluster state (sync progress, index progress, etc).
 // Returns nil if the peer is unreachable.
-func (impl *ClusterServiceServerImpl) fetchPeerState(ctx context.Context, nodeID uint64) *clusterpb.ClusterState {
+func (impl *ClusterServiceServerImpl) fetchPeerState(ctx context.Context, nodeID uint64) *ledgerpb.ClusterState {
 	conn := impl.servicePool.GetConnection(nodeID)
 	if conn == nil {
 		return nil
@@ -202,9 +202,9 @@ func (impl *ClusterServiceServerImpl) fetchPeerState(ctx context.Context, nodeID
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	client := clusterpb.NewClusterServiceClient(conn)
+	client := ledgerpb.NewClusterServiceClient(conn)
 
-	peerState, err := client.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
+	peerState, err := client.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{
 		NodeId: uint32(nodeID),
 	})
 	if err != nil {
@@ -216,7 +216,7 @@ func (impl *ClusterServiceServerImpl) fetchPeerState(ctx context.Context, nodeID
 
 // leaderClient returns a ClusterServiceClient connected to the current leader.
 // Returns protoerr.ErrNoLeader if no leader is known or unreachable.
-func (impl *ClusterServiceServerImpl) leaderClient() (clusterpb.ClusterServiceClient, error) {
+func (impl *ClusterServiceServerImpl) leaderClient() (ledgerpb.ClusterServiceClient, error) {
 	leaderID := impl.node.GetLeader()
 	if leaderID == 0 {
 		return nil, protoerr.ErrNoLeader
@@ -227,10 +227,10 @@ func (impl *ClusterServiceServerImpl) leaderClient() (clusterpb.ClusterServiceCl
 		return nil, protoerr.ErrNoLeader
 	}
 
-	return clusterpb.NewClusterServiceClient(grpcConn), nil
+	return ledgerpb.NewClusterServiceClient(grpcConn), nil
 }
 
-func (impl *ClusterServiceServerImpl) TransferLeadership(ctx context.Context, req *clusterpb.TransferLeadershipRequest) (*clusterpb.TransferLeadershipResponse, error) {
+func (impl *ClusterServiceServerImpl) TransferLeadership(ctx context.Context, req *ledgerpb.TransferLeadershipRequest) (*ledgerpb.TransferLeadershipResponse, error) {
 	if req.GetTransferee() == 0 {
 		return nil, errors.New("transferee node ID must be non-zero")
 	}
@@ -252,21 +252,21 @@ func (impl *ClusterServiceServerImpl) TransferLeadership(ctx context.Context, re
 		return nil, fmt.Errorf("leadership transfer failed: %w", err)
 	}
 
-	return &clusterpb.TransferLeadershipResponse{
+	return &ledgerpb.TransferLeadershipResponse{
 		NewLeader: req.GetTransferee(),
 	}, nil
 }
 
-func (impl *ClusterServiceServerImpl) GetDiskUsage(ctx context.Context, _ *clusterpb.GetDiskUsageRequest) (*clusterpb.DiskUsage, error) {
+func (impl *ClusterServiceServerImpl) GetDiskUsage(ctx context.Context, _ *ledgerpb.GetDiskUsageRequest) (*ledgerpb.DiskUsage, error) {
 	now := time.Now()
 
-	return &clusterpb.DiskUsage{
+	return &ledgerpb.DiskUsage{
 		WalVolume:  volumeUsageResponse(impl.collector.WALVolume.Load(), now),
 		DataVolume: volumeUsageResponse(impl.collector.DataVolume.Load(), now),
 	}, nil
 }
 
-func volumeUsageResponse(sample diskusage.VolumeSample, now time.Time) *clusterpb.VolumeUsage {
+func volumeUsageResponse(sample diskusage.VolumeSample, now time.Time) *ledgerpb.VolumeUsage {
 	var (
 		observedAtUS uint64
 		sampleAgeMS  uint64
@@ -278,7 +278,7 @@ func volumeUsageResponse(sample diskusage.VolumeSample, now time.Time) *clusterp
 		}
 	}
 
-	return &clusterpb.VolumeUsage{
+	return &ledgerpb.VolumeUsage{
 		UsedBytes:    uint64(sample.UsedBytes),
 		TotalBytes:   uint64(sample.TotalBytes),
 		ObservedAtUs: observedAtUS,
@@ -288,13 +288,13 @@ func volumeUsageResponse(sample diskusage.VolumeSample, now time.Time) *clusterp
 	}
 }
 
-func (impl *ClusterServiceServerImpl) GetNodeTime(ctx context.Context, _ *clusterpb.GetNodeTimeRequest) (*clusterpb.NodeTime, error) {
-	return &clusterpb.NodeTime{
+func (impl *ClusterServiceServerImpl) GetNodeTime(ctx context.Context, _ *ledgerpb.GetNodeTimeRequest) (*ledgerpb.NodeTime, error) {
+	return &ledgerpb.NodeTime{
 		TimestampUs: uint64(time.Now().UnixMicro()),
 	}, nil
 }
 
-func (impl *ClusterServiceServerImpl) AddLearner(ctx context.Context, req *clusterpb.AddLearnerRequest) (*clusterpb.AddLearnerResponse, error) {
+func (impl *ClusterServiceServerImpl) AddLearner(ctx context.Context, req *ledgerpb.AddLearnerRequest) (*ledgerpb.AddLearnerResponse, error) {
 	impl.logger.WithFields(map[string]any{
 		"requestedNodeID":      req.GetNodeId(),
 		"requestedRaftAddress": req.GetRaftAddress(),
@@ -325,10 +325,10 @@ func (impl *ClusterServiceServerImpl) AddLearner(ctx context.Context, req *clust
 		return nil, err
 	}
 
-	return &clusterpb.AddLearnerResponse{}, nil
+	return &ledgerpb.AddLearnerResponse{}, nil
 }
 
-func (impl *ClusterServiceServerImpl) PromoteLearner(ctx context.Context, req *clusterpb.PromoteLearnerRequest) (*clusterpb.PromoteLearnerResponse, error) {
+func (impl *ClusterServiceServerImpl) PromoteLearner(ctx context.Context, req *ledgerpb.PromoteLearnerRequest) (*ledgerpb.PromoteLearnerResponse, error) {
 	if !impl.node.IsLeader() {
 		client, err := impl.leaderClient()
 		if err != nil {
@@ -342,10 +342,10 @@ func (impl *ClusterServiceServerImpl) PromoteLearner(ctx context.Context, req *c
 		return nil, err
 	}
 
-	return &clusterpb.PromoteLearnerResponse{}, nil
+	return &ledgerpb.PromoteLearnerResponse{}, nil
 }
 
-func (impl *ClusterServiceServerImpl) RemoveNode(ctx context.Context, req *clusterpb.RemoveNodeRequest) (*clusterpb.RemoveNodeResponse, error) {
+func (impl *ClusterServiceServerImpl) RemoveNode(ctx context.Context, req *ledgerpb.RemoveNodeRequest) (*ledgerpb.RemoveNodeResponse, error) {
 	// Force-remove bypasses consensus and must run on the leader directly.
 	// Do NOT forward: the operator already exec's into the leader pod.
 	if req.GetForce() && !impl.node.IsLeader() {
@@ -365,10 +365,10 @@ func (impl *ClusterServiceServerImpl) RemoveNode(ctx context.Context, req *clust
 		return nil, err
 	}
 
-	return &clusterpb.RemoveNodeResponse{}, nil
+	return &ledgerpb.RemoveNodeResponse{}, nil
 }
 
-func (impl *ClusterServiceServerImpl) CompactPrimary(ctx context.Context, _ *clusterpb.CompactPrimaryRequest) (*clusterpb.CompactPrimaryResponse, error) {
+func (impl *ClusterServiceServerImpl) CompactPrimary(ctx context.Context, _ *ledgerpb.CompactPrimaryRequest) (*ledgerpb.CompactPrimaryResponse, error) {
 	start := time.Now()
 
 	err := impl.store.CompactAll()
@@ -376,12 +376,12 @@ func (impl *ClusterServiceServerImpl) CompactPrimary(ctx context.Context, _ *clu
 		return nil, fmt.Errorf("compaction failed: %w", err)
 	}
 
-	return &clusterpb.CompactPrimaryResponse{
+	return &ledgerpb.CompactPrimaryResponse{
 		DurationMs: time.Since(start).Milliseconds(),
 	}, nil
 }
 
-func (impl *ClusterServiceServerImpl) CompactSecondary(ctx context.Context, _ *clusterpb.CompactSecondaryRequest) (*clusterpb.CompactSecondaryResponse, error) {
+func (impl *ClusterServiceServerImpl) CompactSecondary(ctx context.Context, _ *ledgerpb.CompactSecondaryRequest) (*ledgerpb.CompactSecondaryResponse, error) {
 	start := time.Now()
 
 	sizeBefore, sizeAfter, err := impl.readStore.Compact(ctx)
@@ -389,25 +389,25 @@ func (impl *ClusterServiceServerImpl) CompactSecondary(ctx context.Context, _ *c
 		return nil, fmt.Errorf("read index compaction failed: %w", err)
 	}
 
-	return &clusterpb.CompactSecondaryResponse{
+	return &ledgerpb.CompactSecondaryResponse{
 		DurationMs:      time.Since(start).Milliseconds(),
 		SizeBeforeBytes: uint64(sizeBefore),
 		SizeAfterBytes:  uint64(sizeAfter),
 	}, nil
 }
 
-func (impl *ClusterServiceServerImpl) CreateCheckpoint(ctx context.Context, _ *clusterpb.CreateCheckpointRequest) (*clusterpb.CreateCheckpointResponse, error) {
+func (impl *ClusterServiceServerImpl) CreateCheckpoint(ctx context.Context, _ *ledgerpb.CreateCheckpointRequest) (*ledgerpb.CreateCheckpointResponse, error) {
 	checkpointID, err := impl.store.CreateSnapshot()
 	if err != nil {
 		return nil, fmt.Errorf("checkpoint creation failed: %w", err)
 	}
 
-	return &clusterpb.CreateCheckpointResponse{
+	return &ledgerpb.CreateCheckpointResponse{
 		CheckpointId: checkpointID,
 	}, nil
 }
 
-func (impl *ClusterServiceServerImpl) ListQueryCheckpoints(ctx context.Context, _ *clusterpb.ListQueryCheckpointsRequest) (*clusterpb.ListQueryCheckpointsResponse, error) {
+func (impl *ClusterServiceServerImpl) ListQueryCheckpoints(ctx context.Context, _ *ledgerpb.ListQueryCheckpointsRequest) (*ledgerpb.ListQueryCheckpointsResponse, error) {
 	handle, err := impl.store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
@@ -419,15 +419,15 @@ func (impl *ClusterServiceServerImpl) ListQueryCheckpoints(ctx context.Context, 
 		return nil, fmt.Errorf("listing query checkpoints: %w", err)
 	}
 
-	checkpoints := make([]*clusterpb.QueryCheckpointInfo, 0, len(cps))
+	checkpoints := make([]*ledgerpb.QueryCheckpointInfo, 0, len(cps))
 	for _, cp := range cps {
 		checkpoints = append(checkpoints, queryCheckpointToInfo(cp))
 	}
 
-	return &clusterpb.ListQueryCheckpointsResponse{Checkpoints: checkpoints}, nil
+	return &ledgerpb.ListQueryCheckpointsResponse{Checkpoints: checkpoints}, nil
 }
 
-func (impl *ClusterServiceServerImpl) GetQueryCheckpointInfo(ctx context.Context, req *clusterpb.GetQueryCheckpointInfoRequest) (*clusterpb.QueryCheckpointInfo, error) {
+func (impl *ClusterServiceServerImpl) GetQueryCheckpointInfo(ctx context.Context, req *ledgerpb.GetQueryCheckpointInfoRequest) (*ledgerpb.QueryCheckpointInfo, error) {
 	handle, err := impl.store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
@@ -453,7 +453,7 @@ func (impl *ClusterServiceServerImpl) GetQueryCheckpointInfo(ctx context.Context
 	return queryCheckpointToInfo(cp), nil
 }
 
-func (impl *ClusterServiceServerImpl) GetQueryCheckpointSchedule(ctx context.Context, _ *clusterpb.GetQueryCheckpointScheduleRequest) (*clusterpb.GetQueryCheckpointScheduleResponse, error) {
+func (impl *ClusterServiceServerImpl) GetQueryCheckpointSchedule(ctx context.Context, _ *ledgerpb.GetQueryCheckpointScheduleRequest) (*ledgerpb.GetQueryCheckpointScheduleResponse, error) {
 	handle, err := impl.store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
@@ -466,11 +466,11 @@ func (impl *ClusterServiceServerImpl) GetQueryCheckpointSchedule(ctx context.Con
 		return nil, fmt.Errorf("loading query checkpoint schedule: %w", err)
 	}
 
-	return &clusterpb.GetQueryCheckpointScheduleResponse{Cron: cronExpr}, nil
+	return &ledgerpb.GetQueryCheckpointScheduleResponse{Cron: cronExpr}, nil
 }
 
-func queryCheckpointToInfo(cp *raftcmdpb.QueryCheckpointState) *clusterpb.QueryCheckpointInfo {
-	return &clusterpb.QueryCheckpointInfo{
+func queryCheckpointToInfo(cp *raftcmdpb.QueryCheckpointState) *ledgerpb.QueryCheckpointInfo {
+	return &ledgerpb.QueryCheckpointInfo{
 		CheckpointId: cp.GetCheckpointId(),
 		MaxSequence:  cp.GetMaxSequence(),
 		CreatedAt:    cp.GetCreatedAt(),
@@ -486,7 +486,7 @@ func queryCheckpointToInfo(cp *raftcmdpb.QueryCheckpointState) *clusterpb.QueryC
 // a concurrent Backup against a byte-equal destination — same node or
 // any other — gets state.ErrBackupInProgress back through the apply
 // path; the orchestrator surfaces it as-is to the handler.
-func (impl *ClusterServiceServerImpl) extractBackupDestination(storageProto *clusterpb.BackupStorage, basePath, bucketIDRaw string) (backup.Storage, *raftcmdpb.BackupDestination, error) {
+func (impl *ClusterServiceServerImpl) extractBackupDestination(storageProto *ledgerpb.BackupStorage, basePath, bucketIDRaw string) (backup.Storage, *raftcmdpb.BackupDestination, error) {
 	cfg, err := storageConfigFromProto(storageProto)
 	if err != nil {
 		return nil, nil, err
@@ -531,7 +531,7 @@ func (impl *ClusterServiceServerImpl) extractBackupDestination(storageProto *clu
 	return storage, dst, nil
 }
 
-func (impl *ClusterServiceServerImpl) Backup(ctx context.Context, req *clusterpb.BackupRequest) (*clusterpb.BackupResponse, error) {
+func (impl *ClusterServiceServerImpl) Backup(ctx context.Context, req *ledgerpb.BackupRequest) (*ledgerpb.BackupResponse, error) {
 	// Forward to leader if not leader. The orchestrator only runs on the
 	// leader (it is the proposer); a follower would just spin forever
 	// trying to push proposals.
@@ -558,7 +558,7 @@ func (impl *ClusterServiceServerImpl) Backup(ctx context.Context, req *clusterpb
 		return nil, fmt.Errorf("backup failed: %w", err)
 	}
 
-	return &clusterpb.BackupResponse{
+	return &ledgerpb.BackupResponse{
 		FilesUploaded:     uint32(result.FilesUploaded),
 		FilesDeleted:      uint32(result.FilesDeleted),
 		OrphansDeleted:    uint32(result.OrphansDeleted),
@@ -570,7 +570,7 @@ func (impl *ClusterServiceServerImpl) Backup(ctx context.Context, req *clusterpb
 	}, nil
 }
 
-func (impl *ClusterServiceServerImpl) IncrementalBackup(ctx context.Context, req *clusterpb.IncrementalBackupRequest) (*clusterpb.IncrementalBackupResponse, error) {
+func (impl *ClusterServiceServerImpl) IncrementalBackup(ctx context.Context, req *ledgerpb.IncrementalBackupRequest) (*ledgerpb.IncrementalBackupResponse, error) {
 	// Incremental used to skip the leader-routing step because log/audit
 	// sequences are identical across replicas. Now the FSM owns the
 	// destination slot and only the leader can drive a Raft proposal,
@@ -598,7 +598,7 @@ func (impl *ClusterServiceServerImpl) IncrementalBackup(ctx context.Context, req
 		return nil, fmt.Errorf("incremental backup failed: %w", err)
 	}
 
-	return &clusterpb.IncrementalBackupResponse{
+	return &ledgerpb.IncrementalBackupResponse{
 		LogEntriesExported:   result.LogEntriesExported,
 		AuditEntriesExported: result.AuditEntriesExported,
 		SegmentsUploaded:     uint32(result.SegmentsUploaded),
@@ -609,6 +609,6 @@ func (impl *ClusterServiceServerImpl) IncrementalBackup(ctx context.Context, req
 	}, nil
 }
 
-func RegisterClusterService(registrar ggrpc.ServiceRegistrar, clusterServiceServer clusterpb.ClusterServiceServer) {
-	clusterpb.RegisterClusterServiceServer(registrar, clusterServiceServer)
+func RegisterClusterService(registrar ggrpc.ServiceRegistrar, clusterServiceServer ledgerpb.ClusterServiceServer) {
+	ledgerpb.RegisterClusterServiceServer(registrar, clusterServiceServer)
 }

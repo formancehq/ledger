@@ -5,7 +5,7 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/metadata"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -58,11 +58,11 @@ func runList(cmd *cobra.Command, _ []string) error {
 	pgn := cmdutil.GetPaginationFlags(cmd)
 	cns := cmdutil.GetConsistencyFlags(cmd)
 
-	fetchPage := func(cur string) ([]*commonpb.NumscriptInfo, metadata.MD, error) {
+	fetchPage := func(cur string) ([]*ledgerpb.NumscriptInfo, metadata.MD, error) {
 		page := pgn
 		page.Cursor = cur
 
-		stream, err := client.ListNumscripts(ctx, &commonpb.ListNumscriptsRequest{
+		stream, err := client.ListNumscripts(ctx, &ledgerpb.ListNumscriptsRequest{
 			Ledger:  ledgerName,
 			Options: cmdutil.BuildListOptions(page, cns, nil),
 		})

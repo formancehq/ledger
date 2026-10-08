@@ -4,53 +4,53 @@ import (
 	"fmt"
 	"strings"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 var (
-	targetTypeMap = map[string]commonpb.TargetType{
-		"account":     commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-		"transaction": commonpb.TargetType_TARGET_TYPE_TRANSACTION,
-		"ledger":      commonpb.TargetType_TARGET_TYPE_LEDGER,
+	targetTypeMap = map[string]ledgerpb.TargetType{
+		"account":     ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
+		"transaction": ledgerpb.TargetType_TARGET_TYPE_TRANSACTION,
+		"ledger":      ledgerpb.TargetType_TARGET_TYPE_LEDGER,
 	}
 
-	targetTypeNames = map[commonpb.TargetType]string{
-		commonpb.TargetType_TARGET_TYPE_ACCOUNT:     "account",
-		commonpb.TargetType_TARGET_TYPE_TRANSACTION: "transaction",
-		commonpb.TargetType_TARGET_TYPE_LEDGER:      "ledger",
+	targetTypeNames = map[ledgerpb.TargetType]string{
+		ledgerpb.TargetType_TARGET_TYPE_ACCOUNT:     "account",
+		ledgerpb.TargetType_TARGET_TYPE_TRANSACTION: "transaction",
+		ledgerpb.TargetType_TARGET_TYPE_LEDGER:      "ledger",
 	}
 
-	metadataTypeMap = map[string]commonpb.MetadataType{
-		"string":   commonpb.MetadataType_METADATA_TYPE_STRING,
-		"int64":    commonpb.MetadataType_METADATA_TYPE_INT64,
-		"bool":     commonpb.MetadataType_METADATA_TYPE_BOOL,
-		"uint64":   commonpb.MetadataType_METADATA_TYPE_UINT64,
-		"int8":     commonpb.MetadataType_METADATA_TYPE_INT8,
-		"int16":    commonpb.MetadataType_METADATA_TYPE_INT16,
-		"int32":    commonpb.MetadataType_METADATA_TYPE_INT32,
-		"uint8":    commonpb.MetadataType_METADATA_TYPE_UINT8,
-		"uint16":   commonpb.MetadataType_METADATA_TYPE_UINT16,
-		"uint32":   commonpb.MetadataType_METADATA_TYPE_UINT32,
-		"datetime": commonpb.MetadataType_METADATA_TYPE_DATETIME,
+	metadataTypeMap = map[string]ledgerpb.MetadataType{
+		"string":   ledgerpb.MetadataType_METADATA_TYPE_STRING,
+		"int64":    ledgerpb.MetadataType_METADATA_TYPE_INT64,
+		"bool":     ledgerpb.MetadataType_METADATA_TYPE_BOOL,
+		"uint64":   ledgerpb.MetadataType_METADATA_TYPE_UINT64,
+		"int8":     ledgerpb.MetadataType_METADATA_TYPE_INT8,
+		"int16":    ledgerpb.MetadataType_METADATA_TYPE_INT16,
+		"int32":    ledgerpb.MetadataType_METADATA_TYPE_INT32,
+		"uint8":    ledgerpb.MetadataType_METADATA_TYPE_UINT8,
+		"uint16":   ledgerpb.MetadataType_METADATA_TYPE_UINT16,
+		"uint32":   ledgerpb.MetadataType_METADATA_TYPE_UINT32,
+		"datetime": ledgerpb.MetadataType_METADATA_TYPE_DATETIME,
 	}
 
-	metadataTypeNames = map[commonpb.MetadataType]string{
-		commonpb.MetadataType_METADATA_TYPE_STRING:   "string",
-		commonpb.MetadataType_METADATA_TYPE_INT64:    "int64",
-		commonpb.MetadataType_METADATA_TYPE_BOOL:     "bool",
-		commonpb.MetadataType_METADATA_TYPE_UINT64:   "uint64",
-		commonpb.MetadataType_METADATA_TYPE_INT8:     "int8",
-		commonpb.MetadataType_METADATA_TYPE_INT16:    "int16",
-		commonpb.MetadataType_METADATA_TYPE_INT32:    "int32",
-		commonpb.MetadataType_METADATA_TYPE_UINT8:    "uint8",
-		commonpb.MetadataType_METADATA_TYPE_UINT16:   "uint16",
-		commonpb.MetadataType_METADATA_TYPE_UINT32:   "uint32",
-		commonpb.MetadataType_METADATA_TYPE_DATETIME: "datetime",
+	metadataTypeNames = map[ledgerpb.MetadataType]string{
+		ledgerpb.MetadataType_METADATA_TYPE_STRING:   "string",
+		ledgerpb.MetadataType_METADATA_TYPE_INT64:    "int64",
+		ledgerpb.MetadataType_METADATA_TYPE_BOOL:     "bool",
+		ledgerpb.MetadataType_METADATA_TYPE_UINT64:   "uint64",
+		ledgerpb.MetadataType_METADATA_TYPE_INT8:     "int8",
+		ledgerpb.MetadataType_METADATA_TYPE_INT16:    "int16",
+		ledgerpb.MetadataType_METADATA_TYPE_INT32:    "int32",
+		ledgerpb.MetadataType_METADATA_TYPE_UINT8:    "uint8",
+		ledgerpb.MetadataType_METADATA_TYPE_UINT16:   "uint16",
+		ledgerpb.MetadataType_METADATA_TYPE_UINT32:   "uint32",
+		ledgerpb.MetadataType_METADATA_TYPE_DATETIME: "datetime",
 	}
 )
 
-// ParseTargetType converts "account"/"transaction"/"ledger" to commonpb.TargetType.
-func ParseTargetType(s string) (commonpb.TargetType, error) {
+// ParseTargetType converts "account"/"transaction"/"ledger" to ledgerpb.TargetType.
+func ParseTargetType(s string) (ledgerpb.TargetType, error) {
 	t, ok := targetTypeMap[strings.ToLower(s)]
 	if !ok {
 		return 0, fmt.Errorf("invalid target type %q: must be one of %s", s, strings.Join(TargetTypeOptions(), ", "))
@@ -59,8 +59,8 @@ func ParseTargetType(s string) (commonpb.TargetType, error) {
 	return t, nil
 }
 
-// ParseMetadataType converts "string"/"int64"/"bool"/etc to commonpb.MetadataType.
-func ParseMetadataType(s string) (commonpb.MetadataType, error) {
+// ParseMetadataType converts "string"/"int64"/"bool"/etc to ledgerpb.MetadataType.
+func ParseMetadataType(s string) (ledgerpb.MetadataType, error) {
 	t, ok := metadataTypeMap[strings.ToLower(s)]
 	if !ok {
 		return 0, fmt.Errorf("invalid metadata type %q: must be one of %s", s, strings.Join(MetadataTypeOptions(), ", "))
@@ -69,8 +69,8 @@ func ParseMetadataType(s string) (commonpb.MetadataType, error) {
 	return t, nil
 }
 
-// MetadataTypeToString returns user-friendly name for a commonpb.MetadataType.
-func MetadataTypeToString(t commonpb.MetadataType) string {
+// MetadataTypeToString returns user-friendly name for a ledgerpb.MetadataType.
+func MetadataTypeToString(t ledgerpb.MetadataType) string {
 	if name, ok := metadataTypeNames[t]; ok {
 		return name
 	}
@@ -78,8 +78,8 @@ func MetadataTypeToString(t commonpb.MetadataType) string {
 	return t.String()
 }
 
-// TargetTypeToString returns user-friendly name for a commonpb.TargetType.
-func TargetTypeToString(t commonpb.TargetType) string {
+// TargetTypeToString returns user-friendly name for a ledgerpb.TargetType.
+func TargetTypeToString(t ledgerpb.TargetType) string {
 	if name, ok := targetTypeNames[t]; ok {
 		return name
 	}

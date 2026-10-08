@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3/raftpb"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -142,7 +142,7 @@ func TestDeleteLedgerSentinelDetectsSurvivorCorruption(t *testing.T) {
 				require.NoError(t, attrs.Volume.Delete(pb.batch, key.Bytes()))
 			} else {
 				_, err = attrs.Volume.Set(pb.batch, key.Bytes(), &raftcmdpb.VolumePair{
-					Input: commonpb.NewUint256FromUint64(201), Output: commonpb.NewUint256FromUint64(0),
+					Input: ledgerpb.NewUint256FromUint64(201), Output: ledgerpb.NewUint256FromUint64(0),
 				})
 				require.NoError(t, err)
 			}
@@ -192,11 +192,11 @@ func TestDeleteLedgerSentinelDetectsBalancedDeletedVolumeLeftovers(t *testing.T)
 			}
 			require.Empty(t, pb.sentinelUpdates, "deleted volumes have no individual expectations")
 			for _, account := range []string{"world", "treasury"} {
-				pair := &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(0), Output: commonpb.NewUint256FromUint64(0)}
+				pair := &raftcmdpb.VolumePair{Input: ledgerpb.NewUint256FromUint64(0), Output: ledgerpb.NewUint256FromUint64(0)}
 				if account == "world" {
-					pair.Output = commonpb.NewUint256FromUint64(100)
+					pair.Output = ledgerpb.NewUint256FromUint64(100)
 				} else {
-					pair.Input = commonpb.NewUint256FromUint64(100)
+					pair.Input = ledgerpb.NewUint256FromUint64(100)
 				}
 				_, err = attrs.Volume.Set(pb.batch, domain.NewVolumeKey(ledger, account, "EUR", "").Bytes(), pair)
 				require.NoError(t, err)

@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
@@ -43,7 +43,7 @@ var _ = Describe("GetLedger snapshot consistency", Ordered, func() {
 
 	var (
 		ctx    context.Context
-		client commonpb.BucketServiceClient
+		client ledgerpb.BucketServiceClient
 	)
 
 	BeforeAll(func() {
@@ -51,11 +51,11 @@ var _ = Describe("GetLedger snapshot consistency", Ordered, func() {
 		ctx, node = testutil.SetupSingleNode()
 		client = node.Client
 
-		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+		_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())
 
 		// Initial committed state: collapsed — zero account types, count=0.
-		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("",
+		_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("",
 			actions.SaveLedgerMetadataAction(ledgerName, map[string]string{"count": "0"})))
 		Expect(err).To(Succeed())
 	})
@@ -93,7 +93,7 @@ var _ = Describe("GetLedger snapshot consistency", Ordered, func() {
 
 			expanded := false
 			for i := 0; i < writerToggles && runCtx.Err() == nil; i++ {
-				var toggle *commonpb.Request
+				var toggle *ledgerpb.Request
 				var count string
 				if expanded {
 					toggle = actions.RemoveAccountTypeAction(ledgerName, toggleType)
@@ -103,7 +103,7 @@ var _ = Describe("GetLedger snapshot consistency", Ordered, func() {
 					count = "1"
 				}
 
-				_, err := client.Apply(runCtx, commonpb.UnsignedApplyRequest("",
+				_, err := client.Apply(runCtx, ledgerpb.UnsignedApplyRequest("",
 					toggle,
 					actions.SaveLedgerMetadataAction(ledgerName, map[string]string{"count": count})))
 				if err != nil {
@@ -124,7 +124,7 @@ var _ = Describe("GetLedger snapshot consistency", Ordered, func() {
 		// checkInfo enforces the coupled invariant: a LedgerInfo's account-type
 		// count must equal its own meta["count"]. A read is valid only after it
 		// reaches and passes this comparison.
-		checkInfo := func(label string, info *commonpb.LedgerInfo) bool {
+		checkInfo := func(label string, info *ledgerpb.LedgerInfo) bool {
 			if info == nil {
 				fail("%s returned no ledger info", label)
 				return false
@@ -151,7 +151,7 @@ var _ = Describe("GetLedger snapshot consistency", Ordered, func() {
 		// runReader spins one read function until the writer is done, a tear is
 		// found, or the backstop fires.
 		runReader := func(
-			read func() (*commonpb.LedgerInfo, error),
+			read func() (*ledgerpb.LedgerInfo, error),
 			label string,
 			validated *atomic.Uint64,
 		) {
@@ -190,8 +190,8 @@ var _ = Describe("GetLedger snapshot consistency", Ordered, func() {
 		// GetLedger readers — the path the fix targets directly.
 		for range getReaders {
 			wg.Add(1)
-			go runReader(func() (*commonpb.LedgerInfo, error) {
-				return client.GetLedger(runCtx, &commonpb.GetLedgerRequest{Ledger: ledgerName})
+			go runReader(func() (*ledgerpb.LedgerInfo, error) {
+				return client.GetLedger(runCtx, &ledgerpb.GetLedgerRequest{Ledger: ledgerName})
 			}, "GetLedger", &validatedGetReads)
 		}
 
@@ -199,7 +199,7 @@ var _ = Describe("GetLedger snapshot consistency", Ordered, func() {
 		// metadata alongside its account types, sharing GetLedger's coupling.
 		for range listReaders {
 			wg.Add(1)
-			go runReader(func() (*commonpb.LedgerInfo, error) {
+			go runReader(func() (*ledgerpb.LedgerInfo, error) {
 				ledgers, err := actions.ListLedgers(runCtx, client)
 				if err != nil {
 					return nil, err

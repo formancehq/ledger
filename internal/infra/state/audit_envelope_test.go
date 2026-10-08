@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/zeebo/blake3"
 
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
@@ -44,40 +44,40 @@ func TestHashChain_Envelope_Golden(t *testing.T) {
 	// (AuditFailure.context) — is covered by TestHashChain_Envelope_Failure
 	// below; we keep both around so any drift between the production
 	// builder and the golden spec is caught regardless of outcome.
-	entry := &auditpb.AuditEntry{
+	entry := &ledgerpb.AuditEntry{
 		Sequence:    42,
-		Timestamp:   &auditpb.Timestamp{Data: 1700000000},
+		Timestamp:   &ledgerpb.Timestamp{Data: 1700000000},
 		ProposalId:  77,
 		OrderCount:  2,
-		HashVersion: uint32(auditpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		HashVersion: uint32(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
 		Ledgers:     []string{"ledger-b", "ledger-a"}, // intentionally un-sorted: builder must sort
-		Outcome: &auditpb.AuditEntry_Success{
-			Success: &auditpb.AuditSuccess{
+		Outcome: &ledgerpb.AuditEntry_Success{
+			Success: &ledgerpb.AuditSuccess{
 				MinLogSequence: 100,
 				MaxLogSequence: 101,
 			},
 		},
-		CallerSnapshot: &auditpb.CallerSnapshot{
-			Principal: &auditpb.CallerSnapshot_Authenticated{
-				Authenticated: &auditpb.AuthenticatedCaller{
-					Identity: &auditpb.CallerIdentity{
+		CallerSnapshot: &ledgerpb.CallerSnapshot{
+			Principal: &ledgerpb.CallerSnapshot_Authenticated{
+				Authenticated: &ledgerpb.AuthenticatedCaller{
+					Identity: &ledgerpb.CallerIdentity{
 						Subject: "alice",
-						Source:  &auditpb.CallerIdentity_KeyId{KeyId: "kid-1"},
+						Source:  &ledgerpb.CallerIdentity_KeyId{KeyId: "kid-1"},
 					},
 					Scopes: []string{"write", "read"}, // builder must sort
 					God:    false,
 				},
 			},
 		},
-		Idempotency: &auditpb.Idempotency{Key: "batch-key-42", ExpiresAt: 0x0102030405060708},
-		Signature: &auditpb.SignedApplyBatch{
+		Idempotency: &ledgerpb.Idempotency{Key: "batch-key-42", ExpiresAt: 0x0102030405060708},
+		Signature: &ledgerpb.SignedApplyBatch{
 			KeyId:     "sign-kid",
 			Signature: []byte("sig-bytes"),
 			Payload:   []byte("batch-payload"),
 		},
 	}
 
-	items := []*auditpb.AuditItem{
+	items := []*ledgerpb.AuditItem{
 		{OrderIndex: 0, LogSequence: 100, SerializedOrder: []byte("order-A")},
 		{OrderIndex: 1, LogSequence: 0, SerializedOrder: []byte("order-B")}, // log_sequence=0 simulates idempotent reference
 	}
@@ -95,7 +95,7 @@ func TestHashChain_Envelope_Golden(t *testing.T) {
 		hashSlices = append(hashSlices, BuildPerItemPayload(item))
 	}
 
-	g := processing.NewHashGenerator(auditpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, clusterID)
+	g := processing.NewHashGenerator(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, clusterID)
 	_, gotHash := g.Compute(nil, lastHash, hashSlices)
 
 	// 2. Recompute the same hash entirely by hand (no production helpers
@@ -125,7 +125,7 @@ func TestHashChain_Envelope_Golden(t *testing.T) {
 
 	require.Equal(t, expectedHash, gotHash,
 		"audit chain hash drifted from H(blake3-key(clusterID), header || items... || lastHash). "+
-			"If this drift is intentional, bump auditpb.HashAlgorithm and add a new envelope version.")
+			"If this drift is intentional, bump ledgerpb.HashAlgorithm and add a new envelope version.")
 }
 
 // TestHashChain_Envelope_SystemCaller pins the system principal tag in the hash
@@ -133,16 +133,16 @@ func TestHashChain_Envelope_Golden(t *testing.T) {
 func TestHashChain_Envelope_SystemCaller(t *testing.T) {
 	t.Parallel()
 
-	base := func() *auditpb.AuditEntry {
-		return &auditpb.AuditEntry{
+	base := func() *ledgerpb.AuditEntry {
+		return &ledgerpb.AuditEntry{
 			Sequence:    7,
-			Timestamp:   &auditpb.Timestamp{Data: 1700000000},
+			Timestamp:   &ledgerpb.Timestamp{Data: 1700000000},
 			ProposalId:  9,
 			OrderCount:  1,
-			HashVersion: uint32(auditpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+			HashVersion: uint32(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
 			Ledgers:     []string{"ledger-a"},
-			Outcome: &auditpb.AuditEntry_Success{
-				Success: &auditpb.AuditSuccess{MinLogSequence: 1, MaxLogSequence: 1},
+			Outcome: &ledgerpb.AuditEntry_Success{
+				Success: &ledgerpb.AuditSuccess{MinLogSequence: 1, MaxLogSequence: 1},
 			},
 		}
 	}
@@ -167,20 +167,20 @@ func TestHashChain_Envelope_SystemCaller(t *testing.T) {
 func TestCallerSnapshotPayload_PrincipalVariantsGoldenAndDistinct(t *testing.T) {
 	t.Parallel()
 
-	snapshots := map[string]*auditpb.CallerSnapshot{
-		"oidc": {Principal: &auditpb.CallerSnapshot_Authenticated{Authenticated: &auditpb.AuthenticatedCaller{
-			Identity: &auditpb.CallerIdentity{Subject: "alice", Source: &auditpb.CallerIdentity_Issuer{Issuer: "https://idp.example.com"}},
+	snapshots := map[string]*ledgerpb.CallerSnapshot{
+		"oidc": {Principal: &ledgerpb.CallerSnapshot_Authenticated{Authenticated: &ledgerpb.AuthenticatedCaller{
+			Identity: &ledgerpb.CallerIdentity{Subject: "alice", Source: &ledgerpb.CallerIdentity_Issuer{Issuer: "https://idp.example.com"}},
 			Scopes:   []string{"write", "read"},
 		}}},
-		"ed25519": {Principal: &auditpb.CallerSnapshot_Authenticated{Authenticated: &auditpb.AuthenticatedCaller{
-			Identity: &auditpb.CallerIdentity{Subject: "service", Source: &auditpb.CallerIdentity_KeyId{KeyId: "key-7"}},
+		"ed25519": {Principal: &ledgerpb.CallerSnapshot_Authenticated{Authenticated: &ledgerpb.AuthenticatedCaller{
+			Identity: &ledgerpb.CallerIdentity{Subject: "service", Source: &ledgerpb.CallerIdentity_KeyId{KeyId: "key-7"}},
 			God:      true,
 		}}},
-		"anonymous": {Principal: &auditpb.CallerSnapshot_Anonymous{Anonymous: &auditpb.AnonymousCaller{
+		"anonymous": {Principal: &ledgerpb.CallerSnapshot_Anonymous{Anonymous: &ledgerpb.AnonymousCaller{
 			Scopes: []string{"ledger:read"},
 		}}},
 		"system":        commands.SystemCallerSnapshot(commands.ComponentMirror),
-		"auth-disabled": {Principal: &auditpb.CallerSnapshot_AuthDisabled{AuthDisabled: &auditpb.AuthDisabledCaller{}}},
+		"auth-disabled": {Principal: &ledgerpb.CallerSnapshot_AuthDisabled{AuthDisabled: &ledgerpb.AuthDisabledCaller{}}},
 	}
 
 	encoded := make(map[string]string, len(snapshots))
@@ -211,16 +211,16 @@ func TestHashChain_Envelope_Failure(t *testing.T) {
 
 	const clusterID = "golden-cluster-id"
 
-	entry := &auditpb.AuditEntry{
+	entry := &ledgerpb.AuditEntry{
 		Sequence:    43,
-		Timestamp:   &auditpb.Timestamp{Data: 1700000001},
+		Timestamp:   &ledgerpb.Timestamp{Data: 1700000001},
 		ProposalId:  78,
 		OrderCount:  3,
-		HashVersion: uint32(auditpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		HashVersion: uint32(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
 		Ledgers:     []string{"ledger-a"},
-		Outcome: &auditpb.AuditEntry_Failure{
-			Failure: &auditpb.AuditFailure{
-				Reason:  auditpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+		Outcome: &ledgerpb.AuditEntry_Failure{
+			Failure: &ledgerpb.AuditFailure{
+				Reason:  ledgerpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
 				Message: "balance too low",
 				// Intentionally unsorted: zebra, apple, mango force the
 				// builder to actually sort.
@@ -234,7 +234,7 @@ func TestHashChain_Envelope_Failure(t *testing.T) {
 		},
 	}
 
-	items := []*auditpb.AuditItem{
+	items := []*ledgerpb.AuditItem{
 		{OrderIndex: 0, LogSequence: 0, SerializedOrder: []byte("order-A")},
 		{OrderIndex: 1, LogSequence: 0, SerializedOrder: []byte("order-B")},
 		{OrderIndex: 2, LogSequence: 0, SerializedOrder: []byte("order-C")},
@@ -256,7 +256,7 @@ func TestHashChain_Envelope_Failure(t *testing.T) {
 		hashSlices = append(hashSlices, BuildPerItemPayload(item))
 	}
 
-	g := processing.NewHashGenerator(auditpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, clusterID)
+	g := processing.NewHashGenerator(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, clusterID)
 	_, gotHash := g.Compute(nil, lastHash, hashSlices)
 
 	keyMaterial := blake3.Sum256([]byte("audit-hash:blake3:v1:" + clusterID))
@@ -293,16 +293,16 @@ func TestHashChain_Envelope_Failure(t *testing.T) {
 func TestAuditEntry_MarshalDeterministicVT_StableAcrossRuns(t *testing.T) {
 	t.Parallel()
 
-	entry := &auditpb.AuditEntry{
+	entry := &ledgerpb.AuditEntry{
 		Sequence:    99,
-		Timestamp:   &auditpb.Timestamp{Data: 1700000002},
+		Timestamp:   &ledgerpb.Timestamp{Data: 1700000002},
 		ProposalId:  100,
 		OrderCount:  1,
-		HashVersion: uint32(auditpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		HashVersion: uint32(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
 		Ledgers:     []string{"ledger-a"},
-		Outcome: &auditpb.AuditEntry_Failure{
-			Failure: &auditpb.AuditFailure{
-				Reason:  auditpb.ErrorReason_ERROR_REASON_VALIDATION,
+		Outcome: &ledgerpb.AuditEntry_Failure{
+			Failure: &ledgerpb.AuditFailure{
+				Reason:  ledgerpb.ErrorReason_ERROR_REASON_VALIDATION,
 				Message: "y",
 				Context: map[string]string{
 					"k3": "v3",
@@ -329,7 +329,7 @@ func TestAuditEntry_MarshalDeterministicVT_StableAcrossRuns(t *testing.T) {
 // using anything from audit_envelope.go. Any change to the production
 // builder that diverges from this spec must also update this function —
 // the diff between the two is the contract.
-func goldenBuildHeader(e *auditpb.AuditEntry) []byte {
+func goldenBuildHeader(e *ledgerpb.AuditEntry) []byte {
 	var buf []byte
 
 	buf = goldenU64(buf, e.GetSequence())
@@ -347,10 +347,10 @@ func goldenBuildHeader(e *auditpb.AuditEntry) []byte {
 	}
 
 	switch out := e.GetOutcome().(type) {
-	case *auditpb.AuditEntry_Success:
+	case *ledgerpb.AuditEntry_Success:
 		buf = append(buf, 0x00) // outcome_tag = success
 		buf = goldenLenBytes(buf, goldenBuildSuccess(out.Success))
-	case *auditpb.AuditEntry_Failure:
+	case *ledgerpb.AuditEntry_Failure:
 		buf = append(buf, 0x01) // outcome_tag = failure
 		buf = goldenLenBytes(buf, goldenBuildFailure(out.Failure))
 	default:
@@ -371,7 +371,7 @@ func goldenBuildHeader(e *auditpb.AuditEntry) []byte {
 	return buf
 }
 
-func goldenBuildSignature(sb *auditpb.SignedApplyBatch) []byte {
+func goldenBuildSignature(sb *ledgerpb.SignedApplyBatch) []byte {
 	if sb == nil {
 		return nil
 	}
@@ -384,7 +384,7 @@ func goldenBuildSignature(sb *auditpb.SignedApplyBatch) []byte {
 	return buf
 }
 
-func goldenBuildSuccess(s *auditpb.AuditSuccess) []byte {
+func goldenBuildSuccess(s *ledgerpb.AuditSuccess) []byte {
 	var buf []byte
 	buf = goldenU64(buf, s.GetMinLogSequence())
 	buf = goldenU64(buf, s.GetMaxLogSequence())
@@ -392,7 +392,7 @@ func goldenBuildSuccess(s *auditpb.AuditSuccess) []byte {
 	return buf
 }
 
-func goldenBuildFailure(f *auditpb.AuditFailure) []byte {
+func goldenBuildFailure(f *ledgerpb.AuditFailure) []byte {
 	var buf []byte
 	buf = goldenU32(buf, uint32(f.GetReason()))
 	buf = goldenLenString(buf, f.GetMessage())
@@ -413,19 +413,19 @@ func goldenBuildFailure(f *auditpb.AuditFailure) []byte {
 	return buf
 }
 
-func goldenBuildSnapshot(s *auditpb.CallerSnapshot) []byte {
+func goldenBuildSnapshot(s *ledgerpb.CallerSnapshot) []byte {
 	var buf []byte
 	switch principal := s.GetPrincipal().(type) {
-	case *auditpb.CallerSnapshot_Authenticated:
+	case *ledgerpb.CallerSnapshot_Authenticated:
 		buf = append(buf, 0x01)
 		caller := principal.Authenticated
 		id := caller.GetIdentity()
 		buf = goldenLenString(buf, id.GetSubject())
 		switch src := id.GetSource().(type) {
-		case *auditpb.CallerIdentity_Issuer:
+		case *ledgerpb.CallerIdentity_Issuer:
 			buf = append(buf, 0x01)
 			buf = goldenLenString(buf, src.Issuer)
-		case *auditpb.CallerIdentity_KeyId:
+		case *ledgerpb.CallerIdentity_KeyId:
 			buf = append(buf, 0x02)
 			buf = goldenLenString(buf, src.KeyId)
 		default:
@@ -438,13 +438,13 @@ func goldenBuildSnapshot(s *auditpb.CallerSnapshot) []byte {
 			buf = append(buf, 0x00)
 		}
 		buf = goldenAppendScopes(buf, caller.GetScopes())
-	case *auditpb.CallerSnapshot_Anonymous:
+	case *ledgerpb.CallerSnapshot_Anonymous:
 		buf = append(buf, 0x02)
 		buf = goldenAppendScopes(buf, principal.Anonymous.GetScopes())
-	case *auditpb.CallerSnapshot_System:
+	case *ledgerpb.CallerSnapshot_System:
 		buf = append(buf, 0x03)
 		buf = goldenLenString(buf, principal.System.GetComponent())
-	case *auditpb.CallerSnapshot_AuthDisabled:
+	case *ledgerpb.CallerSnapshot_AuthDisabled:
 		buf = append(buf, 0x04)
 	default:
 		buf = append(buf, 0x00)
@@ -464,7 +464,7 @@ func goldenAppendScopes(buf []byte, values []string) []byte {
 	return buf
 }
 
-func goldenBuildPerItem(item *auditpb.AuditItem) []byte {
+func goldenBuildPerItem(item *ledgerpb.AuditItem) []byte {
 	var buf []byte
 	buf = goldenU32(buf, item.GetOrderIndex())
 	buf = goldenU64(buf, item.GetLogSequence())
@@ -528,8 +528,8 @@ func TestBuildPerItemPayload_CoverageBitsDoNotChangeHash(t *testing.T) {
 	serialized := marshalOrdersForAudit([]*raftcmdpb.Order{mk([]byte{0b0001})})
 	serializedOther := marshalOrdersForAudit([]*raftcmdpb.Order{mk([]byte{0b1111_0000})})
 
-	itemA := &auditpb.AuditItem{OrderIndex: 0, LogSequence: 7, SerializedOrder: serialized[0]}
-	itemB := &auditpb.AuditItem{OrderIndex: 0, LogSequence: 7, SerializedOrder: serializedOther[0]}
+	itemA := &ledgerpb.AuditItem{OrderIndex: 0, LogSequence: 7, SerializedOrder: serialized[0]}
+	itemB := &ledgerpb.AuditItem{OrderIndex: 0, LogSequence: 7, SerializedOrder: serializedOther[0]}
 
 	require.Equal(t, BuildPerItemPayload(itemA), BuildPerItemPayload(itemB),
 		"coverage_bits must not alter the audit business-intent per-item payload")
@@ -555,7 +555,7 @@ func TestRecomputeProposalHash_AlignsWithFrozenHash(t *testing.T) {
 	frozen := processing.HashOrders([]*raftcmdpb.Order{order})
 
 	serialized := marshalOrdersForAudit([]*raftcmdpb.Order{order})
-	items := []*auditpb.AuditItem{{OrderIndex: 0, SerializedOrder: serialized[0]}}
+	items := []*ledgerpb.AuditItem{{OrderIndex: 0, SerializedOrder: serialized[0]}}
 
 	require.Equal(t, frozen, recomputeProposalHash(items),
 		"audit-derived recomputation must equal the frozen idempotency hash")
@@ -577,7 +577,7 @@ func TestBuildPerItemPayload_LegacyBytesVerifyVerbatim(t *testing.T) {
 	}
 	legacyBytes := legacyOrder.MarshalDeterministicVT(nil)
 
-	item := &auditpb.AuditItem{OrderIndex: 0, LogSequence: 3, SerializedOrder: legacyBytes}
+	item := &ledgerpb.AuditItem{OrderIndex: 0, LogSequence: 3, SerializedOrder: legacyBytes}
 
 	require.Equal(t, BuildPerItemPayload(item), BuildPerItemPayload(item))
 	require.Contains(t, string(item.GetSerializedOrder()), "ledger-a")

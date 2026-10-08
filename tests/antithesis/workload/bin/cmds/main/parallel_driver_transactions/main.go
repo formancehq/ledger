@@ -9,14 +9,14 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/protohelpers"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_transactions", func(ctx context.Context, client commonpb.BucketServiceClient, ledger string) {
+	internal.RunDriver("parallel_driver_transactions", func(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string) {
 		switch random.RandomChoice([]uint8{0, 1}) {
 		case 0:
 			createRandomTransaction(ctx, client, ledger)
@@ -26,13 +26,13 @@ func main() {
 	})
 }
 
-func randomPostingsRequest(ledger string) *commonpb.Request {
-	return &commonpb.Request{
-		Type: &commonpb.Request_Apply{
-			Apply: &commonpb.LedgerApplyRequest{
+func randomPostingsRequest(ledger string) *ledgerpb.Request {
+	return &ledgerpb.Request{
+		Type: &ledgerpb.Request_Apply{
+			Apply: &ledgerpb.LedgerApplyRequest{
 				Ledger: ledger,
-				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
-					CreateTransaction: &commonpb.CreateTransactionPayload{
+				Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &ledgerpb.CreateTransactionPayload{
 						Postings: internal.RandomPostings(),
 						Metadata: protohelpers.MetadataFromGoMap(internal.RandomMetadata()),
 						Force:    true,
@@ -43,20 +43,20 @@ func randomPostingsRequest(ledger string) *commonpb.Request {
 	}
 }
 
-func randomNumscriptRequest(ledger string) *commonpb.Request {
+func randomNumscriptRequest(ledger string) *ledgerpb.Request {
 	vars := map[string]string{
 		"from":   internal.GetRandomAddress(),
 		"to":     internal.GetRandomAddress(),
 		"amount": fmt.Sprintf("COIN %v", internal.RandomBigInt().String()),
 	}
 
-	return &commonpb.Request{
-		Type: &commonpb.Request_Apply{
-			Apply: &commonpb.LedgerApplyRequest{
+	return &ledgerpb.Request{
+		Type: &ledgerpb.Request_Apply{
+			Apply: &ledgerpb.LedgerApplyRequest{
 				Ledger: ledger,
-				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
-					CreateTransaction: &commonpb.CreateTransactionPayload{
-						Script: &commonpb.Script{
+				Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &ledgerpb.CreateTransactionPayload{
+						Script: &ledgerpb.Script{
 							Plain: `
 								vars {
 									account $from
@@ -78,7 +78,7 @@ func randomNumscriptRequest(ledger string) *commonpb.Request {
 	}
 }
 
-func randomTransactionRequest(ledger string) *commonpb.Request {
+func randomTransactionRequest(ledger string) *ledgerpb.Request {
 	if random.RandomChoice([]uint8{0, 1}) == 0 {
 		return randomPostingsRequest(ledger)
 	}
@@ -86,8 +86,8 @@ func randomTransactionRequest(ledger string) *commonpb.Request {
 	return randomNumscriptRequest(ledger)
 }
 
-func createRandomTransaction(ctx context.Context, client commonpb.BucketServiceClient, ledger string) {
-	resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", randomTransactionRequest(ledger)))
+func createRandomTransaction(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string) {
+	resp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", randomTransactionRequest(ledger)))
 
 	assert.Sometimes(internal.IsTolerated(err), "should be able to create a transaction", internal.Details{
 		"ledger": ledger,
@@ -105,14 +105,14 @@ func createRandomTransaction(ctx context.Context, client commonpb.BucketServiceC
 	checkReadAfterWrite(ctx, client, ledger, createdTx)
 }
 
-func createRandomBulkTransactions(ctx context.Context, client commonpb.BucketServiceClient, ledger string) {
+func createRandomBulkTransactions(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string) {
 	size := internal.GeometricBulkSize(0.001, 1, 5000)
-	requests := make([]*commonpb.Request, size)
+	requests := make([]*ledgerpb.Request, size)
 	for i := range size {
 		requests[i] = randomTransactionRequest(ledger)
 	}
 
-	resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", requests...))
+	resp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", requests...))
 
 	assert.Sometimes(internal.IsTolerated(err), "should be able to create bulk transactions", internal.Details{
 		"ledger": ledger,
@@ -143,8 +143,8 @@ func createRandomBulkTransactions(ctx context.Context, client commonpb.BucketSer
 	internal.CheckPostCommitVolumes(createdTx.GetTransaction().GetPostCommitVolumes(), internal.Details{"ledger": ledger})
 }
 
-func checkReadAfterWrite(ctx context.Context, client commonpb.BucketServiceClient, ledger string, createdTx *commonpb.CreatedTransaction) {
-	_, err := client.GetTransaction(ctx, &commonpb.GetTransactionRequest{
+func checkReadAfterWrite(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string, createdTx *ledgerpb.CreatedTransaction) {
+	_, err := client.GetTransaction(ctx, &ledgerpb.GetTransactionRequest{
 		Ledger:        ledger,
 		TransactionId: createdTx.GetTransaction().GetId(),
 	})

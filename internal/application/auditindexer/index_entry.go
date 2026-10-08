@@ -5,7 +5,7 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -30,12 +30,12 @@ type emitFn func(key []byte) error
 //   - AuditFieldOrderType    — 1 key per distinct order type across items
 //   - AuditFieldLogSeq       — 1 key per item whose LogSequence != 0
 //   - AuditFieldIdempotencyKey — 1 key when the batch idempotency key is non-empty
-func appendEntryKeys(kb *dal.KeyBuilder, emit emitFn, entry *auditpb.AuditEntry, items []*auditpb.AuditItem) error {
+func appendEntryKeys(kb *dal.KeyBuilder, emit emitFn, entry *ledgerpb.AuditEntry, items []*ledgerpb.AuditItem) error {
 	seq := entry.GetSequence()
 
 	// Outcome: 1 = success, 0 = failure.
 	var outcome byte
-	if _, ok := entry.GetOutcome().(*auditpb.AuditEntry_Success); ok {
+	if _, ok := entry.GetOutcome().(*ledgerpb.AuditEntry_Success); ok {
 		outcome = 1
 	}
 	if err := emit(readstore.AuditIndexByteKey(kb, readstore.AuditFieldOutcome, outcome, seq)); err != nil {

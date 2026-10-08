@@ -1,7 +1,7 @@
 package scenario
 
 import (
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
@@ -11,8 +11,8 @@ const StressInvariantsLedger = "stress"
 
 // StressInvariantsSetupActions returns the Apply requests that create the ledger,
 // account types, and numscript library for the stress invariants scenario.
-func StressInvariantsSetupActions() []*servicepb.Request {
-	return []*servicepb.Request{
+func StressInvariantsSetupActions() []*ledgerpb.Request {
+	return []*ledgerpb.Request{
 		actions.CreateLedgerAction(StressInvariantsLedger, nil),
 		actions.AddAccountTypeAction(StressInvariantsLedger, "trader", "trader:{id}"),
 		actions.AddAccountTypeAction(StressInvariantsLedger, "exchange-fees", "exchange:fees"),

@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 )
@@ -18,7 +18,7 @@ func TestEventToClickHouseJSON_NilLog(t *testing.T) {
 	t.Parallel()
 
 	event := &eventspb.Event{
-		Type:        commonpb.EventType_COMMITTED_TRANSACTION,
+		Type:        ledgerpb.EventType_COMMITTED_TRANSACTION,
 		Ledger:      "test",
 		LogSequence: 1,
 		Log:         nil,
@@ -36,10 +36,10 @@ func TestEventToClickHouseJSON_NilPayload(t *testing.T) {
 	t.Parallel()
 
 	event := &eventspb.Event{
-		Type:        commonpb.EventType_COMMITTED_TRANSACTION,
+		Type:        ledgerpb.EventType_COMMITTED_TRANSACTION,
 		Ledger:      "test",
 		LogSequence: 1,
-		Log: &commonpb.Log{
+		Log: &ledgerpb.Log{
 			Sequence: 1,
 		},
 	}
@@ -55,14 +55,14 @@ func TestEventToClickHouseJSON_CreateLedger(t *testing.T) {
 	t.Parallel()
 
 	event := &eventspb.Event{
-		Type:        commonpb.EventType_CREATED_LEDGER,
+		Type:        ledgerpb.EventType_CREATED_LEDGER,
 		Ledger:      "orders",
 		LogSequence: 1,
-		Log: &commonpb.Log{
+		Log: &ledgerpb.Log{
 			Sequence: 1,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_CreateLedger{
-					CreateLedger: &commonpb.CreatedLedgerLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_CreateLedger{
+					CreateLedger: &ledgerpb.CreatedLedgerLog{
 						Name: "orders",
 					},
 				},
@@ -83,14 +83,14 @@ func TestEventToClickHouseJSON_DeleteLedger(t *testing.T) {
 	t.Parallel()
 
 	event := &eventspb.Event{
-		Type:        commonpb.EventType_DELETED_LEDGER,
+		Type:        ledgerpb.EventType_DELETED_LEDGER,
 		Ledger:      "old-ledger",
 		LogSequence: 2,
-		Log: &commonpb.Log{
+		Log: &ledgerpb.Log{
 			Sequence: 2,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_DeleteLedger{
-					DeleteLedger: &commonpb.DeletedLedgerLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_DeleteLedger{
+					DeleteLedger: &ledgerpb.DeletedLedgerLog{
 						Name: "old-ledger",
 					},
 				},
@@ -111,42 +111,42 @@ func TestEventToClickHouseJSON_CommittedTransaction(t *testing.T) {
 	t.Parallel()
 
 	event := &eventspb.Event{
-		Type:        commonpb.EventType_COMMITTED_TRANSACTION,
+		Type:        ledgerpb.EventType_COMMITTED_TRANSACTION,
 		Ledger:      "payments",
 		LogSequence: 3,
-		Log: &commonpb.Log{
+		Log: &ledgerpb.Log{
 			Sequence: 3,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_Apply{
-					Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_Apply{
+					Apply: &ledgerpb.ApplyLedgerLog{
 						LedgerName: "payments",
-						Log: &commonpb.LedgerLog{
+						Log: &ledgerpb.LedgerLog{
 							Id:   1,
-							Date: &commonpb.Timestamp{Data: 1700000100},
-							Data: &commonpb.LedgerLogPayload{
-								Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-									CreatedTransaction: &commonpb.CreatedTransaction{
-										Transaction: &commonpb.Transaction{
+							Date: &ledgerpb.Timestamp{Data: 1700000100},
+							Data: &ledgerpb.LedgerLogPayload{
+								Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+									CreatedTransaction: &ledgerpb.CreatedTransaction{
+										Transaction: &ledgerpb.Transaction{
 											Id:        1,
-											Timestamp: &commonpb.Timestamp{Data: 1700000100},
-											Postings: []*commonpb.Posting{
+											Timestamp: &ledgerpb.Timestamp{Data: 1700000100},
+											Postings: []*ledgerpb.Posting{
 												{
 													Source:      "world",
 													Destination: "users:001",
-													Amount:      commonpb.NewUint256FromUint64(500),
+													Amount:      ledgerpb.NewUint256FromUint64(500),
 													Asset:       "USD/2",
 												},
 											},
-											Metadata: map[string]*commonpb.MetadataValue{
-												"type": commonpb.NewStringValue("transfer"),
+											Metadata: map[string]*ledgerpb.MetadataValue{
+												"type": ledgerpb.NewStringValue("transfer"),
 											},
 											Reference:  "tx-001",
-											InsertedAt: &commonpb.Timestamp{Data: 1700000100},
+											InsertedAt: &ledgerpb.Timestamp{Data: 1700000100},
 										},
-										AccountMetadata: map[string]*commonpb.MetadataMap{
+										AccountMetadata: map[string]*ledgerpb.MetadataMap{
 											"users:001": {
-												Values: map[string]*commonpb.MetadataValue{
-													"name": commonpb.NewStringValue("Alice"),
+												Values: map[string]*ledgerpb.MetadataValue{
+													"name": ledgerpb.NewStringValue("Alice"),
 												},
 											},
 										},
@@ -189,34 +189,34 @@ func TestEventToClickHouseJSON_RevertedTransaction(t *testing.T) {
 	t.Parallel()
 
 	event := &eventspb.Event{
-		Type:        commonpb.EventType_REVERTED_TRANSACTION,
+		Type:        ledgerpb.EventType_REVERTED_TRANSACTION,
 		Ledger:      "payments",
 		LogSequence: 4,
-		Log: &commonpb.Log{
+		Log: &ledgerpb.Log{
 			Sequence: 4,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_Apply{
-					Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_Apply{
+					Apply: &ledgerpb.ApplyLedgerLog{
 						LedgerName: "payments",
-						Log: &commonpb.LedgerLog{
+						Log: &ledgerpb.LedgerLog{
 							Id:   2,
-							Date: &commonpb.Timestamp{Data: 1700000200},
-							Data: &commonpb.LedgerLogPayload{
-								Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
-									RevertedTransaction: &commonpb.RevertedTransaction{
+							Date: &ledgerpb.Timestamp{Data: 1700000200},
+							Data: &ledgerpb.LedgerLogPayload{
+								Payload: &ledgerpb.LedgerLogPayload_RevertedTransaction{
+									RevertedTransaction: &ledgerpb.RevertedTransaction{
 										RevertedTransactionId: 1,
-										RevertTransaction: &commonpb.Transaction{
+										RevertTransaction: &ledgerpb.Transaction{
 											Id:        2,
-											Timestamp: &commonpb.Timestamp{Data: 1700000200},
-											Postings: []*commonpb.Posting{
+											Timestamp: &ledgerpb.Timestamp{Data: 1700000200},
+											Postings: []*ledgerpb.Posting{
 												{
 													Source:      "users:001",
 													Destination: "world",
-													Amount:      commonpb.NewUint256FromUint64(500),
+													Amount:      ledgerpb.NewUint256FromUint64(500),
 													Asset:       "USD/2",
 												},
 											},
-											InsertedAt: &commonpb.Timestamp{Data: 1700000200},
+											InsertedAt: &ledgerpb.Timestamp{Data: 1700000200},
 										},
 									},
 								},
@@ -243,28 +243,28 @@ func TestEventToClickHouseJSON_SavedMetadata_Account(t *testing.T) {
 	t.Parallel()
 
 	event := &eventspb.Event{
-		Type:        commonpb.EventType_SAVED_METADATA,
+		Type:        ledgerpb.EventType_SAVED_METADATA,
 		Ledger:      "orders",
 		LogSequence: 5,
-		Log: &commonpb.Log{
+		Log: &ledgerpb.Log{
 			Sequence: 5,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_Apply{
-					Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_Apply{
+					Apply: &ledgerpb.ApplyLedgerLog{
 						LedgerName: "orders",
-						Log: &commonpb.LedgerLog{
+						Log: &ledgerpb.LedgerLog{
 							Id:   3,
-							Date: &commonpb.Timestamp{Data: 1700000300},
-							Data: &commonpb.LedgerLogPayload{
-								Payload: &commonpb.LedgerLogPayload_SavedMetadata{
-									SavedMetadata: &commonpb.SavedMetadata{
-										Target: &commonpb.Target{
-											Target: &commonpb.Target_Account{
-												Account: &commonpb.TargetAccount{Addr: "user:123"},
+							Date: &ledgerpb.Timestamp{Data: 1700000300},
+							Data: &ledgerpb.LedgerLogPayload{
+								Payload: &ledgerpb.LedgerLogPayload_SavedMetadata{
+									SavedMetadata: &ledgerpb.SavedMetadata{
+										Target: &ledgerpb.Target{
+											Target: &ledgerpb.Target_Account{
+												Account: &ledgerpb.TargetAccount{Addr: "user:123"},
 											},
 										},
-										Metadata: map[string]*commonpb.MetadataValue{
-											"status": commonpb.NewStringValue("active"),
+										Metadata: map[string]*ledgerpb.MetadataValue{
+											"status": ledgerpb.NewStringValue("active"),
 										},
 									},
 								},
@@ -292,23 +292,23 @@ func TestEventToClickHouseJSON_DeletedMetadata_Transaction(t *testing.T) {
 	t.Parallel()
 
 	event := &eventspb.Event{
-		Type:        commonpb.EventType_DELETED_METADATA,
+		Type:        ledgerpb.EventType_DELETED_METADATA,
 		Ledger:      "orders",
 		LogSequence: 6,
-		Log: &commonpb.Log{
+		Log: &ledgerpb.Log{
 			Sequence: 6,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_Apply{
-					Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_Apply{
+					Apply: &ledgerpb.ApplyLedgerLog{
 						LedgerName: "orders",
-						Log: &commonpb.LedgerLog{
+						Log: &ledgerpb.LedgerLog{
 							Id:   4,
-							Date: &commonpb.Timestamp{Data: 1700000400},
-							Data: &commonpb.LedgerLogPayload{
-								Payload: &commonpb.LedgerLogPayload_DeletedMetadata{
-									DeletedMetadata: &commonpb.DeletedMetadata{
-										Target: &commonpb.Target{
-											Target: &commonpb.Target_TransactionId{TransactionId: 42},
+							Date: &ledgerpb.Timestamp{Data: 1700000400},
+							Data: &ledgerpb.LedgerLogPayload{
+								Payload: &ledgerpb.LedgerLogPayload_DeletedMetadata{
+									DeletedMetadata: &ledgerpb.DeletedMetadata{
+										Target: &ledgerpb.Target{
+											Target: &ledgerpb.Target_TransactionId{TransactionId: 42},
 										},
 										Key: "some-key",
 									},
@@ -336,22 +336,22 @@ func TestEventToClickHouseJSON_OrderSkipped(t *testing.T) {
 	t.Parallel()
 
 	event := &eventspb.Event{
-		Type:        commonpb.EventType_SKIPPED_ORDER,
+		Type:        ledgerpb.EventType_SKIPPED_ORDER,
 		Ledger:      "orders",
 		LogSequence: 7,
-		Log: &commonpb.Log{
+		Log: &ledgerpb.Log{
 			Sequence: 7,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_Apply{
-					Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_Apply{
+					Apply: &ledgerpb.ApplyLedgerLog{
 						LedgerName: "orders",
-						Log: &commonpb.LedgerLog{
+						Log: &ledgerpb.LedgerLog{
 							Id:   5,
-							Date: &commonpb.Timestamp{Data: 1700000500},
-							Data: &commonpb.LedgerLogPayload{
-								Payload: &commonpb.LedgerLogPayload_OrderSkipped{
-									OrderSkipped: &commonpb.OrderSkippedLog{
-										Reason:  commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+							Date: &ledgerpb.Timestamp{Data: 1700000500},
+							Data: &ledgerpb.LedgerLogPayload{
+								Payload: &ledgerpb.LedgerLogPayload_OrderSkipped{
+									OrderSkipped: &ledgerpb.OrderSkippedLog{
+										Reason:  ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 										Context: map[string]string{"reference": "ref-1"},
 									},
 								},
@@ -379,13 +379,13 @@ func TestEventToClickHouseJSON_RegisterSigningKey(t *testing.T) {
 	t.Parallel()
 
 	event := &eventspb.Event{
-		Type:        commonpb.EventType_EVENT_TYPE_UNSPECIFIED,
+		Type:        ledgerpb.EventType_EVENT_TYPE_UNSPECIFIED,
 		LogSequence: 7,
-		Log: &commonpb.Log{
+		Log: &ledgerpb.Log{
 			Sequence: 7,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_RegisterSigningKey{
-					RegisterSigningKey: &commonpb.RegisteredSigningKeyLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_RegisterSigningKey{
+					RegisterSigningKey: &ledgerpb.RegisteredSigningKeyLog{
 						KeyId:     "key-001",
 						PublicKey: []byte{0xab, 0xcd},
 					},
@@ -409,13 +409,13 @@ func TestEventToClickHouseJSON_RevokeSigningKey(t *testing.T) {
 	t.Parallel()
 
 	event := &eventspb.Event{
-		Type:        commonpb.EventType_EVENT_TYPE_UNSPECIFIED,
+		Type:        ledgerpb.EventType_EVENT_TYPE_UNSPECIFIED,
 		LogSequence: 8,
-		Log: &commonpb.Log{
+		Log: &ledgerpb.Log{
 			Sequence: 8,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_RevokeSigningKey{
-					RevokeSigningKey: &commonpb.RevokedSigningKeyLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_RevokeSigningKey{
+					RevokeSigningKey: &ledgerpb.RevokedSigningKeyLog{
 						KeyId: "key-001",
 					},
 				},
@@ -436,13 +436,13 @@ func TestEventToClickHouseJSON_SetSigningConfig(t *testing.T) {
 	t.Parallel()
 
 	event := &eventspb.Event{
-		Type:        commonpb.EventType_EVENT_TYPE_UNSPECIFIED,
+		Type:        ledgerpb.EventType_EVENT_TYPE_UNSPECIFIED,
 		LogSequence: 9,
-		Log: &commonpb.Log{
+		Log: &ledgerpb.Log{
 			Sequence: 9,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_SetSigningConfig{
-					SetSigningConfig: &commonpb.SetSigningConfigLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_SetSigningConfig{
+					SetSigningConfig: &ledgerpb.SetSigningConfigLog{
 						RequireSignatures: true,
 					},
 				},
@@ -463,14 +463,14 @@ func TestEventToClickHouseJSON_AddedEventsSink(t *testing.T) {
 	t.Parallel()
 
 	event := &eventspb.Event{
-		Type:        commonpb.EventType_EVENT_TYPE_UNSPECIFIED,
+		Type:        ledgerpb.EventType_EVENT_TYPE_UNSPECIFIED,
 		LogSequence: 10,
-		Log: &commonpb.Log{
+		Log: &ledgerpb.Log{
 			Sequence: 10,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_AddedEventsSink{
-					AddedEventsSink: &commonpb.AddedEventsSinkLog{
-						Config: &commonpb.SinkConfig{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_AddedEventsSink{
+					AddedEventsSink: &ledgerpb.AddedEventsSinkLog{
+						Config: &ledgerpb.SinkConfig{
 							Name: "my-sink",
 						},
 					},
@@ -492,13 +492,13 @@ func TestEventToClickHouseJSON_RemovedEventsSink(t *testing.T) {
 	t.Parallel()
 
 	event := &eventspb.Event{
-		Type:        commonpb.EventType_EVENT_TYPE_UNSPECIFIED,
+		Type:        ledgerpb.EventType_EVENT_TYPE_UNSPECIFIED,
 		LogSequence: 11,
-		Log: &commonpb.Log{
+		Log: &ledgerpb.Log{
 			Sequence: 11,
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_RemovedEventsSink{
-					RemovedEventsSink: &commonpb.RemovedEventsSinkLog{
+			Payload: &ledgerpb.LogPayload{
+				Type: &ledgerpb.LogPayload_RemovedEventsSink{
+					RemovedEventsSink: &ledgerpb.RemovedEventsSinkLog{
 						Name: "my-sink",
 					},
 				},
@@ -527,7 +527,7 @@ func TestSinkPopulateApply_NilLog(t *testing.T) {
 	t.Parallel()
 
 	data := &sinkEventData{}
-	sinkPopulateApply(data, &commonpb.ApplyLedgerLog{Log: nil})
+	sinkPopulateApply(data, &ledgerpb.ApplyLedgerLog{Log: nil})
 	require.Nil(t, data.Transaction)
 }
 
@@ -535,8 +535,8 @@ func TestSinkPopulateApply_NilData(t *testing.T) {
 	t.Parallel()
 
 	data := &sinkEventData{}
-	sinkPopulateApply(data, &commonpb.ApplyLedgerLog{
-		Log: &commonpb.LedgerLog{Data: nil},
+	sinkPopulateApply(data, &ledgerpb.ApplyLedgerLog{
+		Log: &ledgerpb.LedgerLog{Data: nil},
 	})
 	require.Nil(t, data.Transaction)
 }
@@ -546,26 +546,26 @@ func TestSinkPopulateApply_SchemaOperations(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		payload *commonpb.LedgerLogPayload
+		payload *ledgerpb.LedgerLogPayload
 	}{
 		{
 			name: "set_metadata_field_type",
-			payload: &commonpb.LedgerLogPayload{
-				Payload: &commonpb.LedgerLogPayload_SetMetadataFieldType{
-					SetMetadataFieldType: &commonpb.SetMetadataFieldTypeLog{
-						TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+			payload: &ledgerpb.LedgerLogPayload{
+				Payload: &ledgerpb.LedgerLogPayload_SetMetadataFieldType{
+					SetMetadataFieldType: &ledgerpb.SetMetadataFieldTypeLog{
+						TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 						Key:        "age",
-						Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+						Type:       ledgerpb.MetadataType_METADATA_TYPE_INT64,
 					},
 				},
 			},
 		},
 		{
 			name: "removed_metadata_field_type",
-			payload: &commonpb.LedgerLogPayload{
-				Payload: &commonpb.LedgerLogPayload_RemovedMetadataFieldType{
-					RemovedMetadataFieldType: &commonpb.RemovedMetadataFieldTypeLog{
-						TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+			payload: &ledgerpb.LedgerLogPayload{
+				Payload: &ledgerpb.LedgerLogPayload_RemovedMetadataFieldType{
+					RemovedMetadataFieldType: &ledgerpb.RemovedMetadataFieldTypeLog{
+						TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 						Key:        "age",
 					},
 				},
@@ -578,8 +578,8 @@ func TestSinkPopulateApply_SchemaOperations(t *testing.T) {
 			t.Parallel()
 
 			data := &sinkEventData{}
-			sinkPopulateApply(data, &commonpb.ApplyLedgerLog{
-				Log: &commonpb.LedgerLog{Data: tc.payload},
+			sinkPopulateApply(data, &ledgerpb.ApplyLedgerLog{
+				Log: &ledgerpb.LedgerLog{Data: tc.payload},
 			})
 			require.Nil(t, data.Transaction)
 			require.Nil(t, data.TargetType)
@@ -598,9 +598,9 @@ func TestSinkConvertTarget_Nil(t *testing.T) {
 func TestSinkConvertTarget_Account(t *testing.T) {
 	t.Parallel()
 
-	target := &commonpb.Target{
-		Target: &commonpb.Target_Account{
-			Account: &commonpb.TargetAccount{Addr: "user:123"},
+	target := &ledgerpb.Target{
+		Target: &ledgerpb.Target_Account{
+			Account: &ledgerpb.TargetAccount{Addr: "user:123"},
 		},
 	}
 
@@ -613,8 +613,8 @@ func TestSinkConvertTarget_Account(t *testing.T) {
 func TestSinkConvertTarget_Transaction(t *testing.T) {
 	t.Parallel()
 
-	target := &commonpb.Target{
-		Target: &commonpb.Target_TransactionId{TransactionId: 42},
+	target := &ledgerpb.Target{
+		Target: &ledgerpb.Target_TransactionId{TransactionId: 42},
 	}
 
 	tt, id := sinkConvertTarget(target)
@@ -633,15 +633,15 @@ func TestSinkConvertMetadata_Nil(t *testing.T) {
 func TestSinkConvertMetadata_Empty(t *testing.T) {
 	t.Parallel()
 
-	result := sinkConvertMetadata(map[string]*commonpb.MetadataValue{})
+	result := sinkConvertMetadata(map[string]*ledgerpb.MetadataValue{})
 	require.Nil(t, result)
 }
 
 func TestSinkConvertMetadata_WithValues(t *testing.T) {
 	t.Parallel()
 
-	ms := map[string]*commonpb.MetadataValue{
-		"status": commonpb.NewStringValue("active"),
+	ms := map[string]*ledgerpb.MetadataValue{
+		"status": ledgerpb.NewStringValue("active"),
 		"empty":  nil,
 	}
 
@@ -663,10 +663,10 @@ func TestSinkConvertAccountMetadataMap_Nil(t *testing.T) {
 func TestSinkConvertAccountMetadataMap_WithValues(t *testing.T) {
 	t.Parallel()
 
-	am := map[string]*commonpb.MetadataMap{
+	am := map[string]*ledgerpb.MetadataMap{
 		"user:123": {
-			Values: map[string]*commonpb.MetadataValue{
-				"name": commonpb.NewStringValue("Alice"),
+			Values: map[string]*ledgerpb.MetadataValue{
+				"name": ledgerpb.NewStringValue("Alice"),
 			},
 		},
 	}
@@ -690,19 +690,19 @@ func TestSinkConvertTransaction_Nil(t *testing.T) {
 func TestSinkConvertTransaction_PreservesColor(t *testing.T) {
 	t.Parallel()
 
-	tx := &commonpb.Transaction{
+	tx := &ledgerpb.Transaction{
 		Id: 1,
-		Postings: []*commonpb.Posting{
+		Postings: []*ledgerpb.Posting{
 			{
 				Source:      "world",
 				Destination: "alice",
 				Asset:       "USD/2",
 				Color:       "GRANTS",
-				Amount:      commonpb.NewUint256FromUint64(100),
+				Amount:      ledgerpb.NewUint256FromUint64(100),
 			},
 		},
-		Timestamp:  &commonpb.Timestamp{Data: 1700000000},
-		InsertedAt: &commonpb.Timestamp{Data: 1700000000},
+		Timestamp:  &ledgerpb.Timestamp{Data: 1700000000},
+		InsertedAt: &ledgerpb.Timestamp{Data: 1700000000},
 	}
 
 	result := sinkConvertTransaction(tx)
@@ -715,23 +715,23 @@ func TestSinkConvertTransaction_PreservesColor(t *testing.T) {
 // TestSinkPosting_AlwaysEmitsColor pins the analytical-sink JSON contract:
 // the uncolored bucket must serialize as `color:""` (not be omitted), so
 // downstream warehouses can distinguish a NULL color from a pre-color schema
-// row. Mirrors the contract enforced by commonpb.Posting.MarshalJSON.
+// row. Mirrors the contract enforced by ledgerpb.Posting.MarshalJSON.
 func TestSinkPosting_AlwaysEmitsColor(t *testing.T) {
 	t.Parallel()
 
-	tx := &commonpb.Transaction{
+	tx := &ledgerpb.Transaction{
 		Id: 1,
-		Postings: []*commonpb.Posting{
+		Postings: []*ledgerpb.Posting{
 			{
 				Source:      "world",
 				Destination: "alice",
 				Asset:       "USD/2",
-				Amount:      commonpb.NewUint256FromUint64(100),
+				Amount:      ledgerpb.NewUint256FromUint64(100),
 				// Color intentionally left empty — uncolored bucket.
 			},
 		},
-		Timestamp:  &commonpb.Timestamp{Data: 1700000000},
-		InsertedAt: &commonpb.Timestamp{Data: 1700000000},
+		Timestamp:  &ledgerpb.Timestamp{Data: 1700000000},
+		InsertedAt: &ledgerpb.Timestamp{Data: 1700000000},
 	}
 
 	sink := sinkConvertTransaction(tx)
@@ -760,7 +760,7 @@ func TestSinkTime_MarshalJSON(t *testing.T) {
 	t.Parallel()
 
 	// 2023-11-14 22:13:20 UTC (timestamp 1700000000)
-	ts := &commonpb.Timestamp{Data: 1700000000}
+	ts := &ledgerpb.Timestamp{Data: 1700000000}
 	goTime := ts.AsTime()
 	ct := sinkTime(goTime)
 

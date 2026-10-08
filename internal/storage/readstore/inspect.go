@@ -7,7 +7,7 @@ import (
 
 	"github.com/cockroachdb/pebble/v2"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -46,11 +46,11 @@ type InspectParams struct {
 
 // InspectResult holds the scan results.
 type InspectResult struct {
-	Values           []*commonpb.MetadataValue
+	Values           []*ledgerpb.MetadataValue
 	Facets           []InspectFacetEntry
 	Cardinality      uint64
-	Min              *commonpb.MetadataValue
-	Max              *commonpb.MetadataValue
+	Min              *ledgerpb.MetadataValue
+	Max              *ledgerpb.MetadataValue
 	EntitiesWithKey  uint64
 	EntitiesWithNull uint64
 	HasMore          bool
@@ -59,7 +59,7 @@ type InspectResult struct {
 
 // InspectFacetEntry is a (value, count) pair.
 type InspectFacetEntry struct {
-	Value *commonpb.MetadataValue
+	Value *ledgerpb.MetadataValue
 	Count uint64
 }
 
@@ -240,7 +240,7 @@ func inspectFacets(params InspectParams) (*InspectResult, error) {
 
 	var (
 		prevValueBytes []byte
-		currentValue   *commonpb.MetadataValue
+		currentValue   *ledgerpb.MetadataValue
 		currentCount   uint64
 		decodeErr      error
 	)

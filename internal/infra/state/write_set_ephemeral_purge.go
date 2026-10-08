@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
@@ -138,7 +138,7 @@ func (b *WriteSet) isEphemeralAccount(scope processing.Scope, key domain.Account
 	}
 	matched := accounttype.FindMatchingType(key.Account, entry.compiled)
 
-	return matched != nil && matched.GetPersistence() == commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL, nil
+	return matched != nil && matched.GetPersistence() == ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL, nil
 }
 
 func (b *WriteSet) stagePurgedAccountRows() error {
@@ -261,7 +261,7 @@ func (b *WriteSet) partitionVolumes(
 		}
 
 		switch matched.GetPersistence() {
-		case commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT:
+		case ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT:
 			// A defined Old means a persisted row exists
 			// from before the transient pattern started matching the account
 			// (funded under a default-normal policy — its balance may already
@@ -281,7 +281,7 @@ func (b *WriteSet) partitionVolumes(
 				result.transient = append(result.transient, update)
 			}
 
-		case commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL:
+		case ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL:
 			if isVolumeZeroBalance(update.New) {
 				result.purged = append(result.purged, update)
 			} else {

@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -30,7 +30,7 @@ func TestApplyMirrorSyncUpdate_KeysOffEnvelopeNotProjection(t *testing.T) {
 
 	// Seed the ledger UNDER the envelope key but with a DIVERGENT stored Name.
 	envKey := domain.LedgerKey{Name: envelope}
-	divergentInfo := &commonpb.LedgerInfo{Id: 1, Name: "divergent-projection"}
+	divergentInfo := &ledgerpb.LedgerInfo{Id: 1, Name: "divergent-projection"}
 
 	seedBatch := dataStore.OpenWriteSession()
 	_, _, err := fsm.Registry.Ledgers.PutWithCache(seedBatch, gen0Byte, envKey.Bytes(), divergentInfo)
@@ -50,7 +50,7 @@ func TestApplyMirrorSyncUpdate_KeysOffEnvelopeNotProjection(t *testing.T) {
 
 	proposal := &raftcmdpb.Proposal{
 		Id:            1,
-		Date:          &commonpb.Timestamp{Data: 1700000000},
+		Date:          &ledgerpb.Timestamp{Data: 1700000000},
 		ExecutionPlan: executionPlan,
 		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{
 			{Kind: &raftcmdpb.TechnicalUpdate_MirrorSync{MirrorSync: &raftcmdpb.MirrorSyncUpdate{LedgerName: envelope, SourceLogCount: 7}}},

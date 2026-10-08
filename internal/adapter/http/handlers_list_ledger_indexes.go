@@ -3,7 +3,7 @@ package http
 import (
 	"net/http"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // handleListLedgerIndexes handles GET /{ledgerName}/indexes to list the
@@ -14,8 +14,8 @@ func (s *Server) handleListLedgerIndexes(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	cursor, err := s.backend.ListIndexes(r.Context(), &servicepb.ListIndexesRequest{
-		Scope:  servicepb.ListIndexesRequest_SCOPE_LEDGER,
+	cursor, err := s.backend.ListIndexes(r.Context(), &ledgerpb.ListIndexesRequest{
+		Scope:  ledgerpb.ListIndexesRequest_SCOPE_LEDGER,
 		Ledger: ledgerName,
 	})
 	if err != nil {

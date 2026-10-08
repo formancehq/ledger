@@ -8,7 +8,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -39,10 +39,10 @@ func TestExecute_LedgerNotFound(t *testing.T) {
 			name: "soft-deleted ledger",
 			seed: func(t *testing.T, s *dal.Store, ledger string) {
 				batch := s.OpenWriteSession()
-				require.NoError(t, state.SaveLedger(batch, ledger, &commonpb.LedgerInfo{
+				require.NoError(t, state.SaveLedger(batch, ledger, &ledgerpb.LedgerInfo{
 					Name:      ledger,
-					CreatedAt: commonpb.NewTimestamp(libtime.Now()),
-					DeletedAt: commonpb.NewTimestamp(libtime.Now()),
+					CreatedAt: ledgerpb.NewTimestamp(libtime.Now()),
+					DeletedAt: ledgerpb.NewTimestamp(libtime.Now()),
 				}))
 				require.NoError(t, batch.Commit())
 			},
@@ -61,7 +61,7 @@ func TestExecute_LedgerNotFound(t *testing.T) {
 			const ledger = "missing-ledger"
 			tc.seed(t, s, ledger)
 
-			req := &commonpb.ExecutePreparedQueryRequest{
+			req := &ledgerpb.ExecutePreparedQueryRequest{
 				Ledger:    ledger,
 				QueryName: "q",
 			}

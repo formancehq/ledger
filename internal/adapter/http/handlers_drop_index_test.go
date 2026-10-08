@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
@@ -18,14 +18,14 @@ import (
 func TestHandleDropIndex_Success(t *testing.T) {
 	t.Parallel()
 
-	var capturedRequest *commonpb.Request
+	var capturedRequest *ledgerpb.Request
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, req *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedRequest = req.GetUnsigned().GetRequests()[0]
 
-			return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{{}}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -39,7 +39,7 @@ func TestHandleDropIndex_Success(t *testing.T) {
 
 	require.Equal(t, http.StatusNoContent, w.Code)
 	require.NotNil(t, capturedRequest)
-	di, ok := capturedRequest.GetType().(*commonpb.Request_DropIndex)
+	di, ok := capturedRequest.GetType().(*ledgerpb.Request_DropIndex)
 	require.True(t, ok)
 	require.Equal(t, "ledger1", di.DropIndex.GetLedger())
 	meta := di.DropIndex.GetId().GetMetadata()
@@ -98,14 +98,14 @@ func TestHandleDropIndex_InvalidCanonical(t *testing.T) {
 func TestHandleDropIndex_IdempotencyKeyPropagated(t *testing.T) {
 	t.Parallel()
 
-	var capturedBatch *commonpb.ApplyBatch
+	var capturedBatch *ledgerpb.ApplyBatch
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, req *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedBatch = req.GetUnsigned()
 
-			return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{{}}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -128,7 +128,7 @@ func TestHandleDropIndex_BackendError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, errors.New("apply failed")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)

@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // TestSortNumscriptVersions pins the deterministic order: stored semver versions
@@ -13,7 +13,7 @@ import (
 func TestSortNumscriptVersions(t *testing.T) {
 	t.Parallel()
 
-	entries := []*commonpb.NumscriptVersionEntry{
+	entries := []*ledgerpb.NumscriptVersionEntry{
 		{Version: "1.0.2"},
 		{Version: "1.0.10"},
 		{Version: "2.0.0"},

@@ -17,7 +17,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/application/accountlifecycle"
@@ -411,7 +411,7 @@ func NewAdmission(
 
 // observeCallerSnapshot retains post-commit diagnostics as a defense-in-depth
 // check. Admission and the FSM reject malformed snapshots before this point.
-func (a *Admission) observeCallerSnapshot(ctx context.Context, snap *commonpb.CallerSnapshot) {
+func (a *Admission) observeCallerSnapshot(ctx context.Context, snap *ledgerpb.CallerSnapshot) {
 	if snap == nil || snap.GetPrincipal() == nil {
 		a.logger.Errorf("committed write has a missing caller snapshot or unset principal: audit entry will be unattributed")
 		a.missingCallerCounter.Add(ctx, 1)
@@ -421,7 +421,7 @@ func (a *Admission) observeCallerSnapshot(ctx context.Context, snap *commonpb.Ca
 
 	id := snap.GetAuthenticated().GetIdentity()
 	switch id.GetSource().(type) {
-	case *commonpb.CallerIdentity_KeyId, *commonpb.CallerIdentity_Issuer:
+	case *ledgerpb.CallerIdentity_KeyId, *ledgerpb.CallerIdentity_Issuer:
 		if id.GetSubject() == "" {
 			a.logger.Infof("committed write caller has a source but an empty subject: audit entry identifies the caller only by source")
 			a.callerSubjectEmptyCounter.Add(ctx, 1)
@@ -494,7 +494,7 @@ func (a *Admission) recordPhaseOnExit(ctx context.Context, hist metric.Int64Hist
 // 3. When not guaranteed, load base value from store at boundary B(nextIndex)
 // 4. For volumes not guaranteed in cache, load base values from store at B(nextIndex)
 // 5. Propose command with Preload containing base values.
-func (a *Admission) Admit(ctx context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+func (a *Admission) Admit(ctx context.Context, req *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 	return a.admitWithResolver(ctx, func(ctx context.Context) (verifiedBatch, error) {
 		return a.resolveBatch(ctx, req)
 	})
@@ -502,7 +502,7 @@ func (a *Admission) Admit(ctx context.Context, req *commonpb.ApplyRequest) (*dom
 
 // AdmitClusterPolicy admits the leader's internal cluster-policy reconciliation
 // without routing an internal command through the public Apply envelope.
-func (a *Admission) AdmitClusterPolicy(ctx context.Context, policy *commonpb.ClusterPolicy) (*domain.ApplyResult, error) {
+func (a *Admission) AdmitClusterPolicy(ctx context.Context, policy *ledgerpb.ClusterPolicy) (*domain.ApplyResult, error) {
 	if policy == nil {
 		return nil, errors.New("cluster policy must not be nil")
 	}
@@ -677,7 +677,7 @@ func (a *Admission) admitWithResolver(ctx context.Context, resolve batchResolver
 	cmd := commands.NewCommand(orders...)
 	cmd.CallerSnapshot = caller.Snapshot()
 	if batch.key != "" {
-		cmd.Idempotency = &commonpb.Idempotency{Key: batch.key}
+		cmd.Idempotency = &ledgerpb.Idempotency{Key: batch.key}
 	}
 	cmd.Signature = batch.sig
 
@@ -889,7 +889,7 @@ func (a *Admission) admitWithResolver(ctx context.Context, resolve batchResolver
 		a.responseResolutionDurationHistogram.Record(ctx, time.Since(responseResolutionStart).Microseconds())
 	}()
 
-	logs := make([]*commonpb.Log, len(result.Logs))
+	logs := make([]*ledgerpb.Log, len(result.Logs))
 
 	// A referenced log is resolved from the permanent log history. The read
 	// needs a read handle, which the raw store is not; open one lazily, only
@@ -1079,9 +1079,9 @@ func (a *Admission) expandAccountLifecycleCoverage(ctx context.Context, aggregat
 // deliberately conservative: a skipped add/remove may leave either side of a
 // transition effective, and coverage must be sufficient for both outcomes.
 func (a *Admission) accountLifecycleTypeSnapshots(orders []*raftcmdpb.Order) (map[string][][]accounttype.CompiledType, error) {
-	typesByLedger := make(map[string]map[string]*commonpb.AccountType)
+	typesByLedger := make(map[string]map[string]*ledgerpb.AccountType)
 	snapshots := make(map[string][][]accounttype.CompiledType)
-	load := func(ledger string) (map[string]*commonpb.AccountType, error) {
+	load := func(ledger string) (map[string]*ledgerpb.AccountType, error) {
 		if types, ok := typesByLedger[ledger]; ok {
 			return types, nil
 		}
@@ -1089,7 +1089,7 @@ func (a *Admission) accountLifecycleTypeSnapshots(orders []*raftcmdpb.Order) (ma
 		if err != nil {
 			return nil, err
 		}
-		types := make(map[string]*commonpb.AccountType)
+		types := make(map[string]*ledgerpb.AccountType)
 		if info != nil {
 			for name, accountType := range info.GetAccountTypes() {
 				types[name] = accountType.CloneVT()
@@ -1131,7 +1131,7 @@ func (a *Admission) accountLifecycleTypeSnapshots(orders []*raftcmdpb.Order) (ma
 func accountMatchesEphemeralSnapshot(account string, snapshots [][]accounttype.CompiledType) bool {
 	for _, compiled := range snapshots {
 		matched := accounttype.FindMatchingType(account, compiled)
-		if matched != nil && matched.GetPersistence() == commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL {
+		if matched != nil && matched.GetPersistence() == ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL {
 			return true
 		}
 	}
@@ -1139,7 +1139,7 @@ func accountMatchesEphemeralSnapshot(account string, snapshots [][]accounttype.C
 	return false
 }
 
-func (a *Admission) checkQueryCheckpointProjectionReady(reqs []*commonpb.Request) error {
+func (a *Admission) checkQueryCheckpointProjectionReady(reqs []*ledgerpb.Request) error {
 	if a.auditProjectionState == nil {
 		return nil
 	}
@@ -1236,10 +1236,10 @@ func (a *Admission) marshalCommand(ctx context.Context, cmd *raftcmdpb.Proposal)
 // verification: the ordered requests, the batch idempotency key, and the
 // signing envelope (nil if unsigned), propagated onto the Proposal for audit.
 type verifiedBatch struct {
-	requests      []*commonpb.Request
+	requests      []*ledgerpb.Request
 	key           string
-	sig           *commonpb.SignedApplyBatch
-	clusterPolicy *commonpb.ClusterPolicy
+	sig           *ledgerpb.SignedApplyBatch
+	clusterPolicy *ledgerpb.ClusterPolicy
 }
 
 // resolveBatch verifies the batch signature (if any), unwraps the trusted
@@ -1247,9 +1247,9 @@ type verifiedBatch struct {
 // signature is verified against the payload bytes and the trusted batch is
 // unmarshaled from them — the server never re-serializes. An unsigned batch is
 // admitted only when signatures are not required (or for signing bootstrap).
-func (a *Admission) resolveBatch(ctx context.Context, req *commonpb.ApplyRequest) (verifiedBatch, error) {
+func (a *Admission) resolveBatch(ctx context.Context, req *ledgerpb.ApplyRequest) (verifiedBatch, error) {
 	switch v := req.GetVariant().(type) {
-	case *commonpb.ApplyRequest_Signed:
+	case *ledgerpb.ApplyRequest_Signed:
 		sb := v.Signed
 
 		pubKey := a.keyStore.GetPublicKey(sb.GetKeyId())
@@ -1271,7 +1271,7 @@ func (a *Admission) resolveBatch(ctx context.Context, req *commonpb.ApplyRequest
 		}
 
 		return verifiedBatch{requests: batch.GetRequests(), key: batch.GetIdempotencyKey(), sig: sb}, nil
-	case *commonpb.ApplyRequest_Unsigned:
+	case *ledgerpb.ApplyRequest_Unsigned:
 		batch := v.Unsigned
 		if batch == nil {
 			return verifiedBatch{}, fmt.Errorf("%w: empty unsigned batch", signing.ErrMissingSignature)
@@ -1296,7 +1296,7 @@ func (a *Admission) resolveBatch(ctx context.Context, req *commonpb.ApplyRequest
 //   - RegisterSigningKey is allowed unsigned when no keys exist yet (bootstrap)
 //   - all other signing-management requests require a signature once keys exist
 //   - regular requests check the requireSignatures flag
-func (a *Admission) authorizeUnsignedBatch(ctx context.Context, reqs []*commonpb.Request) error {
+func (a *Admission) authorizeUnsignedBatch(ctx context.Context, reqs []*ledgerpb.Request) error {
 	// Leader-internal proposals (the query-checkpoint scheduler) travel
 	// through admission unsigned under a system
 	// actor set only by server-internal code. RequireSignatures authenticates
@@ -1352,11 +1352,11 @@ func validateIdempotencyKey(key string) error {
 
 // isSigningManagementRequest returns true if the request is a signing key
 // management operation (register, revoke, or config change).
-func isSigningManagementRequest(req *commonpb.Request) bool {
+func isSigningManagementRequest(req *ledgerpb.Request) bool {
 	switch req.GetType().(type) {
-	case *commonpb.Request_RegisterSigningKey,
-		*commonpb.Request_RevokeSigningKey,
-		*commonpb.Request_SetSigningConfig:
+	case *ledgerpb.Request_RegisterSigningKey,
+		*ledgerpb.Request_RevokeSigningKey,
+		*ledgerpb.Request_SetSigningConfig:
 		return true
 	}
 
@@ -1365,8 +1365,8 @@ func isSigningManagementRequest(req *commonpb.Request) bool {
 
 // isRegisterSigningKeyRequest returns true if the request is specifically
 // a RegisterSigningKey request.
-func isRegisterSigningKeyRequest(req *commonpb.Request) bool {
-	_, ok := req.GetType().(*commonpb.Request_RegisterSigningKey)
+func isRegisterSigningKeyRequest(req *ledgerpb.Request) bool {
+	_, ok := req.GetType().(*ledgerpb.Request_RegisterSigningKey)
 
 	return ok
 }
@@ -1416,9 +1416,9 @@ func (errCheckpointOrderNotLast) Kind() domain.ErrorKind { return domain.KindVal
 var ErrCheckpointOrderNotLast domain.Classifiable = errCheckpointOrderNotLast{}
 
 // allRequestsAreMaintenanceMode returns true if every request in the batch is a SetMaintenanceMode request.
-func allRequestsAreMaintenanceMode(reqs []*commonpb.Request) bool {
+func allRequestsAreMaintenanceMode(reqs []*ledgerpb.Request) bool {
 	for _, req := range reqs {
-		if _, ok := req.GetType().(*commonpb.Request_SetMaintenanceMode); !ok {
+		if _, ok := req.GetType().(*ledgerpb.Request_SetMaintenanceMode); !ok {
 			return false
 		}
 	}
@@ -1562,7 +1562,7 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 
 		mi := payload.MirrorIngest
 
-		var postings []*commonpb.Posting
+		var postings []*ledgerpb.Posting
 		if ct := mi.GetEntry().GetCreatedTransaction(); ct != nil {
 			postings = ct.GetPostings()
 		} else if rt := mi.GetEntry().GetRevertedTransaction(); rt != nil {
@@ -1589,21 +1589,21 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 
 		if sm := mi.GetEntry().GetSavedMetadata(); sm != nil {
 			switch target := sm.GetTarget().GetTarget().(type) {
-			case *commonpb.Target_Account:
+			case *ledgerpb.Target_Account:
 				for key := range sm.GetMetadata() {
 					p.Add(dal.SubAttrMetadata, domain.MetadataKey{
 						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
 						Key:        key,
 					}.Bytes())
 				}
-			case *commonpb.Target_TransactionId:
+			case *ledgerpb.Target_TransactionId:
 				addTransactionTargetNeeds(p, ledgerName, target.TransactionId)
 			}
 		}
 
 		if dm := mi.GetEntry().GetDeletedMetadata(); dm != nil {
 			switch target := dm.GetTarget().GetTarget().(type) {
-			case *commonpb.Target_Account:
+			case *ledgerpb.Target_Account:
 				// Mirror-ingested v2 DELETE_METADATA log applies via
 				// processMirrorDeletedMetadata → AccountMetadata.Delete
 				// → KeyStore.Tombstone. Declare coverage; Tombstone
@@ -1613,7 +1613,7 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 					AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
 					Key:        dm.GetKey(),
 				}.Bytes())
-			case *commonpb.Target_TransactionId:
+			case *ledgerpb.Target_TransactionId:
 				// Transaction metadata lives inside the TransactionState
 				// map — no strict-tombstone path, no extra coverage needed.
 				addTransactionTargetNeeds(p, ledgerName, target.TransactionId)
@@ -1721,7 +1721,7 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 			}
 
 		case *raftcmdpb.LedgerApplyOrder_AddMetadata:
-			if target, ok := applyData.AddMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
+			if target, ok := applyData.AddMetadata.GetTarget().GetTarget().(*ledgerpb.Target_Account); ok {
 				for key := range applyData.AddMetadata.GetMetadata() {
 					p.Add(dal.SubAttrMetadata, domain.MetadataKey{
 						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
@@ -1730,12 +1730,12 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 				}
 			}
 
-			if tx, ok := applyData.AddMetadata.GetTarget().GetTarget().(*commonpb.Target_TransactionId); ok {
+			if tx, ok := applyData.AddMetadata.GetTarget().GetTarget().(*ledgerpb.Target_TransactionId); ok {
 				addTransactionTargetNeeds(p, ledgerName, tx.TransactionId)
 			}
 
 		case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
-			if target, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
+			if target, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*ledgerpb.Target_Account); ok {
 				// Account-metadata Delete's apply routes through
 				// KeyStore.Tombstone. Declare
 				// coverage (invariant #6 / #9); Tombstone lazy-
@@ -1747,7 +1747,7 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 				}.Bytes())
 			}
 
-			if tx, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_TransactionId); ok {
+			if tx, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*ledgerpb.Target_TransactionId); ok {
 				// Transaction metadata lives inside the transaction state
 				// (a TransactionState.Metadata map, not a separate cache
 				// attribute), so strict-tombstone does not apply.
@@ -2148,7 +2148,7 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 
 			// Only account-targeted metadata is observable by a later meta();
 			// transaction-targeted metadata is not.
-			if acct, isAcct := applyData.AddMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); isAcct {
+			if acct, isAcct := applyData.AddMetadata.GetTarget().GetTarget().(*ledgerpb.Target_Account); isAcct {
 				for k, v := range applyData.AddMetadata.GetMetadata() {
 					effects.setMetadata(domain.MetadataKey{
 						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: acct.Account.GetAddr()},
@@ -2165,7 +2165,7 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 
 			// A preceding account-metadata delete tombstones the key so a
 			// later meta() resolves absent, matching the FSM's post-delete state.
-			if acct, isAcct := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); isAcct {
+			if acct, isAcct := applyData.DeleteMetadata.GetTarget().GetTarget().(*ledgerpb.Target_Account); isAcct {
 				effects.deleteMetadata(domain.MetadataKey{
 					AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: acct.Account.GetAddr()},
 					Key:        applyData.DeleteMetadata.GetKey(),
@@ -2379,11 +2379,11 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 // requestToOrder converts a single Request into its ledger- or system-scoped
 // raftcmdpb.Order. batchSig is consulted only by the signing-key registration
 // path, to record the signing key as the new key's parent.
-func (a *Admission) requestToOrder(ctx context.Context, req *commonpb.Request, batchSig *commonpb.SignedApplyBatch, overlay *bulkOverlay) (*raftcmdpb.Order, error) {
+func (a *Admission) requestToOrder(ctx context.Context, req *ledgerpb.Request, batchSig *ledgerpb.SignedApplyBatch, overlay *bulkOverlay) (*raftcmdpb.Order, error) {
 	order := &raftcmdpb.Order{}
 
 	switch reqType := req.GetType().(type) {
-	case *commonpb.Request_CreateLedger:
+	case *ledgerpb.Request_CreateLedger:
 		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
 			Ledger: reqType.CreateLedger.GetName(),
 			Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
@@ -2396,14 +2396,14 @@ func (a *Admission) requestToOrder(ctx context.Context, req *commonpb.Request, b
 				},
 			},
 		})
-	case *commonpb.Request_DeleteLedger:
+	case *ledgerpb.Request_DeleteLedger:
 		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
 			Ledger: reqType.DeleteLedger.GetName(),
 			Payload: &raftcmdpb.LedgerScopedOrder_DeleteLedger{
 				DeleteLedger: &raftcmdpb.DeleteLedgerOrder{},
 			},
 		})
-	case *commonpb.Request_Apply:
+	case *ledgerpb.Request_Apply:
 		// Validate and extract the per-order skippable_reasons opt-in
 		// from the public payload BEFORE constructing the raft Order, so
 		// a bad whitelist gets a clear admission rejection instead of a
@@ -2435,7 +2435,7 @@ func (a *Admission) requestToOrder(ctx context.Context, req *commonpb.Request, b
 				Apply: applyOrder,
 			},
 		})
-	case *commonpb.Request_RegisterSigningKey:
+	case *ledgerpb.Request_RegisterSigningKey:
 		var parentKeyID string
 		if batchSig != nil {
 			parentKeyID = batchSig.GetKeyId()
@@ -2450,7 +2450,7 @@ func (a *Admission) requestToOrder(ctx context.Context, req *commonpb.Request, b
 				},
 			},
 		})
-	case *commonpb.Request_RevokeSigningKey:
+	case *ledgerpb.Request_RevokeSigningKey:
 		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
 			Payload: &raftcmdpb.SystemScopedOrder_RevokeSigningKey{
 				RevokeSigningKey: &raftcmdpb.RevokeSigningKeyOrder{
@@ -2459,7 +2459,7 @@ func (a *Admission) requestToOrder(ctx context.Context, req *commonpb.Request, b
 				},
 			},
 		})
-	case *commonpb.Request_SetSigningConfig:
+	case *ledgerpb.Request_SetSigningConfig:
 		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
 			Payload: &raftcmdpb.SystemScopedOrder_SetSigningConfig{
 				SetSigningConfig: &raftcmdpb.SetSigningConfigOrder{
@@ -2467,7 +2467,7 @@ func (a *Admission) requestToOrder(ctx context.Context, req *commonpb.Request, b
 				},
 			},
 		})
-	case *commonpb.Request_AddEventsSink:
+	case *ledgerpb.Request_AddEventsSink:
 		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
 			Payload: &raftcmdpb.SystemScopedOrder_AddEventsSink{
 				AddEventsSink: &raftcmdpb.AddEventsSinkOrder{
@@ -2477,7 +2477,7 @@ func (a *Admission) requestToOrder(ctx context.Context, req *commonpb.Request, b
 		})
 
 		overlay.sinks.Put(reqType.AddEventsSink.GetConfig().GetName(), reqType.AddEventsSink.GetConfig())
-	case *commonpb.Request_RemoveEventsSink:
+	case *ledgerpb.Request_RemoveEventsSink:
 		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
 			Payload: &raftcmdpb.SystemScopedOrder_RemoveEventsSink{
 				RemoveEventsSink: &raftcmdpb.RemoveEventsSinkOrder{
@@ -2488,7 +2488,7 @@ func (a *Admission) requestToOrder(ctx context.Context, req *commonpb.Request, b
 		})
 
 		overlay.sinks.Delete(reqType.RemoveEventsSink.GetName())
-	case *commonpb.Request_SetMaintenanceMode:
+	case *ledgerpb.Request_SetMaintenanceMode:
 		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
 			Payload: &raftcmdpb.SystemScopedOrder_SetMaintenanceMode{
 				SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{
@@ -2496,14 +2496,14 @@ func (a *Admission) requestToOrder(ctx context.Context, req *commonpb.Request, b
 				},
 			},
 		})
-	case *commonpb.Request_PromoteLedger:
+	case *ledgerpb.Request_PromoteLedger:
 		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
 			Ledger: reqType.PromoteLedger.GetLedger(),
 			Payload: &raftcmdpb.LedgerScopedOrder_PromoteLedger{
 				PromoteLedger: &raftcmdpb.PromoteLedgerOrder{},
 			},
 		})
-	case *commonpb.Request_CreatePreparedQuery:
+	case *ledgerpb.Request_CreatePreparedQuery:
 		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
 			Ledger: reqType.CreatePreparedQuery.GetLedger(),
 			Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
@@ -2512,7 +2512,7 @@ func (a *Admission) requestToOrder(ctx context.Context, req *commonpb.Request, b
 				},
 			},
 		})
-	case *commonpb.Request_UpdatePreparedQuery:
+	case *ledgerpb.Request_UpdatePreparedQuery:
 		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
 			Ledger: reqType.UpdatePreparedQuery.GetLedger(),
 			Payload: &raftcmdpb.LedgerScopedOrder_UpdatePreparedQuery{
@@ -2522,7 +2522,7 @@ func (a *Admission) requestToOrder(ctx context.Context, req *commonpb.Request, b
 				},
 			},
 		})
-	case *commonpb.Request_DeletePreparedQuery:
+	case *ledgerpb.Request_DeletePreparedQuery:
 		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
 			Ledger: reqType.DeletePreparedQuery.GetLedger(),
 			Payload: &raftcmdpb.LedgerScopedOrder_DeletePreparedQuery{
@@ -2531,7 +2531,7 @@ func (a *Admission) requestToOrder(ctx context.Context, req *commonpb.Request, b
 				},
 			},
 		})
-	case *commonpb.Request_SetMetadataFieldType:
+	case *ledgerpb.Request_SetMetadataFieldType:
 		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
 			Ledger: reqType.SetMetadataFieldType.GetLedger(),
 			Payload: &raftcmdpb.LedgerScopedOrder_Apply{
@@ -2546,7 +2546,7 @@ func (a *Admission) requestToOrder(ctx context.Context, req *commonpb.Request, b
 				},
 			},
 		})
-	case *commonpb.Request_RemoveMetadataFieldType:
+	case *ledgerpb.Request_RemoveMetadataFieldType:
 		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
 			Ledger: reqType.RemoveMetadataFieldType.GetLedger(),
 			Payload: &raftcmdpb.LedgerScopedOrder_Apply{
@@ -2560,7 +2560,7 @@ func (a *Admission) requestToOrder(ctx context.Context, req *commonpb.Request, b
 				},
 			},
 		})
-	case *commonpb.Request_CreateIndex:
+	case *ledgerpb.Request_CreateIndex:
 		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
 			Ledger: reqType.CreateIndex.GetLedger(),
 			Payload: &raftcmdpb.LedgerScopedOrder_Apply{
@@ -2571,7 +2571,7 @@ func (a *Admission) requestToOrder(ctx context.Context, req *commonpb.Request, b
 				},
 			},
 		})
-	case *commonpb.Request_DropIndex:
+	case *ledgerpb.Request_DropIndex:
 		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
 			Ledger: reqType.DropIndex.GetLedger(),
 			Payload: &raftcmdpb.LedgerScopedOrder_Apply{
@@ -2582,7 +2582,7 @@ func (a *Admission) requestToOrder(ctx context.Context, req *commonpb.Request, b
 				},
 			},
 		})
-	case *commonpb.Request_SaveNumscript:
+	case *ledgerpb.Request_SaveNumscript:
 		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
 			Ledger: reqType.SaveNumscript.GetLedger(),
 			Payload: &raftcmdpb.LedgerScopedOrder_SaveNumscript{
@@ -2600,13 +2600,13 @@ func (a *Admission) requestToOrder(ctx context.Context, req *commonpb.Request, b
 			reqType.SaveNumscript.GetVersion(),
 			reqType.SaveNumscript.GetContent(),
 		)
-	case *commonpb.Request_CreateQueryCheckpoint:
+	case *ledgerpb.Request_CreateQueryCheckpoint:
 		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
 			Payload: &raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint{
 				CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{},
 			},
 		})
-	case *commonpb.Request_DeleteQueryCheckpoint:
+	case *ledgerpb.Request_DeleteQueryCheckpoint:
 		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
 			Payload: &raftcmdpb.SystemScopedOrder_DeleteQueryCheckpoint{
 				DeleteQueryCheckpoint: &raftcmdpb.DeleteQueryCheckpointOrder{
@@ -2614,7 +2614,7 @@ func (a *Admission) requestToOrder(ctx context.Context, req *commonpb.Request, b
 				},
 			},
 		})
-	case *commonpb.Request_SetQueryCheckpointSchedule:
+	case *ledgerpb.Request_SetQueryCheckpointSchedule:
 		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
 			Payload: &raftcmdpb.SystemScopedOrder_SetQueryCheckpointSchedule{
 				SetQueryCheckpointSchedule: &raftcmdpb.SetQueryCheckpointScheduleOrder{
@@ -2622,13 +2622,13 @@ func (a *Admission) requestToOrder(ctx context.Context, req *commonpb.Request, b
 				},
 			},
 		})
-	case *commonpb.Request_DeleteQueryCheckpointSchedule:
+	case *ledgerpb.Request_DeleteQueryCheckpointSchedule:
 		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
 			Payload: &raftcmdpb.SystemScopedOrder_DeleteQueryCheckpointSchedule{
 				DeleteQueryCheckpointSchedule: &raftcmdpb.DeleteQueryCheckpointScheduleOrder{},
 			},
 		})
-	case *commonpb.Request_AddAccountType:
+	case *ledgerpb.Request_AddAccountType:
 		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
 			Ledger: reqType.AddAccountType.GetLedger(),
 			Payload: &raftcmdpb.LedgerScopedOrder_Apply{
@@ -2641,7 +2641,7 @@ func (a *Admission) requestToOrder(ctx context.Context, req *commonpb.Request, b
 				},
 			},
 		})
-	case *commonpb.Request_RemoveAccountType:
+	case *ledgerpb.Request_RemoveAccountType:
 		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
 			Ledger: reqType.RemoveAccountType.GetLedger(),
 			Payload: &raftcmdpb.LedgerScopedOrder_Apply{
@@ -2654,7 +2654,7 @@ func (a *Admission) requestToOrder(ctx context.Context, req *commonpb.Request, b
 				},
 			},
 		})
-	case *commonpb.Request_SetDefaultEnforcementMode:
+	case *ledgerpb.Request_SetDefaultEnforcementMode:
 		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
 			Ledger: reqType.SetDefaultEnforcementMode.GetLedger(),
 			Payload: &raftcmdpb.LedgerScopedOrder_Apply{
@@ -2667,7 +2667,7 @@ func (a *Admission) requestToOrder(ctx context.Context, req *commonpb.Request, b
 				},
 			},
 		})
-	case *commonpb.Request_SaveLedgerMetadata:
+	case *ledgerpb.Request_SaveLedgerMetadata:
 		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
 			Ledger: reqType.SaveLedgerMetadata.GetLedger(),
 			Payload: &raftcmdpb.LedgerScopedOrder_SaveLedgerMetadata{
@@ -2676,7 +2676,7 @@ func (a *Admission) requestToOrder(ctx context.Context, req *commonpb.Request, b
 				},
 			},
 		})
-	case *commonpb.Request_DeleteLedgerMetadata:
+	case *ledgerpb.Request_DeleteLedgerMetadata:
 		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
 			Ledger: reqType.DeleteLedgerMetadata.GetLedger(),
 			Payload: &raftcmdpb.LedgerScopedOrder_DeleteLedgerMetadata{
@@ -2697,14 +2697,14 @@ func (a *Admission) requestToOrder(ctx context.Context, req *commonpb.Request, b
 	return order, nil
 }
 
-// convertApplyRequest converts a commonpb.LedgerApplyRequest to a
+// convertApplyRequest converts a ledgerpb.LedgerApplyRequest to a
 // raftcmdpb.LedgerApplyOrder payload. The ledger name lives on the
 // surrounding LedgerScopedOrder wrapper; callers must set it there.
-func (a *Admission) convertApplyRequest(ctx context.Context, apply *commonpb.LedgerApplyRequest, overlay *bulkOverlay) (*raftcmdpb.LedgerApplyOrder, error) {
+func (a *Admission) convertApplyRequest(ctx context.Context, apply *ledgerpb.LedgerApplyRequest, overlay *bulkOverlay) (*raftcmdpb.LedgerApplyOrder, error) {
 	order := &raftcmdpb.LedgerApplyOrder{}
 
 	switch data := apply.GetAction().GetData().(type) {
-	case *commonpb.LedgerAction_CreateTransaction:
+	case *ledgerpb.LedgerAction_CreateTransaction:
 		ct := data.CreateTransaction
 		script := ct.GetScript()
 
@@ -2720,7 +2720,7 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *commonpb.Led
 			}
 
 			// Pass vars through; content will be resolved in resolveScriptsAndEnrichNeeds
-			script = &commonpb.Script{
+			script = &ledgerpb.Script{
 				Vars: ct.GetScriptReference().GetVars(),
 			}
 
@@ -2743,39 +2743,39 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *commonpb.Led
 				NumscriptReference: numscriptRef,
 			},
 		}
-	case *commonpb.LedgerAction_AddMetadata:
+	case *ledgerpb.LedgerAction_AddMetadata:
 		order.Data = &raftcmdpb.LedgerApplyOrder_AddMetadata{
 			AddMetadata: &raftcmdpb.SaveMetadataOrder{
 				Target:   data.AddMetadata.GetTarget(),
 				Metadata: data.AddMetadata.GetMetadata(),
 			},
 		}
-	case *commonpb.LedgerAction_DeleteMetadata:
+	case *ledgerpb.LedgerAction_DeleteMetadata:
 		order.Data = &raftcmdpb.LedgerApplyOrder_DeleteMetadata{
 			DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
 				Target: data.DeleteMetadata.GetTarget(),
 				Key:    data.DeleteMetadata.GetKey(),
 			},
 		}
-	case *commonpb.LedgerAction_AddAccountType:
+	case *ledgerpb.LedgerAction_AddAccountType:
 		order.Data = &raftcmdpb.LedgerApplyOrder_AddAccountType{
 			AddAccountType: &raftcmdpb.AddAccountTypeOrder{
 				AccountType: data.AddAccountType.GetAccountType(),
 			},
 		}
-	case *commonpb.LedgerAction_RemoveAccountType:
+	case *ledgerpb.LedgerAction_RemoveAccountType:
 		order.Data = &raftcmdpb.LedgerApplyOrder_RemoveAccountType{
 			RemoveAccountType: &raftcmdpb.RemoveAccountTypeOrder{
 				Name: data.RemoveAccountType.GetName(),
 			},
 		}
-	case *commonpb.LedgerAction_SetDefaultEnforcementMode:
+	case *ledgerpb.LedgerAction_SetDefaultEnforcementMode:
 		order.Data = &raftcmdpb.LedgerApplyOrder_UpdateDefaultEnforcementMode{
 			UpdateDefaultEnforcementMode: &raftcmdpb.UpdateDefaultEnforcementModeOrder{
 				EnforcementMode: data.SetDefaultEnforcementMode.GetEnforcementMode(),
 			},
 		}
-	case *commonpb.LedgerAction_RevertTransaction:
+	case *ledgerpb.LedgerAction_RevertTransaction:
 		// Resolve the target transaction id. When the caller supplied a
 		// reference, look it up in the store; Revert never resolves against
 		// the current batch because that would require reading writes that
@@ -2873,7 +2873,7 @@ func (a *Admission) resolveNumscriptReference(overlay *bulkOverlay, ledgerName s
 	return info.GetContent(), info.GetVersion(), nil
 }
 
-func (a *Admission) requestsToOrders(ctx context.Context, reqs []*commonpb.Request, batchSig *commonpb.SignedApplyBatch, clusterPolicy *commonpb.ClusterPolicy) ([]*raftcmdpb.Order, *bulkOverlay, error) {
+func (a *Admission) requestsToOrders(ctx context.Context, reqs []*ledgerpb.Request, batchSig *ledgerpb.SignedApplyBatch, clusterPolicy *ledgerpb.ClusterPolicy) ([]*raftcmdpb.Order, *bulkOverlay, error) {
 	overlay := newBulkOverlay()
 	if clusterPolicy != nil {
 		order := &raftcmdpb.Order{}
@@ -2905,7 +2905,7 @@ func (a *Admission) requestsToOrders(ctx context.Context, reqs []*commonpb.Reque
 }
 
 // resolveRevertTarget returns the target transaction id of a Revert action.
-func (a *Admission) resolveRevertTarget(_ context.Context, _ string, payload *commonpb.RevertTransactionPayload) (uint64, error) {
+func (a *Admission) resolveRevertTarget(_ context.Context, _ string, payload *ledgerpb.RevertTransactionPayload) (uint64, error) {
 	id := payload.GetTransactionId()
 	if id == 0 {
 		return 0, &domain.BusinessError{Err: domain.ErrTransactionTargetMissing}

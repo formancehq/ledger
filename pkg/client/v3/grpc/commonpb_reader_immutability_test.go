@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // These tests pin the immutability contract of protoc-gen-reader for maps,
@@ -14,8 +14,8 @@ import (
 func TestTransactionReader_GetPostings_ListReaderProtectsElements(t *testing.T) {
 	t.Parallel()
 
-	posting := &commonpb.Posting{Source: "world", Destination: "user:1", Asset: "USD"}
-	tx := &commonpb.Transaction{Postings: []*commonpb.Posting{posting}}
+	posting := &ledgerpb.Posting{Source: "world", Destination: "user:1", Asset: "USD"}
+	tx := &ledgerpb.Transaction{Postings: []*ledgerpb.Posting{posting}}
 	r := tx.AsReader()
 
 	list := r.GetPostings()
@@ -36,8 +36,8 @@ func TestTransactionReader_GetPostings_ListReaderProtectsElements(t *testing.T) 
 func TestTransactionReader_GetMetadata_MapReaderProtectsValues(t *testing.T) {
 	t.Parallel()
 
-	val := &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: "original"}}
-	tx := &commonpb.Transaction{Metadata: map[string]*commonpb.MetadataValue{"key": val}}
+	val := &ledgerpb.MetadataValue{Type: &ledgerpb.MetadataValue_StringValue{StringValue: "original"}}
+	tx := &ledgerpb.Transaction{Metadata: map[string]*ledgerpb.MetadataValue{"key": val}}
 	r := tx.AsReader()
 
 	m := r.GetMetadata()
@@ -53,9 +53,9 @@ func TestTransactionReader_GetMetadata_MapReaderProtectsValues(t *testing.T) {
 
 	// Mutate returns a deep clone — overwriting it must not touch the original.
 	clone := got.Mutate()
-	clone.Type = &commonpb.MetadataValue_StringValue{StringValue: "MUTATED"}
+	clone.Type = &ledgerpb.MetadataValue_StringValue{StringValue: "MUTATED"}
 
-	originalStr, originalOK := val.GetType().(*commonpb.MetadataValue_StringValue)
+	originalStr, originalOK := val.GetType().(*ledgerpb.MetadataValue_StringValue)
 	require.True(t, originalOK)
 	require.Equal(t, "original", originalStr.StringValue)
 }
@@ -63,16 +63,16 @@ func TestTransactionReader_GetMetadata_MapReaderProtectsValues(t *testing.T) {
 func TestTransactionReader_GetMetadata_RangeYieldsReaderViews(t *testing.T) {
 	t.Parallel()
 
-	tx := &commonpb.Transaction{
-		Metadata: map[string]*commonpb.MetadataValue{
-			"a": {Type: &commonpb.MetadataValue_StringValue{StringValue: "A"}},
-			"b": {Type: &commonpb.MetadataValue_StringValue{StringValue: "B"}},
+	tx := &ledgerpb.Transaction{
+		Metadata: map[string]*ledgerpb.MetadataValue{
+			"a": {Type: &ledgerpb.MetadataValue_StringValue{StringValue: "A"}},
+			"b": {Type: &ledgerpb.MetadataValue_StringValue{StringValue: "B"}},
 		},
 	}
 	r := tx.AsReader()
 
 	seen := map[string]bool{}
-	r.GetMetadata().Range(func(k string, v commonpb.MetadataValueReader) bool {
+	r.GetMetadata().Range(func(k string, v ledgerpb.MetadataValueReader) bool {
 		seen[k] = v != nil
 
 		return true
@@ -84,7 +84,7 @@ func TestTransactionReader_GetMetadata_RangeYieldsReaderViews(t *testing.T) {
 func TestScriptReader_GetContentHash_ReturnsIndependentBytes(t *testing.T) {
 	t.Parallel()
 
-	script := &commonpb.Script{Plain: "send", ContentHash: []byte{0xCA, 0xFE, 0xBA, 0xBE}}
+	script := &ledgerpb.Script{Plain: "send", ContentHash: []byte{0xCA, 0xFE, 0xBA, 0xBE}}
 	r := script.AsReader()
 
 	got := r.GetContentHash()
@@ -97,7 +97,7 @@ func TestScriptReader_GetContentHash_ReturnsIndependentBytes(t *testing.T) {
 func TestScriptReader_GetVars_MapReaderLookupAndRange(t *testing.T) {
 	t.Parallel()
 
-	script := &commonpb.Script{Vars: map[string]string{"amount": "100", "ccy": "USD"}}
+	script := &ledgerpb.Script{Vars: map[string]string{"amount": "100", "ccy": "USD"}}
 	r := script.AsReader()
 
 	m := r.GetVars()
@@ -123,7 +123,7 @@ func TestScriptReader_GetVars_MapReaderLookupAndRange(t *testing.T) {
 func TestTransactionListReader_NilElementsTolerated(t *testing.T) {
 	t.Parallel()
 
-	list := commonpb.NewTransactionListReader([]*commonpb.Transaction{
+	list := ledgerpb.NewTransactionListReader([]*ledgerpb.Transaction{
 		{Id: 1},
 		nil,
 		{Id: 3},
@@ -135,7 +135,7 @@ func TestTransactionListReader_NilElementsTolerated(t *testing.T) {
 	require.NotNil(t, list.Get(2))
 
 	var ids []uint64
-	list.Range(func(_ int, r commonpb.TransactionReader) bool {
+	list.Range(func(_ int, r ledgerpb.TransactionReader) bool {
 		if r == nil {
 			ids = append(ids, 0)
 

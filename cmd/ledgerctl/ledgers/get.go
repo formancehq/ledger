@@ -8,7 +8,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -47,7 +47,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 
 	spinner := cmdutil.StartSpinner(fmt.Sprintf("Fetching ledger %s...", ledgerName))
 
-	ledger, err := client.GetLedger(ctx, &commonpb.GetLedgerRequest{
+	ledger, err := client.GetLedger(ctx, &ledgerpb.GetLedgerRequest{
 		Ledger: ledgerName,
 		Read:   cmdutil.BuildReadOptions(cmdutil.GetConsistencyFlags(cmd)),
 	})
@@ -97,7 +97,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func renderAccountTypes(types map[string]*commonpb.AccountType) {
+func renderAccountTypes(types map[string]*ledgerpb.AccountType) {
 	pterm.Println()
 	pterm.Println("Account Types:")
 	pterm.Println(pterm.Gray("─────────────────────────────────"))
@@ -124,7 +124,7 @@ func renderAccountTypes(types map[string]*commonpb.AccountType) {
 	_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 }
 
-func renderLedgerSchema(schema *commonpb.MetadataSchema) {
+func renderLedgerSchema(schema *ledgerpb.MetadataSchema) {
 	hasAccount := len(schema.GetAccountFields()) > 0
 	hasTransaction := len(schema.GetTransactionFields()) > 0
 
@@ -147,7 +147,7 @@ func renderLedgerSchema(schema *commonpb.MetadataSchema) {
 	}
 }
 
-func renderFieldSchemaTable(fields map[string]*commonpb.MetadataFieldSchema) {
+func renderFieldSchemaTable(fields map[string]*ledgerpb.MetadataFieldSchema) {
 	table := pterm.TableData{
 		{"  KEY", "TYPE"},
 	}

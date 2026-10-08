@@ -3,7 +3,7 @@ package main
 import (
 	"github.com/antithesishq/antithesis-sdk-go/random"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 )
 
@@ -28,33 +28,33 @@ type checkpointSnapshot struct {
 // while the checkpoint Apply is in flight.
 func generateCheckpointBulk(state oracle.GlobalState) oracle.Bulk {
 	ids := state.QueryCheckpointIDs()
-	var req *commonpb.Request
+	var req *ledgerpb.Request
 	switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}) {
 	case 0:
-		req = &commonpb.Request{Type: &commonpb.Request_SetQueryCheckpointSchedule{SetQueryCheckpointSchedule: &commonpb.SetQueryCheckpointScheduleRequest{Cron: random.RandomChoice(modelCheckpointCrons)}}}
+		req = &ledgerpb.Request{Type: &ledgerpb.Request_SetQueryCheckpointSchedule{SetQueryCheckpointSchedule: &ledgerpb.SetQueryCheckpointScheduleRequest{Cron: random.RandomChoice(modelCheckpointCrons)}}}
 	case 1:
-		req = &commonpb.Request{Type: &commonpb.Request_DeleteQueryCheckpointSchedule{DeleteQueryCheckpointSchedule: &commonpb.DeleteQueryCheckpointScheduleRequest{}}}
+		req = &ledgerpb.Request{Type: &ledgerpb.Request_DeleteQueryCheckpointSchedule{DeleteQueryCheckpointSchedule: &ledgerpb.DeleteQueryCheckpointScheduleRequest{}}}
 	case 2:
-		req = &commonpb.Request{Type: &commonpb.Request_SetQueryCheckpointSchedule{SetQueryCheckpointSchedule: &commonpb.SetQueryCheckpointScheduleRequest{Cron: "invalid checkpoint cron"}}}
+		req = &ledgerpb.Request{Type: &ledgerpb.Request_SetQueryCheckpointSchedule{SetQueryCheckpointSchedule: &ledgerpb.SetQueryCheckpointScheduleRequest{Cron: "invalid checkpoint cron"}}}
 	case 3:
-		req = &commonpb.Request{Type: &commonpb.Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &commonpb.DeleteQueryCheckpointRequest{}}}
+		req = &ledgerpb.Request{Type: &ledgerpb.Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &ledgerpb.DeleteQueryCheckpointRequest{}}}
 	case 4:
-		req = &commonpb.Request{Type: &commonpb.Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &commonpb.DeleteQueryCheckpointRequest{CheckpointId: state.NextQueryCheckpointID()}}}
+		req = &ledgerpb.Request{Type: &ledgerpb.Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &ledgerpb.DeleteQueryCheckpointRequest{CheckpointId: state.NextQueryCheckpointID()}}}
 	case 5, 6:
 		if len(ids) > 0 {
-			req = &commonpb.Request{Type: &commonpb.Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &commonpb.DeleteQueryCheckpointRequest{CheckpointId: random.RandomChoice(ids)}}}
+			req = &ledgerpb.Request{Type: &ledgerpb.Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &ledgerpb.DeleteQueryCheckpointRequest{CheckpointId: random.RandomChoice(ids)}}}
 		}
 	}
 	if req == nil {
-		req = &commonpb.Request{Type: &commonpb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &commonpb.CreateQueryCheckpointRequest{}}}
+		req = &ledgerpb.Request{Type: &ledgerpb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &ledgerpb.CreateQueryCheckpointRequest{}}}
 	}
 
-	return oracle.Bulk{Requests: []*commonpb.Request{req}}
+	return oracle.Bulk{Requests: []*ledgerpb.Request{req}}
 }
 
 // checkpointOrdersMatch checks the independent lifecycle prediction against
 // the actual global log payloads. No snapshots are published on disagreement.
-func checkpointOrdersMatch(bulk oracle.Bulk, orders []oracle.OrderResult, logs []*commonpb.Log) bool {
+func checkpointOrdersMatch(bulk oracle.Bulk, orders []oracle.OrderResult, logs []*ledgerpb.Log) bool {
 	for i, req := range bulk.Requests {
 		if req.GetCreateQueryCheckpoint() == nil && req.GetDeleteQueryCheckpoint() == nil && req.GetSetQueryCheckpointSchedule() == nil && req.GetDeleteQueryCheckpointSchedule() == nil {
 			continue
@@ -94,7 +94,7 @@ func checkpointOrdersMatch(bulk oracle.Bulk, orders []oracle.OrderResult, logs [
 // contents at max_sequence. Readers hold a value copy even after deletion. A
 // bounded history also retains known snapshots for later reads on replicas
 // that have not removed the files.
-func (c *Checker) recordCheckpoints(logs []*commonpb.Log) {
+func (c *Checker) recordCheckpoints(logs []*ledgerpb.Log) {
 	for _, log := range logs {
 		payload := log.GetPayload()
 		switch {

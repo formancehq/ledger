@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -56,14 +56,14 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 	)
 
 	switch k := task.index.GetKind().(type) {
-	case *commonpb.IndexID_TxBuiltin:
+	case *ledgerpb.IndexID_TxBuiltin:
 		// A tx-address builtin task: turn on the matching address-mapping
 		// flag and leave the account-by-asset hook off (cfg stays empty).
-		indexAny = k.TxBuiltin == commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS
-		indexSource = k.TxBuiltin == commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS
-		indexDestination = k.TxBuiltin == commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS
-	case *commonpb.IndexID_AccountBuiltin:
-		if k.AccountBuiltin != commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET {
+		indexAny = k.TxBuiltin == ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS
+		indexSource = k.TxBuiltin == ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS
+		indexDestination = k.TxBuiltin == ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS
+	case *ledgerpb.IndexID_AccountBuiltin:
+		if k.AccountBuiltin != ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET {
 			// Unreachable by design: isPostingIndex only routes the account
 			// has-asset builtin here. A miss means a misrouted task, which
 			// would otherwise spin as a no-op forever with the index stuck
@@ -73,7 +73,7 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 		// Account has-asset task: register only the account-asset index so
 		// the shared walk writes account-by-asset entries (all address-
 		// mapping flags stay off).
-		cfg.byCanonical[indexes.Canonical(task.index)] = &commonpb.Index{Id: task.index}
+		cfg.byCanonical[indexes.Canonical(task.index)] = &ledgerpb.Index{Id: task.index}
 	default:
 		// Unreachable by design: see above — isPostingIndex gates this
 		// function to tx-address builtins and the account has-asset index.
@@ -253,17 +253,17 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 // isPostingIndex returns true if the index is replayed through the shared
 // posting walk during backfill: the transaction builtin address indexes
 // (ADDRESS, SOURCE_ADDRESS, DESTINATION_ADDRESS) and the account has-asset index.
-func isPostingIndex(id *commonpb.IndexID) bool {
+func isPostingIndex(id *ledgerpb.IndexID) bool {
 	switch k := id.GetKind().(type) {
-	case *commonpb.IndexID_TxBuiltin:
+	case *ledgerpb.IndexID_TxBuiltin:
 		switch k.TxBuiltin {
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS,
-			commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS,
-			commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS:
+		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS,
+			ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS,
+			ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS:
 			return true
 		}
-	case *commonpb.IndexID_AccountBuiltin:
-		return k.AccountBuiltin == commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET
+	case *ledgerpb.IndexID_AccountBuiltin:
+		return k.AccountBuiltin == ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET
 	}
 
 	return false

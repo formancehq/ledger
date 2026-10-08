@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/oracle"
@@ -18,23 +18,23 @@ import (
 )
 
 type immediateApplyClient struct {
-	commonpb.BucketServiceClient
+	ledgerpb.BucketServiceClient
 }
 
-func (immediateApplyClient) Apply(context.Context, *commonpb.ApplyRequest, ...grpc.CallOption) (*commonpb.ApplyResponse, error) {
-	return &commonpb.ApplyResponse{}, nil
+func (immediateApplyClient) Apply(context.Context, *ledgerpb.ApplyRequest, ...grpc.CallOption) (*ledgerpb.ApplyResponse, error) {
+	return &ledgerpb.ApplyResponse{}, nil
 }
 
 type scriptedApplyClient struct {
-	commonpb.BucketServiceClient
+	ledgerpb.BucketServiceClient
 
-	responses []*commonpb.ApplyResponse
+	responses []*ledgerpb.ApplyResponse
 	errors    []error
 	calls     int
 }
 
-func (c *scriptedApplyClient) Apply(context.Context, *commonpb.ApplyRequest, ...grpc.CallOption) (*commonpb.ApplyResponse, error) {
-	response := (*commonpb.ApplyResponse)(nil)
+func (c *scriptedApplyClient) Apply(context.Context, *ledgerpb.ApplyRequest, ...grpc.CallOption) (*ledgerpb.ApplyResponse, error) {
+	response := (*ledgerpb.ApplyResponse)(nil)
 	if c.calls < len(c.responses) {
 		response = c.responses[c.calls]
 	}
@@ -86,7 +86,7 @@ func TestAmbiguousEnableSchedulesRecoveryOnLaterMaintenanceRejection(t *testing.
 	c := NewChecker([]string{"L"}, nil)
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
-	enable := oracle.Bulk{Requests: []*commonpb.Request{actions.SetMaintenanceModeAction(true)}}
+	enable := oracle.Bulk{Requests: []*ledgerpb.Request{actions.SetMaintenanceModeAction(true)}}
 	go func() {
 		dispatchBulk(ctx, client, nil, c, enable)
 		close(done)
@@ -137,7 +137,7 @@ func TestAmbiguousBusinessBulkRetriesThroughMaintenanceRecovery(t *testing.T) {
 	maintenanceStatus, err := status.New(codes.Unavailable, "maintenance").WithDetails(&errdetails.ErrorInfo{Reason: domain.ErrReasonMaintenanceMode})
 	require.NoError(t, err)
 	client := &scriptedApplyClient{
-		responses: []*commonpb.ApplyResponse{nil, nil, {}},
+		responses: []*ledgerpb.ApplyResponse{nil, nil, {}},
 		errors: []error{
 			status.Error(codes.Canceled, "response lost"),
 			maintenanceStatus.Err(),
@@ -145,7 +145,7 @@ func TestAmbiguousBusinessBulkRetriesThroughMaintenanceRecovery(t *testing.T) {
 		},
 	}
 	c := NewChecker([]string{"L"}, nil)
-	bulk := bulkOf(&commonpb.Request{Type: &commonpb.Request_SaveLedgerMetadata{SaveLedgerMetadata: &commonpb.SaveLedgerMetadataRequest{Ledger: "L"}}})
+	bulk := bulkOf(&ledgerpb.Request{Type: &ledgerpb.Request_SaveLedgerMetadata{SaveLedgerMetadata: &ledgerpb.SaveLedgerMetadataRequest{Ledger: "L"}}})
 	done := make(chan struct{})
 	go func() {
 		dispatchBulk(t.Context(), client, nil, c, bulk)
@@ -169,7 +169,7 @@ func TestProcessorPreservesAmbiguousMaintenanceEnableAsCandidate(t *testing.T) {
 	maintenanceStatus, err := status.New(codes.Unavailable, "maintenance").WithDetails(&errdetails.ErrorInfo{Reason: domain.ErrReasonMaintenanceMode})
 	require.NoError(t, err)
 	c := NewChecker([]string{"L"}, nil)
-	enable := oracle.Bulk{Requests: []*commonpb.Request{actions.SetMaintenanceModeAction(true)}}
+	enable := oracle.Bulk{Requests: []*ledgerpb.Request{actions.SetMaintenanceModeAction(true)}}
 	ticket := c.registerInflight(enable)
 
 	c.handleObservation(observation{
@@ -253,15 +253,15 @@ func TestResponseHighWaterExcludesWriterBlockedBeforeRegistration(t *testing.T) 
 func TestValidateLifecycleLogCanonicalizesAccountTypeNames(t *testing.T) {
 	t.Parallel()
 
-	req := &commonpb.Request{Type: &commonpb.Request_CreateLedger{CreateLedger: &commonpb.CreateLedgerRequest{
+	req := &ledgerpb.Request{Type: &ledgerpb.Request_CreateLedger{CreateLedger: &ledgerpb.CreateLedgerRequest{
 		Name:         "L",
-		AccountTypes: map[string]*commonpb.AccountType{"asset": {}},
+		AccountTypes: map[string]*ledgerpb.AccountType{"asset": {}},
 	}}}
-	payload := &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{
+	payload := &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{CreateLedger: &ledgerpb.CreatedLedgerLog{
 		Id:           1,
 		Name:         "L",
-		CreatedAt:    &commonpb.Timestamp{Data: 1},
-		AccountTypes: map[string]*commonpb.AccountType{"asset": {Name: "asset"}},
+		CreatedAt:    &ledgerpb.Timestamp{Data: 1},
+		AccountTypes: map[string]*ledgerpb.AccountType{"asset": {Name: "asset"}},
 	}}}
 
 	require.NoError(t, validateLifecycleLog(req, nil, payload))
@@ -282,11 +282,11 @@ func TestReserveLedgerCreateCountsOutstandingCreates(t *testing.T) {
 
 	c := NewChecker([]string{"model-0"}, nil)
 	c.liveTarget = 2
-	createOne := oracle.Bulk{Requests: []*commonpb.Request{{Type: &commonpb.Request_CreateLedger{
-		CreateLedger: &commonpb.CreateLedgerRequest{Name: "model-1"},
+	createOne := oracle.Bulk{Requests: []*ledgerpb.Request{{Type: &ledgerpb.Request_CreateLedger{
+		CreateLedger: &ledgerpb.CreateLedgerRequest{Name: "model-1"},
 	}}}}
-	createTwo := oracle.Bulk{Requests: []*commonpb.Request{{Type: &commonpb.Request_CreateLedger{
-		CreateLedger: &commonpb.CreateLedgerRequest{Name: "model-2"},
+	createTwo := oracle.Bulk{Requests: []*ledgerpb.Request{{Type: &ledgerpb.Request_CreateLedger{
+		CreateLedger: &ledgerpb.CreateLedgerRequest{Name: "model-2"},
 	}}}}
 
 	require.True(t, c.reserveLedgerCreate(createOne))
@@ -298,14 +298,14 @@ func TestReserveLedgerCreateExemptsTombstoneProbe(t *testing.T) {
 	t.Parallel()
 
 	c := NewChecker([]string{"model-0"}, nil)
-	deleted := c.modelState.Apply(bulkOf(&commonpb.Request{Type: &commonpb.Request_DeleteLedger{
-		DeleteLedger: &commonpb.DeleteLedgerRequest{Name: "model-0"},
+	deleted := c.modelState.Apply(bulkOf(&ledgerpb.Request{Type: &ledgerpb.Request_DeleteLedger{
+		DeleteLedger: &ledgerpb.DeleteLedgerRequest{Name: "model-0"},
 	}}))
 	require.True(t, deleted.OK)
 	c.modelState = deleted.State
 	c.liveTarget = 0
-	probe := bulkOf(&commonpb.Request{Type: &commonpb.Request_CreateLedger{
-		CreateLedger: &commonpb.CreateLedgerRequest{Name: "model-0"},
+	probe := bulkOf(&ledgerpb.Request{Type: &ledgerpb.Request_CreateLedger{
+		CreateLedger: &ledgerpb.CreateLedgerRequest{Name: "model-0"},
 	}})
 
 	require.True(t, c.reserveLedgerCreate(probe))

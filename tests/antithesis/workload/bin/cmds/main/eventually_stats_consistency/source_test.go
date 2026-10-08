@@ -18,24 +18,24 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // The tests use the generated client over a real gRPC transport. In particular,
 // trailers and errors after partial stream delivery follow the production wire
 // contract instead of being supplied by a hand-written client mock.
 type oracleTestServer struct {
-	clusterpb.UnimplementedBucketServiceServer
+	ledgerpb.UnimplementedBucketServiceServer
 
-	barrierFn     func(context.Context, *clusterpb.BarrierRequest) (*clusterpb.BarrierResponse, error)
-	listLedgersFn func(*clusterpb.ListLedgersRequest, clusterpb.BucketService_ListLedgersServer) error
-	listLogsFn    func(*clusterpb.ListLogsRequest, clusterpb.BucketService_ListLogsServer) error
-	getLedgerFn   func(context.Context, *clusterpb.GetLedgerRequest) (*clusterpb.LedgerInfo, error)
-	statsFn       func(context.Context, *clusterpb.GetLedgerStatsRequest) (*clusterpb.LedgerStats, error)
-	applyFn       func(context.Context, *clusterpb.ApplyRequest) (*clusterpb.ApplyResponse, error)
+	barrierFn     func(context.Context, *ledgerpb.BarrierRequest) (*ledgerpb.BarrierResponse, error)
+	listLedgersFn func(*ledgerpb.ListLedgersRequest, ledgerpb.BucketService_ListLedgersServer) error
+	listLogsFn    func(*ledgerpb.ListLogsRequest, ledgerpb.BucketService_ListLogsServer) error
+	getLedgerFn   func(context.Context, *ledgerpb.GetLedgerRequest) (*ledgerpb.LedgerInfo, error)
+	statsFn       func(context.Context, *ledgerpb.GetLedgerStatsRequest) (*ledgerpb.LedgerStats, error)
+	applyFn       func(context.Context, *ledgerpb.ApplyRequest) (*ledgerpb.ApplyResponse, error)
 }
 
-func (s *oracleTestServer) Barrier(ctx context.Context, req *clusterpb.BarrierRequest) (*clusterpb.BarrierResponse, error) {
+func (s *oracleTestServer) Barrier(ctx context.Context, req *ledgerpb.BarrierRequest) (*ledgerpb.BarrierResponse, error) {
 	if s.barrierFn == nil {
 		return s.UnimplementedBucketServiceServer.Barrier(ctx, req)
 	}
@@ -43,7 +43,7 @@ func (s *oracleTestServer) Barrier(ctx context.Context, req *clusterpb.BarrierRe
 	return s.barrierFn(ctx, req)
 }
 
-func (s *oracleTestServer) ListLedgers(req *clusterpb.ListLedgersRequest, stream clusterpb.BucketService_ListLedgersServer) error {
+func (s *oracleTestServer) ListLedgers(req *ledgerpb.ListLedgersRequest, stream ledgerpb.BucketService_ListLedgersServer) error {
 	if s.listLedgersFn == nil {
 		return s.UnimplementedBucketServiceServer.ListLedgers(req, stream)
 	}
@@ -51,7 +51,7 @@ func (s *oracleTestServer) ListLedgers(req *clusterpb.ListLedgersRequest, stream
 	return s.listLedgersFn(req, stream)
 }
 
-func (s *oracleTestServer) ListLogs(req *clusterpb.ListLogsRequest, stream clusterpb.BucketService_ListLogsServer) error {
+func (s *oracleTestServer) ListLogs(req *ledgerpb.ListLogsRequest, stream ledgerpb.BucketService_ListLogsServer) error {
 	if s.listLogsFn == nil {
 		return s.UnimplementedBucketServiceServer.ListLogs(req, stream)
 	}
@@ -59,7 +59,7 @@ func (s *oracleTestServer) ListLogs(req *clusterpb.ListLogsRequest, stream clust
 	return s.listLogsFn(req, stream)
 }
 
-func (s *oracleTestServer) GetLedger(ctx context.Context, req *clusterpb.GetLedgerRequest) (*clusterpb.LedgerInfo, error) {
+func (s *oracleTestServer) GetLedger(ctx context.Context, req *ledgerpb.GetLedgerRequest) (*ledgerpb.LedgerInfo, error) {
 	if s.getLedgerFn == nil {
 		return s.UnimplementedBucketServiceServer.GetLedger(ctx, req)
 	}
@@ -67,7 +67,7 @@ func (s *oracleTestServer) GetLedger(ctx context.Context, req *clusterpb.GetLedg
 	return s.getLedgerFn(ctx, req)
 }
 
-func (s *oracleTestServer) GetLedgerStats(ctx context.Context, req *clusterpb.GetLedgerStatsRequest) (*clusterpb.LedgerStats, error) {
+func (s *oracleTestServer) GetLedgerStats(ctx context.Context, req *ledgerpb.GetLedgerStatsRequest) (*ledgerpb.LedgerStats, error) {
 	if s.statsFn == nil {
 		return s.UnimplementedBucketServiceServer.GetLedgerStats(ctx, req)
 	}
@@ -75,7 +75,7 @@ func (s *oracleTestServer) GetLedgerStats(ctx context.Context, req *clusterpb.Ge
 	return s.statsFn(ctx, req)
 }
 
-func (s *oracleTestServer) Apply(ctx context.Context, req *clusterpb.ApplyRequest) (*clusterpb.ApplyResponse, error) {
+func (s *oracleTestServer) Apply(ctx context.Context, req *ledgerpb.ApplyRequest) (*ledgerpb.ApplyResponse, error) {
 	if s.applyFn == nil {
 		return s.UnimplementedBucketServiceServer.Apply(ctx, req)
 	}
@@ -83,13 +83,13 @@ func (s *oracleTestServer) Apply(ctx context.Context, req *clusterpb.ApplyReques
 	return s.applyFn(ctx, req)
 }
 
-func newOracleTestConn(t *testing.T, bucket clusterpb.BucketServiceServer, cluster ...clusterpb.ClusterServiceServer) *grpc.ClientConn {
+func newOracleTestConn(t *testing.T, bucket ledgerpb.BucketServiceServer, cluster ...ledgerpb.ClusterServiceServer) *grpc.ClientConn {
 	t.Helper()
 	listener := bufconn.Listen(1024 * 1024)
 	server := grpc.NewServer()
-	clusterpb.RegisterBucketServiceServer(server, bucket)
+	ledgerpb.RegisterBucketServiceServer(server, bucket)
 	for _, clusterServer := range cluster {
-		clusterpb.RegisterClusterServiceServer(server, clusterServer)
+		ledgerpb.RegisterClusterServiceServer(server, clusterServer)
 	}
 	serveDone := make(chan error, 1)
 	go func() { serveDone <- server.Serve(listener) }()
@@ -112,10 +112,10 @@ func newOracleTestConn(t *testing.T, bucket clusterpb.BucketServiceServer, clust
 	return conn
 }
 
-func newSourceTestClient(t *testing.T, server *oracleTestServer) clusterpb.BucketServiceClient {
+func newSourceTestClient(t *testing.T, server *oracleTestServer) ledgerpb.BucketServiceClient {
 	t.Helper()
 
-	return clusterpb.NewBucketServiceClient(newOracleTestConn(t, server))
+	return ledgerpb.NewBucketServiceClient(newOracleTestConn(t, server))
 }
 
 func sourceTestContext(t *testing.T) context.Context {
@@ -126,29 +126,29 @@ func sourceTestContext(t *testing.T) context.Context {
 	return ctx
 }
 
-func sourceTestLog(ledger string, id uint64, data *clusterpb.LedgerLogPayload) *clusterpb.Log {
-	return &clusterpb.Log{
+func sourceTestLog(ledger string, id uint64, data *ledgerpb.LedgerLogPayload) *ledgerpb.Log {
+	return &ledgerpb.Log{
 		// Deliberately unlike the ledger-local ID: pagination must not resume
 		// from this global sequence.
 		Sequence: 10_000 + id,
-		Payload: &clusterpb.LogPayload{Type: &clusterpb.LogPayload_Apply{Apply: &clusterpb.ApplyLedgerLog{
-			LedgerName: ledger, Log: &clusterpb.LedgerLog{Id: id, Data: data},
+		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{Apply: &ledgerpb.ApplyLedgerLog{
+			LedgerName: ledger, Log: &ledgerpb.LedgerLog{Id: id, Data: data},
 		}}},
 	}
 }
 
-func sourceTestTransaction(id uint64, postingCount int) *clusterpb.Transaction {
-	postings := make([]*clusterpb.Posting, postingCount)
+func sourceTestTransaction(id uint64, postingCount int) *ledgerpb.Transaction {
+	postings := make([]*ledgerpb.Posting, postingCount)
 	for i := range postings {
-		postings[i] = &clusterpb.Posting{Source: "world", Destination: fmt.Sprintf("account:%d", i), Asset: "USD", Amount: clusterpb.NewUint256FromUint64(1)}
+		postings[i] = &ledgerpb.Posting{Source: "world", Destination: fmt.Sprintf("account:%d", i), Asset: "USD", Amount: ledgerpb.NewUint256FromUint64(1)}
 	}
 
-	return &clusterpb.Transaction{Id: id, Postings: postings}
+	return &ledgerpb.Transaction{Id: id, Postings: postings}
 }
 
-func sourceTestCreatedLog(ledger string, id, txID uint64, postingCount int) *clusterpb.Log {
-	return sourceTestLog(ledger, id, &clusterpb.LedgerLogPayload{Payload: &clusterpb.LedgerLogPayload_CreatedTransaction{
-		CreatedTransaction: &clusterpb.CreatedTransaction{Transaction: sourceTestTransaction(txID, postingCount)},
+func sourceTestCreatedLog(ledger string, id, txID uint64, postingCount int) *ledgerpb.Log {
+	return sourceTestLog(ledger, id, &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+		CreatedTransaction: &ledgerpb.CreatedTransaction{Transaction: sourceTestTransaction(txID, postingCount)},
 	}})
 }
 
@@ -158,10 +158,10 @@ func TestCaptureSourceDrainsPaginatedLedgersAndLogs(t *testing.T) {
 	const logCount = 205
 	var barriers, ledgerPages, logPages atomic.Uint32
 	server := &oracleTestServer{
-		barrierFn: func(context.Context, *clusterpb.BarrierRequest) (*clusterpb.BarrierResponse, error) {
-			return &clusterpb.BarrierResponse{CommitIndex: 40 + uint64(barriers.Add(1))}, nil
+		barrierFn: func(context.Context, *ledgerpb.BarrierRequest) (*ledgerpb.BarrierResponse, error) {
+			return &ledgerpb.BarrierResponse{CommitIndex: 40 + uint64(barriers.Add(1))}, nil
 		},
-		listLedgersFn: func(req *clusterpb.ListLedgersRequest, stream clusterpb.BucketService_ListLedgersServer) error {
+		listLedgersFn: func(req *ledgerpb.ListLedgersRequest, stream ledgerpb.BucketService_ListLedgersServer) error {
 			ledgerPages.Add(1)
 			if req.GetOptions().GetPageSize() != 100 {
 				return status.Error(codes.InvalidArgument, "fixture requires 100-row pages")
@@ -176,7 +176,7 @@ func TestCaptureSourceDrainsPaginatedLedgersAndLogs(t *testing.T) {
 			}
 			end := min(start+100, ledgerCount)
 			for i := start; i < end; i++ {
-				if err := stream.Send(&clusterpb.LedgerInfo{Name: fmt.Sprintf("ledger-%03d", i), Id: uint32(i + 1)}); err != nil {
+				if err := stream.Send(&ledgerpb.LedgerInfo{Name: fmt.Sprintf("ledger-%03d", i), Id: uint32(i + 1)}); err != nil {
 					return err
 				}
 			}
@@ -186,7 +186,7 @@ func TestCaptureSourceDrainsPaginatedLedgersAndLogs(t *testing.T) {
 
 			return nil
 		},
-		listLogsFn: func(req *clusterpb.ListLogsRequest, stream clusterpb.BucketService_ListLogsServer) error {
+		listLogsFn: func(req *ledgerpb.ListLogsRequest, stream ledgerpb.BucketService_ListLogsServer) error {
 			logPages.Add(1)
 			if req.GetLedger() != "ledger-000" {
 				return nil
@@ -211,14 +211,14 @@ func TestCaptureSourceDrainsPaginatedLedgersAndLogs(t *testing.T) {
 
 			return nil
 		},
-		statsFn: func(_ context.Context, req *clusterpb.GetLedgerStatsRequest) (*clusterpb.LedgerStats, error) {
+		statsFn: func(_ context.Context, req *ledgerpb.GetLedgerStatsRequest) (*ledgerpb.LedgerStats, error) {
 			if req.GetLedger() == "ledger-000" {
 				// Neither a tx ID boundary nor lagged/corrupt usage values may
 				// influence the expected posting/revert fold.
-				return &clusterpb.LedgerStats{LogCount: logCount, TransactionCount: 50_000, PostingCount: 999, RevertCount: 999}, nil
+				return &ledgerpb.LedgerStats{LogCount: logCount, TransactionCount: 50_000, PostingCount: 999, RevertCount: 999}, nil
 			}
 
-			return &clusterpb.LedgerStats{}, nil
+			return &ledgerpb.LedgerStats{}, nil
 		},
 	}
 	got, horizon, err := captureSource(sourceTestContext(t), newSourceTestClient(t, server))
@@ -235,38 +235,38 @@ func TestCaptureSourceDrainsPaginatedLedgersAndLogs(t *testing.T) {
 func TestCaptureSourceFoldsExactLogPayloads(t *testing.T) {
 	t.Parallel()
 	const ledger = "mirror"
-	logs := []*clusterpb.Log{
+	logs := []*ledgerpb.Log{
 		sourceTestCreatedLog(ledger, 1, 42, 2),
-		sourceTestLog(ledger, 2, &clusterpb.LedgerLogPayload{Payload: &clusterpb.LedgerLogPayload_RevertedTransaction{RevertedTransaction: &clusterpb.RevertedTransaction{
+		sourceTestLog(ledger, 2, &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_RevertedTransaction{RevertedTransaction: &ledgerpb.RevertedTransaction{
 			RevertedTransactionId: 42, RevertTransaction: sourceTestTransaction(99, 3),
 		}}}),
 		// A mirror payload's actual postings are the expectation, even when
 		// empty; transaction IDs are not a source cardinality.
 		sourceTestCreatedLog(ledger, 3, 110, 0),
-		sourceTestLog(ledger, 4, &clusterpb.LedgerLogPayload{Payload: &clusterpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &clusterpb.SavedMetadata{}}}),
-		sourceTestLog(ledger, 5, &clusterpb.LedgerLogPayload{Payload: &clusterpb.LedgerLogPayload_OrderSkipped{OrderSkipped: &clusterpb.OrderSkippedLog{}}}),
-		sourceTestLog(ledger, 6, &clusterpb.LedgerLogPayload{Payload: &clusterpb.LedgerLogPayload_FillGap{FillGap: &clusterpb.FilledGapLog{OriginalId: 999}}}),
+		sourceTestLog(ledger, 4, &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &ledgerpb.SavedMetadata{}}}),
+		sourceTestLog(ledger, 5, &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_OrderSkipped{OrderSkipped: &ledgerpb.OrderSkippedLog{}}}),
+		sourceTestLog(ledger, 6, &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_FillGap{FillGap: &ledgerpb.FilledGapLog{OriginalId: 999}}}),
 	}
 	server := sourceTestSingleLedger(ledger, logs, uint64(len(logs)))
-	server.statsFn = func(context.Context, *clusterpb.GetLedgerStatsRequest) (*clusterpb.LedgerStats, error) {
-		return &clusterpb.LedgerStats{LogCount: 6, TransactionCount: 1_000, PostingCount: 500, RevertCount: 500}, nil
+	server.statsFn = func(context.Context, *ledgerpb.GetLedgerStatsRequest) (*ledgerpb.LedgerStats, error) {
+		return &ledgerpb.LedgerStats{LogCount: 6, TransactionCount: 1_000, PostingCount: 500, RevertCount: 500}, nil
 	}
 	got, _, err := captureSource(sourceTestContext(t), newSourceTestClient(t, server))
 	require.NoError(t, err)
 	require.Equal(t, expectedLedger{ID: 7, Counts: counts{Logs: 6, Postings: 5, Reverts: 1}}, got[ledger])
 }
 
-func sourceTestSingleLedger(name string, logs []*clusterpb.Log, mainLogCount uint64) *oracleTestServer {
+func sourceTestSingleLedger(name string, logs []*ledgerpb.Log, mainLogCount uint64) *oracleTestServer {
 	var barriers atomic.Uint64
 
 	return &oracleTestServer{
-		barrierFn: func(context.Context, *clusterpb.BarrierRequest) (*clusterpb.BarrierResponse, error) {
-			return &clusterpb.BarrierResponse{CommitIndex: 10 + barriers.Add(1)}, nil
+		barrierFn: func(context.Context, *ledgerpb.BarrierRequest) (*ledgerpb.BarrierResponse, error) {
+			return &ledgerpb.BarrierResponse{CommitIndex: 10 + barriers.Add(1)}, nil
 		},
-		listLedgersFn: func(_ *clusterpb.ListLedgersRequest, stream clusterpb.BucketService_ListLedgersServer) error {
-			return stream.Send(&clusterpb.LedgerInfo{Name: name, Id: 7})
+		listLedgersFn: func(_ *ledgerpb.ListLedgersRequest, stream ledgerpb.BucketService_ListLedgersServer) error {
+			return stream.Send(&ledgerpb.LedgerInfo{Name: name, Id: 7})
 		},
-		listLogsFn: func(_ *clusterpb.ListLogsRequest, stream clusterpb.BucketService_ListLogsServer) error {
+		listLogsFn: func(_ *ledgerpb.ListLogsRequest, stream ledgerpb.BucketService_ListLogsServer) error {
 			for _, entry := range logs {
 				if err := stream.Send(entry); err != nil {
 					return err
@@ -275,8 +275,8 @@ func sourceTestSingleLedger(name string, logs []*clusterpb.Log, mainLogCount uin
 
 			return nil
 		},
-		statsFn: func(context.Context, *clusterpb.GetLedgerStatsRequest) (*clusterpb.LedgerStats, error) {
-			return &clusterpb.LedgerStats{LogCount: mainLogCount}, nil
+		statsFn: func(context.Context, *ledgerpb.GetLedgerStatsRequest) (*ledgerpb.LedgerStats, error) {
+			return &ledgerpb.LedgerStats{LogCount: mainLogCount}, nil
 		},
 	}
 }
@@ -293,7 +293,7 @@ func TestCaptureSourceRejectsIncompleteLogs(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			var logs []*clusterpb.Log
+			var logs []*ledgerpb.Log
 			for _, id := range tc.ids {
 				logs = append(logs, sourceTestCreatedLog("ledger", id, id, 1))
 			}
@@ -314,9 +314,9 @@ func TestCaptureSourceRejectsRepeatedCursors(t *testing.T) {
 			server := sourceTestSingleLedger("ledger", nil, 2)
 			var pages atomic.Uint64
 			if collection == "ledgers" {
-				server.listLedgersFn = func(_ *clusterpb.ListLedgersRequest, stream clusterpb.BucketService_ListLedgersServer) error {
+				server.listLedgersFn = func(_ *ledgerpb.ListLedgersRequest, stream ledgerpb.BucketService_ListLedgersServer) error {
 					page := pages.Add(1)
-					if err := stream.Send(&clusterpb.LedgerInfo{Name: fmt.Sprintf("ledger-%d", page), Id: uint32(page)}); err != nil {
+					if err := stream.Send(&ledgerpb.LedgerInfo{Name: fmt.Sprintf("ledger-%d", page), Id: uint32(page)}); err != nil {
 						return err
 					}
 					stream.SetTrailer(metadata.Pairs("x-next-cursor", "ledger-1"))
@@ -324,7 +324,7 @@ func TestCaptureSourceRejectsRepeatedCursors(t *testing.T) {
 					return nil
 				}
 			} else {
-				server.listLogsFn = func(_ *clusterpb.ListLogsRequest, stream clusterpb.BucketService_ListLogsServer) error {
+				server.listLogsFn = func(_ *ledgerpb.ListLogsRequest, stream ledgerpb.BucketService_ListLogsServer) error {
 					page := pages.Add(1)
 					if err := stream.Send(sourceTestCreatedLog("ledger", page, page, 1)); err != nil {
 						return err
@@ -347,7 +347,7 @@ func TestCaptureSourceDiscardsLaterPageStreamError(t *testing.T) {
 	t.Parallel()
 	server := sourceTestSingleLedger("ledger", nil, 101)
 	var pages, statsCalls atomic.Uint32
-	server.listLogsFn = func(req *clusterpb.ListLogsRequest, stream clusterpb.BucketService_ListLogsServer) error {
+	server.listLogsFn = func(req *ledgerpb.ListLogsRequest, stream ledgerpb.BucketService_ListLogsServer) error {
 		pages.Add(1)
 		if req.GetOptions().GetCursor() == "" {
 			for id := uint64(1); id <= 100; id++ {
@@ -368,10 +368,10 @@ func TestCaptureSourceDiscardsLaterPageStreamError(t *testing.T) {
 
 		return status.Error(codes.Internal, "injected later-page storage failure")
 	}
-	server.statsFn = func(context.Context, *clusterpb.GetLedgerStatsRequest) (*clusterpb.LedgerStats, error) {
+	server.statsFn = func(context.Context, *ledgerpb.GetLedgerStatsRequest) (*ledgerpb.LedgerStats, error) {
 		statsCalls.Add(1)
 
-		return &clusterpb.LedgerStats{LogCount: 101}, nil
+		return &ledgerpb.LedgerStats{LogCount: 101}, nil
 	}
 	got, horizon, err := captureSource(sourceTestContext(t), newSourceTestClient(t, server))
 	require.ErrorContains(t, err, "injected later-page storage failure")
@@ -391,10 +391,10 @@ func TestCaptureSourceChangedHorizonInvalidatesReadVerdict(t *testing.T) {
 			if malformed {
 				id = 2 // Could be a deletion/recreation racing the capture.
 			}
-			server := sourceTestSingleLedger("ledger", []*clusterpb.Log{sourceTestCreatedLog("ledger", id, 1, 1)}, 1)
+			server := sourceTestSingleLedger("ledger", []*ledgerpb.Log{sourceTestCreatedLog("ledger", id, 1, 1)}, 1)
 			var barriers atomic.Uint64
-			server.barrierFn = func(context.Context, *clusterpb.BarrierRequest) (*clusterpb.BarrierResponse, error) {
-				return &clusterpb.BarrierResponse{CommitIndex: 10 + 2*barriers.Add(1)}, nil
+			server.barrierFn = func(context.Context, *ledgerpb.BarrierRequest) (*ledgerpb.BarrierResponse, error) {
+				return &ledgerpb.BarrierResponse{CommitIndex: 10 + 2*barriers.Add(1)}, nil
 			}
 			got, horizon, err := captureSource(sourceTestContext(t), newSourceTestClient(t, server))
 			require.ErrorIs(t, err, errSourceChanged)
@@ -411,7 +411,7 @@ func TestFoldLogsCancelsStreamAfterInvalidRow(t *testing.T) {
 	t.Parallel()
 	streamReleased := make(chan struct{})
 	server := &oracleTestServer{
-		listLogsFn: func(_ *clusterpb.ListLogsRequest, stream clusterpb.BucketService_ListLogsServer) error {
+		listLogsFn: func(_ *ledgerpb.ListLogsRequest, stream ledgerpb.BucketService_ListLogsServer) error {
 			defer close(streamReleased)
 			if err := stream.Send(sourceTestCreatedLog("ledger", 2, 1, 1)); err != nil {
 				return err
@@ -439,15 +439,15 @@ func TestWriteWitnessAccountsForExactlyOneProposalAndBarrier(t *testing.T) {
 	for _, after := range []uint64{52, 53} {
 		t.Run(strconv.FormatUint(after, 10), func(t *testing.T) {
 			t.Parallel()
-			applied := make(chan *clusterpb.ApplyRequest, 1)
+			applied := make(chan *ledgerpb.ApplyRequest, 1)
 			server := &oracleTestServer{
-				applyFn: func(_ context.Context, req *clusterpb.ApplyRequest) (*clusterpb.ApplyResponse, error) {
+				applyFn: func(_ context.Context, req *ledgerpb.ApplyRequest) (*ledgerpb.ApplyResponse, error) {
 					applied <- req
 
-					return &clusterpb.ApplyResponse{}, nil
+					return &ledgerpb.ApplyResponse{}, nil
 				},
-				barrierFn: func(context.Context, *clusterpb.BarrierRequest) (*clusterpb.BarrierResponse, error) {
-					return &clusterpb.BarrierResponse{CommitIndex: after}, nil
+				barrierFn: func(context.Context, *ledgerpb.BarrierRequest) (*ledgerpb.BarrierResponse, error) {
+					return &ledgerpb.BarrierResponse{CommitIndex: after}, nil
 				},
 			}
 			got, err := writeWitness(sourceTestContext(t), newSourceTestClient(t, server), "fresh-witness", 50)

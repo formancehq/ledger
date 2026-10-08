@@ -27,7 +27,7 @@ import (
 	oidcclient "github.com/formancehq/go-libs/v5/pkg/authn/oidc/client"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	otlpmetrics "github.com/formancehq/go-libs/v5/pkg/observe/metrics"
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	grpcadp "github.com/formancehq/ledger/v3/internal/adapter/grpc"
@@ -435,7 +435,7 @@ func Module() fx.Option {
 			},
 			// Provide a single AuthConfig used by gRPC and HTTP handlers.
 			fx.Annotate(buildAuthConfig, fx.ParamTags(``, ``, `optional:"true"`)),
-			fx.Annotate(func(cfg Config, logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, ss *state.SharedState, respSigner *signing.ResponseSigner, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) clusterpb.BucketServiceServer {
+			fx.Annotate(func(cfg Config, logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, ss *state.SharedState, respSigner *signing.ResponseSigner, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) ledgerpb.BucketServiceServer {
 				return grpcadp.NewBucketServiceServer(logger, c, localCtrl, s, rs, attrs, ss, respSigner, cfg.QueryProfileThreshold, cfg.ClusterID, meterProvider, n, servicePool, info)
 			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, `name:"service"`, ``)),
 			func(cfg Config, logger logging.Logger, s *dal.Store, fsm *state.Machine) snapshotpb.SnapshotServiceServer {
@@ -462,7 +462,7 @@ func Module() fx.Option {
 			func(builder *plan.Builder, n *node.Node, fsm *state.Machine, orchestrator *backupapp.Orchestrator, logger logging.Logger) *backupapp.Cleanup {
 				return backupapp.NewCleanup(fsm.Registry.BackupJobs, newBackupProposer(builder, n), n, orchestrator.Registry(), logger)
 			},
-			fx.Annotate(func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ConnectionPool, collector *diskusage.Collector, store *dal.Store, c *cache.Cache, ss *state.SharedState, ib *indexbuilder.Builder, rs *readstore.Store, ms *membership.Service, bo *backupapp.Orchestrator, logger logging.Logger, cfg Config, info version.Info) clusterpb.ClusterServiceServer {
+			fx.Annotate(func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ConnectionPool, collector *diskusage.Collector, store *dal.Store, c *cache.Cache, ss *state.SharedState, ib *indexbuilder.Builder, rs *readstore.Store, ms *membership.Service, bo *backupapp.Orchestrator, logger logging.Logger, cfg Config, info version.Info) ledgerpb.ClusterServiceServer {
 				return grpcadp.NewClusterServiceServer(n, raftTransport, servicePool, collector, store, c, ss, ib, rs, ms, bo, logger,
 					cfg.RaftConfig.AdvertiseAddr,
 					cfg.ServiceAdvertiseAddr(),
@@ -603,9 +603,9 @@ func Module() fx.Option {
 					raftNode.IsLeader,
 					machine.QueryCheckpointSchedule,
 					func() error {
-						_, err := admissionHandler.Admit(internalauth.WithSystemActor(context.Background(), commands.ComponentQueryCheckpoint), clusterpb.UnsignedApplyRequest("", &clusterpb.Request{
-							Type: &clusterpb.Request_CreateQueryCheckpoint{
-								CreateQueryCheckpoint: &clusterpb.CreateQueryCheckpointRequest{},
+						_, err := admissionHandler.Admit(internalauth.WithSystemActor(context.Background(), commands.ComponentQueryCheckpoint), ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+							Type: &ledgerpb.Request_CreateQueryCheckpoint{
+								CreateQueryCheckpoint: &ledgerpb.CreateQueryCheckpointRequest{},
 							},
 						}))
 
@@ -814,12 +814,12 @@ func Module() fx.Option {
 
 				return nil
 			},
-			func(serviceServer *grpcadp.ServiceServer, bucketServiceServer clusterpb.BucketServiceServer) error {
+			func(serviceServer *grpcadp.ServiceServer, bucketServiceServer ledgerpb.BucketServiceServer) error {
 				grpcadp.RegisterBucketService(serviceServer.GetServer(), bucketServiceServer)
 
 				return nil
 			},
-			func(serviceServer *grpcadp.ServiceServer, clusterServiceServer clusterpb.ClusterServiceServer) error {
+			func(serviceServer *grpcadp.ServiceServer, clusterServiceServer ledgerpb.ClusterServiceServer) error {
 				grpcadp.RegisterClusterService(serviceServer.GetServer(), clusterServiceServer)
 
 				return nil
@@ -1521,7 +1521,7 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 		return
 	}
 
-	desired := &clusterpb.ClusterPolicy{
+	desired := &ledgerpb.ClusterPolicy{
 		Revision:                    cfg.ClusterPolicyRevision,
 		IdempotencyTtlMicros:        uint64(cfg.IdempotencyTTL.Microseconds()),
 		QueryCheckpointLimit:        cfg.QueryCheckpointLimit,

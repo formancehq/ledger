@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -29,18 +29,18 @@ import (
 
 // txRevertedAtRangeFilter names an index parityRegistry deliberately does NOT
 // declare, so both directions must refuse it at the readiness gate.
-func txRevertedAtRangeFilter(minV, maxV uint64) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
-		BuiltinUint: &commonpb.BuiltinUintCondition{
-			Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT,
-			Cond:  &commonpb.UintCondition{Min: &minV, Max: &maxV},
+func txRevertedAtRangeFilter(minV, maxV uint64) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_BuiltinUint{
+		BuiltinUint: &ledgerpb.BuiltinUintCondition{
+			Field: ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT,
+			Cond:  &ledgerpb.UintCondition{Min: &minV, Max: &maxV},
 		},
 	}}
 }
 
 // nestedAndFilter builds `depth` nested AND nodes around one leaf, to drive
 // the depth guard from either side.
-func nestedAndFilter(depth int, leaf *commonpb.QueryFilter) *commonpb.QueryFilter {
+func nestedAndFilter(depth int, leaf *ledgerpb.QueryFilter) *ledgerpb.QueryFilter {
 	f := leaf
 	for range depth {
 		f = andFilter(f)
@@ -55,21 +55,21 @@ func TestCompileErrorParity(t *testing.T) {
 	store := parityStore(t)
 	reader := store.DB()
 
-	accounts := commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS
-	transactions := commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS
-	logs := commonpb.QueryTarget_QUERY_TARGET_LOGS
+	accounts := ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS
+	transactions := ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS
+	logs := ledgerpb.QueryTarget_QUERY_TARGET_LOGS
 
 	for _, tc := range []struct {
 		name   string
-		target commonpb.QueryTarget
-		filter *commonpb.QueryFilter
+		target ledgerpb.QueryTarget
+		filter *ledgerpb.QueryFilter
 		// wantSubstring pins WHICH refusal fired, so a case cannot pass on
 		// some unrelated error that happens to match in both directions.
 		wantSubstring string
 	}{
 		{
 			name:          "unsupported target",
-			target:        commonpb.QueryTarget_QUERY_TARGET_AUDIT,
+			target:        ledgerpb.QueryTarget_QUERY_TARGET_AUDIT,
 			filter:        nil,
 			wantSubstring: "unsupported query target",
 		},
@@ -124,27 +124,27 @@ func TestCompileErrorParity(t *testing.T) {
 		{
 			name:   "reference condition has no value",
 			target: transactions,
-			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reference{
-				Reference: &commonpb.ReferenceCondition{},
+			filter: &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Reference{
+				Reference: &ledgerpb.ReferenceCondition{},
 			}},
 			wantSubstring: "reference condition has no value",
 		},
 		{
 			name:   "bool condition has no value",
 			target: accounts,
-			filter: accountFieldFilter("flag", &commonpb.FieldCondition{
-				Field:     &commonpb.FieldRef{Metadata: "flag"},
-				Condition: &commonpb.FieldCondition_BoolCond{BoolCond: &commonpb.BoolCondition{}},
+			filter: accountFieldFilter("flag", &ledgerpb.FieldCondition{
+				Field:     &ledgerpb.FieldRef{Metadata: "flag"},
+				Condition: &ledgerpb.FieldCondition_BoolCond{BoolCond: &ledgerpb.BoolCondition{}},
 			}),
 			wantSubstring: "bool condition has no value",
 		},
 		{
 			name:   "unsupported log builtin field",
 			target: logs,
-			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogBuiltinUint{
-				LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
-					Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_UNSPECIFIED,
-					Cond:  &commonpb.UintCondition{},
+			filter: &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_LogBuiltinUint{
+				LogBuiltinUint: &ledgerpb.LogBuiltinUintCondition{
+					Field: ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_UNSPECIFIED,
+					Cond:  &ledgerpb.UintCondition{},
 				},
 			}},
 			wantSubstring: "log builtin uint",
@@ -152,8 +152,8 @@ func TestCompileErrorParity(t *testing.T) {
 		{
 			name:   "ledger condition has no value",
 			target: logs,
-			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Ledger{
-				Ledger: &commonpb.LedgerCondition{},
+			filter: &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Ledger{
+				Ledger: &ledgerpb.LedgerCondition{},
 			}},
 			wantSubstring: "ledger condition has no value",
 		},

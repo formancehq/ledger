@@ -7,7 +7,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // TestStorageConfigFromProto_S3 maps the S3 oneof into the backup
@@ -17,9 +17,9 @@ import (
 func TestStorageConfigFromProto_S3(t *testing.T) {
 	t.Parallel()
 
-	in := &commonpb.BackupStorage{
-		Provider: &commonpb.BackupStorage_S3{
-			S3: &commonpb.S3StorageConfig{
+	in := &ledgerpb.BackupStorage{
+		Provider: &ledgerpb.BackupStorage_S3{
+			S3: &ledgerpb.S3StorageConfig{
 				Bucket:          "my-bucket",
 				Region:          "eu-west-1",
 				Endpoint:        "https://s3.example.com",
@@ -44,9 +44,9 @@ func TestStorageConfigFromProto_S3(t *testing.T) {
 func TestStorageConfigFromProto_Azure(t *testing.T) {
 	t.Parallel()
 
-	in := &commonpb.BackupStorage{
-		Provider: &commonpb.BackupStorage_Azure{
-			Azure: &commonpb.AzureStorageConfig{
+	in := &ledgerpb.BackupStorage{
+		Provider: &ledgerpb.BackupStorage_Azure{
+			Azure: &ledgerpb.AzureStorageConfig{
 				AccountName: "myaccount",
 				AccountKey:  "key",
 				Container:   "backups",
@@ -71,7 +71,7 @@ func TestStorageConfigFromProto_Azure(t *testing.T) {
 func TestStorageConfigFromProto_UnsetProviderInvalidArgument(t *testing.T) {
 	t.Parallel()
 
-	_, err := storageConfigFromProto(&commonpb.BackupStorage{})
+	_, err := storageConfigFromProto(&ledgerpb.BackupStorage{})
 	require.Error(t, err)
 
 	st, ok := status.FromError(err)

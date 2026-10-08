@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
@@ -19,14 +19,14 @@ import (
 func TestHandleCreateIndex_Success(t *testing.T) {
 	t.Parallel()
 
-	var capturedRequest *commonpb.Request
+	var capturedRequest *ledgerpb.Request
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, req *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedRequest = req.GetUnsigned().GetRequests()[0]
 
-			return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{{}}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -41,13 +41,13 @@ func TestHandleCreateIndex_Success(t *testing.T) {
 
 	require.Equal(t, http.StatusCreated, w.Code)
 	require.NotNil(t, capturedRequest)
-	ci, ok := capturedRequest.GetType().(*commonpb.Request_CreateIndex)
+	ci, ok := capturedRequest.GetType().(*ledgerpb.Request_CreateIndex)
 	require.True(t, ok)
 	require.Equal(t, "ledger1", ci.CreateIndex.GetLedger())
 	meta := ci.CreateIndex.GetId().GetMetadata()
 	require.NotNil(t, meta)
 	require.Equal(t, "color", meta.GetKey())
-	require.Equal(t, commonpb.TargetType_TARGET_TYPE_ACCOUNT, meta.GetTarget())
+	require.Equal(t, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, meta.GetTarget())
 
 	// The 201 body must carry the canonical id under the standard data envelope
 	// so REST clients can drive the follow-up GET/DELETE routes.
@@ -60,8 +60,8 @@ func TestHandleCreateIndex_ResponseIDIsCanonicalized(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
-			return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
+		func(_ context.Context, _ *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{{}}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -148,14 +148,14 @@ func TestHandleCreateIndex_InvalidCanonical(t *testing.T) {
 func TestHandleCreateIndex_IdempotencyKeyPropagated(t *testing.T) {
 	t.Parallel()
 
-	var capturedBatch *commonpb.ApplyBatch
+	var capturedBatch *ledgerpb.ApplyBatch
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, req *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedBatch = req.GetUnsigned()
 
-			return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
+			return &domain.ApplyResult{Logs: []*ledgerpb.Log{{}}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -179,7 +179,7 @@ func TestHandleCreateIndex_BackendError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, errors.New("apply failed")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)

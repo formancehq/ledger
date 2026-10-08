@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -29,19 +29,19 @@ func TestCompile_RejectsDeeplyNestedFilter(t *testing.T) {
 	// with a single child, so compile dispatches Or → compile(child)
 	// without needing a Pebble reader (the depth check fires before
 	// we reach a leaf when the chain is deeper than MaxFilterDepth).
-	var leaf *commonpb.QueryFilter // nil = universe; would reach compileUniverse if we got there.
+	var leaf *ledgerpb.QueryFilter // nil = universe; would reach compileUniverse if we got there.
 	filter := leaf
 
 	for range MaxFilterDepth + 5 {
-		filter = &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Or{
-				Or: &commonpb.OrFilter{Filters: []*commonpb.QueryFilter{filter}},
+		filter = &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Or{
+				Or: &ledgerpb.OrFilter{Filters: []*ledgerpb.QueryFilter{filter}},
 			},
 		}
 	}
 
 	ctx := &compileCtx{
-		target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 	}
 
 	_, err := compile(ctx, filter)
@@ -51,12 +51,12 @@ func TestCompile_RejectsDeeplyNestedFilter(t *testing.T) {
 }
 
 // ledgerFilter builds a LOGS-target LedgerCondition (exact match on name).
-func ledgerFilter(name string) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Ledger{
-			Ledger: &commonpb.LedgerCondition{
-				Cond: &commonpb.StringCondition{
-					Value: &commonpb.StringCondition_Hardcoded{Hardcoded: name},
+func ledgerFilter(name string) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Ledger{
+			Ledger: &ledgerpb.LedgerCondition{
+				Cond: &ledgerpb.StringCondition{
+					Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: name},
 				},
 			},
 		},
@@ -73,7 +73,7 @@ func TestCompile_LedgerConditionOtherLedgerIsEmpty(t *testing.T) {
 	t.Parallel()
 
 	ctx := &compileCtx{
-		target:     commonpb.QueryTarget_QUERY_TARGET_LOGS,
+		target:     ledgerpb.QueryTarget_QUERY_TARGET_LOGS,
 		ledgerName: "ledger-a",
 	}
 
@@ -93,12 +93,12 @@ func TestCompile_LedgerConditionMissingValue(t *testing.T) {
 	t.Parallel()
 
 	ctx := &compileCtx{
-		target:     commonpb.QueryTarget_QUERY_TARGET_LOGS,
+		target:     ledgerpb.QueryTarget_QUERY_TARGET_LOGS,
 		ledgerName: "ledger-a",
 	}
 
-	filter := &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Ledger{Ledger: &commonpb.LedgerCondition{}},
+	filter := &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Ledger{Ledger: &ledgerpb.LedgerCondition{}},
 	}
 
 	_, err := compile(ctx, filter)
@@ -119,20 +119,20 @@ func TestCompile_DepthBoundMatchesValidator(t *testing.T) {
 	// Leaf is a metadata field condition (valid on ACCOUNTS, needs no reader —
 	// the depth guard fires or the leaf validity check passes before any store
 	// access on the accepted path). Wrap in single-child Or combinators.
-	nested := func(combinators int) *commonpb.QueryFilter {
-		f := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Field{
-			Field: fieldCondition("k", &commonpb.ExistsCondition{}),
+	nested := func(combinators int) *ledgerpb.QueryFilter {
+		f := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Field{
+			Field: fieldCondition("k", &ledgerpb.ExistsCondition{}),
 		}}
 		for range combinators {
-			f = &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Or{
-				Or: &commonpb.OrFilter{Filters: []*commonpb.QueryFilter{f}},
+			f = &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Or{
+				Or: &ledgerpb.OrFilter{Filters: []*ledgerpb.QueryFilter{f}},
 			}}
 		}
 
 		return f
 	}
 
-	target := commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS
+	target := ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS
 
 	// N == MaxFilterDepth-1: both accept (compile reaches the leaf; validator
 	// returns nil).
@@ -155,22 +155,22 @@ func TestCompile_DepthBoundMatchesValidator(t *testing.T) {
 		"compile must trip the depth guard at MaxFilterDepth combinators (got: %v)", err)
 }
 
-func fieldCondition(metaKey string, cond any) *commonpb.FieldCondition {
-	fc := &commonpb.FieldCondition{
-		Field: &commonpb.FieldRef{Metadata: metaKey},
+func fieldCondition(metaKey string, cond any) *ledgerpb.FieldCondition {
+	fc := &ledgerpb.FieldCondition{
+		Field: &ledgerpb.FieldRef{Metadata: metaKey},
 	}
 
 	switch c := cond.(type) {
-	case *commonpb.IntCondition:
-		fc.Condition = &commonpb.FieldCondition_IntCond{IntCond: c}
-	case *commonpb.UintCondition:
-		fc.Condition = &commonpb.FieldCondition_UintCond{UintCond: c}
-	case *commonpb.StringCondition:
-		fc.Condition = &commonpb.FieldCondition_StringCond{StringCond: c}
-	case *commonpb.BoolCondition:
-		fc.Condition = &commonpb.FieldCondition_BoolCond{BoolCond: c}
-	case *commonpb.ExistsCondition:
-		fc.Condition = &commonpb.FieldCondition_ExistsCond{ExistsCond: c}
+	case *ledgerpb.IntCondition:
+		fc.Condition = &ledgerpb.FieldCondition_IntCond{IntCond: c}
+	case *ledgerpb.UintCondition:
+		fc.Condition = &ledgerpb.FieldCondition_UintCond{UintCond: c}
+	case *ledgerpb.StringCondition:
+		fc.Condition = &ledgerpb.FieldCondition_StringCond{StringCond: c}
+	case *ledgerpb.BoolCondition:
+		fc.Condition = &ledgerpb.FieldCondition_BoolCond{BoolCond: c}
+	case *ledgerpb.ExistsCondition:
+		fc.Condition = &ledgerpb.FieldCondition_ExistsCond{ExistsCond: c}
 	}
 
 	return fc
@@ -181,42 +181,42 @@ func TestValidateAndCoerceCondition(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		fc        *commonpb.FieldCondition
-		schema    *commonpb.MetadataFieldSchema
+		fc        *ledgerpb.FieldCondition
+		schema    *ledgerpb.MetadataFieldSchema
 		wantErr   string
-		checkCond func(t *testing.T, fc *commonpb.FieldCondition)
+		checkCond func(t *testing.T, fc *ledgerpb.FieldCondition)
 	}{
 		{
 			name:   "int schema + IntCondition → OK",
-			fc:     fieldCondition("age", &commonpb.IntCondition{Min: new(int64(10)), Max: new(int64(99))}),
-			schema: &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_INT64},
+			fc:     fieldCondition("age", &ledgerpb.IntCondition{Min: new(int64(10)), Max: new(int64(99))}),
+			schema: &ledgerpb.MetadataFieldSchema{Type: ledgerpb.MetadataType_METADATA_TYPE_INT64},
 		},
 		{
 			name:    "int schema + StringCondition → error",
-			fc:      fieldCondition("age", &commonpb.StringCondition{Value: &commonpb.StringCondition_Hardcoded{Hardcoded: "hello"}}),
-			schema:  &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_INT64},
+			fc:      fieldCondition("age", &ledgerpb.StringCondition{Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: "hello"}}),
+			schema:  &ledgerpb.MetadataFieldSchema{Type: ledgerpb.MetadataType_METADATA_TYPE_INT64},
 			wantErr: `field "age" is declared as METADATA_TYPE_INT64, cannot use string condition`,
 		},
 		{
 			name:    "int schema + BoolCondition → error",
-			fc:      fieldCondition("age", &commonpb.BoolCondition{Value: &commonpb.BoolCondition_Hardcoded{Hardcoded: true}}),
-			schema:  &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_INT64},
+			fc:      fieldCondition("age", &ledgerpb.BoolCondition{Value: &ledgerpb.BoolCondition_Hardcoded{Hardcoded: true}}),
+			schema:  &ledgerpb.MetadataFieldSchema{Type: ledgerpb.MetadataType_METADATA_TYPE_INT64},
 			wantErr: `field "age" is declared as METADATA_TYPE_INT64, cannot use bool condition`,
 		},
 		{
 			name:    "int schema + UintCondition → error",
-			fc:      fieldCondition("age", &commonpb.UintCondition{Min: new(uint64(10))}),
-			schema:  &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_INT64},
+			fc:      fieldCondition("age", &ledgerpb.UintCondition{Min: new(uint64(10))}),
+			schema:  &ledgerpb.MetadataFieldSchema{Type: ledgerpb.MetadataType_METADATA_TYPE_INT64},
 			wantErr: `field "age" is declared as METADATA_TYPE_INT64, cannot use unsigned integer condition`,
 		},
 		{
 			name:   "uint schema + IntCondition (positive) → coerced to UintCondition",
-			fc:     fieldCondition("counter", &commonpb.IntCondition{Min: new(int64(5)), Max: new(int64(100))}),
-			schema: &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_UINT64},
-			checkCond: func(t *testing.T, fc *commonpb.FieldCondition) {
+			fc:     fieldCondition("counter", &ledgerpb.IntCondition{Min: new(int64(5)), Max: new(int64(100))}),
+			schema: &ledgerpb.MetadataFieldSchema{Type: ledgerpb.MetadataType_METADATA_TYPE_UINT64},
+			checkCond: func(t *testing.T, fc *ledgerpb.FieldCondition) {
 				t.Helper()
 
-				uc, ok := fc.GetCondition().(*commonpb.FieldCondition_UintCond)
+				uc, ok := fc.GetCondition().(*ledgerpb.FieldCondition_UintCond)
 				require.True(t, ok, "expected UintCondition after coercion")
 				require.NotNil(t, uc.UintCond.Min)
 				assert.Equal(t, uint64(5), uc.UintCond.GetMin())
@@ -226,12 +226,12 @@ func TestValidateAndCoerceCondition(t *testing.T) {
 		},
 		{
 			name:   "uint schema + IntCondition with params → coerced preserving params",
-			fc:     fieldCondition("counter", &commonpb.IntCondition{ParamMin: "lo", ParamMax: "hi", MinExclusive: true}),
-			schema: &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_UINT64},
-			checkCond: func(t *testing.T, fc *commonpb.FieldCondition) {
+			fc:     fieldCondition("counter", &ledgerpb.IntCondition{ParamMin: "lo", ParamMax: "hi", MinExclusive: true}),
+			schema: &ledgerpb.MetadataFieldSchema{Type: ledgerpb.MetadataType_METADATA_TYPE_UINT64},
+			checkCond: func(t *testing.T, fc *ledgerpb.FieldCondition) {
 				t.Helper()
 
-				uc, ok := fc.GetCondition().(*commonpb.FieldCondition_UintCond)
+				uc, ok := fc.GetCondition().(*ledgerpb.FieldCondition_UintCond)
 				require.True(t, ok, "expected UintCondition after coercion")
 				assert.Equal(t, "lo", uc.UintCond.GetParamMin())
 				assert.Equal(t, "hi", uc.UintCond.GetParamMax())
@@ -240,95 +240,95 @@ func TestValidateAndCoerceCondition(t *testing.T) {
 		},
 		{
 			name:    "uint schema + IntCondition (negative min) → error",
-			fc:      fieldCondition("counter", &commonpb.IntCondition{Min: new(int64(-1))}),
-			schema:  &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_UINT64},
+			fc:      fieldCondition("counter", &ledgerpb.IntCondition{Min: new(int64(-1))}),
+			schema:  &ledgerpb.MetadataFieldSchema{Type: ledgerpb.MetadataType_METADATA_TYPE_UINT64},
 			wantErr: `field "counter" is unsigned, cannot use negative min bound -1`,
 		},
 		{
 			name:    "uint schema + IntCondition (negative max) → error",
-			fc:      fieldCondition("counter", &commonpb.IntCondition{Max: new(int64(-5))}),
-			schema:  &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_UINT64},
+			fc:      fieldCondition("counter", &ledgerpb.IntCondition{Max: new(int64(-5))}),
+			schema:  &ledgerpb.MetadataFieldSchema{Type: ledgerpb.MetadataType_METADATA_TYPE_UINT64},
 			wantErr: `field "counter" is unsigned, cannot use negative max bound -5`,
 		},
 		{
 			name:   "uint schema + UintCondition → OK",
-			fc:     fieldCondition("counter", &commonpb.UintCondition{Min: new(uint64(10))}),
-			schema: &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_UINT64},
+			fc:     fieldCondition("counter", &ledgerpb.UintCondition{Min: new(uint64(10))}),
+			schema: &ledgerpb.MetadataFieldSchema{Type: ledgerpb.MetadataType_METADATA_TYPE_UINT64},
 		},
 		{
 			name:    "uint schema + StringCondition → error",
-			fc:      fieldCondition("counter", &commonpb.StringCondition{Value: &commonpb.StringCondition_Hardcoded{Hardcoded: "hello"}}),
-			schema:  &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_UINT64},
+			fc:      fieldCondition("counter", &ledgerpb.StringCondition{Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: "hello"}}),
+			schema:  &ledgerpb.MetadataFieldSchema{Type: ledgerpb.MetadataType_METADATA_TYPE_UINT64},
 			wantErr: `field "counter" is declared as METADATA_TYPE_UINT64, cannot use string condition`,
 		},
 		{
 			name:   "string schema + StringCondition → OK",
-			fc:     fieldCondition("name", &commonpb.StringCondition{Value: &commonpb.StringCondition_Hardcoded{Hardcoded: "alice"}}),
-			schema: &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_STRING},
+			fc:     fieldCondition("name", &ledgerpb.StringCondition{Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: "alice"}}),
+			schema: &ledgerpb.MetadataFieldSchema{Type: ledgerpb.MetadataType_METADATA_TYPE_STRING},
 		},
 		{
 			name:    "string schema + IntCondition → error",
-			fc:      fieldCondition("name", &commonpb.IntCondition{Min: new(int64(5))}),
-			schema:  &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_STRING},
+			fc:      fieldCondition("name", &ledgerpb.IntCondition{Min: new(int64(5))}),
+			schema:  &ledgerpb.MetadataFieldSchema{Type: ledgerpb.MetadataType_METADATA_TYPE_STRING},
 			wantErr: `field "name" is declared as METADATA_TYPE_STRING, cannot use integer condition`,
 		},
 		{
 			name:    "string schema + BoolCondition → error",
-			fc:      fieldCondition("name", &commonpb.BoolCondition{Value: &commonpb.BoolCondition_Hardcoded{Hardcoded: true}}),
-			schema:  &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_STRING},
+			fc:      fieldCondition("name", &ledgerpb.BoolCondition{Value: &ledgerpb.BoolCondition_Hardcoded{Hardcoded: true}}),
+			schema:  &ledgerpb.MetadataFieldSchema{Type: ledgerpb.MetadataType_METADATA_TYPE_STRING},
 			wantErr: `field "name" is declared as METADATA_TYPE_STRING, cannot use bool condition`,
 		},
 		{
 			name:    "string schema + UintCondition → error",
-			fc:      fieldCondition("name", &commonpb.UintCondition{Min: new(uint64(1))}),
-			schema:  &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_STRING},
+			fc:      fieldCondition("name", &ledgerpb.UintCondition{Min: new(uint64(1))}),
+			schema:  &ledgerpb.MetadataFieldSchema{Type: ledgerpb.MetadataType_METADATA_TYPE_STRING},
 			wantErr: `field "name" is declared as METADATA_TYPE_STRING, cannot use unsigned integer condition`,
 		},
 		{
 			name:   "bool schema + BoolCondition → OK",
-			fc:     fieldCondition("active", &commonpb.BoolCondition{Value: &commonpb.BoolCondition_Hardcoded{Hardcoded: true}}),
-			schema: &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_BOOL},
+			fc:     fieldCondition("active", &ledgerpb.BoolCondition{Value: &ledgerpb.BoolCondition_Hardcoded{Hardcoded: true}}),
+			schema: &ledgerpb.MetadataFieldSchema{Type: ledgerpb.MetadataType_METADATA_TYPE_BOOL},
 		},
 		{
 			name:    "bool schema + StringCondition → error",
-			fc:      fieldCondition("active", &commonpb.StringCondition{Value: &commonpb.StringCondition_Hardcoded{Hardcoded: "true"}}),
-			schema:  &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_BOOL},
+			fc:      fieldCondition("active", &ledgerpb.StringCondition{Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: "true"}}),
+			schema:  &ledgerpb.MetadataFieldSchema{Type: ledgerpb.MetadataType_METADATA_TYPE_BOOL},
 			wantErr: `field "active" is declared as METADATA_TYPE_BOOL, cannot use string condition`,
 		},
 		{
 			name:    "bool schema + IntCondition → error",
-			fc:      fieldCondition("active", &commonpb.IntCondition{Min: new(int64(1))}),
-			schema:  &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_BOOL},
+			fc:      fieldCondition("active", &ledgerpb.IntCondition{Min: new(int64(1))}),
+			schema:  &ledgerpb.MetadataFieldSchema{Type: ledgerpb.MetadataType_METADATA_TYPE_BOOL},
 			wantErr: `field "active" is declared as METADATA_TYPE_BOOL, cannot use integer condition`,
 		},
 		{
 			name:   "ExistsCondition + int schema → OK",
-			fc:     fieldCondition("age", &commonpb.ExistsCondition{}),
-			schema: &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_INT64},
+			fc:     fieldCondition("age", &ledgerpb.ExistsCondition{}),
+			schema: &ledgerpb.MetadataFieldSchema{Type: ledgerpb.MetadataType_METADATA_TYPE_INT64},
 		},
 		{
 			name:   "ExistsCondition + string schema → OK",
-			fc:     fieldCondition("name", &commonpb.ExistsCondition{}),
-			schema: &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_STRING},
+			fc:     fieldCondition("name", &ledgerpb.ExistsCondition{}),
+			schema: &ledgerpb.MetadataFieldSchema{Type: ledgerpb.MetadataType_METADATA_TYPE_STRING},
 		},
 		{
 			name:   "ExistsCondition + bool schema → OK",
-			fc:     fieldCondition("active", &commonpb.ExistsCondition{}),
-			schema: &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_BOOL},
+			fc:     fieldCondition("active", &ledgerpb.ExistsCondition{}),
+			schema: &ledgerpb.MetadataFieldSchema{Type: ledgerpb.MetadataType_METADATA_TYPE_BOOL},
 		},
 		{
 			name:   "int8 schema + IntCondition → OK",
-			fc:     fieldCondition("level", &commonpb.IntCondition{Min: new(int64(-128)), Max: new(int64(127))}),
-			schema: &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_INT8},
+			fc:     fieldCondition("level", &ledgerpb.IntCondition{Min: new(int64(-128)), Max: new(int64(127))}),
+			schema: &ledgerpb.MetadataFieldSchema{Type: ledgerpb.MetadataType_METADATA_TYPE_INT8},
 		},
 		{
 			name:   "uint16 schema + IntCondition → coerced",
-			fc:     fieldCondition("port", &commonpb.IntCondition{Min: new(int64(80))}),
-			schema: &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_UINT16},
-			checkCond: func(t *testing.T, fc *commonpb.FieldCondition) {
+			fc:     fieldCondition("port", &ledgerpb.IntCondition{Min: new(int64(80))}),
+			schema: &ledgerpb.MetadataFieldSchema{Type: ledgerpb.MetadataType_METADATA_TYPE_UINT16},
+			checkCond: func(t *testing.T, fc *ledgerpb.FieldCondition) {
 				t.Helper()
 
-				uc, ok := fc.GetCondition().(*commonpb.FieldCondition_UintCond)
+				uc, ok := fc.GetCondition().(*ledgerpb.FieldCondition_UintCond)
 				require.True(t, ok, "expected UintCondition after coercion")
 				require.NotNil(t, uc.UintCond.Min)
 				assert.Equal(t, uint64(80), uc.UintCond.GetMin())
@@ -336,12 +336,12 @@ func TestValidateAndCoerceCondition(t *testing.T) {
 		},
 		{
 			name:   "uint schema + IntCondition with zero min → coerced",
-			fc:     fieldCondition("counter", &commonpb.IntCondition{Min: new(int64(0))}),
-			schema: &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_UINT64},
-			checkCond: func(t *testing.T, fc *commonpb.FieldCondition) {
+			fc:     fieldCondition("counter", &ledgerpb.IntCondition{Min: new(int64(0))}),
+			schema: &ledgerpb.MetadataFieldSchema{Type: ledgerpb.MetadataType_METADATA_TYPE_UINT64},
+			checkCond: func(t *testing.T, fc *ledgerpb.FieldCondition) {
 				t.Helper()
 
-				uc, ok := fc.GetCondition().(*commonpb.FieldCondition_UintCond)
+				uc, ok := fc.GetCondition().(*ledgerpb.FieldCondition_UintCond)
 				require.True(t, ok, "expected UintCondition after coercion")
 				require.NotNil(t, uc.UintCond.Min)
 				assert.Equal(t, uint64(0), uc.UintCond.GetMin())
@@ -374,18 +374,18 @@ func TestCoerceIntToUint_ExclusiveFlags(t *testing.T) {
 	t.Parallel()
 
 	// Verify that exclusivity flags are preserved through coercion
-	fc := fieldCondition("x", &commonpb.IntCondition{
+	fc := fieldCondition("x", &ledgerpb.IntCondition{
 		Min:          new(int64(10)),
 		Max:          new(int64(20)),
 		MinExclusive: true,
 		MaxExclusive: true,
 	})
-	schema := &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_UINT32}
+	schema := &ledgerpb.MetadataFieldSchema{Type: ledgerpb.MetadataType_METADATA_TYPE_UINT32}
 
 	got, err := validateAndCoerceCondition(fc, schema)
 	require.NoError(t, err)
 
-	uc, ok := got.GetCondition().(*commonpb.FieldCondition_UintCond)
+	uc, ok := got.GetCondition().(*ledgerpb.FieldCondition_UintCond)
 	require.True(t, ok)
 	assert.True(t, uc.UintCond.GetMinExclusive())
 	assert.True(t, uc.UintCond.GetMaxExclusive())
@@ -399,13 +399,13 @@ func TestCoerceIntToUint_NoMinNoMax(t *testing.T) {
 	t.Parallel()
 
 	// IntCondition with no bounds (just params) should coerce cleanly
-	fc := fieldCondition("x", &commonpb.IntCondition{})
-	schema := &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_UINT64}
+	fc := fieldCondition("x", &ledgerpb.IntCondition{})
+	schema := &ledgerpb.MetadataFieldSchema{Type: ledgerpb.MetadataType_METADATA_TYPE_UINT64}
 
 	got, err := validateAndCoerceCondition(fc, schema)
 	require.NoError(t, err)
 
-	uc, ok := got.GetCondition().(*commonpb.FieldCondition_UintCond)
+	uc, ok := got.GetCondition().(*ledgerpb.FieldCondition_UintCond)
 	require.True(t, ok)
 	assert.Nil(t, uc.UintCond.Min)
 	assert.Nil(t, uc.UintCond.Max)
@@ -414,8 +414,8 @@ func TestCoerceIntToUint_NoMinNoMax(t *testing.T) {
 func TestCoerceIntToUint_FieldRefPreserved(t *testing.T) {
 	t.Parallel()
 
-	fc := fieldCondition("myfield", &commonpb.IntCondition{Min: new(int64(0))})
-	schema := &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_UINT64}
+	fc := fieldCondition("myfield", &ledgerpb.IntCondition{Min: new(int64(0))})
+	schema := &ledgerpb.MetadataFieldSchema{Type: ledgerpb.MetadataType_METADATA_TYPE_UINT64}
 
 	got, err := validateAndCoerceCondition(fc, schema)
 	require.NoError(t, err)
@@ -425,8 +425,8 @@ func TestCoerceIntToUint_FieldRefPreserved(t *testing.T) {
 func TestValidateCondition_BoolSchemaRejectsUint(t *testing.T) {
 	t.Parallel()
 
-	fc := fieldCondition("active", &commonpb.UintCondition{Min: new(uint64(1))})
-	schema := &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_BOOL}
+	fc := fieldCondition("active", &ledgerpb.UintCondition{Min: new(uint64(1))})
+	schema := &ledgerpb.MetadataFieldSchema{Type: ledgerpb.MetadataType_METADATA_TYPE_BOOL}
 
 	_, err := validateAndCoerceCondition(fc, schema)
 	require.Error(t, err)
@@ -436,8 +436,8 @@ func TestValidateCondition_BoolSchemaRejectsUint(t *testing.T) {
 func TestValidateCondition_UintSchemaRejectsBool(t *testing.T) {
 	t.Parallel()
 
-	fc := fieldCondition("counter", &commonpb.BoolCondition{Value: &commonpb.BoolCondition_Hardcoded{Hardcoded: true}})
-	schema := &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_UINT64}
+	fc := fieldCondition("counter", &ledgerpb.BoolCondition{Value: &ledgerpb.BoolCondition_Hardcoded{Hardcoded: true}})
+	schema := &ledgerpb.MetadataFieldSchema{Type: ledgerpb.MetadataType_METADATA_TYPE_UINT64}
 
 	_, err := validateAndCoerceCondition(fc, schema)
 	require.Error(t, err)
@@ -449,8 +449,8 @@ func TestResolveIntBounds(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		cond       *commonpb.IntCondition
-		params     map[string]*commonpb.ParameterValue
+		cond       *ledgerpb.IntCondition
+		params     map[string]*ledgerpb.ParameterValue
 		wantMin    int64
 		wantMax    int64
 		wantHasMin bool
@@ -461,7 +461,7 @@ func TestResolveIntBounds(t *testing.T) {
 	}{
 		{
 			name:       "equality: min == max, both inclusive",
-			cond:       &commonpb.IntCondition{Min: new(int64(25)), Max: new(int64(25))},
+			cond:       &ledgerpb.IntCondition{Min: new(int64(25)), Max: new(int64(25))},
 			wantMin:    25,
 			wantMax:    26,
 			wantHasMin: true,
@@ -470,7 +470,7 @@ func TestResolveIntBounds(t *testing.T) {
 		},
 		{
 			name:       "range: min < max",
-			cond:       &commonpb.IntCondition{Min: new(int64(10)), Max: new(int64(20))},
+			cond:       &ledgerpb.IntCondition{Min: new(int64(10)), Max: new(int64(20))},
 			wantMin:    10,
 			wantMax:    21,
 			wantHasMin: true,
@@ -479,7 +479,7 @@ func TestResolveIntBounds(t *testing.T) {
 		},
 		{
 			name:       "min exclusive: min=24 exclusive → effective 25, max=25 inclusive → 26",
-			cond:       &commonpb.IntCondition{Min: new(int64(24)), Max: new(int64(25)), MinExclusive: true},
+			cond:       &ledgerpb.IntCondition{Min: new(int64(24)), Max: new(int64(25)), MinExclusive: true},
 			wantMin:    25,
 			wantMax:    26,
 			wantHasMin: true,
@@ -488,7 +488,7 @@ func TestResolveIntBounds(t *testing.T) {
 		},
 		{
 			name:       "max exclusive: min=25, max=26 exclusive → equality on 25",
-			cond:       &commonpb.IntCondition{Min: new(int64(25)), Max: new(int64(26)), MaxExclusive: true},
+			cond:       &ledgerpb.IntCondition{Min: new(int64(25)), Max: new(int64(26)), MaxExclusive: true},
 			wantMin:    25,
 			wantMax:    26,
 			wantHasMin: true,
@@ -497,7 +497,7 @@ func TestResolveIntBounds(t *testing.T) {
 		},
 		{
 			name:       "both exclusive: min=24 excl, max=26 excl → range [25, 26) = equality",
-			cond:       &commonpb.IntCondition{Min: new(int64(24)), Max: new(int64(26)), MinExclusive: true, MaxExclusive: true},
+			cond:       &ledgerpb.IntCondition{Min: new(int64(24)), Max: new(int64(26)), MinExclusive: true, MaxExclusive: true},
 			wantMin:    25,
 			wantMax:    26,
 			wantHasMin: true,
@@ -506,7 +506,7 @@ func TestResolveIntBounds(t *testing.T) {
 		},
 		{
 			name:       "only min",
-			cond:       &commonpb.IntCondition{Min: new(int64(5))},
+			cond:       &ledgerpb.IntCondition{Min: new(int64(5))},
 			wantMin:    5,
 			wantHasMin: true,
 			wantHasMax: false,
@@ -514,7 +514,7 @@ func TestResolveIntBounds(t *testing.T) {
 		},
 		{
 			name:       "only max",
-			cond:       &commonpb.IntCondition{Max: new(int64(100))},
+			cond:       &ledgerpb.IntCondition{Max: new(int64(100))},
 			wantMax:    101,
 			wantHasMin: false,
 			wantHasMax: true,
@@ -522,15 +522,15 @@ func TestResolveIntBounds(t *testing.T) {
 		},
 		{
 			name:       "no bounds",
-			cond:       &commonpb.IntCondition{},
+			cond:       &ledgerpb.IntCondition{},
 			wantHasMin: false,
 			wantHasMax: false,
 			wantEq:     false,
 		},
 		{
 			name:       "param equality: same param for min and max",
-			cond:       &commonpb.IntCondition{ParamMin: "val", ParamMax: "val"},
-			params:     map[string]*commonpb.ParameterValue{"val": {Value: &commonpb.ParameterValue_Int64Value{Int64Value: 42}}},
+			cond:       &ledgerpb.IntCondition{ParamMin: "val", ParamMax: "val"},
+			params:     map[string]*ledgerpb.ParameterValue{"val": {Value: &ledgerpb.ParameterValue_Int64Value{Int64Value: 42}}},
 			wantMin:    42,
 			wantMax:    43,
 			wantHasMin: true,
@@ -539,31 +539,31 @@ func TestResolveIntBounds(t *testing.T) {
 		},
 		{
 			name:    "param error: missing param",
-			cond:    &commonpb.IntCondition{ParamMin: "missing"},
+			cond:    &ledgerpb.IntCondition{ParamMin: "missing"},
 			wantErr: true,
 		},
 		{
 			name:      "overflow: min exclusive at MaxInt64 → empty",
-			cond:      &commonpb.IntCondition{Min: new(int64(math.MaxInt64)), MinExclusive: true},
+			cond:      &ledgerpb.IntCondition{Min: new(int64(math.MaxInt64)), MinExclusive: true},
 			wantEmpty: true,
 		},
 		{
 			name:       "overflow: max inclusive at MaxInt64 → unbounded above",
-			cond:       &commonpb.IntCondition{Min: new(int64(0)), Max: new(int64(math.MaxInt64))},
+			cond:       &ledgerpb.IntCondition{Min: new(int64(0)), Max: new(int64(math.MaxInt64))},
 			wantMin:    0,
 			wantHasMin: true,
 			wantHasMax: false,
 		},
 		{
 			name:      "overflow: param min exclusive at MaxInt64 → empty",
-			cond:      &commonpb.IntCondition{ParamMin: "v", MinExclusive: true},
-			params:    map[string]*commonpb.ParameterValue{"v": {Value: &commonpb.ParameterValue_Int64Value{Int64Value: math.MaxInt64}}},
+			cond:      &ledgerpb.IntCondition{ParamMin: "v", MinExclusive: true},
+			params:    map[string]*ledgerpb.ParameterValue{"v": {Value: &ledgerpb.ParameterValue_Int64Value{Int64Value: math.MaxInt64}}},
 			wantEmpty: true,
 		},
 		{
 			name:       "overflow: param max inclusive at MaxInt64 → unbounded above",
-			cond:       &commonpb.IntCondition{Min: new(int64(0)), ParamMax: "v"},
-			params:     map[string]*commonpb.ParameterValue{"v": {Value: &commonpb.ParameterValue_Int64Value{Int64Value: math.MaxInt64}}},
+			cond:       &ledgerpb.IntCondition{Min: new(int64(0)), ParamMax: "v"},
+			params:     map[string]*ledgerpb.ParameterValue{"v": {Value: &ledgerpb.ParameterValue_Int64Value{Int64Value: math.MaxInt64}}},
 			wantMin:    0,
 			wantHasMin: true,
 			wantHasMax: false,
@@ -604,8 +604,8 @@ func TestResolveUintBounds(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		cond       *commonpb.UintCondition
-		params     map[string]*commonpb.ParameterValue
+		cond       *ledgerpb.UintCondition
+		params     map[string]*ledgerpb.ParameterValue
 		wantMin    uint64
 		wantMax    uint64
 		wantHasMin bool
@@ -616,7 +616,7 @@ func TestResolveUintBounds(t *testing.T) {
 	}{
 		{
 			name:       "equality: min == max, both inclusive",
-			cond:       &commonpb.UintCondition{Min: new(uint64(25)), Max: new(uint64(25))},
+			cond:       &ledgerpb.UintCondition{Min: new(uint64(25)), Max: new(uint64(25))},
 			wantMin:    25,
 			wantMax:    26,
 			wantHasMin: true,
@@ -625,7 +625,7 @@ func TestResolveUintBounds(t *testing.T) {
 		},
 		{
 			name:       "range: min < max",
-			cond:       &commonpb.UintCondition{Min: new(uint64(10)), Max: new(uint64(20))},
+			cond:       &ledgerpb.UintCondition{Min: new(uint64(10)), Max: new(uint64(20))},
 			wantMin:    10,
 			wantMax:    21,
 			wantHasMin: true,
@@ -634,7 +634,7 @@ func TestResolveUintBounds(t *testing.T) {
 		},
 		{
 			name:       "min exclusive: min=24 exclusive, max=25 → equality on 25",
-			cond:       &commonpb.UintCondition{Min: new(uint64(24)), Max: new(uint64(25)), MinExclusive: true},
+			cond:       &ledgerpb.UintCondition{Min: new(uint64(24)), Max: new(uint64(25)), MinExclusive: true},
 			wantMin:    25,
 			wantMax:    26,
 			wantHasMin: true,
@@ -643,7 +643,7 @@ func TestResolveUintBounds(t *testing.T) {
 		},
 		{
 			name:       "max exclusive: min=25, max=26 exclusive → equality on 25",
-			cond:       &commonpb.UintCondition{Min: new(uint64(25)), Max: new(uint64(26)), MaxExclusive: true},
+			cond:       &ledgerpb.UintCondition{Min: new(uint64(25)), Max: new(uint64(26)), MaxExclusive: true},
 			wantMin:    25,
 			wantMax:    26,
 			wantHasMin: true,
@@ -652,7 +652,7 @@ func TestResolveUintBounds(t *testing.T) {
 		},
 		{
 			name:       "only min",
-			cond:       &commonpb.UintCondition{Min: new(uint64(5))},
+			cond:       &ledgerpb.UintCondition{Min: new(uint64(5))},
 			wantMin:    5,
 			wantHasMin: true,
 			wantHasMax: false,
@@ -660,15 +660,15 @@ func TestResolveUintBounds(t *testing.T) {
 		},
 		{
 			name:       "no bounds",
-			cond:       &commonpb.UintCondition{},
+			cond:       &ledgerpb.UintCondition{},
 			wantHasMin: false,
 			wantHasMax: false,
 			wantEq:     false,
 		},
 		{
 			name:       "param equality",
-			cond:       &commonpb.UintCondition{ParamMin: "v", ParamMax: "v"},
-			params:     map[string]*commonpb.ParameterValue{"v": {Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 100}}},
+			cond:       &ledgerpb.UintCondition{ParamMin: "v", ParamMax: "v"},
+			params:     map[string]*ledgerpb.ParameterValue{"v": {Value: &ledgerpb.ParameterValue_Uint64Value{Uint64Value: 100}}},
 			wantMin:    100,
 			wantMax:    101,
 			wantHasMin: true,
@@ -677,25 +677,25 @@ func TestResolveUintBounds(t *testing.T) {
 		},
 		{
 			name:    "param error: missing param",
-			cond:    &commonpb.UintCondition{ParamMax: "missing"},
+			cond:    &ledgerpb.UintCondition{ParamMax: "missing"},
 			wantErr: true,
 		},
 		{
 			name:      "overflow: min exclusive at MaxUint64 → empty",
-			cond:      &commonpb.UintCondition{Min: new(uint64(math.MaxUint64)), MinExclusive: true},
+			cond:      &ledgerpb.UintCondition{Min: new(uint64(math.MaxUint64)), MinExclusive: true},
 			wantEmpty: true,
 		},
 		{
 			name:       "overflow: max inclusive at MaxUint64 → unbounded above",
-			cond:       &commonpb.UintCondition{Min: new(uint64(0)), Max: new(uint64(math.MaxUint64))},
+			cond:       &ledgerpb.UintCondition{Min: new(uint64(0)), Max: new(uint64(math.MaxUint64))},
 			wantMin:    0,
 			wantHasMin: true,
 			wantHasMax: false,
 		},
 		{
 			name:      "overflow: param min exclusive at MaxUint64 → empty",
-			cond:      &commonpb.UintCondition{ParamMin: "v", MinExclusive: true},
-			params:    map[string]*commonpb.ParameterValue{"v": {Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: math.MaxUint64}}},
+			cond:      &ledgerpb.UintCondition{ParamMin: "v", MinExclusive: true},
+			params:    map[string]*ledgerpb.ParameterValue{"v": {Value: &ledgerpb.ParameterValue_Uint64Value{Uint64Value: math.MaxUint64}}},
 			wantEmpty: true,
 		},
 	}
@@ -735,22 +735,22 @@ func TestSchemaFieldsForTarget(t *testing.T) {
 	t.Run("nil schema", func(t *testing.T) {
 		t.Parallel()
 
-		result := SchemaFieldsForTarget(nil, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+		result := SchemaFieldsForTarget(nil, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 		assert.Nil(t, result)
 	})
 
 	t.Run("accounts target", func(t *testing.T) {
 		t.Parallel()
 
-		schema := &commonpb.MetadataSchema{
-			AccountFields: map[string]*commonpb.MetadataFieldSchema{
-				"name": {Type: commonpb.MetadataType_METADATA_TYPE_STRING},
+		schema := &ledgerpb.MetadataSchema{
+			AccountFields: map[string]*ledgerpb.MetadataFieldSchema{
+				"name": {Type: ledgerpb.MetadataType_METADATA_TYPE_STRING},
 			},
-			TransactionFields: map[string]*commonpb.MetadataFieldSchema{
-				"ref": {Type: commonpb.MetadataType_METADATA_TYPE_STRING},
+			TransactionFields: map[string]*ledgerpb.MetadataFieldSchema{
+				"ref": {Type: ledgerpb.MetadataType_METADATA_TYPE_STRING},
 			},
 		}
-		result := SchemaFieldsForTarget(schema, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+		result := SchemaFieldsForTarget(schema, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 		require.Len(t, result, 1)
 		assert.Contains(t, result, "name")
 	})
@@ -758,15 +758,15 @@ func TestSchemaFieldsForTarget(t *testing.T) {
 	t.Run("transactions target", func(t *testing.T) {
 		t.Parallel()
 
-		schema := &commonpb.MetadataSchema{
-			AccountFields: map[string]*commonpb.MetadataFieldSchema{
-				"name": {Type: commonpb.MetadataType_METADATA_TYPE_STRING},
+		schema := &ledgerpb.MetadataSchema{
+			AccountFields: map[string]*ledgerpb.MetadataFieldSchema{
+				"name": {Type: ledgerpb.MetadataType_METADATA_TYPE_STRING},
 			},
-			TransactionFields: map[string]*commonpb.MetadataFieldSchema{
-				"ref": {Type: commonpb.MetadataType_METADATA_TYPE_STRING},
+			TransactionFields: map[string]*ledgerpb.MetadataFieldSchema{
+				"ref": {Type: ledgerpb.MetadataType_METADATA_TYPE_STRING},
 			},
 		}
-		result := SchemaFieldsForTarget(schema, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+		result := SchemaFieldsForTarget(schema, ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 		require.Len(t, result, 1)
 		assert.Contains(t, result, "ref")
 	})
@@ -792,74 +792,74 @@ func TestBuiltinCompilers_GateOnLocalReadiness(t *testing.T) {
 		return readstore.ResolvedIndexVersion{BindingKnown: true}, true, nil
 	}
 
-	info := &commonpb.LedgerInfo{Name: ledgerName}
+	info := &ledgerpb.LedgerInfo{Name: ledgerName}
 
 	// indexRegistry declares every builtin index via the bucket-scoped
 	// Lookup interface (post-PR#453 architecture). Per-replica readiness
 	// lives in IndexVersionState (modelled here via the resolver) — see
 	// EN-1323.
 	indexRegistry := staticIndexLookup{}
-	for _, id := range []*commonpb.IndexID{
-		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
-		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
-		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
-		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS),
-		indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
+	for _, id := range []*ledgerpb.IndexID{
+		indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
+		indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
+		indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
+		indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS),
+		indexes.LogBuiltinID(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
 	} {
-		indexRegistry[indexes.KeyFor(ledgerName, id)] = &commonpb.Index{Ledger: ledgerName, Id: id}
+		indexRegistry[indexes.KeyFor(ledgerName, id)] = &ledgerpb.Index{Ledger: ledgerName, Id: id}
 	}
 
 	tcs := []struct {
 		name   string
-		target commonpb.QueryTarget
-		filter *commonpb.QueryFilter
+		target ledgerpb.QueryTarget
+		filter *ledgerpb.QueryFilter
 	}{
 		{
 			name:   "reference",
-			target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reference{
-				Reference: &commonpb.ReferenceCondition{
-					Cond: &commonpb.StringCondition{Value: &commonpb.StringCondition_Hardcoded{Hardcoded: "x"}},
+			target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			filter: &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Reference{
+				Reference: &ledgerpb.ReferenceCondition{
+					Cond: &ledgerpb.StringCondition{Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: "x"}},
 				},
 			}},
 		},
 		{
 			name:   "builtin-uint:timestamp",
-			target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
-				BuiltinUint: &commonpb.BuiltinUintCondition{
-					Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
-					Cond:  &commonpb.UintCondition{},
+			target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			filter: &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_BuiltinUint{
+				BuiltinUint: &ledgerpb.BuiltinUintCondition{
+					Field: ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
+					Cond:  &ledgerpb.UintCondition{},
 				},
 			}},
 		},
 		{
 			name:   "builtin-uint:inserted_at",
-			target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
-				BuiltinUint: &commonpb.BuiltinUintCondition{
-					Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
-					Cond:  &commonpb.UintCondition{},
+			target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			filter: &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_BuiltinUint{
+				BuiltinUint: &ledgerpb.BuiltinUintCondition{
+					Field: ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
+					Cond:  &ledgerpb.UintCondition{},
 				},
 			}},
 		},
 		{
 			name:   "address (transactions target)",
-			target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{
-				Address: &commonpb.AddressMatch{
-					Role:  commonpb.AddressRole_ADDRESS_ROLE_ANY,
-					Match: &commonpb.AddressMatch_HardcodedExact{HardcodedExact: "alice"},
+			target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			filter: &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Address{
+				Address: &ledgerpb.AddressMatch{
+					Role:  ledgerpb.AddressRole_ADDRESS_ROLE_ANY,
+					Match: &ledgerpb.AddressMatch_HardcodedExact{HardcodedExact: "alice"},
 				},
 			}},
 		},
 		{
 			name:   "log-builtin-uint:date",
-			target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
-			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogBuiltinUint{
-				LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
-					Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
-					Cond:  &commonpb.UintCondition{},
+			target: ledgerpb.QueryTarget_QUERY_TARGET_LOGS,
+			filter: &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_LogBuiltinUint{
+				LogBuiltinUint: &ledgerpb.LogBuiltinUintCondition{
+					Field: ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
+					Cond:  &ledgerpb.UintCondition{},
 				},
 			}},
 		},
@@ -891,15 +891,15 @@ func TestRequireIndexReady_SurfacesPebbleError(t *testing.T) {
 	t.Parallel()
 
 	pebbleErr := errors.New("simulated pebble corruption")
-	info := &commonpb.LedgerInfo{Name: "ledger1"}
+	info := &ledgerpb.LedgerInfo{Name: "ledger1"}
 
-	refID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	refID := indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 	indexRegistry := staticIndexLookup{
 		indexes.KeyFor("ledger1", refID): {Ledger: "ledger1", Id: refID},
 	}
 
 	ctx := &compileCtx{
-		target:        commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		target:        ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 		indexRegistry: indexRegistry,
 		ledgerName:    "ledger1",
 		info:          info,
@@ -909,7 +909,7 @@ func TestRequireIndexReady_SurfacesPebbleError(t *testing.T) {
 	}
 
 	_, err := requireIndexReady(ctx,
-		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
+		indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
 		"reference")
 	require.Error(t, err)
 	require.ErrorIs(t, err, pebbleErr,
@@ -932,13 +932,13 @@ func TestCompile_RejectsUnsupportedTarget(t *testing.T) {
 	t.Parallel()
 
 	// An enum value outside the wired set (ACCOUNTS/TRANSACTIONS/LOGS).
-	const badTarget = commonpb.QueryTarget(9999)
+	const badTarget = ledgerpb.QueryTarget(9999)
 
-	info := &commonpb.LedgerInfo{Name: "ledger1"}
+	info := &ledgerpb.LedgerInfo{Name: "ledger1"}
 
 	cases := []struct {
 		name   string
-		filter *commonpb.QueryFilter
+		filter *ledgerpb.QueryFilter
 	}{
 		{
 			name:   "nil filter (universe path)",
@@ -946,9 +946,9 @@ func TestCompile_RejectsUnsupportedTarget(t *testing.T) {
 		},
 		{
 			name: "field filter",
-			filter: &commonpb.QueryFilter{
-				Filter: &commonpb.QueryFilter_Field{
-					Field: fieldCondition("x", &commonpb.ExistsCondition{}),
+			filter: &ledgerpb.QueryFilter{
+				Filter: &ledgerpb.QueryFilter_Field{
+					Field: fieldCondition("x", &ledgerpb.ExistsCondition{}),
 				},
 			},
 		},
@@ -977,21 +977,21 @@ func TestCompile_RejectsUnsupportedTarget(t *testing.T) {
 func TestIsSupportedTarget(t *testing.T) {
 	t.Parallel()
 
-	require.True(t, isSupportedTarget(commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS))
-	require.True(t, isSupportedTarget(commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS))
-	require.True(t, isSupportedTarget(commonpb.QueryTarget_QUERY_TARGET_LOGS))
+	require.True(t, isSupportedTarget(ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS))
+	require.True(t, isSupportedTarget(ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS))
+	require.True(t, isSupportedTarget(ledgerpb.QueryTarget_QUERY_TARGET_LOGS))
 	// No zero sentinel exists (ACCOUNTS == 0), so an unsupported value can only
 	// be an out-of-range enum — the shape a corrupt/forward-compat stored proto
 	// would take.
-	require.False(t, isSupportedTarget(commonpb.QueryTarget(9999)))
+	require.False(t, isSupportedTarget(ledgerpb.QueryTarget(9999)))
 }
 
 // staticIndexLookup is an in-memory indexes.Lookup for unit tests that
 // need to populate the bucket-scoped Index registry without spinning up
 // a Pebble store. Keyed exactly like the production registry.
-type staticIndexLookup map[domain.IndexKey]*commonpb.Index
+type staticIndexLookup map[domain.IndexKey]*ledgerpb.Index
 
-func (s staticIndexLookup) Get(key domain.IndexKey) (commonpb.IndexReader, error) {
+func (s staticIndexLookup) Get(key domain.IndexKey) (ledgerpb.IndexReader, error) {
 	idx, ok := s[key]
 	if !ok {
 		return nil, domain.ErrNotFound
@@ -1011,21 +1011,21 @@ func TestCompile_AbsentVersionRecordIsRemovedNotBuilding(t *testing.T) {
 
 	const ledgerName = "ledger1"
 
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k2")
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "k2")
 	indexRegistry := staticIndexLookup{
 		indexes.KeyFor(ledgerName, id): {Ledger: ledgerName, Id: id},
 	}
 
-	info := &commonpb.LedgerInfo{Name: ledgerName}
-	schema := map[string]*commonpb.MetadataFieldSchema{
-		"k2": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
+	info := &ledgerpb.LedgerInfo{Name: ledgerName}
+	schema := map[string]*ledgerpb.MetadataFieldSchema{
+		"k2": {Type: ledgerpb.MetadataType_METADATA_TYPE_INT64},
 	}
 
-	filter := &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Field{
-			Field: &commonpb.FieldCondition{
-				Field:     &commonpb.FieldRef{Metadata: "k2"},
-				Condition: &commonpb.FieldCondition_ExistsCond{ExistsCond: &commonpb.ExistsCondition{}},
+	filter := &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Field{
+			Field: &ledgerpb.FieldCondition{
+				Field:     &ledgerpb.FieldRef{Metadata: "k2"},
+				Condition: &ledgerpb.FieldCondition_ExistsCond{ExistsCond: &ledgerpb.ExistsCondition{}},
 			},
 		},
 	}
@@ -1057,7 +1057,7 @@ func TestCompile_AbsentVersionRecordIsRemovedNotBuilding(t *testing.T) {
 
 			_, err := Compile(
 				nil, nil, filter,
-				commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerName,
+				ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerName,
 				nil, schema, info, indexRegistry,
 				func(string) (readstore.ResolvedIndexVersion, bool, error) {
 					return readstore.ResolvedIndexVersion{BindingKnown: true}, tc.primed, nil

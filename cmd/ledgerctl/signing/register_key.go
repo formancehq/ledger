@@ -11,7 +11,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -74,10 +74,10 @@ func runRegisterKey(cmd *cobra.Command, _ []string) error {
 
 	spinner := cmdutil.StartSpinner(fmt.Sprintf("Registering signing key %s...", keyID))
 
-	requests := []*servicepb.Request{
+	requests := []*ledgerpb.Request{
 		{
-			Type: &servicepb.Request_RegisterSigningKey{
-				RegisterSigningKey: &servicepb.RegisterSigningKeyRequest{
+			Type: &ledgerpb.Request_RegisterSigningKey{
+				RegisterSigningKey: &ledgerpb.RegisterSigningKeyRequest{
 					KeyId:     keyID,
 					PublicKey: []byte(pubKey),
 				},

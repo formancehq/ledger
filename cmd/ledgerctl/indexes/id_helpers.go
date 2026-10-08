@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -28,18 +28,18 @@ var indexTypeOptions = []string{
 }
 
 // txBuiltinIndexID constructs an IndexID for a transaction builtin field.
-func txBuiltinIndexID(b commonpb.TransactionBuiltinIndex) *commonpb.IndexID {
-	return &commonpb.IndexID{Kind: &commonpb.IndexID_TxBuiltin{TxBuiltin: b}}
+func txBuiltinIndexID(b ledgerpb.TransactionBuiltinIndex) *ledgerpb.IndexID {
+	return &ledgerpb.IndexID{Kind: &ledgerpb.IndexID_TxBuiltin{TxBuiltin: b}}
 }
 
 // accountBuiltinIndexID constructs an IndexID for an account builtin field.
-func accountBuiltinIndexID(b commonpb.AccountBuiltinIndex) *commonpb.IndexID {
-	return &commonpb.IndexID{Kind: &commonpb.IndexID_AccountBuiltin{AccountBuiltin: b}}
+func accountBuiltinIndexID(b ledgerpb.AccountBuiltinIndex) *ledgerpb.IndexID {
+	return &ledgerpb.IndexID{Kind: &ledgerpb.IndexID_AccountBuiltin{AccountBuiltin: b}}
 }
 
 // metadataIndexID constructs an IndexID for a metadata key on the given target.
-func metadataIndexID(target commonpb.TargetType, key string) *commonpb.IndexID {
-	return &commonpb.IndexID{Kind: &commonpb.IndexID_Metadata{Metadata: &commonpb.MetadataIndexID{
+func metadataIndexID(target ledgerpb.TargetType, key string) *ledgerpb.IndexID {
+	return &ledgerpb.IndexID{Kind: &ledgerpb.IndexID_Metadata{Metadata: &ledgerpb.MetadataIndexID{
 		Target: target,
 		Key:    key,
 	}}}
@@ -47,7 +47,7 @@ func metadataIndexID(target commonpb.TargetType, key string) *commonpb.IndexID {
 
 // ParseDefinition parses an initial --index declaration using the same type
 // names as indexes create/drop. Metadata keys may themselves contain colons.
-func ParseDefinition(definition string) (*commonpb.IndexID, error) {
+func ParseDefinition(definition string) (*ledgerpb.IndexID, error) {
 	indexType, rest, hasFields := strings.Cut(definition, ":")
 	if indexType == "metadata" {
 		targetName, key, ok := strings.Cut(rest, ":")
@@ -58,7 +58,7 @@ func ParseDefinition(definition string) (*commonpb.IndexID, error) {
 		if err != nil {
 			return nil, err
 		}
-		if target != commonpb.TargetType_TARGET_TYPE_ACCOUNT && target != commonpb.TargetType_TARGET_TYPE_TRANSACTION {
+		if target != ledgerpb.TargetType_TARGET_TYPE_ACCOUNT && target != ledgerpb.TargetType_TARGET_TYPE_TRANSACTION {
 			return nil, fmt.Errorf("invalid metadata index target %q: expected account or transaction", targetName)
 		}
 
@@ -73,24 +73,24 @@ func ParseDefinition(definition string) (*commonpb.IndexID, error) {
 }
 
 // builtinIndex is shared by initial declarations and standalone create/drop.
-func builtinIndex(indexType string) (*commonpb.IndexID, string, error) {
+func builtinIndex(indexType string) (*ledgerpb.IndexID, string, error) {
 	switch indexType {
 	case "address":
-		return txBuiltinIndexID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS), "address (any role)", nil
+		return txBuiltinIndexID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS), "address (any role)", nil
 	case "source-address":
-		return txBuiltinIndexID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS), indexType, nil
+		return txBuiltinIndexID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS), indexType, nil
 	case "destination-address":
-		return txBuiltinIndexID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS), indexType, nil
+		return txBuiltinIndexID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS), indexType, nil
 	case "reference":
-		return txBuiltinIndexID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE), indexType, nil
+		return txBuiltinIndexID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE), indexType, nil
 	case "timestamp":
-		return txBuiltinIndexID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP), indexType, nil
+		return txBuiltinIndexID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP), indexType, nil
 	case "inserted-at":
-		return txBuiltinIndexID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT), indexType, nil
+		return txBuiltinIndexID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT), indexType, nil
 	case "reverted-at":
-		return txBuiltinIndexID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT), indexType, nil
+		return txBuiltinIndexID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT), indexType, nil
 	case "account-asset":
-		return accountBuiltinIndexID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET), "account has-asset", nil
+		return accountBuiltinIndexID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET), "account has-asset", nil
 	default:
 		return nil, "", fmt.Errorf("invalid index type %q: must be %s", indexType, strings.Join(indexTypeOptions, ", "))
 	}

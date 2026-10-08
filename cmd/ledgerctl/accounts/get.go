@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/invariants"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/protohelpers"
@@ -83,7 +83,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 
 	checkpointID, _ := cmd.Flags().GetUint64("checkpoint-id")
 
-	account, err := client.GetAccount(ctx, &commonpb.GetAccountRequest{
+	account, err := client.GetAccount(ctx, &ledgerpb.GetAccountRequest{
 		Ledger:       ledgerName,
 		Address:      address,
 		CheckpointId: checkpointID,

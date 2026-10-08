@@ -1,7 +1,7 @@
 package processing
 
 import (
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
@@ -33,15 +33,15 @@ import (
 type orderOverlayScope struct {
 	Scope
 
-	ledgers           *stagedAccessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader]
+	ledgers           *stagedAccessor[domain.LedgerKey, *ledgerpb.LedgerInfo, ledgerpb.LedgerInfoReader]
 	boundaries        *stagedAccessor[domain.LedgerKey, *raftcmdpb.LedgerBoundaries, raftcmdpb.LedgerBoundariesReader]
 	volumes           *stagedAccessor[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader]
-	accountMetadata   *stagedAccessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]
-	ledgerMetadata    *stagedAccessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]
+	accountMetadata   *stagedAccessor[domain.MetadataKey, *ledgerpb.MetadataValue, ledgerpb.MetadataValueReader]
+	ledgerMetadata    *stagedAccessor[domain.LedgerMetadataKey, *ledgerpb.MetadataValue, ledgerpb.MetadataValueReader]
 	transactionRefs   *stagedAccessor[domain.TransactionReferenceKey, *internalstatepb.TransactionReferenceValue, internalstatepb.TransactionReferenceValueReader]
 	transactionStates *stagedAccessor[domain.TransactionKey, *internalstatepb.TransactionState, internalstatepb.TransactionStateReader]
-	preparedQueries   *stagedAccessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader]
-	indexes           *stagedAccessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]
+	preparedQueries   *stagedAccessor[domain.PreparedQueryKey, *ledgerpb.PreparedQuery, ledgerpb.PreparedQueryReader]
+	indexes           *stagedAccessor[domain.IndexKey, *ledgerpb.Index, ledgerpb.IndexReader]
 
 	// Reverted is bool-valued (no Reader). Kept as a discrete map.
 	stagedReverted map[domain.TransactionKey]bool
@@ -62,15 +62,15 @@ func newOrderOverlayScope(parent Scope) *orderOverlayScope {
 	return &orderOverlayScope{
 		Scope: parent,
 		ledgers: newStagedAccessor(parent.Ledgers(),
-			func(v *commonpb.LedgerInfo) commonpb.LedgerInfoReader { return v.AsReader() }),
+			func(v *ledgerpb.LedgerInfo) ledgerpb.LedgerInfoReader { return v.AsReader() }),
 		boundaries: newStagedAccessor(parent.Boundaries(),
 			func(v *raftcmdpb.LedgerBoundaries) raftcmdpb.LedgerBoundariesReader { return v.AsReader() }),
 		volumes: newStagedAccessor(parent.Volumes(),
 			func(v *raftcmdpb.VolumePair) raftcmdpb.VolumePairReader { return v.AsReader() }),
 		accountMetadata: newStagedAccessor(parent.AccountMetadata(),
-			func(v *commonpb.MetadataValue) commonpb.MetadataValueReader { return v.AsReader() }),
+			func(v *ledgerpb.MetadataValue) ledgerpb.MetadataValueReader { return v.AsReader() }),
 		ledgerMetadata: newStagedAccessor(parent.LedgerMetadata(),
-			func(v *commonpb.MetadataValue) commonpb.MetadataValueReader { return v.AsReader() }),
+			func(v *ledgerpb.MetadataValue) ledgerpb.MetadataValueReader { return v.AsReader() }),
 		transactionRefs: newStagedAccessor(parent.TransactionReferences(),
 			func(v *internalstatepb.TransactionReferenceValue) internalstatepb.TransactionReferenceValueReader {
 				return v.AsReader()
@@ -80,9 +80,9 @@ func newOrderOverlayScope(parent Scope) *orderOverlayScope {
 				return v.AsReader()
 			}),
 		preparedQueries: newStagedAccessor(parent.PreparedQueries(),
-			func(v *commonpb.PreparedQuery) commonpb.PreparedQueryReader { return v.AsReader() }),
+			func(v *ledgerpb.PreparedQuery) ledgerpb.PreparedQueryReader { return v.AsReader() }),
 		indexes: newStagedAccessor(parent.Indexes(),
-			func(v *commonpb.Index) commonpb.IndexReader { return v.AsReader() }),
+			func(v *ledgerpb.Index) ledgerpb.IndexReader { return v.AsReader() }),
 	}
 }
 
@@ -90,7 +90,7 @@ func newOrderOverlayScope(parent Scope) *orderOverlayScope {
 // Accessor overrides
 // ──────────────────────────────────────────────────────────────────────────
 
-func (o *orderOverlayScope) Ledgers() Accessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader] {
+func (o *orderOverlayScope) Ledgers() Accessor[domain.LedgerKey, *ledgerpb.LedgerInfo, ledgerpb.LedgerInfoReader] {
 	return o.ledgers
 }
 
@@ -102,11 +102,11 @@ func (o *orderOverlayScope) Volumes() Accessor[domain.VolumeKey, *raftcmdpb.Volu
 	return o.volumes
 }
 
-func (o *orderOverlayScope) AccountMetadata() Accessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader] {
+func (o *orderOverlayScope) AccountMetadata() Accessor[domain.MetadataKey, *ledgerpb.MetadataValue, ledgerpb.MetadataValueReader] {
 	return o.accountMetadata
 }
 
-func (o *orderOverlayScope) LedgerMetadata() Accessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader] {
+func (o *orderOverlayScope) LedgerMetadata() Accessor[domain.LedgerMetadataKey, *ledgerpb.MetadataValue, ledgerpb.MetadataValueReader] {
 	return o.ledgerMetadata
 }
 
@@ -118,11 +118,11 @@ func (o *orderOverlayScope) TransactionStates() Accessor[domain.TransactionKey, 
 	return o.transactionStates
 }
 
-func (o *orderOverlayScope) PreparedQueries() Accessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader] {
+func (o *orderOverlayScope) PreparedQueries() Accessor[domain.PreparedQueryKey, *ledgerpb.PreparedQuery, ledgerpb.PreparedQueryReader] {
 	return o.preparedQueries
 }
 
-func (o *orderOverlayScope) Indexes() Accessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader] {
+func (o *orderOverlayScope) Indexes() Accessor[domain.IndexKey, *ledgerpb.Index, ledgerpb.IndexReader] {
 	return o.indexes
 }
 

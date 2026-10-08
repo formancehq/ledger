@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -15,13 +15,13 @@ func TestTypedMetadata_LiteralInt64(t *testing.T) {
 	t.Parallel()
 
 	r := mustCompile(t,
-		&commonpb.MirrorRewriteRule{Scope: &commonpb.MirrorRewriteRule_CreatedTransaction{
-			CreatedTransaction: &commonpb.CreatedTransactionRule{
-				Actions: []*commonpb.CreatedTransactionAction{{
-					Action: &commonpb.CreatedTransactionAction_SetMetadata{
-						SetMetadata: &commonpb.SetMetadataAction{
+		&ledgerpb.MirrorRewriteRule{Scope: &ledgerpb.MirrorRewriteRule_CreatedTransaction{
+			CreatedTransaction: &ledgerpb.CreatedTransactionRule{
+				Actions: []*ledgerpb.CreatedTransactionAction{{
+					Action: &ledgerpb.CreatedTransactionAction_SetMetadata{
+						SetMetadata: &ledgerpb.SetMetadataAction{
 							Key:    "shard",
-							Source: &commonpb.SetMetadataAction_Value{Value: "42"},
+							Source: &ledgerpb.SetMetadataAction_Value{Value: "42"},
 							Type:   "int64",
 						},
 					},
@@ -47,7 +47,7 @@ func TestTypedMetadata_LiteralInt64(t *testing.T) {
 		t.Fatalf("shard metadata missing")
 	}
 
-	if _, ok := mv.GetType().(*commonpb.MetadataValue_IntValue); !ok {
+	if _, ok := mv.GetType().(*ledgerpb.MetadataValue_IntValue); !ok {
 		t.Fatalf("shard is not an int64 typed value: %T", mv.GetType())
 	}
 }
@@ -56,13 +56,13 @@ func TestTypedMetadata_ValueExprAsInt64(t *testing.T) {
 	t.Parallel()
 
 	r := mustCompile(t,
-		&commonpb.MirrorRewriteRule{Scope: &commonpb.MirrorRewriteRule_CreatedTransaction{
-			CreatedTransaction: &commonpb.CreatedTransactionRule{
-				Actions: []*commonpb.CreatedTransactionAction{{
-					Action: &commonpb.CreatedTransactionAction_SetMetadata{
-						SetMetadata: &commonpb.SetMetadataAction{
+		&ledgerpb.MirrorRewriteRule{Scope: &ledgerpb.MirrorRewriteRule_CreatedTransaction{
+			CreatedTransaction: &ledgerpb.CreatedTransactionRule{
+				Actions: []*ledgerpb.CreatedTransactionAction{{
+					Action: &ledgerpb.CreatedTransactionAction_SetMetadata{
+						SetMetadata: &ledgerpb.SetMetadataAction{
 							Key:    "seq",
-							Source: &commonpb.SetMetadataAction_ValueExpr{ValueExpr: `log.reference`},
+							Source: &ledgerpb.SetMetadataAction_ValueExpr{ValueExpr: `log.reference`},
 							Type:   "int64",
 						},
 					},
@@ -87,7 +87,7 @@ func TestTypedMetadata_ValueExprAsInt64(t *testing.T) {
 	}
 
 	mv := out.GetCreatedTransaction().GetMetadata()["seq"]
-	if _, ok := mv.GetType().(*commonpb.MetadataValue_IntValue); !ok {
+	if _, ok := mv.GetType().(*ledgerpb.MetadataValue_IntValue); !ok {
 		t.Fatalf("seq is not an int64 typed value: %T", mv.GetType())
 	}
 }
@@ -98,13 +98,13 @@ func TestTypedMetadata_UnparsableProducesNull(t *testing.T) {
 	// Per platform semantics, a value that doesn't parse as the declared type
 	// becomes a null value preserving the original string. Not a batch failure.
 	r := mustCompile(t,
-		&commonpb.MirrorRewriteRule{Scope: &commonpb.MirrorRewriteRule_CreatedTransaction{
-			CreatedTransaction: &commonpb.CreatedTransactionRule{
-				Actions: []*commonpb.CreatedTransactionAction{{
-					Action: &commonpb.CreatedTransactionAction_SetMetadata{
-						SetMetadata: &commonpb.SetMetadataAction{
+		&ledgerpb.MirrorRewriteRule{Scope: &ledgerpb.MirrorRewriteRule_CreatedTransaction{
+			CreatedTransaction: &ledgerpb.CreatedTransactionRule{
+				Actions: []*ledgerpb.CreatedTransactionAction{{
+					Action: &ledgerpb.CreatedTransactionAction_SetMetadata{
+						SetMetadata: &ledgerpb.SetMetadataAction{
 							Key:    "shard",
-							Source: &commonpb.SetMetadataAction_Value{Value: "not-a-number"},
+							Source: &ledgerpb.SetMetadataAction_Value{Value: "not-a-number"},
 							Type:   "int64",
 						},
 					},
@@ -126,7 +126,7 @@ func TestTypedMetadata_UnparsableProducesNull(t *testing.T) {
 	}
 
 	mv := out.GetCreatedTransaction().GetMetadata()["shard"]
-	if _, ok := mv.GetType().(*commonpb.MetadataValue_NullValue); !ok {
+	if _, ok := mv.GetType().(*ledgerpb.MetadataValue_NullValue); !ok {
 		t.Fatalf("expected null value on failed coercion; got %T", mv.GetType())
 	}
 }
@@ -134,13 +134,13 @@ func TestTypedMetadata_UnparsableProducesNull(t *testing.T) {
 func TestTypedMetadata_UnknownTypeRejectedAtAdmission(t *testing.T) {
 	t.Parallel()
 
-	rule := &commonpb.MirrorRewriteRule{Scope: &commonpb.MirrorRewriteRule_CreatedTransaction{
-		CreatedTransaction: &commonpb.CreatedTransactionRule{
-			Actions: []*commonpb.CreatedTransactionAction{{
-				Action: &commonpb.CreatedTransactionAction_SetMetadata{
-					SetMetadata: &commonpb.SetMetadataAction{
+	rule := &ledgerpb.MirrorRewriteRule{Scope: &ledgerpb.MirrorRewriteRule_CreatedTransaction{
+		CreatedTransaction: &ledgerpb.CreatedTransactionRule{
+			Actions: []*ledgerpb.CreatedTransactionAction{{
+				Action: &ledgerpb.CreatedTransactionAction_SetMetadata{
+					SetMetadata: &ledgerpb.SetMetadataAction{
 						Key:    "k",
-						Source: &commonpb.SetMetadataAction_Value{Value: "v"},
+						Source: &ledgerpb.SetMetadataAction_Value{Value: "v"},
 						Type:   "float128", // not a known metadata type
 					},
 				},
@@ -148,7 +148,7 @@ func TestTypedMetadata_UnknownTypeRejectedAtAdmission(t *testing.T) {
 		},
 	}}
 
-	_, err := NewRewriter([]*commonpb.MirrorRewriteRule{rule})
+	_, err := NewRewriter([]*ledgerpb.MirrorRewriteRule{rule})
 	if err == nil {
 		t.Fatalf("expected admission rejection for unknown metadata type token")
 	}
@@ -164,14 +164,14 @@ func TestTypedMetadata_OnSetAccountMetadata(t *testing.T) {
 	t.Parallel()
 
 	r := mustCompile(t,
-		&commonpb.MirrorRewriteRule{Scope: &commonpb.MirrorRewriteRule_CreatedTransaction{
-			CreatedTransaction: &commonpb.CreatedTransactionRule{
-				Actions: []*commonpb.CreatedTransactionAction{{
-					Action: &commonpb.CreatedTransactionAction_SetAccountMetadata{
-						SetAccountMetadata: &commonpb.SetAccountMetadataAction{
+		&ledgerpb.MirrorRewriteRule{Scope: &ledgerpb.MirrorRewriteRule_CreatedTransaction{
+			CreatedTransaction: &ledgerpb.CreatedTransactionRule{
+				Actions: []*ledgerpb.CreatedTransactionAction{{
+					Action: &ledgerpb.CreatedTransactionAction_SetAccountMetadata{
+						SetAccountMetadata: &ledgerpb.SetAccountMetadataAction{
 							Account: "world",
 							Key:     "flag",
-							Source:  &commonpb.SetAccountMetadataAction_Value{Value: "true"},
+							Source:  &ledgerpb.SetAccountMetadataAction_Value{Value: "true"},
 							Type:    "bool",
 						},
 					},
@@ -185,7 +185,7 @@ func TestTypedMetadata_OnSetAccountMetadata(t *testing.T) {
 		Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{
 			CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
 				TransactionId: 1,
-				Postings:      []*commonpb.Posting{posting("world", "acme")},
+				Postings:      []*ledgerpb.Posting{posting("world", "acme")},
 			},
 		},
 	}
@@ -196,7 +196,7 @@ func TestTypedMetadata_OnSetAccountMetadata(t *testing.T) {
 	}
 
 	mv := out.GetCreatedTransaction().GetAccountMetadata()["world"].GetValues()["flag"]
-	if _, ok := mv.GetType().(*commonpb.MetadataValue_BoolValue); !ok {
+	if _, ok := mv.GetType().(*ledgerpb.MetadataValue_BoolValue); !ok {
 		t.Fatalf("world/flag not a bool value: %T", mv.GetType())
 	}
 }
@@ -214,13 +214,13 @@ func TestMultiReplacements_TwoGroupsFromOneMatch(t *testing.T) {
 	//     - key: acquirer  replacement: $1
 	//     - key: worker_id replacement: $2  type: int64
 	r := mustCompile(t,
-		&commonpb.MirrorRewriteRule{Scope: &commonpb.MirrorRewriteRule_CreatedTransaction{
-			CreatedTransaction: &commonpb.CreatedTransactionRule{
-				Actions: []*commonpb.CreatedTransactionAction{{
-					Action: &commonpb.CreatedTransactionAction_SetAccountMetadataFromAddress{
-						SetAccountMetadataFromAddress: &commonpb.SetAccountMetadataFromAddressAction{
+		&ledgerpb.MirrorRewriteRule{Scope: &ledgerpb.MirrorRewriteRule_CreatedTransaction{
+			CreatedTransaction: &ledgerpb.CreatedTransactionRule{
+				Actions: []*ledgerpb.CreatedTransactionAction{{
+					Action: &ledgerpb.CreatedTransactionAction_SetAccountMetadataFromAddress{
+						SetAccountMetadataFromAddress: &ledgerpb.SetAccountMetadataFromAddressAction{
 							Pattern: `^acquirer:([^:]+):worker:(\d+):.*$`,
-							Replacements: []*commonpb.SetAccountMetadataFromAddressReplacement{
+							Replacements: []*ledgerpb.SetAccountMetadataFromAddressReplacement{
 								{Key: "acquirer", Replacement: "$1"},
 								{Key: "worker_id", Replacement: "$2", Type: "int64"},
 							},
@@ -236,7 +236,7 @@ func TestMultiReplacements_TwoGroupsFromOneMatch(t *testing.T) {
 		Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{
 			CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
 				TransactionId: 1,
-				Postings: []*commonpb.Posting{
+				Postings: []*ledgerpb.Posting{
 					posting("acquirer:acme:worker:001:bank", "world"),
 				},
 			},
@@ -260,7 +260,7 @@ func TestMultiReplacements_TwoGroupsFromOneMatch(t *testing.T) {
 	}
 
 	workerID := acc.GetValues()["worker_id"]
-	if _, ok := workerID.GetType().(*commonpb.MetadataValue_IntValue); !ok {
+	if _, ok := workerID.GetType().(*ledgerpb.MetadataValue_IntValue); !ok {
 		t.Fatalf("worker_id not int64: %T", workerID.GetType())
 	}
 }
@@ -268,11 +268,11 @@ func TestMultiReplacements_TwoGroupsFromOneMatch(t *testing.T) {
 func TestMultiReplacements_EmptyRejectedAtAdmission(t *testing.T) {
 	t.Parallel()
 
-	rule := &commonpb.MirrorRewriteRule{Scope: &commonpb.MirrorRewriteRule_CreatedTransaction{
-		CreatedTransaction: &commonpb.CreatedTransactionRule{
-			Actions: []*commonpb.CreatedTransactionAction{{
-				Action: &commonpb.CreatedTransactionAction_SetAccountMetadataFromAddress{
-					SetAccountMetadataFromAddress: &commonpb.SetAccountMetadataFromAddressAction{
+	rule := &ledgerpb.MirrorRewriteRule{Scope: &ledgerpb.MirrorRewriteRule_CreatedTransaction{
+		CreatedTransaction: &ledgerpb.CreatedTransactionRule{
+			Actions: []*ledgerpb.CreatedTransactionAction{{
+				Action: &ledgerpb.CreatedTransactionAction_SetAccountMetadataFromAddress{
+					SetAccountMetadataFromAddress: &ledgerpb.SetAccountMetadataFromAddressAction{
 						Pattern: `^acquirer:.*$`,
 						// no replacements — nothing to write
 					},
@@ -281,7 +281,7 @@ func TestMultiReplacements_EmptyRejectedAtAdmission(t *testing.T) {
 		},
 	}}
 
-	_, err := NewRewriter([]*commonpb.MirrorRewriteRule{rule})
+	_, err := NewRewriter([]*ledgerpb.MirrorRewriteRule{rule})
 	if err == nil {
 		t.Fatalf("expected admission rejection for empty replacements list")
 	}
@@ -294,13 +294,13 @@ func TestMultiReplacements_EmptyRejectedAtAdmission(t *testing.T) {
 func TestMultiReplacements_InvalidReplacementKeyRejected(t *testing.T) {
 	t.Parallel()
 
-	rule := &commonpb.MirrorRewriteRule{Scope: &commonpb.MirrorRewriteRule_CreatedTransaction{
-		CreatedTransaction: &commonpb.CreatedTransactionRule{
-			Actions: []*commonpb.CreatedTransactionAction{{
-				Action: &commonpb.CreatedTransactionAction_SetAccountMetadataFromAddress{
-					SetAccountMetadataFromAddress: &commonpb.SetAccountMetadataFromAddressAction{
+	rule := &ledgerpb.MirrorRewriteRule{Scope: &ledgerpb.MirrorRewriteRule_CreatedTransaction{
+		CreatedTransaction: &ledgerpb.CreatedTransactionRule{
+			Actions: []*ledgerpb.CreatedTransactionAction{{
+				Action: &ledgerpb.CreatedTransactionAction_SetAccountMetadataFromAddress{
+					SetAccountMetadataFromAddress: &ledgerpb.SetAccountMetadataFromAddressAction{
 						Pattern: `^.*$`,
-						Replacements: []*commonpb.SetAccountMetadataFromAddressReplacement{
+						Replacements: []*ledgerpb.SetAccountMetadataFromAddressReplacement{
 							{Key: "bad key", Replacement: "$0"},
 						},
 					},
@@ -309,7 +309,7 @@ func TestMultiReplacements_InvalidReplacementKeyRejected(t *testing.T) {
 		},
 	}}
 
-	_, err := NewRewriter([]*commonpb.MirrorRewriteRule{rule})
+	_, err := NewRewriter([]*ledgerpb.MirrorRewriteRule{rule})
 	if err == nil {
 		t.Fatalf("expected admission rejection for invalid key")
 	}

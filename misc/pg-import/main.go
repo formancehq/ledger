@@ -19,7 +19,7 @@ import (
 	grpcinsecure "google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 )
@@ -105,7 +105,7 @@ func run() error {
 
 	defer func() { _ = conn.Close() }()
 
-	client := commonpb.NewBucketServiceClient(conn)
+	client := ledgerpb.NewBucketServiceClient(conn)
 
 	// Fetch existing ledgers to skip duplicates.
 	existing := listExistingLedgers(ctx, client, *timeout)
@@ -275,11 +275,11 @@ func discoverLedgersInDB(ctx context.Context, dsn, database string) ([]v2Ledger,
 }
 
 // listExistingLedgers fetches ledgers already present on the v3 instance.
-func listExistingLedgers(ctx context.Context, client commonpb.BucketServiceClient, timeout time.Duration) map[string]struct{} {
+func listExistingLedgers(ctx context.Context, client ledgerpb.BucketServiceClient, timeout time.Duration) map[string]struct{} {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	stream, err := client.ListLedgers(ctx, &commonpb.ListLedgersRequest{})
+	stream, err := client.ListLedgers(ctx, &ledgerpb.ListLedgersRequest{})
 	if err != nil {
 		log.Printf("  WARN  could not list existing v3 ledgers: %v", err)
 
@@ -309,7 +309,7 @@ func listExistingLedgers(ctx context.Context, client commonpb.BucketServiceClien
 // createMirrorLedger creates a mirror ledger on v3 pointing to the v2 PG database.
 func createMirrorLedger(
 	ctx context.Context,
-	client commonpb.BucketServiceClient,
+	client ledgerpb.BucketServiceClient,
 	name, sourceLedgerName, dsn string,
 	batchSize uint32,
 	timeout time.Duration,
@@ -317,16 +317,16 @@ func createMirrorLedger(
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-		Type: &commonpb.Request_CreateLedger{
-			CreateLedger: &commonpb.CreateLedgerRequest{
+	_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+		Type: &ledgerpb.Request_CreateLedger{
+			CreateLedger: &ledgerpb.CreateLedgerRequest{
 				Name: name,
-				Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
-				MirrorSource: &commonpb.MirrorSourceConfig{
+				Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR,
+				MirrorSource: &ledgerpb.MirrorSourceConfig{
 					LedgerName: sourceLedgerName,
 					BatchSize:  batchSize,
-					Type: &commonpb.MirrorSourceConfig_Postgres{
-						Postgres: &commonpb.PostgresMirrorSourceConfig{
+					Type: &ledgerpb.MirrorSourceConfig_Postgres{
+						Postgres: &ledgerpb.PostgresMirrorSourceConfig{
 							Dsn: dsn,
 						},
 					},

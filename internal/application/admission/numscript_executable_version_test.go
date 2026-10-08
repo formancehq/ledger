@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -74,21 +74,21 @@ func TestExecutableReferenceVersionSelector(t *testing.T) {
 // skippableRefRequest builds an Apply request whose CreateTransaction references
 // a numscript, claims a transaction reference, and opts into the
 // TRANSACTION_REFERENCE_CONFLICT skip.
-func skippableRefRequest(ledger, txRef, scriptName, version string) *commonpb.Request {
-	return &commonpb.Request{
-		Type: &commonpb.Request_Apply{
-			Apply: &commonpb.LedgerApplyRequest{
+func skippableRefRequest(ledger, txRef, scriptName, version string) *ledgerpb.Request {
+	return &ledgerpb.Request{
+		Type: &ledgerpb.Request_Apply{
+			Apply: &ledgerpb.LedgerApplyRequest{
 				Ledger: ledger,
-				Action: &commonpb.LedgerAction{
-					Data: &commonpb.LedgerAction_CreateTransaction{
-						CreateTransaction: &commonpb.CreateTransactionPayload{
+				Action: &ledgerpb.LedgerAction{
+					Data: &ledgerpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &ledgerpb.CreateTransactionPayload{
 							Reference:       txRef,
-							ScriptReference: &commonpb.ScriptReference{Name: scriptName, Version: version},
+							ScriptReference: &ledgerpb.ScriptReference{Name: scriptName, Version: version},
 						},
 					},
 				},
-				SkippableReasons: []commonpb.ErrorReason{
-					commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+				SkippableReasons: []ledgerpb.ErrorReason{
+					ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 				},
 			},
 		},
@@ -97,20 +97,20 @@ func skippableRefRequest(ledger, txRef, scriptName, version string) *commonpb.Re
 
 // postingsRequest builds an Apply request that claims a transaction reference
 // with a plain postings transaction.
-func postingsRequest(ledger, txRef string) *commonpb.Request {
-	return &commonpb.Request{
-		Type: &commonpb.Request_Apply{
-			Apply: &commonpb.LedgerApplyRequest{
+func postingsRequest(ledger, txRef string) *ledgerpb.Request {
+	return &ledgerpb.Request{
+		Type: &ledgerpb.Request_Apply{
+			Apply: &ledgerpb.LedgerApplyRequest{
 				Ledger: ledger,
-				Action: &commonpb.LedgerAction{
-					Data: &commonpb.LedgerAction_CreateTransaction{
-						CreateTransaction: &commonpb.CreateTransactionPayload{
+				Action: &ledgerpb.LedgerAction{
+					Data: &ledgerpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &ledgerpb.CreateTransactionPayload{
 							Reference: txRef,
-							Postings: []*commonpb.Posting{{
+							Postings: []*ledgerpb.Posting{{
 								Source:      "world",
 								Destination: "dst",
 								Asset:       "USD",
-								Amount:      commonpb.NewUint256FromUint64(1),
+								Amount:      ledgerpb.NewUint256FromUint64(1),
 							}},
 						},
 					},
@@ -137,7 +137,7 @@ func TestExecutableReferenceVersionSelector_SkippedOrder(t *testing.T) {
 			admission, _ := createTestAdmissionWithReader(t, store, nil)
 			writeReference(t, admission, testLedgerName, "dup-ref", 1)
 
-			_, err := admission.Admit(attributedTestContext(context.Background()), commonpb.UnsignedApplyRequest("",
+			_, err := admission.Admit(attributedTestContext(context.Background()), ledgerpb.UnsignedApplyRequest("",
 				skippableRefRequest(testLedgerName, "dup-ref", "pay", version)))
 
 			var invalid *domain.ErrNumscriptInvalidVersion
@@ -153,7 +153,7 @@ func TestExecutableReferenceVersionSelector_SkippedOrder(t *testing.T) {
 
 			// The first entry claims the reference, so the second is predicted
 			// to skip on the intra-batch conflict with nothing persisted.
-			_, err := admission.Admit(attributedTestContext(context.Background()), commonpb.UnsignedApplyRequest("",
+			_, err := admission.Admit(attributedTestContext(context.Background()), ledgerpb.UnsignedApplyRequest("",
 				postingsRequest(testLedgerName, "r1"),
 				skippableRefRequest(testLedgerName, "r1", "pay", version)))
 

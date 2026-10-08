@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestCreateSink_Kafka_FailsWithoutBroker(t *testing.T) {
@@ -15,10 +15,10 @@ func TestCreateSink_Kafka_FailsWithoutBroker(t *testing.T) {
 
 	m := &Manager{}
 
-	cfg := &commonpb.SinkConfig{
+	cfg := &ledgerpb.SinkConfig{
 		Name: "kafka-sink",
-		Type: &commonpb.SinkConfig_Kafka{
-			Kafka: &commonpb.KafkaSinkConfig{
+		Type: &ledgerpb.SinkConfig_Kafka{
+			Kafka: &ledgerpb.KafkaSinkConfig{
 				Brokers: []string{"localhost:99999"},
 				Topic:   "test-events",
 			},

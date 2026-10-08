@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
@@ -32,7 +32,7 @@ import (
 // genLogFilter builds a filter over the conditions valid on LOGS: ledger name,
 // log id range, and the boolean combinators. Returns nil for the unfiltered
 // case, which exercises the universe scan itself.
-func genLogFilter(ledger string, depth int) *commonpb.QueryFilter {
+func genLogFilter(ledger string, depth int) *ledgerpb.QueryFilter {
 	if depth >= 2 || oneIn(3) {
 		return genLogLeaf(ledger)
 	}
@@ -49,7 +49,7 @@ func genLogFilter(ledger string, depth int) *commonpb.QueryFilter {
 
 // genLogLeaf picks one LOGS-valid leaf. Bounds straddle the populated range so
 // empty, partial and total windows all occur.
-func genLogLeaf(ledger string) *commonpb.QueryFilter {
+func genLogLeaf(ledger string) *ledgerpb.QueryFilter {
 	switch random.RandomChoice([]uint8{0, 1, 2}) {
 	case 0:
 		name := ledger
@@ -57,27 +57,27 @@ func genLogLeaf(ledger string) *commonpb.QueryFilter {
 			name = "no-such-ledger"
 		}
 
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Ledger{
-			Ledger: &commonpb.LedgerCondition{
-				Cond: &commonpb.StringCondition{Value: &commonpb.StringCondition_Hardcoded{Hardcoded: name}},
+		return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Ledger{
+			Ledger: &ledgerpb.LedgerCondition{
+				Cond: &ledgerpb.StringCondition{Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: name}},
 			},
 		}}
 	case 1:
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{
-			LogId: &commonpb.LogIdCondition{Cond: genLogUintCond()},
+		return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_LogId{
+			LogId: &ledgerpb.LogIdCondition{Cond: genLogUintCond()},
 		}}
 	default:
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogBuiltinUint{
-			LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
-				Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
+		return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_LogBuiltinUint{
+			LogBuiltinUint: &ledgerpb.LogBuiltinUintCondition{
+				Field: ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
 				Cond:  genLogUintCond(),
 			},
 		}}
 	}
 }
 
-func genLogUintCond() *commonpb.UintCondition {
-	cond := &commonpb.UintCondition{}
+func genLogUintCond() *ledgerpb.UintCondition {
+	cond := &ledgerpb.UintCondition{}
 
 	if oneIn(2) {
 		lower := internal.Rand().Uint64() % 32
@@ -96,9 +96,9 @@ func genLogUintCond() *commonpb.UintCondition {
 
 // hasDateLeaf reports whether the filter reads the log date, which is served
 // only when the log-date builtin index exists.
-func hasDateLeaf(f *commonpb.QueryFilter) bool {
-	return anyLeaf(f, func(leaf *commonpb.QueryFilter) bool {
-		_, ok := leaf.GetFilter().(*commonpb.QueryFilter_LogBuiltinUint)
+func hasDateLeaf(f *ledgerpb.QueryFilter) bool {
+	return anyLeaf(f, func(leaf *ledgerpb.QueryFilter) bool {
+		_, ok := leaf.GetFilter().(*ledgerpb.QueryFilter_LogBuiltinUint)
 
 		return ok
 	})
@@ -106,8 +106,8 @@ func hasDateLeaf(f *commonpb.QueryFilter) bool {
 
 // logDateIndexID is the opt-in builtin index the log date is served from.
 // logDateIndexCanonical is its stable map key in the model's index set.
-func logDateIndexID() *commonpb.IndexID {
-	return indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
+func logDateIndexID() *ledgerpb.IndexID {
+	return indexes.LogBuiltinID(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
 }
 
 var logDateIndexCanonical = indexes.Canonical(logDateIndexID())
@@ -117,7 +117,7 @@ var logDateIndexCanonical = indexes.Canonical(logDateIndexID())
 // the outcome the server owes — a page or a not-ready refusal — follows from
 // the index's lifecycle in every candidate base, exactly as on the accounts
 // and transactions paths.
-func neededLogIndexes(f *commonpb.QueryFilter) map[string]struct{} {
+func neededLogIndexes(f *ledgerpb.QueryFilter) map[string]struct{} {
 	if !hasDateLeaf(f) {
 		return nil
 	}
@@ -131,20 +131,20 @@ func neededLogIndexes(f *commonpb.QueryFilter) map[string]struct{} {
 // applied an observed-but-undrained bulk holds exactly such logs — so a date
 // leaf reading it is undecided, and the row becomes optional in the predicted
 // window rather than absent from it.
-func matchLogFilter(ledger string, id uint64, date *commonpb.Timestamp, f *commonpb.QueryFilter) (match, known bool) {
+func matchLogFilter(ledger string, id uint64, date *ledgerpb.Timestamp, f *ledgerpb.QueryFilter) (match, known bool) {
 	v := foldFilter(f, filterFold[kleene]{
 		and: kleeneAnd,
 		or:  kleeneOr,
 		not: kleeneNot,
-		leaf: func(leaf *commonpb.QueryFilter) kleene {
+		leaf: func(leaf *ledgerpb.QueryFilter) kleene {
 			switch t := leaf.GetFilter().(type) {
 			case nil:
 				return kleene{match: true, known: true}
-			case *commonpb.QueryFilter_Ledger:
+			case *ledgerpb.QueryFilter_Ledger:
 				return kleene{match: ledger == t.Ledger.GetCond().GetHardcoded(), known: true}
-			case *commonpb.QueryFilter_LogId:
+			case *ledgerpb.QueryFilter_LogId:
 				return kleene{match: matchUintBounds(t.LogId.GetCond(), id), known: true}
-			case *commonpb.QueryFilter_LogBuiltinUint:
+			case *ledgerpb.QueryFilter_LogBuiltinUint:
 				if date == nil {
 					return kleene{known: false}
 				}
@@ -170,7 +170,7 @@ type logWindowRow struct {
 	payload   string
 	tx        txRecordView
 	revertsID uint64
-	date      *commonpb.Timestamp
+	date      *ledgerpb.Timestamp
 	sequence  uint64
 	purged    string
 	newKept   string
@@ -187,7 +187,7 @@ type serverLogRow struct {
 	id        uint64
 	kind      string
 	payload   string
-	tx        *commonpb.Transaction
+	tx        *ledgerpb.Transaction
 	revertsID uint64
 	date      uint64
 	hasDate   bool
@@ -199,7 +199,7 @@ type serverLogRow struct {
 }
 
 // serverLogRows reads a page into comparable rows.
-func serverLogRows(logs []*commonpb.Log) []serverLogRow {
+func serverLogRows(logs []*ledgerpb.Log) []serverLogRow {
 	out := make([]serverLogRow, 0, len(logs))
 
 	for _, l := range logs {
@@ -230,7 +230,7 @@ func serverLogRows(logs []*commonpb.Log) []serverLogRow {
 // servedLogTransaction pulls the transaction a log announces off its payload,
 // with the id of the transaction a revert compensates. Nil for the kinds that
 // announce none.
-func servedLogTransaction(data *commonpb.LedgerLogPayload) (*commonpb.Transaction, uint64) {
+func servedLogTransaction(data *ledgerpb.LedgerLogPayload) (*ledgerpb.Transaction, uint64) {
 	switch {
 	case data.GetCreatedTransaction() != nil:
 		return data.GetCreatedTransaction().GetTransaction(), 0
@@ -248,7 +248,7 @@ func servedLogTransaction(data *commonpb.LedgerLogPayload) (*commonpb.Transactio
 // commas, verbatim in the order the server sent them, so a mis-sorted or
 // duplicated list is a mismatch. The colour segment is always present, empty
 // for the uncolored bucket.
-func renderServedVolumes(vols []*commonpb.TouchedVolume) string {
+func renderServedVolumes(vols []*ledgerpb.TouchedVolume) string {
 	if len(vols) == 0 {
 		return ""
 	}
@@ -263,7 +263,7 @@ func renderServedVolumes(vols []*commonpb.TouchedVolume) string {
 
 // serverLogKind names a log's payload the way the model names it from the
 // request that produced it (oracle logKindOf), so the two are comparable.
-func serverLogKind(l *commonpb.Log) string {
+func serverLogKind(l *ledgerpb.Log) string {
 	switch d := l.GetPayload().GetApply().GetLog().GetData(); {
 	case d.GetOrderSkipped() != nil:
 		return "order_skipped"
@@ -301,7 +301,7 @@ func serverLogKind(l *commonpb.Log) string {
 // the controller translates afterSequence into a LogId condition. Truncation is
 // logWindowMatches' job: optional rows may or may not consume page slots, so a
 // fixed prefix cut would be wrong.
-func logWindowRows(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilter, afterSeq uint64) []logWindowRow {
+func logWindowRows(ls oracle.LedgerState, ledger string, filter *ledgerpb.QueryFilter, afterSeq uint64) []logWindowRow {
 	var rows []logWindowRow
 
 	for _, row := range ls.LogRows() {
@@ -351,7 +351,7 @@ func revertedIDForLog(ls oracle.LedgerState, row oracle.LogRow) uint64 {
 // candidate's row sequence: required rows appear in order, optional rows may,
 // nothing else does, and a required row may only be missing past a full
 // (truncated) page.
-func logWindowMatches(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilter, afterSeq uint64, pageSize int, page []serverLogRow) bool {
+func logWindowMatches(ls oracle.LedgerState, ledger string, filter *ledgerpb.QueryFilter, afterSeq uint64, pageSize int, page []serverLogRow) bool {
 	return logRowsMatch(ledger, logWindowRows(ls, ledger, filter, afterSeq), pageSize, page)
 }
 
@@ -442,7 +442,7 @@ func logRowMatches(ledger string, row logWindowRow, got serverLogRow) bool {
 // metadata map — while the log keeps the values it was written with. Only the
 // fields that cannot move are compared here; the mutable ones are the
 // transaction table's to answer for, through txRecordMatches.
-func logTxMatches(rec txRecordView, got *commonpb.Transaction) bool {
+func logTxMatches(rec txRecordView, got *ledgerpb.Transaction) bool {
 	if rec.Id() != got.GetId() || rec.Reference() != got.GetReference() ||
 		rec.RevertsTransaction() != got.GetRevertsTransaction() {
 		return false
@@ -468,7 +468,7 @@ func logTxMatches(rec txRecordView, got *commonpb.Transaction) bool {
 // logWindow is the page the model predicts when every row is decided: the
 // required rows, truncated to pageSize. Optional rows are left out, so it is a
 // diagnostic rendering only — legality is logWindowMatches, which admits them.
-func logWindow(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilter, afterSeq uint64, pageSize int) []uint64 {
+func logWindow(ls oracle.LedgerState, ledger string, filter *ledgerpb.QueryFilter, afterSeq uint64, pageSize int) []uint64 {
 	var window []uint64
 
 	for _, row := range logWindowRows(ls, ledger, filter, afterSeq) {
@@ -486,10 +486,10 @@ func logWindow(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilte
 }
 
 // runLogQuery drives one ListLogs page and checks it against the model.
-func runLogQuery(ctx context.Context, client commonpb.BucketServiceClient, c *Checker) {
+func runLogQuery(ctx context.Context, client ledgerpb.BucketServiceClient, c *Checker) {
 	ledger, _ := pickLedgerReadTarget(c.liveLedgerNamesSnapshot(), 0)
 
-	var filter *commonpb.QueryFilter
+	var filter *ledgerpb.QueryFilter
 	if !oneIn(4) {
 		filter = genLogFilter(ledger, 0)
 	}
@@ -518,16 +518,16 @@ func runLogQuery(ctx context.Context, client commonpb.BucketServiceClient, c *Ch
 	// candidate base.
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 	responseFrontier := c.beginResponseFrontier()
-	stream, err := client.ListLogs(readCtx, &commonpb.ListLogsRequest{
+	stream, err := client.ListLogs(readCtx, &ledgerpb.ListLogsRequest{
 		Ledger: ledger,
-		Options: &commonpb.ListOptions{
+		Options: &ledgerpb.ListOptions{
 			PageSize: uint32(pageSize),
 			Cursor:   cursor,
 			Filter:   filter,
 		},
 	})
 
-	var logs []*commonpb.Log
+	var logs []*ledgerpb.Log
 	if err == nil {
 		logs, err = drainStream(stream)
 	}
@@ -575,7 +575,7 @@ func classifyLogQueryError(err error) (indexedErrKind, bool) {
 }
 
 // serverLogIDs pulls the ledger-local ids out of a page.
-func serverLogIDs(logs []*commonpb.Log) []uint64 {
+func serverLogIDs(logs []*ledgerpb.Log) []uint64 {
 	out := make([]uint64, 0, len(logs))
 	for _, l := range logs {
 		out = append(out, l.GetPayload().GetApply().GetLog().GetId())
@@ -594,7 +594,7 @@ func serverLogIDs(logs []*commonpb.Log) []uint64 {
 //   - a not-ready refusal is legal iff some needed index is not active on the
 //     base — so a refusal of a filter needing no index is a finding, and so is
 //     a page served for an index no base holds.
-func (c *Checker) validateLogQuery(ctx context.Context, client commonpb.BucketServiceClient, maxTicket uint64, ledger string, filter *commonpb.QueryFilter, afterSeq uint64, pageSize int, serverLogs []*commonpb.Log, needed map[string]struct{}, errKind indexedErrKind, err error) {
+func (c *Checker) validateLogQuery(ctx context.Context, client ledgerpb.BucketServiceClient, maxTicket uint64, ledger string, filter *ledgerpb.QueryFilter, afterSeq uint64, pageSize int, serverLogs []*ledgerpb.Log, needed map[string]struct{}, errKind indexedErrKind, err error) {
 	page := serverLogRows(serverLogs)
 	ids := serverLogIDs(serverLogs)
 
@@ -636,7 +636,7 @@ func (c *Checker) validateLogQuery(ctx context.Context, client commonpb.BucketSe
 		return logOutcomeLegal(ls, ledger, filter, needed, errKind, page, afterSeq, pageSize)
 	})
 
-	c.noteQueryCoverage(ledger, commonpb.QueryTarget_QUERY_TARGET_LOGS, filter, needed,
+	c.noteQueryCoverage(ledger, ledgerpb.QueryTarget_QUERY_TARGET_LOGS, filter, needed,
 		matched && errKind == indexedErrNone, len(page))
 
 	if matched {
@@ -696,8 +696,8 @@ func describeServerLogRows(page []serverLogRow) string {
 // logOutcomeLegal is the per-candidate verdict for one ListLogs outcome: the
 // shared index-lifecycle legality, with the base's ordered log window as the
 // result check.
-func logOutcomeLegal(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilter, needed map[string]struct{}, errKind indexedErrKind, page []serverLogRow, afterSeq uint64, pageSize int) bool {
-	return indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_LOGS, filter, needed, errKind, "", func(view oracle.LedgerState) bool {
+func logOutcomeLegal(ls oracle.LedgerState, ledger string, filter *ledgerpb.QueryFilter, needed map[string]struct{}, errKind indexedErrKind, page []serverLogRow, afterSeq uint64, pageSize int) bool {
+	return indexedQueryOutcomeLegal(ls, ledgerpb.QueryTarget_QUERY_TARGET_LOGS, filter, needed, errKind, "", func(view oracle.LedgerState) bool {
 		return logWindowMatches(view, ledger, filter, afterSeq, pageSize, page)
 	})
 }
@@ -752,7 +752,7 @@ func (c *Checker) describeLogIndexStates(ledger string, needed map[string]struct
 
 // modelLogWindow returns the log window on the committed modelState for a
 // finding's diagnostics. Acquires c.mu.
-func (c *Checker) modelLogWindow(ledger string, filter *commonpb.QueryFilter, afterSeq uint64, pageSize int) []uint64 {
+func (c *Checker) modelLogWindow(ledger string, filter *ledgerpb.QueryFilter, afterSeq uint64, pageSize int) []uint64 {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -763,10 +763,10 @@ func (c *Checker) modelLogWindow(ledger string, filter *commonpb.QueryFilter, af
 // later horizon. It separates "not yet visible at the first read's horizon"
 // from "never visible": if the ids the model expected show up here, the page
 // was a visibility question; if they never appear, the logs are absent.
-func recheckLogIDs(ctx context.Context, client commonpb.BucketServiceClient, ledger string) ([]uint64, error) {
-	stream, err := client.ListLogs(ctx, &commonpb.ListLogsRequest{
+func recheckLogIDs(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string) ([]uint64, error) {
+	stream, err := client.ListLogs(ctx, &ledgerpb.ListLogsRequest{
 		Ledger:  ledger,
-		Options: &commonpb.ListOptions{PageSize: 200},
+		Options: &ledgerpb.ListOptions{PageSize: 200},
 	})
 	if err != nil {
 		return nil, err
@@ -789,10 +789,10 @@ func (c *Checker) modelLogKinds(ledger string) []string {
 
 // recheckLogKinds names the payload arm of each log the server actually holds,
 // so a surplus in the model can be attributed to a request kind.
-func recheckLogKinds(ctx context.Context, client commonpb.BucketServiceClient, ledger string) ([]string, error) {
-	stream, err := client.ListLogs(ctx, &commonpb.ListLogsRequest{
+func recheckLogKinds(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string) ([]string, error) {
+	stream, err := client.ListLogs(ctx, &ledgerpb.ListLogsRequest{
 		Ledger:  ledger,
-		Options: &commonpb.ListOptions{PageSize: 200},
+		Options: &ledgerpb.ListOptions{PageSize: 200},
 	})
 	if err != nil {
 		return nil, err

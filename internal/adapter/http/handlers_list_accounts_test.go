@@ -14,7 +14,7 @@ import (
 	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/proto"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -25,8 +25,8 @@ func TestHandleListAccounts_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListAccounts(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint32, _ string, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Account], error) {
-			return cursor.NewSliceCursor([]*commonpb.Account{
+		func(_ context.Context, _ string, _ uint32, _ string, _ *ledgerpb.QueryFilter, _ bool) (cursor.Cursor[*ledgerpb.Account], error) {
+			return cursor.NewSliceCursor([]*ledgerpb.Account{
 				{Address: "users:001"},
 				{Address: "users:002"},
 			}), nil
@@ -53,11 +53,11 @@ func TestHandleListAccounts_WithPagination(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListAccounts(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, pageSize uint32, afterAddress string, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Account], error) {
+		func(_ context.Context, _ string, pageSize uint32, afterAddress string, _ *ledgerpb.QueryFilter, _ bool) (cursor.Cursor[*ledgerpb.Account], error) {
 			capturedPageSize = pageSize
 			capturedAfter = afterAddress
 
-			return cursor.NewSliceCursor[*commonpb.Account](nil), nil
+			return cursor.NewSliceCursor[*ledgerpb.Account](nil), nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -81,17 +81,17 @@ func TestHandleListAccounts_WithPagination(t *testing.T) {
 func TestHandleListAccounts_PrefixFilterCanonicalReplacement(t *testing.T) {
 	t.Parallel()
 
-	capture := func(t *testing.T, target string) *commonpb.QueryFilter {
+	capture := func(t *testing.T, target string) *ledgerpb.QueryFilter {
 		t.Helper()
 
-		var captured *commonpb.QueryFilter
+		var captured *ledgerpb.QueryFilter
 
 		backend := NewMockBackend(gomock.NewController(t))
 		backend.EXPECT().ListAccounts(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-			func(_ context.Context, _ string, _ uint32, _ string, filter *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Account], error) {
+			func(_ context.Context, _ string, _ uint32, _ string, filter *ledgerpb.QueryFilter, _ bool) (cursor.Cursor[*ledgerpb.Account], error) {
 				captured = filter
 
-				return cursor.NewSliceCursor[*commonpb.Account](nil), nil
+				return cursor.NewSliceCursor[*ledgerpb.Account](nil), nil
 			}).AnyTimes()
 		srv := newTestServer(t, backend)
 
@@ -152,14 +152,14 @@ func TestHandleListAccounts_WithProfileHeader(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListAccounts(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(ctx context.Context, _ string, _ uint32, _ string, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Account], error) {
+		func(ctx context.Context, _ string, _ uint32, _ string, _ *ledgerpb.QueryFilter, _ bool) (cursor.Cursor[*ledgerpb.Account], error) {
 			// Simulate what the real controller does: populate the profile from context
 			if profile := query.ProfileFromContext(ctx); profile != nil {
 				profile.IndexDuration = 2 * time.Millisecond
 				profile.ItemsCollected = 1
 			}
 
-			return cursor.NewSliceCursor([]*commonpb.Account{
+			return cursor.NewSliceCursor([]*ledgerpb.Account{
 				{Address: "alice"},
 			}), nil
 		}).AnyTimes()
@@ -186,7 +186,7 @@ func TestHandleListAccounts_WithProfileHeader(t *testing.T) {
 	data, err := base64.StdEncoding.DecodeString(profileHeader)
 	require.NoError(t, err)
 
-	var pb commonpb.QueryProfile
+	var pb ledgerpb.QueryProfile
 	require.NoError(t, proto.Unmarshal(data, &pb))
 	assert.Equal(t, int64(2000), pb.GetIndexDurationUs())
 	assert.Equal(t, int32(1), pb.GetItemsCollected())
@@ -212,8 +212,8 @@ func TestHandleListAccounts_WithoutProfileHeader(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListAccounts(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint32, _ string, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Account], error) {
-			return cursor.NewSliceCursor([]*commonpb.Account{
+		func(_ context.Context, _ string, _ uint32, _ string, _ *ledgerpb.QueryFilter, _ bool) (cursor.Cursor[*ledgerpb.Account], error) {
+			return cursor.NewSliceCursor([]*ledgerpb.Account{
 				{Address: "alice"},
 			}), nil
 		}).AnyTimes()

@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
@@ -27,14 +27,14 @@ func benchAddr(i int) string {
 	return fmt.Sprintf("t-%d:%d", i%benchPrefixes, (i/benchPrefixes)%benchIDsPerPrefix)
 }
 
-func addTypeReqL(ledger string, prefix int) *commonpb.Request {
+func addTypeReqL(ledger string, prefix int) *ledgerpb.Request {
 	name := fmt.Sprintf("t-%d", prefix)
 
-	return &commonpb.Request{
-		Type: &commonpb.Request_AddAccountType{
-			AddAccountType: &commonpb.AddAccountTypeLedgerRequest{
+	return &ledgerpb.Request{
+		Type: &ledgerpb.Request_AddAccountType{
+			AddAccountType: &ledgerpb.AddAccountTypeLedgerRequest{
 				Ledger: ledger,
-				AccountType: &commonpb.AccountType{
+				AccountType: &ledgerpb.AccountType{
 					Name:    name,
 					Pattern: name + ":{id}",
 				},
@@ -43,17 +43,17 @@ func addTypeReqL(ledger string, prefix int) *commonpb.Request {
 	}
 }
 
-func saveAccountMetaReqL(ledger, addr, key, val string) *commonpb.Request {
-	return &commonpb.Request{
-		Type: &commonpb.Request_Apply{
-			Apply: &commonpb.LedgerApplyRequest{
+func saveAccountMetaReqL(ledger, addr, key, val string) *ledgerpb.Request {
+	return &ledgerpb.Request{
+		Type: &ledgerpb.Request_Apply{
+			Apply: &ledgerpb.LedgerApplyRequest{
 				Ledger: ledger,
-				Action: &commonpb.LedgerAction{
-					Data: &commonpb.LedgerAction_AddMetadata{
-						AddMetadata: &commonpb.SaveMetadataCommand{
+				Action: &ledgerpb.LedgerAction{
+					Data: &ledgerpb.LedgerAction_AddMetadata{
+						AddMetadata: &ledgerpb.SaveMetadataCommand{
 							Target: accountTarget(addr),
-							Metadata: map[string]*commonpb.MetadataValue{
-								key: {Type: &commonpb.MetadataValue_StringValue{StringValue: val}},
+							Metadata: map[string]*ledgerpb.MetadataValue{
+								key: {Type: &ledgerpb.MetadataValue_StringValue{StringValue: val}},
 							},
 						},
 					},
@@ -78,14 +78,14 @@ func buildLoadedChecker(tb testing.TB, nLedgers, txPerLedger int) *Checker {
 	c := NewChecker(ledgers, nil)
 
 	state := c.modelState
-	apply := func(reqs []*commonpb.Request) {
+	apply := func(reqs []*ledgerpb.Request) {
 		res := state.Apply(oracle.Bulk{Requests: reqs})
 		require.True(tb, res.OK, "bench setup bulk rejected: %s", res.Reason)
 		state = res.State
 	}
 
 	for _, ledger := range ledgers {
-		chart := make([]*commonpb.Request, 0, benchPrefixes)
+		chart := make([]*ledgerpb.Request, 0, benchPrefixes)
 		for p := range benchPrefixes {
 			chart = append(chart, addTypeReqL(ledger, p))
 		}
@@ -93,7 +93,7 @@ func buildLoadedChecker(tb testing.TB, nLedgers, txPerLedger int) *Checker {
 
 		const batch = 250
 		for start := 0; start < txPerLedger; start += batch {
-			reqs := make([]*commonpb.Request, 0, batch+batch/4)
+			reqs := make([]*ledgerpb.Request, 0, batch+batch/4)
 			for i := start; i < min(start+batch, txPerLedger); i++ {
 				addr := benchAddr(i)
 				asset := assets[i%len(assets)]
@@ -118,7 +118,7 @@ func buildLoadedChecker(tb testing.TB, nLedgers, txPerLedger int) *Checker {
 }
 
 func benchBulk(ledger, addr, asset string) oracle.Bulk {
-	return oracle.Bulk{Requests: []*commonpb.Request{
+	return oracle.Bulk{Requests: []*ledgerpb.Request{
 		oracletest.TxReqL(ledger, "world", addr, asset, 1),
 	}}
 }

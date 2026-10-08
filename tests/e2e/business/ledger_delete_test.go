@@ -8,7 +8,7 @@ import (
 	"math/big"
 	"time"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -20,12 +20,12 @@ var _ = Describe("Ledger Deletion", Ordered, func() {
 
 		BeforeAll(func() {
 			// Create a ledger
-			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			resp, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 
 			// Verify the ledger exists
-			ledger, err := sharedClient.GetLedger(sharedCtx, &commonpb.GetLedgerRequest{
+			ledger, err := sharedClient.GetLedger(sharedCtx, &ledgerpb.GetLedgerRequest{
 				Ledger: ledgerName,
 			})
 			Expect(err).To(Succeed())
@@ -34,13 +34,13 @@ var _ = Describe("Ledger Deletion", Ordered, func() {
 
 		It("Should successfully delete the ledger (soft delete)", func() {
 			// Delete the ledger (soft delete)
-			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.DeleteLedgerAction(ledgerName)))
+			resp, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.DeleteLedgerAction(ledgerName)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 
 			// Verify the ledger is no longer accessible via GetLedger (filtered out)
 			Eventually(func(g Gomega) bool {
-				_, err := sharedClient.GetLedger(sharedCtx, &commonpb.GetLedgerRequest{
+				_, err := sharedClient.GetLedger(sharedCtx, &ledgerpb.GetLedgerRequest{
 					Ledger: ledgerName,
 				})
 				return err != nil
@@ -54,7 +54,7 @@ var _ = Describe("Ledger Deletion", Ordered, func() {
 			}
 
 			// Verify the ledger cannot be retrieved (soft-deleted)
-			_, err = sharedClient.GetLedger(sharedCtx, &commonpb.GetLedgerRequest{
+			_, err = sharedClient.GetLedger(sharedCtx, &ledgerpb.GetLedgerRequest{
 				Ledger: ledgerName,
 			})
 			Expect(err).To(HaveOccurred())
@@ -68,7 +68,7 @@ var _ = Describe("Ledger Deletion", Ordered, func() {
 
 		It("Should return error when trying to delete a non-existent ledger", func() {
 			// Try to delete a non-existent ledger
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.DeleteLedgerAction("non-existent-ledger")))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.DeleteLedgerAction("non-existent-ledger")))
 			Expect(err).To(HaveOccurred())
 		})
 	})
@@ -78,13 +78,13 @@ var _ = Describe("Ledger Deletion", Ordered, func() {
 
 		BeforeAll(func() {
 			// Create a ledger
-			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			resp, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 
 			// Create some transactions
 			for i := 0; i < 5; i++ {
-				_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", fmt.Sprintf("account-%d", i), big.NewInt(100*int64(i+1)), "USD"),
 				}, nil, nil)))
 				Expect(err).To(Succeed())
@@ -93,13 +93,13 @@ var _ = Describe("Ledger Deletion", Ordered, func() {
 
 		It("Should successfully soft-delete the ledger even with transactions", func() {
 			// Soft-delete the ledger (should succeed even with transactions)
-			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.DeleteLedgerAction(ledgerName)))
+			resp, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.DeleteLedgerAction(ledgerName)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 
 			// Verify the ledger is no longer accessible (soft-deleted)
 			Eventually(func(g Gomega) bool {
-				_, err := sharedClient.GetLedger(sharedCtx, &commonpb.GetLedgerRequest{
+				_, err := sharedClient.GetLedger(sharedCtx, &ledgerpb.GetLedgerRequest{
 					Ledger: ledgerName,
 				})
 				return err != nil

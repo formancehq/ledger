@@ -3,7 +3,7 @@ package state
 import (
 	"sort"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -86,14 +86,14 @@ func splitPurged(purged []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumeP
 // helper — the caller supplies the intersection set (draining, ephemeral,
 // or new-kept). The color dimension is preserved so multi-bucket accounts are
 // attributed per (asset, color) bucket rather than collapsed onto the asset.
-func buildTouchedByLog(perOrderVolumeKeys [][]domain.VolumeKey, set map[volumeSetKey]struct{}) [][]*commonpb.TouchedVolume {
+func buildTouchedByLog(perOrderVolumeKeys [][]domain.VolumeKey, set map[volumeSetKey]struct{}) [][]*ledgerpb.TouchedVolume {
 	if len(perOrderVolumeKeys) == 0 || len(set) == 0 {
 		return nil
 	}
 
 	type accAssetColor struct{ Account, Asset, Color string }
 
-	out := make([][]*commonpb.TouchedVolume, len(perOrderVolumeKeys))
+	out := make([][]*ledgerpb.TouchedVolume, len(perOrderVolumeKeys))
 	for i, keys := range perOrderVolumeKeys {
 		if len(keys) == 0 {
 			continue
@@ -126,9 +126,9 @@ func buildTouchedByLog(perOrderVolumeKeys [][]domain.VolumeKey, set map[volumeSe
 			return ordered[a].Color < ordered[b].Color
 		})
 
-		vols := make([]*commonpb.TouchedVolume, len(ordered))
+		vols := make([]*ledgerpb.TouchedVolume, len(ordered))
 		for j, k := range ordered {
-			vols[j] = &commonpb.TouchedVolume{Account: k.Account, Asset: k.Asset, Color: k.Color}
+			vols[j] = &ledgerpb.TouchedVolume{Account: k.Account, Asset: k.Asset, Color: k.Color}
 		}
 		out[i] = vols
 	}

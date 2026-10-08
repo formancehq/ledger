@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
@@ -13,17 +13,17 @@ import (
 func TestNewRejectsInvalidAttribution(t *testing.T) {
 	t.Parallel()
 
-	tests := map[string]*commonpb.CallerSnapshot{
+	tests := map[string]*ledgerpb.CallerSnapshot{
 		"missing": nil,
 		"zero":    {},
-		"empty credential source": {Principal: &commonpb.CallerSnapshot_Authenticated{
-			Authenticated: &commonpb.AuthenticatedCaller{Identity: &commonpb.CallerIdentity{}},
+		"empty credential source": {Principal: &ledgerpb.CallerSnapshot_Authenticated{
+			Authenticated: &ledgerpb.AuthenticatedCaller{Identity: &ledgerpb.CallerIdentity{}},
 		}},
-		"unsorted scopes": {Principal: &commonpb.CallerSnapshot_Anonymous{
-			Anonymous: &commonpb.AnonymousCaller{Scopes: []string{"z", "a"}},
+		"unsorted scopes": {Principal: &ledgerpb.CallerSnapshot_Anonymous{
+			Anonymous: &ledgerpb.AnonymousCaller{Scopes: []string{"z", "a"}},
 		}},
-		"unknown system": {Principal: &commonpb.CallerSnapshot_System{
-			System: &commonpb.SystemCaller{Component: "invented"},
+		"unknown system": {Principal: &ledgerpb.CallerSnapshot_System{
+			System: &ledgerpb.SystemCaller{Component: "invented"},
 		}},
 	}
 
@@ -40,9 +40,9 @@ func TestNewRejectsInvalidAttribution(t *testing.T) {
 func TestCapabilityFreezesAndClonesSnapshot(t *testing.T) {
 	t.Parallel()
 
-	original := &commonpb.CallerSnapshot{Principal: &commonpb.CallerSnapshot_Authenticated{
-		Authenticated: &commonpb.AuthenticatedCaller{
-			Identity: &commonpb.CallerIdentity{Source: &commonpb.CallerIdentity_KeyId{KeyId: "key-1"}},
+	original := &ledgerpb.CallerSnapshot{Principal: &ledgerpb.CallerSnapshot_Authenticated{
+		Authenticated: &ledgerpb.AuthenticatedCaller{
+			Identity: &ledgerpb.CallerIdentity{Source: &ledgerpb.CallerIdentity_KeyId{KeyId: "key-1"}},
 			Scopes:   []string{"ledger:Read", "ledger:Write"},
 		},
 	}}
@@ -61,8 +61,8 @@ func TestCapabilityFreezesAndClonesSnapshot(t *testing.T) {
 func TestAllowlistedSystemPrincipal(t *testing.T) {
 	t.Parallel()
 
-	_, err := New(&commonpb.CallerSnapshot{Principal: &commonpb.CallerSnapshot_System{
-		System: &commonpb.SystemCaller{Component: string(ComponentMirror)},
+	_, err := New(&ledgerpb.CallerSnapshot{Principal: &ledgerpb.CallerSnapshot_System{
+		System: &ledgerpb.SystemCaller{Component: string(ComponentMirror)},
 	}})
 	require.NoError(t, err)
 }

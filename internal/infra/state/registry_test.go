@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -49,7 +49,7 @@ func TestStateRegistryKeyStoresPutAndGet(t *testing.T) {
 
 	// Ledgers: Put and Get via canonical bytes
 	ledgerKey := domain.LedgerKey{Name: "my-ledger"}
-	ledgerInfo := &commonpb.LedgerInfo{Name: "my-ledger"}
+	ledgerInfo := &ledgerpb.LedgerInfo{Name: "my-ledger"}
 	_, _, err := reg.Ledgers.KeyStore().Put(ledgerKey.Bytes(), ledgerInfo)
 	require.NoError(t, err)
 	gotLedger, _, err := reg.Ledgers.Get(ledgerKey.Bytes())
@@ -78,7 +78,7 @@ func TestDerivedRegistryReadsFromParent(t *testing.T) {
 
 	reg := newTestRegistry(t)
 	ledgerKey := domain.LedgerKey{Name: "ledger-a"}
-	_, _, err := reg.Ledgers.KeyStore().Put(ledgerKey.Bytes(), &commonpb.LedgerInfo{Name: "ledger-a"})
+	_, _, err := reg.Ledgers.KeyStore().Put(ledgerKey.Bytes(), &ledgerpb.LedgerInfo{Name: "ledger-a"})
 	require.NoError(t, err)
 
 	derived := NewDerivedRegistry(reg)
@@ -97,7 +97,7 @@ func TestDerivedRegistryBuffersWrites(t *testing.T) {
 	derived := NewDerivedRegistry(reg)
 
 	ledgerKey := domain.LedgerKey{Name: "new-ledger"}
-	derived.Ledgers.Put(ledgerKey, &commonpb.LedgerInfo{Name: "new-ledger"})
+	derived.Ledgers.Put(ledgerKey, &ledgerpb.LedgerInfo{Name: "new-ledger"})
 
 	// Derived sees the write
 	got, err := derived.Ledgers.Get(ledgerKey)
@@ -119,7 +119,7 @@ func TestDerivedRegistryMerge(t *testing.T) {
 
 	// Write through derived
 	ledgerKey := domain.LedgerKey{Name: "merge-test"}
-	derived.Ledgers.Put(ledgerKey, &commonpb.LedgerInfo{Name: "merge-test"})
+	derived.Ledgers.Put(ledgerKey, &ledgerpb.LedgerInfo{Name: "merge-test"})
 
 	// Merge propagates to parent
 	updates, _, err := derived.Ledgers.Merge()

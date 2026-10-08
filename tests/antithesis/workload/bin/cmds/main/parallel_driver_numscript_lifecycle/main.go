@@ -6,14 +6,14 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	ledgergrpc "github.com/formancehq/ledger/v3/internal/adapter/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_numscript_lifecycle", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+	internal.RunDriver("parallel_driver_numscript_lifecycle", func(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string) {
 		r := internal.Rand()
 		scriptName := fmt.Sprintf("lifecycle-%d", r.Uint64())
 		version := "1.0.0"
@@ -21,9 +21,9 @@ func main() {
 		details := internal.Details{"ledger": ledger, "scriptName": scriptName}
 
 		// 1. Save a numscript.
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_SaveNumscript{
-				SaveNumscript: &servicepb.SaveNumscriptRequest{
+		_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_SaveNumscript{
+				SaveNumscript: &ledgerpb.SaveNumscriptRequest{
 					Name:    scriptName,
 					Content: transferScript,
 					Version: version,
@@ -49,9 +49,9 @@ func main() {
 
 		// 3. Save a new version.
 		version2 := "2.0.0"
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_SaveNumscript{
-				SaveNumscript: &servicepb.SaveNumscriptRequest{
+		_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_SaveNumscript{
+				SaveNumscript: &ledgerpb.SaveNumscriptRequest{
 					Name:    scriptName,
 					Content: transferScript,
 					Version: version2,
@@ -66,7 +66,7 @@ func main() {
 		}
 
 		// 4. GetNumscript should return the latest version.
-		nsInfo, err := client.GetNumscript(ctx, &servicepb.GetNumscriptRequest{
+		nsInfo, err := client.GetNumscript(ctx, &ledgerpb.GetNumscriptRequest{
 			Name:   scriptName,
 			Ledger: ledger,
 		})
@@ -82,7 +82,7 @@ func main() {
 
 		// 5. ListNumscriptVersions should report the latest pointer at the
 		//    greatest saved semver (the library is immutable append-only).
-		versions, err := client.ListNumscriptVersions(ctx, &servicepb.ListNumscriptVersionsRequest{
+		versions, err := client.ListNumscriptVersions(ctx, &ledgerpb.ListNumscriptVersionsRequest{
 			Name:   scriptName,
 			Ledger: ledger,
 		})
@@ -100,7 +100,7 @@ func main() {
 
 // numscriptIsListed only returns a definitive result after every page succeeds.
 // The routed client follows x-next-cursor using the server's default page size.
-func numscriptIsListed(ctx context.Context, client servicepb.BucketServiceClient, ledger, name string) (bool, error) {
+func numscriptIsListed(ctx context.Context, client ledgerpb.BucketServiceClient, ledger, name string) (bool, error) {
 	scripts, err := ledgergrpc.NewLedgerGrpcClient(client).ListNumscripts(ctx, ledger)
 	if err != nil {
 		return false, err

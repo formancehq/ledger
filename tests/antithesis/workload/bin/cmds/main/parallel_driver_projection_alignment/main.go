@@ -18,7 +18,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
@@ -37,7 +37,7 @@ func isInconclusiveProjectionRead(err error) bool {
 }
 
 func main() {
-	internal.RunDriver("parallel_driver_projection_alignment", func(ctx context.Context, client commonpb.BucketServiceClient, _ string) {
+	internal.RunDriver("parallel_driver_projection_alignment", func(ctx context.Context, client ledgerpb.BucketServiceClient, _ string) {
 		r := internal.Rand()
 
 		run := r.Uint64()
@@ -56,7 +56,7 @@ func main() {
 		// with a stable idempotency key so a timed-out setup call can be retried
 		// safely by a later driver run, then wait for this replica to switch the
 		// freshly built keyspace before exercising projection alignment.
-		if _, err := client.Apply(ctx, commonpb.UnsignedApplyRequest(
+		if _, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest(
 			indexIdempotencyKey,
 			actions.CreateAccountAssetIndexAction(ledger),
 		)); err != nil {
@@ -76,20 +76,20 @@ func main() {
 			return
 		}
 
-		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest(queryIdempotencyKey, &commonpb.Request{
-			Type: &commonpb.Request_CreatePreparedQuery{
-				CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
+		_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest(queryIdempotencyKey, &ledgerpb.Request{
+			Type: &ledgerpb.Request_CreatePreparedQuery{
+				CreatePreparedQuery: &ledgerpb.CreatePreparedQueryRequest{
 					Ledger: ledger,
-					Query: &commonpb.PreparedQuery{
+					Query: &ledgerpb.PreparedQuery{
 						Name:   queryName,
-						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-						Filter: &commonpb.QueryFilter{
+						Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Filter: &ledgerpb.QueryFilter{
 							// AccountHasAsset is served by the asynchronous read
 							// projection. The acknowledged transaction below creates
 							// exactly this USD/2 membership, so a successful query can
 							// only include the probe after projection certification.
-							Filter: &commonpb.QueryFilter_AccountHasAsset{
-								AccountHasAsset: &commonpb.AccountHasAssetCondition{
+							Filter: &ledgerpb.QueryFilter_AccountHasAsset{
+								AccountHasAsset: &ledgerpb.AccountHasAssetCondition{
 									AssetBase: "USD",
 									Precision: 2,
 								},
@@ -108,16 +108,16 @@ func main() {
 			return
 		}
 
-		resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest(probeIdempotencyKey, &commonpb.Request{
-			Type: &commonpb.Request_Apply{
-				Apply: &commonpb.LedgerApplyRequest{
+		resp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest(probeIdempotencyKey, &ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
-						CreateTransaction: &commonpb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{{
+					Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &ledgerpb.CreateTransactionPayload{
+							Postings: []*ledgerpb.Posting{{
 								Source:      "world",
 								Destination: probeAccount,
-								Amount:      commonpb.NewUint256FromUint64(1),
+								Amount:      ledgerpb.NewUint256FromUint64(1),
 								Asset:       "USD/2",
 							}},
 							Reference: fmt.Sprintf("projection-%d", run),
@@ -142,7 +142,7 @@ func main() {
 		}
 		details = details.With(internal.Details{"ackedSeq": resp.GetLogs()[len(resp.GetLogs())-1].GetSequence()})
 
-		execResp, err := client.ExecutePreparedQuery(ctx, &commonpb.ExecutePreparedQueryRequest{
+		execResp, err := client.ExecutePreparedQuery(ctx, &ledgerpb.ExecutePreparedQueryRequest{
 			Ledger:    ledger,
 			QueryName: queryName,
 			PageSize:  100,

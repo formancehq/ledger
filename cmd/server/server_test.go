@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestLoadBloomConfigIncludesLedgerMetadata(t *testing.T) {
@@ -19,7 +19,7 @@ func TestLoadBloomConfigIncludesLedgerMetadata(t *testing.T) {
 
 	require.NoError(t, cmd.Flags().Set("bloom-ledger-metadata-expected-keys", "42"))
 
-	cfg := &commonpb.ClusterConfig{}
+	cfg := &ledgerpb.ClusterConfig{}
 	loadBloomConfig(cmd, cfg)
 
 	require.Equal(t, uint64(42), cfg.GetBloomLedgerMetadata().GetExpectedKeys())

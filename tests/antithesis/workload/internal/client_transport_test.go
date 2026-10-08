@@ -19,7 +19,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -35,17 +35,17 @@ import (
 // The backend is a real single-node Ledger (admission, Raft, FSM and Pebble).
 // This proxy only delays delivery of the first acknowledged commit's response.
 type lostApplyResponseServer struct {
-	commonpb.UnimplementedBucketServiceServer
+	ledgerpb.UnimplementedBucketServiceServer
 
-	client    commonpb.BucketServiceClient
-	committed chan *commonpb.ApplyResponse
-	requests  chan *commonpb.ApplyRequest
+	client    ledgerpb.BucketServiceClient
+	committed chan *ledgerpb.ApplyResponse
+	requests  chan *ledgerpb.ApplyRequest
 	attempts  atomic.Int32
 }
 
-func (s *lostApplyResponseServer) Apply(ctx context.Context, req *commonpb.ApplyRequest) (*commonpb.ApplyResponse, error) {
+func (s *lostApplyResponseServer) Apply(ctx context.Context, req *ledgerpb.ApplyRequest) (*ledgerpb.ApplyResponse, error) {
 	attempt := s.attempts.Add(1)
-	s.requests <- proto.Clone(req).(*commonpb.ApplyRequest)
+	s.requests <- proto.Clone(req).(*ledgerpb.ApplyRequest)
 	var trailers metadata.MD
 	response, err := s.client.Apply(ctx, req, grpc.Trailer(&trailers))
 	if err != nil {
@@ -67,14 +67,14 @@ func (s *lostApplyResponseServer) Apply(ctx context.Context, req *commonpb.Apply
 // Resolve the current pooled connection on every external attempt, as the
 // RoutedController does. The decorator under test is the production boundary.
 type forwardingApplyServer struct {
-	commonpb.UnimplementedBucketServiceServer
+	ledgerpb.UnimplementedBucketServiceServer
 
 	pool        *transport.ConnectionPool
 	interrupted chan error
 }
 
-func (s *forwardingApplyServer) Apply(ctx context.Context, req *commonpb.ApplyRequest) (*commonpb.ApplyResponse, error) {
-	client := commonpb.NewBucketServiceClient(grpcerr.NewConn(s.pool.GetConnection(1)))
+func (s *forwardingApplyServer) Apply(ctx context.Context, req *ledgerpb.ApplyRequest) (*ledgerpb.ApplyResponse, error) {
+	client := ledgerpb.NewBucketServiceClient(grpcerr.NewConn(s.pool.GetConnection(1)))
 	var trailers metadata.MD
 	response, err := client.Apply(ctx, req, grpc.Trailer(&trailers))
 	if err != nil {
@@ -89,12 +89,12 @@ func (s *forwardingApplyServer) Apply(ctx context.Context, req *commonpb.ApplyRe
 	return response, nil
 }
 
-func serveApplyProxy(t *testing.T, handler commonpb.BucketServiceServer) string {
+func serveApplyProxy(t *testing.T, handler ledgerpb.BucketServiceServer) string {
 	t.Helper()
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	require.NoError(t, err)
 	server := grpc.NewServer()
-	commonpb.RegisterBucketServiceServer(server, handler)
+	ledgerpb.RegisterBucketServiceServer(server, handler)
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(server.Stop)
 
@@ -152,18 +152,18 @@ func testLostCommittedResponse(t *testing.T, mode string) {
 	leaderConn, err := grpc.NewClient(fmt.Sprintf("localhost:%d", lease.Ports().GRPC()), grpcprotocol.ClientOption(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, leaderConn.Close()) })
-	cluster := commonpb.NewClusterServiceClient(leaderConn)
+	cluster := ledgerpb.NewClusterServiceClient(leaderConn)
 	require.Eventually(t, func() bool {
-		state, err := cluster.GetClusterState(ctx, &commonpb.GetClusterStateRequest{})
+		state, err := cluster.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 
 		return err == nil && state.GetLeader() != 0
 	}, 5*time.Second, 10*time.Millisecond)
-	leader := commonpb.NewBucketServiceClient(leaderConn)
+	leader := ledgerpb.NewBucketServiceClient(leaderConn)
 	testserver.WaitForWriteAdmission(t, ctx, leader)
 	_, err = leader.Apply(ctx, actions.WithIdempotencyKey("setup", actions.CreateLedgerAction("L", nil)))
 	require.NoError(t, err)
 
-	loss := &lostApplyResponseServer{client: leader, committed: make(chan *commonpb.ApplyResponse, 1), requests: make(chan *commonpb.ApplyRequest, 4)}
+	loss := &lostApplyResponseServer{client: leader, committed: make(chan *ledgerpb.ApplyResponse, 1), requests: make(chan *ledgerpb.ApplyRequest, 4)}
 	peerAddr := serveApplyProxy(t, loss)
 	pool := transport.NewConnectionPool(transport.TLSPolicy{}, transport.PoolConfig{})
 	t.Cleanup(func() { require.NoError(t, pool.Close()) })
@@ -178,19 +178,19 @@ func testLostCommittedResponse(t *testing.T, mode string) {
 	}
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, callerConn.Close()) })
-	request := actions.WithIdempotencyKey("one-logical-transaction", actions.CreateTransactionAction("L", []*commonpb.Posting{protohelpers.NewPosting("world", "user", "USD", big.NewInt(10))}, nil, nil))
+	request := actions.WithIdempotencyKey("one-logical-transaction", actions.CreateTransactionAction("L", []*ledgerpb.Posting{protohelpers.NewPosting("world", "user", "USD", big.NewInt(10))}, nil, nil))
 	type result struct {
-		response *commonpb.ApplyResponse
+		response *ledgerpb.ApplyResponse
 		err      error
 		trailers metadata.MD
 	}
 	finished := make(chan result, 1)
 	go func() {
 		var trailers metadata.MD
-		response, err := commonpb.NewBucketServiceClient(callerConn).Apply(ctx, request, grpc.Trailer(&trailers))
+		response, err := ledgerpb.NewBucketServiceClient(callerConn).Apply(ctx, request, grpc.Trailer(&trailers))
 		finished <- result{response, err, trailers}
 	}()
-	var committed *commonpb.ApplyResponse
+	var committed *ledgerpb.ApplyResponse
 	select {
 	case committed = <-loss.committed:
 	case <-ctx.Done():
@@ -222,7 +222,7 @@ func testLostCommittedResponse(t *testing.T, mode string) {
 		require.Equal(t, int32(1), loss.attempts.Load(), "LEDGER_NO_RETRY must prevent automatic replay")
 		require.Equal(t, codes.Unavailable, status.Code(outcome.err))
 		// The caller can still explicitly recover the same keyed outcome.
-		outcome.response, outcome.err = commonpb.NewBucketServiceClient(callerConn).Apply(ctx, request, grpc.Trailer(&outcome.trailers))
+		outcome.response, outcome.err = ledgerpb.NewBucketServiceClient(callerConn).Apply(ctx, request, grpc.Trailer(&outcome.trailers))
 	case "maintenance":
 		require.Equal(t, int32(2), loss.attempts.Load(), "maintenance must escape the retry loop")
 		require.True(t, internal.HasErrorReason(outcome.err, domain.ErrReasonMaintenanceMode))
@@ -231,7 +231,7 @@ func testLostCommittedResponse(t *testing.T, mode string) {
 		require.True(t, proto.Equal(status.Convert(maintenance).Proto(), status.Convert(outcome.err).Proto()), "ambiguity wrapper must preserve the structured maintenance status")
 		_, err = leader.Apply(ctx, actions.WithIdempotencyKey("disable-maintenance", actions.SetMaintenanceModeAction(false)))
 		require.NoError(t, err)
-		outcome.response, outcome.err = commonpb.NewBucketServiceClient(callerConn).Apply(ctx, request, grpc.Trailer(&outcome.trailers))
+		outcome.response, outcome.err = ledgerpb.NewBucketServiceClient(callerConn).Apply(ctx, request, grpc.Trailer(&outcome.trailers))
 		wantAttempts = 3
 	}
 	require.NoError(t, outcome.err)
@@ -245,7 +245,7 @@ func testLostCommittedResponse(t *testing.T, mode string) {
 	transactions, err := actions.ListAllTransactions(ctx, leader, "L")
 	require.NoError(t, err)
 	require.Len(t, transactions, 1, "lost response must not duplicate the committed transaction")
-	account, err := leader.GetAccount(ctx, &commonpb.GetAccountRequest{Ledger: "L", Address: "user"})
+	account, err := leader.GetAccount(ctx, &ledgerpb.GetAccountRequest{Ledger: "L", Address: "user"})
 	require.NoError(t, err)
 	require.Len(t, account.GetVolumes(), 1)
 	require.Equal(t, "10", account.GetVolumes()[0].GetVolumes().GetBalance())

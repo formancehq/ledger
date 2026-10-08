@@ -9,7 +9,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // OwnedLedgerPrefix tags a ledger-name token reserved for a single driver
@@ -133,7 +133,7 @@ func (p OwnedLedgerPrefix) WithSuffix(suffix string) string {
 }
 
 // CreateLedger creates a ledger via the Apply RPC and verifies it can be read back.
-func CreateLedger(ctx context.Context, client commonpb.BucketServiceClient, name string, initialSchema ...*commonpb.SetMetadataFieldTypeCommand) error {
+func CreateLedger(ctx context.Context, client ledgerpb.BucketServiceClient, name string, initialSchema ...*ledgerpb.SetMetadataFieldTypeCommand) error {
 	details := Details{"ledger": name}
 
 	// A fresh idempotency key, reused across the client's internal retries: a
@@ -141,9 +141,9 @@ func CreateLedger(ctx context.Context, client commonpb.BucketServiceClient, name
 	// server's idempotency cache and returns the committed success, rather than
 	// re-running and surfacing a spurious AlreadyExists.
 	key := fmt.Sprintf("create-ledger-%016x%016x", Rand().Uint64(), Rand().Uint64())
-	_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest(key, &commonpb.Request{
-		Type: &commonpb.Request_CreateLedger{
-			CreateLedger: &commonpb.CreateLedgerRequest{Name: name, InitialSchema: initialSchema},
+	_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest(key, &ledgerpb.Request{
+		Type: &ledgerpb.Request_CreateLedger{
+			CreateLedger: &ledgerpb.CreateLedgerRequest{Name: name, InitialSchema: initialSchema},
 		},
 	}))
 	assert.Sometimes(IsTolerated(err), "should be able to create ledger", details.With(Details{"error": err}))
@@ -152,15 +152,15 @@ func CreateLedger(ctx context.Context, client commonpb.BucketServiceClient, name
 	}
 
 	// Verify it's readable
-	_, err = client.GetLedger(ctx, &commonpb.GetLedgerRequest{Ledger: name})
+	_, err = client.GetLedger(ctx, &ledgerpb.GetLedgerRequest{Ledger: name})
 	assert.Sometimes(IsTolerated(err), "should always be able to get created ledger", details.With(Details{"error": err}))
 
 	return nil
 }
 
 // ListLedgers returns the names of all ledgers.
-func ListLedgers(ctx context.Context, client commonpb.BucketServiceClient) ([]string, error) {
-	stream, err := client.ListLedgers(ctx, &commonpb.ListLedgersRequest{})
+func ListLedgers(ctx context.Context, client ledgerpb.BucketServiceClient) ([]string, error) {
+	stream, err := client.ListLedgers(ctx, &ledgerpb.ListLedgersRequest{})
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +182,7 @@ func ListLedgers(ctx context.Context, client commonpb.BucketServiceClient) ([]st
 // GetRandomLedger returns a random unrestricted ledger name. Ledgers
 // belonging to a driver-owned prefix (see ownedLedgerPrefixes) are
 // filtered out to prevent cross-driver interference.
-func GetRandomLedger(ctx context.Context, client commonpb.BucketServiceClient) (string, error) {
+func GetRandomLedger(ctx context.Context, client ledgerpb.BucketServiceClient) (string, error) {
 	ledgers, err := ListLedgers(ctx, client)
 	assert.Sometimes(IsTolerated(err), "should be able to get a random ledger", Details{"error": err})
 	if err != nil {

@@ -20,20 +20,20 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
-func createTx(ctx context.Context, client commonpb.BucketServiceClient, key, ledger, ref, destination string) (*commonpb.ApplyResponse, error) {
-	return client.Apply(ctx, commonpb.UnsignedApplyRequest(key, &commonpb.Request{
-		Type: &commonpb.Request_Apply{Apply: &commonpb.LedgerApplyRequest{
+func createTx(ctx context.Context, client ledgerpb.BucketServiceClient, key, ledger, ref, destination string) (*ledgerpb.ApplyResponse, error) {
+	return client.Apply(ctx, ledgerpb.UnsignedApplyRequest(key, &ledgerpb.Request{
+		Type: &ledgerpb.Request_Apply{Apply: &ledgerpb.LedgerApplyRequest{
 			Ledger: ledger,
-			Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
-				CreateTransaction: &commonpb.CreateTransactionPayload{
-					Postings:  []*commonpb.Posting{{Source: "world", Destination: destination, Amount: commonpb.NewUint256FromUint64(100), Asset: "USD/2"}},
+			Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
+				CreateTransaction: &ledgerpb.CreateTransactionPayload{
+					Postings:  []*ledgerpb.Posting{{Source: "world", Destination: destination, Amount: ledgerpb.NewUint256FromUint64(100), Asset: "USD/2"}},
 					Reference: ref, Force: true,
 				},
 			}},
@@ -50,15 +50,15 @@ func operationFailed(err error, stage string, details internal.Details) bool {
 	return err != nil
 }
 
-func confirmedTransaction(resp *commonpb.ApplyResponse, details internal.Details) *commonpb.CreatedTransaction {
+func confirmedTransaction(resp *ledgerpb.ApplyResponse, details internal.Details) *ledgerpb.CreatedTransaction {
 	created := internal.CheckCreatedTransaction(resp, details)
 	assert.Always(created != nil, "ledger deletion acknowledged transaction includes its created log", details)
 
 	return created
 }
 
-func confirmTombstone(ctx context.Context, client commonpb.BucketServiceClient, ledger, key string, details internal.Details) bool {
-	_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest(key, actions.CreateLedgerAction(ledger, nil)))
+func confirmTombstone(ctx context.Context, client ledgerpb.BucketServiceClient, ledger, key string, details internal.Details) bool {
+	_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest(key, actions.CreateLedgerAction(ledger, nil)))
 	if err != nil && internal.IsTolerated(err) {
 		return false
 	}
@@ -69,19 +69,19 @@ func confirmTombstone(ctx context.Context, client commonpb.BucketServiceClient, 
 }
 
 func main() {
-	internal.RunDriver("parallel_driver_ledger_recreate", func(ctx context.Context, client commonpb.BucketServiceClient, _ string) {
+	internal.RunDriver("parallel_driver_ledger_recreate", func(ctx context.Context, client ledgerpb.BucketServiceClient, _ string) {
 		// Small acknowledged predecessor sets exercise multiple references/accounts.
 		runScenario(ctx, client, internal.Rand().Uint64(), antirandom.RandomChoice([]int{3, 5}))
 	})
 }
 
-func runScenario(ctx context.Context, client commonpb.BucketServiceClient, run uint64, txCount int) {
+func runScenario(ctx context.Context, client ledgerpb.BucketServiceClient, run uint64, txCount int) {
 	ledger := internal.PrefixLedgerRecreate.WithSeed(run)
 	other := internal.PrefixLedgerRecreate.WithSuffix(fmt.Sprintf("other-%016x", run))
 	details := internal.Details{"ledger": ledger, "otherLedger": other}
 	key := func(stage string) string { return fmt.Sprintf("lrec-%016x-%s", run, stage) }
 
-	_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest(key("create"), actions.CreateLedgerAction(ledger, nil)))
+	_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest(key("create"), actions.CreateLedgerAction(ledger, nil)))
 	// The bounded original-name namespace can collide with a prior invocation.
 	if internal.IsAlreadyExists(err) || internal.IsLedgerDeleted(err) {
 		return
@@ -112,7 +112,7 @@ func runScenario(ctx context.Context, client commonpb.BucketServiceClient, run u
 		return
 	}
 
-	_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest(key("delete"), actions.DeleteLedgerAction(ledger)))
+	_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest(key("delete"), actions.DeleteLedgerAction(ledger)))
 	if operationFailed(err, "delete predecessor ledger", details) {
 		return
 	}
@@ -121,7 +121,7 @@ func runScenario(ctx context.Context, client commonpb.BucketServiceClient, run u
 	}
 
 	// Deleted reads expose NotFound without ErrorInfo, unlike FSM write refusal.
-	_, err = client.GetLedger(ctx, &commonpb.GetLedgerRequest{Ledger: ledger})
+	_, err = client.GetLedger(ctx, &ledgerpb.GetLedgerRequest{Ledger: ledger})
 	if err != nil && internal.IsTolerated(err) {
 		return
 	}
@@ -130,7 +130,7 @@ func runScenario(ctx context.Context, client commonpb.BucketServiceClient, run u
 		return
 	}
 	for i, transactionID := range transactionIDs {
-		_, err = client.GetTransaction(ctx, &commonpb.GetTransactionRequest{Ledger: ledger, TransactionId: transactionID})
+		_, err = client.GetTransaction(ctx, &ledgerpb.GetTransactionRequest{Ledger: ledger, TransactionId: transactionID})
 		if err != nil && internal.IsTolerated(err) {
 			return
 		}
@@ -139,7 +139,7 @@ func runScenario(ctx context.Context, client commonpb.BucketServiceClient, run u
 		if status.Code(err) != codes.NotFound {
 			return
 		}
-		_, err = client.GetAccount(ctx, &commonpb.GetAccountRequest{Ledger: ledger, Address: accounts[i]})
+		_, err = client.GetAccount(ctx, &ledgerpb.GetAccountRequest{Ledger: ledger, Address: accounts[i]})
 		if err != nil && internal.IsTolerated(err) {
 			return
 		}
@@ -150,7 +150,7 @@ func runScenario(ctx context.Context, client commonpb.BucketServiceClient, run u
 		}
 	}
 
-	txStream, err := client.ListTransactions(ctx, &commonpb.ListTransactionsRequest{Ledger: ledger})
+	txStream, err := client.ListTransactions(ctx, &ledgerpb.ListTransactionsRequest{Ledger: ledger})
 	if err == nil {
 		_, err = txStream.Recv()
 	}
@@ -162,7 +162,7 @@ func runScenario(ctx context.Context, client commonpb.BucketServiceClient, run u
 		return
 	}
 
-	accountStream, err := client.ListAccounts(ctx, &commonpb.ListAccountsRequest{Ledger: ledger})
+	accountStream, err := client.ListAccounts(ctx, &ledgerpb.ListAccountsRequest{Ledger: ledger})
 	if err == nil {
 		_, err = accountStream.Recv()
 	}
@@ -184,14 +184,14 @@ func runScenario(ctx context.Context, client commonpb.BucketServiceClient, run u
 		return
 	}
 
-	_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest(key("create-other"), actions.CreateLedgerAction(other, nil)))
+	_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest(key("create-other"), actions.CreateLedgerAction(other, nil)))
 	if operationFailed(err, "create other ledger", details) {
 		return
 	}
 	// Best effort on every exit after confirmed creation. This removes live
 	// projections when reachable; the permanent tombstone/audit still remain.
 	defer func() {
-		_, cleanupErr := client.Apply(ctx, commonpb.UnsignedApplyRequest(key("cleanup-other"), actions.DeleteLedgerAction(other)))
+		_, cleanupErr := client.Apply(ctx, ledgerpb.UnsignedApplyRequest(key("cleanup-other"), actions.DeleteLedgerAction(other)))
 		internal.LogCleanupError("delete isolation ledger", cleanupErr)
 	}()
 	resp, err := createTx(ctx, client, key("marker"), other, "", "lrec-marker")

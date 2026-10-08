@@ -6,7 +6,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	internalstatepb "github.com/formancehq/ledger/v3/internal/proto/internalstatepb"
@@ -72,7 +72,7 @@ func trapUnbuffered(method string, details map[string]any) {
 // staged accessor handles Get/Put/Delete against the per-order buffer.
 // ──────────────────────────────────────────────────────────────────────────
 
-func (s *skipSafeScope) Ledgers() Accessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader] {
+func (s *skipSafeScope) Ledgers() Accessor[domain.LedgerKey, *ledgerpb.LedgerInfo, ledgerpb.LedgerInfoReader] {
 	return s.inner.Ledgers()
 }
 
@@ -84,11 +84,11 @@ func (s *skipSafeScope) Volumes() Accessor[domain.VolumeKey, *raftcmdpb.VolumePa
 	return s.inner.Volumes()
 }
 
-func (s *skipSafeScope) AccountMetadata() Accessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader] {
+func (s *skipSafeScope) AccountMetadata() Accessor[domain.MetadataKey, *ledgerpb.MetadataValue, ledgerpb.MetadataValueReader] {
 	return s.inner.AccountMetadata()
 }
 
-func (s *skipSafeScope) LedgerMetadata() Accessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader] {
+func (s *skipSafeScope) LedgerMetadata() Accessor[domain.LedgerMetadataKey, *ledgerpb.MetadataValue, ledgerpb.MetadataValueReader] {
 	return s.inner.LedgerMetadata()
 }
 
@@ -100,11 +100,11 @@ func (s *skipSafeScope) TransactionStates() Accessor[domain.TransactionKey, *int
 	return s.inner.TransactionStates()
 }
 
-func (s *skipSafeScope) PreparedQueries() Accessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader] {
+func (s *skipSafeScope) PreparedQueries() Accessor[domain.PreparedQueryKey, *ledgerpb.PreparedQuery, ledgerpb.PreparedQueryReader] {
 	return s.inner.PreparedQueries()
 }
 
-func (s *skipSafeScope) Indexes() Accessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader] {
+func (s *skipSafeScope) Indexes() Accessor[domain.IndexKey, *ledgerpb.Index, ledgerpb.IndexReader] {
 	return s.inner.Indexes()
 }
 
@@ -152,11 +152,11 @@ func (s *skipSafeScope) SetMaintenanceMode(enabled bool) {
 // Cluster policy — writes are NOT buffered; reads pass through.
 // ──────────────────────────────────────────────────────────────────────────
 
-func (s *skipSafeScope) GetClusterPolicy() *commonpb.ClusterPolicy {
+func (s *skipSafeScope) GetClusterPolicy() *ledgerpb.ClusterPolicy {
 	return s.inner.GetClusterPolicy()
 }
 
-func (s *skipSafeScope) SetClusterPolicy(policy *commonpb.ClusterPolicy) {
+func (s *skipSafeScope) SetClusterPolicy(policy *ledgerpb.ClusterPolicy) {
 	trapUnbuffered("SetClusterPolicy", map[string]any{"revision": policy.GetRevision()})
 }
 
@@ -164,7 +164,7 @@ func (s *skipSafeScope) SetClusterPolicy(policy *commonpb.ClusterPolicy) {
 // Sink read.
 // ──────────────────────────────────────────────────────────────────────────
 
-func (s *skipSafeScope) GetSinkConfig(name string) (commonpb.SinkConfigReader, error) {
+func (s *skipSafeScope) GetSinkConfig(name string) (ledgerpb.SinkConfigReader, error) {
 	return s.inner.GetSinkConfig(name)
 }
 
@@ -181,7 +181,7 @@ func (s *skipSafeScope) GetNextAuditSequenceID() uint64    { return s.inner.GetN
 func (s *skipSafeScope) GetLastAuditHash() []byte          { return s.inner.GetLastAuditHash() }
 func (s *skipSafeScope) GetNextLedgerID() uint32           { return s.inner.GetNextLedgerID() }
 func (s *skipSafeScope) IncrementNextLedgerID() uint32     { return s.inner.IncrementNextLedgerID() }
-func (s *skipSafeScope) GetDate() commonpb.TimestampReader { return s.inner.GetDate() }
+func (s *skipSafeScope) GetDate() ledgerpb.TimestampReader { return s.inner.GetDate() }
 func (s *skipSafeScope) GetRaftIndex() uint64              { return s.inner.GetRaftIndex() }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -196,7 +196,7 @@ func (s *skipSafeScope) NumscriptVersionExists(ledgerName string, name, version 
 	return s.inner.NumscriptVersionExists(ledgerName, name, version)
 }
 
-func (s *skipSafeScope) PutNumscript(ledgerName string, info *commonpb.NumscriptInfo) {
+func (s *skipSafeScope) PutNumscript(ledgerName string, info *ledgerpb.NumscriptInfo) {
 	trapUnbuffered("PutNumscript", map[string]any{"ledger": ledgerName})
 }
 
@@ -204,7 +204,7 @@ func (s *skipSafeScope) SetNumscriptLatestVersion(ledgerName string, name, versi
 	trapUnbuffered("SetNumscriptLatestVersion", map[string]any{"ledger": ledgerName, "name": name, "version": version})
 }
 
-func (s *skipSafeScope) ResolveNumscriptContent(ledgerName string, name, version string) (commonpb.NumscriptInfoReader, error) {
+func (s *skipSafeScope) ResolveNumscriptContent(ledgerName string, name, version string) (ledgerpb.NumscriptInfoReader, error) {
 	return s.inner.ResolveNumscriptContent(ledgerName, name, version)
 }
 

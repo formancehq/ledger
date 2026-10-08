@@ -8,7 +8,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -19,11 +19,11 @@ import (
 var queryTracer = otel.Tracer("query")
 
 // ReadLedgers returns a cursor over all registered ledgers from the given reader.
-func ReadLedgers(ctx context.Context, reader dal.PebbleReader) (cursor.Cursor[*commonpb.LedgerInfo], error) {
+func ReadLedgers(ctx context.Context, reader dal.PebbleReader) (cursor.Cursor[*ledgerpb.LedgerInfo], error) {
 	_, span := queryTracer.Start(ctx, "query.list_ledgers")
 	defer span.End()
 
-	cursor, err := dal.ScanZone[*commonpb.LedgerInfo](reader, dal.ZoneGlobal, dal.SubGlobLedgerInfo)
+	cursor, err := dal.ScanZone[*ledgerpb.LedgerInfo](reader, dal.ZoneGlobal, dal.SubGlobLedgerInfo)
 	if err != nil {
 		return nil, fmt.Errorf("creating iterator for ledger info: %w", err)
 	}
@@ -34,16 +34,16 @@ func ReadLedgers(ctx context.Context, reader dal.PebbleReader) (cursor.Cursor[*c
 // readLedgerInfoRow reads one ledger's LedgerInfo row through the given
 // getter. A nil info means the row is absent; a soft-deleted ledger still has
 // one, with DeletedAt stamped. Callers own the interpretation of both.
-func readLedgerInfoRow(reader dal.PebbleGetter, name string) (*commonpb.LedgerInfo, error) {
+func readLedgerInfoRow(reader dal.PebbleGetter, name string) (*ledgerpb.LedgerInfo, error) {
 	kb := dal.NewKeyBuilder()
 	kb.PutZonePrefix(dal.ZoneGlobal, dal.SubGlobLedgerInfo).PutLedgerName(name)
 
-	return dal.ReadProto[*commonpb.LedgerInfo](reader, kb.Build())
+	return dal.ReadProto[*ledgerpb.LedgerInfo](reader, kb.Build())
 }
 
 // GetLedgerByName retrieves a ledger by its name from the given reader.
 // Returns domain.ErrNotFound if the ledger does not exist or is soft-deleted.
-func GetLedgerByName(ctx context.Context, reader dal.PebbleGetter, name string) (*commonpb.LedgerInfo, error) {
+func GetLedgerByName(ctx context.Context, reader dal.PebbleGetter, name string) (*ledgerpb.LedgerInfo, error) {
 	_, span := queryTracer.Start(ctx, "query.get_ledger",
 		trace.WithAttributes(attribute.String("ledger", name)))
 	defer span.End()
@@ -63,7 +63,7 @@ func GetLedgerByName(ctx context.Context, reader dal.PebbleGetter, name string) 
 // EnrichLedgerMetadata populates the Metadata field on LedgerInfo by scanning
 // the ledger metadata attributes from Pebble. The metadata field on LedgerInfo
 // is read-time only (not stored as part of LedgerInfo in the attribute store).
-func EnrichLedgerMetadata(reader dal.PebbleReader, attrs *attributes.Attributes, info *commonpb.LedgerInfo) error {
+func EnrichLedgerMetadata(reader dal.PebbleReader, attrs *attributes.Attributes, info *ledgerpb.LedgerInfo) error {
 	if info == nil {
 		return nil
 	}
@@ -82,7 +82,7 @@ func EnrichLedgerMetadata(reader dal.PebbleReader, attrs *attributes.Attributes,
 		return nil
 	}
 
-	metadata := make(map[string]*commonpb.MetadataValue, len(entries))
+	metadata := make(map[string]*ledgerpb.MetadataValue, len(entries))
 
 	for _, entry := range entries {
 		var key domain.LedgerMetadataKey

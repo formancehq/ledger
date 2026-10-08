@@ -19,7 +19,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
@@ -109,9 +109,9 @@ var _ = Describe("ledgerctl TLS bearer against tls-mode=required", Ordered, func
 		defer cancel()
 		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+clusterTok)
 
-		c := clusterpb.NewClusterServiceClient(conn)
+		c := ledgerpb.NewClusterServiceClient(conn)
 		Eventually(func(g Gomega) {
-			state, err := c.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+			state, err := c.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 			g.Expect(err).To(Succeed(),
 				"RPC must succeed; if you see 'error reading server preface' here, the production bug is reproduced")
 			g.Expect(state.Leader).NotTo(BeZero())

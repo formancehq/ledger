@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 )
@@ -35,9 +35,9 @@ func (s *Server) handleSaveNumscript(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logs, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{
-		Type: &servicepb.Request_SaveNumscript{
-			SaveNumscript: &servicepb.SaveNumscriptRequest{
+	logs, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &ledgerpb.Request{
+		Type: &ledgerpb.Request_SaveNumscript{
+			SaveNumscript: &ledgerpb.SaveNumscriptRequest{
 				Ledger:  ledgerName,
 				Name:    name,
 				Content: body.Content,

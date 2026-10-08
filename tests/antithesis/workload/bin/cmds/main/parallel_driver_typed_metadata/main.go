@@ -9,14 +9,14 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/protohelpers"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_typed_metadata", func(ctx context.Context, client commonpb.BucketServiceClient, ledger string) {
+	internal.RunDriver("parallel_driver_typed_metadata", func(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string) {
 		r := internal.Rand()
 		metaKey := fmt.Sprintf("score-%d", r.Uint64())
 		metaValue := int64(r.Uint64() % 1000)
@@ -30,13 +30,13 @@ func main() {
 		}
 
 		// 1. Declare the metadata key as INT64.
-		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_SetMetadataFieldType{
-				SetMetadataFieldType: &commonpb.SetMetadataFieldTypeRequest{
+		_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_SetMetadataFieldType{
+				SetMetadataFieldType: &ledgerpb.SetMetadataFieldTypeRequest{
 					Ledger:     ledger,
-					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        metaKey,
-					Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+					Type:       ledgerpb.MetadataType_METADATA_TYPE_INT64,
 				},
 			},
 		}))
@@ -45,12 +45,12 @@ func main() {
 		}
 
 		// 2. Create an index on this metadata key.
-		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_CreateIndex{
-				CreateIndex: &commonpb.CreateIndexRequest{
+		_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_CreateIndex{
+				CreateIndex: &ledgerpb.CreateIndexRequest{
 					Ledger: ledger,
-					Id: &commonpb.IndexID{Kind: &commonpb.IndexID_Metadata{Metadata: &commonpb.MetadataIndexID{
-						Target: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Id: &ledgerpb.IndexID{Kind: &ledgerpb.IndexID_Metadata{Metadata: &ledgerpb.MetadataIndexID{
+						Target: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 						Key:    metaKey,
 					}}},
 				},
@@ -64,15 +64,15 @@ func main() {
 		}
 
 		// 3. Save typed metadata on the account.
-		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_Apply{
-				Apply: &commonpb.LedgerApplyRequest{
+		_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_AddMetadata{
-						AddMetadata: &commonpb.SaveMetadataCommand{
-							Target: &commonpb.Target{
-								Target: &commonpb.Target_Account{
-									Account: &commonpb.TargetAccount{Addr: address},
+					Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_AddMetadata{
+						AddMetadata: &ledgerpb.SaveMetadataCommand{
+							Target: &ledgerpb.Target{
+								Target: &ledgerpb.Target_Account{
+									Account: &ledgerpb.TargetAccount{Addr: address},
 								},
 							},
 							Metadata: protohelpers.MetadataFromGoMap(map[string]string{
@@ -92,20 +92,20 @@ func main() {
 		minVal := int64(0)
 		maxVal := int64(999)
 
-		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_CreatePreparedQuery{
-				CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
+		_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_CreatePreparedQuery{
+				CreatePreparedQuery: &ledgerpb.CreatePreparedQueryRequest{
 					Ledger: ledger,
 
-					Query: &commonpb.PreparedQuery{
+					Query: &ledgerpb.PreparedQuery{
 						Name:   queryName,
-						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-						Filter: &commonpb.QueryFilter{
-							Filter: &commonpb.QueryFilter_Field{
-								Field: &commonpb.FieldCondition{
-									Field: &commonpb.FieldRef{Metadata: metaKey},
-									Condition: &commonpb.FieldCondition_IntCond{
-										IntCond: &commonpb.IntCondition{
+						Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Filter: &ledgerpb.QueryFilter{
+							Filter: &ledgerpb.QueryFilter_Field{
+								Field: &ledgerpb.FieldCondition{
+									Field: &ledgerpb.FieldRef{Metadata: metaKey},
+									Condition: &ledgerpb.FieldCondition_IntCond{
+										IntCond: &ledgerpb.IntCondition{
 											Min: &minVal,
 											Max: &maxVal,
 										},
@@ -125,7 +125,7 @@ func main() {
 		}
 
 		// 5. Execute the query — the account we just wrote should be in the results.
-		execResp, err := client.ExecutePreparedQuery(ctx, &commonpb.ExecutePreparedQueryRequest{
+		execResp, err := client.ExecutePreparedQuery(ctx, &ledgerpb.ExecutePreparedQueryRequest{
 			Ledger:    ledger,
 			QueryName: queryName,
 			PageSize:  100,
@@ -139,7 +139,7 @@ func main() {
 		assert.AlwaysOrUnreachable(execResp != nil, "typed metadata query should return a response", details)
 
 		// 6. Check schema status — the key should be declared.
-		schemaResp, err := client.GetMetadataSchemaStatus(ctx, &commonpb.GetMetadataSchemaStatusRequest{
+		schemaResp, err := client.GetMetadataSchemaStatus(ctx, &ledgerpb.GetMetadataSchemaStatusRequest{
 			Ledger: ledger,
 		})
 		if err != nil {
@@ -153,7 +153,7 @@ func main() {
 
 		if ok {
 			assert.AlwaysOrUnreachable(
-				fieldStatus.GetDeclaredType() == commonpb.MetadataType_METADATA_TYPE_INT64,
+				fieldStatus.GetDeclaredType() == ledgerpb.MetadataType_METADATA_TYPE_INT64,
 				"declared type should be INT64",
 				details,
 			)
@@ -161,17 +161,17 @@ func main() {
 
 		// 7. Change the type to exercise type migration paths.
 		// This should not crash even with existing data of the old type.
-		newTypes := []commonpb.MetadataType{
-			commonpb.MetadataType_METADATA_TYPE_STRING,
-			commonpb.MetadataType_METADATA_TYPE_BOOL,
-			commonpb.MetadataType_METADATA_TYPE_INT64,
+		newTypes := []ledgerpb.MetadataType{
+			ledgerpb.MetadataType_METADATA_TYPE_STRING,
+			ledgerpb.MetadataType_METADATA_TYPE_BOOL,
+			ledgerpb.MetadataType_METADATA_TYPE_INT64,
 		}
 		for _, newType := range newTypes {
-			_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_SetMetadataFieldType{
-					SetMetadataFieldType: &commonpb.SetMetadataFieldTypeRequest{
+			_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_SetMetadataFieldType{
+					SetMetadataFieldType: &ledgerpb.SetMetadataFieldTypeRequest{
 						Ledger:     ledger,
-						TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+						TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 						Key:        metaKey,
 						Type:       newType,
 					},
@@ -185,11 +185,11 @@ func main() {
 		}
 
 		// 8. Remove the type declaration entirely.
-		if _, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_RemoveMetadataFieldType{
-				RemoveMetadataFieldType: &commonpb.RemoveMetadataFieldTypeRequest{
+		if _, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_RemoveMetadataFieldType{
+				RemoveMetadataFieldType: &ledgerpb.RemoveMetadataFieldTypeRequest{
 					Ledger:     ledger,
-					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        metaKey,
 				},
 			},
@@ -198,7 +198,7 @@ func main() {
 		}
 
 		// 9. Verify the account is still readable after all type changes.
-		acct, err := client.GetAccount(ctx, &commonpb.GetAccountRequest{
+		acct, err := client.GetAccount(ctx, &ledgerpb.GetAccountRequest{
 			Ledger:  ledger,
 			Address: address,
 		})
@@ -222,15 +222,15 @@ func main() {
 		// this driver only asserts no crash).
 		badKey := fmt.Sprintf("bad-convert-%d", r.Uint64())
 
-		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_Apply{
-				Apply: &commonpb.LedgerApplyRequest{
+		_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_AddMetadata{
-						AddMetadata: &commonpb.SaveMetadataCommand{
-							Target: &commonpb.Target{
-								Target: &commonpb.Target_Account{
-									Account: &commonpb.TargetAccount{Addr: address},
+					Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_AddMetadata{
+						AddMetadata: &ledgerpb.SaveMetadataCommand{
+							Target: &ledgerpb.Target{
+								Target: &ledgerpb.Target_Account{
+									Account: &ledgerpb.TargetAccount{Addr: address},
 								},
 							},
 							Metadata: protohelpers.MetadataFromGoMap(map[string]string{
@@ -242,13 +242,13 @@ func main() {
 			},
 		}))
 		if err == nil {
-			_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_SetMetadataFieldType{
-					SetMetadataFieldType: &commonpb.SetMetadataFieldTypeRequest{
+			_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_SetMetadataFieldType{
+					SetMetadataFieldType: &ledgerpb.SetMetadataFieldTypeRequest{
 						Ledger:     ledger,
-						TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+						TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 						Key:        badKey,
-						Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+						Type:       ledgerpb.MetadataType_METADATA_TYPE_INT64,
 					},
 				},
 			}))
@@ -261,13 +261,13 @@ func main() {
 					"error":  err,
 				})
 
-			_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_SetMetadataFieldType{
-					SetMetadataFieldType: &commonpb.SetMetadataFieldTypeRequest{
+			_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_SetMetadataFieldType{
+					SetMetadataFieldType: &ledgerpb.SetMetadataFieldTypeRequest{
 						Ledger:     ledger,
-						TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+						TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 						Key:        metaKey,
-						Type:       commonpb.MetadataType_METADATA_TYPE_BOOL,
+						Type:       ledgerpb.MetadataType_METADATA_TYPE_BOOL,
 					},
 				},
 			}))
@@ -282,9 +282,9 @@ func main() {
 		}
 
 		// Cleanup: delete the prepared query.
-		if _, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_DeletePreparedQuery{
-				DeletePreparedQuery: &commonpb.DeletePreparedQueryRequest{
+		if _, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_DeletePreparedQuery{
+				DeletePreparedQuery: &ledgerpb.DeletePreparedQueryRequest{
 					Ledger: ledger,
 					Name:   queryName,
 				},

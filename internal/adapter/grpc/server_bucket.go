@@ -20,7 +20,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/application/check"
@@ -50,7 +50,7 @@ const (
 )
 
 type BucketServiceServerImpl struct {
-	auditpb.UnimplementedBucketServiceServer
+	ledgerpb.UnimplementedBucketServiceServer
 
 	logger                logging.Logger
 	ctrl                  ctrl.Controller
@@ -68,7 +68,7 @@ type BucketServiceServerImpl struct {
 	checkpointStores      checkpointStoreCache
 }
 
-func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, sharedState *state.SharedState, responseSigner *signing.ResponseSigner, queryProfileThreshold time.Duration, clusterID string, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) auditpb.BucketServiceServer {
+func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, sharedState *state.SharedState, responseSigner *signing.ResponseSigner, queryProfileThreshold time.Duration, clusterID string, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) ledgerpb.BucketServiceServer {
 	meter := meterProvider.Meter("grpc")
 	applyDuration, _ := meter.Int64Histogram("grpc.apply.duration",
 		metric.WithUnit("us"),
@@ -95,7 +95,7 @@ func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl 
 	}
 }
 
-func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *auditpb.ApplyRequest) (*auditpb.ApplyResponse, error) {
+func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *ledgerpb.ApplyRequest) (*ledgerpb.ApplyResponse, error) {
 	start := time.Now()
 
 	ctx, err := impl.adoptForwardedSnapshotIfTrusted(ctx, req)
@@ -150,7 +150,7 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *auditpb.App
 		}
 	}
 
-	return &auditpb.ApplyResponse{Logs: logs}, nil
+	return &ledgerpb.ApplyResponse{Logs: logs}, nil
 }
 
 // waitCreatedQueryCheckpoints blocks until every query checkpoint created by
@@ -174,7 +174,7 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *auditpb.App
 //
 // Called before response payload stripping: skip_response nils out the payload
 // that carries the checkpoint id, so a later scan would find nothing to wait on.
-func (impl *BucketServiceServerImpl) waitCreatedQueryCheckpoints(ctx context.Context, logs []*auditpb.Log) error {
+func (impl *BucketServiceServerImpl) waitCreatedQueryCheckpoints(ctx context.Context, logs []*ledgerpb.Log) error {
 	for _, log := range logs {
 		cp := log.GetPayload().GetCreatedQueryCheckpoint()
 		if cp == nil {
@@ -222,7 +222,7 @@ func (impl *BucketServiceServerImpl) queryCheckpointDeleted(id uint64) (deleted 
 // cluster secret is unset or mismatched between peers. It is rejected: the
 // write would otherwise commit an unattributed audit entry for an
 // authenticated user, so failing loud forces the misconfiguration to surface.
-func (impl *BucketServiceServerImpl) adoptForwardedSnapshotIfTrusted(ctx context.Context, req *auditpb.ApplyRequest) (context.Context, error) {
+func (impl *BucketServiceServerImpl) adoptForwardedSnapshotIfTrusted(ctx context.Context, req *ledgerpb.ApplyRequest) (context.Context, error) {
 	fc := req.GetForwardedCallerSnapshot()
 	if fc == nil {
 		return ctx, nil
@@ -244,13 +244,13 @@ func (impl *BucketServiceServerImpl) adoptForwardedSnapshotIfTrusted(ctx context
 	return internalauth.WithForwardedAttribution(ctx, capability), nil
 }
 
-func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *auditpb.GetTransactionRequest) (*auditpb.GetTransactionResponse, error) {
+func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *ledgerpb.GetTransactionRequest) (*ledgerpb.GetTransactionResponse, error) {
 	if req.GetLedger() == "" {
 		return nil, domain.ErrLedgerNameRequired
 	}
 
 	var (
-		tx  *auditpb.Transaction
+		tx  *ledgerpb.Transaction
 		err error
 	)
 
@@ -274,7 +274,7 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *au
 		}
 	}
 
-	return &auditpb.GetTransactionResponse{Transaction: tx}, nil
+	return &ledgerpb.GetTransactionResponse{Transaction: tx}, nil
 }
 
 // openCheckpointStores opens the checkpoint's main store and read index in
@@ -439,7 +439,7 @@ func (impl *BucketServiceServerImpl) readController(ctx context.Context, checkpo
 	return impl.localCtrl.WithStores(mainStore, readIdx), cleanup, nil
 }
 
-func (impl *BucketServiceServerImpl) ListTransactions(req *auditpb.ListTransactionsRequest, stream auditpb.BucketService_ListTransactionsServer) error {
+func (impl *BucketServiceServerImpl) ListTransactions(req *ledgerpb.ListTransactionsRequest, stream ledgerpb.BucketService_ListTransactionsServer) error {
 	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListTransactions",
 		trace.WithAttributes(attribute.String("ledger", req.GetLedger())))
 	defer span.End()
@@ -468,7 +468,7 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *auditpb.ListTransacti
 			req.GetLedger(), pageSize, afterTxID, opts.GetFilter() != nil, opts.GetReverse())
 	}
 
-	var c cursor.Cursor[*auditpb.Transaction]
+	var c cursor.Cursor[*ledgerpb.Transaction]
 
 	if cpID := opts.GetRead().GetCheckpointId(); cpID > 0 {
 		mainStore, readIdx, cleanup, openErr := impl.openCheckpointStores(ctx, cpID)
@@ -496,7 +496,7 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *auditpb.ListTransacti
 
 // txCursorOf returns the opaque next-page cursor for a transaction (its id
 // encoded as decimal).
-func txCursorOf(tx *auditpb.Transaction) string {
+func txCursorOf(tx *ledgerpb.Transaction) string {
 	return strconv.FormatUint(tx.GetId(), 10)
 }
 
@@ -515,7 +515,7 @@ func parseUint64Cursor(cursor string) (uint64, error) {
 	return v, nil
 }
 
-func (impl *BucketServiceServerImpl) ListLedgers(req *auditpb.ListLedgersRequest, stream auditpb.BucketService_ListLedgersServer) error {
+func (impl *BucketServiceServerImpl) ListLedgers(req *ledgerpb.ListLedgersRequest, stream ledgerpb.BucketService_ListLedgersServer) error {
 	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListLedgers")
 	defer span.End()
 
@@ -543,19 +543,19 @@ func (impl *BucketServiceServerImpl) ListLedgers(req *auditpb.ListLedgersRequest
 
 	c, err = ApplyHandlerPagination(
 		c,
-		skipByStringKey(cursorKey, reverse, func(item *auditpb.LedgerInfo) string { return item.GetName() }),
+		skipByStringKey(cursorKey, reverse, func(item *ledgerpb.LedgerInfo) string { return item.GetName() }),
 		reverse,
 	)
 	if err != nil {
 		return fmt.Errorf("paginating ledgers: %w", err)
 	}
 
-	return sendPagedToStream(ctx, c, stream, "ledger", pageSize, func(l *auditpb.LedgerInfo) string {
+	return sendPagedToStream(ctx, c, stream, "ledger", pageSize, func(l *ledgerpb.LedgerInfo) string {
 		return l.GetName()
 	})
 }
 
-func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *auditpb.GetLedgerRequest) (*auditpb.LedgerInfo, error) {
+func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *ledgerpb.GetLedgerRequest) (*ledgerpb.LedgerInfo, error) {
 	ctx, span := bucketTracer.Start(ctx, "grpc.GetLedger")
 	defer span.End()
 
@@ -574,7 +574,7 @@ func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *auditpb
 	return c.GetLedgerByName(ctx, req.GetLedger())
 }
 
-func (impl *BucketServiceServerImpl) GetAccount(ctx context.Context, req *auditpb.GetAccountRequest) (*auditpb.Account, error) {
+func (impl *BucketServiceServerImpl) GetAccount(ctx context.Context, req *ledgerpb.GetAccountRequest) (*ledgerpb.Account, error) {
 	if req.GetLedger() == "" {
 		return nil, domain.ErrLedgerNameRequired
 	}
@@ -590,7 +590,7 @@ func (impl *BucketServiceServerImpl) GetAccount(ctx context.Context, req *auditp
 	})
 }
 
-func (impl *BucketServiceServerImpl) ListAccounts(req *auditpb.ListAccountsRequest, stream auditpb.BucketService_ListAccountsServer) error {
+func (impl *BucketServiceServerImpl) ListAccounts(req *ledgerpb.ListAccountsRequest, stream ledgerpb.BucketService_ListAccountsServer) error {
 	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListAccounts",
 		trace.WithAttributes(attribute.String("ledger", req.GetLedger())))
 	defer span.End()
@@ -633,63 +633,63 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *auditpb.ListAccountsReque
 // accountCursorOf returns the opaque next-page cursor for an account (its
 // address). Used as both ListAccounts cursorOf and exported for use by the
 // Aggregate helper if it ever needs to paginate.
-func accountCursorOf(a *auditpb.Account) string {
+func accountCursorOf(a *ledgerpb.Account) string {
 	return a.GetAddress()
 }
 
-func (impl *BucketServiceServerImpl) GetPrimaryMetrics(ctx context.Context, req *auditpb.GetPrimaryMetricsRequest) (*auditpb.GetPrimaryMetricsResponse, error) {
+func (impl *BucketServiceServerImpl) GetPrimaryMetrics(ctx context.Context, req *ledgerpb.GetPrimaryMetricsRequest) (*ledgerpb.GetPrimaryMetricsResponse, error) {
 	if conn, err := impl.forwarder.resolve(req.GetNodeId()); err != nil {
 		return nil, err
 	} else if conn != nil {
-		return auditpb.NewBucketServiceClient(conn).GetPrimaryMetrics(ctx, req)
+		return ledgerpb.NewBucketServiceClient(conn).GetPrimaryMetrics(ctx, req)
 	}
 
 	// Get metrics from the Pebble store directly
-	metrics, ok := impl.store.GetMetrics().(*auditpb.PebbleMetrics)
+	metrics, ok := impl.store.GetMetrics().(*ledgerpb.PebbleMetrics)
 	if !ok {
-		return &auditpb.GetPrimaryMetricsResponse{
+		return &ledgerpb.GetPrimaryMetricsResponse{
 			Available: false,
 		}, nil
 	}
 
-	return &auditpb.GetPrimaryMetricsResponse{
+	return &ledgerpb.GetPrimaryMetricsResponse{
 		Available: true,
 		Metrics:   metrics,
 	}, nil
 }
 
-func (impl *BucketServiceServerImpl) GetSecondaryMetrics(ctx context.Context, req *auditpb.GetSecondaryMetricsRequest) (*auditpb.GetSecondaryMetricsResponse, error) {
+func (impl *BucketServiceServerImpl) GetSecondaryMetrics(ctx context.Context, req *ledgerpb.GetSecondaryMetricsRequest) (*ledgerpb.GetSecondaryMetricsResponse, error) {
 	if conn, err := impl.forwarder.resolve(req.GetNodeId()); err != nil {
 		return nil, err
 	} else if conn != nil {
-		return auditpb.NewBucketServiceClient(conn).GetSecondaryMetrics(ctx, req)
+		return ledgerpb.NewBucketServiceClient(conn).GetSecondaryMetrics(ctx, req)
 	}
 
 	if impl.readStore == nil {
-		return &auditpb.GetSecondaryMetricsResponse{
+		return &ledgerpb.GetSecondaryMetricsResponse{
 			Available: false,
 		}, nil
 	}
 
-	return &auditpb.GetSecondaryMetricsResponse{
+	return &ledgerpb.GetSecondaryMetricsResponse{
 		Available: true,
 		Metrics:   impl.readStore.GetMetrics(),
 	}, nil
 }
 
-func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, req *auditpb.GetIndexStatusRequest) (*auditpb.GetIndexStatusResponse, error) {
+func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, req *ledgerpb.GetIndexStatusRequest) (*ledgerpb.GetIndexStatusResponse, error) {
 	return impl.ctrl.GetIndexStatus(ctx, req)
 }
 
 // GetIndex returns a single Index registry entry. Scope aligns with
 // ListIndexes SCOPE_LEDGER (a per-ledger read tokens must be accepted).
-func (impl *BucketServiceServerImpl) GetIndex(ctx context.Context, req *auditpb.GetIndexRequest) (*auditpb.Index, error) {
+func (impl *BucketServiceServerImpl) GetIndex(ctx context.Context, req *ledgerpb.GetIndexRequest) (*ledgerpb.Index, error) {
 	return impl.ctrl.GetIndex(ctx, req)
 }
 
 // GetIndexEntryStatus returns the per-replica status view for a single
 // index. Same auth model as GetIndex.
-func (impl *BucketServiceServerImpl) GetIndexEntryStatus(ctx context.Context, req *auditpb.GetIndexEntryStatusRequest) (*auditpb.IndexEntry, error) {
+func (impl *BucketServiceServerImpl) GetIndexEntryStatus(ctx context.Context, req *ledgerpb.GetIndexEntryStatusRequest) (*ledgerpb.IndexEntry, error) {
 	return impl.ctrl.GetIndexEntryStatus(ctx, req)
 }
 
@@ -698,7 +698,7 @@ func (impl *BucketServiceServerImpl) GetIndexEntryStatus(ctx context.Context, re
 // The filtering and orphan-entry skipping are implemented by
 // DefaultController.ListIndexes; the interceptor authorizes the first request
 // message before this handler pumps the cursor onto the stream.
-func (impl *BucketServiceServerImpl) ListIndexes(req *auditpb.ListIndexesRequest, stream auditpb.BucketService_ListIndexesServer) error {
+func (impl *BucketServiceServerImpl) ListIndexes(req *ledgerpb.ListIndexesRequest, stream ledgerpb.BucketService_ListIndexesServer) error {
 	ctx := stream.Context()
 
 	c, err := impl.ctrl.ListIndexes(ctx, req)
@@ -728,19 +728,19 @@ func (impl *BucketServiceServerImpl) ListIndexes(req *auditpb.ListIndexesRequest
 	}
 }
 
-func (impl *BucketServiceServerImpl) CheckStore(_ *auditpb.CheckStoreRequest, stream auditpb.BucketService_CheckStoreServer) error {
+func (impl *BucketServiceServerImpl) CheckStore(_ *ledgerpb.CheckStoreRequest, stream ledgerpb.BucketService_CheckStoreServer) error {
 	checker := check.NewChecker(impl.store, impl.attrs, impl.readStore, impl.logger)
 
-	return checker.Check(stream.Context(), func(event *auditpb.CheckStoreEvent) {
+	return checker.Check(stream.Context(), func(event *ledgerpb.CheckStoreEvent) {
 		_ = stream.Send(event)
 	})
 }
 
-func (impl *BucketServiceServerImpl) GetAuditEntry(ctx context.Context, req *auditpb.GetAuditEntryRequest) (*auditpb.AuditEntry, error) {
+func (impl *BucketServiceServerImpl) GetAuditEntry(ctx context.Context, req *ledgerpb.GetAuditEntryRequest) (*ledgerpb.AuditEntry, error) {
 	return impl.ctrl.GetAuditEntry(ctx, req.GetSequence())
 }
 
-func (impl *BucketServiceServerImpl) ListAuditEntries(req *auditpb.ListAuditEntriesRequest, stream auditpb.BucketService_ListAuditEntriesServer) error {
+func (impl *BucketServiceServerImpl) ListAuditEntries(req *ledgerpb.ListAuditEntriesRequest, stream ledgerpb.BucketService_ListAuditEntriesServer) error {
 	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListAuditEntries")
 	defer span.End()
 
@@ -760,7 +760,7 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *auditpb.ListAuditEntr
 	pageSize := ctrl.ClampPageSize(opts.GetPageSize())
 	fetchSize := pageSizePlusOne(pageSize)
 
-	var c cursor.Cursor[*auditpb.AuditEntry]
+	var c cursor.Cursor[*ledgerpb.AuditEntry]
 
 	if cpID := opts.GetRead().GetCheckpointId(); cpID > 0 {
 		mainStore, readIdx, cleanup, openErr := impl.openCheckpointStores(ctx, cpID)
@@ -784,12 +784,12 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *auditpb.ListAuditEntr
 		return fmt.Errorf("listing audit entries: %w", err)
 	}
 
-	return sendPagedToStream(ctx, c, stream, "audit entry", pageSize, func(e *auditpb.AuditEntry) string {
+	return sendPagedToStream(ctx, c, stream, "audit entry", pageSize, func(e *ledgerpb.AuditEntry) string {
 		return strconv.FormatUint(e.GetSequence(), 10)
 	})
 }
 
-func (impl *BucketServiceServerImpl) GetLog(ctx context.Context, req *auditpb.GetLogRequest) (*auditpb.Log, error) {
+func (impl *BucketServiceServerImpl) GetLog(ctx context.Context, req *ledgerpb.GetLogRequest) (*ledgerpb.Log, error) {
 	c, cleanup, err := impl.readController(ctx, req.GetCheckpointId())
 	if err != nil {
 		return nil, err
@@ -799,7 +799,7 @@ func (impl *BucketServiceServerImpl) GetLog(ctx context.Context, req *auditpb.Ge
 	return c.GetLog(ctx, req.GetSequence())
 }
 
-func (impl *BucketServiceServerImpl) ListLogs(req *auditpb.ListLogsRequest, stream auditpb.BucketService_ListLogsServer) error {
+func (impl *BucketServiceServerImpl) ListLogs(req *ledgerpb.ListLogsRequest, stream ledgerpb.BucketService_ListLogsServer) error {
 	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListLogs")
 	defer span.End()
 
@@ -847,7 +847,7 @@ func (impl *BucketServiceServerImpl) ListLogs(req *auditpb.ListLogsRequest, stre
 	// which would publish a bogus `x-next-cursor: "0"` and trap the client
 	// in an infinite resume loop. Return an empty cursor in that case so the
 	// stream signals "no more pages" instead.
-	return sendPagedToStream(ctx, cur, stream, "log", pageSize, func(l *auditpb.Log) string {
+	return sendPagedToStream(ctx, cur, stream, "log", pageSize, func(l *ledgerpb.Log) string {
 		apply := l.GetPayload().GetApply()
 		if apply == nil {
 			return ""
@@ -857,7 +857,7 @@ func (impl *BucketServiceServerImpl) ListLogs(req *auditpb.ListLogsRequest, stre
 	})
 }
 
-func (impl *BucketServiceServerImpl) GetEventsSinks(ctx context.Context, _ *auditpb.GetEventsSinksRequest) (*auditpb.GetEventsSinksResponse, error) {
+func (impl *BucketServiceServerImpl) GetEventsSinks(ctx context.Context, _ *ledgerpb.GetEventsSinksRequest) (*ledgerpb.GetEventsSinksResponse, error) {
 	// Sink configs + per-sink status enrichment both live on the controller now,
 	// so gRPC and HTTP return identical data from one snapshot (EN-1472).
 	sinks, statuses, err := impl.ctrl.GetEventsSinks(ctx)
@@ -865,13 +865,13 @@ func (impl *BucketServiceServerImpl) GetEventsSinks(ctx context.Context, _ *audi
 		return nil, fmt.Errorf("loading events sinks: %w", err)
 	}
 
-	return &auditpb.GetEventsSinksResponse{
+	return &ledgerpb.GetEventsSinksResponse{
 		Sinks:        sinks,
 		SinkStatuses: statuses,
 	}, nil
 }
 
-func (impl *BucketServiceServerImpl) ListSigningKeys(req *auditpb.ListSigningKeysRequest, stream auditpb.BucketService_ListSigningKeysServer) error {
+func (impl *BucketServiceServerImpl) ListSigningKeys(req *ledgerpb.ListSigningKeysRequest, stream ledgerpb.BucketService_ListSigningKeysServer) error {
 	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListSigningKeys")
 	defer span.End()
 
@@ -902,31 +902,31 @@ func (impl *BucketServiceServerImpl) ListSigningKeys(req *auditpb.ListSigningKey
 
 	c, err := ApplyHandlerPagination(
 		cursor.NewSliceCursor(keys),
-		skipByStringKey(cursorKey, reverse, func(item *auditpb.SigningKey) string { return item.GetKeyId() }),
+		skipByStringKey(cursorKey, reverse, func(item *ledgerpb.SigningKey) string { return item.GetKeyId() }),
 		reverse,
 	)
 	if err != nil {
 		return fmt.Errorf("paginating signing keys: %w", err)
 	}
 
-	return sendPagedToStream(ctx, c, stream, "signing key", pageSize, func(k *auditpb.SigningKey) string {
+	return sendPagedToStream(ctx, c, stream, "signing key", pageSize, func(k *ledgerpb.SigningKey) string {
 		return k.GetKeyId()
 	})
 }
 
-func (impl *BucketServiceServerImpl) GetMetadataSchemaStatus(ctx context.Context, req *auditpb.GetMetadataSchemaStatusRequest) (*auditpb.GetMetadataSchemaStatusResponse, error) {
+func (impl *BucketServiceServerImpl) GetMetadataSchemaStatus(ctx context.Context, req *ledgerpb.GetMetadataSchemaStatusRequest) (*ledgerpb.GetMetadataSchemaStatusResponse, error) {
 	return impl.ctrl.GetMetadataSchemaStatus(ctx, req.GetLedger())
 }
 
-func (impl *BucketServiceServerImpl) AnalyzeAccounts(req *auditpb.AnalyzeAccountsRequest, stream auditpb.BucketService_AnalyzeAccountsServer) error {
+func (impl *BucketServiceServerImpl) AnalyzeAccounts(req *ledgerpb.AnalyzeAccountsRequest, stream ledgerpb.BucketService_AnalyzeAccountsServer) error {
 	if req.GetLedger() == "" {
 		return domain.ErrLedgerNameRequired
 	}
 
 	onProgress := func(processed, total uint64) {
-		_ = stream.Send(&auditpb.AnalyzeAccountsEvent{
-			Type: &auditpb.AnalyzeAccountsEvent_Progress{
-				Progress: &auditpb.AnalyzeProgress{
+		_ = stream.Send(&ledgerpb.AnalyzeAccountsEvent{
+			Type: &ledgerpb.AnalyzeAccountsEvent_Progress{
+				Progress: &ledgerpb.AnalyzeProgress{
 					Processed: processed,
 					Total:     total,
 					Phase:     "scanning",
@@ -940,20 +940,20 @@ func (impl *BucketServiceServerImpl) AnalyzeAccounts(req *auditpb.AnalyzeAccount
 		return err
 	}
 
-	return stream.Send(&auditpb.AnalyzeAccountsEvent{
-		Type: &auditpb.AnalyzeAccountsEvent_Result{Result: resp},
+	return stream.Send(&ledgerpb.AnalyzeAccountsEvent{
+		Type: &ledgerpb.AnalyzeAccountsEvent_Result{Result: resp},
 	})
 }
 
-func (impl *BucketServiceServerImpl) AnalyzeTransactions(req *auditpb.AnalyzeTransactionsRequest, stream auditpb.BucketService_AnalyzeTransactionsServer) error {
+func (impl *BucketServiceServerImpl) AnalyzeTransactions(req *ledgerpb.AnalyzeTransactionsRequest, stream ledgerpb.BucketService_AnalyzeTransactionsServer) error {
 	if req.GetLedger() == "" {
 		return domain.ErrLedgerNameRequired
 	}
 
 	onProgress := func(processed, total uint64) {
-		_ = stream.Send(&auditpb.AnalyzeTransactionsEvent{
-			Type: &auditpb.AnalyzeTransactionsEvent_Progress{
-				Progress: &auditpb.AnalyzeProgress{
+		_ = stream.Send(&ledgerpb.AnalyzeTransactionsEvent{
+			Type: &ledgerpb.AnalyzeTransactionsEvent_Progress{
+				Progress: &ledgerpb.AnalyzeProgress{
 					Processed: processed,
 					Total:     total,
 				},
@@ -966,21 +966,21 @@ func (impl *BucketServiceServerImpl) AnalyzeTransactions(req *auditpb.AnalyzeTra
 		return err
 	}
 
-	return stream.Send(&auditpb.AnalyzeTransactionsEvent{
-		Type: &auditpb.AnalyzeTransactionsEvent_Result{Result: resp},
+	return stream.Send(&ledgerpb.AnalyzeTransactionsEvent{
+		Type: &ledgerpb.AnalyzeTransactionsEvent_Result{Result: resp},
 	})
 }
 
-func (impl *BucketServiceServerImpl) ListPreparedQueries(ctx context.Context, req *auditpb.ListPreparedQueriesRequest) (*auditpb.ListPreparedQueriesResponse, error) {
+func (impl *BucketServiceServerImpl) ListPreparedQueries(ctx context.Context, req *ledgerpb.ListPreparedQueriesRequest) (*ledgerpb.ListPreparedQueriesResponse, error) {
 	queries, err := impl.ctrl.ListPreparedQueries(ctx, req.GetLedger())
 	if err != nil {
 		return nil, err
 	}
 
-	return &auditpb.ListPreparedQueriesResponse{Queries: queries}, nil
+	return &ledgerpb.ListPreparedQueriesResponse{Queries: queries}, nil
 }
 
-func (impl *BucketServiceServerImpl) ExecutePreparedQuery(ctx context.Context, req *auditpb.ExecutePreparedQueryRequest) (*auditpb.ExecutePreparedQueryResponse, error) {
+func (impl *BucketServiceServerImpl) ExecutePreparedQuery(ctx context.Context, req *ledgerpb.ExecutePreparedQueryRequest) (*ledgerpb.ExecutePreparedQueryResponse, error) {
 	ctx, profile := withTransportQueryProfile(ctx)
 	defer impl.emitProfile(ctx, profile)
 
@@ -993,7 +993,7 @@ func (impl *BucketServiceServerImpl) ExecutePreparedQuery(ctx context.Context, r
 	return resp, err
 }
 
-func (impl *BucketServiceServerImpl) GetLedgerStats(ctx context.Context, req *auditpb.GetLedgerStatsRequest) (*auditpb.LedgerStats, error) {
+func (impl *BucketServiceServerImpl) GetLedgerStats(ctx context.Context, req *ledgerpb.GetLedgerStatsRequest) (*ledgerpb.LedgerStats, error) {
 	if req.GetLedger() == "" {
 		return nil, domain.ErrLedgerNameRequired
 	}
@@ -1007,7 +1007,7 @@ func (impl *BucketServiceServerImpl) GetLedgerStats(ctx context.Context, req *au
 	return c.GetLedgerStats(ctx, req.GetLedger())
 }
 
-func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *auditpb.AggregateVolumesRequest) (*auditpb.AggregateResult, error) {
+func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *ledgerpb.AggregateVolumesRequest) (*ledgerpb.AggregateResult, error) {
 	ctx, profile := withTransportQueryProfile(ctx)
 	defer impl.emitProfile(ctx, profile)
 
@@ -1032,7 +1032,7 @@ func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *
 	return result, err
 }
 
-func (impl *BucketServiceServerImpl) GetNumscript(ctx context.Context, req *auditpb.GetNumscriptRequest) (*auditpb.NumscriptInfo, error) {
+func (impl *BucketServiceServerImpl) GetNumscript(ctx context.Context, req *ledgerpb.GetNumscriptRequest) (*ledgerpb.NumscriptInfo, error) {
 	read := req.GetRead()
 
 	c, cleanup, err := impl.readController(ctx, read.GetCheckpointId())
@@ -1049,7 +1049,7 @@ func (impl *BucketServiceServerImpl) GetNumscript(ctx context.Context, req *audi
 // which is eventually consistent with the FSM. The usage projection is outside
 // EN-1946's certified projection horizon, so this endpoint does not wait for a
 // read-index or audit-index certificate.
-func (impl *BucketServiceServerImpl) GetTemplateUsage(ctx context.Context, req *auditpb.GetTemplateUsageRequest) (*auditpb.TemplateUsage, error) {
+func (impl *BucketServiceServerImpl) GetTemplateUsage(ctx context.Context, req *ledgerpb.GetTemplateUsageRequest) (*ledgerpb.TemplateUsage, error) {
 	c, cleanup, err := impl.readController(ctx, 0)
 	if err != nil {
 		return nil, err
@@ -1059,7 +1059,7 @@ func (impl *BucketServiceServerImpl) GetTemplateUsage(ctx context.Context, req *
 	return c.GetTemplateUsage(ctx, req.GetLedger(), req.GetName())
 }
 
-func (impl *BucketServiceServerImpl) ListNumscripts(req *auditpb.ListNumscriptsRequest, stream auditpb.BucketService_ListNumscriptsServer) error {
+func (impl *BucketServiceServerImpl) ListNumscripts(req *ledgerpb.ListNumscriptsRequest, stream ledgerpb.BucketService_ListNumscriptsServer) error {
 	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListNumscripts")
 	defer span.End()
 
@@ -1089,19 +1089,19 @@ func (impl *BucketServiceServerImpl) ListNumscripts(req *auditpb.ListNumscriptsR
 
 	paginated, err := ApplyHandlerPagination(
 		cursor.NewSliceCursor(scripts),
-		skipByStringKey(opts.GetCursor(), opts.GetReverse(), func(item *auditpb.NumscriptInfo) string { return item.GetName() }),
+		skipByStringKey(opts.GetCursor(), opts.GetReverse(), func(item *ledgerpb.NumscriptInfo) string { return item.GetName() }),
 		opts.GetReverse(),
 	)
 	if err != nil {
 		return fmt.Errorf("paginating numscripts: %w", err)
 	}
 
-	return sendPagedToStream(ctx, paginated, stream, "numscript", pageSize, func(n *auditpb.NumscriptInfo) string {
+	return sendPagedToStream(ctx, paginated, stream, "numscript", pageSize, func(n *ledgerpb.NumscriptInfo) string {
 		return n.GetName()
 	})
 }
 
-func (impl *BucketServiceServerImpl) ListNumscriptVersions(ctx context.Context, req *auditpb.ListNumscriptVersionsRequest) (*auditpb.ListNumscriptVersionsResponse, error) {
+func (impl *BucketServiceServerImpl) ListNumscriptVersions(ctx context.Context, req *ledgerpb.ListNumscriptVersionsRequest) (*ledgerpb.ListNumscriptVersionsResponse, error) {
 	read := req.GetRead()
 
 	c, cleanup, err := impl.readController(ctx, read.GetCheckpointId())
@@ -1115,10 +1115,10 @@ func (impl *BucketServiceServerImpl) ListNumscriptVersions(ctx context.Context, 
 		return nil, err
 	}
 
-	return &auditpb.ListNumscriptVersionsResponse{LatestVersion: latest, Versions: versions}, nil
+	return &ledgerpb.ListNumscriptVersionsResponse{LatestVersion: latest, Versions: versions}, nil
 }
 
-func (impl *BucketServiceServerImpl) InspectIndex(ctx context.Context, req *auditpb.InspectIndexRequest) (*auditpb.InspectIndexResponse, error) {
+func (impl *BucketServiceServerImpl) InspectIndex(ctx context.Context, req *ledgerpb.InspectIndexRequest) (*ledgerpb.InspectIndexResponse, error) {
 	if req.GetLedger() == "" {
 		return nil, domain.ErrLedgerNameRequired
 	}
@@ -1136,7 +1136,7 @@ func (impl *BucketServiceServerImpl) InspectIndex(ctx context.Context, req *audi
 	return c.InspectIndex(ctx, req)
 }
 
-func (impl *BucketServiceServerImpl) Barrier(ctx context.Context, _ *auditpb.BarrierRequest) (*auditpb.BarrierResponse, error) {
+func (impl *BucketServiceServerImpl) Barrier(ctx context.Context, _ *ledgerpb.BarrierRequest) (*ledgerpb.BarrierResponse, error) {
 	// Barrier proposes a no-op through Raft and waits for it to apply, so it
 	// consumes consensus capacity like a write. Require an authenticated scope
 	// (ledger:OpsRead) so it can't be used anonymously as a DoS amplifier or a
@@ -1147,12 +1147,12 @@ func (impl *BucketServiceServerImpl) Barrier(ctx context.Context, _ *auditpb.Bar
 		return nil, err
 	}
 
-	return &auditpb.BarrierResponse{CommitIndex: commitIndex}, nil
+	return &ledgerpb.BarrierResponse{CommitIndex: commitIndex}, nil
 }
 
-func (impl *BucketServiceServerImpl) Discovery(_ context.Context, _ *auditpb.DiscoveryRequest) (*auditpb.DiscoveryResponse, error) {
-	resp := &auditpb.DiscoveryResponse{
-		ServerInfo: &auditpb.ServerInfo{
+func (impl *BucketServiceServerImpl) Discovery(_ context.Context, _ *ledgerpb.DiscoveryRequest) (*ledgerpb.DiscoveryResponse, error) {
+	resp := &ledgerpb.DiscoveryResponse{
+		ServerInfo: &ledgerpb.ServerInfo{
 			Version:         impl.info.Version,
 			Commit:          impl.info.Commit,
 			BuildDate:       impl.info.BuildDate,
@@ -1161,7 +1161,7 @@ func (impl *BucketServiceServerImpl) Discovery(_ context.Context, _ *auditpb.Dis
 		},
 	}
 	if impl.responseSigner != nil {
-		resp.ResponseSigning = &auditpb.ResponseSigningInfo{
+		resp.ResponseSigning = &ledgerpb.ResponseSigningInfo{
 			PublicKey: impl.responseSigner.PublicKey(),
 			KeyId:     impl.responseSigner.KeyID(),
 		}
@@ -1242,6 +1242,6 @@ func profileToMetadata(profile *query.QueryProfile) metadata.MD {
 	return metadata.Pairs(metadataKeyQueryProfileResult, string(data))
 }
 
-func RegisterBucketService(registrar ggrpc.ServiceRegistrar, ledgerServiceServer auditpb.BucketServiceServer) {
-	auditpb.RegisterBucketServiceServer(registrar, ledgerServiceServer)
+func RegisterBucketService(registrar ggrpc.ServiceRegistrar, ledgerServiceServer ledgerpb.BucketServiceServer) {
+	ledgerpb.RegisterBucketServiceServer(registrar, ledgerServiceServer)
 }

@@ -11,7 +11,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -24,30 +24,30 @@ func TestHandleAnalyzeTransactions_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().AnalyzeTransactions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, ledgerName string, variableThreshold uint32, _ func(uint64, uint64)) (*commonpb.AnalyzeTransactionsResponse, error) {
+		func(_ context.Context, ledgerName string, variableThreshold uint32, _ func(uint64, uint64)) (*ledgerpb.AnalyzeTransactionsResponse, error) {
 			require.Equal(t, "my-ledger", ledgerName)
 			require.Equal(t, uint32(0), variableThreshold)
 
-			return &commonpb.AnalyzeTransactionsResponse{
+			return &ledgerpb.AnalyzeTransactionsResponse{
 				TotalTransactions: 100,
 				TotalReverted:     5,
-				FlowPatterns: []*commonpb.FlowPattern{
+				FlowPatterns: []*ledgerpb.FlowPattern{
 					{
 						Signature:        "world->bank:main[USD]",
-						Structure:        commonpb.PostingStructure_POSTING_STRUCTURE_SIMPLE,
+						Structure:        ledgerpb.PostingStructure_POSTING_STRUCTURE_SIMPLE,
 						TransactionCount: 80,
-						Postings: []*commonpb.NormalizedPosting{
+						Postings: []*ledgerpb.NormalizedPosting{
 							{SourcePattern: "world", DestinationPattern: "bank:main", Asset: "USD"},
 						},
-						Temporal: &commonpb.TemporalStats{
-							FirstSeen:          &commonpb.Timestamp{Data: 1000000},
-							LastSeen:           &commonpb.Timestamp{Data: 2000000},
+						Temporal: &ledgerpb.TemporalStats{
+							FirstSeen:          &ledgerpb.Timestamp{Data: 1000000},
+							LastSeen:           &ledgerpb.Timestamp{Data: 2000000},
 							TransactionsPerDay: 40.0,
-							PeakHours: []*commonpb.HourBucket{
+							PeakHours: []*ledgerpb.HourBucket{
 								{Hour: 14, Count: 20},
 							},
 						},
-						VolumeStats: []*commonpb.AssetVolumeStats{
+						VolumeStats: []*ledgerpb.AssetVolumeStats{
 							{Asset: "USD", TotalVolume: "10000", AverageVolume: "125", MinVolume: "10", MaxVolume: "500", TransactionCount: 80},
 						},
 						MetadataKeys: []string{"category"},
@@ -93,10 +93,10 @@ func TestHandleAnalyzeTransactions_WithThreshold(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().AnalyzeTransactions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, variableThreshold uint32, _ func(uint64, uint64)) (*commonpb.AnalyzeTransactionsResponse, error) {
+		func(_ context.Context, _ string, variableThreshold uint32, _ func(uint64, uint64)) (*ledgerpb.AnalyzeTransactionsResponse, error) {
 			capturedThreshold = variableThreshold
 
-			return &commonpb.AnalyzeTransactionsResponse{}, nil
+			return &ledgerpb.AnalyzeTransactionsResponse{}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -149,7 +149,7 @@ func TestHandleAnalyzeTransactions_BackendError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().AnalyzeTransactions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint32, _ func(uint64, uint64)) (*commonpb.AnalyzeTransactionsResponse, error) {
+		func(_ context.Context, _ string, _ uint32, _ func(uint64, uint64)) (*ledgerpb.AnalyzeTransactionsResponse, error) {
 			return nil, errors.New("internal error")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -169,7 +169,7 @@ func TestHandleAnalyzeTransactions_LedgerNotFound(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().AnalyzeTransactions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint32, _ func(uint64, uint64)) (*commonpb.AnalyzeTransactionsResponse, error) {
+		func(_ context.Context, _ string, _ uint32, _ func(uint64, uint64)) (*ledgerpb.AnalyzeTransactionsResponse, error) {
 			return nil, &domain.ErrLedgerNotFound{Name: "missing"}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -189,8 +189,8 @@ func TestHandleAnalyzeTransactions_EmptyResponse(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().AnalyzeTransactions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint32, _ func(uint64, uint64)) (*commonpb.AnalyzeTransactionsResponse, error) {
-			return &commonpb.AnalyzeTransactionsResponse{
+		func(_ context.Context, _ string, _ uint32, _ func(uint64, uint64)) (*ledgerpb.AnalyzeTransactionsResponse, error) {
+			return &ledgerpb.AnalyzeTransactionsResponse{
 				TotalTransactions: 0,
 			}, nil
 		}).AnyTimes()
@@ -220,15 +220,15 @@ func TestHandleAnalyzeTransactions_NoNullCollections(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().AnalyzeTransactions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint32, _ func(uint64, uint64)) (*commonpb.AnalyzeTransactionsResponse, error) {
-			return &commonpb.AnalyzeTransactionsResponse{
+		func(_ context.Context, _ string, _ uint32, _ func(uint64, uint64)) (*ledgerpb.AnalyzeTransactionsResponse, error) {
+			return &ledgerpb.AnalyzeTransactionsResponse{
 				TotalTransactions: 1,
-				FlowPatterns: []*commonpb.FlowPattern{
+				FlowPatterns: []*ledgerpb.FlowPattern{
 					{
 						Signature:        "world->alice[USD/2]",
-						Structure:        commonpb.PostingStructure_POSTING_STRUCTURE_SIMPLE,
+						Structure:        ledgerpb.PostingStructure_POSTING_STRUCTURE_SIMPLE,
 						TransactionCount: 1,
-						Postings: []*commonpb.NormalizedPosting{
+						Postings: []*ledgerpb.NormalizedPosting{
 							{SourcePattern: "world", DestinationPattern: "alice", Asset: "USD/2"},
 						},
 					},
@@ -256,7 +256,7 @@ func TestHandleAnalyzeTransactions_NoLeaderError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().AnalyzeTransactions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint32, _ func(uint64, uint64)) (*commonpb.AnalyzeTransactionsResponse, error) {
+		func(_ context.Context, _ string, _ uint32, _ func(uint64, uint64)) (*ledgerpb.AnalyzeTransactionsResponse, error) {
 			return nil, protoerr.ErrNoLeader
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -278,10 +278,10 @@ func TestHandleAnalyzeTransactions_FullRouteIntegration(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().AnalyzeTransactions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint32, _ func(uint64, uint64)) (*commonpb.AnalyzeTransactionsResponse, error) {
-			return &commonpb.AnalyzeTransactionsResponse{
+		func(_ context.Context, _ string, _ uint32, _ func(uint64, uint64)) (*ledgerpb.AnalyzeTransactionsResponse, error) {
+			return &ledgerpb.AnalyzeTransactionsResponse{
 				TotalTransactions: 5,
-				FlowPatterns:      []*commonpb.FlowPattern{},
+				FlowPatterns:      []*ledgerpb.FlowPattern{},
 			}, nil
 		}).AnyTimes()
 

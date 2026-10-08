@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -47,7 +47,7 @@ const (
 	parityAddressExact  = "accounts:03"
 )
 
-func parityInfo() *commonpb.LedgerInfo { return &commonpb.LedgerInfo{Name: parityLedger} }
+func parityInfo() *ledgerpb.LedgerInfo { return &ledgerpb.LedgerInfo{Name: parityLedger} }
 
 // parityResolver reports a live v1 keyspace with NO type binding, so
 // compileFieldCondition validates against the declared schema rather than the
@@ -62,34 +62,34 @@ func parityResolver() readstore.IndexVersionResolver {
 // parityRegistry declares every index the parity filters touch as READY.
 func parityRegistry() staticIndexLookup {
 	reg := staticIndexLookup{}
-	for _, id := range []*commonpb.IndexID{
-		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
-		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS),
-		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS),
-		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS),
-		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
-		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
-		indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
-		indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
+	for _, id := range []*ledgerpb.IndexID{
+		indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
+		indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS),
+		indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS),
+		indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS),
+		indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
+		indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
+		indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
+		indexes.LogBuiltinID(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
 	} {
-		reg[indexes.KeyFor(parityLedger, id)] = &commonpb.Index{Ledger: parityLedger, Id: id}
+		reg[indexes.KeyFor(parityLedger, id)] = &ledgerpb.Index{Ledger: parityLedger, Id: id}
 	}
 
 	for _, key := range []string{"colour", "size", "score", "flag", "note"} {
-		id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)
-		reg[indexes.KeyFor(parityLedger, id)] = &commonpb.Index{Ledger: parityLedger, Id: id}
+		id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, key)
+		reg[indexes.KeyFor(parityLedger, id)] = &ledgerpb.Index{Ledger: parityLedger, Id: id}
 	}
 
 	return reg
 }
 
-func paritySchema() map[string]*commonpb.MetadataFieldSchema {
-	return map[string]*commonpb.MetadataFieldSchema{
-		"colour": {Type: commonpb.MetadataType_METADATA_TYPE_STRING},
-		"size":   {Type: commonpb.MetadataType_METADATA_TYPE_UINT64},
-		"score":  {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
-		"flag":   {Type: commonpb.MetadataType_METADATA_TYPE_BOOL},
-		"note":   {Type: commonpb.MetadataType_METADATA_TYPE_STRING},
+func paritySchema() map[string]*ledgerpb.MetadataFieldSchema {
+	return map[string]*ledgerpb.MetadataFieldSchema{
+		"colour": {Type: ledgerpb.MetadataType_METADATA_TYPE_STRING},
+		"size":   {Type: ledgerpb.MetadataType_METADATA_TYPE_UINT64},
+		"score":  {Type: ledgerpb.MetadataType_METADATA_TYPE_INT64},
+		"flag":   {Type: ledgerpb.MetadataType_METADATA_TYPE_BOOL},
+		"note":   {Type: ledgerpb.MetadataType_METADATA_TYPE_STRING},
 	}
 }
 
@@ -360,161 +360,161 @@ func parityRevertedTxIDs() []uint64 {
 	return []uint64{ids[1], ids[4], ids[7]}
 }
 
-func accountFieldFilter(key string, cond *commonpb.FieldCondition) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Field{Field: cond}}
+func accountFieldFilter(key string, cond *ledgerpb.FieldCondition) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Field{Field: cond}}
 }
 
-func stringFieldFilter(key, value string) *commonpb.QueryFilter {
-	return accountFieldFilter(key, &commonpb.FieldCondition{
-		Field: &commonpb.FieldRef{Metadata: key},
-		Condition: &commonpb.FieldCondition_StringCond{StringCond: &commonpb.StringCondition{
-			Value: &commonpb.StringCondition_Hardcoded{Hardcoded: value},
+func stringFieldFilter(key, value string) *ledgerpb.QueryFilter {
+	return accountFieldFilter(key, &ledgerpb.FieldCondition{
+		Field: &ledgerpb.FieldRef{Metadata: key},
+		Condition: &ledgerpb.FieldCondition_StringCond{StringCond: &ledgerpb.StringCondition{
+			Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: value},
 		}},
 	})
 }
 
-func uintRangeFieldFilter(key string, minV, maxV uint64) *commonpb.QueryFilter {
-	return accountFieldFilter(key, &commonpb.FieldCondition{
-		Field: &commonpb.FieldRef{Metadata: key},
-		Condition: &commonpb.FieldCondition_UintCond{UintCond: &commonpb.UintCondition{
+func uintRangeFieldFilter(key string, minV, maxV uint64) *ledgerpb.QueryFilter {
+	return accountFieldFilter(key, &ledgerpb.FieldCondition{
+		Field: &ledgerpb.FieldRef{Metadata: key},
+		Condition: &ledgerpb.FieldCondition_UintCond{UintCond: &ledgerpb.UintCondition{
 			Min: &minV, Max: &maxV,
 		}},
 	})
 }
 
-func uintEqualFieldFilter(key string, v uint64) *commonpb.QueryFilter {
-	return accountFieldFilter(key, &commonpb.FieldCondition{
-		Field: &commonpb.FieldRef{Metadata: key},
-		Condition: &commonpb.FieldCondition_UintCond{UintCond: &commonpb.UintCondition{
+func uintEqualFieldFilter(key string, v uint64) *ledgerpb.QueryFilter {
+	return accountFieldFilter(key, &ledgerpb.FieldCondition{
+		Field: &ledgerpb.FieldRef{Metadata: key},
+		Condition: &ledgerpb.FieldCondition_UintCond{UintCond: &ledgerpb.UintCondition{
 			Min: &v, Max: &v,
 		}},
 	})
 }
 
-func existsFieldFilter(key string) *commonpb.QueryFilter {
-	return accountFieldFilter(key, &commonpb.FieldCondition{
-		Field:     &commonpb.FieldRef{Metadata: key},
-		Condition: &commonpb.FieldCondition_ExistsCond{ExistsCond: &commonpb.ExistsCondition{}},
+func existsFieldFilter(key string) *ledgerpb.QueryFilter {
+	return accountFieldFilter(key, &ledgerpb.FieldCondition{
+		Field:     &ledgerpb.FieldRef{Metadata: key},
+		Condition: &ledgerpb.FieldCondition_ExistsCond{ExistsCond: &ledgerpb.ExistsCondition{}},
 	})
 }
 
 // existsWithNullFieldFilter is the two-arm form: it compiles to an OR over
 // the non-null and null existence scans instead of a single scan.
-func existsWithNullFieldFilter(key string) *commonpb.QueryFilter {
-	return accountFieldFilter(key, &commonpb.FieldCondition{
-		Field: &commonpb.FieldRef{Metadata: key},
-		Condition: &commonpb.FieldCondition_ExistsCond{ExistsCond: &commonpb.ExistsCondition{
+func existsWithNullFieldFilter(key string) *ledgerpb.QueryFilter {
+	return accountFieldFilter(key, &ledgerpb.FieldCondition{
+		Field: &ledgerpb.FieldRef{Metadata: key},
+		Condition: &ledgerpb.FieldCondition_ExistsCond{ExistsCond: &ledgerpb.ExistsCondition{
 			IncludeNull: true,
 		}},
 	})
 }
 
-func intEqualFieldFilter(key string, v int64) *commonpb.QueryFilter {
-	return accountFieldFilter(key, &commonpb.FieldCondition{
-		Field: &commonpb.FieldRef{Metadata: key},
-		Condition: &commonpb.FieldCondition_IntCond{IntCond: &commonpb.IntCondition{
+func intEqualFieldFilter(key string, v int64) *ledgerpb.QueryFilter {
+	return accountFieldFilter(key, &ledgerpb.FieldCondition{
+		Field: &ledgerpb.FieldRef{Metadata: key},
+		Condition: &ledgerpb.FieldCondition_IntCond{IntCond: &ledgerpb.IntCondition{
 			Min: &v, Max: &v,
 		}},
 	})
 }
 
-func intRangeFieldFilter(key string, minV, maxV int64) *commonpb.QueryFilter {
-	return accountFieldFilter(key, &commonpb.FieldCondition{
-		Field: &commonpb.FieldRef{Metadata: key},
-		Condition: &commonpb.FieldCondition_IntCond{IntCond: &commonpb.IntCondition{
+func intRangeFieldFilter(key string, minV, maxV int64) *ledgerpb.QueryFilter {
+	return accountFieldFilter(key, &ledgerpb.FieldCondition{
+		Field: &ledgerpb.FieldRef{Metadata: key},
+		Condition: &ledgerpb.FieldCondition_IntCond{IntCond: &ledgerpb.IntCondition{
 			Min: &minV, Max: &maxV,
 		}},
 	})
 }
 
-func boolFieldFilter(key string, v bool) *commonpb.QueryFilter {
-	return accountFieldFilter(key, &commonpb.FieldCondition{
-		Field: &commonpb.FieldRef{Metadata: key},
-		Condition: &commonpb.FieldCondition_BoolCond{BoolCond: &commonpb.BoolCondition{
-			Value: &commonpb.BoolCondition_Hardcoded{Hardcoded: v},
+func boolFieldFilter(key string, v bool) *ledgerpb.QueryFilter {
+	return accountFieldFilter(key, &ledgerpb.FieldCondition{
+		Field: &ledgerpb.FieldRef{Metadata: key},
+		Condition: &ledgerpb.FieldCondition_BoolCond{BoolCond: &ledgerpb.BoolCondition{
+			Value: &ledgerpb.BoolCondition_Hardcoded{Hardcoded: v},
 		}},
 	})
 }
 
 // --- Address, reference, reverted, has-asset and log-date constructors -----
 
-func addressPrefixFilter(addrPrefix string, role commonpb.AddressRole) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{
-		Address: &commonpb.AddressMatch{
-			Match: &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: addrPrefix},
+func addressPrefixFilter(addrPrefix string, role ledgerpb.AddressRole) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Address{
+		Address: &ledgerpb.AddressMatch{
+			Match: &ledgerpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: addrPrefix},
 			Role:  role,
 		},
 	}}
 }
 
-func addressExactFilter(addr string, role commonpb.AddressRole) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{
-		Address: &commonpb.AddressMatch{
-			Match: &commonpb.AddressMatch_HardcodedExact{HardcodedExact: addr},
+func addressExactFilter(addr string, role ledgerpb.AddressRole) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Address{
+		Address: &ledgerpb.AddressMatch{
+			Match: &ledgerpb.AddressMatch_HardcodedExact{HardcodedExact: addr},
 			Role:  role,
 		},
 	}}
 }
 
-func referenceFilter(reference string) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reference{
-		Reference: &commonpb.ReferenceCondition{
-			Cond: &commonpb.StringCondition{
-				Value: &commonpb.StringCondition_Hardcoded{Hardcoded: reference},
+func referenceFilter(reference string) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Reference{
+		Reference: &ledgerpb.ReferenceCondition{
+			Cond: &ledgerpb.StringCondition{
+				Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: reference},
 			},
 		},
 	}}
 }
 
-func revertedFilter(value bool) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reverted{
-		Reverted: &commonpb.RevertedCondition{Value: value},
+func revertedFilter(value bool) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Reverted{
+		Reverted: &ledgerpb.RevertedCondition{Value: value},
 	}}
 }
 
-func hasAssetFilter(assetBase string, precision uint32) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_AccountHasAsset{
-		AccountHasAsset: &commonpb.AccountHasAssetCondition{
+func hasAssetFilter(assetBase string, precision uint32) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_AccountHasAsset{
+		AccountHasAsset: &ledgerpb.AccountHasAssetCondition{
 			AssetBase: assetBase,
 			Precision: precision,
 		},
 	}}
 }
 
-func txInsertedAtRangeFilter(minV, maxV uint64) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
-		BuiltinUint: &commonpb.BuiltinUintCondition{
-			Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
-			Cond:  &commonpb.UintCondition{Min: &minV, Max: &maxV},
+func txInsertedAtRangeFilter(minV, maxV uint64) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_BuiltinUint{
+		BuiltinUint: &ledgerpb.BuiltinUintCondition{
+			Field: ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
+			Cond:  &ledgerpb.UintCondition{Min: &minV, Max: &maxV},
 		},
 	}}
 }
 
-func logDateRangeFilter(minV, maxV uint64) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogBuiltinUint{
-		LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
-			Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
-			Cond:  &commonpb.UintCondition{Min: &minV, Max: &maxV},
+func logDateRangeFilter(minV, maxV uint64) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_LogBuiltinUint{
+		LogBuiltinUint: &ledgerpb.LogBuiltinUintCondition{
+			Field: ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
+			Cond:  &ledgerpb.UintCondition{Min: &minV, Max: &maxV},
 		},
 	}}
 }
 
-func andFilter(fs ...*commonpb.QueryFilter) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_And{And: &commonpb.AndFilter{Filters: fs}}}
+func andFilter(fs ...*ledgerpb.QueryFilter) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_And{And: &ledgerpb.AndFilter{Filters: fs}}}
 }
 
-func orFilter(fs ...*commonpb.QueryFilter) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Or{Or: &commonpb.OrFilter{Filters: fs}}}
+func orFilter(fs ...*ledgerpb.QueryFilter) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Or{Or: &ledgerpb.OrFilter{Filters: fs}}}
 }
 
-func notFilter(f *commonpb.QueryFilter) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Not{Not: &commonpb.NotFilter{Filter: f}}}
+func notFilter(f *ledgerpb.QueryFilter) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Not{Not: &ledgerpb.NotFilter{Filter: f}}}
 }
 
 const parityPin = 1000
 
 // ascendingReference drains the ascending tree — the oracle's source.
-func ascendingReference(t *testing.T, store *readstore.Store, target commonpb.QueryTarget, filter *commonpb.QueryFilter) []string {
+func ascendingReference(t *testing.T, store *readstore.Store, target ledgerpb.QueryTarget, filter *ledgerpb.QueryFilter) []string {
 	t.Helper()
 
 	reader := store.DB()
@@ -539,7 +539,7 @@ func ascendingReference(t *testing.T, store *readstore.Store, target commonpb.Qu
 
 // descendingByPages walks the whole result descending, one page at a time,
 // resuming from the previous page's last entity — the controller's own loop.
-func descendingByPages(t *testing.T, store *readstore.Store, target commonpb.QueryTarget, filter *commonpb.QueryFilter, pageSize uint32) []string {
+func descendingByPages(t *testing.T, store *readstore.Store, target ledgerpb.QueryTarget, filter *ledgerpb.QueryFilter, pageSize uint32) []string {
 	t.Helper()
 
 	reader := store.DB()
@@ -579,35 +579,35 @@ func descendingByPages(t *testing.T, store *readstore.Store, target commonpb.Que
 
 // --- TRANSACTIONS and LOGS filter constructors -----------------------------
 
-func txIDRangeFilter(minV, maxV uint64) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
-		BuiltinUint: &commonpb.BuiltinUintCondition{
-			Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID,
-			Cond:  &commonpb.UintCondition{Min: &minV, Max: &maxV},
+func txIDRangeFilter(minV, maxV uint64) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_BuiltinUint{
+		BuiltinUint: &ledgerpb.BuiltinUintCondition{
+			Field: ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID,
+			Cond:  &ledgerpb.UintCondition{Min: &minV, Max: &maxV},
 		},
 	}}
 }
 
-func txIDEqualFilter(id uint64) *commonpb.QueryFilter { return txIDRangeFilter(id, id) }
+func txIDEqualFilter(id uint64) *ledgerpb.QueryFilter { return txIDRangeFilter(id, id) }
 
-func txTimestampRangeFilter(minV, maxV uint64) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
-		BuiltinUint: &commonpb.BuiltinUintCondition{
-			Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
-			Cond:  &commonpb.UintCondition{Min: &minV, Max: &maxV},
+func txTimestampRangeFilter(minV, maxV uint64) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_BuiltinUint{
+		BuiltinUint: &ledgerpb.BuiltinUintCondition{
+			Field: ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
+			Cond:  &ledgerpb.UintCondition{Min: &minV, Max: &maxV},
 		},
 	}}
 }
 
-func logIDRangeFilter(minV, maxV uint64) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{
-		LogId: &commonpb.LogIdCondition{
-			Cond: &commonpb.UintCondition{Min: &minV, Max: &maxV},
+func logIDRangeFilter(minV, maxV uint64) *ledgerpb.QueryFilter {
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_LogId{
+		LogId: &ledgerpb.LogIdCondition{
+			Cond: &ledgerpb.UintCondition{Min: &minV, Max: &maxV},
 		},
 	}}
 }
 
-func logIDEqualFilter(id uint64) *commonpb.QueryFilter { return logIDRangeFilter(id, id) }
+func logIDEqualFilter(id uint64) *ledgerpb.QueryFilter { return logIDRangeFilter(id, id) }
 
 // parityCase is one (target, filter) pair the oracle drives. Target is part of
 // the case and not a fixed constant: the motivating surface for EN-1966 is
@@ -615,8 +615,8 @@ func logIDEqualFilter(id uint64) *commonpb.QueryFilter { return logIDRangeFilter
 // ACCOUNTS-only oracle proves the acceptance criterion on the wrong target.
 type parityCase struct {
 	name   string
-	target commonpb.QueryTarget
-	filter *commonpb.QueryFilter
+	target ledgerpb.QueryTarget
+	filter *ledgerpb.QueryFilter
 }
 
 // parityCases is the three-target matrix: every target crossed with the
@@ -628,7 +628,7 @@ func parityCases() []parityCase {
 	for _, f := range accountParityFilters() {
 		cases = append(cases, parityCase{
 			name:   "accounts/" + f.name,
-			target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			filter: f.filter,
 		})
 	}
@@ -638,7 +638,7 @@ func parityCases() []parityCase {
 
 	for _, f := range []struct {
 		name   string
-		filter *commonpb.QueryFilter
+		filter *ledgerpb.QueryFilter
 	}{
 		{"universe", nil},
 		{"empty and (universe)", andFilter()},
@@ -658,22 +658,22 @@ func parityCases() []parityCase {
 		// account→tx union (both match forms and a role bucket), the txref
 		// reverse prefix, the reversion bitset and its complement, and the
 		// inserted_at arm of the timestamp fallback.
-		{"address prefix (materializing union)", addressPrefixFilter(parityAddressPrefix, commonpb.AddressRole_ADDRESS_ROLE_ANY)},
-		{"address exact (materializing union)", addressExactFilter(parityAddressExact, commonpb.AddressRole_ADDRESS_ROLE_ANY)},
-		{"address prefix on the source role bucket", addressPrefixFilter(parityAddressPrefix, commonpb.AddressRole_ADDRESS_ROLE_SOURCE)},
+		{"address prefix (materializing union)", addressPrefixFilter(parityAddressPrefix, ledgerpb.AddressRole_ADDRESS_ROLE_ANY)},
+		{"address exact (materializing union)", addressExactFilter(parityAddressExact, ledgerpb.AddressRole_ADDRESS_ROLE_ANY)},
+		{"address prefix on the source role bucket", addressPrefixFilter(parityAddressPrefix, ledgerpb.AddressRole_ADDRESS_ROLE_SOURCE)},
 		{"reference (streaming prefix leaf)", referenceFilter(parityReferenceA)},
 		{"reverted true (bitset leaf)", revertedFilter(true)},
 		{"reverted false (not over the bitset)", revertedFilter(false)},
 		{"inserted_at range (materializing fallback)", txInsertedAtRangeFilter(2_002, 2_008)},
 		{"and of address prefix and id range", andFilter(
-			addressPrefixFilter(parityAddressPrefix, commonpb.AddressRole_ADDRESS_ROLE_ANY),
+			addressPrefixFilter(parityAddressPrefix, ledgerpb.AddressRole_ADDRESS_ROLE_ANY),
 			txIDRangeFilter(lo+3, hi),
 		)},
 		{"or of reference and reverted", orFilter(referenceFilter(parityReferenceA), revertedFilter(true))},
 	} {
 		cases = append(cases, parityCase{
 			name:   "transactions/" + f.name,
-			target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 			filter: f.filter,
 		})
 	}
@@ -683,7 +683,7 @@ func parityCases() []parityCase {
 
 	for _, f := range []struct {
 		name   string
-		filter *commonpb.QueryFilter
+		filter *ledgerpb.QueryFilter
 	}{
 		{"universe", nil},
 		{"empty and (universe)", andFilter()},
@@ -701,7 +701,7 @@ func parityCases() []parityCase {
 	} {
 		cases = append(cases, parityCase{
 			name:   "logs/" + f.name,
-			target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
+			target: ledgerpb.QueryTarget_QUERY_TARGET_LOGS,
 			filter: f.filter,
 		})
 	}
@@ -711,11 +711,11 @@ func parityCases() []parityCase {
 
 func accountParityFilters() []struct {
 	name   string
-	filter *commonpb.QueryFilter
+	filter *ledgerpb.QueryFilter
 } {
 	return []struct {
 		name   string
-		filter *commonpb.QueryFilter
+		filter *ledgerpb.QueryFilter
 	}{
 		{"universe", nil},
 		{"empty and (universe)", andFilter()},
@@ -742,11 +742,11 @@ func accountParityFilters() []struct {
 		{"int range (materializing fallback)", intRangeFieldFilter("score", -4, 2)},
 		{"bool equality (streaming leaf)", boolFieldFilter("flag", true)},
 		{"exists with null (or of two arms)", existsWithNullFieldFilter("note")},
-		{"address prefix (streaming leaf)", addressPrefixFilter(parityAddressPrefix, commonpb.AddressRole_ADDRESS_ROLE_ANY)},
-		{"address exact (slice leaf)", addressExactFilter(parityAddressExact, commonpb.AddressRole_ADDRESS_ROLE_ANY)},
+		{"address prefix (streaming leaf)", addressPrefixFilter(parityAddressPrefix, ledgerpb.AddressRole_ADDRESS_ROLE_ANY)},
+		{"address exact (slice leaf)", addressExactFilter(parityAddressExact, ledgerpb.AddressRole_ADDRESS_ROLE_ANY)},
 		{"has asset (stamp-gated leaf)", hasAssetFilter(parityAsset, uint32(parityAssetPrecision))},
 		{"and of address prefix and has asset", andFilter(
-			addressPrefixFilter(parityAddressPrefix, commonpb.AddressRole_ADDRESS_ROLE_ANY),
+			addressPrefixFilter(parityAddressPrefix, ledgerpb.AddressRole_ADDRESS_ROLE_ANY),
 			hasAssetFilter(parityAsset, uint32(parityAssetPrecision)),
 		)},
 		{"not of has asset", notFilter(hasAssetFilter(parityAsset, uint32(parityAssetPrecision)))},
@@ -790,15 +790,15 @@ func TestDescendingParity_FullTraversal(t *testing.T) {
 func TestDescendingParity_EveryTargetIsCovered(t *testing.T) {
 	t.Parallel()
 
-	seen := map[commonpb.QueryTarget]int{}
+	seen := map[ledgerpb.QueryTarget]int{}
 	for _, tc := range parityCases() {
 		seen[tc.target]++
 	}
 
-	for _, target := range []commonpb.QueryTarget{
-		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-		commonpb.QueryTarget_QUERY_TARGET_LOGS,
+	for _, target := range []ledgerpb.QueryTarget{
+		ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		ledgerpb.QueryTarget_QUERY_TARGET_LOGS,
 	} {
 		require.GreaterOrEqual(t, seen[target], 4,
 			"target %s needs paged descending parity cases, not fewer than four",
@@ -816,9 +816,9 @@ func TestDescendingParity_NonEmptyFixtures(t *testing.T) {
 	store := parityStore(t)
 
 	for _, tc := range []parityCase{
-		{"accounts", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, nil},
-		{"transactions", commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, nil},
-		{"logs", commonpb.QueryTarget_QUERY_TARGET_LOGS, nil},
+		{"accounts", ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, nil},
+		{"transactions", ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, nil},
+		{"logs", ledgerpb.QueryTarget_QUERY_TARGET_LOGS, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -841,29 +841,29 @@ func TestDescendingParity_LeafFixtureSizes(t *testing.T) {
 
 	store := parityStore(t)
 
-	accounts := commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS
-	transactions := commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS
-	logs := commonpb.QueryTarget_QUERY_TARGET_LOGS
+	accounts := ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS
+	transactions := ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS
+	logs := ledgerpb.QueryTarget_QUERY_TARGET_LOGS
 
 	for _, tc := range []struct {
 		name   string
-		target commonpb.QueryTarget
-		filter *commonpb.QueryFilter
+		target ledgerpb.QueryTarget
+		filter *ledgerpb.QueryFilter
 		want   int
 	}{
 		{"accounts/int equality", accounts, intEqualFieldFilter("score", -3), 1},
 		{"accounts/int range", accounts, intRangeFieldFilter("score", -4, 2), 7},
 		{"accounts/bool equality", accounts, boolFieldFilter("flag", true), 6},
 		{"accounts/exists with null", accounts, existsWithNullFieldFilter("note"), 12},
-		{"accounts/address prefix", accounts, addressPrefixFilter(parityAddressPrefix, commonpb.AddressRole_ADDRESS_ROLE_ANY), 10},
-		{"accounts/address exact", accounts, addressExactFilter(parityAddressExact, commonpb.AddressRole_ADDRESS_ROLE_ANY), 1},
+		{"accounts/address prefix", accounts, addressPrefixFilter(parityAddressPrefix, ledgerpb.AddressRole_ADDRESS_ROLE_ANY), 10},
+		{"accounts/address exact", accounts, addressExactFilter(parityAddressExact, ledgerpb.AddressRole_ADDRESS_ROLE_ANY), 1},
 		// Six accounts carry a stamped has-asset row at or below the pin;
 		// accounts:01's row is stamped above it and must stay hidden. A
 		// count of seven here means the gate was dropped.
 		{"accounts/has asset (gated)", accounts, hasAssetFilter(parityAsset, uint32(parityAssetPrecision)), 6},
-		{"transactions/address prefix", transactions, addressPrefixFilter(parityAddressPrefix, commonpb.AddressRole_ADDRESS_ROLE_ANY), 10},
-		{"transactions/address exact", transactions, addressExactFilter(parityAddressExact, commonpb.AddressRole_ADDRESS_ROLE_ANY), 1},
-		{"transactions/address source role", transactions, addressPrefixFilter(parityAddressPrefix, commonpb.AddressRole_ADDRESS_ROLE_SOURCE), 4},
+		{"transactions/address prefix", transactions, addressPrefixFilter(parityAddressPrefix, ledgerpb.AddressRole_ADDRESS_ROLE_ANY), 10},
+		{"transactions/address exact", transactions, addressExactFilter(parityAddressExact, ledgerpb.AddressRole_ADDRESS_ROLE_ANY), 1},
+		{"transactions/address source role", transactions, addressPrefixFilter(parityAddressPrefix, ledgerpb.AddressRole_ADDRESS_ROLE_SOURCE), 4},
 		{"transactions/reference", transactions, referenceFilter(parityReferenceA), 4},
 		{"transactions/reverted true", transactions, revertedFilter(true), len(parityRevertedTxIDs())},
 		{"transactions/reverted false", transactions, revertedFilter(false), 12 - len(parityRevertedTxIDs())},
@@ -890,14 +890,14 @@ func TestDescendingParity_CursorBoundaries(t *testing.T) {
 	reader := store.DB()
 	filter := stringFieldFilter("colour", "red")
 
-	want := ascendingReference(t, store, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter)
+	want := ascendingReference(t, store, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter)
 	slices.Reverse(want)
 	require.NotEmpty(t, want)
 
 	page := func(before []byte, size uint32) []string {
 		iter, err := query.CompileReverse(
 			reader, dal.NewKeyBuilder(), filter,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, parityLedger,
+			ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, parityLedger,
 			nil, paritySchema(), parityInfo(), parityRegistry(), parityResolver(), nil, reader, parityPin)
 		require.NoError(t, err)
 
@@ -933,12 +933,12 @@ func TestDescendingParity_NoFullMaterialization(t *testing.T) {
 	store := parityStore(t)
 	reader := store.DB()
 
-	profileFor := func(filter *commonpb.QueryFilter) *query.QueryProfile {
+	profileFor := func(filter *ledgerpb.QueryFilter) *query.QueryProfile {
 		profile := &query.QueryProfile{}
 
 		iter, err := query.CompileReverse(
 			reader, dal.NewKeyBuilder(), filter,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, parityLedger,
+			ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, parityLedger,
 			nil, paritySchema(), parityInfo(), parityRegistry(), parityResolver(), profile, reader, parityPin)
 		require.NoError(t, err)
 
@@ -963,7 +963,7 @@ func TestDescendingParity_NoFullMaterialization(t *testing.T) {
 	ascProfile := &query.QueryProfile{}
 	ascIter, err := query.Compile(
 		reader, dal.NewKeyBuilder(), uintRangeFieldFilter("size", 1, 2),
-		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, parityLedger,
+		ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, parityLedger,
 		nil, paritySchema(), parityInfo(), parityRegistry(), parityResolver(), ascProfile, reader, parityPin)
 	require.NoError(t, err)
 

@@ -9,12 +9,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // analyzeTransactions is a test helper that wraps AnalyzeTransactionsFromIterators
 // with simple slice-based iterators.
-func analyzeTransactions(txns []CompactTransaction, variableThreshold uint32) *servicepb.AnalyzeTransactionsResponse {
+func analyzeTransactions(txns []CompactTransaction, variableThreshold uint32) *ledgerpb.AnalyzeTransactionsResponse {
 	var totalReverted uint64
 	for i := range txns {
 		if txns[i].Reverted {
@@ -93,7 +93,7 @@ func TestAnalyzeTransactions_SingleSimple(t *testing.T) {
 	require.Len(t, resp.GetFlowPatterns(), 1)
 
 	pattern := resp.GetFlowPatterns()[0]
-	assert.Equal(t, servicepb.PostingStructure_POSTING_STRUCTURE_SIMPLE, pattern.GetStructure())
+	assert.Equal(t, ledgerpb.PostingStructure_POSTING_STRUCTURE_SIMPLE, pattern.GetStructure())
 	assert.Equal(t, uint64(1), pattern.GetTransactionCount())
 	require.Len(t, pattern.GetPostings(), 1)
 	assert.Equal(t, "world", pattern.GetPostings()[0].GetSourcePattern())
@@ -113,7 +113,7 @@ func TestAnalyzeTransactions_MultiDestination(t *testing.T) {
 
 	resp := analyzeTransactions(txns, 0)
 	require.Len(t, resp.GetFlowPatterns(), 1)
-	assert.Equal(t, servicepb.PostingStructure_POSTING_STRUCTURE_MULTI_DESTINATION, resp.GetFlowPatterns()[0].GetStructure())
+	assert.Equal(t, ledgerpb.PostingStructure_POSTING_STRUCTURE_MULTI_DESTINATION, resp.GetFlowPatterns()[0].GetStructure())
 }
 
 func TestAnalyzeTransactions_MultiSource(t *testing.T) {
@@ -128,7 +128,7 @@ func TestAnalyzeTransactions_MultiSource(t *testing.T) {
 
 	resp := analyzeTransactions(txns, 0)
 	require.Len(t, resp.GetFlowPatterns(), 1)
-	assert.Equal(t, servicepb.PostingStructure_POSTING_STRUCTURE_MULTI_SOURCE, resp.GetFlowPatterns()[0].GetStructure())
+	assert.Equal(t, ledgerpb.PostingStructure_POSTING_STRUCTURE_MULTI_SOURCE, resp.GetFlowPatterns()[0].GetStructure())
 }
 
 func TestAnalyzeTransactions_NormalizationUUID(t *testing.T) {
@@ -307,22 +307,22 @@ func TestFlowSignaturePart_NoCollisionWithSeparatorsInComponents(t *testing.T) {
 
 	cases := []struct {
 		name string
-		a, b *servicepb.NormalizedPosting
+		a, b *ledgerpb.NormalizedPosting
 	}{
 		{
 			name: "arrow-in-account vs literal arrow",
-			a:    &servicepb.NormalizedPosting{SourcePattern: "src->x", DestinationPattern: "dst", Asset: "USD", Color: ""},
-			b:    &servicepb.NormalizedPosting{SourcePattern: "src", DestinationPattern: "x->dst", Asset: "USD", Color: ""},
+			a:    &ledgerpb.NormalizedPosting{SourcePattern: "src->x", DestinationPattern: "dst", Asset: "USD", Color: ""},
+			b:    &ledgerpb.NormalizedPosting{SourcePattern: "src", DestinationPattern: "x->dst", Asset: "USD", Color: ""},
 		},
 		{
 			name: "bracket-in-color vs literal",
-			a:    &servicepb.NormalizedPosting{SourcePattern: "src", DestinationPattern: "dst", Asset: "USD", Color: "A]B"},
-			b:    &servicepb.NormalizedPosting{SourcePattern: "src", DestinationPattern: "dst", Asset: "USD]A", Color: "B"},
+			a:    &ledgerpb.NormalizedPosting{SourcePattern: "src", DestinationPattern: "dst", Asset: "USD", Color: "A]B"},
+			b:    &ledgerpb.NormalizedPosting{SourcePattern: "src", DestinationPattern: "dst", Asset: "USD]A", Color: "B"},
 		},
 		{
 			name: "pipe in components",
-			a:    &servicepb.NormalizedPosting{SourcePattern: "src", DestinationPattern: "dst", Asset: "USD|X", Color: ""},
-			b:    &servicepb.NormalizedPosting{SourcePattern: "src", DestinationPattern: "dst", Asset: "USD", Color: "X"},
+			a:    &ledgerpb.NormalizedPosting{SourcePattern: "src", DestinationPattern: "dst", Asset: "USD|X", Color: ""},
+			b:    &ledgerpb.NormalizedPosting{SourcePattern: "src", DestinationPattern: "dst", Asset: "USD", Color: "X"},
 		},
 	}
 
@@ -346,22 +346,22 @@ func TestComputeFlowDisplaySignature(t *testing.T) {
 
 	cases := []struct {
 		name     string
-		postings []*servicepb.NormalizedPosting
+		postings []*ledgerpb.NormalizedPosting
 		want     string
 	}{
 		{
 			name:     "single uncolored is byte-identical to legacy",
-			postings: []*servicepb.NormalizedPosting{{SourcePattern: "world", DestinationPattern: "bank:main", Asset: "USD"}},
+			postings: []*ledgerpb.NormalizedPosting{{SourcePattern: "world", DestinationPattern: "bank:main", Asset: "USD"}},
 			want:     "world->bank:main[USD]",
 		},
 		{
 			name:     "single colored extends inside the brackets",
-			postings: []*servicepb.NormalizedPosting{{SourcePattern: "world", DestinationPattern: "bank:main", Asset: "USD", Color: "RED"}},
+			postings: []*ledgerpb.NormalizedPosting{{SourcePattern: "world", DestinationPattern: "bank:main", Asset: "USD", Color: "RED"}},
 			want:     "world->bank:main[USD/RED]",
 		},
 		{
 			name: "multi posting sorted and semicolon-joined (no spaces)",
-			postings: []*servicepb.NormalizedPosting{
+			postings: []*ledgerpb.NormalizedPosting{
 				{SourcePattern: "world", DestinationPattern: "bank:fees", Asset: "EUR"},
 				{SourcePattern: "alice", DestinationPattern: "bob", Asset: "USD", Color: "GRANTS"},
 			},

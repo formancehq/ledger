@@ -6,7 +6,7 @@ import (
 	"context"
 	"math/big"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
@@ -24,7 +24,7 @@ import (
 var _ = Describe("Query after metadata field removal", Ordered, func() {
 	var (
 		ctx    context.Context
-		client commonpb.BucketServiceClient
+		client ledgerpb.BucketServiceClient
 	)
 
 	const metaKey = "k2"
@@ -35,10 +35,10 @@ var _ = Describe("Query after metadata field removal", Ordered, func() {
 		client = node.Client
 	})
 
-	apply := func(reqs ...*commonpb.Request) {
+	apply := func(reqs ...*ledgerpb.Request) {
 		GinkgoHelper()
 
-		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", reqs...))
+		_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", reqs...))
 		Expect(err).To(Succeed())
 	}
 
@@ -48,27 +48,27 @@ var _ = Describe("Query after metadata field removal", Ordered, func() {
 	setupDroppedIndex := func(ledger string) {
 		GinkgoHelper()
 
-		apply(actions.CreateLedgerWithSchemaAction(ledger, nil, []*commonpb.SetMetadataFieldTypeCommand{
-			{TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT, Key: metaKey, Type: commonpb.MetadataType_METADATA_TYPE_INT64},
+		apply(actions.CreateLedgerWithSchemaAction(ledger, nil, []*ledgerpb.SetMetadataFieldTypeCommand{
+			{TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, Key: metaKey, Type: ledgerpb.MetadataType_METADATA_TYPE_INT64},
 		}))
 
-		apply(actions.CreateTransactionAction(ledger, []*commonpb.Posting{
+		apply(actions.CreateTransactionAction(ledger, []*ledgerpb.Posting{
 			actions.NewPosting("world", "acct:1", big.NewInt(1), "USD"),
-		}, nil, map[string]*commonpb.MetadataMap{
-			"acct:1": {Values: map[string]*commonpb.MetadataValue{metaKey: commonpb.NewIntValue(42)}},
+		}, nil, map[string]*ledgerpb.MetadataMap{
+			"acct:1": {Values: map[string]*ledgerpb.MetadataValue{metaKey: ledgerpb.NewIntValue(42)}},
 		}))
 
 		apply(actions.CreateAccountMetadataIndexAction(ledger, metaKey))
-		Expect(actions.WaitForMetadataIndexReady(ctx, client, ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, metaKey)).To(Succeed())
+		Expect(actions.WaitForMetadataIndexReady(ctx, client, ledger, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, metaKey)).To(Succeed())
 
 		// Cascade-drops the index.
-		apply(actions.RemoveMetadataFieldTypeAction(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, metaKey))
+		apply(actions.RemoveMetadataFieldTypeAction(ledger, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, metaKey))
 
 		// Restores the schema declaration — but not the index.
-		apply(actions.SetMetadataFieldTypeAction(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, metaKey, commonpb.MetadataType_METADATA_TYPE_INT64))
+		apply(actions.SetMetadataFieldTypeAction(ledger, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, metaKey, ledgerpb.MetadataType_METADATA_TYPE_INT64))
 	}
 
-	expectIndexRejection := func(ledger string, filter *commonpb.QueryFilter, label string) {
+	expectIndexRejection := func(ledger string, filter *ledgerpb.QueryFilter, label string) {
 		GinkgoHelper()
 
 		_, err := actions.ListAccountsFiltered(ctx, client, ledger, 0, "", filter)

@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestSetupLedgersCanRemainBlockedBeforeFirstOutcome(t *testing.T) {
@@ -20,7 +20,7 @@ func TestSetupLedgersCanRemainBlockedBeforeFirstOutcome(t *testing.T) {
 	listener := bufconn.Listen(1024 * 1024)
 	server := grpc.NewServer()
 	applyEntered := make(chan struct{})
-	commonpb.RegisterBucketServiceServer(server, &blockingSetupServer{applyEntered: applyEntered})
+	ledgerpb.RegisterBucketServiceServer(server, &blockingSetupServer{applyEntered: applyEntered})
 	go func() {
 		_ = server.Serve(listener) // Stop terminates Serve with an expected error.
 	}()
@@ -38,7 +38,7 @@ func TestSetupLedgersCanRemainBlockedBeforeFirstOutcome(t *testing.T) {
 	setupCtx, cancelSetup := context.WithCancel(context.Background())
 	setupDone := make(chan bool, 1)
 	go func() {
-		setupDone <- setupLedgers(setupCtx, commonpb.NewBucketServiceClient(conn), []string{"model-blocked-0"}, map[string][]*commonpb.SetMetadataFieldTypeCommand{})
+		setupDone <- setupLedgers(setupCtx, ledgerpb.NewBucketServiceClient(conn), []string{"model-blocked-0"}, map[string][]*ledgerpb.SetMetadataFieldTypeCommand{})
 	}()
 
 	requireSignal(t, applyEntered, "first setup Apply was not entered")
@@ -67,12 +67,12 @@ func requireSignal(t *testing.T, signal <-chan struct{}, message string) {
 }
 
 type blockingSetupServer struct {
-	commonpb.UnimplementedBucketServiceServer
+	ledgerpb.UnimplementedBucketServiceServer
 
 	applyEntered chan struct{}
 }
 
-func (s *blockingSetupServer) Apply(ctx context.Context, _ *commonpb.ApplyRequest) (*commonpb.ApplyResponse, error) {
+func (s *blockingSetupServer) Apply(ctx context.Context, _ *ledgerpb.ApplyRequest) (*ledgerpb.ApplyResponse, error) {
 	close(s.applyEntered)
 	<-ctx.Done()
 

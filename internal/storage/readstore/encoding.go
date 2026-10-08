@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // Type tags for sortable value encoding in Pebble keys.
@@ -82,7 +82,7 @@ func EncodeNull(dst []byte, rawValue string) []byte {
 
 // DecodeValue decodes an encoded metadata value starting at data[0].
 // Returns the decoded MetadataValue and the number of bytes consumed.
-func DecodeValue(data []byte) (*commonpb.MetadataValue, int, error) {
+func DecodeValue(data []byte) (*ledgerpb.MetadataValue, int, error) {
 	if len(data) == 0 {
 		return nil, 0, errors.New("empty data")
 	}
@@ -94,7 +94,7 @@ func DecodeValue(data []byte) (*commonpb.MetadataValue, int, error) {
 			return nil, 0, err
 		}
 
-		return &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: s}}, 1 + n, nil
+		return &ledgerpb.MetadataValue{Type: &ledgerpb.MetadataValue_StringValue{StringValue: s}}, 1 + n, nil
 
 	case TypeTagInt:
 		v, n, err := DecodeInt64(data[1:])
@@ -102,7 +102,7 @@ func DecodeValue(data []byte) (*commonpb.MetadataValue, int, error) {
 			return nil, 0, err
 		}
 
-		return &commonpb.MetadataValue{Type: &commonpb.MetadataValue_IntValue{IntValue: v}}, 1 + n, nil
+		return &ledgerpb.MetadataValue{Type: &ledgerpb.MetadataValue_IntValue{IntValue: v}}, 1 + n, nil
 
 	case TypeTagUint:
 		v, n, err := DecodeUint64(data[1:])
@@ -110,7 +110,7 @@ func DecodeValue(data []byte) (*commonpb.MetadataValue, int, error) {
 			return nil, 0, err
 		}
 
-		return &commonpb.MetadataValue{Type: &commonpb.MetadataValue_UintValue{UintValue: v}}, 1 + n, nil
+		return &ledgerpb.MetadataValue{Type: &ledgerpb.MetadataValue_UintValue{UintValue: v}}, 1 + n, nil
 
 	case TypeTagBool:
 		v, n, err := DecodeBool(data[1:])
@@ -118,7 +118,7 @@ func DecodeValue(data []byte) (*commonpb.MetadataValue, int, error) {
 			return nil, 0, err
 		}
 
-		return &commonpb.MetadataValue{Type: &commonpb.MetadataValue_BoolValue{BoolValue: v}}, 1 + n, nil
+		return &ledgerpb.MetadataValue{Type: &ledgerpb.MetadataValue_BoolValue{BoolValue: v}}, 1 + n, nil
 
 	case TypeTagNull:
 		s, n, err := DecodeNull(data[1:])
@@ -126,7 +126,7 @@ func DecodeValue(data []byte) (*commonpb.MetadataValue, int, error) {
 			return nil, 0, err
 		}
 
-		return &commonpb.MetadataValue{Type: &commonpb.MetadataValue_NullValue{NullValue: &commonpb.NullValue{Original: s}}}, 1 + n, nil
+		return &ledgerpb.MetadataValue{Type: &ledgerpb.MetadataValue_NullValue{NullValue: &ledgerpb.NullValue{Original: s}}}, 1 + n, nil
 
 	default:
 		return nil, 0, fmt.Errorf("unknown type tag: 0x%02x", data[0])

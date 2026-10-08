@@ -23,7 +23,7 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"k8s.io/client-go/kubernetes"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/protohelpers"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -59,7 +59,7 @@ func main() {
 	}
 	defer func() { _ = conn.Close() }()
 
-	clusterClient := clusterpb.NewClusterServiceClient(conn)
+	clusterClient := ledgerpb.NewClusterServiceClient(conn)
 
 	if err := internal.CreateLedger(ctx, client, rrSentinelLedger); err != nil && !internal.IsTransient(err) {
 		log.Printf("cannot create sentinel ledger: %s", err)
@@ -76,7 +76,7 @@ func main() {
 	}
 }
 
-func runSweep(ctx context.Context, clientset kubernetes.Interface, clusterClient clusterpb.ClusterServiceClient, client clusterpb.BucketServiceClient) {
+func runSweep(ctx context.Context, clientset kubernetes.Interface, clusterClient ledgerpb.ClusterServiceClient, client ledgerpb.BucketServiceClient) {
 	pods, err := internal.ListLedgerPods(ctx, clientset)
 	if err != nil {
 		log.Printf("rolling-restart: list pods failed: %s", err)
@@ -162,7 +162,7 @@ func runSweep(ctx context.Context, clientset kubernetes.Interface, clusterClient
 
 // transferAwayFrom transfers leadership to a non-leader voter when the pod
 // hosts the current leader. Returns nil if the pod is not the leader.
-func transferAwayFrom(ctx context.Context, clusterClient clusterpb.ClusterServiceClient, pod string, details internal.Details) error {
+func transferAwayFrom(ctx context.Context, clusterClient ledgerpb.ClusterServiceClient, pod string, details internal.Details) error {
 	leaderPod, leaderID, err := internal.GetLeaderPodName(ctx, clusterClient)
 	if err != nil || leaderID == 0 {
 		return err
@@ -174,7 +174,7 @@ func transferAwayFrom(ctx context.Context, clusterClient clusterpb.ClusterServic
 	if err != nil || target == 0 {
 		return err
 	}
-	_, err = clusterClient.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{Transferee: target})
+	_, err = clusterClient.TransferLeadership(ctx, &ledgerpb.TransferLeadershipRequest{Transferee: target})
 	if err == nil {
 		assert.Reachable("rolling-restart transferred leadership before pod delete", details.With(internal.Details{"to": target}))
 	}
@@ -182,7 +182,7 @@ func transferAwayFrom(ctx context.Context, clusterClient clusterpb.ClusterServic
 	return err
 }
 
-func writeBurst(ctx context.Context, client clusterpb.BucketServiceClient, committed *atomic.Int64) {
+func writeBurst(ctx context.Context, client ledgerpb.BucketServiceClient, committed *atomic.Int64) {
 	tick := time.NewTicker(500 * time.Millisecond)
 	defer tick.Stop()
 	for {
@@ -191,13 +191,13 @@ func writeBurst(ctx context.Context, client clusterpb.BucketServiceClient, commi
 			return
 		case <-tick.C:
 		}
-		_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", &clusterpb.Request{
-			Type: &clusterpb.Request_Apply{
-				Apply: &clusterpb.LedgerApplyRequest{
+		_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: rrSentinelLedger,
-					Action: &clusterpb.LedgerAction{Data: &clusterpb.LedgerAction_CreateTransaction{
-						CreateTransaction: &clusterpb.CreateTransactionPayload{
-							Postings: []*clusterpb.Posting{protohelpers.NewPosting("world", "burst:rr", "COIN", internal.RandomBigInt())},
+					Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &ledgerpb.CreateTransactionPayload{
+							Postings: []*ledgerpb.Posting{protohelpers.NewPosting("world", "burst:rr", "COIN", internal.RandomBigInt())},
 							Force:    true,
 						},
 					}},

@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // TestValidateSegmentTypes_UnknownVariableSelectionDeterministic pins EN-1521:
@@ -23,7 +23,7 @@ func TestValidateSegmentTypes_UnknownVariableSelectionDeterministic(t *testing.T
 
 	// Neither "aaa" nor "zzz" is a variable in the pattern ({x}), so both are
 	// "unknown"; "aaa" sorts first.
-	segTypes := map[string]*commonpb.SegmentType{
+	segTypes := map[string]*ledgerpb.SegmentType{
 		"zzz": {},
 		"aaa": {},
 	}
@@ -42,35 +42,35 @@ func TestValidateSegmentTypes(t *testing.T) {
 	tests := []struct {
 		name     string
 		pattern  string
-		segTypes map[string]*commonpb.SegmentType
+		segTypes map[string]*ledgerpb.SegmentType
 		wantErr  string
 	}{
 		{
 			name:    "uuid type",
 			pattern: "users:{id}:checking",
-			segTypes: map[string]*commonpb.SegmentType{
-				"id": {Constraint: &commonpb.SegmentType_Uuid{Uuid: &commonpb.UUIDConstraint{}}},
+			segTypes: map[string]*ledgerpb.SegmentType{
+				"id": {Constraint: &ledgerpb.SegmentType_Uuid{Uuid: &ledgerpb.UUIDConstraint{}}},
 			},
 		},
 		{
 			name:    "uint64 type",
 			pattern: "orders:{seq}",
-			segTypes: map[string]*commonpb.SegmentType{
-				"seq": {Constraint: &commonpb.SegmentType_Uint64{Uint64: &commonpb.Uint64Constraint{}}},
+			segTypes: map[string]*ledgerpb.SegmentType{
+				"seq": {Constraint: &ledgerpb.SegmentType_Uint64{Uint64: &ledgerpb.Uint64Constraint{}}},
 			},
 		},
 		{
 			name:    "bytes type",
 			pattern: "wallets:{hash}",
-			segTypes: map[string]*commonpb.SegmentType{
-				"hash": {Constraint: &commonpb.SegmentType_Bytes{Bytes: &commonpb.BytesConstraint{}}},
+			segTypes: map[string]*ledgerpb.SegmentType{
+				"hash": {Constraint: &ledgerpb.SegmentType_Bytes{Bytes: &ledgerpb.BytesConstraint{}}},
 			},
 		},
 		{
 			name:    "regex constraint",
 			pattern: "users:{role}",
-			segTypes: map[string]*commonpb.SegmentType{
-				"role": {Constraint: &commonpb.SegmentType_Regex{Regex: "admin|user|guest"}},
+			segTypes: map[string]*ledgerpb.SegmentType{
+				"role": {Constraint: &ledgerpb.SegmentType_Regex{Regex: "admin|user|guest"}},
 			},
 		},
 		{
@@ -81,16 +81,16 @@ func TestValidateSegmentTypes(t *testing.T) {
 		{
 			name:    "unknown variable name",
 			pattern: "users:{id}",
-			segTypes: map[string]*commonpb.SegmentType{
-				"unknown": {Constraint: &commonpb.SegmentType_Uuid{Uuid: &commonpb.UUIDConstraint{}}},
+			segTypes: map[string]*ledgerpb.SegmentType{
+				"unknown": {Constraint: &ledgerpb.SegmentType_Uuid{Uuid: &ledgerpb.UUIDConstraint{}}},
 			},
 			wantErr: "unknown variable",
 		},
 		{
 			name:    "invalid regex",
 			pattern: "users:{id}",
-			segTypes: map[string]*commonpb.SegmentType{
-				"id": {Constraint: &commonpb.SegmentType_Regex{Regex: "[invalid"}},
+			segTypes: map[string]*ledgerpb.SegmentType{
+				"id": {Constraint: &ledgerpb.SegmentType_Regex{Regex: "[invalid"}},
 			},
 			wantErr: "invalid regex",
 		},
@@ -124,8 +124,8 @@ func TestValidateSegmentTypes_ImplicitRegex(t *testing.T) {
 		segments, err := ParsePattern("users:{id}")
 		require.NoError(t, err)
 
-		require.NoError(t, ValidateSegmentTypes(segments, map[string]*commonpb.SegmentType{
-			"id": {Constraint: &commonpb.SegmentType_Uuid{Uuid: &commonpb.UUIDConstraint{}}},
+		require.NoError(t, ValidateSegmentTypes(segments, map[string]*ledgerpb.SegmentType{
+			"id": {Constraint: &ledgerpb.SegmentType_Uuid{Uuid: &ledgerpb.UUIDConstraint{}}},
 		}))
 
 		_, ok := MatchAddress("users:not-a-uuid", segments)
@@ -147,8 +147,8 @@ func TestValidateSegmentTypes_ImplicitRegex(t *testing.T) {
 		segments, err := ParsePattern("orders:{seq}")
 		require.NoError(t, err)
 
-		require.NoError(t, ValidateSegmentTypes(segments, map[string]*commonpb.SegmentType{
-			"seq": {Constraint: &commonpb.SegmentType_Uint64{Uint64: &commonpb.Uint64Constraint{}}},
+		require.NoError(t, ValidateSegmentTypes(segments, map[string]*ledgerpb.SegmentType{
+			"seq": {Constraint: &ledgerpb.SegmentType_Uint64{Uint64: &ledgerpb.Uint64Constraint{}}},
 		}))
 
 		_, ok := MatchAddress("orders:abc", segments)
@@ -164,8 +164,8 @@ func TestValidateSegmentTypes_ImplicitRegex(t *testing.T) {
 		segments, err := ParsePattern("wallets:{hash}")
 		require.NoError(t, err)
 
-		require.NoError(t, ValidateSegmentTypes(segments, map[string]*commonpb.SegmentType{
-			"hash": {Constraint: &commonpb.SegmentType_Bytes{Bytes: &commonpb.BytesConstraint{}}},
+		require.NoError(t, ValidateSegmentTypes(segments, map[string]*ledgerpb.SegmentType{
+			"hash": {Constraint: &ledgerpb.SegmentType_Bytes{Bytes: &ledgerpb.BytesConstraint{}}},
 		}))
 
 		_, ok := MatchAddress("wallets:abc", segments)
@@ -187,8 +187,8 @@ func TestValidateSegmentTypes_ImplicitRegex(t *testing.T) {
 		segments, err := ParsePattern("users:{role}")
 		require.NoError(t, err)
 
-		require.NoError(t, ValidateSegmentTypes(segments, map[string]*commonpb.SegmentType{
-			"role": {Constraint: &commonpb.SegmentType_Regex{Regex: "admin|user|guest"}},
+		require.NoError(t, ValidateSegmentTypes(segments, map[string]*ledgerpb.SegmentType{
+			"role": {Constraint: &ledgerpb.SegmentType_Regex{Regex: "admin|user|guest"}},
 		}))
 
 		_, ok := MatchAddress("users:admin", segments)

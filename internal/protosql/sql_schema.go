@@ -9,13 +9,13 @@ import (
 
 	"github.com/invopop/jsonschema"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // VolumesAdapter keeps database encoding on the server side of the public
 // Protobuf contract.
 type VolumesAdapter struct {
-	Volumes *commonpb.Volumes
+	Volumes *ledgerpb.Volumes
 }
 
 var _ driver.Valuer = VolumesAdapter{}
@@ -62,7 +62,7 @@ func ExtendVolumesJSONSchema(schema *jsonschema.Schema) {
 
 // LogTypeAdapter keeps SQL conversion separate from the public JSON log type.
 type LogTypeAdapter struct {
-	LogType *commonpb.LogType
+	LogType *ledgerpb.LogType
 }
 
 var _ driver.Valuer = LogTypeAdapter{}
@@ -84,7 +84,7 @@ func (a LogTypeAdapter) Scan(src any) error {
 	if !ok {
 		return fmt.Errorf("LogType.Scan: expected string, got %T", src)
 	}
-	v, err := commonpb.LogTypeFromString(s)
+	v, err := ledgerpb.LogTypeFromString(s)
 	if err != nil {
 		return err
 	}

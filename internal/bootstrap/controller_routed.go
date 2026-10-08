@@ -9,7 +9,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	grpcadp "github.com/formancehq/ledger/v3/internal/adapter/grpc"
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
@@ -66,7 +66,7 @@ func (b *RoutedController) getLeaderCtrl() (ctrl.Controller, error) {
 	// so it is the only place that needs the wrapper.
 	conn := grpcerr.NewConn(grpcConn)
 
-	return grpcadp.NewLedgerGrpcClient(auditpb.NewBucketServiceClient(conn), b.trustedPeerForwarding), nil
+	return grpcadp.NewLedgerGrpcClient(ledgerpb.NewBucketServiceClient(conn), b.trustedPeerForwarding), nil
 }
 
 // readCtrl returns the controller to use for a read operation, along with
@@ -172,7 +172,7 @@ func (b *RoutedController) IsHealthy() bool {
 
 // --- Write operations: routed to leader ---
 
-func (b *RoutedController) Apply(ctx context.Context, req *auditpb.ApplyRequest) (*domain.ApplyResult, error) {
+func (b *RoutedController) Apply(ctx context.Context, req *ledgerpb.ApplyRequest) (*domain.ApplyResult, error) {
 	leaderCtrl, err := b.getLeaderCtrl()
 	if err != nil {
 		return nil, err
@@ -192,7 +192,7 @@ func (b *RoutedController) Barrier(ctx context.Context) (uint64, error) {
 
 // --- Linearizable reads: ReadIndex + local read ---
 
-func (b *RoutedController) GetLedgerByName(ctx context.Context, name string) (*auditpb.LedgerInfo, error) {
+func (b *RoutedController) GetLedgerByName(ctx context.Context, name string) (*ledgerpb.LedgerInfo, error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -201,7 +201,7 @@ func (b *RoutedController) GetLedgerByName(ctx context.Context, name string) (*a
 	return c.GetLedgerByName(ctx, name)
 }
 
-func (b *RoutedController) ListLedgers(ctx context.Context) (cursor.Cursor[*auditpb.LedgerInfo], error) {
+func (b *RoutedController) ListLedgers(ctx context.Context) (cursor.Cursor[*ledgerpb.LedgerInfo], error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -210,7 +210,7 @@ func (b *RoutedController) ListLedgers(ctx context.Context) (cursor.Cursor[*audi
 	return c.ListLedgers(ctx)
 }
 
-func (b *RoutedController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*auditpb.Transaction, error) {
+func (b *RoutedController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*ledgerpb.Transaction, error) {
 	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -238,7 +238,7 @@ func (b *RoutedController) GetTransaction(ctx context.Context, ledgerName string
 	return tx, err
 }
 
-func (b *RoutedController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *auditpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.Transaction], error) {
+func (b *RoutedController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *ledgerpb.QueryFilter, reverse bool) (cursor.Cursor[*ledgerpb.Transaction], error) {
 	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -247,7 +247,7 @@ func (b *RoutedController) ListTransactions(ctx context.Context, ledgerName stri
 	return c.ListTransactions(b.withLocalBarrierHorizon(ctx, c, barrier), ledgerName, pageSize, afterTxID, filter, reverse)
 }
 
-func (b *RoutedController) ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *auditpb.QueryFilter) (cursor.Cursor[*auditpb.Log], error) {
+func (b *RoutedController) ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *ledgerpb.QueryFilter) (cursor.Cursor[*ledgerpb.Log], error) {
 	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -256,7 +256,7 @@ func (b *RoutedController) ListLogs(ctx context.Context, ledgerName string, afte
 	return c.ListLogs(b.withLocalBarrierHorizon(ctx, c, barrier), ledgerName, afterSequence, pageSize, filter)
 }
 
-func (b *RoutedController) GetLog(ctx context.Context, sequence uint64) (*auditpb.Log, error) {
+func (b *RoutedController) GetLog(ctx context.Context, sequence uint64) (*ledgerpb.Log, error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -265,7 +265,7 @@ func (b *RoutedController) GetLog(ctx context.Context, sequence uint64) (*auditp
 	return c.GetLog(ctx, sequence)
 }
 
-func (b *RoutedController) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *auditpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+func (b *RoutedController) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *ledgerpb.QueryFilter, reverse bool) (cursor.Cursor[*ledgerpb.AuditEntry], error) {
 	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -274,7 +274,7 @@ func (b *RoutedController) ListAuditEntries(ctx context.Context, pageSize uint32
 	return c.ListAuditEntries(b.withLocalBarrierHorizon(ctx, c, barrier), pageSize, afterSequence, filter, reverse)
 }
 
-func (b *RoutedController) GetAuditEntry(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error) {
+func (b *RoutedController) GetAuditEntry(ctx context.Context, sequence uint64) (*ledgerpb.AuditEntry, error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -283,7 +283,7 @@ func (b *RoutedController) GetAuditEntry(ctx context.Context, sequence uint64) (
 	return c.GetAuditEntry(ctx, sequence)
 }
 
-func (b *RoutedController) GetAccount(ctx context.Context, ledgerName string, address string, opts ctrl.GetAccountOptions) (*auditpb.Account, error) {
+func (b *RoutedController) GetAccount(ctx context.Context, ledgerName string, address string, opts ctrl.GetAccountOptions) (*ledgerpb.Account, error) {
 	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -304,7 +304,7 @@ func (b *RoutedController) GetAccount(ctx context.Context, ledgerName string, ad
 	return c.GetAccount(ctx, ledgerName, address, opts)
 }
 
-func (b *RoutedController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *auditpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.Account], error) {
+func (b *RoutedController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *ledgerpb.QueryFilter, reverse bool) (cursor.Cursor[*ledgerpb.Account], error) {
 	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -324,7 +324,7 @@ func (b *RoutedController) ListAccounts(ctx context.Context, ledgerName string, 
 	return c.ListAccounts(b.withLocalBarrierHorizon(ctx, c, barrier), ledgerName, pageSize, afterAddress, filter, reverse)
 }
 
-func (b *RoutedController) AggregateVolumes(ctx context.Context, ledgerName string, filter *auditpb.QueryFilter, opts query.AggregateOptions) (*auditpb.AggregateResult, error) {
+func (b *RoutedController) AggregateVolumes(ctx context.Context, ledgerName string, filter *ledgerpb.QueryFilter, opts query.AggregateOptions) (*ledgerpb.AggregateResult, error) {
 	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -333,7 +333,7 @@ func (b *RoutedController) AggregateVolumes(ctx context.Context, ledgerName stri
 	return c.AggregateVolumes(b.withLocalBarrierHorizon(ctx, c, barrier), ledgerName, filter, opts)
 }
 
-func (b *RoutedController) ListSigningKeys(ctx context.Context) (cursor.Cursor[*auditpb.SigningKey], error) {
+func (b *RoutedController) ListSigningKeys(ctx context.Context) (cursor.Cursor[*ledgerpb.SigningKey], error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -342,7 +342,7 @@ func (b *RoutedController) ListSigningKeys(ctx context.Context) (cursor.Cursor[*
 	return c.ListSigningKeys(ctx)
 }
 
-func (b *RoutedController) GetMetadataSchemaStatus(ctx context.Context, ledgerName string) (*auditpb.GetMetadataSchemaStatusResponse, error) {
+func (b *RoutedController) GetMetadataSchemaStatus(ctx context.Context, ledgerName string) (*ledgerpb.GetMetadataSchemaStatusResponse, error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -351,7 +351,7 @@ func (b *RoutedController) GetMetadataSchemaStatus(ctx context.Context, ledgerNa
 	return c.GetMetadataSchemaStatus(ctx, ledgerName)
 }
 
-func (b *RoutedController) AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(processed, total uint64)) (*auditpb.AnalyzeAccountsResponse, error) {
+func (b *RoutedController) AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(processed, total uint64)) (*ledgerpb.AnalyzeAccountsResponse, error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -360,7 +360,7 @@ func (b *RoutedController) AnalyzeAccounts(ctx context.Context, ledgerName strin
 	return c.AnalyzeAccounts(ctx, ledgerName, variableThreshold, onProgress)
 }
 
-func (b *RoutedController) AnalyzeTransactions(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(processed, total uint64)) (*auditpb.AnalyzeTransactionsResponse, error) {
+func (b *RoutedController) AnalyzeTransactions(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(processed, total uint64)) (*ledgerpb.AnalyzeTransactionsResponse, error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -369,7 +369,7 @@ func (b *RoutedController) AnalyzeTransactions(ctx context.Context, ledgerName s
 	return c.AnalyzeTransactions(ctx, ledgerName, variableThreshold, onProgress)
 }
 
-func (b *RoutedController) ListPreparedQueries(ctx context.Context, ledger string) ([]*auditpb.PreparedQuery, error) {
+func (b *RoutedController) ListPreparedQueries(ctx context.Context, ledger string) ([]*ledgerpb.PreparedQuery, error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -378,7 +378,7 @@ func (b *RoutedController) ListPreparedQueries(ctx context.Context, ledger strin
 	return c.ListPreparedQueries(ctx, ledger)
 }
 
-func (b *RoutedController) ExecutePreparedQuery(ctx context.Context, req *auditpb.ExecutePreparedQueryRequest) (*auditpb.ExecutePreparedQueryResponse, error) {
+func (b *RoutedController) ExecutePreparedQuery(ctx context.Context, req *ledgerpb.ExecutePreparedQueryRequest) (*ledgerpb.ExecutePreparedQueryResponse, error) {
 	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -387,7 +387,7 @@ func (b *RoutedController) ExecutePreparedQuery(ctx context.Context, req *auditp
 	return c.ExecutePreparedQuery(b.withLocalBarrierHorizon(ctx, c, barrier), req)
 }
 
-func (b *RoutedController) GetLedgerStats(ctx context.Context, ledgerName string) (*auditpb.LedgerStats, error) {
+func (b *RoutedController) GetLedgerStats(ctx context.Context, ledgerName string) (*ledgerpb.LedgerStats, error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -396,7 +396,7 @@ func (b *RoutedController) GetLedgerStats(ctx context.Context, ledgerName string
 	return c.GetLedgerStats(ctx, ledgerName)
 }
 
-func (b *RoutedController) GetNumscript(ctx context.Context, ledger, name string, version string) (*auditpb.NumscriptInfo, error) {
+func (b *RoutedController) GetNumscript(ctx context.Context, ledger, name string, version string) (*ledgerpb.NumscriptInfo, error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -405,7 +405,7 @@ func (b *RoutedController) GetNumscript(ctx context.Context, ledger, name string
 	return c.GetNumscript(ctx, ledger, name, version)
 }
 
-func (b *RoutedController) ListNumscripts(ctx context.Context, ledger string) ([]*auditpb.NumscriptInfo, error) {
+func (b *RoutedController) ListNumscripts(ctx context.Context, ledger string) ([]*ledgerpb.NumscriptInfo, error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -414,7 +414,7 @@ func (b *RoutedController) ListNumscripts(ctx context.Context, ledger string) ([
 	return c.ListNumscripts(ctx, ledger)
 }
 
-func (b *RoutedController) GetTemplateUsage(ctx context.Context, ledger, name string) (*auditpb.TemplateUsage, error) {
+func (b *RoutedController) GetTemplateUsage(ctx context.Context, ledger, name string) (*ledgerpb.TemplateUsage, error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -423,7 +423,7 @@ func (b *RoutedController) GetTemplateUsage(ctx context.Context, ledger, name st
 	return c.GetTemplateUsage(ctx, ledger, name)
 }
 
-func (b *RoutedController) ListNumscriptVersions(ctx context.Context, ledger, name string) (string, []*auditpb.NumscriptVersionEntry, error) {
+func (b *RoutedController) ListNumscriptVersions(ctx context.Context, ledger, name string) (string, []*ledgerpb.NumscriptVersionEntry, error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return "", nil, err
@@ -432,7 +432,7 @@ func (b *RoutedController) ListNumscriptVersions(ctx context.Context, ledger, na
 	return c.ListNumscriptVersions(ctx, ledger, name)
 }
 
-func (b *RoutedController) GetEventsSinks(ctx context.Context) ([]*auditpb.SinkConfig, []*auditpb.SinkStatus, error) {
+func (b *RoutedController) GetEventsSinks(ctx context.Context) ([]*ledgerpb.SinkConfig, []*ledgerpb.SinkStatus, error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -441,7 +441,7 @@ func (b *RoutedController) GetEventsSinks(ctx context.Context) ([]*auditpb.SinkC
 	return c.GetEventsSinks(ctx)
 }
 
-func (b *RoutedController) InspectIndex(ctx context.Context, req *auditpb.InspectIndexRequest) (*auditpb.InspectIndexResponse, error) {
+func (b *RoutedController) InspectIndex(ctx context.Context, req *ledgerpb.InspectIndexRequest) (*ledgerpb.InspectIndexResponse, error) {
 	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -450,7 +450,7 @@ func (b *RoutedController) InspectIndex(ctx context.Context, req *auditpb.Inspec
 	return c.InspectIndex(b.withLocalBarrierHorizon(ctx, c, barrier), req)
 }
 
-func (b *RoutedController) GetIndexStatus(ctx context.Context, req *auditpb.GetIndexStatusRequest) (*auditpb.GetIndexStatusResponse, error) {
+func (b *RoutedController) GetIndexStatus(ctx context.Context, req *ledgerpb.GetIndexStatusRequest) (*ledgerpb.GetIndexStatusResponse, error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -459,7 +459,7 @@ func (b *RoutedController) GetIndexStatus(ctx context.Context, req *auditpb.GetI
 	return c.GetIndexStatus(ctx, req)
 }
 
-func (b *RoutedController) GetIndex(ctx context.Context, req *auditpb.GetIndexRequest) (*auditpb.Index, error) {
+func (b *RoutedController) GetIndex(ctx context.Context, req *ledgerpb.GetIndexRequest) (*ledgerpb.Index, error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -468,7 +468,7 @@ func (b *RoutedController) GetIndex(ctx context.Context, req *auditpb.GetIndexRe
 	return c.GetIndex(ctx, req)
 }
 
-func (b *RoutedController) GetIndexEntryStatus(ctx context.Context, req *auditpb.GetIndexEntryStatusRequest) (*auditpb.IndexEntry, error) {
+func (b *RoutedController) GetIndexEntryStatus(ctx context.Context, req *ledgerpb.GetIndexEntryStatusRequest) (*ledgerpb.IndexEntry, error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -477,7 +477,7 @@ func (b *RoutedController) GetIndexEntryStatus(ctx context.Context, req *auditpb
 	return c.GetIndexEntryStatus(ctx, req)
 }
 
-func (b *RoutedController) ListIndexes(ctx context.Context, req *auditpb.ListIndexesRequest) (cursor.Cursor[*auditpb.Index], error) {
+func (b *RoutedController) ListIndexes(ctx context.Context, req *ledgerpb.ListIndexesRequest) (cursor.Cursor[*ledgerpb.Index], error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err

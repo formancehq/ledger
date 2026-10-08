@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -32,7 +32,7 @@ func drainLogIDs(t *testing.T, iter readstore.EntityIterator) []uint64 {
 // resolveUintBounds. Comparing the compiled iterator against it pins the range
 // semantics (Math half-open after exclusivity adjustment) without deriving the
 // expected value the same way the compiler does.
-func oracleUintMatch(cond *commonpb.UintCondition, id uint64) bool {
+func oracleUintMatch(cond *ledgerpb.UintCondition, id uint64) bool {
 	if cond.Min != nil {
 		v := cond.GetMin()
 		if cond.GetMinExclusive() {
@@ -93,23 +93,23 @@ func TestCompileLogIdCondition_RangesAgainstUintOracle(t *testing.T) {
 
 	cases := []struct {
 		name string
-		cond *commonpb.UintCondition
+		cond *ledgerpb.UintCondition
 	}{
-		{"missing bounds", &commonpb.UintCondition{}},
-		{"missing max", &commonpb.UintCondition{Min: u64(1)}},
-		{"missing min", &commonpb.UintCondition{Max: u64(5)}},
-		{"zero inclusive min", &commonpb.UintCondition{Min: u64(0)}},
-		{"zero exclusive min", &commonpb.UintCondition{Min: u64(0), MinExclusive: true}},
-		{"inclusive range", &commonpb.UintCondition{Min: u64(1), Max: u64(5)}},
-		{"exclusive range", &commonpb.UintCondition{Min: u64(1), Max: u64(5), MinExclusive: true, MaxExclusive: true}},
-		{"inverted bounds", &commonpb.UintCondition{Min: u64(9), Max: u64(3)}},
-		{"empty crossing exclusive", &commonpb.UintCondition{Min: u64(5), Max: u64(5), MinExclusive: true, MaxExclusive: true}},
-		{"singleton equality", &commonpb.UintCondition{Min: u64(1), Max: u64(1)}},
-		{"inclusive MaxUint64", &commonpb.UintCondition{Min: u64(0), Max: u64(math.MaxUint64)}},
-		{"exclusive MaxUint64", &commonpb.UintCondition{Min: u64(0), Max: u64(math.MaxUint64), MaxExclusive: true}},
-		{"exact MaxUint64 equality", &commonpb.UintCondition{Min: u64(math.MaxUint64), Max: u64(math.MaxUint64)}},
-		{"min at MaxUint64 unbounded above", &commonpb.UintCondition{Min: u64(math.MaxUint64)}},
-		{"min exclusive MaxUint64-1", &commonpb.UintCondition{Min: u64(math.MaxUint64 - 1), MinExclusive: true}},
+		{"missing bounds", &ledgerpb.UintCondition{}},
+		{"missing max", &ledgerpb.UintCondition{Min: u64(1)}},
+		{"missing min", &ledgerpb.UintCondition{Max: u64(5)}},
+		{"zero inclusive min", &ledgerpb.UintCondition{Min: u64(0)}},
+		{"zero exclusive min", &ledgerpb.UintCondition{Min: u64(0), MinExclusive: true}},
+		{"inclusive range", &ledgerpb.UintCondition{Min: u64(1), Max: u64(5)}},
+		{"exclusive range", &ledgerpb.UintCondition{Min: u64(1), Max: u64(5), MinExclusive: true, MaxExclusive: true}},
+		{"inverted bounds", &ledgerpb.UintCondition{Min: u64(9), Max: u64(3)}},
+		{"empty crossing exclusive", &ledgerpb.UintCondition{Min: u64(5), Max: u64(5), MinExclusive: true, MaxExclusive: true}},
+		{"singleton equality", &ledgerpb.UintCondition{Min: u64(1), Max: u64(1)}},
+		{"inclusive MaxUint64", &ledgerpb.UintCondition{Min: u64(0), Max: u64(math.MaxUint64)}},
+		{"exclusive MaxUint64", &ledgerpb.UintCondition{Min: u64(0), Max: u64(math.MaxUint64), MaxExclusive: true}},
+		{"exact MaxUint64 equality", &ledgerpb.UintCondition{Min: u64(math.MaxUint64), Max: u64(math.MaxUint64)}},
+		{"min at MaxUint64 unbounded above", &ledgerpb.UintCondition{Min: u64(math.MaxUint64)}},
+		{"min exclusive MaxUint64-1", &ledgerpb.UintCondition{Min: u64(math.MaxUint64 - 1), MinExclusive: true}},
 	}
 
 	for _, tc := range cases {
@@ -163,7 +163,7 @@ func TestCompileLogIdCondition_RangeStreamsWithoutMaterializing(t *testing.T) {
 
 	lo, hi := uint64(10), uint64(30)
 
-	iter, err := compileLogIdCondition(ctx, &commonpb.UintCondition{Min: &lo, Max: &hi})
+	iter, err := compileLogIdCondition(ctx, &ledgerpb.UintCondition{Min: &lo, Max: &hi})
 	require.NoError(t, err)
 	defer iter.Close()
 
@@ -227,7 +227,7 @@ func compileLogIDRange(tb testing.TB, store *readstore.Store, kb *dal.KeyBuilder
 		profile:     profile,
 	}
 
-	iter, err := compileLogIdCondition(ctx, &commonpb.UintCondition{Min: &lo, Max: &hi})
+	iter, err := compileLogIdCondition(ctx, &ledgerpb.UintCondition{Min: &lo, Max: &hi})
 	require.NoError(tb, err)
 
 	return iter, profile

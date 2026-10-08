@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestParse(t *testing.T) {
@@ -79,7 +79,7 @@ func TestParse(t *testing.T) {
 		require.NotNil(t, bc)
 		// GetHardcoded returns false for both "not set" and "hardcoded=false",
 		// so check the oneof variant directly.
-		_, ok := bc.GetValue().(*commonpb.BoolCondition_Hardcoded)
+		_, ok := bc.GetValue().(*ledgerpb.BoolCondition_Hardcoded)
 		assert.True(t, ok)
 	})
 
@@ -309,7 +309,7 @@ func TestParse(t *testing.T) {
 		am := filter.GetAddress()
 		require.NotNil(t, am)
 		assert.Equal(t, "merchants:alice", am.GetHardcodedExact())
-		assert.Equal(t, commonpb.AddressRole_ADDRESS_ROLE_SOURCE, am.GetRole())
+		assert.Equal(t, ledgerpb.AddressRole_ADDRESS_ROLE_SOURCE, am.GetRole())
 	})
 
 	t.Run("source prefix", func(t *testing.T) {
@@ -321,7 +321,7 @@ func TestParse(t *testing.T) {
 		am := filter.GetAddress()
 		require.NotNil(t, am)
 		assert.Equal(t, "merchants:", am.GetHardcodedPrefix())
-		assert.Equal(t, commonpb.AddressRole_ADDRESS_ROLE_SOURCE, am.GetRole())
+		assert.Equal(t, ledgerpb.AddressRole_ADDRESS_ROLE_SOURCE, am.GetRole())
 	})
 
 	t.Run("destination exact", func(t *testing.T) {
@@ -333,7 +333,7 @@ func TestParse(t *testing.T) {
 		am := filter.GetAddress()
 		require.NotNil(t, am)
 		assert.Equal(t, "users:bob", am.GetHardcodedExact())
-		assert.Equal(t, commonpb.AddressRole_ADDRESS_ROLE_DESTINATION, am.GetRole())
+		assert.Equal(t, ledgerpb.AddressRole_ADDRESS_ROLE_DESTINATION, am.GetRole())
 	})
 
 	t.Run("destination prefix", func(t *testing.T) {
@@ -345,7 +345,7 @@ func TestParse(t *testing.T) {
 		am := filter.GetAddress()
 		require.NotNil(t, am)
 		assert.Equal(t, "users:", am.GetHardcodedPrefix())
-		assert.Equal(t, commonpb.AddressRole_ADDRESS_ROLE_DESTINATION, am.GetRole())
+		assert.Equal(t, ledgerpb.AddressRole_ADDRESS_ROLE_DESTINATION, am.GetRole())
 	})
 
 	t.Run("source and destination combined", func(t *testing.T) {
@@ -361,12 +361,12 @@ func TestParse(t *testing.T) {
 		srcAm := andF.GetFilters()[0].GetAddress()
 		require.NotNil(t, srcAm)
 		assert.Equal(t, "a:", srcAm.GetHardcodedPrefix())
-		assert.Equal(t, commonpb.AddressRole_ADDRESS_ROLE_SOURCE, srcAm.GetRole())
+		assert.Equal(t, ledgerpb.AddressRole_ADDRESS_ROLE_SOURCE, srcAm.GetRole())
 
 		dstAm := andF.GetFilters()[1].GetAddress()
 		require.NotNil(t, dstAm)
 		assert.Equal(t, "b:", dstAm.GetHardcodedPrefix())
-		assert.Equal(t, commonpb.AddressRole_ADDRESS_ROLE_DESTINATION, dstAm.GetRole())
+		assert.Equal(t, ledgerpb.AddressRole_ADDRESS_ROLE_DESTINATION, dstAm.GetRole())
 	})
 
 	t.Run("address has ANY role by default", func(t *testing.T) {
@@ -377,7 +377,7 @@ func TestParse(t *testing.T) {
 
 		am := filter.GetAddress()
 		require.NotNil(t, am)
-		assert.Equal(t, commonpb.AddressRole_ADDRESS_ROLE_ANY, am.GetRole())
+		assert.Equal(t, ledgerpb.AddressRole_ADDRESS_ROLE_ANY, am.GetRole())
 	})
 
 	t.Run("metadata greater than", func(t *testing.T) {
@@ -738,7 +738,7 @@ func TestParse(t *testing.T) {
 		am := filter.GetAddress()
 		require.NotNil(t, am)
 		assert.Equal(t, "addr", am.GetParamExact())
-		assert.Equal(t, commonpb.AddressRole_ADDRESS_ROLE_ANY, am.GetRole())
+		assert.Equal(t, ledgerpb.AddressRole_ADDRESS_ROLE_ANY, am.GetRole())
 	})
 
 	t.Run("param: address prefix", func(t *testing.T) {
@@ -761,7 +761,7 @@ func TestParse(t *testing.T) {
 		am := filter.GetAddress()
 		require.NotNil(t, am)
 		assert.Equal(t, "src", am.GetParamExact())
-		assert.Equal(t, commonpb.AddressRole_ADDRESS_ROLE_SOURCE, am.GetRole())
+		assert.Equal(t, ledgerpb.AddressRole_ADDRESS_ROLE_SOURCE, am.GetRole())
 	})
 
 	t.Run("param: destination prefix", func(t *testing.T) {
@@ -773,7 +773,7 @@ func TestParse(t *testing.T) {
 		am := filter.GetAddress()
 		require.NotNil(t, am)
 		assert.Equal(t, "dst", am.GetParamPrefix())
-		assert.Equal(t, commonpb.AddressRole_ADDRESS_ROLE_DESTINATION, am.GetRole())
+		assert.Equal(t, ledgerpb.AddressRole_ADDRESS_ROLE_DESTINATION, am.GetRole())
 	})
 
 	t.Run("param: combined with hardcoded in AND", func(t *testing.T) {
@@ -901,7 +901,7 @@ func TestParse(t *testing.T) {
 		am0 := orF.GetFilters()[0].GetAddress()
 		require.NotNil(t, am0)
 		assert.Equal(t, "users:alice", am0.GetHardcodedExact())
-		assert.Equal(t, commonpb.AddressRole_ADDRESS_ROLE_ANY, am0.GetRole())
+		assert.Equal(t, ledgerpb.AddressRole_ADDRESS_ROLE_ANY, am0.GetRole())
 
 		am1 := orF.GetFilters()[1].GetAddress()
 		require.NotNil(t, am1)
@@ -921,7 +921,7 @@ func TestParse(t *testing.T) {
 		am0 := orF.GetFilters()[0].GetAddress()
 		require.NotNil(t, am0)
 		assert.Equal(t, "bank:main", am0.GetHardcodedExact())
-		assert.Equal(t, commonpb.AddressRole_ADDRESS_ROLE_SOURCE, am0.GetRole())
+		assert.Equal(t, ledgerpb.AddressRole_ADDRESS_ROLE_SOURCE, am0.GetRole())
 	})
 
 	t.Run("metadata in combined with AND", func(t *testing.T) {

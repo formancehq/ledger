@@ -26,7 +26,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -74,7 +74,7 @@ func main() {
 	}
 	defer func() { _ = conn.Close() }()
 
-	clusterClient := clusterpb.NewClusterServiceClient(conn)
+	clusterClient := ledgerpb.NewClusterServiceClient(conn)
 	lsClient := dynClient.Resource(internal.ClusterGVR).Namespace(internal.ClusterNamespace())
 
 	if err := internal.CreateLedger(ctx, client, qrSentinelLedger); err != nil && !internal.IsTransient(err) {
@@ -92,7 +92,7 @@ func main() {
 	}
 }
 
-func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset kubernetes.Interface, clusterClient clusterpb.ClusterServiceClient, client clusterpb.BucketServiceClient) {
+func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset kubernetes.Interface, clusterClient ledgerpb.ClusterServiceClient, client ledgerpb.BucketServiceClient) {
 	current, err := internal.GetCurrentReplicas(ctx, lsClient, internal.ClusterName)
 	if err != nil {
 		log.Printf("quorum-recovery: cannot read current replicas: %s", err)

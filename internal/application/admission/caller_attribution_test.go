@@ -15,7 +15,7 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -27,7 +27,7 @@ func TestAdmitRejectsMissingAttributionBeforeDependencies(t *testing.T) {
 
 	// Every Admission dependency is intentionally nil. Reaching any write gate,
 	// store, preload, or proposal path would panic and fail the test.
-	_, err := (&Admission{}).Admit(context.Background(), &servicepb.ApplyRequest{})
+	_, err := (&Admission{}).Admit(context.Background(), &ledgerpb.ApplyRequest{})
 
 	var invalid *domain.ErrInvalidCallerAttribution
 	require.ErrorAs(t, err, &invalid)
@@ -98,7 +98,7 @@ func TestAdmitAcceptsCredentialDerivedPrincipalVariants(t *testing.T) {
 			writeGate.EXPECT().CheckWritesAllowed().Return(gateErr)
 			admission := &Admission{writeGate: writeGate}
 
-			_, err := admission.Admit(makeContext(t), &servicepb.ApplyRequest{})
+			_, err := admission.Admit(makeContext(t), &ledgerpb.ApplyRequest{})
 			require.ErrorIs(t, err, gateErr)
 		})
 	}

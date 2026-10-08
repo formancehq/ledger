@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -36,12 +36,12 @@ func TestCheckpointMetadataForwardedLedgerDoesNotFenceFollower(t *testing.T) {
 			bucket, cluster := serveCheckpointMetadata(t, follower, follower)
 
 			// Control: successful leader forwarding leaves the follower stale.
-			_, err := bucket.GetLedger(ctx, &commonpb.GetLedgerRequest{Ledger: "L"})
+			_, err := bucket.GetLedger(ctx, &ledgerpb.GetLedgerRequest{Ledger: "L"})
 			require.NoError(t, err)
 			require.Equal(t, int32(1), follower.forwarded.Load())
 			require.True(t, leader.fenced.Load())
 			require.False(t, follower.fenced.Load())
-			stale, err := cluster.ListQueryCheckpoints(ctx, &commonpb.ListQueryCheckpointsRequest{})
+			stale, err := cluster.ListQueryCheckpoints(ctx, &ledgerpb.ListQueryCheckpointsRequest{})
 			require.NoError(t, err)
 			require.Empty(t, stale.GetCheckpoints())
 
@@ -64,38 +64,38 @@ type checkpointFenceLeader struct {
 	checkpointMetadataServer
 }
 
-func (s *checkpointFenceLeader) GetLedger(context.Context, *commonpb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
+func (s *checkpointFenceLeader) GetLedger(context.Context, *ledgerpb.GetLedgerRequest) (*ledgerpb.LedgerInfo, error) {
 	s.fenced.Store(true)
 
-	return &commonpb.LedgerInfo{}, nil
+	return &ledgerpb.LedgerInfo{}, nil
 }
 
-func (*checkpointFenceLeader) Barrier(context.Context, *commonpb.BarrierRequest) (*commonpb.BarrierResponse, error) {
-	return &commonpb.BarrierResponse{CommitIndex: 996}, nil
+func (*checkpointFenceLeader) Barrier(context.Context, *ledgerpb.BarrierRequest) (*ledgerpb.BarrierResponse, error) {
+	return &ledgerpb.BarrierResponse{CommitIndex: 996}, nil
 }
 
 type checkpointFenceFollower struct {
 	checkpointMetadataServer
 
-	leader     commonpb.BucketServiceClient
+	leader     ledgerpb.BucketServiceClient
 	forwarded  atomic.Int32
 	localPolls atomic.Int32
 }
 
-func (s *checkpointFenceFollower) GetLedger(ctx context.Context, req *commonpb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
+func (s *checkpointFenceFollower) GetLedger(ctx context.Context, req *ledgerpb.GetLedgerRequest) (*ledgerpb.LedgerInfo, error) {
 	s.forwarded.Add(1)
 
 	return s.leader.GetLedger(ctx, req)
 }
 
-func (s *checkpointFenceFollower) Barrier(ctx context.Context, req *commonpb.BarrierRequest) (*commonpb.BarrierResponse, error) {
+func (s *checkpointFenceFollower) Barrier(ctx context.Context, req *ledgerpb.BarrierRequest) (*ledgerpb.BarrierResponse, error) {
 	return s.leader.Barrier(ctx, req)
 }
 
-func (s *checkpointFenceFollower) GetClusterState(_ context.Context, req *commonpb.GetClusterStateRequest) (*commonpb.ClusterState, error) {
+func (s *checkpointFenceFollower) GetClusterState(_ context.Context, req *ledgerpb.GetClusterStateRequest) (*ledgerpb.ClusterState, error) {
 	// A zero/default request routes to the leader, and cannot fence this node.
 	if req.GetNodeId() != 2 {
-		return &commonpb.ClusterState{State: "Leader", LocalNode: 1, Nodes: []*commonpb.NodeInfo{{Id: 2, ServiceAddress: "node"}}, RaftStatus: &commonpb.RaftStatus{LastPersistedIndex: 1992}}, nil
+		return &ledgerpb.ClusterState{State: "Leader", LocalNode: 1, Nodes: []*ledgerpb.NodeInfo{{Id: 2, ServiceAddress: "node"}}, RaftStatus: &ledgerpb.RaftStatus{LastPersistedIndex: 1992}}, nil
 	}
 	persisted := uint64(995)
 	if s.localPolls.Add(1) >= 2 {
@@ -103,25 +103,25 @@ func (s *checkpointFenceFollower) GetClusterState(_ context.Context, req *common
 		s.fenced.Store(true)
 	}
 
-	return &commonpb.ClusterState{
+	return &ledgerpb.ClusterState{
 		LocalNode:  2,
-		RaftStatus: &commonpb.RaftStatus{Applied: 1992, Commit: 1992, LastPersistedIndex: persisted},
+		RaftStatus: &ledgerpb.RaftStatus{Applied: 1992, Commit: 1992, LastPersistedIndex: persisted},
 	}, nil
 }
 
-func serveCheckpointMetadata(t *testing.T, bucket commonpb.BucketServiceServer, cluster commonpb.ClusterServiceServer, opts ...grpc.ServerOption) (commonpb.BucketServiceClient, commonpb.ClusterServiceClient) {
+func serveCheckpointMetadata(t *testing.T, bucket ledgerpb.BucketServiceServer, cluster ledgerpb.ClusterServiceServer, opts ...grpc.ServerOption) (ledgerpb.BucketServiceClient, ledgerpb.ClusterServiceClient) {
 	t.Helper()
 	listener := bufconn.Listen(1024 * 1024)
 	server := grpc.NewServer(opts...)
-	commonpb.RegisterBucketServiceServer(server, bucket)
-	commonpb.RegisterClusterServiceServer(server, cluster)
+	ledgerpb.RegisterBucketServiceServer(server, bucket)
+	ledgerpb.RegisterClusterServiceServer(server, cluster)
 	go func() { _ = server.Serve(listener) /* Stop terminates Serve. */ }()
 	t.Cleanup(server.Stop)
 	conn, err := grpc.NewClient("passthrough:///checkpoint-fence", grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) { return listener.DialContext(ctx) }), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
 
-	return commonpb.NewBucketServiceClient(conn), commonpb.NewClusterServiceClient(conn)
+	return ledgerpb.NewBucketServiceClient(conn), ledgerpb.NewClusterServiceClient(conn)
 }
 
 func TestCheckpointMetadataRejectsUnprovenLocalProgress(t *testing.T) {
@@ -147,7 +147,7 @@ func TestCheckpointMetadataRejectsUnprovenLocalProgress(t *testing.T) {
 		{name: "state error", mutate: func(s *checkpointFenceProbe, _ *uint32) { s.stateErr = status.Error(codes.Unknown, "storage failure") }, code: codes.Unknown},
 		{name: "raft progress without durable progress", mutate: func(s *checkpointFenceProbe, _ *uint32) { s.state.RaftStatus.LastPersistedIndex = 995 }, timeout: true},
 		{name: "syncing despite durable cursor", mutate: func(s *checkpointFenceProbe, _ *uint32) {
-			s.state.SyncProgress = &commonpb.SyncProgress{Status: "syncing"}
+			s.state.SyncProgress = &ledgerpb.SyncProgress{Status: "syncing"}
 		}, timeout: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -201,8 +201,8 @@ func TestCheckpointMetadataAllowsProgressBeyondFixedBarrier(t *testing.T) {
 type checkpointFenceProbe struct {
 	checkpointMetadataServer
 
-	state      *commonpb.ClusterState
-	topology   *commonpb.ClusterState
+	state      *ledgerpb.ClusterState
+	topology   *ledgerpb.ClusterState
 	target     uint64
 	barrierErr error
 	stateErr   error
@@ -212,21 +212,21 @@ type checkpointFenceProbe struct {
 func newCheckpointFenceProbe() *checkpointFenceProbe {
 	return &checkpointFenceProbe{
 		target:   996,
-		topology: &commonpb.ClusterState{State: "Leader", LocalNode: 1, Nodes: []*commonpb.NodeInfo{{Id: 2, ServiceAddress: "node"}}, RaftStatus: &commonpb.RaftStatus{LastPersistedIndex: 1992}},
-		state: &commonpb.ClusterState{
+		topology: &ledgerpb.ClusterState{State: "Leader", LocalNode: 1, Nodes: []*ledgerpb.NodeInfo{{Id: 2, ServiceAddress: "node"}}, RaftStatus: &ledgerpb.RaftStatus{LastPersistedIndex: 1992}},
+		state: &ledgerpb.ClusterState{
 			LocalNode:  2,
-			RaftStatus: &commonpb.RaftStatus{Applied: 1992, Commit: 1992, LastPersistedIndex: 996},
+			RaftStatus: &ledgerpb.RaftStatus{Applied: 1992, Commit: 1992, LastPersistedIndex: 996},
 		},
 	}
 }
 
-func (s *checkpointFenceProbe) Barrier(context.Context, *commonpb.BarrierRequest) (*commonpb.BarrierResponse, error) {
+func (s *checkpointFenceProbe) Barrier(context.Context, *ledgerpb.BarrierRequest) (*ledgerpb.BarrierResponse, error) {
 	s.barriers.Add(1)
 
-	return &commonpb.BarrierResponse{CommitIndex: s.target}, s.barrierErr
+	return &ledgerpb.BarrierResponse{CommitIndex: s.target}, s.barrierErr
 }
 
-func (s *checkpointFenceProbe) GetClusterState(_ context.Context, req *commonpb.GetClusterStateRequest) (*commonpb.ClusterState, error) {
+func (s *checkpointFenceProbe) GetClusterState(_ context.Context, req *ledgerpb.GetClusterStateRequest) (*ledgerpb.ClusterState, error) {
 	if req.GetNodeId() == 0 {
 		return s.topology, nil
 	}

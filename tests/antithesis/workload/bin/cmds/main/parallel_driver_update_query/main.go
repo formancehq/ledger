@@ -8,31 +8,31 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_update_query", func(ctx context.Context, client commonpb.BucketServiceClient, ledger string) {
+	internal.RunDriver("parallel_driver_update_query", func(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string) {
 		r := internal.Rand()
 		queryName := fmt.Sprintf("upd-q-%d", r.Uint64())
 
 		details := internal.Details{"ledger": ledger, "queryName": queryName}
 
 		// 1. Create a prepared query filtering by "users:" prefix.
-		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_CreatePreparedQuery{
-				CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
+		_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_CreatePreparedQuery{
+				CreatePreparedQuery: &ledgerpb.CreatePreparedQueryRequest{
 					Ledger: ledger,
 
-					Query: &commonpb.PreparedQuery{
+					Query: &ledgerpb.PreparedQuery{
 						Name:   queryName,
-						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-						Filter: &commonpb.QueryFilter{
-							Filter: &commonpb.QueryFilter_Address{
-								Address: &commonpb.AddressMatch{
-									Match: &commonpb.AddressMatch_HardcodedPrefix{
+						Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Filter: &ledgerpb.QueryFilter{
+							Filter: &ledgerpb.QueryFilter_Address{
+								Address: &ledgerpb.AddressMatch{
+									Match: &ledgerpb.AddressMatch_HardcodedPrefix{
 										HardcodedPrefix: "users:",
 									},
 								},
@@ -57,15 +57,15 @@ func main() {
 		}
 
 		// 2. Update the query filter to "world" prefix.
-		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_UpdatePreparedQuery{
-				UpdatePreparedQuery: &commonpb.UpdatePreparedQueryRequest{
+		_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_UpdatePreparedQuery{
+				UpdatePreparedQuery: &ledgerpb.UpdatePreparedQueryRequest{
 					Ledger: ledger,
 					Name:   queryName,
-					Filter: &commonpb.QueryFilter{
-						Filter: &commonpb.QueryFilter_Address{
-							Address: &commonpb.AddressMatch{
-								Match: &commonpb.AddressMatch_HardcodedPrefix{
+					Filter: &ledgerpb.QueryFilter{
+						Filter: &ledgerpb.QueryFilter_Address{
+							Address: &ledgerpb.AddressMatch{
+								Match: &ledgerpb.AddressMatch_HardcodedPrefix{
 									HardcodedPrefix: "world",
 								},
 							},
@@ -83,7 +83,7 @@ func main() {
 		}
 
 		// 3. Execute the updated query — should only return accounts matching "world".
-		execResp, err := client.ExecutePreparedQuery(ctx, &commonpb.ExecutePreparedQueryRequest{
+		execResp, err := client.ExecutePreparedQuery(ctx, &ledgerpb.ExecutePreparedQueryRequest{
 			Ledger:    ledger,
 			QueryName: queryName,
 			PageSize:  100,
@@ -97,9 +97,9 @@ func main() {
 		assert.AlwaysOrUnreachable(execResp != nil, "updated query should return a response", details)
 
 		// 4. Cleanup.
-		if _, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_DeletePreparedQuery{
-				DeletePreparedQuery: &commonpb.DeletePreparedQueryRequest{
+		if _, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_DeletePreparedQuery{
+				DeletePreparedQuery: &ledgerpb.DeletePreparedQueryRequest{
 					Ledger: ledger,
 					Name:   queryName,
 				},

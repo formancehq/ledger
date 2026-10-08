@@ -6,7 +6,7 @@ import (
 	"github.com/pterm/pterm"
 
 	"github.com/formancehq/invariants"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -15,7 +15,7 @@ import (
 // Volumes are listed per (account, asset, color); with --rescale, each account's
 // entries are instead merged per (base currency, color). The "" color is rendered
 // as "-" so the uncolored bucket stands out in the table.
-func renderPostCommitVolumes(pcv *commonpb.PostCommitVolumes, rescale *uint8) error {
+func renderPostCommitVolumes(pcv *ledgerpb.PostCommitVolumes, rescale *uint8) error {
 	if len(pcv.GetVolumesByAccount()) == 0 {
 		return nil
 	}

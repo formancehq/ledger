@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	protoerr "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -17,14 +17,14 @@ import (
 func TestHandleGetBucketIndexEntryStatus_Success(t *testing.T) {
 	t.Parallel()
 
-	var capturedReq *servicepb.GetIndexEntryStatusRequest
+	var capturedReq *ledgerpb.GetIndexEntryStatusRequest
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetIndexEntryStatus(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.GetIndexEntryStatusRequest) (*servicepb.IndexEntry, error) {
+		func(_ context.Context, req *ledgerpb.GetIndexEntryStatusRequest) (*ledgerpb.IndexEntry, error) {
 			capturedReq = req
 
-			return &servicepb.IndexEntry{CurrentVersion: 1}, nil
+			return &ledgerpb.IndexEntry{CurrentVersion: 1}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -45,7 +45,7 @@ func TestHandleGetBucketIndexEntryStatus_NotFound(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetIndexEntryStatus(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.GetIndexEntryStatusRequest) (*servicepb.IndexEntry, error) {
+		func(_ context.Context, _ *ledgerpb.GetIndexEntryStatusRequest) (*ledgerpb.IndexEntry, error) {
 			return nil, protoerr.NewNotFoundError("not found")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)

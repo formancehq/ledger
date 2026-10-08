@@ -9,7 +9,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -81,12 +81,12 @@ func runList(cmd *cobra.Command, _ []string) error {
 	flt := cmdutil.GetFilterFlags(cmd)
 	cns := cmdutil.GetConsistencyFlags(cmd)
 
-	filter, err := cmdutil.BuildQueryFilter(flt.Expr, flt.Prefix, auditpb.QueryTarget_QUERY_TARGET_AUDIT)
+	filter, err := cmdutil.BuildQueryFilter(flt.Expr, flt.Prefix, ledgerpb.QueryTarget_QUERY_TARGET_AUDIT)
 	if err != nil {
 		return err
 	}
 
-	stream, err := client.ListAuditEntries(ctx, &auditpb.ListAuditEntriesRequest{
+	stream, err := client.ListAuditEntries(ctx, &ledgerpb.ListAuditEntriesRequest{
 		Options: cmdutil.BuildListOptions(pgn, cns, filter),
 	})
 	if err != nil {
@@ -105,7 +105,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 
 	if expand {
 		for i, entry := range entries {
-			full, err := client.GetAuditEntry(ctx, &auditpb.GetAuditEntryRequest{
+			full, err := client.GetAuditEntry(ctx, &ledgerpb.GetAuditEntryRequest{
 				Sequence: entry.GetSequence(),
 			})
 			if err != nil {
@@ -143,7 +143,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 }
 
 // printAuditEntry prints a single audit entry in a human-readable format.
-func printAuditEntry(entry *auditpb.AuditEntry, verbose bool) {
+func printAuditEntry(entry *ledgerpb.AuditEntry, verbose bool) {
 	ts := "-"
 	if entry.GetTimestamp() != nil {
 		ts = entry.GetTimestamp().AsTime().Format(time.RFC3339)
@@ -179,7 +179,7 @@ func printAuditEntry(entry *auditpb.AuditEntry, verbose bool) {
 	if verbose {
 		if snap := entry.GetCallerSnapshot(); snap != nil {
 			switch principal := snap.GetPrincipal().(type) {
-			case *auditpb.CallerSnapshot_Authenticated:
+			case *ledgerpb.CallerSnapshot_Authenticated:
 				caller := principal.Authenticated
 				id := caller.GetIdentity()
 				subject := id.GetSubject()
@@ -201,19 +201,19 @@ func printAuditEntry(entry *auditpb.AuditEntry, verbose bool) {
 						pterm.Gray(strings.Join(caller.GetScopes(), ",")),
 					)
 				}
-			case *auditpb.CallerSnapshot_Anonymous:
+			case *ledgerpb.CallerSnapshot_Anonymous:
 				pterm.Printf("    %s anonymous scopes=[%s]\n",
 					pterm.Gray("caller:"),
 					pterm.Gray(strings.Join(principal.Anonymous.GetScopes(), ",")),
 				)
-			case *auditpb.CallerSnapshot_System:
+			case *ledgerpb.CallerSnapshot_System:
 				pterm.Printf("    %s subject=%s %s %s\n",
 					pterm.Gray("caller:"),
 					pterm.Yellow("(none)"),
 					pterm.Gray("system="+principal.System.GetComponent()),
 					pterm.Gray("scopes=[]"),
 				)
-			case *auditpb.CallerSnapshot_AuthDisabled:
+			case *ledgerpb.CallerSnapshot_AuthDisabled:
 				pterm.Printf("    %s authentication-disabled\n", pterm.Gray("caller:"))
 			}
 		}
@@ -249,11 +249,11 @@ func printAuditEntry(entry *auditpb.AuditEntry, verbose bool) {
 }
 
 // callerSourceString renders an authenticated identity source for display.
-func callerSourceString(id *auditpb.CallerIdentity) string {
+func callerSourceString(id *ledgerpb.CallerIdentity) string {
 	switch s := id.GetSource().(type) {
-	case *auditpb.CallerIdentity_Issuer:
+	case *ledgerpb.CallerIdentity_Issuer:
 		return "issuer=" + s.Issuer
-	case *auditpb.CallerIdentity_KeyId:
+	case *ledgerpb.CallerIdentity_KeyId:
 		return "key_id=" + s.KeyId
 	default:
 		return ""
@@ -262,30 +262,30 @@ func callerSourceString(id *auditpb.CallerIdentity) string {
 
 // callerLabel renders a compact one-token caller label, falling back to the
 // credential source when an authenticated subject is empty.
-func callerLabel(snap *auditpb.CallerSnapshot) string {
+func callerLabel(snap *ledgerpb.CallerSnapshot) string {
 	if snap == nil {
 		return ""
 	}
 
 	switch principal := snap.GetPrincipal().(type) {
-	case *auditpb.CallerSnapshot_Authenticated:
+	case *ledgerpb.CallerSnapshot_Authenticated:
 		id := principal.Authenticated.GetIdentity()
 		if id.GetSubject() != "" {
 			return id.GetSubject()
 		}
 		switch source := id.GetSource().(type) {
-		case *auditpb.CallerIdentity_KeyId:
+		case *ledgerpb.CallerIdentity_KeyId:
 			return "key:" + source.KeyId
-		case *auditpb.CallerIdentity_Issuer:
+		case *ledgerpb.CallerIdentity_Issuer:
 			return "issuer:" + source.Issuer
 		default:
 			return "authenticated"
 		}
-	case *auditpb.CallerSnapshot_Anonymous:
+	case *ledgerpb.CallerSnapshot_Anonymous:
 		return "anonymous"
-	case *auditpb.CallerSnapshot_System:
+	case *ledgerpb.CallerSnapshot_System:
 		return "system:" + principal.System.GetComponent()
-	case *auditpb.CallerSnapshot_AuthDisabled:
+	case *ledgerpb.CallerSnapshot_AuthDisabled:
 		return "auth-disabled"
 	default:
 		return ""

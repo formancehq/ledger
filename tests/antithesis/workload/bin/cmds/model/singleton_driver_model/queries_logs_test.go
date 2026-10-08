@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 
@@ -33,7 +33,7 @@ func servedRows(ls oracle.LedgerState, ledger string, ids ...uint64) []serverLog
 		row := byID[id]
 
 		var (
-			tx        *commonpb.Transaction
+			tx        *ledgerpb.Transaction
 			revertsID uint64
 		)
 
@@ -60,22 +60,22 @@ func servedRows(ls oracle.LedgerState, ledger string, ids ...uint64) []serverLog
 	return out
 }
 
-func filterLogDateLeaf() *commonpb.QueryFilter {
+func filterLogDateLeaf() *ledgerpb.QueryFilter {
 	lower := uint64(1)
 
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogBuiltinUint{
-		LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
-			Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
-			Cond:  &commonpb.UintCondition{Min: &lower},
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_LogBuiltinUint{
+		LogBuiltinUint: &ledgerpb.LogBuiltinUintCondition{
+			Field: ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
+			Cond:  &ledgerpb.UintCondition{Min: &lower},
 		},
 	}}
 }
 
-func filterLogIDLeaf() *commonpb.QueryFilter {
+func filterLogIDLeaf() *ledgerpb.QueryFilter {
 	lower := uint64(1)
 
-	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{
-		LogId: &commonpb.LogIdCondition{Cond: &commonpb.UintCondition{Min: &lower}},
+	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_LogId{
+		LogId: &ledgerpb.LogIdCondition{Cond: &ledgerpb.UintCondition{Min: &lower}},
 	}}
 }
 
@@ -94,7 +94,7 @@ func reasonErr(t *testing.T, code codes.Code, reason string) error {
 func TestMatchLogFilter_EmptyCombinators(t *testing.T) {
 	t.Parallel()
 
-	matchKnown := func(f *commonpb.QueryFilter) bool {
+	matchKnown := func(f *ledgerpb.QueryFilter) bool {
 		m, known := matchLogFilter("L", 1, nil, f)
 		require.True(t, known)
 
@@ -219,7 +219,7 @@ func TestLogWindowMatches_LearnedDateIsRequired(t *testing.T) {
 	gs := buildGlobal(t, oracletest.TxReq("world", "acc:1", "USD/2", 5))
 
 	id := gs.Ledger("L").LogDates()[0].ID
-	gs.LearnLogDate("L", id, &commonpb.Timestamp{Data: 5})
+	gs.LearnLogDate("L", id, &ledgerpb.Timestamp{Data: 5})
 
 	ls := gs.Ledger("L")
 	filter := filterLogDateLeaf() // date >= 1
@@ -239,7 +239,7 @@ func TestLogWindowMatches_ComparesEveryPinnedField(t *testing.T) {
 	gs := buildGlobal(t, oracletest.TxReq("world", "acc:1", "USD/2", 5))
 
 	id := gs.Ledger("L").LogRows()[0].ID
-	gs.LearnLogDate("L", id, &commonpb.Timestamp{Data: 5})
+	gs.LearnLogDate("L", id, &ledgerpb.Timestamp{Data: 5})
 	gs.LearnLogSequence("L", id, 12)
 
 	ls := gs.Ledger("L")
@@ -303,9 +303,9 @@ func TestLogWindowMatches_UnlearnedDateSkipsOnlyTheDate(t *testing.T) {
 func TestLogWindowMatches_ComparesCanonicalPayload(t *testing.T) {
 	t.Parallel()
 
-	acct := commonpb.TargetType_TARGET_TYPE_ACCOUNT
+	acct := ledgerpb.TargetType_TARGET_TYPE_ACCOUNT
 
-	gs := buildGlobal(t, oracletest.SetFieldTypeReq(acct, "tier", commonpb.MetadataType_METADATA_TYPE_STRING))
+	gs := buildGlobal(t, oracletest.SetFieldTypeReq(acct, "tier", ledgerpb.MetadataType_METADATA_TYPE_STRING))
 	ls := gs.Ledger("L")
 
 	rows := ls.LogRows()
@@ -343,12 +343,12 @@ func TestLogWindowMatches_ComparesCanonicalPayload(t *testing.T) {
 func TestCanonicalServedLogPayload_MetadataValuesAreTypeTagged(t *testing.T) {
 	t.Parallel()
 
-	served := oracle.CanonicalServedLogPayload(&commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &commonpb.SavedMetadata{
-			Target: &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: "acc:1"}}},
-			Metadata: map[string]*commonpb.MetadataValue{
-				"b": {Type: &commonpb.MetadataValue_StringValue{StringValue: "5"}},
-				"a": {Type: &commonpb.MetadataValue_IntValue{IntValue: 5}},
+	served := oracle.CanonicalServedLogPayload(&ledgerpb.LedgerLogPayload{
+		Payload: &ledgerpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &ledgerpb.SavedMetadata{
+			Target: &ledgerpb.Target{Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{Addr: "acc:1"}}},
+			Metadata: map[string]*ledgerpb.MetadataValue{
+				"b": {Type: &ledgerpb.MetadataValue_StringValue{StringValue: "5"}},
+				"a": {Type: &ledgerpb.MetadataValue_IntValue{IntValue: 5}},
 			},
 		}},
 	})
@@ -375,11 +375,11 @@ func TestLearnTxStamps_RecordsLogDateAndSequence(t *testing.T) {
 	require.Zero(t, row.Sequence)
 	snapshot := gs
 
-	learnTxStamps(&gs, bulk, []*commonpb.Log{{
+	learnTxStamps(&gs, bulk, []*ledgerpb.Log{{
 		Sequence: 17,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{Apply: &ledgerpb.ApplyLedgerLog{
 			LedgerName: "L",
-			Log:        &commonpb.LedgerLog{Id: row.ID, Date: &commonpb.Timestamp{Data: 99}},
+			Log:        &ledgerpb.LedgerLog{Id: row.ID, Date: &ledgerpb.Timestamp{Data: 99}},
 		}}},
 	}})
 
@@ -430,7 +430,7 @@ func TestLogWindowMatches_RequiredRowMayNotBeSkipped(t *testing.T) {
 	require.Len(t, rows, 2)
 
 	for _, row := range rows {
-		gs.LearnLogDate("L", row.ID, &commonpb.Timestamp{Data: 5})
+		gs.LearnLogDate("L", row.ID, &ledgerpb.Timestamp{Data: 5})
 	}
 
 	ls := gs.Ledger("L")
@@ -483,17 +483,17 @@ func TestLogOutcome_IndexFreeFilterMayNotBeGated(t *testing.T) {
 func TestServerLogRows_ReadsVolumeAnnotations(t *testing.T) {
 	t.Parallel()
 
-	logOf := func(l *commonpb.LedgerLog) *commonpb.Log {
-		return &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-			Apply: &commonpb.ApplyLedgerLog{LedgerName: "L", Log: l},
+	logOf := func(l *ledgerpb.LedgerLog) *ledgerpb.Log {
+		return &ledgerpb.Log{Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
+			Apply: &ledgerpb.ApplyLedgerLog{LedgerName: "L", Log: l},
 		}}}
 	}
 
-	rows := serverLogRows([]*commonpb.Log{logOf(&commonpb.LedgerLog{
+	rows := serverLogRows([]*ledgerpb.Log{logOf(&ledgerpb.LedgerLog{
 		Id:               1,
-		PurgedVolumes:    []*commonpb.TouchedVolume{{Account: "e:1", Asset: "USD"}},
-		NewKeptVolumes:   []*commonpb.TouchedVolume{{Account: "world", Asset: "EUR"}, {Account: "n:1", Asset: "EUR"}},
-		EphemeralVolumes: []*commonpb.TouchedVolume{{Account: "e:2", Asset: "USD"}},
+		PurgedVolumes:    []*ledgerpb.TouchedVolume{{Account: "e:1", Asset: "USD"}},
+		NewKeptVolumes:   []*ledgerpb.TouchedVolume{{Account: "world", Asset: "EUR"}, {Account: "n:1", Asset: "EUR"}},
+		EphemeralVolumes: []*ledgerpb.TouchedVolume{{Account: "e:2", Asset: "USD"}},
 	})})
 
 	require.Len(t, rows, 1)
@@ -502,9 +502,9 @@ func TestServerLogRows_ReadsVolumeAnnotations(t *testing.T) {
 		"read verbatim: the model renders its own list sorted, so a mis-sorted served list must not be repaired here")
 	require.Equal(t, "e:2:USD:", rows[0].ephemeral)
 
-	coloured := serverLogRows([]*commonpb.Log{logOf(&commonpb.LedgerLog{
+	coloured := serverLogRows([]*ledgerpb.Log{logOf(&ledgerpb.LedgerLog{
 		Id:             1,
-		NewKeptVolumes: []*commonpb.TouchedVolume{{Account: "n:1", Asset: "EUR", Color: "GRANTS"}},
+		NewKeptVolumes: []*ledgerpb.TouchedVolume{{Account: "n:1", Asset: "EUR", Color: "GRANTS"}},
 	})})
 
 	require.Len(t, coloured, 1)
@@ -576,7 +576,7 @@ func TestLogWindowMatches_ComparesTheEmbeddedTransaction(t *testing.T) {
 	// A config-mutation log announces no transaction; one appearing is a finding.
 	cfg := buildGlobal(t, oracletest.AddTypeReq("T")).Ledger("L")
 	cfgPage := servedRows(cfg, "L", cfg.LogRows()[0].ID)
-	cfgPage[0].tx = &commonpb.Transaction{Id: 1}
+	cfgPage[0].tx = &ledgerpb.Transaction{Id: 1}
 	require.False(t, logWindowMatches(cfg, "L", filter, 0, logTestPageSize, cfgPage))
 }
 
@@ -590,7 +590,7 @@ func TestLogTxMatches_IgnoresPostCreationMutation(t *testing.T) {
 	gs := buildGlobalSeparateBulks(t,
 		oracletest.TxReqL("L", "world", "acc:1", "USD/2", 5),
 		oracletest.RevertReqL("L", 1, true),
-		oracletest.AddTxMetaReq(1, map[string]*commonpb.MetadataValue{"k1": commonpb.NewStringValue("late")}),
+		oracletest.AddTxMetaReq(1, map[string]*ledgerpb.MetadataValue{"k1": ledgerpb.NewStringValue("late")}),
 	)
 
 	ls := gs.Ledger("L")
@@ -599,7 +599,7 @@ func TestLogTxMatches_IgnoresPostCreationMutation(t *testing.T) {
 	require.NotEmpty(t, rec.Metadata())
 
 	// The log's copy still carries the creation-time values.
-	frozen := &commonpb.Transaction{Id: rec.Id(), Postings: rec.Postings()}
+	frozen := &ledgerpb.Transaction{Id: rec.Id(), Postings: rec.Postings()}
 	frozen.PostCommitVolumes = serverPCVFromRec(rec)
 	require.True(t, logTxMatches(rec, frozen))
 

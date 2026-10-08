@@ -11,7 +11,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -20,14 +20,14 @@ import (
 // return commit indices that differ by exactly 1 (the barrier itself).
 // A nonzero previous index lets a recheck account for its own first barrier.
 // Returns the confirmed commit index, or 0 if quiescence could not be achieved.
-func waitForQuiescence(ctx context.Context, client commonpb.BucketServiceClient, lastCommitIndex uint64) uint64 {
+func waitForQuiescence(ctx context.Context, client ledgerpb.BucketServiceClient, lastCommitIndex uint64) uint64 {
 	const maxAttempts = 20
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		if ctx.Err() != nil {
 			return 0
 		}
-		resp, err := client.Barrier(ctx, &commonpb.BarrierRequest{})
+		resp, err := client.Barrier(ctx, &ledgerpb.BarrierRequest{})
 		if err != nil {
 			if ctx.Err() != nil {
 				return 0
@@ -106,13 +106,13 @@ func main() {
 
 // listAccounts streams all accounts for a ledger. On a mid-stream error it
 // returns what was collected so far plus the error.
-func listAccounts(ctx context.Context, client commonpb.BucketServiceClient, ledger string) ([]*commonpb.Account, error) {
-	stream, err := client.ListAccounts(ctx, &commonpb.ListAccountsRequest{Ledger: ledger})
+func listAccounts(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string) ([]*ledgerpb.Account, error) {
+	stream, err := client.ListAccounts(ctx, &ledgerpb.ListAccountsRequest{Ledger: ledger})
 	if err != nil {
 		return nil, err
 	}
 
-	var accounts []*commonpb.Account
+	var accounts []*ledgerpb.Account
 
 	for {
 		account, err := stream.Recv()
@@ -138,7 +138,7 @@ func parseBalance(s string) *big.Int {
 }
 
 // checkBalanced verifies that all aggregated volumes sum to zero for each asset.
-func checkBalanced(ctx context.Context, client commonpb.BucketServiceClient, ledger string) {
+func checkBalanced(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string) {
 	accounts, err := listAccounts(ctx, client, ledger)
 	if err != nil && !internal.IsTransient(err) {
 		assert.Unreachable("listAccounts returned unexpected error", internal.Details{
@@ -184,10 +184,10 @@ func checkBalanced(ctx context.Context, client commonpb.BucketServiceClient, led
 }
 
 // checkAccountBalances verifies volume consistency for known user accounts.
-func checkAccountBalances(ctx context.Context, client commonpb.BucketServiceClient, ledger string) {
+func checkAccountBalances(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string) {
 	for i := range internal.UserAccountCount {
 		address := fmt.Sprintf("users:%d", i)
-		account, err := client.GetAccount(ctx, &commonpb.GetAccountRequest{
+		account, err := client.GetAccount(ctx, &ledgerpb.GetAccountRequest{
 			Ledger:  ledger,
 			Address: address,
 		})
@@ -221,7 +221,7 @@ func checkAccountBalances(ctx context.Context, client commonpb.BucketServiceClie
 // balances against GetAccount balances. If a mismatch is detected, it re-checks
 // quiescence: additional proposals make the observation inconclusive and require
 // a complete re-read. Both full comparisons and barrier attempts are bounded.
-func checkVolumesConsistent(ctx context.Context, client commonpb.BucketServiceClient, ledger string, quiescentCommitIndex uint64) {
+func checkVolumesConsistent(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string, quiescentCommitIndex uint64) {
 	const maxAttempts = 20
 	for attempt := 1; attempt <= maxAttempts && ctx.Err() == nil; attempt++ {
 		quiescentCommitIndex = checkVolumesConsistentAttempt(ctx, client, ledger, quiescentCommitIndex)
@@ -233,7 +233,7 @@ func checkVolumesConsistent(ctx context.Context, client commonpb.BucketServiceCl
 }
 
 // Returns a new quiescent index only when the entire comparison must be retried.
-func checkVolumesConsistentAttempt(ctx context.Context, client commonpb.BucketServiceClient, ledger string, quiescentCommitIndex uint64) uint64 {
+func checkVolumesConsistentAttempt(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string, quiescentCommitIndex uint64) uint64 {
 	details := internal.Details{"ledger": ledger}
 
 	accounts, err := listAccounts(ctx, client, ledger)
@@ -259,7 +259,7 @@ func checkVolumesConsistentAttempt(ctx context.Context, client commonpb.BucketSe
 				"color":   color,
 			}))
 
-			getAcc, err := client.GetAccount(ctx, &commonpb.GetAccountRequest{
+			getAcc, err := client.GetAccount(ctx, &ledgerpb.GetAccountRequest{
 				Ledger:  ledger,
 				Address: account.GetAddress(),
 			})
@@ -331,7 +331,7 @@ func checkVolumesConsistentAttempt(ctx context.Context, client commonpb.BucketSe
 		// Cross-check metadata: ListAccounts metadata should match GetAccount metadata.
 		// Only check if we successfully got the account above (getAcc from the last asset iteration).
 		if len(account.GetVolumes()) > 0 {
-			getAcc, err := client.GetAccount(ctx, &commonpb.GetAccountRequest{
+			getAcc, err := client.GetAccount(ctx, &ledgerpb.GetAccountRequest{
 				Ledger:  ledger,
 				Address: account.GetAddress(),
 			})
@@ -354,7 +354,7 @@ func checkVolumesConsistentAttempt(ctx context.Context, client commonpb.BucketSe
 }
 
 // crossCheckMetadata verifies that metadata from ListAccounts matches GetAccount.
-func crossCheckMetadata(listAccount, getAccount *commonpb.Account, details internal.Details) {
+func crossCheckMetadata(listAccount, getAccount *ledgerpb.Account, details internal.Details) {
 	listMeta := metadataToMap(listAccount.GetMetadata())
 	getMeta := metadataToMap(getAccount.GetMetadata())
 
@@ -382,7 +382,7 @@ func crossCheckMetadata(listAccount, getAccount *commonpb.Account, details inter
 	}))
 }
 
-func metadataToMap(ms map[string]*commonpb.MetadataValue) map[string]string {
+func metadataToMap(ms map[string]*ledgerpb.MetadataValue) map[string]string {
 	result := make(map[string]string)
 	for k, v := range ms {
 		result[k] = v.GetStringValue()

@@ -12,7 +12,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -68,15 +68,15 @@ func registerLedger(t *testing.T, s *dal.Store, name string) {
 	t.Helper()
 
 	batch := s.OpenWriteSession()
-	err := SaveLedger(batch, name, &commonpb.LedgerInfo{
+	err := SaveLedger(batch, name, &ledgerpb.LedgerInfo{
 		Name:      name,
-		CreatedAt: commonpb.NewTimestamp(libtime.Now()),
+		CreatedAt: ledgerpb.NewTimestamp(libtime.Now()),
 	})
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 }
 
-func appendLogs(t *testing.T, s *dal.Store, lastAppliedIndex uint64, logs ...*commonpb.Log) {
+func appendLogs(t *testing.T, s *dal.Store, lastAppliedIndex uint64, logs ...*ledgerpb.Log) {
 	t.Helper()
 
 	batch := s.OpenWriteSession()
@@ -86,24 +86,24 @@ func appendLogs(t *testing.T, s *dal.Store, lastAppliedIndex uint64, logs ...*co
 	require.NoError(t, batch.Commit())
 }
 
-func createTestLogs(ledgerName string) []*commonpb.Log {
+func createTestLogs(ledgerName string) []*ledgerpb.Log {
 	return createTestLogsForLedger(ledgerName, 1)
 }
 
-func createTestLogsForLedger(ledgerName string, startSequence uint64) []*commonpb.Log {
+func createTestLogsForLedger(ledgerName string, startSequence uint64) []*ledgerpb.Log {
 	now := libtime.Now()
 
-	return []*commonpb.Log{
+	return []*ledgerpb.Log{
 		{
 			Sequence: startSequence,
-			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-				Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
+				Apply: &ledgerpb.ApplyLedgerLog{
 					LedgerName: ledgerName,
-					Log: protohelpers.WithLedgerLogDate(protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&commonpb.LedgerLogPayload{
-						Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-							CreatedTransaction: &commonpb.CreatedTransaction{
+					Log: protohelpers.WithLedgerLogDate(protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+						Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+							CreatedTransaction: &ledgerpb.CreatedTransaction{
 								Transaction: protohelpers.WithTransactionTimestamp(protohelpers.WithTransactionID(protohelpers.WithTransactionPostings(protohelpers.NewTransaction(), protohelpers.NewPosting("world", "bank", "USD", big.NewInt(100))), 1), now),
-								AccountMetadata: map[string]*commonpb.MetadataMap{
+								AccountMetadata: map[string]*ledgerpb.MetadataMap{
 									"bank": protohelpers.MetadataMapFromGoMap(metadata.Metadata{
 										"account_type": "asset",
 									}),
@@ -116,12 +116,12 @@ func createTestLogsForLedger(ledgerName string, startSequence uint64) []*commonp
 		},
 		{
 			Sequence: startSequence + 1,
-			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-				Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
+				Apply: &ledgerpb.ApplyLedgerLog{
 					LedgerName: ledgerName,
-					Log: protohelpers.WithLedgerLogDate(protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&commonpb.LedgerLogPayload{
-						Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-							CreatedTransaction: &commonpb.CreatedTransaction{
+					Log: protohelpers.WithLedgerLogDate(protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+						Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+							CreatedTransaction: &ledgerpb.CreatedTransaction{
 								Transaction: protohelpers.WithTransactionTimestamp(protohelpers.WithTransactionID(protohelpers.WithTransactionPostings(protohelpers.NewTransaction(), protohelpers.NewPosting("bank", "user", "USD", big.NewInt(50))), 2), now),
 							},
 						},
@@ -131,14 +131,14 @@ func createTestLogsForLedger(ledgerName string, startSequence uint64) []*commonp
 		},
 		{
 			Sequence: startSequence + 2,
-			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-				Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
+				Apply: &ledgerpb.ApplyLedgerLog{
 					LedgerName: ledgerName,
-					Log: protohelpers.WithLedgerLogDate(protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&commonpb.LedgerLogPayload{
-						Payload: &commonpb.LedgerLogPayload_SavedMetadata{
-							SavedMetadata: &commonpb.SavedMetadata{
-								Target: &commonpb.Target{
-									Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{
+					Log: protohelpers.WithLedgerLogDate(protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+						Payload: &ledgerpb.LedgerLogPayload_SavedMetadata{
+							SavedMetadata: &ledgerpb.SavedMetadata{
+								Target: &ledgerpb.Target{
+									Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{
 										Addr: "bank",
 									}},
 								},
@@ -153,14 +153,14 @@ func createTestLogsForLedger(ledgerName string, startSequence uint64) []*commonp
 		},
 		{
 			Sequence: startSequence + 3,
-			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-				Apply: &commonpb.ApplyLedgerLog{
+			Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
+				Apply: &ledgerpb.ApplyLedgerLog{
 					LedgerName: ledgerName,
-					Log: protohelpers.WithLedgerLogDate(protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&commonpb.LedgerLogPayload{
-						Payload: &commonpb.LedgerLogPayload_DeletedMetadata{
-							DeletedMetadata: &commonpb.DeletedMetadata{
-								Target: &commonpb.Target{
-									Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{
+					Log: protohelpers.WithLedgerLogDate(protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&ledgerpb.LedgerLogPayload{
+						Payload: &ledgerpb.LedgerLogPayload_DeletedMetadata{
+							DeletedMetadata: &ledgerpb.DeletedMetadata{
+								Target: &ledgerpb.Target{
+									Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{
 										Addr: "bank",
 									}},
 								},

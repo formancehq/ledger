@@ -6,7 +6,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -49,10 +49,10 @@ func runRemove(cmd *cobra.Command, args []string) error {
 
 	spinner := cmdutil.StartSpinner(fmt.Sprintf("Removing account type %s...", typeName))
 
-	requests := []*servicepb.Request{
+	requests := []*ledgerpb.Request{
 		{
-			Type: &servicepb.Request_RemoveAccountType{
-				RemoveAccountType: &servicepb.RemoveAccountTypeLedgerRequest{
+			Type: &ledgerpb.Request_RemoveAccountType{
+				RemoveAccountType: &ledgerpb.RemoveAccountTypeLedgerRequest{
 					Ledger: ledgerName,
 					Name:   typeName,
 				},

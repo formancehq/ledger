@@ -7,7 +7,7 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -307,18 +307,18 @@ func TestInspectIndex_ResolvesMembershipAtMainHorizon(t *testing.T) {
 	s := newTestStore(t)
 	kb := dal.NewKeyBuilder()
 
-	encoded := func(value *commonpb.MetadataValue) []byte {
+	encoded := func(value *ledgerpb.MetadataValue) []byte {
 		return EncodeMetadataValue(nil, value)
 	}
-	stringValue := func(value string) *commonpb.MetadataValue {
-		return &commonpb.MetadataValue{
-			Type: &commonpb.MetadataValue_StringValue{StringValue: value},
+	stringValue := func(value string) *ledgerpb.MetadataValue {
+		return &ledgerpb.MetadataValue{
+			Type: &ledgerpb.MetadataValue_StringValue{StringValue: value},
 		}
 	}
-	nullValue := &commonpb.MetadataValue{
-		Type: &commonpb.MetadataValue_NullValue{NullValue: &commonpb.NullValue{}},
+	nullValue := &ledgerpb.MetadataValue{
+		Type: &ledgerpb.MetadataValue_NullValue{NullValue: &ledgerpb.NullValue{}},
 	}
-	putMetadata := func(value *commonpb.MetadataValue, entity string, seq uint64, op byte) {
+	putMetadata := func(value *ledgerpb.MetadataValue, entity string, seq uint64, op byte) {
 		require.NoError(t, s.DB().Set(
 			MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, encoded(value), []byte(entity), seq, op),
 			nil,

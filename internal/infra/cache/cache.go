@@ -12,7 +12,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/pkg/kv"
@@ -256,17 +256,17 @@ type CacheOps interface {
 type Cache struct {
 	mu                  sync.RWMutex
 	Volumes             *AttributeCache[*raftcmdpb.VolumePair]
-	AccountMetadata     *AttributeCache[*commonpb.MetadataValue]
+	AccountMetadata     *AttributeCache[*ledgerpb.MetadataValue]
 	References          *AttributeCache[*internalstatepb.TransactionReferenceValue]
-	Ledgers             *AttributeCache[*commonpb.LedgerInfo]
+	Ledgers             *AttributeCache[*ledgerpb.LedgerInfo]
 	Boundaries          *AttributeCache[*raftcmdpb.LedgerBoundaries]
 	Transactions        *AttributeCache[*internalstatepb.TransactionState]
-	SinkConfigs         *AttributeCache[*commonpb.SinkConfig]
+	SinkConfigs         *AttributeCache[*ledgerpb.SinkConfig]
 	NumscriptVersions   *AttributeCache[*internalstatepb.NumscriptVersionValue]
-	NumscriptContents   *AttributeCache[*commonpb.NumscriptInfo]
-	PreparedQueries     *AttributeCache[*commonpb.PreparedQuery]
-	LedgerMetadata      *AttributeCache[*commonpb.MetadataValue]
-	Indexes             *AttributeCache[*commonpb.Index]
+	NumscriptContents   *AttributeCache[*ledgerpb.NumscriptInfo]
+	PreparedQueries     *AttributeCache[*ledgerpb.PreparedQuery]
+	LedgerMetadata      *AttributeCache[*ledgerpb.MetadataValue]
+	Indexes             *AttributeCache[*ledgerpb.Index]
 	BaseIndex           DualGen[uint64]
 	generationThreshold atomic.Uint64
 
@@ -567,17 +567,17 @@ func New(generationThreshold uint64, m metric.Meter) (*Cache, error) {
 	ret.epoch.Store(1)
 	ret.generationThreshold.Store(generationThreshold)
 	ret.Volumes = newAttributeCache[*raftcmdpb.VolumePair](ret, "volumes")
-	ret.AccountMetadata = newAttributeCache[*commonpb.MetadataValue](ret, "account_metadata")
+	ret.AccountMetadata = newAttributeCache[*ledgerpb.MetadataValue](ret, "account_metadata")
 	ret.References = newAttributeCache[*internalstatepb.TransactionReferenceValue](ret, "references")
-	ret.Ledgers = newAttributeCache[*commonpb.LedgerInfo](ret, "ledgers")
+	ret.Ledgers = newAttributeCache[*ledgerpb.LedgerInfo](ret, "ledgers")
 	ret.Boundaries = newAttributeCache[*raftcmdpb.LedgerBoundaries](ret, "boundaries")
 	ret.Transactions = newAttributeCache[*internalstatepb.TransactionState](ret, "transactions")
-	ret.SinkConfigs = newAttributeCache[*commonpb.SinkConfig](ret, "sink_configs")
+	ret.SinkConfigs = newAttributeCache[*ledgerpb.SinkConfig](ret, "sink_configs")
 	ret.NumscriptVersions = newAttributeCache[*internalstatepb.NumscriptVersionValue](ret, "numscript_versions")
-	ret.NumscriptContents = newAttributeCache[*commonpb.NumscriptInfo](ret, "numscript_contents")
-	ret.PreparedQueries = newAttributeCache[*commonpb.PreparedQuery](ret, "prepared_queries")
-	ret.LedgerMetadata = newAttributeCache[*commonpb.MetadataValue](ret, "ledger_metadata")
-	ret.Indexes = newAttributeCache[*commonpb.Index](ret, "indexes")
+	ret.NumscriptContents = newAttributeCache[*ledgerpb.NumscriptInfo](ret, "numscript_contents")
+	ret.PreparedQueries = newAttributeCache[*ledgerpb.PreparedQuery](ret, "prepared_queries")
+	ret.LedgerMetadata = newAttributeCache[*ledgerpb.MetadataValue](ret, "ledger_metadata")
+	ret.Indexes = newAttributeCache[*ledgerpb.Index](ret, "indexes")
 
 	// Register all caches for iteration in Rotate/Reset/metrics.
 	ret.caches = []CacheOps{

@@ -11,13 +11,13 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/sdktest"
 )
 
 type balanceSDKServer struct {
-	commonpb.UnimplementedBucketServiceServer
+	ledgerpb.UnimplementedBucketServiceServer
 
 	scenario string
 	lists    atomic.Int32
@@ -25,14 +25,14 @@ type balanceSDKServer struct {
 	barriers atomic.Int32
 }
 
-func sdkAccount(balance string) *commonpb.Account {
-	return &commonpb.Account{Address: "users:1", Volumes: []*commonpb.AccountVolume{{
+func sdkAccount(balance string) *ledgerpb.Account {
+	return &ledgerpb.Account{Address: "users:1", Volumes: []*ledgerpb.AccountVolume{{
 		Asset: "COIN", Color: "blue",
-		Volumes: &commonpb.VolumesWithBalance{Input: balance, Output: "0", Balance: balance},
+		Volumes: &ledgerpb.VolumesWithBalance{Input: balance, Output: "0", Balance: balance},
 	}}}
 }
 
-func (s *balanceSDKServer) ListAccounts(_ *commonpb.ListAccountsRequest, stream grpc.ServerStreamingServer[commonpb.Account]) error {
+func (s *balanceSDKServer) ListAccounts(_ *ledgerpb.ListAccountsRequest, stream grpc.ServerStreamingServer[ledgerpb.Account]) error {
 	s.lists.Add(1)
 	if s.scenario == "empty" {
 		return nil
@@ -41,7 +41,7 @@ func (s *balanceSDKServer) ListAccounts(_ *commonpb.ListAccountsRequest, stream 
 	return stream.Send(sdkAccount("10"))
 }
 
-func (s *balanceSDKServer) GetAccount(context.Context, *commonpb.GetAccountRequest) (*commonpb.Account, error) {
+func (s *balanceSDKServer) GetAccount(context.Context, *ledgerpb.GetAccountRequest) (*ledgerpb.Account, error) {
 	s.gets.Add(1)
 	switch s.scenario {
 	case "transient":
@@ -59,7 +59,7 @@ func (s *balanceSDKServer) GetAccount(context.Context, *commonpb.GetAccountReque
 	return sdkAccount("10"), nil
 }
 
-func (s *balanceSDKServer) Barrier(context.Context, *commonpb.BarrierRequest) (*commonpb.BarrierResponse, error) {
+func (s *balanceSDKServer) Barrier(context.Context, *ledgerpb.BarrierRequest) (*ledgerpb.BarrierResponse, error) {
 	call := s.barriers.Add(1)
 	if call > 2 {
 		return nil, status.Error(codes.Internal, "unexpected extra barrier")
@@ -75,7 +75,7 @@ func (s *balanceSDKServer) Barrier(context.Context, *commonpb.BarrierRequest) (*
 		index++
 	}
 
-	return &commonpb.BarrierResponse{CommitIndex: index}, nil
+	return &ledgerpb.BarrierResponse{CommitIndex: index}, nil
 }
 
 func TestCheckVolumesConsistentSDK(t *testing.T) {

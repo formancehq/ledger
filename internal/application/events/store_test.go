@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -15,19 +15,19 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-func readSinkConfig(attr *attributes.Attribute[*commonpb.SinkConfig], reader dal.PebbleReader, name string) (*commonpb.SinkConfig, error) {
+func readSinkConfig(attr *attributes.Attribute[*ledgerpb.SinkConfig], reader dal.PebbleReader, name string) (*ledgerpb.SinkConfig, error) {
 	return attr.Get(reader, domain.SinkConfigKey{Name: name}.Bytes())
 }
 
-func saveSinkConfigBatch(batch *dal.WriteSession, cfg *commonpb.SinkConfig) error {
-	attr := attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig)
+func saveSinkConfigBatch(batch *dal.WriteSession, cfg *ledgerpb.SinkConfig) error {
+	attr := attributes.NewAttribute[*ledgerpb.SinkConfig](dal.SubAttrSinkConfig)
 	_, err := attr.Set(batch, domain.SinkConfigKey{Name: cfg.GetName()}.Bytes(), cfg)
 
 	return err
 }
 
 func deleteSinkConfigBatch(batch *dal.WriteSession, name string) error {
-	attr := attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig)
+	attr := attributes.NewAttribute[*ledgerpb.SinkConfig](dal.SubAttrSinkConfig)
 
 	return attr.Delete(batch, domain.SinkConfigKey{Name: name}.Bytes())
 }
@@ -128,12 +128,12 @@ func TestSinkStatus(t *testing.T) {
 		s := newTestStore(t)
 
 		batch := s.OpenWriteSession()
-		require.NoError(t, state.SetSinkStatus(batch, &commonpb.SinkStatus{
+		require.NoError(t, state.SetSinkStatus(batch, &ledgerpb.SinkStatus{
 			SinkName: "nats-1",
 			Cursor:   42,
-			Error: &commonpb.SinkError{
+			Error: &ledgerpb.SinkError{
 				Message:    "connection refused",
-				OccurredAt: commonpb.NewTimestamp(libtime.Now()),
+				OccurredAt: ledgerpb.NewTimestamp(libtime.Now()),
 			},
 		}))
 		require.NoError(t, batch.Commit())
@@ -156,7 +156,7 @@ func TestSinkStatus(t *testing.T) {
 
 		// Set a status
 		batch := s.OpenWriteSession()
-		require.NoError(t, state.SetSinkStatus(batch, &commonpb.SinkStatus{
+		require.NoError(t, state.SetSinkStatus(batch, &ledgerpb.SinkStatus{
 			SinkName: "nats-1",
 			Cursor:   10,
 		}))
@@ -181,11 +181,11 @@ func TestSinkStatus(t *testing.T) {
 		s := newTestStore(t)
 
 		batch := s.OpenWriteSession()
-		require.NoError(t, state.SetSinkStatus(batch, &commonpb.SinkStatus{
+		require.NoError(t, state.SetSinkStatus(batch, &ledgerpb.SinkStatus{
 			SinkName: "nats-1",
 			Cursor:   10,
 		}))
-		require.NoError(t, state.SetSinkStatus(batch, &commonpb.SinkStatus{
+		require.NoError(t, state.SetSinkStatus(batch, &ledgerpb.SinkStatus{
 			SinkName: "nats-2",
 			Cursor:   20,
 		}))
@@ -212,7 +212,7 @@ func TestSinkConfig(t *testing.T) {
 		require.NoError(t, err)
 		defer func() { _ = handle.Close() }()
 
-		configs, err := query.ReadAllSinkConfigs(attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig), handle)
+		configs, err := query.ReadAllSinkConfigs(attributes.NewAttribute[*ledgerpb.SinkConfig](dal.SubAttrSinkConfig), handle)
 		require.NoError(t, err)
 		require.Empty(t, configs)
 	})
@@ -222,11 +222,11 @@ func TestSinkConfig(t *testing.T) {
 		s := newTestStore(t)
 
 		batch := s.OpenWriteSession()
-		require.NoError(t, saveSinkConfigBatch(batch, &commonpb.SinkConfig{
+		require.NoError(t, saveSinkConfigBatch(batch, &ledgerpb.SinkConfig{
 			Name:         "primary-nats",
 			ControllerId: "uid-1",
-			Type: &commonpb.SinkConfig_Nats{
-				Nats: &commonpb.NatsSinkConfig{
+			Type: &ledgerpb.SinkConfig_Nats{
+				Nats: &ledgerpb.NatsSinkConfig{
 					Url:   "nats://localhost:4222",
 					Topic: "ledger.events",
 				},
@@ -241,7 +241,7 @@ func TestSinkConfig(t *testing.T) {
 		require.NoError(t, err)
 		defer func() { _ = handle.Close() }()
 
-		cfg, err := readSinkConfig(attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig), handle, "primary-nats")
+		cfg, err := readSinkConfig(attributes.NewAttribute[*ledgerpb.SinkConfig](dal.SubAttrSinkConfig), handle, "primary-nats")
 		require.NoError(t, err)
 		require.NotNil(t, cfg)
 		require.Equal(t, "primary-nats", cfg.GetName())
@@ -260,19 +260,19 @@ func TestSinkConfig(t *testing.T) {
 		s := newTestStore(t)
 
 		batch := s.OpenWriteSession()
-		require.NoError(t, saveSinkConfigBatch(batch, &commonpb.SinkConfig{
+		require.NoError(t, saveSinkConfigBatch(batch, &ledgerpb.SinkConfig{
 			Name:         "sink-a",
 			ControllerId: "uid-1",
 			Format:       "json",
-			Type: &commonpb.SinkConfig_Nats{
-				Nats: &commonpb.NatsSinkConfig{Url: "nats://a:4222"},
+			Type: &ledgerpb.SinkConfig_Nats{
+				Nats: &ledgerpb.NatsSinkConfig{Url: "nats://a:4222"},
 			},
 		}))
-		require.NoError(t, saveSinkConfigBatch(batch, &commonpb.SinkConfig{
+		require.NoError(t, saveSinkConfigBatch(batch, &ledgerpb.SinkConfig{
 			Name:   "sink-b",
 			Format: "protobuf",
-			Type: &commonpb.SinkConfig_Nats{
-				Nats: &commonpb.NatsSinkConfig{Url: "nats://b:4222"},
+			Type: &ledgerpb.SinkConfig_Nats{
+				Nats: &ledgerpb.NatsSinkConfig{Url: "nats://b:4222"},
 			},
 		}))
 		require.NoError(t, batch.Commit())
@@ -281,7 +281,7 @@ func TestSinkConfig(t *testing.T) {
 		require.NoError(t, err)
 		defer func() { _ = handle.Close() }()
 
-		configs, err := query.ReadAllSinkConfigs(attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig), handle)
+		configs, err := query.ReadAllSinkConfigs(attributes.NewAttribute[*ledgerpb.SinkConfig](dal.SubAttrSinkConfig), handle)
 		require.NoError(t, err)
 		require.Len(t, configs, 2)
 		require.Equal(t, "uid-1", configs[0].GetControllerId())
@@ -293,18 +293,18 @@ func TestSinkConfig(t *testing.T) {
 
 		// Save two sinks
 		batch := s.OpenWriteSession()
-		require.NoError(t, saveSinkConfigBatch(batch, &commonpb.SinkConfig{
+		require.NoError(t, saveSinkConfigBatch(batch, &ledgerpb.SinkConfig{
 			Name:   "sink-a",
 			Format: "json",
-			Type: &commonpb.SinkConfig_Nats{
-				Nats: &commonpb.NatsSinkConfig{Url: "nats://a:4222"},
+			Type: &ledgerpb.SinkConfig_Nats{
+				Nats: &ledgerpb.NatsSinkConfig{Url: "nats://a:4222"},
 			},
 		}))
-		require.NoError(t, saveSinkConfigBatch(batch, &commonpb.SinkConfig{
+		require.NoError(t, saveSinkConfigBatch(batch, &ledgerpb.SinkConfig{
 			Name:   "sink-b",
 			Format: "json",
-			Type: &commonpb.SinkConfig_Nats{
-				Nats: &commonpb.NatsSinkConfig{Url: "nats://b:4222"},
+			Type: &ledgerpb.SinkConfig_Nats{
+				Nats: &ledgerpb.NatsSinkConfig{Url: "nats://b:4222"},
 			},
 		}))
 		require.NoError(t, batch.Commit())
@@ -318,13 +318,13 @@ func TestSinkConfig(t *testing.T) {
 		require.NoError(t, err)
 		defer func() { _ = handle.Close() }()
 
-		configs, err := query.ReadAllSinkConfigs(attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig), handle)
+		configs, err := query.ReadAllSinkConfigs(attributes.NewAttribute[*ledgerpb.SinkConfig](dal.SubAttrSinkConfig), handle)
 		require.NoError(t, err)
 		require.Len(t, configs, 1)
 		require.Equal(t, "sink-b", configs[0].GetName())
 
 		// Verify the deleted one returns nil
-		cfg, err := readSinkConfig(attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig), handle, "sink-a")
+		cfg, err := readSinkConfig(attributes.NewAttribute[*ledgerpb.SinkConfig](dal.SubAttrSinkConfig), handle, "sink-a")
 		require.NoError(t, err)
 		require.Nil(t, cfg)
 	})
@@ -335,22 +335,22 @@ func TestSinkConfig(t *testing.T) {
 
 		// Save initial config
 		batch := s.OpenWriteSession()
-		require.NoError(t, saveSinkConfigBatch(batch, &commonpb.SinkConfig{
+		require.NoError(t, saveSinkConfigBatch(batch, &ledgerpb.SinkConfig{
 			Name:   "my-sink",
 			Format: "json",
-			Type: &commonpb.SinkConfig_Nats{
-				Nats: &commonpb.NatsSinkConfig{Url: "nats://old:4222"},
+			Type: &ledgerpb.SinkConfig_Nats{
+				Nats: &ledgerpb.NatsSinkConfig{Url: "nats://old:4222"},
 			},
 		}))
 		require.NoError(t, batch.Commit())
 
 		// Overwrite with new URL
 		batch = s.OpenWriteSession()
-		require.NoError(t, saveSinkConfigBatch(batch, &commonpb.SinkConfig{
+		require.NoError(t, saveSinkConfigBatch(batch, &ledgerpb.SinkConfig{
 			Name:   "my-sink",
 			Format: "protobuf",
-			Type: &commonpb.SinkConfig_Nats{
-				Nats: &commonpb.NatsSinkConfig{Url: "nats://new:4222"},
+			Type: &ledgerpb.SinkConfig_Nats{
+				Nats: &ledgerpb.NatsSinkConfig{Url: "nats://new:4222"},
 			},
 		}))
 		require.NoError(t, batch.Commit())
@@ -359,14 +359,14 @@ func TestSinkConfig(t *testing.T) {
 		require.NoError(t, err)
 		defer func() { _ = handle.Close() }()
 
-		cfg, err := readSinkConfig(attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig), handle, "my-sink")
+		cfg, err := readSinkConfig(attributes.NewAttribute[*ledgerpb.SinkConfig](dal.SubAttrSinkConfig), handle, "my-sink")
 		require.NoError(t, err)
 		require.NotNil(t, cfg)
 		require.Equal(t, "protobuf", cfg.GetFormat())
 		require.Equal(t, "nats://new:4222", cfg.GetNats().GetUrl())
 
 		// Should still be only one config
-		configs, err := query.ReadAllSinkConfigs(attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig), handle)
+		configs, err := query.ReadAllSinkConfigs(attributes.NewAttribute[*ledgerpb.SinkConfig](dal.SubAttrSinkConfig), handle)
 		require.NoError(t, err)
 		require.Len(t, configs, 1)
 	})

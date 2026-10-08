@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/pkg/scenario"
@@ -97,7 +97,7 @@ func runProvision(cmd *cobra.Command, args []string) error {
 	return runParallel(ctx, client, scale, workers, scenarios)
 }
 
-func runSingle(ctx context.Context, client servicepb.BucketServiceClient, scale float64, name string, fn scenario.ScenarioFunc) error {
+func runSingle(ctx context.Context, client ledgerpb.BucketServiceClient, scale float64, name string, fn scenario.ScenarioFunc) error {
 	spinner := cmdutil.StartSpinner("Running scenario: " + name)
 
 	runner := scenario.NewRunner(ctx, client).
@@ -117,7 +117,7 @@ func runSingle(ctx context.Context, client servicepb.BucketServiceClient, scale 
 	return nil
 }
 
-func runParallel(ctx context.Context, client servicepb.BucketServiceClient, scale float64, workers int, scenarios []namedScenario) error {
+func runParallel(ctx context.Context, client ledgerpb.BucketServiceClient, scale float64, workers int, scenarios []namedScenario) error {
 	pterm.Info.Printfln("Running %d scenarios with %d workers", len(scenarios), workers)
 
 	var mu sync.Mutex

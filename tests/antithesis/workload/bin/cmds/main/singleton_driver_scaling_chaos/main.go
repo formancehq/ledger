@@ -21,7 +21,7 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"k8s.io/client-go/dynamic"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -52,7 +52,7 @@ func main() {
 	}
 	defer func() { _ = conn.Close() }()
 
-	clusterClient := clusterpb.NewClusterServiceClient(conn)
+	clusterClient := ledgerpb.NewClusterServiceClient(conn)
 	lsClient := dynClient.Resource(internal.ClusterGVR).Namespace(internal.ClusterNamespace())
 
 	for {
@@ -67,7 +67,7 @@ func main() {
 	}
 }
 
-func chaosRound(ctx context.Context, lsClient dynamic.ResourceInterface, clusterClient clusterpb.ClusterServiceClient) {
+func chaosRound(ctx context.Context, lsClient dynamic.ResourceInterface, clusterClient ledgerpb.ClusterServiceClient) {
 	r := internal.Rand()
 
 	// Pick 2-4 rapid-fire scaling changes.

@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
@@ -80,9 +80,9 @@ func TestHTTPSinkRedirectEmitterCursorAndRetry(t *testing.T) {
 			builder, store := newTestBuilder(t)
 			// Persist two real logs, then drive the same batch boundary used by run.
 			session := store.OpenWriteSession()
-			logs := make([]*commonpb.Log, 0, 2)
+			logs := make([]*ledgerpb.Log, 0, 2)
 			for _, seq := range []uint64{1, 2} {
-				logs = append(logs, &commonpb.Log{Sequence: seq, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: fmt.Sprintf("ledger-%d", seq), CreatedAt: &commonpb.Timestamp{Data: 1000}}}}})
+				logs = append(logs, &ledgerpb.Log{Sequence: seq, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_CreateLedger{CreateLedger: &ledgerpb.CreatedLedgerLog{Name: fmt.Sprintf("ledger-%d", seq), CreatedAt: &ledgerpb.Timestamp{Data: 1000}}}}})
 			}
 			require.NoError(t, state.AppendLogs(session, logs))
 			require.NoError(t, state.SetAppliedIndex(session, 1))

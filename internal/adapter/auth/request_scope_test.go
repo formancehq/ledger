@@ -5,27 +5,27 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestRequiredScopeForRequest_CreateLedger(t *testing.T) {
 	t.Parallel()
 
-	req := &servicepb.Request{Type: &servicepb.Request_CreateLedger{}}
+	req := &ledgerpb.Request{Type: &ledgerpb.Request_CreateLedger{}}
 	assert.Equal(t, ScopeLedgersWrite, RequiredScopeForRequest(req))
 }
 
 func TestRequiredScopeForRequest_DeleteLedger(t *testing.T) {
 	t.Parallel()
 
-	req := &servicepb.Request{Type: &servicepb.Request_DeleteLedger{}}
+	req := &ledgerpb.Request{Type: &ledgerpb.Request_DeleteLedger{}}
 	assert.Equal(t, ScopeLedgersWrite, RequiredScopeForRequest(req))
 }
 
 func TestRequiredScopeForRequest_PromoteLedger(t *testing.T) {
 	t.Parallel()
 
-	req := &servicepb.Request{Type: &servicepb.Request_PromoteLedger{}}
+	req := &ledgerpb.Request{Type: &ledgerpb.Request_PromoteLedger{}}
 	assert.Equal(t, ScopeLedgersWrite, RequiredScopeForRequest(req))
 }
 
@@ -41,10 +41,10 @@ func TestRequiredScopeForRequest_IndexManagement(t *testing.T) {
 
 	indexRequests := []struct {
 		name string
-		req  *servicepb.Request
+		req  *ledgerpb.Request
 	}{
-		{"CreateIndex", &servicepb.Request{Type: &servicepb.Request_CreateIndex{}}},
-		{"DropIndex", &servicepb.Request{Type: &servicepb.Request_DropIndex{}}},
+		{"CreateIndex", &ledgerpb.Request{Type: &ledgerpb.Request_CreateIndex{}}},
+		{"DropIndex", &ledgerpb.Request{Type: &ledgerpb.Request_DropIndex{}}},
 	}
 
 	for _, tc := range indexRequests {
@@ -60,14 +60,14 @@ func TestRequiredScopeForRequest_OpsWrite(t *testing.T) {
 
 	opsWriteRequests := []struct {
 		name string
-		req  *servicepb.Request
+		req  *ledgerpb.Request
 	}{
-		{"RegisterSigningKey", &servicepb.Request{Type: &servicepb.Request_RegisterSigningKey{}}},
-		{"RevokeSigningKey", &servicepb.Request{Type: &servicepb.Request_RevokeSigningKey{}}},
-		{"SetSigningConfig", &servicepb.Request{Type: &servicepb.Request_SetSigningConfig{}}},
-		{"AddEventsSink", &servicepb.Request{Type: &servicepb.Request_AddEventsSink{}}},
-		{"RemoveEventsSink", &servicepb.Request{Type: &servicepb.Request_RemoveEventsSink{}}},
-		{"SetMaintenanceMode", &servicepb.Request{Type: &servicepb.Request_SetMaintenanceMode{}}},
+		{"RegisterSigningKey", &ledgerpb.Request{Type: &ledgerpb.Request_RegisterSigningKey{}}},
+		{"RevokeSigningKey", &ledgerpb.Request{Type: &ledgerpb.Request_RevokeSigningKey{}}},
+		{"SetSigningConfig", &ledgerpb.Request{Type: &ledgerpb.Request_SetSigningConfig{}}},
+		{"AddEventsSink", &ledgerpb.Request{Type: &ledgerpb.Request_AddEventsSink{}}},
+		{"RemoveEventsSink", &ledgerpb.Request{Type: &ledgerpb.Request_RemoveEventsSink{}}},
+		{"SetMaintenanceMode", &ledgerpb.Request{Type: &ledgerpb.Request_SetMaintenanceMode{}}},
 	}
 
 	for _, tc := range opsWriteRequests {
@@ -83,10 +83,10 @@ func TestRequiredScopeForRequest_MetadataWrite(t *testing.T) {
 
 	metadataWriteRequests := []struct {
 		name string
-		req  *servicepb.Request
+		req  *ledgerpb.Request
 	}{
-		{"SetMetadataFieldType", &servicepb.Request{Type: &servicepb.Request_SetMetadataFieldType{}}},
-		{"RemoveMetadataFieldType", &servicepb.Request{Type: &servicepb.Request_RemoveMetadataFieldType{}}},
+		{"SetMetadataFieldType", &ledgerpb.Request{Type: &ledgerpb.Request_SetMetadataFieldType{}}},
+		{"RemoveMetadataFieldType", &ledgerpb.Request{Type: &ledgerpb.Request_RemoveMetadataFieldType{}}},
 	}
 
 	for _, tc := range metadataWriteRequests {
@@ -102,11 +102,11 @@ func TestRequiredScopeForRequest_QueriesWrite(t *testing.T) {
 
 	queriesWriteRequests := []struct {
 		name string
-		req  *servicepb.Request
+		req  *ledgerpb.Request
 	}{
-		{"CreatePreparedQuery", &servicepb.Request{Type: &servicepb.Request_CreatePreparedQuery{}}},
-		{"UpdatePreparedQuery", &servicepb.Request{Type: &servicepb.Request_UpdatePreparedQuery{}}},
-		{"DeletePreparedQuery", &servicepb.Request{Type: &servicepb.Request_DeletePreparedQuery{}}},
+		{"CreatePreparedQuery", &ledgerpb.Request{Type: &ledgerpb.Request_CreatePreparedQuery{}}},
+		{"UpdatePreparedQuery", &ledgerpb.Request{Type: &ledgerpb.Request_UpdatePreparedQuery{}}},
+		{"DeletePreparedQuery", &ledgerpb.Request{Type: &ledgerpb.Request_DeletePreparedQuery{}}},
 	}
 
 	for _, tc := range queriesWriteRequests {
@@ -120,11 +120,11 @@ func TestRequiredScopeForRequest_QueriesWrite(t *testing.T) {
 func TestRequiredScopeForLedgerApply_CreateTransaction(t *testing.T) {
 	t.Parallel()
 
-	req := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
-				Action: &servicepb.LedgerAction{
-					Data: &servicepb.LedgerAction_CreateTransaction{},
+	req := &ledgerpb.Request{
+		Type: &ledgerpb.Request_Apply{
+			Apply: &ledgerpb.LedgerApplyRequest{
+				Action: &ledgerpb.LedgerAction{
+					Data: &ledgerpb.LedgerAction_CreateTransaction{},
 				},
 			},
 		},
@@ -135,11 +135,11 @@ func TestRequiredScopeForLedgerApply_CreateTransaction(t *testing.T) {
 func TestRequiredScopeForLedgerApply_RevertTransaction(t *testing.T) {
 	t.Parallel()
 
-	req := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
-				Action: &servicepb.LedgerAction{
-					Data: &servicepb.LedgerAction_RevertTransaction{},
+	req := &ledgerpb.Request{
+		Type: &ledgerpb.Request_Apply{
+			Apply: &ledgerpb.LedgerApplyRequest{
+				Action: &ledgerpb.LedgerAction{
+					Data: &ledgerpb.LedgerAction_RevertTransaction{},
 				},
 			},
 		},
@@ -150,11 +150,11 @@ func TestRequiredScopeForLedgerApply_RevertTransaction(t *testing.T) {
 func TestRequiredScopeForLedgerApply_AddMetadata(t *testing.T) {
 	t.Parallel()
 
-	req := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
-				Action: &servicepb.LedgerAction{
-					Data: &servicepb.LedgerAction_AddMetadata{},
+	req := &ledgerpb.Request{
+		Type: &ledgerpb.Request_Apply{
+			Apply: &ledgerpb.LedgerApplyRequest{
+				Action: &ledgerpb.LedgerAction{
+					Data: &ledgerpb.LedgerAction_AddMetadata{},
 				},
 			},
 		},
@@ -165,11 +165,11 @@ func TestRequiredScopeForLedgerApply_AddMetadata(t *testing.T) {
 func TestRequiredScopeForLedgerApply_DeleteMetadata(t *testing.T) {
 	t.Parallel()
 
-	req := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
-				Action: &servicepb.LedgerAction{
-					Data: &servicepb.LedgerAction_DeleteMetadata{},
+	req := &ledgerpb.Request{
+		Type: &ledgerpb.Request_Apply{
+			Apply: &ledgerpb.LedgerApplyRequest{
+				Action: &ledgerpb.LedgerAction{
+					Data: &ledgerpb.LedgerAction_DeleteMetadata{},
 				},
 			},
 		},
@@ -180,8 +180,8 @@ func TestRequiredScopeForLedgerApply_DeleteMetadata(t *testing.T) {
 func TestRequiredScopeForLedgerApply_NilApply(t *testing.T) {
 	t.Parallel()
 
-	req := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
+	req := &ledgerpb.Request{
+		Type: &ledgerpb.Request_Apply{
 			Apply: nil,
 		},
 	}
@@ -200,15 +200,15 @@ func TestRequiredScopeForRequest_BusinessVariantsDoNotRequireOpsWrite(t *testing
 
 	businessRequests := []struct {
 		name     string
-		req      *servicepb.Request
+		req      *ledgerpb.Request
 		expected Scope
 	}{
-		{"SaveNumscript", &servicepb.Request{Type: &servicepb.Request_SaveNumscript{}}, ScopeLedgersWrite},
-		{"SaveLedgerMetadata", &servicepb.Request{Type: &servicepb.Request_SaveLedgerMetadata{}}, ScopeMetadataWrite},
-		{"DeleteLedgerMetadata", &servicepb.Request{Type: &servicepb.Request_DeleteLedgerMetadata{}}, ScopeMetadataWrite},
-		{"AddAccountType", &servicepb.Request{Type: &servicepb.Request_AddAccountType{}}, ScopeMetadataWrite},
-		{"RemoveAccountType", &servicepb.Request{Type: &servicepb.Request_RemoveAccountType{}}, ScopeMetadataWrite},
-		{"SetDefaultEnforcementMode", &servicepb.Request{Type: &servicepb.Request_SetDefaultEnforcementMode{}}, ScopeMetadataWrite},
+		{"SaveNumscript", &ledgerpb.Request{Type: &ledgerpb.Request_SaveNumscript{}}, ScopeLedgersWrite},
+		{"SaveLedgerMetadata", &ledgerpb.Request{Type: &ledgerpb.Request_SaveLedgerMetadata{}}, ScopeMetadataWrite},
+		{"DeleteLedgerMetadata", &ledgerpb.Request{Type: &ledgerpb.Request_DeleteLedgerMetadata{}}, ScopeMetadataWrite},
+		{"AddAccountType", &ledgerpb.Request{Type: &ledgerpb.Request_AddAccountType{}}, ScopeMetadataWrite},
+		{"RemoveAccountType", &ledgerpb.Request{Type: &ledgerpb.Request_RemoveAccountType{}}, ScopeMetadataWrite},
+		{"SetDefaultEnforcementMode", &ledgerpb.Request{Type: &ledgerpb.Request_SetDefaultEnforcementMode{}}, ScopeMetadataWrite},
 	}
 
 	for _, tc := range businessRequests {
@@ -232,12 +232,12 @@ func TestRequiredScopeForRequest_QueryCheckpointsRequireClusterWrite(t *testing.
 
 	checkpointRequests := []struct {
 		name string
-		req  *servicepb.Request
+		req  *ledgerpb.Request
 	}{
-		{"CreateQueryCheckpoint", &servicepb.Request{Type: &servicepb.Request_CreateQueryCheckpoint{}}},
-		{"DeleteQueryCheckpoint", &servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpoint{}}},
-		{"SetQueryCheckpointSchedule", &servicepb.Request{Type: &servicepb.Request_SetQueryCheckpointSchedule{}}},
-		{"DeleteQueryCheckpointSchedule", &servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpointSchedule{}}},
+		{"CreateQueryCheckpoint", &ledgerpb.Request{Type: &ledgerpb.Request_CreateQueryCheckpoint{}}},
+		{"DeleteQueryCheckpoint", &ledgerpb.Request{Type: &ledgerpb.Request_DeleteQueryCheckpoint{}}},
+		{"SetQueryCheckpointSchedule", &ledgerpb.Request{Type: &ledgerpb.Request_SetQueryCheckpointSchedule{}}},
+		{"DeleteQueryCheckpointSchedule", &ledgerpb.Request{Type: &ledgerpb.Request_DeleteQueryCheckpointSchedule{}}},
 	}
 
 	for _, tc := range checkpointRequests {
@@ -261,17 +261,17 @@ func TestRequiredScopeForRequest_QueryCheckpointsRequireClusterWrite(t *testing.
 func TestRequiredScopeForLedgerApply_AccountTypeActions(t *testing.T) {
 	t.Parallel()
 
-	applyWith := func(action *servicepb.LedgerAction) *servicepb.Request {
-		return &servicepb.Request{Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{Action: action},
+	applyWith := func(action *ledgerpb.LedgerAction) *ledgerpb.Request {
+		return &ledgerpb.Request{Type: &ledgerpb.Request_Apply{
+			Apply: &ledgerpb.LedgerApplyRequest{Action: action},
 		}}
 	}
 
 	t.Run("AddAccountType", func(t *testing.T) {
 		t.Parallel()
 
-		req := applyWith(&servicepb.LedgerAction{
-			Data: &servicepb.LedgerAction_AddAccountType{},
+		req := applyWith(&ledgerpb.LedgerAction{
+			Data: &ledgerpb.LedgerAction_AddAccountType{},
 		})
 		assert.Equal(t, ScopeMetadataWrite, RequiredScopeForRequest(req))
 	})
@@ -279,8 +279,8 @@ func TestRequiredScopeForLedgerApply_AccountTypeActions(t *testing.T) {
 	t.Run("RemoveAccountType", func(t *testing.T) {
 		t.Parallel()
 
-		req := applyWith(&servicepb.LedgerAction{
-			Data: &servicepb.LedgerAction_RemoveAccountType{},
+		req := applyWith(&ledgerpb.LedgerAction{
+			Data: &ledgerpb.LedgerAction_RemoveAccountType{},
 		})
 		assert.Equal(t, ScopeMetadataWrite, RequiredScopeForRequest(req))
 	})
@@ -288,8 +288,8 @@ func TestRequiredScopeForLedgerApply_AccountTypeActions(t *testing.T) {
 	t.Run("SetDefaultEnforcementMode", func(t *testing.T) {
 		t.Parallel()
 
-		req := applyWith(&servicepb.LedgerAction{
-			Data: &servicepb.LedgerAction_SetDefaultEnforcementMode{},
+		req := applyWith(&ledgerpb.LedgerAction{
+			Data: &ledgerpb.LedgerAction_SetDefaultEnforcementMode{},
 		})
 		assert.Equal(t, ScopeMetadataWrite, RequiredScopeForRequest(req))
 	})
@@ -303,16 +303,16 @@ func TestRequiredScopeForRequest_FailsClosed(t *testing.T) {
 
 	failClosed := []struct {
 		name string
-		req  *servicepb.Request
+		req  *ledgerpb.Request
 	}{
 		{"nil request", nil},
-		{"no oneof set", &servicepb.Request{}},
-		{"apply with nil LedgerApplyRequest", &servicepb.Request{Type: &servicepb.Request_Apply{}}},
-		{"apply with nil action", &servicepb.Request{Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{},
+		{"no oneof set", &ledgerpb.Request{}},
+		{"apply with nil LedgerApplyRequest", &ledgerpb.Request{Type: &ledgerpb.Request_Apply{}}},
+		{"apply with nil action", &ledgerpb.Request{Type: &ledgerpb.Request_Apply{
+			Apply: &ledgerpb.LedgerApplyRequest{},
 		}}},
-		{"apply with empty action", &servicepb.Request{Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{Action: &servicepb.LedgerAction{}},
+		{"apply with empty action", &ledgerpb.Request{Type: &ledgerpb.Request_Apply{
+			Apply: &ledgerpb.LedgerApplyRequest{Action: &ledgerpb.LedgerAction{}},
 		}}},
 	}
 

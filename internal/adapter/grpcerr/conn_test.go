@@ -16,7 +16,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/apierr"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -73,7 +73,7 @@ func TestConn_StateGetterControlsCloseNormalization(t *testing.T) {
 // Recv() rather than from the method call — the case per-method conversion
 // cannot reach, because the method has already returned nil by then.
 type rejectingServer struct {
-	commonpb.UnimplementedBucketServiceServer
+	ledgerpb.UnimplementedBucketServiceServer
 
 	err error
 
@@ -83,17 +83,17 @@ type rejectingServer struct {
 }
 
 func (s *rejectingServer) GetTransaction(
-	context.Context, *commonpb.GetTransactionRequest,
-) (*commonpb.GetTransactionResponse, error) {
+	context.Context, *ledgerpb.GetTransactionRequest,
+) (*ledgerpb.GetTransactionResponse, error) {
 	return nil, s.err
 }
 
 func (s *rejectingServer) ListLedgers(
-	_ *commonpb.ListLedgersRequest,
-	stream ggrpc.ServerStreamingServer[commonpb.LedgerInfo],
+	_ *ledgerpb.ListLedgersRequest,
+	stream ggrpc.ServerStreamingServer[ledgerpb.LedgerInfo],
 ) error {
 	for range s.rowsBeforeError {
-		if err := stream.Send(&commonpb.LedgerInfo{Name: "some-ledger"}); err != nil {
+		if err := stream.Send(&ledgerpb.LedgerInfo{Name: "some-ledger"}); err != nil {
 			return err
 		}
 	}
@@ -104,12 +104,12 @@ func (s *rejectingServer) ListLedgers(
 // dialWrapped serves srv over bufconn and returns a client whose connection is
 // decorated, so the test exercises the real generated client against the real
 // wire — not a hand-built status value.
-func dialWrapped(t *testing.T, srv commonpb.BucketServiceServer, opts ...ggrpc.DialOption) commonpb.BucketServiceClient {
+func dialWrapped(t *testing.T, srv ledgerpb.BucketServiceServer, opts ...ggrpc.DialOption) ledgerpb.BucketServiceClient {
 	t.Helper()
 
 	lis := bufconn.Listen(1 << 20)
 	server := ggrpc.NewServer()
-	commonpb.RegisterBucketServiceServer(server, srv)
+	ledgerpb.RegisterBucketServiceServer(server, srv)
 
 	go func() { _ = server.Serve(lis) }()
 	t.Cleanup(server.Stop)
@@ -124,7 +124,7 @@ func dialWrapped(t *testing.T, srv commonpb.BucketServiceServer, opts ...ggrpc.D
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
 
-	return commonpb.NewBucketServiceClient(NewConn(conn))
+	return ledgerpb.NewBucketServiceClient(NewConn(conn))
 }
 
 // businessStatus builds the status a leader sends for a business rejection.
@@ -150,7 +150,7 @@ func TestConn_UnaryErrorIsReconstructed(t *testing.T) {
 			domain.ErrReasonMetadataFieldNotInSchema),
 	})
 
-	_, err := client.GetTransaction(context.Background(), &commonpb.GetTransactionRequest{
+	_, err := client.GetTransaction(context.Background(), &ledgerpb.GetTransactionRequest{
 		Ledger:        "test",
 		TransactionId: 1,
 	})
@@ -175,7 +175,7 @@ func TestConn_StreamErrorIsReconstructed(t *testing.T) {
 		err:             businessStatus(t, codes.FailedPrecondition, "ledger deleted: foo", domain.ErrReasonLedgerDeleted),
 	})
 
-	stream, err := client.ListLedgers(context.Background(), &commonpb.ListLedgersRequest{})
+	stream, err := client.ListLedgers(context.Background(), &ledgerpb.ListLedgersRequest{})
 	require.NoError(t, err, "the rejection is not reported here — that is the point")
 
 	var received int
@@ -206,7 +206,7 @@ func TestConn_StreamEndStillEOF(t *testing.T) {
 
 	client := dialWrapped(t, &rejectingServer{rowsBeforeError: 3, err: nil})
 
-	stream, err := client.ListLedgers(context.Background(), &commonpb.ListLedgersRequest{})
+	stream, err := client.ListLedgers(context.Background(), &ledgerpb.ListLedgersRequest{})
 	require.NoError(t, err)
 
 	var received int
@@ -234,7 +234,7 @@ func TestConn_StreamCanceledStaysCanceled(t *testing.T) {
 		err:             status.Error(codes.Canceled, "serving node torn down"),
 	})
 
-	stream, err := client.ListLedgers(context.Background(), &commonpb.ListLedgersRequest{})
+	stream, err := client.ListLedgers(context.Background(), &ledgerpb.ListLedgersRequest{})
 	require.NoError(t, err)
 
 	for {
@@ -253,7 +253,7 @@ func TestConn_BareNotFoundIsReconstructed(t *testing.T) {
 
 	client := dialWrapped(t, &rejectingServer{err: status.Error(codes.NotFound, "ledger foo not found")})
 
-	_, err := client.GetTransaction(context.Background(), &commonpb.GetTransactionRequest{
+	_, err := client.GetTransaction(context.Background(), &ledgerpb.GetTransactionRequest{
 		Ledger:        "foo",
 		TransactionId: 1,
 	})
@@ -270,7 +270,7 @@ func TestConn_SuccessPathUnaffected(t *testing.T) {
 
 	client := dialWrapped(t, &rejectingServer{rowsBeforeError: 1, err: nil})
 
-	stream, err := client.ListLedgers(context.Background(), &commonpb.ListLedgersRequest{})
+	stream, err := client.ListLedgers(context.Background(), &ledgerpb.ListLedgersRequest{})
 	require.NoError(t, err)
 
 	info, err := stream.Recv()
@@ -309,7 +309,7 @@ func TestConn_UnknownReasonKeepsItsExactCodeOverTheWire(t *testing.T) {
 			"SOME_REASON_FROM_A_NEWER_SERVER", map[string]string{"k": "v"}),
 	})
 
-	stream, err := client.ListLedgers(context.Background(), &commonpb.ListLedgersRequest{})
+	stream, err := client.ListLedgers(context.Background(), &ledgerpb.ListLedgersRequest{})
 	require.NoError(t, err)
 
 	var recvErr error
@@ -343,7 +343,7 @@ func TestConn_InvalidWirePairIsRejectedOverTheWire(t *testing.T) {
 			map[string]string{"name": "secret-ledger"}),
 	})
 
-	_, err := client.GetTransaction(context.Background(), &commonpb.GetTransactionRequest{
+	_, err := client.GetTransaction(context.Background(), &ledgerpb.GetTransactionRequest{
 		Ledger:        "test",
 		TransactionId: 1,
 	})

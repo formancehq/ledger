@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
@@ -19,21 +19,21 @@ import (
 func TestExtractSkippableReasonsFromApply_AcceptsWhitelistedReason(t *testing.T) {
 	t.Parallel()
 
-	apply := &commonpb.LedgerApplyRequest{
+	apply := &ledgerpb.LedgerApplyRequest{
 		Ledger: "L",
-		Action: &commonpb.LedgerAction{
-			Data: &commonpb.LedgerAction_CreateTransaction{
-				CreateTransaction: &commonpb.CreateTransactionPayload{},
+		Action: &ledgerpb.LedgerAction{
+			Data: &ledgerpb.LedgerAction_CreateTransaction{
+				CreateTransaction: &ledgerpb.CreateTransactionPayload{},
 			},
 		},
-		SkippableReasons: []commonpb.ErrorReason{
-			commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+		SkippableReasons: []ledgerpb.ErrorReason{
+			ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 		},
 	}
 
 	got, err := extractSkippableReasonsFromApply(apply)
 	require.NoError(t, err)
-	require.Equal(t, []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT}, got)
+	require.Equal(t, []ledgerpb.ErrorReason{ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT}, got)
 }
 
 // TestExtractSkippableReasonsFromApply_EmptyListReturnsNil verifies the
@@ -43,11 +43,11 @@ func TestExtractSkippableReasonsFromApply_AcceptsWhitelistedReason(t *testing.T)
 func TestExtractSkippableReasonsFromApply_EmptyListReturnsNil(t *testing.T) {
 	t.Parallel()
 
-	apply := &commonpb.LedgerApplyRequest{
+	apply := &ledgerpb.LedgerApplyRequest{
 		Ledger: "L",
-		Action: &commonpb.LedgerAction{
-			Data: &commonpb.LedgerAction_CreateTransaction{
-				CreateTransaction: &commonpb.CreateTransactionPayload{},
+		Action: &ledgerpb.LedgerAction{
+			Data: &ledgerpb.LedgerAction_CreateTransaction{
+				CreateTransaction: &ledgerpb.CreateTransactionPayload{},
 			},
 		},
 	}
@@ -64,21 +64,21 @@ func TestExtractSkippableReasonsFromApply_EmptyListReturnsNil(t *testing.T) {
 func TestExtractSkippableReasonsFromApply_RejectsUnspecified(t *testing.T) {
 	t.Parallel()
 
-	apply := &commonpb.LedgerApplyRequest{
+	apply := &ledgerpb.LedgerApplyRequest{
 		Ledger: "L",
-		Action: &commonpb.LedgerAction{
-			Data: &commonpb.LedgerAction_CreateTransaction{
-				CreateTransaction: &commonpb.CreateTransactionPayload{},
+		Action: &ledgerpb.LedgerAction{
+			Data: &ledgerpb.LedgerAction_CreateTransaction{
+				CreateTransaction: &ledgerpb.CreateTransactionPayload{},
 			},
 		},
-		SkippableReasons: []commonpb.ErrorReason{
-			commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED,
+		SkippableReasons: []ledgerpb.ErrorReason{
+			ledgerpb.ErrorReason_ERROR_REASON_UNSPECIFIED,
 		},
 	}
 
 	got, err := extractSkippableReasonsFromApply(apply)
 	require.Nil(t, got)
-	requireInvalidSkippableReason(t, err, commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED)
+	requireInvalidSkippableReason(t, err, ledgerpb.ErrorReason_ERROR_REASON_UNSPECIFIED)
 }
 
 // TestExtractSkippableReasonsFromApply_RejectsOutOfWhitelist exercises the
@@ -88,21 +88,21 @@ func TestExtractSkippableReasonsFromApply_RejectsUnspecified(t *testing.T) {
 func TestExtractSkippableReasonsFromApply_RejectsOutOfWhitelist(t *testing.T) {
 	t.Parallel()
 
-	apply := &commonpb.LedgerApplyRequest{
+	apply := &ledgerpb.LedgerApplyRequest{
 		Ledger: "L",
-		Action: &commonpb.LedgerAction{
-			Data: &commonpb.LedgerAction_CreateTransaction{
-				CreateTransaction: &commonpb.CreateTransactionPayload{},
+		Action: &ledgerpb.LedgerAction{
+			Data: &ledgerpb.LedgerAction_CreateTransaction{
+				CreateTransaction: &ledgerpb.CreateTransactionPayload{},
 			},
 		},
-		SkippableReasons: []commonpb.ErrorReason{
-			commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+		SkippableReasons: []ledgerpb.ErrorReason{
+			ledgerpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
 		},
 	}
 
 	got, err := extractSkippableReasonsFromApply(apply)
 	require.Nil(t, got)
-	requireInvalidSkippableReason(t, err, commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS)
+	requireInvalidSkippableReason(t, err, ledgerpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS)
 }
 
 // TestExtractSkippableReasonsFromApply_RejectsOnUnsupportedAction covers
@@ -113,24 +113,24 @@ func TestExtractSkippableReasonsFromApply_RejectsOutOfWhitelist(t *testing.T) {
 func TestExtractSkippableReasonsFromApply_RejectsOnUnsupportedAction(t *testing.T) {
 	t.Parallel()
 
-	apply := &commonpb.LedgerApplyRequest{
+	apply := &ledgerpb.LedgerApplyRequest{
 		Ledger: "L",
-		Action: &commonpb.LedgerAction{
-			Data: &commonpb.LedgerAction_AddMetadata{
-				AddMetadata: &commonpb.SaveMetadataCommand{},
+		Action: &ledgerpb.LedgerAction{
+			Data: &ledgerpb.LedgerAction_AddMetadata{
+				AddMetadata: &ledgerpb.SaveMetadataCommand{},
 			},
 		},
-		SkippableReasons: []commonpb.ErrorReason{
-			commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+		SkippableReasons: []ledgerpb.ErrorReason{
+			ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 		},
 	}
 
 	got, err := extractSkippableReasonsFromApply(apply)
 	require.Nil(t, got)
-	requireInvalidSkippableReason(t, err, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
+	requireInvalidSkippableReason(t, err, ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
 }
 
-func requireInvalidSkippableReason(t *testing.T, err error, expected commonpb.ErrorReason) {
+func requireInvalidSkippableReason(t *testing.T, err error, expected ledgerpb.ErrorReason) {
 	t.Helper()
 	require.Error(t, err)
 

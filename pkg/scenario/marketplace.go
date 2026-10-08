@@ -6,7 +6,7 @@ import (
 	"math/big"
 	"strconv"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
@@ -35,7 +35,7 @@ func MarketplaceBlocks() *BlockGroup {
 	}
 }
 
-func marketplaceDeposit(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
+func marketplaceDeposit(ctx context.Context, client ledgerpb.BucketServiceClient, r RandFunc) (*ledgerpb.ApplyResponse, error) {
 	customerID := 1 + RandIntN(r, MarketplaceNumCustomers)
 	address := fmt.Sprintf("customer:%d", customerID)
 	amount := int64(100_000) + RandInt64N(r, int64(MarketplaceDepositAmt))
@@ -48,7 +48,7 @@ func marketplaceDeposit(ctx context.Context, client commonpb.BucketServiceClient
 	)
 }
 
-func marketplacePurchase(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
+func marketplacePurchase(ctx context.Context, client ledgerpb.BucketServiceClient, r RandFunc) (*ledgerpb.ApplyResponse, error) {
 	customerID := 1 + RandIntN(r, MarketplaceNumCustomers)
 	merchantID := 1 + RandIntN(r, MarketplaceNumMerchants)
 	customer := fmt.Sprintf("customer:%d", customerID)
@@ -71,7 +71,7 @@ func marketplacePurchase(ctx context.Context, client commonpb.BucketServiceClien
 	)
 }
 
-func marketplaceRevert(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
+func marketplaceRevert(ctx context.Context, client ledgerpb.BucketServiceClient, r RandFunc) (*ledgerpb.ApplyResponse, error) {
 	tx, ok := GetNonRevertedTransaction(ctx, client, MarketplaceLedger, r)
 	if !ok {
 		return nil, ErrSkip
@@ -82,7 +82,7 @@ func marketplaceRevert(ctx context.Context, client commonpb.BucketServiceClient,
 	)
 }
 
-func marketplacePayout(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
+func marketplacePayout(ctx context.Context, client ledgerpb.BucketServiceClient, r RandFunc) (*ledgerpb.ApplyResponse, error) {
 	merchantID := 1 + RandIntN(r, MarketplaceNumMerchants)
 	merchant := fmt.Sprintf("merchant:%d", merchantID)
 
@@ -99,7 +99,7 @@ func marketplacePayout(ctx context.Context, client commonpb.BucketServiceClient,
 	)
 }
 
-func marketplaceMetadata(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
+func marketplaceMetadata(ctx context.Context, client ledgerpb.BucketServiceClient, r RandFunc) (*ledgerpb.ApplyResponse, error) {
 	var address string
 	if RandIntN(r, 2) == 0 {
 		address = fmt.Sprintf("customer:%d", 1+RandIntN(r, MarketplaceNumCustomers))
@@ -128,8 +128,8 @@ func marketplaceMetadata(ctx context.Context, client commonpb.BucketServiceClien
 
 // MarketplaceSetupActions returns the Apply requests that create the ledger,
 // account types, and numscript library for the marketplace scenario.
-func MarketplaceSetupActions() []*commonpb.Request {
-	return []*commonpb.Request{
+func MarketplaceSetupActions() []*ledgerpb.Request {
+	return []*ledgerpb.Request{
 		actions.CreateLedgerAction(MarketplaceLedger, nil),
 		actions.AddAccountTypeAction(MarketplaceLedger, "customer", "customer:{id}"),
 		actions.AddAccountTypeAction(MarketplaceLedger, "merchant", "merchant:{id}"),
@@ -164,11 +164,11 @@ send $amount (
   destination = @platform:payouts
 )`, "1.0.0"),
 		actions.CreatePreparedQueryAction("customer-query", MarketplaceLedger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			actions.AddressPrefixFilter("customer:"),
 		),
 		actions.CreatePreparedQueryAction("accounts-by-prefix", MarketplaceLedger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			actions.ParamAddressPrefixFilter("prefix"),
 		),
 	}
@@ -214,7 +214,7 @@ func RunMarketplace(r *Runner) error {
 
 	// --- Customer Deposits ---
 	{
-		reqs := make([]*commonpb.Request, 0, numCustomers)
+		reqs := make([]*ledgerpb.Request, 0, numCustomers)
 		for i := 1; i <= numCustomers; i++ {
 			reqs = append(reqs, actions.CreateScriptRefTransactionAction(MarketplaceLedger, "deposit", "1.0.0", map[string]string{
 				"customer": fmt.Sprintf("customer:%d", i),
@@ -228,7 +228,7 @@ func RunMarketplace(r *Runner) error {
 
 	// --- Purchases with Fees (batched) ---
 	{
-		reqs := make([]*commonpb.Request, 0, numPurchases)
+		reqs := make([]*ledgerpb.Request, 0, numPurchases)
 		for i := range numPurchases {
 			customer := 1 + i%numCustomers
 			merchant := 1 + i%numMerchants
@@ -353,7 +353,7 @@ send $amount (
 
 	// --- Raw Postings ---
 	if _, err := r.Step("RawPostings",
-		actions.CreateTransactionAction(MarketplaceLedger, []*commonpb.Posting{
+		actions.CreateTransactionAction(MarketplaceLedger, []*ledgerpb.Posting{
 			actions.NewPosting("customer:2", "customer:3", big.NewInt(50), "USD/2"),
 		}, nil, nil),
 	); err != nil {

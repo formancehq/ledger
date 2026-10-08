@@ -9,7 +9,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -26,11 +26,11 @@ func mirrorPointKey(kb *dal.KeyBuilder, sub byte, ledgerName string) []byte {
 
 // ReadMirrorStatus returns the last sync error for a mirror ledger.
 // Returns nil if no error is recorded.
-func ReadMirrorStatus(reader dal.PebbleGetter, ledgerName string) (*commonpb.MirrorSyncError, error) {
+func ReadMirrorStatus(reader dal.PebbleGetter, ledgerName string) (*ledgerpb.MirrorSyncError, error) {
 	kb := dal.NewKeyBuilder()
 	key := mirrorPointKey(kb, dal.SubPLMirrorStatus, ledgerName)
 
-	syncErr, err := dal.ReadProto[*commonpb.MirrorSyncError](reader, key)
+	syncErr, err := dal.ReadProto[*ledgerpb.MirrorSyncError](reader, key)
 	if err != nil {
 		return nil, fmt.Errorf("reading mirror status: %w", err)
 	}
@@ -61,7 +61,7 @@ func ReadMirrorSyncProgress(
 	reader dal.PebbleGetter,
 	boundaries *attributes.Attribute[*raftcmdpb.LedgerBoundaries],
 	ledgerName string,
-) (*commonpb.MirrorSyncProgress, error) {
+) (*ledgerpb.MirrorSyncProgress, error) {
 	_, span := queryTracer.Start(ctx, "query.read_mirror_sync_progress",
 		trace.WithAttributes(attribute.String("ledger", ledgerName)))
 	defer span.End()
@@ -83,9 +83,9 @@ func ReadMirrorSyncProgress(
 		return nil, err
 	}
 
-	state := commonpb.MirrorSyncState_MIRROR_SYNC_STATE_SYNCING
+	state := ledgerpb.MirrorSyncState_MIRROR_SYNC_STATE_SYNCING
 	if sourceHead > 0 && cursor >= sourceHead {
-		state = commonpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING
+		state = ledgerpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING
 	}
 
 	var remaining uint64
@@ -99,7 +99,7 @@ func ReadMirrorSyncProgress(
 		attribute.Int64("mirror.remaining", int64(remaining)),
 	)
 
-	return &commonpb.MirrorSyncProgress{
+	return &ledgerpb.MirrorSyncProgress{
 		State:          state,
 		Cursor:         cursor,
 		SourceLogCount: sourceHead,
@@ -109,7 +109,7 @@ func ReadMirrorSyncProgress(
 }
 
 // ReadMirrorLedgers returns all ledgers in MIRROR mode.
-func ReadMirrorLedgers(ctx context.Context, reader dal.PebbleReader) ([]*commonpb.LedgerInfo, error) {
+func ReadMirrorLedgers(ctx context.Context, reader dal.PebbleReader) ([]*ledgerpb.LedgerInfo, error) {
 	cursor, err := ReadLedgers(ctx, reader)
 	if err != nil {
 		return nil, fmt.Errorf("reading ledgers: %w", err)
@@ -117,7 +117,7 @@ func ReadMirrorLedgers(ctx context.Context, reader dal.PebbleReader) ([]*commonp
 
 	defer func() { _ = cursor.Close() }()
 
-	var result []*commonpb.LedgerInfo
+	var result []*ledgerpb.LedgerInfo
 
 	for {
 		info, err := cursor.Next()
@@ -129,7 +129,7 @@ func ReadMirrorLedgers(ctx context.Context, reader dal.PebbleReader) ([]*commonp
 			return nil, fmt.Errorf("iterating ledgers: %w", err)
 		}
 
-		if info.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR && info.GetDeletedAt() == nil {
+		if info.GetMode() == ledgerpb.LedgerMode_LEDGER_MODE_MIRROR && info.GetDeletedAt() == nil {
 			result = append(result, info)
 		}
 	}

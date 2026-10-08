@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -40,7 +40,7 @@ func newTestBuffer(t *testing.T) (*WriteSet, *Machine, *dal.Store) {
 	t.Helper()
 	machine, dataStore, _ := newTestMachine(t)
 	buf := NewWriteSet(machine)
-	buf.Reset(&commonpb.Timestamp{Data: 1700000000})
+	buf.Reset(&ledgerpb.Timestamp{Data: 1700000000})
 
 	return buf, machine, dataStore
 }
@@ -55,7 +55,7 @@ func TestWriteSetGetPutLedger(t *testing.T) {
 	require.Nil(t, info)
 
 	// Put and get
-	buf.Ledgers().Put(domain.LedgerKey{Name: "test"}, &commonpb.LedgerInfo{Name: "test"})
+	buf.Ledgers().Put(domain.LedgerKey{Name: "test"}, &ledgerpb.LedgerInfo{Name: "test"})
 	info, err = buf.Ledgers().Get(domain.LedgerKey{Name: "test"})
 	require.NoError(t, err)
 	require.Equal(t, "test", info.GetName())
@@ -91,7 +91,7 @@ func TestWriteSetGetPutAccountMetadata(t *testing.T) {
 	_, err := buf.AccountMetadata().Get(key)
 	require.ErrorIs(t, err, domain.ErrNotFound)
 
-	buf.AccountMetadata().Put(key, commonpb.NewStringValue("admin"))
+	buf.AccountMetadata().Put(key, ledgerpb.NewStringValue("admin"))
 	val, err := buf.AccountMetadata().Get(key)
 	require.NoError(t, err)
 	require.NotNil(t, val)
@@ -118,7 +118,7 @@ func TestResolveNumscriptContent_AbsentReturnsNilNilNotError(t *testing.T) {
 	require.Nil(t, info)
 
 	// Put then re-read — the same reader must now return the stored content.
-	buf.PutNumscript("test-ledger", &commonpb.NumscriptInfo{
+	buf.PutNumscript("test-ledger", &ledgerpb.NumscriptInfo{
 		Name:    "saved",
 		Version: "v1",
 		Content: "send [USD 1] (source = @world allocating { 1 to @bob })",
@@ -136,7 +136,7 @@ func TestWriteSetDeleteAccountMetadata(t *testing.T) {
 	buf, _, _ := newTestBuffer(t)
 
 	key := domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "bob"}, Key: "label"}
-	buf.AccountMetadata().Put(key, commonpb.NewStringValue("value"))
+	buf.AccountMetadata().Put(key, ledgerpb.NewStringValue("value"))
 
 	val, err := buf.AccountMetadata().Get(key)
 	require.NoError(t, err)
@@ -237,7 +237,7 @@ func TestWriteSetSigningKeyOperations(t *testing.T) {
 
 	// In a fresh buffer, children should come from committed state
 	buf2 := NewWriteSet(machine)
-	buf2.Reset(&commonpb.Timestamp{Data: 1700000000})
+	buf2.Reset(&ledgerpb.Timestamp{Data: 1700000000})
 	children := buf2.GetSigningKeyChildren("parent")
 	require.Contains(t, children, "child")
 
@@ -271,7 +271,7 @@ func TestWriteSetSigningKeyChildrenFoldsUpdatesInOrder(t *testing.T) {
 		t.Parallel()
 
 		buf := NewWriteSet(machine)
-		buf.Reset(&commonpb.Timestamp{Data: 1700000000})
+		buf.Reset(&ledgerpb.Timestamp{Data: 1700000000})
 
 		buf.RemoveSigningKey("child")
 		buf.AddSigningKey("child", []byte("pub-child-v2"), "parent")
@@ -284,7 +284,7 @@ func TestWriteSetSigningKeyChildrenFoldsUpdatesInOrder(t *testing.T) {
 		t.Parallel()
 
 		buf := NewWriteSet(machine)
-		buf.Reset(&commonpb.Timestamp{Data: 1700000000})
+		buf.Reset(&ledgerpb.Timestamp{Data: 1700000000})
 
 		buf.AddSigningKey("child", []byte("pub-child-v2"), "parent")
 		buf.RemoveSigningKey("child")
@@ -296,7 +296,7 @@ func TestWriteSetSigningKeyChildrenFoldsUpdatesInOrder(t *testing.T) {
 		t.Parallel()
 
 		buf := NewWriteSet(machine)
-		buf.Reset(&commonpb.Timestamp{Data: 1700000000})
+		buf.Reset(&ledgerpb.Timestamp{Data: 1700000000})
 
 		buf.AddSigningKey("child", []byte("pub-child-v2"), "other")
 
@@ -309,7 +309,7 @@ func TestWriteSetSigningKeyChildrenFoldsUpdatesInOrder(t *testing.T) {
 		t.Parallel()
 
 		buf := NewWriteSet(machine)
-		buf.Reset(&commonpb.Timestamp{Data: 1700000000})
+		buf.Reset(&ledgerpb.Timestamp{Data: 1700000000})
 
 		buf.AddSigningKey("fresh", []byte("pub-fresh"), "parent")
 		buf.AddSigningKey("fresh", []byte("pub-fresh"), "parent")
@@ -323,7 +323,7 @@ func TestWriteSetSigningKeyChildrenFoldsUpdatesInOrder(t *testing.T) {
 		t.Parallel()
 
 		buf := NewWriteSet(machine)
-		buf.Reset(&commonpb.Timestamp{Data: 1700000000})
+		buf.Reset(&ledgerpb.Timestamp{Data: 1700000000})
 
 		buf.AddSigningKey("zeta", []byte("pub-zeta"), "parent")
 		buf.AddSigningKey("alpha", []byte("pub-alpha"), "parent")
@@ -361,7 +361,7 @@ func TestWriteSetSigningKeyChildrenAfterReregistrationAsRoot(t *testing.T) {
 	machine.keyStore.AddPublicKey("child", []byte("pub-child-v2"), "")
 
 	buf := NewWriteSet(machine)
-	buf.Reset(&commonpb.Timestamp{Data: 1700000000})
+	buf.Reset(&ledgerpb.Timestamp{Data: 1700000000})
 
 	require.NotContains(t, buf.GetSigningKeyChildren("parent"), "child",
 		"a key re-registered as a root must no longer be cascaded from its old parent")
@@ -400,8 +400,8 @@ func TestWriteSetSinkConfigOperations(t *testing.T) {
 	require.Nil(t, cfg)
 
 	// Add a config via its log payload.
-	buf.Absorb(&raftcmdpb.Order{}, &commonpb.Log{Payload: &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_AddedEventsSink{AddedEventsSink: &commonpb.AddedEventsSinkLog{Config: &commonpb.SinkConfig{Name: "my-sink", ControllerId: "uid-1"}}},
+	buf.Absorb(&raftcmdpb.Order{}, &ledgerpb.Log{Payload: &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_AddedEventsSink{AddedEventsSink: &ledgerpb.AddedEventsSinkLog{Config: &ledgerpb.SinkConfig{Name: "my-sink", ControllerId: "uid-1"}}},
 	}})
 	require.True(t, buf.SinkConfigChanged())
 
@@ -412,8 +412,8 @@ func TestWriteSetSinkConfigOperations(t *testing.T) {
 	require.Equal(t, "uid-1", cfg.GetControllerId())
 
 	// Remove it.
-	buf.Absorb(&raftcmdpb.Order{}, &commonpb.Log{Payload: &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_RemovedEventsSink{RemovedEventsSink: &commonpb.RemovedEventsSinkLog{Name: "my-sink"}},
+	buf.Absorb(&raftcmdpb.Order{}, &ledgerpb.Log{Payload: &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_RemovedEventsSink{RemovedEventsSink: &ledgerpb.RemovedEventsSinkLog{Name: "my-sink"}},
 	}})
 	require.True(t, buf.SinkConfigChanged())
 }
@@ -459,11 +459,11 @@ func TestWriteSetResetIsolation(t *testing.T) {
 	// --- Proposal N: write various data ---
 
 	// Derived stores
-	buf.Ledgers().Put(domain.LedgerKey{Name: "leaked"}, &commonpb.LedgerInfo{Name: "leaked"})
+	buf.Ledgers().Put(domain.LedgerKey{Name: "leaked"}, &ledgerpb.LedgerInfo{Name: "leaked"})
 	buf.Boundaries().Put(domain.LedgerKey{Name: "leaked"}, &raftcmdpb.LedgerBoundaries{NextTransactionId: 99})
 	buf.AccountMetadata().Put(
 		domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "alice"}, Key: "role"},
-		commonpb.NewStringValue("admin"),
+		ledgerpb.NewStringValue("admin"),
 	)
 	buf.PutIdempotencyKey(
 		domain.IdempotencyKey{Key: "ik-leak"},
@@ -478,8 +478,8 @@ func TestWriteSetResetIsolation(t *testing.T) {
 	buf.AddSigningKey("key-leak", []byte("pub"), "")
 	buf.SetMaintenanceMode(true)
 	buf.SetRequireSignatures(true)
-	buf.Absorb(&raftcmdpb.Order{}, &commonpb.Log{Payload: &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_SetQueryCheckpointSchedule{SetQueryCheckpointSchedule: &commonpb.SetQueryCheckpointScheduleLog{Cron: "*/5 * * * *"}},
+	buf.Absorb(&raftcmdpb.Order{}, &ledgerpb.Log{Payload: &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_SetQueryCheckpointSchedule{SetQueryCheckpointSchedule: &ledgerpb.SetQueryCheckpointScheduleLog{Cron: "*/5 * * * *"}},
 	}})
 	buf.QueueMirrorSync(MirrorSyncWrite{LedgerName: "leaked", ClearError: true})
 
@@ -493,7 +493,7 @@ func TestWriteSetResetIsolation(t *testing.T) {
 	require.Len(t, buf.pendingMirrorSyncs, 1)
 
 	// --- Reset for proposal N+1 ---
-	buf.Reset(&commonpb.Timestamp{Data: 1700000001})
+	buf.Reset(&ledgerpb.Timestamp{Data: 1700000001})
 
 	// --- Verify complete isolation ---
 
@@ -569,7 +569,7 @@ func TestWriteSetPreparedQueryPersistsThroughMerge(t *testing.T) {
 	buf, _, dataStore := newTestBuffer(t)
 
 	const ledger = "test"
-	buf.PreparedQueries().Put(domain.PreparedQueryKey{LedgerName: ledger, Name: "pq-1"}, &commonpb.PreparedQuery{Name: "pq-1"})
+	buf.PreparedQueries().Put(domain.PreparedQueryKey{LedgerName: ledger, Name: "pq-1"}, &ledgerpb.PreparedQuery{Name: "pq-1"})
 
 	batch := dataStore.OpenWriteSession()
 	require.NoError(t, buf.Merge(batch, nil))
@@ -597,7 +597,7 @@ func TestWriteSetPreparedQueryDeletePersistsThroughMerge(t *testing.T) {
 	const ledger = "test"
 
 	// Proposal 1: commit a prepared query.
-	buf.PreparedQueries().Put(domain.PreparedQueryKey{LedgerName: ledger, Name: "pq-del"}, &commonpb.PreparedQuery{Name: "pq-del"})
+	buf.PreparedQueries().Put(domain.PreparedQueryKey{LedgerName: ledger, Name: "pq-del"}, &ledgerpb.PreparedQuery{Name: "pq-del"})
 	batch := dataStore.OpenWriteSession()
 	require.NoError(t, buf.Merge(batch, nil))
 	require.NoError(t, batch.Commit())
@@ -613,7 +613,7 @@ func TestWriteSetPreparedQueryDeletePersistsThroughMerge(t *testing.T) {
 
 	// Proposal 2: delete it.
 	buf2 := NewWriteSet(machine)
-	buf2.Reset(&commonpb.Timestamp{Data: 1700000001})
+	buf2.Reset(&ledgerpb.Timestamp{Data: 1700000001})
 	require.NoError(t, buf2.PreparedQueries().Delete(domain.PreparedQueryKey{LedgerName: ledger, Name: "pq-del"}))
 	batch2 := dataStore.OpenWriteSession()
 	require.NoError(t, buf2.Merge(batch2, nil))
@@ -643,8 +643,8 @@ func TestWriteSetPreparedQueryBloomFilterTracksKeys(t *testing.T) {
 	// configuring --bloom-prepared-queries-expected-keys would. A non-zero
 	// ExpectedKeys is what makes bloomTypes()/Rebuild allocate the filter.
 	meter := noop.NewMeterProvider().Meter("test")
-	filters := bloom.NewFilterSet(&commonpb.ClusterConfig{
-		BloomPreparedQueries: &commonpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
+	filters := bloom.NewFilterSet(&ledgerpb.ClusterConfig{
+		BloomPreparedQueries: &ledgerpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
 	}, meter)
 	require.NotNil(t, filters)
 
@@ -652,7 +652,7 @@ func TestWriteSetPreparedQueryBloomFilterTracksKeys(t *testing.T) {
 	require.NotNil(t, pqFilter, "prepared-query filter must be built when configured")
 
 	const ledger = "test"
-	buf.PreparedQueries().Put(domain.PreparedQueryKey{LedgerName: ledger, Name: "pq-bloom"}, &commonpb.PreparedQuery{Name: "pq-bloom"})
+	buf.PreparedQueries().Put(domain.PreparedQueryKey{LedgerName: ledger, Name: "pq-bloom"}, &ledgerpb.PreparedQuery{Name: "pq-bloom"})
 
 	batch := dataStore.OpenWriteSession()
 	require.NoError(t, buf.Merge(batch, nil))
@@ -733,21 +733,21 @@ func TestValidateTransientVolumesListsAllOffendersSorted(t *testing.T) {
 
 	buf, machine, _ := newTestBuffer(t)
 
-	newLedger := func(name string, id uint32) *commonpb.LedgerInfo {
-		return &commonpb.LedgerInfo{
+	newLedger := func(name string, id uint32) *ledgerpb.LedgerInfo {
+		return &ledgerpb.LedgerInfo{
 			Name: name,
 			Id:   id,
-			AccountTypes: map[string]*commonpb.AccountType{
+			AccountTypes: map[string]*ledgerpb.AccountType{
 				"staging": {
 					Name:        "staging",
 					Pattern:     "staging:{id}",
-					Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
+					Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
 				},
 			},
 		}
 	}
 
-	ledgers := []*commonpb.LedgerInfo{newLedger("l-a", 1), newLedger("l-b", 2)}
+	ledgers := []*ledgerpb.LedgerInfo{newLedger("l-a", 1), newLedger("l-b", 2)}
 	for _, li := range ledgers {
 		_, _, err := machine.Registry.Ledgers.KeyStore().Put(
 			(&domain.LedgerKey{Name: li.GetName()}).Bytes(),
@@ -770,8 +770,8 @@ func TestValidateTransientVolumesListsAllOffendersSorted(t *testing.T) {
 	}
 	// Non-zero balance (input != output) => offending. Reused read-only.
 	nonZero := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(200),
-		Output: commonpb.NewUint256FromUint64(50),
+		Input:  ledgerpb.NewUint256FromUint64(200),
+		Output: ledgerpb.NewUint256FromUint64(50),
 	}
 	for _, k := range offenders {
 		buf.Derived.Volumes.Put(k, nonZero)
@@ -831,14 +831,14 @@ func TestValidateTransientVolumesStorageFaultTakesPrecedence(t *testing.T) {
 
 	buf, machine, _ := newTestBuffer(t)
 
-	ledger := &commonpb.LedgerInfo{
+	ledger := &ledgerpb.LedgerInfo{
 		Name: "l-a",
 		Id:   1,
-		AccountTypes: map[string]*commonpb.AccountType{
+		AccountTypes: map[string]*ledgerpb.AccountType{
 			"staging": {
 				Name:        "staging",
 				Pattern:     "staging:{id}",
-				Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
+				Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
 			},
 		},
 	}
@@ -852,8 +852,8 @@ func TestValidateTransientVolumesStorageFaultTakesPrecedence(t *testing.T) {
 	businessOffender := domain.NewVolumeKey("l-a", "staging:a", "USD", "")
 	uncoveredOffender := domain.NewVolumeKey("l-a", "staging:z", "USD", "")
 	nonZero := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(200),
-		Output: commonpb.NewUint256FromUint64(50),
+		Input:  ledgerpb.NewUint256FromUint64(200),
+		Output: ledgerpb.NewUint256FromUint64(50),
 	}
 	buf.Derived.Volumes.Put(businessOffender, nonZero)
 	buf.Derived.Volumes.Put(uncoveredOffender, nonZero)
@@ -903,14 +903,14 @@ func TestValidateTransientVolumesLedgerCoverageMissPropagates(t *testing.T) {
 
 	buf, machine, _ := newTestBuffer(t)
 
-	ledger := &commonpb.LedgerInfo{
+	ledger := &ledgerpb.LedgerInfo{
 		Name: "l-a",
 		Id:   1,
-		AccountTypes: map[string]*commonpb.AccountType{
+		AccountTypes: map[string]*ledgerpb.AccountType{
 			"staging": {
 				Name:        "staging",
 				Pattern:     "staging:{id}",
-				Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
+				Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
 			},
 		},
 	}
@@ -922,8 +922,8 @@ func TestValidateTransientVolumesLedgerCoverageMissPropagates(t *testing.T) {
 
 	offender := domain.NewVolumeKey("l-a", "staging:a", "USD", "")
 	buf.Derived.Volumes.Put(offender, &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(200),
-		Output: commonpb.NewUint256FromUint64(50),
+		Input:  ledgerpb.NewUint256FromUint64(200),
+		Output: ledgerpb.NewUint256FromUint64(50),
 	})
 
 	// Declare ONLY the volume coverage. The ledger plan is deliberately absent,

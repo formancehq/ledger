@@ -7,7 +7,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -113,17 +113,17 @@ func runDeleteMetadata(cmd *cobra.Command, args []string) error {
 
 	spinner := cmdutil.StartSpinner(fmt.Sprintf("Deleting metadata key %q from account %s...", key, address))
 
-	requests := []*commonpb.Request{
+	requests := []*ledgerpb.Request{
 		{
-			Type: &commonpb.Request_Apply{
-				Apply: &commonpb.LedgerApplyRequest{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: ledgerName,
-					Action: &commonpb.LedgerAction{
-						Data: &commonpb.LedgerAction_DeleteMetadata{
-							DeleteMetadata: &commonpb.DeleteMetadataCommand{
-								Target: &commonpb.Target{
-									Target: &commonpb.Target_Account{
-										Account: &commonpb.TargetAccount{Addr: address},
+					Action: &ledgerpb.LedgerAction{
+						Data: &ledgerpb.LedgerAction_DeleteMetadata{
+							DeleteMetadata: &ledgerpb.DeleteMetadataCommand{
+								Target: &ledgerpb.Target{
+									Target: &ledgerpb.Target_Account{
+										Account: &ledgerpb.TargetAccount{Addr: address},
 									},
 								},
 								Key: key,

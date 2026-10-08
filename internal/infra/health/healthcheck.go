@@ -13,7 +13,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/diskusage"
@@ -285,11 +285,11 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 			continue
 		}
 
-		client := clusterpb.NewClusterServiceClient(conn)
+		client := ledgerpb.NewClusterServiceClient(conn)
 
 		// Check disk usage
 		callCtx, callCancel := context.WithTimeout(baseCtx, healthCheckCallTimeout)
-		resp, err := client.GetDiskUsage(callCtx, &clusterpb.GetDiskUsageRequest{})
+		resp, err := client.GetDiskUsage(callCtx, &ledgerpb.GetDiskUsageRequest{})
 
 		callCancel()
 
@@ -440,7 +440,7 @@ func sampleAge(now, observedAt time.Time) time.Duration {
 	return age
 }
 
-func remoteVolumeValidity(volume *clusterpb.VolumeUsage) (bool, string) {
+func remoteVolumeValidity(volume *ledgerpb.VolumeUsage) (bool, string) {
 	if volume == nil {
 		return false, "volume is missing from disk usage response"
 	}
@@ -532,13 +532,13 @@ func (hc *HealthChecker) logIfAtBlock(nodeID uint64, walUsed, walTotal uint64, w
 
 // exceedsClockSkew queries a peer's physical clock and returns true if the skew
 // exceeds the configured threshold.
-func (hc *HealthChecker) exceedsClockSkew(baseCtx context.Context, client clusterpb.ClusterServiceClient, nodeID uint64) bool {
+func (hc *HealthChecker) exceedsClockSkew(baseCtx context.Context, client ledgerpb.ClusterServiceClient, nodeID uint64) bool {
 	callCtx, callCancel := context.WithTimeout(baseCtx, healthCheckCallTimeout)
 	defer callCancel()
 
 	beforeCall := time.Now()
 
-	resp, err := client.GetNodeTime(callCtx, &clusterpb.GetNodeTimeRequest{})
+	resp, err := client.GetNodeTime(callCtx, &ledgerpb.GetNodeTimeRequest{})
 	if err != nil {
 		hc.logger.WithFields(map[string]any{
 			"node_id": nodeID,

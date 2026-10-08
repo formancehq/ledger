@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // A fresh store has no committed policy, so recovery leaves the revision-0
@@ -21,7 +21,7 @@ func TestRecoverState_ClusterPolicyRoundtrip(t *testing.T) {
 	require.Equal(t, uint64(0), machine.State.ClusterPolicy.GetRevision(),
 		"a fresh store recovers the revision-0 default (no policy committed)")
 
-	policy := &commonpb.ClusterPolicy{Revision: 4, IdempotencyTtlMicros: 5000, QueryCheckpointLimit: 12}
+	policy := &ledgerpb.ClusterPolicy{Revision: 4, IdempotencyTtlMicros: 5000, QueryCheckpointLimit: 12}
 	batch := store.OpenWriteSession()
 	require.NoError(t, SaveClusterPolicy(batch, policy))
 	require.NoError(t, batch.Commit())

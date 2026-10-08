@@ -3,7 +3,7 @@ package processing
 import (
 	"github.com/zeebo/blake3"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // blake3AuditKeyContext domain-separates the BLAKE3 audit-hash key from
@@ -32,6 +32,6 @@ func (g *blake3HashGenerator) Compute(buf []byte, lastHash []byte, slices [][]by
 	return buf, hasher.Sum(nil)
 }
 
-func (g *blake3HashGenerator) Algorithm() commonpb.HashAlgorithm {
-	return commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3
+func (g *blake3HashGenerator) Algorithm() ledgerpb.HashAlgorithm {
+	return ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3
 }

@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestHandleListNumscripts_Success(t *testing.T) {
@@ -18,8 +18,8 @@ func TestHandleListNumscripts_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListNumscripts(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) ([]*commonpb.NumscriptInfo, error) {
-			return []*commonpb.NumscriptInfo{
+		func(_ context.Context, _ string) ([]*ledgerpb.NumscriptInfo, error) {
+			return []*ledgerpb.NumscriptInfo{
 				{Name: "script1", Version: "1.0.0"},
 				{Name: "script2", Version: "2.0.0"},
 			}, nil
@@ -41,7 +41,7 @@ func TestHandleListNumscripts_Empty(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListNumscripts(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) ([]*commonpb.NumscriptInfo, error) {
+		func(_ context.Context, _ string) ([]*ledgerpb.NumscriptInfo, error) {
 			return nil, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -76,7 +76,7 @@ func TestHandleListNumscripts_BackendError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListNumscripts(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string) ([]*commonpb.NumscriptInfo, error) {
+		func(_ context.Context, _ string) ([]*ledgerpb.NumscriptInfo, error) {
 			return nil, errors.New("unexpected error")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)

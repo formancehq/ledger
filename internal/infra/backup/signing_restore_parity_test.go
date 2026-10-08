@@ -11,7 +11,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/application/check"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -72,7 +72,7 @@ func newSigningParityMachine(t *testing.T) (*state.Machine, *dal.Store, *attribu
 		func(*raftpb.Entry, *dal.WriteSession) error { return nil },
 	)
 	require.NoError(t, err)
-	policy := &commonpb.ClusterPolicy{
+	policy := &ledgerpb.ClusterPolicy{
 		Revision: 1, QueryCheckpointLimit: 10,
 		MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
 		MetadataMaxKeyBytes:         domain.DefaultMetadataMaxKeyBytes, MetadataMaxValueBytes: domain.DefaultMetadataMaxValueBytes,
@@ -92,7 +92,7 @@ func applySigningEntry(t *testing.T, machine *state.Machine, store *dal.Store, i
 	proposal := &raftcmdpb.Proposal{
 		Id:             index,
 		Orders:         orders,
-		Date:           &commonpb.Timestamp{Data: 1700000000 + index},
+		Date:           &ledgerpb.Timestamp{Data: 1700000000 + index},
 		ExecutionPlan:  &raftcmdpb.ExecutionPlan{},
 		CallerSnapshot: commands.SystemCallerSnapshot(commands.ComponentClusterConfig),
 	}
@@ -165,7 +165,7 @@ func applyPurgeParityEntry(t *testing.T, machine *state.Machine, store *dal.Stor
 			value, getErr := attrs.Volume.Get(handle, item.key)
 			require.NoError(t, getErr)
 			if value == nil {
-				value = &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(0), Output: commonpb.NewUint256FromUint64(0)}
+				value = &raftcmdpb.VolumePair{Input: ledgerpb.NewUint256FromUint64(0), Output: ledgerpb.NewUint256FromUint64(0)}
 			}
 			raw, err = value.MarshalVT()
 		case dal.SubAttrReference:
@@ -191,7 +191,7 @@ func applyPurgeParityEntry(t *testing.T, machine *state.Machine, store *dal.Stor
 	proposal := &raftcmdpb.Proposal{
 		Id:             index,
 		Orders:         []*raftcmdpb.Order{order},
-		Date:           &commonpb.Timestamp{Data: 1700000000 + index},
+		Date:           &ledgerpb.Timestamp{Data: 1700000000 + index},
 		ExecutionPlan:  &raftcmdpb.ExecutionPlan{Attributes: plans},
 		CallerSnapshot: commands.SystemCallerSnapshot(commands.ComponentClusterConfig),
 	}
@@ -238,8 +238,8 @@ func purgeParityCreateLedgerOrder() *raftcmdpb.Order {
 		LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 			Ledger: "ledger",
 			Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{
-				AccountTypes: map[string]*commonpb.AccountType{
-					"orders": {Name: "orders", Pattern: "orders:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL},
+				AccountTypes: map[string]*ledgerpb.AccountType{
+					"orders": {Name: "orders", Pattern: "orders:{id}", Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL},
 				},
 			}},
 		},
@@ -253,7 +253,7 @@ func purgeParityTransactionOrder(source, destination, reference string) *raftcmd
 			Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
 				Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{
 					Reference: reference,
-					Postings:  []*commonpb.Posting{{Source: source, Destination: destination, Asset: "USD", Amount: commonpb.NewUint256FromUint64(5)}},
+					Postings:  []*ledgerpb.Posting{{Source: source, Destination: destination, Asset: "USD", Amount: ledgerpb.NewUint256FromUint64(5)}},
 				}},
 			}},
 		},
@@ -296,10 +296,10 @@ func TestBackup_EphemeralPurgeRestoreParity(t *testing.T) {
 	require.NotNil(t, tx, "the draining transaction mapping must survive restore")
 	require.NoError(t, handle.Close())
 
-	var findings []*commonpb.CheckStoreError
+	var findings []*ledgerpb.CheckStoreError
 	checker := check.NewChecker(dstStore, dstAttrs, nil, testLogger())
-	require.NoError(t, checker.Check(ctx, func(event *commonpb.CheckStoreEvent) {
-		if e, ok := event.GetType().(*commonpb.CheckStoreEvent_Error); ok {
+	require.NoError(t, checker.Check(ctx, func(event *ledgerpb.CheckStoreEvent) {
+		if e, ok := event.GetType().(*ledgerpb.CheckStoreEvent_Error); ok {
 			findings = append(findings, e.Error)
 		}
 	}))
@@ -405,11 +405,11 @@ func TestBackup_SigningCascadeRestoreParity(t *testing.T) {
 
 	// The checker re-derives the cascade from the audit chain and compares it to
 	// the restored rows, so agreement here is the audit side of the same claim.
-	var findings []*commonpb.CheckStoreError
+	var findings []*ledgerpb.CheckStoreError
 
 	checker := check.NewChecker(dstStore, dstAttrs, nil, testLogger())
-	require.NoError(t, checker.Check(ctx, func(event *commonpb.CheckStoreEvent) {
-		if e, ok := event.GetType().(*commonpb.CheckStoreEvent_Error); ok {
+	require.NoError(t, checker.Check(ctx, func(event *ledgerpb.CheckStoreEvent) {
+		if e, ok := event.GetType().(*ledgerpb.CheckStoreEvent_Error); ok {
 			findings = append(findings, e.Error)
 		}
 	}))

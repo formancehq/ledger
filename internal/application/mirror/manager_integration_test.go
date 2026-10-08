@@ -15,7 +15,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // blockedPostgresSource holds a real relation lock across lifecycle assertions.
@@ -88,13 +88,13 @@ func (f *blockedPostgresSource) unlock(t *testing.T) {
 	}
 }
 
-func (f *blockedPostgresSource) ledgerInfo() *commonpb.LedgerInfo {
-	return &commonpb.LedgerInfo{
+func (f *blockedPostgresSource) ledgerInfo() *ledgerpb.LedgerInfo {
+	return &ledgerpb.LedgerInfo{
 		Name: "postgres-mirror",
-		Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
-		MirrorSource: &commonpb.MirrorSourceConfig{
+		Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR,
+		MirrorSource: &ledgerpb.MirrorSourceConfig{
 			LedgerName: "source-ledger",
-			Type:       &commonpb.MirrorSourceConfig_Postgres{Postgres: &commonpb.PostgresMirrorSourceConfig{Dsn: f.dsn}},
+			Type:       &ledgerpb.MirrorSourceConfig_Postgres{Postgres: &ledgerpb.PostgresMirrorSourceConfig{Dsn: f.dsn}},
 		},
 	}
 }

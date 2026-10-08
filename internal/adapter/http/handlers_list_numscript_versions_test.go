@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestHandleListNumscriptVersions_Success(t *testing.T) {
@@ -17,8 +17,8 @@ func TestHandleListNumscriptVersions_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListNumscriptVersions(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _, _ string) (string, []*commonpb.NumscriptVersionEntry, error) {
-			return "2.0.0", []*commonpb.NumscriptVersionEntry{
+		func(_ context.Context, _, _ string) (string, []*ledgerpb.NumscriptVersionEntry, error) {
+			return "2.0.0", []*ledgerpb.NumscriptVersionEntry{
 				{Version: "2.0.0"},
 				{Version: "1.0.0"},
 			}, nil

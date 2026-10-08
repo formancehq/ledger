@@ -7,14 +7,14 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_concurrent_ledger_delete", func(ctx context.Context, client commonpb.BucketServiceClient, _ string) {
+	internal.RunDriver("parallel_driver_concurrent_ledger_delete", func(ctx context.Context, client ledgerpb.BucketServiceClient, _ string) {
 		r := internal.Rand()
 
 		// 1. Create a dedicated ephemeral ledger.
@@ -45,16 +45,16 @@ func main() {
 			for range 5 {
 				writeAttempts++
 
-				_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-					Type: &commonpb.Request_Apply{
-						Apply: &commonpb.LedgerApplyRequest{
+				_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+					Type: &ledgerpb.Request_Apply{
+						Apply: &ledgerpb.LedgerApplyRequest{
 							Ledger: ledger,
-							Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
-								CreateTransaction: &commonpb.CreateTransactionPayload{
-									Postings: []*commonpb.Posting{{
+							Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
+								CreateTransaction: &ledgerpb.CreateTransactionPayload{
+									Postings: []*ledgerpb.Posting{{
 										Source:      "world",
 										Destination: fmt.Sprintf("users:%d", r.Uint64()%internal.UserAccountCount),
-										Amount:      commonpb.NewUint256FromUint64(100),
+										Amount:      ledgerpb.NewUint256FromUint64(100),
 										Asset:       "USD/2",
 									}},
 									Force: true,
@@ -87,9 +87,9 @@ func main() {
 		go func() {
 			defer wg.Done()
 
-			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_DeleteLedger{
-					DeleteLedger: &commonpb.DeleteLedgerRequest{Name: ledger},
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_DeleteLedger{
+					DeleteLedger: &ledgerpb.DeleteLedgerRequest{Name: ledger},
 				},
 			}))
 			if err == nil {
@@ -115,16 +115,16 @@ func main() {
 		}
 
 		// 3. After deletion, any write should fail with LEDGER_DELETED or LEDGER_NOT_FOUND.
-		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_Apply{
-				Apply: &commonpb.LedgerApplyRequest{
+		_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
-						CreateTransaction: &commonpb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{{
+					Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &ledgerpb.CreateTransactionPayload{
+							Postings: []*ledgerpb.Posting{{
 								Source:      "world",
 								Destination: "users:0",
-								Amount:      commonpb.NewUint256FromUint64(1),
+								Amount:      ledgerpb.NewUint256FromUint64(1),
 								Asset:       "USD/2",
 							}},
 							Force: true,

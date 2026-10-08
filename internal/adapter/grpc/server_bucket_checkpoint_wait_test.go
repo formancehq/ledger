@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/application/ctrl/ctrlmock"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -35,47 +35,47 @@ import (
 func TestApplyWaitsForCreatedQueryCheckpoint(t *testing.T) {
 	t.Parallel()
 
-	preparedQueryLog := func() *commonpb.Log {
-		return &commonpb.Log{Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_CreatedPreparedQuery{
-				CreatedPreparedQuery: &commonpb.CreatedPreparedQueryLog{},
+	preparedQueryLog := func() *ledgerpb.Log {
+		return &ledgerpb.Log{Payload: &ledgerpb.LogPayload{
+			Type: &ledgerpb.LogPayload_CreatedPreparedQuery{
+				CreatedPreparedQuery: &ledgerpb.CreatedPreparedQueryLog{},
 			},
 		}}
 	}
-	checkpointLog := func(id uint64) *commonpb.Log {
-		return &commonpb.Log{Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_CreatedQueryCheckpoint{
-				CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{CheckpointId: id, MaxSequence: 7},
+	checkpointLog := func(id uint64) *ledgerpb.Log {
+		return &ledgerpb.Log{Payload: &ledgerpb.LogPayload{
+			Type: &ledgerpb.LogPayload_CreatedQueryCheckpoint{
+				CreatedQueryCheckpoint: &ledgerpb.CreatedQueryCheckpointLog{CheckpointId: id, MaxSequence: 7},
 			},
 		}}
 	}
 
 	tests := []struct {
 		name         string
-		logs         []*commonpb.Log
+		logs         []*ledgerpb.Log
 		skipResponse bool
 		markReady    []uint64 // checkpoint IDs materialized before Apply runs
 		wantWait     bool
 	}{
 		{
 			name:     "batch without a checkpoint does not wait",
-			logs:     []*commonpb.Log{preparedQueryLog(), preparedQueryLog()},
+			logs:     []*ledgerpb.Log{preparedQueryLog(), preparedQueryLog()},
 			wantWait: false,
 		},
 		{
 			name:      "already materialized checkpoint returns immediately",
-			logs:      []*commonpb.Log{checkpointLog(1)},
+			logs:      []*ledgerpb.Log{checkpointLog(1)},
 			markReady: []uint64{1},
 			wantWait:  false,
 		},
 		{
 			name:     "checkpoint as the last action of a mixed batch is found",
-			logs:     []*commonpb.Log{preparedQueryLog(), preparedQueryLog(), checkpointLog(2)},
+			logs:     []*ledgerpb.Log{preparedQueryLog(), preparedQueryLog(), checkpointLog(2)},
 			wantWait: true,
 		},
 		{
 			name:         "skip_response still waits, because the wait precedes stripping",
-			logs:         []*commonpb.Log{preparedQueryLog(), checkpointLog(3)},
+			logs:         []*ledgerpb.Log{preparedQueryLog(), checkpointLog(3)},
 			skipResponse: true,
 			wantWait:     true,
 		},
@@ -102,9 +102,9 @@ func TestApplyWaitsForCreatedQueryCheckpoint(t *testing.T) {
 			// A caller cannot bypass fresh-creation readiness by spoofing provenance.
 			ctx = metadata.NewIncomingContext(ctx, metadata.Pairs(metadataKeyApplyReplayed, "true"))
 
-			req := commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_CreateQueryCheckpoint{
-					CreateQueryCheckpoint: &commonpb.CreateQueryCheckpointRequest{},
+			req := ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_CreateQueryCheckpoint{
+					CreateQueryCheckpoint: &ledgerpb.CreateQueryCheckpointRequest{},
 				},
 			})
 			req.SkipResponse = test.skipResponse

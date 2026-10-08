@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -15,13 +15,13 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-func indexCreationOrder(ledger string, id *commonpb.IndexID) *raftcmdpb.Order {
+func indexCreationOrder(ledger string, id *ledgerpb.IndexID) *raftcmdpb.Order {
 	return indexApplyOrder(ledger, &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateIndex{
 		CreateIndex: &raftcmdpb.CreateIndexOrder{Id: id},
 	}})
 }
 
-func indexDropOrder(ledger string, id *commonpb.IndexID) *raftcmdpb.Order {
+func indexDropOrder(ledger string, id *ledgerpb.IndexID) *raftcmdpb.Order {
 	return indexApplyOrder(ledger, &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_DropIndex{
 		DropIndex: &raftcmdpb.DropIndexOrder{Id: id},
 	}})
@@ -35,7 +35,7 @@ func indexApplyOrder(ledger string, apply *raftcmdpb.LedgerApplyOrder) *raftcmdp
 
 // Index coverage is explicit here because the generic machine fixture only
 // declares ledger, transaction and metadata keys. Values remain cache-backed.
-func indexProposal(sequence uint64, ledger string, id *commonpb.IndexID, orders ...*raftcmdpb.Order) *raftcmdpb.Proposal {
+func indexProposal(sequence uint64, ledger string, id *ledgerpb.IndexID, orders ...*raftcmdpb.Order) *raftcmdpb.Proposal {
 	proposal := makeProposal(sequence, orders...)
 	key, _ := attributes.MakeKey(indexes.KeyFor(ledger, id).Bytes())
 	proposal.ExecutionPlan.Attributes = append(proposal.ExecutionPlan.Attributes, declareTestPlan(key, dal.SubAttrIndex))
@@ -48,7 +48,7 @@ func TestCreateIndex_DuplicateBatchRollsBack(t *testing.T) {
 
 	machine, store, attrs := newTestMachine(t)
 	const ledger = "index-atomic"
-	id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	id := indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 	result, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, 1, makeProposal(1, createLedgerOrder(ledger))))
 	require.NoError(t, err)
 	require.NoError(t, result.Results[0].Error)
@@ -91,12 +91,12 @@ func TestCreateIndex_IdempotencyReplayAndFreshDuplicate(t *testing.T) {
 
 	machine, store, _ := newTestMachine(t)
 	const ledger = "index-idem"
-	id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	id := indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 	apply := func(sequence uint64, key string, order *raftcmdpb.Order) ApplyResult {
 		t.Helper()
 		proposal := indexProposal(sequence, ledger, id, order)
 		if key != "" {
-			proposal.Idempotency = &commonpb.Idempotency{Key: key}
+			proposal.Idempotency = &ledgerpb.Idempotency{Key: key}
 		}
 		result, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, sequence, proposal))
 		require.NoError(t, err)
@@ -143,7 +143,7 @@ func TestCreateIndex_DuplicateAfterRetypePreservesRegistry(t *testing.T) {
 
 	machine, store, attrs := newTestMachine(t)
 	const ledger = "index-retype"
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score")
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "score")
 	apply := func(sequence uint64, orders ...*raftcmdpb.Order) ApplyResult {
 		t.Helper()
 		result, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, sequence, indexProposal(sequence, ledger, id, orders...)))
@@ -151,14 +151,14 @@ func TestCreateIndex_DuplicateAfterRetypePreservesRegistry(t *testing.T) {
 
 		return result.Results[0]
 	}
-	setType := func(typ commonpb.MetadataType) *raftcmdpb.Order {
+	setType := func(typ ledgerpb.MetadataType) *raftcmdpb.Order {
 		return indexApplyOrder(ledger, &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_SetMetadataFieldType{
-			SetMetadataFieldType: &raftcmdpb.SetMetadataFieldTypeOrder{TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT, Key: "score", Type: typ},
+			SetMetadataFieldType: &raftcmdpb.SetMetadataFieldTypeOrder{TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, Key: "score", Type: typ},
 		}})
 	}
 	require.NoError(t, apply(1, createLedgerOrder(ledger)).Error)
-	require.NoError(t, apply(2, setType(commonpb.MetadataType_METADATA_TYPE_STRING), indexCreationOrder(ledger, id)).Error)
-	require.NoError(t, apply(3, setType(commonpb.MetadataType_METADATA_TYPE_INT64)).Error)
+	require.NoError(t, apply(2, setType(ledgerpb.MetadataType_METADATA_TYPE_STRING), indexCreationOrder(ledger, id)).Error)
+	require.NoError(t, apply(3, setType(ledgerpb.MetadataType_METADATA_TYPE_INT64)).Error)
 
 	handle, err := store.NewDirectReadHandle()
 	require.NoError(t, err)
@@ -194,14 +194,14 @@ func TestCreateIndex_DuplicateAfterRetypePreservesRegistry(t *testing.T) {
 	require.NotEqual(t, before.GetCreatedAt().GetData(), rebuilt.GetCreatedAt().GetData())
 	created := recreated.Logs[1].GetCreatedLog().GetPayload().GetApply().GetLog().GetData().GetCreateIndex()
 	require.True(t, created.GetBoundTypeDeclared())
-	require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, created.GetBoundType())
+	require.Equal(t, ledgerpb.MetadataType_METADATA_TYPE_INT64, created.GetBoundType())
 }
 
 func TestCreateIndex_MissingIndexCoverageIsNotAbsence(t *testing.T) {
 	t.Parallel()
 	machine, store, _ := newTestMachine(t)
 	const ledger = "index-coverage"
-	id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	id := indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 	result, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, 1, makeProposal(1, createLedgerOrder(ledger))))
 	require.NoError(t, err)
 	require.NoError(t, result.Results[0].Error)

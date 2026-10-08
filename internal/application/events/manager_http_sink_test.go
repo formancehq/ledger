@@ -12,7 +12,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/application/events"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -24,16 +24,16 @@ import (
 func saveHTTPSinkConfig(t *testing.T, s *dal.Store, name, endpoint string) {
 	t.Helper()
 
-	cfg := &commonpb.SinkConfig{
+	cfg := &ledgerpb.SinkConfig{
 		Name: name,
-		Type: &commonpb.SinkConfig_Http{
-			Http: &commonpb.HttpSinkConfig{
+		Type: &ledgerpb.SinkConfig_Http{
+			Http: &ledgerpb.HttpSinkConfig{
 				Endpoint: endpoint,
 			},
 		},
 		Format: "json",
 	}
-	attr := attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig)
+	attr := attributes.NewAttribute[*ledgerpb.SinkConfig](dal.SubAttrSinkConfig)
 	batch := s.OpenWriteSession()
 	_, err := attr.Set(batch, domain.SinkConfigKey{Name: name}.Bytes(), cfg)
 	require.NoError(t, err)
@@ -106,7 +106,7 @@ func TestManager_HTTPSink_ConfigChangeRemovesSink(t *testing.T) {
 
 	// Remove the sink config
 	batch := store.OpenWriteSession()
-	require.NoError(t, attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig).Delete(batch, domain.SinkConfigKey{Name: "http-sink"}.Bytes()))
+	require.NoError(t, attributes.NewAttribute[*ledgerpb.SinkConfig](dal.SubAttrSinkConfig).Delete(batch, domain.SinkConfigKey{Name: "http-sink"}.Bytes()))
 	require.NoError(t, batch.Commit())
 
 	// Notify config change
@@ -176,13 +176,13 @@ func TestManager_HTTPSink_LeadershipLossDuringInitialCatchup(t *testing.T) {
 	logger := logging.Testing()
 	notifications := signal.NewNotifications()
 
-	appendTestLogs(t, store, &commonpb.Log{
+	appendTestLogs(t, store, &ledgerpb.Log{
 		Sequence: 1,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_CreateLedger{
-				CreateLedger: &commonpb.CreatedLedgerLog{
+		Payload: &ledgerpb.LogPayload{
+			Type: &ledgerpb.LogPayload_CreateLedger{
+				CreateLedger: &ledgerpb.CreatedLedgerLog{
 					Name:      "orders",
-					CreatedAt: commonpb.NewTimestamp(libtime.Now()),
+					CreatedAt: ledgerpb.NewTimestamp(libtime.Now()),
 				},
 			},
 		},

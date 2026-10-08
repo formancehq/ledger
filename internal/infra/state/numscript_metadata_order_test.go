@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -17,7 +17,7 @@ func TestNumscriptMetadataFailureSameAuditOnReplicas(t *testing.T) {
 	t.Parallel()
 	const ledger = "metadata-order"
 	order := createTransactionOrder(ledger, false)
-	order.GetLedgerScoped().GetApply().GetCreateTransaction().Script = &commonpb.Script{
+	order.GetLedgerScoped().GetApply().GetCreateTransaction().Script = &ledgerpb.Script{
 		Plain: `
 			vars { string $poison }
 			set_tx_meta("a", $poison)
@@ -27,7 +27,7 @@ func TestNumscriptMetadataFailureSameAuditOnReplicas(t *testing.T) {
 		Vars: map[string]string{"poison": "safe\x00poison"},
 	}
 	proposal := makeProposal(2, order)
-	proposal.Idempotency = &commonpb.Idempotency{Key: "metadata-order-key"}
+	proposal.Idempotency = &ledgerpb.Idempotency{Key: "metadata-order-key"}
 	// The script's destination volume is discovered by admission. Declare its
 	// zero preload explicitly here because the state fixture builds plans only
 	// from literal posting orders.
@@ -69,7 +69,7 @@ func TestNumscriptMetadataFailureSameAuditOnReplicas(t *testing.T) {
 		}
 		replay := proto.Clone(proposal).(*raftcmdpb.Proposal)
 		replay.Id = 3
-		replay.Date = &commonpb.Timestamp{Data: 1700000003}
+		replay.Date = &ledgerpb.Timestamp{Data: 1700000003}
 		replayed, err := machine.ApplyEntries(ctx, store, makeEntry(t, 3, replay))
 		require.NoError(t, err)
 		require.True(t, replayed.Results[0].Replayed)

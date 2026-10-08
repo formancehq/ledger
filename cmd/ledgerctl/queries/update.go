@@ -7,7 +7,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
@@ -68,7 +68,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	// known here" entry point: it resolves bare fields with a non-audit target
 	// (prepared queries are never audit) and defers the per-target validity gate
 	// to the server (EN-1549).
-	filter, err := filterexpr.DecodeDualFormatStructuralOnly([]byte(filterExpr), commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	filter, err := filterexpr.DecodeDualFormatStructuralOnly([]byte(filterExpr), ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 	if err != nil {
 		return fmt.Errorf("invalid filter expression: %w", err)
 	}

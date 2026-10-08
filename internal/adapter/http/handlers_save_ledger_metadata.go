@@ -3,7 +3,7 @@ package http
 import (
 	"net/http"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // handleSaveLedgerMetadata handles POST /{ledgerName}/metadata to save ledger metadata.
@@ -18,9 +18,9 @@ func (s *Server) handleSaveLedgerMetadata(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	_, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{
-		Type: &servicepb.Request_SaveLedgerMetadata{
-			SaveLedgerMetadata: &servicepb.SaveLedgerMetadataRequest{
+	_, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &ledgerpb.Request{
+		Type: &ledgerpb.Request_SaveLedgerMetadata{
+			SaveLedgerMetadata: &ledgerpb.SaveLedgerMetadataRequest{
 				Ledger:   ledgerName,
 				Metadata: ms,
 			},

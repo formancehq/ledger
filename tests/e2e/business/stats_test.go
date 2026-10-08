@@ -6,7 +6,7 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"math/big"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
@@ -19,12 +19,12 @@ var _ = Describe("GetLedgerStats", Ordered, func() {
 		var ledgerName = "stats-empty"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should return zero counts", func() {
-			resp, err := sharedClient.GetLedgerStats(sharedCtx, &commonpb.GetLedgerStatsRequest{
+			resp, err := sharedClient.GetLedgerStats(sharedCtx, &ledgerpb.GetLedgerStatsRequest{
 				Ledger: ledgerName,
 			})
 			Expect(err).To(Succeed())
@@ -39,17 +39,17 @@ var _ = Describe("GetLedgerStats", Ordered, func() {
 		var ledgerName = "stats-with-data"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// Create 3 transactions producing 4 accounts: world, bank:main, bank:fees, users:alice
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "bank:main", big.NewInt(1000), "USD"),
 			}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("bank:main", "bank:fees", big.NewInt(10), "USD"),
 				}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("bank:main", "users:alice", big.NewInt(100), "USD"),
 				}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -58,7 +58,7 @@ var _ = Describe("GetLedgerStats", Ordered, func() {
 		It("Should return correct counts", func() {
 			// Index builder processes logs asynchronously; poll until indexes are up to date.
 			Eventually(func(g Gomega) {
-				resp, err := sharedClient.GetLedgerStats(sharedCtx, &commonpb.GetLedgerStatsRequest{
+				resp, err := sharedClient.GetLedgerStats(sharedCtx, &ledgerpb.GetLedgerStatsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -76,15 +76,15 @@ var _ = Describe("GetLedgerStats", Ordered, func() {
 		const ledgerName = "stats-persisted-zero-volume"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(0), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(1), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -92,7 +92,7 @@ var _ = Describe("GetLedgerStats", Ordered, func() {
 
 		It("Should count each persisted volume only once", func() {
 			Eventually(func(g Gomega) {
-				resp, err := sharedClient.GetLedgerStats(sharedCtx, &commonpb.GetLedgerStatsRequest{
+				resp, err := sharedClient.GetLedgerStats(sharedCtx, &ledgerpb.GetLedgerStatsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -101,7 +101,7 @@ var _ = Describe("GetLedgerStats", Ordered, func() {
 				g.Expect(resp.VolumeCount).To(Equal(uint64(2)))
 			}).Should(Succeed())
 
-			stream, err := sharedClient.ListLogs(sharedCtx, &commonpb.ListLogsRequest{Ledger: ledgerName})
+			stream, err := sharedClient.ListLogs(sharedCtx, &ledgerpb.ListLogsRequest{Ledger: ledgerName})
 			Expect(err).To(Succeed())
 			logs := collectLogs(stream)
 			Expect(logs).To(HaveLen(2))
@@ -119,34 +119,34 @@ var _ = Describe("GetLedgerStats", Ordered, func() {
 		const ledgerName = "stats-purged-then-normal"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("",
 				actions.CreateLedgerAction(ledgerName, nil),
 				actions.AddEphemeralAccountTypeAction(ledgerName, "temporary", "temporary:{id}"),
 			))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
-				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("",
+				actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "temporary:one", big.NewInt(1), "USD"),
 				}, nil),
-				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("temporary:one", "world", big.NewInt(1), "USD"),
 				}, nil),
 			))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("",
 				actions.RemoveAccountTypeAction(ledgerName, "temporary"),
 			))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("",
 				actions.AddAccountTypeAction(ledgerName, "temporary", "temporary:{id}"),
 			))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("",
+				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "temporary:one", big.NewInt(1), "USD"),
 				}, nil, nil),
 			))
@@ -155,13 +155,13 @@ var _ = Describe("GetLedgerStats", Ordered, func() {
 
 		It("Should count the recreated persistent row as new", func() {
 			Eventually(func(g Gomega) {
-				resp, err := sharedClient.GetLedgerStats(sharedCtx, &commonpb.GetLedgerStatsRequest{Ledger: ledgerName})
+				resp, err := sharedClient.GetLedgerStats(sharedCtx, &ledgerpb.GetLedgerStatsRequest{Ledger: ledgerName})
 				g.Expect(err).To(Succeed())
 				g.Expect(resp.PostingCount).To(Equal(uint64(3)))
 				g.Expect(resp.VolumeCount).To(Equal(uint64(2)))
 			}).Should(Succeed())
 
-			stream, err := sharedClient.ListLogs(sharedCtx, &commonpb.ListLogsRequest{Ledger: ledgerName})
+			stream, err := sharedClient.ListLogs(sharedCtx, &ledgerpb.ListLogsRequest{Ledger: ledgerName})
 			Expect(err).To(Succeed())
 			logs := collectLogs(stream)
 			Expect(logs).To(HaveLen(6))
@@ -179,7 +179,7 @@ var _ = Describe("GetLedgerStats", Ordered, func() {
 
 	Context("When getting stats for a non-existent ledger", func() {
 		It("Should return a NotFound error", func() {
-			_, err := sharedClient.GetLedgerStats(sharedCtx, &commonpb.GetLedgerStatsRequest{
+			_, err := sharedClient.GetLedgerStats(sharedCtx, &ledgerpb.GetLedgerStatsRequest{
 				Ledger: "non-existent-ledger",
 			})
 			Expect(err).To(HaveOccurred())

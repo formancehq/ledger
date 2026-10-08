@@ -7,7 +7,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
@@ -36,7 +36,7 @@ send $amount (
 
 		BeforeAll(func() {
 			// Create the ledger and register the template in the numscript library.
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("",
 				actions.CreateLedgerAction(ledgerName, nil),
 				actions.SaveNumscriptWithVersionAction(ledgerName, templateName, payoutScript, "1.0.0")))
 			Expect(err).To(Succeed())
@@ -52,7 +52,7 @@ send $amount (
 		It("Should increment count and set lastUsed after a real invocation", func() {
 			// Invoke the template twice via script-reference transactions.
 			for i := 0; i < 2; i++ {
-				_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("",
 					actions.CreateScriptRefTransactionAction(ledgerName, templateName, "1.0.0", map[string]string{
 						"destination": "users:alice",
 						"amount":      "USD/2 100",
@@ -77,7 +77,7 @@ send $amount (
 		const ledgerName = "template-usage-contract-ledger"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 

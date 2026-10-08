@@ -11,7 +11,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/holiman/uint256"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -95,7 +95,7 @@ func TranslateBatch(ledger string, v2Logs []V2Log, expectedNextLogID, expectedNe
 	return orders, expectedNextLogID, expectedNextTxID, nil
 }
 
-func translateV2LogDate(value string) (*commonpb.Timestamp, error) {
+func translateV2LogDate(value string) (*ledgerpb.Timestamp, error) {
 	if value == "" {
 		return nil, nil
 	}
@@ -113,7 +113,7 @@ func translateV2LogDate(value string) (*commonpb.Timestamp, error) {
 		return nil, fmt.Errorf("parsing v2 log date %q: date is before the Unix epoch", value)
 	}
 
-	return &commonpb.Timestamp{Data: uint64(microseconds)}, nil
+	return &ledgerpb.Timestamp{Data: uint64(microseconds)}, nil
 }
 
 func makeMirrorOrder(ledger string, entry *raftcmdpb.MirrorLogEntry) *raftcmdpb.Order {
@@ -188,12 +188,12 @@ func translateNewTransaction(v2Log V2Log, _ uint64) (*raftcmdpb.MirrorLogEntry, 
 
 	metadata := translateMetadataMap(data.Transaction.Metadata)
 
-	var timestamp *commonpb.Timestamp
+	var timestamp *ledgerpb.Timestamp
 
 	if data.Transaction.Timestamp != "" {
 		ts, err := time.Parse(time.RFC3339Nano, data.Transaction.Timestamp)
 		if err == nil {
-			timestamp = &commonpb.Timestamp{Data: uint64(ts.UnixMicro())}
+			timestamp = &ledgerpb.Timestamp{Data: uint64(ts.UnixMicro())}
 		}
 	}
 
@@ -285,12 +285,12 @@ func translateRevertedTransaction(v2Log V2Log, expectedNextTxID uint64) (*raftcm
 		return nil, 0, err
 	}
 
-	var timestamp *commonpb.Timestamp
+	var timestamp *ledgerpb.Timestamp
 
 	if data.RevertTransaction.Timestamp != "" {
 		ts, err := time.Parse(time.RFC3339Nano, data.RevertTransaction.Timestamp)
 		if err == nil {
-			timestamp = &commonpb.Timestamp{Data: uint64(ts.UnixMicro())}
+			timestamp = &ledgerpb.Timestamp{Data: uint64(ts.UnixMicro())}
 		}
 	}
 
@@ -345,11 +345,11 @@ func translateDeleteMetadata(v2Log V2Log) (*raftcmdpb.MirrorLogEntry, error) {
 // translatePostings converts v2 postings to v3 proto postings.
 // Uses batch-allocated backing arrays to reduce per-posting heap allocations
 // from 3N+1 to 3 (one []Posting, one []Uint256, one []*Posting).
-func translatePostings(v2Postings []V2Posting) ([]*commonpb.Posting, error) {
+func translatePostings(v2Postings []V2Posting) ([]*ledgerpb.Posting, error) {
 	n := len(v2Postings)
-	postingBuf := make([]commonpb.Posting, n)
-	uint256Buf := make([]commonpb.Uint256, n)
-	ptrs := make([]*commonpb.Posting, n)
+	postingBuf := make([]ledgerpb.Posting, n)
+	uint256Buf := make([]ledgerpb.Uint256, n)
+	ptrs := make([]*ledgerpb.Posting, n)
 
 	for i, p := range v2Postings {
 		err := parseUint256Into(p.Amount.String(), &uint256Buf[i])
@@ -357,7 +357,7 @@ func translatePostings(v2Postings []V2Posting) ([]*commonpb.Posting, error) {
 			return nil, fmt.Errorf("parsing posting amount %q: %w", p.Amount.String(), err)
 		}
 
-		postingBuf[i] = commonpb.Posting{
+		postingBuf[i] = ledgerpb.Posting{
 			Source:      p.Source,
 			Destination: p.Destination,
 			Amount:      &uint256Buf[i],
@@ -370,7 +370,7 @@ func translatePostings(v2Postings []V2Posting) ([]*commonpb.Posting, error) {
 }
 
 // parseUint256Into parses a decimal string directly into a pre-allocated Uint256.
-func parseUint256Into(s string, dst *commonpb.Uint256) error {
+func parseUint256Into(s string, dst *ledgerpb.Uint256) error {
 	if len(s) > 0 && s[0] == '-' {
 		return fmt.Errorf("negative amount: %s", s)
 	}
@@ -391,7 +391,7 @@ func parseUint256Into(s string, dst *commonpb.Uint256) error {
 }
 
 // translateTarget converts v2 target type and ID to a v3 Target.
-func translateTarget(targetType string, rawID stdjson.RawMessage) (*commonpb.Target, error) {
+func translateTarget(targetType string, rawID stdjson.RawMessage) (*ledgerpb.Target, error) {
 	switch targetType {
 	case "TRANSACTION":
 		var txID uint64
@@ -414,8 +414,8 @@ func translateTarget(targetType string, rawID stdjson.RawMessage) (*commonpb.Tar
 			txID = parsed
 		}
 
-		return &commonpb.Target{
-			Target: &commonpb.Target_TransactionId{TransactionId: txID},
+		return &ledgerpb.Target{
+			Target: &ledgerpb.Target_TransactionId{TransactionId: txID},
 		}, nil
 	case "ACCOUNT":
 		var addr string
@@ -425,9 +425,9 @@ func translateTarget(targetType string, rawID stdjson.RawMessage) (*commonpb.Tar
 			return nil, fmt.Errorf("parsing account target ID: %w", err)
 		}
 
-		return &commonpb.Target{
-			Target: &commonpb.Target_Account{
-				Account: &commonpb.TargetAccount{Addr: addr},
+		return &ledgerpb.Target{
+			Target: &ledgerpb.Target_Account{
+				Account: &ledgerpb.TargetAccount{Addr: addr},
 			},
 		}, nil
 	default:
@@ -438,29 +438,29 @@ func translateTarget(targetType string, rawID stdjson.RawMessage) (*commonpb.Tar
 // translateAccountMetadata builds the account-address-keyed metadata map.
 // Address rewriting (and any collision merging it induces) is handled later by
 // the CEL rewrite engine, so this is a plain, distinct-keyed projection.
-func translateAccountMetadata(accountMetadata map[string]map[string]string) map[string]*commonpb.MetadataMap {
+func translateAccountMetadata(accountMetadata map[string]map[string]string) map[string]*ledgerpb.MetadataMap {
 	if len(accountMetadata) == 0 {
 		return nil
 	}
 
-	result := make(map[string]*commonpb.MetadataMap, len(accountMetadata))
+	result := make(map[string]*ledgerpb.MetadataMap, len(accountMetadata))
 	for account, meta := range accountMetadata {
-		result[account] = &commonpb.MetadataMap{Values: translateMetadataMap(meta)}
+		result[account] = &ledgerpb.MetadataMap{Values: translateMetadataMap(meta)}
 	}
 
 	return result
 }
 
 // translateMetadataMap converts v2 string metadata to proto metadata values.
-func translateMetadataMap(meta map[string]string) map[string]*commonpb.MetadataValue {
+func translateMetadataMap(meta map[string]string) map[string]*ledgerpb.MetadataValue {
 	if len(meta) == 0 {
 		return nil
 	}
 
-	result := make(map[string]*commonpb.MetadataValue, len(meta))
+	result := make(map[string]*ledgerpb.MetadataValue, len(meta))
 	for key, value := range meta {
-		result[key] = &commonpb.MetadataValue{
-			Type: &commonpb.MetadataValue_StringValue{StringValue: value},
+		result[key] = &ledgerpb.MetadataValue{
+			Type: &ledgerpb.MetadataValue_StringValue{StringValue: value},
 		}
 	}
 

@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -19,7 +19,7 @@ import (
 
 // Checkpoint data is compared only with the drained state captured at creation.
 // Live candidate states may explain deletion, never different business data.
-func checkpointAccountReadMatches(state oracle.GlobalState, ledger, address string, account *commonpb.Account, found bool) bool {
+func checkpointAccountReadMatches(state oracle.GlobalState, ledger, address string, account *ledgerpb.Account, found bool) bool {
 	ls := state.Ledger(ledger)
 	if !found {
 		return !modelKnowsAccount(ls, address)
@@ -28,7 +28,7 @@ func checkpointAccountReadMatches(state oracle.GlobalState, ledger, address stri
 	return account != nil && account.GetAddress() == address && accountMatches(ls, address, account)
 }
 
-func checkpointTransactionReadMatches(state oracle.GlobalState, ledger string, id uint64, transaction *commonpb.Transaction, found bool) bool {
+func checkpointTransactionReadMatches(state oracle.GlobalState, ledger string, id uint64, transaction *ledgerpb.Transaction, found bool) bool {
 	txs := state.Ledger(ledger).Txs()
 	if id == 0 || id > uint64(txs.Len()) {
 		return !found
@@ -88,8 +88,8 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 		if !ok {
 			return
 		}
-		var account *commonpb.Account
-		account, err = bucket.GetAccount(readCtx, &commonpb.GetAccountRequest{Ledger: ledger, Address: address, CheckpointId: id})
+		var account *ledgerpb.Account
+		account, err = bucket.GetAccount(readCtx, &ledgerpb.GetAccountRequest{Ledger: ledger, Address: address, CheckpointId: id})
 		maxTicket = c.ticketSeq.Load()
 		details["ledger"], details["address"], details["returned"] = ledger, address, account
 		matches = checkpointAccountReadMatches(frozen, ledger, address, account, err == nil)
@@ -101,8 +101,8 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 		if !ok {
 			return
 		}
-		var response *commonpb.GetTransactionResponse
-		response, err = bucket.GetTransaction(readCtx, &commonpb.GetTransactionRequest{Ledger: ledger, TransactionId: txID, CheckpointId: id})
+		var response *ledgerpb.GetTransactionResponse
+		response, err = bucket.GetTransaction(readCtx, &ledgerpb.GetTransactionRequest{Ledger: ledger, TransactionId: txID, CheckpointId: id})
 		maxTicket = c.ticketSeq.Load()
 		details["ledger"], details["transactionId"], details["returned"] = ledger, txID, response.GetTransaction()
 		matches = checkpointTransactionReadMatches(frozen, ledger, txID, response.GetTransaction(), err == nil)
@@ -115,13 +115,13 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 		pageSize := 1 + int(internal.Rand().Uint64()%16)
 		reverse := percentChance(50)
 		details["ledger"], details["pageSize"], details["reverse"] = ledger, pageSize, reverse
-		options := &commonpb.ListOptions{Read: &commonpb.ReadOptions{CheckpointId: id}, PageSize: uint32(pageSize), Reverse: reverse}
+		options := &ledgerpb.ListOptions{Read: &ledgerpb.ReadOptions{CheckpointId: id}, PageSize: uint32(pageSize), Reverse: reverse}
 		// Nil filters deliberately avoid asynchronous index readiness: every row
 		// in this page is required by the frozen primary-store state.
 		if choice == 4 {
-			stream, streamErr := bucket.ListAccounts(readCtx, &commonpb.ListAccountsRequest{Ledger: ledger, Options: options})
+			stream, streamErr := bucket.ListAccounts(readCtx, &ledgerpb.ListAccountsRequest{Ledger: ledger, Options: options})
 			err = streamErr
-			var rows []*commonpb.Account
+			var rows []*ledgerpb.Account
 			if err == nil {
 				rows, err = drainStream(stream)
 			}
@@ -140,9 +140,9 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 				}
 			}
 		} else {
-			stream, streamErr := bucket.ListTransactions(readCtx, &commonpb.ListTransactionsRequest{Ledger: ledger, Options: options})
+			stream, streamErr := bucket.ListTransactions(readCtx, &ledgerpb.ListTransactionsRequest{Ledger: ledger, Options: options})
 			err = streamErr
-			var rows []*commonpb.Transaction
+			var rows []*ledgerpb.Transaction
 			if err == nil {
 				rows, err = drainStream(stream)
 			}
@@ -176,7 +176,7 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 // runPredictedCheckpointRead targets the ID assigned by the matching in-flight
 // create. NotFound is valid before commit; success must expose the exact model
 // state immediately before that create in a legal serialization.
-func runPredictedCheckpointRead(ctx context.Context, bucket commonpb.BucketServiceClient, c *Checker, checkpointID uint64, start <-chan struct{}, registered chan<- struct{}) {
+func runPredictedCheckpointRead(ctx context.Context, bucket ledgerpb.BucketServiceClient, c *Checker, checkpointID uint64, start <-chan struct{}, registered chan<- struct{}) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	c.mu.Lock()
@@ -197,9 +197,9 @@ func runPredictedCheckpointRead(ctx context.Context, bucket commonpb.BucketServi
 	}
 	ledger := ledgerNames[0]
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
-	info, err := bucket.GetLedger(readCtx, &commonpb.GetLedgerRequest{
+	info, err := bucket.GetLedger(readCtx, &ledgerpb.GetLedgerRequest{
 		Ledger: ledger,
-		Read:   &commonpb.ReadOptions{CheckpointId: checkpointID},
+		Read:   &ledgerpb.ReadOptions{CheckpointId: checkpointID},
 	})
 	maxTicket := c.ticketSeq.Load()
 	if err != nil {
@@ -224,7 +224,7 @@ func runPredictedCheckpointRead(ctx context.Context, bucket commonpb.BucketServi
 	}
 }
 
-func predictedCheckpointLedgerMatches(state oracle.GlobalState, ledger string, info *commonpb.LedgerInfo) bool {
+func predictedCheckpointLedgerMatches(state oracle.GlobalState, ledger string, info *ledgerpb.LedgerInfo) bool {
 	lifecycle, exists := state.Lifecycle(ledger)
 	if !exists || lifecycle.Deleted {
 		return false

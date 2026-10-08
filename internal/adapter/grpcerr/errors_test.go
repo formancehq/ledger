@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/apierr"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -358,7 +358,7 @@ func TestDecode_ReasonFirst(t *testing.T) {
 func TestDecode_UnknownReasonFallsBackToCode(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED,
+	require.Equal(t, ledgerpb.ErrorReason_ERROR_REASON_UNSPECIFIED,
 		domain.ReasonCode(unknownReason),
 		"precondition: the reason must be unknown to this build for the test to mean anything")
 
@@ -637,14 +637,14 @@ func TestFromStatusError_CanceledWithUnknownReasonKeepsItsCode(t *testing.T) {
 
 // enumReasons returns every reason this build's ErrorReason enum knows,
 // excluding UNSPECIFIED (which is the "unknown reason" signal, not a reason).
-func enumReasons(t *testing.T) map[commonpb.ErrorReason]string {
+func enumReasons(t *testing.T) map[ledgerpb.ErrorReason]string {
 	t.Helper()
 
-	reasons := make(map[commonpb.ErrorReason]string, len(commonpb.ErrorReason_name))
+	reasons := make(map[ledgerpb.ErrorReason]string, len(ledgerpb.ErrorReason_name))
 
-	for value := range commonpb.ErrorReason_name {
-		code := commonpb.ErrorReason(value)
-		if code == commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED {
+	for value := range ledgerpb.ErrorReason_name {
+		code := ledgerpb.ErrorReason(value)
+		if code == ledgerpb.ErrorReason_ERROR_REASON_UNSPECIFIED {
 			continue
 		}
 
@@ -752,7 +752,7 @@ func TestDecode_InvalidReasonCodePairIsRejected(t *testing.T) {
 // the Reason() spelling of ERROR_REASON_UNSPECIFIED. No Describable carries it
 // (domain.TestEveryDomainErrorImplementsDescribable), so describableToGRPCStatus
 // cannot stamp it and a status carrying it did not come from a ledger server.
-var unspecifiedReason = domain.ReasonString(commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED)
+var unspecifiedReason = domain.ReasonString(ledgerpb.ErrorReason_ERROR_REASON_UNSPECIFIED)
 
 // TestDecode_ExplicitUnspecifiedReasonIsRejected separates the two conditions
 // domain.ReasonCode collapses onto the zero value. A name this build's enum
@@ -769,7 +769,7 @@ func TestDecode_ExplicitUnspecifiedReasonIsRejected(t *testing.T) {
 
 	rc, known := domain.LookupReasonCode(unspecifiedReason)
 	require.True(t, known, "precondition: the sentinel is a name the enum declares")
-	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED, rc)
+	require.Equal(t, ledgerpb.ErrorReason_ERROR_REASON_UNSPECIFIED, rc)
 
 	_, knownUnknown := domain.LookupReasonCode(unknownReason)
 	require.False(t, knownUnknown, "precondition: a reason from a newer server is absent from the enum")

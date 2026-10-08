@@ -7,7 +7,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -117,10 +117,10 @@ func runRemoveMetadataType(cmd *cobra.Command, _ []string) error {
 	spinner := cmdutil.StartSpinner(fmt.Sprintf("Removing metadata type %s.%s from %s...",
 		cmdutil.TargetTypeString(targetType), key, ledgerName))
 
-	requests := []*servicepb.Request{
+	requests := []*ledgerpb.Request{
 		{
-			Type: &servicepb.Request_RemoveMetadataFieldType{
-				RemoveMetadataFieldType: &servicepb.RemoveMetadataFieldTypeRequest{
+			Type: &ledgerpb.Request_RemoveMetadataFieldType{
+				RemoveMetadataFieldType: &ledgerpb.RemoveMetadataFieldTypeRequest{
 					Ledger:     ledgerName,
 					TargetType: targetType,
 					Key:        key,

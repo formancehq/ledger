@@ -6,12 +6,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // audit is the query target under which the bare audit fields resolve to the
 // AuditCondition arm (EN-1549).
-const audit = commonpb.QueryTarget_QUERY_TARGET_AUDIT
+const audit = ledgerpb.QueryTarget_QUERY_TARGET_AUDIT
 
 func TestParseAudit_OutcomeEquality(t *testing.T) {
 	t.Parallel()
@@ -21,7 +21,7 @@ func TestParseAudit_OutcomeEquality(t *testing.T) {
 
 	ac := filter.GetAudit()
 	require.NotNil(t, ac)
-	assert.Equal(t, commonpb.AuditField_AUDIT_FIELD_OUTCOME, ac.GetField())
+	assert.Equal(t, ledgerpb.AuditField_AUDIT_FIELD_OUTCOME, ac.GetField())
 	assert.Equal(t, "failure", ac.GetStringCond().GetHardcoded())
 }
 
@@ -35,7 +35,7 @@ func TestParseAudit_LedgerKeyword(t *testing.T) {
 
 	ac := filter.GetAudit()
 	require.NotNil(t, ac)
-	assert.Equal(t, commonpb.AuditField_AUDIT_FIELD_LEDGER, ac.GetField())
+	assert.Equal(t, ledgerpb.AuditField_AUDIT_FIELD_LEDGER, ac.GetField())
 	assert.Equal(t, "main", ac.GetStringCond().GetHardcoded())
 }
 
@@ -47,7 +47,7 @@ func TestParseAudit_CallerSubjectQuoted(t *testing.T) {
 
 	ac := filter.GetAudit()
 	require.NotNil(t, ac)
-	assert.Equal(t, commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT, ac.GetField())
+	assert.Equal(t, ledgerpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT, ac.GetField())
 	assert.Equal(t, "svc:payments", ac.GetStringCond().GetHardcoded())
 }
 
@@ -56,12 +56,12 @@ func TestParseAudit_IdempotencyKeyEqualityAndPrefix(t *testing.T) {
 
 	exact, err := Parse(`idempotency_key == "retry:1"`, audit)
 	require.NoError(t, err)
-	assert.Equal(t, commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY, exact.GetAudit().GetField())
+	assert.Equal(t, ledgerpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY, exact.GetAudit().GetField())
 	assert.Equal(t, "retry:1", exact.GetAudit().GetStringCond().GetHardcoded())
 
 	prefix, err := Parse(`idempotency_key ^= "retry:"`, audit)
 	require.NoError(t, err)
-	assert.Equal(t, commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY, prefix.GetAudit().GetField())
+	assert.Equal(t, ledgerpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY, prefix.GetAudit().GetField())
 	assert.Equal(t, "retry:", prefix.GetAudit().GetStringPrefix())
 	assert.Equal(t, `idempotency_key ^= "retry:"`, Format(prefix))
 
@@ -77,7 +77,7 @@ func TestParse_MetadataPrefixRejected(t *testing.T) {
 
 	// ^= is a valid lexer token but not a valid operator for metadata fields.
 	// It must be rejected at the toProto stage, not silently fall through.
-	_, err := Parse(`metadata[k] ^= value`, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	_, err := Parse(`metadata[k] ^= value`, ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 	require.ErrorContains(t, err, "prefix operator ^= is not supported for metadata conditions")
 }
 
@@ -85,7 +85,7 @@ func TestParse_TimestampPrefixRejected(t *testing.T) {
 	t.Parallel()
 
 	// ^= on a numeric/datetime field must also be rejected explicitly.
-	_, err := Parse(`timestamp ^= foo`, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	_, err := Parse(`timestamp ^= foo`, ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 	require.ErrorContains(t, err, "prefix operator ^= is not supported for numeric or datetime fields")
 }
 
@@ -105,7 +105,7 @@ func TestParseAudit_TimestampRFC3339(t *testing.T) {
 
 		ac := filter.GetAudit()
 		require.NotNil(t, ac, in)
-		assert.Equal(t, commonpb.AuditField_AUDIT_FIELD_TIMESTAMP, ac.GetField(), in)
+		assert.Equal(t, ledgerpb.AuditField_AUDIT_FIELD_TIMESTAMP, ac.GetField(), in)
 		assert.Equal(t, wantMicros, ac.GetUintCond().GetMin(), in)
 	}
 }
@@ -139,7 +139,7 @@ func TestParseAudit_SeqBetween(t *testing.T) {
 
 	ac := filter.GetAudit()
 	require.NotNil(t, ac)
-	assert.Equal(t, commonpb.AuditField_AUDIT_FIELD_SEQUENCE, ac.GetField())
+	assert.Equal(t, ledgerpb.AuditField_AUDIT_FIELD_SEQUENCE, ac.GetField())
 	uc := ac.GetUintCond()
 	require.NotNil(t, uc)
 	assert.Equal(t, uint64(1000), uc.GetMin())
@@ -154,7 +154,7 @@ func TestParseAudit_ProposalIDEquality(t *testing.T) {
 
 	ac := filter.GetAudit()
 	require.NotNil(t, ac)
-	assert.Equal(t, commonpb.AuditField_AUDIT_FIELD_PROPOSAL_ID, ac.GetField())
+	assert.Equal(t, ledgerpb.AuditField_AUDIT_FIELD_PROPOSAL_ID, ac.GetField())
 	uc := ac.GetUintCond()
 	require.Equal(t, uint64(42), uc.GetMin())
 	assert.Equal(t, uint64(42), uc.GetMax())
@@ -181,8 +181,8 @@ func TestParseAudit_Composition(t *testing.T) {
 	and := filter.GetAnd()
 	require.NotNil(t, and)
 	require.Len(t, and.GetFilters(), 2)
-	assert.Equal(t, commonpb.AuditField_AUDIT_FIELD_OUTCOME, and.GetFilters()[0].GetAudit().GetField())
-	assert.Equal(t, commonpb.AuditField_AUDIT_FIELD_LEDGER, and.GetFilters()[1].GetAudit().GetField())
+	assert.Equal(t, ledgerpb.AuditField_AUDIT_FIELD_OUTCOME, and.GetFilters()[0].GetAudit().GetField())
+	assert.Equal(t, ledgerpb.AuditField_AUDIT_FIELD_LEDGER, and.GetFilters()[1].GetAudit().GetField())
 }
 
 func TestParseAudit_UnknownField(t *testing.T) {
@@ -224,10 +224,10 @@ func TestParseAudit_AuditFieldsRejectedOffAuditTarget(t *testing.T) {
 		"caller_subject == svc",
 		"order_type == create_transaction",
 	} {
-		for _, target := range []commonpb.QueryTarget{
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-			commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-			commonpb.QueryTarget_QUERY_TARGET_LOGS,
+		for _, target := range []ledgerpb.QueryTarget{
+			ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			ledgerpb.QueryTarget_QUERY_TARGET_LOGS,
 		} {
 			_, err := Parse(in, target)
 			require.Error(t, err, "%q must be rejected on %s", in, target)

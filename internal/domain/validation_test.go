@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/invariants"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // TestValidateWrapping pins the wrapper contract: each Validate* function in
@@ -67,26 +67,26 @@ func TestValidateWrapping_NilOnValidInput(t *testing.T) {
 	require.Nil(t, ValidateAsset("EUR/2"))
 }
 
-// TestValidateMetadataValue exercises the *commonpb.MetadataValue dispatch,
+// TestValidateMetadataValue exercises the *ledgerpb.MetadataValue dispatch,
 // which stays local to this package because it depends on the internal proto.
 func TestValidateMetadataValue(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name    string
-		input   *commonpb.MetadataValue
+		input   *ledgerpb.MetadataValue
 		wantErr Describable
 	}{
 		{name: "nil value"},
-		{name: "valid string", input: commonpb.NewStringValue("admin")},
-		{name: "empty string", input: commonpb.NewStringValue("")},
-		{name: "string contains null byte", input: commonpb.NewStringValue("admin\x00evil"), wantErr: ErrMetadataValueContainsNullByte},
-		{name: "valid null original", input: commonpb.NewNullValue("not-a-number")},
-		{name: "null original contains null byte", input: commonpb.NewNullValue("not\x00safe"), wantErr: ErrMetadataValueContainsNullByte},
-		{name: "nil null original", input: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_NullValue{}}},
-		{name: "int64", input: commonpb.NewIntValue(-42)},
-		{name: "uint64", input: commonpb.NewUintValue(42)},
-		{name: "bool", input: commonpb.NewBoolValue(true)},
+		{name: "valid string", input: ledgerpb.NewStringValue("admin")},
+		{name: "empty string", input: ledgerpb.NewStringValue("")},
+		{name: "string contains null byte", input: ledgerpb.NewStringValue("admin\x00evil"), wantErr: ErrMetadataValueContainsNullByte},
+		{name: "valid null original", input: ledgerpb.NewNullValue("not-a-number")},
+		{name: "null original contains null byte", input: ledgerpb.NewNullValue("not\x00safe"), wantErr: ErrMetadataValueContainsNullByte},
+		{name: "nil null original", input: &ledgerpb.MetadataValue{Type: &ledgerpb.MetadataValue_NullValue{}}},
+		{name: "int64", input: ledgerpb.NewIntValue(-42)},
+		{name: "uint64", input: ledgerpb.NewUintValue(42)},
+		{name: "bool", input: ledgerpb.NewBoolValue(true)},
 	}
 
 	for _, tt := range tests {

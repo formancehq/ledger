@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"slices"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // ValidatePattern parses and validates a pattern string.
@@ -19,7 +19,7 @@ func ValidatePattern(pattern string) error {
 
 // ValidateSegmentTypes checks that segment_types references valid variable names
 // from the pattern and applies the constraint to each segment.
-func ValidateSegmentTypes(segments []PatternSegment, segTypes map[string]*commonpb.SegmentType) error {
+func ValidateSegmentTypes(segments []PatternSegment, segTypes map[string]*ledgerpb.SegmentType) error {
 	return applySegmentTypes(segments, slices.Sorted(maps.Keys(segTypes)), func(name string) any {
 		return segTypes[name].GetConstraint()
 	})
@@ -28,9 +28,9 @@ func ValidateSegmentTypes(segments []PatternSegment, segTypes map[string]*common
 // validateSegmentTypesReader is the read-only twin of ValidateSegmentTypes:
 // it consumes the immutable segment-types map reader so compiled account
 // types never alias the cached ledger configuration.
-func validateSegmentTypesReader(segments []PatternSegment, segTypes commonpb.AccountType_SegmentTypesMapReader) error {
+func validateSegmentTypesReader(segments []PatternSegment, segTypes ledgerpb.AccountType_SegmentTypesMapReader) error {
 	names := make([]string, 0, segTypes.Len())
-	segTypes.Range(func(name string, _ commonpb.SegmentTypeReader) bool {
+	segTypes.Range(func(name string, _ ledgerpb.SegmentTypeReader) bool {
 		names = append(names, name)
 
 		return true
@@ -87,7 +87,7 @@ func buildMatcher(constraint any) (SegmentMatcher, error) {
 	}
 
 	switch c := constraint.(type) {
-	case *commonpb.SegmentType_Regex:
+	case *ledgerpb.SegmentType_Regex:
 		compiled, err := regexp.Compile("^(?:" + c.Regex + ")$")
 		if err != nil {
 			return nil, fmt.Errorf("invalid regex %q: %w", c.Regex, err)
@@ -95,13 +95,13 @@ func buildMatcher(constraint any) (SegmentMatcher, error) {
 
 		return compiled.MatchString, nil
 
-	case *commonpb.SegmentType_Uuid:
+	case *ledgerpb.SegmentType_Uuid:
 		return matchUUID, nil
 
-	case *commonpb.SegmentType_Uint64:
+	case *ledgerpb.SegmentType_Uint64:
 		return matchUint64, nil
 
-	case *commonpb.SegmentType_Bytes:
+	case *ledgerpb.SegmentType_Bytes:
 		return matchHexBytes, nil
 
 	default:

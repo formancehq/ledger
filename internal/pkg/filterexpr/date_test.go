@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // 2023-11-14T22:13:20Z == 1_700_000_000 s == 1_700_000_000_000_000 µs.
@@ -17,7 +17,7 @@ const wantDateMicros = uint64(1_700_000_000_000_000)
 // tx is a non-audit target under which the bare intrinsic fields (date,
 // timestamp, ledger) resolve to their own arms (EN-1549). Any non-audit target
 // resolves them identically; TRANSACTIONS is the representative choice.
-const tx = commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS
+const tx = ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS
 
 func TestParseDate_LogRFC3339AndRawMatch(t *testing.T) {
 	t.Parallel()
@@ -33,7 +33,7 @@ func TestParseDate_LogRFC3339AndRawMatch(t *testing.T) {
 
 		lc := filter.GetLogBuiltinUint()
 		require.NotNil(t, lc, in)
-		assert.Equal(t, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE, lc.GetField(), in)
+		assert.Equal(t, ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE, lc.GetField(), in)
 		assert.Equal(t, wantDateMicros, lc.GetCond().GetMin(), in)
 		assert.False(t, lc.GetCond().GetMinExclusive(), in)
 	}
@@ -51,7 +51,7 @@ func TestParseTimestamp_TxRFC3339AndRawMatch(t *testing.T) {
 
 		bc := filter.GetBuiltinUint()
 		require.NotNil(t, bc, in)
-		assert.Equal(t, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP, bc.GetField(), in)
+		assert.Equal(t, ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP, bc.GetField(), in)
 		assert.Equal(t, wantDateMicros, bc.GetCond().GetMin(), in)
 	}
 }
@@ -71,7 +71,7 @@ func TestParseDate_ClosedRange(t *testing.T) {
 
 	lc := filter.GetLogBuiltinUint()
 	require.NotNil(t, lc)
-	assert.Equal(t, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE, lc.GetField())
+	assert.Equal(t, ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE, lc.GetField())
 	assert.Equal(t, wantDateMicros, lc.GetCond().GetMin())
 	assert.False(t, lc.GetCond().GetMinExclusive())
 	assert.Equal(t, wantDateMicros+24*60*60*1_000_000, lc.GetCond().GetMax())
@@ -196,7 +196,7 @@ func TestFormatDate_PreservesExclusiveClosedRange(t *testing.T) {
 			t.Parallel()
 
 			// Build the folded proto exactly the way the JSON DSL does.
-			folded := &commonpb.QueryFilter{}
+			folded := &ledgerpb.QueryFilter{}
 			require.NoError(t, json.Unmarshal([]byte(tc.json), folded))
 			// Precondition: the JSON side really folded to one condition, not an $and.
 			require.Nil(t, folded.GetAnd(), "JSON input must fold to a single condition")
@@ -246,12 +246,12 @@ func TestFormatDate_NotWrapsExclusiveRange(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			inner := &commonpb.QueryFilter{}
+			inner := &ledgerpb.QueryFilter{}
 			require.NoError(t, json.Unmarshal([]byte(tc.json), inner))
 			require.Nil(t, inner.GetAnd(), "JSON input must fold to a single condition")
 
-			notFilter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Not{
-				Not: &commonpb.NotFilter{Filter: inner},
+			notFilter := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Not{
+				Not: &ledgerpb.NotFilter{Filter: inner},
 			}}
 
 			got := Format(notFilter)
@@ -276,7 +276,7 @@ func TestFormatDate_RawMicrosOutsideRFC3339Range(t *testing.T) {
 
 	cases := []struct {
 		name  string
-		field commonpb.TransactionBuiltinIndex
+		field ledgerpb.TransactionBuiltinIndex
 		v     uint64
 		want  string
 	}{
@@ -297,10 +297,10 @@ func TestFormatDate_RawMicrosOutsideRFC3339Range(t *testing.T) {
 			t.Parallel()
 
 			minMicros := tc.v
-			f := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
-				BuiltinUint: &commonpb.BuiltinUintCondition{
-					Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
-					Cond:  &commonpb.UintCondition{Min: &minMicros},
+			f := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_BuiltinUint{
+				BuiltinUint: &ledgerpb.BuiltinUintCondition{
+					Field: ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
+					Cond:  &ledgerpb.UintCondition{Min: &minMicros},
 				},
 			}}
 
@@ -319,11 +319,11 @@ func TestFormatDate_RawMicrosOutsideRFC3339Range(t *testing.T) {
 		t.Parallel()
 
 		minMicros := uint64(18446744073709551615)
-		f := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Audit{
-			Audit: &commonpb.AuditCondition{
-				Field: commonpb.AuditField_AUDIT_FIELD_TIMESTAMP,
-				Condition: &commonpb.AuditCondition_UintCond{
-					UintCond: &commonpb.UintCondition{Min: &minMicros},
+		f := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Audit{
+			Audit: &ledgerpb.AuditCondition{
+				Field: ledgerpb.AuditField_AUDIT_FIELD_TIMESTAMP,
+				Condition: &ledgerpb.AuditCondition_UintCond{
+					UintCond: &ledgerpb.UintCondition{Min: &minMicros},
 				},
 			},
 		}}
@@ -346,18 +346,18 @@ func TestFormatDate_RawMicrosOutsideRFC3339Range(t *testing.T) {
 func TestFormatDate_OnlyEmitsParseableFields(t *testing.T) {
 	t.Parallel()
 
-	nonParseable := []commonpb.TransactionBuiltinIndex{
-		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID,
-		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
-		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT,
+	nonParseable := []ledgerpb.TransactionBuiltinIndex{
+		ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID,
+		ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
+		ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT,
 	}
 
 	lo := wantDateMicros
 	for _, field := range nonParseable {
-		f := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
-			BuiltinUint: &commonpb.BuiltinUintCondition{
+		f := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_BuiltinUint{
+			BuiltinUint: &ledgerpb.BuiltinUintCondition{
 				Field: field,
-				Cond:  &commonpb.UintCondition{Min: &lo},
+				Cond:  &ledgerpb.UintCondition{Min: &lo},
 			},
 		}}
 		assert.Equal(t, "<unknown builtin field>", Format(f), field.String())

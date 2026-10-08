@@ -3,7 +3,7 @@ package http
 import (
 	"net/http"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // handleDeleteLedger handles DELETE /{ledgerName} to delete a ledger.
@@ -13,9 +13,9 @@ func (s *Server) handleDeleteLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{
-		Type: &servicepb.Request_DeleteLedger{
-			DeleteLedger: &servicepb.DeleteLedgerRequest{
+	_, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &ledgerpb.Request{
+		Type: &ledgerpb.Request_DeleteLedger{
+			DeleteLedger: &ledgerpb.DeleteLedgerRequest{
 				Name: ledgerName,
 			},
 		},

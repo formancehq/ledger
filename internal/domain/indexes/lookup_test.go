@@ -8,14 +8,14 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 )
 
-func ref() *commonpb.IndexID {
-	return indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+func ref() *ledgerpb.IndexID {
+	return indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 }
 
 func TestFind_ReturnsValueOnHit(t *testing.T) {
@@ -25,7 +25,7 @@ func TestFind_ReturnsValueOnHit(t *testing.T) {
 	reader := NewMockLookup(ctrl)
 
 	key := indexes.KeyFor("main", ref())
-	expected := (&commonpb.Index{Id: ref(), ForwardEncodingVersion: 3}).AsReader()
+	expected := (&ledgerpb.Index{Id: ref(), ForwardEncodingVersion: 3}).AsReader()
 
 	reader.EXPECT().Get(key).Return(expected, nil)
 
@@ -88,7 +88,7 @@ func TestPut_DispatchesPutIndex(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	writer := NewMockIndexWriter(ctrl)
 
-	idx := &commonpb.Index{Id: ref(), Ledger: "main"}
+	idx := &ledgerpb.Index{Id: ref(), Ledger: "main"}
 	writer.EXPECT().Put(indexes.KeyFor("main", ref()), idx)
 
 	indexes.Put(writer, "main", idx)
@@ -110,7 +110,7 @@ func TestPut_NoOpOnNilIDInsideIdx(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	writer := NewMockIndexWriter(ctrl)
 
-	indexes.Put(writer, "main", &commonpb.Index{Ledger: "main"})
+	indexes.Put(writer, "main", &ledgerpb.Index{Ledger: "main"})
 }
 
 func TestRemove_DispatchesDeleteIndex(t *testing.T) {

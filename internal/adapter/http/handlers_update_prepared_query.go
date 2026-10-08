@@ -7,7 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
 )
@@ -46,7 +46,7 @@ func (s *Server) handleUpdatePreparedQuery(w http.ResponseWriter, r *http.Reques
 	// the target gate to the FSM. Bare-field resolution uses a non-audit target
 	// (EN-1549): prepared queries are only ever ACCOUNTS/TRANSACTIONS/LOGS, all of
 	// which resolve the bare intrinsic fields identically.
-	filter, err := filterexpr.DecodeDualFormatStructuralOnly(body.Filter, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	filter, err := filterexpr.DecodeDualFormatStructuralOnly(body.Filter, ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 	if err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", err)
 
@@ -59,9 +59,9 @@ func (s *Server) handleUpdatePreparedQuery(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	_, err = s.applyUnsigned(r.Context(), "", &commonpb.Request{
-		Type: &commonpb.Request_UpdatePreparedQuery{
-			UpdatePreparedQuery: &commonpb.UpdatePreparedQueryRequest{
+	_, err = s.applyUnsigned(r.Context(), "", &ledgerpb.Request{
+		Type: &ledgerpb.Request_UpdatePreparedQuery{
+			UpdatePreparedQuery: &ledgerpb.UpdatePreparedQueryRequest{
 				Ledger: ledgerName,
 				Name:   queryName,
 				Filter: filter,

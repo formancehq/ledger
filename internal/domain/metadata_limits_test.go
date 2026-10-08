@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // testLimits is a small, easy-to-reason-about contract: the boundary cases below
@@ -26,48 +26,48 @@ func TestMetadataValueSize(t *testing.T) {
 
 	tests := []struct {
 		name  string
-		value *commonpb.MetadataValue
+		value *ledgerpb.MetadataValue
 		want  uint64
 	}{
 		{"nil value", nil, 0},
-		{"empty type", &commonpb.MetadataValue{}, 0},
-		{"empty string", commonpb.NewStringValue(""), 0},
-		{"string counts bytes", commonpb.NewStringValue("abcde"), 5},
+		{"empty type", &ledgerpb.MetadataValue{}, 0},
+		{"empty string", ledgerpb.NewStringValue(""), 0},
+		{"string counts bytes", ledgerpb.NewStringValue("abcde"), 5},
 		{
 			// Multi-byte runes count as bytes: the ceiling bounds what is
 			// replicated and stored, which is bytes, not runes.
 			name:  "multi-byte string counts bytes not runes",
-			value: commonpb.NewStringValue("héllo"),
+			value: ledgerpb.NewStringValue("héllo"),
 			want:  6,
 		},
 		{
 			name:  "null value counts its original text",
-			value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_NullValue{NullValue: &commonpb.NullValue{Original: "not-a-number"}}},
+			value: &ledgerpb.MetadataValue{Type: &ledgerpb.MetadataValue_NullValue{NullValue: &ledgerpb.NullValue{Original: "not-a-number"}}},
 			want:  12,
 		},
 		{
 			name:  "null value without original",
-			value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_NullValue{}},
+			value: &ledgerpb.MetadataValue{Type: &ledgerpb.MetadataValue_NullValue{}},
 			want:  0,
 		},
 		{
 			name:  "int is a fixed scalar width",
-			value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_IntValue{IntValue: -1}},
+			value: &ledgerpb.MetadataValue{Type: &ledgerpb.MetadataValue_IntValue{IntValue: -1}},
 			want:  metadataScalarValueBytes,
 		},
 		{
 			name:  "uint is a fixed scalar width",
-			value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_UintValue{UintValue: 1 << 62}},
+			value: &ledgerpb.MetadataValue{Type: &ledgerpb.MetadataValue_UintValue{UintValue: 1 << 62}},
 			want:  metadataScalarValueBytes,
 		},
 		{
 			name:  "datetime is a fixed scalar width",
-			value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_DatetimeValue{DatetimeValue: 1_700_000_000_000_000}},
+			value: &ledgerpb.MetadataValue{Type: &ledgerpb.MetadataValue_DatetimeValue{DatetimeValue: 1_700_000_000_000_000}},
 			want:  metadataScalarValueBytes,
 		},
 		{
 			name:  "bool is one byte",
-			value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_BoolValue{BoolValue: true}},
+			value: &ledgerpb.MetadataValue{Type: &ledgerpb.MetadataValue_BoolValue{BoolValue: true}},
 			want:  metadataBoolValueBytes,
 		},
 	}
@@ -85,11 +85,11 @@ func TestMetadataValueSize(t *testing.T) {
 func TestMetadataEntryAndMapSize(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, uint64(3+5), MetadataEntrySize("abc", commonpb.NewStringValue("value")))
+	require.Equal(t, uint64(3+5), MetadataEntrySize("abc", ledgerpb.NewStringValue("value")))
 
-	m := map[string]*commonpb.MetadataValue{
-		"a":  commonpb.NewStringValue("12345"),
-		"bb": {Type: &commonpb.MetadataValue_BoolValue{BoolValue: true}},
+	m := map[string]*ledgerpb.MetadataValue{
+		"a":  ledgerpb.NewStringValue("12345"),
+		"bb": {Type: &ledgerpb.MetadataValue_BoolValue{BoolValue: true}},
 	}
 	require.Equal(t, uint64((1+5)+(2+1)), MetadataMapSize(m))
 
@@ -156,7 +156,7 @@ func TestMetadataLimitsConsistent(t *testing.T) {
 func TestMetadataLimitsFromPolicy(t *testing.T) {
 	t.Parallel()
 
-	limits := MetadataLimitsFromPolicy(&commonpb.ClusterPolicy{
+	limits := MetadataLimitsFromPolicy(&ledgerpb.ClusterPolicy{
 		MetadataMaxEntriesPerEntity: 1,
 		MetadataMaxKeyBytes:         2,
 		MetadataMaxValueBytes:       3,
@@ -174,7 +174,7 @@ func TestMetadataLimitsFromPolicy(t *testing.T) {
 	// A nil policy — or one carrying no ceilings — is unconfigured, so the
 	// validators reject loudly instead of admitting unbounded metadata.
 	require.False(t, MetadataLimitsFromPolicy(nil).Configured())
-	require.False(t, MetadataLimitsFromPolicy(&commonpb.ClusterPolicy{Revision: 7}).Configured())
+	require.False(t, MetadataLimitsFromPolicy(&ledgerpb.ClusterPolicy{Revision: 7}).Configured())
 }
 
 // Every ceiling accepts its exact boundary and rejects one unit past it, and the
@@ -186,26 +186,26 @@ func TestMetadataLimitsValidateMapBoundaries(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		metadata      map[string]*commonpb.MetadataValue
+		metadata      map[string]*ledgerpb.MetadataValue
 		wantDimension string
 		wantLimit     uint64
 		wantActual    uint64
 	}{
 		{
 			name: "entry count at the ceiling",
-			metadata: map[string]*commonpb.MetadataValue{
-				"a": commonpb.NewStringValue(""),
-				"b": commonpb.NewStringValue(""),
-				"c": commonpb.NewStringValue(""),
+			metadata: map[string]*ledgerpb.MetadataValue{
+				"a": ledgerpb.NewStringValue(""),
+				"b": ledgerpb.NewStringValue(""),
+				"c": ledgerpb.NewStringValue(""),
 			},
 		},
 		{
 			name: "entry count one over",
-			metadata: map[string]*commonpb.MetadataValue{
-				"a": commonpb.NewStringValue(""),
-				"b": commonpb.NewStringValue(""),
-				"c": commonpb.NewStringValue(""),
-				"d": commonpb.NewStringValue(""),
+			metadata: map[string]*ledgerpb.MetadataValue{
+				"a": ledgerpb.NewStringValue(""),
+				"b": ledgerpb.NewStringValue(""),
+				"c": ledgerpb.NewStringValue(""),
+				"d": ledgerpb.NewStringValue(""),
 			},
 			wantDimension: MetadataLimitDimensionEntries,
 			wantLimit:     3,
@@ -213,40 +213,40 @@ func TestMetadataLimitsValidateMapBoundaries(t *testing.T) {
 		},
 		{
 			name:     "key at the ceiling",
-			metadata: map[string]*commonpb.MetadataValue{strings.Repeat("k", 8): commonpb.NewStringValue("")},
+			metadata: map[string]*ledgerpb.MetadataValue{strings.Repeat("k", 8): ledgerpb.NewStringValue("")},
 		},
 		{
 			name:          "key one over",
-			metadata:      map[string]*commonpb.MetadataValue{strings.Repeat("k", 9): commonpb.NewStringValue("")},
+			metadata:      map[string]*ledgerpb.MetadataValue{strings.Repeat("k", 9): ledgerpb.NewStringValue("")},
 			wantDimension: MetadataLimitDimensionKey,
 			wantLimit:     8,
 			wantActual:    9,
 		},
 		{
 			name:     "value at the ceiling",
-			metadata: map[string]*commonpb.MetadataValue{"k": commonpb.NewStringValue(strings.Repeat("v", 16))},
+			metadata: map[string]*ledgerpb.MetadataValue{"k": ledgerpb.NewStringValue(strings.Repeat("v", 16))},
 		},
 		{
 			name:          "value one over",
-			metadata:      map[string]*commonpb.MetadataValue{"k": commonpb.NewStringValue(strings.Repeat("v", 17))},
+			metadata:      map[string]*ledgerpb.MetadataValue{"k": ledgerpb.NewStringValue(strings.Repeat("v", 17))},
 			wantDimension: MetadataLimitDimensionValue,
 			wantLimit:     16,
 			wantActual:    17,
 		},
 		{
 			name: "entity total at the ceiling",
-			metadata: map[string]*commonpb.MetadataValue{
-				"k1": commonpb.NewStringValue(strings.Repeat("v", 16)),
-				"k2": commonpb.NewStringValue(strings.Repeat("v", 16)),
-				"k3": commonpb.NewStringValue("vv"),
+			metadata: map[string]*ledgerpb.MetadataValue{
+				"k1": ledgerpb.NewStringValue(strings.Repeat("v", 16)),
+				"k2": ledgerpb.NewStringValue(strings.Repeat("v", 16)),
+				"k3": ledgerpb.NewStringValue("vv"),
 			},
 		},
 		{
 			name: "entity total one over",
-			metadata: map[string]*commonpb.MetadataValue{
-				"k1": commonpb.NewStringValue(strings.Repeat("v", 16)),
-				"k2": commonpb.NewStringValue(strings.Repeat("v", 16)),
-				"k3": commonpb.NewStringValue("vvv"),
+			metadata: map[string]*ledgerpb.MetadataValue{
+				"k1": ledgerpb.NewStringValue(strings.Repeat("v", 16)),
+				"k2": ledgerpb.NewStringValue(strings.Repeat("v", 16)),
+				"k3": ledgerpb.NewStringValue("vvv"),
 			},
 			wantDimension: MetadataLimitDimensionEntity,
 			wantLimit:     40,
@@ -283,7 +283,7 @@ func TestMetadataLimitsValidateMapEmpty(t *testing.T) {
 	t.Parallel()
 
 	require.Nil(t, testLimits().ValidateMap(nil))
-	require.Nil(t, testLimits().ValidateMap(map[string]*commonpb.MetadataValue{}))
+	require.Nil(t, testLimits().ValidateMap(map[string]*ledgerpb.MetadataValue{}))
 }
 
 // A per-entry failure names the offending key, so operator logs and the gRPC
@@ -291,9 +291,9 @@ func TestMetadataLimitsValidateMapEmpty(t *testing.T) {
 func TestMetadataLimitsValidateMapNamesOffendingKey(t *testing.T) {
 	t.Parallel()
 
-	err := testLimits().ValidateMap(map[string]*commonpb.MetadataValue{
-		"ok":  commonpb.NewStringValue("fine"),
-		"bad": commonpb.NewStringValue(strings.Repeat("v", 17)),
+	err := testLimits().ValidateMap(map[string]*ledgerpb.MetadataValue{
+		"ok":  ledgerpb.NewStringValue("fine"),
+		"bad": ledgerpb.NewStringValue(strings.Repeat("v", 17)),
 	})
 
 	require.NotNil(t, err)
@@ -308,10 +308,10 @@ func TestMetadataLimitsValidateMapNamesOffendingKey(t *testing.T) {
 func TestMetadataLimitsValidateMapIsDeterministic(t *testing.T) {
 	t.Parallel()
 
-	metadata := map[string]*commonpb.MetadataValue{
-		"zz-too-long-value": commonpb.NewStringValue(strings.Repeat("v", 17)),
-		"aa-too-long-value": commonpb.NewStringValue(strings.Repeat("v", 17)),
-		"mm-too-long-value": commonpb.NewStringValue(strings.Repeat("v", 17)),
+	metadata := map[string]*ledgerpb.MetadataValue{
+		"zz-too-long-value": ledgerpb.NewStringValue(strings.Repeat("v", 17)),
+		"aa-too-long-value": ledgerpb.NewStringValue(strings.Repeat("v", 17)),
+		"mm-too-long-value": ledgerpb.NewStringValue(strings.Repeat("v", 17)),
 	}
 
 	limits := MetadataLimits{
@@ -341,8 +341,8 @@ func TestMetadataLimitsValidateMapIsDeterministic(t *testing.T) {
 func TestMetadataLimitsValidateEntryPrefersKeyOverValue(t *testing.T) {
 	t.Parallel()
 
-	err := testLimits().ValidateMap(map[string]*commonpb.MetadataValue{
-		strings.Repeat("k", 9): commonpb.NewStringValue(strings.Repeat("v", 17)),
+	err := testLimits().ValidateMap(map[string]*ledgerpb.MetadataValue{
+		strings.Repeat("k", 9): ledgerpb.NewStringValue(strings.Repeat("v", 17)),
 	})
 
 	require.NotNil(t, err)
@@ -386,7 +386,7 @@ func TestMetadataLimitsUnconfiguredRejects(t *testing.T) {
 	var unconfigured MetadataLimits
 
 	for name, err := range map[string]Describable{
-		"ValidateMap":          unconfigured.ValidateMap(map[string]*commonpb.MetadataValue{"k": commonpb.NewStringValue("v")}),
+		"ValidateMap":          unconfigured.ValidateMap(map[string]*ledgerpb.MetadataValue{"k": ledgerpb.NewStringValue("v")}),
 		"ValidateMap empty":    unconfigured.ValidateMap(nil),
 		"ValidateCommandBytes": unconfigured.ValidateCommandBytes(0),
 		"ValidateKey":          unconfigured.ValidateKey("k"),

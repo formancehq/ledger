@@ -8,7 +8,7 @@ import (
 	"math/big"
 	"time"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -16,10 +16,10 @@ import (
 
 // listLedgerLogIDs drains one ListLogs page into per-ledger log ids, reporting
 // a transport error through g so a polling caller retries instead of failing.
-func listLedgerLogIDs(g Gomega, ledger string, filter *commonpb.QueryFilter) []uint64 {
-	stream, err := sharedClient.ListLogs(sharedCtx, &commonpb.ListLogsRequest{
+func listLedgerLogIDs(g Gomega, ledger string, filter *ledgerpb.QueryFilter) []uint64 {
+	stream, err := sharedClient.ListLogs(sharedCtx, &ledgerpb.ListLogsRequest{
 		Ledger: ledger,
-		Options: &commonpb.ListOptions{
+		Options: &ledgerpb.ListOptions{
 			PageSize: 100,
 			Filter:   filter,
 		},
@@ -53,18 +53,18 @@ var _ = Describe("Log date index backfill", Ordered, func() {
 
 	var beforeIndex, afterIndex []uint64
 
-	listLogIDs := func(g Gomega, filter *commonpb.QueryFilter) []uint64 {
+	listLogIDs := func(g Gomega, filter *ledgerpb.QueryFilter) []uint64 {
 		return listLedgerLogIDs(g, ledgerName, filter)
 	}
 
 	BeforeAll(func() {
 		// History with no log-date index yet: schema logs and a data log, so the
 		// backfill has both kinds to replay.
-		resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
+		resp, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("",
 			actions.CreateLedgerAction(ledgerName, nil),
-			actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier", commonpb.MetadataType_METADATA_TYPE_STRING),
+			actions.SetMetadataFieldTypeAction(ledgerName, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "tier", ledgerpb.MetadataType_METADATA_TYPE_STRING),
 			actions.AddAccountTypeAction(ledgerName, "customer", "customer:{id}"),
-			actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "customer:alice", big.NewInt(100), "USD")}, nil),
+			actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{actions.NewPosting("world", "customer:alice", big.NewInt(100), "USD")}, nil),
 		))
 		Expect(err).To(Succeed())
 
@@ -79,16 +79,16 @@ var _ = Describe("Log date index backfill", Ordered, func() {
 		Expect(beforeIndex).To(HaveLen(3), "the pre-index history must hold both schema logs and the data log")
 
 		// Turn the index on: its own log, then the backfill over the history.
-		_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
-			actions.CreateLogBuiltinIndexAction(ledgerName, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)))
+		_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("",
+			actions.CreateLogBuiltinIndexAction(ledgerName, ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)))
 		Expect(err).To(Succeed())
 
-		Expect(actions.WaitForLogBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)).To(Succeed())
+		Expect(actions.WaitForLogBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)).To(Succeed())
 
 		// Post-index logs, of both kinds again: these take the live fold.
-		resp, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
+		resp, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("",
 			actions.AddAccountTypeAction(ledgerName, "merchant", "merchant:{id}"),
-			actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "merchant:bob", big.NewInt(200), "USD")}, nil),
+			actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{actions.NewPosting("world", "merchant:bob", big.NewInt(200), "USD")}, nil),
 		))
 		Expect(err).To(Succeed())
 
@@ -105,11 +105,11 @@ var _ = Describe("Log date index backfill", Ordered, func() {
 		// Log dates are HLC-adjusted proposal dates in microseconds, so a
 		// lower bound of 1 admits every one of them.
 		everySince := uint64(1)
-		allDates := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_LogBuiltinUint{
-				LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
-					Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
-					Cond:  &commonpb.UintCondition{Min: &everySince},
+		allDates := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_LogBuiltinUint{
+				LogBuiltinUint: &ledgerpb.LogBuiltinUintCondition{
+					Field: ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
+					Cond:  &ledgerpb.UintCondition{Min: &everySince},
 				},
 			},
 		}
@@ -131,21 +131,21 @@ var _ = Describe("Log date index backfill", Ordered, func() {
 	It("Should serve the logs of a ledger whose index was declared at birth", func() {
 		const bornEmpty = "log-date-born-empty"
 
-		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
+		_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("",
 			actions.CreateLedgerAction(bornEmpty, nil),
-			actions.SetMetadataFieldTypeAction(bornEmpty, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier", commonpb.MetadataType_METADATA_TYPE_STRING),
-			actions.CreateLogBuiltinIndexAction(bornEmpty, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
+			actions.SetMetadataFieldTypeAction(bornEmpty, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "tier", ledgerpb.MetadataType_METADATA_TYPE_STRING),
+			actions.CreateLogBuiltinIndexAction(bornEmpty, ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
 		))
 		Expect(err).To(Succeed())
 
-		Expect(actions.WaitForLogBuiltinIndexReady(sharedCtx, sharedClient, bornEmpty, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)).To(Succeed())
+		Expect(actions.WaitForLogBuiltinIndexReady(sharedCtx, sharedClient, bornEmpty, ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)).To(Succeed())
 
 		everSince := uint64(1)
-		allDates := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_LogBuiltinUint{
-				LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
-					Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
-					Cond:  &commonpb.UintCondition{Min: &everSince},
+		allDates := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_LogBuiltinUint{
+				LogBuiltinUint: &ledgerpb.LogBuiltinUintCondition{
+					Field: ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
+					Cond:  &ledgerpb.UintCondition{Min: &everSince},
 				},
 			},
 		}
@@ -165,12 +165,12 @@ var _ = Describe("Log date index backfill", Ordered, func() {
 		// its complement being empty — and it holds only if the index carries
 		// every log.
 		everSince := uint64(1)
-		everyLogMatches := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Not{Not: &commonpb.NotFilter{Filter: &commonpb.QueryFilter{
-				Filter: &commonpb.QueryFilter_LogBuiltinUint{
-					LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
-						Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
-						Cond:  &commonpb.UintCondition{Min: &everSince},
+		everyLogMatches := &ledgerpb.QueryFilter{
+			Filter: &ledgerpb.QueryFilter_Not{Not: &ledgerpb.NotFilter{Filter: &ledgerpb.QueryFilter{
+				Filter: &ledgerpb.QueryFilter_LogBuiltinUint{
+					LogBuiltinUint: &ledgerpb.LogBuiltinUintCondition{
+						Field: ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
+						Cond:  &ledgerpb.UintCondition{Min: &everSince},
 					},
 				},
 			}}},

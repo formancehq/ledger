@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/metadata"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -47,11 +47,11 @@ func runListKeys(cmd *cobra.Command, _ []string) error {
 
 	pgn := cmdutil.GetPaginationFlags(cmd)
 
-	keys, nextCursor, err := cmdutil.FetchSinglePageOrAll(cmd, pgn.Cursor, func(cur string) ([]*commonpb.SigningKey, metadata.MD, error) {
+	keys, nextCursor, err := cmdutil.FetchSinglePageOrAll(cmd, pgn.Cursor, func(cur string) ([]*ledgerpb.SigningKey, metadata.MD, error) {
 		page := pgn
 		page.Cursor = cur
 
-		stream, err := client.ListSigningKeys(ctx, &commonpb.ListSigningKeysRequest{
+		stream, err := client.ListSigningKeys(ctx, &ledgerpb.ListSigningKeysRequest{
 			Options: cmdutil.BuildListOptions(page, cmdutil.ConsistencyFlags{}, nil),
 		})
 		if err != nil {

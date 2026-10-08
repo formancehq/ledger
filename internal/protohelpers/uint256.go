@@ -3,7 +3,7 @@ package protohelpers
 import (
 	"github.com/holiman/uint256"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 type uint256Limbs interface {
@@ -27,7 +27,7 @@ func IntoUint256(src uint256Limbs, dst *uint256.Int) {
 }
 
 // SetFromUint256 copies server limbs into a public message.
-func SetFromUint256(dst *commonpb.Uint256, src *uint256.Int) {
+func SetFromUint256(dst *ledgerpb.Uint256, src *uint256.Int) {
 	dst.V0 = src[0]
 	dst.V1 = src[1]
 	dst.V2 = src[2]
@@ -35,6 +35,6 @@ func SetFromUint256(dst *commonpb.Uint256, src *uint256.Int) {
 }
 
 // NewUint256 constructs a public message from server uint256 limbs.
-func NewUint256(src *uint256.Int) *commonpb.Uint256 {
-	return &commonpb.Uint256{V0: src[0], V1: src[1], V2: src[2], V3: src[3]}
+func NewUint256(src *uint256.Int) *ledgerpb.Uint256 {
+	return &ledgerpb.Uint256{V0: src[0], V1: src[1], V2: src[2], V3: src[3]}
 }

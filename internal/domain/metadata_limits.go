@@ -3,7 +3,7 @@ package domain
 import (
 	"errors"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // Metadata limit dimension names. They are carried in
@@ -68,7 +68,7 @@ const (
 // restore classification (invariant #11). See
 // docs/technical/architecture/subsystems/admission/metadata-limits.md.
 //
-// The effective values live in the Raft-replicated commonpb.ClusterPolicy, so
+// The effective values live in the Raft-replicated ledgerpb.ClusterPolicy, so
 // admission and FSM apply read the same committed numbers on every node
 // (invariant #2).
 type MetadataLimits struct {
@@ -92,7 +92,7 @@ var DefaultMetadataLimits = MetadataLimits{
 // cluster policy. A nil policy — or one predating the metadata ceilings —
 // yields a zero MetadataLimits, which Configured reports as unconfigured; the
 // validators then reject loudly rather than admitting unbounded metadata.
-func MetadataLimitsFromPolicy(policy *commonpb.ClusterPolicy) MetadataLimits {
+func MetadataLimitsFromPolicy(policy *ledgerpb.ClusterPolicy) MetadataLimits {
 	return MetadataLimits{
 		MaxEntriesPerEntity:     policy.GetMetadataMaxEntriesPerEntity(),
 		MaxKeyBytes:             policy.GetMetadataMaxKeyBytes(),
@@ -142,18 +142,18 @@ func (l MetadataLimits) Validate() error {
 // variants measure zero: an absent value carries no payload, and rejecting it
 // is the shape validators' job (ValidateMetadataValue), not the size
 // contract's.
-func MetadataValueSize(value *commonpb.MetadataValue) uint64 {
+func MetadataValueSize(value *ledgerpb.MetadataValue) uint64 {
 	switch v := value.GetType().(type) {
-	case *commonpb.MetadataValue_StringValue:
+	case *ledgerpb.MetadataValue_StringValue:
 		return uint64(len(v.StringValue))
-	case *commonpb.MetadataValue_NullValue:
+	case *ledgerpb.MetadataValue_NullValue:
 		// A null value still carries the original text it failed to coerce.
 		return uint64(len(v.NullValue.GetOriginal()))
-	case *commonpb.MetadataValue_IntValue,
-		*commonpb.MetadataValue_UintValue,
-		*commonpb.MetadataValue_DatetimeValue:
+	case *ledgerpb.MetadataValue_IntValue,
+		*ledgerpb.MetadataValue_UintValue,
+		*ledgerpb.MetadataValue_DatetimeValue:
 		return metadataScalarValueBytes
-	case *commonpb.MetadataValue_BoolValue:
+	case *ledgerpb.MetadataValue_BoolValue:
 		return metadataBoolValueBytes
 	default:
 		return 0
@@ -164,14 +164,14 @@ func MetadataValueSize(value *commonpb.MetadataValue) uint64 {
 // UTF-8 bytes plus the value's measured bytes. This is the single measurement
 // rule — admission and FSM apply both call it, so the two layers can never
 // disagree about whether the same payload fits.
-func MetadataEntrySize(key string, value *commonpb.MetadataValue) uint64 {
+func MetadataEntrySize(key string, value *ledgerpb.MetadataValue) uint64 {
 	return uint64(len(key)) + MetadataValueSize(value)
 }
 
 // MetadataMapSize is the measured size of a whole metadata map. Summation is
 // order-independent, so the result is identical on every node regardless of Go
 // map iteration order.
-func MetadataMapSize(m map[string]*commonpb.MetadataValue) uint64 {
+func MetadataMapSize(m map[string]*ledgerpb.MetadataValue) uint64 {
 	var total uint64
 	for key, value := range m {
 		total += MetadataEntrySize(key, value)
@@ -194,7 +194,7 @@ func MetadataMapSize(m map[string]*commonpb.MetadataValue) uint64 {
 // Per-entry failures are wrapped in ErrMetadataKeyValidation so the offending
 // key reaches operator logs and the gRPC ErrorInfo, matching the shape
 // validators.
-func (l MetadataLimits) ValidateMap(m map[string]*commonpb.MetadataValue) SerializableError {
+func (l MetadataLimits) ValidateMap(m map[string]*ledgerpb.MetadataValue) SerializableError {
 	if !l.Configured() {
 		return ErrMetadataLimitsUnconfigured
 	}
@@ -261,7 +261,7 @@ func (l MetadataLimits) ValidateKey(key string) SerializableError {
 
 // validateEntry checks one entry's key and value sizes. The key is checked
 // before the value so an entry violating both reports the key deterministically.
-func (l MetadataLimits) validateEntry(key string, value *commonpb.MetadataValue) SerializableError {
+func (l MetadataLimits) validateEntry(key string, value *ledgerpb.MetadataValue) SerializableError {
 	if err := l.ValidateKey(key); err != nil {
 		return err
 	}

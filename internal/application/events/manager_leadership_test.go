@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -24,7 +24,7 @@ func managedSinkByName(m *Manager, name string) *managedSink {
 	return m.emitters[name]
 }
 
-func saveManagedSinkConfig(t *testing.T, attrs *attributes.Attributes, store *dal.Store, config *commonpb.SinkConfig) {
+func saveManagedSinkConfig(t *testing.T, attrs *attributes.Attributes, store *dal.Store, config *ledgerpb.SinkConfig) {
 	t.Helper()
 
 	batch := store.OpenWriteSession()
@@ -83,10 +83,10 @@ func TestManager_CoalescedLeadershipFlapReplacesPriorGenerationEmitter(t *testin
 	builder, store := newTestBuilder(t)
 	attrs := attributes.New()
 	notifications := signal.NewNotifications()
-	saveManagedSinkConfig(t, attrs, store, &commonpb.SinkConfig{
+	saveManagedSinkConfig(t, attrs, store, &ledgerpb.SinkConfig{
 		Name: "http-sink",
-		Type: &commonpb.SinkConfig_Http{
-			Http: &commonpb.HttpSinkConfig{Endpoint: server.URL},
+		Type: &ledgerpb.SinkConfig_Http{
+			Http: &ledgerpb.HttpSinkConfig{Endpoint: server.URL},
 		},
 	})
 

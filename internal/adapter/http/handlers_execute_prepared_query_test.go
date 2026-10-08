@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
@@ -20,8 +20,8 @@ func TestHandleExecutePreparedQuery_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *commonpb.ExecutePreparedQueryRequest) (*commonpb.ExecutePreparedQueryResponse, error) {
-			return &commonpb.ExecutePreparedQueryResponse{}, nil
+		func(_ context.Context, _ *ledgerpb.ExecutePreparedQueryRequest) (*ledgerpb.ExecutePreparedQueryResponse, error) {
+			return &ledgerpb.ExecutePreparedQueryResponse{}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -90,7 +90,7 @@ func TestHandleExecutePreparedQuery_NotFound(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *commonpb.ExecutePreparedQueryRequest) (*commonpb.ExecutePreparedQueryResponse, error) {
+		func(_ context.Context, _ *ledgerpb.ExecutePreparedQueryRequest) (*ledgerpb.ExecutePreparedQueryResponse, error) {
 			return nil, &domain.ErrPreparedQueryNotFound{Ledger: "ledger1", Name: "missing"}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -111,8 +111,8 @@ func TestHandleExecutePreparedQuery_NoBody(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *commonpb.ExecutePreparedQueryRequest) (*commonpb.ExecutePreparedQueryResponse, error) {
-			return &commonpb.ExecutePreparedQueryResponse{}, nil
+		func(_ context.Context, _ *ledgerpb.ExecutePreparedQueryRequest) (*ledgerpb.ExecutePreparedQueryResponse, error) {
+			return &ledgerpb.ExecutePreparedQueryResponse{}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -132,10 +132,10 @@ func TestHandleExecutePreparedQuery_WithParameters(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *commonpb.ExecutePreparedQueryRequest) (*commonpb.ExecutePreparedQueryResponse, error) {
+		func(_ context.Context, req *ledgerpb.ExecutePreparedQueryRequest) (*ledgerpb.ExecutePreparedQueryResponse, error) {
 			require.NotNil(t, req.GetParameters())
 
-			return &commonpb.ExecutePreparedQueryResponse{}, nil
+			return &ledgerpb.ExecutePreparedQueryResponse{}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -159,10 +159,10 @@ func TestHandleExecutePreparedQuery_ChunkedBody(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *commonpb.ExecutePreparedQueryRequest) (*commonpb.ExecutePreparedQueryResponse, error) {
+		func(_ context.Context, req *ledgerpb.ExecutePreparedQueryRequest) (*ledgerpb.ExecutePreparedQueryResponse, error) {
 			capturedPageSize = req.GetPageSize()
 
-			return &commonpb.ExecutePreparedQueryResponse{}, nil
+			return &ledgerpb.ExecutePreparedQueryResponse{}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -231,13 +231,13 @@ func TestHandleExecutePreparedQuery_AggregateEmitsColor(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *commonpb.ExecutePreparedQueryRequest) (*commonpb.ExecutePreparedQueryResponse, error) {
-			return &commonpb.ExecutePreparedQueryResponse{
-				Result: &commonpb.ExecutePreparedQueryResponse_Aggregate{
-					Aggregate: &commonpb.AggregateResult{
-						Volumes: []*commonpb.AggregatedVolume{
-							{Asset: "USD", Color: "", Input: commonpb.NewUint256FromUint64(100), Output: commonpb.NewUint256FromUint64(30)},
-							{Asset: "USD", Color: "RED", Input: commonpb.NewUint256FromUint64(50), Output: commonpb.NewUint256FromUint64(0)},
+		func(_ context.Context, _ *ledgerpb.ExecutePreparedQueryRequest) (*ledgerpb.ExecutePreparedQueryResponse, error) {
+			return &ledgerpb.ExecutePreparedQueryResponse{
+				Result: &ledgerpb.ExecutePreparedQueryResponse_Aggregate{
+					Aggregate: &ledgerpb.AggregateResult{
+						Volumes: []*ledgerpb.AggregatedVolume{
+							{Asset: "USD", Color: "", Input: ledgerpb.NewUint256FromUint64(100), Output: ledgerpb.NewUint256FromUint64(30)},
+							{Asset: "USD", Color: "RED", Input: ledgerpb.NewUint256FromUint64(50), Output: ledgerpb.NewUint256FromUint64(0)},
 						},
 					},
 				},
@@ -293,16 +293,16 @@ func TestHandleExecutePreparedQuery_CursorShapeIsCamelCase(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *commonpb.ExecutePreparedQueryRequest) (*commonpb.ExecutePreparedQueryResponse, error) {
-			return &commonpb.ExecutePreparedQueryResponse{
-				Result: &commonpb.ExecutePreparedQueryResponse_Cursor{
-					Cursor: &commonpb.PreparedQueryCursor{
+		func(_ context.Context, _ *ledgerpb.ExecutePreparedQueryRequest) (*ledgerpb.ExecutePreparedQueryResponse, error) {
+			return &ledgerpb.ExecutePreparedQueryResponse{
+				Result: &ledgerpb.ExecutePreparedQueryResponse_Cursor{
+					Cursor: &ledgerpb.PreparedQueryCursor{
 						PageSize: 15,
 						HasMore:  true,
 						Next:     "nxt",
-						AccountData: []*commonpb.Account{
-							{Address: "alice", Volumes: []*commonpb.AccountVolume{
-								{Asset: "USD", Color: "", Volumes: &commonpb.VolumesWithBalance{Input: "100", Output: "30", Balance: "70"}},
+						AccountData: []*ledgerpb.Account{
+							{Address: "alice", Volumes: []*ledgerpb.AccountVolume{
+								{Asset: "USD", Color: "", Volumes: &ledgerpb.VolumesWithBalance{Input: "100", Output: "30", Balance: "70"}},
 							}},
 						},
 					},

@@ -14,7 +14,7 @@ import (
 	"github.com/holiman/uint256"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
@@ -70,12 +70,12 @@ func rebuildDelta(
 		boundary:               attrs.Boundary,
 		index:                  attrs.Index,
 		pendingVolumes:         make(map[string]*raftcmdpb.VolumePair),
-		pendingMetadata:        make(map[string]*auditpb.MetadataValue),
+		pendingMetadata:        make(map[string]*ledgerpb.MetadataValue),
 		pendingTx:              make(map[string]*internalstatepb.TransactionState),
-		pendingIndexes:         make(map[string]*auditpb.Index),
+		pendingIndexes:         make(map[string]*ledgerpb.Index),
 		purgedVolumePrefixes:   make(map[string]struct{}),
 		purgedMetadataPrefixes: make(map[string]struct{}),
-		ledgerInfos:            make(map[string]*auditpb.LedgerInfo),
+		ledgerInfos:            make(map[string]*ledgerpb.LedgerInfo),
 		boundaries:             make(map[string]*raftcmdpb.LedgerBoundaries),
 		reversions:             make(map[string]*bitset.Bitset),
 		dirtyReversions:        make(map[string]struct{}),
@@ -92,9 +92,9 @@ func rebuildDelta(
 	// target from the checkpoint and track pending mutations in replay order.
 	// The write session is intentionally not readable: this overlay also makes
 	// create→update→delete sequences within one delta deterministic.
-	preparedQueries := make(map[string]*auditpb.PreparedQuery)
+	preparedQueries := make(map[string]*ledgerpb.PreparedQuery)
 
-	rawLedgerTypes := make(map[string]map[string]*auditpb.AccountType)
+	rawLedgerTypes := make(map[string]map[string]*ledgerpb.AccountType)
 	ledgerAccountTypes := make(map[string][]accounttype.CompiledType)
 
 	readHandle, err := store.NewDirectReadHandle()
@@ -231,7 +231,7 @@ func rebuildDelta(
 		}
 
 		switch p := payload.GetType().(type) {
-		case *auditpb.LogPayload_Apply:
+		case *ledgerpb.LogPayload_Apply:
 			if p.Apply == nil || p.Apply.GetLog() == nil || p.Apply.GetLog().GetData() == nil {
 				continue
 			}
@@ -253,7 +253,7 @@ func rebuildDelta(
 				return fmt.Errorf("advancing boundary log id at log %d: %w", seq, err)
 			}
 
-		case *auditpb.LogPayload_CreateLedger:
+		case *ledgerpb.LogPayload_CreateLedger:
 			if p.CreateLedger == nil {
 				continue
 			}
@@ -289,7 +289,7 @@ func rebuildDelta(
 
 			writer.initBoundaries(info.GetName())
 
-		case *auditpb.LogPayload_DeleteLedger:
+		case *ledgerpb.LogPayload_DeleteLedger:
 			if p.DeleteLedger == nil {
 				continue
 			}
@@ -306,7 +306,7 @@ func rebuildDelta(
 			delete(rawLedgerTypes, p.DeleteLedger.GetName())
 			delete(ledgerAccountTypes, p.DeleteLedger.GetName())
 
-		case *auditpb.LogPayload_PromoteLedger:
+		case *ledgerpb.LogPayload_PromoteLedger:
 			if p.PromoteLedger == nil {
 				continue
 			}
@@ -317,7 +317,7 @@ func rebuildDelta(
 				return fmt.Errorf("replaying ledger promotion at log %d: %w", seq, err)
 			}
 
-		case *auditpb.LogPayload_RegisterSigningKey:
+		case *ledgerpb.LogPayload_RegisterSigningKey:
 			if p.RegisterSigningKey != nil {
 				if err := state.SaveSigningKey(batch,
 					p.RegisterSigningKey.GetKeyId(),
@@ -330,7 +330,7 @@ func rebuildDelta(
 				}
 			}
 
-		case *auditpb.LogPayload_RevokeSigningKey:
+		case *ledgerpb.LogPayload_RevokeSigningKey:
 			if p.RevokeSigningKey != nil {
 				// Revocation's only persistent representation is row absence: the
 				// stored value carries no revoked flag and ReadSigningKeys applies
@@ -352,7 +352,7 @@ func rebuildDelta(
 				}
 			}
 
-		case *auditpb.LogPayload_SetSigningConfig:
+		case *ledgerpb.LogPayload_SetSigningConfig:
 			if p.SetSigningConfig != nil {
 				if err := state.SaveSigningConfig(batch, p.SetSigningConfig.GetRequireSignatures()); err != nil {
 					_ = batch.Cancel()
@@ -361,7 +361,7 @@ func rebuildDelta(
 				}
 			}
 
-		case *auditpb.LogPayload_SetMaintenanceMode:
+		case *ledgerpb.LogPayload_SetMaintenanceMode:
 			if p.SetMaintenanceMode != nil {
 				if err := state.SaveMaintenanceMode(batch, p.SetMaintenanceMode.GetEnabled()); err != nil {
 					_ = batch.Cancel()
@@ -370,7 +370,7 @@ func rebuildDelta(
 				}
 			}
 
-		case *auditpb.LogPayload_SetClusterPolicy:
+		case *ledgerpb.LogPayload_SetClusterPolicy:
 			if p.SetClusterPolicy != nil {
 				if err := state.SaveClusterPolicy(batch, p.SetClusterPolicy.GetPolicy()); err != nil {
 					_ = batch.Cancel()
@@ -379,7 +379,7 @@ func rebuildDelta(
 				}
 			}
 
-		case *auditpb.LogPayload_AddedEventsSink:
+		case *ledgerpb.LogPayload_AddedEventsSink:
 			if p.AddedEventsSink != nil && p.AddedEventsSink.GetConfig() != nil {
 				cfg := p.AddedEventsSink.GetConfig()
 				if _, err := sinkConfig.Set(batch, domain.SinkConfigKey{Name: cfg.GetName()}.Bytes(), cfg); err != nil {
@@ -389,7 +389,7 @@ func rebuildDelta(
 				}
 			}
 
-		case *auditpb.LogPayload_RemovedEventsSink:
+		case *ledgerpb.LogPayload_RemovedEventsSink:
 			if p.RemovedEventsSink != nil {
 				key := domain.SinkConfigKey{Name: p.RemovedEventsSink.GetName()}
 				if err := deleteSinkConfig(batch, key.Bytes()); err != nil {
@@ -399,7 +399,7 @@ func rebuildDelta(
 				}
 			}
 
-		case *auditpb.LogPayload_SavedLedgerMetadata:
+		case *ledgerpb.LogPayload_SavedLedgerMetadata:
 			if p.SavedLedgerMetadata != nil {
 				for key, value := range p.SavedLedgerMetadata.GetMetadata() {
 					mk := domain.LedgerMetadataKey{LedgerName: p.SavedLedgerMetadata.GetLedger(), Key: key}
@@ -411,7 +411,7 @@ func rebuildDelta(
 				}
 			}
 
-		case *auditpb.LogPayload_DeletedLedgerMetadata:
+		case *ledgerpb.LogPayload_DeletedLedgerMetadata:
 			if p.DeletedLedgerMetadata != nil {
 				mk := domain.LedgerMetadataKey{LedgerName: p.DeletedLedgerMetadata.GetLedger(), Key: p.DeletedLedgerMetadata.GetKey()}
 				if err := ledgerMetadata.Delete(batch, mk.Bytes()); err != nil {
@@ -421,7 +421,7 @@ func rebuildDelta(
 				}
 			}
 
-		case *auditpb.LogPayload_SavedNumscript:
+		case *ledgerpb.LogPayload_SavedNumscript:
 			if p.SavedNumscript != nil && p.SavedNumscript.GetInfo() != nil {
 				info := p.SavedNumscript.GetInfo()
 				nsLedger := info.GetLedger()
@@ -466,7 +466,7 @@ func rebuildDelta(
 				}
 			}
 
-		case *auditpb.LogPayload_CreatedPreparedQuery:
+		case *ledgerpb.LogPayload_CreatedPreparedQuery:
 			if p.CreatedPreparedQuery != nil && p.CreatedPreparedQuery.GetQuery() != nil {
 				created := p.CreatedPreparedQuery
 				if err := state.SavePreparedQuery(batch, created.GetLedger(), created.GetQuery()); err != nil {
@@ -479,7 +479,7 @@ func rebuildDelta(
 				preparedQueries[key] = created.GetQuery()
 			}
 
-		case *auditpb.LogPayload_UpdatedPreparedQuery:
+		case *ledgerpb.LogPayload_UpdatedPreparedQuery:
 			if updated := p.UpdatedPreparedQuery; updated != nil {
 				keyBytes := domain.PreparedQueryKey{LedgerName: updated.GetLedger(), Name: updated.GetName()}.Bytes()
 				key := string(keyBytes)
@@ -511,7 +511,7 @@ func rebuildDelta(
 				preparedQueries[key] = replacement
 			}
 
-		case *auditpb.LogPayload_SetQueryCheckpointSchedule:
+		case *ledgerpb.LogPayload_SetQueryCheckpointSchedule:
 			if p.SetQueryCheckpointSchedule != nil {
 				if err := state.SaveQueryCheckpointSchedule(batch, p.SetQueryCheckpointSchedule.GetCron()); err != nil {
 					_ = batch.Cancel()
@@ -520,7 +520,7 @@ func rebuildDelta(
 				}
 			}
 
-		case *auditpb.LogPayload_CreatedQueryCheckpoint:
+		case *ledgerpb.LogPayload_CreatedQueryCheckpoint:
 			// Rebuild the metadata row from the log and mark its restore provenance.
 			// The physical checkpoint files cannot be reconstructed from the audit, so a
 			// rebuilt checkpoint reads as Unavailable until an operator deletes it.
@@ -543,7 +543,7 @@ func rebuildDelta(
 				maxQueryCheckpointID = max(maxQueryCheckpointID, cp.GetCheckpointId())
 			}
 
-		case *auditpb.LogPayload_DeletedQueryCheckpoint:
+		case *ledgerpb.LogPayload_DeletedQueryCheckpoint:
 			if cp := p.DeletedQueryCheckpoint; cp != nil {
 				if err := state.DeleteQueryCheckpointFromBatch(batch, cp.GetCheckpointId()); err != nil {
 					_ = batch.Cancel()
@@ -553,7 +553,7 @@ func rebuildDelta(
 			}
 
 		// Log types with no persistent state to rebuild:
-		case *auditpb.LogPayload_DeletedPreparedQuery:
+		case *ledgerpb.LogPayload_DeletedPreparedQuery:
 			if deleted := p.DeletedPreparedQuery; deleted != nil {
 				if err := state.DeletePreparedQuery(batch, deleted.GetLedger(), deleted.GetName()); err != nil {
 					_ = batch.Cancel()
@@ -564,7 +564,7 @@ func rebuildDelta(
 				key := string(domain.PreparedQueryKey{LedgerName: deleted.GetLedger(), Name: deleted.GetName()}.Bytes())
 				preparedQueries[key] = nil
 			}
-		case *auditpb.LogPayload_DeleteQueryCheckpointSchedule:
+		case *ledgerpb.LogPayload_DeleteQueryCheckpointSchedule:
 			// The checkpoint is the fold seed: a deletion in the exported delta
 			// must tombstone its schedule row just as live apply does. The delete
 			// stays in this rebuild batch, so an error before commit leaves the
@@ -705,7 +705,7 @@ func rebuildDelta(
 }
 
 type proposalBoundaryReader struct {
-	auditCursor cursor.Cursor[*auditpb.AuditEntry]
+	auditCursor cursor.Cursor[*ledgerpb.AuditEntry]
 	tracker     *replay.ProposalBoundaryTracker
 }
 
@@ -768,9 +768,9 @@ func (r *proposalBoundaryReader) Close() error {
 func seedLedgerContext(
 	ctx context.Context,
 	reader dal.PebbleReader,
-	rawLedgerTypes map[string]map[string]*auditpb.AccountType,
+	rawLedgerTypes map[string]map[string]*ledgerpb.AccountType,
 	ledgerAccountTypes map[string][]accounttype.CompiledType,
-	ledgerInfos map[string]*auditpb.LedgerInfo,
+	ledgerInfos map[string]*ledgerpb.LedgerInfo,
 ) error {
 	cursor, err := query.ReadLedgers(ctx, reader)
 	if err != nil {
@@ -807,7 +807,7 @@ func seedLedgerContext(
 // the ledger's in-memory LedgerInfo and re-saves it. The schema lives on
 // LedgerInfo, which the attribute zones do not cover, so without this a restore
 // loses every field type declared beyond the checkpoint.
-func (w *attributeReplayWriter) SetMetadataFieldType(ledger string, target auditpb.TargetType, key string, fieldType auditpb.MetadataType) error {
+func (w *attributeReplayWriter) SetMetadataFieldType(ledger string, target ledgerpb.TargetType, key string, fieldType ledgerpb.MetadataType) error {
 	// Every live ledger is seeded into ledgerInfos from the checkpoint
 	// (seedLedgerContext) or from its CreateLedger log during replay, so a schema
 	// op with no LedgerInfo means the log stream references a ledger that was
@@ -818,27 +818,27 @@ func (w *attributeReplayWriter) SetMetadataFieldType(ledger string, target audit
 	}
 
 	if info.GetMetadataSchema() == nil {
-		info.MetadataSchema = &auditpb.MetadataSchema{}
+		info.MetadataSchema = &ledgerpb.MetadataSchema{}
 	}
 
-	field := &auditpb.MetadataFieldSchema{Type: fieldType}
+	field := &ledgerpb.MetadataFieldSchema{Type: fieldType}
 
 	switch target {
-	case auditpb.TargetType_TARGET_TYPE_ACCOUNT:
+	case ledgerpb.TargetType_TARGET_TYPE_ACCOUNT:
 		if info.MetadataSchema.AccountFields == nil {
-			info.MetadataSchema.AccountFields = make(map[string]*auditpb.MetadataFieldSchema)
+			info.MetadataSchema.AccountFields = make(map[string]*ledgerpb.MetadataFieldSchema)
 		}
 
 		info.MetadataSchema.AccountFields[key] = field
-	case auditpb.TargetType_TARGET_TYPE_TRANSACTION:
+	case ledgerpb.TargetType_TARGET_TYPE_TRANSACTION:
 		if info.MetadataSchema.TransactionFields == nil {
-			info.MetadataSchema.TransactionFields = make(map[string]*auditpb.MetadataFieldSchema)
+			info.MetadataSchema.TransactionFields = make(map[string]*ledgerpb.MetadataFieldSchema)
 		}
 
 		info.MetadataSchema.TransactionFields[key] = field
-	case auditpb.TargetType_TARGET_TYPE_LEDGER:
+	case ledgerpb.TargetType_TARGET_TYPE_LEDGER:
 		if info.MetadataSchema.LedgerFields == nil {
-			info.MetadataSchema.LedgerFields = make(map[string]*auditpb.MetadataFieldSchema)
+			info.MetadataSchema.LedgerFields = make(map[string]*ledgerpb.MetadataFieldSchema)
 		}
 
 		info.MetadataSchema.LedgerFields[key] = field
@@ -871,8 +871,8 @@ func (w *attributeReplayWriter) SetMetadataFieldType(ledger string, target audit
 // CreateIndex folds an accepted creation log into a fresh registry row at
 // forward-encoding version 1, stamped with the log's apply date. Fresh duplicate
 // orders are rejected by the live FSM and produce no creation log to replay.
-func (w *attributeReplayWriter) CreateIndex(ledger string, id *auditpb.IndexID, createdAt *auditpb.Timestamp) error {
-	return w.putIndex(ledger, id, &auditpb.Index{
+func (w *attributeReplayWriter) CreateIndex(ledger string, id *ledgerpb.IndexID, createdAt *ledgerpb.Timestamp) error {
+	return w.putIndex(ledger, id, &ledgerpb.Index{
 		Id:                     id,
 		CreatedAt:              createdAt,
 		Ledger:                 ledger,
@@ -884,7 +884,7 @@ func (w *attributeReplayWriter) CreateIndex(ledger string, id *auditpb.IndexID, 
 // the RemovedMetadataFieldType cascade both land here. The pending entry is
 // set to nil (not removed) so a later same-window read does not resurrect a
 // committed checkpoint row the replay already deleted.
-func (w *attributeReplayWriter) DropIndex(ledger string, id *auditpb.IndexID) error {
+func (w *attributeReplayWriter) DropIndex(ledger string, id *ledgerpb.IndexID) error {
 	key := indexes.KeyFor(ledger, id).Bytes()
 	w.pendingIndexes[string(key)] = nil
 
@@ -895,7 +895,7 @@ func (w *attributeReplayWriter) DropIndex(ledger string, id *auditpb.IndexID) er
 	return nil
 }
 
-func (w *attributeReplayWriter) putIndex(ledger string, id *auditpb.IndexID, row *auditpb.Index) error {
+func (w *attributeReplayWriter) putIndex(ledger string, id *ledgerpb.IndexID, row *ledgerpb.Index) error {
 	key := indexes.KeyFor(ledger, id).Bytes()
 	w.pendingIndexes[string(key)] = row
 
@@ -909,7 +909,7 @@ func (w *attributeReplayWriter) putIndex(ledger string, id *auditpb.IndexID, row
 // getIndex resolves the registry row for (ledger, id): replay-touched rows
 // (including nil deletion markers) come from pendingIndexes, checkpoint rows
 // from the committed store — same-batch visibility, cf. GetVolume.
-func (w *attributeReplayWriter) getIndex(ledger string, id *auditpb.IndexID) (*auditpb.Index, error) {
+func (w *attributeReplayWriter) getIndex(ledger string, id *ledgerpb.IndexID) (*ledgerpb.Index, error) {
 	key := indexes.KeyFor(ledger, id).Bytes()
 	if row, ok := w.pendingIndexes[string(key)]; ok {
 		return row, nil
@@ -920,7 +920,7 @@ func (w *attributeReplayWriter) getIndex(ledger string, id *auditpb.IndexID) (*a
 
 // RemoveMetadataFieldType drops a field-type declaration from the ledger's
 // in-memory LedgerInfo and re-saves it.
-func (w *attributeReplayWriter) RemoveMetadataFieldType(ledger string, target auditpb.TargetType, key string) error {
+func (w *attributeReplayWriter) RemoveMetadataFieldType(ledger string, target ledgerpb.TargetType, key string) error {
 	info := w.ledgerInfos[ledger]
 	if info == nil {
 		return fmt.Errorf("invariant: RemoveMetadataFieldType for ledger %q with no LedgerInfo seeded from checkpoint or CreateLedger replay", ledger)
@@ -933,11 +933,11 @@ func (w *attributeReplayWriter) RemoveMetadataFieldType(ledger string, target au
 	}
 
 	switch target {
-	case auditpb.TargetType_TARGET_TYPE_ACCOUNT:
+	case ledgerpb.TargetType_TARGET_TYPE_ACCOUNT:
 		delete(info.GetMetadataSchema().GetAccountFields(), key)
-	case auditpb.TargetType_TARGET_TYPE_TRANSACTION:
+	case ledgerpb.TargetType_TARGET_TYPE_TRANSACTION:
 		delete(info.GetMetadataSchema().GetTransactionFields(), key)
-	case auditpb.TargetType_TARGET_TYPE_LEDGER:
+	case ledgerpb.TargetType_TARGET_TYPE_LEDGER:
 		delete(info.GetMetadataSchema().GetLedgerFields(), key)
 	}
 
@@ -951,7 +951,7 @@ func (w *attributeReplayWriter) RemoveMetadataFieldType(ledger string, target au
 // leave the attribute projection stale after a restore, so the hot path would see
 // checkpoint-era ledger state and the next mutation would clone it over the
 // rebuilt fields.
-func (w *attributeReplayWriter) saveLedgerInfo(info *auditpb.LedgerInfo) error {
+func (w *attributeReplayWriter) saveLedgerInfo(info *ledgerpb.LedgerInfo) error {
 	if _, err := w.ledger.Set(w.batch, domain.LedgerKey{Name: info.GetName()}.Bytes(), info); err != nil {
 		return fmt.Errorf("saving rebuilt ledger attribute: %w", err)
 	}
@@ -973,14 +973,14 @@ func (w *attributeReplayWriter) saveLedgerInfo(info *auditpb.LedgerInfo) error {
 // ledger's in-memory LedgerInfo and re-persists it. Account types live on
 // LedgerInfo, so without this a restore loses every type declared beyond the
 // checkpoint.
-func (w *attributeReplayWriter) AddAccountType(ledger string, accountType *auditpb.AccountType) error {
+func (w *attributeReplayWriter) AddAccountType(ledger string, accountType *ledgerpb.AccountType) error {
 	info := w.ledgerInfos[ledger]
 	if info == nil {
 		return fmt.Errorf("invariant: AddAccountType for ledger %q with no LedgerInfo seeded from checkpoint or CreateLedger replay", ledger)
 	}
 
 	if info.AccountTypes == nil {
-		info.AccountTypes = make(map[string]*auditpb.AccountType)
+		info.AccountTypes = make(map[string]*ledgerpb.AccountType)
 	}
 
 	info.AccountTypes[accountType.GetName()] = accountType
@@ -1012,14 +1012,14 @@ type attributeReplayWriter struct {
 	store           *dal.Store
 	batch           *dal.WriteSession
 	volume          *attributes.Attribute[*raftcmdpb.VolumePair]
-	metadata        *attributes.Attribute[*auditpb.MetadataValue]
+	metadata        *attributes.Attribute[*ledgerpb.MetadataValue]
 	tx              *attributes.Attribute[*internalstatepb.TransactionState]
-	ledger          *attributes.Attribute[*auditpb.LedgerInfo]
+	ledger          *attributes.Attribute[*ledgerpb.LedgerInfo]
 	references      *attributes.Attribute[*internalstatepb.TransactionReferenceValue]
 	boundary        *attributes.Attribute[*raftcmdpb.LedgerBoundaries]
-	index           *attributes.Attribute[*auditpb.Index]
+	index           *attributes.Attribute[*ledgerpb.Index]
 	pendingVolumes  map[string]*raftcmdpb.VolumePair
-	pendingMetadata map[string]*auditpb.MetadataValue
+	pendingMetadata map[string]*ledgerpb.MetadataValue
 	pendingTx       map[string]*internalstatepb.TransactionState
 	// Purge range tombstones are invisible to reads through the non-indexed
 	// write batch. These canonical prefixes shadow checkpoint rows until the
@@ -1034,13 +1034,13 @@ type attributeReplayWriter struct {
 	// the replay deleted, shadowing a committed checkpoint row. Cleared at
 	// every batch commit alongside pendingVolumes/pendingTx — the committed
 	// rows are then visible through the direct store read.
-	pendingIndexes map[string]*auditpb.Index
+	pendingIndexes map[string]*ledgerpb.Index
 
 	// LedgerInfo per ledger, carrying the evolving metadata schema and account
 	// types. Both live on LedgerInfo (not a per-key attribute), so schema and
 	// account-type replays fold into these and re-save. Seeded from the
 	// checkpoint and extended as CreateLedger logs replay.
-	ledgerInfos map[string]*auditpb.LedgerInfo
+	ledgerInfos map[string]*ledgerpb.LedgerInfo
 
 	// LedgerBoundaries per touched ledger. The apply path preloads boundaries
 	// from the SubAttrBoundary attribute, which the log replay does not write
@@ -1243,7 +1243,7 @@ func (w *attributeReplayWriter) applyAuditOrderEffects(reader dal.PebbleReader, 
 			return fmt.Errorf("reading audit item value: %w", err)
 		}
 
-		item := &auditpb.AuditItem{}
+		item := &ledgerpb.AuditItem{}
 		if err := item.UnmarshalVT(value); err != nil {
 			return fmt.Errorf("unmarshaling audit item %x: %w", iter.Key(), err)
 		}
@@ -1413,7 +1413,7 @@ func (w *attributeReplayWriter) rebuildIdempotency(ctx context.Context, reader d
 // tombstone (DeletedAt), the boundary-row drop, and the same-apply removal of
 // the ledger-owned data rows (state.DeleteLedgerData, mirroring
 // WriteSet.Merge).
-func (w *attributeReplayWriter) deleteLedger(name string, deletedAt *auditpb.Timestamp) error {
+func (w *attributeReplayWriter) deleteLedger(name string, deletedAt *ledgerpb.Timestamp) error {
 	info := w.ledgerInfos[name]
 	if info == nil {
 		return fmt.Errorf("invariant: DeleteLedger for ledger %q with no LedgerInfo seeded from checkpoint or CreateLedger replay", name)
@@ -1489,7 +1489,7 @@ func (w *attributeReplayWriter) promoteLedger(name string) error {
 		return fmt.Errorf("invariant: PromoteLedger for ledger %q with no LedgerInfo seeded from checkpoint or CreateLedger replay", name)
 	}
 
-	info.Mode = auditpb.LedgerMode_LEDGER_MODE_NORMAL
+	info.Mode = ledgerpb.LedgerMode_LEDGER_MODE_NORMAL
 	info.MirrorSource = nil
 
 	return w.saveLedgerInfo(info)
@@ -1497,7 +1497,7 @@ func (w *attributeReplayWriter) promoteLedger(name string) error {
 
 // SetDefaultEnforcementMode folds an enforcement-mode change replayed from the
 // log onto the ledger's in-memory LedgerInfo and re-persists it.
-func (w *attributeReplayWriter) SetDefaultEnforcementMode(ledger string, mode auditpb.ChartEnforcementMode) error {
+func (w *attributeReplayWriter) SetDefaultEnforcementMode(ledger string, mode ledgerpb.ChartEnforcementMode) error {
 	info := w.ledgerInfos[ledger]
 	if info == nil {
 		return fmt.Errorf("invariant: SetDefaultEnforcementMode for ledger %q with no LedgerInfo seeded from checkpoint or CreateLedger replay", ledger)
@@ -1701,7 +1701,7 @@ func (w *attributeReplayWriter) MoveVolume(oldKey, newKey []byte) error {
 	return w.DeleteVolume(oldKey)
 }
 
-func (w *attributeReplayWriter) SetMetadata(canonicalKey []byte, value *auditpb.MetadataValue) error {
+func (w *attributeReplayWriter) SetMetadata(canonicalKey []byte, value *ledgerpb.MetadataValue) error {
 	_, err := w.metadata.Set(w.batch, canonicalKey, value)
 	if err == nil {
 		w.pendingMetadata[string(canonicalKey)] = value
@@ -1719,7 +1719,7 @@ func (w *attributeReplayWriter) DeleteMetadata(canonicalKey []byte) error {
 	return err
 }
 
-func (w *attributeReplayWriter) getMetadata(canonicalKey []byte) (*auditpb.MetadataValue, error) {
+func (w *attributeReplayWriter) getMetadata(canonicalKey []byte) (*ledgerpb.MetadataValue, error) {
 	if value, ok := w.pendingMetadata[string(canonicalKey)]; ok {
 		return value, nil
 	}
@@ -1808,7 +1808,7 @@ func (w *attributeReplayWriter) getTx(canonicalKey []byte) (*internalstatepb.Tra
 	return w.tx.Get(w.store, canonicalKey)
 }
 
-func (w *attributeReplayWriter) CreateTransaction(canonicalKey []byte, seq uint64, timestamp *auditpb.Timestamp, metadata map[string]*auditpb.MetadataValue, postings []*auditpb.Posting, revertsTransaction uint64) error {
+func (w *attributeReplayWriter) CreateTransaction(canonicalKey []byte, seq uint64, timestamp *ledgerpb.Timestamp, metadata map[string]*ledgerpb.MetadataValue, postings []*ledgerpb.Posting, revertsTransaction uint64) error {
 	if err := w.recordTransactionBoundary(canonicalKey); err != nil {
 		return err
 	}
@@ -1841,7 +1841,7 @@ func (w *attributeReplayWriter) SetTransactionReference(ledgerName, reference st
 	return err
 }
 
-func (w *attributeReplayWriter) SetRevertedBy(canonicalKey []byte, revertTxID uint64, revertedAt *auditpb.Timestamp) error {
+func (w *attributeReplayWriter) SetRevertedBy(canonicalKey []byte, revertTxID uint64, revertedAt *ledgerpb.Timestamp) error {
 	existing, err := w.getTx(canonicalKey)
 	if err != nil {
 		return err
@@ -1879,7 +1879,7 @@ func (w *attributeReplayWriter) SetRevertedBy(canonicalKey []byte, revertTxID ui
 	return nil
 }
 
-func (w *attributeReplayWriter) SaveTxMetadata(canonicalKey []byte, metadata map[string]*auditpb.MetadataValue) error {
+func (w *attributeReplayWriter) SaveTxMetadata(canonicalKey []byte, metadata map[string]*ledgerpb.MetadataValue) error {
 	existing, err := w.getTx(canonicalKey)
 	if err != nil {
 		return err
@@ -1890,7 +1890,7 @@ func (w *attributeReplayWriter) SaveTxMetadata(canonicalKey []byte, metadata map
 	}
 
 	if existing.GetMetadata() == nil {
-		existing.Metadata = make(map[string]*auditpb.MetadataValue)
+		existing.Metadata = make(map[string]*ledgerpb.MetadataValue)
 	}
 
 	maps.Copy(existing.GetMetadata(), metadata)

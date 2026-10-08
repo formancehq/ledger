@@ -7,7 +7,7 @@ import (
 	"math/big"
 	"time"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -21,21 +21,21 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 		const ledgerName = "pq-schema-mismatch"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*ledgerpb.SetMetadataFieldTypeCommand{
 				{
-					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "age",
-					Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+					Type:       ledgerpb.MetadataType_METADATA_TYPE_INT64,
 				},
 				{
-					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "name",
-					Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+					Type:       ledgerpb.MetadataType_METADATA_TYPE_STRING,
 				},
 				{
-					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "active",
-					Type:       commonpb.MetadataType_METADATA_TYPE_BOOL,
+					Type:       ledgerpb.MetadataType_METADATA_TYPE_BOOL,
 				},
 			}),
 				actions.CreateAccountMetadataIndexAction(ledgerName, "age"),
@@ -44,12 +44,12 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			// Wait for indexes to become READY (backfill must complete)
-			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "age")).To(Succeed())
-			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "name")).To(Succeed())
-			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "active")).To(Succeed())
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "age")).To(Succeed())
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "name")).To(Succeed())
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "active")).To(Succeed())
 
 			// Create an account so execution has something to scan
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil),
 				actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{
@@ -60,13 +60,13 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 
 		It("Should error when using string filter on int64 field", func() {
 			// Create prepared query: string filter on int64 "age"
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_CreatePreparedQuery{CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_CreatePreparedQuery{CreatePreparedQuery: &ledgerpb.CreatePreparedQueryRequest{
 					Ledger: ledgerName,
 
-					Query: &commonpb.PreparedQuery{
+					Query: &ledgerpb.PreparedQuery{
 						Name:   "bad-string-on-int",
-						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 						Filter: actions.StringMetadataFilter("age", "hello"),
 					},
 				}},
@@ -74,10 +74,10 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			// Execution should fail with type mismatch error
-			_, err = sharedClient.ExecutePreparedQuery(sharedCtx, &commonpb.ExecutePreparedQueryRequest{
+			_, err = sharedClient.ExecutePreparedQuery(sharedCtx, &ledgerpb.ExecutePreparedQueryRequest{
 				Ledger:    ledgerName,
 				QueryName: "bad-string-on-int",
-				Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+				Mode:      ledgerpb.QueryMode_QUERY_MODE_LIST,
 			})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("cannot use string condition"))
@@ -85,59 +85,59 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 
 		It("Should error when using int filter on string field", func() {
 			val := int64(42)
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_CreatePreparedQuery{CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_CreatePreparedQuery{CreatePreparedQuery: &ledgerpb.CreatePreparedQueryRequest{
 					Ledger: ledgerName,
 
-					Query: &commonpb.PreparedQuery{
+					Query: &ledgerpb.PreparedQuery{
 						Name:   "bad-int-on-string",
-						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 						Filter: actions.Int64RangeMetadataFilterExclusive("name", &val, nil, false, false),
 					},
 				}},
 			}))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.ExecutePreparedQuery(sharedCtx, &commonpb.ExecutePreparedQueryRequest{
+			_, err = sharedClient.ExecutePreparedQuery(sharedCtx, &ledgerpb.ExecutePreparedQueryRequest{
 				Ledger:    ledgerName,
 				QueryName: "bad-int-on-string",
-				Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+				Mode:      ledgerpb.QueryMode_QUERY_MODE_LIST,
 			})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("cannot use integer condition"))
 		})
 
 		It("Should error when using bool filter on int64 field", func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_CreatePreparedQuery{CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_CreatePreparedQuery{CreatePreparedQuery: &ledgerpb.CreatePreparedQueryRequest{
 					Ledger: ledgerName,
 
-					Query: &commonpb.PreparedQuery{
+					Query: &ledgerpb.PreparedQuery{
 						Name:   "bad-bool-on-int",
-						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 						Filter: actions.BoolMetadataFilter("age", true),
 					},
 				}},
 			}))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.ExecutePreparedQuery(sharedCtx, &commonpb.ExecutePreparedQueryRequest{
+			_, err = sharedClient.ExecutePreparedQuery(sharedCtx, &ledgerpb.ExecutePreparedQueryRequest{
 				Ledger:    ledgerName,
 				QueryName: "bad-bool-on-int",
-				Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+				Mode:      ledgerpb.QueryMode_QUERY_MODE_LIST,
 			})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("cannot use bool condition"))
 		})
 
 		It("Should allow exists filter on any typed field", func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_CreatePreparedQuery{CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_CreatePreparedQuery{CreatePreparedQuery: &ledgerpb.CreatePreparedQueryRequest{
 					Ledger: ledgerName,
 
-					Query: &commonpb.PreparedQuery{
+					Query: &ledgerpb.PreparedQuery{
 						Name:   "exists-on-int",
-						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 						Filter: actions.ExistsMetadataFilter("age"),
 					},
 				}},
@@ -145,10 +145,10 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				result, err := sharedClient.ExecutePreparedQuery(sharedCtx, &commonpb.ExecutePreparedQueryRequest{
+				result, err := sharedClient.ExecutePreparedQuery(sharedCtx, &ledgerpb.ExecutePreparedQueryRequest{
 					Ledger:    ledgerName,
 					QueryName: "exists-on-int",
-					Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+					Mode:      ledgerpb.QueryMode_QUERY_MODE_LIST,
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(result.GetCursor()).NotTo(BeNil())
@@ -165,26 +165,26 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 		const ledgerName = "pq-schema-coerce"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*ledgerpb.SetMetadataFieldTypeCommand{
 				{
-					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "counter",
-					Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
+					Type:       ledgerpb.MetadataType_METADATA_TYPE_UINT64,
 				},
 			}),
 				actions.CreateAccountMetadataIndexAction(ledgerName, "counter")))
 			Expect(err).To(Succeed())
 
-			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "counter")).To(Succeed())
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "counter")).To(Succeed())
 
 			// Create accounts with uint64 metadata
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil),
-				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
 				}, nil),
-				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 					actions.NewPosting("world", "charlie", big.NewInt(300), "USD"),
 				}, nil),
 				actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"counter": "10"}),
@@ -197,26 +197,26 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 			// Use IntCondition (the parser's default for integer literals) on a uint64 field.
 			// The compiler should auto-coerce to UintCondition.
 			minVal := int64(30)
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_CreatePreparedQuery{CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_CreatePreparedQuery{CreatePreparedQuery: &ledgerpb.CreatePreparedQueryRequest{
 					Ledger: ledgerName,
 
-					Query: &commonpb.PreparedQuery{
+					Query: &ledgerpb.PreparedQuery{
 						Name:   "counter-gte-30",
-						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 						Filter: actions.Int64RangeMetadataFilterExclusive("counter", &minVal, nil, false, false),
 					},
 				}},
 			}))
 			Expect(err).To(Succeed())
 
-			var result *commonpb.ExecutePreparedQueryResponse
+			var result *ledgerpb.ExecutePreparedQueryResponse
 			Eventually(func(g Gomega) {
 				var err error
-				result, err = sharedClient.ExecutePreparedQuery(sharedCtx, &commonpb.ExecutePreparedQueryRequest{
+				result, err = sharedClient.ExecutePreparedQuery(sharedCtx, &ledgerpb.ExecutePreparedQueryRequest{
 					Ledger:    ledgerName,
 					QueryName: "counter-gte-30",
-					Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+					Mode:      ledgerpb.QueryMode_QUERY_MODE_LIST,
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(result.GetCursor()).NotTo(BeNil())
@@ -228,23 +228,23 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 
 		It("Should error when int filter has negative bound on uint field", func() {
 			negVal := int64(-1)
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_CreatePreparedQuery{CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_CreatePreparedQuery{CreatePreparedQuery: &ledgerpb.CreatePreparedQueryRequest{
 					Ledger: ledgerName,
 
-					Query: &commonpb.PreparedQuery{
+					Query: &ledgerpb.PreparedQuery{
 						Name:   "counter-neg",
-						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 						Filter: actions.Int64RangeMetadataFilterExclusive("counter", &negVal, nil, false, false),
 					},
 				}},
 			}))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.ExecutePreparedQuery(sharedCtx, &commonpb.ExecutePreparedQueryRequest{
+			_, err = sharedClient.ExecutePreparedQuery(sharedCtx, &ledgerpb.ExecutePreparedQueryRequest{
 				Ledger:    ledgerName,
 				QueryName: "counter-neg",
-				Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+				Mode:      ledgerpb.QueryMode_QUERY_MODE_LIST,
 			})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("unsigned"))
@@ -259,26 +259,26 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 		const ledgerName = "list-schema-val"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*ledgerpb.SetMetadataFieldTypeCommand{
 				{
-					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "score",
-					Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+					Type:       ledgerpb.MetadataType_METADATA_TYPE_INT64,
 				},
 				{
-					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "visits",
-					Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
+					Type:       ledgerpb.MetadataType_METADATA_TYPE_UINT64,
 				},
 			}),
 				actions.CreateAccountMetadataIndexAction(ledgerName, "score"),
 				actions.CreateAccountMetadataIndexAction(ledgerName, "visits")))
 			Expect(err).To(Succeed())
 
-			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score")).To(Succeed())
-			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "visits")).To(Succeed())
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "score")).To(Succeed())
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "visits")).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil),
 				actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{
@@ -313,19 +313,19 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 		const ledgerName = "list-tx-schema-val"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*ledgerpb.SetMetadataFieldTypeCommand{
 				{
-					TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+					TargetType: ledgerpb.TargetType_TARGET_TYPE_TRANSACTION,
 					Key:        "priority",
-					Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+					Type:       ledgerpb.MetadataType_METADATA_TYPE_INT64,
 				},
 			}),
 				actions.CreateTransactionMetadataIndexAction(ledgerName, "priority")))
 			Expect(err).To(Succeed())
 
-			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "priority")).To(Succeed())
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, "priority")).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, map[string]string{"priority": "5"})))
 			Expect(err).To(Succeed())
@@ -358,19 +358,19 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 		BeforeAll(func() {
 			// Declare a STRING schema field then index it. Type mismatches at
 			// query time must be rejected against the declared field type.
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*ledgerpb.SetMetadataFieldTypeCommand{
 				{
-					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "anything",
-					Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+					Type:       ledgerpb.MetadataType_METADATA_TYPE_STRING,
 				},
 			}),
 				actions.CreateAccountMetadataIndexAction(ledgerName, "anything")))
 			Expect(err).To(Succeed())
 
-			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "anything")).To(Succeed())
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "anything")).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil),
 				actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"anything": "hello"})))
@@ -380,13 +380,13 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 		It("Should reject int filter on a STRING field", func() {
 			// Declared schema type is STRING, so int filter must fail with type mismatch
 			val := int64(42)
-			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-				Type: &commonpb.Request_CreatePreparedQuery{CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
+			_, err := sharedClient.Apply(sharedCtx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+				Type: &ledgerpb.Request_CreatePreparedQuery{CreatePreparedQuery: &ledgerpb.CreatePreparedQueryRequest{
 					Ledger: ledgerName,
 
-					Query: &commonpb.PreparedQuery{
+					Query: &ledgerpb.PreparedQuery{
 						Name:   "auto-schema-int",
-						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 						Filter: actions.Int64RangeMetadataFilterExclusive("anything", &val, nil, false, false),
 					},
 				}},
@@ -394,10 +394,10 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			// Execution should fail with type mismatch
-			_, err = sharedClient.ExecutePreparedQuery(sharedCtx, &commonpb.ExecutePreparedQueryRequest{
+			_, err = sharedClient.ExecutePreparedQuery(sharedCtx, &ledgerpb.ExecutePreparedQueryRequest{
 				Ledger:    ledgerName,
 				QueryName: "auto-schema-int",
-				Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+				Mode:      ledgerpb.QueryMode_QUERY_MODE_LIST,
 			})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("cannot use integer condition"))

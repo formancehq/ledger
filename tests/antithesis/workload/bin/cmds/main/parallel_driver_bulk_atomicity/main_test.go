@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -27,22 +27,22 @@ func TestBulkAbsenceOraclesDetectCommittedActivity(t *testing.T) {
 	drivertest.CheckEmissions(t, func() {
 		ctx, client := drivertest.StartServer(t)
 		require.NoError(t, internal.CreateQueryOracleLedger(ctx, client, ledger,
-			commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
-			commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS,
+			ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
+			ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS,
 		))
-		request := actions.CreateForceTransactionAction(ledger, []*commonpb.Posting{{
+		request := actions.CreateForceTransactionAction(ledger, []*ledgerpb.Posting{{
 			Source: "world", Destination: account,
-			Amount: commonpb.NewUint256FromUint64(1), Asset: "USD/2",
+			Amount: ledgerpb.NewUint256FromUint64(1), Asset: "USD/2",
 		}}, nil)
 		request.GetApply().GetAction().GetCreateTransaction().Reference = reference
-		resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("sensitivity-seed", request))
+		resp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("sensitivity-seed", request))
 		require.NoError(t, err)
 		txID, ok := actions.GetCreatedTransactionID(resp)
 		require.True(t, ok)
 
 		// Both real query paths must see the acknowledged seed. This deliberately
 		// seeded effect tests sensitivity; it is not a failed bulk that committed.
-		for _, filter := range []*commonpb.QueryFilter{actions.ReferenceFilter(reference), actions.AddressExactFilter(account)} {
+		for _, filter := range []*ledgerpb.QueryFilter{actions.ReferenceFilter(reference), actions.AddressExactFilter(account)} {
 			ids, err := internal.ReadOracleTransactions(ctx, client, ledger, filter)
 			require.NoError(t, err)
 			require.Equal(t, []uint64{txID}, ids)

@@ -2,25 +2,25 @@ package protohelpers
 
 import (
 	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // MetadataFromGoMap adapts the server's metadata representation to the public wire type.
-func MetadataFromGoMap(m metadata.Metadata) map[string]*commonpb.MetadataValue {
+func MetadataFromGoMap(m metadata.Metadata) map[string]*ledgerpb.MetadataValue {
 	if m == nil {
 		return nil
 	}
 
-	result := make(map[string]*commonpb.MetadataValue, len(m))
+	result := make(map[string]*ledgerpb.MetadataValue, len(m))
 	for k, v := range m {
-		result[k] = commonpb.NewStringValue(v)
+		result[k] = ledgerpb.NewStringValue(v)
 	}
 
 	return result
 }
 
 // MetadataToGoMap adapts public metadata values to the server's string map.
-func MetadataToGoMap(m map[string]*commonpb.MetadataValue) metadata.Metadata {
+func MetadataToGoMap(m map[string]*ledgerpb.MetadataValue) metadata.Metadata {
 	if m == nil {
 		return nil
 	}
@@ -35,7 +35,7 @@ func MetadataToGoMap(m map[string]*commonpb.MetadataValue) metadata.Metadata {
 	return result
 }
 
-func MetadataMapToGoMap(mm *commonpb.MetadataMap) metadata.Metadata {
+func MetadataMapToGoMap(mm *ledgerpb.MetadataMap) metadata.Metadata {
 	if mm == nil {
 		return nil
 	}
@@ -43,10 +43,10 @@ func MetadataMapToGoMap(mm *commonpb.MetadataMap) metadata.Metadata {
 	return MetadataToGoMap(mm.GetValues())
 }
 
-func MetadataMapFromGoMap(m metadata.Metadata) *commonpb.MetadataMap {
+func MetadataMapFromGoMap(m metadata.Metadata) *ledgerpb.MetadataMap {
 	if m == nil {
 		return nil
 	}
 
-	return &commonpb.MetadataMap{Values: MetadataFromGoMap(m)}
+	return &ledgerpb.MetadataMap{Values: MetadataFromGoMap(m)}
 }

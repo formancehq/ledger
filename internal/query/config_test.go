@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -22,7 +22,7 @@ func TestReadLastAppliedIndex(t *testing.T) {
 
 	// Create batch with index 5
 	batch := s.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(batch, "test", &commonpb.LedgerInfo{
+	require.NoError(t, state.SaveLedger(batch, "test", &ledgerpb.LedgerInfo{
 		Name: "test",
 	}))
 	require.NoError(t, state.SetAppliedIndex(batch, 5))
@@ -35,7 +35,7 @@ func TestReadLastAppliedIndex(t *testing.T) {
 
 	// Create another batch with index 10
 	batch = s.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(batch, "test2", &commonpb.LedgerInfo{
+	require.NoError(t, state.SaveLedger(batch, "test2", &ledgerpb.LedgerInfo{
 		Name: "test2",
 	}))
 	require.NoError(t, state.SetAppliedIndex(batch, 10))

@@ -16,7 +16,7 @@ import (
 	"github.com/spf13/cobra"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/application/check"
@@ -438,15 +438,15 @@ func runBootstrapValidation(ctx context.Context, stagingDir string, logger loggi
 
 	var errorCount int
 
-	err = checker.Check(ctx, func(event *servicepb.CheckStoreEvent) {
+	err = checker.Check(ctx, func(event *ledgerpb.CheckStoreEvent) {
 		switch t := event.GetType().(type) {
-		case *servicepb.CheckStoreEvent_Progress:
+		case *ledgerpb.CheckStoreEvent_Progress:
 			if t.Progress.GetTotalLogs() > 0 {
 				pct := float64(t.Progress.GetLogsChecked()) / float64(t.Progress.GetTotalLogs()) * 100
 				pterm.Printf("\r  Validating backup integrity... %d/%d logs (%.0f%%)",
 					t.Progress.GetLogsChecked(), t.Progress.GetTotalLogs(), pct)
 			}
-		case *servicepb.CheckStoreEvent_Error:
+		case *ledgerpb.CheckStoreEvent_Error:
 			errorCount++
 
 			pterm.Printf("\n  %s %s\n", pterm.Red("ERROR"), t.Error.GetMessage())

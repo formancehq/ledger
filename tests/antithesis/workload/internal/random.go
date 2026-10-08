@@ -9,7 +9,7 @@ import (
 
 	antirandom "github.com/antithesishq/antithesis-sdk-go/random"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
@@ -45,10 +45,10 @@ func GetRandomAddress() string {
 }
 
 // RandomPostings generates 1-2 random postings with random sources, destinations, amounts, and assets.
-func RandomPostings() []*commonpb.Posting {
+func RandomPostings() []*ledgerpb.Posting {
 	r := Rand()
 
-	var postings []*commonpb.Posting
+	var postings []*ledgerpb.Posting
 	count := r.Uint64()%2 + 1
 	for range count {
 		source := GetRandomAddress()

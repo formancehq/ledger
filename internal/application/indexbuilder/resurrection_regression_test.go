@@ -9,7 +9,7 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -17,22 +17,22 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
-func makeAcctSavedMetadataLog(seq uint64, ledger string, ledgerLogID uint64, account, key string, value *commonpb.MetadataValue) *commonpb.Log {
-	return &commonpb.Log{
+func makeAcctSavedMetadataLog(seq uint64, ledger string, ledgerLogID uint64, account, key string, value *ledgerpb.MetadataValue) *ledgerpb.Log {
+	return &ledgerpb.Log{
 		Sequence: seq,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_Apply{
-				Apply: &commonpb.ApplyLedgerLog{
+		Payload: &ledgerpb.LogPayload{
+			Type: &ledgerpb.LogPayload_Apply{
+				Apply: &ledgerpb.ApplyLedgerLog{
 					LedgerName: ledger,
-					Log: &commonpb.LedgerLog{
+					Log: &ledgerpb.LedgerLog{
 						Id: ledgerLogID,
-						Data: &commonpb.LedgerLogPayload{
-							Payload: &commonpb.LedgerLogPayload_SavedMetadata{
-								SavedMetadata: &commonpb.SavedMetadata{
-									Target: &commonpb.Target{
-										Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: account}},
+						Data: &ledgerpb.LedgerLogPayload{
+							Payload: &ledgerpb.LedgerLogPayload_SavedMetadata{
+								SavedMetadata: &ledgerpb.SavedMetadata{
+									Target: &ledgerpb.Target{
+										Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{Addr: account}},
 									},
-									Metadata: map[string]*commonpb.MetadataValue{key: value},
+									Metadata: map[string]*ledgerpb.MetadataValue{key: value},
 								},
 							},
 						},
@@ -43,20 +43,20 @@ func makeAcctSavedMetadataLog(seq uint64, ledger string, ledgerLogID uint64, acc
 	}
 }
 
-func makeAcctDeletedMetadataLog(seq uint64, ledger string, ledgerLogID uint64, account, key string) *commonpb.Log {
-	return &commonpb.Log{
+func makeAcctDeletedMetadataLog(seq uint64, ledger string, ledgerLogID uint64, account, key string) *ledgerpb.Log {
+	return &ledgerpb.Log{
 		Sequence: seq,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_Apply{
-				Apply: &commonpb.ApplyLedgerLog{
+		Payload: &ledgerpb.LogPayload{
+			Type: &ledgerpb.LogPayload_Apply{
+				Apply: &ledgerpb.ApplyLedgerLog{
 					LedgerName: ledger,
-					Log: &commonpb.LedgerLog{
+					Log: &ledgerpb.LedgerLog{
 						Id: ledgerLogID,
-						Data: &commonpb.LedgerLogPayload{
-							Payload: &commonpb.LedgerLogPayload_DeletedMetadata{
-								DeletedMetadata: &commonpb.DeletedMetadata{
-									Target: &commonpb.Target{
-										Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: account}},
+						Data: &ledgerpb.LedgerLogPayload{
+							Payload: &ledgerpb.LedgerLogPayload_DeletedMetadata{
+								DeletedMetadata: &ledgerpb.DeletedMetadata{
+									Target: &ledgerpb.Target{
+										Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{Addr: account}},
 									},
 									Key: key,
 								},
@@ -86,14 +86,14 @@ func driveBackfills(t *testing.T, b *Builder, globalCursor uint64) {
 	require.Empty(t, b.backfillTasks, "backfill did not retire within budget")
 }
 
-func declareFieldType(t *testing.T, b *Builder, ledger, key string, ft commonpb.MetadataType) {
+func declareFieldType(t *testing.T, b *Builder, ledger, key string, ft ledgerpb.MetadataType) {
 	t.Helper()
 
 	fsmBatch := b.pebbleStore.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(fsmBatch, ledger, &commonpb.LedgerInfo{
+	require.NoError(t, state.SaveLedger(fsmBatch, ledger, &ledgerpb.LedgerInfo{
 		Name: ledger,
-		MetadataSchema: &commonpb.MetadataSchema{
-			AccountFields: map[string]*commonpb.MetadataFieldSchema{
+		MetadataSchema: &ledgerpb.MetadataSchema{
+			AccountFields: map[string]*ledgerpb.MetadataFieldSchema{
 				key: {Type: ft},
 			},
 		},
@@ -153,19 +153,19 @@ func TestDropRecreate_DeletedValueStaysDead(t *testing.T) {
 		account = "bob"
 	)
 
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, metaKey)
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, metaKey)
 	seedCachedLedgerHistory(b, ledger, ledgerHistoryNonEmpty)
 	canonical := indexes.Canonical(id)
 	kb := dal.NewKeyBuilder()
 
 	// Incarnation 1: k3 declared INT64, bob.k3 = 42 in history, index built.
-	declareFieldType(t, b, ledger, metaKey, commonpb.MetadataType_METADATA_TYPE_INT64)
-	writeLogToFSM(t, b, makeAcctSavedMetadataLog(1, ledger, 1, account, metaKey, commonpb.NewIntValue(42)))
+	declareFieldType(t, b, ledger, metaKey, ledgerpb.MetadataType_METADATA_TYPE_INT64)
+	writeLogToFSM(t, b, makeAcctSavedMetadataLog(1, ledger, 1, account, metaKey, ledgerpb.NewIntValue(42)))
 	writeAppliedProposalToFSM(t, b, 1, 1, 1)
 
 	batch := b.readStore.NewBatch()
 	b.initBatch(batch)
-	require.NoError(t, b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id}))
+	require.NoError(t, b.handleCreatedIndexLog(ledger, &ledgerpb.CreatedIndexLog{Id: id}))
 	require.NoError(t, b.wb.Flush())
 	driveBackfills(t, b, 1)
 
@@ -178,7 +178,7 @@ func TestDropRecreate_DeletedValueStaysDead(t *testing.T) {
 	// Drop. Rows purged, version tombstoned.
 	batch = b.readStore.NewBatch()
 	b.initBatch(batch)
-	require.NoError(t, b.handleDroppedIndexLog(b.kb, ledger, &commonpb.DroppedIndexLog{Id: id}))
+	require.NoError(t, b.handleDroppedIndexLog(b.kb, ledger, &ledgerpb.DroppedIndexLog{Id: id}))
 	require.NoError(t, b.wb.Flush())
 
 	// The delete folds while nothing indexes k3: the live path skips it, and
@@ -195,12 +195,12 @@ func TestDropRecreate_DeletedValueStaysDead(t *testing.T) {
 	// The retype lands while dropped, so the recreate's replay re-encodes the
 	// write at seq 1 under STRING — the encoding divergence that made the
 	// same-sequence retraction necessary and impossible.
-	declareFieldType(t, b, ledger, metaKey, commonpb.MetadataType_METADATA_TYPE_STRING)
+	declareFieldType(t, b, ledger, metaKey, ledgerpb.MetadataType_METADATA_TYPE_STRING)
 
 	// Incarnation 2.
 	batch = b.readStore.NewBatch()
 	b.initBatch(batch)
-	require.NoError(t, b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id}))
+	require.NoError(t, b.handleCreatedIndexLog(ledger, &ledgerpb.CreatedIndexLog{Id: id}))
 	require.NoError(t, b.wb.Flush())
 	driveBackfills(t, b, 2)
 

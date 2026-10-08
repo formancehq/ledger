@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -24,19 +24,19 @@ func TestProcessSetMetadataFieldType_Account(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := &ledgerpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
-	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 1}
+	ledgerInfo := &ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
 	expectGetIndex(mockStore, domain.IndexKey{}, nil, domain.ErrNotFound).AnyTimes()
-	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(_ string, info *commonpb.LedgerInfo) {
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(_ string, info *ledgerpb.LedgerInfo) {
 		require.NotNil(t, info.GetMetadataSchema())
 		require.NotNil(t, info.GetMetadataSchema().GetAccountFields())
 		field := info.GetMetadataSchema().GetAccountFields()["amount"]
 		require.NotNil(t, field)
-		require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, field.GetType())
+		require.Equal(t, ledgerpb.MetadataType_METADATA_TYPE_INT64, field.GetType())
 	})
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
@@ -48,9 +48,9 @@ func TestProcessSetMetadataFieldType_Account(t *testing.T) {
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_SetMetadataFieldType{
 						SetMetadataFieldType: &raftcmdpb.SetMetadataFieldTypeOrder{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 							Key:        "amount",
-							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+							Type:       ledgerpb.MetadataType_METADATA_TYPE_INT64,
 						},
 					},
 					},
@@ -67,9 +67,9 @@ func TestProcessSetMetadataFieldType_Account(t *testing.T) {
 	require.NotNil(t, applyLog)
 	setLog := applyLog.GetLog().GetData().GetSetMetadataFieldType()
 	require.NotNil(t, setLog)
-	require.Equal(t, commonpb.TargetType_TARGET_TYPE_ACCOUNT, setLog.GetTargetType())
+	require.Equal(t, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, setLog.GetTargetType())
 	require.Equal(t, "amount", setLog.GetKey())
-	require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, setLog.GetType())
+	require.Equal(t, ledgerpb.MetadataType_METADATA_TYPE_INT64, setLog.GetType())
 }
 
 func TestProcessSetMetadataFieldType_Transaction(t *testing.T) {
@@ -83,19 +83,19 @@ func TestProcessSetMetadataFieldType_Transaction(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := &ledgerpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
-	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 1}
+	ledgerInfo := &ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
 	expectGetIndex(mockStore, domain.IndexKey{}, nil, domain.ErrNotFound).AnyTimes()
-	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(_ string, info *commonpb.LedgerInfo) {
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(_ string, info *ledgerpb.LedgerInfo) {
 		require.NotNil(t, info.GetMetadataSchema())
 		require.NotNil(t, info.GetMetadataSchema().GetTransactionFields())
 		field := info.GetMetadataSchema().GetTransactionFields()["priority"]
 		require.NotNil(t, field)
-		require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, field.GetType())
+		require.Equal(t, ledgerpb.MetadataType_METADATA_TYPE_INT64, field.GetType())
 	})
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
@@ -107,9 +107,9 @@ func TestProcessSetMetadataFieldType_Transaction(t *testing.T) {
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_SetMetadataFieldType{
 						SetMetadataFieldType: &raftcmdpb.SetMetadataFieldTypeOrder{
-							TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+							TargetType: ledgerpb.TargetType_TARGET_TYPE_TRANSACTION,
 							Key:        "priority",
-							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+							Type:       ledgerpb.MetadataType_METADATA_TYPE_INT64,
 						},
 					},
 					},
@@ -134,19 +134,19 @@ func TestProcessSetMetadataFieldType_Ledger(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := &ledgerpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
-	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 1}
+	ledgerInfo := &ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
 	expectGetIndex(mockStore, domain.IndexKey{}, nil, domain.ErrNotFound).AnyTimes()
-	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(_ string, info *commonpb.LedgerInfo) {
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(_ string, info *ledgerpb.LedgerInfo) {
 		require.NotNil(t, info.GetMetadataSchema())
 		require.NotNil(t, info.GetMetadataSchema().GetLedgerFields())
 		field := info.GetMetadataSchema().GetLedgerFields()["env"]
 		require.NotNil(t, field)
-		require.Equal(t, commonpb.MetadataType_METADATA_TYPE_STRING, field.GetType())
+		require.Equal(t, ledgerpb.MetadataType_METADATA_TYPE_STRING, field.GetType())
 	})
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
@@ -158,9 +158,9 @@ func TestProcessSetMetadataFieldType_Ledger(t *testing.T) {
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_SetMetadataFieldType{
 						SetMetadataFieldType: &raftcmdpb.SetMetadataFieldTypeOrder{
-							TargetType: commonpb.TargetType_TARGET_TYPE_LEDGER,
+							TargetType: ledgerpb.TargetType_TARGET_TYPE_LEDGER,
 							Key:        "env",
-							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+							Type:       ledgerpb.MetadataType_METADATA_TYPE_STRING,
 						},
 					},
 					},
@@ -177,9 +177,9 @@ func TestProcessSetMetadataFieldType_Ledger(t *testing.T) {
 	require.NotNil(t, applyLog)
 	setLog := applyLog.GetLog().GetData().GetSetMetadataFieldType()
 	require.NotNil(t, setLog)
-	require.Equal(t, commonpb.TargetType_TARGET_TYPE_LEDGER, setLog.GetTargetType())
+	require.Equal(t, ledgerpb.TargetType_TARGET_TYPE_LEDGER, setLog.GetTargetType())
 	require.Equal(t, "env", setLog.GetKey())
-	require.Equal(t, commonpb.MetadataType_METADATA_TYPE_STRING, setLog.GetType())
+	require.Equal(t, ledgerpb.MetadataType_METADATA_TYPE_STRING, setLog.GetType())
 }
 
 func TestProcessSetMetadataFieldType_LedgerNotFound(t *testing.T) {
@@ -203,9 +203,9 @@ func TestProcessSetMetadataFieldType_LedgerNotFound(t *testing.T) {
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_SetMetadataFieldType{
 						SetMetadataFieldType: &raftcmdpb.SetMetadataFieldTypeOrder{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 							Key:        "key",
-							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+							Type:       ledgerpb.MetadataType_METADATA_TYPE_INT64,
 						},
 					},
 					},
@@ -239,14 +239,14 @@ func TestProcessApplyMissingLedgerClearsStaleLedgerInfo(t *testing.T) {
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "missing"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "missing"}, nil, domain.ErrNotFound).AnyTimes()
 
-	stale := (&commonpb.LedgerInfo{Name: "previous-ledger", Id: 1}).AsReader()
+	stale := (&ledgerpb.LedgerInfo{Name: "previous-ledger", Id: 1}).AsReader()
 	ctx := &Context{Scope: mockStore, LedgerInfo: stale, batchInitialNextTxID: make(map[string]uint64)}
 
 	apply := &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_SetMetadataFieldType{
 		SetMetadataFieldType: &raftcmdpb.SetMetadataFieldTypeOrder{
-			TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+			TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 			Key:        "key",
-			Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+			Type:       ledgerpb.MetadataType_METADATA_TYPE_INT64,
 		},
 	}}
 
@@ -267,14 +267,14 @@ func TestProcessRemoveMetadataFieldType_Account(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := &ledgerpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
-	ledgerInfo := &commonpb.LedgerInfo{
+	ledgerInfo := &ledgerpb.LedgerInfo{
 		Name: "test-ledger",
 		Id:   1,
-		MetadataSchema: &commonpb.MetadataSchema{
-			AccountFields: map[string]*commonpb.MetadataFieldSchema{
-				"amount": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
+		MetadataSchema: &ledgerpb.MetadataSchema{
+			AccountFields: map[string]*ledgerpb.MetadataFieldSchema{
+				"amount": {Type: ledgerpb.MetadataType_METADATA_TYPE_INT64},
 			},
 		},
 	}
@@ -282,7 +282,7 @@ func TestProcessRemoveMetadataFieldType_Account(t *testing.T) {
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
 	expectGetIndex(mockStore, domain.IndexKey{}, nil, domain.ErrNotFound).AnyTimes()
-	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(_ string, info *commonpb.LedgerInfo) {
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(_ string, info *ledgerpb.LedgerInfo) {
 		_, exists := info.GetMetadataSchema().GetAccountFields()["amount"]
 		require.False(t, exists, "amount field should have been removed")
 	})
@@ -296,7 +296,7 @@ func TestProcessRemoveMetadataFieldType_Account(t *testing.T) {
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType{
 						RemoveMetadataFieldType: &raftcmdpb.RemoveMetadataFieldTypeOrder{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 							Key:        "amount",
 						},
 					},
@@ -314,7 +314,7 @@ func TestProcessRemoveMetadataFieldType_Account(t *testing.T) {
 	require.NotNil(t, applyLog)
 	removeLog := applyLog.GetLog().GetData().GetRemovedMetadataFieldType()
 	require.NotNil(t, removeLog)
-	require.Equal(t, commonpb.TargetType_TARGET_TYPE_ACCOUNT, removeLog.GetTargetType())
+	require.Equal(t, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, removeLog.GetTargetType())
 	require.Equal(t, "amount", removeLog.GetKey())
 }
 
@@ -329,14 +329,14 @@ func TestProcessRemoveMetadataFieldType_Transaction(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := &ledgerpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
-	ledgerInfo := &commonpb.LedgerInfo{
+	ledgerInfo := &ledgerpb.LedgerInfo{
 		Name: "test-ledger",
 		Id:   1,
-		MetadataSchema: &commonpb.MetadataSchema{
-			TransactionFields: map[string]*commonpb.MetadataFieldSchema{
-				"priority": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
+		MetadataSchema: &ledgerpb.MetadataSchema{
+			TransactionFields: map[string]*ledgerpb.MetadataFieldSchema{
+				"priority": {Type: ledgerpb.MetadataType_METADATA_TYPE_INT64},
 			},
 		},
 	}
@@ -355,7 +355,7 @@ func TestProcessRemoveMetadataFieldType_Transaction(t *testing.T) {
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType{
 						RemoveMetadataFieldType: &raftcmdpb.RemoveMetadataFieldTypeOrder{
-							TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+							TargetType: ledgerpb.TargetType_TARGET_TYPE_TRANSACTION,
 							Key:        "priority",
 						},
 					},
@@ -381,14 +381,14 @@ func TestProcessRemoveMetadataFieldType_Ledger(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := &ledgerpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
-	ledgerInfo := &commonpb.LedgerInfo{
+	ledgerInfo := &ledgerpb.LedgerInfo{
 		Name: "test-ledger",
 		Id:   1,
-		MetadataSchema: &commonpb.MetadataSchema{
-			LedgerFields: map[string]*commonpb.MetadataFieldSchema{
-				"env": {Type: commonpb.MetadataType_METADATA_TYPE_STRING},
+		MetadataSchema: &ledgerpb.MetadataSchema{
+			LedgerFields: map[string]*ledgerpb.MetadataFieldSchema{
+				"env": {Type: ledgerpb.MetadataType_METADATA_TYPE_STRING},
 			},
 		},
 	}
@@ -396,7 +396,7 @@ func TestProcessRemoveMetadataFieldType_Ledger(t *testing.T) {
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
 	expectGetIndex(mockStore, domain.IndexKey{}, nil, domain.ErrNotFound).AnyTimes()
-	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(_ string, info *commonpb.LedgerInfo) {
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(_ string, info *ledgerpb.LedgerInfo) {
 		_, exists := info.GetMetadataSchema().GetLedgerFields()["env"]
 		require.False(t, exists, "env field should have been removed")
 	})
@@ -410,7 +410,7 @@ func TestProcessRemoveMetadataFieldType_Ledger(t *testing.T) {
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType{
 						RemoveMetadataFieldType: &raftcmdpb.RemoveMetadataFieldTypeOrder{
-							TargetType: commonpb.TargetType_TARGET_TYPE_LEDGER,
+							TargetType: ledgerpb.TargetType_TARGET_TYPE_LEDGER,
 							Key:        "env",
 						},
 					},
@@ -428,7 +428,7 @@ func TestProcessRemoveMetadataFieldType_Ledger(t *testing.T) {
 	require.NotNil(t, applyLog)
 	removeLog := applyLog.GetLog().GetData().GetRemovedMetadataFieldType()
 	require.NotNil(t, removeLog)
-	require.Equal(t, commonpb.TargetType_TARGET_TYPE_LEDGER, removeLog.GetTargetType())
+	require.Equal(t, ledgerpb.TargetType_TARGET_TYPE_LEDGER, removeLog.GetTargetType())
 	require.Equal(t, "env", removeLog.GetKey())
 }
 
@@ -448,17 +448,17 @@ func TestProcessSetMetadataFieldType_AcceptedDuringRebuild(t *testing.T) {
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "amount")
-	ledgerInfo := &commonpb.LedgerInfo{
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "amount")
+	ledgerInfo := &ledgerpb.LedgerInfo{
 		Name: "test-ledger",
 		Id:   1,
-		MetadataSchema: &commonpb.MetadataSchema{
-			AccountFields: map[string]*commonpb.MetadataFieldSchema{
-				"amount": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
+		MetadataSchema: &ledgerpb.MetadataSchema{
+			AccountFields: map[string]*ledgerpb.MetadataFieldSchema{
+				"amount": {Type: ledgerpb.MetadataType_METADATA_TYPE_INT64},
 			},
 		},
 	}
-	existingIndex := &commonpb.Index{
+	existingIndex := &ledgerpb.Index{
 		Ledger: "test-ledger",
 		Id:     id,
 	}
@@ -468,7 +468,7 @@ func TestProcessSetMetadataFieldType_AcceptedDuringRebuild(t *testing.T) {
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	expectGetIndex(mockStore, indexes.KeyFor("test-ledger", id), existingIndex.AsReader(), nil)
 	expectPutIndex(t, mockStore, indexes.KeyFor("test-ledger", id), nil)
-	mockStore.EXPECT().GetDate().Return(&commonpb.Timestamp{Data: 1234567890})
+	mockStore.EXPECT().GetDate().Return(&ledgerpb.Timestamp{Data: 1234567890})
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 
 	order := &raftcmdpb.Order{
@@ -478,9 +478,9 @@ func TestProcessSetMetadataFieldType_AcceptedDuringRebuild(t *testing.T) {
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_SetMetadataFieldType{
 						SetMetadataFieldType: &raftcmdpb.SetMetadataFieldTypeOrder{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 							Key:        "amount",
-							Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
+							Type:       ledgerpb.MetadataType_METADATA_TYPE_UINT64,
 						},
 					},
 					},
@@ -507,18 +507,18 @@ func TestPopulateInitialSchema(t *testing.T) {
 	t.Run("EmptyCommands", func(t *testing.T) {
 		t.Parallel()
 
-		result := populateInitialSchema([]*commonpb.SetMetadataFieldTypeCommand{})
+		result := populateInitialSchema([]*ledgerpb.SetMetadataFieldTypeCommand{})
 		require.Nil(t, result)
 	})
 
 	t.Run("AccountFields", func(t *testing.T) {
 		t.Parallel()
 
-		commands := []*commonpb.SetMetadataFieldTypeCommand{
+		commands := []*ledgerpb.SetMetadataFieldTypeCommand{
 			{
-				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 				Key:        "amount",
-				Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+				Type:       ledgerpb.MetadataType_METADATA_TYPE_INT64,
 			},
 		}
 		result := populateInitialSchema(commands)
@@ -526,17 +526,17 @@ func TestPopulateInitialSchema(t *testing.T) {
 		require.NotNil(t, result.GetAccountFields())
 		field := result.GetAccountFields()["amount"]
 		require.NotNil(t, field)
-		require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, field.GetType())
+		require.Equal(t, ledgerpb.MetadataType_METADATA_TYPE_INT64, field.GetType())
 	})
 
 	t.Run("TransactionFields", func(t *testing.T) {
 		t.Parallel()
 
-		commands := []*commonpb.SetMetadataFieldTypeCommand{
+		commands := []*ledgerpb.SetMetadataFieldTypeCommand{
 			{
-				TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+				TargetType: ledgerpb.TargetType_TARGET_TYPE_TRANSACTION,
 				Key:        "priority",
-				Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+				Type:       ledgerpb.MetadataType_METADATA_TYPE_INT64,
 			},
 		}
 		result := populateInitialSchema(commands)
@@ -544,17 +544,17 @@ func TestPopulateInitialSchema(t *testing.T) {
 		require.NotNil(t, result.GetTransactionFields())
 		field := result.GetTransactionFields()["priority"]
 		require.NotNil(t, field)
-		require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, field.GetType())
+		require.Equal(t, ledgerpb.MetadataType_METADATA_TYPE_INT64, field.GetType())
 	})
 
 	t.Run("LedgerFields", func(t *testing.T) {
 		t.Parallel()
 
-		commands := []*commonpb.SetMetadataFieldTypeCommand{
+		commands := []*ledgerpb.SetMetadataFieldTypeCommand{
 			{
-				TargetType: commonpb.TargetType_TARGET_TYPE_LEDGER,
+				TargetType: ledgerpb.TargetType_TARGET_TYPE_LEDGER,
 				Key:        "env",
-				Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+				Type:       ledgerpb.MetadataType_METADATA_TYPE_STRING,
 			},
 		}
 		result := populateInitialSchema(commands)
@@ -562,27 +562,27 @@ func TestPopulateInitialSchema(t *testing.T) {
 		require.NotNil(t, result.GetLedgerFields())
 		field := result.GetLedgerFields()["env"]
 		require.NotNil(t, field)
-		require.Equal(t, commonpb.MetadataType_METADATA_TYPE_STRING, field.GetType())
+		require.Equal(t, ledgerpb.MetadataType_METADATA_TYPE_STRING, field.GetType())
 	})
 
 	t.Run("MixedFields", func(t *testing.T) {
 		t.Parallel()
 
-		commands := []*commonpb.SetMetadataFieldTypeCommand{
+		commands := []*ledgerpb.SetMetadataFieldTypeCommand{
 			{
-				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 				Key:        "balance",
-				Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+				Type:       ledgerpb.MetadataType_METADATA_TYPE_INT64,
 			},
 			{
-				TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+				TargetType: ledgerpb.TargetType_TARGET_TYPE_TRANSACTION,
 				Key:        "category",
-				Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+				Type:       ledgerpb.MetadataType_METADATA_TYPE_STRING,
 			},
 			{
-				TargetType: commonpb.TargetType_TARGET_TYPE_LEDGER,
+				TargetType: ledgerpb.TargetType_TARGET_TYPE_LEDGER,
 				Key:        "region",
-				Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+				Type:       ledgerpb.MetadataType_METADATA_TYPE_STRING,
 			},
 		}
 		result := populateInitialSchema(commands)

@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // handleRemoveAccountType handles DELETE /{ledgerName}/account-types/{typeName}.
@@ -23,9 +23,9 @@ func (s *Server) handleRemoveAccountType(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	_, err := s.applyUnsigned(r.Context(), "", &servicepb.Request{
-		Type: &servicepb.Request_RemoveAccountType{
-			RemoveAccountType: &servicepb.RemoveAccountTypeLedgerRequest{
+	_, err := s.applyUnsigned(r.Context(), "", &ledgerpb.Request{
+		Type: &ledgerpb.Request_RemoveAccountType{
+			RemoveAccountType: &ledgerpb.RemoveAccountTypeLedgerRequest{
 				Ledger: ledgerName,
 				Name:   typeName,
 			},

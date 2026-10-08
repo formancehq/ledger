@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -27,7 +27,7 @@ func TestProcessRemoveAccountType_EmptyNameRejectedAsValidation(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "L"}, (&commonpb.LedgerInfo{Name: "L", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "L"}, (&ledgerpb.LedgerInfo{Name: "L", Id: 1}).AsReader(), nil).AnyTimes()
 	// No Ledgers().Put must happen — the order is rejected before any mutation.
 
 	payload, describable := processRemoveAccountType("L", &raftcmdpb.RemoveAccountTypeOrder{Name: ""}, &Context{Scope: mockStore})
@@ -59,9 +59,9 @@ func TestProcessAddAccountType_ConflictSelectionDeterministic(t *testing.T) {
 
 	// "aaa" and "zzz" have identical two-segment structure (fixed + variable),
 	// so both conflict with the new "users:{z}" pattern. "aaa" sorts first.
-	existing := &commonpb.LedgerInfo{
+	existing := &ledgerpb.LedgerInfo{
 		Name: "l",
-		AccountTypes: map[string]*commonpb.AccountType{
+		AccountTypes: map[string]*ledgerpb.AccountType{
 			"zzz": {Name: "zzz", Pattern: "users:{y}"},
 			"aaa": {Name: "aaa", Pattern: "users:{x}"},
 		},
@@ -74,7 +74,7 @@ func TestProcessAddAccountType_ConflictSelectionDeterministic(t *testing.T) {
 		expectGetLedger(mockStore, domain.LedgerKey{Name: "l"}, existing.AsReader(), nil)
 
 		order := &raftcmdpb.AddAccountTypeOrder{
-			AccountType: &commonpb.AccountType{Name: "new-type", Pattern: "users:{z}"},
+			AccountType: &ledgerpb.AccountType{Name: "new-type", Pattern: "users:{z}"},
 		}
 
 		_, derr := processAddAccountType("l", order, &Context{Scope: mockStore})

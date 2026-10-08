@@ -1,7 +1,7 @@
 package processing
 
 import (
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/semver"
@@ -11,7 +11,7 @@ import (
 // processSaveNumscript appends an immutable version to the library. The version
 // must be an explicit full semver; content entries are immutable, and the
 // per-name latest pointer is maintained as the greatest stored semver.
-func processSaveNumscript(ledger string, order *raftcmdpb.SaveNumscriptOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func processSaveNumscript(ledger string, order *raftcmdpb.SaveNumscriptOrder, ctx *Context) (*ledgerpb.LogPayload, domain.SerializableError) {
 	s := ctx.Scope
 
 	if err := domain.ValidateNumscriptName(order.GetName()); err != nil {
@@ -56,7 +56,7 @@ func processSaveNumscript(ledger string, order *raftcmdpb.SaveNumscriptOrder, ct
 		return nil, domain.StoreFailure("getting numscript latest version", curErr)
 	}
 
-	info := &commonpb.NumscriptInfo{
+	info := &ledgerpb.NumscriptInfo{
 		Name:      order.GetName(),
 		Content:   order.GetContent(),
 		Version:   order.GetVersion(),
@@ -76,9 +76,9 @@ func processSaveNumscript(ledger string, order *raftcmdpb.SaveNumscriptOrder, ct
 		}
 	}
 
-	return &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_SavedNumscript{
-			SavedNumscript: &commonpb.SavedNumscriptLog{
+	return &ledgerpb.LogPayload{
+		Type: &ledgerpb.LogPayload_SavedNumscript{
+			SavedNumscript: &ledgerpb.SavedNumscriptLog{
 				Info: info,
 			},
 		},

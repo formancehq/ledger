@@ -13,7 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
@@ -25,27 +25,27 @@ import (
 	"google.golang.org/grpc"
 )
 
-func restoreEventSinkConfig(name string) *clusterpb.SinkConfig {
-	return &clusterpb.SinkConfig{
+func restoreEventSinkConfig(name string) *ledgerpb.SinkConfig {
+	return &ledgerpb.SinkConfig{
 		Name:         name,
 		Format:       "json",
 		BatchSize:    1,
 		BatchDelayMs: 1,
-		Type: &clusterpb.SinkConfig_Http{
-			Http: &clusterpb.HttpSinkConfig{Endpoint: "https://example.invalid/events"},
+		Type: &ledgerpb.SinkConfig_Http{
+			Http: &ledgerpb.HttpSinkConfig{Endpoint: "https://example.invalid/events"},
 		},
 	}
 }
 
-func addRestoreEventSink(config *clusterpb.SinkConfig) *clusterpb.Request {
-	return &clusterpb.Request{Type: &clusterpb.Request_AddEventsSink{
-		AddEventsSink: &clusterpb.AddEventsSinkRequest{Config: config},
+func addRestoreEventSink(config *ledgerpb.SinkConfig) *ledgerpb.Request {
+	return &ledgerpb.Request{Type: &ledgerpb.Request_AddEventsSink{
+		AddEventsSink: &ledgerpb.AddEventsSinkRequest{Config: config},
 	}}
 }
 
-func removeRestoreEventSink(name string) *clusterpb.Request {
-	return &clusterpb.Request{Type: &clusterpb.Request_RemoveEventsSink{
-		RemoveEventsSink: &clusterpb.RemoveEventsSinkRequest{Name: name},
+func removeRestoreEventSink(name string) *ledgerpb.Request {
+	return &ledgerpb.Request{Type: &ledgerpb.Request_RemoveEventsSink{
+		RemoveEventsSink: &ledgerpb.RemoveEventsSinkRequest{Name: name},
 	}}
 }
 
@@ -69,8 +69,8 @@ var _ = Describe("Restore removed event sink", Ordered, func() {
 		minioEndpoint  string
 	)
 
-	storage := func() *clusterpb.BackupStorage {
-		return testutil.S3BackupStorage(&clusterpb.S3StorageConfig{
+	storage := func() *ledgerpb.BackupStorage {
+		return testutil.S3BackupStorage(&ledgerpb.S3StorageConfig{
 			Bucket:   s3Bucket,
 			Region:   restoreS3Region,
 			Endpoint: minioEndpoint,
@@ -124,8 +124,8 @@ var _ = Describe("Restore removed event sink", Ordered, func() {
 	Describe("source checkpoint and delta", Ordered, func() {
 		var (
 			server        *testservice.Service
-			client        clusterpb.BucketServiceClient
-			clusterClient clusterpb.ClusterServiceClient
+			client        ledgerpb.BucketServiceClient
+			clusterClient ledgerpb.ClusterServiceClient
 			grpcConn      *grpc.ClientConn
 		)
 
@@ -143,7 +143,7 @@ var _ = Describe("Restore removed event sink", Ordered, func() {
 			client, clusterClient, grpcConn, err = testutil.NewGRPCClient(ports.GRPC())
 			Expect(err).To(Succeed())
 			Eventually(func(g Gomega) bool {
-				state, stateErr := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+				state, stateErr := clusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 				g.Expect(stateErr).To(Succeed())
 				return state.Leader != 0
 			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
@@ -157,28 +157,28 @@ var _ = Describe("Restore removed event sink", Ordered, func() {
 		})
 
 		It("creates the sink before the checkpoint", func() {
-			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", addRestoreEventSink(restoreEventSinkConfig(sinkName))))
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", addRestoreEventSink(restoreEventSinkConfig(sinkName))))
 			Expect(err).To(Succeed())
 
-			resp, err := client.GetEventsSinks(ctx, &clusterpb.GetEventsSinksRequest{})
+			resp, err := client.GetEventsSinks(ctx, &ledgerpb.GetEventsSinksRequest{})
 			Expect(err).To(Succeed())
 			Expect(resp.GetSinks()).To(HaveLen(1))
 			Expect(resp.GetSinks()[0].GetName()).To(Equal(sinkName))
 
-			backupResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: storage()})
+			backupResp, err := clusterClient.Backup(ctx, &ledgerpb.BackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
 			Expect(backupResp.GetTotalFiles()).To(BeNumerically(">", 0))
 		})
 
 		It("removes the sink in a non-empty exported delta", func() {
-			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", removeRestoreEventSink(sinkName)))
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", removeRestoreEventSink(sinkName)))
 			Expect(err).To(Succeed())
 
-			resp, err := client.GetEventsSinks(ctx, &clusterpb.GetEventsSinksRequest{})
+			resp, err := client.GetEventsSinks(ctx, &ledgerpb.GetEventsSinksRequest{})
 			Expect(err).To(Succeed())
 			Expect(resp.GetSinks()).To(BeEmpty(), "the uninterrupted source must persist the removal")
 
-			incResp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{Storage: storage()})
+			incResp, err := clusterClient.IncrementalBackup(ctx, &ledgerpb.IncrementalBackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
 			Expect(incResp.GetLogEntriesExported()).To(BeNumerically(">", 0), "the removal log must be exported")
 		})
@@ -187,7 +187,7 @@ var _ = Describe("Restore removed event sink", Ordered, func() {
 	Describe("restore", Ordered, func() {
 		var (
 			server        *testservice.Service
-			restoreClient clusterpb.RestoreServiceClient
+			restoreClient ledgerpb.RestoreServiceClient
 			grpcConn      *grpc.ClientConn
 		)
 
@@ -216,17 +216,17 @@ var _ = Describe("Restore removed event sink", Ordered, func() {
 		})
 
 		It("downloads and finalizes the checkpoint plus delta", func() {
-			startResp, err := restoreClient.StartDownloadBackup(ctx, &clusterpb.StartDownloadBackupRequest{Storage: storage()})
+			startResp, err := restoreClient.StartDownloadBackup(ctx, &ledgerpb.StartDownloadBackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
-			Eventually(func() clusterpb.DownloadState {
-				resp, statusErr := restoreClient.GetDownloadStatus(ctx, &clusterpb.GetDownloadStatusRequest{JobId: startResp.GetJobId()})
+			Eventually(func() ledgerpb.DownloadState {
+				resp, statusErr := restoreClient.GetDownloadStatus(ctx, &ledgerpb.GetDownloadStatusRequest{JobId: startResp.GetJobId()})
 				Expect(statusErr).To(Succeed())
 				return resp.GetState()
-			}, 2*time.Minute, 500*time.Millisecond).Should(Equal(clusterpb.DownloadState_DOWNLOAD_STATE_SUCCEEDED))
+			}, 2*time.Minute, 500*time.Millisecond).Should(Equal(ledgerpb.DownloadState_DOWNLOAD_STATE_SUCCEEDED))
 
 			Expect(validateRestoreWithoutErrors(ctx, restoreClient)).To(Succeed())
 
-			_, err = restoreClient.FinalizeRestore(ctx, &clusterpb.FinalizeRestoreRequest{})
+			_, err = restoreClient.FinalizeRestore(ctx, &ledgerpb.FinalizeRestoreRequest{})
 			Expect(err).To(Succeed())
 		})
 	})
@@ -234,8 +234,8 @@ var _ = Describe("Restore removed event sink", Ordered, func() {
 	Describe("restored node", Ordered, func() {
 		var (
 			server        *testservice.Service
-			client        clusterpb.BucketServiceClient
-			clusterClient clusterpb.ClusterServiceClient
+			client        ledgerpb.BucketServiceClient
+			clusterClient ledgerpb.ClusterServiceClient
 			grpcConn      *grpc.ClientConn
 		)
 
@@ -253,7 +253,7 @@ var _ = Describe("Restore removed event sink", Ordered, func() {
 			client, clusterClient, grpcConn, err = testutil.NewGRPCClient(ports.GRPC())
 			Expect(err).To(Succeed())
 			Eventually(func(g Gomega) bool {
-				state, stateErr := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+				state, stateErr := clusterClient.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 				g.Expect(stateErr).To(Succeed())
 				return state.Leader != 0
 			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
@@ -269,7 +269,7 @@ var _ = Describe("Restore removed event sink", Ordered, func() {
 		})
 
 		It("keeps the removed sink durably absent and passes CheckStore", func() {
-			resp, err := client.GetEventsSinks(ctx, &clusterpb.GetEventsSinksRequest{})
+			resp, err := client.GetEventsSinks(ctx, &ledgerpb.GetEventsSinksRequest{})
 			Expect(err).To(Succeed())
 			Expect(resp.GetSinks()).To(BeEmpty(), "the checkpoint-era sink must not be resurrected")
 
@@ -279,7 +279,7 @@ var _ = Describe("Restore removed event sink", Ordered, func() {
 		})
 
 		It("admits a new sink under the removed name", func() {
-			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", addRestoreEventSink(restoreEventSinkConfig(sinkName))))
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", addRestoreEventSink(restoreEventSinkConfig(sinkName))))
 			Expect(err).To(Succeed(), "a stale restored sink would reject this name as already existing")
 		})
 	})

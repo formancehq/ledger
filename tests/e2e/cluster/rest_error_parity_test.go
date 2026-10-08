@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"time"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
@@ -71,11 +71,11 @@ var _ = Describe("REST error parity across cluster nodes (EN-1636)", Ordered, fu
 		ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(countInstances)
 
 		_, err := servers[0].Client.Apply(ctx,
-			servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())
 
 		_, err = servers[0].Client.Apply(ctx,
-			servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(deletedLedger, nil)))
+			ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(deletedLedger, nil)))
 		Expect(err).To(Succeed())
 	})
 
@@ -199,7 +199,7 @@ var _ = Describe("REST error parity across cluster nodes (EN-1636)", Ordered, fu
 		apply := func(node *testutil.ServiceWithClient) *status.Status {
 			GinkgoHelper()
 			_, err := node.Client.Apply(ctx,
-				servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+				ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())

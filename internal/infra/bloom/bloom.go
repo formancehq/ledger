@@ -14,7 +14,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -22,7 +22,7 @@ import (
 
 // BloomConfigEnabled returns true if at least one bloom filter type has a
 // non-zero expected key count in the given ClusterConfig.
-func BloomConfigEnabled(cfg *commonpb.ClusterConfig) bool {
+func BloomConfigEnabled(cfg *ledgerpb.ClusterConfig) bool {
 	for _, tc := range bloomTypes(cfg) {
 		if tc.cfg.GetExpectedKeys() > 0 {
 			return true
@@ -34,7 +34,7 @@ func BloomConfigEnabled(cfg *commonpb.ClusterConfig) bool {
 
 // BloomConfigEqual returns true if two ClusterConfigs have identical bloom
 // filter settings.
-func BloomConfigEqual(a, b *commonpb.ClusterConfig) bool {
+func BloomConfigEqual(a, b *ledgerpb.ClusterConfig) bool {
 	for i, at := range bloomTypes(a) {
 		bt := bloomTypes(b)[i]
 		if at.cfg.GetExpectedKeys() != bt.cfg.GetExpectedKeys() || at.cfg.GetFpRate() != bt.cfg.GetFpRate() {
@@ -687,7 +687,7 @@ func (fs *FilterSet) PopulateFromStore(ctx context.Context, store dal.PebbleRead
 // path. Without that coupling, a reader could observe ready=true from an
 // earlier snapshot and then load the new, still-empty one in a separate
 // atomic read, treating present keys as absent (#317).
-func (fs *FilterSet) Rebuild(cfg *commonpb.ClusterConfig) {
+func (fs *FilterSet) Rebuild(cfg *ledgerpb.ClusterConfig) {
 	snap := &filterSnapshot{}
 	for _, bt := range bloomTypes(cfg) {
 		bt.rebuild(snap, fs.meter)
@@ -705,7 +705,7 @@ func (fs *FilterSet) Rebuild(cfg *commonpb.ClusterConfig) {
 
 // bloomType maps a proto bloom config field to its Filter field and metadata.
 type bloomType struct {
-	cfg      *commonpb.BloomTypeConfig
+	cfg      *ledgerpb.BloomTypeConfig
 	attrCode byte
 	name     string
 	field    func(snap *filterSnapshot) **Filter
@@ -723,7 +723,7 @@ func (bt bloomType) rebuild(snap *filterSnapshot, meter metric.Meter) {
 }
 
 // bloomTypes returns the ordered list of bloom type descriptors from a ClusterConfig.
-func bloomTypes(cfg *commonpb.ClusterConfig) []bloomType {
+func bloomTypes(cfg *ledgerpb.ClusterConfig) []bloomType {
 	return []bloomType{
 		{cfg.GetBloomVolumes(), dal.SubAttrVolume, "volumes", func(snap *filterSnapshot) **Filter { return &snap.Volume }},
 		{cfg.GetBloomMetadata(), dal.SubAttrMetadata, "metadata", func(snap *filterSnapshot) **Filter { return &snap.Metadata }},
@@ -778,7 +778,7 @@ func newFilter(expectedKeys uint, fpRate float64, attrCode byte, meter metric.Me
 
 // NewFilterSet creates a new FilterSet with per-type bloom filters from a
 // ClusterConfig. Returns nil if no bloom filter type is enabled.
-func NewFilterSet(cfg *commonpb.ClusterConfig, meter metric.Meter) *FilterSet {
+func NewFilterSet(cfg *ledgerpb.ClusterConfig, meter metric.Meter) *FilterSet {
 	if !BloomConfigEnabled(cfg) {
 		return nil
 	}

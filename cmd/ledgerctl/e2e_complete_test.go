@@ -11,19 +11,19 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
 
 type namedBucketServer struct {
-	commonpb.UnimplementedBucketServiceServer
+	ledgerpb.UnimplementedBucketServiceServer
 
 	ledger string
 }
 
-func (s namedBucketServer) ListLedgers(_ *commonpb.ListLedgersRequest, st grpc.ServerStreamingServer[commonpb.LedgerInfo]) error {
-	return st.Send(&commonpb.LedgerInfo{Name: s.ledger})
+func (s namedBucketServer) ListLedgers(_ *ledgerpb.ListLedgersRequest, st grpc.ServerStreamingServer[ledgerpb.LedgerInfo]) error {
+	return st.Send(&ledgerpb.LedgerInfo{Name: s.ledger})
 }
 
 func startServer(t *testing.T, ledgerName string) string {
@@ -31,7 +31,7 @@ func startServer(t *testing.T, ledgerName string) string {
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	srv := grpc.NewServer()
-	commonpb.RegisterBucketServiceServer(srv, namedBucketServer{ledger: ledgerName})
+	ledgerpb.RegisterBucketServiceServer(srv, namedBucketServer{ledger: ledgerName})
 	go func() { _ = srv.Serve(lis) }()
 	t.Cleanup(srv.Stop)
 

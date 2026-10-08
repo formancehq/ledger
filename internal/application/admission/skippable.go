@@ -3,7 +3,7 @@ package admission
 import (
 	"slices"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
@@ -25,13 +25,13 @@ import (
 //   - Each entry must appear in the action-specific whitelist.
 //   - A non-empty list on an action that does not opt into skip is
 //     rejected — silently dropping the intent would surprise the caller.
-func extractSkippableReasonsFromApply(apply *commonpb.LedgerApplyRequest) ([]commonpb.ErrorReason, error) {
+func extractSkippableReasonsFromApply(apply *ledgerpb.LedgerApplyRequest) ([]ledgerpb.ErrorReason, error) {
 	reasons := apply.GetSkippableReasons()
 	if len(reasons) == 0 {
 		return nil, nil
 	}
 
-	allowed := commonpb.SkippableReasonsForLedgerAction(apply.GetAction())
+	allowed := ledgerpb.SkippableReasonsForLedgerAction(apply.GetAction())
 	if len(allowed) == 0 {
 		// Either the action is nil / unknown, or the .proto declares
 		// no (allowed_skippable_reasons) for its oneof case. Reject
@@ -40,7 +40,7 @@ func extractSkippableReasonsFromApply(apply *commonpb.LedgerApplyRequest) ([]com
 	}
 
 	for _, r := range reasons {
-		if r == commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED {
+		if r == ledgerpb.ErrorReason_ERROR_REASON_UNSPECIFIED {
 			return nil, &domain.BusinessError{Err: &domain.ErrInvalidSkippableReason{Provided: r}}
 		}
 

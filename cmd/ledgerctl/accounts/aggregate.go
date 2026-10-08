@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/formancehq/invariants"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -65,7 +65,7 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 	rescale := cmdutil.RescaleTarget(cmd)
 	checkpointID, _ := cmd.Flags().GetUint64("checkpoint-id")
 
-	filter, err := cmdutil.BuildQueryFilter(filterExpr, prefix, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	filter, err := cmdutil.BuildQueryFilter(filterExpr, prefix, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	if err != nil {
 		return err
 	}
@@ -90,7 +90,7 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 	// contract in main.go), so the merge is gated off there.
 	useMaxPrecision := rescale != nil && !cmdutil.IsStructuredOutput(cmd)
 
-	result, err := client.AggregateVolumes(ctx, &commonpb.AggregateVolumesRequest{
+	result, err := client.AggregateVolumes(ctx, &ledgerpb.AggregateVolumesRequest{
 		Ledger:          ledgerName,
 		Filter:          filter,
 		CheckpointId:    checkpointID,
@@ -159,7 +159,7 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 // aggregateVolumesTable builds the ASSET/COLOR/INPUT/OUTPUT/BALANCE table for
 // aggregate-volumes. It fails with an invariant error when --rescale meets an
 // invalid asset rather than rendering it at the wrong precision.
-func aggregateVolumesTable(vols []*commonpb.AggregatedVolume, rescale *uint8) (pterm.TableData, error) {
+func aggregateVolumesTable(vols []*ledgerpb.AggregatedVolume, rescale *uint8) (pterm.TableData, error) {
 	tableData := pterm.TableData{
 		{"ASSET", "COLOR", "INPUT", "OUTPUT", "BALANCE"},
 	}

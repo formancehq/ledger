@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -22,7 +22,7 @@ func softDeleteLedger(t *testing.T, store *dal.Store, name string) {
 	t.Helper()
 
 	batch := store.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(batch, name, &commonpb.LedgerInfo{Name: name, DeletedAt: &commonpb.Timestamp{}}))
+	require.NoError(t, state.SaveLedger(batch, name, &ledgerpb.LedgerInfo{Name: name, DeletedAt: &ledgerpb.Timestamp{}}))
 	require.NoError(t, batch.Commit())
 }
 
@@ -159,9 +159,9 @@ func TestExecute_LogsQueryRejectsLedgerDeletedAfterPin(t *testing.T) {
 			rs := newTestReadStore(t)
 			setReadStoreProgress(t, rs, 3)
 			attrs := attributes.New()
-			seedPreparedQuery(t, store, attrs, "l", "q", commonpb.QueryTarget_QUERY_TARGET_LOGS, &commonpb.QueryFilter{
-				Filter: &commonpb.QueryFilter_Ledger{Ledger: &commonpb.LedgerCondition{
-					Cond: &commonpb.StringCondition{Value: &commonpb.StringCondition_Hardcoded{Hardcoded: "l"}},
+			seedPreparedQuery(t, store, attrs, "l", "q", ledgerpb.QueryTarget_QUERY_TARGET_LOGS, &ledgerpb.QueryFilter{
+				Filter: &ledgerpb.QueryFilter_Ledger{Ledger: &ledgerpb.LedgerCondition{
+					Cond: &ledgerpb.StringCondition{Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: "l"}},
 				}},
 			})
 
@@ -175,7 +175,7 @@ func TestExecute_LogsQueryRejectsLedgerDeletedAfterPin(t *testing.T) {
 
 			resp, err := query.Execute(
 				t.Context(), rs, opener, attrs.Volume, attrs.PreparedQuery, attrs.Index,
-				&commonpb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q", Mode: commonpb.QueryMode_QUERY_MODE_LIST},
+				&ledgerpb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q", Mode: ledgerpb.QueryMode_QUERY_MODE_LIST},
 				nil, nil,
 			)
 

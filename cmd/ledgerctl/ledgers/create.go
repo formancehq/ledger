@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/indexes"
@@ -105,7 +105,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Parse default enforcement mode
-	var defaultEnforcementMode commonpb.ChartEnforcementMode
+	var defaultEnforcementMode ledgerpb.ChartEnforcementMode
 	if enforcementStr, _ := cmd.Flags().GetString("default-enforcement-mode"); enforcementStr != "" {
 		defaultEnforcementMode, err = parseEnforcementModeProtoStrict(enforcementStr)
 		if err != nil {
@@ -124,16 +124,16 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 	defer cancel()
 
 	modeStr := "normal"
-	if mode == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
+	if mode == ledgerpb.LedgerMode_LEDGER_MODE_MIRROR {
 		modeStr = "mirror"
 	}
 
 	spinner := cmdutil.StartSpinner(fmt.Sprintf("Creating %s ledger %s...", modeStr, name))
 
-	requests := []*commonpb.Request{
+	requests := []*ledgerpb.Request{
 		{
-			Type: &commonpb.Request_CreateLedger{
-				CreateLedger: &commonpb.CreateLedgerRequest{
+			Type: &ledgerpb.Request_CreateLedger{
+				CreateLedger: &ledgerpb.CreateLedgerRequest{
 					Name:                   name,
 					InitialSchema:          initialSchema,
 					Mode:                   mode,
@@ -147,8 +147,8 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 	// Keep index declarations in the creation proposal so the mirror worker
 	// cannot commit history before its initial query indexes exist (EN-2070).
 	for _, id := range initialIndexes {
-		requests = append(requests, &commonpb.Request{Type: &commonpb.Request_CreateIndex{
-			CreateIndex: &commonpb.CreateIndexRequest{Ledger: name, Id: id},
+		requests = append(requests, &ledgerpb.Request{Type: &ledgerpb.Request_CreateIndex{
+			CreateIndex: &ledgerpb.CreateIndexRequest{Ledger: name, Id: id},
 		}})
 	}
 
@@ -248,8 +248,8 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func parseSchemaEntries(cmd *cobra.Command, entries []string) ([]*commonpb.SetMetadataFieldTypeCommand, error) {
-	var schema []*commonpb.SetMetadataFieldTypeCommand
+func parseSchemaEntries(cmd *cobra.Command, entries []string) ([]*ledgerpb.SetMetadataFieldTypeCommand, error) {
+	var schema []*ledgerpb.SetMetadataFieldTypeCommand
 
 	for _, entry := range entries {
 		target, key, mdType, err := cmdutil.ParseSchemaEntry(entry)
@@ -257,7 +257,7 @@ func parseSchemaEntries(cmd *cobra.Command, entries []string) ([]*commonpb.SetMe
 			return nil, err
 		}
 
-		schema = append(schema, &commonpb.SetMetadataFieldTypeCommand{
+		schema = append(schema, &ledgerpb.SetMetadataFieldTypeCommand{
 			TargetType: target,
 			Key:        key,
 			Type:       mdType,
@@ -277,7 +277,7 @@ func parseSchemaEntries(cmd *cobra.Command, entries []string) ([]*commonpb.SetMe
 	return schema, nil
 }
 
-func schemaWizard() ([]*commonpb.SetMetadataFieldTypeCommand, error) {
+func schemaWizard() ([]*ledgerpb.SetMetadataFieldTypeCommand, error) {
 	addSchema, err := pterm.DefaultInteractiveConfirm.
 		WithDefaultText("Add metadata schema?").
 		WithDefaultValue(false).
@@ -290,7 +290,7 @@ func schemaWizard() ([]*commonpb.SetMetadataFieldTypeCommand, error) {
 		return nil, nil
 	}
 
-	var schema []*commonpb.SetMetadataFieldTypeCommand
+	var schema []*ledgerpb.SetMetadataFieldTypeCommand
 
 	for {
 		targetStr, err := pterm.DefaultInteractiveSelect.
@@ -332,7 +332,7 @@ func schemaWizard() ([]*commonpb.SetMetadataFieldTypeCommand, error) {
 			return nil, err
 		}
 
-		schema = append(schema, &commonpb.SetMetadataFieldTypeCommand{
+		schema = append(schema, &ledgerpb.SetMetadataFieldTypeCommand{
 			TargetType: target,
 			Key:        key,
 			Type:       mdType,
@@ -354,8 +354,8 @@ func schemaWizard() ([]*commonpb.SetMetadataFieldTypeCommand, error) {
 	return schema, nil
 }
 
-func parseInitialIndexes(entries []string) ([]*commonpb.IndexID, error) {
-	var ids []*commonpb.IndexID
+func parseInitialIndexes(entries []string) ([]*ledgerpb.IndexID, error) {
+	var ids []*ledgerpb.IndexID
 	seen := make(map[string]struct{}, len(entries))
 	for _, entry := range entries {
 		id, err := indexes.ParseDefinition(entry)

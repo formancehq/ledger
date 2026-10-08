@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 )
@@ -17,19 +17,19 @@ func TestSupported(t *testing.T) {
 
 	tests := []struct {
 		name string
-		id   *commonpb.IndexID
+		id   *ledgerpb.IndexID
 		want bool
 	}{
-		{"metadata ACCOUNT", indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k"), true},
-		{"metadata TRANSACTION", indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, "k"), true},
-		{"metadata LEDGER", indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_LEDGER, "k"), false},
-		{"tx builtin REFERENCE (enum 0)", indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE), true},
-		{"tx builtin REVERTED_AT", indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT), true},
-		{"tx builtin out-of-range enum", indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex(999)), false},
-		{"account builtin ASSET", indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET), true},
-		{"account builtin UNSPECIFIED", indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED), false},
-		{"log builtin DATE", indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE), true},
-		{"log builtin UNSPECIFIED", indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_UNSPECIFIED), false},
+		{"metadata ACCOUNT", indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "k"), true},
+		{"metadata TRANSACTION", indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, "k"), true},
+		{"metadata LEDGER", indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_LEDGER, "k"), false},
+		{"tx builtin REFERENCE (enum 0)", indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE), true},
+		{"tx builtin REVERTED_AT", indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT), true},
+		{"tx builtin out-of-range enum", indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex(999)), false},
+		{"account builtin ASSET", indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET), true},
+		{"account builtin UNSPECIFIED", indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED), false},
+		{"log builtin DATE", indexes.LogBuiltinID(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE), true},
+		{"log builtin UNSPECIFIED", indexes.LogBuiltinID(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_UNSPECIFIED), false},
 		{"nil id", nil, false},
 	}
 
@@ -47,51 +47,51 @@ func TestEqual(t *testing.T) {
 
 	tests := []struct {
 		name string
-		a, b *commonpb.IndexID
+		a, b *ledgerpb.IndexID
 		want bool
 	}{
 		{"both nil", nil, nil, true},
-		{"one nil", indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE), nil, false},
+		{"one nil", indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE), nil, false},
 		{
 			"same tx_builtin",
-			indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
-			indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
+			indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
+			indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
 			true,
 		},
 		{
 			"different tx_builtin",
-			indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
-			indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
+			indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
+			indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
 			false,
 		},
 		{
 			"same log_builtin",
-			indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
-			indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
+			indexes.LogBuiltinID(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
+			indexes.LogBuiltinID(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
 			true,
 		},
 		{
 			"same metadata",
-			indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "color"),
-			indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "color"),
+			indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "color"),
+			indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "color"),
 			true,
 		},
 		{
 			"metadata different target",
-			indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "color"),
-			indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, "color"),
+			indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "color"),
+			indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, "color"),
 			false,
 		},
 		{
 			"metadata different key",
-			indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "color"),
-			indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "shape"),
+			indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "color"),
+			indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "shape"),
 			false,
 		},
 		{
 			"cross-kind",
-			indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
-			indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "any"),
+			indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
+			indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "any"),
 			false,
 		},
 	}
@@ -110,20 +110,20 @@ func TestCanonical(t *testing.T) {
 	assert.Equal(t, "", indexes.Canonical(nil))
 	assert.Equal(t,
 		"tx_builtin:TX_BUILTIN_INDEX_REFERENCE",
-		indexes.Canonical(indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)),
+		indexes.Canonical(indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)),
 	)
 	assert.Equal(t,
 		"log_builtin:LOG_BUILTIN_INDEX_DATE",
-		indexes.Canonical(indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)),
+		indexes.Canonical(indexes.LogBuiltinID(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)),
 	)
 	assert.Equal(t,
 		"metadata:TARGET_TYPE_ACCOUNT:color",
-		indexes.Canonical(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "color")),
+		indexes.Canonical(indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "color")),
 	)
 
 	// Canonical must collide iff Equal returns true.
-	a := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "color")
-	b := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "color")
+	a := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "color")
+	b := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "color")
 	assert.Equal(t, indexes.Canonical(a), indexes.Canonical(b))
 }
 
@@ -131,12 +131,12 @@ func TestParseCanonical(t *testing.T) {
 	t.Parallel()
 
 	// Round-trip every kind through Canonical then ParseCanonical.
-	roundTrip := []*commonpb.IndexID{
-		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
-		indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
-		indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
-		indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "color"),
-		indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, "reference"),
+	roundTrip := []*ledgerpb.IndexID{
+		indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
+		indexes.LogBuiltinID(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
+		indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
+		indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "color"),
+		indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, "reference"),
 	}
 
 	for _, id := range roundTrip {

@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -47,7 +47,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 
 	checkpointID, _ := cmd.Flags().GetUint64("checkpoint-id")
 
-	log, err := client.GetLog(ctx, &servicepb.GetLogRequest{
+	log, err := client.GetLog(ctx, &ledgerpb.GetLogRequest{
 		Sequence:     sequence,
 		CheckpointId: checkpointID,
 	})

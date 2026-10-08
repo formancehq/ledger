@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 )
@@ -41,9 +41,9 @@ func (s *Server) handleSetDefaultEnforcementMode(w http.ResponseWriter, r *http.
 		return
 	}
 
-	_, err = s.applyUnsigned(r.Context(), "", &servicepb.Request{
-		Type: &servicepb.Request_SetDefaultEnforcementMode{
-			SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeLedgerRequest{
+	_, err = s.applyUnsigned(r.Context(), "", &ledgerpb.Request{
+		Type: &ledgerpb.Request_SetDefaultEnforcementMode{
+			SetDefaultEnforcementMode: &ledgerpb.SetDefaultEnforcementModeLedgerRequest{
 				Ledger:          ledgerName,
 				EnforcementMode: mode,
 			},

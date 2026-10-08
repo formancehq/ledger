@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
@@ -269,13 +269,13 @@ func extractPurgedVolumes(ledgerLog ledgerLogWithPurgedVolumes) map[domain.Accou
 	return out
 }
 
-// ledgerLogWithPurgedVolumes narrows what we need from commonpb.LedgerLog so
+// ledgerLogWithPurgedVolumes narrows what we need from ledgerpb.LedgerLog so
 // tests can pass either a real proto or a fake. Covers the two on-log
 // eviction lists (PurgedVolumes = draining, EphemeralVolumes = pure
 // ephemeral). See LedgerLog proto docs for the disjoint-set invariant.
 type ledgerLogWithPurgedVolumes interface {
-	GetPurgedVolumes() []*commonpb.TouchedVolume
-	GetEphemeralVolumes() []*commonpb.TouchedVolume
+	GetPurgedVolumes() []*ledgerpb.TouchedVolume
+	GetEphemeralVolumes() []*ledgerpb.TouchedVolume
 }
 
 // exclusionsForLog separates current-state exclusions from immutable-history

@@ -78,7 +78,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/apierr"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -152,8 +152,8 @@ func CodeForKind(k domain.ErrorKind) codes.Code {
 // pair through decodeReason's one validation branch rather than a second
 // special case — including under codes.Internal, which
 // CodeForKind(KindForReason(UNSPECIFIED)) would otherwise have licensed.
-func allowedWireCodes(rc commonpb.ErrorReason) []codes.Code {
-	if rc == commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED {
+func allowedWireCodes(rc ledgerpb.ErrorReason) []codes.Code {
+	if rc == ledgerpb.ErrorReason_ERROR_REASON_UNSPECIFIED {
 		return nil
 	}
 

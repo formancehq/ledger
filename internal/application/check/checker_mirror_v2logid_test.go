@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -30,7 +30,7 @@ func writeBoundaries(t *testing.T, store *dal.Store, attrs *attributes.Attribute
 // boundaries with the given audited-max map and returns only the
 // MIRROR_V2LOGID_MISMATCH errors. deletedLedgers names ledgers audited as
 // deleted (their absent boundary row is legitimate).
-func collectMirrorV2LogIDEvents(t *testing.T, store *dal.Store, attrs *attributes.Attributes, maxV2 map[string]uint64, deletedLedgers ...string) []*servicepb.CheckStoreError {
+func collectMirrorV2LogIDEvents(t *testing.T, store *dal.Store, attrs *attributes.Attributes, maxV2 map[string]uint64, deletedLedgers ...string) []*ledgerpb.CheckStoreError {
 	t.Helper()
 
 	checker := NewChecker(store, attrs, nil, logging.Testing())
@@ -48,11 +48,11 @@ func collectMirrorV2LogIDEvents(t *testing.T, store *dal.Store, attrs *attribute
 		deletedInReplay[name] = struct{}{}
 	}
 
-	var got []*servicepb.CheckStoreError
+	var got []*ledgerpb.CheckStoreError
 
-	checker.compareMirrorV2LogID(handle, chainBound, deletedInReplay, func(event *servicepb.CheckStoreEvent) {
-		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok &&
-			e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH {
+	checker.compareMirrorV2LogID(handle, chainBound, deletedInReplay, func(event *ledgerpb.CheckStoreEvent) {
+		if e, ok := event.GetType().(*ledgerpb.CheckStoreEvent_Error); ok &&
+			e.Error.GetErrorType() == ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH {
 			got = append(got, e.Error)
 		}
 	})
@@ -80,7 +80,7 @@ func TestCompareMirrorV2LogID_AheadFlagged(t *testing.T) {
 
 	require.Len(t, got, 1)
 	require.Equal(t, "mirror-ledger", got[0].GetLedger())
-	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH, got[0].GetErrorType())
+	require.Equal(t, ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH, got[0].GetErrorType())
 }
 
 // TestCompareMirrorV2LogID_BehindFlagged: stored high-water mark BELOW the
@@ -100,7 +100,7 @@ func TestCompareMirrorV2LogID_BehindFlagged(t *testing.T) {
 
 	require.Len(t, got, 1)
 	require.Equal(t, "behind-ledger", got[0].GetLedger())
-	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH, got[0].GetErrorType())
+	require.Equal(t, ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH, got[0].GetErrorType())
 }
 
 // TestCompareMirrorV2LogID_EqualNotFlagged: stored == audited max is the correct
@@ -173,7 +173,7 @@ func TestCompareMirrorV2LogID_AbsentRowFlagged(t *testing.T) {
 
 	require.Len(t, got, 1)
 	require.Equal(t, "gone-mirror", got[0].GetLedger())
-	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH, got[0].GetErrorType())
+	require.Equal(t, ledgerpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH, got[0].GetErrorType())
 }
 
 // TestCompareMirrorV2LogID_DeletedMirrorLedgerNotFlagged pins that a LEGITIMATELY

@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl/ctrlmock"
@@ -134,7 +134,7 @@ func TestRoutedController_IndexedReadsForwardLocalBarrierHorizon(t *testing.T) {
 			name: "list transactions",
 			expect: func(local *ctrlmock.MockController) {
 				local.EXPECT().ListTransactions(barrierHorizonMatcher(42), "ledger", uint32(10), uint64(0), nil, false).
-					Return(cursor.NewSliceCursor([]*auditpb.Transaction{}), nil)
+					Return(cursor.NewSliceCursor([]*ledgerpb.Transaction{}), nil)
 			},
 			call: func(ctx context.Context, routed *RoutedController) error {
 				_, err := routed.ListTransactions(ctx, "ledger", 10, 0, nil, false)
@@ -146,7 +146,7 @@ func TestRoutedController_IndexedReadsForwardLocalBarrierHorizon(t *testing.T) {
 			name: "list logs",
 			expect: func(local *ctrlmock.MockController) {
 				local.EXPECT().ListLogs(barrierHorizonMatcher(42), "ledger", uint64(0), uint32(10), nil).
-					Return(cursor.NewSliceCursor([]*auditpb.Log{}), nil)
+					Return(cursor.NewSliceCursor([]*ledgerpb.Log{}), nil)
 			},
 			call: func(ctx context.Context, routed *RoutedController) error {
 				_, err := routed.ListLogs(ctx, "ledger", 0, 10, nil)
@@ -158,7 +158,7 @@ func TestRoutedController_IndexedReadsForwardLocalBarrierHorizon(t *testing.T) {
 			name: "list audit entries",
 			expect: func(local *ctrlmock.MockController) {
 				local.EXPECT().ListAuditEntries(barrierHorizonMatcher(42), uint32(10), uint64(0), nil, false).
-					Return(cursor.NewSliceCursor([]*auditpb.AuditEntry{}), nil)
+					Return(cursor.NewSliceCursor([]*ledgerpb.AuditEntry{}), nil)
 			},
 			call: func(ctx context.Context, routed *RoutedController) error {
 				_, err := routed.ListAuditEntries(ctx, 10, 0, nil, false)
@@ -170,7 +170,7 @@ func TestRoutedController_IndexedReadsForwardLocalBarrierHorizon(t *testing.T) {
 			name: "list accounts",
 			expect: func(local *ctrlmock.MockController) {
 				local.EXPECT().ListAccounts(barrierHorizonMatcher(42), "ledger", uint32(10), "", nil, false).
-					Return(cursor.NewSliceCursor([]*auditpb.Account{}), nil)
+					Return(cursor.NewSliceCursor([]*ledgerpb.Account{}), nil)
 			},
 			call: func(ctx context.Context, routed *RoutedController) error {
 				_, err := routed.ListAccounts(ctx, "ledger", 10, "", nil, false)
@@ -182,7 +182,7 @@ func TestRoutedController_IndexedReadsForwardLocalBarrierHorizon(t *testing.T) {
 			name: "aggregate volumes",
 			expect: func(local *ctrlmock.MockController) {
 				local.EXPECT().AggregateVolumes(barrierHorizonMatcher(42), "ledger", nil, query.AggregateOptions{}).
-					Return(&auditpb.AggregateResult{}, nil)
+					Return(&ledgerpb.AggregateResult{}, nil)
 			},
 			call: func(ctx context.Context, routed *RoutedController) error {
 				_, err := routed.AggregateVolumes(ctx, "ledger", nil, query.AggregateOptions{})
@@ -194,10 +194,10 @@ func TestRoutedController_IndexedReadsForwardLocalBarrierHorizon(t *testing.T) {
 			name: "execute prepared query",
 			expect: func(local *ctrlmock.MockController) {
 				local.EXPECT().ExecutePreparedQuery(barrierHorizonMatcher(42), gomock.Any()).
-					Return(&auditpb.ExecutePreparedQueryResponse{}, nil)
+					Return(&ledgerpb.ExecutePreparedQueryResponse{}, nil)
 			},
 			call: func(ctx context.Context, routed *RoutedController) error {
-				_, err := routed.ExecutePreparedQuery(ctx, &auditpb.ExecutePreparedQueryRequest{})
+				_, err := routed.ExecutePreparedQuery(ctx, &ledgerpb.ExecutePreparedQueryRequest{})
 
 				return err
 			},
@@ -206,10 +206,10 @@ func TestRoutedController_IndexedReadsForwardLocalBarrierHorizon(t *testing.T) {
 			name: "inspect index",
 			expect: func(local *ctrlmock.MockController) {
 				local.EXPECT().InspectIndex(barrierHorizonMatcher(42), gomock.Any()).
-					Return(&auditpb.InspectIndexResponse{}, nil)
+					Return(&ledgerpb.InspectIndexResponse{}, nil)
 			},
 			call: func(ctx context.Context, routed *RoutedController) error {
-				_, err := routed.InspectIndex(ctx, &auditpb.InspectIndexRequest{})
+				_, err := routed.InspectIndex(ctx, &ledgerpb.InspectIndexRequest{})
 
 				return err
 			},

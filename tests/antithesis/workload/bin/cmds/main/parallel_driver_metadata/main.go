@@ -6,14 +6,14 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/protohelpers"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_metadata", func(ctx context.Context, client commonpb.BucketServiceClient, ledger string) {
+	internal.RunDriver("parallel_driver_metadata", func(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string) {
 		r := internal.Rand()
 		address := internal.GetRandomAddress()
 		key := fmt.Sprintf("meta-%d", r.Uint64())
@@ -26,15 +26,15 @@ func main() {
 		}
 
 		// Save metadata.
-		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_Apply{
-				Apply: &commonpb.LedgerApplyRequest{
+		_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_AddMetadata{
-						AddMetadata: &commonpb.SaveMetadataCommand{
-							Target: &commonpb.Target{
-								Target: &commonpb.Target_Account{
-									Account: &commonpb.TargetAccount{Addr: address},
+					Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_AddMetadata{
+						AddMetadata: &ledgerpb.SaveMetadataCommand{
+							Target: &ledgerpb.Target{
+								Target: &ledgerpb.Target_Account{
+									Account: &ledgerpb.TargetAccount{Addr: address},
 								},
 							},
 							Metadata: protohelpers.MetadataFromGoMap(map[string]string{key: value}),
@@ -50,7 +50,7 @@ func main() {
 		}
 
 		// Read-after-write: verify the key is present.
-		acct, err := client.GetAccount(ctx, &commonpb.GetAccountRequest{
+		acct, err := client.GetAccount(ctx, &ledgerpb.GetAccountRequest{
 			Ledger:  ledger,
 			Address: address,
 		})
@@ -69,15 +69,15 @@ func main() {
 		}))
 
 		// Delete the metadata key.
-		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
-			Type: &commonpb.Request_Apply{
-				Apply: &commonpb.LedgerApplyRequest{
+		_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", &ledgerpb.Request{
+			Type: &ledgerpb.Request_Apply{
+				Apply: &ledgerpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_DeleteMetadata{
-						DeleteMetadata: &commonpb.DeleteMetadataCommand{
-							Target: &commonpb.Target{
-								Target: &commonpb.Target_Account{
-									Account: &commonpb.TargetAccount{Addr: address},
+					Action: &ledgerpb.LedgerAction{Data: &ledgerpb.LedgerAction_DeleteMetadata{
+						DeleteMetadata: &ledgerpb.DeleteMetadataCommand{
+							Target: &ledgerpb.Target{
+								Target: &ledgerpb.Target_Account{
+									Account: &ledgerpb.TargetAccount{Addr: address},
 								},
 							},
 							Key: key,
@@ -93,7 +93,7 @@ func main() {
 		}
 
 		// Read-after-delete: verify the key is gone.
-		acct, err = client.GetAccount(ctx, &commonpb.GetAccountRequest{
+		acct, err = client.GetAccount(ctx, &ledgerpb.GetAccountRequest{
 			Ledger:  ledger,
 			Address: address,
 		})
@@ -111,7 +111,7 @@ func main() {
 	})
 }
 
-func findMetadata(acct *commonpb.Account, key string) string {
+func findMetadata(acct *ledgerpb.Account, key string) string {
 	if v, ok := acct.GetMetadata()[key]; ok {
 		return v.GetStringValue()
 	}

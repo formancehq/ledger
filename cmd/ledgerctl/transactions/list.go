@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/metadata"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -81,7 +81,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	cns := cmdutil.GetConsistencyFlags(cmd)
 	showProfile, _ := cmd.Flags().GetBool("analyze")
 
-	filter, err := cmdutil.BuildQueryFilter(flt.Expr, flt.Prefix, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	filter, err := cmdutil.BuildQueryFilter(flt.Expr, flt.Prefix, ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 	if err != nil {
 		return err
 	}
@@ -93,7 +93,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	return fetchTransactionsWithPager(cmd, client, ledgerName, pgn, filter, cns, showProfile)
 }
 
-func fetchAllTransactions(cmd *cobra.Command, client commonpb.BucketServiceClient, ledgerName string, filter *commonpb.QueryFilter, initialCursor string, reverse bool, cns cmdutil.ConsistencyFlags, showProfile bool) error {
+func fetchAllTransactions(cmd *cobra.Command, client ledgerpb.BucketServiceClient, ledgerName string, filter *ledgerpb.QueryFilter, initialCursor string, reverse bool, cns cmdutil.ConsistencyFlags, showProfile bool) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
@@ -105,8 +105,8 @@ func fetchAllTransactions(cmd *cobra.Command, client commonpb.BucketServiceClien
 
 	var lastTrailer metadata.MD
 
-	transactions, err := cmdutil.DrainAllPages(initialCursor, func(cur string) ([]*commonpb.Transaction, metadata.MD, error) {
-		stream, err := client.ListTransactions(ctx, &commonpb.ListTransactionsRequest{
+	transactions, err := cmdutil.DrainAllPages(initialCursor, func(cur string) ([]*ledgerpb.Transaction, metadata.MD, error) {
+		stream, err := client.ListTransactions(ctx, &ledgerpb.ListTransactionsRequest{
 			Ledger:  ledgerName,
 			Options: cmdutil.BuildListOptions(cmdutil.PaginationFlags{Cursor: cur, Reverse: reverse}, cns, filter),
 		})
@@ -152,7 +152,7 @@ func fetchAllTransactions(cmd *cobra.Command, client commonpb.BucketServiceClien
 	return nil
 }
 
-func fetchTransactionsWithPager(cmd *cobra.Command, client commonpb.BucketServiceClient, ledgerName string, pgn cmdutil.PaginationFlags, filter *commonpb.QueryFilter, cns cmdutil.ConsistencyFlags, showProfile bool) error {
+func fetchTransactionsWithPager(cmd *cobra.Command, client ledgerpb.BucketServiceClient, ledgerName string, pgn cmdutil.PaginationFlags, filter *ledgerpb.QueryFilter, cns cmdutil.ConsistencyFlags, showProfile bool) error {
 	page := pgn
 	pageNum := 1
 
@@ -164,7 +164,7 @@ func fetchTransactionsWithPager(cmd *cobra.Command, client commonpb.BucketServic
 
 		spinner := cmdutil.StartSpinner(fmt.Sprintf("Fetching page %d...", pageNum))
 
-		stream, err := client.ListTransactions(ctx, &commonpb.ListTransactionsRequest{
+		stream, err := client.ListTransactions(ctx, &ledgerpb.ListTransactionsRequest{
 			Ledger:  ledgerName,
 			Options: cmdutil.BuildListOptions(page, cns, filter),
 		})
@@ -176,7 +176,7 @@ func fetchTransactionsWithPager(cmd *cobra.Command, client commonpb.BucketServic
 			return cmdutil.FormatGRPCError("failed to list transactions", err)
 		}
 
-		var transactions []*commonpb.Transaction
+		var transactions []*ledgerpb.Transaction
 
 		for {
 			tx, err := stream.Recv()
@@ -267,7 +267,7 @@ func fetchTransactionsWithPager(cmd *cobra.Command, client commonpb.BucketServic
 	}
 }
 
-func renderTransactionsTable(transactions []*commonpb.Transaction) {
+func renderTransactionsTable(transactions []*ledgerpb.Transaction) {
 	tableData := pterm.TableData{
 		{"ID", "TIMESTAMP", "REFERENCE", "POSTINGS", "STATUS"},
 	}

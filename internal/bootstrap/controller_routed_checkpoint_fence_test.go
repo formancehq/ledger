@@ -17,7 +17,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	grpcadp "github.com/formancehq/ledger/v3/internal/adapter/grpc"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
@@ -49,20 +49,20 @@ func TestRoutedController_GetLedgerFallbackDoesNotFenceCheckpointMetadata(t *tes
 	meters := noop.NewMeterProvider()
 	attrs := attributes.New()
 	leaderStore, followerStore := newTestStore(t), newTestStore(t)
-	seedRoutedCheckpointMetadata(t, leaderStore, 521, 7, "@every 960000h", clusterpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT)
-	seedRoutedCheckpointMetadata(t, followerStore, 155, 4, "@every 950000h", clusterpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT)
+	seedRoutedCheckpointMetadata(t, leaderStore, 521, 7, "@every 960000h", ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT)
+	seedRoutedCheckpointMetadata(t, followerStore, 155, 4, "@every 950000h", ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT)
 	leaderController := ctrl.NewDefaultController(nil, leaderStore, logger, attrs, nil, nil, meters.Meter("test"))
 	followerController := ctrl.NewDefaultController(nil, followerStore, logger, attrs, nil, nil, meters.Meter("test"))
 	var leaderReads atomic.Int32
 	leaderServer := grpc.NewServer(grpc.UnaryInterceptor(func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-		if info.FullMethod == clusterpb.BucketService_GetLedger_FullMethodName {
+		if info.FullMethod == ledgerpb.BucketService_GetLedger_FullMethodName {
 			leaderReads.Add(1)
 		}
 
 		return handler(ctx, req)
 	}))
-	clusterpb.RegisterBucketServiceServer(leaderServer, grpcadp.NewBucketServiceServer(logger, leaderController, leaderController, leaderStore, nil, attrs, nil, nil, 0, "", meters, nil, nil, version.Info{}))
-	clusterpb.RegisterClusterServiceServer(leaderServer, checkpointMetadataHandler(leaderStore))
+	ledgerpb.RegisterBucketServiceServer(leaderServer, grpcadp.NewBucketServiceServer(logger, leaderController, leaderController, leaderStore, nil, attrs, nil, nil, 0, "", meters, nil, nil, version.Info{}))
+	ledgerpb.RegisterClusterServiceServer(leaderServer, checkpointMetadataHandler(leaderStore))
 	leaderAddr := serveCheckpointFenceRPC(t, leaderServer)
 	pool := transport.NewConnectionPool(transport.TLSPolicy{}, transport.PoolConfig{})
 	t.Cleanup(func() { require.NoError(t, pool.Close()) })
@@ -78,12 +78,12 @@ func TestRoutedController_GetLedgerFallbackDoesNotFenceCheckpointMetadata(t *tes
 	require.Empty(t, followerState.GetNodes(), "followers report their local cursor without leader topology")
 	routed := NewRoutedController(followerController, follower, pool)
 	followerServer := grpc.NewServer()
-	clusterpb.RegisterBucketServiceServer(followerServer, grpcadp.NewBucketServiceServer(logger, routed, followerController, followerStore, nil, attrs, nil, nil, 0, "", meters, follower, pool, version.Info{}))
-	clusterpb.RegisterClusterServiceServer(followerServer, checkpointMetadataHandler(followerStore))
+	ledgerpb.RegisterBucketServiceServer(followerServer, grpcadp.NewBucketServiceServer(logger, routed, followerController, followerStore, nil, attrs, nil, nil, 0, "", meters, follower, pool, version.Info{}))
+	ledgerpb.RegisterClusterServiceServer(followerServer, checkpointMetadataHandler(followerStore))
 	followerConn := dialCheckpointFenceRPC(t, serveCheckpointFenceRPC(t, followerServer))
-	bucket := clusterpb.NewBucketServiceClient(followerConn)
-	localMetadata := clusterpb.NewClusterServiceClient(followerConn)
-	leaderMetadata := clusterpb.NewClusterServiceClient(pool.GetConnection(1))
+	bucket := ledgerpb.NewBucketServiceClient(followerConn)
+	localMetadata := ledgerpb.NewClusterServiceClient(followerConn)
+	leaderMetadata := ledgerpb.NewClusterServiceClient(pool.GetConnection(1))
 
 	for _, tc := range []struct {
 		name string
@@ -100,25 +100,25 @@ func TestRoutedController_GetLedgerFallbackDoesNotFenceCheckpointMetadata(t *tes
 				return nil, tc.err
 			}
 			before := leaderReads.Load()
-			ledger, err := bucket.GetLedger(ctx, &clusterpb.GetLedgerRequest{Ledger: "L"})
+			ledger, err := bucket.GetLedger(ctx, &ledgerpb.GetLedgerRequest{Ledger: "L"})
 			require.NoError(t, err)
 			require.Equal(t, int32(1), barrierCalls.Load(), "the actual routed read must attempt its local barrier")
 			require.Equal(t, before+1, leaderReads.Load(), "fallback must cross the real leader gRPC connection")
-			require.Equal(t, clusterpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, ledger.GetDefaultEnforcementMode(), "the response must come from the leader's updated store")
+			require.Equal(t, ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, ledger.GetDefaultEnforcementMode(), "the response must come from the leader's updated store")
 			require.Equal(t, uint64(155), follower.LastPersistedIndex(), "forwarding must not imply local catch-up")
 
-			listed, err := localMetadata.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
+			listed, err := localMetadata.ListQueryCheckpoints(ctx, &ledgerpb.ListQueryCheckpointsRequest{})
 			require.NoError(t, err)
 			require.Len(t, listed.GetCheckpoints(), 1)
 			require.Equal(t, uint64(4), listed.GetCheckpoints()[0].GetCheckpointId(), "metadata still reads the follower's local Pebble")
-			schedule, err := localMetadata.GetQueryCheckpointSchedule(ctx, &clusterpb.GetQueryCheckpointScheduleRequest{})
+			schedule, err := localMetadata.GetQueryCheckpointSchedule(ctx, &ledgerpb.GetQueryCheckpointScheduleRequest{})
 			require.NoError(t, err)
 			require.Equal(t, "@every 950000h", schedule.GetCron())
-			leaderList, err := leaderMetadata.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
+			leaderList, err := leaderMetadata.ListQueryCheckpoints(ctx, &ledgerpb.ListQueryCheckpointsRequest{})
 			require.NoError(t, err)
 			require.Len(t, leaderList.GetCheckpoints(), 1)
 			require.Equal(t, uint64(7), leaderList.GetCheckpoints()[0].GetCheckpointId())
-			leaderSchedule, err := leaderMetadata.GetQueryCheckpointSchedule(ctx, &clusterpb.GetQueryCheckpointScheduleRequest{})
+			leaderSchedule, err := leaderMetadata.GetQueryCheckpointSchedule(ctx, &ledgerpb.GetQueryCheckpointScheduleRequest{})
 			require.NoError(t, err)
 			require.Equal(t, "@every 960000h", leaderSchedule.GetCron())
 			persisted, err := query.ReadLastAppliedIndex(followerStore)
@@ -137,8 +137,8 @@ func TestClusterService_CheckpointFenceIdentityAndLocalProgress(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	leaderStore, followerStore := newTestStore(t), newTestStore(t)
-	seedRoutedCheckpointMetadata(t, leaderStore, 521, 7, "@every 960000h", clusterpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT)
-	seedRoutedCheckpointMetadata(t, followerStore, 155, 4, "@every 950000h", clusterpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT)
+	seedRoutedCheckpointMetadata(t, leaderStore, 521, 7, "@every 960000h", ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT)
+	seedRoutedCheckpointMetadata(t, followerStore, 155, 4, "@every 950000h", ledgerpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT)
 	leaderListener, followerListener := checkpointFenceListener(t), checkpointFenceListener(t)
 	leaderAddr, followerAddr := leaderListener.Addr().String(), followerListener.Addr().String()
 	leaderPool := transport.NewConnectionPool(transport.TLSPolicy{}, transport.PoolConfig{})
@@ -154,15 +154,15 @@ func TestClusterService_CheckpointFenceIdentityAndLocalProgress(t *testing.T) {
 	require.Eventually(t, leader.node.IsLeader, 5*time.Second, time.Millisecond)
 
 	leaderServer, followerServer := grpc.NewServer(), grpc.NewServer()
-	clusterpb.RegisterClusterServiceServer(leaderServer, leader.clusterHandler(leaderStore, leaderPool, leaderAddr))
-	clusterpb.RegisterClusterServiceServer(followerServer, follower.clusterHandler(followerStore, followerPool, followerAddr))
+	ledgerpb.RegisterClusterServiceServer(leaderServer, leader.clusterHandler(leaderStore, leaderPool, leaderAddr))
+	ledgerpb.RegisterClusterServiceServer(followerServer, follower.clusterHandler(followerStore, followerPool, followerAddr))
 	serveCheckpointFenceRPCListener(t, leaderServer, leaderListener)
 	serveCheckpointFenceRPCListener(t, followerServer, followerListener)
-	pinned := clusterpb.NewClusterServiceClient(dialCheckpointFenceRPC(t, followerAddr))
+	pinned := ledgerpb.NewClusterServiceClient(dialCheckpointFenceRPC(t, followerAddr))
 
 	// The omitted ID routes from the pinned follower to the real leader. Its
 	// topology must map the address we actually dialed back to node 2.
-	topology, err := pinned.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+	topology, err := pinned.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 	require.NoError(t, err)
 	require.Equal(t, "Leader", topology.GetState())
 	require.Equal(t, uint32(1), topology.GetLocalNode())
@@ -183,7 +183,7 @@ func TestClusterService_CheckpointFenceIdentityAndLocalProgress(t *testing.T) {
 	// The explicit discovered ID selects the follower's own durable cursor.
 	// Reusing the leader response, or requiring topology on this local response,
 	// would confuse leader progress with the metadata replica's progress.
-	local, err := pinned.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{NodeId: resolvedID})
+	local, err := pinned.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{NodeId: resolvedID})
 	require.NoError(t, err)
 	require.Equal(t, "Follower", local.GetState())
 	require.Equal(t, resolvedID, local.GetLocalNode())
@@ -193,15 +193,15 @@ func TestClusterService_CheckpointFenceIdentityAndLocalProgress(t *testing.T) {
 	require.Greater(t, topology.GetRaftStatus().GetLastPersistedIndex(), local.GetRaftStatus().GetLastPersistedIndex())
 }
 
-func checkpointMetadataHandler(store *dal.Store) clusterpb.ClusterServiceServer {
+func checkpointMetadataHandler(store *dal.Store) ledgerpb.ClusterServiceServer {
 	return grpcadp.NewClusterServiceServer(nil, nil, nil, nil, store, nil, nil, nil, nil, nil, nil, logging.Testing(), "", "", "", version.Info{})
 }
 
-func seedRoutedCheckpointMetadata(t *testing.T, store *dal.Store, applied, checkpoint uint64, cron string, mode clusterpb.ChartEnforcementMode) {
+func seedRoutedCheckpointMetadata(t *testing.T, store *dal.Store, applied, checkpoint uint64, cron string, mode ledgerpb.ChartEnforcementMode) {
 	t.Helper()
 	batch := store.OpenWriteSession()
 	t.Cleanup(func() { require.NoError(t, batch.Cancel()) })
-	require.NoError(t, state.SaveLedger(batch, "L", &clusterpb.LedgerInfo{Name: "L", Id: 1, CreatedAt: &clusterpb.Timestamp{Data: 1}, DefaultEnforcementMode: mode}))
+	require.NoError(t, state.SaveLedger(batch, "L", &ledgerpb.LedgerInfo{Name: "L", Id: 1, CreatedAt: &ledgerpb.Timestamp{Data: 1}, DefaultEnforcementMode: mode}))
 	require.NoError(t, state.SaveQueryCheckpoint(batch, &raftcmdpb.QueryCheckpointState{CheckpointId: checkpoint, MaxSequence: applied}))
 	require.NoError(t, state.SaveQueryCheckpointSchedule(batch, cron))
 	require.NoError(t, state.SetAppliedIndex(batch, applied))
@@ -227,7 +227,7 @@ type checkpointFenceNode struct {
 	raftAddr      string
 }
 
-func (fixture checkpointFenceNode) clusterHandler(store *dal.Store, pool *transport.ConnectionPool, serviceAddr string) clusterpb.ClusterServiceServer {
+func (fixture checkpointFenceNode) clusterHandler(store *dal.Store, pool *transport.ConnectionPool, serviceAddr string) ledgerpb.ClusterServiceServer {
 	// Indexing is not running in this fixture; the real builder exposes its
 	// initial progress through the same methods used by the production handler.
 	builder := indexbuilder.NewBuilder(store, nil, attributes.New(), logging.Testing(), noop.NewMeterProvider().Meter("checkpoint-fence"), 0)

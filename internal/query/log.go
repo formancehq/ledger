@@ -10,7 +10,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
@@ -19,8 +19,8 @@ import (
 )
 
 // ReadLastLog returns the full last log entry from the given reader. Returns nil if no logs exist.
-func ReadLastLog(reader dal.PebbleReader) (*commonpb.Log, error) {
-	log, err := dal.ReadLastEntry[*commonpb.Log](reader, dal.ZoneHistory, dal.SubHistoryLog)
+func ReadLastLog(reader dal.PebbleReader) (*ledgerpb.Log, error) {
+	log, err := dal.ReadLastEntry[*ledgerpb.Log](reader, dal.ZoneHistory, dal.SubHistoryLog)
 	if err != nil {
 		return nil, fmt.Errorf("reading last log: %w", err)
 	}
@@ -44,7 +44,7 @@ func ReadLastSequence(reader dal.PebbleReader) (uint64, error) {
 }
 
 // ReadLogBySequence retrieves a log by its sequence number from the given reader.
-func ReadLogBySequence(ctx context.Context, reader dal.PebbleGetter, sequence uint64) (*commonpb.Log, error) {
+func ReadLogBySequence(ctx context.Context, reader dal.PebbleGetter, sequence uint64) (*ledgerpb.Log, error) {
 	_, span := queryTracer.Start(ctx, "query.get_log",
 		trace.WithAttributes(attribute.Int64("sequence", int64(sequence))))
 	defer span.End()
@@ -53,7 +53,7 @@ func ReadLogBySequence(ctx context.Context, reader dal.PebbleGetter, sequence ui
 	kb.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog).
 		PutUint64(sequence)
 
-	log, err := dal.ReadProto[*commonpb.Log](reader, kb.Build())
+	log, err := dal.ReadProto[*ledgerpb.Log](reader, kb.Build())
 	if err != nil {
 		return nil, fmt.Errorf("getting system log by sequence: %w", err)
 	}
@@ -70,7 +70,7 @@ type ledgerLogCursor struct {
 	pos    int
 }
 
-func (c *ledgerLogCursor) Next() (*commonpb.Log, error) {
+func (c *ledgerLogCursor) Next() (*ledgerpb.Log, error) {
 	if c.pos >= len(c.seqs) {
 		return nil, io.EOF
 	}
@@ -109,7 +109,7 @@ func ReadLedgerLogsCompiled(
 	indexReader dal.PebbleGetter,
 	ledgerName string,
 	logIDs [][]byte,
-) (cursor.Cursor[*commonpb.Log], error) {
+) (cursor.Cursor[*ledgerpb.Log], error) {
 	indexName := fmt.Sprintf("ledger-log[ledger=%s]", ledgerName)
 
 	kb := dal.NewKeyBuilder()
@@ -185,7 +185,7 @@ func ReadLogsSinceRaw(_ context.Context, reader dal.PebbleReader, afterSequence 
 
 // ReadLogsSince returns a cursor over global log entries after the given sequence from the given reader.
 // Pass afterSequence=0 to return all log entries.
-func ReadLogsSince(ctx context.Context, reader dal.PebbleReader, afterSequence uint64, opts ...dal.ProtoCursorOption) (cursor.Cursor[*commonpb.Log], error) {
+func ReadLogsSince(ctx context.Context, reader dal.PebbleReader, afterSequence uint64, opts ...dal.ProtoCursorOption) (cursor.Cursor[*ledgerpb.Log], error) {
 	_, span := queryTracer.Start(ctx, "query.list_logs")
 	defer span.End()
 
@@ -205,5 +205,5 @@ func ReadLogsSince(ctx context.Context, reader dal.PebbleReader, afterSequence u
 		return nil, fmt.Errorf("creating iterator for logs: %w", err)
 	}
 
-	return dal.NewProtoCursor[*commonpb.Log](iter, opts...), nil
+	return dal.NewProtoCursor[*ledgerpb.Log](iter, opts...), nil
 }

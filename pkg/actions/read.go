@@ -9,19 +9,19 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/grpc/metadata"
 
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // ListLedgers collects every ledger across the cluster, following the
 // x-next-cursor trailer chain so installations with more ledgers than the
 // server's default page still surface them all.
-func ListLedgers(ctx context.Context, client auditpb.BucketServiceClient) (map[string]*auditpb.LedgerInfo, error) {
-	ledgers := make(map[string]*auditpb.LedgerInfo)
+func ListLedgers(ctx context.Context, client ledgerpb.BucketServiceClient) (map[string]*ledgerpb.LedgerInfo, error) {
+	ledgers := make(map[string]*ledgerpb.LedgerInfo)
 
 	var nextCur string
 	for {
-		stream, err := client.ListLedgers(ctx, &auditpb.ListLedgersRequest{
-			Options: &auditpb.ListOptions{PageSize: listAllPageSize, Cursor: nextCur},
+		stream, err := client.ListLedgers(ctx, &ledgerpb.ListLedgersRequest{
+			Options: &ledgerpb.ListOptions{PageSize: listAllPageSize, Cursor: nextCur},
 		})
 		if err != nil {
 			return nil, err
@@ -49,16 +49,16 @@ func ListLedgers(ctx context.Context, client auditpb.BucketServiceClient) (map[s
 // ListNumscripts collects every numscript from the streaming RPC, following
 // the x-next-cursor trailer chain so ledgers with more numscripts than the
 // server's default page still surface them all.
-func ListNumscripts(ctx context.Context, client auditpb.BucketServiceClient, ledger string) ([]*auditpb.NumscriptInfo, error) {
+func ListNumscripts(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string) ([]*ledgerpb.NumscriptInfo, error) {
 	var (
-		scripts []*auditpb.NumscriptInfo
+		scripts []*ledgerpb.NumscriptInfo
 		cursor  string
 	)
 
 	for {
-		stream, err := client.ListNumscripts(ctx, &auditpb.ListNumscriptsRequest{
+		stream, err := client.ListNumscripts(ctx, &ledgerpb.ListNumscriptsRequest{
 			Ledger:  ledger,
-			Options: &auditpb.ListOptions{PageSize: listAllPageSize, Cursor: cursor},
+			Options: &ledgerpb.ListOptions{PageSize: listAllPageSize, Cursor: cursor},
 		})
 		if err != nil {
 			return nil, err
@@ -86,8 +86,8 @@ func ListNumscripts(ctx context.Context, client auditpb.BucketServiceClient, led
 
 // ListNumscriptVersions returns the numscript's current latest (greatest stored
 // semver) and every stored version.
-func ListNumscriptVersions(ctx context.Context, client auditpb.BucketServiceClient, ledger, name string) (string, []*auditpb.NumscriptVersionEntry, error) {
-	resp, err := client.ListNumscriptVersions(ctx, &auditpb.ListNumscriptVersionsRequest{
+func ListNumscriptVersions(ctx context.Context, client ledgerpb.BucketServiceClient, ledger, name string) (string, []*ledgerpb.NumscriptVersionEntry, error) {
+	resp, err := client.ListNumscriptVersions(ctx, &ledgerpb.ListNumscriptVersionsRequest{
 		Ledger: ledger,
 		Name:   name,
 	})
@@ -114,16 +114,16 @@ func nextCursorFromTrailer(trailer metadata.MD) string {
 // the streaming RPC. The next-page cursor is read from the server's
 // x-next-cursor trailer (opaque) — the helper never depends on the cursor's
 // internal encoding.
-func ListAllAccounts(ctx context.Context, client auditpb.BucketServiceClient, ledgerName string) ([]*auditpb.Account, error) {
+func ListAllAccounts(ctx context.Context, client ledgerpb.BucketServiceClient, ledgerName string) ([]*ledgerpb.Account, error) {
 	var (
-		accounts []*auditpb.Account
+		accounts []*ledgerpb.Account
 		cursor   string
 	)
 
 	for {
-		stream, err := client.ListAccounts(ctx, &auditpb.ListAccountsRequest{
+		stream, err := client.ListAccounts(ctx, &ledgerpb.ListAccountsRequest{
 			Ledger: ledgerName,
-			Options: &auditpb.ListOptions{
+			Options: &ledgerpb.ListOptions{
 				PageSize: listAllPageSize,
 				Cursor:   cursor,
 			},
@@ -156,16 +156,16 @@ func ListAllAccounts(ctx context.Context, client auditpb.BucketServiceClient, le
 
 // ListAllTransactions collects every transaction for a ledger by paginating
 // through the streaming RPC. See ListAllAccounts for the pagination shape.
-func ListAllTransactions(ctx context.Context, client auditpb.BucketServiceClient, ledgerName string) ([]*auditpb.Transaction, error) {
+func ListAllTransactions(ctx context.Context, client ledgerpb.BucketServiceClient, ledgerName string) ([]*ledgerpb.Transaction, error) {
 	var (
-		transactions []*auditpb.Transaction
+		transactions []*ledgerpb.Transaction
 		cursor       string
 	)
 
 	for {
-		stream, err := client.ListTransactions(ctx, &auditpb.ListTransactionsRequest{
+		stream, err := client.ListTransactions(ctx, &ledgerpb.ListTransactionsRequest{
 			Ledger: ledgerName,
-			Options: &auditpb.ListOptions{
+			Options: &ledgerpb.ListOptions{
 				PageSize: listAllPageSize,
 				Cursor:   cursor,
 			},
@@ -198,16 +198,16 @@ func ListAllTransactions(ctx context.Context, client auditpb.BucketServiceClient
 
 // ListAllLogs collects every system log for a ledger by paginating through
 // the streaming RPC. Resumes from the server's x-next-cursor trailer.
-func ListAllLogs(ctx context.Context, client auditpb.BucketServiceClient, ledger string) ([]*auditpb.Log, error) {
+func ListAllLogs(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string) ([]*ledgerpb.Log, error) {
 	var (
-		logs   []*auditpb.Log
+		logs   []*ledgerpb.Log
 		cursor string
 	)
 
 	for {
-		req := &auditpb.ListLogsRequest{
+		req := &ledgerpb.ListLogsRequest{
 			Ledger: ledger,
-			Options: &auditpb.ListOptions{
+			Options: &ledgerpb.ListOptions{
 				PageSize: listAllPageSize,
 				Cursor:   cursor,
 			},
@@ -233,13 +233,13 @@ func ListAllLogs(ctx context.Context, client auditpb.BucketServiceClient, ledger
 // used by ListAllLogs; ListLogsFiltered itself stays a single-page helper
 // that drops the trailer (callers that need to follow the chain build it
 // themselves via ListAllLogs or directly off the stream).
-func listLogsPageWithTrailer(ctx context.Context, client auditpb.BucketServiceClient, req *auditpb.ListLogsRequest) ([]*auditpb.Log, metadata.MD, error) {
+func listLogsPageWithTrailer(ctx context.Context, client ledgerpb.BucketServiceClient, req *ledgerpb.ListLogsRequest) ([]*ledgerpb.Log, metadata.MD, error) {
 	stream, err := client.ListLogs(ctx, req)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	var logs []*auditpb.Log
+	var logs []*ledgerpb.Log
 	for {
 		log, recvErr := stream.Recv()
 		if errors.Is(recvErr, io.EOF) {
@@ -261,31 +261,31 @@ func listLogsPageWithTrailer(ctx context.Context, client auditpb.BucketServiceCl
 const listAllPageSize uint32 = 1000
 
 // GetAccount retrieves a single account by address.
-func GetAccount(ctx context.Context, client auditpb.BucketServiceClient, ledgerName, address string) (*auditpb.Account, error) {
-	return client.GetAccount(ctx, &auditpb.GetAccountRequest{
+func GetAccount(ctx context.Context, client ledgerpb.BucketServiceClient, ledgerName, address string) (*ledgerpb.Account, error) {
+	return client.GetAccount(ctx, &ledgerpb.GetAccountRequest{
 		Ledger:  ledgerName,
 		Address: address,
 	})
 }
 
 // GetTransaction retrieves a single transaction by ID.
-func GetTransaction(ctx context.Context, client auditpb.BucketServiceClient, ledgerName string, txID uint64) (*auditpb.GetTransactionResponse, error) {
-	return client.GetTransaction(ctx, &auditpb.GetTransactionRequest{
+func GetTransaction(ctx context.Context, client ledgerpb.BucketServiceClient, ledgerName string, txID uint64) (*ledgerpb.GetTransactionResponse, error) {
+	return client.GetTransaction(ctx, &ledgerpb.GetTransactionRequest{
 		Ledger:        ledgerName,
 		TransactionId: txID,
 	})
 }
 
 // GetLedger retrieves ledger info by name.
-func GetLedger(ctx context.Context, client auditpb.BucketServiceClient, ledgerName string) (*auditpb.LedgerInfo, error) {
-	return client.GetLedger(ctx, &auditpb.GetLedgerRequest{
+func GetLedger(ctx context.Context, client ledgerpb.BucketServiceClient, ledgerName string) (*ledgerpb.LedgerInfo, error) {
+	return client.GetLedger(ctx, &ledgerpb.GetLedgerRequest{
 		Ledger: ledgerName,
 	})
 }
 
 // GetLedgerStats retrieves transaction and account counts for a ledger.
-func GetLedgerStats(ctx context.Context, client auditpb.BucketServiceClient, ledgerName string) (*auditpb.LedgerStats, error) {
-	return client.GetLedgerStats(ctx, &auditpb.GetLedgerStatsRequest{
+func GetLedgerStats(ctx context.Context, client ledgerpb.BucketServiceClient, ledgerName string) (*ledgerpb.LedgerStats, error) {
+	return client.GetLedgerStats(ctx, &ledgerpb.GetLedgerStatsRequest{
 		Ledger: ledgerName,
 	})
 }
@@ -294,16 +294,16 @@ func GetLedgerStats(ctx context.Context, client auditpb.BucketServiceClient, led
 // for a Numscript template. The usagebuilder folds the counter asynchronously,
 // so callers asserting on a freshly-invoked template must poll (Gomega
 // Eventually / require.Eventually) rather than assume immediate visibility.
-func GetTemplateUsage(ctx context.Context, client auditpb.BucketServiceClient, ledger, name string) (*auditpb.TemplateUsage, error) {
-	return client.GetTemplateUsage(ctx, &auditpb.GetTemplateUsageRequest{
+func GetTemplateUsage(ctx context.Context, client ledgerpb.BucketServiceClient, ledger, name string) (*ledgerpb.TemplateUsage, error) {
+	return client.GetTemplateUsage(ctx, &ledgerpb.GetTemplateUsageRequest{
 		Ledger: ledger,
 		Name:   name,
 	})
 }
 
 // GetNumscript retrieves a numscript by name and optional version ("" = latest).
-func GetNumscript(ctx context.Context, client auditpb.BucketServiceClient, ledger, name, version string) (*auditpb.NumscriptInfo, error) {
-	return client.GetNumscript(ctx, &auditpb.GetNumscriptRequest{
+func GetNumscript(ctx context.Context, client ledgerpb.BucketServiceClient, ledger, name, version string) (*ledgerpb.NumscriptInfo, error) {
+	return client.GetNumscript(ctx, &ledgerpb.GetNumscriptRequest{
 		Ledger:  ledger,
 		Name:    name,
 		Version: version,
@@ -311,8 +311,8 @@ func GetNumscript(ctx context.Context, client auditpb.BucketServiceClient, ledge
 }
 
 // AggregateVolumes returns aggregated volumes for a ledger.
-func AggregateVolumes(ctx context.Context, client auditpb.BucketServiceClient, ledgerName string) (*auditpb.AggregateResult, error) {
-	return client.AggregateVolumes(ctx, &auditpb.AggregateVolumesRequest{
+func AggregateVolumes(ctx context.Context, client ledgerpb.BucketServiceClient, ledgerName string) (*ledgerpb.AggregateResult, error) {
+	return client.AggregateVolumes(ctx, &ledgerpb.AggregateVolumesRequest{
 		Ledger: ledgerName,
 	})
 }
@@ -328,10 +328,10 @@ func AggregateVolumes(ctx context.Context, client auditpb.BucketServiceClient, l
 // appear. Callers that assert on a freshly-applied entry must poll (e.g.
 // require.Eventually / Gomega Eventually) rather than assume immediate
 // visibility; do not add time.Sleep.
-func ListAuditEntries(ctx context.Context, client auditpb.BucketServiceClient, failuresOnly bool) ([]*auditpb.AuditEntry, error) {
-	req := &auditpb.ListAuditEntriesRequest{}
+func ListAuditEntries(ctx context.Context, client ledgerpb.BucketServiceClient, failuresOnly bool) ([]*ledgerpb.AuditEntry, error) {
+	req := &ledgerpb.ListAuditEntriesRequest{}
 	if failuresOnly {
-		req.Options = &auditpb.ListOptions{Filter: AuditOutcomeFilter(false)}
+		req.Options = &ledgerpb.ListOptions{Filter: AuditOutcomeFilter(false)}
 	}
 
 	return ListAuditEntriesWithRequest(ctx, client, req)
@@ -339,19 +339,19 @@ func ListAuditEntries(ctx context.Context, client auditpb.BucketServiceClient, f
 
 // AuditOutcomeFilter builds the QueryFilter matching audit entries by outcome:
 // success=true -> `outcome == success`, success=false -> failure.
-func AuditOutcomeFilter(success bool) *auditpb.QueryFilter {
+func AuditOutcomeFilter(success bool) *ledgerpb.QueryFilter {
 	val := "failure"
 	if success {
 		val = "success"
 	}
 
-	return &auditpb.QueryFilter{
-		Filter: &auditpb.QueryFilter_Audit{
-			Audit: &auditpb.AuditCondition{
-				Field: auditpb.AuditField_AUDIT_FIELD_OUTCOME,
-				Condition: &auditpb.AuditCondition_StringCond{
-					StringCond: &auditpb.StringCondition{
-						Value: &auditpb.StringCondition_Hardcoded{Hardcoded: val},
+	return &ledgerpb.QueryFilter{
+		Filter: &ledgerpb.QueryFilter_Audit{
+			Audit: &ledgerpb.AuditCondition{
+				Field: ledgerpb.AuditField_AUDIT_FIELD_OUTCOME,
+				Condition: &ledgerpb.AuditCondition_StringCond{
+					StringCond: &ledgerpb.StringCondition{
+						Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: val},
 					},
 				},
 			},
@@ -365,15 +365,15 @@ func AuditOutcomeFilter(success bool) *auditpb.QueryFilter {
 // until the server returns a short page. The caller-supplied
 // Options.PageSize / Options.Cursor on req are used to seed the first call
 // and are then overwritten on each subsequent iteration.
-func ListAuditEntriesWithRequest(ctx context.Context, client auditpb.BucketServiceClient, req *auditpb.ListAuditEntriesRequest) ([]*auditpb.AuditEntry, error) {
+func ListAuditEntriesWithRequest(ctx context.Context, client ledgerpb.BucketServiceClient, req *ledgerpb.ListAuditEntriesRequest) ([]*ledgerpb.AuditEntry, error) {
 	// Field-by-field copy rather than `page := *req` — protobuf-generated
 	// messages embed a sync.Mutex (in MessageState) so value copy trips
 	// govet (copylocks). We only need the request fields used by the
 	// underlying RPC; the per-page cursor is updated below.
 	// Preserve the caller's checkpoint selection on every page request —
 	// dropping it would silently turn a historical scan into a live read.
-	page := &auditpb.ListAuditEntriesRequest{
-		Options: &auditpb.ListOptions{
+	page := &ledgerpb.ListAuditEntriesRequest{
+		Options: &ledgerpb.ListOptions{
 			Read:     req.GetOptions().GetRead(),
 			PageSize: listAllPageSize,
 			Cursor:   req.GetOptions().GetCursor(),
@@ -382,7 +382,7 @@ func ListAuditEntriesWithRequest(ctx context.Context, client auditpb.BucketServi
 		},
 	}
 
-	var entries []*auditpb.AuditEntry
+	var entries []*ledgerpb.AuditEntry
 
 	for {
 		stream, err := client.ListAuditEntries(ctx, page)
@@ -413,13 +413,13 @@ func ListAuditEntriesWithRequest(ctx context.Context, client auditpb.BucketServi
 }
 
 // ListLogsFiltered collects logs matching the given request parameters.
-func ListLogsFiltered(ctx context.Context, client auditpb.BucketServiceClient, req *auditpb.ListLogsRequest) ([]*auditpb.Log, error) {
+func ListLogsFiltered(ctx context.Context, client ledgerpb.BucketServiceClient, req *ledgerpb.ListLogsRequest) ([]*ledgerpb.Log, error) {
 	stream, err := client.ListLogs(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	var logs []*auditpb.Log
+	var logs []*ledgerpb.Log
 	for {
 		log, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
@@ -435,15 +435,15 @@ func ListLogsFiltered(ctx context.Context, client auditpb.BucketServiceClient, r
 }
 
 // GetMetadataSchemaStatus retrieves the declared metadata field types for a ledger.
-func GetMetadataSchemaStatus(ctx context.Context, client auditpb.BucketServiceClient, ledgerName string) (*auditpb.GetMetadataSchemaStatusResponse, error) {
-	return client.GetMetadataSchemaStatus(ctx, &auditpb.GetMetadataSchemaStatusRequest{
+func GetMetadataSchemaStatus(ctx context.Context, client ledgerpb.BucketServiceClient, ledgerName string) (*ledgerpb.GetMetadataSchemaStatusResponse, error) {
+	return client.GetMetadataSchemaStatus(ctx, &ledgerpb.GetMetadataSchemaStatusRequest{
 		Ledger: ledgerName,
 	})
 }
 
 // AnalyzeAccounts runs the AnalyzeAccounts streaming RPC and returns the final result.
-func AnalyzeAccounts(ctx context.Context, client auditpb.BucketServiceClient, ledger string, variableThreshold uint32) (*auditpb.AnalyzeAccountsResponse, error) {
-	stream, err := client.AnalyzeAccounts(ctx, &auditpb.AnalyzeAccountsRequest{
+func AnalyzeAccounts(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string, variableThreshold uint32) (*ledgerpb.AnalyzeAccountsResponse, error) {
+	stream, err := client.AnalyzeAccounts(ctx, &ledgerpb.AnalyzeAccountsRequest{
 		Ledger:            ledger,
 		VariableThreshold: variableThreshold,
 	})
@@ -451,7 +451,7 @@ func AnalyzeAccounts(ctx context.Context, client auditpb.BucketServiceClient, le
 		return nil, err
 	}
 
-	var result *auditpb.AnalyzeAccountsResponse
+	var result *ledgerpb.AnalyzeAccountsResponse
 	for {
 		event, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
@@ -469,15 +469,15 @@ func AnalyzeAccounts(ctx context.Context, client auditpb.BucketServiceClient, le
 }
 
 // AnalyzeTransactions runs the AnalyzeTransactions streaming RPC and returns the final result.
-func AnalyzeTransactions(ctx context.Context, client auditpb.BucketServiceClient, ledger string) (*auditpb.AnalyzeTransactionsResponse, error) {
-	stream, err := client.AnalyzeTransactions(ctx, &auditpb.AnalyzeTransactionsRequest{
+func AnalyzeTransactions(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string) (*ledgerpb.AnalyzeTransactionsResponse, error) {
+	stream, err := client.AnalyzeTransactions(ctx, &ledgerpb.AnalyzeTransactionsRequest{
 		Ledger: ledger,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	var result *auditpb.AnalyzeTransactionsResponse
+	var result *ledgerpb.AnalyzeTransactionsResponse
 	for {
 		event, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
@@ -495,44 +495,44 @@ func AnalyzeTransactions(ctx context.Context, client auditpb.BucketServiceClient
 }
 
 // GetLog retrieves a single log entry by sequence number.
-func GetLog(ctx context.Context, client auditpb.BucketServiceClient, sequence uint64) (*auditpb.Log, error) {
-	return client.GetLog(ctx, &auditpb.GetLogRequest{
+func GetLog(ctx context.Context, client ledgerpb.BucketServiceClient, sequence uint64) (*ledgerpb.Log, error) {
+	return client.GetLog(ctx, &ledgerpb.GetLogRequest{
 		Sequence: sequence,
 	})
 }
 
 // GetAuditEntry retrieves a single audit entry by sequence number.
-func GetAuditEntry(ctx context.Context, client auditpb.BucketServiceClient, sequence uint64) (*auditpb.AuditEntry, error) {
-	return client.GetAuditEntry(ctx, &auditpb.GetAuditEntryRequest{
+func GetAuditEntry(ctx context.Context, client ledgerpb.BucketServiceClient, sequence uint64) (*ledgerpb.AuditEntry, error) {
+	return client.GetAuditEntry(ctx, &ledgerpb.GetAuditEntryRequest{
 		Sequence: sequence,
 	})
 }
 
 // Discovery calls the Discovery RPC.
-func Discovery(ctx context.Context, client auditpb.BucketServiceClient) (*auditpb.DiscoveryResponse, error) {
-	return client.Discovery(ctx, &auditpb.DiscoveryRequest{})
+func Discovery(ctx context.Context, client ledgerpb.BucketServiceClient) (*ledgerpb.DiscoveryResponse, error) {
+	return client.Discovery(ctx, &ledgerpb.DiscoveryRequest{})
 }
 
 // GetPrimaryMetrics calls the GetPrimaryMetrics RPC.
-func GetPrimaryMetrics(ctx context.Context, client auditpb.BucketServiceClient) (*auditpb.GetPrimaryMetricsResponse, error) {
-	return client.GetPrimaryMetrics(ctx, &auditpb.GetPrimaryMetricsRequest{})
+func GetPrimaryMetrics(ctx context.Context, client ledgerpb.BucketServiceClient) (*ledgerpb.GetPrimaryMetricsResponse, error) {
+	return client.GetPrimaryMetrics(ctx, &ledgerpb.GetPrimaryMetricsRequest{})
 }
 
 // GetSecondaryMetrics calls the GetSecondaryMetrics RPC.
-func GetSecondaryMetrics(ctx context.Context, client auditpb.BucketServiceClient) (*auditpb.GetSecondaryMetricsResponse, error) {
-	return client.GetSecondaryMetrics(ctx, &auditpb.GetSecondaryMetricsRequest{})
+func GetSecondaryMetrics(ctx context.Context, client ledgerpb.BucketServiceClient) (*ledgerpb.GetSecondaryMetricsResponse, error) {
+	return client.GetSecondaryMetrics(ctx, &ledgerpb.GetSecondaryMetricsRequest{})
 }
 
 // GetIndexStatus calls the GetIndexStatus RPC.
-func GetIndexStatus(ctx context.Context, client auditpb.BucketServiceClient) (*auditpb.GetIndexStatusResponse, error) {
-	return client.GetIndexStatus(ctx, &auditpb.GetIndexStatusRequest{})
+func GetIndexStatus(ctx context.Context, client ledgerpb.BucketServiceClient) (*ledgerpb.GetIndexStatusResponse, error) {
+	return client.GetIndexStatus(ctx, &ledgerpb.GetIndexStatusRequest{})
 }
 
 // ListAccountsFiltered collects accounts with pagination and filter params.
-func ListAccountsFiltered(ctx context.Context, client auditpb.BucketServiceClient, ledger string, pageSize uint32, afterAddress string, filter *auditpb.QueryFilter) ([]*auditpb.Account, error) {
-	stream, err := client.ListAccounts(ctx, &auditpb.ListAccountsRequest{
+func ListAccountsFiltered(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string, pageSize uint32, afterAddress string, filter *ledgerpb.QueryFilter) ([]*ledgerpb.Account, error) {
+	stream, err := client.ListAccounts(ctx, &ledgerpb.ListAccountsRequest{
 		Ledger: ledger,
-		Options: &auditpb.ListOptions{
+		Options: &ledgerpb.ListOptions{
 			PageSize: pageSize,
 			Cursor:   afterAddress,
 			Filter:   filter,
@@ -542,7 +542,7 @@ func ListAccountsFiltered(ctx context.Context, client auditpb.BucketServiceClien
 		return nil, err
 	}
 
-	var accounts []*auditpb.Account
+	var accounts []*ledgerpb.Account
 	for {
 		account, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
@@ -558,15 +558,15 @@ func ListAccountsFiltered(ctx context.Context, client auditpb.BucketServiceClien
 }
 
 // ListTransactionsFiltered collects transactions with pagination and filter params.
-func ListTransactionsFiltered(ctx context.Context, client auditpb.BucketServiceClient, ledger string, pageSize uint32, afterTxID uint64, filter *auditpb.QueryFilter) ([]*auditpb.Transaction, error) {
+func ListTransactionsFiltered(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string, pageSize uint32, afterTxID uint64, filter *ledgerpb.QueryFilter) ([]*ledgerpb.Transaction, error) {
 	var cursor string
 	if afterTxID > 0 {
 		cursor = strconv.FormatUint(afterTxID, 10)
 	}
 
-	stream, err := client.ListTransactions(ctx, &auditpb.ListTransactionsRequest{
+	stream, err := client.ListTransactions(ctx, &ledgerpb.ListTransactionsRequest{
 		Ledger: ledger,
-		Options: &auditpb.ListOptions{
+		Options: &ledgerpb.ListOptions{
 			PageSize: pageSize,
 			Cursor:   cursor,
 			Filter:   filter,
@@ -576,7 +576,7 @@ func ListTransactionsFiltered(ctx context.Context, client auditpb.BucketServiceC
 		return nil, err
 	}
 
-	var transactions []*auditpb.Transaction
+	var transactions []*ledgerpb.Transaction
 	for {
 		tx, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
@@ -593,24 +593,24 @@ func ListTransactionsFiltered(ctx context.Context, client auditpb.BucketServiceC
 
 // CreatePreparedQuery creates a prepared query through BucketService.Apply,
 // the single audited write entry point.
-func CreatePreparedQuery(ctx context.Context, client auditpb.BucketServiceClient, name, ledger string, target auditpb.QueryTarget, filter *auditpb.QueryFilter) error {
-	_, err := client.Apply(ctx, auditpb.UnsignedApplyRequest("",
+func CreatePreparedQuery(ctx context.Context, client ledgerpb.BucketServiceClient, name, ledger string, target ledgerpb.QueryTarget, filter *ledgerpb.QueryFilter) error {
+	_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("",
 		CreatePreparedQueryAction(name, ledger, target, filter)))
 
 	return err
 }
 
 // UpdatePreparedQuery updates the filter of an existing prepared query.
-func UpdatePreparedQuery(ctx context.Context, client auditpb.BucketServiceClient, ledger, name string, filter *auditpb.QueryFilter) error {
-	_, err := client.Apply(ctx, auditpb.UnsignedApplyRequest("",
+func UpdatePreparedQuery(ctx context.Context, client ledgerpb.BucketServiceClient, ledger, name string, filter *ledgerpb.QueryFilter) error {
+	_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("",
 		UpdatePreparedQueryAction(ledger, name, filter)))
 
 	return err
 }
 
 // DeletePreparedQuery deletes a prepared query.
-func DeletePreparedQuery(ctx context.Context, client auditpb.BucketServiceClient, ledger, name string) error {
-	_, err := client.Apply(ctx, auditpb.UnsignedApplyRequest("",
+func DeletePreparedQuery(ctx context.Context, client ledgerpb.BucketServiceClient, ledger, name string) error {
+	_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("",
 		DeletePreparedQueryAction(ledger, name)))
 
 	return err
@@ -623,8 +623,8 @@ func DeletePreparedQuery(ctx context.Context, client auditpb.BucketServiceClient
 // does not promise the checkpoint is still live or ready on the serving node.
 // To retry across helper invocations, retain a caller-owned key and submit
 // CreateQueryCheckpointAction with WithIdempotencyKey instead.
-func CreateQueryCheckpoint(ctx context.Context, client auditpb.BucketServiceClient) (checkpointID, maxSequence uint64, err error) {
-	resp, err := client.Apply(ctx, auditpb.UnsignedApplyRequest(uuid.NewString(), CreateQueryCheckpointAction()))
+func CreateQueryCheckpoint(ctx context.Context, client ledgerpb.BucketServiceClient) (checkpointID, maxSequence uint64, err error) {
+	resp, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest(uuid.NewString(), CreateQueryCheckpointAction()))
 	if err != nil {
 		return 0, 0, err
 	}
@@ -643,16 +643,16 @@ func CreateQueryCheckpoint(ctx context.Context, client auditpb.BucketServiceClie
 // still reports a missing checkpoint. For retries across helper invocations,
 // retain a caller-owned key and use DeleteQueryCheckpointAction with
 // WithIdempotencyKey instead.
-func DeleteQueryCheckpoint(ctx context.Context, client auditpb.BucketServiceClient, checkpointID uint64) error {
-	_, err := client.Apply(ctx, auditpb.UnsignedApplyRequest(uuid.NewString(),
+func DeleteQueryCheckpoint(ctx context.Context, client ledgerpb.BucketServiceClient, checkpointID uint64) error {
+	_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest(uuid.NewString(),
 		DeleteQueryCheckpointAction(checkpointID)))
 
 	return err
 }
 
 // ListPreparedQueries lists all prepared queries for a ledger.
-func ListPreparedQueries(ctx context.Context, client auditpb.BucketServiceClient, ledger string) ([]*auditpb.PreparedQuery, error) {
-	resp, err := client.ListPreparedQueries(ctx, &auditpb.ListPreparedQueriesRequest{
+func ListPreparedQueries(ctx context.Context, client ledgerpb.BucketServiceClient, ledger string) ([]*ledgerpb.PreparedQuery, error) {
+	resp, err := client.ListPreparedQueries(ctx, &ledgerpb.ListPreparedQueriesRequest{
 		Ledger: ledger,
 	})
 	if err != nil {
@@ -663,8 +663,8 @@ func ListPreparedQueries(ctx context.Context, client auditpb.BucketServiceClient
 }
 
 // ExecutePreparedQuery executes a prepared query and returns the response.
-func ExecutePreparedQuery(ctx context.Context, client auditpb.BucketServiceClient, ledger, queryName string, mode auditpb.QueryMode, pageSize uint32) (*auditpb.ExecutePreparedQueryResponse, error) {
-	return client.ExecutePreparedQuery(ctx, &auditpb.ExecutePreparedQueryRequest{
+func ExecutePreparedQuery(ctx context.Context, client ledgerpb.BucketServiceClient, ledger, queryName string, mode ledgerpb.QueryMode, pageSize uint32) (*ledgerpb.ExecutePreparedQueryResponse, error) {
+	return client.ExecutePreparedQuery(ctx, &ledgerpb.ExecutePreparedQueryRequest{
 		Ledger:    ledger,
 		QueryName: queryName,
 		Mode:      mode,
@@ -673,8 +673,8 @@ func ExecutePreparedQuery(ctx context.Context, client auditpb.BucketServiceClien
 }
 
 // ExecutePreparedQueryWithParams executes a prepared query with runtime parameters.
-func ExecutePreparedQueryWithParams(ctx context.Context, client auditpb.BucketServiceClient, ledger, queryName string, mode auditpb.QueryMode, pageSize uint32, params map[string]*auditpb.ParameterValue) (*auditpb.ExecutePreparedQueryResponse, error) {
-	return client.ExecutePreparedQuery(ctx, &auditpb.ExecutePreparedQueryRequest{
+func ExecutePreparedQueryWithParams(ctx context.Context, client ledgerpb.BucketServiceClient, ledger, queryName string, mode ledgerpb.QueryMode, pageSize uint32, params map[string]*ledgerpb.ParameterValue) (*ledgerpb.ExecutePreparedQueryResponse, error) {
+	return client.ExecutePreparedQuery(ctx, &ledgerpb.ExecutePreparedQueryRequest{
 		Ledger:     ledger,
 		QueryName:  queryName,
 		Mode:       mode,

@@ -16,7 +16,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
@@ -75,7 +75,7 @@ func installTestAuditKey(t *testing.T, store *dal.Store) {
 // Kept separate from the harness so a test about recovery itself can observe a
 // genuinely fresh machine (see TestRecoverState_ClusterPolicyRoundtrip).
 func installTestClusterPolicy(machine *Machine) {
-	machine.State.UpdateClusterPolicy(&commonpb.ClusterPolicy{
+	machine.State.UpdateClusterPolicy(&ledgerpb.ClusterPolicy{
 		Revision:                    1,
 		QueryCheckpointLimit:        10,
 		MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
@@ -142,7 +142,7 @@ func TestPrepareEntriesRejectsInvalidAttributionBeforeBusinessMutation(t *testin
 			},
 		},
 	})
-	proposal.CallerSnapshot = &commonpb.CallerSnapshot{}
+	proposal.CallerSnapshot = &ledgerpb.CallerSnapshot{}
 
 	prepared, err := machine.PrepareEntries(context.Background(), store, makeEntry(t, 1, proposal))
 	require.NoError(t, err)
@@ -213,7 +213,7 @@ func TestPrepareEntriesRejectsInvalidAttributionWithoutBusinessPayload(t *testin
 	machine, store, _ := newTestMachineWithThreshold(t, 1)
 	installTestClusterPolicy(machine)
 	proposal := makeProposal(42)
-	proposal.CallerSnapshot = &commonpb.CallerSnapshot{}
+	proposal.CallerSnapshot = &ledgerpb.CallerSnapshot{}
 
 	prepared, err := machine.PrepareEntries(context.Background(), store, makeEntry(t, 1, proposal))
 	require.NoError(t, err)
@@ -234,7 +234,7 @@ func makeProposal(id uint64, orders ...*raftcmdpb.Order) *raftcmdpb.Proposal {
 	return &raftcmdpb.Proposal{
 		Id:             id,
 		Orders:         orders,
-		Date:           &commonpb.Timestamp{Data: 1700000000 + id},
+		Date:           &ledgerpb.Timestamp{Data: 1700000000 + id},
 		CallerSnapshot: commands.SystemCallerSnapshot(commands.ComponentClusterPolicy),
 		ExecutionPlan: &raftcmdpb.ExecutionPlan{
 			Attributes: append(buildVolumePreloads(orders), buildOrderDeclarations(orders)...),
@@ -441,7 +441,7 @@ func buildVolumePreloads(orders []*raftcmdpb.Order) []*raftcmdpb.AttributeCovera
 	seen := make(map[volumeKey]struct{})
 	var plans []*raftcmdpb.AttributeCoverage
 
-	zero := commonpb.NewUint256FromUint64(0)
+	zero := ledgerpb.NewUint256FromUint64(0)
 
 	for _, order := range orders {
 		ls := order.GetLedgerScoped()
@@ -455,7 +455,7 @@ func buildVolumePreloads(orders []*raftcmdpb.Order) []*raftcmdpb.AttributeCovera
 		}
 		ledger := ls.GetLedger()
 
-		var postings []*commonpb.Posting
+		var postings []*ledgerpb.Posting
 		if ct := apply.GetCreateTransaction(); ct != nil {
 			postings = ct.GetPostings()
 		}
@@ -527,7 +527,7 @@ func createLedgerOrder(name string) *raftcmdpb.Order {
 	}
 }
 
-func createTransactionOrder(ledger string, force bool, postings ...*commonpb.Posting) *raftcmdpb.Order {
+func createTransactionOrder(ledger string, force bool, postings ...*ledgerpb.Posting) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
@@ -557,7 +557,7 @@ func revertTransactionOrder(ledger string, txID uint64) *raftcmdpb.Order {
 // revertObservedTransactionOrder builds a revert whose target admission
 // observed with these postings. Pass the postings the FSM stored for the
 // target, so the bound digest matches what apply re-derives.
-func revertObservedTransactionOrder(ledger string, txID uint64, postings []*commonpb.Posting) *raftcmdpb.Order {
+func revertObservedTransactionOrder(ledger string, txID uint64, postings []*ledgerpb.Posting) *raftcmdpb.Order {
 	return revertOrderWithDigest(ledger, txID, domain.RevertTargetDigest(postings, true))
 }
 
@@ -580,11 +580,11 @@ func revertOrderWithDigest(ledger string, txID uint64, digest []byte) *raftcmdpb
 	}
 }
 
-func newPosting(source, destination, asset string, amount int64) *commonpb.Posting {
-	return &commonpb.Posting{
+func newPosting(source, destination, asset string, amount int64) *ledgerpb.Posting {
+	return &ledgerpb.Posting{
 		Source:      source,
 		Destination: destination,
-		Amount:      commonpb.NewUint256FromUint64(uint64(amount)),
+		Amount:      ledgerpb.NewUint256FromUint64(uint64(amount)),
 		Asset:       asset,
 	}
 }

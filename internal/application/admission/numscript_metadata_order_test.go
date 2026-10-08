@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -19,7 +19,7 @@ func TestNumscriptCompetingMetadataErrorsReachProposalPreparation(t *testing.T) 
 		Ledger: testLedgerName,
 		Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
 			Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-				Script: &commonpb.Script{Plain: `
+				Script: &ledgerpb.Script{Plain: `
 					vars { string $poison }
 					set_tx_meta("a", $poison)
 					set_tx_meta("b", $poison)

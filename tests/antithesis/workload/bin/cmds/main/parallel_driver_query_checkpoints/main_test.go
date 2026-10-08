@@ -19,7 +19,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/antithesistest"
@@ -39,7 +39,7 @@ func TestQueryCheckpointDriverProcess(t *testing.T) {
 		defer cancel()
 		conn, err := grpc.NewClient(os.Getenv("LEDGER_GRPC_ADDR"), grpcprotocol.ClientOption(), grpc.WithTransportCredentials(insecure.NewCredentials()),
 			grpc.WithUnaryInterceptor(func(callCtx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoke grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-				if method == clusterpb.ClusterService_ListQueryCheckpoints_FullMethodName {
+				if method == ledgerpb.ClusterService_ListQueryCheckpoints_FullMethodName {
 					cancel()
 
 					return status.FromContextError(ctx.Err()).Err()
@@ -49,7 +49,7 @@ func TestQueryCheckpointDriverProcess(t *testing.T) {
 			}))
 		require.NoError(t, err)
 		defer func() { _ = conn.Close() }()
-		runQueryCheckpointDriver(ctx, clusterpb.NewClusterServiceClient(conn), clusterpb.NewBucketServiceClient(conn))
+		runQueryCheckpointDriver(ctx, ledgerpb.NewClusterServiceClient(conn), ledgerpb.NewBucketServiceClient(conn))
 
 		return
 	}
@@ -136,7 +136,7 @@ func requireCheckpointEvent(t *testing.T, assertions []sdkAssertion, message str
 	t.Fatalf("missing successful driver event %q", message)
 }
 
-func checkpointTestServer(t *testing.T) (context.Context, string, clusterpb.BucketServiceClient, clusterpb.ClusterServiceClient) {
+func checkpointTestServer(t *testing.T) (context.Context, string, ledgerpb.BucketServiceClient, ledgerpb.ClusterServiceClient) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
 	t.Cleanup(cancel)
@@ -161,23 +161,23 @@ func checkpointTestServer(t *testing.T) (context.Context, string, clusterpb.Buck
 	conn, err := grpc.NewClient(address, grpcprotocol.ClientOption(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
-	cluster := clusterpb.NewClusterServiceClient(conn)
-	client := clusterpb.NewBucketServiceClient(conn)
+	cluster := ledgerpb.NewClusterServiceClient(conn)
+	client := ledgerpb.NewBucketServiceClient(conn)
 	require.Eventually(t, func() bool {
-		state, err := cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+		state, err := cluster.GetClusterState(ctx, &ledgerpb.GetClusterStateRequest{})
 
 		return err == nil && state.GetLeader() != 0
 	}, 5*time.Second, 10*time.Millisecond)
 	testserver.WaitForWriteAdmission(t, ctx, client)
-	_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction("checkpoint-driver", nil)))
+	_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction("checkpoint-driver", nil)))
 	require.NoError(t, err)
 
 	return ctx, address, client, cluster
 }
 
-func listCheckpointIDs(t *testing.T, ctx context.Context, cluster clusterpb.ClusterServiceClient) []uint64 {
+func listCheckpointIDs(t *testing.T, ctx context.Context, cluster ledgerpb.ClusterServiceClient) []uint64 {
 	t.Helper()
-	list, err := cluster.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
+	list, err := cluster.ListQueryCheckpoints(ctx, &ledgerpb.ListQueryCheckpointsRequest{})
 	require.NoError(t, err)
 	var ids []uint64
 	for _, checkpoint := range list.GetCheckpoints() {

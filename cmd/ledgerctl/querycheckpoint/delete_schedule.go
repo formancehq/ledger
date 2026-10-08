@@ -3,7 +3,7 @@ package querycheckpoint
 import (
 	"github.com/spf13/cobra"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
@@ -38,10 +38,10 @@ func runDeleteSchedule(cmd *cobra.Command, _ []string) error {
 
 	spinner := cmdutil.StartSpinner("Deleting query checkpoint schedule...")
 
-	requests := []*servicepb.Request{
+	requests := []*ledgerpb.Request{
 		{
-			Type: &servicepb.Request_DeleteQueryCheckpointSchedule{
-				DeleteQueryCheckpointSchedule: &servicepb.DeleteQueryCheckpointScheduleRequest{},
+			Type: &ledgerpb.Request_DeleteQueryCheckpointSchedule{
+				DeleteQueryCheckpointSchedule: &ledgerpb.DeleteQueryCheckpointScheduleRequest{},
 			},
 		},
 	}

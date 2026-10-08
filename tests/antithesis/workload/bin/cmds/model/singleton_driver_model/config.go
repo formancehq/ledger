@@ -3,7 +3,7 @@ package main
 import (
 	"time"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // Hand-tunable knobs. The "t-N:{id}" naming and the generator's roll
@@ -87,25 +87,25 @@ var (
 // Field types declared by SetMetadataFieldType (string, bool, datetime, and
 // every signed/unsigned int width), exercising the schema declare/retype apply
 // path across the full MetadataType set.
-var metaTypePool = []commonpb.MetadataType{
-	commonpb.MetadataType_METADATA_TYPE_STRING,
-	commonpb.MetadataType_METADATA_TYPE_INT64,
-	commonpb.MetadataType_METADATA_TYPE_BOOL,
-	commonpb.MetadataType_METADATA_TYPE_UINT64,
-	commonpb.MetadataType_METADATA_TYPE_INT8,
-	commonpb.MetadataType_METADATA_TYPE_INT16,
-	commonpb.MetadataType_METADATA_TYPE_INT32,
-	commonpb.MetadataType_METADATA_TYPE_UINT8,
-	commonpb.MetadataType_METADATA_TYPE_UINT16,
-	commonpb.MetadataType_METADATA_TYPE_UINT32,
-	commonpb.MetadataType_METADATA_TYPE_DATETIME,
+var metaTypePool = []ledgerpb.MetadataType{
+	ledgerpb.MetadataType_METADATA_TYPE_STRING,
+	ledgerpb.MetadataType_METADATA_TYPE_INT64,
+	ledgerpb.MetadataType_METADATA_TYPE_BOOL,
+	ledgerpb.MetadataType_METADATA_TYPE_UINT64,
+	ledgerpb.MetadataType_METADATA_TYPE_INT8,
+	ledgerpb.MetadataType_METADATA_TYPE_INT16,
+	ledgerpb.MetadataType_METADATA_TYPE_INT32,
+	ledgerpb.MetadataType_METADATA_TYPE_UINT8,
+	ledgerpb.MetadataType_METADATA_TYPE_UINT16,
+	ledgerpb.MetadataType_METADATA_TYPE_UINT32,
+	ledgerpb.MetadataType_METADATA_TYPE_DATETIME,
 }
 
 // Targets whose metadata schema the model tracks.
-var metaTargetPool = []commonpb.TargetType{
-	commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-	commonpb.TargetType_TARGET_TYPE_LEDGER,
-	commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+var metaTargetPool = []ledgerpb.TargetType{
+	ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
+	ledgerpb.TargetType_TARGET_TYPE_LEDGER,
+	ledgerpb.TargetType_TARGET_TYPE_TRANSACTION,
 }
 
 // --- Transaction back-pressure ------------------------------------------

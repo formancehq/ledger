@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // Structural decode of the `filter` field (JSON DSL and textual filterexpr) now
@@ -18,12 +18,12 @@ func TestParsePreparedQueryTarget(t *testing.T) {
 	cases := []struct {
 		name    string
 		target  string
-		want    commonpb.QueryTarget
+		want    ledgerpb.QueryTarget
 		wantErr string
 	}{
-		{name: "accounts", target: "ACCOUNTS", want: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS},
-		{name: "transactions", target: "TRANSACTIONS", want: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS},
-		{name: "logs", target: "LOGS", want: commonpb.QueryTarget_QUERY_TARGET_LOGS},
+		{name: "accounts", target: "ACCOUNTS", want: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS},
+		{name: "transactions", target: "TRANSACTIONS", want: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS},
+		{name: "logs", target: "LOGS", want: ledgerpb.QueryTarget_QUERY_TARGET_LOGS},
 		{name: "empty", target: "", wantErr: "target is required"},
 		{name: "unknown", target: "BOGUS", wantErr: "unknown or unsupported target"},
 	}

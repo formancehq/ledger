@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 )
@@ -63,8 +63,8 @@ func TestPublicRPCPolicyValidationAcceptsGeneratedServiceDescriptors(t *testing.
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, srv.Stop()) })
 
-	clusterpb.RegisterBucketServiceServer(srv.GetServer(), &clusterpb.UnimplementedBucketServiceServer{})
-	clusterpb.RegisterClusterServiceServer(srv.GetServer(), &clusterpb.UnimplementedClusterServiceServer{})
+	ledgerpb.RegisterBucketServiceServer(srv.GetServer(), &ledgerpb.UnimplementedBucketServiceServer{})
+	ledgerpb.RegisterClusterServiceServer(srv.GetServer(), &ledgerpb.UnimplementedClusterServiceServer{})
 	healthpb.RegisterHealthServer(srv.GetServer(), health.NewServer())
 
 	require.NoError(t, srv.Listen())
@@ -79,7 +79,7 @@ func TestPublicRPCPolicyValidationRejectsUnregisteredPolicyBeforeListen(t *testi
 
 	srv, err := NewServiceServer(ServiceAuthPolicyPublic, internalauth.AuthConfig{}, "", 0, noopLogger{}, false, time.Second, nil, true, WithListener(listener))
 	require.NoError(t, err)
-	clusterpb.RegisterBucketServiceServer(srv.GetServer(), &clusterpb.UnimplementedBucketServiceServer{})
+	ledgerpb.RegisterBucketServiceServer(srv.GetServer(), &ledgerpb.UnimplementedBucketServiceServer{})
 
 	err = srv.Listen()
 	require.ErrorContains(t, err, "authentication policy has no registered RPC")

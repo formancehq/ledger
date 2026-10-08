@@ -10,7 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // handleExecutePreparedQuery handles POST /{ledgerName}/prepared-queries/{name}/execute.
@@ -82,7 +82,7 @@ func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	req := &commonpb.ExecutePreparedQueryRequest{
+	req := &ledgerpb.ExecutePreparedQueryRequest{
 		Ledger:     ledgerName,
 		QueryName:  queryName,
 		Parameters: params,
@@ -116,9 +116,9 @@ func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Reque
 	//     decimal-string amounts, and `color` on every volume row.
 	envelope := executePreparedQueryResponseJSON{}
 	switch result := resp.GetResult().(type) {
-	case *commonpb.ExecutePreparedQueryResponse_Aggregate:
+	case *ledgerpb.ExecutePreparedQueryResponse_Aggregate:
 		envelope.AggregateResult = toAggregateVolumesJSON(result.Aggregate)
-	case *commonpb.ExecutePreparedQueryResponse_Cursor:
+	case *ledgerpb.ExecutePreparedQueryResponse_Cursor:
 		envelope.Cursor = result.Cursor
 	}
 
@@ -130,18 +130,18 @@ func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Reque
 // prepared-query result oneof: exactly one of cursor / aggregateResult is set
 // (both omitempty), replacing the leaked PascalCase proto oneof shape.
 type executePreparedQueryResponseJSON struct {
-	Cursor          *commonpb.PreparedQueryCursor `json:"cursor,omitempty"`
+	Cursor          *ledgerpb.PreparedQueryCursor `json:"cursor,omitempty"`
 	AggregateResult *aggregateVolumesResponseJSON `json:"aggregateResult,omitempty"`
 }
 
 // convertJSONParameters converts raw JSON values into typed ParameterValue messages.
 // Strings → StringValue, booleans → BoolValue, integers → Int64Value or Uint64Value.
-func convertJSONParameters(raw map[string]json.RawMessage) (map[string]*commonpb.ParameterValue, error) {
+func convertJSONParameters(raw map[string]json.RawMessage) (map[string]*ledgerpb.ParameterValue, error) {
 	if len(raw) == 0 {
 		return nil, nil
 	}
 
-	params := make(map[string]*commonpb.ParameterValue, len(raw))
+	params := make(map[string]*ledgerpb.ParameterValue, len(raw))
 
 	for k, v := range raw {
 		pv, err := jsonToParameterValue(v)
@@ -155,10 +155,10 @@ func convertJSONParameters(raw map[string]json.RawMessage) (map[string]*commonpb
 	return params, nil
 }
 
-func jsonToParameterValue(raw json.RawMessage) (*commonpb.ParameterValue, error) {
+func jsonToParameterValue(raw json.RawMessage) (*ledgerpb.ParameterValue, error) {
 	var s string
 	if err := json.Unmarshal(raw, &s); err == nil {
-		return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_StringValue{StringValue: s}}, nil
+		return &ledgerpb.ParameterValue{Value: &ledgerpb.ParameterValue_StringValue{StringValue: s}}, nil
 	}
 
 	var b bool
@@ -166,7 +166,7 @@ func jsonToParameterValue(raw json.RawMessage) (*commonpb.ParameterValue, error)
 		// Distinguish from number 0/1: raw must be "true" or "false"
 		trimmed := string(raw)
 		if trimmed == "true" || trimmed == "false" {
-			return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_BoolValue{BoolValue: b}}, nil
+			return &ledgerpb.ParameterValue{Value: &ledgerpb.ParameterValue_BoolValue{BoolValue: b}}, nil
 		}
 	}
 
@@ -177,10 +177,10 @@ func jsonToParameterValue(raw json.RawMessage) (*commonpb.ParameterValue, error)
 		}
 
 		if f < 0 {
-			return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Int64Value{Int64Value: int64(f)}}, nil
+			return &ledgerpb.ParameterValue{Value: &ledgerpb.ParameterValue_Int64Value{Int64Value: int64(f)}}, nil
 		}
 
-		return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: uint64(f)}}, nil
+		return &ledgerpb.ParameterValue{Value: &ledgerpb.ParameterValue_Uint64Value{Uint64Value: uint64(f)}}, nil
 	}
 
 	return nil, fmt.Errorf("unsupported value type: %s", string(raw))
@@ -188,12 +188,12 @@ func jsonToParameterValue(raw json.RawMessage) (*commonpb.ParameterValue, error)
 
 // parseQueryMode maps the wire string to a QueryMode enum value. The empty
 // string defaults to LIST for backwards-compatible "no mode" callers.
-func parseQueryMode(s string) (commonpb.QueryMode, bool) {
+func parseQueryMode(s string) (ledgerpb.QueryMode, bool) {
 	switch s {
 	case "", "LIST":
-		return commonpb.QueryMode_QUERY_MODE_LIST, true
+		return ledgerpb.QueryMode_QUERY_MODE_LIST, true
 	case "AGGREGATE_VOLUMES":
-		return commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES, true
+		return ledgerpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES, true
 	default:
 		return 0, false
 	}

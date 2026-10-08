@@ -1,7 +1,7 @@
 package oracle
 
 import (
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // Exported read accessors over the model's internal state. The driver and the
@@ -18,15 +18,15 @@ func (g GlobalState) Ledgers() map[string]LedgerState {
 
 func (s LedgerState) Types() Map[string, TypeState]                    { return s.types }
 func (s LedgerState) Volumes() Map[VolumeKey, VolumePair]              { return s.volumes }
-func (s LedgerState) Metadata() Map[MetaKey, *commonpb.MetadataValue]  { return s.metadata }
-func (s LedgerState) LedgerMeta() Map[string, *commonpb.MetadataValue] { return s.ledgerMeta }
-func (s LedgerState) AccountFieldTypes() Map[string, commonpb.MetadataType] {
+func (s LedgerState) Metadata() Map[MetaKey, *ledgerpb.MetadataValue]  { return s.metadata }
+func (s LedgerState) LedgerMeta() Map[string, *ledgerpb.MetadataValue] { return s.ledgerMeta }
+func (s LedgerState) AccountFieldTypes() Map[string, ledgerpb.MetadataType] {
 	return s.accountFieldTypes
 }
-func (s LedgerState) LedgerFieldTypes() Map[string, commonpb.MetadataType] {
+func (s LedgerState) LedgerFieldTypes() Map[string, ledgerpb.MetadataType] {
 	return s.ledgerFieldTypes
 }
-func (s LedgerState) TransactionFieldTypes() Map[string, commonpb.MetadataType] {
+func (s LedgerState) TransactionFieldTypes() Map[string, ledgerpb.MetadataType] {
 	return s.transactionFieldTypes
 }
 
@@ -42,13 +42,13 @@ func (s LedgerState) TxByRef() Map[string, int] { return s.txByRef }
 // revert relationships (see the txRecord fields for the nil/zero conventions).
 func (t *txRecord) Id() uint64                                   { return t.id }
 func (t *txRecord) Reference() string                            { return t.reference }
-func (t *txRecord) Postings() []*commonpb.Posting                { return t.postings }
-func (t *txRecord) Metadata() map[string]*commonpb.MetadataValue { return t.metadata }
+func (t *txRecord) Postings() []*ledgerpb.Posting                { return t.postings }
+func (t *txRecord) Metadata() map[string]*ledgerpb.MetadataValue { return t.metadata }
 func (t *txRecord) Reverted() bool                               { return t.reverted }
-func (t *txRecord) Timestamp() *commonpb.Timestamp               { return t.timestamp }
-func (t *txRecord) InsertedAt() *commonpb.Timestamp              { return t.insertedAt }
+func (t *txRecord) Timestamp() *ledgerpb.Timestamp               { return t.timestamp }
+func (t *txRecord) InsertedAt() *ledgerpb.Timestamp              { return t.insertedAt }
 func (t *txRecord) RevertedBy() uint64                           { return t.revertedBy }
-func (t *txRecord) RevertedAt() *commonpb.Timestamp              { return t.revertedAt }
+func (t *txRecord) RevertedAt() *ledgerpb.Timestamp              { return t.revertedAt }
 func (t *txRecord) RevertsTransaction() uint64                   { return t.revertsTransaction }
 
 // IndexedAddrs is the transaction's account→tx index membership, keyed by
@@ -158,10 +158,10 @@ func (s LedgerState) EverAssetAccounts(base string, precision uint32) []string {
 	return out
 }
 
-func (m *metaEffect) Saved() map[string]*commonpb.MetadataValue { return m.saved }
+func (m *metaEffect) Saved() map[string]*ledgerpb.MetadataValue { return m.saved }
 
 func (r *revertEffect) RevertedID() uint64            { return r.revertedID }
-func (r *revertEffect) Postings() []*commonpb.Posting { return r.postings }
+func (r *revertEffect) Postings() []*ledgerpb.Posting { return r.postings }
 
 // LearnTxStamps fills the server-stamped dates of transaction id that the model
 // could not predict at apply time: a nil timestamp, the always-server-stamped
@@ -177,7 +177,7 @@ func (r *revertEffect) Postings() []*commonpb.Posting { return r.postings }
 // the checker's lock and call this only on the committed state, in the same
 // critical section that advanced it — forks copied earlier hold their own
 // persistent values and are unaffected.
-func (g *GlobalState) LearnTxStamps(ledger string, id uint64, timestamp, insertedAt, revertedAt *commonpb.Timestamp) {
+func (g *GlobalState) LearnTxStamps(ledger string, id uint64, timestamp, insertedAt, revertedAt *ledgerpb.Timestamp) {
 	ls, ok := g.ledgers[ledger]
 	if !ok || id == 0 || id > uint64(ls.txs.Len()) {
 		return
@@ -203,7 +203,7 @@ func (g *GlobalState) LearnTxStamps(ledger string, id uint64, timestamp, inserte
 // stream the model cannot derive. The id is not learned: it is derived from
 // the stream's density, so a server that assigned a different one must be
 // caught, not copied.
-func (g *GlobalState) LearnLogDate(ledger string, id uint64, date *commonpb.Timestamp) {
+func (g *GlobalState) LearnLogDate(ledger string, id uint64, date *ledgerpb.Timestamp) {
 	ls, ok := g.ledgers[ledger]
 	if !ok || id == 0 || id > uint64(ls.logs.Len()) {
 		return
@@ -264,7 +264,7 @@ type LogRow struct {
 	Kind             string
 	Payload          string
 	TxID             uint64
-	Date             *commonpb.Timestamp
+	Date             *ledgerpb.Timestamp
 	Sequence         uint64
 	PurgedVolumes    string
 	NewKeptVolumes   string
@@ -296,18 +296,18 @@ func (s LedgerState) LogRows() []LogRow {
 // one not yet learned from a commit response.
 func (s LedgerState) LogDates() []struct {
 	ID   uint64
-	Date *commonpb.Timestamp
+	Date *ledgerpb.Timestamp
 } {
 	out := make([]struct {
 		ID   uint64
-		Date *commonpb.Timestamp
+		Date *ledgerpb.Timestamp
 	}, 0, s.logs.Len())
 
 	for i := range s.logs.Len() {
 		rec := s.logs.Get(i)
 		out = append(out, struct {
 			ID   uint64
-			Date *commonpb.Timestamp
+			Date *ledgerpb.Timestamp
 		}{ID: rec.id, Date: rec.date})
 	}
 
@@ -316,13 +316,13 @@ func (s LedgerState) LogDates() []struct {
 
 // FieldTypesFor returns the declared-type map for a metadata target — the
 // schema slice the generator consults for indexable fields.
-func (s LedgerState) FieldTypesFor(target commonpb.TargetType) Map[string, commonpb.MetadataType] {
+func (s LedgerState) FieldTypesFor(target ledgerpb.TargetType) Map[string, ledgerpb.MetadataType] {
 	return s.fieldTypes(target)
 }
 
 // FieldTypeFor returns the declared type of one (target, key), false when
 // undeclared. Ledger-target keys resolve like the map accessors do.
-func (s LedgerState) FieldTypeFor(target commonpb.TargetType, key string) (commonpb.MetadataType, bool) {
+func (s LedgerState) FieldTypeFor(target ledgerpb.TargetType, key string) (ledgerpb.MetadataType, bool) {
 	return s.FieldTypesFor(target).Get(key)
 }
 
@@ -331,16 +331,16 @@ func (s LedgerState) FieldTypeFor(target commonpb.TargetType, key string) (commo
 // in enum order — false when no window is open for that canonical index ID.
 // The CURRENT declared type is not part of the set; callers always evaluate it
 // as the default view.
-func (s LedgerState) RetypeWindow(canonical string) ([]commonpb.MetadataType, bool) {
+func (s LedgerState) RetypeWindow(canonical string) ([]ledgerpb.MetadataType, bool) {
 	mask, ok := s.retypeWindows.Get(canonical)
 	if !ok {
 		return nil, false
 	}
 
-	var types []commonpb.MetadataType
+	var types []ledgerpb.MetadataType
 	for t := range 32 {
 		if mask&(1<<uint(t)) != 0 {
-			types = append(types, commonpb.MetadataType(t))
+			types = append(types, ledgerpb.MetadataType(t))
 		}
 	}
 
@@ -350,11 +350,11 @@ func (s LedgerState) RetypeWindow(canonical string) ([]commonpb.MetadataType, bo
 // WithDeclaredType returns a view of the state whose declared type for one
 // (target, key) is overridden — the evaluation view for one side of a retype
 // window. The receiver is untouched; the view shares every other collection.
-func (s LedgerState) WithDeclaredType(target commonpb.TargetType, key string, t commonpb.MetadataType) LedgerState {
+func (s LedgerState) WithDeclaredType(target ledgerpb.TargetType, key string, t ledgerpb.MetadataType) LedgerState {
 	switch target {
-	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+	case ledgerpb.TargetType_TARGET_TYPE_ACCOUNT:
 		s.accountFieldTypes = s.accountFieldTypes.Set(key, t)
-	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+	case ledgerpb.TargetType_TARGET_TYPE_TRANSACTION:
 		s.transactionFieldTypes = s.transactionFieldTypes.Set(key, t)
 	}
 
@@ -382,7 +382,7 @@ func (g *GlobalState) CloseRetypeWindow(ledger, canonical string) {
 }
 
 // PreparedQueries returns the ledger's prepared-query registry, keyed by name.
-func (s LedgerState) PreparedQueries() Map[string, *commonpb.PreparedQuery] {
+func (s LedgerState) PreparedQueries() Map[string, *ledgerpb.PreparedQuery] {
 	return s.preparedQueries
 }
 
@@ -390,7 +390,7 @@ func (s LedgerState) PreparedQueries() Map[string, *commonpb.PreparedQuery] {
 // Validators must read the definition from the candidate base they are testing,
 // never from a driver-side copy: a concurrent update or delete makes the stored
 // filter base-dependent, and the execution window follows the filter.
-func (s LedgerState) PreparedQuery(name string) (*commonpb.PreparedQuery, bool) {
+func (s LedgerState) PreparedQuery(name string) (*ledgerpb.PreparedQuery, bool) {
 	return s.preparedQueries.Get(name)
 }
 

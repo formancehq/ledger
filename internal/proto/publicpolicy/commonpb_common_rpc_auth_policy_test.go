@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	ggrpc "google.golang.org/grpc"
 
-	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/proto/publicpolicy"
 )
@@ -15,8 +15,8 @@ func TestRPCAuthPoliciesCoverEveryPublicServiceMethod(t *testing.T) {
 	t.Parallel()
 
 	descriptors := []*ggrpc.ServiceDesc{
-		&clusterpb.BucketService_ServiceDesc,
-		&clusterpb.ClusterService_ServiceDesc,
+		&ledgerpb.BucketService_ServiceDesc,
+		&ledgerpb.ClusterService_ServiceDesc,
 	}
 
 	methodCount := 0
@@ -41,16 +41,16 @@ func TestRPCAuthPoliciesPinExceptionalMethods(t *testing.T) {
 	policies := publicpolicy.AllRPCAuthPolicies()
 
 	publicMethods := map[string]bool{}
-	dynamicMethods := map[string]clusterpb.DynamicAuthResolver{}
-	fixedMethods := map[string]clusterpb.AuthScope{}
+	dynamicMethods := map[string]ledgerpb.DynamicAuthResolver{}
+	fixedMethods := map[string]ledgerpb.AuthScope{}
 	for method, policy := range policies {
 		switch policy.GetPolicy().(type) {
-		case *clusterpb.MethodAuthPolicy_Public:
+		case *ledgerpb.MethodAuthPolicy_Public:
 			publicMethods[method] = policy.GetPublic()
-		case *clusterpb.MethodAuthPolicy_DynamicResolver:
+		case *ledgerpb.MethodAuthPolicy_DynamicResolver:
 			dynamicMethods[method] = policy.GetDynamicResolver()
-		case *clusterpb.MethodAuthPolicy_FixedScope:
-			require.NotEqual(t, clusterpb.AuthScope_AUTH_SCOPE_UNSPECIFIED, policy.GetFixedScope(), method)
+		case *ledgerpb.MethodAuthPolicy_FixedScope:
+			require.NotEqual(t, ledgerpb.AuthScope_AUTH_SCOPE_UNSPECIFIED, policy.GetFixedScope(), method)
 			fixedMethods[method] = policy.GetFixedScope()
 		default:
 			require.Failf(t, "missing policy", "method %s has no authentication policy", method)
@@ -60,61 +60,61 @@ func TestRPCAuthPoliciesPinExceptionalMethods(t *testing.T) {
 	require.Equal(t, map[string]bool{
 		"/ledger.BucketService/Discovery": true,
 	}, publicMethods)
-	require.Equal(t, map[string]clusterpb.DynamicAuthResolver{
-		"/ledger.BucketService/Apply":               clusterpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_APPLY,
-		"/ledger.BucketService/GetIndex":            clusterpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_GET_INDEX,
-		"/ledger.BucketService/GetIndexEntryStatus": clusterpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_GET_INDEX_ENTRY_STATUS,
-		"/ledger.BucketService/ListIndexes":         clusterpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_LIST_INDEXES,
+	require.Equal(t, map[string]ledgerpb.DynamicAuthResolver{
+		"/ledger.BucketService/Apply":               ledgerpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_APPLY,
+		"/ledger.BucketService/GetIndex":            ledgerpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_GET_INDEX,
+		"/ledger.BucketService/GetIndexEntryStatus": ledgerpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_GET_INDEX_ENTRY_STATUS,
+		"/ledger.BucketService/ListIndexes":         ledgerpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_LIST_INDEXES,
 	}, dynamicMethods)
 	require.Equal(t, expectedFixedRPCAuthPolicies(), fixedMethods)
 }
 
-func expectedFixedRPCAuthPolicies() map[string]clusterpb.AuthScope {
-	return map[string]clusterpb.AuthScope{
-		"/cluster.ClusterService/AddLearner":                 clusterpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,
-		"/cluster.ClusterService/Backup":                     clusterpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,
-		"/cluster.ClusterService/CompactPrimary":             clusterpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,
-		"/cluster.ClusterService/CompactSecondary":           clusterpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,
-		"/cluster.ClusterService/CreateCheckpoint":           clusterpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,
-		"/cluster.ClusterService/GetClusterState":            clusterpb.AuthScope_AUTH_SCOPE_CLUSTER_READ,
-		"/cluster.ClusterService/GetDiskUsage":               clusterpb.AuthScope_AUTH_SCOPE_CLUSTER_READ,
-		"/cluster.ClusterService/GetNodeTime":                clusterpb.AuthScope_AUTH_SCOPE_CLUSTER_READ,
-		"/cluster.ClusterService/GetQueryCheckpointInfo":     clusterpb.AuthScope_AUTH_SCOPE_CLUSTER_READ,
-		"/cluster.ClusterService/GetQueryCheckpointSchedule": clusterpb.AuthScope_AUTH_SCOPE_CLUSTER_READ,
-		"/cluster.ClusterService/IncrementalBackup":          clusterpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,
-		"/cluster.ClusterService/ListQueryCheckpoints":       clusterpb.AuthScope_AUTH_SCOPE_CLUSTER_READ,
-		"/cluster.ClusterService/PromoteLearner":             clusterpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,
-		"/cluster.ClusterService/RemoveNode":                 clusterpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,
-		"/cluster.ClusterService/TransferLeadership":         clusterpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,
-		"/ledger.BucketService/AggregateVolumes":             clusterpb.AuthScope_AUTH_SCOPE_ACCOUNT_READ,
-		"/ledger.BucketService/AnalyzeAccounts":              clusterpb.AuthScope_AUTH_SCOPE_ACCOUNT_READ,
-		"/ledger.BucketService/AnalyzeTransactions":          clusterpb.AuthScope_AUTH_SCOPE_TRANSACTION_READ,
-		"/ledger.BucketService/Barrier":                      clusterpb.AuthScope_AUTH_SCOPE_OPS_READ,
-		"/ledger.BucketService/CheckStore":                   clusterpb.AuthScope_AUTH_SCOPE_OPS_READ,
-		"/ledger.BucketService/ExecutePreparedQuery":         clusterpb.AuthScope_AUTH_SCOPE_QUERY_READ,
-		"/ledger.BucketService/GetAccount":                   clusterpb.AuthScope_AUTH_SCOPE_ACCOUNT_READ,
-		"/ledger.BucketService/GetAuditEntry":                clusterpb.AuthScope_AUTH_SCOPE_AUDIT_READ,
-		"/ledger.BucketService/GetEventsSinks":               clusterpb.AuthScope_AUTH_SCOPE_OPS_READ,
-		"/ledger.BucketService/GetIndexStatus":               clusterpb.AuthScope_AUTH_SCOPE_OPS_READ,
-		"/ledger.BucketService/GetLedger":                    clusterpb.AuthScope_AUTH_SCOPE_LEDGER_READ,
-		"/ledger.BucketService/GetLedgerStats":               clusterpb.AuthScope_AUTH_SCOPE_LEDGER_READ,
-		"/ledger.BucketService/GetLog":                       clusterpb.AuthScope_AUTH_SCOPE_OPS_READ,
-		"/ledger.BucketService/GetMetadataSchemaStatus":      clusterpb.AuthScope_AUTH_SCOPE_ACCOUNT_READ,
-		"/ledger.BucketService/GetNumscript":                 clusterpb.AuthScope_AUTH_SCOPE_QUERY_READ,
-		"/ledger.BucketService/GetPrimaryMetrics":            clusterpb.AuthScope_AUTH_SCOPE_OPS_READ,
-		"/ledger.BucketService/GetSecondaryMetrics":          clusterpb.AuthScope_AUTH_SCOPE_OPS_READ,
-		"/ledger.BucketService/GetTemplateUsage":             clusterpb.AuthScope_AUTH_SCOPE_QUERY_READ,
-		"/ledger.BucketService/GetTransaction":               clusterpb.AuthScope_AUTH_SCOPE_TRANSACTION_READ,
-		"/ledger.BucketService/InspectIndex":                 clusterpb.AuthScope_AUTH_SCOPE_LEDGER_READ,
-		"/ledger.BucketService/ListAccounts":                 clusterpb.AuthScope_AUTH_SCOPE_ACCOUNT_READ,
-		"/ledger.BucketService/ListAuditEntries":             clusterpb.AuthScope_AUTH_SCOPE_AUDIT_READ,
-		"/ledger.BucketService/ListLedgers":                  clusterpb.AuthScope_AUTH_SCOPE_LEDGER_READ,
-		"/ledger.BucketService/ListLogs":                     clusterpb.AuthScope_AUTH_SCOPE_LEDGER_READ,
-		"/ledger.BucketService/ListNumscriptVersions":        clusterpb.AuthScope_AUTH_SCOPE_QUERY_READ,
-		"/ledger.BucketService/ListNumscripts":               clusterpb.AuthScope_AUTH_SCOPE_QUERY_READ,
-		"/ledger.BucketService/ListPreparedQueries":          clusterpb.AuthScope_AUTH_SCOPE_QUERY_READ,
-		"/ledger.BucketService/ListSigningKeys":              clusterpb.AuthScope_AUTH_SCOPE_OPS_READ,
-		"/ledger.BucketService/ListTransactions":             clusterpb.AuthScope_AUTH_SCOPE_TRANSACTION_READ,
+func expectedFixedRPCAuthPolicies() map[string]ledgerpb.AuthScope {
+	return map[string]ledgerpb.AuthScope{
+		"/cluster.ClusterService/AddLearner":                 ledgerpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,
+		"/cluster.ClusterService/Backup":                     ledgerpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,
+		"/cluster.ClusterService/CompactPrimary":             ledgerpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,
+		"/cluster.ClusterService/CompactSecondary":           ledgerpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,
+		"/cluster.ClusterService/CreateCheckpoint":           ledgerpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,
+		"/cluster.ClusterService/GetClusterState":            ledgerpb.AuthScope_AUTH_SCOPE_CLUSTER_READ,
+		"/cluster.ClusterService/GetDiskUsage":               ledgerpb.AuthScope_AUTH_SCOPE_CLUSTER_READ,
+		"/cluster.ClusterService/GetNodeTime":                ledgerpb.AuthScope_AUTH_SCOPE_CLUSTER_READ,
+		"/cluster.ClusterService/GetQueryCheckpointInfo":     ledgerpb.AuthScope_AUTH_SCOPE_CLUSTER_READ,
+		"/cluster.ClusterService/GetQueryCheckpointSchedule": ledgerpb.AuthScope_AUTH_SCOPE_CLUSTER_READ,
+		"/cluster.ClusterService/IncrementalBackup":          ledgerpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,
+		"/cluster.ClusterService/ListQueryCheckpoints":       ledgerpb.AuthScope_AUTH_SCOPE_CLUSTER_READ,
+		"/cluster.ClusterService/PromoteLearner":             ledgerpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,
+		"/cluster.ClusterService/RemoveNode":                 ledgerpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,
+		"/cluster.ClusterService/TransferLeadership":         ledgerpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE,
+		"/ledger.BucketService/AggregateVolumes":             ledgerpb.AuthScope_AUTH_SCOPE_ACCOUNT_READ,
+		"/ledger.BucketService/AnalyzeAccounts":              ledgerpb.AuthScope_AUTH_SCOPE_ACCOUNT_READ,
+		"/ledger.BucketService/AnalyzeTransactions":          ledgerpb.AuthScope_AUTH_SCOPE_TRANSACTION_READ,
+		"/ledger.BucketService/Barrier":                      ledgerpb.AuthScope_AUTH_SCOPE_OPS_READ,
+		"/ledger.BucketService/CheckStore":                   ledgerpb.AuthScope_AUTH_SCOPE_OPS_READ,
+		"/ledger.BucketService/ExecutePreparedQuery":         ledgerpb.AuthScope_AUTH_SCOPE_QUERY_READ,
+		"/ledger.BucketService/GetAccount":                   ledgerpb.AuthScope_AUTH_SCOPE_ACCOUNT_READ,
+		"/ledger.BucketService/GetAuditEntry":                ledgerpb.AuthScope_AUTH_SCOPE_AUDIT_READ,
+		"/ledger.BucketService/GetEventsSinks":               ledgerpb.AuthScope_AUTH_SCOPE_OPS_READ,
+		"/ledger.BucketService/GetIndexStatus":               ledgerpb.AuthScope_AUTH_SCOPE_OPS_READ,
+		"/ledger.BucketService/GetLedger":                    ledgerpb.AuthScope_AUTH_SCOPE_LEDGER_READ,
+		"/ledger.BucketService/GetLedgerStats":               ledgerpb.AuthScope_AUTH_SCOPE_LEDGER_READ,
+		"/ledger.BucketService/GetLog":                       ledgerpb.AuthScope_AUTH_SCOPE_OPS_READ,
+		"/ledger.BucketService/GetMetadataSchemaStatus":      ledgerpb.AuthScope_AUTH_SCOPE_ACCOUNT_READ,
+		"/ledger.BucketService/GetNumscript":                 ledgerpb.AuthScope_AUTH_SCOPE_QUERY_READ,
+		"/ledger.BucketService/GetPrimaryMetrics":            ledgerpb.AuthScope_AUTH_SCOPE_OPS_READ,
+		"/ledger.BucketService/GetSecondaryMetrics":          ledgerpb.AuthScope_AUTH_SCOPE_OPS_READ,
+		"/ledger.BucketService/GetTemplateUsage":             ledgerpb.AuthScope_AUTH_SCOPE_QUERY_READ,
+		"/ledger.BucketService/GetTransaction":               ledgerpb.AuthScope_AUTH_SCOPE_TRANSACTION_READ,
+		"/ledger.BucketService/InspectIndex":                 ledgerpb.AuthScope_AUTH_SCOPE_LEDGER_READ,
+		"/ledger.BucketService/ListAccounts":                 ledgerpb.AuthScope_AUTH_SCOPE_ACCOUNT_READ,
+		"/ledger.BucketService/ListAuditEntries":             ledgerpb.AuthScope_AUTH_SCOPE_AUDIT_READ,
+		"/ledger.BucketService/ListLedgers":                  ledgerpb.AuthScope_AUTH_SCOPE_LEDGER_READ,
+		"/ledger.BucketService/ListLogs":                     ledgerpb.AuthScope_AUTH_SCOPE_LEDGER_READ,
+		"/ledger.BucketService/ListNumscriptVersions":        ledgerpb.AuthScope_AUTH_SCOPE_QUERY_READ,
+		"/ledger.BucketService/ListNumscripts":               ledgerpb.AuthScope_AUTH_SCOPE_QUERY_READ,
+		"/ledger.BucketService/ListPreparedQueries":          ledgerpb.AuthScope_AUTH_SCOPE_QUERY_READ,
+		"/ledger.BucketService/ListSigningKeys":              ledgerpb.AuthScope_AUTH_SCOPE_OPS_READ,
+		"/ledger.BucketService/ListTransactions":             ledgerpb.AuthScope_AUTH_SCOPE_TRANSACTION_READ,
 	}
 }
 

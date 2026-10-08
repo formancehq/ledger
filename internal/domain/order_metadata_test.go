@@ -5,17 +5,17 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
 func TestValidateOrderMetadataMirrorVariants(t *testing.T) {
 	t.Parallel()
-	invalid := map[string]*commonpb.MetadataValue{"k": commonpb.NewStringValue("bad\x00value")}
+	invalid := map[string]*ledgerpb.MetadataValue{"k": ledgerpb.NewStringValue("bad\x00value")}
 	for name, entry := range map[string]*raftcmdpb.MirrorLogEntry{
 		"created transaction":  {Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{Metadata: invalid}}},
-		"created account":      {Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{AccountMetadata: map[string]*commonpb.MetadataMap{"account": {Values: invalid}}}}},
+		"created account":      {Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{AccountMetadata: map[string]*ledgerpb.MetadataMap{"account": {Values: invalid}}}}},
 		"reverted transaction": {Data: &raftcmdpb.MirrorLogEntry_RevertedTransaction{RevertedTransaction: &raftcmdpb.MirrorRevertedTransaction{Metadata: invalid}}},
 		"saved":                {Data: &raftcmdpb.MirrorLogEntry_SavedMetadata{SavedMetadata: &raftcmdpb.MirrorSavedMetadata{Metadata: invalid}}},
 		"deleted":              {Data: &raftcmdpb.MirrorLogEntry_DeletedMetadata{DeletedMetadata: &raftcmdpb.MirrorDeletedMetadata{Key: "bad\x00key"}}},
@@ -37,9 +37,9 @@ func TestValidateOrderMetadataMirrorVariants(t *testing.T) {
 
 func TestValidateOrderMetadataDeterministicAccountAndKey(t *testing.T) {
 	t.Parallel()
-	metadata := map[string]*commonpb.MetadataMap{
-		"z": {Values: map[string]*commonpb.MetadataValue{"z": commonpb.NewStringValue("\x00")}},
-		"a": {Values: map[string]*commonpb.MetadataValue{"z": commonpb.NewStringValue("\x00"), "a": commonpb.NewStringValue("\x00")}},
+	metadata := map[string]*ledgerpb.MetadataMap{
+		"z": {Values: map[string]*ledgerpb.MetadataValue{"z": ledgerpb.NewStringValue("\x00")}},
+		"a": {Values: map[string]*ledgerpb.MetadataValue{"z": ledgerpb.NewStringValue("\x00"), "a": ledgerpb.NewStringValue("\x00")}},
 	}
 	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{AccountMetadata: metadata}}}}}}}}
 	for range 50 {
@@ -56,7 +56,7 @@ func TestValidateOrderMetadataDeterministicAccountAndKey(t *testing.T) {
 func TestValidateCommandMetadataCountsMapsAndBareKeys(t *testing.T) {
 	t.Parallel()
 	orders := []*raftcmdpb.Order{
-		{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_SaveLedgerMetadata{SaveLedgerMetadata: &raftcmdpb.SaveLedgerMetadataOrder{Metadata: map[string]*commonpb.MetadataValue{"key": commonpb.NewStringValue("value")}}}}}},
+		{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_SaveLedgerMetadata{SaveLedgerMetadata: &raftcmdpb.SaveLedgerMetadataOrder{Metadata: map[string]*ledgerpb.MetadataValue{"key": ledgerpb.NewStringValue("value")}}}}}},
 		{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{Data: &raftcmdpb.MirrorLogEntry_DeletedMetadata{DeletedMetadata: &raftcmdpb.MirrorDeletedMetadata{Key: "bare"}}}}}}}},
 	}
 	limits := MetadataLimits{MaxEntriesPerEntity: 2, MaxKeyBytes: 4, MaxValueBytes: 5, MaxTotalBytesPerEntity: 8, MaxTotalBytesPerCommand: 12}

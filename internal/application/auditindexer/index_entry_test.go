@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -25,21 +25,21 @@ func mustOrderBytes(t *testing.T, o *raftcmdpb.Order) []byte {
 func TestAppendEntryKeys(t *testing.T) {
 	t.Parallel()
 
-	entry := &auditpb.AuditEntry{
+	entry := &ledgerpb.AuditEntry{
 		Sequence:   9,
 		ProposalId: 3,
-		Timestamp:  &auditpb.Timestamp{Data: 1_000_000}, // 1 second in HLC micros
-		Outcome:    &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
+		Timestamp:  &ledgerpb.Timestamp{Data: 1_000_000}, // 1 second in HLC micros
+		Outcome:    &ledgerpb.AuditEntry_Success{Success: &ledgerpb.AuditSuccess{}},
 		Ledgers:    []string{"a", "b"},
-		CallerSnapshot: &auditpb.CallerSnapshot{Principal: &auditpb.CallerSnapshot_Authenticated{
-			Authenticated: &auditpb.AuthenticatedCaller{Identity: &auditpb.CallerIdentity{Subject: "alice"}},
+		CallerSnapshot: &ledgerpb.CallerSnapshot{Principal: &ledgerpb.CallerSnapshot_Authenticated{
+			Authenticated: &ledgerpb.AuthenticatedCaller{Identity: &ledgerpb.CallerIdentity{Subject: "alice"}},
 		}},
-		Idempotency: &auditpb.Idempotency{Key: "retry-1"},
+		Idempotency: &ledgerpb.Idempotency{Key: "retry-1"},
 	}
 	createTx := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{
 		LedgerScoped: &raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 			Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{}}}}}}
-	items := []*auditpb.AuditItem{
+	items := []*ledgerpb.AuditItem{
 		{OrderIndex: 0, LogSequence: 100, SerializedOrder: mustOrderBytes(t, createTx)},
 		{OrderIndex: 1, LogSequence: 0},
 	}
@@ -76,11 +76,11 @@ func TestAppendEntryKeys(t *testing.T) {
 func TestAppendEntryKeysFailureNilCaller(t *testing.T) {
 	t.Parallel()
 
-	entry := &auditpb.AuditEntry{
+	entry := &ledgerpb.AuditEntry{
 		Sequence:   2,
 		ProposalId: 1,
-		Timestamp:  &auditpb.Timestamp{Data: 1_000_000},
-		Outcome:    &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{}},
+		Timestamp:  &ledgerpb.Timestamp{Data: 1_000_000},
+		Outcome:    &ledgerpb.AuditEntry_Failure{Failure: &ledgerpb.AuditFailure{}},
 		Ledgers:    []string{"x"},
 	}
 
@@ -102,10 +102,10 @@ func TestAppendEntryKeysPropagatesIdempotencyIndexWriteError(t *testing.T) {
 	t.Parallel()
 
 	want := errors.New("write failed")
-	entry := &auditpb.AuditEntry{
+	entry := &ledgerpb.AuditEntry{
 		Sequence: 1, ProposalId: 1,
-		Outcome:     &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
-		Idempotency: &auditpb.Idempotency{Key: "retry-1"},
+		Outcome:     &ledgerpb.AuditEntry_Success{Success: &ledgerpb.AuditSuccess{}},
+		Idempotency: &ledgerpb.Idempotency{Key: "retry-1"},
 	}
 	err := appendEntryKeys(dal.NewKeyBuilder(), func(key []byte) error {
 		if key[2] == readstore.AuditFieldIdempotencyKey {

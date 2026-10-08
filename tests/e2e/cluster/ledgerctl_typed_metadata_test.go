@@ -11,7 +11,7 @@ import (
 	"os"
 	"time"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/accounts"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/ledgers"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/transactions"
@@ -122,7 +122,7 @@ func runCLIJSON(grpcPort int, dest any, args ...string) error {
 var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 	var (
 		ctx    context.Context
-		client commonpb.BucketServiceClient
+		client ledgerpb.BucketServiceClient
 		node   *testutil.ServiceWithClient
 	)
 
@@ -148,18 +148,18 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		})
 
 		It("Should have the schema visible via gRPC GetMetadataSchemaStatus", func() {
-			resp, err := client.GetMetadataSchemaStatus(ctx, &commonpb.GetMetadataSchemaStatusRequest{
+			resp, err := client.GetMetadataSchemaStatus(ctx, &ledgerpb.GetMetadataSchemaStatusRequest{
 				Ledger: ledgerName,
 			})
 			Expect(err).To(Succeed())
 
 			Expect(resp.AccountFields).To(HaveKey("age"))
-			Expect(resp.AccountFields["age"].DeclaredType).To(Equal(commonpb.MetadataType_METADATA_TYPE_INT64))
+			Expect(resp.AccountFields["age"].DeclaredType).To(Equal(ledgerpb.MetadataType_METADATA_TYPE_INT64))
 			Expect(resp.AccountFields).To(HaveKey("active"))
-			Expect(resp.AccountFields["active"].DeclaredType).To(Equal(commonpb.MetadataType_METADATA_TYPE_BOOL))
+			Expect(resp.AccountFields["active"].DeclaredType).To(Equal(ledgerpb.MetadataType_METADATA_TYPE_BOOL))
 
 			Expect(resp.TransactionFields).To(HaveKey("priority"))
-			Expect(resp.TransactionFields["priority"].DeclaredType).To(Equal(commonpb.MetadataType_METADATA_TYPE_UINT64))
+			Expect(resp.TransactionFields["priority"].DeclaredType).To(Equal(ledgerpb.MetadataType_METADATA_TYPE_UINT64))
 		})
 
 		It("Should show the schema in ledgers get --json", func() {
@@ -184,7 +184,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		const ledgerName = "cli-set-type"
 
 		BeforeAll(func() {
-			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -200,12 +200,12 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		})
 
 		It("Should verify the type was set via gRPC", func() {
-			resp, err := client.GetMetadataSchemaStatus(ctx, &commonpb.GetMetadataSchemaStatusRequest{
+			resp, err := client.GetMetadataSchemaStatus(ctx, &ledgerpb.GetMetadataSchemaStatusRequest{
 				Ledger: ledgerName,
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.AccountFields).To(HaveKey("score"))
-			Expect(resp.AccountFields["score"].DeclaredType).To(Equal(commonpb.MetadataType_METADATA_TYPE_INT64))
+			Expect(resp.AccountFields["score"].DeclaredType).To(Equal(ledgerpb.MetadataType_METADATA_TYPE_INT64))
 		})
 
 		It("Should set a transaction field type via CLI", func() {
@@ -220,13 +220,13 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		})
 
 		It("Should verify both field types are present", func() {
-			resp, err := client.GetMetadataSchemaStatus(ctx, &commonpb.GetMetadataSchemaStatusRequest{
+			resp, err := client.GetMetadataSchemaStatus(ctx, &ledgerpb.GetMetadataSchemaStatusRequest{
 				Ledger: ledgerName,
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.AccountFields).To(HaveKey("score"))
 			Expect(resp.TransactionFields).To(HaveKey("category"))
-			Expect(resp.TransactionFields["category"].DeclaredType).To(Equal(commonpb.MetadataType_METADATA_TYPE_STRING))
+			Expect(resp.TransactionFields["category"].DeclaredType).To(Equal(ledgerpb.MetadataType_METADATA_TYPE_STRING))
 		})
 	})
 
@@ -234,16 +234,16 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		const ledgerName = "cli-rm-type"
 
 		BeforeAll(func() {
-			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*ledgerpb.SetMetadataFieldTypeCommand{
 				{
-					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "temp_field",
-					Type:       commonpb.MetadataType_METADATA_TYPE_BOOL,
+					Type:       ledgerpb.MetadataType_METADATA_TYPE_BOOL,
 				},
 				{
-					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "keep_field",
-					Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+					Type:       ledgerpb.MetadataType_METADATA_TYPE_INT64,
 				},
 			})))
 			Expect(err).To(Succeed())
@@ -263,13 +263,13 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		It("Should verify the field was removed but the other remains", func() {
 			// Poll the declaration read until the removal is visible.
 			Eventually(func(g Gomega) {
-				resp, err := client.GetMetadataSchemaStatus(ctx, &commonpb.GetMetadataSchemaStatusRequest{
+				resp, err := client.GetMetadataSchemaStatus(ctx, &ledgerpb.GetMetadataSchemaStatusRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(resp.AccountFields).NotTo(HaveKey("temp_field"))
 				g.Expect(resp.AccountFields).To(HaveKey("keep_field"))
-				g.Expect(resp.AccountFields["keep_field"].DeclaredType).To(Equal(commonpb.MetadataType_METADATA_TYPE_INT64))
+				g.Expect(resp.AccountFields["keep_field"].DeclaredType).To(Equal(ledgerpb.MetadataType_METADATA_TYPE_INT64))
 			}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
@@ -278,16 +278,16 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		const ledgerName = "cli-get-schema"
 
 		BeforeAll(func() {
-			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*ledgerpb.SetMetadataFieldTypeCommand{
 				{
-					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "verified",
-					Type:       commonpb.MetadataType_METADATA_TYPE_BOOL,
+					Type:       ledgerpb.MetadataType_METADATA_TYPE_BOOL,
 				},
 				{
-					TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+					TargetType: ledgerpb.TargetType_TARGET_TYPE_TRANSACTION,
 					Key:        "amount_cents",
-					Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+					Type:       ledgerpb.MetadataType_METADATA_TYPE_INT64,
 				},
 			})))
 			Expect(err).To(Succeed())
@@ -300,23 +300,23 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		})
 
 		It("Should return correct schema in JSON mode", func() {
-			var resp commonpb.GetMetadataSchemaStatusResponse
+			var resp ledgerpb.GetMetadataSchemaStatusResponse
 			err := runCLIJSON(node.GRPCPort, &resp, "ledgers", "get-schema", ledgerName, "--json")
 			Expect(err).To(Succeed())
 
 			Expect(resp.AccountFields).To(HaveKey("verified"))
-			Expect(resp.AccountFields["verified"].DeclaredType).To(Equal(commonpb.MetadataType_METADATA_TYPE_BOOL))
+			Expect(resp.AccountFields["verified"].DeclaredType).To(Equal(ledgerpb.MetadataType_METADATA_TYPE_BOOL))
 
 			Expect(resp.TransactionFields).To(HaveKey("amount_cents"))
-			Expect(resp.TransactionFields["amount_cents"].DeclaredType).To(Equal(commonpb.MetadataType_METADATA_TYPE_INT64))
+			Expect(resp.TransactionFields["amount_cents"].DeclaredType).To(Equal(ledgerpb.MetadataType_METADATA_TYPE_INT64))
 		})
 
 		It("Should show empty schema for a ledger without schema", func() {
 			const emptyLedger = "cli-get-schema-empty"
-			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(emptyLedger, nil)))
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(emptyLedger, nil)))
 			Expect(err).To(Succeed())
 
-			var resp commonpb.GetMetadataSchemaStatusResponse
+			var resp ledgerpb.GetMetadataSchemaStatusResponse
 			err = runCLIJSON(node.GRPCPort, &resp, "ledgers", "get-schema", emptyLedger, "--json")
 			Expect(err).To(Succeed())
 			Expect(resp.AccountFields).To(BeEmpty())
@@ -349,7 +349,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		})
 
 		It("Should show all three account fields in get-schema --json", func() {
-			var resp commonpb.GetMetadataSchemaStatusResponse
+			var resp ledgerpb.GetMetadataSchemaStatusResponse
 			err := runCLIJSON(node.GRPCPort, &resp, "ledgers", "get-schema", ledgerName, "--json")
 			Expect(err).To(Succeed())
 
@@ -360,14 +360,14 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		})
 
 		It("Should accept typed metadata writes and surface raw client values", func() {
-			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "user1", map[string]string{
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "user1", map[string]string{
 				"age":    "25",
 				"active": "true",
 				"score":  "100",
 			})))
 			Expect(err).To(Succeed())
 
-			account, err := client.GetAccount(ctx, &commonpb.GetAccountRequest{
+			account, err := client.GetAccount(ctx, &ledgerpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "user1",
 			})
@@ -378,7 +378,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 			for _, key := range []string{"age", "active", "score"} {
 				v := actions.FindMetadataValue(account.Metadata, key)
 				Expect(v).NotTo(BeNil(), "missing %s", key)
-				_, ok := v.Type.(*commonpb.MetadataValue_StringValue)
+				_, ok := v.Type.(*ledgerpb.MetadataValue_StringValue)
 				Expect(ok).To(BeTrue(), "expected string_value for %s, got %T", key, v.Type)
 			}
 		})
@@ -395,7 +395,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		})
 
 		It("Should show only two fields after removal", func() {
-			var resp commonpb.GetMetadataSchemaStatusResponse
+			var resp ledgerpb.GetMetadataSchemaStatusResponse
 			err := runCLIJSON(node.GRPCPort, &resp, "ledgers", "get-schema", ledgerName, "--json")
 			Expect(err).To(Succeed())
 
@@ -471,24 +471,24 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		const ledgerName = "cli-all-types"
 
 		BeforeAll(func() {
-			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
 		allTypes := []struct {
 			typeName string
-			expected commonpb.MetadataType
+			expected ledgerpb.MetadataType
 		}{
-			{"string", commonpb.MetadataType_METADATA_TYPE_STRING},
-			{"int64", commonpb.MetadataType_METADATA_TYPE_INT64},
-			{"bool", commonpb.MetadataType_METADATA_TYPE_BOOL},
-			{"uint64", commonpb.MetadataType_METADATA_TYPE_UINT64},
-			{"int8", commonpb.MetadataType_METADATA_TYPE_INT8},
-			{"int16", commonpb.MetadataType_METADATA_TYPE_INT16},
-			{"int32", commonpb.MetadataType_METADATA_TYPE_INT32},
-			{"uint8", commonpb.MetadataType_METADATA_TYPE_UINT8},
-			{"uint16", commonpb.MetadataType_METADATA_TYPE_UINT16},
-			{"uint32", commonpb.MetadataType_METADATA_TYPE_UINT32},
+			{"string", ledgerpb.MetadataType_METADATA_TYPE_STRING},
+			{"int64", ledgerpb.MetadataType_METADATA_TYPE_INT64},
+			{"bool", ledgerpb.MetadataType_METADATA_TYPE_BOOL},
+			{"uint64", ledgerpb.MetadataType_METADATA_TYPE_UINT64},
+			{"int8", ledgerpb.MetadataType_METADATA_TYPE_INT8},
+			{"int16", ledgerpb.MetadataType_METADATA_TYPE_INT16},
+			{"int32", ledgerpb.MetadataType_METADATA_TYPE_INT32},
+			{"uint8", ledgerpb.MetadataType_METADATA_TYPE_UINT8},
+			{"uint16", ledgerpb.MetadataType_METADATA_TYPE_UINT16},
+			{"uint32", ledgerpb.MetadataType_METADATA_TYPE_UINT32},
 		}
 
 		It("Should set all metadata types via CLI and verify each", func() {
@@ -507,7 +507,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 			}
 
 			By("Verifying all types via get-schema", func() {
-				var resp commonpb.GetMetadataSchemaStatusResponse
+				var resp ledgerpb.GetMetadataSchemaStatusResponse
 				err := runCLIJSON(node.GRPCPort, &resp, "ledgers", "get-schema", ledgerName, "--json")
 				Expect(err).To(Succeed())
 
@@ -526,11 +526,11 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		const ledgerName = "cli-existing-metadata"
 
 		BeforeAll(func() {
-			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// Write untyped metadata before schema exists
-			_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "user1", map[string]string{"score": "42"}),
+			_, err = client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "user1", map[string]string{"score": "42"}),
 				actions.SaveAccountMetadataAction(ledgerName, "user2", map[string]string{"score": "99"})))
 			Expect(err).To(Succeed())
 		})
@@ -548,7 +548,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 
 		It("Should expose the declaration via get-schema --json", func() {
 			Eventually(func(g Gomega) {
-				var resp commonpb.GetMetadataSchemaStatusResponse
+				var resp ledgerpb.GetMetadataSchemaStatusResponse
 				err := runCLIJSON(node.GRPCPort, &resp, "ledgers", "get-schema", ledgerName, "--json")
 				g.Expect(err).To(Succeed())
 				g.Expect(resp.AccountFields).To(HaveKey("score"))
@@ -557,7 +557,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 
 		It("Should preserve existing raw string values", func() {
 			for _, addr := range []string{"user1", "user2"} {
-				account, err := client.GetAccount(ctx, &commonpb.GetAccountRequest{
+				account, err := client.GetAccount(ctx, &ledgerpb.GetAccountRequest{
 					Ledger:  ledgerName,
 					Address: addr,
 				})
@@ -565,7 +565,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 
 				v := actions.FindMetadataValue(account.Metadata, "score")
 				Expect(v).NotTo(BeNil())
-				_, ok := v.Type.(*commonpb.MetadataValue_StringValue)
+				_, ok := v.Type.(*ledgerpb.MetadataValue_StringValue)
 				Expect(ok).To(BeTrue(), "expected string_value for %s score, got %T", addr, v.Type)
 			}
 		})
@@ -575,11 +575,11 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		const ledgerName = "cli-aliases"
 
 		BeforeAll(func() {
-			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			_, err := client.Apply(ctx, ledgerpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*ledgerpb.SetMetadataFieldTypeCommand{
 				{
-					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "test_field",
-					Type:       commonpb.MetadataType_METADATA_TYPE_BOOL,
+					Type:       ledgerpb.MetadataType_METADATA_TYPE_BOOL,
 				},
 			})))
 			Expect(err).To(Succeed())
@@ -595,7 +595,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 			)
 			Expect(err).To(Succeed())
 
-			resp, err := client.GetMetadataSchemaStatus(ctx, &commonpb.GetMetadataSchemaStatusRequest{
+			resp, err := client.GetMetadataSchemaStatus(ctx, &ledgerpb.GetMetadataSchemaStatusRequest{
 				Ledger: ledgerName,
 			})
 			Expect(err).To(Succeed())
@@ -612,7 +612,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 			)
 			Expect(err).To(Succeed())
 
-			resp, err := client.GetMetadataSchemaStatus(ctx, &commonpb.GetMetadataSchemaStatusRequest{
+			resp, err := client.GetMetadataSchemaStatus(ctx, &ledgerpb.GetMetadataSchemaStatusRequest{
 				Ledger: ledgerName,
 			})
 			Expect(err).To(Succeed())
@@ -620,7 +620,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		})
 
 		It("Should work with 'schema' alias for get-schema", func() {
-			var resp commonpb.GetMetadataSchemaStatusResponse
+			var resp ledgerpb.GetMetadataSchemaStatusResponse
 			err := runCLIJSON(node.GRPCPort, &resp, "ledgers", "schema", ledgerName, "--json")
 			Expect(err).To(Succeed())
 			Expect(resp.AccountFields).To(HaveKey("alias_field"))

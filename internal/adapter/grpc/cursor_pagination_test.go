@@ -7,7 +7,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
@@ -191,14 +191,14 @@ func TestValidateListOptions(t *testing.T) {
 
 	t.Run("filter not supported → InvalidArgument", func(t *testing.T) {
 		t.Parallel()
-		err := ValidateListOptions(&commonpb.ListOptions{Filter: &commonpb.QueryFilter{}}, none)
+		err := ValidateListOptions(&ledgerpb.ListOptions{Filter: &ledgerpb.QueryFilter{}}, none)
 		require.Error(t, err)
 		require.Equal(t, codes.InvalidArgument, status.Code(err))
 	})
 
 	t.Run("reverse not supported → InvalidArgument", func(t *testing.T) {
 		t.Parallel()
-		err := ValidateListOptions(&commonpb.ListOptions{Reverse: true}, none)
+		err := ValidateListOptions(&ledgerpb.ListOptions{Reverse: true}, none)
 		require.Error(t, err)
 		require.Equal(t, codes.InvalidArgument, status.Code(err))
 	})
@@ -206,7 +206,7 @@ func TestValidateListOptions(t *testing.T) {
 	t.Run("checkpoint_id not supported → InvalidArgument", func(t *testing.T) {
 		t.Parallel()
 		err := ValidateListOptions(
-			&commonpb.ListOptions{Read: &commonpb.ReadOptions{CheckpointId: 42}},
+			&ledgerpb.ListOptions{Read: &ledgerpb.ReadOptions{CheckpointId: 42}},
 			none,
 		)
 		require.Error(t, err)
@@ -215,10 +215,10 @@ func TestValidateListOptions(t *testing.T) {
 
 	t.Run("everything supported → no error even with all fields set", func(t *testing.T) {
 		t.Parallel()
-		err := ValidateListOptions(&commonpb.ListOptions{
-			Filter:  &commonpb.QueryFilter{},
+		err := ValidateListOptions(&ledgerpb.ListOptions{
+			Filter:  &ledgerpb.QueryFilter{},
 			Reverse: true,
-			Read:    &commonpb.ReadOptions{CheckpointId: 42},
+			Read:    &ledgerpb.ReadOptions{CheckpointId: 42},
 		}, full)
 		require.NoError(t, err)
 	})

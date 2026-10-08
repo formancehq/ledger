@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -22,11 +22,11 @@ func TestKeyStoreTombstone_Gen0Only(t *testing.T) {
 	require.NoError(t, err)
 
 	ac := c.LedgerMetadata
-	ks := attributes.NewKeyStore[domain.LedgerMetadataKey, *commonpb.MetadataValue](ac)
+	ks := attributes.NewKeyStore[domain.LedgerMetadataKey, *ledgerpb.MetadataValue](ac)
 
 	canonical := domain.LedgerMetadataKey{LedgerName: "l", Key: "k"}.Bytes()
 
-	_, idWithTag, err := ks.Put(canonical, commonpb.NewStringValue("v"))
+	_, idWithTag, err := ks.Put(canonical, ledgerpb.NewStringValue("v"))
 	require.NoError(t, err)
 
 	id := idWithTag.ID
@@ -63,11 +63,11 @@ func TestKeyStoreTombstone_LazyPromoteFromGen1(t *testing.T) {
 	require.NoError(t, err)
 
 	ac := c.LedgerMetadata
-	ks := attributes.NewKeyStore[domain.LedgerMetadataKey, *commonpb.MetadataValue](ac)
+	ks := attributes.NewKeyStore[domain.LedgerMetadataKey, *ledgerpb.MetadataValue](ac)
 
 	canonical := domain.LedgerMetadataKey{LedgerName: "l", Key: "k"}.Bytes()
 
-	_, idWithTag, err := ks.Put(canonical, commonpb.NewStringValue("v"))
+	_, idWithTag, err := ks.Put(canonical, ledgerpb.NewStringValue("v"))
 	require.NoError(t, err)
 
 	id := idWithTag.ID
@@ -109,7 +109,7 @@ func TestKeyStoreTombstone_AbsentReturnsNotFound(t *testing.T) {
 	require.NoError(t, err)
 
 	ac := c.LedgerMetadata
-	ks := attributes.NewKeyStore[domain.LedgerMetadataKey, *commonpb.MetadataValue](ac)
+	ks := attributes.NewKeyStore[domain.LedgerMetadataKey, *ledgerpb.MetadataValue](ac)
 
 	canonical := domain.LedgerMetadataKey{LedgerName: "l", Key: "k"}.Bytes()
 

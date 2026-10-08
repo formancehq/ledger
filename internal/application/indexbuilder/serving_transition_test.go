@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	metricnoop "go.opentelemetry.io/otel/metric/noop"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -134,13 +134,13 @@ func TestCompleteBackfill_PromotionSurvivesAKill(t *testing.T) {
 
 	b, _ := newKillableTestBuilder(t)
 
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "grade")
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "grade")
 	canonical := indexes.Canonical(id)
 
 	seedFlushedVersionState(t, b, canonical, readstore.IndexVersionState{
 		PendingVersion:      1,
 		HighWater:           1,
-		PendingType:         commonpb.MetadataType_METADATA_TYPE_INT64,
+		PendingType:         ledgerpb.MetadataType_METADATA_TYPE_INT64,
 		PendingTypeDeclared: true,
 	})
 
@@ -152,7 +152,7 @@ func TestCompleteBackfill_PromotionSurvivesAKill(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, present)
 	assert.Equal(t, uint32(1), state.CurrentVersion, "a kill right after completeBackfill must keep the promotion")
-	assert.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, state.CurrentType)
+	assert.Equal(t, ledgerpb.MetadataType_METADATA_TYPE_INT64, state.CurrentType)
 }
 
 func TestScanCompleteSwitch_PromotionSurvivesAKill(t *testing.T) {
@@ -160,7 +160,7 @@ func TestScanCompleteSwitch_PromotionSurvivesAKill(t *testing.T) {
 
 	b, _ := newKillableTestBuilder(t)
 
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "grade")
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "grade")
 	canonical := indexes.Canonical(id)
 	task := seedRetypeInFlight(t, b, canonical)
 	task.scanComplete = true
@@ -175,7 +175,7 @@ func TestScanCompleteSwitch_PromotionSurvivesAKill(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, present)
 	assert.Equal(t, uint32(2), state.CurrentVersion, "a kill right after the deferred switch must keep the promotion")
-	assert.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT8, state.CurrentType)
+	assert.Equal(t, ledgerpb.MetadataType_METADATA_TYPE_INT8, state.CurrentType)
 	assert.Zero(t, state.PendingVersion)
 	assert.Equal(t, uint32(1), state.PreviousVersion, "the retirement that followed is not flushed, so the image still retains v1")
 }
@@ -190,19 +190,19 @@ func seedRetypeInFlight(t *testing.T, b *Builder, canonical string) *schemaRewri
 		CurrentVersion:      1,
 		PendingVersion:      2,
 		HighWater:           2,
-		CurrentType:         commonpb.MetadataType_METADATA_TYPE_INT32,
+		CurrentType:         ledgerpb.MetadataType_METADATA_TYPE_INT32,
 		CurrentTypeDeclared: true,
-		PendingType:         commonpb.MetadataType_METADATA_TYPE_INT8,
+		PendingType:         ledgerpb.MetadataType_METADATA_TYPE_INT8,
 		PendingTypeDeclared: true,
 	})
 	seedRewriteSequence(t, b, 5)
 
 	return &schemaRewriteTask{
 		ledger:             servingTestLedger,
-		targetType:         commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		targetType:         ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 		key:                "grade",
-		toType:             commonpb.MetadataType_METADATA_TYPE_INT8,
-		bbKey:              schemaRewriteBBKey(servingTestLedger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "grade"),
+		toType:             ledgerpb.MetadataType_METADATA_TYPE_INT8,
+		bbKey:              schemaRewriteBBKey(servingTestLedger, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "grade"),
 		requiredIndexedSeq: 5,
 	}
 }
@@ -216,7 +216,7 @@ func TestSchemaRewriteImmediateSwitch_PromotionSurvivesAKill(t *testing.T) {
 
 	b, _ := newKillableTestBuilder(t)
 
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "grade")
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "grade")
 	canonical := indexes.Canonical(id)
 	task := seedRetypeInFlight(t, b, canonical)
 	task.requiredIndexedSeq = 0
@@ -232,7 +232,7 @@ func TestSchemaRewriteImmediateSwitch_PromotionSurvivesAKill(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, present)
 	assert.Equal(t, uint32(2), state.CurrentVersion, "a kill right after the immediate switch must keep the promotion")
-	assert.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT8, state.CurrentType)
+	assert.Equal(t, ledgerpb.MetadataType_METADATA_TYPE_INT8, state.CurrentType)
 	assert.Equal(t, uint32(1), state.PreviousVersion, "the retirement that followed is not flushed, so the image still retains v1")
 }
 
@@ -270,7 +270,7 @@ func TestScanCompleteSwitch_FlushFailureKeepsThePromotionRefused(t *testing.T) {
 
 	b, gate := newKillableTestBuilder(t)
 
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "grade")
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "grade")
 	canonical := indexes.Canonical(id)
 	task := seedRetypeInFlight(t, b, canonical)
 	task.scanComplete = true
@@ -283,7 +283,7 @@ func TestScanCompleteSwitch_FlushFailureKeepsThePromotionRefused(t *testing.T) {
 
 	resolved := resolveAt(t, b, canonical, 5)
 	assert.Equal(t, uint32(1), resolved.Version, "while the promotion is unflushed readers are served from the retained version")
-	assert.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT32, resolved.Type, "under its own binding")
+	assert.Equal(t, ledgerpb.MetadataType_METADATA_TYPE_INT32, resolved.Type, "under its own binding")
 
 	state, _ := b.versionStateFor(servingTestLedger, canonical)
 	assert.Equal(t, uint32(1), state.PreviousVersion, "the retained version is not retired while the promotion is unflushed")
@@ -301,7 +301,7 @@ func TestSchemaRewriteImmediateSwitch_FlushFailureKeepsThePromotionRefused(t *te
 
 	b, gate := newKillableTestBuilder(t)
 
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "grade")
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "grade")
 	canonical := indexes.Canonical(id)
 	task := seedRetypeInFlight(t, b, canonical)
 	task.requiredIndexedSeq = 0
@@ -321,13 +321,13 @@ func TestCompleteBackfill_FlushFailureKeepsThePromotionRefused(t *testing.T) {
 
 	b, gate := newKillableTestBuilder(t)
 
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "grade")
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "grade")
 	canonical := indexes.Canonical(id)
 
 	seedFlushedVersionState(t, b, canonical, readstore.IndexVersionState{
 		PendingVersion:      2,
 		HighWater:           2,
-		PendingType:         commonpb.MetadataType_METADATA_TYPE_INT8,
+		PendingType:         ledgerpb.MetadataType_METADATA_TYPE_INT8,
 		PendingTypeDeclared: true,
 	})
 
@@ -375,7 +375,7 @@ func TestSchemaRewriteSwitch_RetainsThenRetiresTheReplacedVersion(t *testing.T) 
 
 	b, _ := newKillableTestBuilder(t)
 
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "grade")
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "grade")
 	canonical := indexes.Canonical(id)
 	task := seedRetypeInFlight(t, b, canonical)
 	task.scanComplete = true
@@ -390,7 +390,7 @@ func TestSchemaRewriteSwitch_RetainsThenRetiresTheReplacedVersion(t *testing.T) 
 	state, _ := b.versionStateFor(servingTestLedger, canonical)
 	assert.Equal(t, uint32(2), state.CurrentVersion)
 	assert.Equal(t, uint32(1), state.PreviousVersion)
-	assert.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT32, state.PreviousType)
+	assert.Equal(t, ledgerpb.MetadataType_METADATA_TYPE_INT32, state.PreviousType)
 	assert.Equal(t, uint64(5), state.PreviousValidThrough, "the fold cursor at the switch")
 	assert.True(t, rowPresent(), "v1's keyspace survives the switch: a lease reserved below the activation holds it")
 
@@ -424,7 +424,7 @@ func TestSchemaRewriteSwitch_DefersWhileAnEarlierVersionIsRetained(t *testing.T)
 
 	b, _ := newKillableTestBuilder(t)
 
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "grade")
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "grade")
 	canonical := indexes.Canonical(id)
 	task := seedRetypeInFlight(t, b, canonical)
 	task.scanComplete = true
@@ -438,11 +438,11 @@ func TestSchemaRewriteSwitch_DefersWhileAnEarlierVersionIsRetained(t *testing.T)
 
 	retained, _ := b.versionStateFor(servingTestLedger, canonical)
 	retained.PendingVersion, retained.HighWater = 3, 3
-	retained.PendingType, retained.PendingTypeDeclared = commonpb.MetadataType_METADATA_TYPE_INT16, true
+	retained.PendingType, retained.PendingTypeDeclared = ledgerpb.MetadataType_METADATA_TYPE_INT16, true
 	b.putVersionState(servingTestLedger, canonical, retained)
 
 	second := *task
-	second.toType = commonpb.MetadataType_METADATA_TYPE_INT16
+	second.toType = ledgerpb.MetadataType_METADATA_TYPE_INT16
 
 	done, err = b.tryCommitScanCompleteSwitch(&second, canonical, 2, 3)
 	require.NoError(t, err)
@@ -470,7 +470,7 @@ func TestSchemaRewriteSwitch_DefersWhileAnEarlierVersionIsRetained(t *testing.T)
 	state, _ = b.versionStateFor(servingTestLedger, canonical)
 	assert.Equal(t, uint32(3), state.CurrentVersion)
 	assert.Equal(t, uint32(2), state.PreviousVersion, "at most one version is retained")
-	assert.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT8, state.PreviousType)
+	assert.Equal(t, ledgerpb.MetadataType_METADATA_TYPE_INT8, state.PreviousType)
 }
 
 // A retained version found at boot is live to the orphan sweep and retired by
@@ -480,9 +480,9 @@ func TestRetirePrevious_RetiresARetainedVersionFoundAtBoot(t *testing.T) {
 
 	b, _ := newKillableTestBuilder(t)
 
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "grade")
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "grade")
 	canonical := indexes.Canonical(id)
-	b.getOrCreateLedgerConfig(servingTestLedger).byCanonical[canonical] = &commonpb.Index{Id: id, Ledger: servingTestLedger}
+	b.getOrCreateLedgerConfig(servingTestLedger).byCanonical[canonical] = &ledgerpb.Index{Id: id, Ledger: servingTestLedger}
 
 	seedFlushedVersionState(t, b, canonical, readstore.IndexVersionState{
 		CurrentVersion:       3,
@@ -512,7 +512,7 @@ func TestRetirePrevious_LeaseGateIsTheServableWindow(t *testing.T) {
 
 	b, _ := newKillableTestBuilder(t)
 
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "grade")
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "grade")
 	canonical := indexes.Canonical(id)
 
 	retained := readstore.IndexVersionState{
@@ -553,17 +553,17 @@ func TestBumpPendingVersion_KeepsTheRetainedVersion(t *testing.T) {
 
 	b, _ := newKillableTestBuilder(t)
 
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "grade")
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "grade")
 	canonical := indexes.Canonical(id)
 
 	retained := readstore.IndexVersionState{
 		CurrentVersion:             2,
 		HighWater:                  2,
 		ActivationSequence:         5,
-		CurrentType:                commonpb.MetadataType_METADATA_TYPE_INT8,
+		CurrentType:                ledgerpb.MetadataType_METADATA_TYPE_INT8,
 		CurrentTypeDeclared:        true,
 		PreviousVersion:            1,
-		PreviousType:               commonpb.MetadataType_METADATA_TYPE_INT32,
+		PreviousType:               ledgerpb.MetadataType_METADATA_TYPE_INT32,
 		PreviousTypeDeclared:       true,
 		PreviousActivationSequence: 3,
 		PreviousValidThrough:       5,
@@ -571,14 +571,14 @@ func TestBumpPendingVersion_KeepsTheRetainedVersion(t *testing.T) {
 	seedFlushedVersionState(t, b, canonical, retained)
 
 	b.initBatch(b.readStore.NewBatch())
-	require.NoError(t, b.bumpPendingVersion(servingTestLedger, id, commonpb.MetadataType_METADATA_TYPE_INT16))
+	require.NoError(t, b.bumpPendingVersion(servingTestLedger, id, ledgerpb.MetadataType_METADATA_TYPE_INT16))
 	require.NoError(t, b.wb.Flush())
 
 	state, _ := b.versionStateFor(servingTestLedger, canonical)
 	assert.Equal(t, uint32(3), state.PendingVersion)
-	assert.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT16, state.PendingType)
+	assert.Equal(t, ledgerpb.MetadataType_METADATA_TYPE_INT16, state.PendingType)
 	assert.Equal(t, uint32(1), state.PreviousVersion, "the retained version survives the bump")
-	assert.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT32, state.PreviousType)
+	assert.Equal(t, ledgerpb.MetadataType_METADATA_TYPE_INT32, state.PreviousType)
 	assert.Equal(t, uint64(3), state.PreviousActivationSequence)
 	assert.Equal(t, uint64(5), state.PreviousValidThrough)
 
@@ -597,7 +597,7 @@ func TestCommitRetirement_RejectsANonMetadataIndex(t *testing.T) {
 
 	b, _ := newKillableTestBuilder(t)
 
-	canonical := indexes.Canonical(indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET))
+	canonical := indexes.Canonical(indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET))
 	retained := readstore.IndexVersionState{CurrentVersion: 2, HighWater: 2, PreviousVersion: 1}
 	seedFlushedVersionState(t, b, canonical, retained)
 

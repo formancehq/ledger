@@ -7,7 +7,7 @@ import (
 	"math/big"
 	"testing"
 
-	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/scenario"
 	"github.com/stretchr/testify/require"
@@ -82,7 +82,7 @@ func TestMultiLedgerPayroll(t *testing.T) {
 				clearingFunded.Add(clearingFunded, big.NewInt(totalNeeded))
 
 				// Step 2: Distribute from clearing to department accounts
-				var deptActions []*servicepb.Request
+				var deptActions []*ledgerpb.Request
 				for _, dept := range departments {
 					amount := int64(dept.Employees) * baseSalary
 					deptActions = append(deptActions,
@@ -97,7 +97,7 @@ func TestMultiLedgerPayroll(t *testing.T) {
 				// Step 3+4: Fund payroll pools and pay employees (same batch so payroll:pool nets to zero).
 				for _, dept := range departments {
 					amount := int64(dept.Employees) * baseSalary
-					var payrollActions []*servicepb.Request
+					var payrollActions []*ledgerpb.Request
 					payrollActions = append(payrollActions,
 						actions.CreateScriptRefTransactionAction(dept.Ledger, "fund_payroll", "1.0.0", map[string]string{
 							"amount": fmt.Sprintf("USD/2 %d", amount),
@@ -129,7 +129,7 @@ func TestMultiLedgerPayroll(t *testing.T) {
 
 		// Fund bonus pool and pay bonuses (same batch so payroll:pool nets to zero).
 		totalBonus := bonusAmount * int64(dept.Employees)
-		bonusActions := []*servicepb.Request{
+		bonusActions := []*ledgerpb.Request{
 			actions.CreateScriptRefTransactionAction(dept.Ledger, "fund_payroll", "1.0.0", map[string]string{
 				"amount": fmt.Sprintf("USD/2 %d", totalBonus),
 			}, map[string]string{"type": "bonus-funding"}),
@@ -161,7 +161,7 @@ func TestMultiLedgerPayroll(t *testing.T) {
 			{"dept:sales", "dept:operations", 20_000, "office-supplies"},
 		}
 
-		var reqs []*servicepb.Request
+		var reqs []*ledgerpb.Request
 		for _, alloc := range allocations {
 			reqs = append(reqs,
 				actions.CreateScriptRefTransactionAction("clearing", "cost_allocation", "1.0.0", map[string]string{
@@ -281,7 +281,7 @@ send $amount (
 	})
 
 	// --- Tail phases ---
-	scenariotest.RunPostTestPhases(t, sc, func(t *testing.T, client servicepb.BucketServiceClient) {
+	scenariotest.RunPostTestPhases(t, sc, func(t *testing.T, client ledgerpb.BucketServiceClient) {
 		for _, dept := range departments {
 			scenariotest.CheckDoubleEntryBalance(t, ctx, client, dept.Ledger)
 			scenariotest.CheckNoNegativeBalances(t, ctx, client, dept.Ledger, []string{"world"})

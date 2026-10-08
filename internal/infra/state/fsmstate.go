@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
@@ -61,7 +61,7 @@ type FSMState struct {
 
 	// Last cluster config applied + derived hash generator. Persisted under
 	// ZoneGlobal so it survives restarts.
-	LastClusterConfig *commonpb.ClusterConfig
+	LastClusterConfig *ledgerpb.ClusterConfig
 	HashGenerator     processing.HashGenerator
 
 	// CacheEpoch is the persisted cache epoch read alongside LastClusterConfig.
@@ -74,7 +74,7 @@ type FSMState struct {
 	// under ZoneGlobal so it survives restarts and rides inside snapshots and
 	// backups. Never nil: NewFSMState seeds the revision-0 default so the apply
 	// path and the readiness gate can read it before any policy is committed.
-	ClusterPolicy *commonpb.ClusterPolicy
+	ClusterPolicy *ledgerpb.ClusterPolicy
 
 	// AuditKey is the once-committed secret shared by Raft replicas and
 	// restored with the audit history. Empty only before initialization.
@@ -89,11 +89,11 @@ func NewFSMState(auditKey string) *FSMState {
 		NextAuditSequenceID:    1,
 		NextLedgerID:           1,
 		AuditKey:               auditKey,
-		ClusterPolicy:          &commonpb.ClusterPolicy{},
+		ClusterPolicy:          &ledgerpb.ClusterPolicy{},
 		LiveQueryCheckpointIDs: map[uint64]struct{}{},
 	}
 	if auditKey != "" {
-		s.HashGenerator = processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, auditKey)
+		s.HashGenerator = processing.NewHashGenerator(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, auditKey)
 	}
 
 	return s
@@ -103,7 +103,7 @@ func NewFSMState(auditKey string) *FSMState {
 // staged in the same durable batch. A later proposal cannot rotate the key.
 func (s *FSMState) InstallAuditKey(key []byte) {
 	s.AuditKey = string(key)
-	algorithm := commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3
+	algorithm := ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3
 	if s.LastClusterConfig != nil {
 		algorithm = s.LastClusterConfig.GetHashAlgorithm()
 	}
@@ -112,7 +112,7 @@ func (s *FSMState) InstallAuditKey(key []byte) {
 
 // UpdateClusterPolicy installs policy as the applied cluster policy. Revision
 // monotonicity is enforced by the caller (the FSM apply path) before this runs.
-func (s *FSMState) UpdateClusterPolicy(policy *commonpb.ClusterPolicy) {
+func (s *FSMState) UpdateClusterPolicy(policy *ledgerpb.ClusterPolicy) {
 	s.ClusterPolicy = policy
 }
 
@@ -134,7 +134,7 @@ func (s *FSMState) AdvanceHLC(proposalDate uint64) uint64 {
 // hash algorithm changed, rebuilds HashGenerator so future audit-chain hashes
 // use the new algorithm. Centralising the rule here guarantees that no call
 // site can swap LastClusterConfig without re-deriving HashGenerator.
-func (s *FSMState) UpdateClusterConfig(cfg *commonpb.ClusterConfig) {
+func (s *FSMState) UpdateClusterConfig(cfg *ledgerpb.ClusterConfig) {
 	if s.HashGenerator != nil && cfg.GetHashAlgorithm() != s.HashGenerator.Algorithm() {
 		s.HashGenerator = processing.NewHashGenerator(cfg.GetHashAlgorithm(), s.AuditKey)
 	}
@@ -325,7 +325,7 @@ func verifyAuditKeyAgainstGenesis(handle *dal.ReadHandle, auditKey string) error
 	for _, item := range items {
 		parts = append(parts, BuildPerItemPayload(item))
 	}
-	gen := processing.NewHashGenerator(commonpb.HashAlgorithm(entry.GetHashVersion()), auditKey)
+	gen := processing.NewHashGenerator(ledgerpb.HashAlgorithm(entry.GetHashVersion()), auditKey)
 	_, computed := gen.Compute(nil, nil, parts)
 	if !bytes.Equal(computed, entry.GetHash()) {
 		return errors.New("first audit hash mismatch")

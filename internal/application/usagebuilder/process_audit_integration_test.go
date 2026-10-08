@@ -13,7 +13,7 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -26,10 +26,10 @@ import (
 // Fixture-seeding harness
 //
 // processAuditEntries reads, per audit sequence, from the PRIMARY pebble store:
-//   - the auditpb.AuditEntry             ([ZoneHistory][SubHistoryAudit][seq BE8])
-//   - its auditpb.AuditItem(s)           ([ZoneHistory][SubHistoryAuditItem][seq BE8][idx BE4])
+//   - the ledgerpb.AuditEntry             ([ZoneHistory][SubHistoryAudit][seq BE8])
+//   - its ledgerpb.AuditItem(s)           ([ZoneHistory][SubHistoryAuditItem][seq BE8][idx BE4])
 //   - the proposalpb.AppliedProposal     ([ZoneHistory][SubHistoryAppliedProposal][seq BE8])
-//   - the auditpb.LedgerLog per item    ([ZoneHistory][SubHistoryLog][logSeq BE8]) via readLog
+//   - the ledgerpb.LedgerLog per item    ([ZoneHistory][SubHistoryLog][logSeq BE8]) via readLog
 //
 // The FSM write helpers that produce these rows (state.batch.go) are
 // unexported, so we mirror their key layouts here with the DAL key builder —
@@ -92,18 +92,18 @@ func usageColdLogKey(seq uint64) []byte {
 }
 
 // touchedVolume builds a (account, asset, color) volume identity tuple.
-func touchedVolume(account, asset, color string) *auditpb.TouchedVolume {
-	return &auditpb.TouchedVolume{Account: account, Asset: asset, Color: color}
+func touchedVolume(account, asset, color string) *ledgerpb.TouchedVolume {
+	return &ledgerpb.TouchedVolume{Account: account, Asset: asset, Color: color}
 }
 
 // usagePosting builds a posting for the transaction payload — the posting
 // count is derived from len(Transaction.Postings) on the produced log.
-func usagePosting(source, destination, asset string, amount uint64) *auditpb.Posting {
-	return &auditpb.Posting{
+func usagePosting(source, destination, asset string, amount uint64) *ledgerpb.Posting {
+	return &ledgerpb.Posting{
 		Source:      source,
 		Destination: destination,
 		Asset:       asset,
-		Amount:      auditpb.NewUint256FromUint64(amount),
+		Amount:      ledgerpb.NewUint256FromUint64(amount),
 	}
 }
 
@@ -113,25 +113,25 @@ func usagePosting(source, destination, asset string, amount uint64) *auditpb.Pos
 func createdTxLog(
 	seq uint64,
 	ledger string,
-	ts *auditpb.Timestamp,
-	postings []*auditpb.Posting,
-	newKept, purged, ephemeral []*auditpb.TouchedVolume,
-) *auditpb.Log {
-	return &auditpb.Log{
+	ts *ledgerpb.Timestamp,
+	postings []*ledgerpb.Posting,
+	newKept, purged, ephemeral []*ledgerpb.TouchedVolume,
+) *ledgerpb.Log {
+	return &ledgerpb.Log{
 		Sequence: seq,
-		Payload: &auditpb.LogPayload{
-			Type: &auditpb.LogPayload_Apply{
-				Apply: &auditpb.ApplyLedgerLog{
+		Payload: &ledgerpb.LogPayload{
+			Type: &ledgerpb.LogPayload_Apply{
+				Apply: &ledgerpb.ApplyLedgerLog{
 					LedgerName: ledger,
-					Log: &auditpb.LedgerLog{
+					Log: &ledgerpb.LedgerLog{
 						Id:               seq,
 						NewKeptVolumes:   newKept,
 						PurgedVolumes:    purged,
 						EphemeralVolumes: ephemeral,
-						Data: &auditpb.LedgerLogPayload{
-							Payload: &auditpb.LedgerLogPayload_CreatedTransaction{
-								CreatedTransaction: &auditpb.CreatedTransaction{
-									Transaction: &auditpb.Transaction{
+						Data: &ledgerpb.LedgerLogPayload{
+							Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
+								CreatedTransaction: &ledgerpb.CreatedTransaction{
+									Transaction: &ledgerpb.Transaction{
 										Id:        seq,
 										Postings:  postings,
 										Timestamp: ts,
@@ -151,25 +151,25 @@ func createdTxLog(
 func revertedTxLog(
 	seq uint64,
 	ledger string,
-	ts *auditpb.Timestamp,
-	postings []*auditpb.Posting,
-	newKept, purged, ephemeral []*auditpb.TouchedVolume,
-) *auditpb.Log {
-	return &auditpb.Log{
+	ts *ledgerpb.Timestamp,
+	postings []*ledgerpb.Posting,
+	newKept, purged, ephemeral []*ledgerpb.TouchedVolume,
+) *ledgerpb.Log {
+	return &ledgerpb.Log{
 		Sequence: seq,
-		Payload: &auditpb.LogPayload{
-			Type: &auditpb.LogPayload_Apply{
-				Apply: &auditpb.ApplyLedgerLog{
+		Payload: &ledgerpb.LogPayload{
+			Type: &ledgerpb.LogPayload_Apply{
+				Apply: &ledgerpb.ApplyLedgerLog{
 					LedgerName: ledger,
-					Log: &auditpb.LedgerLog{
+					Log: &ledgerpb.LedgerLog{
 						Id:               seq,
 						NewKeptVolumes:   newKept,
 						PurgedVolumes:    purged,
 						EphemeralVolumes: ephemeral,
-						Data: &auditpb.LedgerLogPayload{
-							Payload: &auditpb.LedgerLogPayload_RevertedTransaction{
-								RevertedTransaction: &auditpb.RevertedTransaction{
-									RevertTransaction: &auditpb.Transaction{
+						Data: &ledgerpb.LedgerLogPayload{
+							Payload: &ledgerpb.LedgerLogPayload_RevertedTransaction{
+								RevertedTransaction: &ledgerpb.RevertedTransaction{
+									RevertTransaction: &ledgerpb.Transaction{
 										Id:        seq,
 										Postings:  postings,
 										Timestamp: ts,
@@ -222,19 +222,19 @@ func metadataOrder(ledger, account string) *raftcmdpb.Order {
 		Ledger: ledger,
 		Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
 			Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{AddMetadata: &raftcmdpb.SaveMetadataOrder{
-				Target:   &auditpb.Target{Target: &auditpb.Target_Account{Account: &auditpb.TargetAccount{Addr: account}}},
+				Target:   &ledgerpb.Target{Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{Addr: account}}},
 				Metadata: protohelpers.MetadataFromGoMap(map[string]string{"note": "purge"}),
 			}},
 		}},
 	}}}
 }
 
-func metadataPurgeLog(seq uint64, ledger, account string, purged []*auditpb.TouchedVolume) *auditpb.Log {
-	return &auditpb.Log{Sequence: seq, Payload: &auditpb.LogPayload{Type: &auditpb.LogPayload_Apply{Apply: &auditpb.ApplyLedgerLog{
+func metadataPurgeLog(seq uint64, ledger, account string, purged []*ledgerpb.TouchedVolume) *ledgerpb.Log {
+	return &ledgerpb.Log{Sequence: seq, Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{Apply: &ledgerpb.ApplyLedgerLog{
 		LedgerName: ledger,
-		Log: &auditpb.LedgerLog{Id: seq, PurgedVolumes: purged, Data: &auditpb.LedgerLogPayload{
-			Payload: &auditpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &auditpb.SavedMetadata{Target: &auditpb.Target{
-				Target: &auditpb.Target_Account{Account: &auditpb.TargetAccount{Addr: account}},
+		Log: &ledgerpb.LedgerLog{Id: seq, PurgedVolumes: purged, Data: &ledgerpb.LedgerLogPayload{
+			Payload: &ledgerpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &ledgerpb.SavedMetadata{Target: &ledgerpb.Target{
+				Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{Addr: account}},
 			}}},
 		}},
 	}}}}
@@ -265,7 +265,7 @@ func mirrorMetadataOrder(ledger, account string) *raftcmdpb.Order {
 		Ledger: ledger,
 		Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{
 			Data: &raftcmdpb.MirrorLogEntry_SavedMetadata{SavedMetadata: &raftcmdpb.MirrorSavedMetadata{
-				Target: &auditpb.Target{Target: &auditpb.Target_Account{Account: &auditpb.TargetAccount{Addr: account}}},
+				Target: &ledgerpb.Target{Target: &ledgerpb.Target_Account{Account: &ledgerpb.TargetAccount{Addr: account}}},
 			}},
 		}}},
 	}}}
@@ -277,7 +277,7 @@ func mirrorMetadataOrder(ledger, account string) *raftcmdpb.Order {
 type seedAuditItem struct {
 	order  *raftcmdpb.Order
 	logSeq uint64
-	log    *auditpb.Log
+	log    *ledgerpb.Log
 }
 
 // seedAuditEntry describes one synthetic audit entry to write into the primary
@@ -288,7 +288,7 @@ type seedAuditEntry struct {
 	seq              uint64
 	success          bool
 	items            []seedAuditItem
-	transientVolumes map[string][]*auditpb.TouchedVolume
+	transientVolumes map[string][]*ledgerpb.TouchedVolume
 }
 
 // seedAuditData writes the full fixture (audit entries, items, applied
@@ -299,11 +299,11 @@ func seedAuditData(t testing.TB, store *dal.Store, entries []seedAuditEntry) {
 	batch := store.OpenWriteSession()
 
 	for _, e := range entries {
-		auditEntry := &auditpb.AuditEntry{Sequence: e.seq}
+		auditEntry := &ledgerpb.AuditEntry{Sequence: e.seq}
 		if e.success {
-			auditEntry.Outcome = &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}}
+			auditEntry.Outcome = &ledgerpb.AuditEntry_Success{Success: &ledgerpb.AuditSuccess{}}
 		} else {
-			auditEntry.Outcome = &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{}}
+			auditEntry.Outcome = &ledgerpb.AuditEntry_Failure{Failure: &ledgerpb.AuditFailure{}}
 		}
 
 		require.NoError(t, batch.SetProto(usageColdAuditKey(e.seq), auditEntry))
@@ -327,7 +327,7 @@ func seedAuditData(t testing.TB, store *dal.Store, entries []seedAuditEntry) {
 			raw, err := item.order.MarshalVT()
 			require.NoError(t, err)
 
-			auditItem := &auditpb.AuditItem{
+			auditItem := &ledgerpb.AuditItem{
 				OrderIndex:      uint32(idx),
 				SerializedOrder: raw,
 				LogSequence:     item.logSeq,
@@ -572,11 +572,11 @@ func TestBuilderRestartAtHeadThenProcessesOnlyTail(t *testing.T) {
 			success: true,
 			items: []seedAuditItem{{
 				order: createTxOrder(ledger, &raftcmdpb.CreateTransactionOrder{
-					Postings: []*auditpb.Posting{usagePosting("world", "acc", "USD", seq)},
+					Postings: []*ledgerpb.Posting{usagePosting("world", "acc", "USD", seq)},
 				}),
 				logSeq: logSeq,
 				log: createdTxLog(logSeq, ledger, nil,
-					[]*auditpb.Posting{usagePosting("world", "acc", "USD", seq)},
+					[]*ledgerpb.Posting{usagePosting("world", "acc", "USD", seq)},
 					nil, nil, nil),
 			}},
 		}
@@ -651,7 +651,7 @@ func TestUsageStoreAbruptStopReplaysOnlyUnflushedTail(t *testing.T) {
 				order:  createTxOrder(ledger, &raftcmdpb.CreateTransactionOrder{}),
 				logSeq: 101,
 				log: createdTxLog(101, ledger, nil,
-					[]*auditpb.Posting{usagePosting("world", "acc", "USD", 1)}, nil, nil, nil),
+					[]*ledgerpb.Posting{usagePosting("world", "acc", "USD", 1)}, nil, nil, nil),
 			}},
 		},
 		{
@@ -660,7 +660,7 @@ func TestUsageStoreAbruptStopReplaysOnlyUnflushedTail(t *testing.T) {
 			items: []seedAuditItem{{
 				order:  createTxOrder(ledger, &raftcmdpb.CreateTransactionOrder{}),
 				logSeq: 102,
-				log: createdTxLog(102, ledger, nil, []*auditpb.Posting{
+				log: createdTxLog(102, ledger, nil, []*ledgerpb.Posting{
 					usagePosting("world", "acc:1", "USD", 1),
 					usagePosting("world", "acc:2", "USD", 1),
 					usagePosting("world", "acc:3", "USD", 1),
@@ -741,7 +741,7 @@ func BenchmarkUsageBuilderCatchUp30SecondWindow(b *testing.B) {
 		sequence := uint64(i)
 		ledger := fmt.Sprintf("ledger-%03d", i%ledgerCount)
 		logSequence := sequence + 10_000
-		postings := []*auditpb.Posting{
+		postings := []*ledgerpb.Posting{
 			usagePosting("world", "account-a", "USD", 1),
 			usagePosting("account-a", "account-b", "USD", 1),
 		}
@@ -782,7 +782,7 @@ func TestProcessAuditEntries_Dispatch(t *testing.T) {
 
 	const ledger = "l1"
 
-	ts := &auditpb.Timestamp{Data: 1234}
+	ts := &ledgerpb.Timestamp{Data: 1234}
 
 	type wantCounter struct {
 		id    byte
@@ -818,8 +818,8 @@ func TestProcessAuditEntries_Dispatch(t *testing.T) {
 					}),
 					logSeq: 10,
 					log: createdTxLog(10, ledger, ts,
-						[]*auditpb.Posting{usagePosting("world", "alice", "USD", 100)},
-						[]*auditpb.TouchedVolume{touchedVolume("alice", "USD", "")},
+						[]*ledgerpb.Posting{usagePosting("world", "alice", "USD", 100)},
+						[]*ledgerpb.TouchedVolume{touchedVolume("alice", "USD", "")},
 						nil, nil),
 				}},
 			}},
@@ -842,12 +842,12 @@ func TestProcessAuditEntries_Dispatch(t *testing.T) {
 				success: true,
 				items: []seedAuditItem{{
 					order: createTxOrder(ledger, &raftcmdpb.CreateTransactionOrder{
-						Postings: []*auditpb.Posting{usagePosting("world", "bob", "USD", 5)},
+						Postings: []*ledgerpb.Posting{usagePosting("world", "bob", "USD", 5)},
 					}),
 					logSeq: 10,
 					log: createdTxLog(10, ledger, nil,
-						[]*auditpb.Posting{usagePosting("world", "bob", "USD", 5)},
-						[]*auditpb.TouchedVolume{touchedVolume("bob", "USD", "")},
+						[]*ledgerpb.Posting{usagePosting("world", "bob", "USD", 5)},
+						[]*ledgerpb.TouchedVolume{touchedVolume("bob", "USD", "")},
 						nil, nil),
 				}},
 			}},
@@ -869,9 +869,9 @@ func TestProcessAuditEntries_Dispatch(t *testing.T) {
 					order:  revertTxOrder(ledger, &raftcmdpb.RevertTransactionOrder{TransactionId: 7}),
 					logSeq: 10,
 					log: revertedTxLog(10, ledger, ts,
-						[]*auditpb.Posting{usagePosting("alice", "world", "USD", 100)},
+						[]*ledgerpb.Posting{usagePosting("alice", "world", "USD", 100)},
 						nil,
-						[]*auditpb.TouchedVolume{touchedVolume("alice", "USD", "")},
+						[]*ledgerpb.TouchedVolume{touchedVolume("alice", "USD", "")},
 						nil),
 				}},
 			}},
@@ -890,9 +890,9 @@ func TestProcessAuditEntries_Dispatch(t *testing.T) {
 				seq: 1, success: true,
 				items: []seedAuditItem{
 					{order: createTxOrder(ledger, &raftcmdpb.CreateTransactionOrder{}), logSeq: 10,
-						log: createdTxLog(10, ledger, ts, nil, []*auditpb.TouchedVolume{touchedVolume("hold:1", "USD", "")}, nil, nil)},
+						log: createdTxLog(10, ledger, ts, nil, []*ledgerpb.TouchedVolume{touchedVolume("hold:1", "USD", "")}, nil, nil)},
 					{order: metadataOrder(ledger, "hold:1"), logSeq: 11,
-						log: metadataPurgeLog(11, ledger, "hold:1", []*auditpb.TouchedVolume{touchedVolume("hold:1", "USD", "")})},
+						log: metadataPurgeLog(11, ledger, "hold:1", []*ledgerpb.TouchedVolume{touchedVolume("hold:1", "USD", "")})},
 				},
 			}},
 			wantCursor:   1,
@@ -905,9 +905,9 @@ func TestProcessAuditEntries_Dispatch(t *testing.T) {
 				seq: 1, success: true,
 				items: []seedAuditItem{
 					{order: createTxOrder(ledger, &raftcmdpb.CreateTransactionOrder{}), logSeq: 10,
-						log: createdTxLog(10, ledger, ts, nil, []*auditpb.TouchedVolume{touchedVolume("hold:1", "USD", "")}, nil, nil)},
+						log: createdTxLog(10, ledger, ts, nil, []*ledgerpb.TouchedVolume{touchedVolume("hold:1", "USD", "")}, nil, nil)},
 					{order: mirrorMetadataOrder(ledger, "hold:1"), logSeq: 11,
-						log: metadataPurgeLog(11, ledger, "hold:1", []*auditpb.TouchedVolume{touchedVolume("hold:1", "USD", "")})},
+						log: metadataPurgeLog(11, ledger, "hold:1", []*ledgerpb.TouchedVolume{touchedVolume("hold:1", "USD", "")})},
 				},
 			}},
 			wantCursor:   1,
@@ -926,8 +926,8 @@ func TestProcessAuditEntries_Dispatch(t *testing.T) {
 					order:  mirrorCreatedOrder(ledger, "mirror-ref"),
 					logSeq: 10,
 					log: createdTxLog(10, ledger, ts,
-						[]*auditpb.Posting{usagePosting("world", "carol", "USD", 3)},
-						[]*auditpb.TouchedVolume{touchedVolume("carol", "USD", "")},
+						[]*ledgerpb.Posting{usagePosting("world", "carol", "USD", 3)},
+						[]*ledgerpb.TouchedVolume{touchedVolume("carol", "USD", "")},
 						nil, nil),
 				}},
 			}},
@@ -950,32 +950,32 @@ func TestProcessAuditEntries_Dispatch(t *testing.T) {
 				items: []seedAuditItem{
 					{
 						order: createTxOrder(ledger, &raftcmdpb.CreateTransactionOrder{
-							Postings: []*auditpb.Posting{usagePosting("world", "bank:main", "USD", 1)},
+							Postings: []*ledgerpb.Posting{usagePosting("world", "bank:main", "USD", 1)},
 						}),
 						logSeq: 10,
 						log: createdTxLog(10, ledger, nil,
-							[]*auditpb.Posting{usagePosting("world", "bank:main", "USD", 1)},
-							[]*auditpb.TouchedVolume{touchedVolume("bank:main", "USD", "")},
+							[]*ledgerpb.Posting{usagePosting("world", "bank:main", "USD", 1)},
+							[]*ledgerpb.TouchedVolume{touchedVolume("bank:main", "USD", "")},
 							nil, nil),
 					},
 					{
 						order: createTxOrder(ledger, &raftcmdpb.CreateTransactionOrder{
-							Postings: []*auditpb.Posting{usagePosting("world", "bank:main", "USD", 2)},
+							Postings: []*ledgerpb.Posting{usagePosting("world", "bank:main", "USD", 2)},
 						}),
 						logSeq: 11,
 						log: createdTxLog(11, ledger, nil,
-							[]*auditpb.Posting{usagePosting("world", "bank:main", "USD", 2)},
-							[]*auditpb.TouchedVolume{touchedVolume("bank:main", "USD", "")},
+							[]*ledgerpb.Posting{usagePosting("world", "bank:main", "USD", 2)},
+							[]*ledgerpb.TouchedVolume{touchedVolume("bank:main", "USD", "")},
 							nil, nil),
 					},
 					{
 						order: createTxOrder(ledger, &raftcmdpb.CreateTransactionOrder{
-							Postings: []*auditpb.Posting{usagePosting("world", "bank:main", "USD", 3)},
+							Postings: []*ledgerpb.Posting{usagePosting("world", "bank:main", "USD", 3)},
 						}),
 						logSeq: 12,
 						log: createdTxLog(12, ledger, nil,
-							[]*auditpb.Posting{usagePosting("world", "bank:main", "USD", 3)},
-							[]*auditpb.TouchedVolume{touchedVolume("bank:main", "USD", "")},
+							[]*ledgerpb.Posting{usagePosting("world", "bank:main", "USD", 3)},
+							[]*ledgerpb.TouchedVolume{touchedVolume("bank:main", "USD", "")},
 							nil, nil),
 					},
 				},
@@ -999,16 +999,16 @@ func TestProcessAuditEntries_Dispatch(t *testing.T) {
 				success: true,
 				items: []seedAuditItem{{
 					order: createTxOrder(ledger, &raftcmdpb.CreateTransactionOrder{
-						Postings: []*auditpb.Posting{usagePosting("world", "vault", "USD", 1)},
+						Postings: []*ledgerpb.Posting{usagePosting("world", "vault", "USD", 1)},
 					}),
 					logSeq: 10,
 					log: createdTxLog(10, ledger, nil,
-						[]*auditpb.Posting{usagePosting("world", "vault", "USD", 1)},
-						[]*auditpb.TouchedVolume{
+						[]*ledgerpb.Posting{usagePosting("world", "vault", "USD", 1)},
+						[]*ledgerpb.TouchedVolume{
 							touchedVolume("vault", "USD", "red"),
 							touchedVolume("vault", "USD", "blue"),
 						},
-						[]*auditpb.TouchedVolume{
+						[]*ledgerpb.TouchedVolume{
 							touchedVolume("vault", "EUR", "red"),
 							touchedVolume("vault", "EUR", "blue"),
 						},
@@ -1036,11 +1036,11 @@ func TestProcessAuditEntries_Dispatch(t *testing.T) {
 					success: true,
 					items: []seedAuditItem{{
 						order: createTxOrder(ledger, &raftcmdpb.CreateTransactionOrder{
-							Postings: []*auditpb.Posting{usagePosting("world", "dave", "USD", 9)},
+							Postings: []*ledgerpb.Posting{usagePosting("world", "dave", "USD", 9)},
 						}),
 						logSeq: 10,
 						log: createdTxLog(10, ledger, nil,
-							[]*auditpb.Posting{usagePosting("world", "dave", "USD", 9)},
+							[]*ledgerpb.Posting{usagePosting("world", "dave", "USD", 9)},
 							nil, nil, nil),
 					}},
 				},
@@ -1057,7 +1057,7 @@ func TestProcessAuditEntries_Dispatch(t *testing.T) {
 				success: true,
 				items: []seedAuditItem{{
 					order: createTxOrder(ledger, &raftcmdpb.CreateTransactionOrder{
-						Postings: []*auditpb.Posting{usagePosting("world", "eve", "USD", 1)},
+						Postings: []*ledgerpb.Posting{usagePosting("world", "eve", "USD", 1)},
 					}),
 					logSeq: 0, // idempotent replay / non-log-producing → skip
 					log:    nil,
@@ -1072,7 +1072,7 @@ func TestProcessAuditEntries_Dispatch(t *testing.T) {
 			entries: []seedAuditEntry{{
 				seq:     1,
 				success: true,
-				transientVolumes: map[string][]*auditpb.TouchedVolume{
+				transientVolumes: map[string][]*ledgerpb.TouchedVolume{
 					ledger: {
 						touchedVolume("tmp:1", "USD", ""),
 						touchedVolume("tmp:2", "USD", ""),
@@ -1139,13 +1139,13 @@ func TestProcessAuditEntries_SkippedCreateDoesNotCount(t *testing.T) {
 
 	// A log with no CreatedTransaction/RevertedTransaction payload models a
 	// skipped order: readLog reports isCreatedTx == false.
-	skippedLog := &auditpb.Log{
+	skippedLog := &ledgerpb.Log{
 		Sequence: 10,
-		Payload: &auditpb.LogPayload{
-			Type: &auditpb.LogPayload_Apply{
-				Apply: &auditpb.ApplyLedgerLog{
+		Payload: &ledgerpb.LogPayload{
+			Type: &ledgerpb.LogPayload_Apply{
+				Apply: &ledgerpb.ApplyLedgerLog{
 					LedgerName: ledger,
-					Log:        &auditpb.LedgerLog{Id: 10},
+					Log:        &ledgerpb.LedgerLog{Id: 10},
 				},
 			},
 		},
@@ -1205,11 +1205,11 @@ func TestProcessAuditEntries_BatchBoundaryAndCursorAdvance(t *testing.T) {
 			success: true,
 			items: []seedAuditItem{{
 				order: createTxOrder(ledger, &raftcmdpb.CreateTransactionOrder{
-					Postings: []*auditpb.Posting{usagePosting("world", "acc", "USD", seq)},
+					Postings: []*ledgerpb.Posting{usagePosting("world", "acc", "USD", seq)},
 				}),
 				logSeq: logSeq,
 				log: createdTxLog(logSeq, ledger, nil,
-					[]*auditpb.Posting{usagePosting("world", "acc", "USD", seq)},
+					[]*ledgerpb.Posting{usagePosting("world", "acc", "USD", seq)},
 					nil, nil, nil),
 			}},
 		})
@@ -1261,11 +1261,11 @@ func TestProcessAuditEntries_ResumeFromCursorSkipsProcessed(t *testing.T) {
 			success: true,
 			items: []seedAuditItem{{
 				order: createTxOrder(ledger, &raftcmdpb.CreateTransactionOrder{
-					Postings: []*auditpb.Posting{usagePosting("world", "acc", "USD", seq)},
+					Postings: []*ledgerpb.Posting{usagePosting("world", "acc", "USD", seq)},
 				}),
 				logSeq: logSeq,
 				log: createdTxLog(logSeq, ledger, nil,
-					[]*auditpb.Posting{usagePosting("world", "acc", "USD", seq)},
+					[]*ledgerpb.Posting{usagePosting("world", "acc", "USD", seq)},
 					nil, nil, nil),
 			}},
 		})

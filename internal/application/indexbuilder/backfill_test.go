@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -33,10 +33,10 @@ func paddedLedgerName(name string) []byte {
 func TestSchemaRewriteBBKey_Account(t *testing.T) {
 	t.Parallel()
 
-	key := schemaRewriteBBKey("test", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status")
+	key := schemaRewriteBBKey("test", ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "status")
 
 	expected := paddedLedgerName("test")
-	expected = append(expected, readstore.BackfillKindSchemaRewrite, byte(commonpb.TargetType_TARGET_TYPE_ACCOUNT))
+	expected = append(expected, readstore.BackfillKindSchemaRewrite, byte(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT))
 	expected = append(expected, "status"...)
 
 	assert.Equal(t, expected, key)
@@ -45,10 +45,10 @@ func TestSchemaRewriteBBKey_Account(t *testing.T) {
 func TestSchemaRewriteBBKey_Transaction(t *testing.T) {
 	t.Parallel()
 
-	key := schemaRewriteBBKey("test", commonpb.TargetType_TARGET_TYPE_TRANSACTION, "category")
+	key := schemaRewriteBBKey("test", ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, "category")
 
 	expected := paddedLedgerName("test")
-	expected = append(expected, readstore.BackfillKindSchemaRewrite, byte(commonpb.TargetType_TARGET_TYPE_TRANSACTION))
+	expected = append(expected, readstore.BackfillKindSchemaRewrite, byte(ledgerpb.TargetType_TARGET_TYPE_TRANSACTION))
 	expected = append(expected, "category"...)
 
 	assert.Equal(t, expected, key)
@@ -57,10 +57,10 @@ func TestSchemaRewriteBBKey_Transaction(t *testing.T) {
 func TestSchemaRewriteBBKey_EmptyMetadataKey(t *testing.T) {
 	t.Parallel()
 
-	key := schemaRewriteBBKey("test", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "")
+	key := schemaRewriteBBKey("test", ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "")
 
 	expected := paddedLedgerName("test")
-	expected = append(expected, readstore.BackfillKindSchemaRewrite, byte(commonpb.TargetType_TARGET_TYPE_ACCOUNT))
+	expected = append(expected, readstore.BackfillKindSchemaRewrite, byte(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT))
 
 	assert.Equal(t, expected, key)
 }
@@ -68,8 +68,8 @@ func TestSchemaRewriteBBKey_EmptyMetadataKey(t *testing.T) {
 func TestSchemaRewriteBBKey_DifferentTargetTypesProduceDifferentKeys(t *testing.T) {
 	t.Parallel()
 
-	keyAcct := schemaRewriteBBKey("test", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "key")
-	keyTx := schemaRewriteBBKey("test", commonpb.TargetType_TARGET_TYPE_TRANSACTION, "key")
+	keyAcct := schemaRewriteBBKey("test", ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "key")
+	keyTx := schemaRewriteBBKey("test", ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, "key")
 
 	assert.NotEqual(t, keyAcct, keyTx)
 }
@@ -77,10 +77,10 @@ func TestSchemaRewriteBBKey_DifferentTargetTypesProduceDifferentKeys(t *testing.
 func TestBackfillBBKey_TxBuiltin(t *testing.T) {
 	t.Parallel()
 
-	key := backfillBBKey("test", indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE))
+	key := backfillBBKey("test", indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE))
 
 	expected := paddedLedgerName("test")
-	expected = append(expected, readstore.BackfillKindTxBuiltin, byte(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE))
+	expected = append(expected, readstore.BackfillKindTxBuiltin, byte(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE))
 
 	assert.Equal(t, expected, key)
 }
@@ -88,7 +88,7 @@ func TestBackfillBBKey_TxBuiltin(t *testing.T) {
 func TestBackfillBBKey_TxMetadata(t *testing.T) {
 	t.Parallel()
 
-	key := backfillBBKey("test", indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, "category"))
+	key := backfillBBKey("test", indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, "category"))
 
 	expected := paddedLedgerName("test")
 	expected = append(expected, readstore.BackfillKindTxMetadata)
@@ -100,10 +100,10 @@ func TestBackfillBBKey_TxMetadata(t *testing.T) {
 func TestBackfillBBKey_AcctBuiltin(t *testing.T) {
 	t.Parallel()
 
-	key := backfillBBKey("test", indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED))
+	key := backfillBBKey("test", indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED))
 
 	expected := paddedLedgerName("test")
-	expected = append(expected, readstore.BackfillKindAcctBuiltin, byte(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED))
+	expected = append(expected, readstore.BackfillKindAcctBuiltin, byte(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED))
 
 	assert.Equal(t, expected, key)
 }
@@ -111,7 +111,7 @@ func TestBackfillBBKey_AcctBuiltin(t *testing.T) {
 func TestBackfillBBKey_AcctMetadata(t *testing.T) {
 	t.Parallel()
 
-	key := backfillBBKey("test", indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"))
+	key := backfillBBKey("test", indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role"))
 
 	expected := paddedLedgerName("test")
 	expected = append(expected, readstore.BackfillKindAcctMetadata)
@@ -123,10 +123,10 @@ func TestBackfillBBKey_AcctMetadata(t *testing.T) {
 func TestBackfillBBKey_LogBuiltin(t *testing.T) {
 	t.Parallel()
 
-	key := backfillBBKey("test", indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE))
+	key := backfillBBKey("test", indexes.LogBuiltinID(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE))
 
 	expected := paddedLedgerName("test")
-	expected = append(expected, readstore.BackfillKindLogBuiltin, byte(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE))
+	expected = append(expected, readstore.BackfillKindLogBuiltin, byte(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE))
 
 	assert.Equal(t, expected, key)
 }
@@ -135,84 +135,84 @@ func TestBackfillBBKey_NilID_ReturnsNil(t *testing.T) {
 	t.Parallel()
 
 	assert.Nil(t, backfillBBKey("test", nil))
-	assert.Nil(t, backfillBBKey("test", &commonpb.IndexID{}))
+	assert.Nil(t, backfillBBKey("test", &ledgerpb.IndexID{}))
 }
 
 func TestBackfillIndexName_TxBuiltin(t *testing.T) {
 	t.Parallel()
 
-	name := backfillIndexName(indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE))
-	assert.Equal(t, "tx:"+commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE.String(), name)
+	name := backfillIndexName(indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE))
+	assert.Equal(t, "tx:"+ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE.String(), name)
 }
 
 func TestBackfillIndexName_TxMetadata(t *testing.T) {
 	t.Parallel()
 
-	name := backfillIndexName(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, "category"))
+	name := backfillIndexName(indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, "category"))
 	assert.Equal(t, "tx:metadata:category", name)
 }
 
 func TestBackfillIndexName_AcctBuiltin(t *testing.T) {
 	t.Parallel()
 
-	name := backfillIndexName(indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED))
-	assert.Equal(t, "acct:"+commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED.String(), name)
+	name := backfillIndexName(indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED))
+	assert.Equal(t, "acct:"+ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED.String(), name)
 }
 
 func TestBackfillIndexName_AcctMetadata(t *testing.T) {
 	t.Parallel()
 
-	name := backfillIndexName(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"))
+	name := backfillIndexName(indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role"))
 	assert.Equal(t, "acct:metadata:role", name)
 }
 
 func TestBackfillIndexName_LogBuiltin(t *testing.T) {
 	t.Parallel()
 
-	name := backfillIndexName(indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE))
-	assert.Equal(t, "log:"+commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE.String(), name)
+	name := backfillIndexName(indexes.LogBuiltinID(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE))
+	assert.Equal(t, "log:"+ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE.String(), name)
 }
 
 func TestBackfillIndexName_Unknown(t *testing.T) {
 	t.Parallel()
 
 	assert.Equal(t, "unknown", backfillIndexName(nil))
-	assert.Equal(t, "unknown", backfillIndexName(&commonpb.IndexID{}))
+	assert.Equal(t, "unknown", backfillIndexName(&ledgerpb.IndexID{}))
 }
 
 func TestBuildBackfillConfig_TxBuiltin(t *testing.T) {
 	t.Parallel()
 
 	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
-	id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	id := indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 	task := &backfillTask{ledger: "test", index: id}
 
 	cfg := b.buildBackfillConfig(task)
 
 	require.NotNil(t, cfg)
 	assert.True(t, cfg.isIndexed(id))
-	assert.False(t, cfg.isIndexed(indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)))
+	assert.False(t, cfg.isIndexed(indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)))
 }
 
 func TestBuildBackfillConfig_AcctMetadata(t *testing.T) {
 	t.Parallel()
 
 	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
 	task := &backfillTask{ledger: "test", index: id}
 
 	cfg := b.buildBackfillConfig(task)
 
 	require.NotNil(t, cfg)
 	assert.True(t, cfg.isIndexed(id))
-	assert.False(t, cfg.isIndexed(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "other")))
+	assert.False(t, cfg.isIndexed(indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "other")))
 }
 
 func TestBuildBackfillConfig_LogBuiltin(t *testing.T) {
 	t.Parallel()
 
 	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
-	id := indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
+	id := indexes.LogBuiltinID(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
 	task := &backfillTask{ledger: "test", index: id}
 
 	cfg := b.buildBackfillConfig(task)
@@ -240,15 +240,15 @@ func TestIndexLogEntryUsesReplayAuditSyncForExcludedAccounts(t *testing.T) {
 	b.wb.Init(batch)
 
 	cfg := newLedgerIndexConfig()
-	id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS)
-	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
+	id := indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS)
+	cfg.byCanonical[indexes.Canonical(id)] = &ledgerpb.Index{Id: id}
 
 	proposals := newTestAppliedProposalSync(
 		testAppliedProposal(1, 1, 10, "ledger-a", "stale:account"),
 		testAppliedProposal(2, 20, 20, "ledger-b", "transient:source"),
 	)
 
-	log := makeCreatedTxLog(20, "ledger-b", 99, []*commonpb.Posting{
+	log := makeCreatedTxLog(20, "ledger-b", 99, []*ledgerpb.Posting{
 		{Source: "transient:source", Destination: "kept:dest", Asset: "USD"},
 	})
 
@@ -386,8 +386,8 @@ func scanAccountByAsset(t *testing.T, store *readstore.Store, ledger, assetBase 
 // runs at all).
 func acctAssetConfig() *ledgerIndexConfig {
 	cfg := newLedgerIndexConfig()
-	cfg.byCanonical[indexes.Canonical(indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET))] =
-		&commonpb.Index{Id: indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)}
+	cfg.byCanonical[indexes.Canonical(indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET))] =
+		&ledgerpb.Index{Id: indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)}
 
 	return cfg
 }
@@ -768,9 +768,9 @@ func testAppliedProposal(sequence, minLogSeq, maxLogSeq uint64, ledger string, a
 	// Test fixture: each "account" is paired with a default asset so the
 	// (account, asset) granularity is exercised without requiring callers
 	// to thread the asset everywhere.
-	volumes := make([]*commonpb.TouchedVolume, len(accounts))
+	volumes := make([]*ledgerpb.TouchedVolume, len(accounts))
 	for i, a := range accounts {
-		volumes[i] = &commonpb.TouchedVolume{Account: a, Asset: "USD"}
+		volumes[i] = &ledgerpb.TouchedVolume{Account: a, Asset: "USD"}
 	}
 
 	return &proposalpb.AppliedProposal{
@@ -829,7 +829,7 @@ func TestIndexSavedMetadata_OverwriteDeletesByReverseMapDuringBuilding(t *testin
 	// type was declared, and the schema-rewrite backfill has not yet rewritten
 	// this entity's entry — so both the reverse map and the forward index hold
 	// the raw string encoding.
-	rawEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("30"))
+	rawEncoded := readstore.EncodeMetadataValue(nil, ledgerpb.NewStringValue("30"))
 	reverseKey := cloneBytes(readstore.AccountReverseMapKey(kb, ledger, account, key))
 
 	seed := b.readStore.NewBatch()
@@ -839,20 +839,20 @@ func TestIndexSavedMetadata_OverwriteDeletesByReverseMapDuringBuilding(t *testin
 
 	// The "age" account index is still backfilling; incremental writes flow to it.
 	cfg := newLedgerIndexConfig()
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)
-	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, key)
+	cfg.byCanonical[indexes.Canonical(id)] = &ledgerpb.Index{
 		Id: id,
 	}
 
 	// The incremental log carries only the new age=40 value; the indexer
 	// resolves the old encoded value via the reverse map.
-	sm := &commonpb.SavedMetadata{
-		Target: &commonpb.Target{
-			Target: &commonpb.Target_Account{
-				Account: &commonpb.TargetAccount{Addr: account},
+	sm := &ledgerpb.SavedMetadata{
+		Target: &ledgerpb.Target{
+			Target: &ledgerpb.Target_Account{
+				Account: &ledgerpb.TargetAccount{Addr: account},
 			},
 		},
-		Metadata: map[string]*commonpb.MetadataValue{key: commonpb.NewIntValue(40)},
+		Metadata: map[string]*ledgerpb.MetadataValue{key: ledgerpb.NewIntValue(40)},
 	}
 
 	batch := b.readStore.NewBatch()
@@ -862,7 +862,7 @@ func TestIndexSavedMetadata_OverwriteDeletesByReverseMapDuringBuilding(t *testin
 	require.NoError(t, b.wb.Flush())
 
 	// New entry exists and the reverse map points at it.
-	newEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewIntValue(40))
+	newEncoded := readstore.EncodeMetadataValue(nil, ledgerpb.NewIntValue(40))
 	requireMetadataLive(t, b, ledger, readstore.NamespaceAccount, key, 1, newEncoded, entityID)
 	assertReadStoreValue(t, b, reverseKey, newEncoded)
 
@@ -891,7 +891,7 @@ func TestIndexSavedMetadata_DualWritesDuringRewrite(t *testing.T) {
 		key     = "score"
 	)
 	entityID := []byte(account)
-	canonical := indexes.Canonical(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key))
+	canonical := indexes.Canonical(indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, key))
 
 	// IndexVersionState: rewrite v=1 → v=2 in flight.
 	b.putVersionState(ledger, canonical, readstore.IndexVersionState{
@@ -900,16 +900,16 @@ func TestIndexSavedMetadata_DualWritesDuringRewrite(t *testing.T) {
 	})
 
 	cfg := newLedgerIndexConfig()
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)
-	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, key)
+	cfg.byCanonical[indexes.Canonical(id)] = &ledgerpb.Index{Id: id}
 
-	sm := &commonpb.SavedMetadata{
-		Target: &commonpb.Target{
-			Target: &commonpb.Target_Account{
-				Account: &commonpb.TargetAccount{Addr: account},
+	sm := &ledgerpb.SavedMetadata{
+		Target: &ledgerpb.Target{
+			Target: &ledgerpb.Target_Account{
+				Account: &ledgerpb.TargetAccount{Addr: account},
 			},
 		},
-		Metadata: map[string]*commonpb.MetadataValue{key: commonpb.NewIntValue(42)},
+		Metadata: map[string]*ledgerpb.MetadataValue{key: ledgerpb.NewIntValue(42)},
 	}
 
 	batch := b.readStore.NewBatch()
@@ -918,7 +918,7 @@ func TestIndexSavedMetadata_DualWritesDuringRewrite(t *testing.T) {
 	require.NoError(t, b.indexSavedMetadata(b.kb, cfg, ledger, sm))
 	require.NoError(t, b.wb.Flush())
 
-	encoded := readstore.EncodeMetadataValue(nil, commonpb.NewIntValue(42))
+	encoded := readstore.EncodeMetadataValue(nil, ledgerpb.NewIntValue(42))
 
 	// Both versions must hold the entry.
 	v1Rmap := cloneBytes(readstore.AccountReverseMapKeyV(b.kb, ledger, account, key, 1))
@@ -946,7 +946,7 @@ func TestIndexDeletedMetadata_DualDeleteDuringRewrite(t *testing.T) {
 		key     = "score"
 	)
 	entityID := []byte(account)
-	canonical := indexes.Canonical(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key))
+	canonical := indexes.Canonical(indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, key))
 
 	b.putVersionState(ledger, canonical, readstore.IndexVersionState{
 		CurrentVersion: 1,
@@ -954,10 +954,10 @@ func TestIndexDeletedMetadata_DualDeleteDuringRewrite(t *testing.T) {
 	})
 
 	cfg := newLedgerIndexConfig()
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)
-	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, key)
+	cfg.byCanonical[indexes.Canonical(id)] = &ledgerpb.Index{Id: id}
 
-	encoded := readstore.EncodeMetadataValue(nil, commonpb.NewIntValue(42))
+	encoded := readstore.EncodeMetadataValue(nil, ledgerpb.NewIntValue(42))
 
 	// Pre-seed both versions to mimic post-dual-write state.
 	v1Rmap := cloneBytes(readstore.AccountReverseMapKeyV(b.kb, ledger, account, key, 1))
@@ -970,10 +970,10 @@ func TestIndexDeletedMetadata_DualDeleteDuringRewrite(t *testing.T) {
 	seedMetadataEvent(t, b, ledger, readstore.NamespaceAccount, key, 1, encoded, entityID, 1, readstore.MetadataEventAdd)
 	seedMetadataEvent(t, b, ledger, readstore.NamespaceAccount, key, 2, encoded, entityID, 1, readstore.MetadataEventAdd)
 
-	dm := &commonpb.DeletedMetadata{
-		Target: &commonpb.Target{
-			Target: &commonpb.Target_Account{
-				Account: &commonpb.TargetAccount{Addr: account},
+	dm := &ledgerpb.DeletedMetadata{
+		Target: &ledgerpb.Target{
+			Target: &ledgerpb.Target_Account{
+				Account: &ledgerpb.TargetAccount{Addr: account},
 			},
 		},
 		Key: key,
@@ -1006,7 +1006,7 @@ func TestIndexSavedMetadata_SingleWriteWhenNoRewrite(t *testing.T) {
 		key     = "score"
 	)
 	entityID := []byte(account)
-	canonical := indexes.Canonical(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key))
+	canonical := indexes.Canonical(indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, key))
 
 	// Steady state: current=1, no pending rewrite.
 	b.putVersionState(ledger, canonical, readstore.IndexVersionState{
@@ -1015,16 +1015,16 @@ func TestIndexSavedMetadata_SingleWriteWhenNoRewrite(t *testing.T) {
 	})
 
 	cfg := newLedgerIndexConfig()
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)
-	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, key)
+	cfg.byCanonical[indexes.Canonical(id)] = &ledgerpb.Index{Id: id}
 
-	sm := &commonpb.SavedMetadata{
-		Target: &commonpb.Target{
-			Target: &commonpb.Target_Account{
-				Account: &commonpb.TargetAccount{Addr: account},
+	sm := &ledgerpb.SavedMetadata{
+		Target: &ledgerpb.Target{
+			Target: &ledgerpb.Target_Account{
+				Account: &ledgerpb.TargetAccount{Addr: account},
 			},
 		},
-		Metadata: map[string]*commonpb.MetadataValue{key: commonpb.NewIntValue(7)},
+		Metadata: map[string]*ledgerpb.MetadataValue{key: ledgerpb.NewIntValue(7)},
 	}
 
 	batch := b.readStore.NewBatch()
@@ -1033,7 +1033,7 @@ func TestIndexSavedMetadata_SingleWriteWhenNoRewrite(t *testing.T) {
 	require.NoError(t, b.indexSavedMetadata(b.kb, cfg, ledger, sm))
 	require.NoError(t, b.wb.Flush())
 
-	encoded := readstore.EncodeMetadataValue(nil, commonpb.NewIntValue(7))
+	encoded := readstore.EncodeMetadataValue(nil, ledgerpb.NewIntValue(7))
 
 	requireMetadataLive(t, b, ledger, readstore.NamespaceAccount, key, 1, encoded, entityID)
 	requireMetadataDead(t, b, ledger, readstore.NamespaceAccount, key, 2, encoded, entityID)
@@ -1063,11 +1063,11 @@ func TestIndexCreatedThenOverwrittenTxMetadataSameBatch(t *testing.T) {
 	txIDBytes := readstore.EncodeTxID(make([]byte, 0, 8), txID)
 
 	cfg := newLedgerIndexConfig()
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, key)
-	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, key)
+	cfg.byCanonical[indexes.Canonical(id)] = &ledgerpb.Index{Id: id}
 
-	v1 := commonpb.NewStringValue("v1")
-	v2 := commonpb.NewStringValue("v2")
+	v1 := ledgerpb.NewStringValue("v1")
+	v2 := ledgerpb.NewStringValue("v2")
 	v1Encoded := readstore.EncodeMetadataValue(nil, v1)
 	v2Encoded := readstore.EncodeMetadataValue(nil, v2)
 	// Clone: KeyBuilder returns buffer-backed slices that later index calls reuse.
@@ -1078,21 +1078,21 @@ func TestIndexCreatedThenOverwrittenTxMetadataSameBatch(t *testing.T) {
 
 	// 1. CreateTransaction sets indexed tx metadata key=v1 (first write).
 	b.wb.SetEventSequence(1)
-	ct := &commonpb.CreatedTransaction{
-		Transaction: &commonpb.Transaction{
+	ct := &ledgerpb.CreatedTransaction{
+		Transaction: &ledgerpb.Transaction{
 			Id:       txID,
-			Metadata: map[string]*commonpb.MetadataValue{key: v1},
+			Metadata: map[string]*ledgerpb.MetadataValue{key: v1},
 		},
 	}
 	require.NoError(t, b.indexCreatedTransaction(kb, cfg, ledger, ct, nil, nil))
 
 	// 2. Same batch: overwrite the same key to v2 before the batch commits.
 	b.wb.SetEventSequence(2)
-	sm := &commonpb.SavedMetadata{
-		Target: &commonpb.Target{
-			Target: &commonpb.Target_TransactionId{TransactionId: txID},
+	sm := &ledgerpb.SavedMetadata{
+		Target: &ledgerpb.Target{
+			Target: &ledgerpb.Target_TransactionId{TransactionId: txID},
 		},
-		Metadata: map[string]*commonpb.MetadataValue{key: v2},
+		Metadata: map[string]*ledgerpb.MetadataValue{key: v2},
 	}
 	require.NoError(t, b.indexSavedMetadata(kb, cfg, ledger, sm))
 
@@ -1120,16 +1120,16 @@ func TestNewTransactionMetadataUsesKnownAbsentInsert(t *testing.T) {
 	tests := []struct {
 		name  string
 		txID  uint64
-		index func(*Builder, *ledgerIndexConfig, *commonpb.MetadataValue) error
+		index func(*Builder, *ledgerIndexConfig, *ledgerpb.MetadataValue) error
 	}{
 		{
 			name: "CreatedTransaction",
 			txID: 11,
-			index: func(b *Builder, cfg *ledgerIndexConfig, value *commonpb.MetadataValue) error {
-				return b.indexCreatedTransaction(b.kb, cfg, ledger, &commonpb.CreatedTransaction{
-					Transaction: &commonpb.Transaction{
+			index: func(b *Builder, cfg *ledgerIndexConfig, value *ledgerpb.MetadataValue) error {
+				return b.indexCreatedTransaction(b.kb, cfg, ledger, &ledgerpb.CreatedTransaction{
+					Transaction: &ledgerpb.Transaction{
 						Id:       11,
-						Metadata: map[string]*commonpb.MetadataValue{key: value},
+						Metadata: map[string]*ledgerpb.MetadataValue{key: value},
 					},
 				}, nil, nil)
 			},
@@ -1137,11 +1137,11 @@ func TestNewTransactionMetadataUsesKnownAbsentInsert(t *testing.T) {
 		{
 			name: "RevertedTransaction",
 			txID: 12,
-			index: func(b *Builder, cfg *ledgerIndexConfig, value *commonpb.MetadataValue) error {
-				return b.indexRevertedTransaction(b.kb, cfg, ledger, &commonpb.RevertedTransaction{
-					RevertTransaction: &commonpb.Transaction{
+			index: func(b *Builder, cfg *ledgerIndexConfig, value *ledgerpb.MetadataValue) error {
+				return b.indexRevertedTransaction(b.kb, cfg, ledger, &ledgerpb.RevertedTransaction{
+					RevertTransaction: &ledgerpb.Transaction{
 						Id:       12,
-						Metadata: map[string]*commonpb.MetadataValue{key: value},
+						Metadata: map[string]*ledgerpb.MetadataValue{key: value},
 					},
 				}, nil, nil)
 			},
@@ -1157,16 +1157,16 @@ func TestNewTransactionMetadataUsesKnownAbsentInsert(t *testing.T) {
 			b.seedBatchSchema(t)
 
 			cfg := newLedgerIndexConfig()
-			id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, key)
+			id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, key)
 			canonical := indexes.Canonical(id)
-			cfg.byCanonical[canonical] = &commonpb.Index{Id: id}
+			cfg.byCanonical[canonical] = &ledgerpb.Index{Id: id}
 			b.putVersionState(ledger, canonical, readstore.IndexVersionState{
 				CurrentVersion: 1,
 				PendingVersion: 2,
 			})
 
-			oldEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("sentinel"))
-			newValue := commonpb.NewStringValue("new")
+			oldEncoded := readstore.EncodeMetadataValue(nil, ledgerpb.NewStringValue("sentinel"))
+			newValue := ledgerpb.NewStringValue("new")
 			newEncoded := readstore.EncodeMetadataValue(nil, newValue)
 			entityID := readstore.EncodeTxID(make([]byte, 0, 8), tt.txID)
 			v1Rmap := cloneBytes(readstore.TransactionReverseMapKeyV(b.kb, ledger, tt.txID, key, 1))
@@ -1208,9 +1208,9 @@ func TestDualInsertKnownAbsentMetadataIndexPropagatesFailures(t *testing.T) {
 		txID   = uint64(23)
 	)
 
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, key)
+	id := indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, key)
 	canonical := indexes.Canonical(id)
-	value := commonpb.NewStringValue("new")
+	value := ledgerpb.NewStringValue("new")
 	entityID := readstore.EncodeTxID(make([]byte, 0, 8), txID)
 
 	t.Run("current version binding failure", func(t *testing.T) {
@@ -1224,7 +1224,7 @@ func TestDualInsertKnownAbsentMetadataIndexPropagatesFailures(t *testing.T) {
 		err := b.dualInsertKnownAbsentMetadataIndex(
 			b.kb,
 			ledger, readstore.NamespaceTransaction, key,
-			commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+			ledgerpb.TargetType_TARGET_TYPE_TRANSACTION,
 			value, entityID,
 			func(version uint32) []byte {
 				// Simulate the impossible wiring race guarded by
@@ -1256,7 +1256,7 @@ func TestDualInsertKnownAbsentMetadataIndexPropagatesFailures(t *testing.T) {
 		err := b.dualInsertKnownAbsentMetadataIndex(
 			b.kb,
 			ledger, readstore.NamespaceTransaction, key,
-			commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+			ledgerpb.TargetType_TARGET_TYPE_TRANSACTION,
 			value, entityID,
 			func(version uint32) []byte {
 				if version == 2 {
@@ -1288,18 +1288,18 @@ func TestAddSchemaRewriteTaskBackfillResetPropagatesBatchFailures(t *testing.T) 
 		b := newTestBuilderWithStore(t)
 		b.backfillTasks = []*backfillTask{{
 			ledger: ledger,
-			index:  indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, key),
+			index:  indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, key),
 			cursor: 77,
-			bbKey:  backfillBBKey(ledger, indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, key)),
+			bbKey:  backfillBBKey(ledger, indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, key)),
 		}}
 
 		return b
 	}
 
-	schemaLog := &commonpb.SetMetadataFieldTypeLog{
-		TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+	schemaLog := &ledgerpb.SetMetadataFieldTypeLog{
+		TargetType: ledgerpb.TargetType_TARGET_TYPE_TRANSACTION,
 		Key:        key,
-		Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
+		Type:       ledgerpb.MetadataType_METADATA_TYPE_UINT64,
 	}
 
 	t.Run("missing active batch", func(t *testing.T) {
@@ -1338,7 +1338,7 @@ func TestProcessSchemaRewriteIsFieldVersionBoundedAndPersistsCursor(t *testing.T
 
 	// Per-replica IndexVersionState as set by addSchemaRewriteTask: this
 	// rewrite migrates v=1 → v=2 for (account, "status").
-	canonical := indexes.Canonical(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status"))
+	canonical := indexes.Canonical(indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "status"))
 	b.putVersionState(ledgerName, canonical, readstore.IndexVersionState{
 		CurrentVersion: 1,
 		PendingVersion: 2,
@@ -1349,9 +1349,9 @@ func TestProcessSchemaRewriteIsFieldVersionBoundedAndPersistsCursor(t *testing.T
 	firstMatchingKey := readstore.AccountReverseMapKey(kb, ledgerName, "acct-003", "status")
 	secondMatchingKey := readstore.AccountReverseMapKey(kb, ledgerName, "acct-004", "status")
 
-	skippedEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("ignored"))
-	oldEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("42"))
-	newEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewIntValue(42))
+	skippedEncoded := readstore.EncodeMetadataValue(nil, ledgerpb.NewStringValue("ignored"))
+	oldEncoded := readstore.EncodeMetadataValue(nil, ledgerpb.NewStringValue("42"))
+	newEncoded := readstore.EncodeMetadataValue(nil, ledgerpb.NewIntValue(42))
 	firstEntityID := []byte("acct-003")
 	secondEntityID := []byte("acct-004")
 
@@ -1384,17 +1384,17 @@ func TestProcessSchemaRewriteIsFieldVersionBoundedAndPersistsCursor(t *testing.T
 			AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
 			Key:        "status",
 		}.Bytes()
-		_, err := b.attrs.Metadata.Set(fsmBatch, canonicalKey, commonpb.NewStringValue("42"))
+		_, err := b.attrs.Metadata.Set(fsmBatch, canonicalKey, ledgerpb.NewStringValue("42"))
 		require.NoError(t, err)
 	}
 	require.NoError(t, fsmBatch.Commit())
 
 	task := &schemaRewriteTask{
 		ledger:     ledgerName,
-		targetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		targetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 		key:        "status",
-		toType:     commonpb.MetadataType_METADATA_TYPE_INT64,
-		bbKey:      schemaRewriteBBKey(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status"),
+		toType:     ledgerpb.MetadataType_METADATA_TYPE_INT64,
+		bbKey:      schemaRewriteBBKey(ledgerName, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "status"),
 	}
 
 	done, err := b.processSchemaRewrite(task, 1, stop, time.Now().Add(time.Hour))
@@ -1453,14 +1453,14 @@ func TestProcessSchemaRewriteStopsBeforeScanningWhenStopClosed(t *testing.T) {
 	// well-formed (current, pending) pair to consult. The stop signal
 	// fires before any rewrite work happens so this state will be
 	// unchanged after the call.
-	canonical := indexes.Canonical(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status"))
+	canonical := indexes.Canonical(indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "status"))
 	b.putVersionState(ledgerName, canonical, readstore.IndexVersionState{
 		CurrentVersion: 1,
 		PendingVersion: 2,
 	})
 
 	reverseKey := readstore.AccountReverseMapKey(kb, ledgerName, "acct-001", "status")
-	encoded := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("42"))
+	encoded := readstore.EncodeMetadataValue(nil, ledgerpb.NewStringValue("42"))
 
 	batch := b.readStore.NewBatch()
 	require.NoError(t, batch.SetBytes(reverseKey, encoded))
@@ -1468,10 +1468,10 @@ func TestProcessSchemaRewriteStopsBeforeScanningWhenStopClosed(t *testing.T) {
 
 	task := &schemaRewriteTask{
 		ledger:     ledgerName,
-		targetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		targetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 		key:        "status",
-		toType:     commonpb.MetadataType_METADATA_TYPE_INT64,
-		bbKey:      schemaRewriteBBKey(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status"),
+		toType:     ledgerpb.MetadataType_METADATA_TYPE_INT64,
+		bbKey:      schemaRewriteBBKey(ledgerName, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "status"),
 	}
 
 	done, err := b.processSchemaRewrite(task, 10, stop, time.Now().Add(time.Hour))
@@ -1516,29 +1516,29 @@ func TestIsHistoryLog(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		log      *commonpb.Log
+		log      *ledgerpb.Log
 		expected bool
 	}{
 		{
 			name:     "nil payload",
-			log:      &commonpb.Log{},
+			log:      &ledgerpb.Log{},
 			expected: false,
 		},
 		{
 			name: "non-apply payload",
-			log: &commonpb.Log{
-				Payload: &commonpb.LogPayload{
-					Type: &commonpb.LogPayload_CreateLedger{},
+			log: &ledgerpb.Log{
+				Payload: &ledgerpb.LogPayload{
+					Type: &ledgerpb.LogPayload_CreateLedger{},
 				},
 			},
 			expected: false,
 		},
 		{
 			name: "apply with nil log",
-			log: &commonpb.Log{
-				Payload: &commonpb.LogPayload{
-					Type: &commonpb.LogPayload_Apply{
-						Apply: &commonpb.ApplyLedgerLog{},
+			log: &ledgerpb.Log{
+				Payload: &ledgerpb.LogPayload{
+					Type: &ledgerpb.LogPayload_Apply{
+						Apply: &ledgerpb.ApplyLedgerLog{},
 					},
 				},
 			},
@@ -1546,11 +1546,11 @@ func TestIsHistoryLog(t *testing.T) {
 		},
 		{
 			name: "apply with nil data",
-			log: &commonpb.Log{
-				Payload: &commonpb.LogPayload{
-					Type: &commonpb.LogPayload_Apply{
-						Apply: &commonpb.ApplyLedgerLog{
-							Log: &commonpb.LedgerLog{},
+			log: &ledgerpb.Log{
+				Payload: &ledgerpb.LogPayload{
+					Type: &ledgerpb.LogPayload_Apply{
+						Apply: &ledgerpb.ApplyLedgerLog{
+							Log: &ledgerpb.LedgerLog{},
 						},
 					},
 				},
@@ -1559,13 +1559,13 @@ func TestIsHistoryLog(t *testing.T) {
 		},
 		{
 			name: "created transaction",
-			log: &commonpb.Log{
-				Payload: &commonpb.LogPayload{
-					Type: &commonpb.LogPayload_Apply{
-						Apply: &commonpb.ApplyLedgerLog{
-							Log: &commonpb.LedgerLog{
-								Data: &commonpb.LedgerLogPayload{
-									Payload: &commonpb.LedgerLogPayload_CreatedTransaction{},
+			log: &ledgerpb.Log{
+				Payload: &ledgerpb.LogPayload{
+					Type: &ledgerpb.LogPayload_Apply{
+						Apply: &ledgerpb.ApplyLedgerLog{
+							Log: &ledgerpb.LedgerLog{
+								Data: &ledgerpb.LedgerLogPayload{
+									Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{},
 								},
 							},
 						},
@@ -1576,13 +1576,13 @@ func TestIsHistoryLog(t *testing.T) {
 		},
 		{
 			name: "reverted transaction",
-			log: &commonpb.Log{
-				Payload: &commonpb.LogPayload{
-					Type: &commonpb.LogPayload_Apply{
-						Apply: &commonpb.ApplyLedgerLog{
-							Log: &commonpb.LedgerLog{
-								Data: &commonpb.LedgerLogPayload{
-									Payload: &commonpb.LedgerLogPayload_RevertedTransaction{},
+			log: &ledgerpb.Log{
+				Payload: &ledgerpb.LogPayload{
+					Type: &ledgerpb.LogPayload_Apply{
+						Apply: &ledgerpb.ApplyLedgerLog{
+							Log: &ledgerpb.LedgerLog{
+								Data: &ledgerpb.LedgerLogPayload{
+									Payload: &ledgerpb.LedgerLogPayload_RevertedTransaction{},
 								},
 							},
 						},
@@ -1593,13 +1593,13 @@ func TestIsHistoryLog(t *testing.T) {
 		},
 		{
 			name: "saved metadata",
-			log: &commonpb.Log{
-				Payload: &commonpb.LogPayload{
-					Type: &commonpb.LogPayload_Apply{
-						Apply: &commonpb.ApplyLedgerLog{
-							Log: &commonpb.LedgerLog{
-								Data: &commonpb.LedgerLogPayload{
-									Payload: &commonpb.LedgerLogPayload_SavedMetadata{},
+			log: &ledgerpb.Log{
+				Payload: &ledgerpb.LogPayload{
+					Type: &ledgerpb.LogPayload_Apply{
+						Apply: &ledgerpb.ApplyLedgerLog{
+							Log: &ledgerpb.LedgerLog{
+								Data: &ledgerpb.LedgerLogPayload{
+									Payload: &ledgerpb.LedgerLogPayload_SavedMetadata{},
 								},
 							},
 						},
@@ -1610,13 +1610,13 @@ func TestIsHistoryLog(t *testing.T) {
 		},
 		{
 			name: "deleted metadata",
-			log: &commonpb.Log{
-				Payload: &commonpb.LogPayload{
-					Type: &commonpb.LogPayload_Apply{
-						Apply: &commonpb.ApplyLedgerLog{
-							Log: &commonpb.LedgerLog{
-								Data: &commonpb.LedgerLogPayload{
-									Payload: &commonpb.LedgerLogPayload_DeletedMetadata{},
+			log: &ledgerpb.Log{
+				Payload: &ledgerpb.LogPayload{
+					Type: &ledgerpb.LogPayload_Apply{
+						Apply: &ledgerpb.ApplyLedgerLog{
+							Log: &ledgerpb.LedgerLog{
+								Data: &ledgerpb.LedgerLogPayload{
+									Payload: &ledgerpb.LedgerLogPayload_DeletedMetadata{},
 								},
 							},
 						},
@@ -1627,13 +1627,13 @@ func TestIsHistoryLog(t *testing.T) {
 		},
 		{
 			name: "create index (config mutation)",
-			log: &commonpb.Log{
-				Payload: &commonpb.LogPayload{
-					Type: &commonpb.LogPayload_Apply{
-						Apply: &commonpb.ApplyLedgerLog{
-							Log: &commonpb.LedgerLog{
-								Data: &commonpb.LedgerLogPayload{
-									Payload: &commonpb.LedgerLogPayload_CreateIndex{},
+			log: &ledgerpb.Log{
+				Payload: &ledgerpb.LogPayload{
+					Type: &ledgerpb.LogPayload_Apply{
+						Apply: &ledgerpb.ApplyLedgerLog{
+							Log: &ledgerpb.LedgerLog{
+								Data: &ledgerpb.LedgerLogPayload{
+									Payload: &ledgerpb.LedgerLogPayload_CreateIndex{},
 								},
 							},
 						},
@@ -1644,13 +1644,13 @@ func TestIsHistoryLog(t *testing.T) {
 		},
 		{
 			name: "drop index (config mutation)",
-			log: &commonpb.Log{
-				Payload: &commonpb.LogPayload{
-					Type: &commonpb.LogPayload_Apply{
-						Apply: &commonpb.ApplyLedgerLog{
-							Log: &commonpb.LedgerLog{
-								Data: &commonpb.LedgerLogPayload{
-									Payload: &commonpb.LedgerLogPayload_DropIndex{},
+			log: &ledgerpb.Log{
+				Payload: &ledgerpb.LogPayload{
+					Type: &ledgerpb.LogPayload_Apply{
+						Apply: &ledgerpb.ApplyLedgerLog{
+							Log: &ledgerpb.LedgerLog{
+								Data: &ledgerpb.LedgerLogPayload{
+									Payload: &ledgerpb.LedgerLogPayload_DropIndex{},
 								},
 							},
 						},
@@ -1675,53 +1675,53 @@ func TestIsPostingIndex(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		id       *commonpb.IndexID
+		id       *ledgerpb.IndexID
 		expected bool
 	}{
 		{name: "nil", id: nil, expected: false},
 		{
 			name:     "metadata key (not posting)",
-			id:       indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, "category"),
+			id:       indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, "category"),
 			expected: false,
 		},
 		{
 			name:     "address index",
-			id:       indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS),
+			id:       indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS),
 			expected: true,
 		},
 		{
 			name:     "source address index",
-			id:       indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS),
+			id:       indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS),
 			expected: true,
 		},
 		{
 			name:     "destination address index",
-			id:       indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS),
+			id:       indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS),
 			expected: true,
 		},
 		{
 			name:     "account has-asset index",
-			id:       indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
+			id:       indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
 			expected: true,
 		},
 		{
 			name:     "account builtin unspecified (not posting)",
-			id:       indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED),
+			id:       indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED),
 			expected: false,
 		},
 		{
 			name:     "reference index (not posting)",
-			id:       indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
+			id:       indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
 			expected: false,
 		},
 		{
 			name:     "timestamp index (not posting)",
-			id:       indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
+			id:       indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
 			expected: false,
 		},
 		{
 			name:     "account metadata (not posting)",
-			id:       indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
+			id:       indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
 			expected: false,
 		},
 	}
@@ -1757,7 +1757,7 @@ func TestProcessSchemaRewrite_LosslessRoundTrip(t *testing.T) {
 		account    = "users:001"
 		key        = "score"
 	)
-	canonical := indexes.Canonical(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key))
+	canonical := indexes.Canonical(indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, key))
 
 	// Seed FSM canonical stored value: STRING "030" (immutable through the
 	// whole test — only the indexer's encoding view changes).
@@ -1766,14 +1766,14 @@ func TestProcessSchemaRewrite_LosslessRoundTrip(t *testing.T) {
 		AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
 		Key:        key,
 	}.Bytes()
-	_, err := b.attrs.Metadata.Set(fsmBatch, canonicalKey, commonpb.NewStringValue("030"))
+	_, err := b.attrs.Metadata.Set(fsmBatch, canonicalKey, ledgerpb.NewStringValue("030"))
 	require.NoError(t, err)
 	require.NoError(t, fsmBatch.Commit())
 
 	// Seed rmap + forward index in the STRING encoding (state before any
 	// retype). This is what the indexer would have written when the field
 	// was STRING-typed.
-	stringEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("030"))
+	stringEncoded := readstore.EncodeMetadataValue(nil, ledgerpb.NewStringValue("030"))
 	entityID := []byte(account)
 	reverseKeyV1 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledgerName, account, key, 1))
 
@@ -1794,16 +1794,16 @@ func TestProcessSchemaRewrite_LosslessRoundTrip(t *testing.T) {
 
 	task := &schemaRewriteTask{
 		ledger:     ledgerName,
-		targetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		targetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 		key:        key,
-		toType:     commonpb.MetadataType_METADATA_TYPE_UINT64,
-		bbKey:      schemaRewriteBBKey(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key),
+		toType:     ledgerpb.MetadataType_METADATA_TYPE_UINT64,
+		bbKey:      schemaRewriteBBKey(ledgerName, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, key),
 	}
 	done, err := b.processSchemaRewrite(task, 10, stop, time.Now().Add(time.Hour))
 	require.NoError(t, err)
 	require.True(t, done)
 
-	uint64Encoded := readstore.EncodeMetadataValue(nil, commonpb.NewUintValue(30))
+	uint64Encoded := readstore.EncodeMetadataValue(nil, ledgerpb.NewUintValue(30))
 	reverseKeyV2 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledgerName, account, key, 2))
 
 	requireMetadataLive(t, b, ledgerName, readstore.NamespaceAccount, key, 2, uint64Encoded, entityID)
@@ -1826,10 +1826,10 @@ func TestProcessSchemaRewrite_LosslessRoundTrip(t *testing.T) {
 
 	task2 := &schemaRewriteTask{
 		ledger:     ledgerName,
-		targetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		targetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 		key:        key,
-		toType:     commonpb.MetadataType_METADATA_TYPE_STRING,
-		bbKey:      schemaRewriteBBKey(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key),
+		toType:     ledgerpb.MetadataType_METADATA_TYPE_STRING,
+		bbKey:      schemaRewriteBBKey(ledgerName, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, key),
 	}
 	done, err = b.processSchemaRewrite(task2, 10, stop, time.Now().Add(time.Hour))
 	require.NoError(t, err)
@@ -1873,11 +1873,11 @@ func TestProcessSchemaRewrite_SkipsUncoercibleAsNullSentinel(t *testing.T) {
 		AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
 		Key:        key,
 	}.Bytes()
-	_, err := b.attrs.Metadata.Set(fsmBatch, canonicalKey, commonpb.NewStringValue("abc"))
+	_, err := b.attrs.Metadata.Set(fsmBatch, canonicalKey, ledgerpb.NewStringValue("abc"))
 	require.NoError(t, err)
 	require.NoError(t, fsmBatch.Commit())
 
-	stringEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("abc"))
+	stringEncoded := readstore.EncodeMetadataValue(nil, ledgerpb.NewStringValue("abc"))
 	entityID := []byte(account)
 	reverseKeyV1 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledgerName, account, key, 1))
 
@@ -1890,7 +1890,7 @@ func TestProcessSchemaRewrite_SkipsUncoercibleAsNullSentinel(t *testing.T) {
 	// gates the atomic switch on the read store having indexed up to it.
 	seedRewriteSequence(t, b, 2)
 
-	canonical := indexes.Canonical(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key))
+	canonical := indexes.Canonical(indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, key))
 	b.putVersionState(ledgerName, canonical, readstore.IndexVersionState{
 		CurrentVersion: 1,
 		PendingVersion: 2,
@@ -1898,10 +1898,10 @@ func TestProcessSchemaRewrite_SkipsUncoercibleAsNullSentinel(t *testing.T) {
 
 	task := &schemaRewriteTask{
 		ledger:     ledgerName,
-		targetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		targetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 		key:        key,
-		toType:     commonpb.MetadataType_METADATA_TYPE_UINT64,
-		bbKey:      schemaRewriteBBKey(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key),
+		toType:     ledgerpb.MetadataType_METADATA_TYPE_UINT64,
+		bbKey:      schemaRewriteBBKey(ledgerName, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, key),
 	}
 	done, err := b.processSchemaRewrite(task, 10, stop, time.Now().Add(time.Hour))
 	require.NoError(t, err)
@@ -1910,7 +1910,7 @@ func TestProcessSchemaRewrite_SkipsUncoercibleAsNullSentinel(t *testing.T) {
 	// v=2 forward is keyed by the Null sentinel for "abc". Atomic
 	// switch GC purges v=1 in the same batch as the version
 	// promotion, so the pre-retype forward entry is gone.
-	nullEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewNullValue("abc"))
+	nullEncoded := readstore.EncodeMetadataValue(nil, ledgerpb.NewNullValue("abc"))
 	reverseKeyV2 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledgerName, account, key, 2))
 
 	requireMetadataDead(t, b, ledgerName, readstore.NamespaceAccount, key, 1, stringEncoded, entityID)
@@ -1942,7 +1942,7 @@ func TestSchemaRewrite_SeqGate_DefersSwitchWhenReadStoreLags(t *testing.T) {
 
 	const ledger = "test"
 
-	canonical := indexes.Canonical(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status"))
+	canonical := indexes.Canonical(indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "status"))
 	b.putVersionState(ledger, canonical, readstore.IndexVersionState{
 		CurrentVersion: 1,
 		PendingVersion: 2,
@@ -1950,10 +1950,10 @@ func TestSchemaRewrite_SeqGate_DefersSwitchWhenReadStoreLags(t *testing.T) {
 
 	task := &schemaRewriteTask{
 		ledger:             ledger,
-		targetType:         commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		targetType:         ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 		key:                "status",
-		toType:             commonpb.MetadataType_METADATA_TYPE_INT64,
-		bbKey:              schemaRewriteBBKey(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status"),
+		toType:             ledgerpb.MetadataType_METADATA_TYPE_INT64,
+		bbKey:              schemaRewriteBBKey(ledger, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "status"),
 		scanComplete:       true,
 		requiredIndexedSeq: 100, // rewrite observed FSM at log seq 100
 	}
@@ -2008,7 +2008,7 @@ func TestSchemaRewrite_SeqGate_SameBatchSwitchWhenGateMet(t *testing.T) {
 
 	const ledger = "test"
 
-	canonical := indexes.Canonical(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status"))
+	canonical := indexes.Canonical(indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "status"))
 	b.putVersionState(ledger, canonical, readstore.IndexVersionState{
 		CurrentVersion: 1,
 		PendingVersion: 2,
@@ -2024,10 +2024,10 @@ func TestSchemaRewrite_SeqGate_SameBatchSwitchWhenGateMet(t *testing.T) {
 
 	task := &schemaRewriteTask{
 		ledger:     ledger,
-		targetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		targetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 		key:        "status",
-		toType:     commonpb.MetadataType_METADATA_TYPE_INT64,
-		bbKey:      schemaRewriteBBKey(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status"),
+		toType:     ledgerpb.MetadataType_METADATA_TYPE_INT64,
+		bbKey:      schemaRewriteBBKey(ledger, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "status"),
 	}
 
 	// Empty rmap → scan exhausts immediately on the first call. With
@@ -2045,7 +2045,7 @@ func TestSchemaRewrite_SeqGate_SameBatchSwitchWhenGateMet(t *testing.T) {
 
 // writeLogToFSM persists a marshaled Log under [ZoneHistory][SubHistoryLog][seq] so
 // the backfill iterator (query.ReadLogsSinceRaw) can read it back.
-func writeLogToFSM(t *testing.T, b *Builder, log *commonpb.Log) {
+func writeLogToFSM(t *testing.T, b *Builder, log *ledgerpb.Log) {
 	t.Helper()
 
 	data, err := log.MarshalVT()
@@ -2093,17 +2093,17 @@ func TestAccountAssetBackfillLifecycle(t *testing.T) {
 
 	// Historical logs: two CreatedTransaction touching USD/2, one
 	// RevertedTransaction touching EUR/2. AppliedProposals cover each.
-	writeLogToFSM(t, b, makeCreatedTxLog(1, ledger, 100, []*commonpb.Posting{
+	writeLogToFSM(t, b, makeCreatedTxLog(1, ledger, 100, []*ledgerpb.Posting{
 		{Source: "accounts:alice", Destination: "accounts:bob", Asset: "USD/2"},
 	}))
 	writeAppliedProposalToFSM(t, b, 1, 1, 1)
 
-	writeLogToFSM(t, b, makeCreatedTxLog(2, ledger, 101, []*commonpb.Posting{
+	writeLogToFSM(t, b, makeCreatedTxLog(2, ledger, 101, []*ledgerpb.Posting{
 		{Source: "accounts:bob", Destination: "accounts:carol", Asset: "USD/2"},
 	}))
 	writeAppliedProposalToFSM(t, b, 2, 2, 2)
 
-	writeLogToFSM(t, b, makeRevertedTxLog(3, ledger, 100, 102, []*commonpb.Posting{
+	writeLogToFSM(t, b, makeRevertedTxLog(3, ledger, 100, 102, []*ledgerpb.Posting{
 		{Source: "accounts:dave", Destination: "accounts:erin", Asset: "EUR/2"},
 	}))
 	writeAppliedProposalToFSM(t, b, 3, 3, 3)
@@ -2112,7 +2112,7 @@ func TestAccountAssetBackfillLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(3), globalCursor)
 
-	canonical := indexes.Canonical(indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET))
+	canonical := indexes.Canonical(indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET))
 	seedCachedLedgerHistory(b, ledger, ledgerHistoryNonEmpty)
 
 	// CreateIndex: registers the index, seeds {current:0, pending:1}, schedules
@@ -2121,8 +2121,8 @@ func TestAccountAssetBackfillLifecycle(t *testing.T) {
 	batch := b.readStore.NewBatch()
 	b.initBatch(batch)
 	b.wb.SetEventSequence(1)
-	require.NoError(t, b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{
-		Id: indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
+	require.NoError(t, b.handleCreatedIndexLog(ledger, &ledgerpb.CreatedIndexLog{
+		Id: indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
 	}))
 	require.NoError(t, b.wb.Flush())
 
@@ -2183,7 +2183,7 @@ func TestAccountAssetBackfillWipesDeletedLedgerGeneration(t *testing.T) {
 	const ledger = "test"
 
 	// Generation 1: alice & bob touch USD/2.
-	writeLogToFSM(t, b, makeCreatedTxLog(1, ledger, 100, []*commonpb.Posting{
+	writeLogToFSM(t, b, makeCreatedTxLog(1, ledger, 100, []*ledgerpb.Posting{
 		{Source: "accounts:alice", Destination: "accounts:bob", Asset: "USD/2"},
 	}))
 	writeAppliedProposalToFSM(t, b, 1, 1, 1)
@@ -2193,7 +2193,7 @@ func TestAccountAssetBackfillWipesDeletedLedgerGeneration(t *testing.T) {
 	writeAppliedProposalToFSM(t, b, 2, 2, 2)
 
 	// Generation 2 (same name, recreated): only carol & dave touch USD/2.
-	writeLogToFSM(t, b, makeCreatedTxLog(3, ledger, 101, []*commonpb.Posting{
+	writeLogToFSM(t, b, makeCreatedTxLog(3, ledger, 101, []*ledgerpb.Posting{
 		{Source: "accounts:carol", Destination: "accounts:dave", Asset: "USD/2"},
 	}))
 	writeAppliedProposalToFSM(t, b, 3, 3, 3)
@@ -2202,15 +2202,15 @@ func TestAccountAssetBackfillWipesDeletedLedgerGeneration(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(3), globalCursor)
 
-	canonical := indexes.Canonical(indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET))
+	canonical := indexes.Canonical(indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET))
 	seedCachedLedgerHistory(b, ledger, ledgerHistoryNonEmpty)
 
 	// CreateIndex schedules the backfill (current=0, pending=1).
 	batch := b.readStore.NewBatch()
 	b.initBatch(batch)
 	b.wb.SetEventSequence(1)
-	require.NoError(t, b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{
-		Id: indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
+	require.NoError(t, b.handleCreatedIndexLog(ledger, &ledgerpb.CreatedIndexLog{
+		Id: indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
 	}))
 	require.NoError(t, b.wb.Flush())
 	require.Len(t, b.backfillTasks, 1, "CreateIndex must schedule one account-asset backfill task")
@@ -2261,7 +2261,7 @@ func TestAccountAssetBackfillDoesNotWipeUnrelatedLedger(t *testing.T) {
 		task  = "task"
 	)
 
-	canonical := indexes.Canonical(indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET))
+	canonical := indexes.Canonical(indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET))
 
 	// Single global stream. Ledger "other" lives through a delete + same-name
 	// recreate (so it currently holds live state), then "task" records its own
@@ -2270,7 +2270,7 @@ func TestAccountAssetBackfillDoesNotWipeUnrelatedLedger(t *testing.T) {
 	//   seq 2: DeleteLedger(other)
 	//   seq 3: other gen-2 (carol/dave) -- the surviving generation
 	//   seq 4: task (zoe/yan)
-	writeLogToFSM(t, b, makeCreatedTxLog(1, other, 100, []*commonpb.Posting{
+	writeLogToFSM(t, b, makeCreatedTxLog(1, other, 100, []*ledgerpb.Posting{
 		{Source: "accounts:alice", Destination: "accounts:bob", Asset: "USD/2"},
 	}))
 	writeAppliedProposalToFSM(t, b, 1, 1, 1)
@@ -2278,12 +2278,12 @@ func TestAccountAssetBackfillDoesNotWipeUnrelatedLedger(t *testing.T) {
 	writeLogToFSM(t, b, makeDeleteLedgerLog(2, other))
 	writeAppliedProposalToFSM(t, b, 2, 2, 2)
 
-	writeLogToFSM(t, b, makeCreatedTxLog(3, other, 101, []*commonpb.Posting{
+	writeLogToFSM(t, b, makeCreatedTxLog(3, other, 101, []*ledgerpb.Posting{
 		{Source: "accounts:carol", Destination: "accounts:dave", Asset: "USD/2"},
 	}))
 	writeAppliedProposalToFSM(t, b, 3, 3, 3)
 
-	writeLogToFSM(t, b, makeCreatedTxLog(4, task, 102, []*commonpb.Posting{
+	writeLogToFSM(t, b, makeCreatedTxLog(4, task, 102, []*ledgerpb.Posting{
 		{Source: "accounts:zoe", Destination: "accounts:yan", Asset: "USD/2"},
 	}))
 	writeAppliedProposalToFSM(t, b, 4, 4, 4)
@@ -2350,8 +2350,8 @@ func runAccountAssetBackfill(t *testing.T, b *Builder, ledger string, globalCurs
 	batch := b.readStore.NewBatch()
 	b.initBatch(batch)
 	b.wb.SetEventSequence(1)
-	require.NoError(t, b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{
-		Id: indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
+	require.NoError(t, b.handleCreatedIndexLog(ledger, &ledgerpb.CreatedIndexLog{
+		Id: indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
 	}))
 	require.NoError(t, b.wb.Flush())
 
@@ -2379,25 +2379,25 @@ func mustReadHandle(t *testing.T, b *Builder) *dal.ReadHandle {
 }
 
 // makeSavedAccountMetadataLog builds a standalone account-metadata write log.
-func makeSavedAccountMetadataLog(seq uint64, ledger, account, key, value string) *commonpb.Log {
-	return &commonpb.Log{
+func makeSavedAccountMetadataLog(seq uint64, ledger, account, key, value string) *ledgerpb.Log {
+	return &ledgerpb.Log{
 		Sequence: seq,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_Apply{
-				Apply: &commonpb.ApplyLedgerLog{
+		Payload: &ledgerpb.LogPayload{
+			Type: &ledgerpb.LogPayload_Apply{
+				Apply: &ledgerpb.ApplyLedgerLog{
 					LedgerName: ledger,
-					Log: &commonpb.LedgerLog{
+					Log: &ledgerpb.LedgerLog{
 						Id: seq,
-						Data: &commonpb.LedgerLogPayload{
-							Payload: &commonpb.LedgerLogPayload_SavedMetadata{
-								SavedMetadata: &commonpb.SavedMetadata{
-									Target: &commonpb.Target{
-										Target: &commonpb.Target_Account{
-											Account: &commonpb.TargetAccount{Addr: account},
+						Data: &ledgerpb.LedgerLogPayload{
+							Payload: &ledgerpb.LedgerLogPayload_SavedMetadata{
+								SavedMetadata: &ledgerpb.SavedMetadata{
+									Target: &ledgerpb.Target{
+										Target: &ledgerpb.Target_Account{
+											Account: &ledgerpb.TargetAccount{Addr: account},
 										},
 									},
-									Metadata: map[string]*commonpb.MetadataValue{
-										key: commonpb.NewStringValue(value),
+									Metadata: map[string]*ledgerpb.MetadataValue{
+										key: ledgerpb.NewStringValue(value),
 									},
 								},
 							},
@@ -2466,8 +2466,8 @@ func TestMetadataBackfillSkipsForeignLedgerLogs(t *testing.T) {
 	batch := b.readStore.NewBatch()
 	b.initBatch(batch)
 	b.wb.SetEventSequence(1)
-	require.NoError(t, b.handleCreatedIndexLog(taskLedger, &commonpb.CreatedIndexLog{
-		Id: indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, metaKey),
+	require.NoError(t, b.handleCreatedIndexLog(taskLedger, &ledgerpb.CreatedIndexLog{
+		Id: indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, metaKey),
 	}))
 	require.NoError(t, b.wb.Flush())
 	require.Len(t, b.backfillTasks, 1, "CreateIndex must schedule one metadata backfill task")
@@ -2506,32 +2506,32 @@ func TestPurgeBackfillTaskGenerationRejectsInvalidTasks(t *testing.T) {
 		{name: "nil task", want: "without an active task batch"},
 		{
 			name: "unsupported transaction builtin",
-			task: &backfillTask{ledger: "ledger", index: indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex(99))},
+			task: &backfillTask{ledger: "ledger", index: indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex(99))},
 			want: "unsupported transaction backfill index",
 		},
 		{
 			name: "unsupported account builtin",
-			task: &backfillTask{ledger: "ledger", index: indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex(99))},
+			task: &backfillTask{ledger: "ledger", index: indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex(99))},
 			want: "unsupported account backfill index",
 		},
 		{
 			name: "unsupported log builtin",
-			task: &backfillTask{ledger: "ledger", index: indexes.LogBuiltinID(commonpb.LogBuiltinIndex(99))},
+			task: &backfillTask{ledger: "ledger", index: indexes.LogBuiltinID(ledgerpb.LogBuiltinIndex(99))},
 			want: "unsupported log backfill index",
 		},
 		{
 			name: "nil metadata index",
-			task: &backfillTask{ledger: "ledger", index: &commonpb.IndexID{Kind: &commonpb.IndexID_Metadata{}}},
+			task: &backfillTask{ledger: "ledger", index: &ledgerpb.IndexID{Kind: &ledgerpb.IndexID_Metadata{}}},
 			want: "nil metadata backfill index",
 		},
 		{
 			name: "unsupported metadata target",
-			task: &backfillTask{ledger: "ledger", index: indexes.MetadataID(commonpb.TargetType(99), "key")},
+			task: &backfillTask{ledger: "ledger", index: indexes.MetadataID(ledgerpb.TargetType(99), "key")},
 			want: "unsupported metadata backfill target",
 		},
 		{
 			name: "unsupported kind",
-			task: &backfillTask{ledger: "ledger", index: &commonpb.IndexID{}},
+			task: &backfillTask{ledger: "ledger", index: &ledgerpb.IndexID{}},
 			want: "unsupported backfill index kind",
 		},
 	}

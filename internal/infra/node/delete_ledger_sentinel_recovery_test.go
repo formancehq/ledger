@@ -13,7 +13,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	ledgerpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -49,7 +49,7 @@ func TestDeleteLedgerSentinelRecovery(t *testing.T) {
 			require.NoError(t, initial.UnmarshalVT(createDeleted.GetData()))
 			initial.Orders = append([]*raftcmdpb.Order{{Type: &raftcmdpb.Order_SystemScoped{
 				SystemScoped: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_SetClusterPolicy{
-					SetClusterPolicy: &raftcmdpb.SetClusterPolicyOrder{Policy: &commonpb.ClusterPolicy{
+					SetClusterPolicy: &raftcmdpb.SetClusterPolicyOrder{Policy: &ledgerpb.ClusterPolicy{
 						Revision: 1, QueryCheckpointLimit: 10,
 						MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
 						MetadataMaxKeyBytes:         domain.DefaultMetadataMaxKeyBytes,
@@ -130,8 +130,8 @@ func TestDeleteLedgerSentinelRecovery(t *testing.T) {
 				if account == "world" {
 					input, output = output, input
 				}
-				require.True(t, proto.Equal(commonpb.NewUint256FromUint64(input), volume.GetInput()))
-				require.True(t, proto.Equal(commonpb.NewUint256FromUint64(output), volume.GetOutput()))
+				require.True(t, proto.Equal(ledgerpb.NewUint256FromUint64(input), volume.GetInput()))
+				require.True(t, proto.Equal(ledgerpb.NewUint256FromUint64(output), volume.GetOutput()))
 			}
 		})
 	}
@@ -192,10 +192,10 @@ func makeDeleteSentinelEntry(t *testing.T, index uint64, ledger string, deleting
 	} else {
 		ls.Payload = &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
 			Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-				Force: true, Postings: []*commonpb.Posting{{Source: "world", Destination: "treasury", Asset: "EUR", Amount: commonpb.NewUint256FromUint64(100)}},
+				Force: true, Postings: []*ledgerpb.Posting{{Source: "world", Destination: "treasury", Asset: "EUR", Amount: ledgerpb.NewUint256FromUint64(100)}},
 			}},
 		}}
-		zero, err := (&raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(0), Output: commonpb.NewUint256FromUint64(0)}).MarshalVT()
+		zero, err := (&raftcmdpb.VolumePair{Input: ledgerpb.NewUint256FromUint64(0), Output: ledgerpb.NewUint256FromUint64(0)}).MarshalVT()
 		require.NoError(t, err)
 		for _, account := range []string{"world", "treasury"} {
 			key := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: ledger, Account: account}, Asset: "EUR"}
@@ -208,9 +208,9 @@ func makeDeleteSentinelEntry(t *testing.T, index uint64, ledger string, deleting
 		}
 	}
 	proposal := &raftcmdpb.Proposal{
-		Id: index, Date: &commonpb.Timestamp{Data: 1700000000 + index},
-		CallerSnapshot: &commonpb.CallerSnapshot{
-			Principal: &commonpb.CallerSnapshot_AuthDisabled{AuthDisabled: &commonpb.AuthDisabledCaller{}},
+		Id: index, Date: &ledgerpb.Timestamp{Data: 1700000000 + index},
+		CallerSnapshot: &ledgerpb.CallerSnapshot{
+			Principal: &ledgerpb.CallerSnapshot_AuthDisabled{AuthDisabled: &ledgerpb.AuthDisabledCaller{}},
 		},
 		ExecutionPlan: &raftcmdpb.ExecutionPlan{Attributes: plans},
 		Orders: []*raftcmdpb.Order{{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: ls},
