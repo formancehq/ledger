@@ -212,6 +212,10 @@ func TestGetConfiguredPeers_TopologySnapshotIsAtomicWithConcurrentRehydrate_Dete
 	// still include peer 2, but PeerAddresses would return the new incarnation,
 	// pairing address "old:7777" with identity "next-instance-id".
 	n := newConfiguredPeersTestNode(t)
+	// Persist all configured members to Pebble so Rehydrate does not drop
+	// voter 1 from the cache. Set() updates only the in-memory cache;
+	// Rehydrate replaces the whole cache from LoadAll.
+	require.NoError(t, n.membership.PeerStore().Put(1, "self:7777", "self:8888", []byte("self-instance-id")))
 	// Persist the new incarnation for peer 2 so Rehydrate loads it.
 	// The in-memory Membership cache still holds the old row.
 	require.NoError(t, n.membership.PeerStore().Put(2, "new:7777", "new:8888", []byte("next-instance-id")))
@@ -258,4 +262,55 @@ func TestGetConfiguredPeers_TopologySnapshotIsAtomicWithConcurrentRehydrate_Dete
 	default:
 		t.Fatalf("unexpected address for peer 2: %q", peer2.Address)
 	}
+}
+
+func TestGetConfiguredPeers_RehydrateBeforeSnapshotIsVisibleInCapture(t *testing.T) {
+	t.Parallel()
+
+	// This test proves the post-Rehydrate view: Rehydrate completes in full
+	// before cmd.fn() is driven. Without the WithPeerAddresses fix, a prior
+	// non-atomic implementation could snapshot rawNode.Status() on the
+	// orchestrate goroutine but copy PeerAddresses() before WithPeerAddresses
+	// re-reads the map; here Rehydrate has already published the new cache so
+	// PeerAddresses() must return "new:7777" / "next-instance-id" regardless
+	// of implementation order. With the fix, cmd.fn() reads both Status and the
+	// address map under the same RLock and sees the post-Rehydrate state.
+	n := newConfiguredPeersTestNode(t)
+
+	// Persist all configured members to Pebble before Rehydrate.
+	// Set() updates only the in-memory cache; Rehydrate reloads from Pebble.
+	// Both voter-1 (self) and the updated peer-2 row must be present.
+	require.NoError(t, n.membership.PeerStore().Put(1, "self:7777", "self:8888", []byte("self-instance-id")))
+	require.NoError(t, n.membership.PeerStore().Put(2, "new:7777", "new:8888", []byte("next-instance-id")))
+	require.NoError(t, n.membership.Rehydrate())
+
+	results := make(chan []Peer, 1)
+	errors := make(chan error, 1)
+	go func() {
+		peers, err := n.GetConfiguredPeers(t.Context())
+		results <- peers
+		errors <- err
+	}()
+
+	cmd := <-n.clusterCommandCh
+	err := cmd.fn()
+	require.NoError(t, err)
+	cmd.errCh <- err
+
+	require.NoError(t, <-errors)
+	peers := <-results
+
+	var peer2 *Peer
+	for i := range peers {
+		if peers[i].ID == 2 {
+			peer2 = &peers[i]
+
+			break
+		}
+	}
+	require.NotNil(t, peer2, "peer 2 must be present after Rehydrate")
+	require.Equal(t, "new:7777", peer2.Address,
+		"snapshot captured after Rehydrate must reflect the reloaded raft address")
+	require.Equal(t, []byte("next-instance-id"), peer2.InstanceID,
+		"snapshot captured after Rehydrate must reflect the reloaded identity")
 }

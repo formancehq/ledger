@@ -176,7 +176,7 @@ func (s *flakyBootstrapServer) GetPeers(context.Context, *clusterbootstrappb.Get
 	}
 
 	return &clusterbootstrappb.GetPeersResponse{Peers: []*clusterbootstrappb.PeerInfo{
-		{Id: 1, RaftAddress: "node-1:7777", ServiceAddress: "node-1:8888"},
+		{Id: 1, RaftAddress: "node-1:7777", ServiceAddress: "node-1:8888", InstanceId: []byte("0123456789abcdef")},
 	}}, nil
 }
 
@@ -196,7 +196,7 @@ func TestDiscoverPeers_RetriesTransientFailureThenSucceeds(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, int32(2), srv.attempts.Load())
-	require.Equal(t, []node.Peer{{ID: 1, Address: "node-1:7777", ServiceAddress: "node-1:8888"}}, peers)
+	require.Equal(t, []node.Peer{{ID: 1, Address: "node-1:7777", ServiceAddress: "node-1:8888", InstanceID: []byte("0123456789abcdef")}}, peers)
 }
 
 func serveClusterBootstrap(t *testing.T, impl clusterbootstrappb.ClusterBootstrapServiceServer) string {
@@ -211,6 +211,7 @@ func serveClusterBootstrap(t *testing.T, impl clusterbootstrappb.ClusterBootstra
 	t.Cleanup(srv.Stop)
 
 	return lis.Addr().String()
+}
 func TestDiscoverPeersPropagatesInstanceID(t *testing.T) {
 	t.Parallel()
 
