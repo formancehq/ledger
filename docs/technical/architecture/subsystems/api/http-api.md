@@ -1002,6 +1002,17 @@ declaration, Speakeasy can generate an empty-object decoder that strips every
 payload field. The payload remains open rather than an exhaustive union of
 typed operation variants (EN-2685).
 
+`SystemLog.payload` separately permits additional properties (EN-2781).
+Its typed `apply.log` branch coexists with open-ended sibling variants such as
+`createLedger`, `deleteLedger`, `promoteLedger` and `savedLedgerMetadata`.
+Generated SDK response decoders must retain these siblings and their complete
+nested JSON, including future variant names, in single-log responses,
+ledger-log lists and prepared-query `cursor.logData`. JSON events use the same
+system envelope. This schema correction changes neither server serialization
+nor authoritative audit bytes. Credential-safe read projections remain the
+separate EN-1634 contract; SDK field stripping is not a security boundary.
+The fixture inventory and actual SDK regression are in `tests/sdk/`.
+
 Other opaque object schemas also explicitly allow additional properties:
 ledger metadata schemas, transaction account-metadata maps, protobuf JSON
 audit/signature fields, event sinks and their statuses, signing keys, and

@@ -1,0 +1,160 @@
+{
+  "createLedger": {
+    "createLedger": {
+      "name": "test-ledger",
+      "metadataSchema": {
+        "account_fields": {
+          "active": {
+            "type": 2
+          }
+        },
+        "ledger_fields": {
+          "status": {}
+        }
+      },
+      "accountTypes": {
+        "customer": {
+          "name": "customer",
+          "pattern": "customer:{id}"
+        }
+      }
+    }
+  },
+  "deleteLedger": {
+    "deleteLedger": {
+      "name": "test-ledger"
+    }
+  },
+  "apply": {
+    "apply": {
+      "ledgerName": "test-ledger",
+      "log": {
+        "type": "NEW_TRANSACTION",
+        "id": 7,
+        "date": "2026-10-08T00:00:00Z",
+        "data": {
+          "transaction": {
+            "id": 7,
+            "postings": [
+              {
+                "source": "world",
+                "destination": "customer:1",
+                "asset": "USD/2",
+                "amount": 123
+              }
+            ]
+          },
+          "accountMetadata": {
+            "customer:1": {
+              "owner": "synthetic",
+              "checked": true
+            }
+          }
+        }
+      }
+    }
+  },
+  "registerSigningKey": {
+    "registerSigningKey": {}
+  },
+  "revokeSigningKey": {
+    "revokeSigningKey": {}
+  },
+  "setSigningConfig": {
+    "setSigningConfig": {}
+  },
+  "addedEventsSink": {
+    "addedEventsSink": {}
+  },
+  "removedEventsSink": {
+    "removedEventsSink": {}
+  },
+  "setMaintenanceMode": {
+    "setMaintenanceMode": {}
+  },
+  "promoteLedger": {
+    "promoteLedger": {
+      "name": "test-ledger"
+    }
+  },
+  "createdPreparedQuery": {
+    "createdPreparedQuery": {}
+  },
+  "updatedPreparedQuery": {
+    "updatedPreparedQuery": {}
+  },
+  "deletedPreparedQuery": {
+    "deletedPreparedQuery": {}
+  },
+  "savedNumscript": {
+    "savedNumscript": {}
+  },
+  "createdQueryCheckpoint": {
+    "createdQueryCheckpoint": {}
+  },
+  "deletedQueryCheckpoint": {
+    "deletedQueryCheckpoint": {}
+  },
+  "setQueryCheckpointSchedule": {
+    "setQueryCheckpointSchedule": {}
+  },
+  "deleteQueryCheckpointSchedule": {
+    "deleteQueryCheckpointSchedule": {}
+  },
+  "savedLedgerMetadata": {
+    "savedLedgerMetadata": {
+      "ledger": "test-ledger",
+      "metadata": {
+        "status": {
+          "stringValue": "active"
+        },
+        "checked": {
+          "boolValue": true
+        },
+        "missing": {
+          "nullValue": {}
+        }
+      }
+    }
+  },
+  "deletedLedgerMetadata": {
+    "deletedLedgerMetadata": {}
+  },
+  "setClusterPolicy": {
+    "setClusterPolicy": {}
+  },
+  "applyMetadata": {
+    "apply": {
+      "ledgerName": "test-ledger",
+      "log": {
+        "type": "SET_METADATA",
+        "data": {
+          "targetType": "ACCOUNT",
+          "targetId": "customer:1",
+          "metadata": {
+            "status": "active",
+            "count": 7,
+            "checked": true,
+            "missing": null
+          }
+        }
+      }
+    }
+  },
+  "futureVariant": {
+    "futureVariant": {
+      "nested": {
+        "array": [
+          {
+            "value": "synthetic"
+          },
+          null,
+          true,
+          7
+        ],
+        "empty": {},
+        "missing": null
+      }
+    }
+  }
+}
