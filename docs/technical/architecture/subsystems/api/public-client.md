@@ -6,7 +6,13 @@ gRPC tests import it too, so linking a client with `pkg/testserver` registers
 each Protobuf file descriptor once. The public closure comprises `common`,
 `signature`, `audit`, `bucket`, `cluster`, and `restore` (55 RPCs). The seven
 persisted-only common messages live in `internal_state.proto`; Raft,
-replication, bootstrap, snapshot, and storage protocols remain private.
+replication, bootstrap, snapshot, and storage protocols remain private. The
+public schemas also contain operational and administrative RPC messages when
+they are part of a declared service contract. One deliberate exception is
+`bucket.Request.set_cluster_policy`: it is an internal control-plane arm of
+the public `Apply` envelope, not a client-facing operation. Removing that arm
+from the generated client requires separating the internal admission command
+envelope from the public `ApplyRequest`, and is a follow-up protocol refactor.
 
 The nested Go module at `pkg/client/v3` contains generated bindings, the six
 source `.proto` files, `proto/ledger-public.protoset`, and `contract.json`.
