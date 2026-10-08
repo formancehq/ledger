@@ -386,14 +386,20 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 
 	// Retry until the answer is definitive. A maintenance rejection is not one
 	// (see internal.retryableRPCError): breaking there would record a committed
-	// bulk as one that never happened.
-	for {
+	// bulk as one that never happened. PRELOAD_UNAVAILABLE is definitive — the
+	// bulk did not commit — but the state it depends on may move, so it gets a
+	// few attempts before the checker judges it.
+	for preloadAttempts := 0; ; {
 		resp, err = client.Apply(ctx, req)
 		if err == nil || ctx.Err() != nil {
 			break
 		}
 
-		if !internal.IsTransient(err) && !internal.IsCanceled(err) {
+		if internal.IsPreloadUnavailable(err) {
+			if preloadAttempts++; preloadAttempts >= 5 {
+				break
+			}
+		} else if !internal.IsTransient(err) && !internal.IsCanceled(err) {
 			break
 		}
 

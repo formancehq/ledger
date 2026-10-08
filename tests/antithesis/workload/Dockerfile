@@ -20,6 +20,7 @@ COPY cmd/server /src/cmd/server
 COPY internal /src/internal
 COPY pkg /src/pkg
 COPY tests/oracle /src/tests/oracle
+COPY tests/numscriptgen /src/tests/numscriptgen
 COPY tests/antithesis/workload/go.* /src/tests/antithesis/workload/
 COPY tests/antithesis/workload/bin /src/tests/antithesis/workload/bin
 COPY tests/antithesis/workload/internal /src/tests/antithesis/workload/internal
@@ -28,7 +29,8 @@ COPY tests/antithesis/workload/internal /src/tests/antithesis/workload/internal
 # The replace directive (../../../) resolves to / from that path, so place the root module at /.
 RUN cp /src/go.* / && mkdir -p /cmd && cp -r /src/cmd/server /cmd/server \
     && cp -r /src/internal /internal && cp -r /src/pkg /pkg \
-    && mkdir -p /tests && cp -r /src/tests/oracle /tests/oracle
+    && mkdir -p /tests && cp -r /src/tests/oracle /tests/oracle \
+    && cp -r /src/tests/numscriptgen /tests/numscriptgen
 
 RUN mkdir /instrumented
 WORKDIR /src/tests/antithesis/workload

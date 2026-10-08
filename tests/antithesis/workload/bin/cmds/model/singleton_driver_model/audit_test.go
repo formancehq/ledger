@@ -339,6 +339,7 @@ func TestAuditOrderTypeTableMatchesTheDomain(t *testing.T) {
 		"updated_default_enforcement_mode": apply(&raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_UpdateDefaultEnforcementMode{}}),
 		"saved_ledger_metadata":            ledgerScoped(&raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_SaveLedgerMetadata{}}),
 		"deleted_ledger_metadata":          ledgerScoped(&raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_DeleteLedgerMetadata{}}),
+		"saved_numscript":                  ledgerScoped(&raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_SaveNumscript{}}),
 	}
 	require.Len(t, orders, len(auditOrderTypeOfKind))
 	for kind, order := range orders {
@@ -509,6 +510,7 @@ func TestRequestLogKindCoversEveryAuditToken(t *testing.T) {
 		{Type: &servicepb.Request_SetDefaultEnforcementMode{}},
 		{Type: &servicepb.Request_SaveLedgerMetadata{}},
 		{Type: &servicepb.Request_DeleteLedgerMetadata{}},
+		{Type: &servicepb.Request_SaveNumscript{}},
 	}
 
 	produced := map[string]bool{}

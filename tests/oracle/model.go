@@ -1005,7 +1005,13 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 			continue
 		}
 		if lc, exists := next.lifecycle.Get(name); exists && lc.Deleted {
-			return ApplyResult{Reason: domain.ErrReasonLedgerDeleted, State: g, Orders: append(orders, OrderResult{Reason: domain.ErrReasonLedgerDeleted})}
+			reason := domain.ErrReasonLedgerDeleted
+			if save := req.GetSaveNumscript(); save != nil && savePayloadReason(save) != "" {
+				// A save validates its payload before it loads the ledger.
+				reason = savePayloadReason(save)
+			}
+
+			return ApplyResult{Reason: reason, State: g, Orders: append(orders, OrderResult{Reason: reason})}
 		}
 
 		if lc, exists := next.lifecycle.Get(name); exists && lc.Mode == commonpb.LedgerMode_LEDGER_MODE_MIRROR && !mirrorSafeRequest(req) {
@@ -2598,7 +2604,8 @@ func mirrorSafeRequest(req *servicepb.Request) bool {
 		*servicepb.Request_DeleteLedgerMetadata,
 		*servicepb.Request_AddAccountType,
 		*servicepb.Request_RemoveAccountType,
-		*servicepb.Request_SetDefaultEnforcementMode:
+		*servicepb.Request_SetDefaultEnforcementMode,
+		*servicepb.Request_SaveNumscript:
 		return true
 	}
 

@@ -793,6 +793,7 @@ var auditOrderTypeOfKind = map[string]string{
 	"updated_default_enforcement_mode": "update_default_enforcement_mode",
 	"saved_ledger_metadata":            "save_ledger_metadata",
 	"deleted_ledger_metadata":          "delete_ledger_metadata",
+	"saved_numscript":                  "save_numscript",
 }
 
 // auditOrderTypes are the tokens a filter may ask for: every kind this
@@ -801,7 +802,7 @@ var auditOrderTypes = []string{
 	"create_transaction", "revert_transaction", "add_metadata", "delete_metadata",
 	"set_metadata_field_type", "remove_metadata_field_type", "create_index", "drop_index",
 	"add_account_type", "remove_account_type", "update_default_enforcement_mode",
-	"save_ledger_metadata", "delete_ledger_metadata",
+	"save_ledger_metadata", "delete_ledger_metadata", "save_numscript",
 }
 
 // auditFiltersOrderType reports whether filter carries an order-type leaf.

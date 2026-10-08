@@ -188,6 +188,14 @@ func generateBulk(g oracle.GlobalState, ledgers []string, newLedger string, live
 		}
 	}
 
+	// Numscript bulks are single-ledger: a script's seeding orders, a save and
+	// the reference that follows it all have to land on the script's ledger.
+	if len(picks) == 1 && rollNumscriptBulk() {
+		if reqs := generateNumscriptBulk(g, picks[0]); reqs != nil {
+			return oracle.Bulk{Requests: reqs}
+		}
+	}
+
 	size := bulkSize()
 	requests := make([]*servicepb.Request, 0, size)
 	appendRequest := func(ls oracle.LedgerState, req *servicepb.Request) {
@@ -478,6 +486,13 @@ func generateTransaction(ledger string, ls oracle.LedgerState) *servicepb.Reques
 		if req := generateRejectedTransaction(ledger, ls); req != nil {
 			return req
 		}
+	}
+
+	// ~1/8: an unseeded script, interleaved with whatever else the bulk holds.
+	if oneIn(8) {
+		gen, accounts := generateScript()
+
+		return scriptedCreate(ledger, inlineScript(gen), accounts)
 	}
 
 	// Force (~1/8) skips the balance floor, letting a non-world source overdraft.

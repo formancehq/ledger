@@ -93,23 +93,34 @@ func (s LedgerState) Numscripts() map[NumscriptKey]string {
 	return out
 }
 
-// applySaveNumscript mirrors processSaveNumscript's check order: name, content,
-// parse, version syntax, then immutability.
-func (s *LedgerState) applySaveNumscript(req *servicepb.SaveNumscriptRequest) OrderResult {
+// savePayloadReason is the part of processSaveNumscript that runs before the
+// ledger is loaded: name, content, parse, then version syntax. Empty when the
+// payload is valid.
+func savePayloadReason(req *servicepb.SaveNumscriptRequest) string {
 	if err := domain.ValidateNumscriptName(req.GetName()); err != nil {
-		return OrderResult{Reason: err.Reason()}
+		return err.Reason()
 	}
 
 	if req.GetContent() == "" {
-		return OrderResult{Reason: domain.ErrNumscriptContentRequired.Reason()}
+		return domain.ErrNumscriptContentRequired.Reason()
 	}
 
 	if parsed := parseScript(req.GetContent()); parsed.parseErr {
-		return OrderResult{Reason: domain.ErrReasonNumscriptParseError}
+		return domain.ErrReasonNumscriptParseError
 	}
 
 	if _, err := semver.Parse(req.GetVersion()); err != nil {
-		return OrderResult{Reason: domain.ErrReasonNumscriptInvalidVersion}
+		return domain.ErrReasonNumscriptInvalidVersion
+	}
+
+	return ""
+}
+
+// applySaveNumscript mirrors processSaveNumscript: the payload checks, then
+// immutability of the version.
+func (s *LedgerState) applySaveNumscript(req *servicepb.SaveNumscriptRequest) OrderResult {
+	if reason := savePayloadReason(req); reason != "" {
+		return OrderResult{Reason: reason}
 	}
 
 	key := NumscriptKey{Name: req.GetName(), Version: req.GetVersion()}

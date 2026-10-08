@@ -230,8 +230,8 @@ func replayOrdersMatch(bulk oracle.Bulk, orders []oracle.OrderResult, logs []*co
 			ct := req.GetApply().GetAction().GetCreateTransaction()
 			if tx.GetId() != order.TxID ||
 				tx.GetReference() != ct.GetReference() ||
-				!postingsEqual(ct.GetPostings(), tx.GetPostings()) ||
-				!accountMetaMapEqual(ct.GetAccountMetadata(), data.GetCreatedTransaction().GetAccountMetadata()) {
+				!postingsEqual(order.Postings, tx.GetPostings()) ||
+				!accountMetaMapEqual(order.AccountMetadata, data.GetCreatedTransaction().GetAccountMetadata()) {
 				return false
 			}
 		}
