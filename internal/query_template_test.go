@@ -202,3 +202,31 @@ func TestQueryTemplateParamsOverwriteKeepsUnsetFields(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint(15), params.PageSize)
 }
+
+func TestQueryTemplateParamsOverwriteNullKeepsAndEmptyExpandClears(t *testing.T) {
+	t.Parallel()
+
+	template := json.RawMessage(`{"endTime": "2024-01-01T00:00:00Z", "startTime": "2023-01-01T00:00:00Z", "expand": ["volumes"], "pageSize": 5}`)
+
+	// null does not clear a template value (unlike JSON Merge Patch).
+	params, err := QueryTemplateParams[any]{PageSize: 15}.Overwrite(
+		template,
+		json.RawMessage(`{"endTime": null, "startTime": null, "expand": null, "pageSize": null}`),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, params.PIT)
+	require.Equal(t, "2024-01-01T00:00:00Z", params.PIT.Format("2006-01-02T15:04:05Z07:00"))
+	require.NotNil(t, params.OOT)
+	require.Equal(t, []string{"volumes"}, params.Expand)
+	require.Equal(t, uint(5), params.PageSize)
+
+	// An explicit empty expand clears it; an explicit endTime overrides it.
+	params, err = QueryTemplateParams[any]{PageSize: 15}.Overwrite(
+		template,
+		json.RawMessage(`{"endTime": "2025-06-01T00:00:00Z", "expand": []}`),
+	)
+	require.NoError(t, err)
+	require.Equal(t, "2025-06-01T00:00:00Z", params.PIT.Format("2006-01-02T15:04:05Z07:00"))
+	require.Empty(t, params.Expand)
+	require.Equal(t, uint(5), params.PageSize)
+}

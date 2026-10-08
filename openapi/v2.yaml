@@ -1657,7 +1657,13 @@ paths:
                 cursor:
                   type: string
                 params:
-                  $ref: "#/components/schemas/V2QueryParams"
+                  allOf:
+                    - $ref: "#/components/schemas/V2QueryParams"
+                  description: |
+                    Parameters for this run, layered on top of the template's `params`.
+                    Params are resolved in order: server defaults, then the template's `params`, then these run `params`. Each layer overrides the previous one field by field.
+                    A field that is absent or `null` here keeps the template's value: `null` does not clear it. This differs from JSON Merge Patch (RFC 7396), where `null` removes a field.
+                    To run a template that sets `endTime` against the current state, pass an explicit `endTime` set to the current time. `expand` can be cleared with `[]`.
                 vars:
                   type: object
                   additionalProperties:
@@ -3368,7 +3374,11 @@ components:
         resource:
           $ref: "#/components/schemas/V2QueryResource"
         params:
-          $ref: "#/components/schemas/V2QueryParams"
+          allOf:
+            - $ref: "#/components/schemas/V2QueryParams"
+          description: |
+            Default parameters for this template. Params are resolved in order: server defaults, then these template `params`, then the run request's `params`. Each layer overrides the previous one field by field.
+            A field that is absent or `null` in the run request keeps the value set here: `null` does not clear it. This differs from JSON Merge Patch (RFC 7396), where `null` removes a field.
         vars:
           type: object
           description: Variables the query accepts, keyed by variable name
