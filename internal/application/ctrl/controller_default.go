@@ -2174,8 +2174,12 @@ func (ctrl *DefaultController) Apply(ctx context.Context, req *servicepb.ApplyRe
 
 	result, err := ctrl.admission.Admit(ctx, req)
 
+	status := "success"
+	if err != nil {
+		status = "error"
+	}
 	ctrl.applyDuration.Record(ctx, time.Since(start).Seconds(),
-		metric.WithAttributes(attribute.Int("batch_size", batchSize)))
+		metric.WithAttributes(attribute.Int("batch_size", batchSize), attribute.String("status", status)))
 
 	if err != nil {
 		return nil, fmt.Errorf("applying raft requests: %w", err)

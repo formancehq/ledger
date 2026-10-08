@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -279,7 +280,7 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 				"node_id": peerID,
 				"error":   err,
 			}).Errorf("Failed to get disk usage from peer")
-			hc.pollFailures.Add(context.Background(), 1, metric.WithAttributes(attribute.Int64("node_id", int64(peerID))))
+			hc.pollFailures.Add(context.Background(), 1, metric.WithAttributes(attribute.String("peer", strconv.FormatUint(peerID, 10))))
 			reports = append(reports, nodeUsageReport{nodeID: peerID, fetchErr: err})
 			samples = append(samples, VolumeSample{})
 
@@ -300,7 +301,7 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 				"error":   err,
 			}).Errorf("Failed to get disk usage from peer")
 
-			hc.pollFailures.Add(context.Background(), 1, metric.WithAttributes(attribute.Int64("node_id", int64(peerID))))
+			hc.pollFailures.Add(context.Background(), 1, metric.WithAttributes(attribute.String("peer", strconv.FormatUint(peerID, 10))))
 
 			reports = append(reports, nodeUsageReport{
 				nodeID:   peerID,

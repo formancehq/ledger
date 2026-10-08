@@ -9,50 +9,34 @@ panels.row('Admission', 169, [
     'Preload Duration (p50, p95, p99)',
     { h: 8, w: 12, x: 0, y: 90 },
     [
-      { expr: 'histogram_quantile(0.50, sum(rate(admission.preload.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, type))', legendFormat: 'p50 - {{type}}' },
-      { expr: 'histogram_quantile(0.95, sum(rate(admission.preload.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, type))', legendFormat: 'p95 - {{type}}' },
-      { expr: 'histogram_quantile(0.99, sum(rate(admission.preload.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, type))', legendFormat: 'p99 - {{type}}' },
+      { expr: 'histogram_quantile(0.50, sum(rate(admission.preload.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'p50 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.95, sum(rate(admission.preload.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'p95 - Node {{formance.ledger.node.id}}' },
+      { expr: 'histogram_quantile(0.99, sum(rate(admission.preload.duration_bucket{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (le, formance.ledger.node.id))', legendFormat: 'p99 - Node {{formance.ledger.node.id}}' },
     ], unit='s',
     description=|||
-      Time spent loading preload values from the persistent store during admission. High values indicate slow storage or expensive attribute computations.
-      
-      Breakdown by attribute type:
-      - volumes: Account volumes (input/output)
-      - reversions: Transaction reversion status
-      - idempotency_keys: Idempotency key mappings
-      - boundaries: Ledger boundaries
-      - ledgers: Ledger info
-      - references: Transaction references
+      Time to build the preloads of one admission batch (one Builder.Build call): the store reads and computations its orders need. High values indicate slow storage or expensive attribute computations.
    |||,
   ),
 
   panels.timeseries(
-    'Preload Rate (by type)',
+    'Preload Builds Rate',
     { h: 8, w: 12, x: 12, y: 90 },
     [
       { expr: 'sum(rate(admission.preloads{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', legendFormat: 'Node {{formance.ledger.node.id}}' },
     ], unit='ops',
     description=|||
-      Rate of preload operations from the persistent store per second. High rates after warmup may indicate cache efficiency issues.
-      
-      Breakdown by attribute type:
-      - volumes: Account volumes (input/output)
-      - reversions: Transaction reversion status
-      - idempotency_keys: Idempotency key mappings
-      - boundaries: Ledger boundaries
-      - ledgers: Ledger info
-      - references: Transaction references
+      Successful preload builds per second: one per admitted batch, whatever the number of keys it needs.
    |||, opts={ stackMode: 'normal' },
   ),
 
   panels.timeseries(
-    'Preload Keys Needed Rate (by type)',
+    'Preload Keys Needed Rate',
     { h: 8, w: 12, x: 0, y: 98 },
     [
       { expr: 'sum(rate(admission.preload.keys_needed{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', legendFormat: 'Node {{formance.ledger.node.id}}' },
     ], unit='ops',
     description=|||
-      Rate of keys that need resolving during preload, broken down by attribute type.
+      Rate of keys that need resolving during preload.
       This shows the total demand on the preload system before cache filtering.
    |||, opts={ stackMode: 'normal' },
   ),
@@ -73,14 +57,14 @@ panels.row('Admission', 169, [
   ),
 
   panels.timeseries(
-    'Preload Store Reads vs Cache Hits (by type)',
+    'Preload Store Reads vs Cache Hits',
     { h: 8, w: 12, x: 0, y: 106 },
     [
       { expr: 'sum(rate(admission.preload.keys_needed{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id) - sum(rate(admission.preload.cache_hits{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', legendFormat: 'store reads - Node {{formance.ledger.node.id}}' },
       { expr: 'sum(rate(admission.preload.cache_hits{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (formance.ledger.node.id)', legendFormat: 'cache hits - Node {{formance.ledger.node.id}}' },
     ], unit='ops',
     description=|||
-      Comparison of store reads (cache misses) vs cache hits by attribute type.
+      Comparison of store reads (keys_needed - cache_hits) vs cache hits.
       Helps visualize the cache effectiveness at a glance.
    |||, opts={ stackMode: 'normal' },
   ),

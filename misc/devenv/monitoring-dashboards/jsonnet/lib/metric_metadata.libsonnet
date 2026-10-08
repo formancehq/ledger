@@ -84,7 +84,7 @@
   'raft.fsm.rotation.duration': { kind: 'histogram', unit: 's' },
   'raft.node.gating.readies_processed': { kind: 'histogram', unit: '{ready}' },
   'raft.node.gating.wait.duration': { kind: 'histogram', unit: 's' },
-  'raft.node.lead': { kind: 'gauge', unit: null },
+  'raft.node.leader': { kind: 'gauge', unit: null },
   'raft.node.maintenance.replay_spool.duration': { kind: 'histogram', unit: 's' },
   'raft.node.maintenance.snapshot_creation.duration': { kind: 'histogram', unit: 's' },
   'raft.node.ready.wait.duration': { kind: 'histogram', unit: 's' },

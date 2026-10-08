@@ -67,8 +67,8 @@ panels.row('System', 0, [
     'Memory utilization',
     { h: 8, w: 12, x: 12, y: 93 },
     [
-      { expr: 'rate({"system.memory.utilization", "system.memory.state"="used", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])', legendFormat: 'Node {{formance.ledger.node.id}} : Used' },
-      { expr: 'rate({"system.memory.utilization", "system.memory.state"="free", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])', legendFormat: 'Node {{formance.ledger.node.id}} : Free' },
+      { expr: '{"system.memory.utilization", "system.memory.state"="used", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}', legendFormat: 'Node {{formance.ledger.node.id}} : Used' },
+      { expr: '{"system.memory.utilization", "system.memory.state"="free", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}', legendFormat: 'Node {{formance.ledger.node.id}} : Free' },
     ], unit='percentunit',
     description=|||
       System memory utilization ratio (0-1) showing used vs free memory.
@@ -88,15 +88,16 @@ panels.row('System', 0, [
     'Process CPU time',
     { h: 8, w: 12, x: 0, y: 101 },
     [
-      { expr: 'sum by (formance.ledger.node.id) (
+      { expr: 'sum by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) (
   rate(process.cpu.time{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])
-)', legendFormat: 'Node {{formance.ledger.node.id}}: {{cpu.mode}}' },
-      { expr: 'max by (formance.ledger.node.id) (
+)
+/
+max by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) (
   go.processor.limit{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}
-)', legendFormat: 'Node {{formance.ledger.node.id}}: Limit' },
+)', legendFormat: '{{{{formance.ledger.cluster.name}}}} / Node {{{{formance.ledger.node.id}}}}' },
     ], unit='percentunit',
     description=|||
-      CPU utilization as a ratio of process CPU time to available processor limit. Shows how much CPU capacity the process is using.
+      CPU utilization: process CPU seconds per second divided by the Go processor limit (GOMAXPROCS), per node. 1.0 means every available processor is busy.
       
       Values close to 1.0 indicate CPU saturation. Consider:
       - Profiling to identify hot paths
@@ -165,12 +166,12 @@ panels.row('System', 0, [
     'Leadership status',
     { h: 8, w: 8, x: 16, y: 109 },
     [
-      { expr: '{"raft.node.lead", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}', legendFormat: 'Node {{formance.ledger.node.id}}' },
+      { expr: '{"raft.node.leader", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}', legendFormat: 'Node {{formance.ledger.node.id}} → leader {{leader_id}}' },
     ],
     description=|||
-      Shows which node is recognized as the Raft leader by each node. All nodes should report the same leader ID.
-      
-      Leader ID 0 means no leader is known (cluster is electing). Monitor for:
+      Shows which node is recognized as the Raft leader by each node: each series is 1 for the leader_id a node currently recognizes. All nodes should report the same leader_id.
+
+      A value of 0 (no leader_id) means the node knows no leader (cluster is electing). Monitor for:
       - Frequent leader changes (leadership instability)
       - Split-brain scenarios (different nodes reporting different leaders)
       - Extended periods with no leader
