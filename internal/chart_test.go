@@ -454,3 +454,94 @@ func TestPostingValidation(t *testing.T) {
 		}
 	}
 }
+
+func BenchmarkFindAccountSchema(b *testing.B) {
+	chart := testChart()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		if _, err := chart.FindAccountSchema("users:001:main"); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkFindAccountSchemaParsed(b *testing.B) {
+	const source = `{
+    "banks": {
+        "$iban": {
+            ".pattern": "^[0-9]{10}$",
+            "main": {}
+        }
+    }
+}`
+
+	var chart ChartOfAccounts
+	require.NoError(b, json.Unmarshal([]byte(source), &chart))
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		if _, err := chart.FindAccountSchema("banks:0123456789:main"); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func TestChartRoundTripEquality(t *testing.T) {
+	t.Parallel()
+
+	original := ChartOfAccounts{
+		"banks": {
+			VariableSegment: &ChartVariableSegment{
+				Label:   "iban",
+				Pattern: pointer.For("^foo$"),
+				ChartSegment: ChartSegment{
+					Account: &ChartAccount{},
+				},
+			},
+		},
+	}
+
+	data, err := json.Marshal(original)
+	require.NoError(t, err)
+
+	var decoded ChartOfAccounts
+	require.NoError(t, json.Unmarshal(data, &decoded))
+
+	require.Equal(t, original, decoded)
+}
+
+func TestMatchPattern(t *testing.T) {
+	t.Parallel()
+
+	s := &ChartVariableSegment{Pattern: pointer.For("^[0-9]{3}$")}
+
+	// First call: cache miss, compiles.
+	matches, err := s.matchPattern("001")
+	require.NoError(t, err)
+	require.True(t, matches)
+
+	// Second call: cache hit.
+	matches, err = s.matchPattern("002")
+	require.NoError(t, err)
+	require.True(t, matches)
+
+	matches, err = s.matchPattern("abc")
+	require.NoError(t, err)
+	require.False(t, matches)
+
+	// No pattern: everything matches.
+	none := &ChartVariableSegment{}
+	matches, err = none.matchPattern("anything")
+	require.NoError(t, err)
+	require.True(t, matches)
+
+	// Invalid pattern on a directly-constructed segment surfaces the error.
+	bad := &ChartVariableSegment{Pattern: pointer.For("[[")}
+	_, err = bad.matchPattern("x")
+	require.Error(t, err)
+}
