@@ -231,6 +231,11 @@ OpenAPI string/bigint; a generated TypeScript number for integer/bigint can roun
 large counters despite successful decoding. Exercise actual generated list/get
 operations with >2^53 and uint64 maximum, alongside schema validation and the
 codec/routed HTTP fixtures. Read mirror schemas are nested, while flat create
-fixtures must still be accepted. Marshal failure must return sanitized 500 before
+fixtures must still be accepted. Rewrite-rule read models must expose CEL
+`valueExpr` on transaction and account metadata actions across all supported
+scopes, accept protojson's omitted empty replacements (both rewrite-address and
+account-metadata replacement entries), and preserve explicit empty literal
+oneofs. Get/list fixtures in `internal/adapter/http/testdata/ledger_info_rewrite_*`
+are shared routed-response and generated SDK operation inputs. Marshal failure must return sanitized 500 before
 headers. The confidentiality oracle belongs to sensitive-data-exposure-boundaries.
 See [LedgerInfo](../architecture/subsystems/api/ledger-info.md).

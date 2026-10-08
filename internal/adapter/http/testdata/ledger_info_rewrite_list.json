@@ -1,0 +1,109 @@
+{
+  "data": [
+    {
+      "name": "mirror",
+      "mode": "MIRROR",
+      "defaultEnforcementMode": "STRICT",
+      "mirrorSource": {
+        "ledgerName": "source",
+        "http": {
+          "baseUrl": "https://source.example"
+        },
+        "rewriteRules": [
+          {
+            "createdTransaction": {
+              "actions": [
+                {
+                  "setMetadata": {
+                    "key": "reference",
+                    "valueExpr": "log.reference"
+                  }
+                },
+                {
+                  "setAccountMetadata": {
+                    "account": "world",
+                    "key": "reference",
+                    "valueExpr": "log.reference"
+                  }
+                },
+                {
+                  "setAccountMetadataFromAddress": {
+                    "pattern": "^world$",
+                    "replacements": [
+                      {
+                        "key": "empty"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "rewriteAddress": {
+                    "pattern": ":suffix$"
+                  }
+                },
+                {
+                  "setMetadata": {
+                    "key": "literal",
+                    "value": ""
+                  }
+                },
+                {
+                  "setMetadata": {
+                    "key": "default"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "revertedTransaction": {
+              "actions": [
+                {
+                  "setMetadata": {
+                    "key": "reference",
+                    "valueExpr": "log.metadata[\"reference\"].string_value"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "savedMetadata": {
+              "actions": [
+                {
+                  "setMetadata": {
+                    "key": "target",
+                    "valueExpr": "log.metadata[\"reference\"].string_value"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "deletedMetadata": {
+              "actions": [
+                {
+                  "rewriteAddress": {
+                    "pattern": ":suffix$"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "anyVariant": {
+              "actions": [
+                {
+                  "rewriteAddress": {
+                    "pattern": ":suffix$"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "hasMore": false
+}

@@ -37,6 +37,12 @@ source, with optional `batchSize` and `rewriteRules`. HTTP sources include neste
 `awsIamAuth` fields (`region`, `assumeRoleArn`). `MirrorSourceRead` is a separate
 schema from the flat `MirrorSourceConfig` accepted at ledger creation: correcting
 read responses does not change creation input or add HTTP creation features.
+Rewrite rules use separate read schemas throughout their scope/action graph:
+CEL sources are `valueExpr` on reads (`value_expr` remains the creation schema
+spelling), and empty address replacements are omitted by protojson and decode
+as the empty string. This applies both to `rewriteAddress.replacement` and each
+`setAccountMetadataFromAddress.replacements` entry. Empty literal oneof values
+remain explicit `value: ""`; absent sources mean the default empty literal.
 
 Marshal failures propagate. Get buffers with `writeOKChecked`; list buffers with `writePageOK` before
 writing success headers so invalid values return a sanitized HTTP 500 instead

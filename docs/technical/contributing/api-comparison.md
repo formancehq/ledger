@@ -31,7 +31,10 @@ uint64 precision in TypeScript SDKs. v2 stats/log IDs use numeric JSON with
 `integer/int64` or `integer/bigint`; v2 has no equivalent mirror progress. The
 v3-specific counter representation intentionally differs for lossless decoding.
 Nested read mirror configuration is credential-safe and uses a distinct schema
-from unchanged flat creation input. gRPC revision 26 covers detached current and
+from unchanged flat creation input. Read rewrite actions model protojson
+`valueExpr` and optional empty replacements; creation schemas retain
+`value_expr` and their existing required fields. v2 has no mirror rewrite-rule
+configuration counterpart. gRPC revision 26 covers detached current and
 checkpoint projections. See [the contract](../architecture/subsystems/api/ledger-info.md).
 
 ### Prepared-query filter shape validation
