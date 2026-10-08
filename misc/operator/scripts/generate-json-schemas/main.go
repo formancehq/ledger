@@ -13,7 +13,17 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 )
 
-const jsonSchemaDraft04 = "http://json-schema.org/draft-04/schema#"
+const (
+	jsonSchemaDraft04 = "http://json-schema.org/draft-04/schema#"
+	jsonSchemaDraft07 = "http://json-schema.org/draft-07/schema#"
+)
+
+// crdInfo identifies a generated kind schema for the dispatcher schema below.
+type crdInfo struct {
+	group   string
+	version string
+	kind    string
+}
 
 func main() {
 	if err := run("config/crd/bases", "config/crd/schemas"); err != nil {
@@ -37,21 +47,27 @@ func run(crdDir, outDir string) error {
 	}
 
 	written := 0
+	var crds []crdInfo
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".yaml") {
 			continue
 		}
 
 		crdPath := filepath.Join(crdDir, entry.Name())
-		n, err := writeSchemasForCRD(crdPath, outDir)
+		n, info, err := writeSchemasForCRD(crdPath, outDir)
 		if err != nil {
 			return fmt.Errorf("%s: %w", crdPath, err)
 		}
 		written += n
+		crds = append(crds, info)
 	}
 
 	if written == 0 {
 		return fmt.Errorf("no JSON schemas written from %q", crdDir)
+	}
+
+	if err := writeDispatcherSchemas(crds, outDir); err != nil {
+		return fmt.Errorf("writing dispatcher schemas: %w", err)
 	}
 
 	return nil
@@ -75,41 +91,92 @@ func clearJSONFiles(dir string) error {
 	return nil
 }
 
-func writeSchemasForCRD(crdPath, outDir string) (int, error) {
+func writeSchemasForCRD(crdPath, outDir string) (int, crdInfo, error) {
 	data, err := os.ReadFile(crdPath)
 	if err != nil {
-		return 0, fmt.Errorf("reading CRD: %w", err)
+		return 0, crdInfo{}, fmt.Errorf("reading CRD: %w", err)
 	}
 
 	var crd apiextv1.CustomResourceDefinition
 	if err := yaml.Unmarshal(data, &crd); err != nil {
-		return 0, fmt.Errorf("decoding CRD: %w", err)
+		return 0, crdInfo{}, fmt.Errorf("decoding CRD: %w", err)
 	}
 
 	schema, version, err := crdOpenAPISchema(&crd)
 	if err != nil {
-		return 0, err
+		return 0, crdInfo{}, err
 	}
 
-	kind := strings.ToLower(crd.Spec.Names.Kind)
-	baseName := fmt.Sprintf("%s_%s", version, kind)
+	kind := crd.Spec.Names.Kind
+	baseName := fmt.Sprintf("%s_%s", version, strings.ToLower(kind))
 
 	fullPath := filepath.Join(outDir, baseName+".json")
 	if err := writeSchemaFile(fullPath, schema); err != nil {
-		return 0, fmt.Errorf("writing full schema: %w", err)
+		return 0, crdInfo{}, fmt.Errorf("writing full schema: %w", err)
 	}
 
 	specSchema, ok := schema.Properties["spec"]
 	if !ok {
-		return 0, fmt.Errorf("CRD %q has no spec property", crd.Name)
+		return 0, crdInfo{}, fmt.Errorf("CRD %q has no spec property", crd.Name)
 	}
 
 	specPath := filepath.Join(outDir, baseName+".spec.json")
 	if err := writeSchemaFile(specPath, &specSchema); err != nil {
-		return 0, fmt.Errorf("writing spec schema: %w", err)
+		return 0, crdInfo{}, fmt.Errorf("writing spec schema: %w", err)
 	}
 
-	return 2, nil
+	return 2, crdInfo{group: crd.Spec.Group, version: version, kind: kind}, nil
+}
+
+// writeDispatcherSchemas writes one draft-07 schema per CRD group that routes
+// a manifest to the kind schema matching its apiVersion/kind via "if"/"then".
+// This lets a single $schema mapping cover a directory containing manifests
+// of several kinds instead of requiring one mapping per kind.
+func writeDispatcherSchemas(crds []crdInfo, outDir string) error {
+	var groups []string
+	byGroup := map[string][]crdInfo{}
+	for _, c := range crds {
+		if _, seen := byGroup[c.group]; !seen {
+			groups = append(groups, c.group)
+		}
+		byGroup[c.group] = append(byGroup[c.group], c)
+	}
+
+	for _, group := range groups {
+		allOf := make([]any, 0, len(byGroup[group]))
+		for _, c := range byGroup[group] {
+			baseName := fmt.Sprintf("%s_%s", c.version, strings.ToLower(c.kind))
+			allOf = append(allOf, map[string]any{
+				"if": map[string]any{
+					"properties": map[string]any{
+						"apiVersion": map[string]any{"const": fmt.Sprintf("%s/%s", c.group, c.version)},
+						"kind":       map[string]any{"const": c.kind},
+					},
+					"required": []string{"apiVersion", "kind"},
+				},
+				"then": map[string]any{"$ref": baseName + ".json"},
+			})
+		}
+
+		doc := map[string]any{
+			"$schema":     jsonSchemaDraft07,
+			"description": fmt.Sprintf("Dispatches %s documents to the schema matching their kind. Documents of any other kind are left unconstrained.", group),
+			"allOf":       allOf,
+		}
+
+		payload, err := json.MarshalIndent(doc, "", "  ")
+		if err != nil {
+			return fmt.Errorf("encoding dispatcher schema for group %q: %w", group, err)
+		}
+		payload = append(payload, '\n')
+
+		path := filepath.Join(outDir, group+".json")
+		if err := os.WriteFile(path, payload, 0o644); err != nil {
+			return fmt.Errorf("writing %q: %w", path, err)
+		}
+	}
+
+	return nil
 }
 
 func crdOpenAPISchema(crd *apiextv1.CustomResourceDefinition) (*apiextv1.JSONSchemaProps, string, error) {

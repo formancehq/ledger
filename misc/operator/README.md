@@ -524,6 +524,7 @@ just install-plugin # Install kubectl plugin to $GOPATH/bin
 |--------------|----------|
 | `v1alpha1_<kind>.json` | Full CRD resource schema (`openAPIV3Schema`) — top-level `apiVersion`/`kind`/`metadata`/`spec`/`status` |
 | `v1alpha1_<kind>.spec.json` | `spec` fields only, at the schema root — for validating a spec fragment on its own (e.g. Helm `values.yaml` shaped like a CR's `spec`) |
+| `<group>.json` (e.g. `ledger.formance.com.json`) | Dispatcher schema: routes a manifest to the full resource schema matching its `apiVersion`/`kind`, via JSON Schema draft-07 `if`/`then` |
 
 Example for a full manifest, with VS Code / Red Hat YAML:
 
@@ -538,6 +539,19 @@ spec:
 ```
 
 Use the `.spec.json` variant only when validating a bare spec fragment (its root has no `spec` property, so pointing it at a full manifest validates nothing useful).
+
+For a directory containing manifests of several kinds, point `$schema` at the group dispatcher instead of picking a per-kind schema:
+
+```yaml
+# yaml-language-server: $schema=../config/crd/schemas/ledger.formance.com.json
+apiVersion: ledger.formance.com/v1alpha1
+kind: Backup
+metadata:
+  name: my-backup
+spec: {}
+```
+
+The dispatcher declares `$schema: draft-07` for its own `if`/`then` branches, while each branch's `$ref` target stays draft-04 — validators resolve a `$ref` using the referenced document's own declared draft, so mixing the two is safe.
 
 Every object with a fixed property set rejects unknown properties (`additionalProperties: false`), so a typo like `replicass` is flagged by the editor instead of being silently pruned the way the Kubernetes API server would prune it. Map-type fields (e.g. `additionalLabels`) keep their value schema and still accept arbitrary keys; opaque fields (`metadata`, and anything marked `x-kubernetes-preserve-unknown-fields`) are left unconstrained.
 

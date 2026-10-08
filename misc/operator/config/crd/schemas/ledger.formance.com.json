@@ -1,0 +1,120 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "apiVersion": {
+            "const": "ledger.formance.com/v1alpha1"
+          },
+          "kind": {
+            "const": "BackupRun"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "kind"
+        ]
+      },
+      "then": {
+        "$ref": "v1alpha1_backuprun.json"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "apiVersion": {
+            "const": "ledger.formance.com/v1alpha1"
+          },
+          "kind": {
+            "const": "Backup"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "kind"
+        ]
+      },
+      "then": {
+        "$ref": "v1alpha1_backup.json"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "apiVersion": {
+            "const": "ledger.formance.com/v1alpha1"
+          },
+          "kind": {
+            "const": "Cluster"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "kind"
+        ]
+      },
+      "then": {
+        "$ref": "v1alpha1_cluster.json"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "apiVersion": {
+            "const": "ledger.formance.com/v1alpha1"
+          },
+          "kind": {
+            "const": "Credentials"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "kind"
+        ]
+      },
+      "then": {
+        "$ref": "v1alpha1_credentials.json"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "apiVersion": {
+            "const": "ledger.formance.com/v1alpha1"
+          },
+          "kind": {
+            "const": "EventSink"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "kind"
+        ]
+      },
+      "then": {
+        "$ref": "v1alpha1_eventsink.json"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "apiVersion": {
+            "const": "ledger.formance.com/v1alpha1"
+          },
+          "kind": {
+            "const": "Ledger"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "kind"
+        ]
+      },
+      "then": {
+        "$ref": "v1alpha1_ledger.json"
+      }
+    }
+  ],
+  "description": "Dispatches ledger.formance.com documents to the schema matching their kind. Documents of any other kind are left unconstrained."
+}

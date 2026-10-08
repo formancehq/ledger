@@ -17,7 +17,7 @@ func TestRunGeneratesSchemasFromCRDs(t *testing.T) {
 
 	require.NoError(t, run(crdDir, outDir))
 
-	expected := []string{
+	kindSchemas := []string{
 		"v1alpha1_backup.json",
 		"v1alpha1_backup.spec.json",
 		"v1alpha1_backuprun.json",
@@ -31,6 +31,7 @@ func TestRunGeneratesSchemasFromCRDs(t *testing.T) {
 		"v1alpha1_ledger.json",
 		"v1alpha1_ledger.spec.json",
 	}
+	dispatcherSchema := "ledger.formance.com.json"
 
 	entries, err := os.ReadDir(outDir)
 	require.NoError(t, err)
@@ -39,9 +40,10 @@ func TestRunGeneratesSchemasFromCRDs(t *testing.T) {
 	for _, entry := range entries {
 		actual = append(actual, entry.Name())
 	}
+	expected := append(append([]string{}, kindSchemas...), dispatcherSchema)
 	require.ElementsMatch(t, expected, actual, "generated schema files must exactly match the expected set")
 
-	for _, name := range expected {
+	for _, name := range kindSchemas {
 		path := filepath.Join(outDir, name)
 
 		data, err := os.ReadFile(path)
@@ -52,6 +54,62 @@ func TestRunGeneratesSchemasFromCRDs(t *testing.T) {
 		require.Equal(t, jsonSchemaDraft04, doc["$schema"])
 		require.NotEmpty(t, doc["type"])
 	}
+}
+
+func TestRunGeneratesDispatcherSchema(t *testing.T) {
+	t.Parallel()
+
+	crdDir := filepath.Join("..", "..", "config", "crd", "bases")
+	outDir := t.TempDir()
+
+	require.NoError(t, run(crdDir, outDir))
+
+	data, err := os.ReadFile(filepath.Join(outDir, "ledger.formance.com.json"))
+	require.NoError(t, err)
+
+	var doc map[string]any
+	require.NoError(t, json.Unmarshal(data, &doc))
+	require.Equal(t, jsonSchemaDraft07, doc["$schema"])
+
+	allOf, ok := doc["allOf"].([]any)
+	require.True(t, ok)
+	require.Len(t, allOf, 6, "expected one dispatch branch per CRD kind")
+
+	refByKind := map[string]string{}
+	for _, branch := range allOf {
+		b, ok := branch.(map[string]any)
+		require.True(t, ok)
+
+		ifClause, ok := b["if"].(map[string]any)
+		require.True(t, ok)
+
+		props, ok := ifClause["properties"].(map[string]any)
+		require.True(t, ok)
+
+		apiVersion, ok := props["apiVersion"].(map[string]any)["const"].(string)
+		require.True(t, ok)
+		require.Equal(t, "ledger.formance.com/v1alpha1", apiVersion)
+
+		kind, ok := props["kind"].(map[string]any)["const"].(string)
+		require.True(t, ok)
+
+		then, ok := b["then"].(map[string]any)
+		require.True(t, ok)
+
+		ref, ok := then["$ref"].(string)
+		require.True(t, ok)
+
+		refByKind[kind] = ref
+	}
+
+	require.Equal(t, map[string]string{
+		"Backup":      "v1alpha1_backup.json",
+		"BackupRun":   "v1alpha1_backuprun.json",
+		"Cluster":     "v1alpha1_cluster.json",
+		"Credentials": "v1alpha1_credentials.json",
+		"EventSink":   "v1alpha1_eventsink.json",
+		"Ledger":      "v1alpha1_ledger.json",
+	}, refByKind)
 }
 
 func TestRunGeneratesStrictSchemas(t *testing.T) {
