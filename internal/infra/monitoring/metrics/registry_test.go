@@ -39,7 +39,7 @@ func TestMetricsRegistry(t *testing.T) {
 	registryPath := filepath.Join(repoRoot, "misc", "devenv", "monitoring-dashboards", "jsonnet", "lib", "metrics.libsonnet")
 	registry := parseRegistry(t, registryPath)
 
-	codeNames := collectInstrumentNamesFromCode(t, filepath.Join(repoRoot, "internal"))
+	codeNames := instrumentNames(t)
 
 	for _, name := range registry {
 		require.Contains(t, codeNames, name,
@@ -64,14 +64,106 @@ func TestMetricsRegistry(t *testing.T) {
 func TestMetricsDocumented(t *testing.T) {
 	t.Parallel()
 
-	repoRoot := findRepoRoot(t)
-	doc, err := os.ReadFile(filepath.Join(repoRoot, "docs", "ops", "monitoring.md"))
+	doc, err := os.ReadFile(filepath.Join(findRepoRoot(t), "docs", "ops", "monitoring.md"))
 	require.NoError(t, err)
-	for _, name := range collectInstrumentNamesFromCode(t, filepath.Join(repoRoot, "internal")) {
-		if !strings.Contains(string(doc), "`"+name+"`") {
-			t.Errorf("metric %q is not documented in docs/ops/monitoring.md", name)
+
+	// A metric table row reads | `name` [/ `name`] | Type | Unit | Description |.
+	type entry struct{ kind, unit string }
+	rows := make(map[string]entry)
+	quoted := regexp.MustCompile("`([a-z0-9_.]+)`")
+	for line := range strings.SplitSeq(string(doc), "\n") {
+		cells := strings.Split(line, "|")
+		if len(cells) < 5 || !strings.HasPrefix(strings.TrimSpace(cells[1]), "`") {
+			continue
+		}
+		// Other tables (naming examples, profile labels) also start with a
+		// backticked name; only metric tables carry an instrument kind.
+		switch strings.TrimSpace(cells[2]) {
+		case "Counter", "Counter (observable)", "UpDownCounter", "Histogram", "Gauge":
+		default:
+			continue
+		}
+		unit := strings.Trim(strings.TrimSpace(cells[3]), "`")
+		if unit == "-" {
+			unit = ""
+		}
+		for _, m := range quoted.FindAllStringSubmatch(cells[1], -1) {
+			rows[m[1]] = entry{kind: strings.TrimSpace(cells[2]), unit: unit}
 		}
 	}
+
+	for _, inst := range collectInstruments(t) {
+		row, ok := rows[inst.name]
+		if !ok {
+			t.Errorf("metric %q has no row in a docs/ops/monitoring.md metric table", inst.name)
+
+			continue
+		}
+		if want := docKind(inst.method); row.kind != want {
+			t.Errorf("metric %q is documented as %q, but %s creates it as %s", inst.name, row.kind, inst.method, want)
+		}
+		if row.unit != inst.unit {
+			t.Errorf("metric %q is documented with unit %q, but the code declares %q", inst.name, row.unit, inst.unit)
+		}
+	}
+}
+
+// docKind is the Type column docs/ops/monitoring.md uses for a constructor.
+func docKind(method string) string {
+	base := strings.TrimPrefix(strings.TrimPrefix(method, "Int64"), "Float64")
+	switch base {
+	case "ObservableCounter":
+		return "Counter (observable)"
+	case "ObservableGauge":
+		return "Gauge"
+	case "ObservableUpDownCounter":
+		return "UpDownCounter"
+	default:
+		return base
+	}
+}
+
+// TestMetricMetadataMatchesCode keeps the dashboard generator's metadata,
+// which drives the unit and _total suffixes of the normalised Prometheus
+// names, in line with every instrument the code creates.
+func TestMetricMetadataMatchesCode(t *testing.T) {
+	t.Parallel()
+
+	data, err := os.ReadFile(filepath.Join(findRepoRoot(t), "misc", "devenv", "monitoring-dashboards", "jsonnet", "lib", "metric_metadata.libsonnet"))
+	require.NoError(t, err)
+	type entry struct{ kind, unit string }
+	metadata := make(map[string]entry)
+	line := regexp.MustCompile(`'([a-z0-9_.]+)':\s*\{\s*kind:\s*'([a-z]+)',\s*unit:\s*(null|'[^']*')\s*\}`)
+	for _, m := range line.FindAllStringSubmatch(string(data), -1) {
+		unit := ""
+		if m[3] != "null" {
+			unit = strings.Trim(m[3], "'")
+		}
+		metadata[m[1]] = entry{kind: m[2], unit: unit}
+	}
+
+	for _, inst := range collectInstruments(t) {
+		meta, ok := metadata[inst.name]
+		if !ok {
+			t.Errorf("metric %q has no entry in metric_metadata.libsonnet", inst.name)
+
+			continue
+		}
+		if want := metadataKind(inst.method); meta.kind != want {
+			t.Errorf("metric %q has metadata kind %q, but %s is a %s", inst.name, meta.kind, inst.method, want)
+		}
+		if meta.unit != inst.unit {
+			t.Errorf("metric %q has metadata unit %q, but the code declares %q", inst.name, meta.unit, inst.unit)
+		}
+	}
+}
+
+// metadataKind is the kind metric_metadata.libsonnet uses for a constructor.
+func metadataKind(method string) string {
+	base := strings.TrimPrefix(strings.TrimPrefix(method, "Int64"), "Float64")
+	base = strings.TrimPrefix(base, "Observable")
+
+	return strings.ToLower(base)
 }
 
 // TestInstrumentNamesCarryNoUnit enforces the OpenTelemetry naming
@@ -86,7 +178,7 @@ func TestInstrumentNamesCarryNoUnit(t *testing.T) {
 		"ns": {}, "us": {}, "ms": {}, "nanoseconds": {}, "microseconds": {},
 		"milliseconds": {}, "seconds": {}, "bytes": {}, "percent": {},
 	}
-	for _, name := range collectInstrumentNamesFromCode(t, filepath.Join(findRepoRoot(t), "internal")) {
+	for _, name := range instrumentNames(t) {
 		words := strings.FieldsFunc(name, func(r rune) bool { return r == '.' || r == '_' })
 		for _, word := range words {
 			if _, ok := unitWords[word]; ok {
@@ -111,32 +203,34 @@ func TestInstrumentNamesCarryNoUnit(t *testing.T) {
 func TestInstrumentUnits(t *testing.T) {
 	t.Parallel()
 
-	call := regexp.MustCompile(`\.(` + strings.Join(instrumentMethods, "|") + `)\(\s*"([^"]+)"`)
-	unit := regexp.MustCompile(`WithUnit\("([^"]*)"\)`)
-	walkSources(t, func(path string, data []byte) {
-		for _, c := range call.FindAllSubmatchIndex(data, -1) {
-			method, name := string(data[c[2]:c[3]]), string(data[c[4]:c[5]])
-			m := unit.FindSubmatch(data[c[3]:callEnd(data, c[3])])
-			if m == nil {
-				continue
+	annotation := regexp.MustCompile(`^\{[a-z_]+\}$`)
+	for _, inst := range collectInstruments(t) {
+		path, method, name := inst.path, inst.method, inst.name
+		switch u := inst.unit; u {
+		case "":
+		case "1":
+			if !strings.HasSuffix(method, "Gauge") {
+				t.Errorf("%s: %s %q uses unit \"1\", which denotes a ratio; use a UCUM annotation such as \"{entry}\"", path, method, name)
 			}
-			switch u := string(m[1]); u {
-			case "1":
-				if !strings.HasSuffix(method, "Gauge") {
-					t.Errorf("%s: %s %q uses unit \"1\", which denotes a ratio; use a UCUM annotation such as \"{entry}\"", path, method, name)
-				}
-			case "ns", "us", "ms", "min", "h", "nanoseconds", "microseconds", "milliseconds", "seconds":
-				// OpenTelemetry: durations SHOULD be measured in seconds.
-				t.Errorf("%s: %s %q measures a duration in %q; use \"s\" with a Float64 instrument and record d.Seconds()", path, method, name, u)
-			case "bytes":
-				t.Errorf("%s: %s %q spells its unit; use the UCUM code \"By\"", path, method, name)
-			case "s":
-				if strings.HasPrefix(method, "Int64") {
-					t.Errorf("%s: %s %q measures seconds with an integer instrument, which truncates sub-second durations; use the Float64 variant", path, method, name)
-				}
+		case "ns", "us", "ms", "min", "h", "nanoseconds", "microseconds", "milliseconds", "seconds":
+			// OpenTelemetry: durations SHOULD be measured in seconds.
+			t.Errorf("%s: %s %q measures a duration in %q; use \"s\" with a Float64 instrument and record d.Seconds()", path, method, name, u)
+		case "bytes":
+			t.Errorf("%s: %s %q spells its unit; use the UCUM code \"By\"", path, method, name)
+		case "s":
+			if strings.HasPrefix(method, "Int64") {
+				t.Errorf("%s: %s %q measures seconds with an integer instrument, which truncates sub-second durations; use the Float64 variant", path, method, name)
+			}
+		case "By":
+		default:
+			// Counts use a singular annotation: {entry}, not {entries}
+			// ({miss} and {status} end in s but are singular).
+			plural := strings.HasSuffix(u, "s}") && !strings.HasSuffix(u, "ss}") && !strings.HasSuffix(u, "us}")
+			if !annotation.MatchString(u) || plural {
+				t.Errorf("%s: %s %q has unit %q; use s, By, 1 (gauge ratios) or a singular annotation such as {entry}", path, method, name, u)
 			}
 		}
-	})
+	}
 }
 
 // TestInstrumentNamesFollowKind enforces the OpenTelemetry naming guidelines
@@ -149,32 +243,47 @@ func TestInstrumentUnits(t *testing.T) {
 func TestInstrumentNamesFollowKind(t *testing.T) {
 	t.Parallel()
 
-	call := regexp.MustCompile(`\.(` + strings.Join(instrumentMethods, "|") + `)\(\s*"([^"]+)"`)
-	unit := regexp.MustCompile(`WithUnit\("([^"]*)"\)`)
-	walkSources(t, func(path string, data []byte) {
-		for _, c := range call.FindAllSubmatchIndex(data, -1) {
-			method, name := string(data[c[2]:c[3]]), string(data[c[4]:c[5]])
-			segments := strings.Split(name, ".")
-			last := segments[len(segments)-1]
-			switch {
-			case strings.HasSuffix(method, "UpDownCounter"):
-				if strings.HasSuffix(last, "s") {
-					t.Errorf("%s: UpDownCounter %q is pluralized; name it <thing>.count", path, name)
-				}
-			case strings.HasSuffix(method, "Counter"):
-				plural := false
-				for word := range strings.SplitSeq(last, "_") {
-					plural = plural || strings.HasSuffix(word, "s")
-				}
-				if !plural {
-					t.Errorf("%s: counter %q is not named in the plural (e.g. %s.%ss)", path, name, strings.Join(segments[:len(segments)-1], "."), last)
-				}
+	syntax := regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$`)
+	instruments := collectInstruments(t)
+	names := make(map[string]struct{}, len(instruments))
+	for _, inst := range instruments {
+		names[inst.name] = struct{}{}
+	}
+	for _, inst := range instruments {
+		path, method, name := inst.path, inst.method, inst.name
+		if !syntax.MatchString(name) {
+			t.Errorf("%s: %q is not lowercase dot-separated segments joined by _ within a segment", path, name)
+
+			continue
+		}
+		segments := strings.Split(name, ".")
+		last := segments[len(segments)-1]
+		switch {
+		case strings.HasSuffix(method, "UpDownCounter"):
+			if strings.HasSuffix(last, "s") {
+				t.Errorf("%s: UpDownCounter %q is pluralized; name it <thing>.count", path, name)
 			}
-			if m := unit.FindSubmatch(data[c[3]:callEnd(data, c[3])]); m != nil && string(m[1]) == "s" && last != "duration" {
-				t.Errorf("%s: %q measures seconds but does not end in .duration", path, name)
+		case strings.HasSuffix(method, "Counter"):
+			plural := false
+			for word := range strings.SplitSeq(last, "_") {
+				plural = plural || strings.HasSuffix(word, "s")
+			}
+			if !plural {
+				t.Errorf("%s: counter %q is not named in the plural (e.g. %s.%ss)", path, name, strings.Join(segments[:len(segments)-1], "."), last)
 			}
 		}
-	})
+		if inst.unit == "s" && last != "duration" {
+			t.Errorf("%s: %q measures seconds but does not end in .duration", path, name)
+		}
+		// A metric name must not double as the namespace of another metric:
+		// raft.foo next to raft.foo.bar reads as one entity in backends that
+		// nest names.
+		for i := 1; i < len(segments); i++ {
+			if _, ok := names[strings.Join(segments[:i], ".")]; ok {
+				t.Errorf("%s: %q nests under %q, which is itself a metric", path, name, strings.Join(segments[:i], "."))
+			}
+		}
+	}
 }
 
 // TestRecordedDurationsAreSeconds complements TestInstrumentUnits: every
@@ -198,26 +307,29 @@ func TestRecordedDurationsAreSeconds(t *testing.T) {
 }
 
 // walkSources calls fn with the content of every non-test Go file under
-// internal/.
+// internal/ and cmd/, the two trees that build the ledger binaries.
 func walkSources(t *testing.T, fn func(path string, data []byte)) {
 	t.Helper()
 
-	err := filepath.Walk(filepath.Join(findRepoRoot(t), "internal"), func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		fn(path, data)
+	repoRoot := findRepoRoot(t)
+	for _, root := range []string{"internal", "cmd"} {
+		err := filepath.Walk(filepath.Join(repoRoot, root), func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if info.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return nil
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			fn(path, data)
 
-		return nil
-	})
-	require.NoError(t, err)
+			return nil
+		})
+		require.NoError(t, err)
+	}
 }
 
 // callEnd returns the index just past the parenthesis that closes the one at
@@ -273,7 +385,7 @@ func TestNamingPolicyMatchesDashboards(t *testing.T) {
 	semconvPrefixes := regexp.MustCompile(`'([^']+)'`).FindAllSubmatch(semconvBlock[1], -1)
 	require.NotEmpty(t, semconvPrefixes)
 
-	for _, name := range collectInstrumentNamesFromCode(t, filepath.Join(repoRoot, "internal")) {
+	for _, name := range instrumentNames(t) {
 		for _, sc := range semconvPrefixes {
 			require.False(t, strings.HasPrefix(name, string(sc[1])),
 				"instrument %q starts with semantic-convention prefix %q: the dashboards would not prefix it while the server does", name, sc[1])
@@ -385,60 +497,80 @@ var instrumentMethods = []string{
 	"Float64ObservableGauge",
 }
 
-// collectInstrumentNamesFromCode scans the .go files under root for
-// call sites that create instruments and returns the set of unique
-// instrument names. Anything our code instantiates is in scope —
-// we don't filter by meter name because the metrics prefix applies
-// uniformly to every meter obtained from the injected provider.
-func collectInstrumentNamesFromCode(t *testing.T, root string) []string {
-	t.Helper()
-	pattern := regexp.MustCompile(
-		`\.` + "(" + strings.Join(instrumentMethods, "|") + ")" + `\(\s*"([^"]+)"`,
-	)
-	// tailworker.RegisterTailGauges(meter, ns, source, ...) creates its three
-	// instruments with names built from the ns/source literals rather than a
-	// single literal at the Int64ObservableGauge call site, so the pattern
-	// above cannot see them. Expand each call site into the triplet it emits:
-	// {ns}.last_indexed_sequence, {ns}.{source}_last_sequence, {ns}.lag.
-	tailGaugePattern := regexp.MustCompile(`RegisterTailGauges\([^,]+,\s*"([^"]+)"\s*,\s*"([^"]+)"`)
-	seen := make(map[string]struct{})
+// instrument is one metric instrument the ledger creates, resolved from its
+// constructor call site.
+type instrument struct {
+	path, method, name, unit string
+}
 
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
+// collectInstruments scans the non-test Go sources under internal/ and cmd/
+// for instrument constructor calls and returns every instrument they create,
+// with its name and declared unit. Anything our code instantiates is in scope:
+// we don't filter by meter name because the metrics prefix applies uniformly
+// to every meter obtained from the injected provider.
+//
+// A constructor whose name is not a string literal cannot be checked, so it
+// fails the test, except in tailworker.RegisterTailGauges, whose instruments
+// are expanded from each call site instead.
+func collectInstruments(t *testing.T) []instrument {
+	t.Helper()
+
+	call := regexp.MustCompile(`\.(` + strings.Join(instrumentMethods, "|") + `)\(`)
+	literal := regexp.MustCompile(`^\(\s*"([^"]+)"`)
+	unit := regexp.MustCompile(`WithUnit\("([^"]*)"\)`)
+	// tailworker.RegisterTailGauges(meter, ns, source, ...) creates three
+	// gauges named from the ns/source literals, so its constructor calls are
+	// not literals. Expand each call site into the triplet it emits, with the
+	// units internal/pkg/tailworker/gauges.go declares.
+	tailGauges := regexp.MustCompile(`RegisterTailGauges\(\s*[^,]+,\s*"([^"]+)"\s*,\s*"([^"]+)"`)
+	tailworkerGauges := filepath.Join("internal", "pkg", "tailworker", "gauges.go")
+
+	var out []instrument
+	walkSources(t, func(path string, data []byte) {
 		// Skip generated mocks: they re-declare the upstream interface
 		// methods but never call them.
 		if strings.Contains(path, "_generated") || strings.Contains(path, "/mock_") {
-			return nil
+			return
 		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		matches := pattern.FindAllSubmatch(data, -1)
-		for _, m := range matches {
-			name := string(m[2])
-			if name != "" {
-				seen[name] = struct{}{}
+		for _, c := range call.FindAllSubmatchIndex(data, -1) {
+			open := c[1] - 1
+			args := data[open:callEnd(data, open)]
+			m := literal.FindSubmatch(args)
+			if m == nil {
+				if !strings.HasSuffix(path, tailworkerGauges) {
+					line := 1 + strings.Count(string(data[:c[0]]), "\n")
+					t.Errorf("%s:%d: instrument name is not a string literal, so the metric guards cannot check it", path, line)
+				}
+
+				continue
 			}
+			declared := ""
+			if u := unit.FindSubmatch(args); u != nil {
+				declared = string(u[1])
+			}
+			out = append(out, instrument{path: path, method: string(data[c[2]:c[3]]), name: string(m[1]), unit: declared})
 		}
-
-		for _, m := range tailGaugePattern.FindAllSubmatch(data, -1) {
-			ns := string(m[1])
-			source := string(m[2])
-			seen[ns+".last_indexed_sequence"] = struct{}{}
-			seen[ns+"."+source+"_last_sequence"] = struct{}{}
-			seen[ns+".lag"] = struct{}{}
+		for _, m := range tailGauges.FindAllSubmatch(data, -1) {
+			ns, source := string(m[1]), string(m[2])
+			out = append(out,
+				instrument{path: path, method: "Int64ObservableGauge", name: ns + ".last_indexed_sequence"},
+				instrument{path: path, method: "Int64ObservableGauge", name: ns + "." + source + "_last_sequence"},
+				instrument{path: path, method: "Int64ObservableGauge", name: ns + ".lag", unit: "{sequence}"},
+			)
 		}
-
-		return nil
 	})
-	require.NoError(t, err)
 
+	return out
+}
+
+// instrumentNames returns the unique, sorted names of collectInstruments.
+func instrumentNames(t *testing.T) []string {
+	t.Helper()
+
+	seen := make(map[string]struct{})
+	for _, inst := range collectInstruments(t) {
+		seen[inst.name] = struct{}{}
+	}
 	out := make([]string, 0, len(seen))
 	for n := range seen {
 		out = append(out, n)
