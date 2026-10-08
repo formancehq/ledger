@@ -7,13 +7,20 @@ Ledger v3 POC exposes OpenTelemetry-compatible metrics that can be collected via
 Metrics are organized into several categories:
 - **System Metrics**: CPU, memory, network, and Go runtime
 - **HTTP Server Metrics**: Request latency and throughput
-- **Raft Consensus Metrics**: Performance of the consensus layer
+- **Apply Path Metrics**: gRPC Apply handler and controller batch latency
+- **Raft Consensus Metrics**: Performance of the consensus layer, the applier, gating and snapshots
 - **Transport Metrics**: Inter-node communication (reception, sending, unreachable channels)
-- **Queue Metrics**: Internal queue monitoring (propose, reception, sending)
-- **Storage Metrics**: Pebble storage engine performance
+- **Admission Metrics**: Preloads, commands, actions, audit attribution and the propose queue
+- **Storage Metrics**: Pebble storage engine performance, slow disk operations and I/O
 - **Storage Disk Usage**: Disk space consumption per component and volume
+- **Secondary Store Metrics**: The read index and usage store Pebble instances
+- **Caching & Attributes Metrics**: Numscript cache, attribute cache and Bloom filters
+- **Background Indexer Metrics**: Progress and lag of the index builder, usage builder and audit indexer
+- **Mirror Metrics**: Ingestion from an external source into a mirror ledger
 
-For a complete reference, see the [Grafana Dashboard](#grafana-dashboards) section.
+Every metric the server emits is documented here; a test fails when a new
+instrument has no entry. For dashboards, see the
+[Grafana Dashboard](#grafana-dashboards) section.
 
 ## Shared telemetry resource
 
@@ -198,6 +205,18 @@ HTTP server metrics are provided by `go-libs/httpserver` instrumentation.
 - `http.route`: Request route pattern
 - `url.scheme`: URL scheme (http, https)
 
+## Apply Path Metrics
+
+A write batch reaches the controller through the gRPC Apply handler.
+
+| Metric | Type | Unit | Description |
+|--------|------|------|-------------|
+| `grpc.apply.duration` | Histogram | s | Total duration of the gRPC Apply handler: forwarded identity, `ctrl.Apply` and response signing. |
+| `ctrl.apply.duration` | Histogram | s | End-to-end duration of a batch Apply call in the controller. |
+
+**Attributes**:
+- `batch_size`: number of requests in the batch
+
 ## Raft Consensus Metrics
 
 ### FSM Metrics
@@ -205,6 +224,13 @@ HTTP server metrics are provided by `go-libs/httpserver` instrumentation.
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
 | `raft.fsm.logs_appended` | Counter | `{log}` | Total number of logs appended to the store. Use `rate()` to get logs per second. This is the primary throughput metric. |
+| `raft.fsm.prepare.duration` | Histogram | s | Time spent in PrepareEntries (processing and merge, without the commit). |
+| `raft.fsm.batch_commit.duration` | Histogram | s | Time spent in the Pebble `batch.Commit()` during ApplyEntries. |
+| `raft.fsm.rotation.duration` | Histogram | s | Time spent in cache generation rotation (volume compaction) during ApplyEntries. |
+| `raft.fsm.preload.coverage_miss` | Counter | `{read}` | Reads on the FSM hot path of keys the proposal's ExecutionPlan did not declare. The order observing the miss is rejected with a business error. **Alert if non-zero**: it means a preload declaration is incomplete. |
+
+**Attributes** (`raft.fsm.preload.coverage_miss`):
+- `kind`: attribute kind of the undeclared key
 
 ### Node Metrics
 
@@ -216,6 +242,19 @@ HTTP server metrics are provided by `go-libs/httpserver` instrumentation.
 | `raft.apply_entries.batch_size_distribution` | Histogram | `{entry}` | Distribution of batch sizes when applying entries. Higher batches indicate better throughput efficiency. |
 | `raft.append_entries` | Histogram | s | Time spent appending entries to the Write-Ahead Log (WAL) before replication. |
 | `raft.process_entry` | Histogram | s | Time spent processing a ready state from the Raft library. Includes sending messages, applying entries, and advancing state. |
+| `raft.ready.committed_entries` | Histogram | `{entry}` | Number of committed entries per Raft Ready. |
+| `raft.node.ready.wait_duration` | Histogram | s | Time the processReadies goroutine waits for the next Ready from Raft. |
+| `raft.node.ready_terminated.wait_duration` | Histogram | s | Time spent waiting for the orchestrate loop to consume a processed Ready (`readyTerminated`). |
+| `raft.read_index.duration` | Histogram | s | Time spent in ReadIndex plus WaitForApplied for linearizable reads. |
+
+### Applier Metrics
+
+The applier prepares committed entries against the FSM and commits them in batches, overlapping the next prepare with the previous commit.
+
+| Metric | Type | Unit | Description |
+|--------|------|------|-------------|
+| `raft.applier.batch_wait.duration` | Histogram | s | Time the applier spends idle waiting for the next batch of entries. |
+| `raft.applier.commit_wait.duration` | Histogram | s | Time spent waiting for the previous batch's commit to finish before starting the next prepare. High values mean commits, not preparation, bound throughput. |
 
 ### Gating Metrics
 
@@ -225,6 +264,7 @@ Gating occurs when the node performs a maintenance task (snapshot install, check
 |--------|------|------|-------------|
 | `raft.node.gating.wait_duration` | Histogram | s | Time spent waiting for gatingTerminated (maintenance task completion) in the processReadies goroutine. High values indicate long snapshot/restore operations stalling the ready pipeline. |
 | `raft.node.gating.readies_processed` | Histogram | `{ready}` | Number of Raft Readies processed during each gating period. Higher values indicate more Readies were spooled while the maintenance task was running. |
+| `raft.node.unspool.duration` | Histogram | s | Time spent in unspoolAndResume after a maintenance task (snapshot or checkpoint), replaying the Readies spooled while gated. |
 
 ### WAL Metrics
 
@@ -240,6 +280,7 @@ The Write-Ahead Log (WAL) metrics track the performance of the WAL append operat
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
 | `raft.node.maintenance.snapshot_creation.duration` | Histogram | s | Time spent creating the snapshot during a maintenance task, excluding the spool replay. Snapshots are taken periodically to compact the log. |
+| `raft.node.maintenance.replay_spool.duration` | Histogram | s | Time spent replaying the spooled entries after the snapshot is created in a maintenance task. |
 
 ### Propose Queue Metrics
 
@@ -358,6 +399,9 @@ When a value is not guaranteed to be in cache (based on the cache generation), t
 |--------|------|------|-------------|
 | `admission.command.duration` | Histogram | s | Total time from Apply call to future resolution. Includes preload, proposal, and FSM application. |
 | `admission.propose.duration` | Histogram | s | Time waiting for Raft to accept and replicate a proposal (Propose + Wait). |
+| `admission.fsm_future.wait.duration` | Histogram | s | Time waiting for the FSM to apply the command after Raft accepted it. Spikes indicate gating or apply-pipeline stalls. |
+| `admission.proposal_guard.duration` | Histogram | s | Time from requesting the proposal guard until the proposal is handed to Raft: the wait to acquire the guard plus the time holding it. This is the contended portion of the propose path. |
+| `admission.proposal_guard.rebuild` | Counter | `{rebuild}` | Number of times the proposal guard had to rebuild preloads because a boundary shifted. |
 | `admission.command.size` | Histogram | By | Size of marshalled Raft commands in bytes. Large commands may indicate many postings or metadata. |
 
 ### Action Metrics
@@ -380,6 +424,17 @@ An `Admit` call carries one batch = one Raft command, and a batch can hold multi
 - **All admission-observed errors**: both admission-side rejections raised after orders are built (numscript resolution, preload, per-order validation) and FSM business rejections (insufficient funds, conflicts) surfaced when the command resolves.
 - **Carve-out**: failures *before* orders are built — write gate, leader readiness, bad batch signature, maintenance mode, request-to-order conversion — have no `order_type` to attribute to and are **not** counted here. They are batch-level/structural failures, not per-action business outcomes.
 - **Leader-local**: like `command.duration`, recording happens on the admission path on the leader only. Recording never touches the FSM apply path, preserving FSM determinism.
+
+### Audit Attribution Metrics
+
+Admission checks, after commit, that every write is attributable to a caller
+in the audit chain. See [authentication](../technical/architecture/subsystems/api/auth.md)
+for how the caller snapshot is resolved.
+
+| Metric | Type | Unit | Description |
+|--------|------|------|-------------|
+| `admission.audit.missing_caller` | Counter | `{write}` | Committed writes whose caller snapshot is missing or has no principal; the audit entry is unattributed. Logged at error level. **Alert if non-zero**: resolution is normally total. |
+| `admission.audit.caller_subject_empty` | Counter | `{write}` | Committed user writes whose caller has a source (key ID or issuer) but an empty subject, for example an Ed25519 token without `sub`. The entry is attributable by source only. Logged at info level. |
 
 ### Propose Queue Metrics
 
@@ -438,6 +493,30 @@ Write stalls occur when Pebble cannot keep up with write rate due to compaction 
 > - Reducing write rate
 > - Scaling horizontally
 
+### Disk Slow Metrics
+
+Pebble reports a disk operation that exceeds its slowness threshold.
+
+| Metric | Type | Unit | Description |
+|--------|------|------|-------------|
+| `pebble.disk_slow.operations` | Counter | `{operation}` | Number of disk operations Pebble reported as slow |
+| `pebble.disk_slow.duration` | Histogram | s | Duration of the slow disk operations |
+
+**Attributes**:
+- `op`: the slow operation type, as reported by Pebble (e.g. `write`, `sync`)
+
+### VFS Metrics
+
+The main store counts the I/O operations it issues through Pebble's virtual filesystem.
+
+| Metric | Type | Unit | Description |
+|--------|------|------|-------------|
+| `pebble.vfs.read.ops` | Counter (observable) | - | Total read operations |
+| `pebble.vfs.write.ops` | Counter (observable) | - | Total write operations |
+| `pebble.vfs.sync.ops` | Counter (observable) | - | Total sync operations |
+
+Use `rate()` for IOPS.
+
 ## Storage Disk Usage Metrics
 
 Filesystem-level disk usage is tracked per volume via `syscall.Statfs`. A background collector samples usage at a regular interval (default 5s).
@@ -460,6 +539,36 @@ expansion reject invalid or older-than-one-minute samples.
 |--------|------|-------------|
 | `wal` | `{walDir}/` | WAL volume containing spool + WAL data |
 | `data` | `{dataDir}/` | Data volume containing the Pebble database |
+
+The leader also polls each peer's disk usage to gate writes when a node runs
+out of space.
+
+| Metric | Type | Unit | Description |
+|--------|------|------|-------------|
+| `health.disk.poll.failures` | Counter | - | Failed disk usage polls to a peer. A failure never clears an existing disk write gate. |
+
+**Attributes**:
+- `node_id`: the Raft ID of the polled **peer**, not of the reporting node
+
+## Secondary Store Metrics
+
+The read index (`readindex.*`) and the usage store (`usagestore.*`) are
+separate Pebble instances beside the main store. Each reports the same
+internal metrics under its own namespace.
+
+| Metric | Type | Unit | Description |
+|--------|------|------|-------------|
+| `readindex.level.size` / `usagestore.level.size` | Gauge | By | Total bytes in each Pebble level |
+| `readindex.memtable.size` / `usagestore.memtable.size` | Gauge | By | Current memtable size |
+| `readindex.cache.hits` / `usagestore.cache.hits` | Gauge | `{hits}` | Block cache hits since the store opened |
+| `readindex.cache.misses` / `usagestore.cache.misses` | Gauge | `{misses}` | Block cache misses since the store opened |
+
+**Attributes** (`*.level.size`):
+- `level`: Pebble LSM level (`0` to `6`)
+
+The cache hits and misses are Pebble's cumulative counts, exported as gauges,
+so compute a hit ratio with `delta()` over one window:
+`delta(hits[5m]) / (delta(hits[5m]) + delta(misses[5m]))`.
 
 ## Caching & Attributes Metrics
 
@@ -528,6 +637,53 @@ the optimization is unavailable but false negatives are not introduced.
 `bloom.ready` is `0` during a configuration-change rebuild but may be absent
 until an initial population completes; an enabled filter set is usable only
 after the gauge reports `1`.
+
+## Background Indexer Metrics
+
+Three background workers tail an upstream sequence into a derived store: the
+index builder (main store logs into the read index), the usage builder (audit
+chain into the usage store) and the audit indexer (audit chain into the audit
+index). Each reports how far it has got and how far it lags.
+
+| Metric | Type | Unit | Description |
+|--------|------|------|-------------|
+| `index.builder.last_indexed_sequence` | Gauge | - | Last log sequence the index builder indexed |
+| `index.builder.pebble_last_sequence` | Gauge | - | Last log sequence available in the main store |
+| `index.builder.lag` | Gauge | - | Log sequences the index builder is behind the main store |
+| `index.builder.logs_indexed` | Counter (observable) | `{log}` | Logs indexed since the process started |
+| `usage.builder.last_indexed_sequence` | Gauge | - | Last audit sequence the usage builder processed |
+| `usage.builder.audit_last_sequence` | Gauge | - | Last audit sequence available upstream |
+| `usage.builder.lag` | Gauge | - | Audit sequences the usage builder is behind |
+| `audit_index.last_indexed_sequence` | Gauge | - | Last audit sequence the audit indexer indexed |
+| `audit_index.audit_last_sequence` | Gauge | - | Last audit sequence available upstream |
+| `audit_index.lag` | Gauge | - | Audit sequences the audit indexer is behind |
+
+A `lag` that keeps growing means the worker cannot keep up with the write rate;
+queries served from that derived store then return progressively staler data.
+
+## Mirror Metrics
+
+A [mirror ledger](../technical/architecture/subsystems/events-mirror/mirror.md)
+ingests its transactions from an external source, typically Ledger v2. One
+mirror worker runs per mirror ledger, on the leader only, and processes the
+source in batches: fetch, translate to v3 orders, preload, propose to Raft,
+then wait for the FSM to apply.
+
+| Metric | Type | Unit | Description |
+|--------|------|------|-------------|
+| `mirror.fetch.duration` | Histogram | s | Time fetching a batch of logs from the source |
+| `mirror.translate.duration` | Histogram | s | Time translating the fetched logs into v3 orders |
+| `mirror.preload.duration` | Histogram | s | Time preloading the attributes the batch's orders need |
+| `mirror.propose.duration` | Histogram | s | Time from the Propose call until Raft accepted the batch |
+| `mirror.fsm_wait.duration` | Histogram | s | Time waiting for the FSM to apply the proposed batch |
+| `mirror.batch.duration` | Histogram | s | Total time of a successful batch, from start to FSM application |
+| `mirror.command.size` | Histogram | By | Size of the marshalled Raft command proposed for a batch |
+| `mirror.logs.ingested` | Counter | `{log}` | Source logs fetched into a batch, counted before translation, so a batch that later fails still counts |
+| `mirror.batches` | Counter | `{batch}` | Batches that reached an FSM outcome, by `status`. Failures before that (fetch, translate, propose) are not counted; they surface in the worker's logs and retries. |
+
+**Attributes**:
+- `ledger`: the mirror ledger name (all mirror metrics)
+- `status` (`mirror.batches`): `success` or `error`
 
 ## Configuration
 

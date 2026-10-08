@@ -58,6 +58,22 @@ func TestMetricsRegistry(t *testing.T) {
 	}
 }
 
+// TestMetricsDocumented keeps docs/ops/monitoring.md, the operator reference
+// for every metric, in sync with the instruments the code creates (RFC-0021:
+// a change that adds a formance. name documents it in the same change).
+func TestMetricsDocumented(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := findRepoRoot(t)
+	doc, err := os.ReadFile(filepath.Join(repoRoot, "docs", "ops", "monitoring.md"))
+	require.NoError(t, err)
+	for _, name := range collectInstrumentNamesFromCode(t, filepath.Join(repoRoot, "internal")) {
+		if !strings.Contains(string(doc), "`"+name+"`") {
+			t.Errorf("metric %q is not documented in docs/ops/monitoring.md", name)
+		}
+	}
+}
+
 // TestInstrumentNamesCarryNoUnit enforces the OpenTelemetry naming
 // guideline (and RFC-0021 rule 3) that a metric name never spells its
 // unit: the unit belongs in metric.WithUnit, and the Prometheus
