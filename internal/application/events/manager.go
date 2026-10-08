@@ -3,21 +3,25 @@ package events
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 const sinkStartupRetryDelay = time.Second
+const sinkStartupErrorPrefix = "sink startup: "
 
 // managedSink holds an emitter and its sink for a named sink configuration.
 type managedSink struct {
@@ -46,8 +50,12 @@ type Manager struct {
 	leadershipGeneration uint64
 	isLeader             bool
 	stopped              bool
+	leaderContext        context.Context
+	leaderCancel         context.CancelFunc
 
 	w worker.Worker
+	// readSinkCursor is an optional startup read hook used by tests.
+	readSinkCursor func(dal.PebbleGetter, string) (uint64, error)
 }
 
 // NewManager creates a new event Manager.
@@ -83,6 +91,9 @@ func (m *Manager) Stop() {
 	m.leadershipGeneration++
 	m.isLeader = false
 	m.stopped = true
+	if m.leaderCancel != nil {
+		m.leaderCancel()
+	}
 	m.leadershipMu.Unlock()
 
 	m.w.Stop()
@@ -108,6 +119,10 @@ func (m *Manager) OnLeadershipChange(isLeader bool) {
 
 	m.leadershipGeneration++
 	m.isLeader = isLeader
+	if m.leaderCancel != nil {
+		m.leaderCancel()
+	}
+	m.leaderContext, m.leaderCancel = context.WithCancel(context.Background())
 	m.leadershipMu.Unlock()
 
 	m.notifications.NotifyConfigChanged()
@@ -144,6 +159,16 @@ func (m *Manager) isCurrentLeader(generation uint64) bool {
 	defer m.leadershipMu.Unlock()
 
 	return !m.stopped && m.isLeader && m.leadershipGeneration == generation
+}
+
+func (m *Manager) currentLeaderContext(generation uint64) (context.Context, bool) {
+	m.leadershipMu.Lock()
+	defer m.leadershipMu.Unlock()
+	if m.stopped || !m.isLeader || m.leadershipGeneration != generation {
+		return nil, false
+	}
+
+	return m.leaderContext, true
 }
 
 func (m *Manager) isCurrentGeneration(generation uint64) bool {
@@ -236,7 +261,7 @@ func (m *Manager) reconcileGeneration(generation uint64, isLeader, stopped bool)
 			continue // already running with same config
 		}
 
-		if ms := m.startSink(sc); ms != nil {
+		if ms := m.startSink(sc, generation); ms != nil {
 			if !m.isCurrentLeader(generation) {
 				m.stopSink(name, ms)
 
@@ -253,7 +278,7 @@ func (m *Manager) reconcileGeneration(generation uint64, isLeader, stopped bool)
 
 // startSink creates and starts an emitter+sink pair from a SinkConfig.
 // Returns nil if the sink type is unsupported or creation fails.
-func (m *Manager) startSink(sc *commonpb.SinkConfig) *managedSink {
+func (m *Manager) startSink(sc *commonpb.SinkConfig, generation uint64) *managedSink {
 	emitterCfg := DefaultEmitterConfig()
 	if sc.GetFormat() != "" {
 		emitterCfg.Format = Format(sc.GetFormat())
@@ -277,12 +302,18 @@ func (m *Manager) startSink(sc *commonpb.SinkConfig) *managedSink {
 	sink, err := m.createSink(sc)
 	if err != nil {
 		m.logger.Errorf("Failed to create sink %q: %v", sc.GetName(), err)
+		m.reportStartupError(sc.GetName(), err, generation)
 		m.scheduleStartupRetry(sc.GetName())
 
 		return nil
 	}
 
 	emitter := NewEmitter(m.store, sink, sc.GetName(), m.proposer, m.builder, m.logger, emitterCfg)
+	if m.readSinkCursor != nil {
+		emitter.readCursor = m.readSinkCursor
+	}
+	startupReady := make(chan struct{})
+	emitter.startupReady = startupReady
 	emitter.Start()
 	if err := emitter.WaitStarted(context.Background()); err != nil {
 		m.logger.Errorf("Failed to start sink %q: %v", sc.GetName(), err)
@@ -291,13 +322,103 @@ func (m *Manager) startSink(sc *commonpb.SinkConfig) *managedSink {
 		if closeErr := sink.Close(); closeErr != nil {
 			m.logger.Errorf("Failed to close sink %q after startup failure: %v", sc.GetName(), closeErr)
 		}
+		m.reportStartupError(sc.GetName(), err, generation)
 
 		m.scheduleStartupRetry(sc.GetName())
 
 		return nil
 	}
+	if err := m.clearStartupError(emitter, generation); err != nil {
+		m.logger.Errorf("Failed to clear startup error for sink %q: %v", sc.GetName(), err)
+		emitter.Stop()
+		if closeErr := sink.Close(); closeErr != nil {
+			m.logger.Errorf("Failed to close sink %q after status failure: %v", sc.GetName(), closeErr)
+		}
+		m.scheduleStartupRetry(sc.GetName())
+
+		return nil
+	}
+	if !m.isCurrentLeader(generation) {
+		emitter.Stop()
+		if closeErr := sink.Close(); closeErr != nil {
+			m.logger.Errorf("Failed to close sink %q after leadership loss: %v", sc.GetName(), closeErr)
+		}
+
+		return nil
+	}
+	close(startupReady)
 
 	return &managedSink{emitter: emitter, sink: sink, config: sc}
+}
+
+func (m *Manager) readSinkStatus(name string) (*commonpb.SinkStatus, error) {
+	handle, err := m.store.NewDirectReadHandle()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = handle.Close() }()
+
+	kb := dal.NewKeyBuilder()
+	kb.PutZonePrefix(dal.ZoneGlobal, dal.SubGlobSinkStatus).PutString(name)
+	status, err := dal.ReadProto[*commonpb.SinkStatus](handle, kb.Build())
+	if err != nil {
+		return nil, fmt.Errorf("reading sink status for %q: %w", name, err)
+	}
+
+	return status, nil
+}
+
+// Startup errors use the existing replicated technical status. The prefix
+// distinguishes them from delivery errors when a new leader starts a sink.
+func (m *Manager) reportStartupError(name string, startupErr error, generation uint64) {
+	if !m.isCurrentLeader(generation) {
+		return
+	}
+	message := sinkStartupErrorPrefix + startupErr.Error()
+	status, err := m.readSinkStatus(name)
+	if err != nil {
+		m.logger.Errorf("Failed to read status for sink %q: %v", name, err)
+
+		return
+	}
+	if status.GetError().GetMessage() == message {
+		return
+	}
+	leaderContext, current := m.currentLeaderContext(generation)
+	if !current {
+		return
+	}
+	update := &raftcmdpb.EventsSinkUpdate{SinkName: name, Error: &commonpb.SinkError{
+		Message: message, OccurredAt: commonpb.NewTimestamp(libtime.Now()),
+	}}
+	ctx, cancel := context.WithTimeout(leaderContext, deliveredCursorUpdateTimeout)
+	defer cancel()
+	if err := NewEmitter(m.store, nil, name, m.proposer, m.builder, m.logger, DefaultEmitterConfig()).proposeSinkUpdate(ctx, update); err != nil {
+		m.logger.Errorf("Failed to report startup error for sink %q: %v", name, err)
+	}
+}
+
+func (m *Manager) clearStartupError(emitter *Emitter, generation uint64) error {
+	if !m.isCurrentLeader(generation) {
+		return nil
+	}
+	status, err := m.readSinkStatus(emitter.sinkName)
+	if err != nil {
+		return err
+	}
+	if !strings.HasPrefix(status.GetError().GetMessage(), sinkStartupErrorPrefix) {
+		return nil
+	}
+	leaderContext, current := m.currentLeaderContext(generation)
+	if !current {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(leaderContext, deliveredCursorUpdateTimeout)
+	defer cancel()
+
+	return emitter.proposeSinkUpdate(ctx, &raftcmdpb.EventsSinkUpdate{
+		SinkName: emitter.sinkName, ClearError: true,
+	})
 }
 
 // scheduleStartupRetry triggers a future reconcile for transient startup

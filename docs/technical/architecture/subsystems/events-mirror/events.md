@@ -183,9 +183,18 @@ Key formats:
 
 ### Sink Error Status
 
-When a sink publish fails, the emitter reports the error via Raft by proposing an `EventsSinkUpdate` with the error details. The FSM stores a `SinkStatus` protobuf under `[0x06][0x0A][sink_name]` (`ZoneGlobal` + `SubGlobSinkStatus`). On subsequent successful publish, the emitter proposes an update with `clear_error = true`, which deletes the status entry.
+Operators need startup failures visible without access to leader logs: a sink
+that cannot connect can otherwise appear healthy indefinitely at cursor zero.
+The status is operational consensus state; its Raft update does not affect
+business orders or the deterministic FSM apply path.
 
-The `GetEventsSinks` gRPC endpoint returns all sink configs and their statuses, allowing operators to monitor sink health cluster-wide:
+When a sink fails to be constructed or its emitter cannot complete startup, the leader's Manager reports a `sink startup: ` error via Raft with its occurrence time. It compares the current replicated message before proposing so unchanged retries do not add another log entry. After a successful start, the Manager clears only a startup error before allowing delivery; a prior delivery error remains until a successful publish. Publish failures are reported by the emitter through the same `EventsSinkUpdate` technical update. The FSM stores a `SinkStatus` protobuf under `[0x06][0x0A][sink_name]` (`ZoneGlobal` + `SubGlobSinkStatus`); a successful publish clears its error.
+
+Startup status proposals have a bounded wait and are canceled when the captured
+leadership generation ends. The Manager holds a newly started emitter before
+delivery until any prior startup error has been cleared.
+
+The `GetEventsSinks` gRPC endpoint returns all sink configs and their statuses, allowing operators to monitor sink health cluster-wide. A configured sink with cursor zero and no error is pending delivery; an error takes precedence over that pending state. A nonzero cursor with no error indicates successful delivery:
 
 ```protobuf
 message SinkStatus {
@@ -274,8 +283,9 @@ sequenceDiagram
 The Manager reconciles emitter lifecycles on leadership changes and config updates. Each emitter independently tails the log, publishes to its sink, and advances its cursor via Raft. Failed publishes are recorded as sink errors in Pebble (visible via `GetEventsSinks`), and the emitter retries with exponential backoff.
 
 If a sink cannot be constructed or its emitter cannot read its persisted cursor
-at startup, the leader keeps the Raft-replicated configuration unchanged and
-retries startup after a bounded delay. Constructor failures therefore recover
+at startup, the leader keeps the Raft-replicated configuration unchanged, reports
+the startup error via Raft, and retries startup after a bounded delay.
+Constructor failures therefore recover
 without another configuration write or leadership transition when an external
 dependency becomes available. Retry wake-ups are deduplicated per sink and are
 canceled with the Manager lifecycle; followers never start a sink. Constructors

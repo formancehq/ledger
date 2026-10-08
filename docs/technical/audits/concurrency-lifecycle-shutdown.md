@@ -18,6 +18,7 @@ that authorizes each operation:
 | Fx process lifetime | bootstrap hooks, HTTP/gRPC servers, stores, metrics registrations, health workers | Failed start unwinds only acquired resources. Stop rejects new work, unregisters callbacks and joins owned goroutines before dependencies close. An expired graceful HTTP drain cancels request contexts, closes active transports and joins handlers; a timed-out outer Fx call alone is not proof that a hook or worker has exited. |
 | Node run generation | `Node.Run`, `Applier`, transport, maintenance and FSM tasks | The persistent stop request is published once. Commit drain and child joins complete before node-owned storage or transport can close. |
 | Ordered leadership generation | node observer, event and mirror managers, backup orchestrator, leader-only reconcilers | The transition is recorded synchronously in observer order. Work that captured generation N cannot install or remove generation N+1 resources; Stop advances a terminal generation. |
+
 | Replicated resource identity | named sink configuration, mirror ledger incarnation/source, backup job and destination | Replacement invalidates old local ownership even if a human-readable name is reused. The successor resumes only from the replicated cursor/state promised by that subsystem. |
 | Local resource-entry identity | optional-TLS peer connection and its monitor | A monitor revalidates the exact entry under the mutation lock before restarting or deleting it; a reused peer ID does not authorize mutation of its replacement. |
 | Pending index version | index backfill/rewrite version for one ledger incarnation and canonical index identity | Completion publishes its cursor or served-version switch only while that complete identity remains current. |
@@ -25,6 +26,11 @@ that authorizes each operation:
 | Durable cursor | indexbuilder, auditindexer, usagebuilder and tail workers | Process Stop joins the fold. Restart resumes from the subsystem's atomic durable cursor contract; leadership alone does not restart per-replica workers. |
 | Request or session context | snapshot, restore, file stream, read lease and query checkpoint | Cancellation and completion converge on exactly-once release and cannot publish partial or superseded output. |
 | Admission request and proposal future | admission read handles, proposal guards and any request-scoped lifecycle lock | A request owns only the work it declared. Release every lifecycle lock before waiting for the proposal future. Never retain that lock through FSM application. The proposal guard is released when `Propose` returns; read handles close at their owning boundary. |
+
+For event sinks, include startup-error report and clear proposals in the
+leadership-generation check. A manager-owned emitter waits for startup-error
+clearing before publishing, so a new delivery error cannot be erased by the
+manager's clear operation. Stop also releases an emitter waiting at that gate.
 
 Cache rotation is an FSM/cache consistency mechanism, not authority to restart
 unrelated workers. Likewise a leadership term alone is not a complete resource

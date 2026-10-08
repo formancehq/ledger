@@ -1170,7 +1170,7 @@ Read endpoints comparison with the original ledger:
 | `DELETE /v3/{ledgerName}/account-types/{typeName}` | ✅ | ❌ | Remove account type. Requires `ledger:MetadataWrite` on both the dedicated route and gRPC `Apply` |
 | `PUT /v3/{ledgerName}/account-types/default-enforcement-mode` | ✅ | ❌ | Set default enforcement mode (STRICT/AUDIT). Requires `ledger:MetadataWrite` on both the dedicated route and gRPC `Apply` |
 | `GET /v3/_/logs/{sequence}` | ✅ | ❌ | Fetch a single system log by bucket-wide sequence. No ledger identity → requires `ledger` ops-read (granular `ledger:OpsRead`) |
-| `GET /v3/_/events-sinks` | ✅ | ❌ | List configured event sinks with per-sink status (`{sinks, sinkStatuses}`, parity with gRPC `GetEventsSinks`) |
+| `GET /v3/_/events-sinks` | ✅ | ❌ | List configured event sinks with per-sink cursor and error status, including startup failures (`{sinks, sinkStatuses}`, parity with gRPC `GetEventsSinks`); cursor zero without error means delivery is pending |
 | `GET /v3/_/signing-keys` | ✅ | ❌ | List registered Ed25519 signing keys, paged by key id ([pagination](#pagination)) |
 | `GET /v3/{ledgerName}/indexes` | ✅ | ❌ | List indexes registered on a ledger |
 | `GET /v3/{ledgerName}/indexes/{canonicalId}` | ✅ | ❌ | Get a single Index registry entry |

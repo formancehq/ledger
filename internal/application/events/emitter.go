@@ -67,8 +67,12 @@ type Emitter struct {
 	stopCh  chan struct{}
 	stopped chan struct{}
 	started chan struct{}
-	mu      sync.Mutex
-	running bool
+	// startupReady lets the Manager clear an earlier startup error before
+	// delivery can report a newer error or advance the cursor.
+	startupReady <-chan struct{}
+	readCursor   func(dal.PebbleGetter, string) (uint64, error)
+	mu           sync.Mutex
+	running      bool
 
 	// startErr is written exactly once by run before started is closed. WaitStarted
 	// reads it only after observing that close, which provides the happens-before edge.
@@ -98,15 +102,16 @@ func NewEmitter(store *dal.Store, sink Sink, sinkName string, proposer Proposer,
 	}
 
 	return &Emitter{
-		store:    store,
-		sink:     sink,
-		sinkName: sinkName,
-		proposer: proposer,
-		builder:  builder,
-		config:   config,
-		logger:   logger.WithFields(map[string]any{"cmp": "event-emitter", "sink": sinkName}),
-		notify:   signal.New(),
-		now:      time.Now,
+		store:      store,
+		sink:       sink,
+		sinkName:   sinkName,
+		proposer:   proposer,
+		builder:    builder,
+		config:     config,
+		logger:     logger.WithFields(map[string]any{"cmp": "event-emitter", "sink": sinkName}),
+		notify:     signal.New(),
+		now:        time.Now,
+		readCursor: query.ReadSinkCursor,
 	}
 }
 
@@ -166,7 +171,7 @@ func (e *Emitter) Stop() {
 func (e *Emitter) run(ctx context.Context) {
 	defer close(e.stopped)
 
-	cursor, err := query.ReadSinkCursor(e.store, e.sinkName)
+	cursor, err := e.readCursor(e.store, e.sinkName)
 	if err != nil {
 		e.logger.Errorf("Failed to read sink cursor: %v", err)
 		e.signalStarted(err)
@@ -176,6 +181,13 @@ func (e *Emitter) run(ctx context.Context) {
 
 	e.logger.WithFields(map[string]any{"cursor": cursor}).Infof("Event emitter started")
 	e.signalStarted(nil)
+	if e.startupReady != nil {
+		select {
+		case <-e.startupReady:
+		case <-ctx.Done():
+			return
+		}
+	}
 
 	ticker := time.NewTicker(e.config.BatchDelay)
 	defer ticker.Stop()
