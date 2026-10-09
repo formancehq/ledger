@@ -365,15 +365,13 @@ func (x *AuditSuccess) GetMaxLogSequence() uint64 {
 	return 0
 }
 
-// AuditFailure records the reason and context for a failed proposal. reason is
-// the typed, hash-chain-bound identifier; the numeric error kind is re-derived
-// from it (domain.KindForReason) rather than stored, so it cannot drift from
-// the reason and the idempotency failure projection is verifiable against it.
+// AuditFailure records the stable reason, subcode, and structured facts of a
+// failed proposal. Presentation text is rendered when the record is read.
 type AuditFailure struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Reason        commonpb.ErrorReason   `protobuf:"varint,1,opt,name=reason,proto3,enum=common.ErrorReason" json:"reason,omitempty"`
-	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
-	Context       map[string]string      `protobuf:"bytes,3,rep,name=context,proto3" json:"context,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Code          string                 `protobuf:"bytes,2,opt,name=code,proto3" json:"code,omitempty"`
+	Facts         map[string]string      `protobuf:"bytes,3,rep,name=facts,proto3" json:"facts,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -415,16 +413,16 @@ func (x *AuditFailure) GetReason() commonpb.ErrorReason {
 	return commonpb.ErrorReason(0)
 }
 
-func (x *AuditFailure) GetMessage() string {
+func (x *AuditFailure) GetCode() string {
 	if x != nil {
-		return x.Message
+		return x.Code
 	}
 	return ""
 }
 
-func (x *AuditFailure) GetContext() map[string]string {
+func (x *AuditFailure) GetFacts() map[string]string {
 	if x != nil {
-		return x.Context
+		return x.Facts
 	}
 	return nil
 }
@@ -460,12 +458,13 @@ const file_audit_proto_rawDesc = "" +
 	"\flog_sequence\x18\x03 \x01(\x06R\vlogSequence\"b\n" +
 	"\fAuditSuccess\x12(\n" +
 	"\x10min_log_sequence\x18\x01 \x01(\x06R\x0eminLogSequence\x12(\n" +
-	"\x10max_log_sequence\x18\x02 \x01(\x06R\x0emaxLogSequence\"\xcd\x01\n" +
+	"\x10max_log_sequence\x18\x02 \x01(\x06R\x0emaxLogSequence\"\xbf\x01\n" +
 	"\fAuditFailure\x12+\n" +
-	"\x06reason\x18\x01 \x01(\x0e2\x13.common.ErrorReasonR\x06reason\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\x12:\n" +
-	"\acontext\x18\x03 \x03(\v2 .audit.AuditFailure.ContextEntryR\acontext\x1a:\n" +
-	"\fContextEntry\x12\x10\n" +
+	"\x06reason\x18\x01 \x01(\x0e2\x13.common.ErrorReasonR\x06reason\x12\x12\n" +
+	"\x04code\x18\x02 \x01(\tR\x04code\x124\n" +
+	"\x05facts\x18\x03 \x03(\v2\x1e.audit.AuditFailure.FactsEntryR\x05facts\x1a8\n" +
+	"\n" +
+	"FactsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B8Z6github.com/formancehq/ledger/v3/internal/proto/auditpbb\x06proto3"
 
@@ -487,7 +486,7 @@ var file_audit_proto_goTypes = []any{
 	(*AuditItem)(nil),                    // 1: audit.AuditItem
 	(*AuditSuccess)(nil),                 // 2: audit.AuditSuccess
 	(*AuditFailure)(nil),                 // 3: audit.AuditFailure
-	nil,                                  // 4: audit.AuditFailure.ContextEntry
+	nil,                                  // 4: audit.AuditFailure.FactsEntry
 	(*commonpb.Timestamp)(nil),           // 5: common.Timestamp
 	(*commonpb.CallerSnapshot)(nil),      // 6: common.CallerSnapshot
 	(*commonpb.Idempotency)(nil),         // 7: common.Idempotency
@@ -503,7 +502,7 @@ var file_audit_proto_depIdxs = []int32{
 	7, // 5: audit.AuditEntry.idempotency:type_name -> common.Idempotency
 	8, // 6: audit.AuditEntry.signature:type_name -> signature.SignedApplyBatch
 	9, // 7: audit.AuditFailure.reason:type_name -> common.ErrorReason
-	4, // 8: audit.AuditFailure.context:type_name -> audit.AuditFailure.ContextEntry
+	4, // 8: audit.AuditFailure.facts:type_name -> audit.AuditFailure.FactsEntry
 	9, // [9:9] is the sub-list for method output_type
 	9, // [9:9] is the sub-list for method input_type
 	9, // [9:9] is the sub-list for extension type_name

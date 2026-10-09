@@ -74,7 +74,7 @@ func TestApplyProposalRejectsLogSequenceExhaustionWithoutPublishingBusinessWrite
 	require.Len(t, entries, 2)
 	for _, entry := range entries {
 		require.Equal(t, commonpb.ErrorReason_ERROR_REASON_SEQUENCE_EXHAUSTED, entry.GetFailure().GetReason())
-		require.Equal(t, "logSequence", entry.GetFailure().GetContext()["counter"])
+		require.Equal(t, "logSequence", entry.GetFailure().GetFacts()["counter"])
 	}
 }
 
@@ -204,9 +204,9 @@ func TestAuditLogOnFailure(t *testing.T) {
 	require.NotNil(t, failEntry.GetFailure(), "should be failure")
 	// The error is INSUFFICIENT_FUNDS because nil Input is treated as zero balance
 	require.Equal(t, domain.ErrReasonInsufficientFunds, domain.ReasonString(failEntry.GetFailure().GetReason()))
-	require.NotEmpty(t, failEntry.GetFailure().GetMessage())
-	require.Contains(t, failEntry.GetFailure().GetContext(), "account")
-	require.Contains(t, failEntry.GetFailure().GetContext(), "asset")
+	require.NotEmpty(t, failEntry.GetFailure().GetCode())
+	require.Contains(t, failEntry.GetFailure().GetFacts(), "account")
+	require.Contains(t, failEntry.GetFailure().GetFacts(), "asset")
 }
 
 func TestAuditLogSequenceMonotonic(t *testing.T) {

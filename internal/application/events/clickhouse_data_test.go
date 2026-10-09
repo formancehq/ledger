@@ -350,8 +350,9 @@ func TestEventToClickHouseJSON_OrderSkipped(t *testing.T) {
 							Data: &commonpb.LedgerLogPayload{
 								Payload: &commonpb.LedgerLogPayload_OrderSkipped{
 									OrderSkipped: &commonpb.OrderSkippedLog{
-										Reason:  commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
-										Context: map[string]string{"reference": "ref-1"},
+										Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+										Code:   "TRANSACTION_REFERENCE_CONFLICT",
+										Facts:  map[string]string{"reference": "ref-1"},
 									},
 								},
 							},
@@ -371,7 +372,8 @@ func TestEventToClickHouseJSON_OrderSkipped(t *testing.T) {
 	// The sink must expose the short public identifier that callers submit in
 	// skippableReasons, NOT the generated enum name (ERROR_REASON_...).
 	require.Equal(t, "TRANSACTION_REFERENCE_CONFLICT", *result.SkippedReason)
-	require.Equal(t, map[string]string{"reference": "ref-1"}, result.SkippedContext)
+	require.Equal(t, "TRANSACTION_REFERENCE_CONFLICT", *result.SkippedCode)
+	require.Equal(t, map[string]string{"reference": "ref-1"}, result.SkippedFacts)
 }
 
 func TestEventToClickHouseJSON_RegisterSigningKey(t *testing.T) {

@@ -120,9 +120,9 @@ func TestAuditFailure_MarshalJSON(t *testing.T) {
 	t.Parallel()
 
 	f := &AuditFailure{
-		Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
-		Message: "boom",
-		Context: map[string]string{"k": "v"},
+		Reason: commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+		Code:   "BOOM",
+		Facts:  map[string]string{"k": "v"},
 	}
 
 	data, err := f.MarshalJSON()
@@ -130,6 +130,7 @@ func TestAuditFailure_MarshalJSON(t *testing.T) {
 
 	out := string(data)
 	require.Contains(t, out, `"reason":"ERROR_REASON_INSUFFICIENT_FUNDS"`)
-	require.Contains(t, out, `"message":"boom"`)
-	require.Contains(t, out, `"context":{"k":"v"}`)
+	require.Contains(t, out, `"code":"BOOM"`)
+	require.Contains(t, out, `"facts":{"k":"v"}`)
+	require.NotContains(t, out, `"message"`)
 }

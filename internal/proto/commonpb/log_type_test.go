@@ -43,7 +43,7 @@ func TestLedgerLog_MarshalJSON_OrderSkipped(t *testing.T) {
 			Payload: &commonpb.LedgerLogPayload_OrderSkipped{
 				OrderSkipped: &commonpb.OrderSkippedLog{
 					Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
-					Context: map[string]string{
+					Facts: map[string]string{
 						"reference":             "ref-x",
 						"existingTransactionId": "42",
 					},

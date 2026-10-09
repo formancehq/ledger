@@ -161,8 +161,8 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 			skipped := skipLog.GetData().GetOrderSkipped()
 			Expect(skipped).NotTo(BeNil())
 			Expect(skipped.GetReason()).To(Equal(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT))
-			Expect(skipped.GetContext()["reference"]).To(Equal("skip-dup-ref"))
-			Expect(skipped.GetContext()["existingTransactionId"]).To(Equal(strconv.FormatUint(firstTxID, 10)))
+			Expect(skipped.GetFacts()["reference"]).To(Equal("skip-dup-ref"))
+			Expect(skipped.GetFacts()["existingTransactionId"]).To(Equal(strconv.FormatUint(firstTxID, 10)))
 
 			// The OrderSkipped log MUST have a real per-ledger Id (consecutive
 			// to the preceding one) and a Date — the read-side index keys
@@ -239,7 +239,7 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 			skipped := batchResp.Logs[1].GetPayload().GetApply().GetLog().GetData().GetOrderSkipped()
 			Expect(skipped).NotTo(BeNil())
 			Expect(skipped.GetReason()).To(Equal(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT))
-			Expect(skipped.GetContext()["existingTransactionId"]).To(Equal(strconv.FormatUint(seedTxID, 10)))
+			Expect(skipped.GetFacts()["existingTransactionId"]).To(Equal(strconv.FormatUint(seedTxID, 10)))
 
 			// The skip log carries a real per-ledger id and date even
 			// though no transaction was created — every ledger log needs

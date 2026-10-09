@@ -2056,12 +2056,13 @@ func (m *OrderSkippedLog) CloneVT() *OrderSkippedLog {
 	}
 	r := new(OrderSkippedLog)
 	r.Reason = m.Reason
-	if rhs := m.Context; rhs != nil {
+	r.Code = m.Code
+	if rhs := m.Facts; rhs != nil {
 		tmpContainer := make(map[string]string, len(rhs))
 		for k, v := range rhs {
 			tmpContainer[k] = v
 		}
-		r.Context = tmpContainer
+		r.Facts = tmpContainer
 	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -3221,13 +3222,13 @@ func (m *IdempotencyFailure) CloneVT() *IdempotencyFailure {
 	}
 	r := new(IdempotencyFailure)
 	r.Reason = m.Reason
-	r.Message = m.Message
-	if rhs := m.Metadata; rhs != nil {
+	r.Code = m.Code
+	if rhs := m.Facts; rhs != nil {
 		tmpContainer := make(map[string]string, len(rhs))
 		for k, v := range rhs {
 			tmpContainer[k] = v
 		}
-		r.Metadata = tmpContainer
+		r.Facts = tmpContainer
 	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -8042,11 +8043,14 @@ func (this *OrderSkippedLog) EqualVT(that *OrderSkippedLog) bool {
 	if this.Reason != that.Reason {
 		return false
 	}
-	if len(this.Context) != len(that.Context) {
+	if this.Code != that.Code {
 		return false
 	}
-	for i, vx := range this.Context {
-		vy, ok := that.Context[i]
+	if len(this.Facts) != len(that.Facts) {
+		return false
+	}
+	for i, vx := range this.Facts {
+		vy, ok := that.Facts[i]
 		if !ok {
 			return false
 		}
@@ -10041,14 +10045,14 @@ func (this *IdempotencyFailure) EqualVT(that *IdempotencyFailure) bool {
 	if this.Reason != that.Reason {
 		return false
 	}
-	if this.Message != that.Message {
+	if this.Code != that.Code {
 		return false
 	}
-	if len(this.Metadata) != len(that.Metadata) {
+	if len(this.Facts) != len(that.Facts) {
 		return false
 	}
-	for i, vx := range this.Metadata {
-		vy, ok := that.Metadata[i]
+	for i, vx := range this.Facts {
+		vy, ok := that.Facts[i]
 		if !ok {
 			return false
 		}
@@ -17455,9 +17459,9 @@ func (m *OrderSkippedLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.Context) > 0 {
-		for k := range m.Context {
-			v := m.Context[k]
+	if len(m.Facts) > 0 {
+		for k := range m.Facts {
+			v := m.Facts[k]
 			baseI := i
 			i -= len(v)
 			copy(dAtA[i:], v)
@@ -17471,8 +17475,15 @@ func (m *OrderSkippedLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			dAtA[i] = 0xa
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
 			i--
-			dAtA[i] = 0x12
+			dAtA[i] = 0x1a
 		}
+	}
+	if len(m.Code) > 0 {
+		i -= len(m.Code)
+		copy(dAtA[i:], m.Code)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Code)))
+		i--
+		dAtA[i] = 0x12
 	}
 	if m.Reason != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Reason))
@@ -20289,9 +20300,9 @@ func (m *IdempotencyFailure) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.Metadata) > 0 {
-		for k := range m.Metadata {
-			v := m.Metadata[k]
+	if len(m.Facts) > 0 {
+		for k := range m.Facts {
+			v := m.Facts[k]
 			baseI := i
 			i -= len(v)
 			copy(dAtA[i:], v)
@@ -20308,10 +20319,10 @@ func (m *IdempotencyFailure) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			dAtA[i] = 0x1a
 		}
 	}
-	if len(m.Message) > 0 {
-		i -= len(m.Message)
-		copy(dAtA[i:], m.Message)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Message)))
+	if len(m.Code) > 0 {
+		i -= len(m.Code)
+		copy(dAtA[i:], m.Code)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Code)))
 		i--
 		dAtA[i] = 0x12
 	}
@@ -25677,8 +25688,12 @@ func (m *OrderSkippedLog) SizeVT() (n int) {
 	if m.Reason != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.Reason))
 	}
-	if len(m.Context) > 0 {
-		for k, v := range m.Context {
+	l = len(m.Code)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if len(m.Facts) > 0 {
+		for k, v := range m.Facts {
 			_ = k
 			_ = v
 			mapEntrySize := 1 + len(k) + protohelpers.SizeOfVarint(uint64(len(k))) + 1 + len(v) + protohelpers.SizeOfVarint(uint64(len(v)))
@@ -26901,12 +26916,12 @@ func (m *IdempotencyFailure) SizeVT() (n int) {
 	if m.Reason != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.Reason))
 	}
-	l = len(m.Message)
+	l = len(m.Code)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if len(m.Metadata) > 0 {
-		for k, v := range m.Metadata {
+	if len(m.Facts) > 0 {
+		for k, v := range m.Facts {
 			_ = k
 			_ = v
 			mapEntrySize := 1 + len(k) + protohelpers.SizeOfVarint(uint64(len(k))) + 1 + len(v) + protohelpers.SizeOfVarint(uint64(len(v)))
@@ -40598,7 +40613,39 @@ func (m *OrderSkippedLog) UnmarshalVT(dAtA []byte) error {
 			}
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Context", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Code", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Code = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Facts", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -40625,8 +40672,8 @@ func (m *OrderSkippedLog) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.Context == nil {
-				m.Context = make(map[string]string)
+			if m.Facts == nil {
+				m.Facts = make(map[string]string)
 			}
 			var mapkey string
 			var mapvalue string
@@ -40721,7 +40768,7 @@ func (m *OrderSkippedLog) UnmarshalVT(dAtA []byte) error {
 					iNdEx += skippy
 				}
 			}
-			m.Context[mapkey] = mapvalue
+			m.Facts[mapkey] = mapvalue
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -47312,7 +47359,7 @@ func (m *IdempotencyFailure) UnmarshalVT(dAtA []byte) error {
 			}
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Message", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Code", wireType)
 			}
 			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
@@ -47340,11 +47387,11 @@ func (m *IdempotencyFailure) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Message = string(dAtA[iNdEx:postIndex])
+			m.Code = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		case 3:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Metadata", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Facts", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -47371,8 +47418,8 @@ func (m *IdempotencyFailure) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.Metadata == nil {
-				m.Metadata = make(map[string]string)
+			if m.Facts == nil {
+				m.Facts = make(map[string]string)
 			}
 			var mapkey string
 			var mapvalue string
@@ -47467,7 +47514,7 @@ func (m *IdempotencyFailure) UnmarshalVT(dAtA []byte) error {
 					iNdEx += skippy
 				}
 			}
-			m.Metadata[mapkey] = mapvalue
+			m.Facts[mapkey] = mapvalue
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

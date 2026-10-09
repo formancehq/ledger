@@ -95,18 +95,18 @@ A coverage miss is an admission bug, not an infrastructure fault, and it is labe
 | Surface | Value |
 |---------|-------|
 | Hash-chained `AuditFailure.Reason` | `ERROR_REASON_COVERAGE_MISS` |
-| `AuditFailure.Context` | `attribute`, `canonicalHex`, `idHex`, `raftIndex` |
+| `AuditFailure.Code` / `AuditFailure.Facts` | `COVERAGE_MISS`; `attribute`, `canonicalHex`, `idHex`, `raftIndex` |
 | Frozen idempotency outcome | **not applicable** — `KindInternal` failures are deliberately never frozen (`IsFreezableFailure`, `internal/domain/errors.go:152-158`), so a coverage miss leaves no idempotency record and the request stays retryable |
 | gRPC / HTTP error reason | `COVERAGE_MISS` (gRPC `INTERNAL` / HTTP 500), public message `preload coverage miss`, no gRPC error metadata |
 | Node-local log + OTel counter | `scope.go:374-378` (see [Metrics](#metrics)) |
 
-The `Metadata()` keys are camelCase and remain part of the diagnostic and authoritative audit contract. The API adapters use the separate, type-owned `PublicDetails()` presentation through `domain.PublicErrorDetails`: it hides the attribute, canonical key, hashed identifier, and Raft index from error responses without changing `Error()`, `Metadata()`, or the audit hash pre-image. This response-only redaction does not change FSM execution, persisted state, or incremental restore behavior. The structured log emitted alongside keeps snake_case field names — that is a log, not a wire payload.
+The fact keys are camelCase and remain part of the authoritative audit contract. Diagnostic wording is excluded from the hash. The API adapters use the separate, type-owned `PublicDetails()` presentation through `domain.PublicErrorDetails`: it hides the attribute, canonical key, hashed identifier, and Raft index from error responses without changing `Error()`, `Metadata()`, or the recorded facts. This response-only redaction does not change FSM execution, persisted state, or incremental restore behavior. The structured log emitted alongside keeps snake_case field names — that is a log, not a wire payload.
 
 The idempotency row is worth stating explicitly because the non-freezing is a design point, not an oversight: `recordIdempotencyFailure` returns early (`machine.go:1729`) for any non-freezable kind, and `KindForReason` classifies `ERROR_REASON_COVERAGE_MISS` as `KindInternal` (`internal/domain/reason.go:124`). Freezing would pin a server bug against the caller's key for the whole TTL. This was equally true before EN-1379 — `ERROR_REASON_STORAGE_OPERATION_FAILED` sits in the same `KindInternal` arm — so the idempotency outcome is not one of the surfaces the fix repairs.
 
 ### Upgrade note: the reason is hash-bound
 
-`buildAuditFailurePayload` (`internal/infra/state/audit_envelope.go:176-198`) folds the reason, the message and every sorted context key **and value** into the audit hash pre-image. Relabelling an FSM-emitted failure is therefore *not* hash-neutral: for one and the same Raft entry, a node on the old build hashes `{STORAGE_OPERATION_FAILED, "storage operation failed: loading ledger", {operation}}` while a node on the new build hashes `{COVERAGE_MISS, "preload coverage miss (…)", {attribute, canonicalHex, idHex, raftIndex}}`.
+`buildAuditFailurePayload` folds the reason, code, and every sorted fact key and value into the audit hash pre-image. Before revision 29 it also folded the error message and context; the following mixed-build example describes that older format. Relabelling an FSM-emitted failure is therefore *not* hash-neutral: for one and the same Raft entry, a node on the old build hashes `{STORAGE_OPERATION_FAILED, "storage operation failed: loading ledger", {operation}}` while a node on the new build hashes `{COVERAGE_MISS, "preload coverage miss (…)", {attribute, canonicalHex, idHex, raftIndex}}`.
 
 During a rolling upgrade both builds apply the same replicated log, so a coverage miss landing inside the mixed-version window writes **different hashes for the same index** — invariant #2 across the version boundary. `checker.verifyAuditHashChain` will not report it: it recomputes each hash from the entries that replica itself stored, so both chains are internally consistent and both verify clean. The divergence is only visible by comparing audit entries across replicas. Nothing absorbs this: `HashVersion` comes from `HashGenerator.Algorithm()` (`machine.go:1427`) and identifies the hash *algorithm* only, carrying no notion of failure-projection semantics, so a node cannot recognise "this entry was produced under the old classification".
 
@@ -115,11 +115,11 @@ Consequences to hold in mind:
 - Coverage misses are correctly and consistently classified only once **every** node runs the new build. A miss inside the window can diverge the chain, silently as far as `ledgerctl check` is concerned.
 - The window is narrow in practice: the trigger is itself an admission bug that should never fire. This is a low-probability path, not a routine one.
 - Only the read sites EN-1379 **converted** are affected. The numscript re-resolution path already returned the bare miss, so its reason and context are unchanged; only its message shifts, and only because `Error()` was aligned to the camelCase `raftIndex` spelling.
-- **This hazard is general.** It attaches to any change to an FSM-emitted error's reason, message or metadata — not to EN-1379 specifically. Treat "relabelling an FSM error is observable in the hash chain" as the standing rule when reviewing such a change.
+- **This hazard is general.** It attaches to any change to an FSM-emitted error's reason, code or facts — not to EN-1379 specifically. Treat "changing an audited failure identity is observable in the hash chain" as the standing rule when reviewing such a change.
 
 Making this structurally safe would mean carrying a failure-projection semantics version alongside `HashVersion` so old entries keep reproducing their original bytes. That is a deliberate design decision, not something EN-1379 took on.
 
-The operational consequence is declared where operators look for supported upgrade paths: [deployment.md — Upgrading across an FSM error-identity change](../../../../ops/deployment.md#upgrading-across-an-fsm-error-identity-change) states the standing rule — mixed-binary rolling upgrades are not supported across any such change, and no data wipe is required because no persisted layout changes — and lists EN-1379 alongside the earlier changes it covers.
+The operational consequence is declared where operators look for supported upgrade paths: [deployment.md — Upgrading across an FSM error-identity change](../../../../ops/deployment.md#upgrading-across-an-fsm-error-identity-change) states the standing rule — mixed-binary rolling upgrades are not supported across any such change. No data wipe is required only when the persisted representation stays compatible; revision 29 changes that representation and requires state replacement. The deployment guide lists EN-1379 alongside the earlier identity-only changes it covers.
 
 This holds because FSM read sites build their failure through `domain.StoreFailure(operation, err)` instead of constructing a `domain.ErrStorageOperation` directly:
 
@@ -134,14 +134,14 @@ func StoreFailure(operation string, err error) Describable {
 }
 ```
 
-The distinction is load-bearing. `buildAuditFailure` (`internal/infra/state/audit.go:19-29`) reads `Reason()` and `Metadata()` off the **outermost** `Describable` and never unwraps:
+The distinction is load-bearing. `buildAuditFailure` (`internal/infra/state/audit.go:19-29`) derives the reason, code, and facts from the **outermost** `SerializableError` and never unwraps:
 
 ```go
-failure.Reason = domain.ReasonCode(d.Reason())
-maps.Copy(failure.GetContext(), d.Metadata())
+facts := domain.FailureFactsOf(d)
+failure.Reason, failure.Code, failure.Facts = facts.Reason, facts.Code, facts.Facts
 ```
 
-So wrapping a `*ErrCoverageMiss` would permanently record an admission bug as `STORAGE_OPERATION_FAILED`, with the context stripped to `{operation: "..."}` — in a chain that is immutable by construction. `businessErrorToGRPCStatus` (`internal/adapter/grpc/errors.go:86`) performs the same outermost-only read, so the client sees the relabelled reason too. (`recordIdempotencyFailure` reads the outermost `Describable` the same way, but never reaches a coverage miss at all — see the idempotency row above.)
+So wrapping a `*ErrCoverageMiss` would permanently record an admission bug as `STORAGE_OPERATION_FAILED`, with the structured coverage facts lost — in a chain that is immutable by construction. `businessErrorToGRPCStatus` (`internal/adapter/grpc/errors.go:86`) performs the same outermost-only read, so the client sees the relabelled reason too. (`recordIdempotencyFailure` reads the outermost `Describable` the same way, but never reaches a coverage miss at all — see the idempotency row above.)
 
 `CoverageContractViolation` matches on the stable domain `Reason()` string rather than the concrete type, because `internal/domain/processing` cannot import `internal/infra/state` — `state` imports `processing`, so a type-based `errors.As` would be an import cycle. It recognises both `COVERAGE_MISS` and `INVALID_EXECUTION_PLAN`, walking the `Unwrap` chain so a violation nested behind a numscript `QueryBalanceError` is still found. It also descends into multi-error nodes (`errors.Join`, or `fmt.Errorf` with several `%w`), which `errors.Unwrap` cannot follow, visiting members in slice order so the result stays deterministic as the apply path requires. The `forbidigo` rule below cannot see a future `Join` — it is a plain call, not a forbidden type reference — so handling it in the walk is what keeps the guard whole.
 

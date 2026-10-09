@@ -221,11 +221,11 @@ func TestHashChain_Envelope_Failure(t *testing.T) {
 		Ledgers:     []string{"ledger-a"},
 		Outcome: &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
-				Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
-				Message: "balance too low",
+				Reason: commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+				Code:   "INSUFFICIENT_FUNDS",
 				// Intentionally unsorted: zebra, apple, mango force the
 				// builder to actually sort.
-				Context: map[string]string{
+				Facts: map[string]string{
 					"zebra":  "z-value",
 					"apple":  "a-value",
 					"mango":  "m-value",
@@ -303,9 +303,9 @@ func TestAuditEntry_MarshalDeterministicVT_StableAcrossRuns(t *testing.T) {
 		Ledgers:     []string{"ledger-a"},
 		Outcome: &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
-				Reason:  commonpb.ErrorReason_ERROR_REASON_VALIDATION,
-				Message: "y",
-				Context: map[string]string{
+				Reason: commonpb.ErrorReason_ERROR_REASON_VALIDATION,
+				Code:   "Y",
+				Facts: map[string]string{
 					"k3": "v3",
 					"k1": "v1",
 					"k2": "v2",
@@ -396,10 +396,10 @@ func goldenBuildSuccess(s *auditpb.AuditSuccess) []byte {
 func goldenBuildFailure(f *auditpb.AuditFailure) []byte {
 	var buf []byte
 	buf = goldenU32(buf, uint32(f.GetReason()))
-	buf = goldenLenString(buf, f.GetMessage())
+	buf = goldenLenString(buf, f.GetCode())
 
-	keys := make([]string, 0, len(f.GetContext()))
-	for k := range f.GetContext() {
+	keys := make([]string, 0, len(f.GetFacts()))
+	for k := range f.GetFacts() {
 		keys = append(keys, k)
 	}
 
@@ -408,7 +408,7 @@ func goldenBuildFailure(f *auditpb.AuditFailure) []byte {
 
 	for _, k := range keys {
 		buf = goldenLenString(buf, k)
-		buf = goldenLenString(buf, f.GetContext()[k])
+		buf = goldenLenString(buf, f.GetFacts()[k])
 	}
 
 	return buf

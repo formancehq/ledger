@@ -84,13 +84,14 @@ func TestSkippedLogPayloadPinsReasonAndCorrelators(t *testing.T) {
 	require.True(t, result.OK)
 	expected := result.State.Ledger("L").LogRows()[1]
 	served := &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_OrderSkipped{OrderSkipped: &commonpb.OrderSkippedLog{
-		Reason:  commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
-		Context: map[string]string{"ledger": "L", "reference": "ref", "existingTransactionId": "1"},
+		Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+		Code:   "TRANSACTION_REFERENCE_CONFLICT",
+		Facts:  map[string]string{"ledger": "L", "reference": "ref", "existingTransactionId": "1"},
 	}}}
 	require.Equal(t, expected.Payload, CanonicalServedLogPayload(served))
-	served.GetOrderSkipped().Context["existingTransactionId"] = "2"
+	served.GetOrderSkipped().Facts["existingTransactionId"] = "2"
 	require.NotEqual(t, expected.Payload, CanonicalServedLogPayload(served))
-	served.GetOrderSkipped().Context["existingTransactionId"] = "1"
+	served.GetOrderSkipped().Facts["existingTransactionId"] = "1"
 	served.GetOrderSkipped().Reason = commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
 	require.NotEqual(t, expected.Payload, CanonicalServedLogPayload(served))
 }

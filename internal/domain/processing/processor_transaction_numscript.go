@@ -8,6 +8,7 @@ import (
 	"maps"
 	"math/big"
 	"slices"
+	"strconv"
 
 	"github.com/holiman/uint256"
 
@@ -150,12 +151,16 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		if posting.Amount.Sign() < 0 {
 			return nil, &domain.ErrNumscriptExecution{
 				Detail: fmt.Sprintf("posting %d has negative amount %s", i, posting.Amount),
+				Code:   "NUMSCRIPT_POSTING_NEGATIVE_AMOUNT",
+				Facts:  map[string]string{"postingIndex": strconv.Itoa(i), "amount": posting.Amount.String()},
 			}
 		}
 
 		if overflow := u256Amount.SetFromBig(posting.Amount); overflow {
 			return nil, &domain.ErrNumscriptExecution{
 				Detail: fmt.Sprintf("posting %d amount %s exceeds 256 bits", i, posting.Amount),
+				Code:   "NUMSCRIPT_POSTING_AMOUNT_OVERFLOW",
+				Facts:  map[string]string{"postingIndex": strconv.Itoa(i), "amount": posting.Amount.String()},
 			}
 		}
 

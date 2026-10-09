@@ -26,7 +26,7 @@ Events map directly to the global log payload types:
 | `DELETED_METADATA` | Metadata key deleted | `DeletedMetadata` |
 | `CREATED_LEDGER` | Ledger created | `CreatedLedgerLog` |
 | `DELETED_LEDGER` | Ledger deleted | `DeletedLedgerLog` |
-| `SKIPPED_ORDER` | Batch order skipped on a whitelisted business failure (`skippable_reasons`) | `OrderSkippedLog` (carries `skippedReason` + `skippedContext`) |
+| `SKIPPED_ORDER` | Batch order skipped on a whitelisted business failure (`skippable_reasons`) | `OrderSkippedLog` (carries `skippedReason`, `skippedCode`, and `skippedFacts`) |
 
 ### Compatibility with Reference Implementation
 

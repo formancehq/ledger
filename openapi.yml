@@ -4224,6 +4224,7 @@ components:
       required:
         - skipped
         - reason
+        - code
       properties:
         skipped:
           type: boolean
@@ -4231,12 +4232,15 @@ components:
         reason:
           type: string
           description: Typed reason that matched the skip (e.g. `TRANSACTION_REFERENCE_CONFLICT`). Same identifier the gRPC ErrorInfo.reason and the REST error responses use.
-        context:
+        code:
+          type: string
+          description: Stable subcode for the skipped failure.
+        facts:
           type: object
           additionalProperties:
             type: string
           description: |
-            Reason-specific correlator. For
+            Validated, reason-specific correlators. For
             `TRANSACTION_REFERENCE_CONFLICT`, contains
             `reference` and `existingTransactionId`.
 
@@ -6425,16 +6429,16 @@ components:
 
     AuditFailure:
       type: object
-      description: The reason and context for a failed proposal.
+      description: Stable reason, subcode, and facts for a failed proposal. Presentation text is rendered when read and is not stored in the audit chain.
       properties:
         reason:
           type: string
           description: Typed error reason identifier (e.g. ERROR_REASON_INSUFFICIENT_FUNDS)
-        message:
+        code:
           type: string
-          description: Human-readable failure message
-        context:
+          description: Stable failure subcode
+        facts:
           type: object
           additionalProperties:
             type: string
-          description: Additional structured context for the failure
+          description: Validated facts used to render the failure

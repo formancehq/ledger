@@ -59,7 +59,7 @@ func TestMatchOrderSkip_AllowsListedReason(t *testing.T) {
 	require.NotNil(t, skipped)
 	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, skipped.GetReason())
 
-	ctx := skipped.GetContext()
+	ctx := skipped.GetFacts()
 	require.Equal(t, "L", ctx["ledger"])
 	require.Equal(t, "ref-1", ctx["reference"])
 	require.Equal(t, "42", ctx["existingTransactionId"])

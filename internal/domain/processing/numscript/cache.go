@@ -234,7 +234,7 @@ func (e *lruEntry) compileParsed() (program *compiledProgram, err domain.Seriali
 
 		varsEncoder, program, err := e.script.program.Compile()
 		if err != nil {
-			e.compileErr = &domain.ErrNumscriptCompile{Detail: err.Error()}
+			e.compileErr = mapCompilerError(err)
 
 			return
 		}

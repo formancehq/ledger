@@ -45,9 +45,9 @@ func newFailureAuditEntry(sequence uint64, orderCount int) (*auditpb.AuditEntry,
 		CallerSnapshot: testCallerSnapshot(),
 		Outcome: &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
-				Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
-				Message: "balance too low",
-				Context: map[string]string{"account": "bank"},
+				Reason: commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+				Code:   "INSUFFICIENT_FUNDS",
+				Facts:  map[string]string{"account": "bank"},
 			},
 		},
 	}
@@ -195,7 +195,7 @@ func TestCheck_FailureOnlyHistory_ReportsTamperedAuditHash(t *testing.T) {
 		name   string
 		mutate func(entry *auditpb.AuditEntry)
 	}{
-		{"failure message", func(e *auditpb.AuditEntry) { e.GetFailure().Message = "you have plenty of money" }},
+		{"failure message", func(e *auditpb.AuditEntry) { e.GetFailure().Code = "you have plenty of money" }},
 		{"failure reason", func(e *auditpb.AuditEntry) {
 			e.GetFailure().Reason = commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND
 		}},
@@ -258,9 +258,9 @@ func TestCheck_FailureOnlyHistory_ReportsTamperedIdempotencyOutcome(t *testing.T
 		CreatedAt: createdAt,
 		Hash:      proposalHash,
 		Failure: &commonpb.IdempotencyFailure{
-			Reason:   commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
-			Message:  "balance too low",
-			Metadata: map[string]string{"account": "bank"},
+			Reason: commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+			Code:   "INSUFFICIENT_FUNDS",
+			Facts:  map[string]string{"account": "bank"},
 		},
 	}
 
@@ -278,7 +278,7 @@ func TestCheck_FailureOnlyHistory_ReportsTamperedIdempotencyOutcome(t *testing.T
 		name   string
 		mutate func(v *commonpb.IdempotencyKeyValue)
 	}{
-		{"failure message", func(v *commonpb.IdempotencyKeyValue) { v.Failure.Message = "you have plenty of money" }},
+		{"failure message", func(v *commonpb.IdempotencyKeyValue) { v.Failure.Code = "you have plenty of money" }},
 		{"failure reason", func(v *commonpb.IdempotencyKeyValue) {
 			v.Failure.Reason = commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND
 		}},

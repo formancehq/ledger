@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"28"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"29"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -58,8 +58,8 @@ clients and servers; apply semantics must agree across every replica.
 Revision 5 (EN-1623) removes internal index/coverage details from public
 error messages and ErrorInfo metadata while retaining their reasons and status
 codes. Internal read failures in restore validation retain `Internal` with a
-sanitized correlation message. AuditFailure records retain their original
-diagnostic message and context.
+sanitized correlation message. AuditFailure records retained their diagnostic
+message and context until revision 29.
 
 Revision 8 (EN-1771) removes `CreatedIndexLog.initial` and renumbers the
 remaining exposed fields. Clients and servers built against revision 7 would
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 28:
+leader. For example, with a schema implementing revision 29:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 28' \
+grpcurl -plaintext -H 'ledger-protocol-version: 29' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -402,3 +402,15 @@ panics, numscript internal errors, and unmapped library errors.
 This is an incompatible response-semantic change: a revision-27 client sees a
 status code and reason it does not know. Clients and servers must use the
 matching revision.
+
+## Structured audited failures (revision 29)
+
+Revision 29 replaces the persisted `AuditFailure.message/context`,
+`IdempotencyFailure.message/metadata`, and `OrderSkippedLog.context` fields
+with a stable `reason`, `code`, and `facts` tuple. Audit hashing and
+idempotency comparison use that tuple. Read and API paths render presentation
+text from it; Numscript execution and compiler diagnostics are not persisted
+as failure messages or copied into their public error details. A skipped order
+exposes its code and facts in gRPC, HTTP bulk, and
+event payloads. This changes exposed log and audit responses, so service
+clients and servers must use the same revision.

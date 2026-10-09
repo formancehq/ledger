@@ -57,7 +57,8 @@ var _ = Describe("Idempotency replays failures", Ordered, func() {
 		_, err := sharedClient.Apply(sharedCtx, failingTx())
 		Expect(err).To(HaveOccurred())
 		Expect(status.Code(err)).To(Equal(codes.FailedPrecondition))
-		firstMessage := status.Convert(err).Message()
+		firstInfo := actions.ExtractGRPCErrorInfo(err)
+		Expect(firstInfo).NotTo(BeNil())
 
 		// 2. Change state so the identical request would now succeed.
 		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.AddAccountTypeAction(ledgerName, "bank", "bank:{id}")))
@@ -69,7 +70,10 @@ var _ = Describe("Idempotency replays failures", Ordered, func() {
 		Expect(err).To(HaveOccurred(),
 			"retry of a failed idempotency key must replay the failure, not re-execute and commit")
 		Expect(status.Code(err)).To(Equal(codes.FailedPrecondition))
-		Expect(status.Convert(err).Message()).To(Equal(firstMessage))
+		replayedInfo := actions.ExtractGRPCErrorInfo(err)
+		Expect(replayedInfo).NotTo(BeNil())
+		Expect(replayedInfo.Reason).To(Equal(firstInfo.Reason))
+		Expect(replayedInfo.Metadata["address"]).To(Equal("bank:1"))
 	})
 
 	It("never commits the retried transaction", func() {

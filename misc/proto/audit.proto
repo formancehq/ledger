@@ -97,12 +97,10 @@ message AuditSuccess {
   fixed64 max_log_sequence = 2;
 }
 
-// AuditFailure records the reason and context for a failed proposal. reason is
-// the typed, hash-chain-bound identifier; the numeric error kind is re-derived
-// from it (domain.KindForReason) rather than stored, so it cannot drift from
-// the reason and the idempotency failure projection is verifiable against it.
+// AuditFailure records the stable reason, subcode, and structured facts of a
+// failed proposal. Presentation text is rendered when the record is read.
 message AuditFailure {
   common.ErrorReason reason = 1;
-  string message = 2;
-  map<string, string> context = 3;
+  string code = 2;
+  map<string, string> facts = 3;
 }

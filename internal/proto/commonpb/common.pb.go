@@ -6644,12 +6644,10 @@ func (*LedgerLogPayload_OrderSkipped) isLedgerLogPayload_Payload() {}
 // confirms that reason both matches the projection and was whitelisted
 // (defense against forged skip entries).
 type OrderSkippedLog struct {
-	state  protoimpl.MessageState `protogen:"open.v1"`
-	Reason ErrorReason            `protobuf:"varint,1,opt,name=reason,proto3,enum=common.ErrorReason" json:"reason,omitempty"`
-	// Free-form context populated by the producing branch. Conventional keys
-	// are documented case-by-case (e.g. reference / existingTransactionId for
-	// TRANSACTION_REFERENCE_CONFLICT). Treat as opaque if the reason is unknown.
-	Context       map[string]string `protobuf:"bytes,2,rep,name=context,proto3" json:"context,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Reason        ErrorReason            `protobuf:"varint,1,opt,name=reason,proto3,enum=common.ErrorReason" json:"reason,omitempty"`
+	Code          string                 `protobuf:"bytes,2,opt,name=code,proto3" json:"code,omitempty"`
+	Facts         map[string]string      `protobuf:"bytes,3,rep,name=facts,proto3" json:"facts,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -6691,9 +6689,16 @@ func (x *OrderSkippedLog) GetReason() ErrorReason {
 	return ErrorReason_ERROR_REASON_UNSPECIFIED
 }
 
-func (x *OrderSkippedLog) GetContext() map[string]string {
+func (x *OrderSkippedLog) GetCode() string {
 	if x != nil {
-		return x.Context
+		return x.Code
+	}
+	return ""
+}
+
+func (x *OrderSkippedLog) GetFacts() map[string]string {
+	if x != nil {
+		return x.Facts
 	}
 	return nil
 }
@@ -9603,9 +9608,9 @@ func (x *IdempotencyKeyValue) GetExpiresAt() uint64 {
 // verify this projection against the hash-chained AuditFailure.
 type IdempotencyFailure struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Reason        ErrorReason            `protobuf:"varint,1,opt,name=reason,proto3,enum=common.ErrorReason" json:"reason,omitempty"`                                                      // typed reason; kind derived via domain.KindForReason
-	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`                                                                             // client-facing error message
-	Metadata      map[string]string      `protobuf:"bytes,3,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // ErrorInfo metadata
+	Reason        ErrorReason            `protobuf:"varint,1,opt,name=reason,proto3,enum=common.ErrorReason" json:"reason,omitempty"`                                                // typed reason; kind derived via domain.KindForReason
+	Code          string                 `protobuf:"bytes,2,opt,name=code,proto3" json:"code,omitempty"`                                                                             // stable subcode
+	Facts         map[string]string      `protobuf:"bytes,3,rep,name=facts,proto3" json:"facts,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // validated structured facts
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -9647,16 +9652,16 @@ func (x *IdempotencyFailure) GetReason() ErrorReason {
 	return ErrorReason_ERROR_REASON_UNSPECIFIED
 }
 
-func (x *IdempotencyFailure) GetMessage() string {
+func (x *IdempotencyFailure) GetCode() string {
 	if x != nil {
-		return x.Message
+		return x.Code
 	}
 	return ""
 }
 
-func (x *IdempotencyFailure) GetMetadata() map[string]string {
+func (x *IdempotencyFailure) GetFacts() map[string]string {
 	if x != nil {
-		return x.Metadata
+		return x.Facts
 	}
 	return nil
 }
@@ -13557,11 +13562,13 @@ const file_common_proto_rawDesc = "" +
 	"\x14removed_account_type\x18\v \x01(\v2\x1d.common.RemovedAccountTypeLogB\x04\xe8\xbc\x18\x00H\x00R\x12removedAccountType\x12y\n" +
 	" updated_default_enforcement_mode\x18\f \x01(\v2(.common.UpdatedDefaultEnforcementModeLogB\x04\xe8\xbc\x18\x00H\x00R\x1dupdatedDefaultEnforcementMode\x12D\n" +
 	"\rorder_skipped\x18\r \x01(\v2\x17.common.OrderSkippedLogB\x04\xe8\xbc\x18\x01H\x00R\forderSkippedB\t\n" +
-	"\apayload\"\xba\x01\n" +
+	"\apayload\"\xc6\x01\n" +
 	"\x0fOrderSkippedLog\x12+\n" +
-	"\x06reason\x18\x01 \x01(\x0e2\x13.common.ErrorReasonR\x06reason\x12>\n" +
-	"\acontext\x18\x02 \x03(\v2$.common.OrderSkippedLog.ContextEntryR\acontext\x1a:\n" +
-	"\fContextEntry\x12\x10\n" +
+	"\x06reason\x18\x01 \x01(\x0e2\x13.common.ErrorReasonR\x06reason\x12\x12\n" +
+	"\x04code\x18\x02 \x01(\tR\x04code\x128\n" +
+	"\x05facts\x18\x03 \x03(\v2\".common.OrderSkippedLog.FactsEntryR\x05facts\x1a8\n" +
+	"\n" +
+	"FactsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x97\x01\n" +
 	"\x0fCreatedIndexLog\x12\x1f\n" +
@@ -13773,12 +13780,13 @@ const file_common_proto_rawDesc = "" +
 	"\afailure\x18\x05 \x01(\v2\x1a.common.IdempotencyFailureR\afailure\x12\x1b\n" +
 	"\tlog_count\x18\x06 \x01(\rR\blogCount\x12\x1d\n" +
 	"\n" +
-	"expires_at\x18\a \x01(\x06R\texpiresAt\"\xde\x01\n" +
+	"expires_at\x18\a \x01(\x06R\texpiresAt\"\xcc\x01\n" +
 	"\x12IdempotencyFailure\x12+\n" +
-	"\x06reason\x18\x01 \x01(\x0e2\x13.common.ErrorReasonR\x06reason\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\x12D\n" +
-	"\bmetadata\x18\x03 \x03(\v2(.common.IdempotencyFailure.MetadataEntryR\bmetadata\x1a;\n" +
-	"\rMetadataEntry\x12\x10\n" +
+	"\x06reason\x18\x01 \x01(\x0e2\x13.common.ErrorReasonR\x06reason\x12\x12\n" +
+	"\x04code\x18\x02 \x01(\tR\x04code\x12;\n" +
+	"\x05facts\x18\x03 \x03(\v2%.common.IdempotencyFailure.FactsEntryR\x05facts\x1a8\n" +
+	"\n" +
+	"FactsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"B\n" +
 	"\x19TransactionReferenceValue\x12%\n" +
@@ -14383,14 +14391,14 @@ var file_common_proto_goTypes = []any{
 	nil,                                              // 187: common.SavedLedgerMetadataLog.MetadataEntry
 	nil,                                              // 188: common.CreatedLedgerLog.AccountTypesEntry
 	nil,                                              // 189: common.CreatedLedgerLog.MetadataEntry
-	nil,                                              // 190: common.OrderSkippedLog.ContextEntry
+	nil,                                              // 190: common.OrderSkippedLog.FactsEntry
 	nil,                                              // 191: common.CreatedTransaction.AccountMetadataEntry
 	nil,                                              // 192: common.SavedMetadata.MetadataEntry
 	nil,                                              // 193: common.LedgerInfo.AccountTypesEntry
 	nil,                                              // 194: common.LedgerInfo.MetadataEntry
 	nil,                                              // 195: common.SaveMetadataCommand.MetadataEntry
 	nil,                                              // 196: common.TransactionState.MetadataEntry
-	nil,                                              // 197: common.IdempotencyFailure.MetadataEntry
+	nil,                                              // 197: common.IdempotencyFailure.FactsEntry
 	nil,                                              // 198: common.AccountType.SegmentTypesEntry
 	(*signaturepb.SignedLog)(nil),                    // 199: signature.SignedLog
 	(*descriptorpb.MethodOptions)(nil),               // 200: google.protobuf.MethodOptions
@@ -14524,7 +14532,7 @@ var file_common_proto_depIdxs = []int32{
 	140, // 124: common.LedgerLogPayload.updated_default_enforcement_mode:type_name -> common.UpdatedDefaultEnforcementModeLog
 	89,  // 125: common.LedgerLogPayload.order_skipped:type_name -> common.OrderSkippedLog
 	11,  // 126: common.OrderSkippedLog.reason:type_name -> common.ErrorReason
-	190, // 127: common.OrderSkippedLog.context:type_name -> common.OrderSkippedLog.ContextEntry
+	190, // 127: common.OrderSkippedLog.facts:type_name -> common.OrderSkippedLog.FactsEntry
 	43,  // 128: common.CreatedIndexLog.id:type_name -> common.IndexID
 	3,   // 129: common.CreatedIndexLog.bound_type:type_name -> common.MetadataType
 	43,  // 130: common.DroppedIndexLog.id:type_name -> common.IndexID
@@ -14594,7 +14602,7 @@ var file_common_proto_depIdxs = []int32{
 	19,  // 194: common.TransactionState.reverted_at:type_name -> common.Timestamp
 	130, // 195: common.IdempotencyKeyValue.failure:type_name -> common.IdempotencyFailure
 	11,  // 196: common.IdempotencyFailure.reason:type_name -> common.ErrorReason
-	197, // 197: common.IdempotencyFailure.metadata:type_name -> common.IdempotencyFailure.MetadataEntry
+	197, // 197: common.IdempotencyFailure.facts:type_name -> common.IdempotencyFailure.FactsEntry
 	134, // 198: common.SegmentType.uuid:type_name -> common.UUIDConstraint
 	135, // 199: common.SegmentType.uint64:type_name -> common.Uint64Constraint
 	136, // 200: common.SegmentType.bytes:type_name -> common.BytesConstraint
