@@ -13,9 +13,9 @@ the audit from this manifest change.
 For each hypothesis, identify the concrete entry point and carry these identities
 through the complete transition:
 
-- Raft node ID and persisted instance ID, including whether the member is a
-  bootstrap seed, joined member, phantom learner, removed incarnation, or fresh
-  incarnation reusing an ordinal;
+- Raft node ID and persisted instance ID; every member must carry a valid 16-byte
+  identity (bootstrap seed, joined member, removed incarnation, or fresh incarnation
+  reusing an ordinal); identity-less phantom learners are no longer a reachable state;
 - term, leader ID, entry index, committed index, locally applied/durable index,
   and the voter/learner `ConfState` that governs the operation;
 - logical request identity, leader-local proposal/correlation identity, and Raft
@@ -160,6 +160,9 @@ row; a crash is repaired by committed-WAL replay followed by `Rehydrate`. Prove
 that the next Raft dial uses the committed endpoint while the existing peer
 identity, role, send loop, and queues remain intact, and that Pebble eventually
 converges to the same registration.
+A transient optional-TLS probe failure during endpoint refresh must preserve
+the committed target address as the retry owner for the existing send loop and must
+not strand the peer in a state where no active retry exists until the next leader restart.
 
 ### Snapshot installation and catch-up
 
