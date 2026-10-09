@@ -1,0 +1,43 @@
+{
+  "id": "signed-response-integrity",
+  "title": "Signed response integrity",
+  "purpose": "Find reachable failures in server signing and optional client verification of returned ledger logs. Establish exactly which log bytes are authenticated, how the response key is selected, and whether the verified payload corresponds to the log consumed by a client. Request authentication, audit-chain hashing, and generic transport presentation have separate owners.",
+  "paths": [
+    "internal/domain/crypto/signing/**",
+    "internal/adapter/grpc/server_bucket.go",
+    "internal/bootstrap/module.go",
+    "cmd/ledgerctl/cmdutil/signing.go",
+    "cmd/ledgerctl/transactions/**",
+    "tests/e2e/cluster/response_signing_test.go",
+    "cmd/ledgerctl/apply_response_signatures_test.go"
+  ],
+  "related_docs": [
+    "AGENTS.md",
+    "docs/technical/agent-context.md",
+    "docs/technical/contributing/ai-audit.md",
+    "docs/technical/audits/signed-response-integrity.md",
+    "docs/technical/architecture/subsystems/admission/signing.md",
+    "docs/ops/signing.md"
+  ],
+  "invariants": [
+    "When response signing is configured, each log returned by a supported production response path must carry a signature over the intended committed log fields, with only the signature envelope excluded from the signed bytes. Establish the registered paths and exceptions before asserting coverage.",
+    "The signature envelope, authenticated payload, and visible log must describe the same committed log. A valid signature on detached payload bytes alone does not authenticate a separately modified visible log; verify the binding required by the actual client contract.",
+    "A verifier configured with a trusted response public key must reject missing, malformed, or invalid signatures and a mismatched key for every log it claims to verify. An unconfigured verifier is an intentional no-op, not evidence that signatures were checked.",
+    "A response key advertised through Discovery must correspond to the key actually used to sign responses at that node and configuration epoch. Do not infer durable or cluster-wide key rotation guarantees without an established contract.",
+    "Signing or verification failure must not be silently presented as a verified successful response at a reachable call site. Separate server signing failure, client verification failure, and intentional unsigned operation by configuration."
+  ],
+  "adversarial_questions": [
+    "Which registered response paths invoke responseSigner.SignLog, and can a path return a log after signing has been skipped or the log changed?",
+    "Does verification compare the authenticated payload with the visible log, or only verify the detached bytes in SignedLog? Which consumer relies on the result?",
+    "Can a valid signature from one log or node be attached to a different visible log and accepted under the configured verification key?",
+    "How does the client obtain and trust the response public key, and what happens when Discovery and a response come from different nodes or key epochs?",
+    "Are missing keys, malformed envelopes, nil signatures, and serialization errors distinguishable from an intentional unsigned configuration?",
+    "Is a suspected failure already owned by request signing, audit-chain integrity, transport translation, or a concurrent PR?"
+  ],
+  "dynamic_checks_to_consider": [
+    "Use a committed non-empty log with known fields; sign it, mutate each visible field and the envelope independently, and compare the actual client acceptance with the required binding.",
+    "Exercise multiple returned logs and supported command paths with verification enabled and disabled, including a missing signature in the middle of a response.",
+    "Compare the node's Discovery public key and key ID with an actual returned signature, then repeat across supported key configuration changes.",
+    "Use the existing response signing e2e and ledgerctl tests as leads, recording the exact assertions and any untested path rather than treating green tests as proof."
+  ]
+}

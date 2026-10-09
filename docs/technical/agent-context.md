@@ -26,6 +26,8 @@ When current code and authoritative documentation disagree, stop treating the do
 | `internal/infra/plan/**`, `internal/infra/preload/**` | `docs/technical/architecture/subsystems/fsm/` |
 | `internal/infra/cache/**`, `internal/infra/attributes/**`, `internal/infra/bloom/**` | `docs/technical/architecture/subsystems/attributes/` and relevant FSM docs |
 | `internal/application/check/**`, `internal/domain/replay/**` | `docs/technical/architecture/subsystems/checker/`, `docs/technical/architecture/audit-vs-technical-state.md` |
+| `internal/domain/crypto/signing/**`, response signing and CLI verification | `docs/technical/architecture/subsystems/admission/signing.md`, `docs/ops/signing.md`; `docs/technical/audits/signed-response-integrity.md` for response authenticity |
+| `internal/domain/analysis/**`, transaction analysis | `docs/technical/architecture/subsystems/read-path/`, `docs/technical/audits/transaction-analysis-equivalence.md` |
 | `internal/storage/dal/**`, `internal/storage/wal/**`, `internal/storage/spool/**`, `internal/storage/pebblecfg/**` | `docs/technical/architecture/subsystems/storage/` |
 | `internal/storage/readstore/**`, `internal/application/indexbuilder/**` | `docs/technical/architecture/subsystems/indexer/`, `docs/technical/architecture/subsystems/read-path/` |
 | `internal/storage/usagestore/**` | relevant usage-builder/subsystem docs plus `docs/technical/architecture/audit-vs-technical-state.md` when integrity/rebuild semantics change |
@@ -131,6 +133,13 @@ Use the native deep-audit workflow when the request seeks latent correctness def
 
 If no manifest matches, first decide whether the requested correctness scope is durable and reusable. If it is, create and review a manifest before running the native audit. If it is not, keep the work as a task-specific investigation rather than mechanically creating a new audit domain.
 
+For signed returned logs, use
+[`signed-response-integrity`](audits/signed-response-integrity.json) and its
+[evidence contract](audits/signed-response-integrity.md). For transaction flow
+discovery, use
+[`transaction-analysis-equivalence`](audits/transaction-analysis-equivalence.json)
+and its [evidence contract](audits/transaction-analysis-equivalence.md).
+
 For Kubernetes control-plane correctness across repeated reconciliation, partial
 effects and controller restart, use
 [`operator-reconciliation-durability`](audits/operator-reconciliation-durability.json)
@@ -146,6 +155,14 @@ Do not use `ai-audit` for:
 - routine performance analysis, benchmark work, CI timing analysis, or diagnosis of one tooling failure, unless the work is intentionally being promoted into a reusable correctness domain.
 
 `ai-audit` runs a read-only, manifest-scoped provider pass and binds its structured report to an exact clean `HEAD`; `ai-audit-challenge` independently qualifies that report at the same clean `HEAD`. Their contracts prohibit code fixes, commits, pushes, comments, issue creation, and GitHub metadata changes; structured reports are their only intended writes.
+
+### Code quality audits
+
+For maintainability, architecture, readability and reuse, use the separate
+[code quality audit](contributing/code-quality-audit.md). Its first bounded
+scope is [checker and admission](quality-audits/checker-admission.md). Quality
+proposals need a concrete maintenance scenario and are not native correctness
+findings. Review and merge the quality contract before its first pilot pass.
 
 ### Audit contract maintenance
 

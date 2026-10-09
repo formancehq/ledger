@@ -63,6 +63,7 @@
   "related_docs": [
     "AGENTS.md",
     "docs/technical/agent-context.md",
+    "docs/technical/audits/process-boundary-recovery.md",
     "docs/technical/architecture/overview.md",
     "docs/technical/architecture/subsystems/consensus/",
     "docs/technical/architecture/subsystems/storage/",
