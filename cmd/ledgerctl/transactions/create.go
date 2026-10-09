@@ -87,7 +87,7 @@ Examples:
 		RunE:              runCreate,
 	}
 
-	cmd.Flags().String("ledger", "", "Name of the ledger")
+	cmdutil.AddLedgerFlag(cmd)
 	cmd.Flags().StringArray("posting", nil, "Posting in format: source,destination,amount,asset[,color] (can be repeated)")
 	cmd.Flags().String("script", "", "Path to a Numscript file (mutually exclusive with --posting)")
 	cmd.Flags().StringArray("var", nil, "Script variable in format: name=value (can be repeated, only with --script)")
@@ -108,13 +108,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 
 	defer func() { _ = conn.Close() }()
 
-	// Get ledger name (from flag or interactive selection)
-	ledgerFlag, _ := cmd.Flags().GetString("ledger")
-
-	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
-	if err != nil {
-		return err
-	}
+	ledgerName, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
 
 	// Get flags
 	postingStrs, _ := cmd.Flags().GetStringArray("posting")

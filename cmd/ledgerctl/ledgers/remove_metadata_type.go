@@ -26,13 +26,13 @@ Examples:
   ledgerctl ledgers remove-metadata-type --ledger my-ledger --target account --key age
   ledgerctl ledgers rmt --ledger my-ledger --target transaction --key priority -y
   ledgerctl ledgers rmt --ledger my-ledger --target ledger --key env -y
-  ledgerctl ledgers remove-metadata-type  # Interactive mode`,
+  ledgerctl ledgers remove-metadata-type --ledger my-ledger  # Interactive mode`,
 		Args:              cobra.NoArgs,
 		RunE:              runRemoveMetadataType,
 		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
-	cmd.Flags().String("ledger", "", "Name of the ledger")
+	cmdutil.AddLedgerFlag(cmd)
 	cmd.Flags().String("target", "", "Target type: account, transaction, or ledger")
 	cmdutil.RegisterEnumCompletion(cmd, "target", cmdutil.TargetTypeOptions()...)
 	cmd.Flags().String("key", "", "Metadata key name")
@@ -50,12 +50,7 @@ func runRemoveMetadataType(cmd *cobra.Command, _ []string) error {
 
 	defer func() { _ = conn.Close() }()
 
-	ledgerFlag, _ := cmd.Flags().GetString("ledger")
-
-	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
-	if err != nil {
-		return err
-	}
+	ledgerName, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
 
 	targetStr, _ := cmd.Flags().GetString("target")
 	if targetStr == "" {

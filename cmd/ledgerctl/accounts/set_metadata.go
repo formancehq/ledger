@@ -23,18 +23,16 @@ func NewSetMetadataCommand() *cobra.Command {
 Metadata is provided as key=value pairs using the --metadata flag.
 Multiple metadata entries can be set at once.
 
-If --ledger is not provided and only one ledger exists, it will be used automatically.
-
 Examples:
   ledgerctl accounts set-metadata bank --ledger my-ledger --metadata type=asset
-  ledgerctl accounts set-metadata users:alice --metadata role=admin --metadata tier=premium
-  ledgerctl acc sm bank -m type=asset -m label="Main Bank"`,
+  ledgerctl accounts set-metadata users:alice --metadata role=admin --metadata tier=premium --ledger my-ledger
+  ledgerctl acc sm bank -m type=asset -m label="Main Bank" --ledger my-ledger`,
 		Args:              cobra.MaximumNArgs(1),
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE:              runSetMetadata,
 	}
 
-	cmd.Flags().String("ledger", "", "Name of the ledger")
+	cmdutil.AddLedgerFlag(cmd)
 	cmd.Flags().StringArrayP("metadata", "m", nil, "Metadata key=value pairs (can be repeated)")
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
@@ -50,12 +48,7 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 
 	defer func() { _ = conn.Close() }()
 
-	ledgerFlag, _ := cmd.Flags().GetString("ledger")
-
-	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
-	if err != nil {
-		return err
-	}
+	ledgerName, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
 
 	var address string
 	if len(args) > 0 {

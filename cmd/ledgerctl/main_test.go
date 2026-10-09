@@ -41,6 +41,52 @@ func TestLedgerFlagCompletionRegistered(t *testing.T) {
 	require.NotZero(t, withLedgerFlag, "expected at least one command with a --ledger flag")
 }
 
+// TestLedgerFlagRequired asserts that every command exposing --ledger marks it
+// mandatory: ledger-scoped commands never infer the ledger they operate on.
+func TestLedgerFlagRequired(t *testing.T) {
+	t.Parallel()
+
+	root := newRootCommand()
+
+	var withLedgerFlag int
+
+	var walk func(cmd *cobra.Command)
+	walk = func(cmd *cobra.Command) {
+		if flag := cmd.Flag(cmdutil.LedgerFlagName); flag != nil {
+			withLedgerFlag++
+
+			require.Equalf(t, []string{"true"}, flag.Annotations[cobra.BashCompOneRequiredFlag],
+				"command %q exposes --ledger without marking it required", cmd.CommandPath())
+		}
+
+		for _, sub := range cmd.Commands() {
+			walk(sub)
+		}
+	}
+	walk(root)
+
+	require.NotZero(t, withLedgerFlag, "expected at least one command with a --ledger flag")
+}
+
+// TestLedgerLifecycleCommandsTakePositionalName asserts that ledgers
+// create/delete/promote name the ledger only through their [name] positional
+// argument, with no competing --name flag.
+func TestLedgerLifecycleCommandsTakePositionalName(t *testing.T) {
+	t.Parallel()
+
+	root := newRootCommand()
+
+	for _, sub := range []string{"create", "delete", "promote"} {
+		cmd, _, err := root.Find([]string{"ledgers", sub})
+		require.NoError(t, err)
+		require.Equal(t, sub, cmd.Name())
+
+		require.Nilf(t, cmd.Flags().Lookup("name"), "ledgers %s must not expose --name", sub)
+		require.NoErrorf(t, cmd.Args(cmd, []string{"my-ledger"}), "ledgers %s must accept a [name] argument", sub)
+		require.Errorf(t, cmd.Args(cmd, []string{"a", "b"}), "ledgers %s must reject extra arguments", sub)
+	}
+}
+
 // TestServerFlagEnvResolution exercises the connection-flag env precedence for
 // the representative --server flag: explicit CLI flag > LEDGERCTL_SERVER env >
 // cobra default. The bare SERVER name must never be honored for the root

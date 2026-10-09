@@ -140,7 +140,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		It("Should create a ledger with an initial schema via --schema flags", func() {
 			_, err := runCLI(node.GRPCPort,
 				"ledgers", "create",
-				"--name", ledgerName,
+				ledgerName,
 				"--schema", "account:age:int64",
 				"--schema", "account:active:bool",
 				"--schema", "transaction:priority:uint64",
@@ -331,7 +331,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		It("Should create ledger with schema", func() {
 			_, err := runCLI(node.GRPCPort,
 				"ledgers", "create",
-				"--name", ledgerName,
+				ledgerName,
 				"--schema", "account:age:int64",
 				"--schema", "account:active:bool",
 			)
@@ -447,7 +447,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		It("Should fail create with invalid --schema format", func() {
 			_, err := runCLI(node.GRPCPort,
 				"ledgers", "create",
-				"--name", "should-fail",
+				"should-fail",
 				"--schema", "invalid-format",
 			)
 			Expect(err).To(HaveOccurred())
@@ -456,7 +456,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		It("Should fail create with invalid --schema type", func() {
 			_, err := runCLI(node.GRPCPort,
 				"ledgers", "create",
-				"--name", "should-fail-2",
+				"should-fail-2",
 				"--schema", "account:key:float64",
 			)
 			Expect(err).To(HaveOccurred())

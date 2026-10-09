@@ -19,7 +19,7 @@ Sleep 300ms
 # Setup - create a ledger with some data for the integrity check
 # ============================================================================
 
-Type "ledgerctl ledgers create --name demo-ops"
+Type "ledgerctl ledgers create demo-ops"
 Enter
 Sleep 1500ms
 

@@ -133,8 +133,7 @@ spec:
             content: |
               set -eu
               kubectl exec ledger-operator-sink-e2e-0 -n "$NAMESPACE" -c ledger -- \
-                /bin/sh -c './ledgerctl ledgers create \
-                  --name operator-sink-e2e \
+                /bin/sh -c './ledgerctl ledgers create operator-sink-e2e \
                   --server 127.0.0.1:8888 \
                   --insecure \
                   --auth-token "$CLUSTER_SECRET"'

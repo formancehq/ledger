@@ -21,18 +21,16 @@ func NewDeleteMetadataCommand() *cobra.Command {
 		Short:   "Delete metadata from a transaction",
 		Long: `Delete a metadata key from a transaction via gRPC.
 
-If --ledger is not provided and only one ledger exists, it will be used automatically.
-
 Examples:
   ledgerctl transactions delete-metadata 42 status --ledger my-ledger
-  ledgerctl transactions delete-metadata 42 reason
-  ledgerctl tx dm 42 status`,
+  ledgerctl transactions delete-metadata 42 reason --ledger my-ledger
+  ledgerctl tx dm 42 status --ledger my-ledger`,
 		Args:              cobra.MaximumNArgs(2),
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE:              runDeleteMetadata,
 	}
 
-	cmd.Flags().String("ledger", "", "Name of the ledger")
+	cmdutil.AddLedgerFlag(cmd)
 	cmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
@@ -47,13 +45,7 @@ func runDeleteMetadata(cmd *cobra.Command, args []string) error {
 
 	defer func() { _ = conn.Close() }()
 
-	// Get ledger name (from flag or interactive selection)
-	ledgerFlag, _ := cmd.Flags().GetString("ledger")
-
-	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
-	if err != nil {
-		return err
-	}
+	ledgerName, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
 
 	// Get transaction ID
 	var txID uint64

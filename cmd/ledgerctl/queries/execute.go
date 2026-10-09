@@ -40,7 +40,7 @@ Examples:
 		RunE:              runExecute,
 	}
 
-	cmd.Flags().String("ledger", "", "Name of the ledger")
+	cmdutil.AddLedgerFlag(cmd)
 	cmd.Flags().StringArray("param", nil, "Query parameter as key=value (repeatable)")
 	cmd.Flags().Uint32("page-size", cmdutil.DefaultPageSize, "Number of results per page")
 	cmd.Flags().String("mode", "list", "Query mode: list or aggregate")
@@ -64,12 +64,7 @@ func runExecute(cmd *cobra.Command, args []string) error {
 
 	defer func() { _ = conn.Close() }()
 
-	ledgerFlag, _ := cmd.Flags().GetString("ledger")
-
-	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
-	if err != nil {
-		return err
-	}
+	ledgerName, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
 
 	paramFlags, _ := cmd.Flags().GetStringArray("param")
 	pageSize, _ := cmd.Flags().GetUint32("page-size")

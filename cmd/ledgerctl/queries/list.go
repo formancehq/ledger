@@ -25,7 +25,7 @@ in size; this endpoint is intentionally not paginated.`,
 		RunE:              runList,
 	}
 
-	cmd.Flags().String("ledger", "", "Name of the ledger")
+	cmdutil.AddLedgerFlag(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 	cmdutil.AddOutputFlags(cmd)
 
@@ -40,12 +40,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 
 	defer func() { _ = conn.Close() }()
 
-	ledgerFlag, _ := cmd.Flags().GetString("ledger")
-
-	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
-	if err != nil {
-		return err
-	}
+	ledgerName, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
 
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()

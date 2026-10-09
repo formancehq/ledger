@@ -28,24 +28,21 @@ func NewListCommand() *cobra.Command {
 Accounts are displayed in alphabetical order by default. Use --reverse for Z→A.
 Press Enter to load the next page, or 'q' to quit.
 
-If --ledger is not provided and only one ledger exists, it will be used automatically.
-If multiple ledgers exist, you will be prompted to select one.
-
 Examples:
   ledgerctl accounts list --ledger my-ledger
   ledgerctl accounts list --ledger my-ledger --page-size 20
   ledgerctl accounts list --ledger my-ledger --prefix users:
   ledgerctl accounts list --ledger my-ledger --filter "metadata[category] == premium"
   ledgerctl accounts list --ledger my-ledger --filter "metadata[active] == true or address ^= users:"
-  ledgerctl accounts list --reverse   # Reverse alphabetical (Z→A)
-  ledgerctl accounts list --all   # Fetch all accounts without pagination
-  ledgerctl accounts list --cursor eyJrZXkiOiJ1c2Vyczpib2IifQ   # Resume after users:bob (page token for {"key":"users:bob"})`,
+  ledgerctl accounts list --reverse --ledger my-ledger   # Reverse alphabetical (Z→A)
+  ledgerctl accounts list --all --ledger my-ledger   # Fetch all accounts without pagination
+  ledgerctl accounts list --cursor eyJrZXkiOiJ1c2Vyczpib2IifQ --ledger my-ledger   # Resume after users:bob (page token for {"key":"users:bob"})`,
 		Args:              cobra.ExactArgs(0),
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE:              runList,
 	}
 
-	cmd.Flags().String("ledger", "", "Name of the ledger")
+	cmdutil.AddLedgerFlag(cmd)
 	cmdutil.AddPaginationFlags(cmd, cmdutil.PaginationOptions{
 		SupportsReverse: true,
 		SupportsAll:     true,
@@ -67,12 +64,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 
 	defer func() { _ = conn.Close() }()
 
-	ledgerFlag, _ := cmd.Flags().GetString("ledger")
-
-	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
-	if err != nil {
-		return err
-	}
+	ledgerName, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
 
 	pgn := cmdutil.GetPaginationFlags(cmd)
 	flt := cmdutil.GetFilterFlags(cmd)

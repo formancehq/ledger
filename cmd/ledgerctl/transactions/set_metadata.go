@@ -23,18 +23,16 @@ func NewSetMetadataCommand() *cobra.Command {
 Metadata is provided as key=value pairs using the --metadata flag.
 Multiple metadata entries can be set at once.
 
-If --ledger is not provided and only one ledger exists, it will be used automatically.
-
 Examples:
   ledgerctl transactions set-metadata 42 --ledger my-ledger --metadata status=processed
-  ledgerctl transactions set-metadata 42 --metadata reason="refund" --metadata ticket=JIRA-123
-  ledgerctl tx sm 42 -m status=processed`,
+  ledgerctl transactions set-metadata 42 --metadata reason="refund" --metadata ticket=JIRA-123 --ledger my-ledger
+  ledgerctl tx sm 42 -m status=processed --ledger my-ledger`,
 		Args:              cobra.MaximumNArgs(1),
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE:              runSetMetadata,
 	}
 
-	cmd.Flags().String("ledger", "", "Name of the ledger")
+	cmdutil.AddLedgerFlag(cmd)
 	cmd.Flags().StringArrayP("metadata", "m", nil, "Metadata key=value pairs (can be repeated)")
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
@@ -50,13 +48,7 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 
 	defer func() { _ = conn.Close() }()
 
-	// Get ledger name (from flag or interactive selection)
-	ledgerFlag, _ := cmd.Flags().GetString("ledger")
-
-	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
-	if err != nil {
-		return err
-	}
+	ledgerName, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
 
 	// Get transaction ID (from args or prompt)
 	var txID uint64

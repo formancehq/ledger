@@ -19,7 +19,7 @@ Sleep 300ms
 # Setup
 # ============================================================================
 
-Type "ledgerctl ledgers create --name demo-tx"
+Type "ledgerctl ledgers create demo-tx"
 Enter
 Sleep 1500ms
 

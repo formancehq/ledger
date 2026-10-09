@@ -29,18 +29,17 @@ Examples:
 		RunE:              runSetDefaultEnforcement,
 	}
 
-	cmd.Flags().String("ledger", "", "Name of the ledger (required)")
+	cmdutil.AddLedgerFlag(cmd)
 	cmd.Flags().String("mode", "", "Enforcement mode: STRICT or AUDIT (required)")
 	cmdutil.RegisterEnumCompletion(cmd, "mode", "STRICT", "AUDIT")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
-	_ = cmd.MarkFlagRequired("ledger")
 	_ = cmd.MarkFlagRequired("mode")
 
 	return cmd
 }
 
 func runSetDefaultEnforcement(cmd *cobra.Command, _ []string) error {
-	ledgerName, _ := cmd.Flags().GetString("ledger")
+	ledgerName, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
 	modeStr, _ := cmd.Flags().GetString("mode")
 
 	mode, err := parseEnforcementMode(modeStr)

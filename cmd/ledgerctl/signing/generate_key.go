@@ -44,7 +44,7 @@ func runGenerateKey(_ *cobra.Command, args []string) error {
 	fmt.Println()
 	fmt.Println("Usage:")
 	fmt.Printf("  ledgerctl signing register-key --key-id <id> --public-key-file %s\n", pubKeyPath)
-	fmt.Printf("  ledgerctl --signing-key %s ledgers create --name my-ledger\n", seedPath)
+	fmt.Printf("  ledgerctl --signing-key %s ledgers create my-ledger\n", seedPath)
 
 	return nil
 }

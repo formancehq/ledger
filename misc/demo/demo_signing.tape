@@ -61,7 +61,7 @@ Enter
 Sleep 800ms
 
 # Create a ledger (signed)
-Type "ledgerctl --signing-key /tmp/demo-keys/seed.hex ledgers create --name demo-signing"
+Type "ledgerctl --signing-key /tmp/demo-keys/seed.hex ledgers create demo-signing"
 Enter
 Sleep 2s
 

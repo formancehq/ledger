@@ -147,10 +147,10 @@ func printErrorDetails(err error) {
 	case domain.ErrReasonIndexNotFound:
 		pterm.Println()
 		pterm.Printf("  Index: %s\n", pterm.Yellow(meta["index"]))
-		pterm.Println(pterm.Gray("  hint: create the index with 'ledgerctl indexes create'"))
+		pterm.Println(pterm.Gray("  hint: create the index with 'ledgerctl indexes create --ledger <ledger>'"))
 	case domain.ErrReasonIndexBuilding:
 		pterm.Println()
 		pterm.Printf("  Index: %s\n", pterm.Yellow(meta["index"]))
-		pterm.Println(pterm.Gray("  hint: wait for the index to finish building, check status with 'ledgerctl indexes list'"))
+		pterm.Println(pterm.Gray("  hint: wait for the index to finish building, check status with 'ledgerctl indexes list --ledger <ledger>'"))
 	}
 }

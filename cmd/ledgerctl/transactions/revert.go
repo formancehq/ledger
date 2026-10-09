@@ -28,21 +28,18 @@ Flags:
   --at-effective-date  Use the original transaction timestamp for the revert
   -y, --yes          Skip confirmation prompt
 
-If --ledger is not provided and only one ledger exists, it will be used automatically.
-If multiple ledgers exist, you will be prompted to select one.
-
 Examples:
   ledgerctl transactions revert 42 --ledger my-ledger
-  ledgerctl transactions revert 42 --force
-  ledgerctl transactions revert 42 --at-effective-date
-  ledgerctl transactions revert 42 -y  # Skip confirmation
-  ledgerctl tx revert 42 --metadata key1=value1 --metadata key2=value2`,
+  ledgerctl transactions revert 42 --force --ledger my-ledger
+  ledgerctl transactions revert 42 --at-effective-date --ledger my-ledger
+  ledgerctl transactions revert 42 -y --ledger my-ledger  # Skip confirmation
+  ledgerctl tx revert 42 --metadata key1=value1 --metadata key2=value2 --ledger my-ledger`,
 		Args:              cobra.MaximumNArgs(1),
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE:              runRevert,
 	}
 
-	cmd.Flags().String("ledger", "", "Name of the ledger")
+	cmdutil.AddLedgerFlag(cmd)
 	cmd.Flags().Bool("force", false, "Force revert even if funds have been spent")
 	cmd.Flags().Bool("at-effective-date", false, "Use original transaction timestamp for the revert")
 	cmd.Flags().StringArray("metadata", nil, "Metadata for the revert transaction (key=value)")
@@ -61,13 +58,7 @@ func runRevert(cmd *cobra.Command, args []string) error {
 
 	defer func() { _ = conn.Close() }()
 
-	// Get ledger name (from flag or interactive selection)
-	ledgerFlag, _ := cmd.Flags().GetString("ledger")
-
-	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
-	if err != nil {
-		return err
-	}
+	ledgerName, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
 
 	// Get transaction ID (from args or prompt)
 	var txID uint64

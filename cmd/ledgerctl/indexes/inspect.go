@@ -37,7 +37,7 @@ Examples:
 		RunE:              runInspectIndex,
 	}
 
-	cmd.Flags().String("ledger", "", "Name of the ledger")
+	cmdutil.AddLedgerFlag(cmd)
 	cmd.Flags().String("key", "", "Metadata key to inspect (required)")
 	cmd.Flags().String("target", "account", "Target type: account or transaction")
 	cmdutil.RegisterEnumCompletion(cmd, "target", "account", "transaction")
@@ -61,12 +61,7 @@ func runInspectIndex(cmd *cobra.Command, _ []string) error {
 
 	defer func() { _ = conn.Close() }()
 
-	ledgerFlag, _ := cmd.Flags().GetString("ledger")
-
-	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
-	if err != nil {
-		return err
-	}
+	ledgerName, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
 
 	key, _ := cmd.Flags().GetString("key")
 	target, _ := cmd.Flags().GetString("target")

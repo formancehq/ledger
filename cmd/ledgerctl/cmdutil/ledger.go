@@ -16,17 +16,25 @@ import (
 // ErrNoLedgers is returned when no ledgers exist.
 var ErrNoLedgers = errors.New("no ledgers found")
 
-// SelectLedger selects a ledger interactively or automatically.
-// If ledgerFlag is set, it returns that value.
+// LedgerFlagName is the flag every ledger-scoped command uses to name the
+// ledger it operates on.
+const LedgerFlagName = "ledger"
+
+// AddLedgerFlag declares the mandatory --ledger flag on a ledger-scoped
+// command. The ledger is never inferred: guessing it (e.g. picking the only
+// existing ledger) would silently direct writes at whatever ledger happens to
+// exist. Shell completion for the flag is wired tree-wide by the root command.
+func AddLedgerFlag(cmd *cobra.Command) {
+	cmd.Flags().String(LedgerFlagName, "", "Name of the ledger")
+	_ = cmd.MarkFlagRequired(LedgerFlagName)
+}
+
+// SelectLedger selects a ledger interactively or automatically, for commands
+// whose ledger positional argument is optional.
 // If only one ledger exists, it returns that ledger's name automatically.
 // If multiple ledgers exist, it prompts the user to select one.
 // If no ledgers exist, it returns an error with a hint to create one.
-func SelectLedger(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerFlag string) (string, error) {
-	// If a ledger was specified via flag, use it directly
-	if ledgerFlag != "" {
-		return ledgerFlag, nil
-	}
-
+func SelectLedger(cmd *cobra.Command, client servicepb.BucketServiceClient) (string, error) {
 	// Get context for the API call
 	ctx, cancel := GetContext(cmd)
 	defer cancel()
@@ -50,7 +58,7 @@ func SelectLedger(cmd *cobra.Command, client servicepb.BucketServiceClient, ledg
 	if len(ledgerNames) == 0 {
 		pterm.Println("No ledgers found.")
 		pterm.Println(pterm.Gray("Hint: Create a ledger first using:"))
-		pterm.FgCyan.Println("  ledgerctl ledgers create --name <ledger-name>")
+		pterm.FgCyan.Println("  ledgerctl ledgers create <ledger-name>")
 
 		return "", ErrNoLedgers
 	}
@@ -113,6 +121,17 @@ func CompleteLedgerNames(cmd *cobra.Command, _ []string, _ string) ([]string, co
 	sortStrings(names)
 
 	return names, cobra.ShellCompDirectiveNoFileComp
+}
+
+// CompleteLedgerNameArg is a cobra ValidArgsFunction for commands whose first
+// positional argument is a ledger name. It suggests ledger names for that
+// argument only, and nothing for any later argument.
+func CompleteLedgerNameArg(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	return CompleteLedgerNames(cmd, args, toComplete)
 }
 
 // sortStrings sorts a slice of strings in place.

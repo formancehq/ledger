@@ -27,7 +27,7 @@ Examples:
 		RunE:              runCreate,
 	}
 
-	cmd.Flags().String("ledger", "", "Name of the ledger")
+	cmdutil.AddLedgerFlag(cmd)
 	cmd.Flags().String("target", "accounts", "Query target: accounts, transactions, or logs")
 	cmdutil.RegisterEnumCompletion(cmd, "target", "accounts", "transactions", "logs")
 	cmd.Flags().String("filter", "", "Filter expression")
@@ -46,12 +46,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 
 	defer func() { _ = conn.Close() }()
 
-	ledgerFlag, _ := cmd.Flags().GetString("ledger")
-
-	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
-	if err != nil {
-		return err
-	}
+	ledgerName, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
 
 	targetStr, _ := cmd.Flags().GetString("target")
 	filterExpr, _ := cmd.Flags().GetString("filter")

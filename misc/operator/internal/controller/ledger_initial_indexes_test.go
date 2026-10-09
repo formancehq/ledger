@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -25,9 +26,10 @@ func TestBuildCreateArgsIncludesInitialIndexes(t *testing.T) {
 	args, err := r.buildCreateArgs(t.Context(), ledger)
 	require.NoError(t, err)
 	require.Equal(t, []string{
-		"ledgers", "create", "--name", "L", "--index", "reference", "--index", "inserted-at", "--index", "account-asset",
+		"ledgers", "create", "--index", "reference", "--index", "inserted-at", "--index", "account-asset",
 		"--schema", "transaction:external:id:string", "--index", "metadata:transaction:external:id",
 		"--idempotency-key", "operator-ledger-create:creation-uid:3",
+		"--", "L",
 	}, args)
 	replay, err := r.buildCreateArgs(t.Context(), ledger)
 	require.NoError(t, err)
@@ -35,7 +37,13 @@ func TestBuildCreateArgsIncludesInitialIndexes(t *testing.T) {
 	ledger.Generation++
 	next, err := r.buildCreateArgs(t.Context(), ledger)
 	require.NoError(t, err)
-	require.NotEqual(t, args[len(args)-1], next[len(next)-1])
+	idempotencyKey := func(args []string) string {
+		i := slices.Index(args, "--idempotency-key")
+		require.GreaterOrEqual(t, i, 0)
+
+		return args[i+1]
+	}
+	require.NotEqual(t, idempotencyKey(args), idempotencyKey(next))
 }
 
 func TestCreateLedgerOwnershipAfterLostResponse(t *testing.T) {

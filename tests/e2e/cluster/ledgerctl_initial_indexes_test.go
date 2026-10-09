@@ -28,7 +28,7 @@ var _ = Describe("LedgerctlInitialIndexes", Ordered, func() {
 		DeferCleanup(source.Close)
 		source.addLog(newV2TransactionLogWithMetadata(1, 0, "world", "alice", "100", "USD", map[string]string{"external:id": "source-0"}))
 		const ledger = "atomic-mirror"
-		args := []string{"ledgers", "create", "--name", ledger, "--mode", "mirror", "--mirror-base-url", source.URL(),
+		args := []string{"ledgers", "create", ledger, "--mode", "mirror", "--mirror-base-url", source.URL(),
 			"--schema", "transaction:external:id:string", "--index", "reference", "--index", "account-asset",
 			"--index", "metadata:transaction:external:id", "--idempotency-key", "atomic-mirror-create"}
 		_, err := runCLI(servers[0].GRPCPort, args...)
@@ -90,7 +90,7 @@ var _ = Describe("LedgerctlInitialIndexes", Ordered, func() {
 
 	It("rolls back ledger creation when an initial index fails server validation", func() {
 		const ledger = "invalid-initial-index"
-		_, err := runCLI(servers[0].GRPCPort, "ledgers", "create", "--name", ledger,
+		_, err := runCLI(servers[0].GRPCPort, "ledgers", "create", ledger,
 			"--index", "reference", "--index", "metadata:transaction:undeclared")
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("schema"))
@@ -98,7 +98,7 @@ var _ = Describe("LedgerctlInitialIndexes", Ordered, func() {
 		Expect(err).To(HaveOccurred())
 		// Success with the same name proves that the preceding valid index and
 		// CreateLedger were discarded with the invalid declaration.
-		_, err = runCLI(servers[0].GRPCPort, "ledgers", "create", "--name", ledger, "--index", "reference")
+		_, err = runCLI(servers[0].GRPCPort, "ledgers", "create", ledger, "--index", "reference")
 		Expect(err).To(Succeed())
 	})
 })

@@ -38,6 +38,46 @@ func startServer(t *testing.T, ledgerName string) string {
 	return lis.Addr().String()
 }
 
+// TestE2ECompletionSuggestsLedgerPositionalArg asserts that commands taking a
+// ledger name as their first positional argument complete it with the
+// server's ledgers, and suggest nothing for later positional arguments.
+func TestE2ECompletionSuggestsLedgerPositionalArg(t *testing.T) {
+	addr := startServer(t, "aws-costs")
+
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	t.Setenv("APPDATA", tmp)
+	t.Setenv("LEDGERCTL_PROFILE", "")
+	t.Setenv("LEDGERCTL_SERVER", "")
+
+	complete := func(args ...string) string {
+		root := newRootCommand()
+		root.SilenceErrors = true
+		var out bytes.Buffer
+		root.SetOut(&out)
+		root.SetArgs(append([]string{cobra.ShellCompRequestCmd, "--server", addr, "--insecure"}, args...))
+		require.NoError(t, root.Execute())
+
+		return out.String()
+	}
+
+	for _, path := range [][]string{
+		{"ledgers", "get"},
+		{"ledgers", "get-schema"},
+		{"ledgers", "delete"},
+		{"ledgers", "promote"},
+		{"ledgers", "configuration"},
+		{"ledgers", "configuration", "apply"},
+		{"ledgers", "configuration", "export"},
+	} {
+		require.Containsf(t, complete(append(path, "")...), "aws-costs",
+			"%v must complete its ledger positional argument", path)
+		require.NotContainsf(t, complete(append(path, "aws-costs", "")...), "aws-costs",
+			"%v must not suggest ledgers past its first positional argument", path)
+	}
+}
+
 // TestE2ECompletionUsesExplicitProfileNotActive reproduces the reported bug:
 // with an active profile that differs from the one named by --profile, ledger
 // completion must connect to the EXPLICIT profile's server, not the active one.

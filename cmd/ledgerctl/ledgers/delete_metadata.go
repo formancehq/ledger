@@ -19,18 +19,16 @@ func NewDeleteMetadataCommand() *cobra.Command {
 		Short:   "Delete metadata from a ledger",
 		Long: `Delete a metadata key from a ledger via gRPC.
 
-If --ledger is not provided and only one ledger exists, it will be used automatically.
-
 Examples:
   ledgerctl ledgers delete-metadata region --ledger my-ledger
   ledgerctl ledgers dm environment --ledger my-ledger -y
-  ledgerctl ledgers delete-metadata  # Interactive mode`,
+  ledgerctl ledgers delete-metadata --ledger my-ledger  # Interactive mode`,
 		Args:              cobra.MaximumNArgs(1),
 		RunE:              runDeleteMetadata,
 		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
-	cmd.Flags().String("ledger", "", "Name of the ledger")
+	cmdutil.AddLedgerFlag(cmd)
 	cmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
@@ -45,12 +43,7 @@ func runDeleteMetadata(cmd *cobra.Command, args []string) error {
 
 	defer func() { _ = conn.Close() }()
 
-	ledgerFlag, _ := cmd.Flags().GetString("ledger")
-
-	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
-	if err != nil {
-		return err
-	}
+	ledgerName, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
 
 	var key string
 	if len(args) > 0 {

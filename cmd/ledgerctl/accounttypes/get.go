@@ -16,17 +16,15 @@ func NewGetCommand() *cobra.Command {
 		Short: "Get details of an account type",
 		Long: `Get detailed information about a specific account type.
 
-If --ledger is not provided and only one ledger exists, it will be used automatically.
-
 Examples:
   ledgerctl account-types get user-checking --ledger my-ledger
-  ledgerctl at get bank-main`,
+  ledgerctl at get bank-main --ledger my-ledger`,
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE:              runGet,
 	}
 
-	cmd.Flags().String("ledger", "", "Name of the ledger")
+	cmdutil.AddLedgerFlag(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -41,11 +39,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 	}
 	defer func() { _ = conn.Close() }()
 
-	ledgerFlag, _ := cmd.Flags().GetString("ledger")
-	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
-	if err != nil {
-		return err
-	}
+	ledgerName, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
 
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()

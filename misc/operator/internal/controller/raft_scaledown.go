@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -321,15 +322,33 @@ func ledgerctlCommand(serverAddr, tlsMode string, args ...string) []string {
 	// shell-expanded variables ($POD_NAME, $POD_NAMESPACE, $GRPC_PORT,
 	// $TLS_CA_CERT_FILE);
 	// both are produced by trusted internal helpers, never from user input.
+	//
+	// A "--" terminator ends flag parsing: every later arg is positional, which
+	// is how callers pass a user-supplied value that may start with "-" (a
+	// ledger name such as "-orders" or "--help"). The connection flags must
+	// therefore be inserted before the terminator, not appended after it.
+	head, tail := args, []string(nil)
+	if i := slices.Index(args, "--"); i >= 0 {
+		head, tail = args[:i], args[i:]
+	}
+
+	cmd := otelExecPrologue + fmt.Sprintf(`./ledgerctl %s --server "%s" %s --auth-token "$CLUSTER_SECRET"`,
+		shellQuoteJoin(head), serverAddr, ledgerctlTLSFlag(tlsMode))
+	if len(tail) > 0 {
+		cmd += " " + shellQuoteJoin(tail)
+	}
+
+	return []string{"/bin/sh", "-c", cmd}
+}
+
+// shellQuoteJoin single-quotes each arg and joins them with spaces.
+func shellQuoteJoin(args []string) string {
 	quoted := make([]string, len(args))
 	for i, arg := range args {
 		quoted[i] = shellSingleQuote(arg)
 	}
 
-	cmd := otelExecPrologue + fmt.Sprintf(`./ledgerctl %s --server "%s" %s --auth-token "$CLUSTER_SECRET"`,
-		strings.Join(quoted, " "), serverAddr, ledgerctlTLSFlag(tlsMode))
-
-	return []string{"/bin/sh", "-c", cmd}
+	return strings.Join(quoted, " ")
 }
 
 // otelExecPrologue bridges the pod's go-libs OTEL_* env to the names ledgerctl

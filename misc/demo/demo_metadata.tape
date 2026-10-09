@@ -19,7 +19,7 @@ Sleep 300ms
 # Setup
 # ============================================================================
 
-Type "ledgerctl ledgers create --name demo-meta"
+Type "ledgerctl ledgers create demo-meta"
 Enter
 Sleep 1500ms
 
