@@ -105,7 +105,9 @@ func TestApplyProposal_PerProposalIdempotency(t *testing.T) {
 	require.NoError(t, err)
 	require.Error(t, r.Results[0].Error)
 	require.False(t, r.Results[0].Replayed)
-	frozenMsg := r.Results[0].Error.Error()
+	var initial domain.SerializableError
+	require.ErrorAs(t, r.Results[0].Error, &initial)
+	frozenFacts := domain.FailureFactsOf(initial)
 
 	// ...so a duplicate replays the SAME error instead of re-executing.
 	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 6, withKey(6, "k2", badRevert())))
@@ -114,7 +116,7 @@ func TestApplyProposal_PerProposalIdempotency(t *testing.T) {
 	require.True(t, r.Results[0].Replayed)
 	var replayed *domain.ReplayedFailure
 	require.ErrorAs(t, r.Results[0].Error, &replayed, "frozen failure is replayed")
-	require.Equal(t, frozenMsg, r.Results[0].Error.Error(), "replayed failure matches the original")
+	require.Equal(t, frozenFacts, domain.FailureFactsOf(replayed), "replayed failure keeps the original facts")
 }
 
 // TestApplyProposal_AuditEntryCarriesIdentity asserts the FSM records the batch

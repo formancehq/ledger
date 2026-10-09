@@ -1365,7 +1365,7 @@ func (ctrl *DefaultController) GetIndexStatus(ctx context.Context, req *servicep
 // on this ledger". Bucket-scoped queries (empty ledger) skip that check.
 func (ctrl *DefaultController) GetIndex(ctx context.Context, req *servicepb.GetIndexRequest) (*commonpb.Index, error) {
 	if req.GetId() == nil {
-		return nil, domain.NewValidationSentinel("id is required")
+		return nil, domain.NewValidationSentinel("ID_REQUIRED", "id is required")
 	}
 
 	handle, err := ctrl.store.NewDirectReadHandle()
@@ -1404,7 +1404,7 @@ func (ctrl *DefaultController) GetIndex(ctx context.Context, req *servicepb.GetI
 // the returned IndexEntry does not drift under the reader's feet.
 func (ctrl *DefaultController) GetIndexEntryStatus(ctx context.Context, req *servicepb.GetIndexEntryStatusRequest) (*servicepb.IndexEntry, error) {
 	if req.GetId() == nil {
-		return nil, domain.NewValidationSentinel("id is required")
+		return nil, domain.NewValidationSentinel("ID_REQUIRED", "id is required")
 	}
 
 	handle, err := ctrl.store.NewDirectReadHandle()

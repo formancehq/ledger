@@ -66,6 +66,7 @@ var ErrFilterTooDeep SerializableError = &ErrFilterCompilation{
 // pre-instantiated once, so errors.Is comparisons on the exported variables
 // remain stable.
 type errValidation struct {
+	code string
 	err error
 }
 
@@ -87,20 +88,20 @@ const maxColorLength = 32
 // errors.Is identity against the primitive (via Unwrap) and against the
 // local sentinel (via pointer identity in wrapValidationErr).
 var (
-	ErrLedgerNameRequired    SerializableError = &errValidation{err: invariants.ErrLedgerNameRequired}
-	ErrLedgerNameInvalidChar SerializableError = &errValidation{err: invariants.ErrLedgerNameInvalidChar}
-	ErrLedgerNameTooLong     SerializableError = &errValidation{err: invariants.ErrLedgerNameTooLong}
+	ErrLedgerNameRequired    SerializableError = &errValidation{code: "LEDGER_NAME_REQUIRED", err: invariants.ErrLedgerNameRequired}
+	ErrLedgerNameInvalidChar SerializableError = &errValidation{code: "LEDGER_NAME_INVALID_CHAR", err: invariants.ErrLedgerNameInvalidChar}
+	ErrLedgerNameTooLong     SerializableError = &errValidation{code: "LEDGER_NAME_TOO_LONG", err: invariants.ErrLedgerNameTooLong}
 
-	ErrMetadataKeyEmpty              SerializableError = &errValidation{err: invariants.ErrMetadataKeyEmpty}
-	ErrMetadataKeyInvalidChar        SerializableError = &errValidation{err: invariants.ErrMetadataKeyInvalidChar}
-	ErrMetadataValueContainsNullByte SerializableError = &errValidation{err: invariants.ErrMetadataValueContainsNullByte}
+	ErrMetadataKeyEmpty              SerializableError = &errValidation{code: "METADATA_KEY_EMPTY", err: invariants.ErrMetadataKeyEmpty}
+	ErrMetadataKeyInvalidChar        SerializableError = &errValidation{code: "METADATA_KEY_INVALID_CHAR", err: invariants.ErrMetadataKeyInvalidChar}
+	ErrMetadataValueContainsNullByte SerializableError = &errValidation{code: "METADATA_VALUE_CONTAINS_NULL_BYTE", err: invariants.ErrMetadataValueContainsNullByte}
 
-	ErrAccountAddressEmpty        SerializableError = &errValidation{err: invariants.ErrLedgerAccountAddressEmpty}
-	ErrAccountAddressInvalidChar  SerializableError = &errValidation{err: invariants.ErrLedgerAccountAddressInvalidChar}
-	ErrAccountAddressEmptySegment SerializableError = &errValidation{err: invariants.ErrLedgerAccountAddressEmptySegment}
-	ErrAccountAddressTooLong      SerializableError = &errValidation{err: invariants.ErrLedgerAccountAddressTooLong}
+	ErrAccountAddressEmpty        SerializableError = &errValidation{code: "ACCOUNT_ADDRESS_EMPTY", err: invariants.ErrLedgerAccountAddressEmpty}
+	ErrAccountAddressInvalidChar  SerializableError = &errValidation{code: "ACCOUNT_ADDRESS_INVALID_CHAR", err: invariants.ErrLedgerAccountAddressInvalidChar}
+	ErrAccountAddressEmptySegment SerializableError = &errValidation{code: "ACCOUNT_ADDRESS_EMPTY_SEGMENT", err: invariants.ErrLedgerAccountAddressEmptySegment}
+	ErrAccountAddressTooLong      SerializableError = &errValidation{code: "ACCOUNT_ADDRESS_TOO_LONG", err: invariants.ErrLedgerAccountAddressTooLong}
 
-	ErrAssetInvalid SerializableError = &errValidation{err: invariants.ErrAssetInvalid}
+	ErrAssetInvalid SerializableError = &errValidation{code: "ASSET_INVALID", err: invariants.ErrAssetInvalid}
 )
 
 // wrapValidationErr maps a primitive validation error returned by

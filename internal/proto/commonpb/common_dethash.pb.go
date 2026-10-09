@@ -1822,15 +1822,15 @@ func (m *OrderSkippedLog) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int,
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.Context) > 0 {
+	if len(m.Facts) > 0 {
 		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
-		for k := range m.Context {
+		for k := range m.Facts {
 			keys = append(keys, k)
 		}
 		slices.Sort(keys)
 		for _, k := range keys {
-			v := m.Context[k]
+			v := m.Facts[k]
 			baseI := i
 			i -= len(v)
 			copy(dAtA[i:], v)
@@ -1844,11 +1844,18 @@ func (m *OrderSkippedLog) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int,
 			dAtA[i] = 0xa
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
 			i--
-			dAtA[i] = 0x12
+			dAtA[i] = 0x1a
 		}
 		clear(keys)
 		*keysPtr = keys
 		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Put(keysPtr)
+	}
+	if len(m.Code) > 0 {
+		i -= len(m.Code)
+		copy(dAtA[i:], m.Code)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Code)))
+		i--
+		dAtA[i] = 0x12
 	}
 	if m.Reason != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Reason))
@@ -2736,15 +2743,15 @@ func (m *IdempotencyFailure) MarshalToSizedBufferDeterministicVT(dAtA []byte) (i
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.Metadata) > 0 {
+	if len(m.Facts) > 0 {
 		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
-		for k := range m.Metadata {
+		for k := range m.Facts {
 			keys = append(keys, k)
 		}
 		slices.Sort(keys)
 		for _, k := range keys {
-			v := m.Metadata[k]
+			v := m.Facts[k]
 			baseI := i
 			i -= len(v)
 			copy(dAtA[i:], v)
@@ -2764,10 +2771,10 @@ func (m *IdempotencyFailure) MarshalToSizedBufferDeterministicVT(dAtA []byte) (i
 		*keysPtr = keys
 		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Put(keysPtr)
 	}
-	if len(m.Message) > 0 {
-		i -= len(m.Message)
-		copy(dAtA[i:], m.Message)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Message)))
+	if len(m.Code) > 0 {
+		i -= len(m.Code)
+		copy(dAtA[i:], m.Code)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Code)))
 		i--
 		dAtA[i] = 0x12
 	}

@@ -11,7 +11,7 @@ invariant failure.
 
 Numscript-generated transaction metadata is validated in ascending key order at
 apply. If several entries are invalid, the first selected error becomes the
-authoritative audit failure (including its message and context), so selection
+authoritative audit failure (including its reason, code, and facts), so selection
 must not depend on Go map iteration. A failed order discards its posting and
 metadata writes while preserving the failure audit entry.
 

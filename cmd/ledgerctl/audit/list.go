@@ -158,8 +158,11 @@ func printAuditEntry(entry *auditpb.AuditEntry, verbose bool) {
 		statusText = formatLogRange(entry.GetSuccess().GetMinLogSequence(), entry.GetSuccess().GetMaxLogSequence())
 	} else if entry.GetFailure() != nil {
 		f := entry.GetFailure()
+		message, _ := domain.RenderFailureFacts(domain.FailureFacts{
+			Reason: f.GetReason(), Code: f.GetCode(), Facts: f.GetFacts(),
+		})
 		statusIcon = pterm.Red("FAIL")
-		statusText = fmt.Sprintf("[%s] %s", domain.ReasonString(f.GetReason()), f.GetMessage())
+		statusText = fmt.Sprintf("[%s] %s", domain.ReasonString(f.GetReason()), message)
 	}
 
 	// Caller info (compact or verbose)

@@ -25,6 +25,23 @@ const balanceReadingScript = `
 	send $amt (source = @wallet destination = @out)
 `
 
+func TestCompilerFailureFactsExcludeDiagnosticText(t *testing.T) {
+	first := mapCompilerError(numscriptlib.CompilerTypeError{
+		Kind: numscriptlib.TypecheckTypeMismatch{Expected: "account", Got: "asset"},
+	})
+	second := mapCompilerError(numscriptlib.CompilerTypeError{
+		Kind: numscriptlib.TypecheckTypeMismatch{Expected: "account", Got: "asset"},
+	})
+	second.Detail = "reworded compiler diagnostic"
+
+	firstFacts := domain.FailureFactsOf(first)
+	secondFacts := domain.FailureFactsOf(second)
+	require.Equal(t, firstFacts, secondFacts)
+	require.Equal(t, "NUMSCRIPT_COMPILE_TYPE_MISMATCH", firstFacts.Code)
+	require.Equal(t, map[string]string{"expected": "account", "got": "asset"}, firstFacts.Facts)
+	require.NoError(t, domain.ValidateFailureFacts(firstFacts))
+}
+
 // TestSafeResolveDependencies_DescribableSurvivesLibrary verifies that a typed
 // domain.SerializableError returned by the store is NOT stringified/lost passing
 // through numscriptlib.ResolveDependencies: errors.As reaches the concrete type

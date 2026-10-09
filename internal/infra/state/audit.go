@@ -1,54 +1,35 @@
 package state
 
 import (
-	"maps"
+	"fmt"
 	"slices"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-// describeFailure derives the two fields both failure projections share from a
-// typed domain error: the wire reason code and the human-readable message.
-// buildAuditFailure writes them into the hash-chained AuditFailure and
-// recordIdempotencyFailure freezes them into the SubIdempKeys projection, and
-// the checker requires the two byte-equal — the comparison lives in
-// idempotencyMismatch, reached from compareIdempotencyOutcomes
-// (internal/application/check/checker.go). Single-sourcing the derivation makes
-// that equality structural instead of coincidental: a reshape of the message
-// cannot reach one projection without the other. The audit side lives inside
-// the hash chain, so a drift there is not repairable after the fact (EN-1772).
-//
-// Metadata is deliberately NOT part of this helper. The two sites handle it
-// asymmetrically on purpose — buildAuditFailure copies into a non-nil map,
-// recordIdempotencyFailure passes Metadata() through possibly-nil — and the
-// checker's metadataEqual treats nil and empty as equal, so the asymmetry
-// cannot produce a false mismatch. On the checker's actual read path it never
-// even shows: a proto3 map with no entries emits no bytes, so an empty Context
-// unmarshals back as nil and both sides read nil out of Pebble.
-func describeFailure(d domain.SerializableError) (commonpb.ErrorReason, string) {
-	return domain.ReasonCode(d.Reason()), d.Error()
-}
-
-// buildAuditFailure projects a typed domain error into an AuditFailure proto.
+// buildAuditFailure projects a typed domain error into stable reason, code,
+// and facts. The same FailureFactsOf derivation feeds idempotency, so
+// presentation wording cannot change either persisted outcome or audit hash.
+// The checker compares the two projections and detects drift.
 // It accepts domain.SerializableError — not a bare error — so the compiler
 // guarantees only typed, deterministic outcomes reach the audit chain. There
 // is no ERROR_REASON_UNSPECIFIED fallback: a non-Describable failure is an FSM
 // invariant violation that must fail loudly at its origin, never be downgraded
 // to an unspecified business outcome in the authoritative chain.
 func buildAuditFailure(d domain.SerializableError) *auditpb.AuditFailure {
-	reason, message := describeFailure(d)
-
-	failure := &auditpb.AuditFailure{
-		Reason:  reason,
-		Message: message,
-		Context: make(map[string]string),
+	facts := domain.FailureFactsOf(d)
+	if err := domain.ValidateFailureFacts(facts); err != nil {
+		panic(fmt.Errorf("invalid audited failure facts: %w", err))
 	}
 
-	maps.Copy(failure.GetContext(), d.Metadata())
+	failure := &auditpb.AuditFailure{
+		Reason: facts.Reason,
+		Code:   facts.Code,
+		Facts:  facts.Facts,
+	}
 
 	return failure
 }

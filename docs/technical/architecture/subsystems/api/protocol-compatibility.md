@@ -58,8 +58,8 @@ clients and servers; apply semantics must agree across every replica.
 Revision 5 (EN-1623) removes internal index/coverage details from public
 error messages and ErrorInfo metadata while retaining their reasons and status
 codes. Internal read failures in restore validation retain `Internal` with a
-sanitized correlation message. AuditFailure records retain their original
-diagnostic message and context.
+sanitized correlation message. AuditFailure records retained their diagnostic
+message and context until revision 29.
 
 Revision 8 (EN-1771) removes `CreatedIndexLog.initial` and renumbers the
 remaining exposed fields. Clients and servers built against revision 7 would
@@ -432,3 +432,15 @@ present in one bucket — either side silently selects the wrong chain.
 Ledger v3 is unreleased and no backup written under the old layout is
 supported, so there is no migration: operators re-run a full backup under the
 new layout.
+
+## Structured audited failures (revision 30)
+
+Revision 30 replaces the persisted `AuditFailure.message/context`,
+`IdempotencyFailure.message/metadata`, and `OrderSkippedLog.context` fields
+with a stable `reason`, `code`, and `facts` tuple. Audit hashing and
+idempotency comparison use that tuple. Read and API paths render presentation
+text from it; Numscript execution and compiler diagnostics are not persisted
+as failure messages or copied into their public error details. A skipped order
+exposes its code and facts in gRPC, HTTP bulk, and
+event payloads. This changes exposed log and audit responses, so service
+clients and servers must use the same revision.

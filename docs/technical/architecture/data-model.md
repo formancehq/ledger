@@ -433,7 +433,7 @@ message AuditEntry {
   Timestamp timestamp = 4;          // When the proposal was applied
   oneof outcome {
     AuditSuccess success = 5;       // Contains log sequences produced
-    AuditFailure failure = 6;       // Contains error type, message, context
+    AuditFailure failure = 6;       // Contains reason, code, structured facts
   }
 }
 ```

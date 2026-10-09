@@ -11,7 +11,7 @@ EN-1356.
 
 - **gRPC**: `LedgerApplyRequest.skippable_reasons` (`repeated common.ErrorReason`).
 - **HTTP bulk**: per-entry `skippableReasons`; a skipped entry returns an
-  `OrderSkippedResponse` (`skipped: true`, `reason`, reason-specific `context`).
+  `OrderSkippedResponse` (`skipped: true`, `reason`, `code`, and reason-specific `facts`).
 - The unitary `POST` transaction endpoint intentionally does **not** expose it.
 
 The set of reasons an action may skip is a **per-action whitelist declared
@@ -58,15 +58,15 @@ For each order that opts in, `ProcessOrders` runs it against an
   — a new skippable action that writes an unbuffered kind fails loudly instead of
   leaking past rollback.
 
-On a matched skip the FSM emits an `OrderSkippedLog{reason, context}` (the
-`context` carries reason-specific correlators, e.g. `reference` /
+On a matched skip the FSM emits an `OrderSkippedLog{reason, code, facts}` (the
+`facts` carry reason-specific correlators, e.g. `reference` /
 `existingTransactionId` for a reference conflict).
 
 ## Observability
 
 `OrderSkippedLog` maps to the `SKIPPED_ORDER` event type
-(`events.LogToEvent`), so skips reach event sinks with `skippedReason` +
-`skippedContext`. See [../events-mirror/events.md](../events-mirror/events.md).
+(`events.LogToEvent`), so skips reach event sinks with `skippedReason`,
+`skippedCode`, and `skippedFacts`. See [../events-mirror/events.md](../events-mirror/events.md).
 
 ## Checker verification (invariant #8)
 

@@ -55,7 +55,7 @@ func (*ErrCoverageMiss) Reason() string         { return domain.ErrReasonCoverag
 //   - numscript re-resolution returns the bare miss (convertNumscriptError
 //     flattens the chain via errors.As), and a ProcessOrders failure feeds
 //     buildAuditFailure, which copies Metadata() into the hash-chained
-//     AuditFailure.Context. The snake_case keys were already in the audit.
+//     AuditFailure.Facts. The snake_case keys were already in the audit.
 //   - planInvariantFailure returns the bare miss to applyProposal, which
 //     surfaces it wrapped in a domain.BusinessError. The carrier declares no
 //     Metadata() of its own, so the context is read off the miss itself through

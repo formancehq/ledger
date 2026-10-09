@@ -803,10 +803,8 @@ message LedgerLogPayload {
 // (defense against forged skip entries).
 message OrderSkippedLog {
   ErrorReason reason = 1;
-  // Free-form context populated by the producing branch. Conventional keys
-  // are documented case-by-case (e.g. reference / existingTransactionId for
-  // TRANSACTION_REFERENCE_CONFLICT). Treat as opaque if the reason is unknown.
-  map<string, string> context = 2;
+  string code = 2;
+  map<string, string> facts = 3;
 }
 
 // CreatedIndexLog records the creation of an index.
@@ -1366,8 +1364,8 @@ enum ErrorReason {
 // verify this projection against the hash-chained AuditFailure.
 message IdempotencyFailure {
   ErrorReason reason = 1;             // typed reason; kind derived via domain.KindForReason
-  string message = 2;                 // client-facing error message
-  map<string, string> metadata = 3;   // ErrorInfo metadata
+  string code = 2;                    // stable subcode
+  map<string, string> facts = 3;      // validated structured facts
 }
 
 // TransactionReferenceValue stores the transaction ID associated with a unique reference within a ledger.
