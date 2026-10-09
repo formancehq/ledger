@@ -1,0 +1,117 @@
+# Standalone Pulumi stack config for the `world_to_bank` k6 benchmark.
+#
+# Faithful reproduction of the plr-managed stack `perf/paul-world-to-bank`,
+# flattened into a native Pulumi.<stack>.yaml so it can be used with the plain
+# `pulumi` CLI (no plr / no base merging).
+#
+#   cd tests/perf
+#   pulumi stack init world-to-bank
+#   pulumi stack select world-to-bank   # (or: pulumi stack init world-to-bank)
+#   pulumi preview
+#   pulumi up
+#
+# The program (main.go) reads exactly two config keys: `perf:k8s-context`
+# and `perf:benchmark`.
+config:
+  # Kubernetes context targeted by the k8s provider (from plr base `acme`).
+  perf:k8s-context: eks-acme-dev-euw1-01
+  perf:benchmark:
+    script: world_to_bank
+    metadata:
+      name: paul-world-to-bank-beta-10
+      namespace: ledger-v3
+    spec:
+      arguments: -o opentelemetry
+      parallelism: 1
+      separate: true
+    resources:
+      - manifest:
+          apiVersion: ledger.formance.com/v1alpha1
+          kind: Cluster
+          spec:
+            admissionMetrics: true
+            auth:
+              enabled: false
+            cache:
+              rotationThreshold: 1000000
+            clusterID: perf-world-to-bank
+            image:
+              repository: ghcr.io/formancehq/ledger
+              tag: v3.0.0-beta.10
+            monitoring:
+              metrics:
+                enabled: true
+                endpoint: opentelemetry-collector.monitoring.svc.cluster.local
+                exporter: otlp
+                exporterPushInterval: 15s
+                insecure: "true"
+                mode: grpc
+                port: "4317"
+                runtime: true
+                runtimeMinimumReadMemStatsInterval: 5s
+              pyroscope:
+                applicationName: paul-world-to-bank-beta-10
+                enabled: true
+                serverAddress: http://pyroscope.monitoring.svc.cluster.local:4040
+            nodeSelector:
+              formance.com/dedicated: ledger
+            pebble:
+              bytesPerSync: 4194304
+              cacheSize: 2147483648
+              l0StopWritesThreshold: 256
+              lBaseMaxBytes: 4294967296
+              maxConcurrentCompactions: 2
+              memTableStopWritesThreshold: 4
+              walBytesPerSync: 4194304
+            persistence:
+              data:
+                size: 500Gi
+                storageClass: gp3
+              retentionPolicy:
+                whenDeleted: Delete
+              wal:
+                size: 15Gi
+                storageClass: gp3
+            raft:
+              compactionMargin: 5000
+              maxSizePerMsg: 4194304
+              proposeQueueCapacity: 4096
+            replicas: 1
+            resources:
+              limits:
+                cpu: "4"
+                memory: 8Gi
+              requests:
+                cpu: "4"
+                memory: 8Gi
+            tolerations:
+              - effect: NoSchedule
+                key: formance.com/dedicated
+                operator: Equal
+                value: ledger
+        readyCondition:
+          fieldPath: status.phase
+          value: Running
+      - manifest:
+          apiVersion: ledger.formance.com/v1alpha1
+          kind: Ledger
+          spec:
+            name: ledger0
+            clusterRef: paul-world-to-bank-beta-10-res-0
+        readyCondition:
+          fieldPath: status.phase
+          value: Ready
+    runner:
+      env:
+        BULK_SIZE: "50"
+        GRAFANA_PASSWORD: admin
+        GRAFANA_USER: admin
+        HTTP_ADDR: http://ledger-paul-world-to-bank-beta-10-res-0:9000
+        K6_OTEL_GRPC_EXPORTER_ENDPOINT: opentelemetry-collector.monitoring.svc.cluster.local:4317
+        K6_OTEL_GRPC_EXPORTER_INSECURE: "true"
+        K6_OTEL_METRICS_FLUSH_INTERVAL: 5s
+        K6_OTEL_SERVICE_NAME: k6-loadtest
+        K6_STAGES: 1m:100,5m:400,1m:0
+        LEDGER_NAME: ledger0
+        USE_NUMSCRIPT: "true"
+encryptionsalt: v1:ZfEtOG12nS8=:v1:0HIcB1WzfkrxzBV7:lcwHHhGoSrA+vGun4b4FKphE/FVhOQ==
