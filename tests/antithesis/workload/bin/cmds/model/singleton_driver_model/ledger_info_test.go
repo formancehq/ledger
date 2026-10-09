@@ -41,6 +41,7 @@ func modelLedgerForInfo(t *testing.T) (oracle.GlobalState, *commonpb.LedgerInfo)
 		CreatedAt:              &commonpb.Timestamp{Data: 1000},
 		Mode:                   commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 		MirrorSource:           &commonpb.MirrorSourceConfig{LedgerName: "src"},
+		MirrorSyncProgress:     &commonpb.MirrorSyncProgress{},
 		DefaultEnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
 		AccountTypes:           map[string]*commonpb.AccountType{"known": {Name: "known", Pattern: "known:{id}"}},
 		MetadataSchema: &commonpb.MetadataSchema{AccountFields: map[string]*commonpb.MetadataFieldSchema{
@@ -66,7 +67,8 @@ func TestLedgerInfoMatchesComparesEveryDerivedField(t *testing.T) {
 		"mirror source": func(i *commonpb.LedgerInfo) {
 			i.MirrorSource = &commonpb.MirrorSourceConfig{LedgerName: "elsewhere"}
 		},
-		"dropped mirror source": func(i *commonpb.LedgerInfo) { i.MirrorSource = nil },
+		"dropped mirror source":   func(i *commonpb.LedgerInfo) { i.MirrorSource = nil },
+		"dropped mirror progress": func(i *commonpb.LedgerInfo) { i.MirrorSyncProgress = nil },
 		"enforcement mode": func(i *commonpb.LedgerInfo) {
 			i.DefaultEnforcementMode = commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT
 		},
@@ -121,7 +123,6 @@ func TestLedgerInfoStructureViolation(t *testing.T) {
 		"listed ledger has no id":                 func(i *commonpb.LedgerInfo) { i.Id = 0 },
 		"listed ledger has no creation timestamp": func(i *commonpb.LedgerInfo) { i.CreatedAt = nil },
 		"listing served a soft-deleted ledger":    func(i *commonpb.LedgerInfo) { i.DeletedAt = &commonpb.Timestamp{Data: 2} },
-		"listing carried mirror sync progress":    func(i *commonpb.LedgerInfo) { i.MirrorSyncProgress = &commonpb.MirrorSyncProgress{} },
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

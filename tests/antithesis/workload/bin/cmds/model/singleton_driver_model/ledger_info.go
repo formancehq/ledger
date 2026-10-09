@@ -11,7 +11,9 @@ import (
 //
 // id and created_at are absent: the model assigns neither. They are pinned
 // separately, against what the ledger's own creation log reported — see
-// ledgerIdentity.
+// ledgerIdentity. Mirror sync progress is the mirror worker's, which the model
+// does not run, so only its presence is held: on a mirror ledger and nowhere
+// else.
 func ledgerInfoMatches(base oracle.GlobalState, info *commonpb.LedgerInfo) bool {
 	name := info.GetName()
 
@@ -27,6 +29,7 @@ func ledgerInfoMatches(base oracle.GlobalState, info *commonpb.LedgerInfo) bool 
 		metadataSchemaMatches(ls, info.GetMetadataSchema()) &&
 		info.GetMode() == lifecycle.Mode &&
 		info.GetMirrorSource().EqualVT(lifecycle.MirrorSource) &&
+		(info.GetMirrorSyncProgress() != nil) == (lifecycle.Mode == commonpb.LedgerMode_LEDGER_MODE_MIRROR) &&
 		info.GetDefaultEnforcementMode() == ls.DefaultEnforcementMode()
 }
 
@@ -58,8 +61,7 @@ func schemaFieldsMatch(model oracle.Map[string, commonpb.MetadataType], server m
 
 // ledgerInfoStructureViolation names what is wrong with a listed LedgerInfo
 // independently of any base, or "" when nothing is. The listing drops every
-// soft-deleted ledger and enriches no mirror progress — that enrichment belongs
-// to GetLedger alone — so both fields are absent on every row whatever the fleet
+// soft-deleted ledger, so no row carries a deletion time whatever the fleet
 // holds.
 func ledgerInfoStructureViolation(info *commonpb.LedgerInfo) string {
 	switch {
@@ -71,8 +73,6 @@ func ledgerInfoStructureViolation(info *commonpb.LedgerInfo) string {
 		return "listed ledger has no creation timestamp"
 	case info.GetDeletedAt() != nil:
 		return "listing served a soft-deleted ledger"
-	case info.GetMirrorSyncProgress() != nil:
-		return "listing carried mirror sync progress"
 	}
 
 	return ""
