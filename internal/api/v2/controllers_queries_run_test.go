@@ -87,3 +87,35 @@ func TestQueriesRun(t *testing.T) {
 
 	require.JSONEq(t, rec.Body.String(), string(expectedResponse))
 }
+
+func TestQueriesRunPreservesLargeAmounts(t *testing.T) {
+	t.Parallel()
+
+	systemController, ledgerController := newTestingSystemController(t, true)
+	router := NewRouter(systemController, jwt.NewNoAuth(), "develop")
+
+	// 2^53 + 1 cannot be represented exactly as a float64.
+	amount, ok := new(big.Int).SetString("9007199254740993", 10)
+	require.True(t, ok)
+
+	expectedResourceKind := queries.ResourceKindTransaction
+	expectedCursor := paginate.Cursor[any]{
+		Data: []any{
+			ledger.NewTransaction().WithPostings(
+				ledger.NewPosting("world", "bank", "USD", amount),
+			),
+		},
+	}
+
+	ledgerController.EXPECT().
+		RunQuery(gomock.Any(), "1.2.3", "QUERY_ID", gomock.Any(), gomock.Any()).
+		Return(&expectedResourceKind, &expectedCursor, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/xxx/queries/QUERY_ID/run?schemaVersion=1.2.3", bytes.NewBufferString(`{}`))
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), `"amount":9007199254740993`)
+}

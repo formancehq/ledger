@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -68,8 +69,11 @@ func getJsonResponse(r *http.Request, w http.ResponseWriter, resource queries.Re
 		if err != nil {
 			return err
 		}
+		// Decode numbers as json.Number so big amounts are not rounded to float64.
 		var fields map[string]any
-		err = json.Unmarshal(s, &fields)
+		dec := json.NewDecoder(bytes.NewReader(s))
+		dec.UseNumber()
+		err = dec.Decode(&fields)
 		if err != nil {
 			return err
 		}
