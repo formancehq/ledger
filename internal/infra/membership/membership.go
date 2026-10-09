@@ -142,10 +142,14 @@ func (m *Membership) Start() {
 	}
 }
 
-// wireAdd pushes a peer into the transport + service pool. Self is
-// skipped because a node never dials itself. Deferred to Start when
-// invoked before the local Raft gRPC server is listening (see the
-// started field's comment).
+// wireAdd pushes or refreshes a peer in the transport + service pool. For an
+// existing peer, DefaultTransport.AddPeer updates the pooled connection address
+// through ConnectionPool.AddPeer while preserving the peer's existing send loop
+// and queued messages. This means wireAdd is safe to call without a preceding
+// wireRemove even when the Raft address changes: the retry owner survives a
+// transient optional-TLS probe failure. Self is skipped because a node never
+// dials itself. Deferred to Start when invoked before the local Raft gRPC server
+// is listening (see the started field's comment).
 //
 // Caller must hold m.mu — wire mutations must stay in lockstep with
 // the cache to avoid drift under concurrent Rehydrate / finishReady.
@@ -252,16 +256,6 @@ func (m *Membership) Set(nodeID uint64, raftAddr, serviceAddr string, instanceID
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
-	previous, existed := m.addresses[nodeID]
-	if existed && previous.RaftAddress != raftAddr {
-		// DefaultTransport.AddPeer is intentionally idempotent by node ID and
-		// therefore cannot replace an existing peer's Raft endpoint in place.
-		// Tear down both transport views before replacing the Raft endpoint.
-		// A service-only change is handled by Pool.AddPeer in wireAdd; keep
-		// the healthy Raft peer instead of requiring a fresh TLS probe.
-		m.wireRemove(nodeID)
-	}
 
 	m.addresses[nodeID] = ConfChangeContext{
 		RaftAddress:    raftAddr,

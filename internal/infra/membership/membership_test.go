@@ -585,10 +585,17 @@ func TestMembership_SetRewiresChangedAddresses(t *testing.T) {
 
 	require.NoError(t, m.Set(1, "new:7777", "new:8888", fixedInstanceID(2)))
 	require.Equal(t, 2, transport.adds)
-	require.Equal(t, 1, transport.removes, "changed Raft address must replace the existing transport peer")
+	// wireRemove is intentionally not called on a Raft-address change: DefaultTransport.AddPeer
+	// refreshes the pooled connection address through ConnectionPool.AddPeer while preserving the
+	// existing send loop and its retry owner. A transient optional-TLS probe failure therefore
+	// does not strand the peer without an active retry. wireRemove remains reserved for peer
+	// removals (Remove / Rehydrate deletion path).
+	require.Equal(t, 0, transport.removes, "Raft address refresh must not destroy the existing send loop")
 	require.Equal(t, []string{"old:7777", "new:7777"}, transport.addrs)
 	require.Equal(t, 2, pool.adds)
-	require.Equal(t, 1, pool.removes, "changed service address must replace the existing client connection")
+	// ConnectionPool.AddPeer handles the address change by closing the old connection via teardownLocked,
+	// so pool.RemovePeer is not called separately. wireRemove is not called for address refreshes.
+	require.Equal(t, 0, pool.removes, "address refresh must not call pool.RemovePeer; ConnectionPool.AddPeer handles it")
 	require.Equal(t, []string{"old:8888", "new:8888"}, pool.addrs)
 	require.Equal(t, "new:7777", m.PeerAddresses()[1].RaftAddress)
 }

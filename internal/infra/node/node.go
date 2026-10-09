@@ -1547,6 +1547,23 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 				if err := node.membership.Set(nodeID, ctx.RaftAddress, ctx.ServiceAddress, ctx.InstanceID); err != nil {
 					return fmt.Errorf("invariant: applying membership cache update: %w", err)
 				}
+				// EN-1413: promotion commits the leader's cached addresses. If this node is
+				// the promotion target, its locally authoritative endpoints (set by Register
+				// on restart) may differ from what the leader cached. Re-Register with the
+				// local addresses to restore self-address authority so the next checkpoint
+				// this node serves carries the correct endpoint, and service forwarding and
+				// Raft reconnection use the locally-authoritative address rather than the
+				// leader's potentially-stale copy.
+				if t == raftpb.ConfChangeAddNode && nodeID == node.config.NodeID {
+					if err := node.membership.Register(
+						node.config.NodeID,
+						node.config.AdvertiseAddr,
+						node.config.ServiceAdvertiseAddr,
+						node.config.InstanceID,
+					); err != nil {
+						return fmt.Errorf("invariant: refreshing self-address after promotion: %w", err)
+					}
+				}
 			case raftpb.ConfChangeRemoveNode:
 				// Install admission protection as part of observing the commit,
 				// before resolving (or discarding) the caller's future. The RPC

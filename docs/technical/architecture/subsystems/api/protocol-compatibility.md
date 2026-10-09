@@ -337,8 +337,8 @@ safe across such changes.
 
 ## Required member identity on AddLearner (revision 27)
 
-Revision 26 makes the target node's 16-byte `instance_id` mandatory on
-administrative `ClusterService.AddLearner` requests. A revision-26 server
+Revision 27 makes the target node's 16-byte `instance_id` mandatory on
+administrative `ClusterService.AddLearner` requests. A revision-27 server
 rejects requests that omit `instance_id` with `InvalidArgument` at the
 handler boundary. In practice, a client implementing a different revision will
 first be rejected by the protocol-version gate (lines 29-35 above) with
