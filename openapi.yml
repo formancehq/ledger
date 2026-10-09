@@ -3757,62 +3757,66 @@ components:
 
     LedgerInfo:
       type: object
-      required:
-        - name
+      required: [name, mode, defaultEnforcementMode]
       properties:
         name:
           type: string
           description: Name of the ledger
-        created_at:
+        createdAt:
           type: string
           format: date-time
-          description: Creation timestamp (ISO 8601 format)
-        deleted_at:
+        deletedAt:
           type: string
           format: date-time
-          description: Soft delete timestamp (null if not deleted)
-          nullable: true
-        metadata_schema:
+          description: Soft deletion timestamp; omitted for active ledgers
+        metadata:
           type: object
-          additionalProperties: true
-          description: Per-key metadata type declarations
-          nullable: true
+          additionalProperties:
+            $ref: '#/components/schemas/MetadataValue'
+          description: Enriched typed ledger metadata
+        metadataSchema:
+          $ref: '#/components/schemas/LedgerMetadataSchema'
         mode:
           type: string
-          enum:
-            - NORMAL
-            - MIRROR
-          description: Ledger mode (NORMAL or MIRROR)
-        mirror_source:
-          $ref: '#/components/schemas/MirrorSourceConfig'
-        mirror_sync_progress:
+          enum: [NORMAL, MIRROR]
+          description: Ledger mode, including the default NORMAL value
+        mirrorSource:
+          $ref: '#/components/schemas/MirrorSourceRead'
+        mirrorSyncProgress:
           $ref: '#/components/schemas/MirrorSyncProgress'
-        account_types:
+        accountTypes:
           type: object
-          description: Per-type account address validation
           additionalProperties:
-            type: object
-            properties:
-              name:
-                type: string
-              pattern:
-                type: string
-              persistence:
-                type: string
-                enum: [NORMAL, EPHEMERAL, TRANSIENT]
-                description: |
-                  NORMAL: fully persisted (default).
-                  EPHEMERAL: persisted, purged when zero balance.
-                  TRANSIENT: never persisted, must be zero at end of batch.
-              segmentTypes:
-                type: object
-                description: Maps a pattern variable name to a type constraint.
-                additionalProperties:
-                  $ref: '#/components/schemas/SegmentType'
-          nullable: true
-        default_enforcement_mode:
+            $ref: '#/components/schemas/AccountTypeInfo'
+        defaultEnforcementMode:
           type: string
-          description: Default enforcement for unmatched accounts
+          enum: [STRICT, AUDIT]
+          description: Default enforcement for unmatched accounts; defaults to STRICT
+
+    LedgerMetadataSchema:
+      type: object
+      properties:
+        accountFields:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/LedgerMetadataFieldSchema'
+        transactionFields:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/LedgerMetadataFieldSchema'
+        ledgerFields:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/LedgerMetadataFieldSchema'
+
+    LedgerMetadataFieldSchema:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [string, int64, bool, uint64, int8, int16, int32, uint8, uint16, uint32, datetime]
+          description: Declared metadata type, using the same tokens as schema creation
 
     MirrorSyncProgress:
       type: object
@@ -3830,19 +3834,19 @@ components:
             - FOLLOWING
           description: Current sync state (SYNCING = catching up, FOLLOWING = up to date)
         cursor:
-          type: integer
-          format: uint64
-          minimum: 0
+          type: string
+          format: bigint
+          pattern: '^(0|[1-9][0-9]*)$'
           description: Last ingested v2 log ID
         sourceLogCount:
-          type: integer
-          format: uint64
-          minimum: 0
+          type: string
+          format: bigint
+          pattern: '^(0|[1-9][0-9]*)$'
           description: Latest known log ID in the v2 source
         remainingLogs:
-          type: integer
-          format: uint64
-          minimum: 0
+          type: string
+          format: bigint
+          pattern: '^(0|[1-9][0-9]*)$'
           description: Number of remaining logs to sync (sourceLogCount - cursor)
         error:
           $ref: '#/components/schemas/MirrorSyncError'
@@ -4968,6 +4972,73 @@ components:
         output:
           $ref: '#/components/schemas/UnsignedMonetaryAmount'
 
+    MirrorSourceRead:
+      type: object
+      description: Detached credential-safe mirror configuration returned by ledger reads
+      required: [ledgerName]
+      oneOf:
+        - required: [http]
+        - required: [postgres]
+      properties:
+        ledgerName:
+          type: string
+        batchSize:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 4294967295
+        rewriteRules:
+          type: array
+          items:
+            $ref: '#/components/schemas/MirrorRewriteRuleRead'
+        http:
+          $ref: '#/components/schemas/HttpMirrorSourceRead'
+        postgres:
+          $ref: '#/components/schemas/PostgresMirrorSourceRead'
+
+    HttpMirrorSourceRead:
+      type: object
+      properties:
+        baseUrl:
+          type: string
+          description: Source URL with userinfo (including passwordless tokens) and query credentials masked
+        oauth2ClientCredentials:
+          $ref: '#/components/schemas/MirrorOAuthRead'
+
+    MirrorOAuthRead:
+      type: object
+      properties:
+        clientId:
+          type: string
+        clientSecret:
+          type: string
+          enum: ['[redacted]']
+          description: Presence marker only; reusable secret material is never returned
+        tokenEndpoint:
+          type: string
+          description: OAuth endpoint URL with userinfo (including passwordless tokens) and query credentials masked
+        scopes:
+          type: array
+          items:
+            type: string
+
+    PostgresMirrorSourceRead:
+      type: object
+      properties:
+        dsn:
+          type: string
+          description: Connection string with password material masked; malformed values are fully redacted
+        awsIamAuth:
+          $ref: '#/components/schemas/MirrorAwsIamAuthRead'
+
+    MirrorAwsIamAuthRead:
+      type: object
+      properties:
+        region:
+          type: string
+        assumeRoleArn:
+          type: string
+
     MirrorSourceConfig:
       type: object
       description: Configuration for the mirror source (required when mode is MIRROR)
@@ -5018,6 +5089,218 @@ components:
             v2 logs are translated into v3 orders. Each rule is scoped to exactly
             one variant of the log's `data` oneof, with a CEL `match` predicate
             and a list of typed actions.
+
+    MirrorRewriteRuleRead:
+      type: object
+      description: >
+        Read representation of a mirror rewrite rule, using protojson camelCase
+        names. Default scalar values (including empty regex replacements) are
+        omitted; missing replacements mean the empty string. Creation uses the
+        separate MirrorRewriteRule schema.
+      properties:
+        createdTransaction:
+          $ref: '#/components/schemas/CreatedTransactionRuleRead'
+        revertedTransaction:
+          $ref: '#/components/schemas/RevertedTransactionRuleRead'
+        savedMetadata:
+          $ref: '#/components/schemas/SavedMetadataRuleRead'
+        deletedMetadata:
+          $ref: '#/components/schemas/DeletedMetadataRuleRead'
+        anyVariant:
+          $ref: '#/components/schemas/AnyVariantRuleRead'
+        stop:
+          type: boolean
+
+    CreatedTransactionRuleRead:
+      type: object
+      description: >
+        Rule scoped to MirrorCreatedTransaction. Inside `match`, `log` is the
+        created-transaction proto directly (e.g. `log.metadata["k"]`).
+      properties:
+        match:
+          type: string
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreatedTransactionActionRead'
+
+    RevertedTransactionRuleRead:
+      type: object
+      properties:
+        match:
+          type: string
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/RevertedTransactionActionRead'
+
+    SavedMetadataRuleRead:
+      type: object
+      properties:
+        match:
+          type: string
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SavedMetadataActionRead'
+
+    DeletedMetadataRuleRead:
+      type: object
+      properties:
+        match:
+          type: string
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeletedMetadataActionRead'
+
+    AnyVariantRuleRead:
+      type: object
+      description: >
+        Rule scoped to every variant. `log` is the full MirrorLogEntry — use
+        `has(log.<variant>)` guards to read variant-specific fields.
+      properties:
+        match:
+          type: string
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnyVariantActionRead'
+
+    CreatedTransactionActionRead:
+      type: object
+      description: Exactly one field must be set.
+      properties:
+        rewriteAddress:
+          $ref: '#/components/schemas/RewriteAddressActionRead'
+        setMetadata:
+          $ref: '#/components/schemas/SetMetadataActionRead'
+        deleteMetadata:
+          $ref: '#/components/schemas/DeleteMetadataAction'
+        setAccountMetadata:
+          $ref: '#/components/schemas/SetAccountMetadataActionRead'
+        deleteAccountMetadata:
+          $ref: '#/components/schemas/DeleteAccountMetadataAction'
+        setAccountMetadataFromAddress:
+          $ref: '#/components/schemas/SetAccountMetadataFromAddressActionRead'
+        drop:
+          $ref: '#/components/schemas/DropAction'
+
+    RevertedTransactionActionRead:
+      type: object
+      properties:
+        rewriteAddress:
+          $ref: '#/components/schemas/RewriteAddressActionRead'
+        setMetadata:
+          $ref: '#/components/schemas/SetMetadataActionRead'
+        deleteMetadata:
+          $ref: '#/components/schemas/DeleteMetadataAction'
+        drop:
+          $ref: '#/components/schemas/DropAction'
+
+    SavedMetadataActionRead:
+      type: object
+      properties:
+        rewriteAddress:
+          $ref: '#/components/schemas/RewriteAddressActionRead'
+        setMetadata:
+          $ref: '#/components/schemas/SetMetadataActionRead'
+        deleteMetadata:
+          $ref: '#/components/schemas/DeleteMetadataAction'
+        drop:
+          $ref: '#/components/schemas/DropAction'
+
+    DeletedMetadataActionRead:
+      type: object
+      properties:
+        rewriteAddress:
+          $ref: '#/components/schemas/RewriteAddressActionRead'
+        drop:
+          $ref: '#/components/schemas/DropAction'
+
+    AnyVariantActionRead:
+      type: object
+      properties:
+        rewriteAddress:
+          $ref: '#/components/schemas/RewriteAddressActionRead'
+        drop:
+          $ref: '#/components/schemas/DropAction'
+
+    RewriteAddressActionRead:
+      type: object
+      required: [pattern]
+      properties:
+        pattern:
+          type: string
+          description: RE2 pattern (validated at admission).
+        replacement:
+          type: string
+
+    SetMetadataActionRead:
+      type: object
+      description: >
+        `value` is a literal metadata string; `valueExpr` is a CEL expression
+        typed against the current variant and evaluated at commit time (e.g.
+        `log.reference`). Exactly one of the two should be set; if neither is
+        set the value defaults to the empty string. Optional `type` coerces
+        the produced string into a typed MetadataValue via the platform
+        conversion matrix — one of "string" (default), "int64", "bool",
+        "uint64", "int8"/"int16"/"int32", "uint8"/"uint16"/"uint32",
+        "datetime".
+      required: [key]
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+        valueExpr:
+          type: string
+        type:
+          type: string
+
+    SetAccountMetadataActionRead:
+      type: object
+      description: >
+        See SetMetadataActionRead for the literal-vs-CEL and `type` semantics.
+      required: [account, key]
+      properties:
+        account:
+          type: string
+        key:
+          type: string
+        value:
+          type: string
+        valueExpr:
+          type: string
+        type:
+          type: string
+
+    SetAccountMetadataFromAddressActionRead:
+      type: object
+      description: >
+        For every posting address matching `pattern`, iterate every entry in
+        `replacements` and set accountMetadata[address][key] to the RE2
+        replacement of the address. Each replacement carries an optional
+        metadata `type` token (same tokens as SetMetadataActionRead.type).
+      required: [pattern, replacements]
+      properties:
+        pattern:
+          type: string
+        replacements:
+          type: array
+          items:
+            $ref: '#/components/schemas/SetAccountMetadataFromAddressReplacementRead'
+
+    SetAccountMetadataFromAddressReplacementRead:
+      type: object
+      required: [key]
+      properties:
+        key:
+          type: string
+        replacement:
+          type: string
+        type:
+          type: string
 
     MirrorRewriteRule:
       type: object
@@ -5926,8 +6209,10 @@ components:
 
     SegmentType:
       type: object
+      nullable: true
       description: |
-        Constraint for a variable segment in an account type pattern. The
+        Constraint for a variable segment in an account type pattern. Null means
+        any non-empty string is accepted. The
         `type` field discriminates the constraint kind; only `regex` carries a
         value.
       required:

@@ -545,7 +545,7 @@ func (impl *BucketServiceServerImpl) ListLedgers(req *servicepb.ListLedgersReque
 		return fmt.Errorf("paginating ledgers: %w", err)
 	}
 
-	return sendPagedToStream(ctx, c, stream, "ledger", pageSize, page, ledgerCursorOf)
+	return sendPagedToStream(ctx, c, ledgerInfoReadStream{stream}, "ledger", pageSize, page, ledgerCursorOf)
 }
 
 // ledgerCursorOf returns a ledger's cursor key: its name.
@@ -569,7 +569,12 @@ func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *service
 	}
 	defer cleanup()
 
-	return c.GetLedgerByName(ctx, req.GetLedger())
+	ledger, err := c.GetLedgerByName(ctx, req.GetLedger())
+	if err != nil {
+		return nil, err
+	}
+
+	return sensitive.Redact(ledger), nil
 }
 
 func (impl *BucketServiceServerImpl) GetAccount(ctx context.Context, req *servicepb.GetAccountRequest) (*commonpb.Account, error) {

@@ -199,7 +199,7 @@ func (ctrl *DefaultController) ListLedgers(ctx context.Context) (cursor.Cursor[*
 		return true
 	})
 
-	return cursor.NewClosingCursor(filtered, handle), nil
+	return &ledgerInfoCursor{Cursor: cursor.NewClosingCursor(filtered, handle), ctx: ctx, handle: handle, attrs: ctrl.attrs}, nil
 }
 
 func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {

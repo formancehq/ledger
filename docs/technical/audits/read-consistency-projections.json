@@ -43,7 +43,8 @@
     "docs/technical/architecture/subsystems/consensus/raft-consensus.md",
     "docs/technical/architecture/subsystems/backup/incremental-restore-contract.md",
     "docs/technical/architecture/audit-vs-technical-state.md",
-    "docs/technical/contributing/testing.md"
+    "docs/technical/contributing/testing.md",
+    "docs/technical/architecture/subsystems/api/ledger-info.md"
   ],
   "invariants": [
     "A default live read executes ReadIndexAndWait, carries the barrier to local execution, and rejects a pinned main snapshot whose durable LastAppliedIndex is below it. A stale read may omit only the quorum barrier; it cannot be labeled default or bypass alignment for a projection it consults.",
@@ -56,7 +57,8 @@
     "Index create, rewrite, removal, ledger deletion, and recreation never expose an unready, partially backfilled, stale-version, or deleted keyspace as ready. The served-version switch, rows, reverse-map lifecycle, and progress form one valid transition, and reclamation respects active readers.",
     "A query checkpoint becomes discoverable only after main and read components represent its declared boundary and a ready marker is published last. Interrupted creation leaves no usable partial checkpoint; deletion preserves acquired readers, and a frozen projection behind its main horizon fails instead of waiting or returning partial data.",
     "Audit-index and usage projections expose coherent snapshots under their documented freshness semantics. Historical query-checkpoint responses never mix live usage data into frozen results; asynchronous rebuildability is not mislabeled as strong certification.",
-    "Every finding identifies the temporal boundary violated, reachable production path, source and projection positions/versions, and single correction owner. Agreement between readers sharing a projection or helper is not proof of convergence to committed history."
+    "Every finding identifies the temporal boundary violated, reachable production path, source and projection positions/versions, and single correction owner. Agreement between readers sharing a projection or helper is not proof of convergence to committed history.",
+    "ListLedgers mirror progress is enriched through the same owned main-store snapshot as the ledger row and metadata, in current and checkpoint reads. Normal ledgers add no mirror reads; mirror errors are terminal cursor errors, not silently missing progress (EN-2780)."
   ],
   "adversarial_questions": [
     "For every public read and mode, where is ReadIndexAndWait invoked, how is its index transported, and can a direct, prepared, inspect, audit, stats, or checkpoint path drop or relabel it?",
@@ -80,6 +82,7 @@
     "Close and reopen both stores with the read index behind main. Start a live read before boot configuration loads, pin it before a later index drop, and hold replay at a checkpoint through audit lag. Require the non-empty pre-drop result at the intermediate certificate; cover restored current/pending/rewrite/tombstone states and ledger-delete rollback separately.",
     "Crash before and after each checkpoint component and ready-marker publication, then enumerate/open it. Acquire/read/delete concurrently; require matching frozen horizons and rejection or rebuild of incomplete directories.",
     "Drive audit-index and usage builders through lag, multi-field reads, flush failure, restart, and primary rollback. Compare every projected key/value with an independent fold and prove historical reads omit live-only usage.",
-    "Use existing alignment/horizon, aligned-snapshot, indexbuilder progress/retype/checkpoint, readstore lease/version/progress, usage integration, e2e cross-store/checkpoint, and Antithesis projection tests as leads. Record commands and fault points; green tests or equal totals alone are not proof."
+    "Use existing alignment/horizon, aligned-snapshot, indexbuilder progress/retype/checkpoint, readstore lease/version/progress, usage integration, e2e cross-store/checkpoint, and Antithesis projection tests as leads. Record commands and fault points; green tests or equal totals alone are not proof.",
+    "Use current/checkpoint GetLedger and ListLedgers controller fixtures to require mirror progress on both read paths, then mutate source head/status after a listing opens and verify subsequent rows retain the listing snapshot values. Verify Close and error paths release the original owned handle."
   ]
 }

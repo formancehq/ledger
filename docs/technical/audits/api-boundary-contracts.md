@@ -221,3 +221,21 @@ Initial creation metadata is one CreateLedger operation, returned in the HTTP 20
 Does initial metadata survive HTTP decoding, the service request and order unchanged, including integers beyond JSON float precision, omitted/null inputs and a schema type mismatch? Do malformed keys/scalars reject before any ledger is created?
 
 See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
+
+## LedgerInfo wire and SDK oracle (EN-2780)
+
+Require camelCase keys, short explicit enum defaults, typed metadata/schema, REST
+segment discriminators and unconstrained null, RFC3339 timestamps, and populated
+mirror state/counters at zero. Counter wire values are decimal strings with
+OpenAPI string/bigint; a generated TypeScript number for integer/bigint can round
+large counters despite successful decoding. Exercise actual generated list/get
+operations with >2^53 and uint64 maximum, alongside schema validation and the
+codec/routed HTTP fixtures. Read mirror schemas are nested, while flat create
+fixtures must still be accepted. Rewrite-rule read models must expose CEL
+`valueExpr` on transaction and account metadata actions across all supported
+scopes, accept protojson's omitted empty replacements (both rewrite-address and
+account-metadata replacement entries), and preserve explicit empty literal
+oneofs. Get/list fixtures in `internal/adapter/http/testdata/ledger_info_rewrite_*`
+are shared routed-response and generated SDK operation inputs. Marshal failure must return sanitized 500 before
+headers. The confidentiality oracle belongs to sensitive-data-exposure-boundaries.
+See [LedgerInfo](../architecture/subsystems/api/ledger-info.md).

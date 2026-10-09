@@ -1,9 +1,11 @@
 package sensitive
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
@@ -323,4 +325,83 @@ func TestRedactHTTPSinkEndpoint(t *testing.T) {
 	require.Equal(t, Marker, view.GetSecret())
 	// Original unchanged.
 	require.Contains(t, source.GetEndpoint(), "review-password")
+}
+
+func TestLedgerInfoCloneMasksPasswordsWithoutMutatingWorkerConfig(t *testing.T) {
+	for _, tc := range []struct{ name, dsn, want string }{
+		{"url", "postgres://reader:dsn-canary@db.example:5432/ledger?sslmode=require&password=query-canary", "postgres://reader:xxxxx@db.example:5432/ledger?password=xxxxx&sslmode=require"},
+		{"socket URL", "postgres:///ledger?host=/tmp&password=socket-canary", "postgres:///ledger?host=%2Ftmp&password=xxxxx"},
+		{"malformed URL", "postgres://reader:bad-canary%zz@db.example/ledger", Marker},
+		{"keyword", "host=db.example dbname=ledger user=reader password='dsn-canary' sslmode=require", "host=db.example dbname=ledger user=reader password='xxxxx' sslmode=require"},
+		{"escaped", `host=db.example password='dsn-canary\' spaced' sslpassword=ssl-canary dbname=ledger`, `host=db.example password='xxxxx' sslpassword='xxxxx' dbname=ledger`},
+		{"duplicate", "host=db.example password=first-canary password=second-canary dbname=ledger", "host=db.example password='xxxxx'" + " password='xxxxx' dbname=ledger"},
+		{"no password", "host=db.example dbname=ledger", "host=db.example dbname=ledger"},
+		{"empty", "", ""},
+		{"malformed", "host=db.example password='dsn-canary", Marker},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ledger := &commonpb.LedgerInfo{Name: "mirror", MirrorSource: &commonpb.MirrorSourceConfig{LedgerName: "source",
+				Type: &commonpb.MirrorSourceConfig_Postgres{Postgres: &commonpb.PostgresMirrorSourceConfig{Dsn: tc.dsn,
+					AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1", AssumeRoleArn: "arn:aws:iam::123:role/mirror"}}}}}
+			original := proto.Clone(ledger)
+			view := Redact(ledger)
+			require.Equal(t, tc.want, view.GetMirrorSource().GetPostgres().GetDsn())
+			require.Equal(t, "eu-west-1", view.GetMirrorSource().GetPostgres().GetAwsIamAuth().GetRegion())
+			for _, marshal := range []func(proto.Message) ([]byte, error){proto.Marshal, protojson.Marshal} {
+				bytes, err := marshal(view)
+				require.NoError(t, err)
+				require.NotContains(t, string(bytes), "canary")
+			}
+			view.GetMirrorSource().GetPostgres().AwsIamAuth.Region = "changed"
+			require.True(t, proto.Equal(original, ledger))
+		})
+	}
+}
+
+func TestLedgerInfoClonePreservesOAuthMetadata(t *testing.T) {
+	ledger := &commonpb.LedgerInfo{Name: "mirror", MirrorSource: &commonpb.MirrorSourceConfig{LedgerName: "source",
+		Type: &commonpb.MirrorSourceConfig_Http{Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "https://reader:base-canary@source.example/prefix",
+			Oauth2ClientCredentials: &commonpb.OAuth2ClientCredentials{ClientId: "client", ClientSecret: "oauth-canary", TokenEndpoint: "https://client:token-canary@auth.example/token", Scopes: []string{"read"}},
+		}}}}
+	original := proto.Clone(ledger)
+	view := Redact(ledger)
+	data, err := json.Marshal(view)
+	require.NoError(t, err)
+	require.NotContains(t, string(data), "canary")
+	require.Equal(t, "https://reader:xxxxx@source.example/prefix", view.GetMirrorSource().GetHttp().GetBaseUrl())
+	require.Equal(t, "https://client:xxxxx@auth.example/token", view.GetMirrorSource().GetHttp().GetOauth2ClientCredentials().GetTokenEndpoint())
+	require.Equal(t, Marker, view.GetMirrorSource().GetHttp().GetOauth2ClientCredentials().GetClientSecret())
+	require.Equal(t, "client", view.GetMirrorSource().GetHttp().GetOauth2ClientCredentials().GetClientId())
+	view.GetMirrorSource().GetHttp().Oauth2ClientCredentials.Scopes[0] = "changed"
+	require.True(t, proto.Equal(original, ledger))
+	var empty *commonpb.LedgerInfo
+	require.Nil(t, Redact(empty))
+}
+
+func TestCloneMasksPasswordlessURLUserinfo(t *testing.T) {
+	t.Parallel()
+	for _, scheme := range []string{"http", "https", "nats"} {
+		t.Run(scheme, func(t *testing.T) {
+			t.Parallel()
+			raw := scheme + "://token-canary@source.example:8080/prefix?region=eu&access_token=query-canary"
+			ledger := &commonpb.LedgerInfo{MirrorSource: &commonpb.MirrorSourceConfig{
+				Type: &commonpb.MirrorSourceConfig_Http{Http: &commonpb.HttpMirrorSourceConfig{
+					BaseUrl:                 raw,
+					Oauth2ClientCredentials: &commonpb.OAuth2ClientCredentials{ClientId: "client", TokenEndpoint: raw},
+				}},
+			}}
+			original := proto.Clone(ledger)
+			view := Redact(ledger)
+			want := scheme + "://xxxxx@source.example:8080/prefix?access_token=xxxxx&region=eu"
+			require.Equal(t, want, view.GetMirrorSource().GetHttp().GetBaseUrl())
+			require.Equal(t, want, view.GetMirrorSource().GetHttp().GetOauth2ClientCredentials().GetTokenEndpoint())
+			require.Equal(t, "client", view.GetMirrorSource().GetHttp().GetOauth2ClientCredentials().GetClientId())
+			for _, marshal := range []func(proto.Message) ([]byte, error){proto.Marshal, protojson.Marshal} {
+				data, err := marshal(view)
+				require.NoError(t, err)
+				require.NotContains(t, string(data), "canary")
+			}
+			require.True(t, proto.Equal(original, ledger))
+		})
+	}
 }

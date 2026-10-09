@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/formancehq/ledger/v3/internal/pkg/sensitive"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
@@ -31,5 +32,8 @@ func (s *Server) handleListAllLedgers(w http.ResponseWriter, r *http.Request) {
 	slices.SortFunc(ledgers, func(a, b *commonpb.LedgerInfo) int { return strings.Compare(name(a), name(b)) })
 
 	ledgers, links := pageSorted(page, ledgers, name)
+	for i, ledger := range ledgers {
+		ledgers[i] = sensitive.Redact(ledger)
+	}
 	writePageOK(w, r, ledgers, links)
 }

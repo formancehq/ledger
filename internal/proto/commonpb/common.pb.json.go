@@ -10,8 +10,6 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/formancehq/go-libs/v5/pkg/types/time"
-
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 )
 
@@ -679,70 +677,6 @@ func (x *PreparedQueryCursor) jsonValue() (any, error) {
 		TransactionData: x.GetTransactionData(),
 		LogData:         x.GetLogData(),
 	}, nil
-}
-
-// MarshalJSON implements json.Marshaler for LedgerInfo.
-func (x *LedgerInfo) MarshalJSON() ([]byte, error) {
-	type Aux struct {
-		Name                   string        `json:"name,omitempty"`
-		CreatedAt              *time.Time    `json:"createdAt,omitempty"`
-		DeletedAt              *time.Time    `json:"deletedAt,omitempty"`
-		MetadataSchema         json.RawValue `json:"metadataSchema,omitempty"`
-		Mode                   string        `json:"mode,omitempty"`
-		MirrorSource           json.RawValue `json:"mirrorSource,omitempty"`
-		MirrorSyncProgress     json.RawValue `json:"mirrorSyncProgress,omitempty"`
-		AccountTypes           json.RawValue `json:"accountTypes,omitempty"`
-		DefaultEnforcementMode string        `json:"defaultEnforcementMode,omitempty"`
-		Metadata               json.RawValue `json:"metadata,omitempty"`
-	}
-
-	aux := Aux{
-		Name:                   x.GetName(),
-		MetadataSchema:         protoFieldJSON(x.GetMetadataSchema()),
-		MirrorSource:           protoFieldJSON(x.GetMirrorSource()),
-		MirrorSyncProgress:     protoFieldJSON(x.GetMirrorSyncProgress()),
-		DefaultEnforcementMode: x.GetDefaultEnforcementMode().String(),
-	}
-
-	if x.GetMode() != LedgerMode_LEDGER_MODE_NORMAL {
-		aux.Mode = x.GetMode().String()
-	}
-
-	if x.GetCreatedAt() != nil {
-		t := x.GetCreatedAt().AsTime()
-		aux.CreatedAt = &t
-	}
-
-	if x.GetDeletedAt() != nil {
-		t := x.GetDeletedAt().AsTime()
-		aux.DeletedAt = &t
-	}
-
-	if len(x.GetAccountTypes()) > 0 {
-		// Use protojson for the map of proto types to preserve camelCase
-		m := make(map[string]json.RawValue, len(x.GetAccountTypes()))
-		for k, v := range x.GetAccountTypes() {
-			m[k] = protoFieldJSON(v)
-		}
-
-		b, err := json.Marshal(m)
-		if err != nil {
-			return nil, err
-		}
-
-		aux.AccountTypes = b
-	}
-
-	if len(x.GetMetadata()) > 0 {
-		b, err := json.Marshal(MetadataToAnyMap(x.GetMetadata()))
-		if err != nil {
-			return nil, err
-		}
-
-		aux.Metadata = b
-	}
-
-	return json.Marshal(aux)
 }
 
 // MarshalJSON implements json.Marshaler for NumscriptInfo.

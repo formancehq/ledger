@@ -13127,16 +13127,12 @@ var (
 	//
 	// optional bool ledger_log_is_history = 50125;
 	E_LedgerLogIsHistory = &file_common_proto_extTypes[3]
-	// sensitive marks fields that must not appear verbatim in a detached public
-	// projection. Strings are replaced with a marker; other field kinds are cleared.
+	// Sensitive projections reuse the detached public-view contract from EN-1632.
+	// Strings are masked; other field kinds are cleared. Never use for persistence.
 	//
 	// optional bool sensitive = 50126;
 	E_Sensitive = &file_common_proto_extTypes[4]
-	// sensitive_url marks string fields whose value is a URL or DSN that may embed
-	// credentials in the userinfo component or recognised credential query parameters.
-	// The projection replaces credentials with "xxxxx" while preserving the host,
-	// port, path and non-credential query parameters. Falls back to Marker when the
-	// value cannot be parsed as a URL.
+	// Mask credentials in URL or PostgreSQL keyword/value connection strings.
 	//
 	// optional bool sensitive_url = 50127;
 	E_SensitiveUrl = &file_common_proto_extTypes[5]
@@ -13689,14 +13685,14 @@ const file_common_proto_rawDesc = "" +
 	"\vreplacement\x18\x02 \x01(\tR\vreplacement\x12\x12\n" +
 	"\x04type\x18\x03 \x01(\tR\x04type\"\f\n" +
 	"\n" +
-	"DropAction\"\x90\x01\n" +
-	"\x16HttpMirrorSourceConfig\x12\x19\n" +
-	"\bbase_url\x18\x01 \x01(\tR\abaseUrl\x12[\n" +
-	"\x19oauth2_client_credentials\x18\x02 \x01(\v2\x1f.common.OAuth2ClientCredentialsR\x17oauth2ClientCredentials\"\xa0\x01\n" +
+	"DropAction\"\x96\x01\n" +
+	"\x16HttpMirrorSourceConfig\x12\x1f\n" +
+	"\bbase_url\x18\x01 \x01(\tB\x04\xf8\xbc\x18\x01R\abaseUrl\x12[\n" +
+	"\x19oauth2_client_credentials\x18\x02 \x01(\v2\x1f.common.OAuth2ClientCredentialsR\x17oauth2ClientCredentials\"\xa6\x01\n" +
 	"\x17OAuth2ClientCredentials\x12\x1b\n" +
 	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12)\n" +
-	"\rclient_secret\x18\x02 \x01(\tB\x04\xf0\xbc\x18\x01R\fclientSecret\x12%\n" +
-	"\x0etoken_endpoint\x18\x03 \x01(\tR\rtokenEndpoint\x12\x16\n" +
+	"\rclient_secret\x18\x02 \x01(\tB\x04\xf0\xbc\x18\x01R\fclientSecret\x12+\n" +
+	"\x0etoken_endpoint\x18\x03 \x01(\tB\x04\xf8\xbc\x18\x01R\rtokenEndpoint\x12\x16\n" +
 	"\x06scopes\x18\x04 \x03(\tR\x06scopes\"r\n" +
 	"\x1aPostgresMirrorSourceConfig\x12\x16\n" +
 	"\x03dsn\x18\x01 \x01(\tB\x04\xf8\xbc\x18\x01R\x03dsn\x12<\n" +
