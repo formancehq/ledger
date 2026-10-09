@@ -7,10 +7,12 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/oracle"
+	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
 // modelLedgerForInfo builds a ledger exercising every field ledgerInfoMatches
@@ -278,4 +280,33 @@ func TestLedgerListingMatchesNeedsOneBase(t *testing.T) {
 	require.True(t, ledgerWindowMatches(before, names, "", 1, false, "A"), "the old fleet still holds B past A")
 	require.False(t, ledgerListingMatches(before, names, served, "", 1, false, "A"), "the old state's A has no metadata")
 	require.False(t, ledgerListingMatches(after, names, served, "", 1, false, "A"), "the new fleet has nothing past A")
+}
+
+// ListIndexes reads the registry from an iterator opened first but checks each
+// owner's liveness later, so a ledger deleted mid-listing may contribute
+// nothing; a ledger that cannot have been deleted must still contribute its
+// whole set.
+func TestIndexListingMatchesAVanishedLedger(t *testing.T) {
+	t.Parallel()
+
+	created := oracle.NewGlobalState().Apply(oracle.Bulk{Requests: []*servicepb.Request{
+		{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{Name: "A"}}},
+		{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{Name: "B"}}},
+	}})
+	require.True(t, created.OK, created.Reason)
+	before := created.State
+
+	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k0")
+	indexB := oracletest.CreateIndexReq(id)
+	indexB.GetCreateIndex().Ledger = "B"
+	declareB := oracletest.SetFieldTypeReq(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k0", commonpb.MetadataType_METADATA_TYPE_STRING)
+	declareB.GetSetMetadataFieldType().Ledger = "B"
+	withIndex := before.Apply(oracle.Bulk{Requests: []*servicepb.Request{declareB, indexB}})
+	require.True(t, withIndex.OK, withIndex.Reason)
+
+	// The listing served nothing for B: its rows were checked after B went away.
+	served := map[string]map[string]bool{}
+
+	require.False(t, indexListingMatches(withIndex.State, served, nil), "B cannot have vanished: its set is owed")
+	require.True(t, indexListingMatches(withIndex.State, served, map[string]bool{"B": true}), "B deleted mid-listing contributes nothing")
 }

@@ -293,22 +293,10 @@ func runIndexListFleet(ctx context.Context, client servicepb.BucketServiceClient
 		return
 	}
 
+	mayVanish := c.ledgersDeletedInSomeBase(maxTicket)
+
 	if !c.matchesModel(maxTicket, "INDEXLISTALL", func(base oracle.GlobalState) bool {
-		live := base.LiveLedgers()
-		for _, ledger := range live {
-			if !indexSetEqual(base.Ledger(ledger), byLedger[ledger]) {
-				return false
-			}
-		}
-
-		// A ledger the base does not hold live must contribute nothing.
-		for owner := range byLedger {
-			if owner != "" && !slices.Contains(live, owner) {
-				return false
-			}
-		}
-
-		return true
+		return indexListingMatches(base, byLedger, mayVanish)
 	}) {
 		assert.Unreachable("singleton_driver_model: bucket-wide index listing outside model", internal.Details{
 			"ledgers": len(byLedger),
@@ -578,4 +566,62 @@ func joinSortedKeys(set map[string]bool) string {
 	sort.Strings(out)
 
 	return strings.Join(out, ",")
+}
+
+// indexListingMatches reports whether base explains a fleet-wide listing. The
+// handler streams the registry from an iterator opened at the start but checks
+// each owning ledger's liveness later, against the live store: a ledger live in
+// base may have been deleted by the time its rows were checked, so a ledger in
+// mayVanish may contribute nothing instead of base's whole set.
+//
+// TODO: this tolerates a server torn read. Once ListIndexes reads the registry
+// and ledger liveness from one snapshot, drop mayVanish so a listing must match
+// a single base.
+func indexListingMatches(base oracle.GlobalState, byLedger map[string]map[string]bool, mayVanish map[string]bool) bool {
+	live := base.LiveLedgers()
+	for _, ledger := range live {
+		if len(byLedger[ledger]) == 0 && mayVanish[ledger] {
+			continue
+		}
+
+		if !indexSetEqual(base.Ledger(ledger), byLedger[ledger]) {
+			return false
+		}
+	}
+
+	// A ledger the base does not hold live must contribute nothing.
+	for owner := range byLedger {
+		if owner != "" && !slices.Contains(live, owner) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// ledgersDeletedInSomeBase names the ledgers live in some candidate base at
+// maxTicket and not in another. Acquires c.mu.
+func (c *Checker) ledgersDeletedInSomeBase(maxTicket uint64) map[string]bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	bases := 0
+	liveIn := map[string]int{}
+	c.candidateBases(maxTicket, func(base oracle.GlobalState) bool {
+		bases++
+		for _, ledger := range base.LiveLedgers() {
+			liveIn[ledger]++
+		}
+
+		return false
+	})
+
+	out := map[string]bool{}
+	for ledger, n := range liveIn {
+		if n < bases {
+			out[ledger] = true
+		}
+	}
+
+	return out
 }
