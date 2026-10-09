@@ -41,7 +41,7 @@ func compileScript(entry *lruEntry, vars map[string]string) (out *CompiledScript
 
 	encodedVars, encErr := compiled.varsEncoder.Encode(vars)
 	if encErr != nil {
-		return nil, &domain.ErrNumscriptCompile{Detail: encErr.Error()}
+		return nil, mapCompilerError(encErr)
 	}
 
 	return &CompiledScript{
@@ -186,37 +186,58 @@ func convertVMError(err error) domain.SerializableError {
 		}
 	}
 
-	if isScriptExecutionError(err) {
-		return &domain.ErrNumscriptExecution{Detail: err.Error()}
-	}
-
 	if d, ok := errors.AsType[domain.SerializableError](err); ok {
 		return d
+	}
+	if mapped := mapVMError(err); mapped != nil {
+		return mapped
 	}
 
 	return &domain.ErrNumscriptRuntime{Detail: err.Error()}
 }
 
-// isScriptExecutionError reports whether err is a VM failure caused by the
-// script, its vars, or the balances and metadata it read.
-func isScriptExecutionError(err error) bool {
-	return isErrorType[numscriptlib.VmNegativeAmountError](err) ||
-		isErrorType[numscriptlib.VmNegativeBalanceError](err) ||
-		isErrorType[numscriptlib.VmAssetMismatchError](err) ||
-		isErrorType[numscriptlib.VmInvalidAllotmentSum](err) ||
-		isErrorType[numscriptlib.VmNegativePortionError](err) ||
-		isErrorType[numscriptlib.VmDivideByZeroError](err) ||
-		isErrorType[numscriptlib.VmInvalidAccountName](err) ||
-		isErrorType[numscriptlib.VmInvalidColor](err) ||
-		isErrorType[numscriptlib.VmInvalidScope](err) ||
-		isErrorType[numscriptlib.VmCannotCastScopedAccountToString](err) ||
-		isErrorType[numscriptlib.VmInvalidUncappedSource](err) ||
-		isErrorType[numscriptlib.VmMetadataNotFoundError](err) ||
-		isErrorType[numscriptlib.VmBadMetaValueError](err)
-}
-
-func isErrorType[T error](err error) bool {
-	_, ok := errors.AsType[T](err)
-
-	return ok
+func mapVMError(err error) domain.SerializableError {
+	makeError := func(code string, facts map[string]string) domain.SerializableError {
+		return &domain.ErrNumscriptExecution{Detail: err.Error(), Code: code, Facts: facts}
+	}
+	if e, ok := errors.AsType[numscriptlib.VmNegativeAmountError](err); ok {
+		return makeError("NUMSCRIPT_NEGATIVE_AMOUNT", map[string]string{"amount": e.Amount.String()})
+	}
+	if e, ok := errors.AsType[numscriptlib.VmNegativeBalanceError](err); ok {
+		return makeError("NUMSCRIPT_NEGATIVE_BALANCE", map[string]string{"account": e.Account, "amount": e.Amount.String()})
+	}
+	if e, ok := errors.AsType[numscriptlib.VmAssetMismatchError](err); ok {
+		return makeError("NUMSCRIPT_ASSET_MISMATCH", map[string]string{"expected": e.Expected, "got": e.Got})
+	}
+	if e, ok := errors.AsType[numscriptlib.VmInvalidAllotmentSum](err); ok {
+		return makeError("NUMSCRIPT_INVALID_ALLOTMENT_SUM", map[string]string{"actualSum": e.ActualSum.String()})
+	}
+	if e, ok := errors.AsType[numscriptlib.VmNegativePortionError](err); ok {
+		return makeError("NUMSCRIPT_NEGATIVE_PORTION", map[string]string{"portion": e.Portion.String()})
+	}
+	if e, ok := errors.AsType[numscriptlib.VmDivideByZeroError](err); ok {
+		return makeError("NUMSCRIPT_DIVIDE_BY_ZERO", map[string]string{"numerator": e.Numerator.String()})
+	}
+	if e, ok := errors.AsType[numscriptlib.VmInvalidAccountName](err); ok {
+		return makeError("NUMSCRIPT_INVALID_ACCOUNT_NAME", map[string]string{"name": e.Name})
+	}
+	if e, ok := errors.AsType[numscriptlib.VmInvalidColor](err); ok {
+		return makeError("NUMSCRIPT_INVALID_COLOR", map[string]string{"color": e.Color})
+	}
+	if e, ok := errors.AsType[numscriptlib.VmInvalidScope](err); ok {
+		return makeError("NUMSCRIPT_INVALID_SCOPE", map[string]string{"scope": e.Scope})
+	}
+	if e, ok := errors.AsType[numscriptlib.VmCannotCastScopedAccountToString](err); ok {
+		return makeError("NUMSCRIPT_CANNOT_CAST_SCOPED_ACCOUNT", map[string]string{"account": e.Account, "scope": e.Scope})
+	}
+	if e, ok := errors.AsType[numscriptlib.VmInvalidUncappedSource](err); ok {
+		return makeError("NUMSCRIPT_INVALID_UNCAPPED_SOURCE", map[string]string{"account": e.Account})
+	}
+	if e, ok := errors.AsType[numscriptlib.VmMetadataNotFoundError](err); ok {
+		return makeError("NUMSCRIPT_METADATA_NOT_FOUND", map[string]string{"account": e.Account, "key": e.Key})
+	}
+	if e, ok := errors.AsType[numscriptlib.VmBadMetaValueError](err); ok {
+		return makeError("NUMSCRIPT_BAD_META_VALUE", map[string]string{"account": e.Account, "key": e.Key})
+	}
+	return nil
 }

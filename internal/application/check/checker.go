@@ -3785,6 +3785,19 @@ func verifySkippedOrder(
 	}
 
 	reason := skipped.OrderSkipped.GetReason()
+	failure := domain.FailureFacts{
+		Reason: reason,
+		Code:   skipped.OrderSkipped.GetCode(),
+		Facts:  skipped.OrderSkipped.GetFacts(),
+	}
+	if err := domain.ValidateFailureFacts(failure); err != nil {
+		callback(errorEvent(
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+			fmt.Sprintf("log %d records invalid structured skip failure on ledger %q: %v", seq, ledger, err),
+			seq, ledger, "", "",
+		))
+		return
+	}
 
 	if reason == commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED {
 		callback(errorEvent(
@@ -3889,7 +3902,7 @@ func verifySkippedOrder(
 		// or mismatched values are tampering — the LedgerLog projection is
 		// not hash-bound, so the checker is the only guard for these
 		// client-facing fields (invariant #8).
-		ctx := skipped.OrderSkipped.GetContext()
+		ctx := skipped.OrderSkipped.GetFacts()
 
 		if got := ctx["reference"]; got != expected.reference {
 			callback(errorEvent(
@@ -3989,7 +4002,7 @@ func verifySkippedOrder(
 			return
 		}
 
-		ctx := skipped.OrderSkipped.GetContext()
+		ctx := skipped.OrderSkipped.GetFacts()
 		want := strconv.FormatUint(expected.transactionID, 10)
 		if got := ctx["transactionId"]; got != want {
 			callback(errorEvent(
@@ -4039,7 +4052,7 @@ func verifySkippedOrder(
 			return
 		}
 
-		ctx := skipped.OrderSkipped.GetContext()
+		ctx := skipped.OrderSkipped.GetFacts()
 		if got := ctx["key"]; got != expected.metadataKey {
 			callback(errorEvent(
 				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
@@ -4112,7 +4125,7 @@ func verifySkippedOrder(
 			return
 		}
 
-		ctx := skipped.OrderSkipped.GetContext()
+		ctx := skipped.OrderSkipped.GetFacts()
 		if got := ctx["name"]; got != expected.accountTypeName {
 			callback(errorEvent(
 				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
@@ -4325,8 +4338,8 @@ type expectedIdempotency struct {
 	expiresAt    uint64
 	failure      bool
 	reason       commonpb.ErrorReason
-	message      string
-	metadata     map[string]string
+	code         string
+	facts        map[string]string
 	firstLog     uint64
 	logCount     uint32
 }
@@ -4354,8 +4367,8 @@ func expectedIdempotencyOutcome(entry *auditpb.AuditEntry, items []*auditpb.Audi
 	if f := value.GetFailure(); f != nil {
 		exp.failure = true
 		exp.reason = f.GetReason()
-		exp.message = f.GetMessage()
-		exp.metadata = f.GetMetadata()
+		exp.code = f.GetCode()
+		exp.facts = f.GetFacts()
 	}
 
 	return exp, true
@@ -4463,10 +4476,10 @@ func idempotencyMismatch(stored *commonpb.IdempotencyKeyValue, exp expectedIdemp
 			return "stored a success outcome where the audit recorded a failure"
 		case f.GetReason() != exp.reason:
 			return fmt.Sprintf("failure reason %s does not match audit %s", f.GetReason(), exp.reason)
-		case f.GetMessage() != exp.message:
-			return "failure message does not match the audit"
-		case !metadataEqual(f.GetMetadata(), exp.metadata):
-			return "failure metadata does not match the audit"
+		case f.GetCode() != exp.code:
+			return "failure code does not match the audit"
+		case !metadataEqual(f.GetFacts(), exp.facts):
+			return "failure facts do not match the audit"
 		default:
 			return ""
 		}

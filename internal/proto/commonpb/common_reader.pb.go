@@ -5926,7 +5926,8 @@ func NewLedgerLogPayloadListReader(s []*LedgerLogPayload) LedgerLogPayloadListRe
 // Call Mutate() to obtain a mutable clone.
 type OrderSkippedLogReader interface {
 	GetReason() ErrorReason
-	GetContext() OrderSkippedLog_ContextMapReader
+	GetCode() string
+	GetFacts() OrderSkippedLog_FactsMapReader
 	Mutate() *OrderSkippedLog
 }
 
@@ -5936,8 +5937,12 @@ func (r *orderSkippedLogReadonly) GetReason() ErrorReason {
 	return (*OrderSkippedLog)(r).GetReason()
 }
 
-func (r *orderSkippedLogReadonly) GetContext() OrderSkippedLog_ContextMapReader {
-	return orderSkippedLog_contextMapReadonly((*OrderSkippedLog)(r).GetContext())
+func (r *orderSkippedLogReadonly) GetCode() string {
+	return (*OrderSkippedLog)(r).GetCode()
+}
+
+func (r *orderSkippedLogReadonly) GetFacts() OrderSkippedLog_FactsMapReader {
+	return orderSkippedLog_factsMapReadonly((*OrderSkippedLog)(r).GetFacts())
 }
 
 func (r *orderSkippedLogReadonly) Mutate() *OrderSkippedLog {
@@ -5994,23 +5999,23 @@ func NewOrderSkippedLogListReader(s []*OrderSkippedLog) OrderSkippedLogListReade
 	return orderSkippedLogListReadonly(s)
 }
 
-// OrderSkippedLog_ContextMapReader provides read-only access to OrderSkippedLog.Context.
-type OrderSkippedLog_ContextMapReader interface {
+// OrderSkippedLog_FactsMapReader provides read-only access to OrderSkippedLog.Facts.
+type OrderSkippedLog_FactsMapReader interface {
 	Len() int
 	Get(k string) (string, bool)
 	Range(yield func(string, string) bool)
 }
 
-type orderSkippedLog_contextMapReadonly map[string]string
+type orderSkippedLog_factsMapReadonly map[string]string
 
-func (m orderSkippedLog_contextMapReadonly) Len() int { return len(m) }
+func (m orderSkippedLog_factsMapReadonly) Len() int { return len(m) }
 
-func (m orderSkippedLog_contextMapReadonly) Get(k string) (string, bool) {
+func (m orderSkippedLog_factsMapReadonly) Get(k string) (string, bool) {
 	v, ok := m[k]
 	return v, ok
 }
 
-func (m orderSkippedLog_contextMapReadonly) Range(yield func(string, string) bool) {
+func (m orderSkippedLog_factsMapReadonly) Range(yield func(string, string) bool) {
 	for k, v := range m {
 		if !yield(k, v) {
 			return
@@ -9283,8 +9288,8 @@ func NewIdempotencyKeyValueListReader(s []*IdempotencyKeyValue) IdempotencyKeyVa
 // Call Mutate() to obtain a mutable clone.
 type IdempotencyFailureReader interface {
 	GetReason() ErrorReason
-	GetMessage() string
-	GetMetadata() IdempotencyFailure_MetadataMapReader
+	GetCode() string
+	GetFacts() IdempotencyFailure_FactsMapReader
 	Mutate() *IdempotencyFailure
 }
 
@@ -9294,12 +9299,12 @@ func (r *idempotencyFailureReadonly) GetReason() ErrorReason {
 	return (*IdempotencyFailure)(r).GetReason()
 }
 
-func (r *idempotencyFailureReadonly) GetMessage() string {
-	return (*IdempotencyFailure)(r).GetMessage()
+func (r *idempotencyFailureReadonly) GetCode() string {
+	return (*IdempotencyFailure)(r).GetCode()
 }
 
-func (r *idempotencyFailureReadonly) GetMetadata() IdempotencyFailure_MetadataMapReader {
-	return idempotencyFailure_metadataMapReadonly((*IdempotencyFailure)(r).GetMetadata())
+func (r *idempotencyFailureReadonly) GetFacts() IdempotencyFailure_FactsMapReader {
+	return idempotencyFailure_factsMapReadonly((*IdempotencyFailure)(r).GetFacts())
 }
 
 func (r *idempotencyFailureReadonly) Mutate() *IdempotencyFailure {
@@ -9356,23 +9361,23 @@ func NewIdempotencyFailureListReader(s []*IdempotencyFailure) IdempotencyFailure
 	return idempotencyFailureListReadonly(s)
 }
 
-// IdempotencyFailure_MetadataMapReader provides read-only access to IdempotencyFailure.Metadata.
-type IdempotencyFailure_MetadataMapReader interface {
+// IdempotencyFailure_FactsMapReader provides read-only access to IdempotencyFailure.Facts.
+type IdempotencyFailure_FactsMapReader interface {
 	Len() int
 	Get(k string) (string, bool)
 	Range(yield func(string, string) bool)
 }
 
-type idempotencyFailure_metadataMapReadonly map[string]string
+type idempotencyFailure_factsMapReadonly map[string]string
 
-func (m idempotencyFailure_metadataMapReadonly) Len() int { return len(m) }
+func (m idempotencyFailure_factsMapReadonly) Len() int { return len(m) }
 
-func (m idempotencyFailure_metadataMapReadonly) Get(k string) (string, bool) {
+func (m idempotencyFailure_factsMapReadonly) Get(k string) (string, bool) {
 	v, ok := m[k]
 	return v, ok
 }
 
-func (m idempotencyFailure_metadataMapReadonly) Range(yield func(string, string) bool) {
+func (m idempotencyFailure_factsMapReadonly) Range(yield func(string, string) bool) {
 	for k, v := range m {
 		if !yield(k, v) {
 			return

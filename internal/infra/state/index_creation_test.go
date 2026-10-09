@@ -76,7 +76,7 @@ func TestCreateIndex_DuplicateBatchRollsBack(t *testing.T) {
 	audit := listAuditEntries(t, store, 0)
 	failure := audit[len(audit)-1].GetFailure()
 	require.Equal(t, domain.ErrReasonIndexAlreadyExists, domain.ReasonString(failure.GetReason()))
-	require.Equal(t, map[string]string{"index": indexes.Canonical(id)}, failure.GetContext())
+	require.Equal(t, map[string]string{"index": indexes.Canonical(id)}, failure.GetFacts())
 
 	// A new creation proves the aborted write did not survive in the FSM.
 	result, err = machine.ApplyEntries(t.Context(), store, makeEntry(t, 3, indexProposal(3, ledger, id, indexCreationOrder(ledger, id))))

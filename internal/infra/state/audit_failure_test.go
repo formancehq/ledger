@@ -60,11 +60,9 @@ func TestIdempotencyFailureMessageMatchesAudit(t *testing.T) {
 			},
 		},
 		{
-			// Metadata() is nil here, the only shape that exercises the
-			// nil-vs-empty asymmetry: buildAuditFailure emits a non-nil empty
-			// Context while recordIdempotencyFailure stores nil.
+			// Metadata() is nil here, so both stored fact maps are empty.
 			name: "nil metadata",
-			err:  domain.NewValidationSentinel("EN-1772 fixture: value must not be empty"),
+			err:  domain.NewValidationSentinel("TARGET_REQUIRED", "EN-1772 fixture: value must not be empty"),
 		},
 		{
 			name: "numscript execution error",
@@ -639,7 +637,7 @@ func auditFailureCases() []auditFailureCase {
 			name:        "DependencyDiscoveryFailedDescribableCause",
 			err:         &domain.ErrDependencyDiscoveryFailed{Cause: &domain.ErrLedgerNotFound{Name: "absent-ledger"}},
 			wantReason:  domain.ErrReasonLedgerNotFound,
-			wantContext: map[string]string{"details": "numscript dependency discovery failed: ledger does not exist: absent-ledger"},
+			wantContext: map[string]string{"name": "absent-ledger"},
 		},
 		{
 			name:        "FilterCompilation",
@@ -791,6 +789,7 @@ func auditFailureCases() []auditFailureCase {
 			name: "ReplayedFailure",
 			err: &domain.ReplayedFailure{
 				ErrReason: domain.ErrReasonTransactionAlreadyReverted,
+				Code:      domain.ErrReasonTransactionAlreadyReverted,
 				Msg:       "transaction 91 is already reverted",
 				Meta:      map[string]string{"transactionId": "91"},
 			},
@@ -996,16 +995,27 @@ func TestBuildAuditFailure(t *testing.T) {
 			failure := buildAuditFailure(tc.err)
 
 			require.Equal(t, tc.wantReason, domain.ReasonString(failure.GetReason()))
-			require.Equal(t, tc.err.Error(), failure.GetMessage(),
-				"the error message must reach the hash-chained AuditFailure unmodified")
-			require.Equal(t, tc.wantContext, failure.GetContext())
+			require.NotEmpty(t, failure.GetCode())
+			wantFacts := make(map[string]string, len(tc.wantContext))
+			for key, value := range tc.wantContext {
+				switch key {
+				case "detail", "details", "operation", "reason", "typeName":
+					continue
+				}
+				wantFacts[key] = value
+			}
+			if invalid, ok := tc.err.(*domain.ErrInvalidSkippableReason); ok {
+				wantFacts["providedReason"] = domain.ReasonString(invalid.Provided)
+			}
+			require.Equal(t, wantFacts, failure.GetFacts())
+			require.NoError(t, domain.ValidateFailureFacts(domain.FailureFacts{
+				Reason: failure.GetReason(), Code: failure.GetCode(), Facts: failure.GetFacts(),
+			}))
 
 			// The audit projection and the idempotency projection must agree on
 			// both shared fields for every error type, not just the one exercised
 			// end to end by TestIdempotencyFailureMessageMatchesAudit.
-			reason, message := describeFailure(tc.err)
-			require.Equal(t, reason, failure.GetReason())
-			require.Equal(t, message, failure.GetMessage())
+			require.Equal(t, domain.ReasonCode(tc.err.Reason()), failure.GetReason())
 
 			// A frozen failure replays from the persisted reason alone, so the
 			// kind the type declares must be the kind that reason re-derives.
@@ -1046,7 +1056,7 @@ func TestBuildAuditFailureDoesNotUnwrap(t *testing.T) {
 	failure := buildAuditFailure(&domain.ErrStorageOperation{Operation: "loading volume", Cause: miss})
 
 	require.Equal(t, domain.ErrReasonStorageOperation, domain.ReasonString(failure.GetReason()))
-	require.Equal(t, map[string]string{"operation": "loading volume"}, failure.GetContext(),
+	require.Empty(t, failure.GetFacts(),
 		"the wrap strips the identifying key — this is what EN-1379 prevents")
 
 	// And the supported path avoids exactly that.

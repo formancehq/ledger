@@ -223,11 +223,13 @@ func (x *LedgerLogPayload) MarshalJSONTo(enc *jsontext.Encoder) error {
 // the public reason identifier.
 func (x *OrderSkippedLog) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		Reason  string            `json:"reason"`
-		Context map[string]string `json:"context,omitempty"`
+		Reason string            `json:"reason"`
+		Code   string            `json:"code"`
+		Facts  map[string]string `json:"facts,omitempty"`
 	}{
-		Reason:  strings.TrimPrefix(x.GetReason().String(), "ERROR_REASON_"),
-		Context: x.GetContext(),
+		Reason: strings.TrimPrefix(x.GetReason().String(), "ERROR_REASON_"),
+		Code:   x.GetCode(),
+		Facts:  x.GetFacts(),
 	})
 }
 
@@ -238,8 +240,9 @@ func (x *OrderSkippedLog) MarshalJSON() ([]byte, error) {
 // CreateTransactionPayload skippableReasons decoder.
 func (x *OrderSkippedLog) UnmarshalJSON(data []byte) error {
 	var aux struct {
-		Reason  string            `json:"reason"`
-		Context map[string]string `json:"context"`
+		Reason string            `json:"reason"`
+		Code   string            `json:"code"`
+		Facts  map[string]string `json:"facts"`
 	}
 
 	if err := json.Unmarshal(data, &aux); err != nil {
@@ -255,7 +258,8 @@ func (x *OrderSkippedLog) UnmarshalJSON(data []byte) error {
 		x.Reason = ErrorReason(code)
 	}
 
-	x.Context = aux.Context
+	x.Code = aux.Code
+	x.Facts = aux.Facts
 
 	return nil
 }

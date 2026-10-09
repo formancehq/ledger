@@ -173,7 +173,7 @@ type SerializableError interface {
 }
 
 // PublicErrorDetails selects the optional public presentation owned by an
-// error type. Error() and Metadata() remain the diagnostic and audit identity;
+// error type. Error() and Metadata() can carry transient diagnostics;
 // this helper is only for API responses, never persisted failure projections.
 // The override flag lets adapters preserve their existing outer error text
 // when the type has not opted into a separate public presentation.
@@ -215,6 +215,7 @@ func MetadataOf(err error) map[string]string {
 // re-derives the kind the reason carries in this build.
 type ReplayedFailure struct {
 	ErrReason string
+	Code      string
 	Msg       string
 	Meta      map[string]string
 }
@@ -407,7 +408,8 @@ func NewFilterCompilationError(format string, args ...any) error {
 // instance per failure mode (so errors.Is compares pointer identity) but no
 // per-occurrence metadata.
 type validationSentinel struct {
-	msg string
+	code string
+	msg  string
 }
 
 func (e *validationSentinel) Error() string { return e.msg }
@@ -429,8 +431,8 @@ func (*validationSentinel) Metadata() map[string]string { return nil }
 // Exported so packages outside internal/domain (e.g. integration-config
 // validators in the application layer) can build their own sentinels without
 // piling integration-specific errors into the domain package.
-func NewValidationSentinel(msg string) SerializableError {
-	return &validationSentinel{msg: msg}
+func NewValidationSentinel(code, msg string) SerializableError {
+	return &validationSentinel{code: code, msg: msg}
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -547,19 +549,19 @@ var ErrWritesBlockedClockSkew Describable = errWritesBlockedClockSkew{}
 // the comparison is stable). No per-occurrence metadata — the message is
 // the same every time and the Reason() is shared (ErrReasonValidation).
 var (
-	ErrTargetRequired             = NewValidationSentinel("target is required")
-	ErrMetadataKeyRequired        = NewValidationSentinel("key is required")
-	ErrNumscriptContentRequired   = NewValidationSentinel("numscript content is required")
-	ErrScriptAndReferenceConflict = NewValidationSentinel("cannot specify both script and scriptReference")
-	ErrEmptyTransaction           = NewValidationSentinel("transaction must produce at least one posting")
-	ErrPostingsAndScriptConflict  = NewValidationSentinel("postings cannot be combined with script or scriptReference")
-	ErrScriptRequired             = NewValidationSentinel("numscript: script is required")
+	ErrTargetRequired             = NewValidationSentinel("TARGET_REQUIRED", "target is required")
+	ErrMetadataKeyRequired        = NewValidationSentinel("METADATA_KEY_REQUIRED", "key is required")
+	ErrNumscriptContentRequired   = NewValidationSentinel("NUMSCRIPT_CONTENT_REQUIRED", "numscript content is required")
+	ErrScriptAndReferenceConflict = NewValidationSentinel("SCRIPT_AND_REFERENCE_CONFLICT", "cannot specify both script and scriptReference")
+	ErrEmptyTransaction           = NewValidationSentinel("EMPTY_TRANSACTION", "transaction must produce at least one posting")
+	ErrPostingsAndScriptConflict  = NewValidationSentinel("POSTINGS_AND_SCRIPT_CONFLICT", "postings cannot be combined with script or scriptReference")
+	ErrScriptRequired             = NewValidationSentinel("SCRIPT_REQUIRED", "numscript: script is required")
 	// Numscript identifier sentinels stay local: numscript is a
 	// ledger-internal DSL, not part of the Formance-wide invariants in
 	// github.com/formancehq/invariants.
-	ErrNumscriptNameRequired    = NewValidationSentinel("numscript name is required")
-	ErrNumscriptNameInvalidChar = NewValidationSentinel("numscript name must contain only printable ASCII (0x20–0x7E)")
-	ErrNumscriptNameTooLong     = NewValidationSentinel("numscript name exceeds maximum length of 256 bytes")
+	ErrNumscriptNameRequired    = NewValidationSentinel("NUMSCRIPT_NAME_REQUIRED", "numscript name is required")
+	ErrNumscriptNameInvalidChar = NewValidationSentinel("NUMSCRIPT_NAME_INVALID_CHAR", "numscript name must contain only printable ASCII (0x20–0x7E)")
+	ErrNumscriptNameTooLong     = NewValidationSentinel("NUMSCRIPT_NAME_TOO_LONG", "numscript name exceeds maximum length of 256 bytes")
 	// ErrScopedBalanceUnsupported rejects a Numscript that reads or writes a
 	// scope-qualified balance or metadata. Color IS modelled — Ledger volumes are
 	// keyed by (ledger, account, asset, color), so colored reads/writes resolve
@@ -569,7 +571,7 @@ var (
 	// would let a script spend the same funds once per scope (double-spend).
 	// Rejecting keeps the balance a script sees consistent with the volume the FSM
 	// will mutate.
-	ErrScopedBalanceUnsupported = NewValidationSentinel("numscript: scope-qualified balances/metadata are not supported (ledger models color but not scope)")
+	ErrScopedBalanceUnsupported = NewValidationSentinel("SCOPED_BALANCE_UNSUPPORTED", "numscript: scope-qualified balances/metadata are not supported (ledger models color but not scope)")
 	// ErrNumscriptScalingUnsupported rejects a Numscript whose dependency
 	// resolution hits an asset-scaling source (`… with scaling through …`),
 	// which the resolver does not support. Unlike most resolver failures this is
@@ -580,26 +582,26 @@ var (
 	// instead of forwarding it as a PRELOAD_UNAVAILABLE that no retry could ever
 	// satisfy, even when a prior successful balance()/meta() read set the
 	// read-attempt provenance flag (EN-1557).
-	ErrNumscriptScalingUnsupported = NewValidationSentinel("numscript: asset scaling is not supported")
+	ErrNumscriptScalingUnsupported = NewValidationSentinel("NUMSCRIPT_SCALING_UNSUPPORTED", "numscript: asset scaling is not supported")
 	// Prepared-query identifier sentinels stay local: prepared queries are
 	// a ledger-internal feature (CQRS read-side), not part of the
 	// Formance-wide invariants in github.com/formancehq/invariants.
-	ErrPreparedQueryRequired          = NewValidationSentinel("prepared query payload is required")
-	ErrPreparedQueryNameRequired      = NewValidationSentinel("prepared query name is required")
-	ErrPreparedQueryNameInvalidChar   = NewValidationSentinel("prepared query name must contain only printable ASCII (0x20–0x7E)")
-	ErrPreparedQueryNameTooLong       = NewValidationSentinel("prepared query name exceeds maximum length of 256 bytes")
-	ErrPreparedQueryTargetUnsupported = NewValidationSentinel("prepared query target is not supported (use ACCOUNTS, TRANSACTIONS or LOGS)")
+	ErrPreparedQueryRequired          = NewValidationSentinel("PREPARED_QUERY_REQUIRED", "prepared query payload is required")
+	ErrPreparedQueryNameRequired      = NewValidationSentinel("PREPARED_QUERY_NAME_REQUIRED", "prepared query name is required")
+	ErrPreparedQueryNameInvalidChar   = NewValidationSentinel("PREPARED_QUERY_NAME_INVALID_CHAR", "prepared query name must contain only printable ASCII (0x20–0x7E)")
+	ErrPreparedQueryNameTooLong       = NewValidationSentinel("PREPARED_QUERY_NAME_TOO_LONG", "prepared query name exceeds maximum length of 256 bytes")
+	ErrPreparedQueryTargetUnsupported = NewValidationSentinel("PREPARED_QUERY_TARGET_UNSUPPORTED", "prepared query target is not supported (use ACCOUNTS, TRANSACTIONS or LOGS)")
 	// Signing-key identifier sentinels stay local: request signing is a
 	// ledger-internal feature, not part of the Formance-wide invariants in
 	// github.com/formancehq/invariants.
-	ErrSigningKeyIDRequired    = NewValidationSentinel("signing key id is required")
-	ErrSigningKeyIDInvalidChar = NewValidationSentinel("signing key id must contain only printable ASCII (0x20–0x7E)")
-	ErrSigningKeyIDTooLong     = NewValidationSentinel("signing key id exceeds maximum length of 256 bytes")
+	ErrSigningKeyIDRequired    = NewValidationSentinel("SIGNING_KEY_ID_REQUIRED", "signing key id is required")
+	ErrSigningKeyIDInvalidChar = NewValidationSentinel("SIGNING_KEY_ID_INVALID_CHAR", "signing key id must contain only printable ASCII (0x20–0x7E)")
+	ErrSigningKeyIDTooLong     = NewValidationSentinel("SIGNING_KEY_ID_TOO_LONG", "signing key id exceeds maximum length of 256 bytes")
 	// Color sentinels stay local: color is a ledger-internal posting
 	// dimension label, not part of the Formance-wide invariants in
 	// github.com/formancehq/invariants. See ValidateColor in validation.go.
-	ErrColorInvalid = NewValidationSentinel("color must match ^[A-Z]*$ (uppercase letters only)")
-	ErrColorTooLong = NewValidationSentinel("color exceeds maximum length of 32 bytes")
+	ErrColorInvalid = NewValidationSentinel("COLOR_INVALID", "color must match ^[A-Z]*$ (uppercase letters only)")
+	ErrColorTooLong = NewValidationSentinel("COLOR_TOO_LONG", "color exceeds maximum length of 32 bytes")
 	// ErrLedgerNameRequired moved to validation.go; it wraps the
 	// github.com/formancehq/invariants sentinel.
 )
@@ -737,7 +739,7 @@ func (e *ErrTransactionReferenceNotFound) Metadata() map[string]string {
 
 // ErrTransactionTargetMissing is returned when a TargetTransaction is empty
 // (neither id nor reference set).
-var ErrTransactionTargetMissing = NewValidationSentinel("transaction target requires either id or reference")
+var ErrTransactionTargetMissing = NewValidationSentinel("TRANSACTION_TARGET_MISSING", "transaction target requires either id or reference")
 
 // ErrTransactionAlreadyReverted — attempting to revert an already-reverted transaction.
 type ErrTransactionAlreadyReverted struct {
@@ -1364,13 +1366,23 @@ func (e *ErrNumscriptParse) Metadata() map[string]string {
 // matching the message.
 type ErrNumscriptCompile struct {
 	Detail string
+	Code   string
+	Facts  map[string]string
 }
 
 func (e *ErrNumscriptCompile) Error() string { return "numscript compile error: " + e.Detail }
 func (*ErrNumscriptCompile) Kind() ErrorKind { return KindValidation }
 func (*ErrNumscriptCompile) Reason() string  { return ErrReasonNumscriptCompileError }
 func (e *ErrNumscriptCompile) Metadata() map[string]string {
-	return map[string]string{"details": e.Detail}
+	m := map[string]string{"details": e.Detail}
+	for key, value := range e.Facts {
+		m[key] = value
+	}
+	return m
+}
+func (e *ErrNumscriptCompile) PublicDetails() (string, map[string]string, bool) {
+	message, facts := RenderFailureFacts(FailureFactsOf(e))
+	return message, facts, true
 }
 
 // ErrNumscriptExecution — the script failed on its own terms, during dependency
@@ -1382,13 +1394,21 @@ func (e *ErrNumscriptCompile) Metadata() map[string]string {
 // ErrInsufficientFunds.
 type ErrNumscriptExecution struct {
 	Detail string
+	Code   string
+	Facts  map[string]string
 }
 
 func (e *ErrNumscriptExecution) Error() string { return "numscript execution error: " + e.Detail }
 func (*ErrNumscriptExecution) Kind() ErrorKind { return KindPrecondition }
 func (*ErrNumscriptExecution) Reason() string  { return ErrReasonNumscriptExecutionError }
 func (e *ErrNumscriptExecution) Metadata() map[string]string {
-	return map[string]string{"detail": e.Detail}
+	metadata := map[string]string{"detail": e.Detail}
+	maps.Copy(metadata, e.Facts)
+	return metadata
+}
+func (e *ErrNumscriptExecution) PublicDetails() (string, map[string]string, bool) {
+	message, facts := RenderFailureFacts(FailureFactsOf(e))
+	return message, facts, true
 }
 
 // ErrDependencyDiscoveryFailed is returned when admission cannot discover all
@@ -1429,6 +1449,17 @@ func (e *ErrDependencyDiscoveryFailed) Reason() string {
 }
 func (e *ErrDependencyDiscoveryFailed) Metadata() map[string]string {
 	return map[string]string{"details": e.Error()}
+}
+func (e *ErrDependencyDiscoveryFailed) PublicDetails() (string, map[string]string, bool) {
+	if cause, ok := errors.AsType[*ErrNumscriptExecution](e.Cause); ok {
+		message, metadata, _ := cause.PublicDetails()
+		return "numscript dependency discovery failed: " + message, metadata, true
+	}
+	if cause, ok := errors.AsType[*ErrNumscriptCompile](e.Cause); ok {
+		message, metadata, _ := cause.PublicDetails()
+		return "numscript dependency discovery failed: " + message, metadata, true
+	}
+	return e.Error(), e.Metadata(), false
 }
 
 // ErrBalanceNotPreloaded — a balance the script reads (account, asset, color)
@@ -1768,13 +1799,17 @@ func (e *ErrCheckpointNotFound) Metadata() map[string]string {
 // KindInternal; the message carries the diagnostic detail.
 type ErrNumscriptRuntime struct {
 	Detail string
+	Code   string
+	Facts  map[string]string
 }
 
 func (e *ErrNumscriptRuntime) Error() string { return "numscript runtime error: " + e.Detail }
 func (*ErrNumscriptRuntime) Kind() ErrorKind { return KindInternal }
 func (*ErrNumscriptRuntime) Reason() string  { return ErrReasonNumscriptRuntime }
 func (e *ErrNumscriptRuntime) Metadata() map[string]string {
-	return map[string]string{"detail": e.Detail}
+	metadata := map[string]string{"detail": e.Detail}
+	maps.Copy(metadata, e.Facts)
+	return metadata
 }
 
 // ErrVolumeNotMaterialized — a posting references an (Account, Asset, Color)

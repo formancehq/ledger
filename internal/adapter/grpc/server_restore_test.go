@@ -79,7 +79,7 @@ func TestInvalidCallerAttributionPreventsRestoreFinalization(t *testing.T) {
 		CallerSnapshot: &commonpb.CallerSnapshot{},
 		Outcome: &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{
 			Reason:  commonpb.ErrorReason_ERROR_REASON_VALIDATION,
-			Message: "rejected",
+			Code: "VALIDATION",
 		}},
 	}
 	header, err := state.BuildHashedHeaderPayload(entry)

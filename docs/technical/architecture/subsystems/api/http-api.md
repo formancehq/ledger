@@ -447,7 +447,7 @@ so a layer commits only to what it can actually honour (EN-2081):
 |---|---|---|---|
 | `Classifiable` | `Kind() ErrorKind` | anything that names no business outcome — the gRPC envelope guard, the admission idempotency-key and checkpoint-order guards, the read path's prepared-query argument checks | selects the status code; sends no `ErrorInfo` and no `errorCode` beyond the coarse kind-level one |
 | `Describable` | `Reason() string` | every domain business error | adds the `ErrorInfo` / `errorCode` clients pattern-match on |
-| `SerializableError` | `Metadata() map[string]string` | every error the FSM can emit | is written into the hash-chained `AuditFailure`, frozen into the idempotency projection and replayed |
+| `SerializableError` | `Metadata() map[string]string` | every error the FSM can emit | supplies typed facts to `FailureFactsOf`; validated reason, code, and facts are written into the audit chain and idempotency projection |
 
 The tiers are enforced by the type system rather than by convention. The FSM
 apply path (`internal/domain/processing`, `internal/infra/state`) types its

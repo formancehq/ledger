@@ -55,6 +55,11 @@ all granular-scope authorization behavior is unchanged.
 
 ### Service protocol compatibility (EN-1851)
 
+Revision 29 replaces failure messages stored in audit, idempotency, and
+skipped-order records with reason, subcode, and structured facts. Bulk skip
+responses expose `reason`, `code`, and `facts`; audit reads render messages from
+the stored fields. HTTP clients do not send the gRPC revision.
+
 The v3 gRPC service requires one `ledger-protocol-version` metadata value per
 business RPC, equal to `pkg/grpcprotocol.Version`. Missing,
 invalid, duplicate, or different revisions fail with `FailedPrecondition` before

@@ -560,8 +560,8 @@ func TestProcessOrders_SkipOnReferenceConflict(t *testing.T) {
 	skipped := apply.GetLog().GetData().GetOrderSkipped()
 	require.NotNil(t, skipped, "the log payload must be OrderSkipped, not the failed CreateTransaction")
 	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, skipped.GetReason())
-	require.Equal(t, "test-ledger", skipped.GetContext()["ledger"])
-	require.Equal(t, "ref-x", skipped.GetContext()["reference"])
+	require.Equal(t, "test-ledger", skipped.GetFacts()["ledger"])
+	require.Equal(t, "ref-x", skipped.GetFacts()["reference"])
 
 	// Parent boundary Put must reflect the incremented slot: the skip
 	// consumed log id 42, next slot is 43.

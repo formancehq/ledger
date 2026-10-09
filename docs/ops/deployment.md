@@ -753,7 +753,7 @@ Mixed-binary rolling upgrades are **not supported** across this change. Stop all
 
 ### Upgrading across an FSM error-identity change
 
-`buildAuditFailurePayload` folds a failure's reason, its message and every sorted context key *and value* into the audit hash pre-image. So **any** change to how the FSM identifies an error — its reason, its message text, or its metadata keys and values — makes an old binary and a new binary compute different `AuditEntry.Hash` values for one and the same Raft entry. `HashVersion` identifies the hash *algorithm* only and carries no notion of failure-projection semantics, so nothing lets a node recognise an entry written under an older classification.
+`buildAuditFailurePayload` folds a failure's reason, code, and sorted fact keys and values into the audit hash pre-image. A wording change to a rendered error message does not change the hash. A change to reason, code, or facts can make two binaries compute different `AuditEntry.Hash` values for the same Raft entry. `HashVersion` identifies the hash algorithm only; it does not identify failure-projection semantics. Before revision 29 the hash also included the diagnostic message and context.
 
 This is a standing rule rather than a per-change note. Whenever a release changes an FSM-emitted error's identity:
 
@@ -768,7 +768,7 @@ Changes in this release line that fall under the rule:
 | EN-1536 (`8b24ee535`) | `buildAuditFailure` resolves the outermost `Describable` instead of `errors.As`-unwrapping, and takes `Message` from `d.Error()` — reason, message and context can all shift for a wrapped failure | any wrapped FSM failure |
 | EN-1379 | a preload coverage miss stops being flattened into `ERROR_REASON_STORAGE_OPERATION_FAILED` and surfaces as `ERROR_REASON_COVERAGE_MISS`, with `attribute`, `canonicalHex`, `idHex`, `raftIndex` intact | coverage misses only — themselves admission-contract violations that must never fire (invariant #7), so in a healthy cluster the window is empty |
 
-Making this structurally safe would require a failure-projection semantics version carried alongside `HashVersion`, so old entries keep reproducing their original bytes. That is a deliberate design change, tracked as EN-1661; until it lands, the rule above is the mitigation. See [coverage-gate.md](../technical/architecture/subsystems/fsm/coverage-gate.md#upgrade-note-the-reason-is-hash-bound) for the mechanism in detail.
+Mixed binaries that disagree on the failure-facts schema still require a coordinated restart. Revision 29 removes presentation wording from that schema, reducing the changes that can affect the chain. See [coverage-gate.md](../technical/architecture/subsystems/fsm/coverage-gate.md#upgrade-note-the-reason-is-hash-bound) for the mechanism in detail.
 
 ### Upgrading across an FSM outcome change
 

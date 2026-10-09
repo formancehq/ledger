@@ -309,7 +309,8 @@ func writeBulkResponse(w http.ResponseWriter, r *http.Request, elements []*servi
 					data = OrderSkippedResponse{
 						Skipped: true,
 						Reason:  domain.ReasonString(p.OrderSkipped.GetReason()),
-						Context: p.OrderSkipped.GetContext(),
+						Code:    p.OrderSkipped.GetCode(),
+						Facts:   p.OrderSkipped.GetFacts(),
 					}
 				}
 			}
@@ -426,7 +427,8 @@ type bulkAPIResult struct {
 type OrderSkippedResponse struct {
 	Skipped bool              `json:"skipped"`
 	Reason  string            `json:"reason"`
-	Context map[string]string `json:"context,omitempty"`
+	Code    string            `json:"code"`
+	Facts   map[string]string `json:"facts,omitempty"`
 }
 
 // bulkResponse is the response structure for bulk operations.

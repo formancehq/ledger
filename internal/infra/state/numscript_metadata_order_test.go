@@ -57,7 +57,7 @@ func TestNumscriptMetadataFailureSameAuditOnReplicas(t *testing.T) {
 		require.Len(t, audit, 2)
 		failure := audit[1].GetFailure()
 		require.NotNil(t, failure)
-		require.Equal(t, "a", failure.GetContext()["key"])
+		require.Equal(t, "a", failure.GetFacts()["key"])
 		auditBytes, err := proto.MarshalOptions{Deterministic: true}.Marshal(audit[1])
 		require.NoError(t, err)
 		if firstAudit == nil {
@@ -73,7 +73,11 @@ func TestNumscriptMetadataFailureSameAuditOnReplicas(t *testing.T) {
 		replayed, err := machine.ApplyEntries(ctx, store, makeEntry(t, 3, replay))
 		require.NoError(t, err)
 		require.True(t, replayed.Results[0].Replayed)
-		require.EqualError(t, replayed.Results[0].Error, result.Results[0].Error.Error())
+		var initial domain.SerializableError
+		var frozen domain.SerializableError
+		require.ErrorAs(t, result.Results[0].Error, &initial)
+		require.ErrorAs(t, replayed.Results[0].Error, &frozen)
+		require.Equal(t, domain.FailureFactsOf(initial), domain.FailureFactsOf(frozen))
 		require.Equal(t, firstHash, machine.State.LastAuditHash)
 		require.Equal(t, before, readBusinessProjections(t, store, attrs))
 	}

@@ -183,9 +183,9 @@ func buildAuditFailurePayload(f *auditpb.AuditFailure) []byte {
 	buf := make([]byte, 0, 64)
 
 	buf = appendU32(buf, uint32(f.GetReason()))
-	buf = appendLenString(buf, f.GetMessage())
+	buf = appendLenString(buf, f.GetCode())
 
-	ctx := f.GetContext()
+	ctx := f.GetFacts()
 	keys := make([]string, 0, len(ctx))
 
 	for k := range ctx {

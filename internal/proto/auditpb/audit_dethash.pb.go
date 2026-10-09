@@ -178,15 +178,15 @@ func (m *AuditFailure) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, er
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.Context) > 0 {
+	if len(m.Facts) > 0 {
 		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoAuditpbAuditString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
-		for k := range m.Context {
+		for k := range m.Facts {
 			keys = append(keys, k)
 		}
 		slices.Sort(keys)
 		for _, k := range keys {
-			v := m.Context[k]
+			v := m.Facts[k]
 			baseI := i
 			i -= len(v)
 			copy(dAtA[i:], v)
@@ -206,10 +206,10 @@ func (m *AuditFailure) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, er
 		*keysPtr = keys
 		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoAuditpbAuditString.Put(keysPtr)
 	}
-	if len(m.Message) > 0 {
-		i -= len(m.Message)
-		copy(dAtA[i:], m.Message)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Message)))
+	if len(m.Code) > 0 {
+		i -= len(m.Code)
+		copy(dAtA[i:], m.Code)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Code)))
 		i--
 		dAtA[i] = 0x12
 	}

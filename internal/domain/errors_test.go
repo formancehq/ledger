@@ -238,6 +238,17 @@ func TestErrInsufficientFundsColorMetadata(t *testing.T) {
 	require.False(t, present, "unresolved color must be absent from metadata, not empty")
 }
 
+func TestNumscriptExecutionPublicDetailsExcludeDiagnostic(t *testing.T) {
+	first := &ErrNumscriptExecution{Detail: "wording one", Code: "NUMSCRIPT_NEGATIVE_AMOUNT", Facts: map[string]string{"amount": "-4"}}
+	second := &ErrNumscriptExecution{Detail: "wording two", Code: "NUMSCRIPT_NEGATIVE_AMOUNT", Facts: map[string]string{"amount": "-4"}}
+	firstMessage, firstFacts, _ := PublicErrorDetails(first)
+	secondMessage, secondFacts, _ := PublicErrorDetails(second)
+	require.Equal(t, firstMessage, secondMessage)
+	require.Equal(t, firstFacts, secondFacts)
+	require.NotContains(t, firstMessage, "wording")
+	require.Equal(t, FailureFactsOf(first), FailureFactsOf(second))
+}
+
 func TestWrapCompileError(t *testing.T) {
 	t.Parallel()
 

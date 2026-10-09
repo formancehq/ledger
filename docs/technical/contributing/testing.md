@@ -496,7 +496,7 @@ parameter bindings) are all validated against the model.
 The Apply workload also opts into each supported skippable reason: reference
 conflicts, already-reverted transactions, missing metadata, and account types
 that already exist or are absent. The oracle predicts per-order rollback,
-skipped-log reason/context and IDs, continuation, and whole-batch rollback after
+skipped-log reason/code/facts and IDs, continuation, and whole-batch rollback after
 a later non-skippable failure. Invalid opt-ins must fail admission. Enforcement
 mode, chart, and ledger metadata readback must match the same model snapshot.
 Signing-key lifecycle and signed submissions remain outside this model driver.
