@@ -124,7 +124,7 @@ func TestReferenceConflictSkipUnkeyedControl(t *testing.T) {
 				require.False(t, event.Assertion.Condition)
 				require.Equal(t, "ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT", event.Assertion.Details["skipReason"])
 				require.NotEmpty(t, event.Assertion.Details["idempotencyKey"])
-				require.NotEmpty(t, event.Assertion.Details["skipContext"])
+				require.NotEmpty(t, event.Assertion.Details["skipFacts"])
 				require.NotEmpty(t, event.Assertion.Details["logSequence"])
 			}
 		}
