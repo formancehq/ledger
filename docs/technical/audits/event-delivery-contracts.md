@@ -64,6 +64,19 @@ cursor proposal into stronger acknowledgement than the selected transport
 actually provides. If stronger durability is a desired feature absent from the
 current contract, record the unmet proof as a question.
 
+Startup status is a separate observation from delivery acknowledgement. The
+manager proposes an error for failed construction or emitter startup, unless a
+prior delivery error is still authoritative. It waits for an empty Raft update
+to apply before reading status so accepted delivery and startup errors cannot
+remain hidden behind that read. After a successful start it clears only an
+observed startup error, before the emitter can publish.
+An unchanged retry must not repeatedly propose the same message. A configured
+sink with cursor zero and no error is pending; a delivery error from a prior
+emitter must remain until successful publication. Trace the persisted status,
+read API, CLI and Operator views before calling the sink healthy. A nonzero
+cursor is log-processing progress, not evidence of a `Publish` call: filtered
+or internal logs can advance it alone.
+
 ### Cursor and partial effects
 
 `processLogBatch` scans after its current cursor. Filtered logs can advance the

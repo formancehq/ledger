@@ -1,6 +1,7 @@
 package events
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -52,6 +53,19 @@ func TestManager_StopFencesLaterLeadershipGain(t *testing.T) {
 	require.Empty(t, m.emitters, "a leadership callback after Stop must not recreate event emitters")
 }
 
+func TestManager_LeadershipChangeCancelsStartupProposals(t *testing.T) {
+	t.Parallel()
+	m := &Manager{notifications: signal.NewNotifications()}
+	m.OnLeadershipChange(true)
+	generation, _, _ := m.leadershipSnapshot()
+	ctx, current := m.currentLeaderContext(generation)
+	require.True(t, current)
+	m.OnLeadershipChange(false)
+	require.ErrorIs(t, ctx.Err(), context.Canceled)
+	_, current = m.currentLeaderContext(generation)
+	require.False(t, current)
+}
+
 func TestManager_SupersededLossCannotTearDownCurrentGeneration(t *testing.T) {
 	t.Parallel()
 
@@ -90,7 +104,7 @@ func TestManager_CoalescedLeadershipFlapReplacesPriorGenerationEmitter(t *testin
 		},
 	})
 
-	m := NewManager(store, attrs, nil, builder, logging.Testing(), notifications)
+	m := NewManager(store, attrs, &startupStatusProposer{store: store}, builder, logging.Testing(), notifications)
 	m.Start()
 	t.Cleanup(m.Stop)
 	m.OnLeadershipChange(true)

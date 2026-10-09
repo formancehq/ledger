@@ -9,6 +9,13 @@ between those effects and the CR state that drives the next reconciliation.
 This domain adds scope and evidence requirements to the existing native workflow;
 it adds no runner, product behavior or deployment guarantee.
 
+For EventSink status, follow the Ledger sink-status response through parsing
+and condition publication. A startup or delivery error is `Delivering=False`;
+cursor zero without an error remains `Unknown` until cursor progress exists.
+An empty error by itself does not establish successful delivery.
+Filtered or internal logs can advance the cursor without external delivery;
+`Delivering=True` therefore does not establish a successful publish by itself.
+
 ## Reachability and proof
 
 For each hypothesis, establish all of the following from the audited SHA:

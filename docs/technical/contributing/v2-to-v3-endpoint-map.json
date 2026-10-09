@@ -437,9 +437,11 @@
     },
     "POST /v2/_/exporters": {
       "operationId": "v2CreateExporter",
-      "status": "removed",
-      "v3": [],
-      "notes": "Exporters and pipelines are replaced by event sinks. Add and remove sinks with `ledgerctl` or gRPC; HTTP has no write route.",
+      "status": "replaced",
+      "v3": [
+        "POST /v3/_/events-sinks"
+      ],
+      "notes": "Exporters and pipelines are replaced by instance-wide event sinks. Create a sink with a protobuf JSON SinkConfig; requires ledger:OpsWrite. This is not a ledger-scoped pipeline.",
       "docs": "/modules/ledger/events/configure-sink"
     },
     "GET /v2/_/exporters/{exporterID}": {
@@ -455,14 +457,16 @@
       "operationId": "v2UpdateExporter",
       "status": "removed",
       "v3": [],
-      "notes": "Exporters and pipelines are replaced by event sinks. Add and remove sinks with `ledgerctl` or gRPC; HTTP has no write route.",
+      "notes": "Event sinks have no in-place HTTP update operation. Remove with DELETE /v3/_/events-sinks/{sinkName} and recreate with POST /v3/_/events-sinks using a new configuration; these are separate, non-atomic operations.",
       "docs": "/modules/ledger/events/configure-sink"
     },
     "DELETE /v2/_/exporters/{exporterID}": {
       "operationId": "v2DeleteExporter",
-      "status": "removed",
-      "v3": [],
-      "notes": "Exporters and pipelines are replaced by event sinks. Add and remove sinks with `ledgerctl` or gRPC; HTTP has no write route.",
+      "status": "replaced",
+      "v3": [
+        "DELETE /v3/_/events-sinks/{sinkName}"
+      ],
+      "notes": "Remove the replacement instance-wide sink by name; requires ledger:OpsWrite. A nonempty controllerId is an optional ownership precondition; omission permits unconditional removal.",
       "docs": "/modules/ledger/events/configure-sink"
     },
     "DELETE /v2/_/buckets/{bucket}": {
@@ -488,9 +492,11 @@
     },
     "POST /v2/{ledger}/pipelines": {
       "operationId": "v2CreatePipeline",
-      "status": "removed",
-      "v3": [],
-      "notes": "Exporters and pipelines are replaced by event sinks. Add and remove sinks with `ledgerctl` or gRPC; HTTP has no write route.",
+      "status": "replaced",
+      "v3": [
+        "POST /v3/_/events-sinks"
+      ],
+      "notes": "Exporters and pipelines are replaced by instance-wide event sinks. Create a sink with a protobuf JSON SinkConfig; requires ledger:OpsWrite. This is not a ledger-scoped pipeline.",
       "docs": "/modules/ledger/events/configure-sink"
     },
     "GET /v2/{ledger}/pipelines/{pipelineID}": {
@@ -504,30 +510,32 @@
     },
     "DELETE /v2/{ledger}/pipelines/{pipelineID}": {
       "operationId": "v2DeletePipeline",
-      "status": "removed",
-      "v3": [],
-      "notes": "Exporters and pipelines are replaced by event sinks. Add and remove sinks with `ledgerctl` or gRPC; HTTP has no write route.",
+      "status": "replaced",
+      "v3": [
+        "DELETE /v3/_/events-sinks/{sinkName}"
+      ],
+      "notes": "Remove the replacement instance-wide sink by name; requires ledger:OpsWrite. A nonempty controllerId is an optional ownership precondition; omission permits unconditional removal.",
       "docs": "/modules/ledger/events/configure-sink"
     },
     "POST /v2/{ledger}/pipelines/{pipelineID}/reset": {
       "operationId": "v2ResetPipeline",
       "status": "removed",
       "v3": [],
-      "notes": "Exporters and pipelines are replaced by event sinks. Add and remove sinks with `ledgerctl` or gRPC; HTTP has no write route.",
+      "notes": "Event sinks have no HTTP reset operation. Creation and removal use POST /v3/_/events-sinks and DELETE /v3/_/events-sinks/{sinkName}; they do not preserve the v2 reset semantics.",
       "docs": "/modules/ledger/events/configure-sink"
     },
     "POST /v2/{ledger}/pipelines/{pipelineID}/start": {
       "operationId": "v2StartPipeline",
       "status": "removed",
       "v3": [],
-      "notes": "Exporters and pipelines are replaced by event sinks. Add and remove sinks with `ledgerctl` or gRPC; HTTP has no write route.",
+      "notes": "Event sinks have no HTTP start operation. Creation and removal use POST /v3/_/events-sinks and DELETE /v3/_/events-sinks/{sinkName}; they do not preserve the v2 start semantics.",
       "docs": "/modules/ledger/events/configure-sink"
     },
     "POST /v2/{ledger}/pipelines/{pipelineID}/stop": {
       "operationId": "v2StopPipeline",
       "status": "removed",
       "v3": [],
-      "notes": "Exporters and pipelines are replaced by event sinks. Add and remove sinks with `ledgerctl` or gRPC; HTTP has no write route.",
+      "notes": "Event sinks have no HTTP stop operation. Creation and removal use POST /v3/_/events-sinks and DELETE /v3/_/events-sinks/{sinkName}; they do not preserve the v2 stop semantics.",
       "docs": "/modules/ledger/events/configure-sink"
     }
   }

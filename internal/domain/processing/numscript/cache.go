@@ -1,10 +1,8 @@
 package numscript
 
 import (
-	"bytes"
 	"container/list"
 	"context"
-	"fmt"
 	"sync"
 
 	"github.com/zeebo/xxh3"
@@ -16,7 +14,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
 
-// NumscriptCache stores parsed scripts and decoded, verified VM programs
+// NumscriptCache stores parsed scripts and verified, locally compiled VM programs
 // keyed by the script's content hash. Each side has a bounded LRU. Cache
 // residency changes only the amount of work needed to execute a script, never
 // the business input or the result. Read hits do not reorder the LRU.
@@ -55,12 +53,11 @@ type lruEntry struct {
 }
 
 // compiledProgram is the script-dependent half of a local compile: the VM
-// program, its encoding, and the encoder for an order's variables. It is
+// program and the encoder for an order's variables. It is
 // immutable and shared by all uses of the same parsed script.
 type compiledProgram struct {
 	varsEncoder numscriptlib.VarsEncoder
 	program     numscriptlib.CompiledProgram
-	encoded     []byte
 }
 
 // parsedScript wraps a parsed Numscript program with any parsing errors.
@@ -69,7 +66,7 @@ type parsedScript struct {
 	err     domain.SerializableError
 }
 
-// compiledLruEntry holds one decoded, verified program as a warm VM instance.
+// compiledLruEntry holds one verified local program as a warm VM instance.
 // Every apply of this program reuses the
 // instance: a "dirty" one is always safe — registers are write-before-read
 // (verified), the runstate resets on each exec, and the program is immutable —
@@ -78,12 +75,12 @@ type parsedScript struct {
 // RequestProcessor), which guarantees it.
 //
 // verified records the variable layout checked by the library. Its result is
-// reusable across orders with different values of the same shape. program is
-// the exact local encoding that was decoded and verified; a hit compares bytes
-// so it cannot reuse a VM built from a different encoding.
+// reusable across orders with different values of the same shape. program
+// identifies the exact local compilation used to construct this VM; a cache
+// hit cannot reuse a VM built from another compilation of the same script.
 type compiledLruEntry struct {
 	hash     [16]byte
-	program  []byte
+	program  *compiledProgram
 	vm       *numscriptlib.Vm
 	verified numscriptlib.VerifiedVarsInfo
 }
@@ -91,7 +88,7 @@ type compiledLruEntry struct {
 // verifyVars checks an order's vars against the entry's program: O(1) through
 // the verification record when the shape is one it reports sufficient,
 // otherwise the full static pass against the actual vars, so a failure carries
-// the verifier's own error (a "should not happen", see getOrDecodeCompiled).
+// the verifier's own error (a "should not happen", see getOrCreateVM).
 func (e *compiledLruEntry) verifyVars(vars *numscriptlib.Vars) domain.SerializableError {
 	if e.verified.CheckVars(vars) {
 		return nil
@@ -242,44 +239,33 @@ func (e *lruEntry) compileParsed() (program *compiledProgram, err domain.Seriali
 			return
 		}
 
-		encoded := program.Encode()
 		e.compiled = &compiledProgram{
 			varsEncoder: varsEncoder,
 			program:     program,
-			encoded:     encoded,
 		}
 	})
 
 	return e.compiled, e.compileErr
 }
 
-// getOrDecodeCompiled returns the cached VM for a locally compiled program,
-// decoding and verifying on first use. Verification runs once per encoding;
+// getOrCreateVM returns the cached VM for a locally compiled program,
+// verifying on first use. Verification runs once per compilation;
 // ExecVm may then assume well-formed bytecode.
 //
-// A program that does not decode or verify is rejected and never inserted.
+// A program that does not verify is rejected and never inserted.
 //
-// Entries are keyed by HashScript(text), and a hit also compares the locally
-// encoded program bytes. A mismatch replaces the entry after successful
-// verification. A rejected program leaves the current entry in place. The
-// cache is in-memory, so a binary upgrade starts with it empty.
+// Entries are keyed by HashScript(text), and a hit also compares the local
+// compilation's identity. A mismatch replaces the entry after successful
+// verification. A rejected program leaves the current entry in place.
 //
 // vars is only consulted through the entry's VerifiedVarsInfo: the vars shape
-// is fixed by the program's own variable layout, so a cached artifact is valid
+// is fixed by the program's own variable layout, so a cached VM is valid
 // for every order that carries it. A shape the library does not report
-// sufficient means the artifact and vars were produced by different
+// sufficient means the program and vars were produced by different
 // compilations (a "should not happen") and is re-verified against the actual
 // vars so it fails with the verifier's own error, loudly.
-func (c *NumscriptCache) getOrDecodeCompiled(scriptHash, programBytes []byte, vars *numscriptlib.Vars) (*compiledLruEntry, domain.SerializableError) {
-	if len(scriptHash) != len([16]byte{}) {
-		return nil, &domain.ErrNumscriptRuntime{
-			Detail: fmt.Sprintf("compiled numscript artifact: script hash has %d bytes, want 16", len(scriptHash)),
-		}
-	}
-
-	hash := [16]byte(scriptHash)
-
-	if entry, ok := c.lookupCompiled(hash); ok && bytes.Equal(entry.program, programBytes) {
+func (c *NumscriptCache) getOrCreateVM(hash [16]byte, program *compiledProgram, vars *numscriptlib.Vars) (*compiledLruEntry, domain.SerializableError) {
+	if entry, ok := c.lookupCompiled(hash); ok && entry.program == program {
 		if verifyErr := entry.verifyVars(vars); verifyErr != nil {
 			return nil, verifyErr
 		}
@@ -287,15 +273,8 @@ func (c *NumscriptCache) getOrDecodeCompiled(scriptHash, programBytes []byte, va
 		return entry, nil
 	}
 
-	// Decode and verify outside the lock — the expensive part.
-	program, decErr := numscriptlib.DecodeCompiledProgram(programBytes)
-	if decErr != nil {
-		return nil, &domain.ErrNumscriptRuntime{
-			Detail: "decoding compiled numscript program: " + decErr.Error(),
-		}
-	}
-
-	verified, verifyErr := numscriptlib.VerifyCompiledProgramWithVars(program, vars)
+	// Verify outside the lock — the expensive part.
+	verified, verifyErr := numscriptlib.VerifyCompiledProgramWithVars(program.program, vars)
 	if verifyErr != nil {
 		return nil, &domain.ErrNumscriptRuntime{
 			Detail: "verifying compiled numscript program: " + verifyErr.Error(),
@@ -305,11 +284,11 @@ func (c *NumscriptCache) getOrDecodeCompiled(scriptHash, programBytes []byte, va
 	c.compiledMu.Lock()
 	defer c.compiledMu.Unlock()
 
-	// Another goroutine may have inserted while we decoded: reuse its entry
-	// only for the same bytes, otherwise replace it with the ones just verified.
+	// Another goroutine may have inserted while we verified: reuse its entry
+	// only for this compilation, otherwise replace it with the one just verified.
 	if elem, ok := c.compiledCache[hash]; ok {
 		existing, _ := elem.Value.(*compiledLruEntry)
-		if bytes.Equal(existing.program, programBytes) {
+		if existing.program == program {
 			return existing, nil
 		}
 
@@ -326,10 +305,9 @@ func (c *NumscriptCache) getOrDecodeCompiled(scriptHash, programBytes []byte, va
 	}
 
 	entry := &compiledLruEntry{
-		hash: hash,
-		// Own copy: programBytes belongs to the caller.
-		program:  bytes.Clone(programBytes),
-		vm:       numscriptlib.NewVm(program),
+		hash:     hash,
+		program:  program,
+		vm:       numscriptlib.NewVm(program.program),
 		verified: verified,
 	}
 	c.compiledCache[hash] = c.compiledOrder.PushFront(entry)
@@ -359,7 +337,7 @@ func (c *NumscriptCache) lookupCompiled(scriptHash [16]byte) (*compiledLruEntry,
 func (c *NumscriptCache) InitCacheMetrics(m metric.Meter) error {
 	size, err := m.Int64Gauge(
 		"numscript.cache.size",
-		metric.WithDescription("Number of entries in the Numscript cache, per side (parsed scripts, compiled VM artifacts)"),
+		metric.WithDescription("Number of entries in the Numscript cache, per side (parsed scripts, warm VMs)"),
 	)
 	if err != nil {
 		return err

@@ -1,9 +1,7 @@
 package numscript
 
 import (
-	"bytes"
 	"context"
-	"encoding/binary"
 	"math/big"
 	"runtime"
 	"testing"
@@ -11,8 +9,6 @@ import (
 	"weak"
 
 	"github.com/stretchr/testify/require"
-
-	numscriptlib "github.com/formancehq/numscript"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
@@ -59,58 +55,9 @@ func mustCompile(t *testing.T, entry *lruEntry, vars map[string]string) *Compile
 	return compiled
 }
 
-// withArtifactVersion returns a copy of an encoded program or vars blob with
-// its bytecode version header rewritten. Both blobs share the library's header
-// layout — a 4-byte magic, then major and minor as two little-endian uint16 —
-// which is the one part of the format that has to stay put for any versioning
-// to work at all; nothing past the header is touched.
-func withArtifactVersion(t *testing.T, encoded []byte, version numscriptlib.BytecodeVersion) []byte {
-	t.Helper()
-
-	require.GreaterOrEqual(t, len(encoded), 8)
-
-	patched := bytes.Clone(encoded)
-	binary.LittleEndian.PutUint16(patched[4:], version.Major)
-	binary.LittleEndian.PutUint16(patched[6:], version.Minor)
-
-	return patched
-}
-
-// unreadableBytecodeVersions returns the bytecode versions around the bundled
-// one that it cannot read: another major or a newer minor always, and under an
-// unstable (0.x) bundled version an older minor too.
-func unreadableBytecodeVersions(t *testing.T) map[string]numscriptlib.BytecodeVersion {
-	t.Helper()
-
-	current := numscriptlib.CurrentBytecodeVersion
-	candidates := map[string]numscriptlib.BytecodeVersion{
-		"newer major": {Major: current.Major + 1},
-		"newer minor": {Major: current.Major, Minor: current.Minor + 1},
-	}
-
-	if current.Major > 0 {
-		candidates["older major"] = numscriptlib.BytecodeVersion{Major: current.Major - 1, Minor: current.Minor}
-	}
-
-	if current.Minor > 0 {
-		candidates["older minor"] = numscriptlib.BytecodeVersion{Major: current.Major, Minor: current.Minor - 1}
-	}
-
-	for name, v := range candidates {
-		if current.CanRead(v) {
-			delete(candidates, name)
-		}
-	}
-
-	require.Contains(t, candidates, "newer major")
-	require.Contains(t, candidates, "newer minor")
-
-	return candidates
-}
-
-// TestCompileScript_ArtifactRoundTrips: a compilable script yields an artifact
-// whose program and vars decode and execute.
-func TestCompileScript_ArtifactRoundTrips(t *testing.T) {
+// TestCompileScript_DirectExecution: a compilable script executes
+// directly with the variables bound by admission.
+func TestCompileScript_DirectExecution(t *testing.T) {
 	t.Parallel()
 
 	script := `send [COIN 30] (
@@ -120,11 +67,11 @@ func TestCompileScript_ArtifactRoundTrips(t *testing.T) {
 	compiled := mustCompile(t, mustEntry(t, script), nil)
 
 	hash := HashScript(script)
-	require.Equal(t, hash[:], compiled.ScriptHash)
+	require.Equal(t, hash, compiled.scriptHash)
 
 	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}
 
-	result, err := SafeExecCompiled(NewNumscriptCache(16), compiled.ScriptHash, compiled.Program, compiled.Vars, NewVMStore(source, false))
+	result, err := SafeExecCompiled(NewNumscriptCache(16), compiled, NewVMStore(source, false))
 	require.Nil(t, err)
 	require.Len(t, result.Postings, 1)
 	require.Equal(t, "src", result.Postings[0].Source)
@@ -197,8 +144,8 @@ func TestCompileScript_CompilesOncePerCachedScript(t *testing.T) {
 	require.Same(t, firstProgram, secondProgram)
 	first := mustCompile(t, entry, map[string]string{"amount": "1"})
 	second := mustCompile(t, entry, map[string]string{"amount": "2"})
-	require.Equal(t, first.Program, second.Program)
-	require.NotEqual(t, first.Vars, second.Vars)
+	require.Same(t, first.program, second.program)
+	require.NotEqual(t, first.vars, second.vars)
 
 	scaling := cache.getOrParseEntry(`#![feature("experimental-asset-scaling")]
  send [COIN/2 100] (source = @src with scaling through @swap destination = @dst)`)
@@ -261,7 +208,7 @@ func TestSafeExecFromText_ColdWarmSameOutcome(t *testing.T) {
 	require.Equal(t, "30", warm.Postings[0].Amount.String())
 }
 
-// TestSafeExecCompiled_WarmInstanceReuse: repeated applies of the same artifact
+// TestSafeExecCompiled_WarmInstanceReuse: repeated applies of the same program
 // through one cache run on the entry's single warm VM instance. Reuse must be
 // invisible in results: each run sees only its own vars and store (no state
 // leaks across runs, including from a failed run), and a result handed out
@@ -284,28 +231,32 @@ send $amt (
 
 	second := mustCompile(t, entry, map[string]string{"amt": "COIN 40"})
 
-	// Identical program bytes — the script is compiled once per cache entry —
-	// so both executions resolve to the same apply-side cache entry and the
+	// Both orders share the same compilation and resolve to one cache entry;
 	// later runs execute on the same warm instance as the first.
-	require.Equal(t, first.Program, second.Program)
+	require.Same(t, first.program, second.program)
 
 	cache := NewNumscriptCache(16)
 	store := NewVMStore(mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}, false)
 
-	firstResult, err := SafeExecCompiled(cache, first.ScriptHash, first.Program, first.Vars, store)
+	firstResult, err := SafeExecCompiled(cache, first, store)
 	require.Nil(t, err)
 	require.Len(t, firstResult.Postings, 1)
 	require.Equal(t, int64(30), firstResult.Postings[0].Amount.Int64())
+	warmEntry, ok := cache.lookupCompiled(first.scriptHash)
+	require.True(t, ok)
 
 	// A run that fails normally (missing funds against an empty store) leaves
 	// the instance reusable for the next apply.
-	_, err = SafeExecCompiled(cache, second.ScriptHash, second.Program, second.Vars, NewVMStore(mapValueSource{}, false))
+	_, err = SafeExecCompiled(cache, second, NewVMStore(mapValueSource{}, false))
 	require.NotNil(t, err)
 
-	secondResult, err := SafeExecCompiled(cache, second.ScriptHash, second.Program, second.Vars, store)
+	secondResult, err := SafeExecCompiled(cache, second, store)
 	require.Nil(t, err)
 	require.Len(t, secondResult.Postings, 1)
 	require.Equal(t, int64(40), secondResult.Postings[0].Amount.Int64())
+	reusedEntry, ok := cache.lookupCompiled(second.scriptHash)
+	require.True(t, ok)
+	require.Same(t, warmEntry.vm, reusedEntry.vm)
 
 	// The warm runs above must not have mutated the result handed out first.
 	require.Len(t, firstResult.Postings, 1)
@@ -340,13 +291,13 @@ func TestSafeExecCompiled_PanicLeavesInstanceReusable(t *testing.T) {
 
 	cache := NewNumscriptCache(16)
 
-	_, err := SafeExecCompiled(cache, compiled.ScriptHash, compiled.Program, compiled.Vars, NewVMStore(panicValueSource{}, false))
+	_, err := SafeExecCompiled(cache, compiled, NewVMStore(panicValueSource{}, false))
 	require.NotNil(t, err)
 	require.True(t, IsPanic(err))
 
 	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}
 
-	result, err := SafeExecCompiled(cache, compiled.ScriptHash, compiled.Program, compiled.Vars, NewVMStore(source, false))
+	result, err := SafeExecCompiled(cache, compiled, NewVMStore(source, false))
 	require.Nil(t, err)
 	require.Len(t, result.Postings, 1)
 	require.Equal(t, int64(30), result.Postings[0].Amount.Int64())
@@ -439,13 +390,13 @@ func TestSafeExecCompiled_WarmInstanceReleasesSource(t *testing.T) {
 			alive := func() func() bool {
 				source, alive := tc.source()
 
-				_, err := SafeExecCompiled(cache, compiled.ScriptHash, compiled.Program, compiled.Vars, NewVMStore(source, false))
+				_, err := SafeExecCompiled(cache, compiled, NewVMStore(source, false))
 				tc.check(t, err)
 
 				return alive
 			}()
 
-			hash := [16]byte(compiled.ScriptHash)
+			hash := compiled.scriptHash
 			cache.compiledMu.RLock()
 			_, cached := cache.compiledCache[hash]
 			cache.compiledMu.RUnlock()
@@ -464,139 +415,6 @@ func TestSafeExecCompiled_WarmInstanceReleasesSource(t *testing.T) {
 	}
 }
 
-// TestSafeExecCompiled_ForeignBytecodeVersionRejected covers the local
-// decoder's strict contract. An incompatible program or vars encoding fails
-// loudly and is not cached; FSM apply compiles from text with its own library.
-// A readable older minor of a stable major runs (see the test below).
-func TestSafeExecCompiled_ForeignBytecodeVersionRejected(t *testing.T) {
-	t.Parallel()
-
-	script := `send [COIN 30] (
-  source = @src
-  destination = @dst
-)`
-	compiled := mustCompile(t, mustEntry(t, script), nil)
-
-	program, decErr := numscriptlib.DecodeCompiledProgram(compiled.Program)
-	require.NoError(t, decErr)
-	require.Equal(t, numscriptlib.CurrentBytecodeVersion, program.Version, "a fresh artifact carries the bundled bytecode version")
-
-	const libraryRefusal = "not readable by this build" // the decoder's typed error, surfaced as a decode failure
-
-	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}
-
-	for name, v := range unreadableBytecodeVersions(t) {
-		for _, half := range []string{"program", "vars"} {
-			t.Run(name+" "+half, func(t *testing.T) {
-				t.Parallel()
-
-				programBytes, varsBytes := compiled.Program, compiled.Vars
-				if half == "program" {
-					programBytes = withArtifactVersion(t, programBytes, v)
-				} else {
-					varsBytes = withArtifactVersion(t, varsBytes, v)
-				}
-
-				cache := NewNumscriptCache(16)
-
-				_, err := SafeExecCompiled(cache, compiled.ScriptHash, programBytes, varsBytes, NewVMStore(source, false))
-				require.NotNil(t, err)
-				require.False(t, IsPanic(err))
-
-				var runtimeErr *domain.ErrNumscriptRuntime
-				require.ErrorAs(t, err, &runtimeErr)
-				require.Contains(t, runtimeErr.Detail, "compiled numscript "+half)
-				require.Contains(t, runtimeErr.Detail, libraryRefusal)
-				require.Zero(t, cache.compiledOrder.Len(), "a rejected artifact must not be cached")
-
-				// The rejection leaves the cache fit for the genuine artifact.
-				result, err := SafeExecCompiled(cache, compiled.ScriptHash, compiled.Program, compiled.Vars, NewVMStore(source, false))
-				require.Nil(t, err)
-				require.Len(t, result.Postings, 1)
-			})
-		}
-	}
-}
-
-// TestSafeExecCompiled_UndecodableArtifactIsLoud: bytes the bundled library
-// cannot read at all are an internal error (our own codec wrote them), not a
-// panic, not a client error — for either
-// half of the artifact.
-func TestSafeExecCompiled_UndecodableArtifactIsLoud(t *testing.T) {
-	t.Parallel()
-
-	script := `send [COIN 30] (
-  source = @src
-  destination = @dst
-)`
-	compiled := mustCompile(t, mustEntry(t, script), nil)
-
-	garble := func(encoded []byte) []byte {
-		out := bytes.Clone(encoded)
-		for i := range out {
-			out[i] ^= 0xA5
-		}
-
-		return out
-	}
-
-	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}
-
-	cases := map[string]struct {
-		program, vars []byte
-		detail        string
-	}{
-		"program": {garble(compiled.Program), compiled.Vars, "decoding compiled numscript program"},
-		"vars":    {compiled.Program, garble(compiled.Vars), "decoding compiled numscript vars"},
-	}
-
-	for name, tc := range cases {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			_, err := SafeExecCompiled(NewNumscriptCache(16), compiled.ScriptHash, tc.program, tc.vars, NewVMStore(source, false))
-			require.NotNil(t, err)
-			require.False(t, IsPanic(err))
-
-			var runtimeErr *domain.ErrNumscriptRuntime
-			require.ErrorAs(t, err, &runtimeErr)
-			require.Contains(t, runtimeErr.Detail, tc.detail)
-		})
-	}
-}
-
-// TestSafeExecCompiled_UnverifiableCurrentFormatIsLoud: bytecode in the bundled
-// format that decodes but fails verification is an internal error — our own
-// compiler produced it in this very format, so a malformed program means a
-// compiler or verifier bug (invariant #7). Forged by re-encoding a decoded
-// program with an opcode the VM does not have.
-func TestSafeExecCompiled_UnverifiableCurrentFormatIsLoud(t *testing.T) {
-	t.Parallel()
-
-	script := `send [COIN 30] (
-  source = @src
-  destination = @dst
-)`
-	compiled := mustCompile(t, mustEntry(t, script), nil)
-
-	program, decErr := numscriptlib.DecodeCompiledProgram(compiled.Program)
-	require.NoError(t, decErr)
-	require.NotEmpty(t, program.Instructions)
-
-	program.Instructions[0].Opcode = 0xFF // no such opcode
-	malformed := program.Encode()         // re-encoded in the bundled format
-
-	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}
-
-	_, err := SafeExecCompiled(NewNumscriptCache(16), compiled.ScriptHash, malformed, compiled.Vars, NewVMStore(source, false))
-	require.NotNil(t, err)
-	require.False(t, IsPanic(err))
-
-	var runtimeErr *domain.ErrNumscriptRuntime
-	require.ErrorAs(t, err, &runtimeErr)
-	require.Contains(t, runtimeErr.Detail, "verifying compiled numscript program")
-}
-
 // TestSafeExecCompiled_MissingFundsClassification: the VM's missing-funds error
 // maps to ErrInsufficientFunds with ColorKnown unset.
 func TestSafeExecCompiled_MissingFundsClassification(t *testing.T) {
@@ -610,7 +428,7 @@ func TestSafeExecCompiled_MissingFundsClassification(t *testing.T) {
 
 	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(10)}}
 
-	_, err := SafeExecCompiled(NewNumscriptCache(16), compiled.ScriptHash, compiled.Program, compiled.Vars, NewVMStore(source, false))
+	_, err := SafeExecCompiled(NewNumscriptCache(16), compiled, NewVMStore(source, false))
 	require.NotNil(t, err)
 
 	var insufficientFunds *domain.ErrInsufficientFunds
@@ -620,114 +438,68 @@ func TestSafeExecCompiled_MissingFundsClassification(t *testing.T) {
 	require.Equal(t, "10", insufficientFunds.Balance)
 }
 
-// TestSafeExecCompiled_WarmHitForeignVersionRejected: the compiled cache is
-// keyed by the script hash, so a warm entry must not serve an artifact of
-// another bytecode version for the same script (a rolling upgrade: this node on
-// the old binary, the artifact compiled by an upgraded leader). The bytes
-// differ, so the lookup takes the cold path and rejects exactly as a node
-// without the entry would — and, never inserted, the rejected artifact leaves
-// the warm entry serving the genuine one.
-func TestSafeExecCompiled_WarmHitForeignVersionRejected(t *testing.T) {
+// TestSafeExecCompiled_SameHashDifferentCompilation verifies that a warm VM
+// is replaced when another local compilation is presented under the same hash.
+// The scripts differ observably to expose any accidental reuse.
+func TestSafeExecCompiled_SameHashDifferentCompilation(t *testing.T) {
 	t.Parallel()
 
-	script := `send [COIN 30] (
-  source = @src
-  destination = @dst
-)`
-	compiled := mustCompile(t, mustEntry(t, script), nil)
-
-	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}
-	cache := NewNumscriptCache(16)
-
-	_, err := SafeExecCompiled(cache, compiled.ScriptHash, compiled.Program, compiled.Vars, NewVMStore(source, false))
-	require.Nil(t, err)
-	require.Equal(t, 1, cache.compiledOrder.Len())
-
-	current := numscriptlib.CurrentBytecodeVersion
-	foreign := withArtifactVersion(t, compiled.Program, numscriptlib.BytecodeVersion{Major: current.Major + 1})
-
-	_, err = SafeExecCompiled(cache, compiled.ScriptHash, foreign, compiled.Vars, NewVMStore(source, false))
-	require.NotNil(t, err)
-	require.False(t, IsPanic(err))
-
-	var runtimeErr *domain.ErrNumscriptRuntime
-	require.ErrorAs(t, err, &runtimeErr)
-	require.Contains(t, runtimeErr.Detail, "compiled numscript program")
-
-	result, err := SafeExecCompiled(cache, compiled.ScriptHash, compiled.Program, compiled.Vars, NewVMStore(source, false))
-	require.Nil(t, err)
-	require.Len(t, result.Postings, 1)
-}
-
-// TestSafeExecCompiled_SameScriptDifferentBytesRunsCommittedBytes: compilation
-// is not assumed to be deterministic, so the same script hash can arrive with
-// different program bytes (a new leader, a rolling upgrade). A warm entry for
-// that hash must not serve them: the node runs the committed bytes, which then
-// replace the entry, and switching back re-verifies again. The two programs
-// here differ observably (30 vs 40) so the test can tell which one ran.
-func TestSafeExecCompiled_SameScriptDifferentBytesRunsCommittedBytes(t *testing.T) {
-	t.Parallel()
-
-	first := mustCompile(t, mustEntry(t, `send [COIN 30] (
-  source = @src
-  destination = @dst
-)`), nil)
-	second := mustCompile(t, mustEntry(t, `send [COIN 40] (
-  source = @src
-  destination = @dst
-)`), nil)
-	require.NotEqual(t, first.Program, second.Program)
-
-	// Both artifacts claim the same script, as two compilations of it would.
-	scriptHash := first.ScriptHash
-
+	first := mustCompile(t, mustEntry(t, `send [COIN 30] (source = @src destination = @dst)`), nil)
+	second := mustCompile(t, mustEntry(t, `send [COIN 40] (source = @src destination = @dst)`), nil)
+	second.scriptHash = first.scriptHash
 	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}
 	cache := NewNumscriptCache(16)
 
 	for _, step := range []struct {
 		compiled *CompiledScript
 		want     int64
-	}{
-		{first, 30},
-		{second, 40},
-		{first, 30},
-	} {
-		result, err := SafeExecCompiled(cache, scriptHash, step.compiled.Program, step.compiled.Vars, NewVMStore(source, false))
+	}{{first, 30}, {second, 40}, {first, 30}} {
+		result, err := SafeExecCompiled(cache, step.compiled, NewVMStore(source, false))
 		require.Nil(t, err)
 		require.Len(t, result.Postings, 1)
-		require.Equal(t, step.want, result.Postings[0].Amount.Int64(), "the committed bytes must run, not the cached ones")
-		require.Equal(t, 1, cache.compiledOrder.Len(), "new bytes replace the entry for the script")
+		require.Equal(t, step.want, result.Postings[0].Amount.Int64())
+		require.Equal(t, 1, cache.compiledOrder.Len())
 	}
 }
 
-// TestSafeExecCompiled_OlderMinorRuns: under a stable bundled major, an
-// artifact of an older minor keeps its meaning (a minor bump is additive), so
-// it executes as-is — a node restarting on a newer binary still applies
-// entries committed before the upgrade, with the same outcome as the replicas
-// that applied them on the old one. Only exercisable once the bundled version
-// is stable (an unstable 0.x reads only itself) with a minor above zero.
-func TestSafeExecCompiled_OlderMinorRuns(t *testing.T) {
+// A parsed entry may be evicted without evicting its VM. Recompiling its text
+// must replace that VM even though the script hash is unchanged.
+func TestSafeExecFromText_ParsedEvictionReplacesVM(t *testing.T) {
 	t.Parallel()
 
-	current := numscriptlib.CurrentBytecodeVersion
-	if current.Major == 0 || current.Minor == 0 {
-		t.Skipf("bundled bytecode version %s has no readable older minor", current)
-	}
-
-	compiled := mustCompile(t, mustEntry(t, `send [COIN 30] (
-  source = @src
-  destination = @dst
-)`), nil)
-
-	older := numscriptlib.BytecodeVersion{Major: current.Major, Minor: current.Minor - 1}
-	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}
-
-	result, err := SafeExecCompiled(NewNumscriptCache(16), compiled.ScriptHash,
-		withArtifactVersion(t, compiled.Program, older), withArtifactVersion(t, compiled.Vars, older),
-		NewVMStore(source, false))
+	const script = `send [COIN 30] (source = @src destination = @dst)`
+	cache := NewNumscriptCache(1)
+	store := NewVMStore(mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}, false)
+	first, err := SafeExecFromText(cache, script, nil, store)
 	require.Nil(t, err)
-	require.Len(t, result.Postings, 1)
-	require.Equal(t, int64(30), result.Postings[0].Amount.Int64())
+	warmEntry, ok := cache.lookupCompiled(HashScript(script))
+	require.True(t, ok)
+
+	cache.getOrParseEntry(`send [COIN 1] (source = @world destination = @other)`)
+	second, err := SafeExecFromText(cache, script, nil, store)
+	require.Nil(t, err)
+	require.Equal(t, first, second)
+	replacedEntry, ok := cache.lookupCompiled(HashScript(script))
+	require.True(t, ok)
+	require.NotSame(t, warmEntry.vm, replacedEntry.vm)
+}
+
+// TestSafeExecCompiled_UnverifiableLocalProgram ensures that a compiler or
+// verifier bug is reported as an internal runtime error and is never cached.
+func TestSafeExecCompiled_UnverifiableLocalProgram(t *testing.T) {
+	t.Parallel()
+
+	compiled := mustCompile(t, mustEntry(t, `send [COIN 30] (source = @src destination = @dst)`), nil)
+	compiled.program.program.Instructions[0].Opcode = 0xff
+	cache := NewNumscriptCache(16)
+
+	_, err := SafeExecCompiled(cache, compiled, NewVMStore(mapValueSource{}, false))
+	require.NotNil(t, err)
+	require.False(t, IsPanic(err))
+	var runtimeErr *domain.ErrNumscriptRuntime
+	require.ErrorAs(t, err, &runtimeErr)
+	require.Contains(t, runtimeErr.Detail, "verifying compiled numscript program")
+	require.Zero(t, cache.compiledOrder.Len())
 }
 
 // TestSafeExecCompiled_NegativePortionRejected: a division portion that comes
@@ -748,7 +520,7 @@ send [COIN 90] (
   }
 )`), map[string]string{"n": "-1"})
 
-	result, err := SafeExecCompiled(NewNumscriptCache(16), compiled.ScriptHash, compiled.Program, compiled.Vars, NewVMStore(mapValueSource{}, false))
+	result, err := SafeExecCompiled(NewNumscriptCache(16), compiled, NewVMStore(mapValueSource{}, false))
 	require.NotNil(t, err, "a negative portion must fail the order, got postings %+v", result.Postings)
 	require.False(t, IsPanic(err))
 

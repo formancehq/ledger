@@ -516,7 +516,7 @@ That reason is **retryable and deliberately NOT freezable**: a preparation gap i
 
 ### Notes
 
-- **Shared parsing cache**: dependency resolution, the admission-side compile and the FSM-time stale re-resolution all use the NumscriptCache's parsed entry, so a script is parsed once per cache instance (admission and the FSM apply path each own one). Execution never walks the parsed AST: the FSM runs the compiled VM artifact bound to the order, cached as one decoded, verified warm VM instance per script on the cache's compiled side.
+- **Shared parsing cache**: dependency resolution, the admission-side compile and the FSM-time stale re-resolution all use the NumscriptCache's parsed entry, so a script is parsed once per cache instance (admission and the FSM apply path each own one). Execution never walks the parsed AST: the FSM compiles the committed script text locally and runs it with bound variables, caching one verified warm VM instance per local compilation on the cache's compiled side.
 - **`force` mode**: with the transaction's `force` flag, the resolver's `Store` returns unlimited balances, so bounded sources still resolve but no real balance is consulted.
 - **Resolution errors**: if resolution fails at admission (e.g. a `meta()` chain that cannot resolve), admission rejects the transaction as a business validation error before proposing — proposing without complete preloads would produce a doomed Raft apply.
 
@@ -524,7 +524,7 @@ That reason is **retryable and deliberately NOT freezable**: a preparation gap i
 
 ### Script Caching
 
-Parsed Numscript programs are cached using a blake3 hash of the script content. This avoids re-parsing the same script multiple times, significantly improving performance for repeated transactions with the same script.
+Parsed Numscript programs are cached using an XXH3-128 hash of the script content. This avoids re-parsing the same script multiple times, significantly improving performance for repeated transactions with the same script.
 
 Cache metrics are exposed via OpenTelemetry:
 - `numscript.cache.size` - Number of scripts in cache

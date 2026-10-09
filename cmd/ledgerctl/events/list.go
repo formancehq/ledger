@@ -72,8 +72,9 @@ func runList(cmd *cobra.Command, _ []string) error {
 
 	// Build status lookup by sink name
 	statusBySink := make(map[string]struct {
-		cursor uint64
-		err    string
+		cursor     uint64
+		err        string
+		occurredAt *commonpb.Timestamp
 	}, len(resp.GetSinkStatuses()))
 	for _, s := range resp.GetSinkStatuses() {
 		entry := statusBySink[s.GetSinkName()]
@@ -81,6 +82,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 		entry.cursor = s.GetCursor()
 		if s.GetError() != nil {
 			entry.err = s.GetError().GetMessage()
+			entry.occurredAt = s.GetError().GetOccurredAt()
 		}
 
 		statusBySink[s.GetSinkName()] = entry
@@ -185,17 +187,8 @@ func runList(cmd *cobra.Command, _ []string) error {
 		}
 
 		// Status
-		if status, ok := statusBySink[sink.GetName()]; ok {
-			data = append(data, []string{"Cursor", strconv.FormatUint(status.cursor, 10)})
-			if status.err != "" {
-				data = append(data, []string{"Error", pterm.Red(status.err)})
-			} else {
-				data = append(data, []string{"Status", pterm.Green("healthy")})
-			}
-		} else {
-			data = append(data, []string{"Cursor", "0"})
-			data = append(data, []string{"Status", pterm.Yellow("pending")})
-		}
+		status, ok := statusBySink[sink.GetName()]
+		data = appendSinkStatusRows(data, status.cursor, status.err, status.occurredAt, ok)
 
 		err := pterm.DefaultTable.WithData(data).Render()
 		if err != nil {
@@ -206,4 +199,21 @@ func runList(cmd *cobra.Command, _ []string) error {
 	}
 
 	return nil
+}
+
+func appendSinkStatusRows(rows [][]string, cursor uint64, errorMessage string, occurredAt *commonpb.Timestamp, hasStatus bool) [][]string {
+	rows = append(rows, []string{"Cursor", strconv.FormatUint(cursor, 10)})
+	switch {
+	case hasStatus && errorMessage != "":
+		rows = append(rows, []string{"Error", pterm.Red(errorMessage)})
+		if occurredAt != nil {
+			rows = append(rows, []string{"Error At", occurredAt.AsTime().Format("2006-01-02T15:04:05Z07:00")})
+		}
+
+		return rows
+	case !hasStatus || cursor == 0:
+		return append(rows, []string{"Status", pterm.Yellow("pending")})
+	default:
+		return append(rows, []string{"Status", pterm.Green("healthy")})
+	}
 }
