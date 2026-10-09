@@ -121,7 +121,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(raft.fsm.logs_appended{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -220,7 +220,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(raft.transport.ping.duration_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, peer) / sum(rate(raft.transport.ping.duration_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, peer)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} / Peer {{peer}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} / Peer {{peer}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -319,7 +319,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(http.server.request.duration_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, http.response.status_code)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} : {{http.response.status_code}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} : {{http.response.status_code}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -418,7 +418,7 @@
                      },
                      "editorMode": "code",
                      "expr": "{\"system.memory.utilization\", \"system.memory.state\"=\"used\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"}",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} : Used",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} : Used",
                      "range": true,
                      "refId": "A"
                   },
@@ -429,7 +429,7 @@
                      },
                      "editorMode": "code",
                      "expr": "{\"system.memory.utilization\", \"system.memory.state\"=\"free\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"}",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} : Free",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} : Free",
                      "range": true,
                      "refId": "B"
                   }
@@ -529,7 +529,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) (\n  rate(process.cpu.time{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])\n)\n/\nmax by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) (\n  go.processor.limit{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}\n)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -628,7 +628,7 @@
                      },
                      "editorMode": "code",
                      "expr": "rate(system.network.io{network.io.direction=\"receive\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"}[$__rate_interval])",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Reception",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Reception",
                      "range": true,
                      "refId": "A"
                   },
@@ -639,7 +639,7 @@
                      },
                      "editorMode": "code",
                      "expr": "rate(system.network.io{network.io.direction=\"transmit\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"}[$__rate_interval])",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Transmission",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Transmission",
                      "range": true,
                      "refId": "B"
                   }
@@ -738,7 +738,7 @@
                      },
                      "editorMode": "code",
                      "expr": "{\"system.memory.usage\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"}",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: {{system.memory.state}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: {{system.memory.state}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -837,7 +837,7 @@
                      },
                      "editorMode": "code",
                      "expr": "rate(go.memory.allocated{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Allocated",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Allocated",
                      "range": true,
                      "refId": "A"
                   }
@@ -935,7 +935,7 @@
                      },
                      "editorMode": "code",
                      "expr": "{\"raft.node.leader\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"}",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} → leader {{leader_id}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} → leader {{leader_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -1033,7 +1033,7 @@
                      },
                      "editorMode": "code",
                      "expr": "go.goroutine.count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -1132,7 +1132,7 @@
                      },
                      "editorMode": "code",
                      "expr": "{\"go.memory.used\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"}",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: {{go.memory.type}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: {{go.memory.type}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -1231,7 +1231,7 @@
                      },
                      "editorMode": "code",
                      "expr": "rate(go.memory.allocations{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Allocations",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Allocations",
                      "range": true,
                      "refId": "A"
                   }
@@ -1330,7 +1330,7 @@
                      },
                      "editorMode": "code",
                      "expr": "go.memory.gc.goal{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Goal",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Goal",
                      "range": true,
                      "refId": "A"
                   }
@@ -1443,7 +1443,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(raft.transport.recv.load_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, priority, priority_name)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: {{priority_name}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: {{priority_name}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -1754,7 +1754,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(increase(raft.transport.recv.overflows{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, priority_name)",
-                     "legendFormat": "{{priority_name}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: {{priority_name}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -1853,7 +1853,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(raft.transport.unreachable.load_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -2002,7 +2002,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(increase(raft.transport.unreachable.overflows{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -2101,7 +2101,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(raft.send.pending_batch.load_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -2281,7 +2281,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(increase(raft.send.pending_batch.overflows{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -2380,7 +2380,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(raft.transport.peer.sending.load_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, peer, priority_name)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Peer {{peer}} / {{priority_name}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Peer {{peer}} / {{priority_name}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -2479,7 +2479,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(increase(raft.transport.peer.sending.overflows{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, peer, priority_name)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Peer {{peer}} / {{priority_name}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Peer {{peer}} / {{priority_name}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -2821,7 +2821,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(admission.propose_queue.load_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Incoming",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Incoming",
                      "range": true,
                      "refId": "A"
                   }
@@ -3001,7 +3001,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(increase(admission.propose_queue.overflows{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -3099,7 +3099,7 @@
                      },
                      "editorMode": "code",
                      "expr": "{\"raft.transport.sending.pending_response.count\", k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} / Peer {{peer}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} / Peer {{peer}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -3212,7 +3212,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(raft.process_entry.duration_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -3311,7 +3311,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(raft.process_entry.duration_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -3410,7 +3410,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(raft.process_entry.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P99",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P99",
                      "range": true,
                      "refId": "A"
                   },
@@ -3421,7 +3421,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(raft.process_entry.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P95",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P95",
                      "range": true,
                      "refId": "B"
                   },
@@ -3432,7 +3432,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.75, sum(rate(raft.process_entry.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P75",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P75",
                      "range": true,
                      "refId": "C"
                   },
@@ -3443,7 +3443,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(raft.process_entry.duration_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) / sum(rate(raft.process_entry.duration_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Avg",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Avg",
                      "range": true,
                      "refId": "D"
                   }
@@ -3542,7 +3542,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(raft.append_entries.duration_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -3641,7 +3641,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(raft.append_entries.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P99",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P99",
                      "range": true,
                      "refId": "A"
                   },
@@ -3652,7 +3652,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(raft.append_entries.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P95",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P95",
                      "range": true,
                      "refId": "B"
                   },
@@ -3663,7 +3663,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.75, sum(rate(raft.append_entries.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P75",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P75",
                      "range": true,
                      "refId": "C"
                   },
@@ -3674,7 +3674,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(raft.append_entries.duration_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) / sum(rate(raft.append_entries.duration_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Avg",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Avg",
                      "range": true,
                      "refId": "D"
                   }
@@ -3773,7 +3773,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(raft.ready.committed_entries_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P99",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P99",
                      "range": true,
                      "refId": "A"
                   },
@@ -3784,7 +3784,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(raft.ready.committed_entries_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P95",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P95",
                      "range": true,
                      "refId": "B"
                   },
@@ -3795,7 +3795,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.75, sum(rate(raft.ready.committed_entries_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P75",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P75",
                      "range": true,
                      "refId": "C"
                   },
@@ -3806,7 +3806,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(raft.ready.committed_entries_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) / sum(rate(raft.ready.committed_entries_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Avg",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Avg",
                      "range": true,
                      "refId": "D"
                   }
@@ -3905,7 +3905,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(wal.append.save.duration_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -4004,7 +4004,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(wal.append.batch_size_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P99",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P99",
                      "range": true,
                      "refId": "A"
                   },
@@ -4015,7 +4015,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(wal.append.batch_size_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P95",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P95",
                      "range": true,
                      "refId": "B"
                   },
@@ -4026,7 +4026,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.75, sum(rate(wal.append.batch_size_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P75",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P75",
                      "range": true,
                      "refId": "C"
                   },
@@ -4037,7 +4037,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(wal.append.batch_size_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) / sum(rate(wal.append.batch_size_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Avg",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Avg",
                      "range": true,
                      "refId": "D"
                   }
@@ -4136,7 +4136,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(raft.node.ready.wait.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p99",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p99",
                      "range": true,
                      "refId": "A"
                   },
@@ -4147,7 +4147,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(raft.node.ready.wait.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p95",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p95",
                      "range": true,
                      "refId": "B"
                   },
@@ -4158,7 +4158,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(raft.node.ready.wait.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p50",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p50",
                      "range": true,
                      "refId": "C"
                   },
@@ -4169,7 +4169,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(raft.node.ready.wait.duration_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) / sum(rate(raft.node.ready.wait.duration_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} avg",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} avg",
                      "range": true,
                      "refId": "D"
                   }
@@ -4268,7 +4268,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(raft.node.ready.wait.duration_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -4367,7 +4367,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(raft.node.ready.wait.duration_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -4466,7 +4466,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(raft.node.ready_terminated.wait.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p99",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p99",
                      "range": true,
                      "refId": "A"
                   },
@@ -4477,7 +4477,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(raft.node.ready_terminated.wait.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p50",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p50",
                      "range": true,
                      "refId": "B"
                   }
@@ -4576,7 +4576,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(raft.node.unspool.duration_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -4675,7 +4675,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(raft.node.gating.wait.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p99",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p99",
                      "range": true,
                      "refId": "A"
                   },
@@ -4686,7 +4686,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(raft.node.gating.wait.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p50",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p50",
                      "range": true,
                      "refId": "B"
                   }
@@ -4784,7 +4784,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(raft.node.gating.readies_processed_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p99",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p99",
                      "range": true,
                      "refId": "A"
                   },
@@ -4795,7 +4795,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(raft.node.gating.readies_processed_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p50",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p50",
                      "range": true,
                      "refId": "B"
                   }
@@ -4894,7 +4894,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(raft.node.maintenance.snapshot_creation.duration_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Snapshot creation",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Snapshot creation",
                      "range": true,
                      "refId": "A"
                   },
@@ -4905,7 +4905,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(raft.node.maintenance.replay_spool.duration_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Replay spool",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Replay spool",
                      "range": true,
                      "refId": "B"
                   }
@@ -5004,7 +5004,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(raft.fsm.rotation.duration_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -5103,7 +5103,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(raft.fsm.batch_commit.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: p99",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: p99",
                      "range": true,
                      "refId": "A"
                   },
@@ -5114,7 +5114,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(raft.fsm.batch_commit.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: p50",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: p50",
                      "range": true,
                      "refId": "B"
                   }
@@ -5227,7 +5227,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(raft.apply_entries.duration_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -5325,7 +5325,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(raft.apply_entries.batch_size_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P99",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P99",
                      "range": true,
                      "refId": "A"
                   },
@@ -5336,7 +5336,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(raft.apply_entries.batch_size_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P95",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P95",
                      "range": true,
                      "refId": "B"
                   },
@@ -5347,7 +5347,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.75, sum(rate(raft.apply_entries.batch_size_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P75",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P75",
                      "range": true,
                      "refId": "C"
                   },
@@ -5358,7 +5358,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(raft.apply_entries.batch_size_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) / sum(rate(raft.apply_entries.batch_size_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Avg",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Avg",
                      "range": true,
                      "refId": "D"
                   }
@@ -5457,7 +5457,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(raft.apply_entries.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P99",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P99",
                      "range": true,
                      "refId": "A"
                   },
@@ -5468,7 +5468,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(raft.apply_entries.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P95",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P95",
                      "range": true,
                      "refId": "B"
                   },
@@ -5479,7 +5479,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.75, sum(rate(raft.apply_entries.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P75",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: P75",
                      "range": true,
                      "refId": "C"
                   },
@@ -5490,7 +5490,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(raft.apply_entries.duration_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) / sum(rate(raft.apply_entries.duration_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Avg",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Avg",
                      "range": true,
                      "refId": "D"
                   }
@@ -5589,7 +5589,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(raft.apply_entries.duration_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -5687,7 +5687,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(raft.applier.batch_wait.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id))",
-                     "legendFormat": "p50 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p50 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -5698,7 +5698,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(raft.applier.batch_wait.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id))",
-                     "legendFormat": "p95 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p95 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "B"
                   },
@@ -5709,7 +5709,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(raft.applier.batch_wait.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id))",
-                     "legendFormat": "p99 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p99 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "C"
                   }
@@ -6062,7 +6062,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, status, reason) (rate({__name__=\"pebble.flushes\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"}[$__rate_interval]))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} {{status}} {{reason}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} {{status}} {{reason}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -6161,7 +6161,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) (rate({__name__=\"pebble.flush.duration_bucket\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p50",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p50",
                      "range": true,
                      "refId": "A"
                   },
@@ -6172,7 +6172,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) (rate({__name__=\"pebble.flush.duration_bucket\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p95",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p95",
                      "range": true,
                      "refId": "B"
                   },
@@ -6183,7 +6183,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) (rate({__name__=\"pebble.flush.duration_bucket\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p99",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p99",
                      "range": true,
                      "refId": "C"
                   },
@@ -6194,7 +6194,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(pebble.flush.duration_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) / sum(rate(pebble.flush.duration_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} mean",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} mean",
                      "range": true,
                      "refId": "D"
                   }
@@ -6293,7 +6293,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(pebble.flush.input.size_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -6391,7 +6391,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, status, reason) (rate({__name__=\"pebble.compactions\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"}[$__rate_interval]))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: {{status}} {{reason}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: {{status}} {{reason}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -6490,7 +6490,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le) (rate({__name__=\"pebble.compaction.duration_bucket\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: p50",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: p50",
                      "range": true,
                      "refId": "A"
                   },
@@ -6501,7 +6501,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le) (rate({__name__=\"pebble.compaction.duration_bucket\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: p95 ",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: p95 ",
                      "range": true,
                      "refId": "B"
                   },
@@ -6512,7 +6512,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le) (rate({__name__=\"pebble.compaction.duration_bucket\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: p99",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: p99",
                      "range": true,
                      "refId": "C"
                   },
@@ -6523,7 +6523,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(pebble.compaction.duration_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) / sum(rate(pebble.compaction.duration_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: mean",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: mean",
                      "range": true,
                      "refId": "D"
                   }
@@ -6621,7 +6621,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, reason) (rate({__name__=\"pebble.compactions\", status=\"error\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"}[$__rate_interval]))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: {{reason}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: {{reason}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -6719,7 +6719,7 @@
                      },
                      "editorMode": "code",
                      "expr": "max by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, reason) ({__name__=\"pebble.write_stall.active\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"})",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} / {{reason}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} / {{reason}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -6817,7 +6817,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, reason) (rate({__name__=\"pebble.write_stalls\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"}[$__rate_interval]))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} / {{reason}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} / {{reason}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -6916,7 +6916,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) (rate({__name__=\"pebble.write_stall.duration_bucket\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p50",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p50",
                      "range": true,
                      "refId": "A"
                   },
@@ -6927,7 +6927,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) (rate({__name__=\"pebble.write_stall.duration_bucket\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p95",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p95",
                      "range": true,
                      "refId": "B"
                   },
@@ -6938,7 +6938,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) (rate({__name__=\"pebble.write_stall.duration_bucket\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p99",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p99",
                      "range": true,
                      "refId": "C"
                   },
@@ -6949,7 +6949,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(pebble.write_stall.duration_sum{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) / sum(rate(pebble.write_stall.duration_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} mean",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} mean",
                      "range": true,
                      "refId": "D"
                   }
@@ -7048,7 +7048,7 @@
                      },
                      "editorMode": "code",
                      "expr": "rate({__name__=\"pebble.vfs.read.ops\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"}[$__rate_interval])",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} — reads/s",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} — reads/s",
                      "range": true,
                      "refId": "A"
                   },
@@ -7059,7 +7059,7 @@
                      },
                      "editorMode": "code",
                      "expr": "rate({__name__=\"pebble.vfs.write.ops\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"}[$__rate_interval])",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} — writes/s",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} — writes/s",
                      "range": true,
                      "refId": "B"
                   }
@@ -7158,7 +7158,7 @@
                      },
                      "editorMode": "code",
                      "expr": "rate({__name__=\"pebble.vfs.sync.ops\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"}[$__rate_interval])",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} — syncs/s",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} — syncs/s",
                      "range": true,
                      "refId": "A"
                   }
@@ -7256,7 +7256,7 @@
                      },
                      "editorMode": "code",
                      "expr": "{__name__=\"pebble.vfs.read.ops\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"}",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} — reads",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} — reads",
                      "range": true,
                      "refId": "A"
                   },
@@ -7267,7 +7267,7 @@
                      },
                      "editorMode": "code",
                      "expr": "{__name__=\"pebble.vfs.write.ops\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"}",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} — writes",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} — writes",
                      "range": true,
                      "refId": "B"
                   },
@@ -7278,7 +7278,7 @@
                      },
                      "editorMode": "code",
                      "expr": "{__name__=\"pebble.vfs.sync.ops\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"}",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} — syncs",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} — syncs",
                      "range": true,
                      "refId": "C"
                   }
@@ -7376,7 +7376,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, op) (rate({__name__=\"pebble.disk_slow.operations\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"}[$__rate_interval]))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} / {{op}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} / {{op}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -7475,7 +7475,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, op) (rate({__name__=\"pebble.disk_slow.duration_bucket\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p50 {{op}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p50 {{op}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -7486,7 +7486,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, op) (rate({__name__=\"pebble.disk_slow.duration_bucket\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p95 {{op}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p95 {{op}}",
                      "range": true,
                      "refId": "B"
                   },
@@ -7497,7 +7497,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, op) (rate({__name__=\"pebble.disk_slow.duration_bucket\", \"k8s.namespace.name\"=~\"$namespace\", \"formance.ledger.cluster.name\"=~\"$cluster\", \"formance.ledger.node.id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p99 {{op}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p99 {{op}}",
                      "range": true,
                      "refId": "C"
                   }
@@ -7610,7 +7610,7 @@
                      },
                      "editorMode": "code",
                      "expr": "readindex.level.size{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} — L{{level}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} — L{{level}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -7709,7 +7709,7 @@
                      },
                      "editorMode": "code",
                      "expr": "readindex.memtable.size{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -7808,7 +7808,7 @@
                      },
                      "editorMode": "code",
                      "expr": "rate(readindex.cache.hits{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} — hits",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} — hits",
                      "range": true,
                      "refId": "A"
                   },
@@ -7819,7 +7819,7 @@
                      },
                      "editorMode": "code",
                      "expr": "rate(readindex.cache.misses{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} — misses",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} — misses",
                      "range": true,
                      "refId": "B"
                   }
@@ -7889,7 +7889,7 @@
                      },
                      "editorMode": "code",
                      "expr": "rate(readindex.cache.hits{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval]) / (rate(readindex.cache.hits{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval]) + rate(readindex.cache.misses{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval]))",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -8002,7 +8002,7 @@
                      },
                      "editorMode": "code",
                      "expr": "cache.size{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}",
-                     "legendFormat": "{{type}} ({{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}})",
+                     "legendFormat": "{{type}} ({{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}})",
                      "range": true,
                      "refId": "A"
                   }
@@ -8101,7 +8101,7 @@
                      },
                      "editorMode": "code",
                      "expr": "numscript.cache.size{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -8200,7 +8200,7 @@
                      },
                      "editorMode": "code",
                      "expr": "cache.generation{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Generation",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Generation",
                      "range": true,
                      "refId": "A"
                   },
@@ -8211,7 +8211,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(cache.rotations{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Rotations/s",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Rotations/s",
                      "range": true,
                      "refId": "B"
                   }
@@ -8324,7 +8324,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(bloom.lookups{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (type, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{type}} ({{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}})",
+                     "legendFormat": "{{type}} ({{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}})",
                      "range": true,
                      "refId": "A"
                   }
@@ -8423,7 +8423,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(bloom.negatives{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (type, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) / sum(rate(bloom.lookups{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (type, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) * 100",
-                     "legendFormat": "{{type}} ({{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}})",
+                     "legendFormat": "{{type}} ({{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}})",
                      "range": true,
                      "refId": "A"
                   }
@@ -8522,7 +8522,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(bloom.negatives{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (type, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{type}} ({{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}})",
+                     "legendFormat": "{{type}} ({{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}})",
                      "range": true,
                      "refId": "A"
                   }
@@ -8621,7 +8621,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(bloom.adds{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (type, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{type}} ({{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}})",
+                     "legendFormat": "{{type}} ({{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}})",
                      "range": true,
                      "refId": "A"
                   }
@@ -8720,7 +8720,7 @@
                      },
                      "editorMode": "code",
                      "expr": "bloom.ready{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -8819,7 +8819,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(bloom.false_positives{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (type, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) / sum(rate(bloom.lookups{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval]) - rate(bloom.negatives{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (type, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{type}} ({{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}})",
+                     "legendFormat": "{{type}} ({{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}})",
                      "range": true,
                      "refId": "A"
                   }
@@ -8932,7 +8932,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(admission.preload.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id))",
-                     "legendFormat": "p50 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p50 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -8943,7 +8943,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(admission.preload.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id))",
-                     "legendFormat": "p95 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p95 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "B"
                   },
@@ -8954,7 +8954,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(admission.preload.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id))",
-                     "legendFormat": "p99 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p99 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "C"
                   }
@@ -9053,7 +9053,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(admission.preloads{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -9152,7 +9152,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(admission.preload.keys_needed{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -9251,7 +9251,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(admission.preload.cache_hits{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) / sum(rate(admission.preload.keys_needed{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) * 100",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -9350,7 +9350,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(admission.preload.keys_needed{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) - sum(rate(admission.preload.cache_hits{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "store reads - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "store reads - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -9361,7 +9361,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(admission.preload.cache_hits{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "cache hits - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "cache hits - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "B"
                   }
@@ -9581,7 +9581,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(admission.fsm_future.wait.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "p50 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p50 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -9592,7 +9592,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(admission.fsm_future.wait.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "p95 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p95 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "B"
                   },
@@ -9603,7 +9603,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(admission.fsm_future.wait.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "p99 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p99 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "C"
                   }
@@ -9702,7 +9702,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(admission.proposal_guard.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id))",
-                     "legendFormat": "p50 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p50 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -9713,7 +9713,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(admission.proposal_guard.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id))",
-                     "legendFormat": "p95 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p95 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "B"
                   },
@@ -9724,7 +9724,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(admission.proposal_guard.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id))",
-                     "legendFormat": "p99 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p99 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "C"
                   }
@@ -9823,7 +9823,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(admission.command.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "p50 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p50 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -9834,7 +9834,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(admission.command.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "p95 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p95 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "B"
                   },
@@ -9845,7 +9845,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(admission.command.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "p99 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p99 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "C"
                   }
@@ -10019,7 +10019,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(admission.proposal_guard.rebuilds{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) / sum(rate(admission.proposal_guard.duration_count{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "Rebuild ratio - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "Rebuild ratio - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -10030,7 +10030,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(admission.proposal_guard.rebuilds{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)",
-                     "legendFormat": "Rebuilds/s - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "Rebuilds/s - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "B"
                   }
@@ -10129,7 +10129,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(admission.resolve_batch.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "p50 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p50 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -10140,7 +10140,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(admission.resolve_batch.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "p95 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p95 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "B"
                   },
@@ -10151,7 +10151,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(admission.resolve_batch.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "p99 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p99 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "C"
                   }
@@ -10250,7 +10250,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.5, rate(admission.command.size_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval]))",
-                     "legendFormat": "p50 ({{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}})",
+                     "legendFormat": "p50 ({{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}})",
                      "range": true,
                      "refId": "A"
                   },
@@ -10261,7 +10261,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, rate(admission.command.size_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval]))",
-                     "legendFormat": "p95 ({{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}})",
+                     "legendFormat": "p95 ({{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}})",
                      "range": true,
                      "refId": "B"
                   },
@@ -10272,7 +10272,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, rate(admission.command.size_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval]))",
-                     "legendFormat": "p99 ({{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}})",
+                     "legendFormat": "p99 ({{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}})",
                      "range": true,
                      "refId": "C"
                   }
@@ -10470,7 +10470,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(admission.orders_preparation.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "p50 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p50 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -10481,7 +10481,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(admission.orders_preparation.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "p95 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p95 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "B"
                   },
@@ -10492,7 +10492,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(admission.orders_preparation.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "p99 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p99 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "C"
                   }
@@ -10591,7 +10591,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(admission.script.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "p50 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p50 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -10602,7 +10602,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(admission.script.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "p95 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p95 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "B"
                   },
@@ -10613,7 +10613,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(admission.script.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "p99 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p99 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "C"
                   }
@@ -10712,7 +10712,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(admission.propose.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "p50 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p50 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -10723,7 +10723,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(admission.propose.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "p95 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p95 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "B"
                   },
@@ -10734,7 +10734,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(admission.propose.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "p99 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p99 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "C"
                   }
@@ -10833,7 +10833,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(admission.response_resolution.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "p50 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p50 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -10844,7 +10844,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(admission.response_resolution.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "p95 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p95 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "B"
                   },
@@ -10855,7 +10855,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(admission.response_resolution.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le))",
-                     "legendFormat": "p99 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p99 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "C"
                   }
@@ -10968,7 +10968,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(ctrl.apply.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id))",
-                     "legendFormat": "p50 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p50 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -10979,7 +10979,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(ctrl.apply.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id))",
-                     "legendFormat": "p95 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p95 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "B"
                   },
@@ -10990,7 +10990,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(ctrl.apply.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id))",
-                     "legendFormat": "p99 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p99 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "C"
                   }
@@ -11089,7 +11089,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(grpc.apply.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id))",
-                     "legendFormat": "p50 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p50 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -11100,7 +11100,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(grpc.apply.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id))",
-                     "legendFormat": "p95 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p95 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "B"
                   },
@@ -11111,7 +11111,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(grpc.apply.duration_bucket{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[$__rate_interval])) by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id))",
-                     "legendFormat": "p99 - {{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "p99 - {{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "C"
                   }
@@ -11810,7 +11810,7 @@
                      },
                      "editorMode": "code",
                      "expr": "storage.disk.volume.usage{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\", volume=\"wal\"}",
-                     "legendFormat": "WAL Volume ({{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}})",
+                     "legendFormat": "WAL Volume ({{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}})",
                      "range": true,
                      "refId": "A"
                   },
@@ -11821,7 +11821,7 @@
                      },
                      "editorMode": "code",
                      "expr": "storage.disk.volume.usage{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\", volume=\"data\"}",
-                     "legendFormat": "Data Volume ({{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}})",
+                     "legendFormat": "Data Volume ({{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}})",
                      "range": true,
                      "refId": "B"
                   }
@@ -12001,7 +12001,7 @@
                      },
                      "editorMode": "code",
                      "expr": "rate(index.builder.logs_indexed{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}[1m])",
-                     "legendFormat": "{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
+                     "legendFormat": "{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -12100,7 +12100,7 @@
                      },
                      "editorMode": "code",
                      "expr": "index.builder.last_indexed_sequence{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}",
-                     "legendFormat": "Last Indexed ({{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}})",
+                     "legendFormat": "Last Indexed ({{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}})",
                      "range": true,
                      "refId": "A"
                   },
@@ -12111,7 +12111,7 @@
                      },
                      "editorMode": "code",
                      "expr": "index.builder.pebble_last_sequence{k8s.namespace.name=~\"$namespace\", formance.ledger.cluster.name=~\"$cluster\", formance.ledger.node.id=~\"$node\"}",
-                     "legendFormat": "Pebble Last ({{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}})",
+                     "legendFormat": "Pebble Last ({{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}})",
                      "range": true,
                      "refId": "B"
                   }

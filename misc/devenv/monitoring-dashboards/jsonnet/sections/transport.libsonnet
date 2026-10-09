@@ -9,7 +9,7 @@ panels.row('Transport & Queues', 1, [
     'Reception channel incoming messages',
     { h: 6, w: 24, x: 0, y: 2 },
     [
-      { expr: queries.histogramCountRate('raft.transport.recv.load', by=['k8s.namespace.name', 'formance.ledger.cluster.name', 'formance.ledger.node.id', 'priority', 'priority_name']), legendFormat: '{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: {{priority_name}}' },
+      { expr: queries.histogramCountRate('raft.transport.recv.load', by=['k8s.namespace.name', 'formance.ledger.cluster.name', 'formance.ledger.node.id', 'priority', 'priority_name']), legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: {{priority_name}}' },
     ], unit='short',
     description=|||
       Rate of Raft messages received from other nodes, grouped by message type.
@@ -89,14 +89,14 @@ panels.row('Transport & Queues', 1, [
       Increase queue capacity or investigate why processing is slow.
       
       See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#reception-channel-metrics
-   |||, opts={ legendFormat: '{{priority_name}}' },
+   |||, opts={ legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: {{priority_name}}' },
   ),
 
   panels.timeseries(
     'Transport Unreachable Channel - Incoming Messages',
     { h: 10, w: 8, x: 0, y: 106 },
     [
-      { expr: queries.histogramCountRate('raft.transport.unreachable.load', by=['k8s.namespace.name', 'formance.ledger.cluster.name', 'formance.ledger.node.id']), legendFormat: '{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}' },
+      { expr: queries.histogramCountRate('raft.transport.unreachable.load', by=['k8s.namespace.name', 'formance.ledger.cluster.name', 'formance.ledger.node.id']), legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}' },
     ], unit='ops',
     description=|||
       Rate of 'unreachable' notifications received. These indicate that a peer node could not be reached.
@@ -138,14 +138,14 @@ panels.row('Transport & Queues', 1, [
       Non-zero values indicate the system cannot process unreachable notifications fast enough, which may delay failure detection.
       
       See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#unreachable-channel-metrics
-   |||, opts={ legendFormat: '{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}' },
+   |||, opts={ legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}' },
   ),
 
   panels.timeseries(
     'Pending Send Queue Throughput',
     { h: 10, w: 8, x: 0, y: 116 },
     [
-      { expr: queries.histogramCountRate('raft.send.pending_batch.load', by=['k8s.namespace.name', 'formance.ledger.cluster.name', 'formance.ledger.node.id']), legendFormat: '{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}' },
+      { expr: queries.histogramCountRate('raft.send.pending_batch.load', by=['k8s.namespace.name', 'formance.ledger.cluster.name', 'formance.ledger.node.id']), legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}' },
     ], unit='ops',
     description=|||
       Throughput of the pending send queue. This is the rate at which message batches are being queued for dispatch to peers.
@@ -174,7 +174,7 @@ panels.row('Transport & Queues', 1, [
     'Pending Send Queue Full Count',
     { h: 10, w: 8, x: 16, y: 116 },
     [
-      { expr: 'sum(increase(raft.send.pending_batch.overflows{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)', legendFormat: '{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}' },
+      { expr: 'sum(increase(raft.send.pending_batch.overflows{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}' },
     ], unit='short',
     description=|||
       Number of times the pending send queue was full. Alert if non-zero.
@@ -187,7 +187,7 @@ panels.row('Transport & Queues', 1, [
     'Send channel incoming messages',
     { h: 6, w: 12, x: 0, y: 126 },
     [
-      { expr: queries.histogramCountRate('raft.transport.peer.sending.load', by=['k8s.namespace.name', 'formance.ledger.cluster.name', 'formance.ledger.node.id', 'peer', 'priority_name']), legendFormat: '{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Peer {{peer}} / {{priority_name}}' },
+      { expr: queries.histogramCountRate('raft.transport.peer.sending.load', by=['k8s.namespace.name', 'formance.ledger.cluster.name', 'formance.ledger.node.id', 'peer', 'priority_name']), legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Peer {{peer}} / {{priority_name}}' },
     ], unit='short',
     description=|||
       Rate of Raft messages being queued for sending to each peer, grouped by message type.
@@ -207,7 +207,7 @@ panels.row('Transport & Queues', 1, [
     'Send channel full count',
     { h: 6, w: 12, x: 12, y: 126 },
     [
-      { expr: 'sum(increase(raft.transport.peer.sending.overflows{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, peer, priority_name)', legendFormat: '{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Peer {{peer}} / {{priority_name}}' },
+      { expr: 'sum(increase(raft.transport.peer.sending.overflows{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, peer, priority_name)', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Peer {{peer}} / {{priority_name}}' },
     ], unit='short',
     description=|||
       Number of batches dropped per interval because the per-peer send channel was full.
@@ -278,7 +278,7 @@ panels.row('Transport & Queues', 1, [
     'Propose queue incoming messages',
     { h: 8, w: 8, x: 0, y: 142 },
     [
-      { expr: queries.histogramCountRate('admission.propose_queue.load', by=['k8s.namespace.name', 'formance.ledger.cluster.name', 'formance.ledger.node.id']), legendFormat: '{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Incoming' },
+      { expr: queries.histogramCountRate('admission.propose_queue.load', by=['k8s.namespace.name', 'formance.ledger.cluster.name', 'formance.ledger.node.id']), legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Incoming' },
     ], unit='ops',
     description=|||
       Rate of proposals (transactions) entering and leaving the propose queue.
@@ -320,7 +320,7 @@ panels.row('Transport & Queues', 1, [
     'Propose queue full count',
     { h: 8, w: 8, x: 16, y: 142 },
     [
-      { expr: 'sum(increase(admission.propose_queue.overflows{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)', legendFormat: '{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}' },
+      { expr: 'sum(increase(admission.propose_queue.overflows{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}' },
     ], unit='short',
     description=|||
       Total number of times the propose queue was full and proposals were dropped.
@@ -341,7 +341,7 @@ panels.row('Transport & Queues', 1, [
     'Pending responses',
     { h: 7, w: 12, x: 0, y: 150 },
     [
-      { expr: '{"raft.transport.sending.pending_response.count", k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: '{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} / Peer {{peer}}' },
+      { expr: '{"raft.transport.sending.pending_response.count", k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} / Peer {{peer}}' },
     ],
     description=|||
       Number of responses awaited from each peer node. Shows in-flight requests to other cluster members.

@@ -121,7 +121,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_raft_fsm_logs_appended_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -220,7 +220,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_raft_transport_ping_duration_seconds_sum{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, peer) / sum(rate(formance_ledger_raft_transport_ping_duration_seconds_count{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, peer)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} / Peer {{peer}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} / Peer {{peer}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -319,7 +319,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(http_server_request_duration_seconds_count{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, http_response_status_code)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} : {{http_response_status_code}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} : {{http_response_status_code}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -418,7 +418,7 @@
                      },
                      "editorMode": "code",
                      "expr": "{\"system_memory_utilization_ratio\", \"system_memory_state\"=\"used\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} : Used",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} : Used",
                      "range": true,
                      "refId": "A"
                   },
@@ -429,7 +429,7 @@
                      },
                      "editorMode": "code",
                      "expr": "{\"system_memory_utilization_ratio\", \"system_memory_state\"=\"free\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} : Free",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} : Free",
                      "range": true,
                      "refId": "B"
                   }
@@ -529,7 +529,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) (\n  rate(process_cpu_time_seconds_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])\n)\n/\nmax by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) (\n  go_processor_limit{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}\n)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -628,7 +628,7 @@
                      },
                      "editorMode": "code",
                      "expr": "rate(system_network_io_bytes_total{network_io_direction=\"receive\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval])",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Reception",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Reception",
                      "range": true,
                      "refId": "A"
                   },
@@ -639,7 +639,7 @@
                      },
                      "editorMode": "code",
                      "expr": "rate(system_network_io_bytes_total{network_io_direction=\"transmit\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval])",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Transmission",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Transmission",
                      "range": true,
                      "refId": "B"
                   }
@@ -738,7 +738,7 @@
                      },
                      "editorMode": "code",
                      "expr": "{\"system_memory_usage_bytes\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: {{system_memory_state}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: {{system_memory_state}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -837,7 +837,7 @@
                      },
                      "editorMode": "code",
                      "expr": "rate(go_memory_allocated_bytes_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Allocated",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Allocated",
                      "range": true,
                      "refId": "A"
                   }
@@ -935,7 +935,7 @@
                      },
                      "editorMode": "code",
                      "expr": "{\"formance_ledger_raft_node_leader\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} → leader {{leader_id}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} → leader {{leader_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -1033,7 +1033,7 @@
                      },
                      "editorMode": "code",
                      "expr": "go_goroutine_count{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -1132,7 +1132,7 @@
                      },
                      "editorMode": "code",
                      "expr": "{\"go_memory_used_bytes\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: {{go_memory_type}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: {{go_memory_type}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -1231,7 +1231,7 @@
                      },
                      "editorMode": "code",
                      "expr": "rate(go_memory_allocations_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Allocations",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Allocations",
                      "range": true,
                      "refId": "A"
                   }
@@ -1330,7 +1330,7 @@
                      },
                      "editorMode": "code",
                      "expr": "go_memory_gc_goal_bytes{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Goal",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Goal",
                      "range": true,
                      "refId": "A"
                   }
@@ -1443,7 +1443,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_raft_transport_recv_load_count{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, priority, priority_name)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: {{priority_name}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: {{priority_name}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -1754,7 +1754,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(increase(formance_ledger_raft_transport_recv_overflows_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, priority_name)",
-                     "legendFormat": "{{priority_name}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: {{priority_name}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -1853,7 +1853,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_raft_transport_unreachable_load_count{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -2002,7 +2002,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(increase(formance_ledger_raft_transport_unreachable_overflows_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -2101,7 +2101,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_raft_send_pending_batch_load_count{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -2281,7 +2281,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(increase(formance_ledger_raft_send_pending_batch_overflows_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -2380,7 +2380,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_raft_transport_peer_sending_load_count{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, peer, priority_name)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Peer {{peer}} / {{priority_name}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Peer {{peer}} / {{priority_name}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -2479,7 +2479,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(increase(formance_ledger_raft_transport_peer_sending_overflows_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, peer, priority_name)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Peer {{peer}} / {{priority_name}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Peer {{peer}} / {{priority_name}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -2821,7 +2821,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_admission_propose_queue_load_count{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Incoming",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Incoming",
                      "range": true,
                      "refId": "A"
                   }
@@ -3001,7 +3001,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(increase(formance_ledger_admission_propose_queue_overflows_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -3099,7 +3099,7 @@
                      },
                      "editorMode": "code",
                      "expr": "{\"formance_ledger_raft_transport_sending_pending_response_count\", k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} / Peer {{peer}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} / Peer {{peer}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -3212,7 +3212,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_raft_process_entry_duration_seconds_sum{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -3311,7 +3311,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_raft_process_entry_duration_seconds_count{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -3410,7 +3410,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(formance_ledger_raft_process_entry_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P99",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P99",
                      "range": true,
                      "refId": "A"
                   },
@@ -3421,7 +3421,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(formance_ledger_raft_process_entry_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P95",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P95",
                      "range": true,
                      "refId": "B"
                   },
@@ -3432,7 +3432,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.75, sum(rate(formance_ledger_raft_process_entry_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P75",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P75",
                      "range": true,
                      "refId": "C"
                   },
@@ -3443,7 +3443,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_raft_process_entry_duration_seconds_sum{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) / sum(rate(formance_ledger_raft_process_entry_duration_seconds_count{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Avg",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Avg",
                      "range": true,
                      "refId": "D"
                   }
@@ -3542,7 +3542,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_raft_append_entries_duration_seconds_sum{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -3641,7 +3641,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(formance_ledger_raft_append_entries_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P99",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P99",
                      "range": true,
                      "refId": "A"
                   },
@@ -3652,7 +3652,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(formance_ledger_raft_append_entries_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P95",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P95",
                      "range": true,
                      "refId": "B"
                   },
@@ -3663,7 +3663,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.75, sum(rate(formance_ledger_raft_append_entries_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P75",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P75",
                      "range": true,
                      "refId": "C"
                   },
@@ -3674,7 +3674,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_raft_append_entries_duration_seconds_sum{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) / sum(rate(formance_ledger_raft_append_entries_duration_seconds_count{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Avg",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Avg",
                      "range": true,
                      "refId": "D"
                   }
@@ -3773,7 +3773,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(formance_ledger_raft_ready_committed_entries_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P99",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P99",
                      "range": true,
                      "refId": "A"
                   },
@@ -3784,7 +3784,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(formance_ledger_raft_ready_committed_entries_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P95",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P95",
                      "range": true,
                      "refId": "B"
                   },
@@ -3795,7 +3795,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.75, sum(rate(formance_ledger_raft_ready_committed_entries_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P75",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P75",
                      "range": true,
                      "refId": "C"
                   },
@@ -3806,7 +3806,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_raft_ready_committed_entries_sum{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) / sum(rate(formance_ledger_raft_ready_committed_entries_count{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Avg",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Avg",
                      "range": true,
                      "refId": "D"
                   }
@@ -3905,7 +3905,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_wal_append_save_duration_seconds_sum{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -4004,7 +4004,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(formance_ledger_wal_append_batch_size_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P99",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P99",
                      "range": true,
                      "refId": "A"
                   },
@@ -4015,7 +4015,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(formance_ledger_wal_append_batch_size_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P95",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P95",
                      "range": true,
                      "refId": "B"
                   },
@@ -4026,7 +4026,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.75, sum(rate(formance_ledger_wal_append_batch_size_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P75",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P75",
                      "range": true,
                      "refId": "C"
                   },
@@ -4037,7 +4037,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_wal_append_batch_size_sum{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) / sum(rate(formance_ledger_wal_append_batch_size_count{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Avg",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Avg",
                      "range": true,
                      "refId": "D"
                   }
@@ -4136,7 +4136,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(formance_ledger_raft_node_ready_wait_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p99",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p99",
                      "range": true,
                      "refId": "A"
                   },
@@ -4147,7 +4147,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(formance_ledger_raft_node_ready_wait_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p95",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p95",
                      "range": true,
                      "refId": "B"
                   },
@@ -4158,7 +4158,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(formance_ledger_raft_node_ready_wait_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p50",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p50",
                      "range": true,
                      "refId": "C"
                   },
@@ -4169,7 +4169,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_raft_node_ready_wait_duration_seconds_sum{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) / sum(rate(formance_ledger_raft_node_ready_wait_duration_seconds_count{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} avg",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} avg",
                      "range": true,
                      "refId": "D"
                   }
@@ -4268,7 +4268,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_raft_node_ready_wait_duration_seconds_count{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -4367,7 +4367,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_raft_node_ready_wait_duration_seconds_sum{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -4466,7 +4466,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(formance_ledger_raft_node_ready_terminated_wait_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p99",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p99",
                      "range": true,
                      "refId": "A"
                   },
@@ -4477,7 +4477,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(formance_ledger_raft_node_ready_terminated_wait_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p50",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p50",
                      "range": true,
                      "refId": "B"
                   }
@@ -4576,7 +4576,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_raft_node_unspool_duration_seconds_sum{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -4675,7 +4675,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(formance_ledger_raft_node_gating_wait_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p99",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p99",
                      "range": true,
                      "refId": "A"
                   },
@@ -4686,7 +4686,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(formance_ledger_raft_node_gating_wait_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p50",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p50",
                      "range": true,
                      "refId": "B"
                   }
@@ -4784,7 +4784,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(formance_ledger_raft_node_gating_readies_processed_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p99",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p99",
                      "range": true,
                      "refId": "A"
                   },
@@ -4795,7 +4795,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(formance_ledger_raft_node_gating_readies_processed_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p50",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p50",
                      "range": true,
                      "refId": "B"
                   }
@@ -4894,7 +4894,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_raft_node_maintenance_snapshot_creation_duration_seconds_sum{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Snapshot creation",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Snapshot creation",
                      "range": true,
                      "refId": "A"
                   },
@@ -4905,7 +4905,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_raft_node_maintenance_replay_spool_duration_seconds_sum{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Replay spool",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Replay spool",
                      "range": true,
                      "refId": "B"
                   }
@@ -5004,7 +5004,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_raft_fsm_rotation_duration_seconds_sum{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -5103,7 +5103,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(formance_ledger_raft_fsm_batch_commit_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: p99",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: p99",
                      "range": true,
                      "refId": "A"
                   },
@@ -5114,7 +5114,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(formance_ledger_raft_fsm_batch_commit_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: p50",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: p50",
                      "range": true,
                      "refId": "B"
                   }
@@ -5227,7 +5227,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_raft_apply_entries_duration_seconds_sum{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -5325,7 +5325,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(formance_ledger_raft_apply_entries_batch_size_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P99",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P99",
                      "range": true,
                      "refId": "A"
                   },
@@ -5336,7 +5336,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(formance_ledger_raft_apply_entries_batch_size_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P95",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P95",
                      "range": true,
                      "refId": "B"
                   },
@@ -5347,7 +5347,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.75, sum(rate(formance_ledger_raft_apply_entries_batch_size_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P75",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P75",
                      "range": true,
                      "refId": "C"
                   },
@@ -5358,7 +5358,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_raft_apply_entries_batch_size_sum{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) / sum(rate(formance_ledger_raft_apply_entries_batch_size_count{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Avg",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Avg",
                      "range": true,
                      "refId": "D"
                   }
@@ -5457,7 +5457,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(formance_ledger_raft_apply_entries_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P99",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P99",
                      "range": true,
                      "refId": "A"
                   },
@@ -5468,7 +5468,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(formance_ledger_raft_apply_entries_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P95",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P95",
                      "range": true,
                      "refId": "B"
                   },
@@ -5479,7 +5479,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.75, sum(rate(formance_ledger_raft_apply_entries_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P75",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: P75",
                      "range": true,
                      "refId": "C"
                   },
@@ -5490,7 +5490,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_raft_apply_entries_duration_seconds_sum{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) / sum(rate(formance_ledger_raft_apply_entries_duration_seconds_count{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Avg",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Avg",
                      "range": true,
                      "refId": "D"
                   }
@@ -5589,7 +5589,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_raft_apply_entries_duration_seconds_count{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -5687,7 +5687,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(formance_ledger_raft_applier_batch_wait_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id))",
-                     "legendFormat": "p50 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p50 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -5698,7 +5698,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(formance_ledger_raft_applier_batch_wait_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id))",
-                     "legendFormat": "p95 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p95 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "B"
                   },
@@ -5709,7 +5709,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(formance_ledger_raft_applier_batch_wait_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id))",
-                     "legendFormat": "p99 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p99 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "C"
                   }
@@ -6062,7 +6062,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, status, reason) (rate({__name__=\"formance_ledger_pebble_flushes_total\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval]))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} {{status}} {{reason}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} {{status}} {{reason}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -6161,7 +6161,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) (rate({__name__=\"formance_ledger_pebble_flush_duration_seconds_bucket\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p50",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p50",
                      "range": true,
                      "refId": "A"
                   },
@@ -6172,7 +6172,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) (rate({__name__=\"formance_ledger_pebble_flush_duration_seconds_bucket\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p95",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p95",
                      "range": true,
                      "refId": "B"
                   },
@@ -6183,7 +6183,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) (rate({__name__=\"formance_ledger_pebble_flush_duration_seconds_bucket\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p99",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p99",
                      "range": true,
                      "refId": "C"
                   },
@@ -6194,7 +6194,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_pebble_flush_duration_seconds_sum{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) / sum(rate(formance_ledger_pebble_flush_duration_seconds_count{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} mean",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} mean",
                      "range": true,
                      "refId": "D"
                   }
@@ -6293,7 +6293,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_pebble_flush_input_size_bytes_sum{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -6391,7 +6391,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, status, reason) (rate({__name__=\"formance_ledger_pebble_compactions_total\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval]))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: {{status}} {{reason}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: {{status}} {{reason}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -6490,7 +6490,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le) (rate({__name__=\"formance_ledger_pebble_compaction_duration_seconds_bucket\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: p50",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: p50",
                      "range": true,
                      "refId": "A"
                   },
@@ -6501,7 +6501,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le) (rate({__name__=\"formance_ledger_pebble_compaction_duration_seconds_bucket\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: p95 ",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: p95 ",
                      "range": true,
                      "refId": "B"
                   },
@@ -6512,7 +6512,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le) (rate({__name__=\"formance_ledger_pebble_compaction_duration_seconds_bucket\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: p99",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: p99",
                      "range": true,
                      "refId": "C"
                   },
@@ -6523,7 +6523,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_pebble_compaction_duration_seconds_sum{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) / sum(rate(formance_ledger_pebble_compaction_duration_seconds_count{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: mean",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: mean",
                      "range": true,
                      "refId": "D"
                   }
@@ -6621,7 +6621,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, reason) (rate({__name__=\"formance_ledger_pebble_compactions_total\", status=\"error\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval]))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: {{reason}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: {{reason}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -6719,7 +6719,7 @@
                      },
                      "editorMode": "code",
                      "expr": "max by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, reason) ({__name__=\"formance_ledger_pebble_write_stall_active\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"})",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} / {{reason}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} / {{reason}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -6817,7 +6817,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, reason) (rate({__name__=\"formance_ledger_pebble_write_stalls_total\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval]))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} / {{reason}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} / {{reason}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -6916,7 +6916,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) (rate({__name__=\"formance_ledger_pebble_write_stall_duration_seconds_bucket\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p50",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p50",
                      "range": true,
                      "refId": "A"
                   },
@@ -6927,7 +6927,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) (rate({__name__=\"formance_ledger_pebble_write_stall_duration_seconds_bucket\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p95",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p95",
                      "range": true,
                      "refId": "B"
                   },
@@ -6938,7 +6938,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) (rate({__name__=\"formance_ledger_pebble_write_stall_duration_seconds_bucket\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p99",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p99",
                      "range": true,
                      "refId": "C"
                   },
@@ -6949,7 +6949,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_pebble_write_stall_duration_seconds_sum{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) / sum(rate(formance_ledger_pebble_write_stall_duration_seconds_count{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} mean",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} mean",
                      "range": true,
                      "refId": "D"
                   }
@@ -7048,7 +7048,7 @@
                      },
                      "editorMode": "code",
                      "expr": "rate({__name__=\"formance_ledger_pebble_vfs_read_ops_total\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval])",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} — reads/s",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} — reads/s",
                      "range": true,
                      "refId": "A"
                   },
@@ -7059,7 +7059,7 @@
                      },
                      "editorMode": "code",
                      "expr": "rate({__name__=\"formance_ledger_pebble_vfs_write_ops_total\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval])",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} — writes/s",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} — writes/s",
                      "range": true,
                      "refId": "B"
                   }
@@ -7158,7 +7158,7 @@
                      },
                      "editorMode": "code",
                      "expr": "rate({__name__=\"formance_ledger_pebble_vfs_sync_ops_total\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval])",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} — syncs/s",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} — syncs/s",
                      "range": true,
                      "refId": "A"
                   }
@@ -7256,7 +7256,7 @@
                      },
                      "editorMode": "code",
                      "expr": "{__name__=\"formance_ledger_pebble_vfs_read_ops_total\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} — reads",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} — reads",
                      "range": true,
                      "refId": "A"
                   },
@@ -7267,7 +7267,7 @@
                      },
                      "editorMode": "code",
                      "expr": "{__name__=\"formance_ledger_pebble_vfs_write_ops_total\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} — writes",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} — writes",
                      "range": true,
                      "refId": "B"
                   },
@@ -7278,7 +7278,7 @@
                      },
                      "editorMode": "code",
                      "expr": "{__name__=\"formance_ledger_pebble_vfs_sync_ops_total\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} — syncs",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} — syncs",
                      "range": true,
                      "refId": "C"
                   }
@@ -7376,7 +7376,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, op) (rate({__name__=\"formance_ledger_pebble_disk_slow_operations_total\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval]))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} / {{op}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} / {{op}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -7475,7 +7475,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, op) (rate({__name__=\"formance_ledger_pebble_disk_slow_duration_seconds_bucket\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p50 {{op}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p50 {{op}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -7486,7 +7486,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, op) (rate({__name__=\"formance_ledger_pebble_disk_slow_duration_seconds_bucket\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p95 {{op}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p95 {{op}}",
                      "range": true,
                      "refId": "B"
                   },
@@ -7497,7 +7497,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, op) (rate({__name__=\"formance_ledger_pebble_disk_slow_duration_seconds_bucket\", \"k8s_namespace_name\"=~\"$namespace\", \"formance_ledger_cluster_name\"=~\"$cluster\", \"formance_ledger_node_id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p99 {{op}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} p99 {{op}}",
                      "range": true,
                      "refId": "C"
                   }
@@ -7610,7 +7610,7 @@
                      },
                      "editorMode": "code",
                      "expr": "formance_ledger_readindex_level_size_bytes{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} — L{{level}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} — L{{level}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -7709,7 +7709,7 @@
                      },
                      "editorMode": "code",
                      "expr": "formance_ledger_readindex_memtable_size_bytes{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -7808,7 +7808,7 @@
                      },
                      "editorMode": "code",
                      "expr": "rate(formance_ledger_readindex_cache_hits_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} — hits",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} — hits",
                      "range": true,
                      "refId": "A"
                   },
@@ -7819,7 +7819,7 @@
                      },
                      "editorMode": "code",
                      "expr": "rate(formance_ledger_readindex_cache_misses_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} — misses",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}} — misses",
                      "range": true,
                      "refId": "B"
                   }
@@ -7889,7 +7889,7 @@
                      },
                      "editorMode": "code",
                      "expr": "rate(formance_ledger_readindex_cache_hits_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval]) / (rate(formance_ledger_readindex_cache_hits_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval]) + rate(formance_ledger_readindex_cache_misses_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval]))",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -8002,7 +8002,7 @@
                      },
                      "editorMode": "code",
                      "expr": "formance_ledger_cache_size{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}",
-                     "legendFormat": "{{type}} ({{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}})",
+                     "legendFormat": "{{type}} ({{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}})",
                      "range": true,
                      "refId": "A"
                   }
@@ -8101,7 +8101,7 @@
                      },
                      "editorMode": "code",
                      "expr": "formance_ledger_numscript_cache_size{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -8200,7 +8200,7 @@
                      },
                      "editorMode": "code",
                      "expr": "formance_ledger_cache_generation{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Generation",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Generation",
                      "range": true,
                      "refId": "A"
                   },
@@ -8211,7 +8211,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_cache_rotations_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Rotations/s",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}: Rotations/s",
                      "range": true,
                      "refId": "B"
                   }
@@ -8324,7 +8324,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_bloom_lookups_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (type, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{type}} ({{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}})",
+                     "legendFormat": "{{type}} ({{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}})",
                      "range": true,
                      "refId": "A"
                   }
@@ -8423,7 +8423,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_bloom_negatives_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (type, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) / sum(rate(formance_ledger_bloom_lookups_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (type, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) * 100",
-                     "legendFormat": "{{type}} ({{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}})",
+                     "legendFormat": "{{type}} ({{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}})",
                      "range": true,
                      "refId": "A"
                   }
@@ -8522,7 +8522,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_bloom_negatives_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (type, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{type}} ({{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}})",
+                     "legendFormat": "{{type}} ({{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}})",
                      "range": true,
                      "refId": "A"
                   }
@@ -8621,7 +8621,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_bloom_adds_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (type, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{type}} ({{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}})",
+                     "legendFormat": "{{type}} ({{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}})",
                      "range": true,
                      "refId": "A"
                   }
@@ -8720,7 +8720,7 @@
                      },
                      "editorMode": "code",
                      "expr": "formance_ledger_bloom_ready{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -8819,7 +8819,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_bloom_false_positives_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (type, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) / sum(rate(formance_ledger_bloom_lookups_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval]) - rate(formance_ledger_bloom_negatives_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (type, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{type}} ({{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}})",
+                     "legendFormat": "{{type}} ({{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}})",
                      "range": true,
                      "refId": "A"
                   }
@@ -8932,7 +8932,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(formance_ledger_admission_preload_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id))",
-                     "legendFormat": "p50 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p50 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -8943,7 +8943,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(formance_ledger_admission_preload_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id))",
-                     "legendFormat": "p95 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p95 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "B"
                   },
@@ -8954,7 +8954,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(formance_ledger_admission_preload_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id))",
-                     "legendFormat": "p99 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p99 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "C"
                   }
@@ -9053,7 +9053,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_admission_preloads_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -9152,7 +9152,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_admission_preload_keys_needed_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -9251,7 +9251,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_admission_preload_cache_hits_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) / sum(rate(formance_ledger_admission_preload_keys_needed_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) * 100",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -9350,7 +9350,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_admission_preload_keys_needed_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) - sum(rate(formance_ledger_admission_preload_cache_hits_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "store reads - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "store reads - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -9361,7 +9361,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_admission_preload_cache_hits_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "cache hits - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "cache hits - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "B"
                   }
@@ -9581,7 +9581,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(formance_ledger_admission_fsm_future_wait_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "p50 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p50 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -9592,7 +9592,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(formance_ledger_admission_fsm_future_wait_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "p95 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p95 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "B"
                   },
@@ -9603,7 +9603,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(formance_ledger_admission_fsm_future_wait_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "p99 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p99 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "C"
                   }
@@ -9702,7 +9702,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(formance_ledger_admission_proposal_guard_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id))",
-                     "legendFormat": "p50 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p50 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -9713,7 +9713,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(formance_ledger_admission_proposal_guard_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id))",
-                     "legendFormat": "p95 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p95 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "B"
                   },
@@ -9724,7 +9724,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(formance_ledger_admission_proposal_guard_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id))",
-                     "legendFormat": "p99 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p99 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "C"
                   }
@@ -9823,7 +9823,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(formance_ledger_admission_command_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "p50 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p50 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -9834,7 +9834,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(formance_ledger_admission_command_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "p95 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p95 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "B"
                   },
@@ -9845,7 +9845,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(formance_ledger_admission_command_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "p99 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p99 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "C"
                   }
@@ -10019,7 +10019,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_admission_proposal_guard_rebuilds_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id) / sum(rate(formance_ledger_admission_proposal_guard_duration_seconds_count{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "Rebuild ratio - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "Rebuild ratio - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -10030,7 +10030,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(rate(formance_ledger_admission_proposal_guard_rebuilds_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id)",
-                     "legendFormat": "Rebuilds/s - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "Rebuilds/s - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "B"
                   }
@@ -10129,7 +10129,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(formance_ledger_admission_resolve_batch_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "p50 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p50 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -10140,7 +10140,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(formance_ledger_admission_resolve_batch_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "p95 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p95 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "B"
                   },
@@ -10151,7 +10151,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(formance_ledger_admission_resolve_batch_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "p99 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p99 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "C"
                   }
@@ -10250,7 +10250,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.5, rate(formance_ledger_admission_command_size_bytes_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval]))",
-                     "legendFormat": "p50 ({{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}})",
+                     "legendFormat": "p50 ({{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}})",
                      "range": true,
                      "refId": "A"
                   },
@@ -10261,7 +10261,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, rate(formance_ledger_admission_command_size_bytes_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval]))",
-                     "legendFormat": "p95 ({{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}})",
+                     "legendFormat": "p95 ({{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}})",
                      "range": true,
                      "refId": "B"
                   },
@@ -10272,7 +10272,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, rate(formance_ledger_admission_command_size_bytes_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval]))",
-                     "legendFormat": "p99 ({{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}})",
+                     "legendFormat": "p99 ({{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}})",
                      "range": true,
                      "refId": "C"
                   }
@@ -10470,7 +10470,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(formance_ledger_admission_orders_preparation_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "p50 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p50 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -10481,7 +10481,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(formance_ledger_admission_orders_preparation_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "p95 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p95 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "B"
                   },
@@ -10492,7 +10492,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(formance_ledger_admission_orders_preparation_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "p99 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p99 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "C"
                   }
@@ -10591,7 +10591,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(formance_ledger_admission_script_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "p50 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p50 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -10602,7 +10602,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(formance_ledger_admission_script_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "p95 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p95 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "B"
                   },
@@ -10613,7 +10613,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(formance_ledger_admission_script_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "p99 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p99 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "C"
                   }
@@ -10712,7 +10712,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(formance_ledger_admission_propose_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "p50 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p50 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -10723,7 +10723,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(formance_ledger_admission_propose_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "p95 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p95 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "B"
                   },
@@ -10734,7 +10734,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(formance_ledger_admission_propose_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "p99 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p99 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "C"
                   }
@@ -10833,7 +10833,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(formance_ledger_admission_response_resolution_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "p50 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p50 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -10844,7 +10844,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(formance_ledger_admission_response_resolution_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "p95 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p95 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "B"
                   },
@@ -10855,7 +10855,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(formance_ledger_admission_response_resolution_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id, le))",
-                     "legendFormat": "p99 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p99 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "C"
                   }
@@ -10968,7 +10968,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(formance_ledger_ctrl_apply_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id))",
-                     "legendFormat": "p50 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p50 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -10979,7 +10979,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(formance_ledger_ctrl_apply_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id))",
-                     "legendFormat": "p95 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p95 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "B"
                   },
@@ -10990,7 +10990,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(formance_ledger_ctrl_apply_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id))",
-                     "legendFormat": "p99 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p99 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "C"
                   }
@@ -11089,7 +11089,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.50, sum(rate(formance_ledger_grpc_apply_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id))",
-                     "legendFormat": "p50 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p50 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -11100,7 +11100,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.95, sum(rate(formance_ledger_grpc_apply_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id))",
-                     "legendFormat": "p95 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p95 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "B"
                   },
@@ -11111,7 +11111,7 @@
                      },
                      "editorMode": "code",
                      "expr": "histogram_quantile(0.99, sum(rate(formance_ledger_grpc_apply_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[$__rate_interval])) by (le, k8s_namespace_name, formance_ledger_cluster_name, formance_ledger_node_id))",
-                     "legendFormat": "p99 - {{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "p99 - {{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "C"
                   }
@@ -11810,7 +11810,7 @@
                      },
                      "editorMode": "code",
                      "expr": "formance_ledger_storage_disk_volume_usage_bytes{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\", volume=\"wal\"}",
-                     "legendFormat": "WAL Volume ({{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}})",
+                     "legendFormat": "WAL Volume ({{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}})",
                      "range": true,
                      "refId": "A"
                   },
@@ -11821,7 +11821,7 @@
                      },
                      "editorMode": "code",
                      "expr": "formance_ledger_storage_disk_volume_usage_bytes{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\", volume=\"data\"}",
-                     "legendFormat": "Data Volume ({{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}})",
+                     "legendFormat": "Data Volume ({{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}})",
                      "range": true,
                      "refId": "B"
                   }
@@ -12001,7 +12001,7 @@
                      },
                      "editorMode": "code",
                      "expr": "rate(formance_ledger_index_builder_logs_indexed_total{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}[1m])",
-                     "legendFormat": "{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
+                     "legendFormat": "{{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -12100,7 +12100,7 @@
                      },
                      "editorMode": "code",
                      "expr": "formance_ledger_index_builder_last_indexed_sequence{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}",
-                     "legendFormat": "Last Indexed ({{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}})",
+                     "legendFormat": "Last Indexed ({{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}})",
                      "range": true,
                      "refId": "A"
                   },
@@ -12111,7 +12111,7 @@
                      },
                      "editorMode": "code",
                      "expr": "formance_ledger_index_builder_pebble_last_sequence{k8s_namespace_name=~\"$namespace\", formance_ledger_cluster_name=~\"$cluster\", formance_ledger_node_id=~\"$node\"}",
-                     "legendFormat": "Pebble Last ({{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}})",
+                     "legendFormat": "Pebble Last ({{k8s_namespace_name}}/{{formance_ledger_cluster_name}} / Node {{formance_ledger_node_id}})",
                      "range": true,
                      "refId": "B"
                   }
