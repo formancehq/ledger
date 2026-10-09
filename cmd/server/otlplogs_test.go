@@ -106,7 +106,7 @@ func TestResolveLogLevel(t *testing.T) {
 func TestResourceFromFlags(t *testing.T) {
 	t.Parallel()
 	defaultIdentity := map[string]string{
-		"service.instance.id":          "cluster-a",
+		"service.instance.id":          "cluster-a.42",
 		"formance.ledger.cluster.id":   "cluster-a",
 		"formance.ledger.cluster.name": "cluster-a",
 		"formance.ledger.node.id":      "42",
@@ -125,12 +125,24 @@ func TestResourceFromFlags(t *testing.T) {
 		{name: "explicit service", serviceName: "ledger-production", wantName: "ledger-production", wantVersion: "v3.0.0+abc123", wantAttributes: defaultIdentity},
 		{name: "resource overrides", serviceName: "ledger-production", attributes: "service.name=override,service.version=override-build,deployment.environment=regression", wantName: "override", wantVersion: "override-build", wantAttributes: withEnvironment},
 		{
-			// The operator's path: OTEL_RESOURCE_ATTRIBUTES is bound to the
-			// flag. The name keys the instance; the declared ID is kept as is.
-			name: "operator cluster name", attributes: "env=prod,formance.ledger.cluster.name=prod-eu,k8s.namespace.name=payments,k8s.pod.name=ledger-prod-eu-1",
+			// An explicit cluster name without an explicit instance ID: the
+			// default instance ID follows the name; the declared ID is kept.
+			name: "explicit cluster name", attributes: "formance.ledger.cluster.name=prod-eu",
 			wantName: "ledger", wantVersion: "v3.0.0+abc123",
 			wantAttributes: map[string]string{
-				"service.instance.id":          "prod-eu",
+				"service.instance.id":          "prod-eu.42",
+				"formance.ledger.cluster.id":   "cluster-a",
+				"formance.ledger.cluster.name": "prod-eu",
+				"formance.ledger.node.id":      "42",
+			},
+		},
+		{
+			// The operator's path: OTEL_RESOURCE_ATTRIBUTES is bound to the
+			// flag, and the operator supplies a per-pod instance ID.
+			name: "operator attributes", attributes: "env=prod,formance.ledger.cluster.name=prod-eu,k8s.namespace.name=payments,k8s.pod.name=ledger-prod-eu-1,k8s.container.name=ledger,service.instance.id=payments.ledger-prod-eu-1.ledger",
+			wantName: "ledger", wantVersion: "v3.0.0+abc123",
+			wantAttributes: map[string]string{
+				"service.instance.id":          "payments.ledger-prod-eu-1.ledger",
 				"formance.ledger.cluster.id":   "cluster-a",
 				"formance.ledger.cluster.name": "prod-eu",
 				"formance.ledger.node.id":      "42",

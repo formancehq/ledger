@@ -30,12 +30,13 @@ Server OTLP logs, traces, and metrics use the same OpenTelemetry resource:
 | --------- | ----- | ------ |
 | `service.name` | `--otel-service-name`, default `ledger` (identical on every node) | server |
 | `service.version` | semver build metadata `<version>+<commit>` (e.g. `3.0.0+abc1234`); the commit is omitted when unknown or already in the version | server |
-| `service.instance.id` | the cluster name (`formance.ledger.cluster.name`) | server |
+| `service.instance.id` | `<namespace>.<pod>.<container>` under the operator; otherwise `<cluster name>.<node ID>` | operator (server default) |
 | `formance.ledger.cluster.id` | `--cluster-id` | server |
 | `formance.ledger.cluster.name` | `Cluster` resource name; the server defaults it to the cluster ID | operator (server default) |
 | `formance.ledger.node.id` | Raft node ID | server |
 | `k8s.namespace.name` | pod namespace | operator |
 | `k8s.pod.name` | pod name | operator |
+| `k8s.container.name` | `ledger` | operator |
 
 `service.*` and `k8s.*` follow the OpenTelemetry semantic conventions. Every
 node shares one `service.name`, which the OTLP→Prometheus translation maps to
@@ -52,11 +53,12 @@ namespace; without the operator the namespace is absent and the name falls
 back to the cluster ID, so give each cluster a distinct ID or set
 `formance.ledger.cluster.name` explicitly.
 
-`service.instance.id` is the cluster name, so every node of a cluster reports
-the same Prometheus `instance` label: the cluster is the ledger instance, and
-`formance.ledger.node.id` tells its nodes apart. Node series therefore only
-stay distinct when that attribute is promoted to a label (see below); without
-it, the nodes of a cluster write to the same series.
+`service.instance.id` identifies one node, as the semantic conventions
+require, and OTLP→Prometheus translation maps it to the `instance` label, so
+every node has its own series and `target_info` entry even when no other
+resource attribute is promoted. The operator uses the semantic-convention
+Kubernetes derivation `<k8s.namespace.name>.<k8s.pod.name>.<k8s.container.name>`;
+without the operator the server defaults it to `<cluster name>.<node ID>`.
 
 Other resource attributes are not metric labels by default: OTLP→Prometheus
 translation stores them on `target_info`. The pre-built dashboards filter on

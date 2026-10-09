@@ -27,8 +27,8 @@ const (
 
 const (
 	// defaultServiceName is the logical service reported by every node. A
-	// cluster is told apart by service.instance.id (its name) and its nodes by
-	// formance.ledger.node.id, not by service.name.
+	// cluster is told apart by formance.ledger.cluster.name and its nodes by
+	// service.instance.id and formance.ledger.node.id, not by service.name.
 	defaultServiceName = "ledger"
 
 	// Custom resource attributes live under the formance.ledger namespace, the
@@ -61,9 +61,10 @@ func addOtlpLogsFlags(flags *flag.FlagSet) {
 // declared per deployment and repeat across clusters (EN-2031). The operator
 // supplies the name (the Cluster resource name) and k8s.namespace.name, which
 // together tell clusters apart; without the operator the name defaults to the
-// cluster ID. service.instance.id is the effective cluster name: the cluster
-// is the ledger instance, and its nodes are told apart by
-// formance.ledger.node.id.
+// cluster ID. service.instance.id must be unique per node (the semantic
+// conventions require it, and Prometheus derives the instance label from it),
+// so it defaults to <cluster name>.<node ID>; the operator overrides it with
+// the Kubernetes derivation <namespace>.<pod>.<container>.
 func resourceFromFlags(cmd *cobra.Command, clusterID string, nodeID uint64, info version.Info) (*resource.Resource, error) {
 	// addOtlpLogsFlags registers this flag with its string type before use.
 	serviceName, _ := cmd.Flags().GetString(otlp.OtelServiceNameFlag)
@@ -77,7 +78,7 @@ func resourceFromFlags(cmd *cobra.Command, clusterID string, nodeID uint64, info
 	explicit, _ := cmd.Flags().GetStringSlice(otlp.OtelResourceAttributesFlag)
 	clusterName := lastAttributeValue(explicit, resourceAttributeClusterName, clusterID)
 	attributes := append([]string{
-		fmt.Sprintf("%s=%s", semconv.ServiceInstanceIDKey, clusterName),
+		fmt.Sprintf("%s=%s.%d", semconv.ServiceInstanceIDKey, clusterName, nodeID),
 		fmt.Sprintf("%s=%s", resourceAttributeClusterID, clusterID),
 		fmt.Sprintf("%s=%s", resourceAttributeClusterName, clusterID),
 		fmt.Sprintf("%s=%d", resourceAttributeNodeID, nodeID),
