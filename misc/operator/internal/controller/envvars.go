@@ -364,15 +364,18 @@ func buildEnvVars(ledger *ledgerv1alpha1.Cluster, targetTLSMode string, credenti
 
 func appendMonitoringEnvVars(envs []corev1.EnvVar, mon *ledgerv1alpha1.MonitoringConfig, clusterName string) []corev1.EnvVar {
 	// OTEL_RESOURCE_ATTRIBUTES carries operator-injected attributes
-	// (formance.ledger.cluster.name, k8s.namespace.name, k8s.pod.name)
-	// prefixed with the user-supplied list, if any. The namespace and cluster
-	// name key dashboards, and the name is the server-built
-	// service.instance.id, because declared cluster IDs repeat across
-	// clusters; the server adds the cluster/node IDs itself. $(POD_NAME) and
+	// (formance.ledger.cluster.name, k8s.*, service.instance.id) prefixed
+	// with the user-supplied list, if any. The namespace and cluster name key
+	// dashboards, because declared cluster IDs repeat across clusters; the
+	// server adds the cluster/node IDs itself. service.instance.id follows
+	// the semantic-convention Kubernetes derivation
+	// <namespace>.<pod>.<container>, unique per node. $(POD_NAME) and
 	// $(POD_NAMESPACE) are resolved by the kubelet via env var substitution
 	// from the field refs declared earlier in the list. This var is emitted
 	// even when mon is nil so the cluster attribution is always present.
-	operatorAttrs := "formance.ledger.cluster.name=" + clusterName + ",k8s.namespace.name=$(POD_NAMESPACE),k8s.pod.name=$(POD_NAME)"
+	operatorAttrs := "formance.ledger.cluster.name=" + clusterName +
+		",k8s.namespace.name=$(POD_NAMESPACE),k8s.pod.name=$(POD_NAME),k8s.container.name=" + ledgerContainer +
+		",service.instance.id=$(POD_NAMESPACE).$(POD_NAME)." + ledgerContainer
 	attrs := operatorAttrs
 	if mon != nil && mon.Attributes != "" {
 		attrs = mon.Attributes + "," + operatorAttrs
