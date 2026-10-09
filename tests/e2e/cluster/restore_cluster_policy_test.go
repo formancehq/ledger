@@ -14,9 +14,10 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
-	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
@@ -63,6 +64,10 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 		restoreWalDir  string
 		restoreDataDir string
 		minioEndpoint  string
+		sourceWalDir   string
+		sourceDataDir  string
+
+		postCheckpointPolicyAuditSequence uint64
 	)
 
 	storage := func() *commonpb.BackupStorage {
@@ -71,6 +76,51 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 			Region:   restoreS3Region,
 			Endpoint: minioEndpoint,
 		})
+	}
+
+	clusterPolicyAuditSequence := func(client servicepb.BucketServiceClient, revision, limit uint64) (uint64, error) {
+		GinkgoHelper()
+
+		entries, err := actions.ListAuditEntries(ctx, client, false)
+		if err != nil {
+			return 0, err
+		}
+
+		for _, entry := range entries {
+			full, err := actions.GetAuditEntry(ctx, client, entry.GetSequence())
+			if err != nil {
+				return 0, err
+			}
+
+			for _, item := range full.GetItems() {
+				policy, err := clusterPolicyFromAuditItem(item)
+				if err != nil {
+					return 0, err
+				}
+				if policy == nil {
+					continue
+				}
+				if policy.GetRevision() == revision && policy.GetQueryCheckpointLimit() == limit {
+					return full.GetSequence(), nil
+				}
+			}
+		}
+
+		return 0, nil
+	}
+
+	waitForClusterPolicyAudit := func(client servicepb.BucketServiceClient, revision, limit uint64) uint64 {
+		GinkgoHelper()
+
+		var sequence uint64
+		Eventually(func(g Gomega) {
+			var err error
+			sequence, err = clusterPolicyAuditSequence(client, revision, limit)
+			g.Expect(err).To(Succeed())
+			g.Expect(sequence).To(BeNumerically(">", 0))
+		}).Within(15 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+
+		return sequence
 	}
 
 	BeforeAll(func() {
@@ -115,6 +165,10 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 		Expect(err).To(Succeed())
 		restoreDataDir, err = os.MkdirTemp("", "clusterpolicy-restore-data-*")
 		Expect(err).To(Succeed())
+		sourceWalDir, err = os.MkdirTemp("", "clusterpolicy-source-wal-*")
+		Expect(err).To(Succeed())
+		sourceDataDir, err = os.MkdirTemp("", "clusterpolicy-source-data-*")
+		Expect(err).To(Succeed())
 	})
 
 	Describe("Phase 1: post-checkpoint policy revision in the exported delta", Ordered, func() {
@@ -125,20 +179,28 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 			grpcConn      *grpc.ClientConn
 		)
 
-		BeforeAll(func() {
+		startSource := func(revision, limit uint64) {
 			instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 				NodeID:    1,
 				ClusterID: clusterID,
 				Ports:     ports,
-				WalDir:    GinkgoT().TempDir(),
-				DataDir:   GinkgoT().TempDir(),
+				WalDir:    sourceWalDir,
+				DataDir:   sourceDataDir,
 				Debug:     testutil.Debug,
 				Output:    GinkgoWriter,
 			})
-			instruments = append(instruments, testserver.WithBootstrap())
+			instruments = append(instruments,
+				testserver.WithBootstrap(),
+				testserver.WithClusterPolicyRevision(revision),
+				testserver.WithQueryCheckpointLimit(limit),
+			)
 
 			sourceServer = lease.NewService(cmdserver.NewRunCommandWithBindings, testservice.WithInstruments(instruments...))
 			Expect(sourceServer.Start(ctx)).To(Succeed())
+		}
+
+		BeforeAll(func() {
+			startSource(1, 10)
 
 			var err error
 			client, clusterClient, grpcConn, err = testutil.NewGRPCClient(ports.GRPC())
@@ -167,37 +229,30 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 			stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			Expect(sourceServer.Stop(stopCtx)).To(Succeed())
+			_ = os.RemoveAll(sourceWalDir)
+			_ = os.RemoveAll(sourceDataDir)
 		})
 
 		It("bumps the policy and writes business data after the checkpoint", func() {
-			// SetClusterPolicy waits for the audit key and establishes the
-			// post-checkpoint revision.
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-				Type: &servicepb.Request_SetClusterPolicy{
-					SetClusterPolicy: &servicepb.SetClusterPolicyRequest{
-						Policy: &commonpb.ClusterPolicy{
-							Revision:             postCheckpointRevision,
-							IdempotencyTtlMicros: uint64((time.Hour).Microseconds()),
-							QueryCheckpointLimit: postCheckpointLimit,
-							// A committed policy must carry the metadata
-							// ceilings: the FSM refuses one without them, and
-							// business writes are rejected while they are
-							// absent.
-							MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
-							MetadataMaxKeyBytes:         domain.DefaultMetadataMaxKeyBytes,
-							MetadataMaxValueBytes:       domain.DefaultMetadataMaxValueBytes,
-							MetadataMaxEntityBytes:      domain.DefaultMetadataMaxEntityBytes,
-							MetadataMaxCommandBytes:     domain.DefaultMetadataMaxCommandBytes,
-						},
-					},
-				},
-			}))
-			Expect(err).To(Succeed())
+			// Restart with a higher desired revision. The leader-side reconciler
+			// submits the internal policy command, keeping it out of Apply while
+			// still producing the post-checkpoint delta.
+			stopCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			Expect(sourceServer.Stop(stopCtx)).To(Succeed())
+			cancel()
+			startSource(postCheckpointRevision, postCheckpointLimit)
+			Eventually(func(g Gomega) bool {
+				state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+				g.Expect(err).To(Succeed())
+				return state.Leader != 0
+			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
+
+			postCheckpointPolicyAuditSequence = waitForClusterPolicyAudit(client, postCheckpointRevision, postCheckpointLimit)
 
 			// A business write proves the gate is open (policy committed) and puts
 			// a post-checkpoint ledger in the delta, so a dropped delta on restore
 			// surfaces as a missing ledger rather than passing silently.
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(deltaLedger, nil)))
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(deltaLedger, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -309,6 +364,12 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 			Expect(err).To(Succeed(), "the post-checkpoint ledger must be restored from the delta")
 		})
 
+		It("restored the post-checkpoint cluster policy audit from the delta", func() {
+			restoredSequence := waitForClusterPolicyAudit(client, postCheckpointRevision, postCheckpointLimit)
+			Expect(restoredSequence).To(Equal(postCheckpointPolicyAuditSequence),
+				"the revision 2 policy audit sequence must be the post-checkpoint entry exported in the delta")
+		})
+
 		It("reconstructs a cluster policy that CheckStore finds consistent", func() {
 			result, err := actions.CollectCheckStoreEvents(ctx, client)
 			Expect(err).To(Succeed())
@@ -327,3 +388,12 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 		})
 	})
 })
+
+func clusterPolicyFromAuditItem(item *auditpb.AuditItem) (*commonpb.ClusterPolicy, error) {
+	order := &raftcmdpb.Order{}
+	if err := order.UnmarshalVT(item.GetSerializedOrder()); err != nil {
+		return nil, err
+	}
+
+	return order.GetSystemScoped().GetSetClusterPolicy().GetPolicy(), nil
+}

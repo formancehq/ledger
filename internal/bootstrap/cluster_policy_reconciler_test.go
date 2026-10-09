@@ -54,6 +54,14 @@ func (f *fakeAdmission) Admit(_ context.Context, _ *servicepb.ApplyRequest) (*do
 	return nil, f.err
 }
 
+func (f *fakeAdmission) AdmitClusterPolicy(_ context.Context, _ *commonpb.ClusterPolicy) (*domain.ApplyResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls++
+
+	return nil, f.err
+}
+
 func (f *fakeAdmission) Barrier(_ context.Context) (uint64, error) { return 0, nil }
 
 func (f *fakeAdmission) callCount() int {

@@ -89,3 +89,22 @@ func TestAdmitRejectsCheckpointWhenAuditProjectionIsUnavailable(t *testing.T) {
 	require.ErrorAs(t, err, &building)
 	require.Contains(t, building.Index, "audit")
 }
+
+func TestAdmitRejectsMaintenanceBeforeCheckpointProjectionReadiness(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	a, _ := createTestAdmissionWithReader(t, store, nil)
+	a.sharedState.SetMaintenanceMode(true)
+	WithAuditProjectionState(func() (bool, bool) { return false, true })(a)
+
+	_, err := a.Admit(attributedTestContext(t.Context()), &servicepb.ApplyRequest{
+		Variant: &servicepb.ApplyRequest_Unsigned{Unsigned: &servicepb.ApplyBatch{Requests: []*servicepb.Request{{
+			Type: &servicepb.Request_CreateQueryCheckpoint{
+				CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{},
+			},
+		}}}},
+	})
+
+	require.ErrorIs(t, err, ErrMaintenanceMode)
+}
