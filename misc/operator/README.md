@@ -550,7 +550,10 @@ apiVersion: ledger.formance.com/v1alpha1
 kind: Backup
 metadata:
   name: my-backup
-spec: {}
+spec:
+  clusterRef: my-cluster
+  destination:
+    driver: s3
 ```
 
 The dispatcher declares `$schema: draft-07` for its own `if`/`then` branches, while each branch's `$ref` target stays draft-04 — validators resolve a `$ref` using the referenced document's own declared draft, so mixing the two is safe.
