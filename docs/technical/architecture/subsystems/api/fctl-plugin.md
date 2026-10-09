@@ -116,3 +116,11 @@ SIGTERM cancellation during ledger and transaction forms, and restoration of
 terminal attributes. Human output retained ANSI colours; JSON stdout remained
 parseable. The automated regression suites cover partial streams, response
 validation, request signing boundaries and cancellable input separately.
+
+
+The `LedgerctlTypedMetadata` cluster E2E scenarios passed with the production
+command assembly. The complete business E2E suite also passed. The full
+cluster suite reached its 20-minute timeout while starting the third Raft node
+in `raft_test.go:121`, before any CLI invocation; its multi-node bootstrap was
+blocked for 18 minutes. This broader gate remains unresolved and the PR stays
+in draft pending the cluster/CI results.
