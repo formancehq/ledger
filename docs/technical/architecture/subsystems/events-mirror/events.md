@@ -168,7 +168,7 @@ Each emitter tracks its own cursor and error status independently. A failing sin
 
 ### Per-Sink Cursor Persistence
 
-Each sink has its own cursor (last successfully emitted sequence) stored in PebbleDB under a dedicated key prefix and **replicated via Raft**. After publishing a batch, the emitter proposes a lightweight Raft command (a `Proposal` with `EventsSinkUpdate`) to advance the cursor and optionally clear any previous error. The FSM writes the cursor to the PebbleDB batch alongside normal state, ensuring all nodes share the same per-sink cursor positions.
+Each sink has its own cursor (last processed log sequence) stored in PebbleDB under a dedicated key prefix and **replicated via Raft**. The emitter advances it after successful publication of selected events or after processing logs that produce no event for this sink. After publishing a batch, it proposes a lightweight Raft command (a `Proposal` with `EventsSinkUpdate`) to advance the cursor and optionally clear any previous error. The FSM writes the cursor to the PebbleDB batch alongside normal state, ensuring all nodes share the same per-sink cursor positions. A nonzero cursor alone does not prove that the sink has published an event.
 
 This ensures:
 
@@ -194,12 +194,12 @@ Startup status proposals have a bounded wait and are canceled when the captured
 leadership generation ends. The Manager holds a newly started emitter before
 delivery until any prior startup error has been cleared.
 
-The `GetEventsSinks` gRPC endpoint returns all sink configs and their statuses, allowing operators to monitor sink health cluster-wide. A configured sink with cursor zero and no error is pending delivery; an error takes precedence over that pending state. A nonzero cursor with no error indicates successful delivery:
+The `GetEventsSinks` gRPC endpoint returns all sink configs and their statuses, allowing operators to monitor sink health cluster-wide. A configured sink with cursor zero and no error is pending delivery; an error takes precedence over that pending state. A nonzero cursor with no error indicates log-processing progress without a recorded failure. It does not establish external delivery: internal or filtered logs can advance the cursor without a `Publish` call.
 
 ```protobuf
 message SinkStatus {
   string sink_name = 1;
-  fixed64 cursor = 2;        // Last published sequence
+  fixed64 cursor = 2;        // Last processed log sequence
   SinkError error = 3;       // Most recent error (nil = healthy)
 }
 

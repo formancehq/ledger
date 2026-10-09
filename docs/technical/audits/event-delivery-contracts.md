@@ -73,7 +73,9 @@ observed startup error, before the emitter can publish.
 An unchanged retry must not repeatedly propose the same message. A configured
 sink with cursor zero and no error is pending; a delivery error from a prior
 emitter must remain until successful publication. Trace the persisted status,
-read API, CLI and Operator views before calling the sink healthy.
+read API, CLI and Operator views before calling the sink healthy. A nonzero
+cursor is log-processing progress, not evidence of a `Publish` call: filtered
+or internal logs can advance it alone.
 
 ### Cursor and partial effects
 

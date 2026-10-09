@@ -3,6 +3,7 @@ package events
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -26,6 +27,22 @@ import (
 )
 
 type startupRetryTestSink struct{}
+
+type startupGateTestSink struct {
+	called       atomic.Int64
+	allowSuccess atomic.Bool
+}
+
+func (s *startupGateTestSink) Publish(context.Context, []*eventspb.Event) error {
+	s.called.Add(1)
+	if !s.allowSuccess.Load() {
+		return errors.New("delivery blocked")
+	}
+
+	return nil
+}
+
+func (*startupGateTestSink) Close() error { return nil }
 
 type startupStatusProposer struct {
 	store   *dal.Store
@@ -110,11 +127,16 @@ func (p *delayedStartupStatusProposer) Propose(_ context.Context, proposal *node
 	update := cmd.GetTechnicalUpdates()[0].GetEventsSink()
 	proposal.Resolve(nil, nil)
 	f := futures.New[state.ApplyResult]()
-	if update.GetError() != nil {
+	if update.GetError() != nil && strings.HasPrefix(update.GetError().GetMessage(), sinkStartupErrorPrefix) {
 		p.mu.Lock()
 		p.pending = update
 		p.pendingFuture = f
 		p.mu.Unlock()
+
+		return f, nil
+	}
+	if update.GetError() != nil {
+		f.Resolve(state.ApplyResult{}, applyStartupStatusUpdate(p.store, update))
 
 		return f, nil
 	}
@@ -356,12 +378,13 @@ func TestManager_UncertainStartupReportClearedAfterRecovery(t *testing.T) {
 		}
 	})
 	var attempts atomic.Int64
+	sink := &startupGateTestSink{}
 	sinkFactories["nats"] = func(*commonpb.SinkConfig, Format) (Sink, error) {
 		if attempts.Add(1) == 1 {
 			return nil, errors.New("temporary startup failure")
 		}
 
-		return startupRetryTestSink{}, nil
+		return sink, nil
 	}
 	builder, store := newTestBuilder(t)
 	attrs := attributes.New()
@@ -369,6 +392,15 @@ func TestManager_UncertainStartupReportClearedAfterRecovery(t *testing.T) {
 		Nats: &commonpb.NatsSinkConfig{Url: "nats://dependency.invalid:4222", Topic: "ledger.events"},
 	}}
 	saveManagedSinkConfig(t, attrs, store, config)
+	batch := store.OpenWriteSession()
+	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{
+		Sequence: 1,
+		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
+			CreateLedger: &commonpb.CreatedLedgerLog{Name: "orders", CreatedAt: commonpb.NewTimestamp(libtime.Now())},
+		}},
+	}}))
+	require.NoError(t, state.SetAppliedIndex(batch, 1))
+	require.NoError(t, batch.Commit())
 	proposer := &delayedStartupStatusProposer{store: store, barrierProposed: make(chan struct{}), clearProposed: make(chan struct{}), release: make(chan struct{}), reportApplied: make(chan struct{}), releaseClear: make(chan struct{})}
 	var releaseOnce sync.Once
 	t.Cleanup(func() { releaseOnce.Do(func() { close(proposer.release) }) })
@@ -398,12 +430,24 @@ func TestManager_UncertainStartupReportClearedAfterRecovery(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("the startup error was not cleared after the status barrier")
 	}
+	require.Never(t, func() bool { return sink.called.Load() > 0 },
+		300*time.Millisecond, 10*time.Millisecond,
+		"the emitter must not publish while its startup clear is pending")
 	clearOnce.Do(func() { close(proposer.releaseClear) })
 	require.Eventually(t, func() bool {
 		status, err := startupStatusView(store, config)
 
-		return err == nil && status.GetError() == nil && managedSinkByName(m, config.GetName()) != nil
-	}, 3*time.Second, 10*time.Millisecond)
+		return err == nil && sink.called.Load() > 0 &&
+			status.GetError().GetMessage() == "delivery blocked" &&
+			managedSinkByName(m, config.GetName()) != nil
+	}, 3*time.Second, 10*time.Millisecond, "a delivery error after startup must survive the startup clear")
+	sink.allowSuccess.Store(true)
+	managedSinkByName(m, config.GetName()).emitter.Notify()
+	require.Eventually(t, func() bool {
+		status, err := startupStatusView(store, config)
+
+		return err == nil && status.GetError() == nil && status.GetCursor() == 1
+	}, 4*time.Second, 10*time.Millisecond)
 }
 
 func TestManager_PreservesDeliveryErrorAcrossStartupFailure(t *testing.T) {
