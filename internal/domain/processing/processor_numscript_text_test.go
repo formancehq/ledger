@@ -21,10 +21,9 @@ func numscriptSendRequest(script string) *servicepb.Request {
 	}}}
 }
 
-// TestProcessCreateTransaction_Numscript_MissingArtifactRecompiles pins that a
-// scripted order reaching apply without its compiled artifact is recompiled
-// from the script text and applied, instead of failing.
-func TestProcessCreateTransaction_Numscript_MissingArtifactRecompiles(t *testing.T) {
+// TestProcessCreateTransaction_Numscript_TextOrderExecutes pins that a
+// scripted order is compiled from its business text and applied.
+func TestProcessCreateTransaction_Numscript_TextOrderExecutes(t *testing.T) {
 	t.Parallel()
 
 	processor, err := NewRequestProcessor(nil, 0)
@@ -41,9 +40,8 @@ func TestProcessCreateTransaction_Numscript_MissingArtifactRecompiles(t *testing
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, nil)
 
-	order := requestToOrderWithoutArtifact(numscriptSendRequest(
+	order := requestToOrderUnchecked(numscriptSendRequest(
 		`send [USD/2 10000] (source = @world destination = @users:alice)`))
-	require.Empty(t, order.GetTechnical().GetCompiledProgram())
 
 	result, procErr := processor.ProcessOrder(order, mockStore)
 	require.Nil(t, procErr)
@@ -56,10 +54,9 @@ func TestProcessCreateTransaction_Numscript_MissingArtifactRecompiles(t *testing
 	require.Equal(t, "USD/2", postings[0].GetAsset())
 }
 
-// TestProcessCreateTransaction_Numscript_MissingArtifactCompileError pins that
-// recompiling a missing artifact surfaces the compiler's own rejection — the
-// error admission would have returned — rather than a generic runtime error.
-func TestProcessCreateTransaction_Numscript_MissingArtifactCompileError(t *testing.T) {
+// TestProcessCreateTransaction_Numscript_TextOrderCompileError pins that
+// a malformed scripted order surfaces the compiler's validation error.
+func TestProcessCreateTransaction_Numscript_TextOrderCompileError(t *testing.T) {
 	t.Parallel()
 
 	processor, err := NewRequestProcessor(nil, 0)
@@ -72,7 +69,7 @@ func TestProcessCreateTransaction_Numscript_MissingArtifactCompileError(t *testi
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	setupNumscriptVolumeMocks(mockStore)
 
-	order := requestToOrderWithoutArtifact(numscriptSendRequest(
+	order := requestToOrderUnchecked(numscriptSendRequest(
 		`send [USD/2 *] (source = @sa:credit allowing unbounded overdraft destination = @users:alice)`))
 
 	result, procErr := processor.ProcessOrder(order, mockStore)

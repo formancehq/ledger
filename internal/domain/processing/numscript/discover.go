@@ -47,11 +47,6 @@ type DiscoveryResult struct {
 	WriteMetadata map[domain.MetadataKey]struct{}
 	InputsHash    []byte
 
-	// Compiled is the VM artifact for this script, bound to the order: the VM is
-	// the only execution engine, so it is always set on success — a script the
-	// VM cannot run fails discovery with ErrNumscriptCompile instead.
-	Compiled *CompiledScript
-
 	NetBalanceDeltas map[domain.VolumeKey]*big.Int
 	MetadataWrites   map[domain.MetadataKey]string
 }
@@ -113,7 +108,6 @@ func DiscoverNumscriptDependencies(
 		ReadMetadata:  make(map[domain.MetadataKey]struct{}, len(resolved.MetaReads)),
 		WriteMetadata: make(map[domain.MetadataKey]struct{}, len(resolved.MetaWrites)),
 		InputsHash:    recording.Hash(),
-		Compiled:      compiled,
 	}
 
 	// Ledger volumes are keyed by (ledger, account, asset, color): color IS a
@@ -161,8 +155,8 @@ func DiscoverNumscriptDependencies(
 	// executing it against the same source. A later order in the same atomic
 	// batch resolves against pre-batch storage plus these effects, mirroring the
 	// FSM's sequential apply over a mutated WriteSet (EN-1406 P1-1). It runs the
-	// very artifact bound to the order, on the VM — the engine the FSM uses — so
-	// the predicted effects are the ones the FSM will produce.
+	// locally compiled script on the VM — the engine the FSM uses — so the
+	// predicted effects match the FSM when both see the same state.
 	//
 	// Effects are best-effort: a runtime failure here (insufficient funds against
 	// admission-time state, overflow, …) is NOT an admission rejection. Balance

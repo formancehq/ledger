@@ -275,89 +275,23 @@ bits.
 
 ## Numscript metadata rendering and VM execution (revision 23)
 
-Revision 23 stores and returns an account-typed Numscript metadata value
-(`set_tx_meta("k", @merchants:acme)` and its `set_account_meta` counterpart) as
-the bare account name, `merchants:acme`, where revision 22 returned
-`@merchants:acme`. The rendering now comes from the Numscript library itself,
-identically on both of its engines, and the bare name is the form a later
-`meta()` read can resolve as an account again — the `@`-prefixed form could
-not. Scalar values are unchanged: strings and numbers stay verbatim, monetary
-stays `ASSET amount`, portions and assets keep their canonical forms. The
-`.proto` text of the exposed metadata messages is unchanged, so the difference
-is invisible to a schema comparison; a revision-22 client would read the same
-Apply request back with different metadata bytes.
-
-Revision 23 also changes apply semantics: admission compiles each resolvable
-script to Numscript VM bytecode and binds it to the order's technical
-sub-message, and the FSM executes that artifact instead of re-interpreting the
-script text. The VM is the only engine: a script it cannot compile is rejected
-at admission, and a scripted order reaching the FSM without an artifact is
-recompiled from its text rather than interpreted. Like revision 6, apply semantics must agree across every replica:
-a binary predating these fields silently drops them and interprets with the
-older Numscript library, so a mixed-binary cluster applying the same committed
-entry writes divergent transaction and audit bytes. Deploy this revision with
-all nodes stopped — see
-[Upgrading across the Numscript VM execution change](../../../../ops/deployment.md#upgrading-across-the-numscript-vm-execution-change-revision-23).
-The artifact is bound to its script text by an XXH3-128 hash
-(`compiled_script_hash`), which also keys the FSM's script caches.
-The artifact itself carries the Numscript library's bytecode version
-(major.minor). The FSM executes it when the bundled library can read that
-version: the same major and a minor no newer for a stable major, or exactly
-the same version for an unstable `0.x`. A version it cannot read means
-another library version produced the artifact; the FSM then derives program
-and vars from the script text with its own library instead, exactly as the
-store checker's audit replay derives every order (see revision 24 below), so
-foreign bytecode is never run. A malformed artifact — a half whose header
-does not parse, whatever version the other half carries; one the library
-reads but cannot decode or verify; a partial one; or one whose script hash
-does not match the resolved text — fails the order with a Numscript runtime
-error and is never repaired from the text.
-
-Revision 23 also moves where and how a statically invalid script fails.
-`Parse` checks syntax only; the Numscript typechecker runs inside the
-compiler. Every static-semantics failure the compiler catches — a type
-mismatch, an undeclared variable, an unknown function or var type, `oneof` or
-a mid-script `balance()` without its feature flag, a send-all from an
-unbounded-overdraft source — used to pass admission, reach apply, and fail
-there as `ERROR_REASON_NUMSCRIPT_RUNTIME` (`KindInternal`). It now fails
-at admission as `ErrNumscriptCompile` with the new
-`ERROR_REASON_NUMSCRIPT_COMPILE_ERROR` (`KindValidation`, detail in the
-`details` metadata key, like `NUMSCRIPT_PARSE_ERROR`), and such an order no longer produces a proposal, a failure
-log, or an audit entry. The one exception is a `latest` script reference under
-an idempotency key: admission forwards it as preload-unavailable (see
-[admission idempotency](../admission/idempotency.md)), so the FSM replays the
-key's frozen outcome or rejects with `ERROR_REASON_PRELOAD_UNAVAILABLE`.
-Neither revision freezes the compile failure itself under an idempotency key:
-revision 22's apply failure was `KindInternal`, which is not freezable, and
-revision 23's rejection happens before apply.
+Revision 23 changed account-typed Numscript metadata from `@merchants:acme`
+to `merchants:acme` and introduced VM execution. It also moved static compile
+failures from FSM apply to admission, reported as
+`ERROR_REASON_NUMSCRIPT_COMPILE_ERROR`. These are exposed semantic changes,
+so the service revision increment was required. At that pre-release stage,
+admission also attached VM bytecode to the internal Raft order. That internal
+representation has since been removed; see
+[Numscript library upgrades](../../../../ops/deployment.md#numscript-library-upgrades).
 
 ## Omitting already-cached Numscript bytecode (revision 24)
 
-Revision 24 lets admission send `OrderTechnical.compiled_program` by
-reference: a new field, `compiled_program_hash` (the XXH3-128 of the bytes),
-replaces the bytes once admission's own compile cache has compiled the script
-before (`CompiledScript.AlreadyCompiled`, backed by `lruEntry.compileParsed`
-on admission's own `NumscriptCache` instance), so the bytecode travels once
-per script per admission instance. `compiled_vars` and `compiled_script_hash`
-remain mandatory for every scripted order exactly as before, and exactly one
-of `compiled_program` and `compiled_program_hash` accompanies them; any other
-combination fails the order loudly. The signal describes what this instance
-has sent, never what any replica has cached — admission and the FSM apply
-path each construct their own `NumscriptCache` instance and share no state —
-and the FSM tolerates it being wrong either way.
-
-The FSM runs a committed artifact when its own library can use it — by value
-when it reads the bytecode version, by reference when it holds or reproduces
-bytes with the committed hash — and otherwise derives program and vars from
-the script text with its own library (`numscript.SafeExecCommitted`), so
-replicas on different library versions apply the same entry without failing
-it; see
-[Omitting already-cached Numscript bytecode](../../../../ops/deployment.md#omitting-already-cached-numscript-bytecode-revision-24)
-for the contract that keeps their outcomes equal. A revision-23 binary does
-not know the new field and treats a by-reference order as a partial
-artifact, failing the order a revision-24 binary applies — replicated-state
-divergence, not merely an availability difference — which is why the revision
-changes.
+Revision 24 was a pre-release intermediate representation: admission could
+send a program hash instead of its bytes after its own cache had compiled the
+script. Older binaries interpreted that shape differently, so this revision
+incremented the service gate. The current internal Raft order carries no
+compiled program, program hash, encoded variables, or script hash. These
+historical fields are absent from the schema and generated types.
 
 ## Two-way page tokens (revision 25)
 
@@ -387,6 +321,19 @@ which still commits the internal Raft `SetClusterPolicyOrder` and audited
 A revision-25 client can still encode field 28 in `Request.type`, but a
 revision-26 server no longer interprets that field as a valid Apply request.
 Clients and servers must therefore use the matching revision.
+
+## Current Numscript Raft order (internal pre-release change)
+
+The internal `OrderTechnical` compiled fields were removed. Admission still
+validates and predicts using its local VM; FSM apply and audit replay compile
+the committed script text or resolved library reference and business variables
+with the running binary. This changes only the internal Raft order
+representation, not an exposed service request, response, or operation
+contract, so it needs no additional service protocol revision.
+Semantic changes in a later Numscript library update still need their own
+service-compatibility assessment and an upgrade plan for in-flight Raft
+entries; the absence of committed bytecode does not make rolling upgrades
+safe across such changes.
 
 ## Maintaining the revision
 

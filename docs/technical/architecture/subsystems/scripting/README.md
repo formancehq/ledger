@@ -1,6 +1,6 @@
 # Scripting
 
-Numscript is the DSL used to express financial transactions as deterministic postings. Admission resolves a numscript program against preloaded state, declares what it reads and writes, and compiles it to VM bytecode bound to the order; the FSM then executes that bytecode — the only execution engine — to produce the postings. A versioned global library lets clients reuse named programs across requests.
+Numscript is the DSL used to express financial transactions as deterministic postings. Admission resolves a Numscript program against preloaded state, declares what it reads and writes, and compiles it to validate and predict effects. The committed order carries the script text or library reference with business variables. Each FSM replica compiles and executes the resolved script with its local VM to produce postings. A versioned global library lets clients reuse named programs across requests.
 
 ## Documents
 
