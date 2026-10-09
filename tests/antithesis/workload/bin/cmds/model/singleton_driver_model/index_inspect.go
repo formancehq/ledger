@@ -425,7 +425,14 @@ func (c *Checker) validateInspectSummary(
 			return true
 		}
 
-		compared = modelInspectCounts(ls, target, key, declared) == served
+		// The type the server folds by is the one this base declares, which a
+		// retype committed after the key was picked may have changed.
+		baseDeclared := declared
+		if t, ok := declaredFieldTypes(ls, target).Get(key); ok {
+			baseDeclared = t
+		}
+
+		compared = modelInspectCounts(ls, target, key, baseDeclared) == served
 
 		return compared
 	}) {
