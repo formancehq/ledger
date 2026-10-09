@@ -122,5 +122,8 @@ The `LedgerctlTypedMetadata` cluster E2E scenarios passed with the production
 command assembly. The complete business E2E suite also passed. The full
 cluster suite reached its 20-minute timeout while starting the third Raft node
 in `raft_test.go:121`, before any CLI invocation; its multi-node bootstrap was
-blocked for 18 minutes. This broader gate remains unresolved and the PR stays
-in draft pending the cluster/CI results.
+blocked for 18 minutes. A bounded rerun of `When losing a follower` passed
+all four scenarios on both the pre-integration baseline (`e641bb0d5a7a`, 7.07 s)
+and this branch (7.55 s). The full-suite bootstrap timeout was not reproduced;
+its cause remains uncertain. This broader gate remains unresolved and the PR
+stays in draft pending the cluster/CI results.
