@@ -12,6 +12,13 @@ import (
 	"testing"
 )
 
+var (
+	groupingClause = regexp.MustCompile(`\b(by|on|ignoring)\s*\(([^()]*)\)`)
+	nodeLabel      = regexp.MustCompile(`formance[._]ledger[._]node[._]id`)
+	clusterLabel   = regexp.MustCompile(`formance[._]ledger[._]cluster[._]name`)
+	namespaceLabel = regexp.MustCompile(`k8s[._]namespace[._]name`)
+)
+
 var wellFormedLegend = regexp.MustCompile(`^(?:[^{}]|\{\{[A-Za-z_][A-Za-z0-9_.]*\}\})*$`)
 
 var nativeClassicHistogramSuffix = regexp.MustCompile(`(?:raft|admission|wal|pebble|http)[A-Za-z0-9_]*(?:_sum|_count)(?:\{|\[)`)
@@ -195,6 +202,17 @@ func assertDashboardTree(t *testing.T, value any, native bool) {
 				if native && nativeClassicHistogramSuffix.MatchString(expr) {
 					t.Errorf("native dashboard references a classic histogram suffix at %s: %s", path, expr)
 				}
+				// Node IDs repeat across clusters, and the Namespace and
+				// Cluster variables allow All: a node is only identified
+				// together with its namespace and cluster name.
+				for _, clause := range groupingClause.FindAllStringSubmatch(expr, -1) {
+					if nodeLabel.MatchString(clause[2]) && (!clusterLabel.MatchString(clause[2]) || !namespaceLabel.MatchString(clause[2])) {
+						t.Errorf("%s clause groups by node without namespace and cluster name at %s: %s", clause[1], path, clause[0])
+					}
+				}
+			}
+			if legend, ok := value["legendFormat"].(string); ok && nodeLabel.MatchString(legend) && !clusterLabel.MatchString(legend) {
+				t.Errorf("legend names a node without its cluster at %s: %q", path, legend)
 			}
 
 			// Grafana substitutes {{label}}; rewriteLegendFormat only

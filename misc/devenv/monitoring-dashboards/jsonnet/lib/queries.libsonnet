@@ -70,7 +70,7 @@
   // (where `metric` is the base name; the _bucket suffix is added
   // automatically) using $__rate_interval and aggregating by the
   // standard label set.
-  histogramQuantile(percentile, metric, by=['le', 'formance.ledger.node.id'], selector=null)::
+  histogramQuantile(percentile, metric, by=['le', 'k8s.namespace.name', 'formance.ledger.cluster.name', 'formance.ledger.node.id'], selector=null)::
     'histogram_quantile(' + percentile + ', sum(rate(' + metric + '_bucket{' +
     (if selector == null then $.clusterNode else selector) + '}[$__rate_interval])) by (' +
     std.join(', ', by) + '))',
