@@ -82,6 +82,8 @@
             acli
             go_1_27
             ffmpeg
+            gh
+            coreutils
             ginkgo
             gomarkdoc
             go-jsonnet
@@ -92,6 +94,7 @@
             k6
             kubernetes-helm
             nodejs_22
+            oras
             python314
             trufflehog
             uv

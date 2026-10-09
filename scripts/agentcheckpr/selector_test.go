@@ -93,6 +93,11 @@ func TestSelectsLocalValidationGatesFromCompleteDiff(t *testing.T) {
 			expected: []string{"pre-commit", "agent-check", "test-operator"},
 		},
 		{
+			name:     "independent fctl plugin module",
+			paths:    []string{"misc/fctl-plugin/go.mod", "misc/fctl-plugin/plugin.go", "misc/fctl-plugin/cmd/fctl-plugin-ledger/main.go"},
+			expected: []string{"pre-commit", "agent-check", "test-fctl-plugin"},
+		},
+		{
 			// Top-level Antithesis files are harness configuration, not a Go
 			// package. Selecting their directory for go test fails with "no Go
 			// files" before the actual workload validation can run.

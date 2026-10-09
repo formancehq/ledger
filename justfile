@@ -30,6 +30,8 @@ lint:
     golangci-lint run --fix --build-tags it,local,enable_antithesis_sdk,{{all_tags}} --timeout 5m
     echo "==> golangci-lint (operator)"
     (cd misc/operator && golangci-lint run --fix --timeout 5m)
+    echo "==> golangci-lint (fctl plugin)"
+    (cd misc/fctl-plugin && golangci-lint run --fix --build-tags it --timeout 5m)
     echo "==> golangci-lint (model workload)"
     (cd tests/antithesis/workload && golangci-lint run --fix --build-tags enable_antithesis_sdk --timeout 5m)
 
@@ -40,6 +42,8 @@ tidy:
     go mod tidy
     echo "==> go mod tidy (operator)"
     (cd misc/operator && go mod tidy)
+    echo "==> go mod tidy (fctl plugin)"
+    (cd misc/fctl-plugin && go mod tidy)
     echo "==> go mod tidy (model workload)"
     (cd tests/antithesis/workload && go mod tidy)
 
@@ -67,6 +71,45 @@ build-full:
 # Build the client application
 build-client:
     go build -o ./build/ledgerctl ./cmd/ledgerctl
+
+# Build the HTTP fctl plugin, independently of the Ledger service module.
+build-fctl-plugin version="dev" revision="1":
+    cd misc/fctl-plugin && CGO_ENABLED=0 go build -ldflags '-X main.serviceVersion={{version}} -X main.revision={{revision}}' -o ../../build/fctl-plugin-ledger ./cmd/fctl-plugin-ledger
+
+test-fctl-plugin:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # The SDK uses Unix sockets; the canonical validator's nested TMPDIR can
+    # exceed macOS sockaddr_un.sun_path. Keep real IPC tests in a short root.
+    fixture_tmp="$(mktemp -d /tmp/fctl-plugin.XXXXXX)"
+    trap 'rm -rf "$fixture_tmp"' EXIT
+    export TMPDIR="$fixture_tmp"
+    cd misc/fctl-plugin
+    go test -race -tags it ./... -timeout 3m
+
+# Prepare six native platform archives and checksums without publishing.
+package-fctl-plugin version="dev" revision="1":
+    cd misc/fctl-plugin && LEDGER_SERVICE_VERSION={{version}} PLUGIN_REVISION={{revision}} goreleaser release --snapshot --clean --skip=publish
+
+# Export the SDK manifest from the previously built native executable.
+fctl-plugin-manifest:
+    ./build/fctl-plugin-ledger --manifest > ./build/fctl-plugin-manifest.json
+
+# Publish previously packaged raw binaries; advertise the catalogue only on success.
+publish-fctl-plugin registry="https://ghcr.io" repository="formancehq/fctl-plugin-ledger" revision="1":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd misc/fctl-plugin
+    go run ./cmd/fctl-plugin-publish --service-version "$(jq -er .version ../../build/fctl-plugin-manifest.json)" --manifest ../../build/fctl-plugin-manifest.json --artifacts ../../build/fctl-plugin/artifacts.json --source-root ../../build/fctl-plugin --registry '{{registry}}' --repository '{{repository}}' --revision '{{revision}}' > ../../build/fctl-plugin-catalogue.json.tmp
+    mv ../../build/fctl-plugin-catalogue.json.tmp ../../build/fctl-plugin-catalogue.json
+
+# Exercise real ORAS artifact creation locally without accessing any registry.
+fctl-plugin-oci-layout revision="1":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd misc/fctl-plugin
+    go run ./cmd/fctl-plugin-publish --service-version "$(jq -er .version ../../build/fctl-plugin-manifest.json)" --manifest ../../build/fctl-plugin-manifest.json --artifacts ../../build/fctl-plugin/artifacts.json --source-root ../../build/fctl-plugin --layout ../../build/fctl-plugin-oci --revision '{{revision}}' > ../../build/fctl-plugin-catalogue.json.tmp
+    mv ../../build/fctl-plugin-catalogue.json.tmp ../../build/fctl-plugin-catalogue.json
 
 # Run the application locally (single node)
 run:
@@ -548,3 +591,54 @@ test-sdk-bigint:
     npm --prefix "$sdk_dir" ci --ignore-scripts --no-audit --no-fund
     (cd "$sdk_dir" && node node_modules/typescript/bin/tsc)
     LEDGER_SDK_TEST="$sdk_dir/esm/ledger-bigint-test.js" go test -tags sdk ./internal/adapter/http -run ^TestBigintOperations$ -count=1 -timeout=2m
+
+# Release publication uses the native executable from this exact GoReleaser run.
+publish-fctl-plugin-release:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  : "${GITHUB_REF_NAME:?release tag is required}"
+  : "${GITHUB_TOKEN:?GitHub Actions token is required}"
+  : "${GITHUB_ACTOR:?publishing actor is required}"
+  [[ "$GITHUB_REF_NAME" == v* ]] || { echo 'Expected a Ledger v-prefixed release tag' >&2; exit 1; }
+  version="${GITHUB_REF_NAME#v}"
+  revision="${PLUGIN_REVISION:-1}"
+  native="$(jq -er '[.[] | select(.type == "Binary" and .extra.ID == "fctl-plugin-ledger" and .goos == "linux" and .goarch == "amd64")] | if length == 1 then .[0].path else error("expected one native Ledger plugin") end' dist/artifacts.json)"
+  : "${GITHUB_REPOSITORY:?release repository is required}"
+  release_root="$PWD"
+  auth_dir="$(mktemp -d)"
+  trap 'rm -rf "$auth_dir"; rm -f "$release_root/dist/fctl-plugin-catalogue.json.tmp" "$release_root/dist/fctl-plugin-manifest.json.tmp"' EXIT
+  export DOCKER_CONFIG="$auth_dir"
+  "$native" --manifest > dist/fctl-plugin-manifest.json.tmp
+  printf '%s' "$GITHUB_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+  cd misc/fctl-plugin
+  go run ./cmd/fctl-plugin-publish --manifest ../../dist/fctl-plugin-manifest.json.tmp --artifacts ../../dist/artifacts.json --source-root ../.. --service-version "$version" --revision "$revision" > ../../dist/fctl-plugin-catalogue.json.tmp
+  cd ../..
+  mv dist/fctl-plugin-catalogue.json.tmp dist/fctl-plugin-catalogue.json
+  GH_TOKEN="$GITHUB_TOKEN" gh release upload "$GITHUB_REF_NAME" dist/fctl-plugin-catalogue.json --clobber --repo "$GITHUB_REPOSITORY"
+
+
+# Read-only check after an administrator enables public GHCR downloads.
+verify-fctl-plugin-anonymous catalogue="dist/fctl-plugin-catalogue.json":
+  #!/usr/bin/env bash
+  set -euo pipefail
+  catalogue_path="$(realpath '{{catalogue}}')"
+  fixture="$(mktemp -d)"
+  trap 'rm -rf "$fixture"' EXIT
+  printf '{"auths":{}}' > "$fixture/config.json"
+  jq -e '.schemaVersion == 1 and (.releases | length == 6)' "$catalogue_path" > /dev/null
+  while IFS=$'\t' read -r registry repository digest checksum; do
+    reference="${registry#https://}/$repository@$digest"
+    oras pull --registry-config "$fixture/config.json" --output "$fixture/artifact" "$reference"
+    printf '%s  %s\n' "$checksum" "$fixture/artifact/fctl-plugin-ledger" | sha256sum --check
+    rm -rf "$fixture/artifact"
+  done < <(jq -r '.releases[] | [.artifact.registry, .artifact.repository, .artifact.digest, .sha256] | @tsv' "$catalogue_path")
+
+
+# Exercise the real external host without importing its core.
+test-fctl-plugin-host binary:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    fixture_tmp="$(mktemp -d /tmp/fctl-plugin.XXXXXX)"
+    trap 'rm -rf "$fixture_tmp"' EXIT
+    export TMPDIR="$fixture_tmp"
+    FCTL_BINARY="{{binary}}" go -C misc/fctl-plugin test -race -tags host ./cmd/fctl-plugin-ledger -run TestFctlLifecycle -count=1 -timeout 3m
