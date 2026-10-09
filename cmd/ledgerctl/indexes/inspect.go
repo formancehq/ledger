@@ -1,8 +1,8 @@
 package indexes
 
 import (
-	"context"
 	"fmt"
+	"io"
 	"sort"
 	"strconv"
 	"time"
@@ -34,7 +34,6 @@ Examples:
   ledgerctl indexes inspect --ledger my-ledger --key status --mode facets --target transaction`,
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,
-		RunE:              runInspectIndex,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")
@@ -53,123 +52,65 @@ Examples:
 	return cmd
 }
 
-func runInspectIndex(cmd *cobra.Command, _ []string) error {
-	client, conn, err := cmdutil.GetClient(cmd)
-	if err != nil {
-		return err
-	}
+// InspectRenderOptions supplies host display labels and the already resolved
+// metadata schema hint. Datetime values can use the int64 wire encoding.
+type InspectRenderOptions struct {
+	Ledger       string
+	Key          string
+	Target       string
+	DeclaredType commonpb.MetadataType
+}
 
-	defer func() { _ = conn.Close() }()
-
-	ledgerFlag, _ := cmd.Flags().GetString("ledger")
-
-	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
-	if err != nil {
-		return err
-	}
-
-	key, _ := cmd.Flags().GetString("key")
-	target, _ := cmd.Flags().GetString("target")
-	mode, _ := cmd.Flags().GetString("mode")
-	pageSize, _ := cmd.Flags().GetUint32("page-size")
-	cursor, _ := cmd.Flags().GetString("cursor")
-
-	targetType := commonpb.TargetType_TARGET_TYPE_ACCOUNT
-	if target == "transaction" {
-		targetType = commonpb.TargetType_TARGET_TYPE_TRANSACTION
-	}
-
-	var inspectMode servicepb.InspectIndexMode
-	switch mode {
-	case "distinct-values", "distinctValues":
-		inspectMode = servicepb.InspectIndexMode_INSPECT_INDEX_MODE_DISTINCT_VALUES
-	case "facets":
-		inspectMode = servicepb.InspectIndexMode_INSPECT_INDEX_MODE_FACETS
-	default:
-		inspectMode = servicepb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY
-	}
-
-	ctx, cancel := cmdutil.GetContext(cmd)
-	defer cancel()
-
-	resp, err := client.InspectIndex(ctx, &servicepb.InspectIndexRequest{
-		Ledger:      ledgerName,
-		TargetType:  targetType,
-		MetadataKey: key,
-		Mode:        inspectMode,
-		PageSize:    pageSize,
-		Cursor:      cursor,
-	})
-	if err != nil {
-		return cmdutil.FormatGRPCError("failed to inspect index", err)
-	}
+// RenderInspect writes an inspect response without fetching schema or index
+// information. Structured output retains the native response and its cursors.
+func RenderInspect(cmd *cobra.Command, resp *servicepb.InspectIndexResponse, options InspectRenderOptions) error {
+	text := pterm.DefaultBasicText.WithWriter(cmd.OutOrStdout())
 
 	if handled, err := cmdutil.EncodeStructured(cmd, resp); handled || err != nil {
 		return err
 	}
 
-	declaredType := declaredMetadataType(ctx, client, ledgerName, targetType, key)
-
-	pterm.Println()
-	pterm.Printf("Index: %s on %s (ledger: %s)\n", pterm.Cyan(key), pterm.Cyan(target), pterm.Cyan(ledgerName))
-	pterm.Println(pterm.Gray("─────────────────────────────────"))
+	text.Println()
+	text.Printf("Index: %s on %s (ledger: %s)\n", pterm.Cyan(options.Key), pterm.Cyan(options.Target), pterm.Cyan(options.Ledger))
+	text.Println(pterm.Gray("─────────────────────────────────"))
 
 	switch result := resp.GetResult().(type) {
 	case *servicepb.InspectIndexResponse_Summary:
-		printSummary(result.Summary, declaredType)
+		printSummary(result.Summary, options.DeclaredType, cmd.OutOrStdout())
 	case *servicepb.InspectIndexResponse_DistinctValues:
-		printDistinctValues(result.DistinctValues, declaredType)
+		return printDistinctValues(result.DistinctValues, options.DeclaredType, cmd.OutOrStdout())
 	case *servicepb.InspectIndexResponse_Facets:
-		printFacets(result.Facets, declaredType)
+		return printFacets(result.Facets, options.DeclaredType, cmd.OutOrStdout())
 	}
 
 	return nil
 }
 
-// declaredMetadataType resolves the schema-declared MetadataType for
-// (ledger, targetType, key), or METADATA_TYPE_STRING when the lookup fails or
-// the key has no declaration. It is a render hint only: datetime index keys
-// share the int64 encoding, so the server returns an int_value for them, and
-// formatMetadataValue uses this type to render those values as RFC3339 instead
-// of raw microseconds (mirroring the HTTP inspect handler). A failed lookup
-// degrades to the default integer rendering rather than erroring.
-func declaredMetadataType(
-	ctx context.Context,
-	client servicepb.BucketServiceClient,
-	ledgerName string,
-	targetType commonpb.TargetType,
-	key string,
-) commonpb.MetadataType {
-	ledger, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
-	if err != nil {
-		return commonpb.MetadataType_METADATA_TYPE_STRING
-	}
-
-	_, fs := commonpb.SchemaFieldForTarget(ledger.GetMetadataSchema(), targetType, key)
-
-	return fs.GetType()
+func printSummary(s *servicepb.InspectSummary, declaredType commonpb.MetadataType, writer io.Writer) {
+	text := pterm.DefaultBasicText.WithWriter(writer)
+	text.Printf("Cardinality:       %d\n", s.GetCardinality())
+	text.Printf("Min:               %s\n", formatMetadataValue(s.GetMin(), declaredType))
+	text.Printf("Max:               %s\n", formatMetadataValue(s.GetMax(), declaredType))
+	text.Printf("Entities with key: %d\n", s.GetEntitiesWithKey())
+	text.Printf("Entities null:     %d\n", s.GetEntitiesWithNull())
 }
 
-func printSummary(s *servicepb.InspectSummary, declaredType commonpb.MetadataType) {
-	pterm.Printf("Cardinality:       %d\n", s.GetCardinality())
-	pterm.Printf("Min:               %s\n", formatMetadataValue(s.GetMin(), declaredType))
-	pterm.Printf("Max:               %s\n", formatMetadataValue(s.GetMax(), declaredType))
-	pterm.Printf("Entities with key: %d\n", s.GetEntitiesWithKey())
-	pterm.Printf("Entities null:     %d\n", s.GetEntitiesWithNull())
-}
-
-func printDistinctValues(dv *servicepb.InspectDistinctValues, declaredType commonpb.MetadataType) {
+func printDistinctValues(dv *servicepb.InspectDistinctValues, declaredType commonpb.MetadataType, writer io.Writer) error {
 	table := pterm.TableData{{"VALUE"}}
 	for _, v := range dv.GetValues() {
 		table = append(table, []string{formatMetadataValue(v, declaredType)})
 	}
 
-	_ = pterm.DefaultTable.WithHasHeader().WithData(table).Render()
+	if err := pterm.DefaultTable.WithWriter(writer).WithHasHeader().WithData(table).Render(); err != nil {
+		return err
+	}
 
-	printInspectCursors(dv.GetPreviousCursor(), dv.GetNextCursor())
+	printInspectCursors(dv.GetPreviousCursor(), dv.GetNextCursor(), writer)
+
+	return nil
 }
 
-func printFacets(f *servicepb.InspectFacets, declaredType commonpb.MetadataType) {
+func printFacets(f *servicepb.InspectFacets, declaredType commonpb.MetadataType, writer io.Writer) error {
 	facets := make([]*servicepb.InspectFacet, len(f.GetFacets()))
 	copy(facets, f.GetFacets())
 
@@ -185,24 +126,29 @@ func printFacets(f *servicepb.InspectFacets, declaredType commonpb.MetadataType)
 		})
 	}
 
-	_ = pterm.DefaultTable.WithHasHeader().WithData(table).Render()
+	if err := pterm.DefaultTable.WithWriter(writer).WithHasHeader().WithData(table).Render(); err != nil {
+		return err
+	}
 
-	printInspectCursors(f.GetPreviousCursor(), f.GetNextCursor())
+	printInspectCursors(f.GetPreviousCursor(), f.GetNextCursor(), writer)
+
+	return nil
 }
 
-func printInspectCursors(previous, next string) {
+func printInspectCursors(previous, next string, writer io.Writer) {
+	text := pterm.DefaultBasicText.WithWriter(writer)
 	if previous == "" && next == "" {
 		return
 	}
 
-	pterm.Println()
+	text.Println()
 
 	if previous != "" {
-		pterm.Printf("Previous page: use --cursor %s\n", pterm.Cyan(previous))
+		text.Printf("Previous page: use --cursor %s\n", pterm.Cyan(previous))
 	}
 
 	if next != "" {
-		pterm.Printf("More results available. Use --cursor %s\n", pterm.Cyan(next))
+		text.Printf("More results available. Use --cursor %s\n", pterm.Cyan(next))
 	}
 }
 

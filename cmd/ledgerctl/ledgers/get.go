@@ -1,7 +1,6 @@
 package ledgers
 
 import (
-	"fmt"
 	"sort"
 	"time"
 
@@ -10,18 +9,17 @@ import (
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // NewGetCommand creates the ledgers get command.
 func NewGetCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:               "get <name>",
-		Aliases:           cmdutil.GetAliases,
-		Short:             "Get a ledger by name",
-		Long:              "Get detailed information about a ledger by its name via gRPC",
-		Args:              cobra.ExactArgs(1),
-		RunE:              runGet,
+		Use:     "get <name>",
+		Aliases: cmdutil.GetAliases,
+		Short:   "Get a ledger by name",
+		Long:    "Get detailed information about a ledger by its name via gRPC",
+		Args:    cobra.ExactArgs(1),
+
 		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
@@ -32,33 +30,8 @@ func NewGetCommand() *cobra.Command {
 	return cmd
 }
 
-func runGet(cmd *cobra.Command, args []string) error {
-	ledgerName := args[0]
-
-	client, conn, err := cmdutil.GetClient(cmd)
-	if err != nil {
-		return err
-	}
-
-	defer func() { _ = conn.Close() }()
-
-	ctx, cancel := cmdutil.GetContext(cmd)
-	defer cancel()
-
-	spinner := cmdutil.StartSpinner(fmt.Sprintf("Fetching ledger %s...", ledgerName))
-
-	ledger, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{
-		Ledger: ledgerName,
-		Read:   cmdutil.BuildReadOptions(cmdutil.GetConsistencyFlags(cmd)),
-	})
-	if err != nil {
-		_ = spinner.Stop()
-
-		return cmdutil.FormatGRPCError("failed to get ledger", err)
-	}
-
-	_ = spinner.Stop()
-
+// RenderGet writes an already fetched ledger in the native CLI format.
+func RenderGet(cmd *cobra.Command, ledger *commonpb.LedgerInfo) error {
 	if handled, err := cmdutil.EncodeStructured(cmd, ledger); handled || err != nil {
 		return err
 	}

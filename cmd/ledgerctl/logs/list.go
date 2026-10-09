@@ -1,15 +1,14 @@
 package logs
 
 import (
-	"errors"
 	"fmt"
+	"io"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // NewListCommand creates the logs list command.
@@ -21,7 +20,6 @@ func NewListCommand() *cobra.Command {
 		Long:              "List system log entries via gRPC streaming",
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,
-		RunE:              runList,
 	}
 
 	cmd.Flags().String("ledger", "", "Ledger name (required)")
@@ -35,48 +33,10 @@ func NewListCommand() *cobra.Command {
 	return cmd
 }
 
-func runList(cmd *cobra.Command, _ []string) error {
-	client, conn, err := cmdutil.GetClient(cmd)
-	if err != nil {
-		return err
-	}
-
-	defer func() { _ = conn.Close() }()
-
-	ctx, cancel := cmdutil.GetContext(cmd)
-	defer cancel()
-
-	ledger, _ := cmd.Flags().GetString("ledger")
+// RenderList writes system logs, preserving --expand and structured output.
+// Page cursors are supplied by the caller and emitted separately from the payload.
+func RenderList(cmd *cobra.Command, entries []*commonpb.Log, cursors cmdutil.PageCursors) error {
 	expand, _ := cmd.Flags().GetBool("expand")
-	pgn := cmdutil.GetPaginationFlags(cmd)
-	flt := cmdutil.GetFilterFlags(cmd)
-	cns := cmdutil.GetConsistencyFlags(cmd)
-
-	if ledger == "" {
-		return errors.New("--ledger flag is required")
-	}
-
-	filter, err := cmdutil.BuildQueryFilter(flt.Expr, flt.Prefix, commonpb.QueryTarget_QUERY_TARGET_LOGS)
-	if err != nil {
-		return err
-	}
-
-	stream, err := client.ListLogs(ctx, &servicepb.ListLogsRequest{
-		Ledger:  ledger,
-		Options: cmdutil.BuildListOptions(pgn, cns, filter),
-	})
-	if err != nil {
-		return cmdutil.FormatGRPCError("failed to list logs", err)
-	}
-
-	// Drain to EOF so the x-next-cursor trailer is available; the server
-	// already caps the stream at pageSize.
-	entries, err := cmdutil.CollectStream(stream)
-	if err != nil {
-		return cmdutil.FormatGRPCError("receiving log", err)
-	}
-
-	cursors := cmdutil.CursorsFromTrailer(stream.Trailer())
 
 	if handled, err := cmdutil.EncodeStructured(cmd, entries); handled || err != nil {
 		// Surface the resume cursor on stderr so --json/--yaml payloads stay
@@ -87,18 +47,18 @@ func runList(cmd *cobra.Command, _ []string) error {
 	}
 
 	if len(entries) == 0 {
-		pterm.Info.Println("No logs found.")
+		pterm.Info.WithWriter(cmd.OutOrStdout()).Println("No logs found.")
 		cmdutil.EmitCursorHints(cmd, cursors)
 
 		return nil
 	}
 
 	for _, log := range entries {
-		printLog(log, expand)
+		printLogWithWriter(log, expand, cmd.OutOrStdout())
 	}
 
-	pterm.Println()
-	pterm.Info.Printfln("%d log(s) displayed", len(entries))
+	pterm.Fprintln(cmd.OutOrStdout())
+	pterm.Info.WithWriter(cmd.OutOrStdout()).Printfln("%d log(s) displayed", len(entries))
 
 	cmdutil.EmitCursorHints(cmd, cursors)
 
@@ -107,10 +67,16 @@ func runList(cmd *cobra.Command, _ []string) error {
 
 // printLog prints a single system log in a human-readable format.
 func printLog(log *commonpb.Log, expand bool) {
+	printLogWithWriter(log, expand, pterm.DefaultBasicText.Writer)
+}
+
+func printLogWithWriter(log *commonpb.Log, expand bool, writer io.Writer) {
+	text := pterm.DefaultBasicText.WithWriter(writer)
+
 	desc := describeLog(log, expand)
 
 	if expand {
-		pterm.Printf("  #%-6d %s\n",
+		text.Printf("  #%-6d %s\n",
 			log.GetSequence(),
 			pterm.Cyan(desc.Type),
 		)
@@ -133,7 +99,7 @@ func printLog(log *commonpb.Log, expand bool) {
 					bullet = "└─"
 				}
 
-				pterm.Printf("    %s %s %s %s\n",
+				text.Printf("    %s %s %s %s\n",
 					pterm.Gray(bullet),
 					pterm.Yellow(fmt.Sprintf("%-*s", maxKeyLen, kv[0])),
 					pterm.Gray("="),
@@ -143,13 +109,13 @@ func printLog(log *commonpb.Log, expand bool) {
 		}
 	} else {
 		if desc.Detail != "" {
-			pterm.Printf("  #%-6d %s %s\n",
+			text.Printf("  #%-6d %s %s\n",
 				log.GetSequence(),
 				pterm.Cyan(desc.Type),
 				pterm.Gray(desc.Detail),
 			)
 		} else {
-			pterm.Printf("  #%-6d %s\n",
+			text.Printf("  #%-6d %s\n",
 				log.GetSequence(),
 				pterm.Cyan(desc.Type),
 			)

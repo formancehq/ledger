@@ -1,9 +1,7 @@
 package indexes
 
 import (
-	"errors"
 	"fmt"
-	"io"
 	"sort"
 
 	"github.com/pterm/pterm"
@@ -30,7 +28,6 @@ Examples:
   ledgerctl indexes list --ledger my-ledger`,
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,
-		RunE:              runListIndexes,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")
@@ -41,77 +38,12 @@ Examples:
 	return cmd
 }
 
-func runListIndexes(cmd *cobra.Command, _ []string) error {
-	client, conn, err := cmdutil.GetClient(cmd)
-	if err != nil {
-		return err
-	}
+// RenderList writes indexes in ledgerctl's native format. A nil status means
+// readiness could not be loaded; it renders UNKNOWN rather than BUILDING.
+// The caller owns attribution filtering and fetching the replica status.
+func RenderList(cmd *cobra.Command, ledgerName string, entries []*commonpb.Index, idxStatus *servicepb.GetIndexStatusResponse) error {
+	text := pterm.DefaultBasicText.WithWriter(cmd.OutOrStdout())
 
-	defer func() { _ = conn.Close() }()
-
-	ledgerFlag, _ := cmd.Flags().GetString("ledger")
-
-	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
-	if err != nil {
-		return err
-	}
-
-	ctx, cancel := cmdutil.GetContext(cmd)
-	defer cancel()
-
-	spinner := cmdutil.StartSpinner(fmt.Sprintf("Fetching indexes for %s...", ledgerName))
-
-	stream, err := client.ListIndexes(ctx, &servicepb.ListIndexesRequest{
-		Scope:  servicepb.ListIndexesRequest_SCOPE_LEDGER,
-		Ledger: ledgerName,
-	})
-	if err != nil {
-		_ = spinner.Stop()
-
-		return cmdutil.FormatGRPCError("failed to list indexes", err)
-	}
-
-	var entries []*commonpb.Index
-
-	for {
-		idx, recvErr := stream.Recv()
-		if errors.Is(recvErr, io.EOF) {
-			break
-		}
-
-		if recvErr != nil {
-			_ = spinner.Stop()
-
-			return cmdutil.FormatGRPCError("streaming ListIndexes", recvErr)
-		}
-
-		entries = append(entries, idx)
-	}
-
-	prefix, _ := cmd.Flags().GetString("creation-key-prefix")
-	if cmd.Flags().Changed("creation-key-prefix") && prefix == "" {
-		_ = spinner.Stop()
-
-		return errors.New("creation-key-prefix must not be empty")
-	}
-	if prefix != "" {
-		entries, err = filterIndexesByCreationKey(ctx, client, ledgerName, prefix, entries)
-		if err != nil {
-			_ = spinner.Stop()
-
-			return err
-		}
-	}
-
-	// The per-replica readiness signal lives in IndexEntry.current_version
-	// (>0 ⇒ local atomic switch has fired; EN-1323). Fetch IndexStatus
-	// unconditionally so the status column reflects the local replica's
-	// view.
-	//
-	// statusOK distinguishes "RPC succeeded, got real data" from "RPC
-	// failed, no version info available" — the renderer uses it to
-	// show UNKNOWN instead of falsely reporting BUILDING when we
-	// genuinely have no signal.
 	var (
 		statusOK           bool
 		cursorByID         map[string]uint64
@@ -120,10 +52,7 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 		lastLogSeq         uint64
 	)
 
-	idxStatus, statusErr := client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{Ledger: ledgerName})
-	if statusErr != nil {
-		spinner.Fail(fmt.Sprintf("Failed to fetch index status: %v", statusErr))
-	} else {
+	if idxStatus != nil {
 		statusOK = true
 		lastLogSeq = idxStatus.GetLastLogSequence()
 		cursorByID = make(map[string]uint64)
@@ -142,15 +71,13 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
-	_ = spinner.Stop()
-
 	if handled, err := cmdutil.EncodeStructured(cmd, entries); handled || err != nil {
 		return err
 	}
 
-	pterm.Println()
-	pterm.Printf("Indexes for ledger: %s\n", pterm.Cyan(ledgerName))
-	pterm.Println(pterm.Gray("─────────────────────────────────"))
+	text.Println()
+	text.Printf("Indexes for ledger: %s\n", pterm.Cyan(ledgerName))
+	text.Println(pterm.Gray("─────────────────────────────────"))
 
 	table := pterm.TableData{
 		{"TYPE", "TARGET", "KEY", "STATUS"},
@@ -174,16 +101,14 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 	}
 
 	if len(table) == 1 {
-		pterm.Println("No indexes configured.")
-		pterm.Println(pterm.Gray("Hint: Create an index using:"))
-		pterm.FgCyan.Println("  ledgerctl indexes create --ledger " + ledgerName + " --type address")
+		text.Println("No indexes configured.")
+		text.Println(pterm.Gray("Hint: Create an index using:"))
+		text.Println(pterm.FgCyan.Sprint("  ledgerctl indexes create --ledger " + ledgerName + " --type address"))
 
 		return nil
 	}
 
-	_ = pterm.DefaultTable.WithHasHeader().WithData(table).Render()
-
-	return nil
+	return pterm.DefaultTable.WithWriter(cmd.OutOrStdout()).WithHasHeader().WithData(table).Render()
 }
 
 // describeIndex returns the CLI-facing tuple (type, target, key) for an IndexID.

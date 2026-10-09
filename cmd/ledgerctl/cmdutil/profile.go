@@ -3,6 +3,7 @@ package cmdutil
 import (
 	"context"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -63,16 +64,23 @@ func ExtractProfile(trailer metadata.MD) *servicepb.QueryProfile {
 	return &profile
 }
 
-// RenderProfile displays a query profile in a human-readable format.
+// RenderProfile displays a query profile using the current native table writer.
 func RenderProfile(profile *servicepb.QueryProfile) {
+	RenderProfileTo(pterm.DefaultTable.Writer, profile)
+}
+
+// RenderProfileTo writes a query profile to an explicit host writer. All pterm
+// printers are scoped copies, so routing diagnostics cannot alter other output.
+func RenderProfileTo(output io.Writer, profile *servicepb.QueryProfile) {
+	text := pterm.DefaultBasicText.WithWriter(output)
 	if profile == nil {
-		pterm.Warning.Println("No profile data received from server.")
+		pterm.Warning.WithWriter(output).Println("No profile data received from server.")
 
 		return
 	}
 
-	pterm.Println()
-	pterm.DefaultHeader.WithBackgroundStyle(pterm.NewStyle(pterm.BgDarkGray)).Println("Query Profile")
+	text.Println()
+	pterm.DefaultHeader.WithWriter(output).WithBackgroundStyle(pterm.NewStyle(pterm.BgDarkGray)).Println("Query Profile")
 
 	// Server timing first: it is the number that answers "is the server or the
 	// network slow?", and the execution breakdown below is a subset of it.
@@ -99,13 +107,13 @@ func RenderProfile(profile *servicepb.QueryProfile) {
 		{"Read Barrier (caller-requested wait)", barrier},
 		{"Time To First Row", formatDurationUs(profile.GetFirstRowDurationUs())},
 	}
-	_ = pterm.DefaultTable.WithHasHeader().WithData(serverTiming).Render()
+	_ = pterm.DefaultTable.WithWriter(output).WithHasHeader().WithData(serverTiming).Render()
 
 	if !residualOK {
 		// The phases cannot exceed the total they decompose; if they do, the
 		// server's phase bookkeeping is inconsistent. Say so rather than hiding
 		// it behind a clamped 0.
-		pterm.Warning.Printfln(
+		pterm.Warning.WithWriter(output).Printfln(
 			"Server phase breakdown is inconsistent: prepare (%s) + execute (%s) exceeds the server total (%s). Treat the breakdown as unreliable.",
 			formatDurationUs(profile.GetPrepareDurationUs()),
 			formatDurationUs(profile.GetExecuteDurationUs()),
@@ -113,7 +121,7 @@ func RenderProfile(profile *servicepb.QueryProfile) {
 		)
 	}
 
-	pterm.Println()
+	text.Println()
 
 	tableData := pterm.TableData{
 		{"Execution Metric", "Value"},
@@ -125,12 +133,12 @@ func RenderProfile(profile *servicepb.QueryProfile) {
 		{"Materialized Ranges", strconv.Itoa(int(profile.GetMaterializedRanges()))},
 		{"Materialized Items", strconv.Itoa(int(profile.GetMaterializedItems()))},
 	}
-	_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+	_ = pterm.DefaultTable.WithWriter(output).WithHasHeader().WithData(tableData).Render()
 
 	if profile.GetRootIterator() != nil {
-		pterm.Println()
-		pterm.DefaultSection.Println("Iterator Tree")
-		renderIteratorTree(profile.GetRootIterator(), 0)
+		text.Println()
+		pterm.DefaultSection.WithWriter(output).Println("Iterator Tree")
+		renderIteratorTree(output, profile.GetRootIterator(), 0)
 	}
 }
 
@@ -161,7 +169,8 @@ func formatDurationUs(us int64) string {
 	return fmt.Sprintf("%.2fms", float64(us)/1000.0)
 }
 
-func renderIteratorTree(iter *servicepb.IteratorProfile, depth int) {
+func renderIteratorTree(output io.Writer, iter *servicepb.IteratorProfile, depth int) {
+	text := pterm.DefaultBasicText.WithWriter(output)
 	indent := strings.Repeat("  ", depth)
 
 	label := iter.GetLabel()
@@ -195,10 +204,10 @@ func renderIteratorTree(iter *servicepb.IteratorProfile, depth int) {
 		parts = append(parts, "bucket="+iter.GetBucket())
 	}
 
-	pterm.Printf("%s%s  %s\n", indent, pterm.Cyan(label), pterm.Gray(strings.Join(parts, " ")))
+	text.Printf("%s%s  %s\n", indent, pterm.Cyan(label), pterm.Gray(strings.Join(parts, " ")))
 
 	for _, child := range iter.GetChildren() {
-		renderIteratorTree(child, depth+1)
+		renderIteratorTree(output, child, depth+1)
 	}
 }
 

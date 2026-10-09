@@ -1,15 +1,9 @@
 package indexes
 
 import (
-	"errors"
-	"fmt"
-
-	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // NewCreateCommand creates the indexes create command.
@@ -44,7 +38,6 @@ Examples:
   ledgerctl indexes create --ledger my-ledger --type account-asset`,
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,
-		RunE:              runCreateIndex,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")
@@ -57,133 +50,4 @@ Examples:
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
-}
-
-func runCreateIndex(cmd *cobra.Command, _ []string) error {
-	client, conn, err := cmdutil.GetClient(cmd)
-	if err != nil {
-		return err
-	}
-
-	defer func() { _ = conn.Close() }()
-
-	ledgerFlag, _ := cmd.Flags().GetString("ledger")
-
-	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
-	if err != nil {
-		return err
-	}
-
-	indexType, _ := cmd.Flags().GetString("type")
-	if indexType == "" {
-		result, err := pterm.DefaultInteractiveSelect.
-			WithOptions(indexTypeOptions).
-			WithDefaultText("Select index type").
-			Show()
-		if err != nil {
-			return fmt.Errorf("failed to read input: %w", err)
-		}
-
-		indexType = result
-	}
-
-	if err := rejectMetadataOnlyFlags(cmd, indexType); err != nil {
-		return err
-	}
-
-	req := &servicepb.CreateIndexRequest{
-		Ledger: ledgerName,
-	}
-
-	var indexDesc string
-
-	if indexType == "metadata" {
-		target, key, err := resolveMetadataIndexFlags(cmd)
-		if err != nil {
-			return err
-		}
-		req.Id = metadataIndexID(target, key)
-		indexDesc = fmt.Sprintf("metadata %s.%s", cmdutil.TargetTypeString(target), key)
-	} else {
-		req.Id, indexDesc, err = builtinIndex(indexType)
-		if err != nil {
-			return err
-		}
-	}
-
-	ctx, cancel := cmdutil.GetContext(cmd)
-	defer cancel()
-
-	spinner := cmdutil.StartSpinner(fmt.Sprintf("Creating index %s on %s...", indexDesc, ledgerName))
-
-	requests := []*servicepb.Request{
-		{
-			Type: &servicepb.Request_CreateIndex{
-				CreateIndex: req,
-			},
-		},
-	}
-
-	idempotencyKey, _ := cmd.Flags().GetString("idempotency-key")
-	applyReq, err := cmdutil.BuildApplyRequestWithIdempotencyKey(cmd, idempotencyKey, requests...)
-	if err != nil {
-		spinner.Fail("Failed to sign request")
-
-		return cmdutil.Displayed(err)
-	}
-
-	resp, err := client.Apply(ctx, applyReq)
-	if err != nil {
-		_ = spinner.Stop()
-
-		return cmdutil.FormatGRPCError("failed to create index", err)
-	}
-
-	if err := cmdutil.VerifyResponseSignatures(cmd, resp.GetLogs()); err != nil {
-		spinner.Fail("Response signature verification failed")
-
-		return cmdutil.Displayed(fmt.Errorf("response signature verification failed: %w", err))
-	}
-
-	spinner.Success(fmt.Sprintf("Created index %s on ledger %s", indexDesc, ledgerName))
-
-	return nil
-}
-
-// resolveMetadataIndexFlags resolves the target and key for a metadata index.
-func resolveMetadataIndexFlags(cmd *cobra.Command) (commonpb.TargetType, string, error) {
-	targetStr, _ := cmd.Flags().GetString("target")
-	if targetStr == "" {
-		result, err := pterm.DefaultInteractiveSelect.
-			WithOptions(cmdutil.TargetTypeOptions()).
-			WithDefaultText("Select target type").
-			Show()
-		if err != nil {
-			return 0, "", fmt.Errorf("failed to read input: %w", err)
-		}
-
-		targetStr = result
-	}
-
-	target, err := cmdutil.ParseTargetType(targetStr)
-	if err != nil {
-		return 0, "", err
-	}
-
-	key, _ := cmd.Flags().GetString("key")
-	if key == "" {
-		result, err := pterm.DefaultInteractiveTextInput.
-			WithDefaultText("Enter metadata key name").
-			Show()
-		if err != nil {
-			return 0, "", fmt.Errorf("failed to read input: %w", err)
-		}
-
-		key = result
-		if key == "" {
-			return 0, "", errors.New("metadata key is required")
-		}
-	}
-
-	return target, key, nil
 }

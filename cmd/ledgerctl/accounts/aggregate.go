@@ -5,8 +5,6 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/metadata"
 
 	"github.com/formancehq/invariants"
 
@@ -31,7 +29,6 @@ Examples:
   ledgerctl accounts agg --ledger my-ledger --json`,
 		Args:              cobra.ExactArgs(0),
 		ValidArgsFunction: cobra.NoFileCompletions,
-		RunE:              runAggregateVolumes,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")
@@ -45,63 +42,16 @@ Examples:
 	return cmd
 }
 
-func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
-	client, conn, err := cmdutil.GetClient(cmd)
-	if err != nil {
-		return err
-	}
+// RenderAggregate writes aggregated volumes with decimal string amounts in
+// structured output. Human output alone applies --rescale. The executor must
+// request use_max_precision for that human path, as runAggregateVolumes does.
+// The host owns --analyze profiling when calling this renderer directly.
+func RenderAggregate(cmd *cobra.Command, result *commonpb.AggregateResult) error {
+	return renderAggregate(cmd, result, nil, false)
+}
 
-	defer func() { _ = conn.Close() }()
-
-	ledgerFlag, _ := cmd.Flags().GetString("ledger")
-
-	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
-	if err != nil {
-		return err
-	}
-
-	prefix, _ := cmd.Flags().GetString("prefix")
-	filterExpr, _ := cmd.Flags().GetString("filter")
-	showProfile, _ := cmd.Flags().GetBool("analyze")
+func renderAggregate(cmd *cobra.Command, result *commonpb.AggregateResult, profile *servicepb.QueryProfile, showProfile bool) error {
 	rescale := cmdutil.RescaleTarget(cmd)
-	checkpointID, _ := cmd.Flags().GetUint64("checkpoint-id")
-
-	filter, err := cmdutil.BuildQueryFilter(filterExpr, prefix, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
-	if err != nil {
-		return err
-	}
-
-	ctx, cancel := cmdutil.GetContext(cmd)
-	defer cancel()
-
-	if showProfile {
-		ctx = cmdutil.ProfileContext(ctx)
-	}
-
-	spinner := cmdutil.StartSpinner("Aggregating volumes...")
-
-	var trailer metadata.MD
-
-	// With --rescale on the human-readable path, ask the server to merge
-	// same-base assets under the highest precision observed (use_max_precision),
-	// so the group-by-base aggregation is done once, server-side, on the native
-	// uint256 volumes; the CLI then only re-expresses each merged row at the
-	// requested scale for display. Structured output (--json/--yaml) must keep the
-	// raw integer amounts and full "CUR/precision" strings (see the --rescale flag
-	// contract in main.go), so the merge is gated off there.
-	useMaxPrecision := rescale != nil && !cmdutil.IsStructuredOutput(cmd)
-
-	result, err := client.AggregateVolumes(ctx, &servicepb.AggregateVolumesRequest{
-		Ledger:          ledgerName,
-		Filter:          filter,
-		CheckpointId:    checkpointID,
-		UseMaxPrecision: useMaxPrecision,
-	}, grpc.Trailer(&trailer))
-	_ = spinner.Stop()
-
-	if err != nil {
-		return cmdutil.FormatGRPCError("failed to aggregate volumes", err)
-	}
 
 	// Build (and, under --rescale, validate) the human-readable table before
 	// printing anything, including the --analyze profile, so an invariant
@@ -109,6 +59,7 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 	var tableData pterm.TableData
 
 	if !cmdutil.IsStructuredOutput(cmd) {
+		var err error
 		tableData, err = aggregateVolumesTable(result.GetVolumes(), rescale)
 		if err != nil {
 			return err
@@ -116,7 +67,11 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 	}
 
 	if showProfile {
-		cmdutil.RenderProfile(cmdutil.ExtractProfile(trailer))
+		output := cmd.OutOrStdout()
+		if cmdutil.IsStructuredOutput(cmd) {
+			output = cmd.ErrOrStderr()
+		}
+		cmdutil.RenderProfileTo(output, profile)
 	}
 
 	{
@@ -149,12 +104,12 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 	}
 
 	if len(result.GetVolumes()) == 0 {
-		pterm.Info.Println("No volumes found.")
+		pterm.Info.WithWriter(cmd.OutOrStdout()).Println("No volumes found.")
 
 		return nil
 	}
 
-	return pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+	return pterm.DefaultTable.WithWriter(cmd.OutOrStdout()).WithHasHeader().WithData(tableData).Render()
 }
 
 // aggregateVolumesTable builds the ASSET/COLOR/INPUT/OUTPUT/BALANCE table for

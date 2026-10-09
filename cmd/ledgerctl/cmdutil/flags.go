@@ -77,7 +77,7 @@ func FetchSinglePageOrAll[T any](
 
 		items, trailer, err = fetchPage(initialCursor)
 		if err != nil {
-			return nil, PageCursors{}, err
+			return items, CursorsFromTrailer(trailer), err
 		}
 
 		return items, CursorsFromTrailer(trailer), nil
@@ -103,14 +103,18 @@ func DrainAllPages[T any](
 	var all []T
 
 	cursor := initialCursor
+	visited := map[string]bool{}
 
 	for {
-		items, trailer, err := fetchPage(cursor)
-		if err != nil {
-			return nil, err
+		if visited[cursor] {
+			return all, fmt.Errorf("pagination returned a repeated cursor %q", cursor)
 		}
-
+		visited[cursor] = true
+		items, trailer, err := fetchPage(cursor)
 		all = append(all, items...)
+		if err != nil {
+			return all, err
+		}
 
 		next := NextCursorFromTrailer(trailer)
 		if next == "" {
