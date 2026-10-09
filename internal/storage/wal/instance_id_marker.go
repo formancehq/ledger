@@ -48,9 +48,8 @@ func WriteInstanceID(dataDir string, id []byte) error {
 }
 
 // ReadInstanceID reads the INSTANCE_ID marker from dataDir. Returns
-// (nil, nil) when the marker is absent (legacy peer that predates EN-1045);
-// callers must decide whether to treat that as an error or continue in
-// legacy mode. A present-but-corrupt marker (wrong size) is a fatal error.
+// (nil, nil) when the marker is absent so EnsureInstanceID can create it on
+// first boot. A present-but-corrupt marker (wrong size) is a fatal error.
 func ReadInstanceID(dataDir string) ([]byte, error) {
 	if dataDir == "" {
 		return nil, errors.New("ReadInstanceID: empty dataDir")
@@ -84,6 +83,31 @@ func GenerateInstanceID() ([]byte, error) {
 	return id, nil
 }
 
+// existingWALIdentityArtifact returns the first durable artifact proving that
+// this directory has already entered the WAL lifecycle. INSTANCE_ID is
+// established before any of these artifacts can be created, so finding one
+// without the identity marker means the marker was lost or deleted. Generating
+// a replacement in that state would split this peer's identity from the one
+// already replicated by the cluster.
+func existingWALIdentityArtifact(dataDir string) (string, error) {
+	for _, artifact := range []string{
+		ClusterJoinedMarkerFile,
+		walCreationCompletedFile,
+		etcdWalDir,
+		snapDir,
+	} {
+		_, err := os.Stat(filepath.Join(dataDir, artifact))
+		if err == nil {
+			return artifact, nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return "", fmt.Errorf("checking WAL identity artifact %q: %w", artifact, err)
+		}
+	}
+
+	return "", nil
+}
+
 // EnsureInstanceID reads the INSTANCE_ID marker from dataDir and returns its
 // value; if the marker is absent (first boot on a fresh WAL) it generates a
 // new UUID, persists it, then returns it. Creates dataDir if it doesn't
@@ -91,7 +115,9 @@ func GenerateInstanceID() ([]byte, error) {
 //
 // This is the one call site that establishes a peer's identity for the
 // lifetime of its (pod, PVC) incarnation. All later boots of the same PVC
-// read the same value from disk; a fresh PVC gets a fresh value.
+// read the same value from disk; a fresh PVC gets a fresh value. If any WAL
+// lifecycle artifact already exists while INSTANCE_ID is absent, startup
+// fails closed instead of rotating the identity of existing consensus state.
 func EnsureInstanceID(dataDir string) ([]byte, error) {
 	if dataDir == "" {
 		return nil, errors.New("EnsureInstanceID: empty dataDir")
@@ -108,6 +134,17 @@ func EnsureInstanceID(dataDir string) ([]byte, error) {
 
 	if existing != nil {
 		return existing, nil
+	}
+
+	artifact, err := existingWALIdentityArtifact(dataDir)
+	if err != nil {
+		return nil, err
+	}
+	if artifact != "" {
+		return nil, fmt.Errorf(
+			"INSTANCE_ID marker is missing while WAL artifact %q exists; refusing to generate a new identity for existing consensus state (manual intervention required)",
+			artifact,
+		)
 	}
 
 	fresh, err := GenerateInstanceID()

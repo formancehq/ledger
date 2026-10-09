@@ -34,6 +34,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/bootstrap"
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/flightrecorder"
 	ledgermetrics "github.com/formancehq/ledger/v3/internal/infra/monitoring/metrics"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/pyroscope"
@@ -730,8 +731,17 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 	return cfg, nil
 }
 
-// discoverPeersFromClusterWithRetry retries peer discovery with exponential backoff
-// indefinitely until peers are found or the context is cancelled (e.g. SIGTERM).
+type invalidDiscoveredPeerIdentityError struct {
+	cause error
+}
+
+func (e *invalidDiscoveredPeerIdentityError) Error() string { return e.cause.Error() }
+
+func (e *invalidDiscoveredPeerIdentityError) Unwrap() error { return e.cause }
+
+// discoverPeersFromClusterWithRetry retries transient peer discovery failures
+// with exponential backoff until peers are found or the context is cancelled.
+// Authentication failures and malformed discovered identities fail immediately.
 func discoverPeersFromClusterWithRetry(ctx context.Context, raftAddr string, tlsCfg bootstrap.TLSConfig, clusterID, clusterSecret string) ([]node.Peer, error) {
 	delay := 500 * time.Millisecond
 
@@ -741,6 +751,9 @@ func discoverPeersFromClusterWithRetry(ctx context.Context, raftAddr string, tls
 			return peers, nil
 		}
 
+		if _, ok := errors.AsType[*invalidDiscoveredPeerIdentityError](err); ok {
+			return nil, err
+		}
 		// A cluster-secret or cluster-id mismatch is a hard configuration
 		// error, never transient: retrying with the same (mis)configuration
 		// would spin forever. Fail fast with an actionable message instead,
@@ -826,6 +839,9 @@ func discoverPeersFromCluster(raftAddr string, tlsCfg bootstrap.TLSConfig, clust
 	peers := make([]node.Peer, 0, len(resp.GetPeers()))
 
 	for _, p := range resp.GetPeers() {
+		if err := membership.ValidateInstanceID(p.GetInstanceId()); err != nil {
+			return nil, &invalidDiscoveredPeerIdentityError{cause: fmt.Errorf("peer %d returned by %s has invalid identity: %w", p.GetId(), raftAddr, err)}
+		}
 		if p.GetRaftAddress() == "" || p.GetServiceAddress() == "" {
 			continue
 		}
@@ -834,6 +850,7 @@ func discoverPeersFromCluster(raftAddr string, tlsCfg bootstrap.TLSConfig, clust
 			ID:             p.GetId(),
 			Address:        p.GetRaftAddress(),
 			ServiceAddress: p.GetServiceAddress(),
+			InstanceID:     p.GetInstanceId(),
 		})
 	}
 

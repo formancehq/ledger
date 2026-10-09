@@ -98,12 +98,13 @@ var _ = Describe("Remove node", func() {
 			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(countInstances)
 
 			// Add a learner node (phantom, not a real process)
-			raftAddr, serviceAddr := phantomPeer()
+			raftAddr, serviceAddr, instanceID := phantomPeer()
 
 			_, err := servers[*leaderID-1].ClusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
 				NodeId:         4,
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
+				InstanceId:     instanceID,
 			})
 			Expect(err).To(Succeed())
 
@@ -345,12 +346,13 @@ var _ = Describe("Remove node", func() {
 			lid := *leaderID
 
 			// Add a learner to remove
-			raftAddr, serviceAddr := phantomPeer()
+			raftAddr, serviceAddr, instanceID := phantomPeer()
 
 			_, err := servers[lid-1].ClusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
 				NodeId:         6,
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
+				InstanceId:     instanceID,
 			})
 			Expect(err).To(Succeed())
 			waitForLearner(servers[lid-1].ClusterClient, lid, 6)

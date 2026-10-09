@@ -88,7 +88,7 @@ func TestCommittedPeerRefreshUpdatesRaftTransport(t *testing.T) {
 
 	// Node.finishReady performs this Set as soon as it observes the commit,
 	// before submitting the entry to the asynchronous FSM applier.
-	m.Set(2, "new:7000", "new:8000", newInstanceID)
+	require.NoError(t, m.Set(2, "new:7000", "new:8000", newInstanceID))
 
 	require.Equal(t, "new:7000", m.PeerAddresses()[2].RaftAddress)
 	require.Equal(t, newInstanceID, m.PeerAddresses()[2].InstanceID)

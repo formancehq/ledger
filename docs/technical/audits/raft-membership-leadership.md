@@ -13,9 +13,9 @@ the audit from this manifest change.
 For each hypothesis, identify the concrete entry point and carry these identities
 through the complete transition:
 
-- Raft node ID and persisted instance ID, including whether the member is a
-  bootstrap seed, joined member, phantom learner, removed incarnation, or fresh
-  incarnation reusing an ordinal;
+- Raft node ID and persisted instance ID; every member must carry a valid 16-byte
+  identity (bootstrap seed, joined member, removed incarnation, or fresh incarnation
+  reusing an ordinal); identity-less phantom learners are no longer a reachable state;
 - term, leader ID, entry index, committed index, locally applied/durable index,
   and the voter/learner `ConfState` that governs the operation;
 - logical request identity, leader-local proposal/correlation identity, and Raft
@@ -81,9 +81,7 @@ updates, the committed-index wait, and response/error mapping. Concurrent
 operations against the same node must be distinguished by proposal identity and
 expected change type; a late commit must not satisfy a replacement waiter.
 
-For removal, distinguish an identified joined member from a bootstrap seed or
-phantom learner without an instance identity. The replicated tombstone guarantee
-applies only where the authoritative consensus documentation says it does.
+For removal, every member carries a mandatory 16-byte instance_id (enforced at every admission, persistence, and promotion boundary). The replicated tombstone guarantee applies to every removal; identity-less phantom learners are no longer a supported member state. Distinguish a removal with a normal committed ConfChange from a force removal, which bypasses Raft consensus and relies on operator preconditions instead of quorum safety.
 Prove rejoin and promotion behavior through every production entry rather than
 assuming that one admission check covers direct add, auto-promotion, discovery,
 or leadership change.
@@ -162,6 +160,9 @@ row; a crash is repaired by committed-WAL replay followed by `Rehydrate`. Prove
 that the next Raft dial uses the committed endpoint while the existing peer
 identity, role, send loop, and queues remain intact, and that Pebble eventually
 converges to the same registration.
+A transient optional-TLS probe failure during endpoint refresh must preserve
+the committed target address as the retry owner for the existing send loop and must
+not strand the peer in a state where no active retry exists until the next leader restart.
 
 ### Snapshot installation and catch-up
 

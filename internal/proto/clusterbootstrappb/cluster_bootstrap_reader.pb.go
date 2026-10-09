@@ -142,6 +142,7 @@ type PeerInfoReader interface {
 	GetId() uint64
 	GetRaftAddress() string
 	GetServiceAddress() string
+	GetInstanceId() []byte
 	Mutate() *PeerInfo
 }
 
@@ -157,6 +158,10 @@ func (r *peerInfoReadonly) GetRaftAddress() string {
 
 func (r *peerInfoReadonly) GetServiceAddress() string {
 	return (*PeerInfo)(r).GetServiceAddress()
+}
+
+func (r *peerInfoReadonly) GetInstanceId() []byte {
+	return bytes.Clone((*PeerInfo)(r).GetInstanceId())
 }
 
 func (r *peerInfoReadonly) Mutate() *PeerInfo {
