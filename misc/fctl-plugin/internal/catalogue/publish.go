@@ -186,7 +186,7 @@ func stageBinary(sourceRoot *os.Root, sourcePath string, stageRoot *os.Root, art
 		settings[setting.Key] = setting.Value
 	}
 	if settings["GOOS"] != artifact.OS || settings["GOARCH"] != artifact.Arch ||
-		build.Path != "github.com/formancehq/ledger/fctl-plugin/cmd/fctl-plugin-ledger" {
+		build.Path != "github.com/formancehq/ledger/misc/fctl-plugin/cmd/fctl-plugin-ledger" {
 		return "", errors.New("GoReleaser binary platform or product entry point does not match catalogue inputs")
 	}
 	if !hasLinkValue(settings["-ldflags"], "main.serviceVersion", version) ||

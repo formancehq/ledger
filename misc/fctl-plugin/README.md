@@ -4,6 +4,11 @@ Profiles: **CLI** and **library**. This separate Go 1.26 module owns Ledger's
 HTTP commands for fctl v4. It depends on the public `pluginsdk` module only;
 it does not import Ledger server internals, Cobra, or the fctl core.
 
+The module lives under `misc/fctl-plugin/` and is named
+`github.com/formancehq/ledger/misc/fctl-plugin`. Its executable entry point is
+`cmd/fctl-plugin-ledger/` within that module. Repository recipes run from the
+root and keep all generated build and publication artifacts under `build/`.
+
 `fctl-plugin-ledger` is a native executable. fctl starts it with the SDK
 transport, renders its declarative command manifest and forms, and supplies an
 HTTP client through the host broker. Authentication, endpoint selection,
@@ -75,6 +80,7 @@ All contributor tooling comes from the root Nix environment and its existing
 `flake.lock`. The SDK contains the protocol implementation; plugin builds do
 not require a host `protoc` installation. The root Nix environment also
 provides the ORAS tool used for OCI publication; no host installation is needed.
+Root lint selects `../../.golangci.yaml` when running inside the plugin module.
 
 ## Package without publishing
 
@@ -87,6 +93,8 @@ amd64 and arm64. Archives and SHA-256 checksums are written to
 `build/fctl-plugin/`. Unix archives use tar.gz; Windows archives use zip.
 Names include the exact Ledger service version and plugin revision. This
 recipe uses snapshot mode and skips all publication.
+The module's GoReleaser configuration writes to `../../build/fctl-plugin/`
+relative to `misc/fctl-plugin/`.
 
 The release builds preserve injected version and revision in Go build
 metadata. Do not add `-trimpath`: Go omits recorded linker flags with this

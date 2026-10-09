@@ -15,7 +15,7 @@ import (
 	"github.com/formancehq/fctl/pkg/pluginsdk"
 	"github.com/formancehq/fctl/pkg/pluginsdk/transport"
 
-	ledger "github.com/formancehq/ledger/fctl-plugin"
+	ledger "github.com/formancehq/ledger/misc/fctl-plugin"
 )
 
 // GoReleaser supplies both values for each immutable product release artifact.

@@ -3,11 +3,11 @@
 `ledgerctl` is the command-line client for interacting with Ledger v3 servers via gRPC.
 
 Ledger also owns an independent HTTP command plugin for fctl v4. The
-`fctl-plugin-ledger` executable is built from the separate `fctl-plugin/` Go
+`fctl-plugin-ledger` executable is built from the separate `misc/fctl-plugin/` Go
 module and co-released with the Ledger service for Linux, macOS, and Windows
 on amd64 and arm64. fctl supplies profiles, authentication, interactive forms,
 HTTP diagnostics, and output styling. The plugin supplies the Ledger command
-manifest and HTTP operations. See the [fctl plugin guide](../../fctl-plugin/README.md)
+manifest and HTTP operations. See the [fctl plugin guide](../../misc/fctl-plugin/README.md)
 for local builds, service versions, plugin revisions, and distribution inputs.
 
 ## Getting Started

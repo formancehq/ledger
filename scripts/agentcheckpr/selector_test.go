@@ -94,7 +94,18 @@ func TestSelectsLocalValidationGatesFromCompleteDiff(t *testing.T) {
 		},
 		{
 			name:     "independent fctl plugin module",
-			paths:    []string{"fctl-plugin/go.mod", "fctl-plugin/plugin.go", "fctl-plugin/cmd/fctl-plugin-ledger/main.go"},
+			paths:    []string{"misc/fctl-plugin/go.mod", "misc/fctl-plugin/plugin.go", "misc/fctl-plugin/cmd/fctl-plugin-ledger/main.go"},
+			expected: []string{"pre-commit", "agent-check", "test-fctl-plugin"},
+		},
+		{
+			name:           "untracked fctl plugin command",
+			paths:          []string{"misc/fctl-plugin/cmd/fctl-plugin-ledger/main.go"},
+			leaveUntracked: true,
+			expected:       []string{"pre-commit", "agent-check", "test-fctl-plugin"},
+		},
+		{
+			name:     "fctl plugin release configuration",
+			paths:    []string{"misc/fctl-plugin/.goreleaser.yml"},
 			expected: []string{"pre-commit", "agent-check", "test-fctl-plugin"},
 		},
 		{

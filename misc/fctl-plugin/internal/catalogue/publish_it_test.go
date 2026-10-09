@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	ledger "github.com/formancehq/ledger/fctl-plugin"
+	ledger "github.com/formancehq/ledger/misc/fctl-plugin"
 )
 
 func TestPublisherCreatesSixRealOCIArtifacts(t *testing.T) {
@@ -50,10 +50,11 @@ func TestPublisherCreatesSixRealOCIArtifacts(t *testing.T) {
 	layout := filepath.Join(t.TempDir(), "oci")
 	options := PublishOptions{ManifestPath: manifestPath, ArtifactsPath: artifactsPath, SourceRoot: buildDirectory,
 		Registry: "http://127.0.0.1:5000", Repository: "formancehq/fctl-plugin-ledger", Revision: 2, Layout: layout}
-	for _, failure := range []string{"stale manifest", "wrong revision", "mixed service versions"} {
+	for _, failure := range []string{"stale manifest", "wrong revision", "mixed service versions", "wrong entry point"} {
 		t.Run(failure, func(t *testing.T) {
 			invalid := options
 			invalid.Layout = filepath.Join(t.TempDir(), "must-not-publish")
+			expectedError := "service version or plugin revision"
 			switch failure {
 			case "stale manifest":
 				stale := manifest
@@ -75,9 +76,23 @@ func TestPublisherCreatesSixRealOCIArtifacts(t *testing.T) {
 				mixed[len(mixed)-1].Path = path
 				invalid.ArtifactsPath = filepath.Join(t.TempDir(), "mixed.json")
 				writeJSON(t, invalid.ArtifactsPath, mixed)
+			case "wrong entry point":
+				path := filepath.Join(buildDirectory, "wrong-entry-point")
+				command := exec.CommandContext(t.Context(), "go", "build", "-o", path,
+					"-ldflags", "-X main.serviceVersion=3.0.0-beta.10 -X main.revision=2", "./cmd/fctl-plugin-catalogue")
+				command.Dir = "../.."
+				command.Env = append(os.Environ(), "GOOS=windows", "GOARCH=arm64", "CGO_ENABLED=0")
+				if output, err := command.CombinedOutput(); err != nil {
+					t.Fatalf("build wrong product entry point: %s, %v", output, err)
+				}
+				mixed := append([]buildArtifact{}, artifacts...)
+				mixed[len(mixed)-1].Path = path
+				invalid.ArtifactsPath = filepath.Join(t.TempDir(), "wrong-entry-point.json")
+				writeJSON(t, invalid.ArtifactsPath, mixed)
+				expectedError = "product entry point"
 			}
 			var rejected bytes.Buffer
-			if err := Publish(t.Context(), invalid, &rejected, io.Discard); err == nil || !strings.Contains(err.Error(), "service version or plugin revision") {
+			if err := Publish(t.Context(), invalid, &rejected, io.Discard); err == nil || !strings.Contains(err.Error(), expectedError) {
 				t.Fatalf("wrong release identity accepted or wrong rejection: %v", err)
 			}
 			if rejected.Len() != 0 {

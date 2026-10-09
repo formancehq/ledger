@@ -1,6 +1,7 @@
 # Product-owned fctl plugin
 
-Ledger owns its HTTP command package in the separate `fctl-plugin/` Go module.
+Ledger owns its HTTP command package in the separate `misc/fctl-plugin/` Go module,
+named `github.com/formancehq/ledger/misc/fctl-plugin`.
 Its sole direct dependency is the public fctl plugin SDK. It imports neither
 Ledger service internals nor the fctl core, UI, profiles, or authentication.
 
@@ -42,4 +43,4 @@ catalogue only after all six uploads succeed. If an upload fails, earlier
 artifacts can remain in the registry, but no complete catalogue is emitted.
 The canonical Just recipe replaces the prepared catalogue only on success.
 The local layout recipe exercises the same ORAS serialization without any
-registry upload. See the [build and publication guide](../../../../../fctl-plugin/README.md).
+registry upload. See the [build and publication guide](../../../../../misc/fctl-plugin/README.md).

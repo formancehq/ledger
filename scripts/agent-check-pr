@@ -144,7 +144,7 @@ classify_path() {
             needs_operator=true
             return
             ;;
-        fctl-plugin/*)
+        misc/fctl-plugin/*)
             needs_precommit=true
             needs_fctl_plugin=true
             return

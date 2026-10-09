@@ -9,7 +9,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/formancehq/ledger/fctl-plugin/internal/catalogue"
+	"github.com/formancehq/ledger/misc/fctl-plugin/internal/catalogue"
 )
 
 func main() {

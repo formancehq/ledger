@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	ledger "github.com/formancehq/ledger/fctl-plugin"
+	ledger "github.com/formancehq/ledger/misc/fctl-plugin"
 )
 
 func TestReleaseUsesSDKManifestAndActualRawBinaryChecksum(t *testing.T) {

@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://goreleaser.com/static/schema.json
 version: 2
 project_name: fctl-plugin-ledger
-dist: ../build/fctl-plugin
+dist: ../../build/fctl-plugin
 
 env:
   - PLUGIN_REVISION={{ envOrDefault "PLUGIN_REVISION" "1" }}
