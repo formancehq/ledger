@@ -352,6 +352,16 @@ var _ = Describe("HTTP events sinks mutation scopes", func() {
 			Expect(err).To(Succeed())
 			return resp.StatusCode, raw
 		}
+		configuredSinks := func(raw []byte) []*commonpb.SinkConfig {
+			GinkgoHelper()
+			var envelope struct {
+				Data json.RawMessage `json:"data"`
+			}
+			Expect(json.Unmarshal(raw, &envelope)).To(Succeed())
+			var response servicepb.GetEventsSinksResponse
+			Expect(protojson.Unmarshal(envelope.Data, &response)).To(Succeed())
+			return response.GetSinks()
+		}
 		sink := newTestSinkConfig("http-sinks-scopes", "http.events.scopes")
 		body, err := protojson.Marshal(sink)
 		Expect(err).To(Succeed())
@@ -376,12 +386,12 @@ var _ = Describe("HTTP events sinks mutation scopes", func() {
 		}
 		code, raw = request(http.MethodGet, "", "ledger:OpsRead", nil)
 		Expect(code).To(Equal(http.StatusOK), string(raw))
-		Expect(string(raw)).To(ContainSubstring(sink.GetName()))
+		Expect(configuredSinks(raw)).To(ContainElement(HaveField("Name", sink.GetName())))
 		code, raw = request(http.MethodDelete, "/"+sink.GetName(), "ledger:OpsWrite", nil)
 		Expect(code).To(Equal(http.StatusNoContent), string(raw))
 		Expect(raw).To(BeEmpty())
 		code, raw = request(http.MethodGet, "", "ledger:OpsRead", nil)
 		Expect(code).To(Equal(http.StatusOK), string(raw))
-		Expect(string(raw)).NotTo(ContainSubstring(sink.GetName()))
+		Expect(configuredSinks(raw)).NotTo(ContainElement(HaveField("Name", sink.GetName())))
 	})
 })
