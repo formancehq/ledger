@@ -3796,6 +3796,7 @@ func verifySkippedOrder(
 			fmt.Sprintf("log %d records invalid structured skip failure on ledger %q: %v", seq, ledger, err),
 			seq, ledger, "", "",
 		))
+
 		return
 	}
 
@@ -4496,9 +4497,8 @@ func idempotencyMismatch(stored *commonpb.IdempotencyKeyValue, exp expectedIdemp
 	}
 }
 
-// metadataEqual compares two metadata maps treating nil and empty as equal:
-// buildAuditFailure stores an empty (non-nil) context map while
-// recordIdempotencyFailure may store a nil metadata map for the same error.
+// metadataEqual compares two fact maps treating nil and empty as equal.
+// Protobuf can decode an empty map as nil in either failure projection.
 func metadataEqual(a, b map[string]string) bool {
 	if len(a) != len(b) {
 		return false

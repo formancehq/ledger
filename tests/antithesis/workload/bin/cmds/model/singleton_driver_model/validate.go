@@ -150,7 +150,7 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 		}
 		data := logs[i].GetPayload().GetApply().GetLog().GetData()
 		if (data.GetOrderSkipped() != nil) != (order.Skipped != nil) ||
-			(order.Skipped != nil && (data.GetOrderSkipped().GetReason() != order.Skipped.GetReason() || !maps.Equal(data.GetOrderSkipped().GetContext(), order.Skipped.GetContext()))) {
+			(order.Skipped != nil && (data.GetOrderSkipped().GetReason() != order.Skipped.GetReason() || data.GetOrderSkipped().GetCode() != order.Skipped.GetCode() || !maps.Equal(data.GetOrderSkipped().GetFacts(), order.Skipped.GetFacts()))) {
 			assert.Unreachable("singleton_driver_model: skipped-order response mismatch", internal.Details{"order": i, "expected": order.Skipped, "actual": data.GetOrderSkipped()})
 
 			return

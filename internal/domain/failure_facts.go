@@ -3,6 +3,7 @@ package domain
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"maps"
 	"regexp"
@@ -34,7 +35,8 @@ func FailureFactsOf(d SerializableError) FailureFacts {
 	case *ErrInvalidSkippableReason:
 		code = "INVALID_SKIPPABLE_REASON"
 	case *ErrDependencyDiscoveryFailed:
-		if cause, ok := e.Cause.(SerializableError); ok {
+		var cause SerializableError
+		if errors.As(e.Cause, &cause) {
 			code = FailureFactsOf(cause).Code
 		} else {
 			code = "DEPENDENCY_DISCOVERY_FAILED"
@@ -76,7 +78,8 @@ func FailureFactsOf(d SerializableError) FailureFacts {
 		facts[key] = normalizeFailureFact(value)
 	}
 	if e, ok := d.(*ErrDependencyDiscoveryFailed); ok {
-		if cause, ok := e.Cause.(SerializableError); ok {
+		var cause SerializableError
+		if errors.As(e.Cause, &cause) {
 			maps.Copy(facts, FailureFactsOf(cause).Facts)
 		}
 	}
@@ -95,6 +98,7 @@ func normalizeFailureFact(value string) string {
 		return value
 	}
 	digest := sha256.Sum256([]byte(value))
+
 	return "sha256:" + hex.EncodeToString(digest[:])
 }
 
@@ -255,19 +259,20 @@ func ValidateFailureFacts(f FailureFacts) error {
 		return fmt.Errorf("invalid failure code %q", f.Code)
 	}
 	reason := ReasonString(f.Reason)
-	if reason == ErrReasonValidation {
+	switch {
+	case reason == ErrReasonValidation:
 		if _, ok := validationFailureCodes[f.Code]; !ok {
 			return fmt.Errorf("unknown validation failure code %q", f.Code)
 		}
-	} else if (reason == ErrReasonNumscriptRuntime || reason == ErrReasonNumscriptExecutionError) && f.Code != reason {
+	case (reason == ErrReasonNumscriptRuntime || reason == ErrReasonNumscriptExecutionError) && f.Code != reason:
 		if _, ok := numscriptFailureCodes[f.Code]; !ok {
 			return fmt.Errorf("unknown numscript failure code %q", f.Code)
 		}
-	} else if reason == ErrReasonNumscriptCompileError && f.Code != reason {
+	case reason == ErrReasonNumscriptCompileError && f.Code != reason:
 		if _, ok := numscriptCompileFailureCodes[f.Code]; !ok {
 			return fmt.Errorf("unknown numscript compile failure code %q", f.Code)
 		}
-	} else if f.Code != reason && !(reason == ErrReasonClusterPolicyInvalid && f.Code == "METADATA_LIMITS_UNCONFIGURED") {
+	case f.Code != reason && (reason != ErrReasonClusterPolicyInvalid || f.Code != "METADATA_LIMITS_UNCONFIGURED"):
 		return fmt.Errorf("failure code %q does not match reason %q", f.Code, reason)
 	}
 	allowed := strings.Fields(failureFactKeys[reason])
@@ -297,6 +302,7 @@ func ValidateFailureFacts(f FailureFacts) error {
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -314,5 +320,6 @@ func RenderFailureFacts(f FailureFacts) (string, map[string]string) {
 	for _, key := range keys {
 		parts = append(parts, key+"="+strconv.Quote(facts[key]))
 	}
+
 	return name + ": " + strings.Join(parts, ", "), facts
 }

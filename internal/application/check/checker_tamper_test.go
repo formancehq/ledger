@@ -261,8 +261,8 @@ func newRichAuditEntry(outcomeKind string) (*auditpb.AuditEntry, []*auditpb.Audi
 	case "failure":
 		entry.Outcome = &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
-				Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
-				Code: "INSUFFICIENT_FUNDS",
+				Reason: commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+				Code:   "INSUFFICIENT_FUNDS",
 				Facts: map[string]string{
 					"original-key": "original-value",
 					"ledger":       "ledger-a",
@@ -417,9 +417,9 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 		Idempotency: &commonpb.Idempotency{Key: idemKey},
 		Outcome: &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
-				Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
-				Code: "INSUFFICIENT_FUNDS",
-				Facts: map[string]string{"account": "bank"},
+				Reason: commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+				Code:   "INSUFFICIENT_FUNDS",
+				Facts:  map[string]string{"account": "bank"},
 			},
 		},
 	}
@@ -430,9 +430,9 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 		CreatedAt: createdAt,
 		Hash:      proposalHash,
 		Failure: &commonpb.IdempotencyFailure{
-			Reason:   commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
-			Code: "INSUFFICIENT_FUNDS",
-			Facts: map[string]string{"account": "bank"},
+			Reason: commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+			Code:   "INSUFFICIENT_FUNDS",
+			Facts:  map[string]string{"account": "bank"},
 		},
 	}
 
