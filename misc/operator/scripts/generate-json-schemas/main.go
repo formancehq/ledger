@@ -26,6 +26,17 @@ type crdInfo struct {
 	kind    string
 }
 
+// kindBaseName returns the shared filename stem for a kind's generated
+// schemas: group, version, then singular lowercase kind. The group prefix
+// avoids collisions when these files are copied alongside schemas from other
+// CRDs/operators (common kind names like "Cluster" or "Backup" are not
+// unique across projects). The version is included because, unlike a CRD's
+// own YAML manifest (which can serve several versions from one file), each
+// generated schema describes exactly one version's shape.
+func kindBaseName(group, version, kind string) string {
+	return fmt.Sprintf("%s_%s_%s", group, version, strings.ToLower(kind))
+}
+
 func main() {
 	if err := run("config/crd/bases", "config/crd/schemas"); err != nil {
 		fmt.Fprintf(os.Stderr, "generate-json-schemas: %v\n", err)
@@ -109,7 +120,7 @@ func writeSchemasForCRD(crdPath, outDir string) (int, crdInfo, error) {
 	}
 
 	kind := crd.Spec.Names.Kind
-	baseName := fmt.Sprintf("%s_%s", version, strings.ToLower(kind))
+	baseName := kindBaseName(crd.Spec.Group, version, kind)
 
 	apiVersion := fmt.Sprintf("%s/%s", crd.Spec.Group, version)
 
@@ -148,7 +159,7 @@ func writeDispatcherSchemas(crds []crdInfo, outDir string) error {
 	for _, group := range groups {
 		allOf := make([]any, 0, len(byGroup[group]))
 		for _, c := range byGroup[group] {
-			baseName := fmt.Sprintf("%s_%s", c.version, strings.ToLower(c.kind))
+			baseName := kindBaseName(c.group, c.version, c.kind)
 			allOf = append(allOf, map[string]any{
 				"if": map[string]any{
 					"properties": map[string]any{

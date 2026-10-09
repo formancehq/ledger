@@ -20,18 +20,18 @@ func TestRunGeneratesSchemasFromCRDs(t *testing.T) {
 	require.NoError(t, run(crdDir, outDir))
 
 	kindSchemas := []string{
-		"v1alpha1_backup.json",
-		"v1alpha1_backup.spec.json",
-		"v1alpha1_backuprun.json",
-		"v1alpha1_backuprun.spec.json",
-		"v1alpha1_cluster.json",
-		"v1alpha1_cluster.spec.json",
-		"v1alpha1_credentials.json",
-		"v1alpha1_credentials.spec.json",
-		"v1alpha1_eventsink.json",
-		"v1alpha1_eventsink.spec.json",
-		"v1alpha1_ledger.json",
-		"v1alpha1_ledger.spec.json",
+		"ledger.formance.com_v1alpha1_backup.json",
+		"ledger.formance.com_v1alpha1_backup.spec.json",
+		"ledger.formance.com_v1alpha1_backuprun.json",
+		"ledger.formance.com_v1alpha1_backuprun.spec.json",
+		"ledger.formance.com_v1alpha1_cluster.json",
+		"ledger.formance.com_v1alpha1_cluster.spec.json",
+		"ledger.formance.com_v1alpha1_credentials.json",
+		"ledger.formance.com_v1alpha1_credentials.spec.json",
+		"ledger.formance.com_v1alpha1_eventsink.json",
+		"ledger.formance.com_v1alpha1_eventsink.spec.json",
+		"ledger.formance.com_v1alpha1_ledger.json",
+		"ledger.formance.com_v1alpha1_ledger.spec.json",
 	}
 	dispatcherSchema := "ledger.formance.com.json"
 
@@ -105,12 +105,12 @@ func TestRunGeneratesDispatcherSchema(t *testing.T) {
 	}
 
 	require.Equal(t, map[string]string{
-		"Backup":      "v1alpha1_backup.json",
-		"BackupRun":   "v1alpha1_backuprun.json",
-		"Cluster":     "v1alpha1_cluster.json",
-		"Credentials": "v1alpha1_credentials.json",
-		"EventSink":   "v1alpha1_eventsink.json",
-		"Ledger":      "v1alpha1_ledger.json",
+		"Backup":      "ledger.formance.com_v1alpha1_backup.json",
+		"BackupRun":   "ledger.formance.com_v1alpha1_backuprun.json",
+		"Cluster":     "ledger.formance.com_v1alpha1_cluster.json",
+		"Credentials": "ledger.formance.com_v1alpha1_credentials.json",
+		"EventSink":   "ledger.formance.com_v1alpha1_eventsink.json",
+		"Ledger":      "ledger.formance.com_v1alpha1_ledger.json",
 	}, refByKind)
 }
 
@@ -122,7 +122,7 @@ func TestRunGeneratesStrictSchemas(t *testing.T) {
 
 	require.NoError(t, run(crdDir, outDir))
 
-	data, err := os.ReadFile(filepath.Join(outDir, "v1alpha1_cluster.spec.json"))
+	data, err := os.ReadFile(filepath.Join(outDir, "ledger.formance.com_v1alpha1_cluster.spec.json"))
 	require.NoError(t, err)
 
 	var doc map[string]any
@@ -160,7 +160,7 @@ func TestRunRequiresResourceIdentity(t *testing.T) {
 
 	require.NoError(t, run(crdDir, outDir))
 
-	schemaFile, err := os.Open(filepath.Join(outDir, "v1alpha1_cluster.json"))
+	schemaFile, err := os.Open(filepath.Join(outDir, "ledger.formance.com_v1alpha1_cluster.json"))
 	require.NoError(t, err)
 	defer func() { require.NoError(t, schemaFile.Close()) }()
 
@@ -168,9 +168,9 @@ func TestRunRequiresResourceIdentity(t *testing.T) {
 	require.NoError(t, err)
 
 	compiler := jsonschema.NewCompiler()
-	require.NoError(t, compiler.AddResource("v1alpha1_cluster.json", schemaDoc))
+	require.NoError(t, compiler.AddResource("ledger.formance.com_v1alpha1_cluster.json", schemaDoc))
 
-	sch, err := compiler.Compile("v1alpha1_cluster.json")
+	sch, err := compiler.Compile("ledger.formance.com_v1alpha1_cluster.json")
 	require.NoError(t, err)
 
 	cases := []struct {
@@ -225,7 +225,7 @@ func TestRunDoesNotEnforceCELRules(t *testing.T) {
 
 	require.NoError(t, run(crdDir, outDir))
 
-	schemaFile, err := os.Open(filepath.Join(outDir, "v1alpha1_ledger.spec.json"))
+	schemaFile, err := os.Open(filepath.Join(outDir, "ledger.formance.com_v1alpha1_ledger.spec.json"))
 	require.NoError(t, err)
 	defer func() { require.NoError(t, schemaFile.Close()) }()
 
@@ -233,9 +233,9 @@ func TestRunDoesNotEnforceCELRules(t *testing.T) {
 	require.NoError(t, err)
 
 	compiler := jsonschema.NewCompiler()
-	require.NoError(t, compiler.AddResource("v1alpha1_ledger.spec.json", schemaDoc))
+	require.NoError(t, compiler.AddResource("ledger.formance.com_v1alpha1_ledger.spec.json", schemaDoc))
 
-	sch, err := compiler.Compile("v1alpha1_ledger.spec.json")
+	sch, err := compiler.Compile("ledger.formance.com_v1alpha1_ledger.spec.json")
 	require.NoError(t, err)
 
 	instance, err := jsonschema.UnmarshalJSON(strings.NewReader(`{
@@ -328,13 +328,13 @@ func TestRunPrunesStaleSchemaFiles(t *testing.T) {
 	crdDir := filepath.Join("..", "..", "config", "crd", "bases")
 	outDir := t.TempDir()
 
-	stalePath := filepath.Join(outDir, "v1alpha1_doesnotexist.json")
+	stalePath := filepath.Join(outDir, "ledger.formance.com_v1alpha1_doesnotexist.json")
 	require.NoError(t, os.WriteFile(stalePath, []byte("{}"), 0o644))
 
 	require.NoError(t, run(crdDir, outDir))
 
 	require.NoFileExists(t, stalePath)
-	require.FileExists(t, filepath.Join(outDir, "v1alpha1_cluster.json"))
+	require.FileExists(t, filepath.Join(outDir, "ledger.formance.com_v1alpha1_cluster.json"))
 }
 
 const noStorageVersionCRD = `

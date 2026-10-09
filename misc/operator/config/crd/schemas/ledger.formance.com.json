@@ -17,7 +17,7 @@
         ]
       },
       "then": {
-        "$ref": "v1alpha1_backuprun.json"
+        "$ref": "ledger.formance.com_v1alpha1_backuprun.json"
       }
     },
     {
@@ -36,7 +36,7 @@
         ]
       },
       "then": {
-        "$ref": "v1alpha1_backup.json"
+        "$ref": "ledger.formance.com_v1alpha1_backup.json"
       }
     },
     {
@@ -55,7 +55,7 @@
         ]
       },
       "then": {
-        "$ref": "v1alpha1_cluster.json"
+        "$ref": "ledger.formance.com_v1alpha1_cluster.json"
       }
     },
     {
@@ -74,7 +74,7 @@
         ]
       },
       "then": {
-        "$ref": "v1alpha1_credentials.json"
+        "$ref": "ledger.formance.com_v1alpha1_credentials.json"
       }
     },
     {
@@ -93,7 +93,7 @@
         ]
       },
       "then": {
-        "$ref": "v1alpha1_eventsink.json"
+        "$ref": "ledger.formance.com_v1alpha1_eventsink.json"
       }
     },
     {
@@ -112,7 +112,7 @@
         ]
       },
       "then": {
-        "$ref": "v1alpha1_ledger.json"
+        "$ref": "ledger.formance.com_v1alpha1_ledger.json"
       }
     }
   ],
