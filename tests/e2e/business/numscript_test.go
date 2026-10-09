@@ -690,4 +690,55 @@ send [USD/2 200] (
 			}).Within(10 * time.Second).WithPolling(100 * time.Millisecond).Should(Succeed())
 		})
 	})
+
+	Context("When a script fails during execution", Ordered, func() {
+		const ledgerName = "numscript-execution-errors"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			Expect(err).To(Succeed())
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName,
+				"send [USD 10] ( source = @world destination = @funded )", nil, nil)))
+			Expect(err).To(Succeed())
+		})
+
+		DescribeTable("Should reject it as a client error with NUMSCRIPT_EXECUTION_ERROR",
+			func(script string, vars map[string]string, force bool, detail string) {
+				req := actions.CreateScriptTransactionAction(ledgerName, script, vars, nil)
+				if force {
+					req = actions.CreateForceScriptTransactionAction(ledgerName, script, vars, nil)
+				}
+
+				_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", req))
+				Expect(err).To(HaveOccurred())
+
+				st, ok := status.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(st.Code()).To(Equal(codes.FailedPrecondition), "got %v", err)
+				Expect(st.Message()).To(ContainSubstring(detail))
+
+				info := actions.ExtractGRPCErrorInfo(err)
+				Expect(info).NotTo(BeNil())
+				Expect(info.Reason).To(Equal(domain.ErrReasonNumscriptExecutionError))
+			},
+			Entry("negative amount from a var",
+				"vars { monetary $m }\nsend $m ( source = @world destination = @x )",
+				map[string]string{"m": "USD -10"}, false, "cannot send negative amount"),
+			Entry("negative amount from arithmetic",
+				"send [USD 1] - [USD 5] ( source = @world destination = @x )",
+				nil, false, "cannot send negative amount"),
+			Entry("negative amount from a balance",
+				"vars { monetary $m = balance(@funded, USD) }\nsend $m - [USD 20] ( source = @world destination = @x )",
+				nil, false, "cannot send negative amount"),
+			Entry("allotment not summing to 1",
+				"send [USD 10] ( source = @world destination = { 1/2 to @x 1/3 to @y } )",
+				nil, false, "portions must sum to 1"),
+			Entry("send-all from an unbounded source",
+				"send [USD *] ( source = @world destination = @x )",
+				nil, false, "unbounded source is not allowed"),
+			Entry("forced send of a balance wider than 256 bits",
+				"vars { monetary $all = balance(@a, USD) }\nsend $all ( source = @a destination = @x )",
+				nil, true, "exceeds 256 bits"),
+		)
+	})
 })

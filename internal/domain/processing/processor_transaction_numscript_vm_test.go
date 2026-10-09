@@ -85,3 +85,35 @@ func TestProduce_VMMissingFundsIsInsufficientFunds(t *testing.T) {
 	require.ErrorAs(t, err, &insufficientFunds)
 	require.Equal(t, "USD/2", insufficientFunds.Asset)
 }
+
+// TestProduce_ForcedPostingWiderThan256BitsIsExecutionError: under force every
+// balance() reads 2^256, so sending it produces a posting no uint256 volume can
+// hold. The script caused it, so it is a client error, not NUMSCRIPT_RUNTIME.
+func TestProduce_ForcedPostingWiderThan256BitsIsExecutionError(t *testing.T) {
+	t.Parallel()
+
+	const script = `vars {
+  monetary $all = balance(@wallet, USD/2)
+}
+
+send $all (
+  source = @wallet
+  destination = @out
+)`
+
+	producer := &numscriptPostingProducer{
+		cache:      numscript.NewNumscriptCache(16),
+		ledgerName: "test",
+		assetCache: map[string]cachedAssetPrecision{},
+	}
+
+	_, err := producer.produce(vmTestScope(t), "test",
+		&raftcmdpb.CreateTransactionOrder{Force: true},
+		&commonpb.Script{Plain: script})
+	require.NotNil(t, err)
+
+	var execErr *domain.ErrNumscriptExecution
+	require.ErrorAs(t, err, &execErr)
+	require.Contains(t, execErr.Detail, "exceeds 256 bits")
+	require.Equal(t, domain.KindPrecondition, err.Kind())
+}

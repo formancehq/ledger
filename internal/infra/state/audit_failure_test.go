@@ -558,10 +558,16 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{"details": "cannot take all balance of an unbounded source"},
 		},
 		{
+			name:        "NumscriptExecution",
+			err:         &domain.ErrNumscriptExecution{Detail: "cannot send negative amount: -4"},
+			wantReason:  domain.ErrReasonNumscriptExecutionError,
+			wantContext: map[string]string{"detail": "cannot send negative amount: -4"},
+		},
+		{
 			name:        "NumscriptRuntime",
-			err:         &domain.ErrNumscriptRuntime{Detail: "posting amount is negative"},
+			err:         &domain.ErrNumscriptRuntime{Detail: "numscript panic: boom"},
 			wantReason:  domain.ErrReasonNumscriptRuntime,
-			wantContext: map[string]string{"detail": "posting amount is negative"},
+			wantContext: map[string]string{"detail": "numscript panic: boom"},
 		},
 		{
 			name:        "AccountNotMatchingType",

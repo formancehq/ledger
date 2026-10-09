@@ -129,6 +129,7 @@ ledgerctl numscripts versions payment-with-fees
 | Version exists | `NUMSCRIPT_VERSION_ALREADY_EXISTS` | 409 | ALREADY_EXISTS | The `(name, version)` is already stored (immutable) |
 | Not found | `NUMSCRIPT_NOT_FOUND` | 404 | NOT_FOUND | Get a non-existent numscript or version |
 | Not runnable on the VM | `NUMSCRIPT_COMPILE_ERROR` | 400 | INVALID_ARGUMENT | A transaction's script parses and resolves but does not compile (static-semantics error caught by the compiler's typechecker, feature used without its flag, unsupported construct, VM capacity exceeded, var value that does not bind) — `ErrNumscriptCompile` |
+| Failed during execution | `NUMSCRIPT_EXECUTION_ERROR` | 400 | FAILED_PRECONDITION | A transaction's script runs and fails on its own terms (negative amount, allotment not summing to 1, send-all from an unbounded source, posting amount wider than 256 bits, other script-caused VM errors). Amounts can come from `balance()` or `meta()`, so the outcome can depend on state — `ErrNumscriptExecution` |
 
 ## Script References in Transactions
 

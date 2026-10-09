@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"27"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"28"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 27:
+leader. For example, with a schema implementing revision 28:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 27' \
+grpcurl -plaintext -H 'ledger-protocol-version: 28' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -382,3 +382,20 @@ EN-1635 / EN-2780 changes GetLedger and ListLedgers responses, including
 checkpoint reads, to detached credential-safe projections. Original mirror
 configuration remains available internally. This external read-semantic change
 requires matching clients and servers. See [LedgerInfo](ledger-info.md).
+
+## Numscript execution errors (revision 28)
+
+Revision 28 adds `ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR` (`ErrNumscriptExecution`,
+`KindPrecondition`, detail in the `detail` metadata key). A script that runs
+and fails on its own terms — a negative amount, an allotment that does not sum
+to 1, a send-all from an unbounded source, a posting amount wider than 256
+bits, and the other script-caused VM errors — returns gRPC `FailedPrecondition`
+(HTTP 400) with that reason. Revision 27 returned `Internal` with
+`NUMSCRIPT_RUNTIME` for the same requests. The failure is now freezable under
+an idempotency key, like `INSUFFICIENT_FUNDS`. `NUMSCRIPT_RUNTIME` remains for
+genuine server faults: recovered library panics, VM internal errors, and dependency-resolution errors the library
+exposes no public type for.
+
+This is an incompatible response-semantic change: a revision-27 client sees a
+status code and reason it does not know. Clients and servers must use the
+matching revision.

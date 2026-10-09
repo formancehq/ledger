@@ -120,7 +120,8 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_METADATA_FIELD_NOT_IN_SCHEMA,
 		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_NOT_MATCHING_TYPE,
 		commonpb.ErrorReason_ERROR_REASON_TRANSIENT_ACCOUNT_NON_ZERO,
-		commonpb.ErrorReason_ERROR_REASON_CHECKPOINT_LIMIT_REACHED:
+		commonpb.ErrorReason_ERROR_REASON_CHECKPOINT_LIMIT_REACHED,
+		commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR:
 		return KindPrecondition
 	case commonpb.ErrorReason_ERROR_REASON_BALANCE_NOT_PRELOADED,
 		commonpb.ErrorReason_ERROR_REASON_MAINTENANCE_MODE,

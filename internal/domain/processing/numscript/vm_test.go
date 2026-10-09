@@ -2,6 +2,8 @@ package numscript
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"math/big"
 	"runtime"
 	"testing"
@@ -9,6 +11,8 @@ import (
 	"weak"
 
 	"github.com/stretchr/testify/require"
+
+	numscriptlib "github.com/formancehq/numscript"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
@@ -524,7 +528,138 @@ send [COIN 90] (
 	require.NotNil(t, err, "a negative portion must fail the order, got postings %+v", result.Postings)
 	require.False(t, IsPanic(err))
 
-	var runtimeErr *domain.ErrNumscriptRuntime
-	require.ErrorAs(t, err, &runtimeErr)
-	require.Contains(t, runtimeErr.Detail, "cannot be negative")
+	var execErr *domain.ErrNumscriptExecution
+	require.ErrorAs(t, err, &execErr)
+	require.Contains(t, execErr.Detail, "cannot be negative")
+}
+
+// TestSafeExecCompiled_ScriptFailuresAreExecutionErrors: a script that fails on
+// its own terms is a client error (NUMSCRIPT_EXECUTION_ERROR, Precondition),
+// never the internal NUMSCRIPT_RUNTIME.
+func TestSafeExecCompiled_ScriptFailuresAreExecutionErrors(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		script string
+		vars   map[string]string
+		source mapValueSource
+		detail string
+	}{
+		{
+			name: "negative amount from a var",
+			script: `vars { monetary $m }
+send $m ( source = @world destination = @dst )`,
+			vars:   map[string]string{"m": "COIN -10"},
+			detail: "cannot send negative amount",
+		},
+		{
+			name:   "negative amount from arithmetic",
+			script: `send [COIN 1] - [COIN 5] ( source = @world destination = @dst )`,
+			detail: "cannot send negative amount",
+		},
+		{
+			name: "negative amount from a balance",
+			script: `vars { monetary $m = balance(@src, COIN) }
+send $m - [COIN 20] ( source = @world destination = @dst )`,
+			source: mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(10)}},
+			detail: "cannot send negative amount",
+		},
+		{
+			name:   "allotment not summing to 1",
+			script: `send [COIN 10] ( source = @world destination = { 1/2 to @a 1/3 to @b } )`,
+			detail: "portions must sum to 1",
+		},
+		{
+			name:   "division by zero",
+			script: `send [COIN 10] ( source = @world destination = { 1/0 to @a remaining to @b } )`,
+			detail: "cannot divide by zero",
+		},
+		{
+			name:   "send-all from an unbounded source",
+			script: `send [COIN *] ( source = @world destination = @dst )`,
+			detail: "unbounded source is not allowed",
+		},
+		{
+			name:   "asset mismatch",
+			script: `send [COIN 1] + [EUR 5] ( source = @world destination = @dst )`,
+			detail: "asset mismatch",
+		},
+		{
+			name: "balance of a negative account",
+			script: `vars { monetary $m = balance(@src, COIN) }
+send $m ( source = @world destination = @dst )`,
+			source: mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(-10)}},
+			detail: "negative balance",
+		},
+		{
+			name: "missing metadata",
+			script: `vars { account $a = meta(@src, "dst") }
+send [COIN 1] ( source = @world destination = $a )`,
+			detail: "metadata not found",
+		},
+		{
+			name: "metadata value of the wrong type",
+			script: `vars { monetary $m = meta(@src, "amount") }
+send $m ( source = @world destination = @dst )`,
+			source: mapValueSource{metadata: map[string]string{"src\x00amount": "not a monetary"}},
+			detail: "invalid metadata value",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			compiled := mustCompile(t, mustEntry(t, tc.script), tc.vars)
+
+			_, err := SafeExecCompiled(NewNumscriptCache(16), compiled, NewVMStore(tc.source, false))
+			require.NotNil(t, err)
+			require.False(t, IsPanic(err))
+
+			var execErr *domain.ErrNumscriptExecution
+			require.ErrorAs(t, err, &execErr)
+			require.Contains(t, execErr.Detail, tc.detail)
+			require.Equal(t, domain.KindPrecondition, err.Kind())
+			require.Equal(t, domain.ErrReasonNumscriptExecutionError, err.Reason())
+		})
+	}
+}
+
+// TestConvertVMError_Classification pins the mapping of every public VM error
+// type, including those no script in this repo can trigger end to end.
+func TestConvertVMError_Classification(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name       string
+		err        error
+		wantReason string
+	}{
+		{"missing funds", numscriptlib.VmMissingFundsError{Asset: "COIN", Needed: big.NewInt(2), Got: big.NewInt(1)}, domain.ErrReasonInsufficientFunds},
+		{"negative amount", numscriptlib.VmNegativeAmountError{}, domain.ErrReasonNumscriptExecutionError},
+		{"negative balance", numscriptlib.VmNegativeBalanceError{}, domain.ErrReasonNumscriptExecutionError},
+		{"asset mismatch", numscriptlib.VmAssetMismatchError{}, domain.ErrReasonNumscriptExecutionError},
+		{"invalid allotment sum", numscriptlib.VmInvalidAllotmentSum{}, domain.ErrReasonNumscriptExecutionError},
+		{"negative portion", numscriptlib.VmNegativePortionError{}, domain.ErrReasonNumscriptExecutionError},
+		{"divide by zero", numscriptlib.VmDivideByZeroError{}, domain.ErrReasonNumscriptExecutionError},
+		{"invalid account name", numscriptlib.VmInvalidAccountName{}, domain.ErrReasonNumscriptExecutionError},
+		{"invalid color", numscriptlib.VmInvalidColor{}, domain.ErrReasonNumscriptExecutionError},
+		{"invalid scope", numscriptlib.VmInvalidScope{}, domain.ErrReasonNumscriptExecutionError},
+		{"scoped account cast", numscriptlib.VmCannotCastScopedAccountToString{}, domain.ErrReasonNumscriptExecutionError},
+		{"invalid uncapped source", numscriptlib.VmInvalidUncappedSource{}, domain.ErrReasonNumscriptExecutionError},
+		{"metadata not found", numscriptlib.VmMetadataNotFoundError{}, domain.ErrReasonNumscriptExecutionError},
+		{"bad metadata value", numscriptlib.VmBadMetaValueError{}, domain.ErrReasonNumscriptExecutionError},
+		{"wrapped script failure", fmt.Errorf("exec: %w", numscriptlib.VmDivideByZeroError{}), domain.ErrReasonNumscriptExecutionError},
+		{"store error with a domain cause", numscriptlib.VmStoreError{Wrapped: domain.ErrScopedBalanceUnsupported}, domain.ErrScopedBalanceUnsupported.Reason()},
+		{"store error without a domain cause", numscriptlib.VmStoreError{Wrapped: errors.New("disk")}, domain.ErrReasonNumscriptRuntime},
+		{"vm internal error", numscriptlib.VmInternalError{Err: numscriptlib.VmInvalidPostingError{}}, domain.ErrReasonNumscriptRuntime},
+		{"unknown error", errors.New("boom"), domain.ErrReasonNumscriptRuntime},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := convertVMError(tc.err)
+			require.NotNil(t, got)
+			require.Equal(t, tc.wantReason, got.Reason())
+		})
+	}
 }

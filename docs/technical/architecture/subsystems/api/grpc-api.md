@@ -662,6 +662,7 @@ All business errors carry an `ErrorInfo` detail with a machine-readable reason. 
 | Balance not preloaded | `FAILED_PRECONDITION` | `BALANCE_NOT_PRELOADED` | `account`, `asset` |
 | Numscript parse error | `INVALID_ARGUMENT` | `NUMSCRIPT_PARSE_ERROR` | `details` |
 | Numscript compile error | `INVALID_ARGUMENT` | `NUMSCRIPT_COMPILE_ERROR` | `details` |
+| Numscript execution error | `FAILED_PRECONDITION` | `NUMSCRIPT_EXECUTION_ERROR` | `detail` |
 | Validation error | `INVALID_ARGUMENT` | `VALIDATION` | *(none)* |
 
 ### Error Handling Example (with ErrorInfo)

@@ -261,6 +261,7 @@ const (
 	ErrReasonBalanceNotPreloaded           = "BALANCE_NOT_PRELOADED"
 	ErrReasonNumscriptParseError           = "NUMSCRIPT_PARSE_ERROR"
 	ErrReasonNumscriptCompileError         = "NUMSCRIPT_COMPILE_ERROR"
+	ErrReasonNumscriptExecutionError       = "NUMSCRIPT_EXECUTION_ERROR"
 	ErrReasonValidation                    = "VALIDATION"
 	ErrReasonAuditDisabled                 = "AUDIT_DISABLED"
 	ErrReasonSinkAlreadyExists             = "SINK_ALREADY_EXISTS"
@@ -1372,6 +1373,23 @@ func (e *ErrNumscriptCompile) Metadata() map[string]string {
 	return map[string]string{"details": e.Detail}
 }
 
+// ErrNumscriptExecution — the script ran and failed on its own terms: a
+// negative amount, an allotment that does not sum to 1, a division by zero, a
+// send-all from an unbounded source, a posting amount wider than 256 bits, and
+// the like. KindPrecondition because amounts and portions can come from
+// balance() or meta(), so the same script and vars may succeed against other
+// state — the same class as ErrInsufficientFunds.
+type ErrNumscriptExecution struct {
+	Detail string
+}
+
+func (e *ErrNumscriptExecution) Error() string { return "numscript execution error: " + e.Detail }
+func (*ErrNumscriptExecution) Kind() ErrorKind { return KindPrecondition }
+func (*ErrNumscriptExecution) Reason() string  { return ErrReasonNumscriptExecutionError }
+func (e *ErrNumscriptExecution) Metadata() map[string]string {
+	return map[string]string{"detail": e.Detail}
+}
+
 // ErrDependencyDiscoveryFailed is returned when admission cannot discover all
 // dependencies needed to preload a Numscript transaction before proposal.
 type ErrDependencyDiscoveryFailed struct {
@@ -1743,11 +1761,10 @@ func (e *ErrCheckpointNotFound) Metadata() map[string]string {
 	return map[string]string{"checkpointId": strconv.FormatUint(e.CheckpointID, 10)}
 }
 
-// ErrNumscriptRuntime — the Numscript program produced output that violates
-// a server-side invariant at apply time (negative posting amount, posting
-// amount exceeding 2^256, malformed metadata key produced by a numscript
-// expression, etc.). KindInternal because the user wrote the script and
-// the FSM cannot recover; the message carries the diagnostic detail.
+// ErrNumscriptRuntime — a Numscript failure the client cannot fix: a
+// recovered library panic, a corrupt or unreadable compiled artifact, a VM
+// internal error, or a library error no typed mapping covers.
+// KindInternal; the message carries the diagnostic detail.
 type ErrNumscriptRuntime struct {
 	Detail string
 }
