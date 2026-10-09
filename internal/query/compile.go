@@ -623,8 +623,46 @@ func applyMaxInclusive(v int64) (int64, bool) {
 	return v + 1, true
 }
 
+// setMin records the lower bound of the half-open range. An exclusive min at
+// MaxInt64 admits no value, so the bounds are marked empty instead.
+func (b *resolvedIntBounds) setMin(v int64, exclusive bool) {
+	if exclusive {
+		nv, ok := applyMinExclusive(v)
+		if !ok {
+			b.empty = true
+
+			return
+		}
+
+		v = nv
+	}
+
+	b.min = v
+	b.hasMin = true
+}
+
+// setMax records the upper bound of the half-open range. An inclusive max at
+// MaxInt64 is unbounded above, so hasMax stays false.
+func (b *resolvedIntBounds) setMax(v int64, exclusive bool) {
+	if exclusive {
+		b.max = v
+		b.hasMax = true
+
+		return
+	}
+
+	if nv, ok := applyMaxInclusive(v); ok {
+		b.max = nv
+		b.hasMax = true
+	}
+}
+
 // resolveIntBounds resolves an IntCondition's bounds from hardcoded values or parameters,
 // applying exclusivity adjustments. The returned bounds define a half-open range [min, max).
+//
+// Every parameter the condition references is resolved and type-checked
+// before the range is reported empty: whether a bad parameter is refused must
+// not depend on the other bound's value.
 func resolveIntBounds(cond *commonpb.IntCondition, params map[string]*commonpb.ParameterValue) (resolvedIntBounds, error) {
 	var b resolvedIntBounds
 
@@ -634,34 +672,9 @@ func resolveIntBounds(cond *commonpb.IntCondition, params map[string]*commonpb.P
 			return b, err
 		}
 
-		if cond.GetMinExclusive() {
-			nv, ok := applyMinExclusive(v)
-			if !ok {
-				b.empty = true
-
-				return b, nil
-			}
-
-			v = nv
-		}
-
-		b.min = v
-		b.hasMin = true
+		b.setMin(v, cond.GetMinExclusive())
 	} else if cond.Min != nil {
-		v := cond.GetMin()
-		if cond.GetMinExclusive() {
-			nv, ok := applyMinExclusive(v)
-			if !ok {
-				b.empty = true
-
-				return b, nil
-			}
-
-			v = nv
-		}
-
-		b.min = v
-		b.hasMin = true
+		b.setMin(cond.GetMin(), cond.GetMinExclusive())
 	}
 
 	if cond.GetParamMax() != "" {
@@ -670,23 +683,9 @@ func resolveIntBounds(cond *commonpb.IntCondition, params map[string]*commonpb.P
 			return b, err
 		}
 
-		if cond.GetMaxExclusive() {
-			b.max = v
-			b.hasMax = true
-		} else if nv, ok := applyMaxInclusive(v); ok {
-			b.max = nv
-			b.hasMax = true
-		}
-		// !ok: inclusive max at MaxInt64 means unbounded above — leave hasMax false.
+		b.setMax(v, cond.GetMaxExclusive())
 	} else if cond.Max != nil {
-		v := cond.GetMax()
-		if cond.GetMaxExclusive() {
-			b.max = v
-			b.hasMax = true
-		} else if nv, ok := applyMaxInclusive(v); ok {
-			b.max = nv
-			b.hasMax = true
-		}
+		b.setMax(cond.GetMax(), cond.GetMaxExclusive())
 	}
 
 	// max is the exclusive upper, so [min, max) holds nothing once the
@@ -792,8 +791,45 @@ func applyMaxInclusiveUint(v uint64) (uint64, bool) {
 	return v + 1, true
 }
 
+// setMin records the lower bound of the half-open range. An exclusive min at
+// MaxUint64 admits no value, so the bounds are marked empty instead.
+func (b *resolvedUintBounds) setMin(v uint64, exclusive bool) {
+	if exclusive {
+		nv, ok := applyMinExclusiveUint(v)
+		if !ok {
+			b.empty = true
+
+			return
+		}
+
+		v = nv
+	}
+
+	b.min = v
+	b.hasMin = true
+}
+
+// setMax records the upper bound of the half-open range. An inclusive max at
+// MaxUint64 is unbounded above, so hasMax stays false.
+func (b *resolvedUintBounds) setMax(v uint64, exclusive bool) {
+	if exclusive {
+		b.max = v
+		b.hasMax = true
+
+		return
+	}
+
+	if nv, ok := applyMaxInclusiveUint(v); ok {
+		b.max = nv
+		b.hasMax = true
+	}
+}
+
 // resolveUintBounds resolves a UintCondition's bounds from hardcoded values or parameters,
 // applying exclusivity adjustments. The returned bounds define a half-open range [min, max).
+//
+// See resolveIntBounds: every referenced parameter is resolved before the
+// range is reported empty.
 func resolveUintBounds(cond *commonpb.UintCondition, params map[string]*commonpb.ParameterValue) (resolvedUintBounds, error) {
 	var b resolvedUintBounds
 
@@ -803,34 +839,9 @@ func resolveUintBounds(cond *commonpb.UintCondition, params map[string]*commonpb
 			return b, err
 		}
 
-		if cond.GetMinExclusive() {
-			nv, ok := applyMinExclusiveUint(v)
-			if !ok {
-				b.empty = true
-
-				return b, nil
-			}
-
-			v = nv
-		}
-
-		b.min = v
-		b.hasMin = true
+		b.setMin(v, cond.GetMinExclusive())
 	} else if cond.Min != nil {
-		v := cond.GetMin()
-		if cond.GetMinExclusive() {
-			nv, ok := applyMinExclusiveUint(v)
-			if !ok {
-				b.empty = true
-
-				return b, nil
-			}
-
-			v = nv
-		}
-
-		b.min = v
-		b.hasMin = true
+		b.setMin(cond.GetMin(), cond.GetMinExclusive())
 	}
 
 	if cond.GetParamMax() != "" {
@@ -839,22 +850,9 @@ func resolveUintBounds(cond *commonpb.UintCondition, params map[string]*commonpb
 			return b, err
 		}
 
-		if cond.GetMaxExclusive() {
-			b.max = v
-			b.hasMax = true
-		} else if nv, ok := applyMaxInclusiveUint(v); ok {
-			b.max = nv
-			b.hasMax = true
-		}
+		b.setMax(v, cond.GetMaxExclusive())
 	} else if cond.Max != nil {
-		v := cond.GetMax()
-		if cond.GetMaxExclusive() {
-			b.max = v
-			b.hasMax = true
-		} else if nv, ok := applyMaxInclusiveUint(v); ok {
-			b.max = nv
-			b.hasMax = true
-		}
+		b.setMax(cond.GetMax(), cond.GetMaxExclusive())
 	}
 
 	// See resolveIntBounds: adjusted bounds that meet or cross are the
