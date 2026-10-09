@@ -8,8 +8,8 @@ panels.row('Storage Disk Usage', 172, [
     'Disk Usage by Volume',
     { h: 8, w: 24, x: 0, y: 91 },
     [
-      { expr: 'storage.disk.volume.usage{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node", volume="wal"}', legendFormat: 'WAL Volume (Node {{formance.ledger.node.id}})' },
-      { expr: 'storage.disk.volume.usage{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node", volume="data"}', legendFormat: 'Data Volume (Node {{formance.ledger.node.id}})' },
+      { expr: 'storage.disk.volume.usage{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node", volume="wal"}', legendFormat: 'WAL Volume ({{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}})' },
+      { expr: 'storage.disk.volume.usage{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node", volume="data"}', legendFormat: 'Data Volume ({{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}})' },
     ], unit='bytes',
     description='Disk space used by each storage volume (WAL volume, data volume). Updated every 10 seconds by a background collector.',
   ),
