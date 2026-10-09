@@ -91,7 +91,32 @@ text through the generated operation, as described in `tests/sdk/README.md`.
 Compare documented write scopes with both the granular route guard and default
 aggregate mapping. Creation metadata remains EN-2686's separate server contract.
 
+HTTP monetary negotiation follows the v2 contract: posting amounts, volume
+inputs/outputs and signed balances use exact decimal JSON number tokens by
+default, and canonical strings with a truthy `Formance-Bigint-As-String` header.
+Posting input accepts canonical unsigned decimal strings or integer tokens
+within uint256; volume codecs retain arbitrary precision and signed balances.
+Review option propagation through custom nested codecs, checked-response
+buffering and concurrent mixed-header requests. CLI, protobuf, event and
+storage codecs keep their existing representations. Use the generated SDK
+integration in `tests/sdk` and exact raw-token handler assertions as evidence;
+a number/string schema union alone cannot prove the selected mode.
+
 ## Boundaries
+
+EN-2783 pins HTTP auth response media types and reachable write-exhaustion
+declarations. Use `TestOpenAPI_NumscriptAuthentication` and
+`TestOpenAPI_WriteResourceExhaustion` as registered-router oracles, including
+anonymous/disabled authentication, local and reconstructed domain errors, and
+the 22 non-bulk Apply paths. Require actual regenerated SDK operation fixtures
+for bearer transmission and preserved failure details. Primitive plain-text
+auth bodies and JSON controller bodies are different media types; a generator
+limitation must be disclosed rather than hidden with an inaccurate schema.
+Disk gating can clear; sequence exhaustion is permanent. Neither 429 supplies
+`Retry-After`. Reads, prepared-query execution and terminal audit-sequence
+failure do not establish ordinary request-level 429 reachability. Bulk envelope
+corrections remain EN-2782's separate scope; authentication internals remain
+excluded from this audit.
 
 For unary peer-connection interruption (EN-2212), the observable contract is
 specific: `grpcerr.Conn.Invoke` converts the exact bare grpc-go close status

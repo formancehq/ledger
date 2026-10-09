@@ -85,7 +85,15 @@ func writeCreated(w http.ResponseWriter, data any) {
 // The remaining list/get handlers keep writeOK: their struct marshaling cannot
 // fail, so buffering would only add an allocation.
 func writeOKChecked(w http.ResponseWriter, r *http.Request, data any) {
-	body, err := json.Marshal(BaseResponse[any]{Data: data})
+	writeOKCheckedEncoded(w, r, data, json.Marshal)
+}
+
+func writeOKCheckedEncoded(w http.ResponseWriter, r *http.Request, data any, marshal func(any) ([]byte, error)) {
+	writeCheckedJSONResponse(w, r, BaseResponse[any]{Data: data}, marshal)
+}
+
+func writeCheckedJSONResponse(w http.ResponseWriter, r *http.Request, value any, marshal func(any) ([]byte, error)) {
+	body, err := marshal(value)
 	if err != nil {
 		handleError(w, r, err)
 

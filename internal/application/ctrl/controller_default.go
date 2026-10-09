@@ -115,6 +115,7 @@ var (
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source controller_default.go -destination controller_default_generated_test.go -package ctrl . Admission
 type Admission interface {
 	Admit(ctx context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error)
+	AdmitClusterPolicy(ctx context.Context, policy *commonpb.ClusterPolicy) (*domain.ApplyResult, error)
 	Barrier(ctx context.Context) (uint64, error)
 }
 

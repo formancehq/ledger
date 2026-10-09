@@ -37,6 +37,11 @@ opposite order — have a per-direction implementation.
 `target` in `D`'s order**: the smallest entity `>= target` ascending, the
 largest entity `<= target` descending. It is an **absolute reposition**:
 
+`MonotoneDateIterator[D]` satisfies this contract by scanning its existing
+date-first log index toward the requested ID. A seek backwards or after
+exhaustion restarts from the date bound; it never assumes a cursor's date can
+be derived from its ID. Its first `Next` streams directly from the bound.
+
 1. **Computed from `target` alone.** The result never depends on the
    iterator's current position, distance travelled, or exhaustion state.
 2. **Idempotent and non-consuming.** Repeating the seek with the same target

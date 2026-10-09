@@ -2,38 +2,14 @@ package grpc
 
 import (
 	"context"
-	"strings"
 
 	ggrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
-)
 
-// Consistency levels for read operations.
-const (
-	// ConsistencyLinearizable is the default: ReadIndex barrier on the local node.
-	ConsistencyLinearizable = "linearizable"
-	// ConsistencyStale skips the ReadIndex barrier and reads from the local store directly.
-	// Data may lag behind the latest committed index.
-	ConsistencyStale = "stale"
+	"github.com/formancehq/ledger/v3/internal/query"
 )
 
 const metadataKeyConsistency = "x-consistency"
-
-type consistencyKey struct{}
-
-// WithConsistency returns a copy of ctx with the given consistency level stored.
-func WithConsistency(ctx context.Context, level string) context.Context {
-	return context.WithValue(ctx, consistencyKey{}, level)
-}
-
-// ConsistencyFromContext returns the consistency level from ctx, defaulting to linearizable.
-func ConsistencyFromContext(ctx context.Context) string {
-	if v, ok := ctx.Value(consistencyKey{}).(string); ok && v != "" {
-		return v
-	}
-
-	return ConsistencyLinearizable
-}
 
 // consistencyInterceptor reads x-consistency from incoming gRPC metadata
 // and stores the value in context for downstream handlers.
@@ -68,7 +44,7 @@ func (s *consistencyServerStream) Context() context.Context {
 
 // extractConsistency reads x-consistency from incoming gRPC metadata and returns
 // a context with the consistency level set. Unrecognised values are ignored
-// (defaults to linearizable).
+// (defaults to linearizable); only the first metadata value is considered.
 func extractConsistency(ctx context.Context) context.Context {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
@@ -80,11 +56,9 @@ func extractConsistency(ctx context.Context) context.Context {
 		return ctx
 	}
 
-	level := strings.ToLower(strings.TrimSpace(vals[0]))
-	switch level {
-	case ConsistencyStale:
-		return WithConsistency(ctx, level)
-	default:
-		return ctx
+	if level, ok := query.ParseConsistency(vals[0]); ok && level == query.ConsistencyStale {
+		return query.WithConsistency(ctx, level)
 	}
+
+	return ctx
 }

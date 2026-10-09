@@ -29,6 +29,19 @@ func NewBigUint(value *big.Int) (*BigUint, error) {
 	return &BigUint{Magnitude: value.Bytes()}, nil
 }
 
+// ParseBigUint constructs a BigUint from a canonical unsigned decimal string.
+func ParseBigUint(decimal string) (*BigUint, error) {
+	if err := validateCanonicalDecimalString(decimal, false); err != nil {
+		return nil, err
+	}
+	value, ok := new(big.Int).SetString(decimal, 10)
+	if !ok {
+		return nil, fmt.Errorf("invalid integer %q", decimal)
+	}
+
+	return NewBigUint(value)
+}
+
 // MustBigUintFromDecimal constructs a BigUint from a trusted static decimal.
 func MustBigUintFromDecimal(decimal string) *BigUint {
 	value, ok := new(big.Int).SetString(decimal, 10)

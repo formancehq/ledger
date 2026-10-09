@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"25"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"26"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -310,14 +310,26 @@ serves the page ending strictly before its key in the requested order, so it
 is not meaningful to a peer that does not implement it; clients and servers
 must use the matching revision.
 
+## Private cluster policy command (revision 26)
+
+Revision 26 removes `Request.set_cluster_policy` from the public
+`BucketService.Apply` envelope. Cluster policy reconciliation is now admitted
+only through the server-internal `Admission.AdmitClusterPolicy` entry point,
+which still commits the internal Raft `SetClusterPolicyOrder` and audited
+`SetClusterPolicy` log payload.
+
+A revision-25 client can still encode field 28 in `Request.type`, but a
+revision-26 server no longer interprets that field as a valid Apply request.
+Clients and servers must therefore use the matching revision.
+
 ## Current Numscript Raft order (internal pre-release change)
 
-After revision 25, the internal `OrderTechnical` compiled fields were removed.
-Admission still validates and predicts using its local VM; FSM apply and audit
-replay compile the committed script text or resolved library reference and
-business variables with the running binary. This changes only the internal
-Raft order representation, not an exposed service request, response, or
-operation contract. `pkg/grpcprotocol.Version` therefore remains at 25.
+The internal `OrderTechnical` compiled fields were removed. Admission still
+validates and predicts using its local VM; FSM apply and audit replay compile
+the committed script text or resolved library reference and business variables
+with the running binary. This changes only the internal Raft order
+representation, not an exposed service request, response, or operation
+contract, so it needs no additional service protocol revision.
 Semantic changes in a later Numscript library update still need their own
 service-compatibility assessment and an upgrade plan for in-flight Raft
 entries; the absence of committed bytecode does not make rolling upgrades

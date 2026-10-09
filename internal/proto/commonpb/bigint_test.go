@@ -24,6 +24,9 @@ func TestBigIntegerRoundTrips(t *testing.T) {
 		t.Run(decimal, func(t *testing.T) {
 			t.Parallel()
 			unsigned := MustBigUintFromDecimal(decimal)
+			parsed, err := ParseBigUint(decimal)
+			require.NoError(t, err)
+			require.True(t, proto.Equal(unsigned, parsed))
 			wire, err := proto.MarshalOptions{Deterministic: true}.Marshal(unsigned)
 			require.NoError(t, err)
 			var decoded BigUint
@@ -36,6 +39,19 @@ func TestBigIntegerRoundTrips(t *testing.T) {
 			var decodedJSON BigUint
 			require.NoError(t, json.Unmarshal(encodedJSON, &decodedJSON))
 			require.True(t, proto.Equal(unsigned, &decodedJSON))
+		})
+	}
+}
+
+func TestParseBigUintRejectsNonCanonicalDecimals(t *testing.T) {
+	t.Parallel()
+
+	for _, decimal := range []string{"", "00", "01", "+1", "-1", "-0", "1.0", "1e3", "0x10", " 1", "1 ", "١"} {
+		t.Run(decimal, func(t *testing.T) {
+			t.Parallel()
+			value, err := ParseBigUint(decimal)
+			require.Error(t, err)
+			require.Nil(t, value)
 		})
 	}
 }

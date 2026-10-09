@@ -71,7 +71,9 @@ func (b *RoutedController) getLeaderCtrl() (ctrl.Controller, error) {
 
 // readCtrl returns the controller to use for a read operation, along with
 // diagnostic barrier info (nil when the read is stale or forwarded).
-// The consistency level is determined from the context (set by the gRPC interceptor):
+// The consistency level is determined from the context (set by the gRPC
+// interceptor from x-consistency metadata, or by the HTTP X-Consistency
+// middleware):
 //   - linearizable (default): ReadIndex+WaitForApplied barrier on the local node
 //   - stale: skip the barrier and read from the local store directly
 //
@@ -80,13 +82,13 @@ func (b *RoutedController) getLeaderCtrl() (ctrl.Controller, error) {
 // leader. If resolution points back to the local controller, the failed
 // barrier is returned instead of serving an unbarriered local read.
 func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, *node.ReadBarrierInfo, error) {
-	consistency := grpcadp.ConsistencyFromContext(ctx)
+	consistency := query.ConsistencyFromContext(ctx)
 
 	ctx, span := routerTracer.Start(ctx, "router.read_ctrl",
 		trace.WithAttributes(attribute.String("consistency", consistency)))
 	defer span.End()
 
-	if consistency == grpcadp.ConsistencyStale {
+	if consistency == query.ConsistencyStale {
 		span.SetAttributes(attribute.String("route", "local_stale"))
 
 		return b.localController, nil, nil

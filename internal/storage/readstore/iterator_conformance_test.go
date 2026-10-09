@@ -94,6 +94,28 @@ func seedPrefixRows(t *testing.T, entities ...string) (*Store, []byte, int) {
 func conformancePairs() []iterPair {
 	return []iterPair{
 		{
+			name: "MonotoneDateIterator",
+			build: func(t *testing.T) (EntityIterator, ReverseIterator) {
+				s := newTestStore(t)
+				kb := dal.NewKeyBuilder()
+				for _, row := range [][2]uint64{{10, 2}, {10, 4}, {11, 6}} {
+					require.NoError(t, s.DB().Set(LedgerLogDateKey(kb, "l", row[0], row[1]), nil, pebble.NoSync))
+				}
+				prefix := LedgerLogDateRangePrefix(kb, "l")
+				lower := append(append([]byte(nil), prefix...), make([]byte, 8)...)
+				upper := IncrementBytes(prefix)
+				fwd, err := NewMonotoneDateIterator[Asc](s.DB(), lower, upper, len(prefix)+8)
+				require.NoError(t, err)
+				t.Cleanup(fwd.Close)
+				rev, err := NewMonotoneDateIterator[Desc](s.DB(), lower, upper, len(prefix)+8)
+				require.NoError(t, err)
+				t.Cleanup(rev.Close)
+
+				return fwd, rev
+			},
+			want: []string{"2", "4", "6"}, entityB: txEntity, render: renderTx,
+		},
+		{
 			name: "PrefixIterator",
 			build: func(t *testing.T) (EntityIterator, ReverseIterator) {
 				s, prefix, off := seedPrefixRows(t, "a", "b", "c", "d")

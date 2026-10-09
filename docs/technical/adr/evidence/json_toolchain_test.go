@@ -166,14 +166,21 @@ func TestCompatibility(t *testing.T) {
 		t.Fatal("direct override not exercised")
 	}
 	calls = 0
-	nested, err := jsonv2.Marshal(tx, override, jsonv2.Deterministic(true))
+	nested, err := jsonv2.Marshal(tx, jsonv1.DefaultOptionsV1(), override, jsonv2.Deterministic(true))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls != 0 || !strings.Contains(string(nested), `"amount":9007199254740993`) {
+	if calls != 1 || !strings.Contains(string(nested), `"amount":"9007199254740993"`) {
 		t.Fatalf("unexpected nested override behavior calls=%d data=%s", calls, nested)
 	}
 	t.Logf("Uint256 override direct=%s; nested calls=%d output=%s", direct, calls, nested)
+	defaultAgain, err := jsonv2.Marshal(tx, jsonv1.DefaultOptionsV1())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(defaultAgain), `"amount":9007199254740993`) || strings.Contains(string(defaultAgain), `"amount":"`) {
+		t.Fatalf("nested override leaked into default call: %s", defaultAgain)
+	}
 }
 
 // Transaction is a response projection with flattened MetadataValue oneofs;
@@ -200,7 +207,7 @@ func BenchmarkTransactionList(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	b.Logf("100 real commonpb transactions; Sonic Default input bytes=%d; existing nested MarshalJSON retained; decode uses typed wire DTO", len(input))
+	b.Logf("100 real commonpb transactions; Sonic Default input bytes=%d; legacy/option-aware projections; decode uses typed wire DTO", len(input))
 	codecs := []struct {
 		name      string
 		marshal   func(any) ([]byte, error)
@@ -253,5 +260,40 @@ func BenchmarkTransactionList(b *testing.B) {
 				}
 			})
 		}
+	}
+}
+
+// BenchmarkTransactionListReader measures reader decoding independently from
+// byte decoding; the response DTO preserves exact amounts without custom hooks.
+func BenchmarkTransactionListReader(b *testing.B) {
+	if sonic.APIKind != sonic.UseSonicJSON {
+		b.Fatal("expected native Sonic baseline")
+	}
+	input, err := sonic.ConfigDefault.Marshal(transactions())
+	if err != nil {
+		b.Fatal(err)
+	}
+	for _, codec := range []struct {
+		name   string
+		decode func(io.Reader, any) error
+	}{
+		{"stdlib-v1", func(r io.Reader, value any) error { return jsonv1.NewDecoder(r).Decode(value) }},
+		{"sonic-native", func(r io.Reader, value any) error { return sonic.ConfigStd.NewDecoder(r).Decode(value) }},
+		{"stdlib-v2-v1-options", func(r io.Reader, value any) error {
+			return jsonv2.UnmarshalRead(r, value, jsonv1.DefaultOptionsV1())
+		}},
+	} {
+		b.Run(codec.name+"/Read", func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				var decoded []transactionWire
+				if err := codec.decode(bytes.NewReader(input), &decoded); err != nil {
+					b.Fatal(err)
+				}
+				if len(decoded) != 100 || decoded[0].Postings[0].Amount.String() != "9007199254740993" {
+					b.Fatal("decode fixture mismatch")
+				}
+			}
+		})
 	}
 }

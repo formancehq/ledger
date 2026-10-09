@@ -905,8 +905,20 @@ func compileLogBuiltinUintConditionRev(ctx *compileCtx, cond *commonpb.LogBuilti
 	if err != nil {
 		return nil, err
 	}
+	bounds, err := resolveUintBounds(cond.GetCond(), ctx.params)
+	if err != nil {
+		return nil, err
+	}
+	if bounds.empty {
+		return emptyReverse(), nil
+	}
+	lower, upper, entityOffset, _ := timestampRangeBounds(arm.prefix, bounds)
+	iter, err := readstore.NewMonotoneDateIterator[readstore.Desc](ctx.indexReader, lower, upper, entityOffset)
+	if err != nil {
+		return nil, fmt.Errorf("creating reverse log date iterator: %w", err)
+	}
 
-	return compileTimestampRangeConditionRev(ctx, cond.GetCond(), arm.prefix, arm.bucket, arm.stampPin)
+	return trackReverse(iter, ctx.profile, &IteratorStats{Label: fmt.Sprintf("ReverseMonotoneDateIterator(lldt:%s range)", ctx.ledgerName), Kind: "Range", Prefix: arm.bucket}), nil
 }
 
 func compileLogIdConditionRev(ctx *compileCtx, cond *commonpb.UintCondition) (readstore.ReverseIterator, error) {

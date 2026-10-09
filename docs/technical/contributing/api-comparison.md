@@ -53,6 +53,31 @@ need gRPC metadata. The gate does not version the HTTP API or Raft/storage
 formats. See [the service protocol contract](../architecture/subsystems/api/protocol-compatibility.md)
 for client setup, restore behavior, failure limitations, and revision changes.
 
+### Authentication and resource exhaustion (EN-2783)
+
+The five v3 Numscript library operations declare their existing optional bearer
+authentication and 401/403 failures. Anonymous scopes and auth-disabled mode remain
+supported. Middleware failures contain plain text; controller failures can contain
+the usual JSON `errorCode`/`errorMessage` envelope. Clients dispatch using both
+status and media type. The HTTP response wrapper preserves an explicit content
+type so a plain-text scope denial is not mislabeled JSON.
+
+The 22 non-bulk Apply write operations declare JSON 429 responses for disk gating
+and authoritative identifier exhaustion. See the evidence-backed
+[route/status/body matrix](../architecture/subsystems/api/http-api.md#resource-exhaustion-response-matrix).
+No 429 retry interval is supplied. `WRITES_BLOCKED_DISK_FULL` can clear with disk
+pressure; `SEQUENCE_EXHAUSTED` is permanent for the allocator. Bulk keeps its
+distinct processing envelope, and reads gain no speculative 429 declarations.
+
+The v2 reference at `d47ba1746cec2173d84eab8ec575be196eae0837`
+(`internal/api/common/errors.go`, `openapi.yaml`) has the familiar JSON
+`errorCode`/`errorMessage` error envelope, which v3 preserves for domain failures.
+Its database-client saturation maps to 503, not the v3 disk/sequence 429 reasons;
+these different server semantics do not warrant forcing equivalent statuses.
+The inspected v2 specification has no matching versioned Numscript library
+routes or service-local 401/403 declarations. V3 scope failures follow its own
+JWT/anonymous policy; no new endpoint or authorization requirement is introduced.
+
 ### Feature comparison
 
 | Feature | POC | Original | Notes |
@@ -164,6 +189,31 @@ for client setup, restore behavior, failure limitations, and revision changes.
 ---
 
 ## Ledger-log JSON contract
+
+### Monetary encoding parity (EN-2779)
+
+V2 and v3 HTTP responses emit decimal JSON number tokens for posting amounts,
+volume input/output and balances by default. `Formance-Bigint-As-String` opts
+into canonical decimal strings for all of these values. Both recognize
+case-insensitive `true`, `yes`, `y` and `1`, without trimming whitespace.
+The v2 reference is `internal/api/v2/views.go` (`needBigIntAsString`, transaction,
+account, log and aggregate renderers), verified on v2/main at
+`d47ba1746cec2173d84eab8ec575be196eae0837`; native values there use `math/big.Int`.
+
+V3 applies this contract to transaction create/get/list/revert, account get/list,
+aggregate volumes, transaction-analysis statistics, bulk (including partial
+failures), ledger/system logs, and prepared-query cursors/aggregates. V3 posting inputs accept both integer tokens
+and canonical unsigned decimal strings regardless of the response header, with
+the existing uint256 bound. Volume input/output and balances retain their
+arbitrary-precision bounds and signedness. IDs, metadata and nonmonetary
+integer projections retain their existing contract.
+
+The OpenAPI schemas expose number/string unions and the reusable header on
+every affected operation. Generated SDK operation tests in `tests/sdk/` retain
+exact opt-in strings rather than coercing them into JavaScript numbers.
+CLI/events and protobuf wire/storage/audit encodings retain their previous
+representations. This intentionally replaces v3's previous always-string HTTP
+volume output while preserving its field shapes and color dimension.
 
 EN-1790 aligns the nested ledger-log JSON with v2 where the existing v3 data
 model permits a simple projection. Both use `type` to identify a payload held
@@ -1116,6 +1166,14 @@ Read endpoints comparison with the original ledger:
 | `GET /v3/_/indexes/{canonicalId}/status` | ✅ | ❌ | Bucket-scoped IndexEntry |
 | `POST /v3/{ledgerName}/bulk` | ✅ | ❌ | Bulk operations (alternate path without underscore) |
 | `GET /_info` | ✅ | ❌ | Server build info (`version`, `commit`, `buildDate`, `goVersion`); unauthenticated, flat JSON (no `data` envelope) |
+
+**Read consistency selector.** Every `/v3` read accepts `X-Consistency:
+stale` over HTTP, matching the gRPC `x-consistency: stale` metadata. The
+receiving node serves the read from its own store, with no ReadIndex barrier
+and no forwarding. The default and `linearizable` keep the barrier. HTTP rejects
+an unknown or repeated value with `400 INVALID_REQUEST`; gRPC ignores unknown
+values. The original ledger has no equivalent. See
+[HTTP API: Read consistency](../architecture/subsystems/api/http-api.md#read-consistency).
 
 ### Pagination
 

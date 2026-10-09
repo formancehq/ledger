@@ -119,5 +119,5 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 		panic(emptyLogPayload("revert-transaction", logEntry, details))
 	}
 
-	writeCreated(w, rt.RevertedTransaction)
+	writeMonetaryCreated(w, r, rt.RevertedTransaction)
 }

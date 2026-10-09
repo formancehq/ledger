@@ -121,3 +121,13 @@ outer encoder still pays the existing nested custom-marshaller costs, so these
 results cannot estimate the gain from an end-to-end v2 conversion. A decision
 to migrate requires isolated repeated measurements on representative production
 request/response shapes, including amd64, and the complete compatibility gates.
+
+## Fixture after EN-2779
+
+The measurements and opaque-boundary observation above describe the recorded
+historical revision. EN-2779 adds option-aware `MarshalJSONTo` projections, so
+the current fixture now requires a nested override to run and then verifies
+that a subsequent default call remains numeric. Reproduce the historical
+measurements from their recorded revision; a current-checkout run exercises
+the new projections. The production monetary benchmark is
+`BenchmarkMonetaryResponse` in `internal/proto/commonpb/monetary_benchmark_test.go`.

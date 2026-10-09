@@ -44,7 +44,7 @@ func (s *Server) handleGetTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeOK(w, getTransactionData{
+	writeMonetaryOK(w, r, getTransactionData{
 		Transaction: transaction,
 	})
 }
