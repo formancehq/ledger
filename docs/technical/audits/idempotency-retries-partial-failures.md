@@ -18,14 +18,16 @@ so an identical peer-authored status racing that shutdown is indistinguishable.
 Do not broaden this into all `Unavailable`, `Canceled`, `Unknown`, or statuses
 carrying structured details.
 
-A maintenance rejection is not a definitive outcome for that retry and the
-workload does not treat it as one. The gate sits at admission, ahead of the
-FSM's idempotency replay, so it can refuse a write that already committed;
-reporting the refusal loses the write. The retry rides the window out instead.
-That terminates because a batch of nothing but `SetMaintenanceMode` is exempt
-from the gate, so an enable whose own response was lost still reaches the
-success that schedules its disable, and the business retry then replays the
-frozen outcome under the same key.
+A maintenance rejection is not a definitive outcome for that retry, and a
+retry-forever client (`LEDGER_RETRY_FOREVER`, the model driver) does not treat
+it as one. The gate sits at admission, ahead of the FSM's idempotency replay,
+so it can refuse a write that already committed; reporting the refusal loses
+the write. That client's retry rides the window out instead. That terminates
+because a batch of nothing but `SetMaintenanceMode` is exempt from the gate, so
+an enable whose own response was lost still reaches the success that schedules
+its disable, and the business retry then replays the frozen outcome under the
+same key. Every other client takes the refusal as definitive: the maintenance
+driver awaits it before disabling maintenance itself.
 
 `tests/antithesis/workload/internal/client_transport_test.go` exercises the
 actual factory and real Ledger admission gate: commit, lost response,

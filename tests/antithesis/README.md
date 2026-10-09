@@ -266,8 +266,10 @@ The workload uses a layered predicate set (`internal/client.go`):
   Retried writes need the original idempotency key and payload. Neither code
   establishes a definitive business rejection; verify the resulting state or
   recover the keyed outcome before asserting non-execution.
-- A **maintenance rejection is transient**, so the retry loop rides the window
-  out rather than reporting it. The gate sits at admission, ahead of the FSM's
+- A **maintenance rejection is transient for a retry-forever client** (the model
+  driver), so its retry loop rides the window out rather than reporting it;
+  every other client takes the refusal as definitive, which the maintenance
+  driver relies on before disabling maintenance itself. The gate sits at admission, ahead of the FSM's
   idempotency replay, so a write whose response was lost can be refused on its
   retry even though it committed — treating that refusal as an answer records a
   committed write as one that never happened, which is how a

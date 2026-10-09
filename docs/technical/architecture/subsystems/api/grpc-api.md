@@ -628,8 +628,8 @@ Without a key, replaying the request may execute it again. The regressions in
 real Ledger node and close the peer connection before response delivery. They
 retain the native gRPC retry control and separately exercise the actual
 `NewGRPCConn` interceptor configuration, returning the original outcome with
-a single transaction and balance effect. A later attempt that hits the real
-maintenance gate is retried rather than reported: the gate precedes the FSM's
+a single transaction and balance effect. In retry-forever mode, a later attempt
+that hits the real maintenance gate is retried rather than reported: the gate precedes the FSM's
 idempotency replay, so refusing a committed write there says nothing about the
 commit. Once maintenance is disabled the same key and payload surface the
 original result. This transport result alone does not prove a failed second

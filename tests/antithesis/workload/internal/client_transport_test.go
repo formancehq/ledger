@@ -126,7 +126,7 @@ func workloadTestConn(t *testing.T, addr, mode string) (*grpc.ClientConn, error)
 	if mode == "disabled" {
 		t.Setenv("LEDGER_NO_RETRY", "1")
 	}
-	if mode == "forever" {
+	if mode == "forever" || mode == "maintenance" {
 		t.Setenv("LEDGER_RETRY_FOREVER", "1")
 	}
 

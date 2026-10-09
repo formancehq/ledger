@@ -55,6 +55,12 @@ func NewGRPCConn() (*grpc.ClientConn, error) {
 	// attempts, each formerly wrapping up to 5 service-config attempts). Streams
 	// never had service-config retries, so their ordinary budget remains 10.
 	// Retry-forever lifts both budgets.
+	// Only a retry-forever client rides a maintenance window out: it recovers
+	// from maintenance on its own, so a refusal on a retry may hide a committed
+	// write. Every other client — the maintenance driver among them, whose own
+	// disable waits on the refusal — takes the refusal as definitive.
+	retryMaintenance := retryForever
+
 	unaryInterceptorAttempts := maxAttempts
 	streamInterceptorAttempts := retryMaxAttempts
 	if retryForever {
@@ -83,11 +89,11 @@ func NewGRPCConn() (*grpc.ClientConn, error) {
 		// map is complete.
 		opts = append(opts,
 			grpc.WithChainUnaryInterceptor(
-				retryUnaryInterceptor(unaryInterceptorAttempts),
+				retryUnaryInterceptor(unaryInterceptorAttempts, retryMaintenance),
 				classifyUnaryInterceptor(),
 			),
 			grpc.WithChainStreamInterceptor(
-				retryStreamInterceptor(streamInterceptorAttempts),
+				retryStreamInterceptor(streamInterceptorAttempts, retryMaintenance),
 				classifyStreamInterceptor(),
 			),
 		)
@@ -150,7 +156,7 @@ func retryDelay(attempt int) time.Duration {
 // Aborted is NOT retried (see IsAborted): the gRPC spec allows business
 // "please retry" semantics there, and we want to see it surface in the
 // classify interceptor rather than silently spinning the retry loop.
-func retryUnaryInterceptor(maxAttempts int) grpc.UnaryClientInterceptor {
+func retryUnaryInterceptor(maxAttempts int, retryMaintenance bool) grpc.UnaryClientInterceptor {
 	return func(
 		ctx context.Context,
 		method string,
@@ -162,7 +168,7 @@ func retryUnaryInterceptor(maxAttempts int) grpc.UnaryClientInterceptor {
 		var err error
 		for attempt := range maxAttempts {
 			err = invoker(ctx, method, req, reply, cc, opts...)
-			if !retryableRPCError(err) {
+			if !retryableRPCError(err, retryMaintenance) {
 				return err
 			}
 			select {
@@ -178,15 +184,20 @@ func retryUnaryInterceptor(maxAttempts int) grpc.UnaryClientInterceptor {
 
 // retryableRPCError reports whether an RPC error is worth another attempt.
 //
-// A maintenance rejection is one of them. The gate sits at admission, ahead of
-// the FSM's idempotency replay, so a write whose response was lost can be
-// refused on its retry even though it committed — treating that refusal as a
-// definitive answer loses the write. Retrying instead rides the window out,
-// which terminates: a batch of nothing but SetMaintenanceMode is exempt from
-// the gate (admission.allRequestsAreMaintenanceMode), so an enable whose own
-// response was lost still reaches the success that schedules its disable, and
-// the retry then replays the frozen outcome under the same idempotency key.
-func retryableRPCError(err error) bool {
+// A maintenance rejection is one only when retryMaintenance is set. The gate
+// sits at admission, ahead of the FSM's idempotency replay, so a write whose
+// response was lost can be refused on its retry even though it committed —
+// treating that refusal as a definitive answer loses the write. Retrying
+// instead rides the window out, which terminates for a client that recovers on
+// its own: a batch of nothing but SetMaintenanceMode is exempt from the gate
+// (admission.allRequestsAreMaintenanceMode), so an enable whose own response
+// was lost still reaches the success that schedules its disable, and the retry
+// then replays the frozen outcome under the same idempotency key.
+func retryableRPCError(err error, retryMaintenance bool) bool {
+	if !retryMaintenance && HasErrorReason(err, domain.ErrReasonMaintenanceMode) {
+		return false
+	}
+
 	return IsTransient(err)
 }
 
@@ -249,7 +260,7 @@ func classifyStreamInterceptor() grpc.StreamClientInterceptor {
 
 // retryStreamInterceptor retries stream creation on the same transient set as
 // retryUnaryInterceptor (IsTransient).
-func retryStreamInterceptor(maxAttempts int) grpc.StreamClientInterceptor {
+func retryStreamInterceptor(maxAttempts int, retryMaintenance bool) grpc.StreamClientInterceptor {
 	return func(
 		ctx context.Context,
 		desc *grpc.StreamDesc,
@@ -264,7 +275,7 @@ func retryStreamInterceptor(maxAttempts int) grpc.StreamClientInterceptor {
 		)
 		for attempt := range maxAttempts {
 			stream, err = streamer(ctx, desc, cc, method, opts...)
-			if !retryableRPCError(err) {
+			if !retryableRPCError(err, retryMaintenance) {
 				return stream, err
 			}
 			select {

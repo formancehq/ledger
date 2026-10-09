@@ -59,14 +59,19 @@ func TestRetryableRPCError_RetriesMaintenance(t *testing.T) {
 	// The gate is at admission, ahead of the FSM's idempotency replay, so a
 	// committed write can be refused on its retry. Riding the window out is
 	// what keeps that write from being recorded as never having happened.
-	if !retryableRPCError(maintenance.Err()) {
-		t.Fatal("maintenance rejection must stay in the retry loop")
+	if !retryableRPCError(maintenance.Err(), true) {
+		t.Fatal("maintenance rejection must stay in the retry loop of a client that recovers on its own")
 	}
-	if !retryableRPCError(status.Error(codes.Unavailable, "no leader")) {
-		t.Fatal("infrastructure unavailability must remain retryable")
+	if retryableRPCError(maintenance.Err(), false) {
+		t.Fatal("any other client must take the maintenance rejection as definitive")
 	}
-	if retryableRPCError(status.Error(codes.NotFound, "ledger missing")) {
-		t.Fatal("a business answer must still be definitive")
+	for _, retryMaintenance := range []bool{true, false} {
+		if !retryableRPCError(status.Error(codes.Unavailable, "no leader"), retryMaintenance) {
+			t.Fatal("infrastructure unavailability must remain retryable")
+		}
+		if retryableRPCError(status.Error(codes.NotFound, "ledger missing"), retryMaintenance) {
+			t.Fatal("a business answer must still be definitive")
+		}
 	}
 }
 
@@ -98,7 +103,7 @@ func TestRetryUnaryInterceptor_RidesOutMaintenance(t *testing.T) {
 		return e
 	}
 
-	if err := retryUnaryInterceptor(len(errs))(context.Background(), "/test.Service/Apply", nil, nil, nil, invoker); err != nil {
+	if err := retryUnaryInterceptor(len(errs), true)(context.Background(), "/test.Service/Apply", nil, nil, nil, invoker); err != nil {
 		t.Fatalf("interceptor returned %v, want the success behind the window", err)
 	}
 
@@ -117,7 +122,7 @@ func TestRetryUnaryInterceptor_StopsOnDefinitiveError(t *testing.T) {
 		return status.Error(codes.NotFound, "ledger missing")
 	}
 
-	err := retryUnaryInterceptor(4)(context.Background(), "/test.Service/Apply", nil, nil, nil, invoker)
+	err := retryUnaryInterceptor(4, true)(context.Background(), "/test.Service/Apply", nil, nil, nil, invoker)
 	if status.Code(err) != codes.NotFound {
 		t.Fatalf("err = %v, want NotFound", err)
 	}

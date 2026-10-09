@@ -95,7 +95,7 @@ func TestRetryBackup_CommittedStartLostResponse(t *testing.T) {
 					return nil
 				}
 				// This is the same automatic transient retry used by NewGRPCConn.
-				automaticRetry := retryUnaryInterceptor(retryMaxAttempts)
+				automaticRetry := retryUnaryInterceptor(retryMaxAttempts, false)
 				got, err := RetryBackup(t.Context(), tc.operation, func(ctx context.Context) (uint64, error) {
 					err := automaticRetry(ctx, tc.operation, nil, nil, nil, invoke)
 
