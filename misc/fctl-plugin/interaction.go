@@ -51,7 +51,7 @@ func ledgerCreateInputs() []pluginsdk.InputSpec {
 	return []pluginsdk.InputSpec{
 		{Title: "Account type enforcement", Description: "STRICT rejects transactions that violate account types; AUDIT records violations and permits the transaction", Kind: "select", BodyPointer: "/defaultEnforcementMode", ValueType: "string", Default: "STRICT",
 			Options: []pluginsdk.InputOption{{Label: "Strict (server default)", Value: "STRICT"}, {Label: "Audit", Value: "AUDIT"}}},
-		{Title: "Ledger metadata", Description: `Optional JSON object with string, integer or boolean values. Creation metadata requires Ledger 3.0.0-beta.10 or later; on earlier versions use ledger metadata set after creation.`, Kind: "text", BodyPointer: "/metadata", ValueType: "json"},
+		{Title: "Ledger metadata", Description: `Optional JSON object with string, integer or boolean values. Creation metadata follows this co-released Ledger API contract.`, Kind: "text", BodyPointer: "/metadata", ValueType: "json"},
 		{Title: "Initial metadata schema", Description: `Optional JSON array of field declarations, e.g. [{"targetType":"account","key":"color","type":"string"}]; targets: account, transaction or ledger`, Kind: "text", BodyPointer: "/initialSchema", ValueType: "json"},
 		{Title: "Account types", Description: `Optional JSON object of account type models, e.g. {"user-checking":{"name":"user-checking","pattern":"users:{id}:checking","persistence":"EPHEMERAL","segmentTypes":{"id":{"type":"uint64"}}}}`, Kind: "text", BodyPointer: "/accountTypes", ValueType: "json"},
 	}

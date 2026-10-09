@@ -70,7 +70,7 @@ builds:
 # The product owns its HTTP fctl commands and co-releases their executable.
 - binary: fctl-plugin-ledger
   id: fctl-plugin-ledger
-  dir: fctl-plugin
+  dir: misc/fctl-plugin
   main: ./cmd/fctl-plugin-ledger
   # Keep -ldflags in Go build metadata for publication identity checks.
   ldflags:
@@ -130,7 +130,7 @@ archives:
     - zip
   name_template: "fctl-plugin-ledger_v{{ .Version }}_r{{ .Env.PLUGIN_REVISION }}_{{ .Os }}-{{ .Arch }}"
   files:
-  - src: fctl-plugin/README.md
+  - src: misc/fctl-plugin/README.md
     dst: README.md
 
 checksum:

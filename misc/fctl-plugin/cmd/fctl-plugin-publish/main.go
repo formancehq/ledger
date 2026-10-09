@@ -9,7 +9,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/formancehq/ledger/fctl-plugin/internal/catalogue"
+	"github.com/formancehq/ledger/misc/fctl-plugin/internal/catalogue"
 )
 
 func main() {
@@ -23,6 +23,7 @@ func run(args []string, output, diagnostics io.Writer) error {
 	flags := flag.NewFlagSet("fctl-plugin-publish", flag.ContinueOnError)
 	flags.SetOutput(diagnostics)
 	var options catalogue.PublishOptions
+	flags.StringVar(&options.ServiceVersion, "service-version", "", "Exact co-released Ledger service version (without v prefix)")
 	flags.StringVar(&options.ManifestPath, "manifest", "", "SDK manifest exported by the native plugin")
 	flags.StringVar(&options.ArtifactsPath, "artifacts", "", "GoReleaser artifacts.json")
 	flags.StringVar(&options.SourceRoot, "source-root", "", "Root containing raw GoReleaser binaries")

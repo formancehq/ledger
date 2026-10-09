@@ -1,4 +1,4 @@
-module github.com/formancehq/ledger/fctl-plugin
+module github.com/formancehq/ledger/misc/fctl-plugin
 
 go 1.26.0
 

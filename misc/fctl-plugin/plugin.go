@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/formancehq/fctl/pkg/pluginsdk"
@@ -16,8 +17,18 @@ import (
 const defaultServiceVersion = "3.0.0"
 
 type plugin struct {
-	http           *http.Client
-	serviceVersion string
+	execute         func(context.Context, preparedRequest) (pluginsdk.ExecuteResponse, error)
+	prepareEndpoint func(string) (*httpclient.Client, error)
+	serviceVersion  string
+}
+
+type preparedRequest struct {
+	request pluginsdk.ExecuteRequest
+	op      operation
+	path    string
+	headers http.Header
+	query   url.Values
+	client  *httpclient.Client
 }
 
 // New creates a Ledger plugin with the caller's HTTP transport. Authentication,
@@ -33,7 +44,31 @@ func NewVersion(httpClient *http.Client, serviceVersion string) pluginsdk.Plugin
 		httpClient = http.DefaultClient
 	}
 
-	return &plugin{http: httpClient, serviceVersion: cmp.Or(serviceVersion, defaultServiceVersion)}
+	return &plugin{
+		execute: executeHTTP,
+		prepareEndpoint: func(endpoint string) (*httpclient.Client, error) {
+			return httpclient.New(endpoint, httpClient)
+		},
+		serviceVersion: cmp.Or(serviceVersion, defaultServiceVersion),
+	}
+}
+
+// NewWithExecutor reuses the Ledger manifest and command validation with an
+// alternate transport. The executor receives normalized flags and an already
+// prepared JSON Body; it owns transport-specific endpoint and payload decoding.
+// The host retains authentication, file/stdin handling, prompts and rendering.
+// The executor must honor ctx and return partial data alongside errors when
+// applicable. It is called once per execution, without automatic retries.
+// A nil executor permits manifest inspection but cannot execute commands.
+func NewWithExecutor(serviceVersion string, executor func(context.Context, pluginsdk.ExecuteRequest) (pluginsdk.ExecuteResponse, error)) pluginsdk.Plugin {
+	p := &plugin{serviceVersion: cmp.Or(serviceVersion, defaultServiceVersion)}
+	if executor != nil {
+		p.execute = func(ctx context.Context, req preparedRequest) (pluginsdk.ExecuteResponse, error) {
+			return executor(ctx, req.request)
+		}
+	}
+
+	return p
 }
 
 func (p *plugin) GetManifest(ctx context.Context) (pluginsdk.Manifest, error) {
@@ -47,6 +82,11 @@ func (p *plugin) GetManifest(ctx context.Context) (pluginsdk.Manifest, error) {
 }
 
 func (p *plugin) Execute(ctx context.Context, req pluginsdk.ExecuteRequest) (pluginsdk.ExecuteResponse, error) {
+	if p.prepareEndpoint == nil {
+		if err := ctx.Err(); err != nil {
+			return pluginsdk.ExecuteResponse{}, err
+		}
+	}
 	manifest, operations := buildLayout()
 	manifest.Version = p.serviceVersion
 	req, err := pluginsdk.NormalizeRequest(manifest, req)
@@ -55,46 +95,74 @@ func (p *plugin) Execute(ctx context.Context, req pluginsdk.ExecuteRequest) (plu
 	}
 	op := operations[strings.Join(req.CommandPath, "/")]
 
-	return p.executeOperation(ctx, op, req)
+	prepared, err := p.prepareRequest(op, req)
+	if err != nil {
+		return pluginsdk.ExecuteResponse{}, err
+	}
+	if p.execute == nil {
+		return pluginsdk.ExecuteResponse{}, errors.New("ledger command execution requires an executor")
+	}
+
+	return p.execute(ctx, prepared)
 }
 
-func (p *plugin) executeOperation(ctx context.Context, op operation, req pluginsdk.ExecuteRequest) (pluginsdk.ExecuteResponse, error) {
+func (p *plugin) prepareRequest(op operation, req pluginsdk.ExecuteRequest) (preparedRequest, error) {
 	if err := validateArgs(op, req.Args); err != nil {
-		return pluginsdk.ExecuteResponse{}, err
+		return preparedRequest{}, err
 	}
 	path, err := requestPath(op, req.Args, req.Flags["ledger"])
 	if err != nil {
-		return pluginsdk.ExecuteResponse{}, err
+		return preparedRequest{}, err
 	}
 	headers, err := requestHeaders(op, req.Flags)
 	if err != nil {
-		return pluginsdk.ExecuteResponse{}, err
+		return preparedRequest{}, err
+	}
+	req, err = normalizePagination(op, req)
+	if err != nil {
+		return preparedRequest{}, err
 	}
 	query, err := requestQuery(op, req)
 	if err != nil {
-		return pluginsdk.ExecuteResponse{}, err
+		return preparedRequest{}, err
 	}
-	client, err := httpclient.New(req.Endpoint, p.http)
-	if err != nil {
-		return pluginsdk.ExecuteResponse{}, err
+	// Preserve the HTTP adapter's endpoint validation order without requiring
+	// an alternate executor to use an HTTP URL.
+	var client *httpclient.Client
+	if p.prepareEndpoint != nil {
+		client, err = p.prepareEndpoint(req.Endpoint)
+		if err != nil {
+			return preparedRequest{}, err
+		}
 	}
 	body, err := requestBody(op, req)
 	if err != nil {
-		return pluginsdk.ExecuteResponse{}, err
+		return preparedRequest{}, err
 	}
-	result, err := client.Do(ctx, op.method, path, query, body, headers)
+	if len(body) > 0 && op.validateBody != nil {
+		if err := op.validateBody(body, "body"); err != nil {
+			return preparedRequest{}, fmt.Errorf("invalid request body: %w", err)
+		}
+	}
+	req.Body = body
+
+	return preparedRequest{request: req, op: op, path: path, headers: headers, query: query, client: client}, nil
+}
+
+func executeHTTP(ctx context.Context, req preparedRequest) (pluginsdk.ExecuteResponse, error) {
+	result, err := req.client.Do(ctx, req.op.method, req.path, req.query, req.request.Body, req.headers)
 	response := pluginsdk.ExecuteResponse{Data: result}
 	if err != nil {
-		if !op.bulk {
+		if !req.op.bulk {
 			return pluginsdk.ExecuteResponse{}, err
 		}
-		if failure, ok := errors.AsType[*httpclient.Error](err); op.bulk && ok {
+		if failure, ok := errors.AsType[*httpclient.Error](err); ok {
 			response.Data = failure.Body
 		}
 
 		return response, err
 	}
-	if op.bulk {
+	if req.op.bulk {
 		return response, bulkError(result)
 	}
 

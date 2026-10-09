@@ -10,6 +10,8 @@ permissions:
 
 jobs:
   GoReleaser:
+    env:
+      PLUGIN_REVISION: "1"
     runs-on: namespace-profile-linux-amd64-4vcpu
     steps:
       - uses: namespacelabs/nscloud-checkout-action@445c25d7009680597d73eb03c4e1cd5be522ed73 # v9
@@ -34,6 +36,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
+      - name: Publish Ledger fctl plugin and release catalogue
+        run: nix develop --command just publish-fctl-plugin-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push operator image
         run: >
           nix develop --command just operator-docker-build ${{ github.ref_name }}

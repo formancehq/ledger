@@ -82,6 +82,8 @@
             acli
             go_1_27
             ffmpeg
+            gh
+            coreutils
             ginkgo
             gomarkdoc
             go-jsonnet

@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	ledger "github.com/formancehq/ledger/fctl-plugin"
+	ledger "github.com/formancehq/ledger/misc/fctl-plugin"
 )
 
 func TestPublisherCreatesSixRealOCIArtifacts(t *testing.T) {
@@ -48,7 +48,7 @@ func TestPublisherCreatesSixRealOCIArtifacts(t *testing.T) {
 	artifactsPath := filepath.Join(buildDirectory, "artifacts.json")
 	writeJSON(t, artifactsPath, artifacts)
 	layout := filepath.Join(t.TempDir(), "oci")
-	options := PublishOptions{ManifestPath: manifestPath, ArtifactsPath: artifactsPath, SourceRoot: buildDirectory,
+	options := PublishOptions{ServiceVersion: "3.0.0-beta.10", ManifestPath: manifestPath, ArtifactsPath: artifactsPath, SourceRoot: buildDirectory,
 		Registry: "http://127.0.0.1:5000", Repository: "formancehq/fctl-plugin-ledger", Revision: 2, Layout: layout}
 	for _, failure := range []string{"stale manifest", "wrong revision", "mixed service versions"} {
 		t.Run(failure, func(t *testing.T) {
@@ -77,7 +77,7 @@ func TestPublisherCreatesSixRealOCIArtifacts(t *testing.T) {
 				writeJSON(t, invalid.ArtifactsPath, mixed)
 			}
 			var rejected bytes.Buffer
-			if err := Publish(t.Context(), invalid, &rejected, io.Discard); err == nil || !strings.Contains(err.Error(), "service version or plugin revision") {
+			if err := Publish(t.Context(), invalid, &rejected, io.Discard); err == nil || !strings.Contains(err.Error(), "service version") {
 				t.Fatalf("wrong release identity accepted or wrong rejection: %v", err)
 			}
 			if rejected.Len() != 0 {
