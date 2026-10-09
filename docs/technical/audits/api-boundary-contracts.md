@@ -221,3 +221,20 @@ Initial creation metadata is one CreateLedger operation, returned in the HTTP 20
 Does initial metadata survive HTTP decoding, the service request and order unchanged, including integers beyond JSON float precision, omitted/null inputs and a schema type mismatch? Do malformed keys/scalars reject before any ledger is created?
 
 See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
+
+## HTTP event sink mutations
+
+Trace POST and DELETE under `/v3/_/events-sinks` through the registered
+`ledger:OpsWrite` route guards and unsigned Apply requests. POST accepts a
+direct protobuf JSON configuration with a name and one sink variant; verify
+full-body limits, strict JSON decoding and field preservation for all five
+variants. Its acknowledgement includes only the committed name. GET retains
+its existing envelope and config/status shape. DELETE decodes the path segment
+once and forwards optional `controllerId` exactly as a gRPC removal
+precondition. An omitted identity remains unconditional removal. Check
+not-found, duplicate-name, batch-size and controller-mismatch status/reason
+presentation with local and forwarded errors. Handler tests and the route-scope
+exhaustiveness probes establish conversion and authorization; HTTP sink E2E
+tests establish committed lifecycle outcomes. Retained-key replay belongs to
+`idempotency-retries-partial-failures`; verify header transmission here without
+inventing a new retry identity or an external-delivery guarantee.

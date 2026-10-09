@@ -2584,6 +2584,116 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+    post:
+      summary: Add an event sink
+      description: |
+        Adds a named event sink to the cluster. Requires `ledger:OpsWrite` scope.
+        The body is a direct SinkConfig in protobuf JSON form, without a config
+        wrapper. A non-empty name and exactly one sink type are required.
+        Unknown fields, malformed protobuf JSON and multiple oneof members are
+        rejected with `INVALID_REQUEST`. Sink-specific connection settings and
+        credentials are not validated by business admission; successful creation
+        does not guarantee that the sink can connect or publish events.
+        `batchSize` above 100000 returns `SINK_BATCH_SIZE_TOO_LARGE` (400).
+        An existing name returns `SINK_ALREADY_EXISTS` (409).
+      operationId: addEventsSink
+      tags:
+        - Ops
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SinkConfig'
+      responses:
+        '201':
+          description: Event sink created successfully. Only its name is returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [name]
+                    properties:
+                      name:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          description: Request body exceeds the 4 MiB limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v3/_/events-sinks/{sinkName}:
+    delete:
+      summary: Remove an event sink
+      description: |
+        Removes a named event sink from the cluster. Requires `ledger:OpsWrite`
+        scope. A non-empty controllerId must match the sink's controllerId;
+        a mismatch returns `SINK_CONTROLLER_MISMATCH` (409). An omitted or empty
+        controllerId removes the sink without an ownership precondition.
+        A missing sink returns `SINK_NOT_FOUND` (404). Malformed query encoding
+        or repeated controllerId parameters return `INVALID_REQUEST` (400)
+        before Apply, instead of becoming unconditional removal.
+      operationId: removeEventsSink
+      tags:
+        - Ops
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - name: sinkName
+          in: path
+          required: true
+          description: Name of the event sink to remove
+          schema:
+            type: string
+            minLength: 1
+        - name: controllerId
+          in: query
+          required: false
+          description: Optional opaque owner identity used as a removal precondition
+          schema:
+            type: string
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '204':
+          description: Event sink removed successfully. No response body.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
   /v3/_/signing-keys:
     get:
       summary: List registered Ed25519 signing keys
@@ -3504,6 +3614,193 @@ components:
         - type: string
           pattern: '^(0|[1-9][0-9]*)$'
 
+    SinkConfig:
+      type: object
+      additionalProperties: false
+      description: |
+        Named sink configuration from common.SinkConfig, in protobuf JSON form.
+        Property names below use canonical lowerCamelCase; the decoder also
+        accepts protobuf snake_case names. Exactly one sink type is required.
+        Connection settings and credentials are stored without business validation.
+        Defaults described below are applied by the event publisher.
+      required: [name]
+      oneOf:
+        - required: [nats]
+        - required: [clickhouse]
+        - required: [kafka]
+        - required: [http]
+        - required: [databricks]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Stable identifier for per-sink cursor and status keys
+        nats:
+          $ref: '#/components/schemas/NatsSinkConfig'
+        clickhouse:
+          $ref: '#/components/schemas/ClickHouseSinkConfig'
+        kafka:
+          $ref: '#/components/schemas/KafkaSinkConfig'
+        http:
+          $ref: '#/components/schemas/HttpSinkConfig'
+        databricks:
+          $ref: '#/components/schemas/DatabricksSinkConfig'
+        format:
+          type: string
+          description: Event encoding, json or protobuf; defaults to json. Not validated at admission.
+        batchSize:
+          type: integer
+          format: int32
+          maximum: 100000
+          description: Maximum events per batch; non-positive values use the publisher default of 64
+        batchDelayMs:
+          description: Maximum delay before flush in milliseconds; non-positive values use 10. Protobuf int64 JSON uses a decimal string; numeric input is also accepted.
+          oneOf:
+            - type: string
+              pattern: '^-?[0-9]+$'
+            - type: integer
+              format: int64
+        eventTypes:
+          type: array
+          description: Event types to publish; omitted or empty means all events
+          items:
+            $ref: '#/components/schemas/EventType'
+        controllerId:
+          type: string
+          description: Opaque owner identity (EventSink CR UID); empty for manually managed sinks
+
+    EventType:
+      description: Protobuf EventType; canonical JSON uses enum names, and numeric enum values are also accepted
+      oneOf:
+        - type: string
+          enum:
+            - EVENT_TYPE_UNSPECIFIED
+            - COMMITTED_TRANSACTION
+            - REVERTED_TRANSACTION
+            - SAVED_METADATA
+            - DELETED_METADATA
+            - CREATED_LEDGER
+            - DELETED_LEDGER
+            - SKIPPED_ORDER
+        - type: integer
+          format: int32
+          description: Protobuf enum numeric value (unknown numeric values are accepted by the decoder)
+
+    NatsSinkConfig:
+      type: object
+      additionalProperties: false
+      description: NATS JetStream connection settings
+      properties:
+        url:
+          type: string
+          description: NATS server URL
+        topic:
+          type: string
+          description: NATS topic
+
+    ClickHouseSinkConfig:
+      type: object
+      additionalProperties: false
+      description: ClickHouse connection settings
+      properties:
+        dsn:
+          type: string
+          description: ClickHouse connection DSN, which may include credentials
+          example: clickhouse://user:pass@host:9000/db
+        table:
+          type: string
+          description: Table name; defaults to ledger_events
+
+    KafkaSinkConfig:
+      type: object
+      additionalProperties: false
+      description: Apache Kafka connection settings
+      properties:
+        brokers:
+          type: array
+          description: Kafka broker addresses
+          items:
+            type: string
+          example: [localhost:9092]
+        topic:
+          type: string
+          description: Kafka topic name
+        tls:
+          type: boolean
+          description: Enable TLS
+        saslMechanism:
+          type: string
+          description: SASL mechanism (empty, PLAIN, SCRAM-SHA-256 or SCRAM-SHA-512); not validated at admission
+        saslUsername:
+          type: string
+          description: SASL username
+        saslPassword:
+          type: string
+          description: SASL password
+
+    HttpSinkConfig:
+      type: object
+      additionalProperties: false
+      description: HTTP webhook connection settings
+      properties:
+        endpoint:
+          type: string
+          description: Target webhook URL
+          example: https://example.com/webhooks/ledger
+        secret:
+          type: string
+          description: Optional HMAC-SHA256 secret for the X-Webhook-Signature header
+
+    DatabricksSinkConfig:
+      type: object
+      additionalProperties: false
+      description: |
+        Databricks SQL Warehouse connection settings. token and oauthM2m are
+        protobuf auth oneof members and cannot both be supplied. Business
+        admission does not require either member or validate connection details.
+      not:
+        required: [token, oauthM2m]
+      properties:
+        serverHostname:
+          type: string
+          description: Databricks server hostname
+          example: adb-123456.azuredatabricks.net
+        httpPath:
+          type: string
+          description: SQL Warehouse HTTP path
+          example: /sql/1.0/warehouses/abc123
+        catalog:
+          type: string
+          description: Unity Catalog name
+          example: main
+        schema:
+          type: string
+          description: Schema name
+          example: default
+        table:
+          type: string
+          description: Table name; defaults to ledger_events
+        port:
+          type: integer
+          format: int32
+          description: Port number; defaults to 443
+        token:
+          type: string
+          description: Personal Access Token (PAT); alternative to oauthM2m
+        oauthM2m:
+          $ref: '#/components/schemas/DatabricksOAuthM2M'
+
+    DatabricksOAuthM2M:
+      type: object
+      additionalProperties: false
+      description: OAuth M2M client credentials for a Databricks service principal
+      properties:
+        clientId:
+          type: string
+          description: Service principal client ID
+        clientSecret:
+          type: string
+          description: Service principal client secret
 
     SystemLog:
       type: object

@@ -1069,6 +1069,156 @@ GET /v3/_/indexes/{canonicalId}/status   # single bucket-scoped IndexEntry
 
 The bucket-scoped single-index routes are a hook — no production write hits `SubAttrIndex` with an empty ledger today. The audit index (cross-ledger by nature) lives in a dedicated read-store keyspace and will be exposed on `GET /v3/audit-entries` per EN-1481, not through this hook.
 
+### Event sinks
+
+Event sinks are instance/bucket-wide. No ledger name or ledger selection is
+required. All mutations use the same unsigned `Apply` operations as gRPC;
+there is no HTTP-specific storage or controller path.
+
+| Method and path | Scope | Success |
+|---|---|---|
+| `GET /v3/_/events-sinks` | `ledger:OpsRead` | `200`, existing `{data: {sinks, sinkStatuses}}` envelope |
+| `POST /v3/_/events-sinks` | `ledger:OpsWrite` | `201`, `{data: {name}}` |
+| `DELETE /v3/_/events-sinks/{sinkName}` | `ledger:OpsWrite` | `204`, no body |
+
+Under the default scope mapping, `ledger:write` grants `ledger:OpsWrite`.
+Custom mappings can differ. Route guards apply before request decoding or
+backend execution. Authentication failures use the standard `401`/`403` errors.
+
+#### Create
+
+The request body is a configuration object directly, without a `data` or
+`config` wrapper. `name` and exactly one of `nats`, `clickhouse`, `kafka`, `http`
+or `databricks` are required. Configuration fields use protobuf JSON camelCase,
+as in the existing GET response. Unknown fields, duplicate fields, multiple
+sink types and malformed JSON return `400 INVALID_REQUEST`. The complete
+request, including trailing whitespace, is subject to the 4 MiB HTTP body
+limit (`413 BODY_TOO_LARGE`). Chunked bodies follow the same rule.
+
+```bash
+curl -i -X POST "$LEDGER_URL/v3/_/events-sinks" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: create-primary-v1' \
+  --data '{"name":"primary","nats":{"url":"nats://nats:4222","topic":"ledger.events"},"format":"json","batchSize":64,"batchDelayMs":"10","eventTypes":["COMMITTED_TRANSACTION"]}'
+```
+
+```http
+HTTP/1.1 201 Created
+Content-Type: application/json
+
+{"data":{"name":"primary"}}
+```
+
+The acknowledgement contains the committed sink name and does not echo
+credentials. This means the configuration was committed, not that the external
+sink has connected or delivered events. Use GET to inspect delivery status.
+The GET envelope and protobuf JSON representation remain unchanged; consumers
+must treat returned configurations as sensitive.
+
+The [OpenAPI contract](../../../../../openapi.yml) describes all fields. These
+examples are directly usable as POST bodies for the other supported types:
+
+```json
+{"name":"analytics","clickhouse":{"dsn":"clickhouse://clickhouse:9000/default","table":"ledger_events"}}
+```
+
+```json
+{"name":"broker","kafka":{"brokers":["kafka:9092"],"topic":"ledger.events","tls":true,"saslMechanism":"PLAIN","saslUsername":"user","saslPassword":"<password>"}}
+```
+
+```json
+{"name":"webhook","http":{"endpoint":"https://example.com/events","secret":"<hmac-secret>"}}
+```
+
+```json
+{"name":"warehouse","databricks":{"serverHostname":"adb-example.azuredatabricks.net","httpPath":"/sql/1.0/warehouses/example","catalog":"main","schema":"default","table":"ledger_events","token":"<pat>"}}
+```
+
+For Databricks OAuth M2M, replace `token` with
+`"oauthM2m":{"clientId":"<id>","clientSecret":"<secret>"}`. These two
+authentication fields are mutually exclusive. Sink implementations other than
+HTTP require their corresponding server build tags; HTTP accepts the same
+configuration variants as gRPC, without probing the external sink at creation.
+Configuration acceptance does not guarantee external connectivity.
+
+Optional common fields are `format`, `batchSize`, `batchDelayMs`, `eventTypes`
+and `controllerId`. Omitted or zero batching values use emitter defaults
+(64 events, 10 ms). Omitted format uses JSON. `batchDelayMs` is a protobuf
+64-bit integer: clients should send a decimal string; a JSON integer is also
+accepted. `eventTypes` accepts protobuf enum names; an omitted or empty array
+selects all events. The current event names are `COMMITTED_TRANSACTION`,
+`REVERTED_TRANSACTION`, `SAVED_METADATA`, `DELETED_METADATA`, `CREATED_LEDGER`,
+`DELETED_LEDGER` and `SKIPPED_ORDER`. Business validation remains owned by Apply:
+for example, `batchSize > 100000` returns `400 SINK_BATCH_SIZE_TOO_LARGE`.
+This adapter does not introduce new validation of external URLs or credentials.
+
+An existing name returns `409 SINK_ALREADY_EXISTS`, even for the same
+configuration. It never replaces a sink or changes its controller identity.
+
+#### List
+
+```bash
+curl "$LEDGER_URL/v3/_/events-sinks" -H "Authorization: Bearer $TOKEN"
+```
+
+For example, a configured sink may return:
+
+```json
+{"data":{"sinks":[{"name":"primary","nats":{"url":"nats://nats:4222","topic":"ledger.events"},"format":"json","batchSize":64,"batchDelayMs":"10","eventTypes":["COMMITTED_TRANSACTION"]}],"sinkStatuses":[{"sinkName":"primary","cursor":"42"}]}}
+```
+
+Status entries depend on emission progress; a just-created sink need not have
+one yet. Empty/default protobuf fields can be omitted.
+
+#### Delete and controller ownership
+
+```bash
+curl -i -X DELETE "$LEDGER_URL/v3/_/events-sinks/primary" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Idempotency-Key: remove-primary-v1'
+```
+
+Successful deletion returns `204 No Content`. An unknown name returns
+`404 SINK_NOT_FOUND`. Encode the raw sink name as one URL path segment;
+encoded slashes are decoded once.
+
+Controllers can store their opaque identity in POST's `controllerId`, then
+pass it as a DELETE query parameter:
+
+```http
+DELETE /v3/_/events-sinks/controlled?controllerId=event-sink-cr-uid
+```
+
+Apply compares that nonempty identity with the current configuration atomically.
+A mismatch returns `409 SINK_CONTROLLER_MISMATCH` and keeps the sink intact.
+Omitting `controllerId`, or passing an empty value, retains the existing gRPC
+unconditional removal semantics. The identity is a concurrency precondition,
+not an additional authorization scope or an authenticated owner claim.
+Malformed query encoding or repeated `controllerId` parameters return
+`400 INVALID_REQUEST` before Apply; they cannot become unconditional removal.
+
+#### Retry identity and errors
+
+Both mutations forward the optional `Idempotency-Key` header to the existing
+bucket-wide Apply idempotency mechanism. Retry an ambiguous outcome with the
+same key and identical operation. While the record is retained, an identical
+retry returns the original success (`201` for creation, `204` for deletion),
+without reapplying the mutation. Reusing a key for a different operation returns
+`409 IDEMPOTENCY_KEY_CONFLICT`. Without a retained key, duplicate creation is a
+conflict and repeated deletion is not-found. Use distinct keys for distinct
+operations, including recreation after deletion.
+
+All errors use `{errorCode, errorMessage}`. For example:
+
+```json
+{"errorCode":"SINK_ALREADY_EXISTS","errorMessage":"event sink already exists: primary"}
+```
+
+Leader unavailability follows the standard `503` and `Retry-After` contract;
+internal failures retain the existing sanitized `500` response. Neither failure
+proves that a submitted operation did not commit.
+
 ### Cluster
 
 Cluster operations are available via the `ClusterService` gRPC API (port 8888) and the `ledgerctl cluster` CLI commands.
