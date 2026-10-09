@@ -1,6 +1,7 @@
 package commonpb
 
 import (
+	"encoding/json/jsontext"
 	"slices"
 	"sort"
 
@@ -150,6 +151,25 @@ func (tx *Transaction) InvolvedAccounts() []string {
 
 // MarshalJSON implements json.Marshaler for Transaction.
 func (tx *Transaction) MarshalJSON() ([]byte, error) {
+	value, err := tx.jsonValue()
+	if err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(value)
+}
+
+// MarshalJSONTo preserves request-scoped options through the public projection.
+func (tx *Transaction) MarshalJSONTo(enc *jsontext.Encoder) error {
+	value, err := tx.jsonValue()
+	if err != nil {
+		return err
+	}
+
+	return json.MarshalEncode(enc, value)
+}
+
+func (tx *Transaction) jsonValue() (any, error) {
 	type Aux struct {
 		Postings                []*Posting         `json:"postings"`
 		Metadata                map[string]any     `json:"metadata"`
@@ -211,5 +231,5 @@ func (tx *Transaction) MarshalJSON() ([]byte, error) {
 		aux.RevertedAt = &t
 	}
 
-	return json.Marshal(aux)
+	return aux, nil
 }

@@ -4510,6 +4510,29 @@ ledger run --snapshot-session-ttl 15m [other flags...]
 
 ---
 
+### Server `--cluster-id` Flag
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--cluster-id` | string | `""` (required) | Cluster ID for inter-node communication validation |
+
+Raft transport streams and the `ClusterBootstrapService` RPCs used by `--join`
+carry the cluster ID as metadata; a call whose value does not match the
+receiver's `--cluster-id` is rejected with `codes.PermissionDenied`. The
+snapshot service relies on the cluster secret alone.
+
+**Joining fails fast on a cluster-id mismatch.** A node started with `--join`
+and a `--cluster-id` the target cluster does not accept aborts immediately,
+during peer discovery, instead of retrying forever:
+
+```
+cluster join rejected by node-1:7777: cluster ID mismatch (invalid cluster ID);
+this node was started with --cluster-id "staging-ledger": set --cluster-id to
+the value configured on the existing cluster nodes
+```
+
+---
+
 ### Server Cluster Secret Flag
 
 | Flag | Type | Default | Description |

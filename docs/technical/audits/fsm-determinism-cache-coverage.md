@@ -279,9 +279,12 @@ another library version produced the artifact (a replica mid rolling upgrade)
 and is never a failure: the replica derives program and vars from the text,
 the path audit replay (`persistence-restore-replay`) takes for every order,
 and cross-version agreement rests on the library keeping script semantics
-stable. Any other combination of the four fields, and a program present but
-truncated, with an invalid header the library reads, or failing decoding,
-verification, or the script-hash binding, fails the order with
+stable. Any other combination of the four fields, a half whose header does
+not parse (truncated or with a bad magic, whatever bytecode version the other
+half carries — both headers are inspected before the version decides
+anything, and in the producer next to the shape classification, ahead of the
+stale-inputs re-resolution), and a program the library reads but which fails decoding,
+verification, or the script-hash binding, fail the order with
 `ErrNumscriptRuntime` identically on every replica running the binary — a
 wrong shape before any cache access. Repairing such a corrupt program from
 the text is a finding: it would let corrupt committed bytes and a correct

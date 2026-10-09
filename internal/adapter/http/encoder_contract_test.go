@@ -2,6 +2,7 @@ package http
 
 import (
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -59,6 +60,8 @@ func TestProtojsonRoutes_PayloadHasNoCustomMarshalJSON(t *testing.T) {
 			t.Parallel()
 
 			_, hasCustom := tc.msg.(json.Marshaler)
+			_, hasStreamingCustom := tc.msg.(jsonv2.MarshalerTo)
+			require.Falsef(t, hasStreamingCustom, "%s serializes %T via protojson, which ignores MarshalJSONTo", tc.route, tc.msg)
 			require.Falsef(t, hasCustom,
 				"%s serializes %T via protojson, but %T now implements json.Marshaler. "+
 					"protojson ignores it, so the custom shape is silently discarded. "+
@@ -68,24 +71,29 @@ func TestProtojsonRoutes_PayloadHasNoCustomMarshalJSON(t *testing.T) {
 	}
 }
 
-// TestSonicRoutes_PayloadHasCustomMarshalJSON is the converse: the routes
-// fixed by EN-1622 rely on their type's marshaller being the contract. If a
-// marshaller is ever deleted, sonic falls back to the protoc-gen `json:` tags,
+// TestMonetaryRoutes_PayloadHasCustomMarshalJSON is the converse: the routes
+// use both the legacy projection and its option-aware counterpart. If a
+// marshaller is deleted, the encoder falls back to the protoc-gen `json:` tags,
 // which are snake_case — a silent wire regression. The handler tests assert the
 // resulting shape; this asserts the mechanism they depend on.
-func TestSonicRoutes_PayloadHasCustomMarshalJSON(t *testing.T) {
+func TestMonetaryRoutes_PayloadHasCustomMarshalJSON(t *testing.T) {
 	t.Parallel()
 
 	for _, msg := range []proto.Message{
 		&commonpb.Transaction{},
 		&commonpb.Log{},
+		&commonpb.Account{},
+		&commonpb.LedgerLog{},
+		&commonpb.PreparedQueryCursor{},
 	} {
 		t.Run(reflect.TypeOf(msg).Elem().Name(), func(t *testing.T) {
 			t.Parallel()
 
 			_, hasCustom := msg.(json.Marshaler)
+			_, hasStreamingCustom := msg.(jsonv2.MarshalerTo)
+			require.Truef(t, hasStreamingCustom, "%T must propagate monetary marshalers through MarshalJSONTo", msg)
 			require.Truef(t, hasCustom,
-				"%T is served through writeOKChecked (sonic) and MUST keep its custom "+
+				"%T is served through monetary writers and MUST keep its custom "+
 					"MarshalJSON: without it sonic emits the protoc-gen snake_case tags.",
 				msg)
 		})

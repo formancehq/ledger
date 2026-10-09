@@ -23,31 +23,6 @@ func businessWrite(name string) *servicepb.ApplyRequest {
 	})
 }
 
-func setClusterPolicyWrite(revision, limit uint64) *servicepb.ApplyRequest {
-	return servicepb.UnsignedApplyRequest("", &servicepb.Request{
-		Type: &servicepb.Request_SetClusterPolicy{
-			SetClusterPolicy: &servicepb.SetClusterPolicyRequest{
-				Policy: &commonpb.ClusterPolicy{Revision: revision, QueryCheckpointLimit: limit},
-			},
-		},
-	})
-}
-
-func TestAllRequestsAreClusterPolicy(t *testing.T) {
-	t.Parallel()
-
-	policyReq := &servicepb.Request{Type: &servicepb.Request_SetClusterPolicy{
-		SetClusterPolicy: &servicepb.SetClusterPolicyRequest{Policy: &commonpb.ClusterPolicy{Revision: 1}},
-	}}
-	businessReq := &servicepb.Request{Type: &servicepb.Request_CreateLedger{
-		CreateLedger: &servicepb.CreateLedgerRequest{Name: "l"},
-	}}
-
-	require.True(t, allRequestsAreClusterPolicy([]*servicepb.Request{policyReq}))
-	require.False(t, allRequestsAreClusterPolicy([]*servicepb.Request{businessReq}))
-	require.False(t, allRequestsAreClusterPolicy([]*servicepb.Request{policyReq, businessReq}))
-}
-
 // TestWaitClusterPolicyReady covers the gate mechanism: it blocks while no
 // policy is committed and returns as soon as one is.
 func TestWaitClusterPolicyReady(t *testing.T) {
@@ -149,7 +124,26 @@ func TestAdmit_ClusterPolicyWriteReadinessGate(t *testing.T) {
 		)
 		defer cancel()
 
-		_, err := a.Admit(ctx, setClusterPolicyWrite(1, 10))
+		_, err := a.AdmitClusterPolicy(ctx, &commonpb.ClusterPolicy{Revision: 1, QueryCheckpointLimit: 10})
 		require.ErrorIs(t, err, sentinel)
+	})
+
+	t.Run("SetClusterPolicy is blocked by maintenance mode", func(t *testing.T) {
+		t.Parallel()
+
+		store := createTestStoreWithoutPolicy(t)
+		ctrl := gomock.NewController(t)
+		proposer := NewMockProposer(ctrl)
+		a, _ := createTestAdmissionWithReader(t, store, proposer)
+		a.sharedState.SetMaintenanceMode(true)
+
+		ctx, cancel := context.WithTimeout(
+			internalauth.WithSystemActor(context.Background(), commands.ComponentClusterPolicy),
+			3*stdtime.Second,
+		)
+		defer cancel()
+
+		_, err := a.AdmitClusterPolicy(ctx, &commonpb.ClusterPolicy{Revision: 1, QueryCheckpointLimit: 10})
+		require.ErrorIs(t, err, ErrMaintenanceMode)
 	})
 }

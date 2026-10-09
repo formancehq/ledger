@@ -29,6 +29,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/PageSize'
         - $ref: '#/components/parameters/PageCursor'
         - name: reverse
@@ -163,6 +164,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
       responses:
         '200':
@@ -259,6 +261,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -290,6 +294,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -322,6 +328,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
       responses:
         '200':
@@ -364,6 +371,8 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
+        - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/PageSize'
         - $ref: '#/components/parameters/PageCursor'
@@ -457,6 +466,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/PageSize'
         - $ref: '#/components/parameters/PageCursor'
         - name: reverse
@@ -554,6 +564,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - name: sequence
           in: path
           required: true
@@ -626,6 +637,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -644,6 +657,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -684,6 +698,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -701,8 +717,9 @@ paths:
         `filter={"$match":{"reference":"..."}}`, URL-encoded). Requires
         `ledger:TransactionRead` scope.
 
-        This is a live linearizable read of the current committed state, with
-        automatic alignment of every projection used by the filter. Unlike the
+        This is a live read, linearizable by default. `X-Consistency: stale`
+        reads the receiving node's local state, which may lag the leader. Every
+        projection used by the filter is automatically aligned. Unlike the
         gRPC API, it does not accept the `checkpointId` option to pin the read
         to a specific historical snapshot — use gRPC for checkpoint-pinned
         reads. (Tracked follow-up, same carve-out as the audit reads.)
@@ -713,6 +730,8 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
+        - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/PageSize'
         - $ref: '#/components/parameters/PageCursor'
@@ -795,6 +814,8 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
+        - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/TransactionId'
       responses:
@@ -834,6 +855,8 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
+        - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/PageSize'
         - $ref: '#/components/parameters/PageCursor'
@@ -898,6 +921,8 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
+        - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/AccountAddress'
         - name: collapseColors
@@ -947,6 +972,8 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
+        - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/ListFilter'
         - name: useMaxPrecision
@@ -1037,6 +1064,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -1071,6 +1100,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -1119,6 +1150,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -1166,6 +1199,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -1201,6 +1236,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -1236,6 +1273,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -1260,6 +1299,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/TransactionId'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -1296,6 +1336,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -1314,6 +1356,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
       responses:
         '200':
@@ -1352,6 +1395,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
         - name: canonicalId
           in: path
@@ -1429,6 +1473,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
         - name: variableThreshold
           in: query
@@ -1474,6 +1519,8 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
+        - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - name: variableThreshold
           in: query
@@ -1541,6 +1588,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -1575,6 +1624,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -1591,7 +1642,11 @@ paths:
       operationId: listNumscripts
       tags:
         - Numscript Library
+      security:
+        - BearerAuth: []
+        - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/PageSize'
         - $ref: '#/components/parameters/PageCursor'
@@ -1608,6 +1663,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ListNumscriptsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -1628,7 +1687,11 @@ paths:
       operationId: getNumscript
       tags:
         - Numscript Library
+      security:
+        - BearerAuth: []
+        - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
         - name: name
           in: path
@@ -1650,6 +1713,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetNumscriptResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -1678,6 +1745,9 @@ paths:
       operationId: saveNumscript
       tags:
         - Numscript Library
+      security:
+        - BearerAuth: []
+        - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
         - name: name
@@ -1705,6 +1775,10 @@ paths:
               parameters:
                 ledgerName: '$request.path.ledgerName'
                 name: '$response.body#/data/name'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '400':
           description: Bad request (version not an explicit full semver, parse error, etc.)
           content:
@@ -1720,6 +1794,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -1740,7 +1816,11 @@ paths:
       operationId: listNumscriptVersions
       tags:
         - Numscript Library
+      security:
+        - BearerAuth: []
+        - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
         - name: name
           in: path
@@ -1755,6 +1835,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ListNumscriptVersionsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -1777,7 +1861,11 @@ paths:
       operationId: getNumscriptUsage
       tags:
         - Numscript Library
+      security:
+        - BearerAuth: []
+        - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
         - name: name
           in: path
@@ -1792,6 +1880,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetTemplateUsageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -1819,17 +1911,31 @@ paths:
         revert transactions, delete metadata) in a single request. Requires
         `ledger:write` scope.
 
+        With `atomic=true`, all elements target the URL's ledger and are
+        submitted as one batch. `Idempotency-Key` identifies that whole batch;
+        per-element `ik` values are ignored. With `atomic=false`
+        (default), each element is submitted separately under its own
+        `ik`; the header is ignored.
+
+        `continueOnFailure` controls sequential continuation and business-error
+        status rollup. It does not allow partial application of an atomic
+        batch. Non-atomic failures can follow already committed elements:
+        inspect every result and preserve the original identities when retrying.
+        A timeout or infrastructure failure does not prove that work was not
+        committed. This contract does not enable automatic SDK retries.
+
         The response status is decided in three tiers:
 
         1. **Request-level failures** (before per-element processing):
            malformed body → `400`, missing/insufficient scope → `401` or
-           `403`, oversized body → `413`, leader unavailable → `503`.
+           `403`, too many elements → `413`. Exceeding the byte limit while
+           decoding the body currently returns `400`.
            Returned unconditionally, `continueOnFailure` does not apply.
         2. **Infrastructure failures during processing** (transport
            timeout, cache-horizon exceeded, storage error): the overall
-           status is `500`, regardless of `continueOnFailure`. Callers
-           must retry the bulk — the top-level failure means the request
-           did not complete deterministically.
+           status is `503` for retryable failures and `500` otherwise,
+           regardless of `continueOnFailure`. Callers
+           must inspect the element outcomes before deciding what to retry.
         3. **Per-element errors during processing**: each element's error
            carries the HTTP status it would surface as a single request
            (via the same mapping `handleError` uses). The top-level
@@ -1858,19 +1964,28 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/IdempotencyKey'
         - name: continueOnFailure
           in: query
           schema:
             type: boolean
             default: false
-          description: Continue processing remaining operations even if one fails
+          description: |
+            Continue sequential processing after a failure and suppress the
+            top-level status for business errors. Does not suppress 429 or 5xx
+            failures, or permit partial application when atomic=true.
         - name: atomic
           in: query
           schema:
             type: boolean
             default: false
-          description: Execute all operations atomically (not yet supported)
+          description: |
+            Submit all operations as one atomic batch under the optional
+            Idempotency-Key header. Per-element ik values are ignored.
+            All elements target ledgerName. On failure every element reports
+            the batch error; continueOnFailure does not change atomicity.
       requestBody:
         required: true
         content:
@@ -1891,7 +2006,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BulkResponse'
+                $ref: '#/components/schemas/BulkErrorResponse'
         '429':
           description: |
             A per-element error mapped to `KindResourceExhausted` (quota,
@@ -1903,11 +2018,32 @@ paths:
               schema:
                 $ref: '#/components/schemas/BulkResponse'
         '401':
-          $ref: '#/components/responses/Unauthorized'
+          description: Authentication failure before processing or in an element
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkErrorResponse'
+            text/plain:
+              schema:
+                type: string
         '403':
-          $ref: '#/components/responses/Forbidden'
+          description: Insufficient scope before processing or permission failure in an element
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkErrorResponse'
         '404':
-          $ref: '#/components/responses/NotFound'
+          description: A ledger or resource was not found during processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkErrorResponse'
+        '409':
+          description: An element or the atomic batch conflicts with existing state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkErrorResponse'
         '413':
           description: Request entity too large
           content:
@@ -1915,9 +2051,31 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+          description: |
+            Retryable processing failure, including leader loss or an expired
+            admission cache horizon. Surfaces regardless of continueOnFailure.
+            Inspect per-element outcomes before retrying a non-atomic batch.
+          headers:
+            Retry-After:
+              description: Number of seconds to wait before retrying
+              schema:
+                type: integer
+                format: int32
+                minimum: 1
+                example: 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkErrorResponse'
         '500':
-          $ref: '#/components/responses/InternalServerError'
+          description: |
+            Processing failure with per-element outcomes, or an ordinary error
+            from panic recovery. Surfaces regardless of continueOnFailure.
+            An infrastructure failure does not establish whether work committed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkErrorResponse'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -1955,6 +2113,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -1971,6 +2131,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
       responses:
         '200':
@@ -2027,6 +2188,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -2058,6 +2221,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -2079,6 +2244,8 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
+        - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/QueryName'
         - name: pageSize
@@ -2165,6 +2332,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -2183,6 +2352,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
       responses:
         '200':
@@ -2239,6 +2409,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -2257,6 +2429,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/TypeName'
       responses:
@@ -2305,6 +2478,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -2325,6 +2500,8 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
+        - $ref: '#/components/parameters/BigIntAsString'
         - name: sequence
           in: path
           required: true
@@ -2366,7 +2543,11 @@ paths:
       security:
         - BearerAuth: []
         - {}
+      parameters:
+        - $ref: '#/components/parameters/Consistency'
       responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '200':
           description: Event sinks retrieved successfully.
           content:
@@ -2410,8 +2591,9 @@ paths:
         Lists the Ed25519 signing keys registered on the cluster, paged by key
         id (ascending unless `reverse=true`). Requires `ledger:OpsRead` scope.
 
-        This route performs a live linearizable read; signing-key reads are
-        live-only on both transports.
+        This route performs a live read, linearizable by default.
+        `X-Consistency: stale` reads the receiving node's local state, which
+        may lag the leader. Signing-key reads are live-only on both transports.
       operationId: listSigningKeys
       tags:
         - Ops
@@ -2419,6 +2601,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/PageSize'
         - $ref: '#/components/parameters/PageCursor'
         - name: reverse
@@ -2478,6 +2661,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - name: scope
           in: query
           schema:
@@ -2526,6 +2710,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - name: canonicalId
           in: path
           required: true
@@ -2571,6 +2756,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - name: canonicalId
           in: path
           required: true
@@ -2619,11 +2805,14 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - name: ledger
           in: query
           schema:
             type: string
       responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '200':
           description: Index status retrieved successfully.
           content:
@@ -2657,6 +2846,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
       responses:
         '200':
@@ -2752,6 +2942,8 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
@@ -2769,6 +2961,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
         - name: canonicalId
           in: path
@@ -2839,6 +3032,8 @@ paths:
           $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
@@ -2858,6 +3053,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/Consistency'
         - $ref: '#/components/parameters/LedgerName'
         - name: canonicalId
           in: path
@@ -2923,6 +3119,21 @@ components:
         Page token from a previous response's `next` or `previous` field (see
         the `PageToken` schema). Omit for the first page. Pass the same
         `reverse` and `filter` on every page of a walk.
+
+    BigIntAsString:
+      name: Formance-Bigint-As-String
+      in: header
+      required: false
+      description: |
+        Render monetary amounts (postings, volume input/output and balances) as
+        canonical decimal strings. Case-insensitive true, yes, y and 1 enable
+        this option, matching Ledger v2. Whitespace is not trimmed. Omission and
+        every other value retain JSON number tokens. This affects only this
+        response, including nested transaction/log/cursor and bulk results.
+      schema:
+        type: string
+      example: 'true'
+
 
     LedgerName:
       name: ledgerName
@@ -3000,6 +3211,24 @@ components:
         type: string
         maxLength: 256
       description: Idempotency key for the request
+
+    Consistency:
+      name: X-Consistency
+      in: header
+      required: false
+      schema:
+        type: string
+        enum: [linearizable, stale]
+        default: linearizable
+      description: |
+        Read consistency. `linearizable` (the default) runs a Raft ReadIndex
+        barrier and waits for the receiving node to apply up to it. `stale`
+        serves the read from the receiving node's own store, with no barrier
+        and no forwarding to the leader, so the answer may lag the leader.
+        Matching ignores case and surrounding whitespace. An unknown value, or a
+        repeated or comma-joined header, returns `400 INVALID_REQUEST` on every
+        `/v3` route, writes included; a valid value has no effect on writes. The
+        gRPC equivalent is the `x-consistency` request metadata.
 
     QueryProfile:
       name: X-Query-Profile
@@ -3110,6 +3339,19 @@ components:
         format: byte
 
   responses:
+    ResourceExhausted:
+      description: >-
+        Resource exhausted. Write admission can reject with
+        `WRITES_BLOCKED_DISK_FULL` while disk pressure blocks writes;
+        `SEQUENCE_EXHAUSTED` means an authoritative identifier allocator
+        cannot allocate another identifier and is permanent for that allocator.
+        Inspect `errorCode` before deciding whether to retry. No retry interval
+        is supplied, and retrying cannot resolve sequence exhaustion.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
     ServiceUnavailable:
       description: >-
         Service unavailable — the server cannot serve the request right now
@@ -3152,6 +3394,9 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+        text/plain:
+          schema:
+            type: string
 
     Forbidden:
       description: Insufficient permissions (missing required scope)
@@ -3159,6 +3404,9 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+        text/plain:
+          schema:
+            type: string
 
     InternalServerError:
       description: Internal server error
@@ -3221,6 +3469,42 @@ components:
         `next`. A malformed token, or a key that is not a valid position for
         the endpoint, is rejected with 400 `INVALID_REQUEST`.
 
+    UnsignedMonetaryAmount:
+      description: |
+        Exact unsigned integer encoded as a JSON number by default, or a
+        canonical decimal string when Formance-Bigint-As-String is enabled.
+        JavaScript consumers should enable the header to avoid number rounding.
+      oneOf:
+        - type: integer
+          format: bigint
+          minimum: 0
+        - type: string
+          pattern: '^(0|[1-9][0-9]*)$'
+
+    SignedMonetaryAmount:
+      description: |
+        Exact signed integer encoded as a JSON number by default, or a
+        canonical decimal string when Formance-Bigint-As-String is enabled.
+      oneOf:
+        - type: integer
+          format: bigint
+        - type: string
+          pattern: '^(0|-?[1-9][0-9]*)$'
+
+    PostingAmount:
+      description: |
+        Unsigned amount from 0 through 2^256-1. Requests accept JSON integer
+        tokens or canonical decimal strings independently of the response
+        header; the server enforces the bound for both forms. Responses use
+        numbers by default and strings with Formance-Bigint-As-String enabled.
+      oneOf:
+        - type: integer
+          format: bigint
+          minimum: 0
+        - type: string
+          pattern: '^(0|[1-9][0-9]*)$'
+
+
     SystemLog:
       type: object
       description: |
@@ -3236,6 +3520,11 @@ components:
           minimum: 0
         payload:
           type: object
+          description: |
+            Named system payload variants are preserved as supplied, including
+            nested fields and future sibling variants. Only apply is typed here;
+            other variants remain open-ended (EN-2781).
+          additionalProperties: true
           properties:
             apply:
               type: object
@@ -3632,9 +3921,7 @@ components:
           type: string
           description: Destination account address
         amount:
-          type: integer
-          format: bigint
-          description: Amount as a big integer
+          $ref: '#/components/schemas/PostingAmount'
         asset:
           type: string
           description: Asset identifier
@@ -3843,6 +4130,17 @@ components:
           type: string
         errorMessage:
           type: string
+
+    BulkErrorResponse:
+      description: |
+        Bulk processing returns per-element outcomes in data, including any
+        preceding successes and subsequent aborted elements. Failures before
+        processing and panic recovery can return only errorCode/errorMessage.
+        These object shapes overlap: use a non-exclusive union and preserve
+        the bulk fields when decoding a processing failure.
+      anyOf:
+        - $ref: '#/components/schemas/BulkResponse'
+        - $ref: '#/components/schemas/ErrorResponse'
 
     BulkResult:
       type: object
@@ -4077,17 +4375,11 @@ components:
         - balance
       properties:
         input:
-          type: string
-          pattern: '^(0|[1-9][0-9]*)$'
-          description: Total amount received as a canonical unsigned decimal string
+          $ref: '#/components/schemas/UnsignedMonetaryAmount'
         output:
-          type: string
-          pattern: '^(0|[1-9][0-9]*)$'
-          description: Total amount sent as a canonical unsigned decimal string
+          $ref: '#/components/schemas/UnsignedMonetaryAmount'
         balance:
-          type: string
-          pattern: '^(0|-?[1-9][0-9]*)$'
-          description: Current balance (input - output) as a canonical signed decimal string
+          $ref: '#/components/schemas/SignedMonetaryAmount'
 
     AggregateVolumesResponse:
       type: object
@@ -4119,7 +4411,7 @@ components:
         Per-asset aggregated volume as emitted by `GET /v3/{ledgerName}/volumes`.
         Prepared-query `AGGREGATE_VOLUMES` responses (under the `aggregateResult`
         envelope of `ExecutePreparedQueryResponse`) use this exact shape:
-        decimal-string amounts, a computed `balance`, and `color` always present.
+        header-negotiated monetary amounts, a computed `balance`, and `color` always present.
       required:
         - asset
         - color
@@ -4141,17 +4433,11 @@ components:
             (asset, precision) is summed and the resulting entry carries
             color = "".
         input:
-          type: string
-          pattern: '^(0|[1-9][0-9]*)$'
-          description: Total amount received as a canonical non-negative decimal integer string
+          $ref: '#/components/schemas/UnsignedMonetaryAmount'
         output:
-          type: string
-          pattern: '^(0|[1-9][0-9]*)$'
-          description: Total amount sent as a canonical non-negative decimal integer string
+          $ref: '#/components/schemas/UnsignedMonetaryAmount'
         balance:
-          type: string
-          pattern: '^(0|-?[1-9][0-9]*)$'
-          description: Net balance (input - output) as a canonical signed decimal integer string
+          $ref: '#/components/schemas/SignedMonetaryAmount'
 
     GroupedAggregateResult:
       type: object
@@ -4268,9 +4554,7 @@ components:
         destination:
           type: string
         amount:
-          type: integer
-          format: bigint
-          description: Amount as a big integer
+          $ref: '#/components/schemas/PostingAmount'
         asset:
           type: string
         color:
@@ -4669,13 +4953,9 @@ components:
           maxLength: 32
           description: Empty string for the uncolored bucket; always emitted.
         input:
-          type: string
-          pattern: '^(0|[1-9][0-9]*)$'
-          description: Canonical unsigned decimal string.
+          $ref: '#/components/schemas/UnsignedMonetaryAmount'
         output:
-          type: string
-          pattern: '^(0|[1-9][0-9]*)$'
-          description: Canonical unsigned decimal string.
+          $ref: '#/components/schemas/UnsignedMonetaryAmount'
 
     Volumes:
       type: object
@@ -4684,13 +4964,9 @@ components:
         - output
       properties:
         input:
-          type: string
-          pattern: '^(0|[1-9][0-9]*)$'
-          description: Total amount received as a canonical unsigned decimal string
+          $ref: '#/components/schemas/UnsignedMonetaryAmount'
         output:
-          type: string
-          pattern: '^(0|[1-9][0-9]*)$'
-          description: Total amount sent as a canonical unsigned decimal string
+          $ref: '#/components/schemas/UnsignedMonetaryAmount'
 
     MirrorSourceConfig:
       type: object
@@ -5295,13 +5571,13 @@ components:
         asset:
           type: string
         totalVolume:
-          type: string
+          $ref: '#/components/schemas/UnsignedMonetaryAmount'
         averageVolume:
-          type: string
+          $ref: '#/components/schemas/UnsignedMonetaryAmount'
         minVolume:
-          type: string
+          $ref: '#/components/schemas/UnsignedMonetaryAmount'
         maxVolume:
-          type: string
+          $ref: '#/components/schemas/UnsignedMonetaryAmount'
         transactionCount:
           type: integer
           format: int64
@@ -5574,7 +5850,7 @@ components:
         prepared-query target: `query.Execute` hydrates `logData` for it.) Both
         payloads use the same camelCase encoding as the equivalent non-prepared
         endpoints
-        (decimal-string amounts, `color` always present on every volume row
+        (header-negotiated monetary amounts, `color` always present on every volume row
         including the uncolored bucket).
       properties:
         cursor:

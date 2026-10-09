@@ -46,10 +46,18 @@ LedgerLog JSON loses some typed metadata distinctions by design and is not a
 backup/replay representation. JSON number precision must be assessed using exact
 values, not a test oracle that has already rounded through `float64`.
 
-For generated SDK evidence (EN-2685), bind the specification, generator and
+For generated SDK evidence (EN-2685, EN-2781), bind the specification, generator and
 dependency versions. Exercise actual LedgerLog and nested SystemLog decoders
 with nonempty operation payloads; explicit additional properties must prevent
-empty-object stripping. Exercise actual prepared-query create/update serializers
+empty-object stripping. Reconcile the SystemLog variant fixtures with the live
+LogPayload descriptor and JSON codec. Verify the actual built SDK externally:
+single-log, list-log and prepared-query LOGS response decoders
+must retain representative nested non-apply payloads, every current variant and
+an unknown future sibling. SystemLog.payload is open while apply.log stays typed
+and LedgerLog.data remains complete. Credential-safe projections remain EN-1634;
+SDK field stripping is not a security boundary. The repository Go regression
+and its `testdata/` inventory guard the schema and actual JSON codec. Exercise
+actual prepared-query create/update serializers
 with structured, nested, textual, null and omitted filters. A standalone helper
 or OpenAPI lint result alone cannot establish request corruption or preservation.
 The OpenAPI 3.0 filter union uses a QueryFilter reference and an inline nullable
@@ -59,10 +67,56 @@ opaque ledger metadata, transaction account metadata, audit/signature fields,
 event sinks/statuses, signing keys and index responses explicitly allow
 additional properties. Only the intentionally empty `DropAction` is exempt.
 SDK metadata keys are raw inputs; direct HTTP clients encode a single segment.
+
+For bulk SDK evidence, preserve both processing envelopes and early
+errors at every rolled-up status. `BulkErrorResponse` uses non-exclusive `anyOf`
+because its optional bulk error properties overlap ordinary ErrorResponse.
+JWT rejection can be plain-text 401, while missing/insufficient element scopes
+produce JSON 401/403. `TestHandleBulk_*Contract` validates real router responses
+and can export them for `tests/sdk/bulk-contract.mjs`; the generated operation
+must retain every successful, failed and aborted element's fields, 503 headers,
+and default retry behavior. Typecheck `tests/sdk/bulk-idempotency.ts` and prove
+the typed key emits the real header (including omission). Sequential elements
+retain wire field `ik`; the batch header applies only to atomic HTTP batches
+for the URL ledger. Bind the exact schema, generator configuration/version and
+dependency lock. These boundary probes do not prove durable keyed replay,
+atomic rollback or safe unkeyed retry; those belong to the neighboring
+idempotency domain.
+
+For Speakeasy's mixed JSON/text error limitation, apply
+`tests/sdk/bulk-generation-overlay.yml` only to generation input. Keep both 401
+media types in the canonical schema and verify typed JSON plus raw invalid-token
+text through the generated operation, as described in `tests/sdk/README.md`.
+
 Compare documented write scopes with both the granular route guard and default
 aggregate mapping. Creation metadata remains EN-2686's separate server contract.
 
+HTTP monetary negotiation follows the v2 contract: posting amounts, volume
+inputs/outputs and signed balances use exact decimal JSON number tokens by
+default, and canonical strings with a truthy `Formance-Bigint-As-String` header.
+Posting input accepts canonical unsigned decimal strings or integer tokens
+within uint256; volume codecs retain arbitrary precision and signed balances.
+Review option propagation through custom nested codecs, checked-response
+buffering and concurrent mixed-header requests. CLI, protobuf, event and
+storage codecs keep their existing representations. Use the generated SDK
+integration in `tests/sdk` and exact raw-token handler assertions as evidence;
+a number/string schema union alone cannot prove the selected mode.
+
 ## Boundaries
+
+EN-2783 pins HTTP auth response media types and reachable write-exhaustion
+declarations. Use `TestOpenAPI_NumscriptAuthentication` and
+`TestOpenAPI_WriteResourceExhaustion` as registered-router oracles, including
+anonymous/disabled authentication, local and reconstructed domain errors, and
+the 22 non-bulk Apply paths. Require actual regenerated SDK operation fixtures
+for bearer transmission and preserved failure details. Primitive plain-text
+auth bodies and JSON controller bodies are different media types; a generator
+limitation must be disclosed rather than hidden with an inaccurate schema.
+Disk gating can clear; sequence exhaustion is permanent. Neither 429 supplies
+`Retry-After`. Reads, prepared-query execution and terminal audit-sequence
+failure do not establish ordinary request-level 429 reachability. Bulk envelope
+corrections remain EN-2782's separate scope; authentication internals remain
+excluded from this audit.
 
 For unary peer-connection interruption (EN-2212), the observable contract is
 specific: `grpcerr.Conn.Invoke` converts the exact bare grpc-go close status

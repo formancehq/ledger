@@ -60,7 +60,7 @@ Available flags for `run`:
 - `--wal-dir`: WAL directory for Raft (default: `./wal`)
 - `--data-dir`: Data directory for application storage (default: `./data`)
 - `--bootstrap`: Initialize a new single-node cluster (mutually exclusive with `--join`)
-- `--join`: Raft transport address of an existing cluster member to join as a learner (e.g., `--join node-1:7777`; mutually exclusive with `--bootstrap`). Discovery and learner registration go through the inter-node `ClusterBootstrapService` on the RaftServer — no user JWT is required. If the target cluster enforces a `--cluster-secret` and this node's secret is missing or wrong, startup **fails fast** with an actionable error rather than retrying until the discovery deadline (EN-1080). See the [`--cluster-secret`](cli.md#server-cluster-secret-flag) section.
+- `--join`: Raft transport address of an existing cluster member to join as a learner (e.g., `--join node-1:7777`; mutually exclusive with `--bootstrap`). Discovery and learner registration go through the inter-node `ClusterBootstrapService` on the RaftServer — no user JWT is required. If the target cluster enforces a `--cluster-secret` and this node's secret is missing or wrong, startup **fails fast** with an actionable error rather than retrying forever (EN-1080); a `--cluster-id` the target does not accept fails fast the same way (EN-2738). See the [`--cluster-secret`](cli.md#server-cluster-secret-flag) section.
 - `--learner-promotion-threshold`: Max log entry lag before auto-promoting a caught-up learner to voter (default: `100`, `0` = disable auto-promotion)
 - `--http-port`: HTTP server port (default: `9000`)
 - `--health-check-interval`: Interval between disk usage health checks (default: `30s`)
@@ -365,7 +365,7 @@ The operator creates a StatefulSet with a headless service for automatic discove
 
 ### Automatic Cluster Initialization
 
-Pod 0 uses the `--bootstrap` flag to create a new single-node cluster. All subsequent pods use `--join` to contact pod-0's RaftServer address and join the cluster as learner (non-voting) nodes. The `--join` flag triggers peer discovery (`ClusterBootstrapService.GetPeers`) from the existing cluster member with retry and exponential backoff (up to 60 seconds), allowing the bootstrap node time to start.
+Pod 0 uses the `--bootstrap` flag to create a new single-node cluster. All subsequent pods use `--join` to contact pod-0's RaftServer address and join the cluster as learner (non-voting) nodes. The `--join` flag triggers peer discovery (`ClusterBootstrapService.GetPeers`) from the existing cluster member with retry and exponential backoff, with no deadline of its own, allowing the bootstrap node time to start.
 
 Once a learner has caught up with the leader's log (within the threshold configured by `--learner-promotion-threshold`, default: 100 entries), it is automatically promoted to a full voting member.
 
@@ -856,9 +856,10 @@ across an FSM outcome change" above:
   — the same path the store checker's audit replay takes for every order (see
   "Omitting already-cached Numscript bytecode" below). Only corruption fails
   the order with a Numscript runtime error, identically on every node running
-  that binary: an invalid header the library reads, bytes that do not decode
-  or verify, a partial artifact, or a script hash that does not match the
-  resolved text; such an artifact is never repaired from the text. The
+  that binary: a header that does not parse (whatever version the other half
+  carries), bytes the library reads but cannot decode or verify, a partial
+  artifact, or a script hash that does not match the resolved text; such an
+  artifact is never repaired from the text. The
   operational consequence: after a library update that changes the bytecode
   version (any change while the version is `0.x`), the Raft entries a node
   replays above its last snapshot after restarting on the new binary run on a

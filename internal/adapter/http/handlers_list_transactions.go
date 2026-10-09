@@ -29,8 +29,9 @@ import (
 // Read-consistency options gap (tracked follow-up): gRPC ListTransactions
 // honours ReadOptions.checkpointId to pin a read to a specific applied index;
 // this HTTP route deliberately does NOT expose checkpoint selection and always
-// performs a live linearizable read, including automatic alignment of any
-// projection used by the filter. Clients that need a checkpoint-pinned read
+// performs a live read: linearizable by default, including automatic
+// alignment of any projection used by the filter, or local-stale when the
+// caller sends `X-Consistency: stale` (see readConsistency). Clients that need a checkpoint-pinned read
 // must use gRPC. This mirrors the same carve-out already made for the audit
 // reads (EN-1481) and keeps EN-1472 scoped to "expose the reads over HTTP", not
 // "full read-options parity". Same applies to the bucket reads (signing keys)
@@ -127,5 +128,5 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 	}
 
 	finishProfile(w, r, profile)
-	writePageOK(w, r, transactions, links)
+	writeMonetaryPageOK(w, r, transactions, links)
 }

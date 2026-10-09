@@ -65,6 +65,14 @@ query design, prepared registry mutation durability, wire equivalence and
 accounting recomputation are excluded. Unsupported or ambiguous product
 expectations remain audit questions, not bugs presumed by this manifest.
 
+The log-date streaming leaf relies on a domain ordering guarantee: the FSM
+assigns each per-ledger log an increasing ID and its monotone effective date,
+including mirror ingest and skip logs. Audit evidence must check equal-date
+ties, both directions, absolute reseeks and composition against independently
+expected IDs. Mirror transaction `inserted_at` instead preserves the source
+v2 date; it remains on the general materializing path. Do not infer its
+ordering from the current ledger mode.
+
 ## Independent evidence and deduplication
 
 For each tested family, enumerate a non-empty target universe with positive and

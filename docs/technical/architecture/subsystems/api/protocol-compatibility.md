@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"25"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"26"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -275,7 +275,7 @@ bits.
 
 ## Numscript metadata rendering and VM execution (revision 23)
 
-Revision 22 stores and returns an account-typed Numscript metadata value
+Revision 23 stores and returns an account-typed Numscript metadata value
 (`set_tx_meta("k", @merchants:acme)` and its `set_account_meta` counterpart) as
 the bare account name, `merchants:acme`, where revision 22 returned
 `@merchants:acme`. The rendering now comes from the Numscript library itself,
@@ -287,7 +287,7 @@ stays `ASSET amount`, portions and assets keep their canonical forms. The
 is invisible to a schema comparison; a revision-22 client would read the same
 Apply request back with different metadata bytes.
 
-Revision 22 also changes apply semantics: admission compiles each resolvable
+Revision 23 also changes apply semantics: admission compiles each resolvable
 script to Numscript VM bytecode and binds it to the order's technical
 sub-message, and the FSM executes that artifact instead of re-interpreting the
 script text. The VM is the only engine: a script it cannot compile is rejected
@@ -307,12 +307,13 @@ the same version for an unstable `0.x`. A version it cannot read means
 another library version produced the artifact; the FSM then derives program
 and vars from the script text with its own library instead, exactly as the
 store checker's audit replay derives every order (see revision 24 below), so
-foreign bytecode is never run. A malformed artifact — one the library reads
-but cannot decode or verify, a partial one, or one whose script hash does not
-match the resolved text — fails the order with a Numscript runtime error and
-is never repaired from the text.
+foreign bytecode is never run. A malformed artifact — a half whose header
+does not parse, whatever version the other half carries; one the library
+reads but cannot decode or verify; a partial one; or one whose script hash
+does not match the resolved text — fails the order with a Numscript runtime
+error and is never repaired from the text.
 
-Revision 22 also moves where and how a statically invalid script fails.
+Revision 23 also moves where and how a statically invalid script fails.
 `Parse` checks syntax only; the Numscript typechecker runs inside the
 compiler. Every static-semantics failure the compiler catches — a type
 mismatch, an undeclared variable, an unknown function or var type, `oneof` or
@@ -332,7 +333,7 @@ revision 23's rejection happens before apply.
 
 ## Omitting already-cached Numscript bytecode (revision 24)
 
-Revision 23 lets admission send `OrderTechnical.compiled_program` by
+Revision 24 lets admission send `OrderTechnical.compiled_program` by
 reference: a new field, `compiled_program_hash` (the XXH3-128 of the bytes),
 replaces the bytes once admission's own compile cache has compiled the script
 before (`CompiledScript.AlreadyCompiled`, backed by `lruEntry.compileParsed`
@@ -374,6 +375,18 @@ data fields to 5–7). `ListLogs` accepts `ListOptions.reverse`. A back token
 serves the page ending strictly before its key in the requested order, so it
 is not meaningful to a peer that does not implement it; clients and servers
 must use the matching revision.
+
+## Private cluster policy command (revision 26)
+
+Revision 26 removes `Request.set_cluster_policy` from the public
+`BucketService.Apply` envelope. Cluster policy reconciliation is now admitted
+only through the server-internal `Admission.AdmitClusterPolicy` entry point,
+which still commits the internal Raft `SetClusterPolicyOrder` and audited
+`SetClusterPolicy` log payload.
+
+A revision-25 client can still encode field 28 in `Request.type`, but a
+revision-26 server no longer interprets that field as a valid Apply request.
+Clients and servers must therefore use the matching revision.
 
 ## Maintaining the revision
 

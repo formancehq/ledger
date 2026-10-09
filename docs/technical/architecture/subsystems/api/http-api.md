@@ -64,7 +64,20 @@ removing metadata field types, requires the granular `ledger:MetadataWrite`
 scope. The aggregate `ledger:write` grants it under the default mapping;
 custom mappings can differ.
 
-The server supports optional JWT/OIDC authentication with scope-based authorization. When enabled via `--auth-enabled`, all API requests must carry a valid Bearer token in the `Authorization` header. See [Authentication Guide](../../../../ops/authentication.md) for configuration details.
+The server supports optional JWT/OIDC authentication with scope-based authorization.
+When enabled via `--auth-enabled`, a supplied Bearer token is validated. Requests
+without a token use configured anonymous scopes and can succeed when those scopes
+permit the operation. Authentication-disabled mode bypasses credential and scope
+checks. See [Authentication Guide](../../../../ops/authentication.md) for configuration details.
+
+Numscript library reads require `ledger:LedgerRead`; saving a version requires
+`ledger:LedgerWrite`. All five operations declare optional `BearerAuth` and their
+401/403 responses. Missing credentials with insufficient anonymous scopes and
+invalid tokens return 401; a valid token lacking the required scope returns 403.
+These middleware failures use `text/plain; charset=utf-8`. The response wrapper
+preserves explicitly selected media types; it must not relabel plain-text denials
+as JSON. Controller/domain authorization failures can instead use JSON
+`ErrorResponse`, so the reusable auth responses describe both media types.
 
 #### The route-to-scope contract is pinned by a test
 
@@ -104,6 +117,35 @@ the request reaches the endpoint — so the test asserts the matched pattern on 
 The gRPC analogue is `internal/adapter/auth/request_scope_exhaustiveness_test.go`, which gives the
 same guarantee for the `Request` oneof.
 
+### Read consistency
+
+Every `/v3` route accepts an optional `X-Consistency` request header, the HTTP
+twin of the gRPC `x-consistency` metadata. Both transports store the selector
+in the request context (`internal/query/consistency.go`), and
+`RoutedController.readCtrl` is the single place that routes on it:
+
+- absent, empty or `linearizable` (the default): ReadIndex barrier plus local
+  `WaitForApplied`, with the usual leader fallback for a syncing follower;
+- `stale`: read the receiving node's local store directly. No ReadIndex, no
+  `WaitForApplied` and **no forwarding**, so the answer reflects that node's own
+  state and may lag the leader. Projection alignment still applies: a read that
+  consults an index or the audit projection waits for that local projection to
+  reach the fixed main-store horizon (`AlignedIndexSnapshot`), up to the
+  caller's deadline. A caller that addresses a specific node directly (not
+  through a load balancer, since no response header names the serving node)
+  can gate on that node's `last_persisted_index` (gRPC
+  `ClusterService.GetClusterState{node_id}`) to know how far it has caught up.
+
+Matching ignores case and surrounding whitespace. A valid level has no effect
+on writes. The transports differ on invalid input on purpose. HTTP rejects an
+unknown value (including the `leader` selector EN-1946 removed), a repeated
+header, or a comma-joined value with `400 INVALID_REQUEST` on every `/v3` route,
+writes included, and never calls the backend. gRPC keeps its existing
+contract: it silently ignores an unknown value and uses only the first metadata
+value. Ops routes (`/health`, `/readyz`, `/clusterz`, …) do not parse the
+header. `TestReadConsistency_InstalledOnEveryBusinessRoute` requires the
+middleware on every `/v3` route and forbids it on ops routes.
+
 ### Optional transaction revert body
 
 `POST /v3/{ledgerName}/transactions/{transactionId}/revert` accepts an absent
@@ -117,6 +159,62 @@ Trailing JSON whitespace is allowed, but counts towards the limit; exceeding
 it returns `413 BODY_TOO_LARGE`, including when only the suffix is oversized.
 
 ### Response Format
+
+#### Monetary amounts and the string opt-in
+
+EN-2779 aligns the HTTP monetary encoding with Ledger v2. Posting amounts,
+volume input/output and signed balances are decimal JSON number tokens by
+default. JSON has no separate bigint scalar type. Clients needing exact values
+above JavaScript's safe-integer range should send:
+
+```http
+Formance-Bigint-As-String: true
+```
+
+Case-insensitive `true`, `yes`, `y` and `1` enable canonical decimal strings;
+omission and every other value retain numbers. Whitespace is not trimmed, as
+in v2. The choice belongs to one response and never changes shared messages or
+process-global state. It applies to transaction create/get/list/revert, account
+get/list, aggregate volumes (including groups), transaction-analysis volume
+statistics (total, integer average, minimum and maximum), bulk results (including successful
+entries beside failures), ledger-log lists, system-log get, and prepared-query
+account/transaction/log cursors and aggregate results. Nested post-commit volumes
+follow the same choice. IDs, typed metadata, timestamps and unrelated integer
+projections are not stringified by this header.
+
+Posting request amounts accept integer tokens and canonical unsigned decimal
+strings independently of the response header. Both forms are bounded by
+`0..2^256-1`; negatives, fractions, exponents, hexadecimal, overflow and
+noncanonical quoted forms (including leading zeros) are rejected. Volume
+input/output use arbitrary-precision non-negative integers; balances may be
+negative. The opt-in does not narrow these existing volume bounds.
+
+The implementation uses a scoped `encoding/json/v2` path with type-specific
+marshalers for Posting, BigUint and SignedBigInt. Option-aware nested codecs
+share the existing public projections with legacy MarshalJSON callers.
+Ordinary response encoding and input decoding retain Sonic. CLI/event JSON,
+protobuf wire/storage formats, signatures and audit/idempotency semantics are
+unchanged. Checked responses still buffer before success headers; streaming
+responses retain their trailing newline and existing failure boundary.
+
+The generated TypeScript SDK exposes the header as `formanceBigintAsString`
+on every affected operation and monetary fields as number-or-string unions:
+
+```typescript
+const response = await sdk.transactions.createTransaction({
+  ledgerName: "ledger1",
+  formanceBigintAsString: "true",
+  body: {
+    postings: [{ source: "world", destination: "bank", asset: "USD",
+      amount: "123456789012345678901234567890" }],
+  },
+});
+// Keep the returned string, or convert it directly with BigInt(amount).
+// Do not pass it through Number(). Set the header on each affected operation.
+```
+
+Run `just test-sdk-bigint` for regenerated SDK integration against the real HTTP
+router; see `tests/sdk/README.md`. Generation requires Speakeasy authentication.
 
 #### Success
 
@@ -167,10 +265,61 @@ token, or a key that is not a valid position for the endpoint, is
 - `201 Created`: Resource created
 - `204 No Content`: Resource deleted successfully
 - `400 Bad Request`: Invalid request
+- `401 Unauthorized`: Invalid credentials, or insufficient anonymous scopes
+- `403 Forbidden`: Authenticated caller lacks the required scope
 - `404 Not Found`: Resource not found
 - `409 Conflict`: Conflict (ex: resource already exists)
+- `429 Too Many Requests`: Write admission or authoritative allocator exhaustion;
+  inspect `errorCode` before deciding whether retrying can help (see below)
 - `503 Service Unavailable`: the server cannot serve the request right now but a retry can succeed — no leader elected, admission cache horizon exceeded, any `KindUnavailable` domain error (index still building, writes blocked on clock skew, node syncing), or an internal forwarding failure surfaced as gRPC `Unavailable` (always with `Retry-After` header)
 - `500 Internal Server Error`: Server error
+
+### Resource-exhaustion response matrix
+
+Non-bulk writes return JSON `ErrorResponse` on 429, preserving `errorCode` and
+`errorMessage` for both local and reconstructed leader failures. Disk gating uses
+`WRITES_BLOCKED_DISK_FULL` (`writes blocked: disk usage exceeds threshold`),
+including a missing or obsolete gate verdict. Authoritative identifier allocation
+uses `SEQUENCE_EXHAUSTED` (`<counter> exhausted: cannot allocate another identifier`).
+Disk blocking can clear; allocator exhaustion is permanent for that allocator.
+Neither branch supplies `Retry-After`, and clients must not retry unconditionally.
+
+The following routes, relative to `/v3`, all enter `applyUnsigned` and
+`RoutedController.Apply`, reaching admission's disk gate and the business-log
+sequence allocator. The registered HTTP handler fixtures in
+`openapi_resource_exhaustion_test.go` prove the 429 status/body/media-type contract
+for every row with local and reconstructed gRPC domain errors. Admission and
+processing evidence is in `internal/application/admission/admission.go` (`Admit`)
+and `internal/domain/processing/processor.go` (`IncrementNextSequenceID`).
+
+| Method | Path | 429 body |
+| --- | --- | --- |
+| POST, DELETE | `/{ledgerName}` | `ErrorResponse` |
+| POST | `/{ledgerName}/promote` | `ErrorResponse` |
+| PUT | `/{ledgerName}/numscripts/{name}` | `ErrorResponse` |
+| POST | `/{ledgerName}/indexes` | `ErrorResponse` |
+| DELETE | `/{ledgerName}/indexes/{canonicalId}` | `ErrorResponse` |
+| POST | `/{ledgerName}/transactions` | `ErrorResponse` |
+| POST | `/{ledgerName}/transactions/{transactionId}/revert` | `ErrorResponse` |
+| POST | `/{ledgerName}/transactions/{transactionId}/metadata` | `ErrorResponse` |
+| DELETE | `/{ledgerName}/transactions/{transactionId}/metadata/{key}` | `ErrorResponse` |
+| POST | `/{ledgerName}/accounts/{address}/metadata` | `ErrorResponse` |
+| DELETE | `/{ledgerName}/accounts/{address}/metadata/{key}` | `ErrorResponse` |
+| POST | `/{ledgerName}/metadata` | `ErrorResponse` |
+| DELETE | `/{ledgerName}/metadata/{key}` | `ErrorResponse` |
+| PUT, DELETE | `/{ledgerName}/metadata-schema/{targetType}/{key}` | `ErrorResponse` |
+| POST | `/{ledgerName}/account-types` | `ErrorResponse` |
+| DELETE | `/{ledgerName}/account-types/{typeName}` | `ErrorResponse` |
+| PUT | `/{ledgerName}/account-types/default-enforcement-mode` | `ErrorResponse` |
+| POST | `/{ledgerName}/prepared-queries` | `ErrorResponse` |
+| PUT, DELETE | `/{ledgerName}/prepared-queries/{queryName}` | `ErrorResponse` |
+
+Reads and prepared-query execution use `ReadIndex`, not the gated write barrier;
+no concrete resource-exhaustion branch justifies a 429 declaration there. A bare
+gRPC `ResourceExhausted` without recognized Ledger error details is not a decoded
+domain rejection and is sanitized as an internal failure. Terminal audit-sequence
+exhaustion is also not an ordinary per-request 429 branch. Bulk retains its own
+processing `BulkResponse` envelope and response contract.
 
 ### Internal Errors and Sanitization
 
@@ -492,6 +641,57 @@ Clients should:
 - **Write operations**: Must go through the leader, so will fail during leader elections
 - **Idempotency**: Ensure write operations are idempotent to safely retry after leader election
 - **Monitoring**: Track `503` responses to monitor cluster health and leader election frequency
+
+## Bulk identity and response contract
+
+`POST /v3/{ledgerName}/bulk` accepts a JSON array. All elements target the
+ledger named in the URL. With `atomic=true`, admission receives one batch under
+the optional `Idempotency-Key` header; per-element `ik` values are ignored.
+With `atomic=false` (default), each element is submitted separately under its
+own `ik`, and the header is ignored. `continueOnFailure` does not change atomicity:
+an atomic batch failure is reported for every element. In sequential mode,
+`continueOnFailure=false` stops submission after the first failure and later
+elements report `ERROR` with `errorDescription: context canceled`.
+
+SDK clients must send the typed batch identity and retain complete
+outcomes when the overall request fails. OpenAPI therefore declares the reusable
+header parameter and a bulk-specific `BulkErrorResponse` union. The union uses
+`anyOf`: `BulkResponse` has optional top-level error fields, so ordinary
+`ErrorResponse` bodies overlap it and cannot be modeled with exclusive `oneOf`.
+The generated decoder must preserve `data`, `responseType`, `logID`, operation
+data and element errors rather than treating a valid processing response as an
+ordinary error that requires top-level errorCode/errorMessage.
+
+| Trigger | Overall status | Body |
+| --- | --- | --- |
+| Success, including an empty batch | 200 | BulkResponse; empty batches currently emit `{}` |
+| Malformed JSON, invalid ledger name, or byte-limit failure during decoding | 400 | Top-level errorCode/errorMessage, no element outcomes |
+| Missing credentials for a write element | 401 | JSON top-level errorCode/errorMessage |
+| Invalid JWT rejected by middleware | 401 | `text/plain`, starting with `invalid token:` |
+| Valid credentials missing an element's scope | 403 | JSON top-level errorCode/errorMessage |
+| More than the configured maximum element count | 413 | JSON top-level errorCode/errorMessage |
+| Processing-time business failure | 400/401/403/404/409 | BulkResponse with every element outcome; 200 instead when continueOnFailure=true |
+| Processing-time resource exhaustion | 429 | BulkResponse, regardless of continueOnFailure |
+| Leader loss, cache horizon exceeded, or a classified unavailable error | 503 | BulkResponse and `Retry-After: 1`, regardless of continueOnFailure |
+| Processing-time internal/unclassified failure | 500 | BulkResponse, regardless of continueOnFailure |
+| Panic recovery | 500 | Ordinary ErrorResponse with a sanitized correlation ID |
+
+The byte limit is implemented by `MaxBytesReader`, but `serveBulk` maps its read
+error to `400 VALIDATION`; the separate element-count guard maps to
+`413 BULK_SIZE_EXCEEDED`. These are distinct current paths. Request-level
+rejections always surface, independently of continueOnFailure. During processing,
+the highest infrastructure status wins; otherwise the highest business status
+wins unless continueOnFailure suppresses it. Aborted elements contribute no
+status. Returned statuses do not prove that preceding or ambiguous work did not
+commit: non-atomic batches can contain committed successes before a failure.
+Callers must inspect all outcomes and preserve the original batch/element
+identities when retrying. The schema correction does not enable SDK retries.
+
+`TestHandleBulk_*Contract` exercises the real router and validates its bytes
+against the declared responses. It can export those exact responses for
+`tests/sdk/bulk-contract.mjs`, which exercises the regenerated consumer operation,
+including plain-text JWT failures, header omission and 503 retry hints. See
+[the SDK probe instructions](../../../../../tests/sdk/README.md).
 
 ## Metadata number decoding
 
@@ -968,14 +1168,18 @@ func (r *RoutedController) Apply(ctx context.Context, requests ...*servicepb.Req
 
 ## Response serialization
 
-Two encoders serve HTTP response bodies, and the choice is **not** a matter of taste:
+The response writer selects the encoder from its payload contract:
 
 | Writer | Encoder | Use for |
 |---|---|---|
 | `writeOK` / `writeOKChecked` | sonic (`internal/adapter/json`) | Anything whose type has a custom `MarshalJSON`, and all hand-written DTOs |
+| `writeMonetaryOK` / `writeMonetaryCreated` / `writeMonetaryOKChecked` | scoped `encoding/json/v2` | Posting, volume and balance responses requiring request-scoped negotiation |
 | `writeProtoOK` / `writeProtoListOK` | `protojson` | Proto messages with **no** custom `MarshalJSON` |
 
-**The rule: when a type has a hand-written `MarshalJSON`, that method is the public contract.** Route it through `writeOKChecked`. `protojson` works off protobuf reflection and ignores `json.Marshaler`, so sending such a type through it silently discards the intended shape.
+**The rule: custom JSON projections define the public shape.** Use the monetary
+writers for negotiated monetary responses, and `writeOKChecked` for other
+fallible custom projections. `protojson` ignores both `MarshalJSON` and
+`MarshalJSONTo`, so it must not bypass a type's custom representation.
 
 The camelCase convention cannot arbitrate between the two — both encoders satisfy it. The deciding fact is whether a marshaller exists. `internal/adapter/http/encoder_contract_test.go` enforces this in both directions.
 
@@ -1001,6 +1205,18 @@ fields nested under `SystemLog.payload.apply.log`. Without that explicit
 declaration, Speakeasy can generate an empty-object decoder that strips every
 payload field. The payload remains open rather than an exhaustive union of
 typed operation variants (EN-2685).
+
+`SystemLog.payload` separately permits additional properties (EN-2781).
+Its typed `apply.log` branch coexists with open-ended sibling variants such as
+`createLedger`, `deleteLedger`, `promoteLedger` and `savedLedgerMetadata`.
+Generated SDK response decoders must retain these siblings and their complete
+nested JSON, including future variant names, in single-log responses,
+ledger-log lists and prepared-query `cursor.logData`. JSON events use the same
+system envelope. This schema correction changes neither server serialization
+nor authoritative audit bytes. Credential-safe read projections remain the
+separate EN-1634 contract; SDK field stripping is not a security boundary.
+The Go schema regression and codec-reconciled fixture inventory live in
+`internal/adapter/http/openapi_spec_test.go` and its `testdata/` directory.
 
 Other opaque object schemas also explicitly allow additional properties:
 ledger metadata schemas, transaction account-metadata maps, protobuf JSON

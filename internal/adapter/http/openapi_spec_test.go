@@ -1,6 +1,7 @@
 package http
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"testing"
@@ -8,6 +9,10 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/stretchr/testify/require"
 	"go.yaml.in/yaml/v3"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/reflect/protoreflect"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestOpenAPISpec_NoBareObjects(t *testing.T) {
@@ -76,6 +81,23 @@ func TestOpenAPISpec_DecodesStrictly(t *testing.T) {
 	require.Contains(t, doc, "paths")
 }
 
+func TestOpenAPISpec_BulkIdempotencyHeader(t *testing.T) {
+	t.Parallel()
+
+	doc, err := openapi3.NewLoader().LoadFromFile("../../../openapi.yml")
+	require.NoError(t, err)
+	operation := doc.Paths.Value("/v3/{ledgerName}/bulk").Post
+	var header *openapi3.Parameter
+	for _, parameter := range operation.Parameters {
+		if parameter.Value.In == "header" && parameter.Value.Name == "Idempotency-Key" {
+			header = parameter.Value
+		}
+	}
+	require.NotNil(t, header, "SDK callers need a typed batch idempotency header")
+	require.False(t, header.Required)
+	require.True(t, header.Schema.Value.Type.Is("string"))
+}
+
 func TestOpenAPISpec_LogPayloadPreservation(t *testing.T) {
 	t.Parallel()
 
@@ -94,6 +116,73 @@ func TestOpenAPISpec_LogPayloadPreservation(t *testing.T) {
 	} {
 		require.NoError(t, data.VisitJSON(payload))
 	}
+}
+
+func TestOpenAPISpec_SystemLogPayloadPreservation(t *testing.T) {
+	t.Parallel()
+
+	doc, err := openapi3.NewLoader().LoadFromFile("../../../openapi.yml")
+	require.NoError(t, err)
+	payload := doc.Components.Schemas["SystemLog"].Value.Properties["payload"].Value
+	require.NotNil(t, payload.AdditionalProperties.Has, "system payload sibling variants must survive SDK decoding")
+	require.True(t, *payload.AdditionalProperties.Has)
+	require.Same(t, doc.Components.Schemas["LedgerLog"].Value, payload.Properties["apply"].Value.Properties["log"].Value)
+
+	fixturesJSON, err := os.ReadFile("testdata/system_log_payloads.json")
+	require.NoError(t, err)
+	var fixtures map[string]map[string]any
+	require.NoError(t, json.Unmarshal(fixturesJSON, &fixtures))
+
+	// Reconcile the payload fixtures with the live descriptor and the actual custom
+	// JSON codec. A new variant or a JSON-name change must extend the regression.
+	fields := (&commonpb.LogPayload{}).ProtoReflect().Descriptor().Oneofs().ByName("type").Fields()
+	for i := range fields.Len() {
+		field := fields.Get(i)
+		t.Run(field.JSONName(), func(t *testing.T) {
+			t.Parallel()
+			fixture, ok := fixtures[field.JSONName()]
+			require.True(t, ok, "missing system payload fixture")
+			require.Contains(t, fixture, field.JSONName())
+			require.Len(t, fixture, 1)
+			require.NoError(t, payload.VisitJSON(fixture))
+
+			message := (&commonpb.LogPayload{}).ProtoReflect()
+			message.Set(field, protoreflect.ValueOfMessage(message.NewField(field).Message()))
+			if field.JSONName() != "apply" {
+				// Non-apply fixtures also round-trip through the real wire codec.
+				// apply.log is an output-only projection, not a protojson input.
+				fixtureJSON, err := json.Marshal(fixture)
+				require.NoError(t, err)
+				require.NoError(t, protojson.Unmarshal(fixtureJSON, message.Interface()))
+			}
+			encoded, err := json.Marshal(message.Interface())
+			require.NoError(t, err)
+			var actual map[string]any
+			require.NoError(t, json.Unmarshal(encoded, &actual))
+			require.Contains(t, actual, field.JSONName())
+			require.Len(t, actual, 1)
+			if field.JSONName() != "apply" {
+				require.Equal(t, fixture, actual)
+			}
+		})
+	}
+	// Supplemental fixtures validate schema preservation only: apply.log is
+	// output-only, and a future sibling is unknown to the current protojson codec.
+	for _, name := range []string{"applyMetadata", "futureVariant"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			fixture, ok := fixtures[name]
+			require.True(t, ok, "missing supplemental system payload fixture")
+			variant := name
+			if name == "applyMetadata" {
+				variant = "apply"
+			}
+			require.Contains(t, fixture, variant)
+			require.Len(t, fixture, 1)
+			require.NoError(t, payload.VisitJSON(fixture))
+		})
+	}
+	require.Len(t, fixtures, fields.Len()+2)
 }
 
 func TestOpenAPISpec_PreparedQueryFilterInputs(t *testing.T) {

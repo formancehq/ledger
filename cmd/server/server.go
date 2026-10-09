@@ -741,14 +741,21 @@ func discoverPeersFromClusterWithRetry(ctx context.Context, raftAddr string, tls
 			return peers, nil
 		}
 
-		// A cluster-secret mismatch is a hard configuration error, never
-		// transient: retrying with the same (mis)configuration would spin
-		// until the deadline and then surface an opaque "context deadline
-		// exceeded". Fail fast with an actionable message instead. EN-1080.
-		if st, ok := status.FromError(err); ok && st.Code() == codes.Unauthenticated {
+		// A cluster-secret or cluster-id mismatch is a hard configuration
+		// error, never transient: retrying with the same (mis)configuration
+		// would spin forever. Fail fast with an actionable message instead,
+		// as learner registration (tryAddLearner) does. EN-1080, EN-2738.
+		switch st, ok := status.FromError(err); {
+		case ok && st.Code() == codes.Unauthenticated:
 			return nil, &bootstrap.JoinAuthError{
 				PeerAddress: raftAddr,
 				HasSecret:   clusterSecret != "",
+				Detail:      st.Message(),
+			}
+		case ok && st.Code() == codes.PermissionDenied:
+			return nil, &bootstrap.JoinClusterIDError{
+				PeerAddress: raftAddr,
+				ClusterID:   clusterID,
 				Detail:      st.Message(),
 			}
 		}
@@ -801,15 +808,15 @@ func discoverPeersFromCluster(raftAddr string, tlsCfg bootstrap.TLSConfig, clust
 
 	resp, err := client.GetPeers(ctx, &clusterbootstrappb.GetPeersRequest{})
 	if err != nil {
-		// Propagate an Unauthenticated status unwrapped so the retry loop's
-		// status.FromError sees a clean st.Message() ("missing authorization
-		// metadata on Raft RPC", etc.) rather than the whole wrapped chain.
-		// Wrapping here would leak "getting peers from <addr>: rpc error:
-		// code = Unauthenticated desc = …" into JoinAuthError.Detail —
-		// duplicating the address and re-exposing the raw gRPC noise this
-		// fail-fast exists to hide. This keeps the discovery path consistent
-		// with the learner-registration path. EN-1080.
-		if st, ok := status.FromError(err); ok && st.Code() == codes.Unauthenticated {
+		// Propagate the configuration-error statuses unwrapped so the retry
+		// loop's status.FromError sees a clean st.Message() ("missing
+		// authorization metadata on Raft RPC", "invalid cluster ID") rather
+		// than the whole wrapped chain. Wrapping here would leak "getting
+		// peers from <addr>: rpc error: code = … desc = …" into the typed
+		// error's Detail — duplicating the address and re-exposing the raw
+		// gRPC noise the fail-fast exists to hide. This keeps the discovery
+		// path consistent with the learner-registration path. EN-1080.
+		if st, ok := status.FromError(err); ok && (st.Code() == codes.Unauthenticated || st.Code() == codes.PermissionDenied) {
 			return nil, err
 		}
 

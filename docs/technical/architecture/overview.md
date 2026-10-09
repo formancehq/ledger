@@ -60,7 +60,7 @@ For primary-store projections, the default requirement is checker verification u
 
 ## Read path
 
-Read consistency depends on the request mode. Consistent reads establish the appropriate Raft read barrier and wait for local application to catch up before querying a stable local view. Requests using `x-consistency: stale` may read local state without that ReadIndex barrier and therefore may observe state behind the leader.
+Read consistency depends on the request mode. Consistent reads establish the appropriate Raft read barrier and wait for local application to catch up before querying a stable local view. Requests using `x-consistency: stale` (gRPC metadata, or the `X-Consistency` HTTP header) may read local state without that ReadIndex barrier and therefore may observe state behind the leader.
 
 Query execution combines the selected view of the main store with the read-side indexes maintained in the peer read store. The read store is derived state, not an independent source of business truth. Index lifecycle, schema rewrites, checkpoints, and query semantics are documented in:
 

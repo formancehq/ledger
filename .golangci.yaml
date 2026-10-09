@@ -84,6 +84,9 @@ linters:
   - whitespace
   - zerologlint
   settings:
+    modernize:
+      # Defer the optional Go 1.27 embedded-literal rewrite to a separate cleanup.
+      disable: [embedlit]
     lll:
       line-length: 180
     gomoddirectives:

@@ -55,6 +55,31 @@ for client setup, restore behavior, failure limitations, and revision changes.
 Discovery also returns the committed `ClusterPolicy` when initialized, so clients
 can use effective metadata ceilings instead of compiled default estimates.
 
+### Authentication and resource exhaustion (EN-2783)
+
+The five v3 Numscript library operations declare their existing optional bearer
+authentication and 401/403 failures. Anonymous scopes and auth-disabled mode remain
+supported. Middleware failures contain plain text; controller failures can contain
+the usual JSON `errorCode`/`errorMessage` envelope. Clients dispatch using both
+status and media type. The HTTP response wrapper preserves an explicit content
+type so a plain-text scope denial is not mislabeled JSON.
+
+The 22 non-bulk Apply write operations declare JSON 429 responses for disk gating
+and authoritative identifier exhaustion. See the evidence-backed
+[route/status/body matrix](../architecture/subsystems/api/http-api.md#resource-exhaustion-response-matrix).
+No 429 retry interval is supplied. `WRITES_BLOCKED_DISK_FULL` can clear with disk
+pressure; `SEQUENCE_EXHAUSTED` is permanent for the allocator. Bulk keeps its
+distinct processing envelope, and reads gain no speculative 429 declarations.
+
+The v2 reference at `d47ba1746cec2173d84eab8ec575be196eae0837`
+(`internal/api/common/errors.go`, `openapi.yaml`) has the familiar JSON
+`errorCode`/`errorMessage` error envelope, which v3 preserves for domain failures.
+Its database-client saturation maps to 503, not the v3 disk/sequence 429 reasons;
+these different server semantics do not warrant forcing equivalent statuses.
+The inspected v2 specification has no matching versioned Numscript library
+routes or service-local 401/403 declarations. V3 scope failures follow its own
+JWT/anonymous policy; no new endpoint or authorization requirement is introduced.
+
 ### Feature comparison
 
 | Feature | POC | Original | Notes |
@@ -167,6 +192,31 @@ can use effective metadata ceilings instead of compiled default estimates.
 
 ## Ledger-log JSON contract
 
+### Monetary encoding parity (EN-2779)
+
+V2 and v3 HTTP responses emit decimal JSON number tokens for posting amounts,
+volume input/output and balances by default. `Formance-Bigint-As-String` opts
+into canonical decimal strings for all of these values. Both recognize
+case-insensitive `true`, `yes`, `y` and `1`, without trimming whitespace.
+The v2 reference is `internal/api/v2/views.go` (`needBigIntAsString`, transaction,
+account, log and aggregate renderers), verified on v2/main at
+`d47ba1746cec2173d84eab8ec575be196eae0837`; native values there use `math/big.Int`.
+
+V3 applies this contract to transaction create/get/list/revert, account get/list,
+aggregate volumes, transaction-analysis statistics, bulk (including partial
+failures), ledger/system logs, and prepared-query cursors/aggregates. V3 posting inputs accept both integer tokens
+and canonical unsigned decimal strings regardless of the response header, with
+the existing uint256 bound. Volume input/output and balances retain their
+arbitrary-precision bounds and signedness. IDs, metadata and nonmonetary
+integer projections retain their existing contract.
+
+The OpenAPI schemas expose number/string unions and the reusable header on
+every affected operation. Generated SDK operation tests in `tests/sdk/` retain
+exact opt-in strings rather than coercing them into JavaScript numbers.
+CLI/events and protobuf wire/storage/audit encodings retain their previous
+representations. This intentionally replaces v3's previous always-string HTTP
+volume output while preserving its field shapes and color dimension.
+
 EN-1790 aligns the nested ledger-log JSON with v2 where the existing v3 data
 model permits a simple projection. Both use `type` to identify a payload held
 directly in `data`, and metadata logs use `targetType` with `targetId` (string
@@ -192,6 +242,14 @@ The OpenAPI data object explicitly allows additional properties (EN-2685).
 Generated SDK decoders must preserve the operation payload both directly and
 inside `SystemLog.payload.apply.log`; the schema does not exhaustively type
 each operation variant.
+
+`SystemLog.payload` also explicitly permits additional properties (EN-2781).
+The existing typed `apply.log` remains available; all other system variants
+and future siblings retain their nested JSON as open-ended values. The same
+contract applies to single-log, list-log and prepared-query LOGS response
+decoding. These global system operations have no v2 ledger-log equivalent;
+the nested ledger log keeps its existing v2-style `type`/`data` structure.
+EN-1634 separately owns credential-safe read projections.
 
 The same explicit additional-properties policy covers other opaque v3 objects
 (ledger metadata schemas, transaction account metadata, audit/signature fields,
@@ -374,9 +432,43 @@ to 8.
 
 **Options:**
 - ✅ `continueOnFailure` - Continue even on error
-- ✅ `atomic` - All operations or nothing (supports cross-ledger operations)
+- ✅ `atomic` - Submit all operations as one batch for the URL's ledger
+- ✅ `Idempotency-Key` header - Optional identity of the whole atomic batch
+- ✅ Per-element `ik` - Identity of each sequential operation; header ignored
 
-> **Note:** Unlike v2, v3 supports **system-level atomic bulk operations** that can span multiple ledgers. This is enabled by the [Global Log Architecture](../architecture/subsystems/consensus/global-log.md).
+HTTP bulk actions all inherit the URL's ledger name. The underlying service
+batch can span ledgers, but the HTTP bulk operation cannot. In atomic mode,
+per-element `ik` values are ignored; `continueOnFailure` controls the business
+error status without allowing partial application of the batch.
+
+**SDK error contract:** Processing failures retain the `data` array,
+including committed successes, the failed element and aborted later elements.
+Business statuses 400/401/403/404/409 are suppressed to 200 only when
+`continueOnFailure=true`. Processing 429/500/503 surface unconditionally;
+503 retains `Retry-After: 1`. OpenAPI declares `BulkErrorResponse` as an `anyOf`
+union of the bulk envelope and ordinary ErrorResponse where both are accepted,
+and includes the optional batch idempotency header. Empty successful batches
+currently emit `{}`. Invalid JWTs return a plain-text 401 from middleware;
+per-element scope prechecks return JSON 401/403. Byte-limit decoding errors
+return 400; the configured element-count limit returns 413. Panic recovery
+returns an ordinary JSON 500. See the
+[complete response matrix](../architecture/subsystems/api/http-api.md#bulk-identity-and-response-contract).
+Generated SDK callers can inspect all element fields and error headers; this
+change does not alter automatic retry defaults. A failed request does not prove
+noncommit, and sequential retries must preserve per-element identities.
+
+**v2 comparison:** Verified against v2 source revision
+`d47ba1746` (`internal/api/v2/controllers_bulk.go`,
+`internal/api/bulking/{bulker,elements,handler_json}.go`, their tests and
+`openapi/v2.yaml`). Both versions use `atomic`, `continueOnFailure`, and the
+element field `ik`; v2's JSON result also exposes responseType/data/logID and
+element errors. V2 returns 400 for an element failure and declares bulk bodies
+for 200/400. V3 uses the existing status classifier to expose 404/409/429/5xx
+with the same element envelope. V2 passes each element's identity to its
+controller, including inside its database transaction, and its bulk operation
+does not declare or read a batch-level header. V3's single atomic proposal has
+one identity, so the new typed header documents that intentional difference.
+The v2 schemaVersion/parallel options are not added to v3 by this correction.
 
 ### 5. Ledger Management
 
@@ -1076,6 +1168,14 @@ Read endpoints comparison with the original ledger:
 | `GET /v3/_/indexes/{canonicalId}/status` | ✅ | ❌ | Bucket-scoped IndexEntry |
 | `POST /v3/{ledgerName}/bulk` | ✅ | ❌ | Bulk operations (alternate path without underscore) |
 | `GET /_info` | ✅ | ❌ | Server build info (`version`, `commit`, `buildDate`, `goVersion`); unauthenticated, flat JSON (no `data` envelope) |
+
+**Read consistency selector.** Every `/v3` read accepts `X-Consistency:
+stale` over HTTP, matching the gRPC `x-consistency: stale` metadata. The
+receiving node serves the read from its own store, with no ReadIndex barrier
+and no forwarding. The default and `linearizable` keep the barrier. HTTP rejects
+an unknown or repeated value with `400 INVALID_REQUEST`; gRPC ignores unknown
+values. The original ledger has no equivalent. See
+[HTTP API: Read consistency](../architecture/subsystems/api/http-api.md#read-consistency).
 
 ### Pagination
 

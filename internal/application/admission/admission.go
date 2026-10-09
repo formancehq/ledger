@@ -485,7 +485,74 @@ func (a *Admission) recordPhaseOnExit(ctx context.Context, hist metric.Int64Hist
 // 3. When not guaranteed, load base value from store at boundary B(nextIndex)
 // 4. For volumes not guaranteed in cache, load base values from store at B(nextIndex)
 // 5. Propose command with Preload containing base values.
-func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (response *domain.ApplyResult, err error) {
+func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+	return a.admit(ctx, func(ctx context.Context) (*admissionPlan, error) {
+		return a.buildApplyAdmissionPlan(ctx, req)
+	})
+}
+
+// AdmitClusterPolicy admits the leader's internal cluster-policy reconciliation
+// without routing an internal command through the public Apply envelope.
+func (a *Admission) AdmitClusterPolicy(ctx context.Context, policy *commonpb.ClusterPolicy) (*domain.ApplyResult, error) {
+	if policy == nil {
+		return nil, errors.New("cluster policy must not be nil")
+	}
+
+	return a.admit(ctx, func(ctx context.Context) (*admissionPlan, error) {
+		return a.buildClusterPolicyAdmissionPlan(policy), nil
+	})
+}
+
+type admissionPlan struct {
+	key                   string
+	sig                   *signaturepb.SignedApplyBatch
+	allowInMaintenance    bool
+	businessBatch         bool
+	checkAfterMaintenance func() error
+	buildOrders           func(context.Context) ([]*raftcmdpb.Order, *bulkOverlay, error)
+}
+
+func (a *Admission) buildApplyAdmissionPlan(ctx context.Context, req *servicepb.ApplyRequest) (*admissionPlan, error) {
+	ctx, sigSpan := tracer.Start(ctx, "admission.verify_signatures")
+	defer sigSpan.End()
+
+	resolveBatchStart := time.Now()
+	batch, err := a.resolveBatch(ctx, req)
+	a.resolveBatchDurationHistogram.Record(ctx, time.Since(resolveBatchStart).Microseconds())
+	if err != nil {
+		return nil, err
+	}
+
+	return &admissionPlan{
+		key:                batch.key,
+		sig:                batch.sig,
+		allowInMaintenance: allRequestsAreMaintenanceMode(batch.requests),
+		businessBatch:      true,
+		checkAfterMaintenance: func() error {
+			return a.checkQueryCheckpointProjectionReady(batch.requests)
+		},
+		buildOrders: func(ctx context.Context) ([]*raftcmdpb.Order, *bulkOverlay, error) {
+			return a.requestsToOrders(ctx, batch.requests, batch.sig)
+		},
+	}, nil
+}
+
+func (a *Admission) buildClusterPolicyAdmissionPlan(policy *commonpb.ClusterPolicy) *admissionPlan {
+	return &admissionPlan{
+		buildOrders: func(context.Context) ([]*raftcmdpb.Order, *bulkOverlay, error) {
+			order := &raftcmdpb.Order{}
+			wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_SetClusterPolicy{
+					SetClusterPolicy: &raftcmdpb.SetClusterPolicyOrder{Policy: policy},
+				},
+			})
+
+			return []*raftcmdpb.Order{order}, newBulkOverlay(), nil
+		},
+	}
+}
+
+func (a *Admission) admit(ctx context.Context, buildPlan func(context.Context) (*admissionPlan, error)) (response *domain.ApplyResult, err error) {
 	caller, err := auth.ResolveCallerAttribution(ctx)
 	if err != nil {
 		invalid, ok := errors.AsType[*domain.ErrInvalidCallerAttribution](err)
@@ -523,27 +590,23 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (res
 		a.commandDurationHistogram.Record(ctx, time.Since(start).Microseconds())
 	}()
 
-	ctx, sigSpan := tracer.Start(ctx, "admission.verify_signatures")
-	resolveBatchStart := time.Now()
-	batch, err := a.resolveBatch(ctx, req)
-	a.resolveBatchDurationHistogram.Record(ctx, time.Since(resolveBatchStart).Microseconds())
-
-	sigSpan.End()
-
+	admPlan, err := buildPlan(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	// Check maintenance mode: block all requests except SetMaintenanceMode.
-	if a.sharedState.MaintenanceMode() && !allRequestsAreMaintenanceMode(batch.requests) {
+	if a.sharedState.MaintenanceMode() && !admPlan.allowInMaintenance {
 		return nil, ErrMaintenanceMode
 	}
 
-	if err := a.checkQueryCheckpointProjectionReady(batch.requests); err != nil {
-		return nil, err
+	if admPlan.checkAfterMaintenance != nil {
+		if err := admPlan.checkAfterMaintenance(); err != nil {
+			return nil, err
+		}
 	}
 
-	// Every audited request, including SetClusterPolicy, requires the one-time
+	// Every audited request, including an internal cluster-policy proposal, requires the one-time
 	// replicated key. Waiting here prevents an early client request from
 	// committing an unhashable order while the leader initializes the key.
 	if err := a.waitAuditKeyReady(ctx); err != nil {
@@ -555,10 +618,9 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (res
 	// it carries the query-checkpoint limit and idempotency TTL — so a write
 	// admitted before the first revision would apply against an empty policy. A
 	// fresh leader's reconciler commits the policy within a reconcile interval, so
-	// this blocks only during the startup window. SetClusterPolicy is exempt so
-	// the reconciler's own proposal establishes the policy.
-	businessBatch := !allRequestsAreClusterPolicy(batch.requests)
-	if businessBatch {
+	// this blocks only during the startup window. Internal cluster-policy
+	// proposals are exempt so the reconciler can establish the policy.
+	if admPlan.businessBatch {
 		if err := a.waitClusterPolicyReady(ctx); err != nil {
 			return nil, err
 		}
@@ -574,7 +636,7 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (res
 	stopOrdersPrep := a.recordPhaseOnExit(ctx, a.ordersPreparationDurationHistogram)
 	defer stopOrdersPrep()
 
-	orders, overlay, err := a.requestsToOrders(ctx, batch.requests, batch.sig)
+	orders, overlay, err := admPlan.buildOrders(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("converting requests to orders: %w", err)
 	}
@@ -585,9 +647,10 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (res
 	//
 	// The ceilings live in the committed cluster policy, so this reads the same
 	// numbers the FSM will read for Numscript-produced metadata. A
-	// SetClusterPolicy-only batch is exempt: it carries no business metadata and
-	// must be able to commit the very policy these ceilings come from.
-	if businessBatch {
+	// non-business internal cluster-policy proposal is exempt: it carries no
+	// business metadata and must be able to commit the very policy these
+	// ceilings come from.
+	if admPlan.businessBatch {
 		policy, policyErr := query.ReadClusterPolicy(a.store)
 		if policyErr != nil {
 			return nil, fmt.Errorf("reading cluster policy for metadata limits: %w", policyErr)
@@ -614,9 +677,9 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (res
 	// rides on the first order's needs — idempotency keys are not coverage-gated
 	// (machine.Preload installs them unconditionally), so any order carries it
 	// and the FSM's per-proposal dedup check finds it. Empty key = no idempotency.
-	if batch.key != "" && len(orders) > 0 {
-		needs.AddIdempotencyKey(batch.key)
-		perOrder[0].AddIdempotencyKey(batch.key)
+	if admPlan.key != "" && len(orders) > 0 {
+		needs.AddIdempotencyKey(admPlan.key)
+		perOrder[0].AddIdempotencyKey(admPlan.key)
 	}
 
 	// Orders-preparation phase ends here on the success path; record now so the
@@ -633,7 +696,7 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (res
 	stopScripts := a.recordPhaseOnExit(ctx, a.scriptsDurationHistogram)
 	defer stopScripts()
 
-	if err := a.resolveScriptsAndEnrichNeeds(ctx, orders, overlay, needs, perOrder, batch.key != ""); err != nil {
+	if err := a.resolveScriptsAndEnrichNeeds(ctx, orders, overlay, needs, perOrder, admPlan.key != ""); err != nil {
 		return nil, err
 	}
 	stopScripts()
@@ -641,10 +704,10 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (res
 	// Step 3-5: Build preloads via shared Builder (no lock)
 	cmd := commands.NewCommand(orders...)
 	cmd.CallerSnapshot = caller.Snapshot()
-	if batch.key != "" {
-		cmd.Idempotency = &commonpb.Idempotency{Key: batch.key}
+	if admPlan.key != "" {
+		cmd.Idempotency = &commonpb.Idempotency{Key: admPlan.key}
 	}
-	cmd.Signature = batch.sig
+	cmd.Signature = admPlan.sig
 
 	ctx, preloadSpan := tracer.Start(ctx, "admission.preload",
 		trace.WithAttributes(
@@ -1158,20 +1221,6 @@ var ErrCheckpointOrderNotLast domain.Classifiable = errCheckpointOrderNotLast{}
 func allRequestsAreMaintenanceMode(reqs []*servicepb.Request) bool {
 	for _, req := range reqs {
 		if _, ok := req.GetType().(*servicepb.Request_SetMaintenanceMode); !ok {
-			return false
-		}
-	}
-
-	return true
-}
-
-// allRequestsAreClusterPolicy reports whether every request in the batch is a
-// SetClusterPolicy request. Such a batch is exempt from the cluster-policy
-// write-readiness gate so the reconciler can establish the policy that opens
-// the gate for everything else.
-func allRequestsAreClusterPolicy(reqs []*servicepb.Request) bool {
-	for _, req := range reqs {
-		if _, ok := req.GetType().(*servicepb.Request_SetClusterPolicy); !ok {
 			return false
 		}
 	}
@@ -2277,14 +2326,6 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 			Payload: &raftcmdpb.SystemScopedOrder_SetMaintenanceMode{
 				SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{
 					Enabled: reqType.SetMaintenanceMode.GetEnabled(),
-				},
-			},
-		})
-	case *servicepb.Request_SetClusterPolicy:
-		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
-			Payload: &raftcmdpb.SystemScopedOrder_SetClusterPolicy{
-				SetClusterPolicy: &raftcmdpb.SetClusterPolicyOrder{
-					Policy: reqType.SetClusterPolicy.GetPolicy(),
 				},
 			},
 		})
