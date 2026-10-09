@@ -510,11 +510,61 @@ nix develop --impure
 ```bash
 just build          # Build operator binary
 just test           # Run tests
-just generate       # Regenerate CRDs, RBAC, and Helm chart
+just generate       # Regenerate CRDs, JSON Schema, RBAC, and Helm chart
 just pre-commit     # Run all checks (generate + tidy + build)
 just build-plugin   # Build kubectl plugin
 just install-plugin # Install kubectl plugin to $GOPATH/bin
 ```
+
+### JSON Schema
+
+`just generate` also writes standalone JSON Schema files under `config/crd/schemas/`:
+
+| File pattern | Contents |
+|--------------|----------|
+| `<group>_<version>_<kind>.json` (e.g. `ledger.formance.com_v1alpha1_cluster.json`) | Full CRD resource schema (`openAPIV3Schema`) for that version — top-level `apiVersion`/`kind`/`metadata`/`spec`/`status` |
+| `<group>_<version>_<kind>.spec.json` | `spec` fields only, at the schema root — for validating a spec fragment on its own (e.g. Helm `values.yaml` shaped like a CR's `spec`) |
+| `<group>.json` (e.g. `ledger.formance.com.json`) | Dispatcher schema: routes a manifest to the full resource schema matching its `apiVersion`/`kind`, via JSON Schema draft-07 `if`/`then` |
+
+The group prefix avoids collisions when these files sit alongside schemas from unrelated CRDs/operators (kind names like `Cluster` or `Backup` are common). Unlike `config/crd/bases/*.yaml` — one file per CRD, group+plural named, with no version in the name because a single CRD can serve several versions from that one file — each exported schema here describes exactly one version's shape, so the version belongs in its name.
+
+Example for a full manifest, with VS Code / Red Hat YAML:
+
+```yaml
+# yaml-language-server: $schema=../config/crd/schemas/ledger.formance.com_v1alpha1_cluster.json
+apiVersion: ledger.formance.com/v1alpha1
+kind: Cluster
+metadata:
+  name: my-ledger
+spec:
+  replicas: 3
+```
+
+Use the `.spec.json` variant only when validating a bare spec fragment (its root has no `spec` property, so pointing it at a full manifest validates nothing useful).
+
+For a directory containing manifests of several kinds, point `$schema` at the group dispatcher instead of picking a per-kind schema:
+
+```yaml
+# yaml-language-server: $schema=../config/crd/schemas/ledger.formance.com.json
+apiVersion: ledger.formance.com/v1alpha1
+kind: Backup
+metadata:
+  name: my-backup
+spec:
+  clusterRef: my-cluster
+  destination:
+    driver: s3
+    s3:
+      bucket: example-bucket
+```
+
+The dispatcher declares `$schema: draft-07` for its own `if`/`then` branches, while each branch's `$ref` target stays draft-04 — validators resolve a `$ref` using the referenced document's own declared draft, so mixing the two is safe.
+
+Every object with a fixed property set rejects unknown properties (`additionalProperties: false`), so a typo like `replicass` is flagged by the editor instead of being silently pruned the way the Kubernetes API server would prune it. Map-type fields (e.g. `additionalLabels`) keep their value schema and still accept arbitrary keys; opaque fields (`metadata`, and anything marked `x-kubernetes-preserve-unknown-fields`) are left unconstrained. Each full resource schema also requires and constrains `apiVersion`/`kind` to the exact values for that kind, so `{}` or a manifest for an unrelated kind is rejected.
+
+**Known limitation — CEL rules are not enforced.** `x-kubernetes-validations` (CEL) rules are preserved in the exported schema for reference but are not translated into portable JSON Schema constraints, which draft-04 validators ignore. For example, `Ledger`'s Postgres mirror source requires exactly one of `passwordFrom`/`awsIamAuth`, and requires `sslMode` to be TLS-enabled when `awsIamAuth` is set (otherwise the SigV4 bearer token would travel in cleartext) — both enforced by CEL in `api/v1alpha1/ledger_crd_types.go`, neither enforced by `ledger.formance.com_v1alpha1_ledger.spec.json`. A fragment violating either rule still validates cleanly against the exported schema. Kubernetes admission (CEL) remains the authoritative check for these rules; treat the exported schemas as catching structural/typo errors, not business-rule violations.
+
+Regenerate after changing CRD types in `api/v1alpha1/`. These files are also attached to each tagged [GitHub release](https://github.com/formancehq/ledger/releases) alongside `openapi.yml`.
 
 ### Project Structure
 
@@ -527,6 +577,7 @@ internal/controller/ # Reconciliation logic
 chart/               # Helm chart
 config/
   crd/bases/         # Generated CRD manifests
+  crd/schemas/       # Generated JSON Schema (full resource + spec-only)
   rbac/              # Generated RBAC rules
   samples/           # Example custom resources
 ```
