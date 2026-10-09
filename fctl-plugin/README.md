@@ -10,6 +10,19 @@ HTTP client through the host broker. Authentication, endpoint selection,
 request diagnostics, profiles, file input, and output styling belong to fctl.
 The same Go package can be embedded through `New` or `NewVersion`.
 
+`NewWithExecutor(serviceVersion, execute)` exposes the same manifest and request
+validation to an alternate transport. The callback receives a normalized
+`pluginsdk.ExecuteRequest` with the acquired JSON body. It owns transport and
+payload decoding, honors context cancellation, and can return data with an
+error. The plugin invokes it once and does not retry. A nil callback permits
+offline manifest inspection only. Input acquisition, credentials, prompts,
+rendering, and output files remain responsibilities of the host.
+
+The [shared CLI experiment](research/shared-cli/README.md) exercises this
+boundary with an opt-in ledgerctl gRPC adapter and the real external fctl HTTP
+plugin. The adapter is an unapplied research patch; the default ledgerctl
+commands and root module dependencies are unchanged.
+
 The plugin entry point uses the SDK-owned protocol and standard `flag` package
 for its two offline metadata flags. It has no human command tree or operational
 listener, so the CLI profile's Cobra and Fx composition requirements do not
