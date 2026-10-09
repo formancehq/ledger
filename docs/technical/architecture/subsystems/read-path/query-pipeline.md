@@ -199,18 +199,31 @@ What *is* shared is what a filter means: predicate resolution, schema validation
 
 | Fallback | Why it does not stream backwards | Descending behaviour |
 |---|---|---|
-| Value-ordered ranges — int/uint metadata ranges, transaction timestamp / inserted-at / reverted-at, log date | Intrinsic. The scan spans several index-value buckets, so rows surface in `(value, entity)` order and "the next entity below X" is undefined without the sorted result | `materializeReverse` reuses the ascending path's single `materializeEntities` drain and hands out a borrowed `SliceIterator[Desc]` over that one slice |
+| Value-ordered ranges — int/uint metadata ranges, transaction timestamp / inserted-at / reverted-at | Intrinsic. The scan spans several index-value buckets, so rows surface in `(value, entity)` order and "the next entity below X" is undefined without the sorted result | `materializeReverse` reuses the ascending path's single `materializeEntities` drain and hands out a borrowed `SliceIterator[Desc]` over that one slice |
 | `AddressTxIterator[D]` — the account→transaction union, including the exact-address form | Intrinsic. Members come from N per-account scans, each ascending but collectively unordered | Both directions share one `addressTxUnion` and its one sorted slice, walked through a `SliceIterator[D]` |
 
 Materializing is also **not** a descending-only cost, and neither is a regression introduced by direction support: the ascending compiler drains the same two leaves through `materializeIterator`. The descending page costs exactly the one materialization the ascending page already pays, with no second complete-result collection for the reversal. Both stay visible in the iterator tree under their own `Kind`, so [query-profile](query-profile.md) still attributes their cost.
 
 Entity-keyed ranges are *not* in this table. The Pebble transaction zone is keyed by txID, so `compileTxIDConditionRev` builds a `PebbleReverseTxRangeIterator`; the ledger-log index is `llog:<ledger>` followed directly by the big-endian log ID, so `compileLogIdConditionRev` builds a `ReverseLedgerLogRangeIterator`. Both stream, exactly as their ascending twins do, and a descending page over either reads about one page (`TestReverseLogPageIsBoundedByThePage`).
 
+The per-ledger log date index is keyed by `(date, log ID)`. Log IDs advance
+with each emitted ledger log, and log dates come from the FSM's monotone
+effective date, including mirror-ingest logs. Therefore the existing date
+index is also in log-ID order. `MonotoneDateIterator[D]` streams a log-date
+range directly in either direction: an uncursored first page reads only its
+page and lookahead, without materializing or sorting the range. An absolute
+ID seek scans forward from its current position when possible and restarts
+at the date bound otherwise. This keeps the iterator algebra correct, but a
+deep cursor or a composite query can scan preceding date rows. Transaction
+dates retain the materializing path: mirror ingest preserves the source v2
+date as `inserted_at`, so transaction ID and `inserted_at` are not guaranteed
+to have the same order.
+
 A gate that hides rows must hide them in **both** directions. `ReversePrefixIterator` carries the same fold-sequence stamp gate as `PrefixIterator`, and `ReverseEventResolveIterator` resolves each group at the same pin as its ascending twin — walking a group backwards, the *first* event with `seq <= pin` is the latest one at or below it, which is the event the forward pass settles on. A gate present on one side only is a direction-dependent visibility bug that a whole-set parity test cannot see, because both directions are compared against the same pinned view; the registry-driven conformance suite in `internal/storage/readstore/iterator_conformance_test.go` compares each direction against the independently declared set at a pin instead.
 
 The acceptance oracle for the compiled path is `internal/query/compile_reverse_parity_test.go`: for **every supported target** — ACCOUNTS, TRANSACTIONS and LOGS — crossed with the filter families the per-target validity table allows on it and six page sizes, a full descending traversal *by pages* equals the reversed ascending reference. Target is part of the case matrix rather than a constant because TRANSACTIONS is the public default descending direction, so an ACCOUNTS-only oracle would prove the criterion on the wrong surface.
 
-Concretely the matrix drives, per target: on ACCOUNTS the string / uint / int / bool metadata leaves, both `exists` arms including the null OR, the account address prefix and exact forms, and the stamp-gated has-asset scan; on TRANSACTIONS the streaming id range, the timestamp and inserted-at materializing fallbacks, the reference prefix, the reversion bitset and its complement, and the account→transaction union in both match forms and on a role bucket; on LOGS the id leaves and the log-date fallback — each crossed with AND/OR/NOT compositions and an empty-result shape.
+Concretely the matrix drives, per target: on ACCOUNTS the string / uint / int / bool metadata leaves, both `exists` arms including the null OR, the account address prefix and exact forms, and the stamp-gated has-asset scan; on TRANSACTIONS the streaming id range, the timestamp and inserted-at materializing fallbacks, the reference prefix, the reversion bitset and its complement, and the account→transaction union in both match forms and on a role bucket; on LOGS the id leaves and the streaming log-date leaf — each crossed with AND/OR/NOT compositions and an empty-result shape.
 
 Three guards keep the matrix from passing for the wrong reason. `TestDescendingParity_EveryTargetIsCovered` fails if a target drops out. `TestDescendingParity_NonEmptyFixtures` fails if a target's universe is unseeded. `TestDescendingParity_LeafFixtureSizes` pins the exact result size of each leaf family, because a case whose index rows are missing or written under the wrong prefix still compiles and still yields an empty reference — so `descending == reverse(ascending)` holds on `[] == []` and proves nothing about the leaf it was added for. One has-asset row is deliberately stamped **above** the read pin, so a direction that drops the gate serves a row the other hides and the oracle fails rather than agreeing on the same over-wide view.
 

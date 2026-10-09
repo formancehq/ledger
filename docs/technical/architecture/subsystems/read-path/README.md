@@ -11,6 +11,10 @@ and audit-index and usagestore exceptions are documented in the
 [consensus matrix](../consensus/raft-consensus.md#linearizable-reads-via-readindex)
 and the pipeline pages.
 
+Log-date first pages stream from the existing date index because log dates
+and IDs share the FSM's monotone order; transaction date ranges still use
+their general materializing path.
+
 ## Documents
 
 | Document | Description |
