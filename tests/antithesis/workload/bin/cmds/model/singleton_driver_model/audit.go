@@ -1035,7 +1035,8 @@ func (c *Checker) genAuditFilter() (*commonpb.QueryFilter, auditProbe) {
 
 	logSeq, _, _ := pickLogSequence(state)
 
-	leaf := func() *commonpb.QueryFilter { return genAuditLeaf(c.ledgerNames, sample, logSeq.sequence) }
+	ledgers := c.ledgerNamesSnapshot()
+	leaf := func() *commonpb.QueryFilter { return genAuditLeaf(ledgers, sample, logSeq.sequence) }
 	indexed := func() *commonpb.QueryFilter {
 		for {
 			if f := leaf(); f.GetAudit().GetField() != commonpb.AuditField_AUDIT_FIELD_SEQUENCE {

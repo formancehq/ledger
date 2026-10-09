@@ -82,7 +82,7 @@ func pickIntrospectIndex(c *Checker, ledger string) *commonpb.IndexID {
 // answers NotFound for a ledger the bucket does not hold, so a served listing is
 // that ledger's whole registry and an equality check is exact.
 func runIndexList(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger, absent := pickLedgerReadTarget(c.ledgerNames, 2)
+	ledger, absent := pickLedgerReadTarget(c.ledgerNamesSnapshot(), 2)
 
 	c.mu.Lock()
 	readID := c.registerRead()
@@ -338,7 +338,7 @@ func describeIndexOwners(byLedger map[string]map[string]bool) string {
 
 // runIndexGet reads one registry entry by id.
 func runIndexGet(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger, absent := pickLedgerReadTarget(c.ledgerNames, 2)
+	ledger, absent := pickLedgerReadTarget(c.ledgerNamesSnapshot(), 2)
 	id := pickIntrospectIndex(c, ledger)
 	canonical := indexes.Canonical(id)
 
@@ -436,7 +436,7 @@ func runBucketIndexGet(ctx context.Context, client servicepb.BucketServiceClient
 // carries is checked; the backfill cursor and per-replica versions beside it come
 // from a readstore snapshot at its own fold point.
 func runIndexEntryStatus(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger, absent := pickLedgerReadTarget(c.ledgerNames, 2)
+	ledger, absent := pickLedgerReadTarget(c.ledgerNamesSnapshot(), 2)
 	id := pickIntrospectIndex(c, ledger)
 	canonical := indexes.Canonical(id)
 

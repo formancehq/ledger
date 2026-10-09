@@ -255,10 +255,10 @@ func accountVolumeSet(acct *commonpb.Account) (map[assetColor]oracle.VolumePair,
 	return out, true
 }
 
-// absentLedgerName returns a ledger name outside the fixed fleet — the
-// negative-space target for a ledger-scoped read. The fleet is created at setup
-// and never grows, so any name not in ledgers is guaranteed absent; the server
-// answers NotFound for it, a pure read that creates nothing.
+// absentLedgerName returns a ledger name outside the fleet — the negative-space
+// target for a ledger-scoped read. No workload ledger is ever named absent-…,
+// so the name is guaranteed absent; the server answers NotFound for it, a pure
+// read that creates nothing.
 func absentLedgerName(ledgers []string) string {
 	known := make(map[string]bool, len(ledgers))
 	for _, l := range ledgers {

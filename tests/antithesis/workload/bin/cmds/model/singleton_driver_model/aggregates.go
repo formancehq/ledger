@@ -28,7 +28,7 @@ import (
 // under the highest one seen, and the model folds the same way. Grouping by
 // prefix stays off.
 func runAggregateQuery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger, absent := pickLedgerReadTarget(c.ledgerNames, 2)
+	ledger, absent := pickLedgerReadTarget(c.ledgerNamesSnapshot(), 2)
 
 	var filter *commonpb.QueryFilter
 	switch {

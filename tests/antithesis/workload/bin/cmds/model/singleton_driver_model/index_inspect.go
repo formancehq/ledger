@@ -30,7 +30,7 @@ import (
 // declared type, which the model does not reproduce; the counters need no
 // ordering, so they are exact.
 func runInspectIndex(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger, absent := pickLedgerReadTarget(c.ledgerNames, 2)
+	ledger, absent := pickLedgerReadTarget(c.ledgerNamesSnapshot(), 2)
 
 	target := commonpb.TargetType_TARGET_TYPE_ACCOUNT
 	queryTarget := commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS

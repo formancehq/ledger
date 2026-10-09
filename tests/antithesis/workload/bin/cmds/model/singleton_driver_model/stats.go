@@ -62,7 +62,7 @@ func modelUsage(ls oracle.LedgerState) statsUsage {
 // RoutedController.readCtrl — is what puts the boundary read at or beyond every
 // bulk the model has observed committed.
 func runLedgerStats(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger, absent := pickLedgerReadTarget(c.ledgerNames, 2)
+	ledger, absent := pickLedgerReadTarget(c.ledgerNamesSnapshot(), 2)
 
 	c.mu.Lock()
 	readID := c.registerRead()
@@ -105,8 +105,8 @@ func runLedgerStats(ctx context.Context, client servicepb.BucketServiceClient, c
 	}
 
 	if absent {
-		// The fleet never grows, so stats for a name outside it describe a ledger
-		// the server holds but the model never created.
+		// No workload ledger is ever named absent-…, so stats for one describe a
+		// ledger the server holds but the model never created.
 		assert.Unreachable("singleton_driver_model: ledger stats served a ledger outside the fleet", internal.Details{"ledger": ledger})
 
 		return
