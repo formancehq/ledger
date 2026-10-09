@@ -77,7 +77,15 @@ build-fctl-plugin version="dev" revision="1":
     cd misc/fctl-plugin && CGO_ENABLED=0 go build -ldflags '-X main.serviceVersion={{version}} -X main.revision={{revision}}' -o ../../build/fctl-plugin-ledger ./cmd/fctl-plugin-ledger
 
 test-fctl-plugin:
-    cd misc/fctl-plugin && go test -race -tags it ./... -timeout 3m
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # The SDK uses Unix sockets; the canonical validator's nested TMPDIR can
+    # exceed macOS sockaddr_un.sun_path. Keep real IPC tests in a short root.
+    fixture_tmp="$(mktemp -d /tmp/fctl-plugin.XXXXXX)"
+    trap 'rm -rf "$fixture_tmp"' EXIT
+    export TMPDIR="$fixture_tmp"
+    cd misc/fctl-plugin
+    go test -race -tags it ./... -timeout 3m
 
 # Prepare six native platform archives and checksums without publishing.
 package-fctl-plugin version="dev" revision="1":
@@ -628,4 +636,9 @@ verify-fctl-plugin-anonymous catalogue="dist/fctl-plugin-catalogue.json":
 
 # Exercise the real external host without importing its core.
 test-fctl-plugin-host binary:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    fixture_tmp="$(mktemp -d /tmp/fctl-plugin.XXXXXX)"
+    trap 'rm -rf "$fixture_tmp"' EXIT
+    export TMPDIR="$fixture_tmp"
     FCTL_BINARY="{{binary}}" go -C misc/fctl-plugin test -race -tags host ./cmd/fctl-plugin-ledger -run TestFctlLifecycle -count=1 -timeout 3m

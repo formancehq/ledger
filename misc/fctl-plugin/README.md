@@ -82,7 +82,9 @@ This starts controlled local HTTP fixtures and the real plugin executable. It
 checks local installation, inspection, exact integer responses and requests,
 partial bulk errors, version drift before mutation, and help/completion after
 the API is stopped. The ordinary race suite also checks argument and payload
-validation, forms, cursor handling and the SDK HTTP broker.
+validation, forms, cursor handling and the SDK HTTP broker. The test recipes
+allocate and clean up a short temporary root: SDK Unix sockets can exceed
+macOS path limits inside the canonical validator's nested `TMPDIR`.
 
 ## Package without publishing
 
