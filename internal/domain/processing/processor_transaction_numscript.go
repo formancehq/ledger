@@ -34,9 +34,6 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		return nil, domain.ErrScriptRequired
 	}
 
-	// The hash keys the local parse cache used by stale-inputs resolution.
-	scriptHash := numscript.HashScript(script.GetPlain())
-
 	// Stale-inputs check: admission bound the balance/metadata values its
 	// dependency resolution read into OrderTechnical.inputs_resolution_hash
 	// (staged on p.inputsResolutionHash by the dispatcher). Re-resolve
@@ -49,7 +46,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	if expected := p.inputsResolutionHash; len(expected) > 0 {
 		// Parse the script (uses cache to avoid re-parsing): dependency
 		// re-resolution walks the AST; execution below runs the VM.
-		parsed, err := p.cache.GetOrParseHashed(scriptHash, script.GetPlain())
+		parsed, err := p.cache.GetOrParse(script.GetPlain())
 		if err != nil {
 			return nil, err
 		}
