@@ -120,7 +120,7 @@ func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Reque
 	//     tag is `json:"color,omitempty"` and would otherwise drop it);
 	//   - cursor uses the hand-written PreparedQueryCursor.MarshalJSON whose
 	//     nested Account/Transaction marshalers already emit camelCase,
-	//     decimal-string amounts, and `color` on every volume row.
+	//     negotiated monetary amounts, and `color` on every volume row.
 	envelope := executePreparedQueryResponseJSON{}
 	switch result := resp.GetResult().(type) {
 	case *servicepb.ExecutePreparedQueryResponse_Aggregate:
@@ -130,7 +130,7 @@ func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Reque
 	}
 
 	finishProfile(w, r, profile)
-	writeJSONResponse(w, http.StatusOK, envelope)
+	writeMonetaryJSONResponse(w, r, http.StatusOK, envelope)
 }
 
 // executePreparedQueryResponseJSON is the clean camelCase envelope for the

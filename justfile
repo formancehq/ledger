@@ -532,3 +532,18 @@ _generate-demo tapes:
         echo "==> Done: misc/demo/${tape}.gif"
     done
     echo "All demos generated."
+
+# Regenerate the real TypeScript SDK and exercise it against Ledger HTTP handlers.
+# Requires Speakeasy authentication; separate from default CI validation.
+test-sdk-bigint:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    sdk_dir="{{justfile_directory()}}/build/sdk-bigint"
+    rm -rf "$sdk_dir"
+    mkdir -p "$sdk_dir"
+    speakeasy generate sdk --schema openapi.yml --out "$sdk_dir" --lang typescript --auto-yes
+    cp tests/sdk/package.json tests/sdk/package-lock.json "$sdk_dir/"
+    cp tests/sdk/bigint.ts "$sdk_dir/src/ledger-bigint-test.ts"
+    npm --prefix "$sdk_dir" ci --ignore-scripts --no-audit --no-fund
+    (cd "$sdk_dir" && node node_modules/typescript/bin/tsc)
+    LEDGER_SDK_TEST="$sdk_dir/esm/ledger-bigint-test.js" go test -tags sdk ./internal/adapter/http -run ^TestBigintOperations$ -count=1 -timeout=2m

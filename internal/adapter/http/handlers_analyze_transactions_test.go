@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	stdjson "encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -66,7 +67,22 @@ func TestHandleAnalyzeTransactions_Success(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code)
 
-	wrapper := decodeResponse[BaseResponse[analyzeTransactionsResponseJSON]](t, w)
+	// Decode monetary leaves independently from the production protobuf codecs.
+	wrapper := decodeResponse[BaseResponse[struct {
+		TotalTransactions uint64 `json:"totalTransactions"`
+		TotalReverted     uint64 `json:"totalReverted"`
+		FlowPatterns      []struct {
+			Signature        string                   `json:"signature"`
+			Structure        string                   `json:"structure"`
+			TransactionCount uint64                   `json:"transactionCount"`
+			Postings         []*normalizedPostingJSON `json:"postings"`
+			Temporal         *temporalStatsJSON       `json:"temporal"`
+			VolumeStats      []struct {
+				TotalVolume stdjson.RawMessage `json:"totalVolume"`
+			} `json:"volumeStats"`
+			MetadataKeys []string `json:"metadataKeys"`
+		} `json:"flowPatterns"`
+	}]](t, w)
 	resp := wrapper.Data
 	require.Equal(t, uint64(100), resp.TotalTransactions)
 	require.Equal(t, uint64(5), resp.TotalReverted)
@@ -82,7 +98,7 @@ func TestHandleAnalyzeTransactions_Success(t *testing.T) {
 	require.NotNil(t, fp.Temporal)
 	require.Equal(t, float64(40.0), fp.Temporal.TransactionsPerDay)
 	require.Len(t, fp.VolumeStats, 1)
-	require.Equal(t, "10000", fp.VolumeStats[0].TotalVolume)
+	require.Equal(t, "10000", string(fp.VolumeStats[0].TotalVolume))
 	require.Equal(t, []string{"category"}, fp.MetadataKeys)
 }
 
@@ -205,7 +221,22 @@ func TestHandleAnalyzeTransactions_EmptyResponse(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code)
 
-	wrapper := decodeResponse[BaseResponse[analyzeTransactionsResponseJSON]](t, w)
+	// Decode monetary leaves independently from the production protobuf codecs.
+	wrapper := decodeResponse[BaseResponse[struct {
+		TotalTransactions uint64 `json:"totalTransactions"`
+		TotalReverted     uint64 `json:"totalReverted"`
+		FlowPatterns      []struct {
+			Signature        string                   `json:"signature"`
+			Structure        string                   `json:"structure"`
+			TransactionCount uint64                   `json:"transactionCount"`
+			Postings         []*normalizedPostingJSON `json:"postings"`
+			Temporal         *temporalStatsJSON       `json:"temporal"`
+			VolumeStats      []struct {
+				TotalVolume stdjson.RawMessage `json:"totalVolume"`
+			} `json:"volumeStats"`
+			MetadataKeys []string `json:"metadataKeys"`
+		} `json:"flowPatterns"`
+	}]](t, w)
 	require.Equal(t, uint64(0), wrapper.Data.TotalTransactions)
 	require.Empty(t, wrapper.Data.FlowPatterns)
 }
@@ -293,4 +324,35 @@ func TestHandleAnalyzeTransactions_FullRouteIntegration(t *testing.T) {
 	handler.ServeHTTP(w, r)
 
 	require.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestHandleAnalyzeTransactions_MonetaryEncoding(t *testing.T) {
+	t.Parallel()
+	const amount = "9007199254740993"
+	for _, header := range []string{"", "true"} {
+		t.Run(header, func(t *testing.T) {
+			t.Parallel()
+			backend := NewMockBackend(gomock.NewController(t))
+			backend.EXPECT().AnalyzeTransactions(gomock.Any(), "my-ledger", uint32(0), gomock.Any()).Return(&servicepb.AnalyzeTransactionsResponse{
+				TotalTransactions: 1,
+				FlowPatterns: []*servicepb.FlowPattern{{TransactionCount: 1, VolumeStats: []*servicepb.AssetVolumeStats{{
+					Asset: "USD", TotalVolume: amount, AverageVolume: amount, MinVolume: amount, MaxVolume: amount, TransactionCount: 1,
+				}}}},
+			}, nil)
+			r := newRequest(t, http.MethodGet, "/my-ledger/analyze-transactions", nil, map[string]string{"ledgerName": "my-ledger"})
+			r.Header.Set(HeaderBigIntAsString, header)
+			w := httptest.NewRecorder()
+			newTestServer(t, backend).handleAnalyzeTransactions(w, r)
+			require.Equal(t, http.StatusOK, w.Code)
+			for _, field := range []string{"totalVolume", "averageVolume", "minVolume", "maxVolume"} {
+				if header == "true" {
+					require.Contains(t, w.Body.String(), `"`+field+`":"`+amount+`"`)
+				} else {
+					require.Contains(t, w.Body.String(), `"`+field+`":`+amount)
+				}
+			}
+			require.Contains(t, w.Body.String(), `"transactionCount":1`)
+			require.Equal(t, byte('\n'), w.Body.Bytes()[w.Body.Len()-1], "preserve the analysis streaming newline")
+		})
+	}
 }

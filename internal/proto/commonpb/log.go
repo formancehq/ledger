@@ -1,6 +1,7 @@
 package commonpb
 
 import (
+	"encoding/json/jsontext"
 	"errors"
 
 	"github.com/formancehq/go-libs/v5/pkg/types/time"
@@ -39,6 +40,25 @@ func (l *LedgerLog) WithID(id uint64) *LedgerLog {
 
 // MarshalJSON implements json.Marshaler for LedgerLog.
 func (l *LedgerLog) MarshalJSON() ([]byte, error) {
+	value, err := l.jsonValue()
+	if err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(value)
+}
+
+// MarshalJSONTo preserves request-scoped options through the public projection.
+func (l *LedgerLog) MarshalJSONTo(enc *jsontext.Encoder) error {
+	value, err := l.jsonValue()
+	if err != nil {
+		return err
+	}
+
+	return json.MarshalEncode(enc, value)
+}
+
+func (l *LedgerLog) jsonValue() (any, error) {
 	type auxLog struct {
 		Type LogType           `json:"type"`
 		Data *LedgerLogPayload `json:"data"`
@@ -63,5 +83,5 @@ func (l *LedgerLog) MarshalJSON() ([]byte, error) {
 		aux.ID = new(l.GetId())
 	}
 
-	return json.Marshal(aux)
+	return aux, nil
 }

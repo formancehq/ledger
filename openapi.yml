@@ -372,6 +372,7 @@ paths:
         - {}
       parameters:
         - $ref: '#/components/parameters/Consistency'
+        - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/PageSize'
         - $ref: '#/components/parameters/PageCursor'
@@ -656,6 +657,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -729,6 +731,7 @@ paths:
         - {}
       parameters:
         - $ref: '#/components/parameters/Consistency'
+        - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/PageSize'
         - $ref: '#/components/parameters/PageCursor'
@@ -812,6 +815,7 @@ paths:
         - {}
       parameters:
         - $ref: '#/components/parameters/Consistency'
+        - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/TransactionId'
       responses:
@@ -852,6 +856,7 @@ paths:
         - {}
       parameters:
         - $ref: '#/components/parameters/Consistency'
+        - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/PageSize'
         - $ref: '#/components/parameters/PageCursor'
@@ -917,6 +922,7 @@ paths:
         - {}
       parameters:
         - $ref: '#/components/parameters/Consistency'
+        - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/AccountAddress'
         - name: collapseColors
@@ -967,6 +973,7 @@ paths:
         - {}
       parameters:
         - $ref: '#/components/parameters/Consistency'
+        - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/ListFilter'
         - name: useMaxPrecision
@@ -1292,6 +1299,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/TransactionId'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -1512,6 +1520,7 @@ paths:
         - {}
       parameters:
         - $ref: '#/components/parameters/Consistency'
+        - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - name: variableThreshold
           in: query
@@ -1955,6 +1964,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/IdempotencyKey'
         - name: continueOnFailure
@@ -2235,6 +2245,7 @@ paths:
         - {}
       parameters:
         - $ref: '#/components/parameters/Consistency'
+        - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/QueryName'
         - name: pageSize
@@ -2490,6 +2501,7 @@ paths:
         - {}
       parameters:
         - $ref: '#/components/parameters/Consistency'
+        - $ref: '#/components/parameters/BigIntAsString'
         - name: sequence
           in: path
           required: true
@@ -3108,6 +3120,21 @@ components:
         the `PageToken` schema). Omit for the first page. Pass the same
         `reverse` and `filter` on every page of a walk.
 
+    BigIntAsString:
+      name: Formance-Bigint-As-String
+      in: header
+      required: false
+      description: |
+        Render monetary amounts (postings, volume input/output and balances) as
+        canonical decimal strings. Case-insensitive true, yes, y and 1 enable
+        this option, matching Ledger v2. Whitespace is not trimmed. Omission and
+        every other value retain JSON number tokens. This affects only this
+        response, including nested transaction/log/cursor and bulk results.
+      schema:
+        type: string
+      example: 'true'
+
+
     LedgerName:
       name: ledgerName
       in: path
@@ -3441,6 +3468,42 @@ components:
         `previous`, and the last page requested with `{"back": true}` has no
         `next`. A malformed token, or a key that is not a valid position for
         the endpoint, is rejected with 400 `INVALID_REQUEST`.
+
+    UnsignedMonetaryAmount:
+      description: |
+        Exact unsigned integer encoded as a JSON number by default, or a
+        canonical decimal string when Formance-Bigint-As-String is enabled.
+        JavaScript consumers should enable the header to avoid number rounding.
+      oneOf:
+        - type: integer
+          format: bigint
+          minimum: 0
+        - type: string
+          pattern: '^(0|[1-9][0-9]*)$'
+
+    SignedMonetaryAmount:
+      description: |
+        Exact signed integer encoded as a JSON number by default, or a
+        canonical decimal string when Formance-Bigint-As-String is enabled.
+      oneOf:
+        - type: integer
+          format: bigint
+        - type: string
+          pattern: '^(0|-?[1-9][0-9]*)$'
+
+    PostingAmount:
+      description: |
+        Unsigned amount from 0 through 2^256-1. Requests accept JSON integer
+        tokens or canonical decimal strings independently of the response
+        header; the server enforces the bound for both forms. Responses use
+        numbers by default and strings with Formance-Bigint-As-String enabled.
+      oneOf:
+        - type: integer
+          format: bigint
+          minimum: 0
+        - type: string
+          pattern: '^(0|[1-9][0-9]*)$'
+
 
     SystemLog:
       type: object
@@ -3858,9 +3921,7 @@ components:
           type: string
           description: Destination account address
         amount:
-          type: integer
-          format: bigint
-          description: Amount as a big integer
+          $ref: '#/components/schemas/PostingAmount'
         asset:
           type: string
           description: Asset identifier
@@ -4314,17 +4375,11 @@ components:
         - balance
       properties:
         input:
-          type: string
-          pattern: '^(0|[1-9][0-9]*)$'
-          description: Total amount received as a canonical unsigned decimal string
+          $ref: '#/components/schemas/UnsignedMonetaryAmount'
         output:
-          type: string
-          pattern: '^(0|[1-9][0-9]*)$'
-          description: Total amount sent as a canonical unsigned decimal string
+          $ref: '#/components/schemas/UnsignedMonetaryAmount'
         balance:
-          type: string
-          pattern: '^(0|-?[1-9][0-9]*)$'
-          description: Current balance (input - output) as a canonical signed decimal string
+          $ref: '#/components/schemas/SignedMonetaryAmount'
 
     AggregateVolumesResponse:
       type: object
@@ -4356,7 +4411,7 @@ components:
         Per-asset aggregated volume as emitted by `GET /v3/{ledgerName}/volumes`.
         Prepared-query `AGGREGATE_VOLUMES` responses (under the `aggregateResult`
         envelope of `ExecutePreparedQueryResponse`) use this exact shape:
-        decimal-string amounts, a computed `balance`, and `color` always present.
+        header-negotiated monetary amounts, a computed `balance`, and `color` always present.
       required:
         - asset
         - color
@@ -4378,17 +4433,11 @@ components:
             (asset, precision) is summed and the resulting entry carries
             color = "".
         input:
-          type: string
-          pattern: '^(0|[1-9][0-9]*)$'
-          description: Total amount received as a canonical non-negative decimal integer string
+          $ref: '#/components/schemas/UnsignedMonetaryAmount'
         output:
-          type: string
-          pattern: '^(0|[1-9][0-9]*)$'
-          description: Total amount sent as a canonical non-negative decimal integer string
+          $ref: '#/components/schemas/UnsignedMonetaryAmount'
         balance:
-          type: string
-          pattern: '^(0|-?[1-9][0-9]*)$'
-          description: Net balance (input - output) as a canonical signed decimal integer string
+          $ref: '#/components/schemas/SignedMonetaryAmount'
 
     GroupedAggregateResult:
       type: object
@@ -4505,9 +4554,7 @@ components:
         destination:
           type: string
         amount:
-          type: integer
-          format: bigint
-          description: Amount as a big integer
+          $ref: '#/components/schemas/PostingAmount'
         asset:
           type: string
         color:
@@ -4906,13 +4953,9 @@ components:
           maxLength: 32
           description: Empty string for the uncolored bucket; always emitted.
         input:
-          type: string
-          pattern: '^(0|[1-9][0-9]*)$'
-          description: Canonical unsigned decimal string.
+          $ref: '#/components/schemas/UnsignedMonetaryAmount'
         output:
-          type: string
-          pattern: '^(0|[1-9][0-9]*)$'
-          description: Canonical unsigned decimal string.
+          $ref: '#/components/schemas/UnsignedMonetaryAmount'
 
     Volumes:
       type: object
@@ -4921,13 +4964,9 @@ components:
         - output
       properties:
         input:
-          type: string
-          pattern: '^(0|[1-9][0-9]*)$'
-          description: Total amount received as a canonical unsigned decimal string
+          $ref: '#/components/schemas/UnsignedMonetaryAmount'
         output:
-          type: string
-          pattern: '^(0|[1-9][0-9]*)$'
-          description: Total amount sent as a canonical unsigned decimal string
+          $ref: '#/components/schemas/UnsignedMonetaryAmount'
 
     MirrorSourceConfig:
       type: object
@@ -5532,13 +5571,13 @@ components:
         asset:
           type: string
         totalVolume:
-          type: string
+          $ref: '#/components/schemas/UnsignedMonetaryAmount'
         averageVolume:
-          type: string
+          $ref: '#/components/schemas/UnsignedMonetaryAmount'
         minVolume:
-          type: string
+          $ref: '#/components/schemas/UnsignedMonetaryAmount'
         maxVolume:
-          type: string
+          $ref: '#/components/schemas/UnsignedMonetaryAmount'
         transactionCount:
           type: integer
           format: int64
@@ -5811,7 +5850,7 @@ components:
         prepared-query target: `query.Execute` hydrates `logData` for it.) Both
         payloads use the same camelCase encoding as the equivalent non-prepared
         endpoints
-        (decimal-string amounts, `color` always present on every volume row
+        (header-negotiated monetary amounts, `color` always present on every volume row
         including the uncolored bucket).
       properties:
         cursor:

@@ -47,5 +47,5 @@ func (s *Server) handleListAccounts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	finishProfile(w, r, profile)
-	writePageOK(w, r, accounts, links)
+	writeMonetaryPageOK(w, r, accounts, links)
 }

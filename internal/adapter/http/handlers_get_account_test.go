@@ -123,7 +123,7 @@ func TestHandleGetAccount_VolumesInJSON(t *testing.T) {
 	require.Contains(t, body, `"asset":"USD/2"`)
 	require.Contains(t, body, `"color":""`, "the uncolored bucket must surface as color:\"\" not be omitted")
 	require.Contains(t, body, `"color":"GRANTS"`)
-	require.Contains(t, body, `"balance":"70"`)
+	require.Contains(t, body, `"balance":70`)
 }
 
 func TestHandleGetAccount_MissingAddress(t *testing.T) {

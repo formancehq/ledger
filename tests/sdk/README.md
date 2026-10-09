@@ -1,4 +1,6 @@
-# Bulk SDK contract probes
+# Generated TypeScript SDK contract tests
+
+## Bulk SDK contract probes
 
 Bulk SDK contracts require evidence through the actual generated TypeScript bulk operation,
 in addition to OpenAPI validation. These probes accept a compiled consumer SDK;
@@ -38,3 +40,34 @@ failed non-atomic batches. It covers mixed successful/failed/aborted outcomes,
 atomic failures, malformed requests, authentication, both size limits and panic
 recovery. Local generation/testing proves the source contract; publishing a
 regenerated consumer SDK is a separate delivery step.
+
+## Monetary amount SDK contract tests
+
+Run `nix develop --command just test-sdk-bigint` with Speakeasy authentication
+(`SPEAKEASY_API_KEY` or an existing CLI login).
+The explicit target pins Speakeasy CLI 1.762.0 (generator 2.882.0), matching the
+generator metadata in the committed standalone Ledger SDK at
+`platform-ui/packages/sdks/ledger`. It regenerates from this checkout's
+`openapi.yml`, installs locked TypeScript/Zod dependencies, and compiles both the
+SDK and the typed operation tests covering all 12 monetary-returning operations. Generated files live under `build/sdk-bigint`.
+No platform-ui checkout or changes are required.
+
+The tagged Go fixture in
+`internal/adapter/http/handlers_sdk_bigint_test.go` serves the actual Ledger HTTP
+router with a generated mock controller. The SDK calls transaction creation, retrieval, listing and reversal; account
+retrieval/listing; bulk operations with a successful result beside a business failure;
+ledger log listing and single system log retrieval; and prepared-query cursors
+for transactions, accounts and logs, plus dedicated and prepared-query volume
+aggregation and transaction analysis. Analysis statistics cover both numeric
+defaults and exact strings, while transaction counts remain numeric. Paginated transaction/account/log operations preserve next and
+previous cursor tokens and `hasMore` while returning exact monetary strings.
+Assertions cover numeric defaults, exact decimal string posting inputs and
+responses, typed header parameters, post-commit volumes, and unsigned/signed
+account volumes. String posting inputs also work without response negotiation.
+This covers the transport and generated client contract; it does not execute the
+storage or FSM. Backend expectations verify the decoded posting amount.
+
+SDK generation requires an external Speakeasy credential, so this target is
+separate from default CI validation. TypeScript/Zod dependencies are locked in
+`package-lock.json`; Speakeasy reports the embedded generator version in the
+artifacts it writes under `build/sdk-bigint/.speakeasy`.
