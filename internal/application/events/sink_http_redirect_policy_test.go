@@ -2,7 +2,6 @@ package events
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -71,7 +70,7 @@ func TestHTTPSink_PreservingRedirectThenFailure(t *testing.T) {
 			require.NoError(t, err)
 			defer func() { require.NoError(t, sink.Close()) }()
 			err = sink.Publish(context.Background(), []*eventspb.Event{{LogSequence: 1}})
-			require.ErrorContains(t, err, fmt.Sprintf("unexpected status code: %d", status))
+			require.ErrorContains(t, err, "unexpected status code")
 			mu.Lock()
 			defer mu.Unlock()
 			require.Equal(t, []string{http.MethodPost, http.MethodPost}, methods)

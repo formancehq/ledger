@@ -12,6 +12,7 @@ import (
 	reflect "reflect"
 
 	domain "github.com/formancehq/ledger/v3/internal/domain"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	servicepb "github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -53,6 +54,21 @@ func (m *MockAdmission) Admit(ctx context.Context, req *servicepb.ApplyRequest) 
 func (mr *MockAdmissionMockRecorder) Admit(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Admit", reflect.TypeOf((*MockAdmission)(nil).Admit), ctx, req)
+}
+
+// AdmitClusterPolicy mocks base method.
+func (m *MockAdmission) AdmitClusterPolicy(ctx context.Context, policy *commonpb.ClusterPolicy) (*domain.ApplyResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AdmitClusterPolicy", ctx, policy)
+	ret0, _ := ret[0].(*domain.ApplyResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AdmitClusterPolicy indicates an expected call of AdmitClusterPolicy.
+func (mr *MockAdmissionMockRecorder) AdmitClusterPolicy(ctx, policy any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AdmitClusterPolicy", reflect.TypeOf((*MockAdmission)(nil).AdmitClusterPolicy), ctx, policy)
 }
 
 // Barrier mocks base method.

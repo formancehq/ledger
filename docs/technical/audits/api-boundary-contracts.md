@@ -238,3 +238,21 @@ exhaustiveness probes establish conversion and authorization; HTTP sink E2E
 tests establish committed lifecycle outcomes. Retained-key replay belongs to
 `idempotency-retries-partial-failures`; verify header transmission here without
 inventing a new retry identity or an external-delivery guarantee.
+
+## LedgerInfo wire and SDK oracle (EN-2780)
+
+Require camelCase keys, short explicit enum defaults, typed metadata/schema, REST
+segment discriminators and unconstrained null, RFC3339 timestamps, and populated
+mirror state/counters at zero. Counter wire values are decimal strings with
+OpenAPI string/bigint; a generated TypeScript number for integer/bigint can round
+large counters despite successful decoding. Exercise actual generated list/get
+operations with >2^53 and uint64 maximum, alongside schema validation and the
+codec/routed HTTP fixtures. Read mirror schemas are nested, while flat create
+fixtures must still be accepted. Rewrite-rule read models must expose CEL
+`valueExpr` on transaction and account metadata actions across all supported
+scopes, accept protojson's omitted empty replacements (both rewrite-address and
+account-metadata replacement entries), and preserve explicit empty literal
+oneofs. Get/list fixtures in `internal/adapter/http/testdata/ledger_info_rewrite_*`
+are shared routed-response and generated SDK operation inputs. Marshal failure must return sanitized 500 before
+headers. The confidentiality oracle belongs to sensitive-data-exposure-boundaries.
+See [LedgerInfo](../architecture/subsystems/api/ledger-info.md).

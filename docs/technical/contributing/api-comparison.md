@@ -22,6 +22,22 @@ matching signed negative and unsigned nonnegative metadata values. See
 
 ## Summary
 
+### LedgerInfo reads (EN-2780 / EN-1635)
+
+Get/list use camelCase LedgerInfo properties and typed metadata; mode, enforcement
+and account persistence use explicit short enum defaults. Mirror progress includes
+zero values and decimal-string counters (`string/bigint` in OpenAPI), preserving
+uint64 precision in TypeScript SDKs. v2 stats/log IDs use numeric JSON with
+`integer/int64` or `integer/bigint`; v2 has no equivalent mirror progress. The
+v3-specific counter representation intentionally differs for lossless decoding.
+Nested read mirror configuration masks passwordless HTTP(S) URL userinfo as
+well as passwords and uses a distinct schema
+from unchanged flat creation input. Read rewrite actions model protojson
+`valueExpr` and optional empty replacements; creation schemas retain
+`value_expr` and their existing required fields. v2 has no mirror rewrite-rule
+configuration counterpart. gRPC revision 27 covers detached current and
+checkpoint projections. See [the contract](../architecture/subsystems/api/ledger-info.md).
+
 ### Prepared-query filter shape validation
 
 Creating or updating a prepared query rejects a filter leaf whose shape can

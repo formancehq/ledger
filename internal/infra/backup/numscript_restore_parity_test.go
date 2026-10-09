@@ -34,9 +34,8 @@ import (
 
 // applyingProposer replaces only Raft transport: the bytes admission's
 // Builder.Run produced are applied by the real FSM, so the scripted orders
-// under test carry the execution plan, coverage bits and compiled artifact
-// production admission binds, and the logs and audit entries exported below are
-// the ones live apply emits.
+// under test carry the execution plan and coverage bits production admission
+// binds. The logs and audit entries exported below are the ones live apply emits.
 type applyingProposer struct {
 	t       *testing.T
 	machine *state.Machine
@@ -123,6 +122,14 @@ func (n *scriptedNode) apply(reqs ...*servicepb.Request) {
 
 	ctx := internalauth.WithSystemActor(logging.TestingContext(), commands.ComponentClusterPolicy)
 	_, err := n.admission.Admit(ctx, servicepb.UnsignedApplyRequest("", reqs...))
+	require.NoError(n.t, err)
+}
+
+func (n *scriptedNode) applyClusterPolicy(policy *commonpb.ClusterPolicy) {
+	n.t.Helper()
+
+	ctx := internalauth.WithSystemActor(logging.TestingContext(), commands.ComponentClusterPolicy)
+	_, err := n.admission.AdmitClusterPolicy(ctx, policy)
 	require.NoError(n.t, err)
 }
 
@@ -294,14 +301,15 @@ func TestBackup_NumscriptRestoreParity(t *testing.T) {
 
 	// The policy goes through an audited order, as on a real cluster, so the
 	// checker can account for the stored row.
-	src.apply(&servicepb.Request{Type: &servicepb.Request_SetClusterPolicy{
-		SetClusterPolicy: &servicepb.SetClusterPolicyRequest{Policy: &commonpb.ClusterPolicy{
-			Revision: 1, QueryCheckpointLimit: 10,
-			MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
-			MetadataMaxKeyBytes:         domain.DefaultMetadataMaxKeyBytes, MetadataMaxValueBytes: domain.DefaultMetadataMaxValueBytes,
-			MetadataMaxEntityBytes: domain.DefaultMetadataMaxEntityBytes, MetadataMaxCommandBytes: domain.DefaultMetadataMaxCommandBytes,
-		}},
-	}})
+	src.applyClusterPolicy(&commonpb.ClusterPolicy{
+		Revision:                    1,
+		QueryCheckpointLimit:        10,
+		MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
+		MetadataMaxKeyBytes:         domain.DefaultMetadataMaxKeyBytes,
+		MetadataMaxValueBytes:       domain.DefaultMetadataMaxValueBytes,
+		MetadataMaxEntityBytes:      domain.DefaultMetadataMaxEntityBytes,
+		MetadataMaxCommandBytes:     domain.DefaultMetadataMaxCommandBytes,
+	})
 
 	// Before the checkpoint: the ledger, the library's first version, and one
 	// inline and one library scripted transaction, so the checkpoint seeds

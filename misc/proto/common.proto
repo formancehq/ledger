@@ -374,7 +374,7 @@ message Log {
   LogPayload payload = 2;
   // Batch identity (idempotency key + signature) lives on AppliedProposal
   // (proposal.proto), not on the log.
-  signature.SignedLog response_signature = 3;
+  signature.SignedLog response_signature = 3; // public verification envelope, not a secret
 }
 
 message LogPayload {
@@ -650,7 +650,7 @@ message SinkStatus {
   SinkError error = 3;       // Most recent error (nil = healthy)
 }
 
-// SinkError records a sink failure.
+// SinkError records a sink failure. Drivers must remove credentials before returning errors.
 message SinkError {
   string message = 1;
   Timestamp occurred_at = 2;
@@ -658,13 +658,13 @@ message SinkError {
 
 // NatsSinkConfig holds NATS JetStream sink configuration.
 message NatsSinkConfig {
-  string url = 1;
+  string url = 1 [(sensitive_url) = true];  // may embed a token in the userinfo position
   string topic = 2;
 }
 
 // ClickHouseSinkConfig holds ClickHouse sink configuration.
 message ClickHouseSinkConfig {
-  string dsn = 1;    // e.g. "clickhouse://user:pass@host:9000/db"
+  string dsn = 1 [(sensitive_url) = true];    // e.g. "clickhouse://user:pass@host:9000/db"
   string table = 2;  // Table name (default: "ledger_events")
 }
 
@@ -675,13 +675,13 @@ message KafkaSinkConfig {
   bool tls = 3;                 // Enable TLS
   string sasl_mechanism = 4;    // SASL mechanism: "", "PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512"
   string sasl_username = 5;
-  string sasl_password = 6;
+  string sasl_password = 6 [(sensitive) = true];
 }
 
 // HttpSinkConfig holds HTTP webhook sink configuration.
 message HttpSinkConfig {
-  string endpoint = 1;          // Target URL (e.g. "https://example.com/webhooks/ledger")
-  string secret = 2;            // Optional HMAC-SHA256 secret for X-Webhook-Signature header
+  string endpoint = 1 [(sensitive_url) = true];  // Target URL (e.g. "https://example.com/webhooks/ledger")
+  string secret = 2 [(sensitive) = true];            // Optional HMAC-SHA256 secret for X-Webhook-Signature header
 }
 
 // DatabricksSinkConfig holds Databricks SQL Warehouse sink configuration.
@@ -694,7 +694,7 @@ message DatabricksSinkConfig {
   string table = 5;            // Table name (default: "ledger_events")
   int32 port = 6;              // Port number (default: 443)
   oneof auth {
-    string token = 7;                  // Personal Access Token (PAT)
+    string token = 7 [(sensitive) = true];                  // Personal Access Token (PAT)
     DatabricksOAuthM2M oauth_m2m = 8;  // OAuth M2M / service principal
   }
 }
@@ -702,7 +702,7 @@ message DatabricksSinkConfig {
 // DatabricksOAuthM2M holds OAuth M2M (client credentials) for a Databricks service principal.
 message DatabricksOAuthM2M {
   string client_id = 1;
-  string client_secret = 2;
+  string client_secret = 2 [(sensitive) = true];
 }
 
 // CreatedLedgerLog captures the creation-time parameters of a ledger.
@@ -1073,19 +1073,19 @@ message SetAccountMetadataFromAddressReplacement {
 message DropAction {}
 
 message HttpMirrorSourceConfig {
-  string base_url = 1;
+  string base_url = 1 [(sensitive_url) = true];
   OAuth2ClientCredentials oauth2_client_credentials = 2;
 }
 
 message OAuth2ClientCredentials {
   string client_id = 1;
-  string client_secret = 2;
-  string token_endpoint = 3;
+  string client_secret = 2 [(sensitive) = true];
+  string token_endpoint = 3 [(sensitive_url) = true];
   repeated string scopes = 4;
 }
 
 message PostgresMirrorSourceConfig {
-  string dsn = 1;  // e.g. "postgres://user:pass@host:5432/ledger?sslmode=disable"
+  string dsn = 1 [(sensitive_url) = true];  // e.g. "postgres://user:pass@host:5432/ledger?sslmode=disable"
   // When set, the DSN password is overridden by a freshly minted AWS RDS IAM
   // authentication token on every new pool connection. Ambient AWS credentials
   // (IRSA, instance profile, env vars, profile) are loaded via the default
@@ -1106,7 +1106,7 @@ message PostgresAwsIamAuth {
 }
 
 message MirrorSyncError {
-  string message = 1;
+  string message = 1 [(sensitive) = true];
   Timestamp occurred_at = 2;
 }
 
@@ -1450,7 +1450,7 @@ message UpdatedDefaultEnforcementModeLog {
 // "valid nowhere" intent needs its own boolean marker rather than being inferred
 // from absence.
 //
-// Extension numbers 50123-50125 are in the private, non-reserved range for
+// Extension numbers 50123-50126 are in the private, non-reserved range for
 // FieldOptions extensions (50000-99999, per descriptor.proto guidance).
 extend google.protobuf.FieldOptions {
   repeated QueryTarget allowed_query_targets = 50123;
@@ -1463,6 +1463,11 @@ extend google.protobuf.FieldOptions {
   // rejects a missing annotation, so proto's false default cannot classify by
   // accident.
   bool ledger_log_is_history = 50125;
+  // Sensitive projections reuse the detached public-view contract from EN-1632.
+  // Strings are masked; other field kinds are cleared. Never use for persistence.
+  bool sensitive = 50126;
+  // Mask credentials in URL or PostgreSQL keyword/value connection strings.
+  bool sensitive_url = 50127;
 }
 
 message QueryFilter {

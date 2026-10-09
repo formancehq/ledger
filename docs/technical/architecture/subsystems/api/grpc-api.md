@@ -118,6 +118,12 @@ older-than-one-minute samples.
 
 ## Read Operations
 
+### Ledger configuration confidentiality
+
+GetLedger and ListLedgers return detached credential-safe views, including
+checkpoint reads. Mirror workers and stored configuration retain original
+credentials. See [LedgerInfo read contract](ledger-info.md).
+
 ### ListLedgers
 
 Streams all ledgers in the cluster.

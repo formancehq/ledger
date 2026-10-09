@@ -57,6 +57,12 @@ the SDK encode the path segment. Passing a pre-encoded key to an SDK produces
 double encoding and is rejected. Direct HTTP clients encode the raw key as one
 path segment themselves.
 
+### Ledger information
+
+See [LedgerInfo read contract](ledger-info.md) for camelCase properties, explicit
+defaults, decimal-string mirror counters, separate creation/read configuration
+schemas and credential-safe responses.
+
 ### Authentication
 
 Saving or deleting ledger, account or transaction metadata, and setting or
@@ -1115,8 +1121,10 @@ Content-Type: application/json
 The acknowledgement contains the committed sink name and does not echo
 credentials. This means the configuration was committed, not that the external
 sink has connected or delivered events. Use GET to inspect delivery status.
-The GET envelope and protobuf JSON representation remain unchanged; consumers
-must treat returned configurations as sensitive.
+The GET envelope and protobuf JSON representation follow the current read
+contract: annotated sensitive fields and credentials in annotated URL/DSN
+fields are redacted on a copy before serialization. The stored configuration
+remains unchanged.
 
 The [OpenAPI contract](../../../../../openapi.yml) describes all fields. These
 examples are directly usable as POST bodies for the other supported types:

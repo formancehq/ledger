@@ -4,7 +4,7 @@ Numscript is a domain-specific language (DSL) for expressing financial transacti
 
 ## Overview
 
-This ledger implementation uses the official Numscript library from `github.com/formancehq/numscript`: its parser and dependency resolver analyze scripts at admission, its compiler produces the VM bytecode admission binds to the order, and its register VM executes that bytecode in the FSM — the only execution engine (see [the scripting subsystem](../architecture/subsystems/scripting/numscript-library.md)). All experimental features are **available** (the server imposes no restrictions), but each script must **explicitly opt in** using the `#![feature("...")]` pragma.
+This ledger implementation uses the official Numscript library from `github.com/formancehq/numscript`: its parser and dependency resolver analyze scripts at admission, admission compiles scripts to validate and predict effects, and each FSM replica compiles the committed script text and executes it with the register VM — the only execution engine (see [the scripting subsystem](../architecture/subsystems/scripting/numscript-library.md)). All experimental features are **available** (the server imposes no restrictions), but each script must **explicitly opt in** using the `#![feature("...")]` pragma.
 
 ### Key Capabilities
 

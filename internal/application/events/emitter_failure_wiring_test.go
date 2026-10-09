@@ -3,6 +3,8 @@ package events
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
 // resolvedFuture returns a Future already resolved with a zero-value
@@ -157,4 +160,33 @@ func TestEmitter_PublishBatch_RecoverClearsFailureState(t *testing.T) {
 	require.Error(t, emitter.publishBatch(context.Background(), batch))   // fail
 	require.NoError(t, emitter.publishBatch(context.Background(), batch)) // recover (resets state)
 	require.Error(t, emitter.publishBatch(context.Background(), batch))   // same msg, must report fresh
+}
+
+// This covers the actual HTTP failure through the Raft submission boundary,
+// where the adapter's diagnostic is persisted verbatim as the public status.
+func TestEmitterHTTPFailurePersistsUsefulSanitizedDiagnostic(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic(http.ErrAbortHandler) }))
+	defer server.Close()
+	sink, err := NewHTTPSink(HTTPSinkConfig{Endpoint: "http://alice:EXAMPLE_PASSWORD@" + server.URL[len("http://"):] + "/events?api_key=EXAMPLE_API_KEY", Format: FormatProto})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, sink.Close()) }()
+	proposer := NewMockProposer(gomock.NewController(t))
+	proposer.EXPECT().Propose(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, p *node.Proposal) (*futures.Future[state.ApplyResult], error) {
+		var proposal raftcmdpb.Proposal
+		require.NoError(t, proposal.UnmarshalVT(p.Data()))
+		require.Len(t, proposal.GetTechnicalUpdates(), 1)
+		message := proposal.GetTechnicalUpdates()[0].GetEventsSink().GetError().GetMessage()
+		require.Contains(t, message, "posting event seq=1")
+		require.Contains(t, message, server.URL[len("http://"):])
+		require.Contains(t, message, "EOF")
+		require.NotContains(t, message, "EXAMPLE_PASSWORD")
+		require.NotContains(t, message, "EXAMPLE_API_KEY")
+		p.Resolve(nil, nil)
+
+		return resolvedFuture(), nil
+	}).Times(1)
+	builder, store := newTestBuilder(t)
+	emitter := NewEmitter(store, sink, "test", proposer, builder, logging.Testing(), DefaultEmitterConfig())
+	require.Error(t, emitter.publishBatch(context.Background(), []*eventspb.Event{{LogSequence: 1}}))
 }

@@ -168,3 +168,14 @@ Only a separately authorized task after merge may run
 `bash scripts/ai-audit read-consistency-projections`, followed by an independent
 challenge at the same clean SHA. Preparing this manifest does not launch the
 audit, create findings, or publish Jira issues.
+
+## Listed mirror-progress snapshot oracle (EN-2780)
+
+Get and list return mirror progress at the same main-store snapshot as their
+LedgerInfo and metadata, including frozen checkpoint reads. Listing adds three
+point reads per mirror and no such reads for normal rows. Mutate source head or
+status after opening a multi-row listing and compare later rows against the
+opening snapshot, not fresh live state. Require cursor error propagation and
+owned-handle cleanup. The presentation/uint64 encoding oracle belongs to
+api-boundary-contracts; credential projection belongs to sensitive-data-exposure-boundaries.
+See [LedgerInfo](../architecture/subsystems/api/ledger-info.md).

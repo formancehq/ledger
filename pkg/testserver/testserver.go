@@ -127,6 +127,22 @@ func WithBootstrap() testservice.InstrumentationFunc {
 	}
 }
 
+func WithClusterPolicyRevision(revision uint64) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--cluster-policy-revision", strconv.FormatUint(revision, 10))
+
+		return nil
+	}
+}
+
+func WithQueryCheckpointLimit(limit uint64) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--query-checkpoint-limit", strconv.FormatUint(limit, 10))
+
+		return nil
+	}
+}
+
 func WithAutoPromoteThreshold(threshold uint64) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--learner-promotion-threshold", strconv.FormatUint(threshold, 10))

@@ -32,6 +32,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
+	"github.com/formancehq/ledger/v3/internal/pkg/sensitive"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -544,7 +545,7 @@ func (impl *BucketServiceServerImpl) ListLedgers(req *servicepb.ListLedgersReque
 		return fmt.Errorf("paginating ledgers: %w", err)
 	}
 
-	return sendPagedToStream(ctx, c, stream, "ledger", pageSize, page, ledgerCursorOf)
+	return sendPagedToStream(ctx, c, ledgerInfoReadStream{stream}, "ledger", pageSize, page, ledgerCursorOf)
 }
 
 // ledgerCursorOf returns a ledger's cursor key: its name.
@@ -568,7 +569,12 @@ func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *service
 	}
 	defer cleanup()
 
-	return c.GetLedgerByName(ctx, req.GetLedger())
+	ledger, err := c.GetLedgerByName(ctx, req.GetLedger())
+	if err != nil {
+		return nil, err
+	}
+
+	return sensitive.Redact(ledger), nil
 }
 
 func (impl *BucketServiceServerImpl) GetAccount(ctx context.Context, req *servicepb.GetAccountRequest) (*commonpb.Account, error) {
@@ -873,6 +879,9 @@ func (impl *BucketServiceServerImpl) GetEventsSinks(ctx context.Context, _ *serv
 	sinks, statuses, err := impl.ctrl.GetEventsSinks(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("loading events sinks: %w", err)
+	}
+	for i, s := range sinks {
+		sinks[i] = sensitive.Redact(s)
 	}
 
 	return &servicepb.GetEventsSinksResponse{
