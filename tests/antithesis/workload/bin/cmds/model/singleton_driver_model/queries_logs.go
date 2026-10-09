@@ -673,6 +673,14 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 		return
 	}
 
+	if rolled && err != nil {
+		// The handler decodes the cursor before the filter compiles, so an
+		// index gate cannot answer ahead of the cursor's refusal.
+		handleMalformedCursorError(rolled, "log", cursor, err)
+
+		return
+	}
+
 	if rolled {
 		assert.Unreachable("singleton_driver_model: malformed log cursor returned results", internal.Details{
 			"cursor": cursor,

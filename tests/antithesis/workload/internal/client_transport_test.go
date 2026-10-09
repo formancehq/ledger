@@ -208,13 +208,32 @@ func testLostCommittedResponse(t *testing.T, mode string) {
 	require.NotSame(t, oldConn, pool.GetConnection(1))
 	// awaitInterruption fails the test, rather than hanging the suite, when the
 	// caller finishes or the deadline expires before the boundary reports.
+	// The boundary records an interruption before the caller sees it, so one
+	// already queued wins over a completion or deadline observed alongside it.
 	awaitInterruption := func(what string) error {
+		queued := func() (error, bool) {
+			select {
+			case err := <-forwarder.interrupted:
+				return err, true
+			default:
+				return nil, false
+			}
+		}
+
 		select {
 		case err := <-forwarder.interrupted:
 			return err
 		case outcome := <-finished:
+			if err, ok := queued(); ok {
+				finished <- outcome
+
+				return err
+			}
 			t.Fatalf("call finished before the %s reached the boundary: %v", what, outcome.err)
 		case <-ctx.Done():
+			if err, ok := queued(); ok {
+				return err
+			}
 			t.Fatalf("no %s reached the boundary: %v", what, ctx.Err())
 		}
 
