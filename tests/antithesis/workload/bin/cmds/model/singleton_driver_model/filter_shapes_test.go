@@ -4,10 +4,15 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
@@ -112,4 +117,54 @@ func TestHasAssetComposesOverCurrentAccounts(t *testing.T) {
 	require.True(t, matchAccountFilterIn(ls, filterAnd(), "acc:1", true))
 	require.Equal(t, []string{"acc:1"}, accountWindow(ls, filterAnd(filterHasAsset("USD", 2), filterAddrPrefix("acc:")), "", 10, false))
 	require.Equal(t, []string{"world"}, accountWindow(ls, filterAnd(filterHasAsset("USD", 2), filterNot(filterAddrPrefix("acc:"))), "", 10, false))
+}
+
+// A leaf compiled before the refused one may answer not-ready while its key's
+// retype window is open, even though its index is active — but only when the
+// refusal names that index.
+func TestRefusedFilterAcceptsAWindowedEarlierLeaf(t *testing.T) {
+	t.Parallel()
+
+	accounts := commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS
+	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k0")
+	canon := indexes.Canonical(id)
+
+	gs := oracle.NewGlobalState()
+	for _, req := range []*servicepb.Request{
+		oracletest.SetFieldTypeReq(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k0", commonpb.MetadataType_METADATA_TYPE_STRING),
+		oracletest.CreateIndexReq(id),
+	} {
+		res := gs.Apply(oracle.Bulk{Requests: []*servicepb.Request{req}})
+		require.True(t, res.OK, res.Reason)
+		gs = res.State
+	}
+	gs.SetIndexActive("L", canon)
+
+	broken := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{Address: &commonpb.AddressMatch{}}}
+	rf := classifyRejectedFilter(filterAnd(filterMetaExists("k0"), broken), accounts)
+	require.Equal(t, []string{"k0"}, rf.priorKeys)
+
+	building := func(index string) error {
+		st, err := status.New(codes.Unavailable, "index is building").WithDetails(&errdetails.ErrorInfo{
+			Domain: "ledger", Reason: "INDEX_BUILDING", Metadata: map[string]string{"index": index},
+		})
+		require.NoError(t, err)
+
+		return st.Err()
+	}
+	own := building(`metadata["k0"] on accounts`)
+	sibling := building(`metadata["k9"] on accounts`)
+
+	require.False(t, refusedFilterNotReadyLegal(gs.Ledger("L"), rf, accounts, own), "active and no window: the refusal is illegal")
+
+	res := gs.Apply(oracle.Bulk{Requests: []*servicepb.Request{
+		oracletest.SetFieldTypeReq(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k0", commonpb.MetadataType_METADATA_TYPE_INT64),
+	}})
+	require.True(t, res.OK, res.Reason)
+	windowed := res.State.Ledger("L")
+	_, open := windowed.RetypeWindow(canon)
+	require.True(t, open)
+
+	require.True(t, refusedFilterNotReadyLegal(windowed, rf, accounts, own), "the windowed index may refuse")
+	require.False(t, refusedFilterNotReadyLegal(windowed, rf, accounts, sibling), "a refusal naming another index stays illegal")
 }

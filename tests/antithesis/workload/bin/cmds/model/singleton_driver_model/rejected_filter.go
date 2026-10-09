@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -22,6 +24,9 @@ type rejectedFilter struct {
 	// need. The compiler walks the tree in order and checks each leaf's index as
 	// it compiles it, so a not-ready rejection from one of these may come first.
 	prior map[string]struct{}
+	// priorKeys are the metadata keys those leaves read: a key under an open
+	// retype window may answer not-ready even while its index is active.
+	priorKeys []string
 }
 
 // classifyRejectedFilter decides whether f must be refused on target, and which
@@ -32,6 +37,7 @@ func classifyRejectedFilter(f *commonpb.QueryFilter, target commonpb.QueryTarget
 	}
 
 	prior := map[string]struct{}{}
+	var priorKeys []string
 	stopped := false
 	visitLeaves(f, func(leaf *commonpb.QueryFilter) {
 		if stopped {
@@ -41,6 +47,10 @@ func classifyRejectedFilter(f *commonpb.QueryFilter, target commonpb.QueryTarget
 			stopped = true
 
 			return
+		}
+
+		if key := leaf.GetField().GetField().GetMetadata(); key != "" {
+			priorKeys = append(priorKeys, key)
 		}
 
 		// A leaf checks its index before it resolves its parameters.
@@ -54,7 +64,7 @@ func classifyRejectedFilter(f *commonpb.QueryFilter, target commonpb.QueryTarget
 		stopped = len(collectParams(leaf)) > 0
 	})
 
-	return rejectedFilter{rejected: true, prior: prior}
+	return rejectedFilter{rejected: true, prior: prior, priorKeys: priorKeys}
 }
 
 // handleRejectedFilterError validates the error a refused filter drew: the
@@ -83,16 +93,8 @@ func (c *Checker) handleRejectedFilterError(maxTicket uint64, rf rejectedFilter,
 
 	if (isIndexNotReady(err) || isIndexNotFound(err)) && c.matchesModel(maxTicket, "REFUSED-FILTER", func(base oracle.GlobalState) bool {
 		ls, live := liveLedgerState(base, ledger)
-		if !live {
-			return false
-		}
-		for canon := range rf.prior {
-			if exists, active := ls.IndexState(canon); !exists || !active {
-				return true
-			}
-		}
 
-		return false
+		return live && refusedFilterNotReadyLegal(ls, rf, target, err)
 	}) {
 		return true
 	}
@@ -122,4 +124,31 @@ func assertRefusedFilterServedNothing(rf rejectedFilter, target commonpb.QueryTa
 	})
 
 	return true
+}
+
+// refusedFilterNotReadyLegal reports whether ls explains a not-ready answer to
+// a refused filter: an index a leaf compiled before the refused one needs is
+// absent or not active, or a key such a leaf reads is under an open retype
+// window and the refusal names that key's index itself — an active sibling's
+// refusal stays illegal.
+func refusedFilterNotReadyLegal(ls oracle.LedgerState, rf rejectedFilter, target commonpb.QueryTarget, err error) bool {
+	for canon := range rf.prior {
+		if exists, active := ls.IndexState(canon); !exists || !active {
+			return true
+		}
+	}
+
+	if !isIndexNotReady(err) {
+		return false
+	}
+
+	rejectedIndex := rejectedIndexLabel(err)
+	for _, key := range rf.priorKeys {
+		_, open := ls.RetypeWindow(metadataCanonical(target, key))
+		if open && rejectedIndex == fmt.Sprintf("metadata[%q] on %s", key, commonpb.TargetHumanName(target)) {
+			return true
+		}
+	}
+
+	return false
 }
