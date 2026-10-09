@@ -66,6 +66,10 @@ func TestIdempotencyFailureMessageMatchesAudit(t *testing.T) {
 			name: "nil metadata",
 			err:  domain.NewValidationSentinel("EN-1772 fixture: value must not be empty"),
 		},
+		{
+			name: "numscript execution error",
+			err:  &domain.ErrNumscriptExecution{Detail: "cannot send negative amount: -4"},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
