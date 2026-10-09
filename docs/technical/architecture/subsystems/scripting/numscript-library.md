@@ -212,13 +212,15 @@ and a compiler panic surfaces as `ErrNumscriptRuntime`.
 
 At apply, each replica compiles the resolved text and variables with its
 bundled Numscript library (`numscript.SafeExecFromText`). It caches the parsed
-script and one decoded, verified warm VM instance per script hash. A cold
-replica pays for compilation, decoding and verification; a warm replica
-reuses the program and VM. The cache's size, residency and eviction are
-node-local performance details. The VM store reads only through the order's
-`Scope` and declared coverage, never from Pebble. The library releases the
-store after every run, including errors, so a cached VM does not retain a
-proposal's Scope.
+script and one verified warm VM instance per script hash. The compiled program
+and bound variables pass directly to the VM in memory; no local bytecode or
+variables serialization is needed. A cold replica pays for compilation and
+verification; a warm replica reuses the program and VM. A warm VM is reused
+only for the exact local compilation from which it was built. The cache's size,
+residency and eviction are node-local performance details. The VM store reads
+only through the order's `Scope` and declared coverage, never from Pebble. The
+library releases the store after every run, including errors, so a cached VM
+does not retain a proposal's Scope.
 
 The hash is XXH3-128 of the script text. It is not collision-resistant
 against chosen inputs; the current cluster-wide write scope is the security

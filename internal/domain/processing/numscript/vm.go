@@ -1,7 +1,6 @@
 package numscript
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"math/big"
@@ -14,18 +13,15 @@ import (
 // CompiledScript is admission's locally compiled program and bound vars.
 // It is used to validate the request and predict effects within a batch.
 type CompiledScript struct {
-	Program    []byte
-	Vars       []byte
-	ScriptHash []byte
-
-	program numscriptlib.CompiledProgram
-	vars    numscriptlib.Vars
+	program    *compiledProgram
+	vars       numscriptlib.Vars
+	scriptHash [16]byte
 }
 
 // compileScript binds an order's vars to its script's compile on the admission
-// path. The script-dependent half — compiling and encoding the bytecode — is
-// computed once per cached script (lruEntry.compileParsed) and shared by every
-// order carrying it; only the vars encoding runs per order. A script the VM
+// path. The script-dependent compile is computed once per cached script
+// (lruEntry.compileParsed) and shared by every order carrying it; binding
+// the vars runs per order. A script the VM
 // cannot run is an admission rejection: ErrNumscriptCompile when the compiler
 // rejects the script or a var value does not bind to its layout (both
 // deterministic, freezable validation failures), a panicError (IsPanic) when
@@ -48,15 +44,10 @@ func compileScript(entry *lruEntry, vars map[string]string) (out *CompiledScript
 		return nil, &domain.ErrNumscriptCompile{Detail: encErr.Error()}
 	}
 
-	hash := entry.hash
-
 	return &CompiledScript{
-		// Keep the local result independent of the shared cache entry.
-		Program:    bytes.Clone(compiled.encoded),
-		Vars:       encodedVars.Encode(),
-		ScriptHash: hash[:],
-		program:    compiled.program,
+		program:    compiled,
 		vars:       encodedVars,
+		scriptHash: entry.hash,
 	}, nil
 }
 
@@ -77,7 +68,7 @@ func compileFromText(cache *NumscriptCache, script string, vars map[string]strin
 // instances (which must not run concurrently — see compiledLruEntry); the
 // program itself is immutable and safe to share across instances.
 func execCompiledScript(compiled *CompiledScript, store *VMStore) (numscriptlib.ExecutionResult, domain.SerializableError) {
-	return safeExecVM(numscriptlib.NewVm(compiled.program), &compiled.vars, store)
+	return safeExecVM(numscriptlib.NewVm(compiled.program.program), &compiled.vars, store)
 }
 
 // safeExecVM executes a VM instance with the panic-recovery and
@@ -138,13 +129,13 @@ func (s *VMStore) GetMetadata(_ context.Context, account, scope, key string) (st
 	return s.source.Metadata(account, key)
 }
 
-// SafeExecCompiled decodes, verifies and executes locally compiled bytecode,
-// recovering library panics into ErrNumscriptRuntime. Decode and verification
-// failures are internal errors. The cache keeps one VM instance per encoded
-// program; the FSM uses it sequentially, and the library releases its store
+// SafeExecCompiled verifies and executes a locally compiled program,
+// recovering library panics into ErrNumscriptRuntime. Verification failures
+// are internal errors. The cache keeps one VM instance per local compilation;
+// the FSM uses it sequentially, and the library releases its store
 // after each run so it cannot retain an old proposal's Scope. Cache hits
-// affect performance only. scriptHash is HashScript(text) from the caller.
-func SafeExecCompiled(cache *NumscriptCache, scriptHash, programBytes, varsBytes []byte, store *VMStore) (result numscriptlib.ExecutionResult, err domain.SerializableError) {
+// affect performance only.
+func SafeExecCompiled(cache *NumscriptCache, compiled *CompiledScript, store *VMStore) (result numscriptlib.ExecutionResult, err domain.SerializableError) {
 	defer func() {
 		if panicErr := numscriptPanicToDescribable(recover()); panicErr != nil {
 			result = numscriptlib.ExecutionResult{}
@@ -152,19 +143,12 @@ func SafeExecCompiled(cache *NumscriptCache, scriptHash, programBytes, varsBytes
 		}
 	}()
 
-	vars, decErr := numscriptlib.DecodeVars(varsBytes)
-	if decErr != nil {
-		return numscriptlib.ExecutionResult{}, &domain.ErrNumscriptRuntime{
-			Detail: "decoding compiled numscript vars: " + decErr.Error(),
-		}
-	}
-
-	entry, err := cache.getOrDecodeCompiled(scriptHash, programBytes, &vars)
+	entry, err := cache.getOrCreateVM(compiled.scriptHash, compiled.program, &compiled.vars)
 	if err != nil {
 		return numscriptlib.ExecutionResult{}, err
 	}
 
-	return safeExecVM(entry.vm, &vars, store)
+	return safeExecVM(entry.vm, &compiled.vars, store)
 }
 
 // SafeExecFromText compiles the order's script and vars with this binary's
@@ -177,7 +161,7 @@ func SafeExecFromText(cache *NumscriptCache, script string, scriptVars map[strin
 		return numscriptlib.ExecutionResult{}, compileErr
 	}
 
-	return SafeExecCompiled(cache, compiled.ScriptHash, compiled.Program, compiled.Vars, store)
+	return SafeExecCompiled(cache, compiled, store)
 }
 
 // convertVMError is convertNumscriptError's counterpart for the VM's error
