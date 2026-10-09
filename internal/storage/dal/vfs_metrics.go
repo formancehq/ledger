@@ -23,6 +23,7 @@ func (c *IOPSCounters) RegisterMetrics(m metric.Meter) (metric.Registration, err
 	readOps, err := m.Int64ObservableCounter(
 		"pebble.vfs.read.ops",
 		metric.WithDescription("Total VFS read operations"),
+		metric.WithUnit("{operation}"),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating pebble.vfs.read.ops counter: %w", err)
@@ -31,6 +32,7 @@ func (c *IOPSCounters) RegisterMetrics(m metric.Meter) (metric.Registration, err
 	writeOps, err := m.Int64ObservableCounter(
 		"pebble.vfs.write.ops",
 		metric.WithDescription("Total VFS write operations"),
+		metric.WithUnit("{operation}"),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating pebble.vfs.write.ops counter: %w", err)
@@ -39,6 +41,7 @@ func (c *IOPSCounters) RegisterMetrics(m metric.Meter) (metric.Registration, err
 	syncOps, err := m.Int64ObservableCounter(
 		"pebble.vfs.sync.ops",
 		metric.WithDescription("Total VFS sync operations"),
+		metric.WithUnit("{operation}"),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating pebble.vfs.sync.ops counter: %w", err)

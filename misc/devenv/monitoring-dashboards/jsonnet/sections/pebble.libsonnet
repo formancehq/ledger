@@ -9,7 +9,7 @@ panels.row('Pebble', 165, [
     'Flush / second',
     { h: 8, w: 8, x: 0, y: 88 },
     [
-      { expr: 'sum by (service.node_id, status, reason) (rate({__name__="pebble.flush.total", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval]))', legendFormat: 'Node {{service.node_id}} {{status}} {{reason}}' },
+      { expr: 'sum by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, status, reason) (rate({__name__="pebble.flushes", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval]))', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} {{status}} {{reason}}' },
     ],
     description=|||
       Number of Pebble flush operations per second. Flushes write data from memory (memtable) to disk (SSTable).
@@ -21,21 +21,21 @@ panels.row('Pebble', 165, [
       
       High flush rates indicate heavy write activity. Monitor flush duration for performance.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#flush-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#flush-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
   panels.timeseries(
-    'Flush duration (ms)',
+    'Flush duration',
     { h: 8, w: 8, x: 8, y: 88 },
     [
-      { expr: 'histogram_quantile(0.50, sum by (le, service.node_id) (rate({__name__="pebble.flush.duration.milliseconds_bucket", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval])))', legendFormat: 'Node {{service.node_id}} p50' },
-      { expr: 'histogram_quantile(0.95, sum by (le, service.node_id) (rate({__name__="pebble.flush.duration.milliseconds_bucket", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval])))', legendFormat: 'Node {{service.node_id}} p95' },
-      { expr: 'histogram_quantile(0.99, sum by (le, service.node_id) (rate({__name__="pebble.flush.duration.milliseconds_bucket", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval])))', legendFormat: 'Node {{service.node_id}} p99' },
-      { expr: queries.histogramAvg('pebble.flush.duration.milliseconds', by=['service.node_id']), legendFormat: 'Node {{service.node_id}} mean' },
-    ], unit='ms',
+      { expr: 'histogram_quantile(0.50, sum by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) (rate({__name__="pebble.flush.duration_bucket", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])))', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p50' },
+      { expr: 'histogram_quantile(0.95, sum by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) (rate({__name__="pebble.flush.duration_bucket", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])))', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p95' },
+      { expr: 'histogram_quantile(0.99, sum by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) (rate({__name__="pebble.flush.duration_bucket", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])))', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p99' },
+      { expr: queries.histogramAvg('pebble.flush.duration', by=['k8s.namespace.name', 'formance.ledger.cluster.name', 'formance.ledger.node.id']), legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} mean' },
+    ], unit='s',
     description=|||
-      Pebble flush duration percentiles (P50, P95, P99) in milliseconds.
+      Pebble flush duration percentiles (P50, P95, P99) in seconds.
       
       Flush duration measures how long it takes to write memtable contents to disk. High values indicate:
       - Slow disk I/O
@@ -44,7 +44,7 @@ panels.row('Pebble', 165, [
       
       P99 spikes may correlate with write stalls. Consider NVMe storage for better performance.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#flush-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#flush-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -52,7 +52,7 @@ panels.row('Pebble', 165, [
     'Flush input bytes / second',
     { h: 8, w: 8, x: 16, y: 88 },
     [
-      { expr: queries.histogramSumRate('pebble.flush.input.bytes', by=['service.node_id']), legendFormat: 'Node {{service.node_id}}' },
+      { expr: queries.histogramSumRate('pebble.flush.input.size', by=['k8s.namespace.name', 'formance.ledger.cluster.name', 'formance.ledger.node.id']), legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}' },
     ], unit='Bps',
     description=|||
       Rate of bytes flushed from memtables to SSTables per second.
@@ -64,7 +64,7 @@ panels.row('Pebble', 165, [
       
       Compare with flush duration to understand I/O efficiency.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#flush-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#flush-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -72,7 +72,7 @@ panels.row('Pebble', 165, [
     'Compactions / second',
     { h: 8, w: 8, x: 0, y: 96 },
     [
-      { expr: 'sum by (service.node_id, status, reason) (rate({__name__="pebble.compaction.total", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval]))', legendFormat: 'Node {{service.node_id}}: {{status}} {{reason}}' },
+      { expr: 'sum by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, status, reason) (rate({__name__="pebble.compactions", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval]))', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: {{status}} {{reason}}' },
     ],
     description=|||
       Number of Pebble compaction operations per second. Compactions merge and reorganize SSTables.
@@ -85,21 +85,21 @@ panels.row('Pebble', 165, [
       
       High compaction rates indicate active data reorganization. Watch compaction duration for bottlenecks.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#compaction-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#compaction-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
   panels.timeseries(
-    'Compaction duration (ms)',
+    'Compaction duration',
     { h: 8, w: 8, x: 8, y: 96 },
     [
-      { expr: 'histogram_quantile(0.50, sum by (service.node_id, le) (rate({__name__="pebble.compaction.duration.milliseconds_bucket", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval])))', legendFormat: 'Node {{service.node_id}}: p50' },
-      { expr: 'histogram_quantile(0.95, sum by (service.node_id, le) (rate({__name__="pebble.compaction.duration.milliseconds_bucket", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval])))', legendFormat: 'Node {{service.node_id}}: p95 ' },
-      { expr: 'histogram_quantile(0.99, sum by (service.node_id, le) (rate({__name__="pebble.compaction.duration.milliseconds_bucket", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval])))', legendFormat: 'Node {{service.node_id}}: p99' },
-      { expr: queries.histogramAvg('pebble.compaction.duration.milliseconds', by=['service.node_id']), legendFormat: 'Node {{service.node_id}}: mean' },
-    ], unit='ms',
+      { expr: 'histogram_quantile(0.50, sum by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le) (rate({__name__="pebble.compaction.duration_bucket", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])))', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: p50' },
+      { expr: 'histogram_quantile(0.95, sum by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le) (rate({__name__="pebble.compaction.duration_bucket", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])))', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: p95 ' },
+      { expr: 'histogram_quantile(0.99, sum by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, le) (rate({__name__="pebble.compaction.duration_bucket", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])))', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: p99' },
+      { expr: queries.histogramAvg('pebble.compaction.duration', by=['k8s.namespace.name', 'formance.ledger.cluster.name', 'formance.ledger.node.id']), legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: mean' },
+    ], unit='s',
     description=|||
-      Pebble compaction duration percentiles (P50, P95, P99) in milliseconds.
+      Pebble compaction duration percentiles (P50, P95, P99) in seconds.
       
       Compaction duration depends on:
       - Amount of data being compacted
@@ -108,7 +108,7 @@ panels.row('Pebble', 165, [
       
       Long compactions may temporarily impact read performance. Very high P99 values warrant investigation.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#compaction-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#compaction-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -116,7 +116,7 @@ panels.row('Pebble', 165, [
     'Compaction errors / second',
     { h: 8, w: 8, x: 16, y: 96 },
     [
-      { expr: 'sum by (service.node_id, reason) (rate({__name__="pebble.compaction.total", status="error", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval]))', legendFormat: 'Node {{service.node_id}}: {{reason}}' },
+      { expr: 'sum by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, reason) (rate({__name__="pebble.compactions", status="error", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval]))', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: {{reason}}' },
     ],
     description=|||
       Rate of compaction errors per second.
@@ -131,7 +131,7 @@ panels.row('Pebble', 165, [
       
       Check system logs and disk health immediately.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#compaction-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#compaction-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -139,7 +139,7 @@ panels.row('Pebble', 165, [
     'Write stall active (max)',
     { h: 8, w: 8, x: 0, y: 104 },
     [
-      { expr: 'max by (service.node_id, reason) ({__name__="pebble.write_stall.active", "service.cluster"=~"$cluster", "service.node_id"=~"$node"})', legendFormat: '{{service.node_id}} / {{reason}}' },
+      { expr: 'max by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, reason) ({__name__="pebble.write_stall.active", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"})', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} / {{reason}}' },
     ],
     description=|||
       Shows if Pebble is currently stalling writes (1 = stalling, 0 = normal).
@@ -156,7 +156,7 @@ panels.row('Pebble', 165, [
       - Consider faster storage (NVMe)
       - Review compaction settings
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#write-stall-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#write-stall-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -164,7 +164,7 @@ panels.row('Pebble', 165, [
     'Write stalls / second',
     { h: 8, w: 8, x: 8, y: 104 },
     [
-      { expr: 'sum by (service.node_id, reason) (rate({__name__="pebble.write_stall.total", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval]))', legendFormat: 'Node {{service.node_id}} / {{reason}}' },
+      { expr: 'sum by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, reason) (rate({__name__="pebble.write_stalls", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval]))', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} / {{reason}}' },
     ],
     description=|||
       Number of write stall events per second. Each stall temporarily blocks write operations.
@@ -179,7 +179,7 @@ panels.row('Pebble', 165, [
       - Reduced write rate
       - Tuning Pebble settings
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#write-stall-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#write-stall-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -187,11 +187,11 @@ panels.row('Pebble', 165, [
     'Write stall duration',
     { h: 8, w: 8, x: 16, y: 104 },
     [
-      { expr: 'histogram_quantile(0.50, sum by (le, service.node_id) (rate({__name__="pebble.write_stall.duration.milliseconds_bucket", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval])))', legendFormat: 'Node {{service.node_id}} p50' },
-      { expr: 'histogram_quantile(0.95, sum by (le, service.node_id) (rate({__name__="pebble.write_stall.duration.milliseconds_bucket", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval])))', legendFormat: 'Node {{service.node_id}} p95' },
-      { expr: 'histogram_quantile(0.99, sum by (le, service.node_id) (rate({__name__="pebble.write_stall.duration.milliseconds_bucket", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval])))', legendFormat: 'Node {{service.node_id}} p99' },
-      { expr: queries.histogramAvg('pebble.write_stall.duration.milliseconds', by=['service.node_id']), legendFormat: 'Node {{service.node_id}} mean' },
-    ], unit='ms',
+      { expr: 'histogram_quantile(0.50, sum by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) (rate({__name__="pebble.write_stall.duration_bucket", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])))', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p50' },
+      { expr: 'histogram_quantile(0.95, sum by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) (rate({__name__="pebble.write_stall.duration_bucket", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])))', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p95' },
+      { expr: 'histogram_quantile(0.99, sum by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) (rate({__name__="pebble.write_stall.duration_bucket", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])))', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p99' },
+      { expr: queries.histogramAvg('pebble.write_stall.duration', by=['k8s.namespace.name', 'formance.ledger.cluster.name', 'formance.ledger.node.id']), legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} mean' },
+    ], unit='s',
     description=|||
       Duration of write stalls (P50, P95, P99) in seconds. Shows how long writes are blocked.
       
@@ -202,7 +202,7 @@ panels.row('Pebble', 165, [
       
       Long stalls (>1s) are critical. High P99 values indicate occasional severe blocking.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#write-stall-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#write-stall-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -210,8 +210,8 @@ panels.row('Pebble', 165, [
     'VFS IOPS (read / write)',
     { h: 8, w: 8, x: 0, y: 112 },
     [
-      { expr: 'rate({__name__="pebble.vfs.read.ops", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval])', legendFormat: 'Node {{service.node_id}} — reads/s' },
-      { expr: 'rate({__name__="pebble.vfs.write.ops", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval])', legendFormat: 'Node {{service.node_id}} — writes/s' },
+      { expr: 'rate({__name__="pebble.vfs.read.ops", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} — reads/s' },
+      { expr: 'rate({__name__="pebble.vfs.write.ops", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} — writes/s' },
     ], unit='ops',
     description=|||
       VFS-level read and write operations per second. Counted at the Pebble VFS layer — each Read()/ReadAt() or Write()/WriteAt() syscall increments the counter.
@@ -224,7 +224,7 @@ panels.row('Pebble', 165, [
     'VFS Sync ops/s',
     { h: 8, w: 8, x: 8, y: 112 },
     [
-      { expr: 'rate({__name__="pebble.vfs.sync.ops", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval])', legendFormat: 'Node {{service.node_id}} — syncs/s' },
+      { expr: 'rate({__name__="pebble.vfs.sync.ops", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} — syncs/s' },
     ], unit='ops',
     description=|||
       VFS-level sync (fsync) operations per second. Each Sync(), SyncTo(), or SyncData() call is counted.
@@ -237,9 +237,9 @@ panels.row('Pebble', 165, [
     'VFS Total ops (cumulative)',
     { h: 8, w: 8, x: 16, y: 112 },
     [
-      { expr: '{__name__="pebble.vfs.read.ops", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}', legendFormat: 'Node {{service.node_id}} — reads' },
-      { expr: '{__name__="pebble.vfs.write.ops", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}', legendFormat: 'Node {{service.node_id}} — writes' },
-      { expr: '{__name__="pebble.vfs.sync.ops", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}', legendFormat: 'Node {{service.node_id}} — syncs' },
+      { expr: '{__name__="pebble.vfs.read.ops", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} — reads' },
+      { expr: '{__name__="pebble.vfs.write.ops", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} — writes' },
+      { expr: '{__name__="pebble.vfs.sync.ops", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} — syncs' },
     ],
     description='Cumulative VFS read, write, and sync operations. Useful for comparing total I/O volume across nodes.',
   ),
@@ -248,7 +248,7 @@ panels.row('Pebble', 165, [
     'Disk slow events / second',
     { h: 8, w: 12, x: 0, y: 120 },
     [
-      { expr: 'sum by (service.node_id, op) (rate({__name__="pebble.disk_slow.total", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval]))', legendFormat: 'Node {{service.node_id}} / {{op}}' },
+      { expr: 'sum by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, op) (rate({__name__="pebble.disk_slow.operations", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval]))', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} / {{op}}' },
     ],
     description=|||
       Number of slow disk operations detected by Pebble per second. A slow disk event fires when a write operation exceeds Pebble's disk slowness threshold.
@@ -263,10 +263,10 @@ panels.row('Pebble', 165, [
     'Disk slow duration',
     { h: 8, w: 12, x: 12, y: 120 },
     [
-      { expr: 'histogram_quantile(0.50, sum by (le, service.node_id, op) (rate({__name__="pebble.disk_slow.duration.milliseconds_bucket", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval])))', legendFormat: 'Node {{service.node_id}} p50 {{op}}' },
-      { expr: 'histogram_quantile(0.95, sum by (le, service.node_id, op) (rate({__name__="pebble.disk_slow.duration.milliseconds_bucket", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval])))', legendFormat: 'Node {{service.node_id}} p95 {{op}}' },
-      { expr: 'histogram_quantile(0.99, sum by (le, service.node_id, op) (rate({__name__="pebble.disk_slow.duration.milliseconds_bucket", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval])))', legendFormat: 'Node {{service.node_id}} p99 {{op}}' },
-    ], unit='ms',
+      { expr: 'histogram_quantile(0.50, sum by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, op) (rate({__name__="pebble.disk_slow.duration_bucket", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])))', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p50 {{op}}' },
+      { expr: 'histogram_quantile(0.95, sum by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, op) (rate({__name__="pebble.disk_slow.duration_bucket", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])))', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p95 {{op}}' },
+      { expr: 'histogram_quantile(0.99, sum by (le, k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id, op) (rate({__name__="pebble.disk_slow.duration_bucket", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])))', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} p99 {{op}}' },
+    ], unit='s',
     description=|||
       Duration of slow disk operations (P50, P95, P99). Shows how long disk operations have been stalled when Pebble detects slowness.
       

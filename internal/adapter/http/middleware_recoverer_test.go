@@ -70,7 +70,19 @@ func TestJSONRecoverer_SanitizesPanic(t *testing.T) {
 	ended := recorder.Ended()
 	require.Len(t, ended, 1)
 	assert.Equal(t, "corr-panic", httpSpanAttribute(ended[0], "correlation_id"))
-	assert.NotEmpty(t, ended[0].Events())
+	assert.Empty(t, httpSpanAttribute(ended[0], "panic.value"), "panic details use the exception semantic conventions")
+
+	// The panic is the span's single OpenTelemetry exception event.
+	events := ended[0].Events()
+	require.Len(t, events, 1)
+	require.Equal(t, "exception", events[0].Name)
+	exception := map[string]string{}
+	for _, attr := range events[0].Attributes {
+		exception[string(attr.Key)] = attr.Value.AsString()
+	}
+	assert.Equal(t, "string", exception["exception.type"])
+	assert.Equal(t, "secret invariant: /var/lib/ledger/pebble corrupted", exception["exception.message"])
+	assert.Contains(t, exception["exception.stacktrace"], "goroutine")
 }
 
 func TestJSONRecoverer_PropagatesErrAbortHandler(t *testing.T) {

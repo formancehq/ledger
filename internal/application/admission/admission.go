@@ -74,16 +74,16 @@ type Admission struct {
 
 	// Metrics (noop when metricsEnabled is false)
 	metricsEnabled                 bool
-	commandDurationHistogram       metric.Int64Histogram
+	commandDurationHistogram       metric.Float64Histogram
 	commandSizeHistogram           metric.Int64Histogram
 	proposeQueueLoadHistogram      metric.Int64Histogram
 	proposeQueueInflight           atomic.Int32
-	proposeQueueFullCounter        metric.Float64Counter
-	proposeDurationHistogram       metric.Int64Histogram
-	fsmFutureWaitHistogram         metric.Int64Histogram
-	proposalGuardDurationHistogram metric.Int64Histogram
+	proposeQueueFullCounter        metric.Int64Counter
+	proposeDurationHistogram       metric.Float64Histogram
+	fsmFutureWaitHistogram         metric.Float64Histogram
+	proposalGuardDurationHistogram metric.Float64Histogram
 	proposalGuardRebuildCounter    metric.Int64Counter
-	preloadDurationHistogram       metric.Int64Histogram
+	preloadDurationHistogram       metric.Float64Histogram
 	preloadCounter                 metric.Int64Counter
 	preloadKeysNeededCounter       metric.Int64Counter
 	preloadCacheHitsCounter        metric.Int64Counter
@@ -98,14 +98,14 @@ type Admission struct {
 	// response_resolution (idempotent-replay log reads after FSM apply).
 	// The remaining phases (preload build, propose, fsm wait) already have
 	// their own histograms above.
-	resolveBatchDurationHistogram       metric.Int64Histogram
-	ordersPreparationDurationHistogram  metric.Int64Histogram
-	scriptsDurationHistogram            metric.Int64Histogram
-	responseResolutionDurationHistogram metric.Int64Histogram
+	resolveBatchDurationHistogram       metric.Float64Histogram
+	ordersPreparationDurationHistogram  metric.Float64Histogram
+	scriptsDurationHistogram            metric.Float64Histogram
+	responseResolutionDurationHistogram metric.Float64Histogram
 }
 
-// phaseBucketBoundaries are the explicit bucket boundaries for the µs-scale
-// per-phase histograms (resolve_batch, orders_preparation, scripts,
+// phaseBucketBoundaries are the explicit bucket boundaries, in seconds, for the
+// µs-scale per-phase histograms (resolve_batch, orders_preparation, scripts,
 // response_resolution). The fast phases run in the single-digit-µs range
 // (resolve_batch ~2.4µs, scripts ~0.7µs — see ADR 0002), so the first positive
 // boundary must be ~1µs: a coarser first bucket (e.g. 100µs) would collapse
@@ -114,7 +114,7 @@ type Admission struct {
 // panel. The upper boundaries keep the range wide enough to catch orders_prep
 // (~215µs) and pathological stalls.
 var phaseBucketBoundaries = []float64{
-	0, 1, 5, 10, 25, 50, 100, 500, 2000, 10000, 50000, 200000, 1000000,
+	0, 0.000001, 0.000005, 0.00001, 0.000025, 0.00005, 0.0001, 0.0005, 0.002, 0.01, 0.05, 0.2, 1,
 }
 
 // NewAdmission creates a new Admission handler.
@@ -174,12 +174,12 @@ func NewAdmission(
 		meter = noop.Meter{}
 	}
 
-	commandDurationHistogram, err := meter.Int64Histogram(
+	commandDurationHistogram, err := meter.Float64Histogram(
 		"admission.command.duration",
 		metric.WithDescription("Total time to resolve a command, from batch resolution through future resolution (excludes the write-gate and leader-readiness waits). Decomposes into the resolve_batch, orders_preparation, scripts, preload, propose, fsm_future.wait, and response_resolution phase histograms. response_resolution covers the post-apply log reads (ReadLogBySequence) done for idempotent replays, so command.duration is fully accounted for even on the replay path."),
-		metric.WithUnit("us"),
+		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(
-			0, 1000, 5000, 20000, 100000, 500000, 2000000,
+			0, 0.001, 0.005, 0.02, 0.1, 0.5, 2,
 		),
 	)
 	if err != nil {
@@ -201,51 +201,51 @@ func NewAdmission(
 	proposeQueueLoadHistogram, err := meter.Int64Histogram(
 		"admission.propose_queue.load",
 		metric.WithDescription("Propose queue load"),
-		metric.WithUnit("1"),
+		metric.WithUnit("{proposal}"),
 	)
 	if err != nil {
 		panic(err)
 	}
 
-	proposeQueueFullCounter, err := meter.Float64Counter(
-		"admission.propose_queue.full",
+	proposeQueueFullCounter, err := meter.Int64Counter(
+		"admission.propose_queue.overflows",
 		metric.WithDescription("Number of times the propose queue was full"),
-		metric.WithUnit("1"),
+		metric.WithUnit("{proposal}"),
 	)
 	if err != nil {
 		panic(err)
 	}
 
-	proposeDurationHistogram, err := meter.Int64Histogram(
+	proposeDurationHistogram, err := meter.Float64Histogram(
 		"admission.propose.duration",
 		metric.WithDescription("Time waiting for Raft to accept and replicate a proposal (Propose + Wait)"),
-		metric.WithUnit("us"),
+		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(
-			0, 1000, 5000, 20000, 100000, 500000, 2000000,
+			0, 0.001, 0.005, 0.02, 0.1, 0.5, 2,
 		),
 	)
 	if err != nil {
 		panic(err)
 	}
 
-	fsmFutureWaitHistogram, err := meter.Int64Histogram(
+	fsmFutureWaitHistogram, err := meter.Float64Histogram(
 		"admission.fsm_future.wait.duration",
 		metric.WithDescription("Time waiting for FSM to apply the command after Raft acceptance. Spikes here indicate gating or pipeline stalls."),
-		metric.WithUnit("us"),
+		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(
-			0, 1000, 5000, 20000, 100000, 500000, 2000000,
+			0, 0.001, 0.005, 0.02, 0.1, 0.5, 2,
 		),
 	)
 	if err != nil {
 		panic(err)
 	}
 
-	proposalGuardDurationHistogram, err := meter.Int64Histogram(
+	proposalGuardDurationHistogram, err := meter.Float64Histogram(
 		"admission.proposal_guard.duration",
-		metric.WithDescription("Time spent waiting to acquire the proposal guard lock"),
-		metric.WithUnit("us"),
+		metric.WithDescription("Time from requesting the proposal guard until Propose returns: lock wait plus hold"),
+		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(
-			0, 100, 500, 2000, 10000, 50000, 200000, 1000000,
+			0, 0.0001, 0.0005, 0.002, 0.01, 0.05, 0.2, 1,
 		),
 	)
 	if err != nil {
@@ -253,20 +253,20 @@ func NewAdmission(
 	}
 
 	proposalGuardRebuildCounter, err := meter.Int64Counter(
-		"admission.proposal_guard.rebuild",
+		"admission.proposal_guard.rebuilds",
 		metric.WithDescription("Number of times the proposal guard had to rebuild preloads due to boundary shift"),
-		metric.WithUnit("1"),
+		metric.WithUnit("{rebuild}"),
 	)
 	if err != nil {
 		panic(err)
 	}
 
-	preloadDurationHistogram, err := meter.Int64Histogram(
+	preloadDurationHistogram, err := meter.Float64Histogram(
 		"admission.preload.duration",
 		metric.WithDescription("Time spent loading preload values from store"),
-		metric.WithUnit("us"),
+		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(
-			0, 100, 500, 2000, 10000, 50000, 200000, 1000000,
+			0, 0.0001, 0.0005, 0.002, 0.01, 0.05, 0.2, 1,
 		),
 	)
 	if err != nil {
@@ -274,9 +274,9 @@ func NewAdmission(
 	}
 
 	preloadCounter, err := meter.Int64Counter(
-		"admission.preload.total",
+		"admission.preloads",
 		metric.WithDescription("Total number of preload operations from store"),
-		metric.WithUnit("1"),
+		metric.WithUnit("{preload}"),
 	)
 	if err != nil {
 		panic(err)
@@ -285,7 +285,7 @@ func NewAdmission(
 	preloadKeysNeededCounter, err := meter.Int64Counter(
 		"admission.preload.keys_needed",
 		metric.WithDescription("Total number of keys that needed resolving during preload"),
-		metric.WithUnit("1"),
+		metric.WithUnit("{key}"),
 	)
 	if err != nil {
 		panic(err)
@@ -294,82 +294,82 @@ func NewAdmission(
 	preloadCacheHitsCounter, err := meter.Int64Counter(
 		"admission.preload.cache_hits",
 		metric.WithDescription("Total number of keys found guaranteed in cache (no store read needed)"),
-		metric.WithUnit("1"),
+		metric.WithUnit("{key}"),
 	)
 	if err != nil {
 		panic(err)
 	}
 
 	actionCounter, err := meter.Int64Counter(
-		"admission.action.total",
+		"admission.actions",
 		metric.WithDescription("Total number of orders (actions) admission processed, tagged by order_type. Counts every order attempted in the batch; not gated on the FSM apply outcome."),
-		metric.WithUnit("1"),
+		metric.WithUnit("{action}"),
 	)
 	if err != nil {
 		panic(err)
 	}
 
 	actionErrorsCounter, err := meter.Int64Counter(
-		"admission.action.errors.total",
-		metric.WithDescription("Number of orders (actions) whose admission batch ended in error, tagged by order_type. A strict subset of admission.action.total."),
-		metric.WithUnit("1"),
+		"admission.action.errors",
+		metric.WithDescription("Number of orders (actions) whose admission batch ended in error, tagged by order_type. A strict subset of admission.actions."),
+		metric.WithUnit("{action}"),
 	)
 	if err != nil {
 		panic(err)
 	}
 
 	missingCallerCounter, err := meter.Int64Counter(
-		"admission.audit.missing_caller",
+		"admission.audit.missing_caller.writes",
 		metric.WithDescription("Committed writes with a missing caller snapshot or unset principal"),
-		metric.WithUnit("1"),
+		metric.WithUnit("{write}"),
 	)
 	if err != nil {
 		panic(err)
 	}
 
 	callerSubjectEmptyCounter, err := meter.Int64Counter(
-		"admission.audit.caller_subject_empty",
+		"admission.audit.empty_caller_subject.writes",
 		metric.WithDescription("Committed user writes whose caller has a source but an empty subject (e.g. Ed25519 token without sub)"),
-		metric.WithUnit("1"),
+		metric.WithUnit("{write}"),
 	)
 	if err != nil {
 		panic(err)
 	}
 
-	resolveBatchDurationHistogram, err := meter.Int64Histogram(
+	resolveBatchDurationHistogram, err := meter.Float64Histogram(
 		"admission.resolve_batch.duration",
 		metric.WithDescription("Time spent verifying batch signature and unmarshaling the trusted ApplyBatch"),
-		metric.WithUnit("us"),
+		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(phaseBucketBoundaries...),
 	)
 	if err != nil {
 		panic(err)
 	}
 
-	ordersPreparationDurationHistogram, err := meter.Int64Histogram(
+	ordersPreparationDurationHistogram, err := meter.Float64Histogram(
 		"admission.orders_preparation.duration",
 		metric.WithDescription("Time spent converting requests to orders and extracting preload needs (excludes script-dependent needs)"),
-		metric.WithUnit("us"),
+		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(phaseBucketBoundaries...),
 	)
 	if err != nil {
 		panic(err)
 	}
 
-	scriptsDurationHistogram, err := meter.Int64Histogram(
-		"admission.scripts.duration",
+	scriptsDurationHistogram, err := meter.Float64Histogram(
+		"admission.script.duration",
 		metric.WithDescription("Time spent resolving Numscript references and enriching preload needs with script-discovered volumes/metadata"),
-		metric.WithUnit("us"),
+		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(phaseBucketBoundaries...),
 	)
 	if err != nil {
 		panic(err)
 	}
 
-	responseResolutionDurationHistogram, err := meter.Int64Histogram(
+	responseResolutionDurationHistogram, err := meter.Float64Histogram(
 		"admission.response_resolution.duration",
 		metric.WithDescription("Time spent resolving FSM results into concrete logs after apply, including the ReadLogBySequence reads done for idempotent replays (ReferenceSequence entries). Zero for the common create path; non-zero only when the FSM returns replay references."),
-		metric.WithUnit("us"),
+		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(phaseBucketBoundaries...),
 	)
 	if err != nil {
@@ -426,11 +426,11 @@ func (a *Admission) observeCallerSnapshot(ctx context.Context, snap *commonpb.Ca
 // maintenance mode, request-to-order conversion — carry no order_type and are
 // intentionally excluded.
 //
-// admission.action.total counts every order attempted, regardless of outcome.
+// admission.actions counts every order attempted, regardless of outcome.
 // A batch is one atomic Raft command with a single outcome, so on failure
 // (*errp != nil) every order in the batch is counted as errored under its own
-// order_type: none of them applied. That keeps admission.action.errors.total a
-// strict subset of admission.action.total (error rate ∈ [0, 1]). order_type
+// order_type: none of them applied. That keeps admission.action.errors a
+// strict subset of admission.actions (error rate ∈ [0, 1]). order_type
 // reuses domain.AuditOrderType so the labels stay consistent with the audit
 // filter DSL (EN-1305 / EN-1582). Recording stays on the admission path; the FSM
 // apply path is never touched.
@@ -465,7 +465,7 @@ func (a *Admission) recordActionOutcome(ctx context.Context, orders []*raftcmdpb
 // and the deferred call never double-count. Phases that were never entered (we
 // returned before calling recordPhaseOnExit) record nothing — no spurious
 // zero-duration observation.
-func (a *Admission) recordPhaseOnExit(ctx context.Context, hist metric.Int64Histogram) func() {
+func (a *Admission) recordPhaseOnExit(ctx context.Context, hist metric.Float64Histogram) func() {
 	start := time.Now()
 	recorded := false
 
@@ -474,7 +474,7 @@ func (a *Admission) recordPhaseOnExit(ctx context.Context, hist metric.Int64Hist
 			return
 		}
 		recorded = true
-		hist.Record(ctx, time.Since(start).Microseconds())
+		hist.Record(ctx, time.Since(start).Seconds())
 	}
 }
 
@@ -518,7 +518,7 @@ func (a *Admission) buildApplyAdmissionPlan(ctx context.Context, req *servicepb.
 
 	resolveBatchStart := time.Now()
 	batch, err := a.resolveBatch(ctx, req)
-	a.resolveBatchDurationHistogram.Record(ctx, time.Since(resolveBatchStart).Microseconds())
+	a.resolveBatchDurationHistogram.Record(ctx, time.Since(resolveBatchStart).Seconds())
 	if err != nil {
 		return nil, err
 	}
@@ -587,7 +587,7 @@ func (a *Admission) admit(ctx context.Context, buildPlan func(context.Context) (
 	// every return path below.
 	start := time.Now()
 	defer func() {
-		a.commandDurationHistogram.Record(ctx, time.Since(start).Microseconds())
+		a.commandDurationHistogram.Record(ctx, time.Since(start).Seconds())
 	}()
 
 	admPlan, err := buildPlan(ctx)
@@ -737,7 +737,7 @@ func (a *Admission) admit(ctx context.Context, buildPlan func(context.Context) (
 	// orders; hand it to Build directly instead of paying a second
 	// Merge pass over per-order Coverages.
 	build, err := a.builder.Build(needs, operations)
-	a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds())
+	a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Seconds())
 	if err != nil {
 		preloadSpan.End()
 		build.ReleaseLoaders()
@@ -800,8 +800,8 @@ func (a *Admission) admit(ctx context.Context, buildPlan func(context.Context) (
 		// phases" discipline. The guard is already released by Run in this case,
 		// so we only read timing here.
 		if runResult != nil {
-			a.proposalGuardDurationHistogram.Record(ctx, runResult.LockHeldDuration.Microseconds())
-			a.proposeDurationHistogram.Record(ctx, runResult.ProposeDuration.Microseconds())
+			a.proposalGuardDurationHistogram.Record(ctx, runResult.LockHeldDuration.Seconds())
+			a.proposeDurationHistogram.Record(ctx, runResult.ProposeDuration.Seconds())
 		}
 
 		// Distinguish proposer error (queue full / shutdown) from
@@ -822,7 +822,7 @@ func (a *Admission) admit(ctx context.Context, buildPlan func(context.Context) (
 		a.proposalGuardRebuildCounter.Add(ctx, 1)
 	}
 
-	a.proposalGuardDurationHistogram.Record(ctx, runResult.LockHeldDuration.Microseconds())
+	a.proposalGuardDurationHistogram.Record(ctx, runResult.LockHeldDuration.Seconds())
 	a.proposeQueueLoadHistogram.Record(context.Background(), int64(a.proposeQueueInflight.Add(1)))
 
 	guard := runResult.Guard
@@ -843,7 +843,7 @@ func (a *Admission) admit(ctx context.Context, buildPlan func(context.Context) (
 	// never entered, so it must record nothing rather than a bogus
 	// time.Since(zero).
 	recordProposeDuration := func() {
-		a.proposeDurationHistogram.Record(ctx, time.Since(runResult.ProposeStartTime).Microseconds())
+		a.proposeDurationHistogram.Record(ctx, time.Since(runResult.ProposeStartTime).Seconds())
 	}
 
 	if _, err := proposal.Wait(ctx); err != nil {
@@ -897,7 +897,7 @@ func (a *Admission) admit(ctx context.Context, buildPlan func(context.Context) (
 	// keeps command.duration fully decomposed on the idempotent-replay path.
 	responseResolutionStart := time.Now()
 	defer func() {
-		a.responseResolutionDurationHistogram.Record(ctx, time.Since(responseResolutionStart).Microseconds())
+		a.responseResolutionDurationHistogram.Record(ctx, time.Since(responseResolutionStart).Seconds())
 	}()
 
 	logs := make([]*commonpb.Log, len(result.Logs))

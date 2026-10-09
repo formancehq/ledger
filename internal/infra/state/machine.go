@@ -103,8 +103,8 @@ type Machine struct {
 
 	// Metrics
 	logsAppendedCounter       metric.Int64Counter
-	rotationDurationHistogram metric.Int64Histogram
-	batchCommitHistogram      metric.Int64Histogram
+	rotationDurationHistogram metric.Float64Histogram
+	batchCommitHistogram      metric.Float64Histogram
 	preloadMissCounter        metric.Int64Counter
 
 	// lastPersistedIndex is the highest Raft index whose FSM batch has been
@@ -182,30 +182,30 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 	logsAppendedCounter, err := raftMeter.Int64Counter(
 		"raft.fsm.logs_appended",
 		metric.WithDescription("Total number of logs appended to the store. Use rate() to get logs per second."),
-		metric.WithUnit("1"),
+		metric.WithUnit("{log}"),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating logs_appended counter: %w", err)
 	}
 
-	rotationDurationHistogram, err := raftMeter.Int64Histogram(
+	rotationDurationHistogram, err := raftMeter.Float64Histogram(
 		"raft.fsm.rotation.duration",
 		metric.WithDescription("Time spent in generation rotation (volume compaction) during ApplyEntries"),
-		metric.WithUnit("us"),
+		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(
-			0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000,
+			0, 0.0001, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2,
 		),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating rotation_duration histogram: %w", err)
 	}
 
-	batchCommitHistogram, err := raftMeter.Int64Histogram(
+	batchCommitHistogram, err := raftMeter.Float64Histogram(
 		"raft.fsm.batch_commit.duration",
 		metric.WithDescription("Time spent in PebbleDB batch.Commit() during ApplyEntries"),
-		metric.WithUnit("us"),
+		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(
-			0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000,
+			0, 0.0001, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1,
 		),
 	)
 	if err != nil {
@@ -213,9 +213,9 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 	}
 
 	preloadMissCounter, err := raftMeter.Int64Counter(
-		"raft.fsm.preload.coverage_miss",
+		"raft.fsm.preload.coverage_misses",
 		metric.WithDescription("Reads on the FSM hot path of keys not declared in the proposal's ExecutionPlan. Labeled by attribute kind. The order observing the miss is rejected with a business error."),
-		metric.WithUnit("1"),
+		metric.WithUnit("{read}"),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating preload_coverage_miss counter: %w", err)
@@ -610,7 +610,7 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 				}
 			}
 
-			fsm.rotationDurationHistogram.Record(context.Background(), time.Since(rotationStart).Microseconds())
+			fsm.rotationDurationHistogram.Record(context.Background(), time.Since(rotationStart).Seconds())
 		}
 
 		fsm.State.LastAppliedIndex++
@@ -785,7 +785,7 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 
 	pb.batch = nil // committed, prevent double-close
 
-	fsm.batchCommitHistogram.Record(ctx, time.Since(commitStart).Microseconds())
+	fsm.batchCommitHistogram.Record(ctx, time.Since(commitStart).Seconds())
 
 	lifecycle.SendEvent("batch_committed", map[string]any{
 		"lastAppliedIndex": pb.lastAppliedIndex,

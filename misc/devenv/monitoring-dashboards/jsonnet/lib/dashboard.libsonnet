@@ -7,7 +7,8 @@
 
 {
   // The templating variable list. Two datasources (Prometheus +
-  // Pyroscope) followed by two query variables (cluster and node).
+  // Pyroscope) followed by three query variables (namespace, cluster
+  // and node).
   // Regex fields use the OTel dot-notation form;
   // transform.libsonnet rewrites them for the prom variant.
   templating(uidSuffix='')::
@@ -42,7 +43,30 @@
         {
           allValue: '.*',
           datasource: { type: 'prometheus', uid: '${datasource}' },
-          definition: 'query_result(raft.node.lead)',
+          definition: 'query_result(raft.node.leader)',
+          description: 'Select the Kubernetes namespace of the Ledger cluster',
+          includeAll: true,
+          label: 'Namespace',
+          name: 'namespace',
+          options: [],
+          query: {
+            qryType: 1,
+            query: 'query_result(raft.node.leader)',
+            refId: 'PrometheusVariableQueryEditor-VariableQuery',
+          },
+          refresh: 1,
+          // Set by the operator. Clusters are identified by namespace and
+          // cluster name together: a Cluster resource name is only unique
+          // within its namespace. Without the operator the label is absent
+          // and the All value (.*) still matches every series.
+          regex: '/k8s\\.namespace\\.name="([^"]+)"/',
+          sort: 1,
+          type: 'query',
+        },
+        {
+          allValue: '.*',
+          datasource: { type: 'prometheus', uid: '${datasource}' },
+          definition: 'query_result(raft.node.leader{k8s.namespace.name=~"$namespace"})',
           description: 'Select a Ledger cluster to filter metrics',
           includeAll: true,
           label: 'Cluster',
@@ -50,18 +74,22 @@
           options: [],
           query: {
             qryType: 1,
-            query: 'query_result(raft.node.lead)',
+            query: 'query_result(raft.node.leader{k8s.namespace.name=~"$namespace"})',
             refId: 'PrometheusVariableQueryEditor-VariableQuery',
           },
           refresh: 1,
-          regex: '/service\\.cluster="([^"]+)"/',
+          // Key on the cluster name, not the declared cluster ID: IDs repeat
+          // across clusters (EN-2031). The operator sets the name to the
+          // Cluster resource name; the server defaults it to the cluster ID
+          // otherwise, so every series carries it.
+          regex: '/formance\\.ledger\\.cluster\\.name="([^"]+)"/',
           sort: 1,
           type: 'query',
         },
         {
           allValue: '.*',
           datasource: { type: 'prometheus', uid: '${datasource}' },
-          definition: 'query_result(raft.node.lead{service.cluster=~"$cluster"})',
+          definition: 'query_result(raft.node.leader{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster"})',
           description: 'Select a node to filter metrics',
           includeAll: true,
           label: 'Node',
@@ -69,12 +97,13 @@
           options: [],
           query: {
             qryType: 1,
-            query: 'query_result(raft.node.lead{service.cluster=~"$cluster"})',
+            query: 'query_result(raft.node.leader{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster"})',
             refId: 'PrometheusVariableQueryEditor-VariableQuery',
           },
           refresh: 1,
-          regex: '/service\\.node_id="([^"]+)"/',
-          sort: 1,
+          regex: '/formance\\.ledger\\.node\\.id="([^"]+)"/',
+          // Raft node IDs are integers: sort numerically (1, 2, 10).
+          sort: 3,
           type: 'query',
         },
       ],

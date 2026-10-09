@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -19,6 +20,7 @@ import (
 	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.etcd.io/raft/v3/tracker"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -439,13 +441,13 @@ type Node struct {
 	lastCheckpointPersistedIndex uint64
 
 	// Metrics (kept on Node: WAL/transport/orchestrate-related)
-	processEntryHistogram             metric.Int64Histogram
-	appendEntriesHistogram            metric.Int64Histogram
-	leadMonitorHistogram              metric.Int64Gauge
+	processEntryHistogram             metric.Float64Histogram
+	appendEntriesHistogram            metric.Float64Histogram
+	leaderRegistration                metric.Registration
 	committedEntriesPerReadyHistogram metric.Int64Histogram
-	readyWaitDurationHistogram        metric.Int64Histogram
-	readyTerminatedWaitHistogram      metric.Int64Histogram
-	readIndexDurationHistogram        metric.Int64Histogram
+	readyWaitDurationHistogram        metric.Float64Histogram
+	readyTerminatedWaitHistogram      metric.Float64Histogram
+	readIndexDurationHistogram        metric.Float64Histogram
 }
 
 // NewNode creates a new wrapper around a RawNode.
@@ -710,22 +712,22 @@ func NewNode(
 	node.confState.Store(initialConfState)
 
 	// Initialize node metrics
-	node.appendEntriesHistogram, err = meter.Int64Histogram("raft.append_entries",
+	node.appendEntriesHistogram, err = meter.Float64Histogram("raft.append_entries.duration",
 		metric.WithDescription("Time spending appending entries to wal"),
-		metric.WithUnit("us"),
+		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(
-			0, 200, 400, 700, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 10000, 50000,
+			0, 0.0002, 0.0004, 0.0007, 0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.01, 0.05,
 		),
 	)
 	if err != nil {
 		panic(err)
 	}
 
-	node.processEntryHistogram, err = meter.Int64Histogram("raft.process_entry",
+	node.processEntryHistogram, err = meter.Float64Histogram("raft.process_entry.duration",
 		metric.WithDescription("Time spent processing ready from raft"),
-		metric.WithUnit("us"),
+		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(
-			0, 200, 400, 700, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 10000, 50000,
+			0, 0.0002, 0.0004, 0.0007, 0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.01, 0.05,
 		),
 	)
 	if err != nil {
@@ -734,7 +736,7 @@ func NewNode(
 
 	node.committedEntriesPerReadyHistogram, err = meter.Int64Histogram("raft.ready.committed_entries",
 		metric.WithDescription("Number of committed entries per Ready"),
-		metric.WithUnit("1"),
+		metric.WithUnit("{entry}"),
 		metric.WithExplicitBucketBoundaries(
 			0, 1, 2, 3, 4, 5, 10, 20, 50, 100, 200, 500, 1000, 2000,
 		),
@@ -743,41 +745,61 @@ func NewNode(
 		panic(err)
 	}
 
-	node.leadMonitorHistogram, err = meter.Int64Gauge("raft.node.lead")
+	// The leader is an attribute, not the gauge value: Raft node IDs span
+	// uint64, which an int64 gauge cannot carry. Observing the current soft
+	// state reports only the present leader, so a former leader's series
+	// does not linger after an election.
+	leaderGauge, err := meter.Int64ObservableGauge("raft.node.leader",
+		metric.WithDescription("1 while this node recognises a Raft leader, identified by leader_id; 0 while none is known"),
+	)
+	if err != nil {
+		panic(err)
+	}
+	node.leaderRegistration, err = meter.RegisterCallback(func(_ context.Context, o metric.Observer) error {
+		ss := node.lastSoftState.Load()
+		if ss == nil || ss.Lead == raft.None {
+			o.ObserveInt64(leaderGauge, 0)
+
+			return nil
+		}
+		o.ObserveInt64(leaderGauge, 1, metric.WithAttributes(attribute.String("leader_id", strconv.FormatUint(ss.Lead, 10))))
+
+		return nil
+	}, leaderGauge)
 	if err != nil {
 		panic(err)
 	}
 
-	node.readyWaitDurationHistogram, err = meter.Int64Histogram(
-		"raft.node.ready.wait_duration",
+	node.readyWaitDurationHistogram, err = meter.Float64Histogram(
+		"raft.node.ready.wait.duration",
 		metric.WithDescription("Time spent waiting for a Ready from Raft"),
-		metric.WithUnit("us"),
+		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(
-			0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000,
+			0, 0.0001, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1,
 		),
 	)
 	if err != nil {
 		panic(err)
 	}
 
-	node.readyTerminatedWaitHistogram, err = meter.Int64Histogram(
-		"raft.node.ready_terminated.wait_duration",
+	node.readyTerminatedWaitHistogram, err = meter.Float64Histogram(
+		"raft.node.ready_terminated.wait.duration",
 		metric.WithDescription("Time spent waiting for orchestrate to consume readyTerminated"),
-		metric.WithUnit("us"),
+		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(
-			0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000,
+			0, 0.0001, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1,
 		),
 	)
 	if err != nil {
 		panic(err)
 	}
 
-	node.readIndexDurationHistogram, err = meter.Int64Histogram(
+	node.readIndexDurationHistogram, err = meter.Float64Histogram(
 		"raft.read_index.duration",
 		metric.WithDescription("Time spent in ReadIndex+WaitForApplied for linearizable reads"),
-		metric.WithUnit("us"),
+		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(
-			0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000,
+			0, 0.0001, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5,
 		),
 	)
 	if err != nil {
@@ -994,6 +1016,14 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 func (node *Node) run(ctx context.Context, ready func()) error {
 	node.runDone = make(chan struct{})
 	defer close(node.runDone)
+	// Stop reporting the leader once the node stops running. Unregister only
+	// fails for a registration from another provider, which cannot happen
+	// here, and shutdown must not fail on telemetry.
+	defer func() {
+		if node.leaderRegistration != nil {
+			_ = node.leaderRegistration.Unregister()
+		}
+	}()
 
 	// Determine the Applied index for raft.Config from the FSM's durable last
 	// applied index (read from Pebble). doMaintenance calls Store.SyncWAL
@@ -1214,11 +1244,11 @@ func (node *Node) processReadies(ctx context.Context, stop chan struct{}) error 
 
 		select {
 		case rd := <-node.readies:
-			node.readyWaitDurationHistogram.Record(context.Background(), time.Since(waitStart).Microseconds())
+			node.readyWaitDurationHistogram.Record(context.Background(), time.Since(waitStart).Seconds())
 
 			now := time.Now()
 			result, err := node.processReady(ctx, stop, rd)
-			node.processEntryHistogram.Record(context.Background(), time.Since(now).Microseconds())
+			node.processEntryHistogram.Record(context.Background(), time.Since(now).Seconds())
 
 			if err != nil {
 				return err
@@ -1228,7 +1258,7 @@ func (node *Node) processReadies(ctx context.Context, stop chan struct{}) error 
 
 			select {
 			case node.readyTerminated <- result:
-				node.readyTerminatedWaitHistogram.Record(context.Background(), time.Since(terminatedStart).Microseconds())
+				node.readyTerminatedWaitHistogram.Record(context.Background(), time.Since(terminatedStart).Seconds())
 			case <-stop:
 				return nil
 			}
@@ -1342,8 +1372,6 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 			}
 		}
 
-		node.leadMonitorHistogram.Record(ctx, int64(ss.Lead))
-
 		node.lastSoftState.Store(ss)
 	}
 
@@ -1397,7 +1425,7 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		return readyResult{}, fmt.Errorf("appending entries to storage: %w", err)
 	}
 
-	node.appendEntriesHistogram.Record(ctx, time.Since(now).Microseconds())
+	node.appendEntriesHistogram.Record(ctx, time.Since(now).Seconds())
 
 	// Track the highest term observed via HardState so Propose can tag each
 	// future with the proposer's view of the current term (issue #172). Use a

@@ -9,7 +9,7 @@ panels.row('System', 0, [
     'Logs per Second',
     { h: 8, w: 12, x: 0, y: 1 },
     [
-      { expr: 'sum(rate(raft.fsm.logs_appended{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id)', legendFormat: 'Node {{service.node_id}}' },
+      { expr: 'sum(rate(raft.fsm.logs_appended{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}' },
     ], unit='ops',
     description=|||
       Number of logs appended to the store per second per node. This metric represents the actual throughput of the system - how many logs (transactions, metadata changes, etc.) are being committed.
@@ -19,7 +19,7 @@ panels.row('System', 0, [
       - Storage backpressure (check Pebble write stalls)
       - Network issues between nodes
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#fsm-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#fsm-metrics
    |||,
   ),
 
@@ -27,8 +27,8 @@ panels.row('System', 0, [
     'Ping latency',
     { h: 8, w: 12, x: 12, y: 1 },
     [
-      { expr: queries.histogramAvg('raft.transport.ping.latency', by=['service.node_id', 'peer']), legendFormat: 'Node {{service.node_id}} / Peer {{peer}}' },
-    ], unit='µs',
+      { expr: queries.histogramAvg('raft.transport.ping.duration', by=['k8s.namespace.name', 'formance.ledger.cluster.name', 'formance.ledger.node.id', 'peer']), legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} / Peer {{peer}}' },
+    ], unit='s',
     description=|||
       Round-trip time (RTT) latency of ping requests between nodes. Measures network health between cluster members.
       
@@ -39,7 +39,7 @@ panels.row('System', 0, [
       
       Check network configuration if latency is consistently high.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#global-transport-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#global-transport-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -47,7 +47,7 @@ panels.row('System', 0, [
     'HTTP requests count',
     { h: 8, w: 12, x: 0, y: 93 },
     [
-      { expr: queries.histogramCountRate('http.server.request.duration', by=['service.node_id', 'http.response.status_code']), legendFormat: 'Node {{service.node_id}} : {{http.response.status_code}}' },
+      { expr: queries.histogramCountRate('http.server.request.duration', by=['k8s.namespace.name', 'formance.ledger.cluster.name', 'formance.ledger.node.id', 'http.response.status_code']), legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} : {{http.response.status_code}}' },
     ], unit='ops',
     description=|||
       HTTP request rate per node, grouped by status code. Shows API traffic and error rates.
@@ -59,7 +59,7 @@ panels.row('System', 0, [
       
       Sudden spikes in 5xx errors may indicate system issues.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#http-server-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#http-server-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -67,8 +67,8 @@ panels.row('System', 0, [
     'Memory utilization',
     { h: 8, w: 12, x: 12, y: 93 },
     [
-      { expr: 'rate({"system.memory.utilization", "system.memory.state"="used", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval])', legendFormat: 'Node {{service.node_id}} : Used' },
-      { expr: 'rate({"system.memory.utilization", "system.memory.state"="free", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval])', legendFormat: 'Node {{service.node_id}} : Free' },
+      { expr: '{"system.memory.utilization", "system.memory.state"="used", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} : Used' },
+      { expr: '{"system.memory.utilization", "system.memory.state"="free", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} : Free' },
     ], unit='percentunit',
     description=|||
       System memory utilization ratio (0-1) showing used vs free memory.
@@ -80,7 +80,7 @@ panels.row('System', 0, [
       
       Consider increasing memory limits or scaling horizontally.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#system-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#system-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -88,22 +88,23 @@ panels.row('System', 0, [
     'Process CPU time',
     { h: 8, w: 12, x: 0, y: 101 },
     [
-      { expr: 'sum by (service.node_id) (
-  rate(process.cpu.time{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])
-)', legendFormat: 'Node {{service.node_id}}: {{cpu.mode}}' },
-      { expr: 'max by (service.node_id) (
-  go.processor.limit{service.cluster=~"$cluster", service.node_id=~"$node"}
-)', legendFormat: 'Node {{service.node_id}}: Limit' },
+      { expr: 'sum by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) (
+  rate(process.cpu.time{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])
+)
+/
+max by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) (
+  go.processor.limit{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}
+)', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}' },
     ], unit='percentunit',
     description=|||
-      CPU utilization as a ratio of process CPU time to available processor limit. Shows how much CPU capacity the process is using.
+      CPU utilization: process CPU seconds per second divided by the Go processor limit (GOMAXPROCS), per node. 1.0 means every available processor is busy.
       
       Values close to 1.0 indicate CPU saturation. Consider:
       - Profiling to identify hot paths
       - Increasing CPU limits
       - Scaling horizontally
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#process-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#process-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto', max: 1 },
   ),
 
@@ -111,8 +112,8 @@ panels.row('System', 0, [
     'System network traffic',
     { h: 8, w: 12, x: 12, y: 101 },
     [
-      { expr: 'rate(system.network.io{network.io.direction="receive", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval])', legendFormat: 'Node {{service.node_id}}: Reception' },
-      { expr: 'rate(system.network.io{network.io.direction="transmit", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval])', legendFormat: 'Node {{service.node_id}}: Transmission' },
+      { expr: 'rate(system.network.io{network.io.direction="receive", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Reception' },
+      { expr: 'rate(system.network.io{network.io.direction="transmit", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Transmission' },
     ], unit='binBps',
     description=|||
       Network I/O throughput showing bytes received and transmitted per second.
@@ -124,7 +125,7 @@ panels.row('System', 0, [
       
       Sudden drops may indicate network partitions.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#process-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#process-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -132,14 +133,14 @@ panels.row('System', 0, [
     'System memory usage',
     { h: 8, w: 8, x: 0, y: 109 },
     [
-      { expr: '{"system.memory.usage", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}', legendFormat: 'Node {{ service.node_id}}: {{system.memory.state}}' },
+      { expr: '{"system.memory.usage", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: {{system.memory.state}}' },
     ], unit='bytes',
     description=|||
       Absolute system memory usage in bytes, broken down by state (used, free, cached, buffered).
       
       Provides visibility into how memory is allocated at the OS level. Useful for capacity planning and troubleshooting memory pressure.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#process-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#process-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -147,7 +148,7 @@ panels.row('System', 0, [
     'Go memory allocated',
     { h: 8, w: 8, x: 8, y: 109 },
     [
-      { expr: 'rate(go.memory.allocated{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])', legendFormat: 'Node {{service.node_id}}: Allocated' },
+      { expr: 'rate(go.memory.allocated{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Allocated' },
     ], unit='binBps',
     description=|||
       Rate of memory allocation by the Go runtime (bytes per second). High allocation rates cause increased GC pressure.
@@ -157,7 +158,7 @@ panels.row('System', 0, [
       - Need for object pooling
       - Memory leaks if trend is upward
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#go-runtime-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#go-runtime-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -165,17 +166,17 @@ panels.row('System', 0, [
     'Leadership status',
     { h: 8, w: 8, x: 16, y: 109 },
     [
-      { expr: '{"raft.node.lead", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}', legendFormat: 'Node {{service.node_id}}' },
+      { expr: '{"raft.node.leader", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} → leader {{leader_id}}' },
     ],
     description=|||
-      Shows which node is recognized as the Raft leader by each node. All nodes should report the same leader ID.
-      
-      Leader ID 0 means no leader is known (cluster is electing). Monitor for:
+      Shows which node is recognized as the Raft leader by each node: each series is 1 for the leader_id a node currently recognizes. All nodes should report the same leader_id.
+
+      A value of 0 (no leader_id) means the node knows no leader (cluster is electing). Monitor for:
       - Frequent leader changes (leadership instability)
       - Split-brain scenarios (different nodes reporting different leaders)
       - Extended periods with no leader
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#node-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#node-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -183,7 +184,7 @@ panels.row('System', 0, [
     'Goroutine count',
     { h: 8, w: 8, x: 0, y: 117 },
     [
-      { expr: 'go.goroutine.count{service.cluster=~"$cluster", service.node_id=~"$node"}', legendFormat: 'Node {{service.node_id}}' },
+      { expr: 'go.goroutine.count{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}' },
     ],
     description=|||
       Number of active goroutines in the Go runtime. A steadily increasing count may indicate goroutine leaks.
@@ -192,7 +193,7 @@ panels.row('System', 0, [
       - Count grows unbounded over time
       - Count is significantly higher than expected
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#go-runtime-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#go-runtime-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -200,7 +201,7 @@ panels.row('System', 0, [
     'Go memory used',
     { h: 8, w: 8, x: 8, y: 117 },
     [
-      { expr: '{"go.memory.used", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}', legendFormat: 'Node {{service.node_id}}: {{go.memory.type}}' },
+      { expr: '{"go.memory.used", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: {{go.memory.type}}' },
     ], unit='bytes',
     description=|||
       Memory currently in use by the Go runtime, broken down by type (stack, heap).
@@ -210,7 +211,7 @@ panels.row('System', 0, [
       
       High heap usage may trigger more frequent GC cycles.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#go-runtime-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#go-runtime-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -218,14 +219,14 @@ panels.row('System', 0, [
     'Go memory allocations',
     { h: 8, w: 8, x: 16, y: 117 },
     [
-      { expr: 'rate(go.memory.allocations{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])', legendFormat: 'Node {{service.node_id}}: Allocations' },
+      { expr: 'rate(go.memory.allocations{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Allocations' },
     ], unit='ops',
     description=|||
       Rate of memory allocations (objects per second) by the Go runtime.
       
       High allocation rates increase GC overhead. Combined with 'Go memory allocated', this helps identify whether you're allocating many small objects or fewer large objects.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#go-runtime-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#go-runtime-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -233,14 +234,14 @@ panels.row('System', 0, [
     'Go GC goal',
     { h: 8, w: 12, x: 0, y: 125 },
     [
-      { expr: 'go.memory.gc.goal{service.cluster=~"$cluster", service.node_id=~"$node"}', legendFormat: 'Node {{service.node_id}}: Goal' },
+      { expr: 'go.memory.gc.goal{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Goal' },
     ], unit='bytes',
     description=|||
       Target heap size for the next GC cycle, set by the Go runtime's pacer.
       
       The GC goal grows as your application uses more memory. If it grows unbounded, you may have a memory leak. The GOGC environment variable controls how aggressively the GC runs.
       
-      See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#go-runtime-metrics
+      See: https://github.com/formancehq/ledger/blob/release/v3.0/docs/ops/monitoring.md#go-runtime-metrics
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 ])

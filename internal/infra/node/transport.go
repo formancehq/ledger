@@ -71,18 +71,18 @@ type DefaultTransport struct {
 	serviceAdvertiseAddr string
 	// Metrics for recv queues (indexed by priority: 0=high, 1=medium, 2=low)
 	recvQueueLoadHistogram [3]metric.Int64Histogram
-	recvQueueFullCounter   [3]metric.Float64Counter
+	recvQueueFullCounter   [3]metric.Int64Counter
 	recvQueueAttributes    [3]attribute.Set
 	recvQueueInflight      [3]atomic.Int32
 
 	// Metrics for unreachable queue
 	unreachableLoadHistogram metric.Int64Histogram
-	unreachableFullCounter   metric.Float64Counter
+	unreachableFullCounter   metric.Int64Counter
 	unreachableInflight      atomic.Int32
 
 	// Metrics for pending send queue
 	pendingSendLoadHistogram metric.Int64Histogram
-	pendingSendFullCounter   metric.Float64Counter
+	pendingSendFullCounter   metric.Int64Counter
 	pendingSendInflight      atomic.Int32
 
 	// stopped is set at the beginning of Stop() to guard channel sends
@@ -188,14 +188,14 @@ func NewTransport(
 
 		var err error
 
-		t.recvQueueFullCounter[priority], err = m.Float64Counter("raft.transport.recv.full", metric.WithUnit("1"))
+		t.recvQueueFullCounter[priority], err = m.Int64Counter("raft.transport.recv.overflows", metric.WithUnit("{batch}"))
 		if err != nil {
 			panic(err)
 		}
 
 		t.recvQueueLoadHistogram[priority], err = m.Int64Histogram(
 			"raft.transport.recv.load",
-			metric.WithUnit("1"),
+			metric.WithUnit("{batch}"),
 			metric.WithExplicitBucketBoundaries(expBoundaries(12, config.Reception[priority])...),
 		)
 		if err != nil {
@@ -206,14 +206,14 @@ func NewTransport(
 	// Initialize unreachable queue metrics
 	var err error
 
-	t.unreachableFullCounter, err = meter.Float64Counter("raft.transport.unreachable.full", metric.WithUnit("1"))
+	t.unreachableFullCounter, err = meter.Int64Counter("raft.transport.unreachable.overflows", metric.WithUnit("{peer}"))
 	if err != nil {
 		panic(err)
 	}
 
 	t.unreachableLoadHistogram, err = meter.Int64Histogram(
 		"raft.transport.unreachable.load",
-		metric.WithUnit("1"),
+		metric.WithUnit("{peer}"),
 		metric.WithExplicitBucketBoundaries(expBoundaries(12, unreachableCapacity)...),
 	)
 	if err != nil {
@@ -221,14 +221,14 @@ func NewTransport(
 	}
 
 	// Initialize pending send queue metrics
-	t.pendingSendFullCounter, err = meter.Float64Counter("raft.send.pending_messages.full", metric.WithUnit("1"))
+	t.pendingSendFullCounter, err = meter.Int64Counter("raft.send.pending_batch.overflows", metric.WithUnit("{batch}"))
 	if err != nil {
 		panic(err)
 	}
 
 	t.pendingSendLoadHistogram, err = meter.Int64Histogram(
-		"raft.send.pending_messages.load",
-		metric.WithUnit("1"),
+		"raft.send.pending_batch.load",
+		metric.WithUnit("{batch}"),
 		metric.WithExplicitBucketBoundaries(expBoundaries(12, pendingSendCapacity)...),
 	)
 	if err != nil {
@@ -365,12 +365,12 @@ func (t *DefaultTransport) AddPeer(id uint64, addr string) {
 	)
 	logger := t.logger.WithFields(map[string]any{"peer": strconv.FormatUint(id, 16)})
 
-	pendingResponseCounter, err := meter.Float64UpDownCounter("raft.transport.sending.pending_response")
+	pendingResponseCounter, err := meter.Int64UpDownCounter("raft.transport.sending.pending_response.count", metric.WithUnit("{response}"))
 	if err != nil {
 		panic(err)
 	}
 
-	pingLatency, err := meter.Int64Histogram("raft.transport.ping.latency", metric.WithUnit("microseconds"))
+	pingLatency, err := meter.Float64Histogram("raft.transport.ping.duration", metric.WithUnit("s"))
 	if err != nil {
 		panic(err)
 	}
@@ -416,14 +416,14 @@ func (t *DefaultTransport) AddPeer(id uint64, addr string) {
 			),
 		)
 
-		conn.sendQueueFullCounter[priority], err = m.Float64Counter("raft.transport.peer.sending.full", metric.WithUnit("1"))
+		conn.sendQueueFullCounter[priority], err = m.Int64Counter("raft.transport.peer.sending.overflows", metric.WithUnit("{batch}"))
 		if err != nil {
 			panic(err)
 		}
 
 		conn.sendQueueLoadHistogram[priority], err = m.Int64Histogram(
 			"raft.transport.peer.sending.load",
-			metric.WithUnit("1"),
+			metric.WithUnit("{batch}"),
 			metric.WithExplicitBucketBoundaries(expBoundaries(12, t.config.Send[priority])...),
 		)
 		if err != nil {
@@ -757,8 +757,8 @@ type peerConnection struct {
 	nodeID                 uint64
 	clusterID              string
 	bufferSize             int
-	pendingResponseCounter metric.Float64UpDownCounter
-	pingLatency            metric.Int64Histogram
+	pendingResponseCounter metric.Int64UpDownCounter
+	pingLatency            metric.Float64Histogram
 	reconnected            chan struct{}
 	messageID              uint64
 	buf                    []byte
@@ -767,7 +767,7 @@ type peerConnection struct {
 
 	// Metrics for sending queues (indexed by priority: 0=high, 1=medium, 2=low)
 	sendQueueLoadHistogram [3]metric.Int64Histogram
-	sendQueueFullCounter   [3]metric.Float64Counter
+	sendQueueFullCounter   [3]metric.Int64Counter
 	sendQueueAttributes    [3]attribute.Set
 	sendQueueInflight      [3]atomic.Int32
 	peerAttributes         attribute.Set
@@ -1095,7 +1095,7 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 		if orphaned > 0 {
 			conn.pendingResponseCounter.Add(
 				context.Background(),
-				-float64(orphaned),
+				-int64(orphaned),
 				metric.WithAttributeSet(conn.peerAttributes),
 			)
 			conn.logger.WithFields(map[string]any{
@@ -1172,7 +1172,7 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 
 					conn.pingLatency.Record(
 						context.Background(),
-						latency.Microseconds(),
+						latency.Seconds(),
 						metric.WithAttributeSet(conn.peerAttributes),
 					)
 
@@ -1258,7 +1258,7 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 
 		conn.pendingResponseCounter.Add(
 			context.Background(),
-			float64(len(raftMessages)),
+			int64(len(raftMessages)),
 			metric.WithAttributeSet(conn.peerAttributes),
 		)
 
@@ -1285,7 +1285,7 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 			mu.Unlock()
 			conn.pendingResponseCounter.Add(
 				context.Background(),
-				-float64(len(raftMessages)),
+				-int64(len(raftMessages)),
 				metric.WithAttributeSet(conn.peerAttributes),
 			)
 			// Report peer as unreachable

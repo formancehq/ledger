@@ -214,7 +214,7 @@ func invocationAttributes() []attribute.KeyValue {
 	}
 
 	if u, err := user.Current(); err == nil && u.Username != "" {
-		attrs = append(attrs, attribute.String("host.user", u.Username))
+		attrs = append(attrs, semconv.ProcessOwner(u.Username))
 	}
 
 	return attrs

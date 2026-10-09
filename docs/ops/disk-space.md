@@ -169,7 +169,7 @@ Read operations continue to work normally:
 ### Metrics
 
 Disk usage metrics are exposed via OpenTelemetry:
-- `storage.disk.volume.bytes` - Disk space used on a storage volume (with `volume` attribute: `wal` or `data`). Only valid samples are emitted.
+- `storage.disk.volume.usage` - Disk space used on a storage volume (with `volume` attribute: `wal` or `data`). Only valid samples are emitted.
 
 ### Grafana Dashboard
 

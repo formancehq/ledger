@@ -52,7 +52,7 @@ func run() int {
 	// created here parents every per-RPC span emitted by the gRPC client handler,
 	// so a single invocation produces one connected trace.
 	ctx := context.Background()
-	shutdownTracing := cmdutil.SetupTracing(ctx, version.Get().Version)
+	shutdownTracing := cmdutil.SetupTracing(ctx, version.Get().ServiceVersion())
 	defer shutdownTracing(context.Background())
 
 	ctx, span := cmdutil.StartRootSpan(ctx)

@@ -187,7 +187,7 @@ func filesystemUsage(path string) (used, total int64, err error) {
 // The callback reads cached values computed by the background goroutine.
 func (c *Collector) registerMetrics() (metric.Registration, error) {
 	volumeGauge, err := c.meter.Int64ObservableGauge(
-		"storage.disk.volume.bytes",
+		"storage.disk.volume.usage",
 		metric.WithDescription("Disk space used by a storage volume"),
 		metric.WithUnit("By"),
 	)

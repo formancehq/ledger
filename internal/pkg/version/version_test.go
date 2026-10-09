@@ -22,3 +22,24 @@ func TestGet(t *testing.T) {
 		t.Fatalf("GoVersion = %q, want %q", got.GoVersion, runtime.Version())
 	}
 }
+
+func TestServiceVersion(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name string
+		info Info
+		want string
+	}{
+		{name: "release", info: Info{Version: "3.0.0", Commit: "abc1234"}, want: "3.0.0+abc1234"},
+		{name: "snapshot embeds the commit", info: Info{Version: "3.0.0-SNAPSHOT-abc1234", Commit: "abc1234"}, want: "3.0.0-SNAPSHOT-abc1234"},
+		{name: "dev build", info: Info{Version: "dev", Commit: "unknown"}, want: "dev"},
+		{name: "empty commit", info: Info{Version: "3.0.0"}, want: "3.0.0"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if got := test.info.ServiceVersion(); got != test.want {
+				t.Fatalf("ServiceVersion() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}

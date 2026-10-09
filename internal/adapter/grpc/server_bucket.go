@@ -65,18 +65,18 @@ type BucketServiceServerImpl struct {
 	queryProfileThreshold time.Duration
 	clusterID             string
 	info                  version.Info
-	applyDuration         metric.Int64Histogram
+	applyDuration         metric.Float64Histogram
 	forwarder             nodeForwarder
 	checkpointStores      checkpointStoreCache
 }
 
 func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, sharedState *state.SharedState, responseSigner *signing.ResponseSigner, queryProfileThreshold time.Duration, clusterID string, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) servicepb.BucketServiceServer {
 	meter := meterProvider.Meter("grpc")
-	applyDuration, _ := meter.Int64Histogram("grpc.apply.duration",
-		metric.WithUnit("us"),
+	applyDuration, _ := meter.Float64Histogram("grpc.apply.duration",
+		metric.WithUnit("s"),
 		metric.WithDescription("Total duration of the gRPC Apply handler (forwarded identity + ctrl.Apply + signing)"),
 		metric.WithExplicitBucketBoundaries(
-			0, 100, 500, 2000, 10000, 50000, 200000, 1000000,
+			0, 0.0001, 0.0005, 0.002, 0.01, 0.05, 0.2, 1,
 		),
 	)
 
@@ -97,15 +97,29 @@ func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl 
 	}
 }
 
-func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
+func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.ApplyRequest) (_ *servicepb.ApplyResponse, err error) {
 	start := time.Now()
+	batchSize := 0
+	// Record every exit, failures included, so the histogram covers the
+	// same population as ctrl.apply.duration; status tells them apart.
+	defer func() {
+		if impl.applyDuration == nil {
+			return
+		}
+		status := "success"
+		if err != nil {
+			status = "error"
+		}
+		impl.applyDuration.Record(ctx, time.Since(start).Seconds(),
+			metric.WithAttributes(attribute.Int("batch_size", batchSize), attribute.String("status", status)))
+	}()
 
-	ctx, err := impl.adoptForwardedSnapshotIfTrusted(ctx, req)
+	ctx, err = impl.adoptForwardedSnapshotIfTrusted(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	batchSize, _ := ctx.Value(applyBatchSizeKey{}).(int)
+	batchSize, _ = ctx.Value(applyBatchSizeKey{}).(int)
 
 	if impl.logger.Enabled(logging.TraceLevel) {
 		impl.logger.Tracef("Apply request received with %d requests", batchSize)
@@ -141,9 +155,6 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 			}
 		}
 	}
-
-	impl.applyDuration.Record(ctx, time.Since(start).Microseconds(),
-		metric.WithAttributes(attribute.Int("batch_size", batchSize)))
 
 	if skipResponse {
 		for _, log := range logs {

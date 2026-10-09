@@ -7,7 +7,7 @@ panels.row('Index Builder', 173, [
   panels.gauge(
     'Index Builder Lag',
     { h: 8, w: 8, x: 0, y: 109 },
-    'index.builder.lag{service.cluster=~"$cluster", service.node_id=~"$node"}', unit='none',
+    'index.builder.lag{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}', unit='none',
     description='Number of logs the index builder is behind Pebble. A high lag means queries may return stale results. The builder batches 1000 logs per Pebble batch to amortize write overhead.',
   ),
 
@@ -15,7 +15,7 @@ panels.row('Index Builder', 173, [
     'Indexing Rate',
     { h: 8, w: 8, x: 8, y: 109 },
     [
-      { expr: 'rate(index.builder.logs_indexed_total{service.cluster=~"$cluster", service.node_id=~"$node"}[1m])', legendFormat: '{{service.node_id}}' },
+      { expr: 'rate(index.builder.logs_indexed{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[1m])', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}' },
     ], unit='ops',
     description='Rate of logs indexed per second. Higher values indicate faster catch-up.', opts={ showPoints: 'auto' },
   ),
@@ -24,8 +24,8 @@ panels.row('Index Builder', 173, [
     'Last Indexed vs Pebble',
     { h: 8, w: 8, x: 16, y: 109 },
     [
-      { expr: 'index.builder.last_indexed_sequence{service.cluster=~"$cluster", service.node_id=~"$node"}', legendFormat: 'Last Indexed ({{service.node_id}})' },
-      { expr: 'index.builder.pebble_last_sequence{service.cluster=~"$cluster", service.node_id=~"$node"}', legendFormat: 'Pebble Last ({{service.node_id}})' },
+      { expr: 'index.builder.last_indexed_sequence{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: 'Last Indexed ({{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}})' },
+      { expr: 'index.builder.pebble_last_sequence{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: 'Pebble Last ({{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}})' },
     ], unit='none',
     description='Last indexed sequence vs Pebble last sequence. The gap between the two lines is the lag.', opts={ showPoints: 'auto' },
   ),

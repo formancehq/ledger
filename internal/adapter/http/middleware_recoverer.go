@@ -40,12 +40,8 @@ func jsonRecoverer(next http.Handler) http.Handler {
 				logging.FromContext(r.Context()).WithFields(fields).Errorf("HTTP handler panicked: %v\n%s", rvr, stack)
 
 				if span := trace.SpanFromContext(r.Context()); span.SpanContext().IsValid() {
-					span.SetAttributes(
-						attribute.String("panic.value", fmt.Sprintf("%v", rvr)),
-						attribute.String("panic.stack", string(stack)),
-						attribute.String("correlation_id", id),
-					)
-					span.RecordError(fmt.Errorf("panic recovered (correlation ID: %s)", id))
+					span.SetAttributes(attribute.String("correlation_id", id))
+					apitrace.RecordPanic(r.Context(), rvr, stack)
 				}
 
 				writeErrorResponse(

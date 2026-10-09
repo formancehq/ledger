@@ -85,14 +85,14 @@ Prometheus 3.x's built-in OTLP receiver).
 
 | File | Server | Collector | Histograms | Examples |
 | ---- | ------ | --------- | ---------- | -------- |
-| `ledger-metrics-otel.json`                            | `formance.ledger` (default) | preserves dots                       | classic | `formance.ledger.raft.fsm.logs_appended`, `service.cluster` |
+| `ledger-metrics-otel.json`                            | `formance.ledger` (default) | preserves dots                       | classic | `formance.ledger.raft.fsm.logs_appended`, `formance.ledger.cluster.name` |
 | `ledger-metrics-prom.json`                            | `formance.ledger` (default) | de-dots only (`NormalizeName=false`) | classic | `formance_ledger_raft_fsm_logs_appended`, `formance_ledger_admission_command_duration_bucket` |
-| `ledger-metrics-prom-normalized.json`                 | `formance.ledger` (default) | full normalisation (default)         | classic | `formance_ledger_raft_fsm_logs_appended_total`, `formance_ledger_admission_command_duration_microseconds_bucket` |
-| `ledger-metrics-prom-normalized-native.json`          | `formance.ledger` (default) | full normalisation (default)         | native  | `formance_ledger_admission_command_duration_microseconds`, queried via `histogram_quantile(0.95, rate(metric[5m]))` directly |
-| `ledger-metrics-otel-noprefix.json`                   | `none`                      | preserves dots                       | classic | `raft.fsm.logs_appended`, `service.cluster` |
+| `ledger-metrics-prom-normalized.json`                 | `formance.ledger` (default) | full normalisation (default)         | classic | `formance_ledger_raft_fsm_logs_appended_total`, `formance_ledger_admission_command_duration_seconds_bucket` |
+| `ledger-metrics-prom-normalized-native.json`          | `formance.ledger` (default) | full normalisation (default)         | native  | `formance_ledger_admission_command_duration_seconds`, queried via `histogram_quantile(0.95, rate(metric[5m]))` directly |
+| `ledger-metrics-otel-noprefix.json`                   | `none`                      | preserves dots                       | classic | `raft.fsm.logs_appended`, `formance.ledger.cluster.name` |
 | `ledger-metrics-prom-noprefix.json`                   | `none`                      | de-dots only (`NormalizeName=false`) | classic | `raft_fsm_logs_appended`, `admission_command_duration_bucket` |
-| `ledger-metrics-prom-noprefix-normalized.json`        | `none`                      | full normalisation (default)         | classic | `raft_fsm_logs_appended_total`, `admission_command_duration_microseconds_bucket` |
-| `ledger-metrics-prom-noprefix-normalized-native.json` | `none`                      | full normalisation (default)         | native  | `admission_command_duration_microseconds`, queried via `histogram_quantile(0.95, rate(metric[5m]))` directly |
+| `ledger-metrics-prom-noprefix-normalized.json`        | `none`                      | full normalisation (default)         | classic | `raft_fsm_logs_appended_total`, `admission_command_duration_seconds_bucket` |
+| `ledger-metrics-prom-noprefix-normalized-native.json` | `none`                      | full normalisation (default)         | native  | `admission_command_duration_seconds`, queried via `histogram_quantile(0.95, rate(metric[5m]))` directly |
 
 The server always emits dot notation; the `prom*` variants assume a
 collector that turns `formance.ledger.raft.fsm.logs_appended` into
@@ -151,9 +151,21 @@ for the rationale. OTel semantic-convention auto-instrumentation
 (`go.*`, `process.*`, `system.*`, `http.*`, `rpc.*`) is emitted via
 the global MeterProvider in the server and bypasses the naming
 policy entirely; in the `prom*` variants those names are merely
-de-dotted by the collector, never prefixed. Attribute names (`service.cluster`,
+de-dotted by the collector, never prefixed. Attribute names (`formance.ledger.cluster.id`,
 `network.io.direction`, …) are de-dotted too but never prefixed
-either.
+either. The ledger's own resource attributes (`formance.ledger.cluster.name`,
+`formance.ledger.node.id`, …) carry the `formance.ledger` namespace in every
+variant, including the `-noprefix` ones, because it is an attribute
+namespace, not the metrics prefix. The dashboards' Namespace, Cluster and
+Node variables filter on `k8s.namespace.name`, `formance.ledger.cluster.name`
+and `formance.ledger.node.id`. The namespace and cluster name, not the
+declared cluster ID, identify a cluster because separate clusters often share
+a cluster ID and a `Cluster` resource name is only unique within its
+namespace. The operator sets both; without it the namespace is absent (the
+All value still matches) and the server defaults the name to the cluster ID,
+so the dashboards work with or without the operator. The variables require
+the metrics pipeline to promote these attributes to series labels (see
+[shared telemetry resource](../../../docs/ops/monitoring.md#shared-telemetry-resource)).
 
 The prefix is applied at runtime by the go-libs metrics module
 (`metrics.NewPrefixedMeterProvider`, `metrics.PrefixedName`) and

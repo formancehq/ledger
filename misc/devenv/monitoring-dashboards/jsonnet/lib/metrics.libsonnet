@@ -16,23 +16,23 @@
     command_duration: 'admission.command.duration',
     command_size: 'admission.command.size',
     propose_queue_load: 'admission.propose_queue.load',
-    propose_queue_full: 'admission.propose_queue.full',
+    propose_queue_overflows: 'admission.propose_queue.overflows',
     propose_duration: 'admission.propose.duration',
     fsm_future_wait_duration: 'admission.fsm_future.wait.duration',
     proposal_guard_duration: 'admission.proposal_guard.duration',
-    proposal_guard_rebuild: 'admission.proposal_guard.rebuild',
+    proposal_guard_rebuilds: 'admission.proposal_guard.rebuilds',
     preload_duration: 'admission.preload.duration',
-    preload_total: 'admission.preload.total',
+    preloads: 'admission.preloads',
     preload_keys_needed: 'admission.preload.keys_needed',
     preload_cache_hits: 'admission.preload.cache_hits',
-    audit_missing_caller: 'admission.audit.missing_caller',
-    audit_caller_subject_empty: 'admission.audit.caller_subject_empty',
+    audit_missing_caller_writes: 'admission.audit.missing_caller.writes',
+    audit_empty_caller_subject_writes: 'admission.audit.empty_caller_subject.writes',
     resolve_batch_duration: 'admission.resolve_batch.duration',
     orders_preparation_duration: 'admission.orders_preparation.duration',
-    scripts_duration: 'admission.scripts.duration',
+    script_duration: 'admission.script.duration',
     response_resolution_duration: 'admission.response_resolution.duration',
-    action_total: 'admission.action.total',
-    action_errors_total: 'admission.action.errors.total',
+    actions: 'admission.actions',
+    action_errors: 'admission.action.errors',
   },
 
   // bloom — internal/infra/bloom/bloom.go
@@ -66,14 +66,14 @@
     last_indexed_sequence: 'index.builder.last_indexed_sequence',
     pebble_last_sequence: 'index.builder.pebble_last_sequence',
     lag: 'index.builder.lag',
-    logs_indexed_total: 'index.builder.logs_indexed_total',
+    logs_indexed: 'index.builder.logs_indexed',
   },
 
-  // audit_index — internal/application/auditindexer/indexer.go
-  audit_index:: {
-    last_indexed_sequence: 'audit_index.last_indexed_sequence',
-    audit_last_sequence: 'audit_index.audit_last_sequence',
-    lag: 'audit_index.lag',
+  // audit.indexer — internal/application/auditindexer/indexer.go
+  audit_indexer:: {
+    last_indexed_sequence: 'audit.indexer.last_indexed_sequence',
+    audit_last_sequence: 'audit.indexer.audit_last_sequence',
+    lag: 'audit.indexer.lag',
   },
 
   // usage.builder — internal/application/usagebuilder/builder.go
@@ -97,23 +97,23 @@
     fsm_wait_duration: 'mirror.fsm_wait.duration',
     batch_duration: 'mirror.batch.duration',
     command_size: 'mirror.command.size',
-    logs_ingested: 'mirror.logs.ingested',
-    batch_total: 'mirror.batch.total',
+    logs_ingested: 'mirror.logs_ingested',
+    batches: 'mirror.batches',
   },
 
   // pebble — internal/storage/dal/metrics.go (our wrapper around
   // Pebble's EventListener; Pebble itself does not expose OTel).
   pebble:: {
-    flush_total: 'pebble.flush.total',
-    flush_duration_milliseconds: 'pebble.flush.duration.milliseconds',
-    flush_input_bytes: 'pebble.flush.input.bytes',
-    compaction_total: 'pebble.compaction.total',
-    compaction_duration_milliseconds: 'pebble.compaction.duration.milliseconds',
-    write_stall_total: 'pebble.write_stall.total',
-    write_stall_duration_milliseconds: 'pebble.write_stall.duration.milliseconds',
+    flushes: 'pebble.flushes',
+    flush_duration: 'pebble.flush.duration',
+    flush_input_size: 'pebble.flush.input.size',
+    compactions: 'pebble.compactions',
+    compaction_duration: 'pebble.compaction.duration',
+    write_stalls: 'pebble.write_stalls',
+    write_stall_duration: 'pebble.write_stall.duration',
     write_stall_active: 'pebble.write_stall.active',
-    disk_slow_total: 'pebble.disk_slow.total',
-    disk_slow_duration_milliseconds: 'pebble.disk_slow.duration.milliseconds',
+    disk_slow_operations: 'pebble.disk_slow.operations',
+    disk_slow_duration: 'pebble.disk_slow.duration',
     vfs_read_ops: 'pebble.vfs.read.ops',
     vfs_write_ops: 'pebble.vfs.write.ops',
     vfs_sync_ops: 'pebble.vfs.sync.ops',
@@ -121,7 +121,7 @@
 
   // preload — internal/infra/state/machine.go
   preload:: {
-    coverage_miss: 'raft.fsm.preload.coverage_miss',
+    coverage_misses: 'raft.fsm.preload.coverage_misses',
   },
 
   // raft — internal/infra/state/machine.go (FSM), node.go,
@@ -133,46 +133,46 @@
     fsm_batch_commit_duration: 'raft.fsm.batch_commit.duration',
     fsm_prepare_duration: 'raft.fsm.prepare.duration',
     apply_entries_duration: 'raft.apply_entries.duration',
+    entries_applied: 'raft.entries_applied',
     apply_entries_batch_size: 'raft.apply_entries.batch_size',
-    apply_entries_batch_size_distribution: 'raft.apply_entries.batch_size_distribution',
     applier_batch_wait_duration: 'raft.applier.batch_wait.duration',
     applier_commit_wait_duration: 'raft.applier.commit_wait.duration',
-    append_entries: 'raft.append_entries',
-    process_entry: 'raft.process_entry',
+    append_entries_duration: 'raft.append_entries.duration',
+    process_entry_duration: 'raft.process_entry.duration',
     read_index_duration: 'raft.read_index.duration',
     ready_committed_entries: 'raft.ready.committed_entries',
-    node_lead: 'raft.node.lead',
-    node_gating_wait_duration: 'raft.node.gating.wait_duration',
+    node_leader: 'raft.node.leader',
+    node_gating_wait_duration: 'raft.node.gating.wait.duration',
     node_gating_readies_processed: 'raft.node.gating.readies_processed',
-    node_ready_wait_duration: 'raft.node.ready.wait_duration',
-    node_ready_terminated_wait_duration: 'raft.node.ready_terminated.wait_duration',
+    node_ready_wait_duration: 'raft.node.ready.wait.duration',
+    node_ready_terminated_wait_duration: 'raft.node.ready_terminated.wait.duration',
     node_unspool_duration: 'raft.node.unspool.duration',
     node_maintenance_snapshot_creation_duration: 'raft.node.maintenance.snapshot_creation.duration',
     node_maintenance_replay_spool_duration: 'raft.node.maintenance.replay_spool.duration',
-    send_pending_messages_full: 'raft.send.pending_messages.full',
-    send_pending_messages_load: 'raft.send.pending_messages.load',
+    send_pending_batch_overflows: 'raft.send.pending_batch.overflows',
+    send_pending_batch_load: 'raft.send.pending_batch.load',
     transport_recv_load: 'raft.transport.recv.load',
-    transport_recv_full: 'raft.transport.recv.full',
+    transport_recv_overflows: 'raft.transport.recv.overflows',
     transport_peer_sending_load: 'raft.transport.peer.sending.load',
-    transport_peer_sending_full: 'raft.transport.peer.sending.full',
+    transport_peer_sending_overflows: 'raft.transport.peer.sending.overflows',
     transport_unreachable_load: 'raft.transport.unreachable.load',
-    transport_unreachable_full: 'raft.transport.unreachable.full',
-    transport_sending_pending_response: 'raft.transport.sending.pending_response',
-    transport_ping_latency: 'raft.transport.ping.latency',
+    transport_unreachable_overflows: 'raft.transport.unreachable.overflows',
+    transport_sending_pending_response_count: 'raft.transport.sending.pending_response.count',
+    transport_ping_duration: 'raft.transport.ping.duration',
   },
 
   // readindex — internal/storage/readstore/metrics.go
   readindex:: {
-    level_bytes: 'readindex.level.bytes',
-    memtable_bytes: 'readindex.memtable.bytes',
+    level_size: 'readindex.level.size',
+    memtable_size: 'readindex.memtable.size',
     cache_hits: 'readindex.cache.hits',
     cache_misses: 'readindex.cache.misses',
   },
 
   // usagestore — internal/storage/usagestore/metrics.go
   usagestore:: {
-    level_bytes: 'usagestore.level.bytes',
-    memtable_bytes: 'usagestore.memtable.bytes',
+    level_size: 'usagestore.level.size',
+    memtable_size: 'usagestore.memtable.size',
     cache_hits: 'usagestore.cache.hits',
     cache_misses: 'usagestore.cache.misses',
   },
@@ -184,7 +184,7 @@
 
   // storage (custom — disk usage) — internal/infra/monitoring/diskusage/diskusage.go
   storage:: {
-    disk_volume_bytes: 'storage.disk.volume.bytes',
+    disk_volume_usage: 'storage.disk.volume.usage',
   },
 
   // wal — internal/storage/wal/wal_default.go

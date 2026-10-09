@@ -12,7 +12,40 @@ import (
 	"testing"
 )
 
+var (
+	groupingClause = regexp.MustCompile(`\b(by|on|ignoring)\s*\(([^()]*)\)`)
+	nodeLabel      = regexp.MustCompile(`formance[._]ledger[._]node[._]id`)
+	clusterLabel   = regexp.MustCompile(`formance[._]ledger[._]cluster[._]name`)
+	namespaceLabel = regexp.MustCompile(`k8s[._]namespace[._]name`)
+)
+
+// groupsByNode reports whether a query keeps one series per node.
+func groupsByNode(expr string) bool {
+	for _, clause := range groupingClause.FindAllStringSubmatch(expr, -1) {
+		if clause[1] == "by" && nodeLabel.MatchString(clause[2]) {
+			return true
+		}
+	}
+
+	return false
+}
+
+var wellFormedLegend = regexp.MustCompile(`^(?:[^{}]|\{\{[A-Za-z_][A-Za-z0-9_.]*\}\})*$`)
+
 var nativeClassicHistogramSuffix = regexp.MustCompile(`(?:raft|admission|wal|pebble|http)[A-Za-z0-9_]*(?:_sum|_count)(?:\{|\[)`)
+
+// resourceAttributeLabels masks the ledger's own resource-attribute labels.
+// They share the formance.ledger namespace with the metrics prefix but are
+// label names, which --otel-metrics-prefix never touches, so the textual
+// prefix checks must not see them.
+var resourceAttributeLabels = strings.NewReplacer(
+	"formance.ledger.cluster.id", "resource.cluster.id",
+	"formance.ledger.cluster.name", "resource.cluster.name",
+	"formance.ledger.node.id", "resource.node.id",
+	"formance_ledger_cluster_id", "resource_cluster_id",
+	"formance_ledger_cluster_name", "resource_cluster_name",
+	"formance_ledger_node_id", "resource_node_id",
+)
 
 func TestGeneratedDashboards(t *testing.T) {
 	t.Parallel()
@@ -44,7 +77,78 @@ func TestGeneratedDashboards(t *testing.T) {
 			assertDatasourceDefault(t, dashboard, strings.Contains(file, "-native"))
 			assertDashboardTree(t, dashboard, strings.Contains(file, "-native"))
 			assertMetricPrefix(t, string(raw), filepath.Base(file))
+			assertClusterVariable(t, dashboard, string(raw), strings.HasPrefix(filepath.Base(file), "ledger-metrics-otel"))
 		})
+	}
+}
+
+// walkQueries calls fn with every PromQL-bearing field (expr, query,
+// definition) of a dashboard tree.
+func walkQueries(value any, path string, fn func(path, query string)) {
+	switch v := value.(type) {
+	case map[string]any:
+		for key, child := range v {
+			if s, ok := child.(string); ok && (key == "expr" || key == "query" || key == "definition") {
+				fn(path+"."+key, s)
+
+				continue
+			}
+			walkQueries(child, path+"."+key, fn)
+		}
+	case []any:
+		for i, child := range v {
+			walkQueries(child, fmt.Sprintf("%s[%d]", path, i), fn)
+		}
+	}
+}
+
+// clusterIDFilter matches a selector filtering the declared cluster ID on the
+// Cluster variable, in any naming variant and JSON escaping.
+var clusterIDFilter = regexp.MustCompile(`formance[._]ledger[._]cluster[._]id[^,}]{0,6}=~[^,}]{0,4}\$cluster`)
+
+// assertClusterVariable applies the Cluster variable regex the way Grafana
+// does to query_result lines. Declared cluster IDs repeat across clusters
+// (EN-2031), so the variable must key on the cluster name: two clusters that
+// share the ID "default" must still yield two values.
+func assertClusterVariable(t *testing.T, dashboard map[string]any, raw string, otel bool) {
+	t.Helper()
+
+	if m := clusterIDFilter.FindString(raw); m != "" {
+		t.Errorf("a query filters the cluster ID on $cluster (%s); key on formance.ledger.cluster.name", m)
+	}
+	// A Cluster resource name is only unique within its namespace, so every
+	// query scoped to $cluster must also be scoped to $namespace.
+	walkQueries(dashboard, "dashboard", func(path, query string) {
+		if strings.Contains(query, "$cluster") && !strings.Contains(query, "$namespace") {
+			t.Errorf("%s filters on $cluster without $namespace: %s", path, query)
+		}
+	})
+
+	cluster := arrayField(t, objectField(t, dashboard, "templating"), "list")[3].(map[string]any)
+	expr, _ := cluster["regex"].(string)
+	pattern, err := regexp.Compile(strings.TrimSuffix(strings.TrimPrefix(expr, "/"), "/"))
+	if err != nil {
+		t.Fatalf("cluster variable regex %q: %v", expr, err)
+	}
+	label := func(name string) string {
+		if otel {
+			return name
+		}
+
+		return strings.ReplaceAll(name, ".", "_")
+	}
+	line := func(name string) string {
+		return fmt.Sprintf(`raft.node.lead{%s="default", %s=%q, %s="2"} 1 1700000000000`,
+			label("formance.ledger.cluster.id"), label("formance.ledger.cluster.name"), name, label("formance.ledger.node.id"))
+	}
+	for _, name := range []string{"prod-eu", "prod-us"} {
+		match := pattern.FindStringSubmatch(line(name))
+		if len(match) < 2 {
+			t.Fatalf("cluster variable regex %q does not capture the cluster name in %q", expr, line(name))
+		}
+		if match[1] != name {
+			t.Errorf("cluster variable on %q: got %q, want the cluster name %q", line(name), match[1], name)
+		}
 	}
 }
 
@@ -53,8 +157,8 @@ func assertDatasourceDefault(t *testing.T, dashboard map[string]any, native bool
 
 	templating := objectField(t, dashboard, "templating")
 	variables := arrayField(t, templating, "list")
-	if len(variables) != 4 {
-		t.Fatalf("expected datasource, Pyroscope, cluster and node variables; got %d", len(variables))
+	if len(variables) != 5 {
+		t.Fatalf("expected datasource, Pyroscope, namespace, cluster and node variables; got %d", len(variables))
 	}
 
 	datasource := variables[0].(map[string]any)
@@ -109,13 +213,60 @@ func assertDashboardTree(t *testing.T, value any, native bool) {
 				if native && nativeClassicHistogramSuffix.MatchString(expr) {
 					t.Errorf("native dashboard references a classic histogram suffix at %s: %s", path, expr)
 				}
+				// Node IDs repeat across clusters, and the Namespace and
+				// Cluster variables allow All: a node is only identified
+				// together with its namespace and cluster name.
+				for _, clause := range groupingClause.FindAllStringSubmatch(expr, -1) {
+					if nodeLabel.MatchString(clause[2]) && (!clusterLabel.MatchString(clause[2]) || !namespaceLabel.MatchString(clause[2])) {
+						t.Errorf("%s clause groups by node without namespace and cluster name at %s: %s", clause[1], path, clause[0])
+					}
+				}
+			}
+			// Two namespaces can hold a cluster of the same name, so the
+			// legend needs both to tell the series apart.
+			if legend, ok := value["legendFormat"].(string); ok {
+				if nodeLabel.MatchString(legend) && (!clusterLabel.MatchString(legend) || !namespaceLabel.MatchString(legend)) {
+					t.Errorf("legend names a node without its namespace and cluster at %s: %q", path, legend)
+				}
+				// A per-node series needs the node in its legend, unless
+				// Grafana derives the legend (__auto) or it is a heatmap
+				// bucket ({{le}}).
+				expr, _ := value["expr"].(string)
+				if groupsByNode(expr) && !nodeLabel.MatchString(legend) && legend != "__auto" && !strings.Contains(legend, "{{le}}") {
+					t.Errorf("per-node series have a legend without the node at %s: %q", path, legend)
+				}
+			}
+
+			// Grafana substitutes {{label}}; rewriteLegendFormat only
+			// de-dots that exact form, so anything else leaves a raw
+			// or empty placeholder in Prometheus variants.
+			if legend, ok := value["legendFormat"].(string); ok && !wellFormedLegend.MatchString(legend) {
+				t.Errorf("malformed legend placeholder at %s: %q", path, legend)
 			}
 
 			if profileType, ok := value["profileTypeId"].(string); ok && strings.HasPrefix(profileType, "goroutine:") {
 				t.Errorf("obsolete singular goroutine profile type at %s: %s", path, profileType)
 			}
-			if selector, ok := value["labelSelector"].(string); ok && strings.Contains(selector, "version=") {
-				t.Errorf("Pyroscope selector relies on absent version label at %s: %s", path, selector)
+			if selector, ok := value["labelSelector"].(string); ok {
+				if strings.Contains(selector, "version=") {
+					t.Errorf("Pyroscope selector relies on absent version label at %s: %s", path, selector)
+				}
+				// The server tags profiles with the same namespace,
+				// cluster and node identity as the metrics; service_name
+				// is a per-deployment application name and matches
+				// nothing the dashboard variables select.
+				for _, want := range []string{
+					`k8s_namespace_name=~"$namespace"`,
+					`formance_ledger_cluster_name=~"$cluster"`,
+					`formance_ledger_node_id=~"$node"`,
+				} {
+					if !strings.Contains(selector, want) {
+						t.Errorf("Pyroscope selector at %s is not scoped by %s: %s", path, want, selector)
+					}
+				}
+				if strings.Contains(selector, "service_name") {
+					t.Errorf("Pyroscope selector hard-codes a service name at %s: %s", path, selector)
+				}
 			}
 
 			for key, child := range value {
@@ -144,6 +295,7 @@ func assertMetricPrefix(t *testing.T, raw, file string) {
 		prefix = "formance.ledger."
 	}
 	if strings.Contains(file, "-noprefix") {
+		raw = resourceAttributeLabels.Replace(raw)
 		if strings.Contains(raw, "formance_ledger") || strings.Contains(raw, "formance.ledger") {
 			t.Errorf("-noprefix variant references the metrics prefix")
 		}
@@ -179,7 +331,7 @@ func TestPrefixedVariantsMatchNoPrefixCounterparts(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		content := string(raw)
+		content := resourceAttributeLabels.Replace(string(raw))
 		if stripPrefix {
 			content = strings.ReplaceAll(content, "formance.ledger.", "")
 			content = strings.ReplaceAll(content, "formance_ledger_", "")

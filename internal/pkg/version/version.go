@@ -2,7 +2,10 @@
 // vars are set at build time via -ldflags -X; they default to dev values.
 package version
 
-import "runtime"
+import (
+	"runtime"
+	"strings"
+)
 
 // Build metadata, set via:
 //
@@ -29,4 +32,18 @@ func Get() Info {
 		BuildDate: BuildDate,
 		GoVersion: runtime.Version(),
 	}
+}
+
+// ServiceVersion formats the build for the OpenTelemetry service.version
+// resource attribute as semver build metadata, <version>+<commit>. Build
+// metadata does not affect semver precedence, whereas <version>-<commit>
+// reads as a pre-release ordered before <version>. The commit is omitted
+// when it is unknown or already part of the version, as in goreleaser
+// snapshot versions, which embed the short commit.
+func (i Info) ServiceVersion() string {
+	if i.Commit == "" || i.Commit == "unknown" || strings.Contains(i.Version, i.Commit) {
+		return i.Version
+	}
+
+	return i.Version + "+" + i.Commit
 }
