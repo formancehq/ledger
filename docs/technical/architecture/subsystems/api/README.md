@@ -12,6 +12,7 @@ Client-facing transport layers (`internal/adapter/grpc`, `internal/adapter/http`
 | [http-api.md](http-api.md) | HTTP endpoint lifecycle and failure shutdown, REST API endpoints, single-decoding metadata key paths, response formats, opt-in string monetary amounts, exact metadata number decoding, ledger-log JSON output and discriminators, error handling, and the `apierr`/`grpcerr` error boundary crossed by a forwarded write. |
 | [auth.md](auth.md) | Client JWT authentication (OIDC + Ed25519), scope-based authorization, and the Raft inter-node cluster-secret auth layer. |
 | [sensitive-projection.md](sensitive-projection.md) | Detached, descriptor-driven secret projection and its ownership boundary. |
+| [fctl-plugin.md](fctl-plugin.md) | Product-owned HTTP command module, external SDK broker, co-release identity, and immutable OCI publication. |
 
 Decoded leader errors retain their exact gRPC status through routing wrappers
 and streaming cursors. See [forwarding and cancellation](http-api.md#forwarded-writes-and-the-transport-seam)

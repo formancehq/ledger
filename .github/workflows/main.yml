@@ -70,6 +70,9 @@ jobs:
       - name: Run unit tests with coverage
         run: >
           nix develop --command just test-coverage
+      - name: Validate independent fctl plugin
+        run: >
+          nix develop --command just test-fctl-plugin build-fctl-plugin
       - name: Run internal tests with optional features and coverage
         run: >
           nix develop --command just test-internal-coverage

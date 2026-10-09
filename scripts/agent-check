@@ -23,6 +23,9 @@ bash "$SCRIPT_DIR/check-repo-invariants"
 echo "==> agent-check: compile all root-module packages"
 go build ./...
 
+echo "==> agent-check: compile the product-owned fctl plugin"
+(cd fctl-plugin && go build ./...)
+
 echo "==> agent-check: verify tracked/staged diff whitespace"
 git diff --check HEAD --
 
