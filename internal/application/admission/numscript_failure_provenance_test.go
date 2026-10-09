@@ -181,7 +181,7 @@ send $amt (
 	// the cause whether or not a key is present — the idempotency key only matters
 	// for the state-dependent and `latest` branches. This row pins that
 	// key-independence: no key still terminates on the surfaced cause (the
-	// numscript runtime error, NOT the retryable ErrDependencyDiscoveryFailed).
+	// numscript execution error, NOT the retryable ErrDependencyDiscoveryFailed).
 	t.Run("inline no-read without key terminates on surfaced cause", func(t *testing.T) {
 		t.Parallel()
 
@@ -192,8 +192,8 @@ send $amt (
 
 		var businessErr *domain.BusinessError
 		require.ErrorAs(t, err, &businessErr)
-		var runtimeErr *domain.ErrNumscriptRuntime
-		require.ErrorAs(t, err, &runtimeErr, "the terminal inline branch surfaces the real numscript cause")
+		var execErr *domain.ErrNumscriptExecution
+		require.ErrorAs(t, err, &execErr, "the terminal inline branch surfaces the real numscript cause")
 		var discoveryErr *domain.ErrDependencyDiscoveryFailed
 		require.NotErrorAs(t, err, &discoveryErr, "an inline no-read failure is never the retryable ErrDependencyDiscoveryFailed")
 		require.False(t, order.GetTechnical().GetPreloadUnavailable())
@@ -208,8 +208,8 @@ send $amt (
 
 		err := runResolveProvenance(t, admission, []*raftcmdpb.Order{order}, false)
 
-		var discoveryErr *domain.ErrDependencyDiscoveryFailed
-		require.ErrorAs(t, err, &discoveryErr)
+		var execErr *domain.ErrNumscriptExecution
+		require.ErrorAs(t, err, &execErr, "without a key there is no frozen outcome to replay, so the cause surfaces")
 		require.False(t, order.GetTechnical().GetPreloadUnavailable())
 	})
 
@@ -234,8 +234,8 @@ send $amt (
 
 		err := runResolveProvenance(t, admission, []*raftcmdpb.Order{order}, false)
 
-		var discoveryErr *domain.ErrDependencyDiscoveryFailed
-		require.ErrorAs(t, err, &discoveryErr)
+		var execErr *domain.ErrNumscriptExecution
+		require.ErrorAs(t, err, &execErr, "without a key the metadata miss surfaces as the client error it is")
 		require.False(t, order.GetTechnical().GetPreloadUnavailable())
 	})
 }
@@ -355,6 +355,44 @@ send $x (
 		require.True(t, forwarded,
 			"a latest ref under a key must forward so the FSM can replay a frozen outcome, not terminate")
 		require.True(t, order.GetTechnical().GetPreloadUnavailable())
+	})
+
+	t.Run("execution failure after a mutable read", func(t *testing.T) {
+		t.Parallel()
+
+		// A meta()/balance()-sourced value may be valid again by the time a keyed
+		// retry arrives, and the key's original attempt may have succeeded, so the
+		// FSM must get the chance to replay it. Without a key, or without a
+		// mutable read, the failure is final.
+		for _, tc := range []struct {
+			name         string
+			mutableRead  bool
+			hasKey       bool
+			wantForwards bool
+		}{
+			{name: "read and key forwards", mutableRead: true, hasKey: true, wantForwards: true},
+			{name: "read without key terminates", mutableRead: true, hasKey: false},
+			{name: "no read with key terminates", mutableRead: false, hasKey: true},
+		} {
+			execErr := &domain.ErrNumscriptExecution{Detail: "metadata not found"}
+			cause := &numscript.DependencyResolutionError{Cause: execErr, MutableReadAttempted: tc.mutableRead}
+			order := scriptOrder(testLedgerName, "")
+
+			forwarded, err := admission.classifyResolutionFailure(order, cause, false, tc.hasKey)
+
+			require.Equal(t, tc.wantForwards, forwarded, tc.name)
+			require.Equal(t, tc.wantForwards, order.GetTechnical().GetPreloadUnavailable(), tc.name)
+
+			if tc.wantForwards {
+				require.NoError(t, err, tc.name)
+
+				continue
+			}
+
+			var businessErr *domain.BusinessError
+			require.ErrorAs(t, err, &businessErr, tc.name)
+			require.Equal(t, domain.ErrReasonNumscriptExecutionError, businessErr.Err.Reason(), tc.name)
+		}
 	})
 
 	t.Run("freezable latest ref without key still terminates", func(t *testing.T) {

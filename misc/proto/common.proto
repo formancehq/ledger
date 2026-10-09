@@ -1349,6 +1349,14 @@ enum ErrorReason {
   // Deterministic for a given script and vars (Kind=Validation); rejected at
   // admission, never proposed.
   ERROR_REASON_NUMSCRIPT_COMPILE_ERROR = 73;
+  // ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR: the script failed on its own
+  // terms, during dependency resolution or execution — an invalid account
+  // name, a missing or mistyped var, a negative amount, an allotment that does
+  // not sum to 1, a division by zero, a missing metadata value, a posting
+  // amount wider than 256 bits, and the like. Values can come from balance() or
+  // meta(), so the same script may succeed against other state
+  // (Kind=Precondition).
+  ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR = 74;
 }
 
 // IdempotencyFailure captures a definitive business rejection so a retried key

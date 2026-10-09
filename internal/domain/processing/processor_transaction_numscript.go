@@ -148,13 +148,13 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		}
 
 		if posting.Amount.Sign() < 0 {
-			return nil, &domain.ErrNumscriptRuntime{
+			return nil, &domain.ErrNumscriptExecution{
 				Detail: fmt.Sprintf("posting %d has negative amount %s", i, posting.Amount),
 			}
 		}
 
 		if overflow := u256Amount.SetFromBig(posting.Amount); overflow {
-			return nil, &domain.ErrNumscriptRuntime{
+			return nil, &domain.ErrNumscriptExecution{
 				Detail: fmt.Sprintf("posting %d amount %s exceeds 256 bits", i, posting.Amount),
 			}
 		}

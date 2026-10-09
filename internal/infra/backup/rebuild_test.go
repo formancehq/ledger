@@ -1568,6 +1568,52 @@ func TestRebuildDelta_IdempotencyFreshFailureOverwrites(t *testing.T) {
 	require.NotNil(t, v.GetFailure(), "a fresh non-conflict failure overwrites the earlier outcome")
 }
 
+// A keyed Numscript execution failure is frozen at apply, so the restore must
+// re-freeze it from the audit chain; the internal NUMSCRIPT_RUNTIME never froze
+// anything, so the rebuild must not invent an outcome for it.
+func TestRebuildDelta_IdempotencyNumscriptFailures(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		reason commonpb.ErrorReason
+		frozen bool
+	}{
+		{reason: commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR, frozen: true},
+		{reason: commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_RUNTIME, frozen: false},
+	} {
+		t.Run(tc.reason.String(), func(t *testing.T) {
+			t.Parallel()
+
+			store := newRebuildTestStore(t)
+
+			const key = "idem-key"
+
+			batch := store.OpenWriteSession()
+			require.NoError(t, batch.SetProto(coldAuditKey(1), keyedAuditFailure(1, key, 1_000_000, tc.reason)))
+			require.NoError(t, batch.SetProto(coldAuditItemKey(1, 0), auditItem(t, 0, fillGapOrder("l", 1))))
+			require.NoError(t, batch.Commit())
+
+			require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+			handle, err := store.NewDirectReadHandle()
+			require.NoError(t, err)
+			defer func() { _ = handle.Close() }()
+
+			v, err := state.LoadIdempotencyKey(handle, key)
+			require.NoError(t, err)
+
+			if !tc.frozen {
+				require.Nil(t, v)
+
+				return
+			}
+
+			require.NotNil(t, v)
+			require.Equal(t, tc.reason, v.GetFailure().GetReason())
+		})
+	}
+}
+
 func registerSigningKeyLog(seq uint64, keyID string, pub []byte, parentKeyID string) *commonpb.Log {
 	return &commonpb.Log{
 		Sequence: seq,

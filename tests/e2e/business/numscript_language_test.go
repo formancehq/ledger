@@ -110,7 +110,7 @@ send [USD/2 *] (
 
 		It("Should reject send-all from an unbounded @world source", func() {
 			// send-all from @world is unbounded — there is no finite balance to
-			// drain, so the interpreter raises a runtime error.
+			// drain, so the VM rejects the script at execution.
 			script := `
 send [USD/2 *] (
   source = @world
@@ -121,8 +121,8 @@ send [USD/2 *] (
 			Expect(err).To(HaveOccurred())
 			info := actions.ExtractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil(), "error must carry error info: %v", err)
-			Expect(info.Reason).To(Equal(domain.ErrReasonNumscriptRuntime),
-				"send-all from unbounded source must be a runtime error, got %q", info.Reason)
+			Expect(info.Reason).To(Equal(domain.ErrReasonNumscriptExecutionError),
+				"send-all from unbounded source must be an execution error, got %q", info.Reason)
 		})
 
 		It("Should reject send-all from an unbounded-overdraft source", func() {
@@ -540,7 +540,7 @@ send [USD/2 1000] (
 			Expect(err).To(Succeed())
 		})
 
-		It("Should reject a division by zero as a runtime error", func() {
+		It("Should reject a division by zero as an execution error", func() {
 			script := `
 set_tx_meta("bad", 3 / 0)
 
@@ -553,11 +553,11 @@ send [USD/2 1] (
 			Expect(err).To(HaveOccurred())
 			info := actions.ExtractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil(), "error must carry error info: %v", err)
-			Expect(info.Reason).To(Equal(domain.ErrReasonNumscriptRuntime),
-				"division by zero must be a runtime error, got %q", info.Reason)
+			Expect(info.Reason).To(Equal(domain.ErrReasonNumscriptExecutionError),
+				"division by zero must be an execution error, got %q", info.Reason)
 		})
 
-		It("Should reject a send of a negative amount as a runtime error", func() {
+		It("Should reject a send of a negative amount as an execution error", func() {
 			// A prefix-negated monetary produces a negative amount, which is
 			// invalid in a send position.
 			script := `
@@ -570,13 +570,13 @@ send -[USD/2 100] (
 			Expect(err).To(HaveOccurred())
 			info := actions.ExtractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil(), "error must carry error info: %v", err)
-			Expect(info.Reason).To(Equal(domain.ErrReasonNumscriptRuntime),
-				"negative send amount must be a runtime error, got %q", info.Reason)
+			Expect(info.Reason).To(Equal(domain.ErrReasonNumscriptExecutionError),
+				"negative send amount must be an execution error, got %q", info.Reason)
 		})
 
 		It("Should reject a non-numeric value for a number variable", func() {
-			// A number var whose raw value cannot parse as an integer is a parse
-			// error surfaced at variable binding.
+			// A number var whose raw value cannot parse as an integer fails
+			// variable binding during dependency resolution.
 			script := `
 vars {
   number $count
@@ -593,11 +593,8 @@ send [USD/2 $count] (
 			Expect(err).To(HaveOccurred())
 			info := actions.ExtractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil(), "error must carry error info: %v", err)
-			Expect(info.Reason).To(BeElementOf(
-				domain.ErrReasonNumscriptParseError,
-				domain.ErrReasonNumscriptRuntime,
-				domain.ErrReasonValidation,
-			), "invalid number var must be rejected, got %q", info.Reason)
+			Expect(info.Reason).To(Equal(domain.ErrReasonNumscriptExecutionError),
+				"invalid number var must be an execution error, got %q", info.Reason)
 		})
 	})
 })

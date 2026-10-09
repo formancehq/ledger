@@ -168,7 +168,9 @@ func SafeExecFromText(cache *NumscriptCache, script string, scriptVars map[strin
 // types: the same missing-funds mapping (the VM error carries no account or
 // color either, so ColorKnown stays false), the same typed-failure pass-through
 // (the VM wraps store errors, which Unwrap to the domain sentinel a rejected
-// scoped read raises), and the same conservative ErrNumscriptRuntime residue.
+// scoped read raises), and ErrNumscriptExecution for every failure the script
+// itself caused. What remains — VmInternalError (malformed bytecode) and store
+// errors with no domain type — is ErrNumscriptRuntime.
 // Asset scaling never reaches here: dependency resolution rejects a scaling
 // script at admission (ErrNumscriptScalingUnsupported), before compilation.
 func convertVMError(err error) domain.SerializableError {
@@ -184,9 +186,37 @@ func convertVMError(err error) domain.SerializableError {
 		}
 	}
 
+	if isScriptExecutionError(err) {
+		return &domain.ErrNumscriptExecution{Detail: err.Error()}
+	}
+
 	if d, ok := errors.AsType[domain.SerializableError](err); ok {
 		return d
 	}
 
 	return &domain.ErrNumscriptRuntime{Detail: err.Error()}
+}
+
+// isScriptExecutionError reports whether err is a VM failure caused by the
+// script, its vars, or the balances and metadata it read.
+func isScriptExecutionError(err error) bool {
+	return isErrorType[numscriptlib.VmNegativeAmountError](err) ||
+		isErrorType[numscriptlib.VmNegativeBalanceError](err) ||
+		isErrorType[numscriptlib.VmAssetMismatchError](err) ||
+		isErrorType[numscriptlib.VmInvalidAllotmentSum](err) ||
+		isErrorType[numscriptlib.VmNegativePortionError](err) ||
+		isErrorType[numscriptlib.VmDivideByZeroError](err) ||
+		isErrorType[numscriptlib.VmInvalidAccountName](err) ||
+		isErrorType[numscriptlib.VmInvalidColor](err) ||
+		isErrorType[numscriptlib.VmInvalidScope](err) ||
+		isErrorType[numscriptlib.VmCannotCastScopedAccountToString](err) ||
+		isErrorType[numscriptlib.VmInvalidUncappedSource](err) ||
+		isErrorType[numscriptlib.VmMetadataNotFoundError](err) ||
+		isErrorType[numscriptlib.VmBadMetaValueError](err)
+}
+
+func isErrorType[T error](err error) bool {
+	_, ok := errors.AsType[T](err)
+
+	return ok
 }

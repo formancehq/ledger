@@ -10,31 +10,23 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
 
-// convertNumscriptError translates known numscript library errors raised by
+// convertNumscriptError translates numscript library errors raised by
 // dependency resolution (its only caller, SafeResolveDependencies) into domain
 // errors so that the gRPC error mapper can return proper status codes.
 // Resolution does no balance arithmetic, so a missing-funds failure cannot
-// originate here; execution errors, including missing funds, go through the
-// VM's convertVMError. Library errors that have no specific mapping are
-// wrapped as ErrNumscriptRuntime (KindInternal) — an unhandled failure mode,
-// which is a server bug the user cannot fix.
+// originate here; execution errors go through the VM's convertVMError. A
+// failure caused by the script, its vars, or the balances and metadata it read
+// becomes ErrNumscriptExecution; library defects (InternalError,
+// UnhandledError) and anything unmapped stay ErrNumscriptRuntime.
 func convertNumscriptError(err error) domain.SerializableError {
 	if err == nil {
 		return nil
 	}
 
-	// Asset scaling (`… with scaling through …`) is not supported by dependency
-	// resolution: SourceWithScaling returns ErrScalingNotSupported unconditionally,
-	// independent of any balance/metadata. It is the one deterministic resolver
-	// failure the library re-exports as a public sentinel (numscriptlib.
-	// ErrScalingNotSupported), so — unlike the internal-only residue below — we can
-	// split it out without importing internals or matching strings. Map it to the
-	// freezable ErrNumscriptScalingUnsupported (KindValidation) so admission
-	// terminates it definitively rather than forwarding a PRELOAD_UNAVAILABLE that
-	// no retry could satisfy. This closes the read-then-scaling loop that the
-	// provenance flag alone could not, because a successful balance()/meta() origin
-	// read (bound before statements are walked) sets MutableReadAttempted before the
-	// scaling source deterministically fails (EN-1557).
+	// Asset scaling (`… with scaling through …`) is unsupported by dependency
+	// resolution regardless of any balance or metadata, so no retry can satisfy
+	// it. As a validation failure it terminates at admission even after a
+	// balance()/meta() origin read set MutableReadAttempted (EN-1557).
 	if errors.Is(err, numscriptlib.ErrScalingNotSupported) {
 		return domain.ErrNumscriptScalingUnsupported
 	}
@@ -48,23 +40,49 @@ func convertNumscriptError(err error) domain.SerializableError {
 		return d
 	}
 
-	// Every other library error becomes ErrNumscriptRuntime (KindInternal).
-	//
-	// This intentionally keeps a single conservative classification for the whole
-	// residue. Admission no longer needs the leaf error category to decide
-	// forward-vs-terminate: it classifies from state provenance instead — selector
-	// mutability (`latest` vs inline/exact) plus whether resolution attempted a
-	// mutable balance/metadata read (RecordingStore.MutableReadAttempted, carried
-	// out via DependencyResolutionError). See EN-1557. This matters because the
-	// upstream library reports script-deterministic errors and state-dependent ones
-	// (e.g. MetadataNotFound when a meta()-referenced account was deleted after an
-	// earlier success) with the same leaf InterpreterError shape, and the concrete
-	// types live in an internal package we must not import. A public Numscript
-	// resolver-error taxonomy is therefore NOT required (EN-1563 cancelled) — the
-	// one publicly-exposed deterministic sentinel (scaling) is handled above; the
-	// rest stay conservatively forwarded — and we must never classify by error
-	// string or import Numscript internals.
+	if isScriptResolutionError(err) {
+		return &domain.ErrNumscriptExecution{Detail: err.Error()}
+	}
+
 	return &domain.ErrNumscriptRuntime{Detail: err.Error()}
+}
+
+// isScriptResolutionError reports whether err is an interpreter failure caused
+// by the script, its vars, or the balances and metadata it read. Values can
+// come from balance() or meta(), so any of them may depend on state; admission
+// keeps such a failure forwardable when resolution read mutable state (see
+// classifyResolutionFailure).
+func isScriptResolutionError(err error) bool {
+	return isErrorType[numscriptlib.NegativeAmountErr](err) ||
+		isErrorType[numscriptlib.MissingVariableErr](err) ||
+		isErrorType[numscriptlib.InvalidAccountName](err) ||
+		isErrorType[numscriptlib.InvalidAsset](err) ||
+		isErrorType[numscriptlib.InvalidColor](err) ||
+		isErrorType[numscriptlib.InvalidScope](err) ||
+		isErrorType[numscriptlib.InvalidMonetaryLiteral](err) ||
+		isErrorType[numscriptlib.InvalidNumberLiteral](err) ||
+		isErrorType[numscriptlib.BadPortionParsingErr](err) ||
+		isErrorType[numscriptlib.MismatchedCurrencyError](err) ||
+		isErrorType[numscriptlib.DivideByZero](err) ||
+		isErrorType[numscriptlib.TypeError](err) ||
+		isErrorType[numscriptlib.MetadataNotFound](err) ||
+		isErrorType[numscriptlib.NegativeBalanceError](err) ||
+		isErrorType[numscriptlib.InvalidAllotmentSum](err) ||
+		isErrorType[numscriptlib.NegativePortion](err) ||
+		isErrorType[numscriptlib.InvalidRemainingAllotment](err) ||
+		isErrorType[numscriptlib.InvalidAllotmentInSendAll](err) ||
+		isErrorType[numscriptlib.InvalidUnboundedInSendAll](err) ||
+		isErrorType[numscriptlib.InvalidUnboundedAddressInScalingAddress](err) ||
+		isErrorType[numscriptlib.InvalidNestedMeta](err) ||
+		isErrorType[numscriptlib.CannotCastToString](err) ||
+		isErrorType[numscriptlib.CannotCastScopedAccountToString](err) ||
+		isErrorType[numscriptlib.CannotStoreScopedAccountInMeta](err) ||
+		isErrorType[numscriptlib.UnboundVariableErr](err) ||
+		isErrorType[numscriptlib.UnboundFunctionErr](err) ||
+		isErrorType[numscriptlib.BadArityErr](err) ||
+		isErrorType[numscriptlib.InvalidTypeErr](err) ||
+		isErrorType[numscriptlib.ExperimentalFeature](err) ||
+		isErrorType[numscriptlib.InvalidFeature](err)
 }
 
 // panicError marks a Describable that originated from a recovered panic inside

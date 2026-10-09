@@ -1786,7 +1786,15 @@ func (a *Admission) classifyResolutionFailure(order *raftcmdpb.Order, cause erro
 		// case fall through to the refIsLatest forward branch below. Without a key
 		// there is no frozen outcome to preserve, so keep the precise terminal
 		// error even for `latest`.
-		if !refIsLatest || !hasIdempotencyKey {
+		//
+		// A precondition failure after a mutable balance/metadata read depends on
+		// state that may have changed since the key's original attempt (a
+		// meta()-referenced key deleted after an earlier success), so under a key
+		// it falls through to the provenance branch below, which forwards it.
+		dre, hasProvenance := errors.AsType[*numscript.DependencyResolutionError](cause)
+		stateDependent := d.Kind() == domain.KindPrecondition && hasProvenance && dre.MutableReadAttempted
+
+		if !hasIdempotencyKey || (!refIsLatest && !stateDependent) {
 			return false, &domain.BusinessError{Err: d}
 		}
 	}
@@ -1794,8 +1802,8 @@ func (a *Admission) classifyResolutionFailure(order *raftcmdpb.Order, cause erro
 	// Provenance-based classification (EN-1557). A DependencyResolutionError
 	// carries whether resolution attempted a mutable balance/metadata read
 	// before failing, letting us tell a state-dependent failure from a
-	// deterministic one that the conservative KindInternal mapping can no
-	// longer distinguish on its own.
+	// deterministic one when the error kind alone cannot (KindInternal library
+	// residue, or a precondition failure after a mutable read under a key).
 	if dre, ok := errors.AsType[*numscript.DependencyResolutionError](cause); ok {
 		if dre.MutableReadAttempted {
 			// State-dependent: current state made resolution fail. With an
