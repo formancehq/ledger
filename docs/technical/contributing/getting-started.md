@@ -41,6 +41,7 @@ ledger/
 │   ├── query/                 # CQRS read-side queries
 │   └── storage/               # Pebble persistence (dal/, wal/, spool/, readstore/, pebblecfg/)
 ├── pkg/                       # Public packages (actions/, scenario/, testserver/)
+├── fctl-plugin/               # Independent HTTP command plugin for fctl v4 (own Go module)
 ├── tests/                     # Test suites (e2e/, scenarios/, antithesis/, perf/, schemathesis/)
 ├── misc/
 │   ├── proto/                 # Protocol Buffer definitions

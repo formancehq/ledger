@@ -1,0 +1,51 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+project_name: fctl-plugin-ledger
+dist: ../build/fctl-plugin
+
+env:
+  - PLUGIN_REVISION={{ envOrDefault "PLUGIN_REVISION" "1" }}
+  - LEDGER_SERVICE_VERSION={{ envOrDefault "LEDGER_SERVICE_VERSION" .Version }}
+
+builds:
+  - id: fctl-plugin-ledger
+    binary: fctl-plugin-ledger
+    main: ./cmd/fctl-plugin-ledger
+    env:
+      - CGO_ENABLED=0
+    # Keep -ldflags build metadata: the publisher checks version/revision on
+    # every foreign-platform executable before uploading any of them.
+    ldflags:
+      - -s -w
+      - -X main.serviceVersion={{ .Env.LEDGER_SERVICE_VERSION }}
+      - -X main.revision={{ .Env.PLUGIN_REVISION }}
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - ids:
+      - fctl-plugin-ledger
+    name_template: "{{ .ProjectName }}_v{{ .Env.LEDGER_SERVICE_VERSION }}_r{{ .Env.PLUGIN_REVISION }}_{{ .Os }}-{{ .Arch }}"
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+# The service release configuration attaches the same builds to Ledger releases.
+# This configuration prepares independent plugin snapshots without publishing.
+release:
+  disable: true
+changelog:
+  disable: true

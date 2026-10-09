@@ -92,6 +92,7 @@
             k6
             kubernetes-helm
             nodejs_22
+            oras
             python314
             trufflehog
             uv

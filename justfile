@@ -30,6 +30,8 @@ lint:
     golangci-lint run --fix --build-tags it,local,enable_antithesis_sdk,{{all_tags}} --timeout 5m
     echo "==> golangci-lint (operator)"
     (cd misc/operator && golangci-lint run --fix --timeout 5m)
+    echo "==> golangci-lint (fctl plugin)"
+    (cd fctl-plugin && golangci-lint run --fix --build-tags it --timeout 5m)
     echo "==> golangci-lint (model workload)"
     (cd tests/antithesis/workload && golangci-lint run --fix --build-tags enable_antithesis_sdk --timeout 5m)
 
@@ -40,6 +42,8 @@ tidy:
     go mod tidy
     echo "==> go mod tidy (operator)"
     (cd misc/operator && go mod tidy)
+    echo "==> go mod tidy (fctl plugin)"
+    (cd fctl-plugin && go mod tidy)
     echo "==> go mod tidy (model workload)"
     (cd tests/antithesis/workload && go mod tidy)
 
@@ -67,6 +71,37 @@ build-full:
 # Build the client application
 build-client:
     go build -o ./build/ledgerctl ./cmd/ledgerctl
+
+# Build the HTTP fctl plugin, independently of the Ledger service module.
+build-fctl-plugin version="dev" revision="1":
+    cd fctl-plugin && CGO_ENABLED=0 go build -ldflags '-X main.serviceVersion={{version}} -X main.revision={{revision}}' -o ../build/fctl-plugin-ledger ./cmd/fctl-plugin-ledger
+
+test-fctl-plugin:
+    cd fctl-plugin && go test -race -tags it ./... -timeout 3m
+
+# Prepare six native platform archives and checksums without publishing.
+package-fctl-plugin version="dev" revision="1":
+    cd fctl-plugin && LEDGER_SERVICE_VERSION={{version}} PLUGIN_REVISION={{revision}} goreleaser release --snapshot --clean --skip=publish
+
+# Export the SDK manifest from the previously built native executable.
+fctl-plugin-manifest:
+    ./build/fctl-plugin-ledger --manifest > ./build/fctl-plugin-manifest.json
+
+# Publish previously packaged raw binaries; advertise the catalogue only on success.
+publish-fctl-plugin registry="https://ghcr.io" repository="formancehq/fctl-plugin-ledger" revision="1":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd fctl-plugin
+    go run ./cmd/fctl-plugin-publish --manifest ../build/fctl-plugin-manifest.json --artifacts ../build/fctl-plugin/artifacts.json --source-root ../build/fctl-plugin --registry '{{registry}}' --repository '{{repository}}' --revision '{{revision}}' > ../build/fctl-plugin-catalogue.json.tmp
+    mv ../build/fctl-plugin-catalogue.json.tmp ../build/fctl-plugin-catalogue.json
+
+# Exercise real ORAS artifact creation locally without accessing any registry.
+fctl-plugin-oci-layout revision="1":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd fctl-plugin
+    go run ./cmd/fctl-plugin-publish --manifest ../build/fctl-plugin-manifest.json --artifacts ../build/fctl-plugin/artifacts.json --source-root ../build/fctl-plugin --layout ../build/fctl-plugin-oci --revision '{{revision}}' > ../build/fctl-plugin-catalogue.json.tmp
+    mv ../build/fctl-plugin-catalogue.json.tmp ../build/fctl-plugin-catalogue.json
 
 # Run the application locally (single node)
 run:
