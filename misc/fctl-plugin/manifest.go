@@ -29,15 +29,15 @@ func buildLayout() (pluginsdk.Manifest, map[string]operation) {
 	m := layout{}
 	root := group("ledger", "Use the Ledger v3 data-plane API")
 	root.spec.Target = "stack"
-	root.spec.Long = "Use the Ledger v3 data-plane API. Nested commands select a ledger with --ledger.\nLedger list returns all ledgers. Accounts, transactions and logs return one page;\ncontinue with --after using the last account address or transaction/log ID,\nkeeping the same filters and order. Only index inspection uses opaque --cursor tokens."
+	root.spec.Long = "Use the Ledger v3 data-plane API. Nested commands select a ledger with --ledger.\nLedger, account, transaction and log lists return one page; continue with --cursor\nusing the response's next or previous token, keeping the same filters and order.\n--after remains a compatibility alias for forward account, transaction and log pagination."
 	root.spec.Example = "fctl ledger create books\nfctl ledger --ledger books transactions create --data @transaction.json --idempotency-key payment-42"
 	root.spec.Flags = []pluginsdk.FlagSpec{
 		{Name: "ledger", Type: "string", Persistent: true, Usage: "Ledger name for nested commands"},
 		{Name: "consistency", Type: "string", Persistent: true, Usage: "Read consistency: linearizable or stale (server default: linearizable)"},
 	}
 	root.add(
-		m.endpoint(operation{use: "list", short: "List all ledgers", global: true, path: func([]string) []string { return []string{"v3", ""} }}),
-		m.endpoint(operation{use: "create [name]", short: "Create a ledger", ledgerArg: true, method: http.MethodPost, body: bodyDefault, idempotency: true}),
+		m.endpoint(operation{use: "list", short: "List one page of ledgers", global: true, page: true, reverse: true, path: func([]string) []string { return []string{"v3", ""} }}),
+		m.endpoint(operation{use: "create [name]", short: "Create a ledger", ledgerArg: true, method: http.MethodPost, body: bodyDefault, validateBody: validateLedgerPayload, idempotency: true}),
 		m.endpoint(operation{use: "show [name]", short: "Show a ledger", ledgerArg: true}),
 		m.endpoint(operation{use: "delete [name]", short: "Delete a ledger", ledgerArg: true, method: http.MethodDelete, idempotency: true}),
 		m.endpoint(operation{use: "stats", short: "Show ledger statistics", path: fixed("stats")}),
@@ -47,9 +47,9 @@ func buildLayout() (pluginsdk.Manifest, map[string]operation) {
 		m.accounts(), m.transactions(), m.metadata(nil, false), m.indexes(),
 	)
 	logs := group("logs", "Read ledger logs (requires the LOG index)")
-	logs.add(m.endpoint(operation{use: "list", short: "List one page of ledger logs", path: fixed("logs"), page: true, afterID: true, filter: true, dates: true}))
+	logs.add(m.endpoint(operation{use: "list", short: "List one page of ledger logs", path: fixed("logs"), page: true, reverse: true, afterID: true, filter: true, dates: true}))
 	root.add(logs)
-	bulk := m.endpoint(operation{use: "bulk", short: "Submit v3 bulk operations once", method: http.MethodPost, path: fixed("bulk"), body: bodyRequired, idempotency: true, bulk: true,
+	bulk := m.endpoint(operation{use: "bulk", short: "Submit v3 bulk operations once", method: http.MethodPost, path: fixed("bulk"), body: bodyRequired, validateBody: validateBulkPayload, idempotency: true, bulk: true,
 		boolQuery: map[string]string{"atomic": "atomic", "continue-on-failure": "continueOnFailure"}})
 	bulk.spec.Long = "Submit a JSON array of v3 bulk operations once. With --atomic, --idempotency-key identifies the whole batch. Otherwise each element's ik identifies its operation and the header is ignored. Inspect every returned element for business failures, including when --continue-on-failure is enabled. This is not a log import or backup restore."
 	root.add(bulk)
@@ -76,8 +76,8 @@ func (m layout) transactions() *node {
 	group.add(
 		m.endpoint(operation{use: "list", short: "List transactions (newest first by default)", path: fixed("transactions"), page: true, afterID: true, reverse: true, filter: true, dates: true}),
 		m.endpoint(operation{use: "show <id>", short: "Show a transaction", args: 1, transactionID: true, path: resource("transactions")}),
-		m.endpoint(operation{use: "create", short: "Create a transaction from v3 JSON (postings or Numscript)", method: http.MethodPost, path: fixed("transactions"), body: bodyRequired, idempotency: true}),
-		m.endpoint(operation{use: "revert <id>", short: "Revert a transaction", args: 1, transactionID: true, method: http.MethodPost, path: resource("transactions", "revert"), body: bodyOptional, idempotency: true}),
+		m.endpoint(operation{use: "create", short: "Create a transaction from v3 JSON (postings or Numscript)", method: http.MethodPost, path: fixed("transactions"), body: bodyRequired, validateBody: validateTransactionPayload, idempotency: true}),
+		m.endpoint(operation{use: "revert <id>", short: "Revert a transaction", args: 1, transactionID: true, method: http.MethodPost, path: resource("transactions", "revert"), body: bodyOptional, validateBody: validateRevertPayload, idempotency: true}),
 		m.metadata([]string{"transactions"}, true),
 	)
 
@@ -106,7 +106,7 @@ func (m layout) metadata(parent []string, transactionID bool) *node {
 	}
 	group.add(
 		m.endpoint(operation{use: "show" + argLabel, short: "Show the resource including metadata", args: args, transactionID: transactionID, path: base}),
-		m.endpoint(operation{use: "set" + argLabel, short: "Merge a JSON metadata object", args: args, transactionID: transactionID, method: http.MethodPost, body: bodyRequired, idempotency: true, path: func(a []string) []string { return append(base(a), "metadata") }}),
+		m.endpoint(operation{use: "set" + argLabel, short: "Merge a JSON metadata object", args: args, transactionID: transactionID, method: http.MethodPost, body: bodyRequired, validateBody: validateMetadataPayload, idempotency: true, path: func(a []string) []string { return append(base(a), "metadata") }}),
 		m.endpoint(operation{use: "delete" + argLabel + " <key>", short: "Delete one raw metadata key", args: args + 1, transactionID: transactionID, method: http.MethodDelete, idempotency: true, path: func(a []string) []string { return append(base(a), "metadata", a[args]) }}),
 	)
 
@@ -119,7 +119,7 @@ func (m layout) indexes() *node {
 		m.endpoint(operation{use: "list", short: "List ledger indexes", path: fixed("indexes")}),
 		m.endpoint(operation{use: "show <canonical-id>", short: "Show an index", args: 1, path: resource("indexes")}),
 		m.endpoint(operation{use: "status <canonical-id>", short: "Show index build status", args: 1, path: resource("indexes", "status")}),
-		m.endpoint(operation{use: "create", short: "Create an index from JSON, e.g. {\"id\":\"log_builtin:LOG_BUILTIN_INDEX_DATE\"}", method: http.MethodPost, path: fixed("indexes"), body: bodyRequired, idempotency: true}),
+		m.endpoint(operation{use: "create", short: "Create an index from JSON, e.g. {\"id\":\"log_builtin:LOG_BUILTIN_INDEX_DATE\"}", method: http.MethodPost, path: fixed("indexes"), body: bodyRequired, validateBody: validateIndexPayload, idempotency: true}),
 		m.endpoint(operation{use: "delete <canonical-id>", short: "Drop an index", args: 1, method: http.MethodDelete, path: resource("indexes"), idempotency: true}),
 	)
 	inspect := m.endpoint(operation{use: "inspect <canonical-id>", short: "Inspect a metadata index", args: 1, path: resource("indexes", "inspect"), inspect: true})

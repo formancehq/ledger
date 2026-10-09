@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -364,10 +365,13 @@ func TestV3ListResponseWithoutPaginationEnvelope(t *testing.T) {
 			if err != nil || request.Flags["after"] != tc.want {
 				t.Fatalf("last item cannot be used as after=%s: %v", tc.want, err)
 			}
-			_, err = pluginsdk.NormalizeRequest(m, pluginsdk.ExecuteRequest{CommandPath: source.CommandPath, Flags: map[string]string{"ledger": "books", "cursor": tc.want}})
-			if err == nil {
-				t.Fatal("v3 entity lists must not accept opaque cursor flags")
+			cursor := base64.RawURLEncoding.EncodeToString([]byte(`{"key":"` + tc.want + `"}`))
+			request, err = pluginsdk.NormalizeRequest(m, pluginsdk.ExecuteRequest{CommandPath: source.CommandPath, Flags: map[string]string{"ledger": "books", "cursor": cursor}})
+			if err != nil || request.Flags["cursor"] != cursor {
+				t.Fatalf("entity list rejected a page cursor: request=%#v err=%v", request, err)
 			}
+			tokens := append([]string{"--ledger", "books"}, source.CommandPath[1:]...)
+			assertPaginationRejected(t, append(tokens, "--cursor", tc.want), "invalid --cursor")
 		})
 	}
 }

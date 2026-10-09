@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"io"
 	"net/http"
@@ -170,7 +171,8 @@ func checkListQuery(t *testing.T, collection string) {
 		after = "users:next/+="
 	}
 	args := []string{"--ledger", "books", "--consistency", " STALE ", collection, "list", "--page-size", "0", "--after", after, "--filter", `metadata[score] >= 9007199254740993`}
-	want := map[string]string{"pageSize": "0", "after": after, "filter": `metadata[score] >= 9007199254740993`}
+	cursor := base64.RawURLEncoding.EncodeToString([]byte(`{"key":"` + after + `"}`))
+	want := map[string]string{"pageSize": "0", "cursor": cursor, "filter": `metadata[score] >= 9007199254740993`}
 	if collection != "logs" {
 		args = append(args, "--reverse")
 		want["reverse"] = "true"
@@ -185,7 +187,7 @@ func checkListQuery(t *testing.T, collection string) {
 		t.Fatal(err)
 	}
 	checkQuery(t, reqs[0].query, want)
-	if reqs[0].query.Has("cursor") || (collection == "logs" && reqs[0].query.Has("reverse")) {
+	if len(reqs[0].query) != len(want) || reqs[0].query.Has("after") || (collection == "logs" && reqs[0].query.Has("reverse")) {
 		t.Fatalf("unsupported query keys: %v", reqs[0].query)
 	}
 	if reqs[0].header.Get("X-Consistency") != "stale" {

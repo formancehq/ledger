@@ -159,10 +159,11 @@ func TestSuccessfulJSONWithCloseError(t *testing.T) {
 	cases := []struct {
 		name string
 		path []string
+		body string
 		want string
 	}{
-		{"nonbulk clears data", []string{"ledger", "transactions", "create"}, ""},
-		{"bulk retains data", []string{"ledger", "bulk"}, body},
+		{"nonbulk clears data", []string{"ledger", "transactions", "create"}, `{}`, ""},
+		{"bulk retains data", []string{"ledger", "bulk"}, `[]`, body},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -172,7 +173,7 @@ func TestSuccessfulJSONWithCloseError(t *testing.T) {
 
 				return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: closeErrorReader{Reader: strings.NewReader(body), err: closeErr}}, nil
 			})})
-			req := pluginsdk.ExecuteRequest{CommandPath: tc.path, Flags: map[string]string{"ledger": "books"}, Body: json.RawMessage(`[]`), Endpoint: "https://ledger.example"}
+			req := pluginsdk.ExecuteRequest{CommandPath: tc.path, Flags: map[string]string{"ledger": "books"}, Body: json.RawMessage(tc.body), Endpoint: "https://ledger.example"}
 			response, err := p.Execute(t.Context(), req)
 			if !errors.Is(err, closeErr) || string(response.Data) != tc.want || calls != 1 {
 				t.Fatalf("close error: Data=%q want=%q calls=%d err=%v", response.Data, tc.want, calls, err)

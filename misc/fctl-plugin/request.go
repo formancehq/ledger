@@ -1,6 +1,9 @@
 package ledger
 
 import (
+	"bytes"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -30,6 +33,7 @@ type operation struct {
 	transactionID      bool
 	path               func([]string) []string
 	body               bodyMode
+	validateBody       payloadValidator
 	idempotency        bool
 	page, reverse      bool
 	afterID            bool
@@ -82,12 +86,11 @@ func queryFlags(op operation) []pluginsdk.FlagSpec {
 			usage = "Results per index page (1 through 10000)"
 		}
 		flags = append(flags, pluginsdk.FlagSpec{Name: "page-size", Type: "uint32", Default: "100", Usage: usage})
-		if op.inspect {
-			flags = append(flags, pluginsdk.FlagSpec{Name: "cursor", Type: "string", Usage: "Opaque nextCursor token returned by index inspection"})
-		} else {
-			afterUsage := "Continue after this account address (exclusive); keep the same filters and order"
+		flags = append(flags, pluginsdk.FlagSpec{Name: "cursor", Type: "string", Usage: "Opaque next or previous page token returned by the server"})
+		if !op.inspect && !op.global {
+			afterUsage := "Compatibility alias for --cursor: continue after this account address (exclusive)"
 			if op.afterID {
-				afterUsage = "Continue after this unsigned transaction or log ID (exclusive); keep the same filters and order"
+				afterUsage = "Compatibility alias for --cursor: continue after this unsigned transaction or ledger-local log ID (exclusive)"
 			}
 			flags = append(flags, pluginsdk.FlagSpec{Name: "after", Type: "string", Usage: afterUsage})
 		}
@@ -179,17 +182,87 @@ func requestQuery(op operation, req pluginsdk.ExecuteRequest) (url.Values, error
 func paginationQuery(query url.Values, op operation, flags map[string]string) error {
 	if op.page || op.inspect {
 		query.Set("pageSize", flags["page-size"])
-		if op.inspect && flags["cursor"] != "" {
+		if flags["cursor"] != "" {
 			query.Set("cursor", flags["cursor"])
 		}
 	}
-	if op.page && flags["after"] != "" {
-		if op.afterID {
-			if _, err := strconv.ParseUint(flags["after"], 10, 64); err != nil {
-				return fmt.Errorf("after must be an unsigned 64-bit transaction or log ID: %w", err)
-			}
+
+	return nil
+}
+
+// normalizePagination prepares the same forward token for HTTP and alternate
+// executors. --after is consumed before dispatch; cursor is the canonical input.
+// Index inspection's value tokens remain opaque here.
+func normalizePagination(op operation, req pluginsdk.ExecuteRequest) (pluginsdk.ExecuteRequest, error) {
+	if !op.page {
+		return req, nil
+	}
+	if after := req.Flags["after"]; after != "" {
+		if req.Flags["cursor"] != "" {
+			return req, errors.New("--after and --cursor cannot be used together")
 		}
-		query.Set("after", flags["after"])
+		if op.afterID {
+			id, err := strconv.ParseUint(after, 10, 64)
+			if err != nil {
+				return req, fmt.Errorf("after must be an unsigned 64-bit transaction or log ID: %w", err)
+			}
+			after = strconv.FormatUint(id, 10)
+		}
+		token, err := json.Marshal(struct {
+			Key string `json:"key"`
+		}{Key: after})
+		if err != nil {
+			return req, fmt.Errorf("encode after cursor: %w", err)
+		}
+		req.Flags["cursor"] = base64.RawURLEncoding.EncodeToString(token)
+		req.ChangedFlags = maps.Clone(req.ChangedFlags)
+		if req.ChangedFlags == nil {
+			req.ChangedFlags = make(map[string]bool)
+		}
+		req.ChangedFlags["cursor"] = true
+		delete(req.Flags, "after")
+		delete(req.ChangedFlags, "after")
+	}
+	if token := req.Flags["cursor"]; token != "" {
+		if err := validatePageCursor(token, op.afterID); err != nil {
+			return req, fmt.Errorf("invalid --cursor: %w", err)
+		}
+	}
+
+	return req, nil
+}
+
+func validatePageCursor(token string, numeric bool) error {
+	raw, err := base64.RawURLEncoding.DecodeString(token)
+	if err != nil {
+		return fmt.Errorf("expected a base64url page token: %w", err)
+	}
+	fields, err := payloadObject(raw, "cursor")
+	if err != nil {
+		return err
+	}
+	var key string
+	for name, value := range fields {
+		switch name {
+		case "key":
+			if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+				return errors.New("cursor.key must be a string")
+			}
+			if err := json.Unmarshal(value, &key); err != nil {
+				return fmt.Errorf("cursor.key must be a string: %w", err)
+			}
+		case "back":
+			if err := validateJSONBool(value, "cursor.back"); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("unknown cursor field %q", name)
+		}
+	}
+	if numeric && key != "" {
+		if _, err := strconv.ParseUint(key, 10, 64); err != nil {
+			return fmt.Errorf("cursor.key must be an unsigned 64-bit transaction or log ID: %w", err)
+		}
 	}
 
 	return nil

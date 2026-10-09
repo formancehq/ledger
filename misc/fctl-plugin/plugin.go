@@ -118,6 +118,10 @@ func (p *plugin) prepareRequest(op operation, req pluginsdk.ExecuteRequest) (pre
 	if err != nil {
 		return preparedRequest{}, err
 	}
+	req, err = normalizePagination(op, req)
+	if err != nil {
+		return preparedRequest{}, err
+	}
 	query, err := requestQuery(op, req)
 	if err != nil {
 		return preparedRequest{}, err
@@ -134,6 +138,11 @@ func (p *plugin) prepareRequest(op operation, req pluginsdk.ExecuteRequest) (pre
 	body, err := requestBody(op, req)
 	if err != nil {
 		return preparedRequest{}, err
+	}
+	if len(body) > 0 && op.validateBody != nil {
+		if err := op.validateBody(body, "body"); err != nil {
+			return preparedRequest{}, fmt.Errorf("invalid request body: %w", err)
+		}
 	}
 	req.Body = body
 
