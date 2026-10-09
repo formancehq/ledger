@@ -37,6 +37,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 	requireAccountsRead := internalauth.RequireScope(authCfg, internalauth.ScopeAccountsRead)
 	requireAuditRead := internalauth.RequireScope(authCfg, internalauth.ScopeAuditRead)
 	requireMetadataWrite := internalauth.RequireScope(authCfg, internalauth.ScopeMetadataWrite)
+	requireOpsWrite := internalauth.RequireScope(authCfg, internalauth.ScopeOpsWrite)
 	requireOpsRead := internalauth.RequireScope(authCfg, internalauth.ScopeOpsRead)
 	requireQueriesRead := internalauth.RequireScope(authCfg, internalauth.ScopeQueriesRead)
 	requireQueriesWrite := internalauth.RequireScope(authCfg, internalauth.ScopeQueriesWrite)
@@ -188,6 +189,12 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 				r.Get("/indexes/status", server.handleGetIndexStatus)
 				r.Get("/indexes/{canonicalId}", server.handleGetBucketIndex)
 				r.Get("/indexes/{canonicalId}/status", server.handleGetBucketIndexEntryStatus)
+			})
+
+			// Ops mutations use the same scope as their gRPC Apply requests.
+			r.With(requireOpsWrite).Group(func(r chi.Router) {
+				r.Post("/_/events-sinks", server.handleAddEventsSink)
+				r.Delete("/_/events-sinks/{sinkName}", server.handleRemoveEventsSink)
 			})
 
 			// Accounts read scope

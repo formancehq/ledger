@@ -156,6 +156,8 @@ func expectedRouteScopes() []routeScope {
 		// --- Ops read, requireOpsRead, bucket-wide /_ subtree (handler.go:147-157) ---
 		{http.MethodGet, "/v3/_/logs/{sequence}", kindGuarded, internalauth.ScopeOpsRead, false},
 		{http.MethodGet, "/v3/_/events-sinks", kindGuarded, internalauth.ScopeOpsRead, false},
+		{http.MethodPost, "/v3/_/events-sinks", kindGuarded, internalauth.ScopeOpsWrite, false},
+		{http.MethodDelete, "/v3/_/events-sinks/{sinkName}", kindGuarded, internalauth.ScopeOpsWrite, false},
 		{http.MethodGet, "/v3/_/signing-keys", kindGuarded, internalauth.ScopeOpsRead, false},
 		{http.MethodGet, "/v3/_/indexes", kindGuarded, internalauth.ScopeOpsRead, false},
 		{http.MethodGet, "/v3/_/indexes/status", kindGuarded, internalauth.ScopeOpsRead, false},
@@ -548,6 +550,7 @@ var pathParamValues = map[string]string{
 	"{typeName}":      "asset",
 	"{name}":          "script",
 	"{queryName}":     "q",
+	"{sinkName}":      "sink",
 }
 
 // concreteTarget turns a chi pattern into a request target. The pattern is used

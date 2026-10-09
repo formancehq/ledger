@@ -80,7 +80,7 @@ the usual JSON `errorCode`/`errorMessage` envelope. Clients dispatch using both
 status and media type. The HTTP response wrapper preserves an explicit content
 type so a plain-text scope denial is not mislabeled JSON.
 
-The 22 non-bulk Apply write operations declare JSON 429 responses for disk gating
+The 24 non-bulk Apply write operations declare JSON 429 responses for disk gating
 and authoritative identifier exhaustion. See the evidence-backed
 [route/status/body matrix](../architecture/subsystems/api/http-api.md#resource-exhaustion-response-matrix).
 No 429 retry interval is supplied. `WRITES_BLOCKED_DISK_FULL` can clear with disk
@@ -1171,6 +1171,8 @@ Read endpoints comparison with the original ledger:
 | `PUT /v3/{ledgerName}/account-types/default-enforcement-mode` | ✅ | ❌ | Set default enforcement mode (STRICT/AUDIT). Requires `ledger:MetadataWrite` on both the dedicated route and gRPC `Apply` |
 | `GET /v3/_/logs/{sequence}` | ✅ | ❌ | Fetch a single system log by bucket-wide sequence. No ledger identity → requires `ledger` ops-read (granular `ledger:OpsRead`) |
 | `GET /v3/_/events-sinks` | ✅ | ❌ | List configured event sinks with per-sink cursor and error status, including startup failures (`{sinks, sinkStatuses}`, parity with gRPC `GetEventsSinks`); cursor zero without error means delivery is pending, while a nonzero cursor can also reflect filtered or internal logs rather than external delivery |
+| `POST /v3/_/events-sinks` | ✅ | ❌ | Create an instance-wide sink from protobuf JSON; `ledger:OpsWrite`, `201 {data: {name}}`, optional `Idempotency-Key` |
+| `DELETE /v3/_/events-sinks/{sinkName}` | ✅ | ❌ | Remove an instance-wide sink; `ledger:OpsWrite`, optional `controllerId` precondition and `Idempotency-Key`, `204` |
 | `GET /v3/_/signing-keys` | ✅ | ❌ | List registered Ed25519 signing keys, paged by key id ([pagination](#pagination)) |
 | `GET /v3/{ledgerName}/indexes` | ✅ | ❌ | List indexes registered on a ledger |
 | `GET /v3/{ledgerName}/indexes/{canonicalId}` | ✅ | ❌ | Get a single Index registry entry |
@@ -1339,7 +1341,8 @@ The governing rule: **a batched operation requires the same scope as its dedicat
 | `save_ledger_metadata`, `delete_ledger_metadata`, `add_account_type`, `remove_account_type`, `set_default_enforcement_mode`, `set_metadata_field_type`, `remove_metadata_field_type` | `ledger:MetadataWrite` | the `requireMetadataWrite` route group |
 | `create_prepared_query`, `update_prepared_query`, `delete_prepared_query` | `ledger:QueryWrite` | the `requireQueriesWrite` route group |
 | `create_query_checkpoint`, `delete_query_checkpoint`, `set_query_checkpoint_schedule`, `delete_query_checkpoint_schedule` | `ledger:ClusterWrite` | none — `BucketService.Apply` only |
-| signing keys, events sinks, maintenance mode | `ledger:OpsWrite` | operator surface, no dedicated business route |
+| events sinks | `ledger:OpsWrite` | `POST /v3/_/events-sinks`, `DELETE /v3/_/events-sinks/{sinkName}` |
+| signing keys, maintenance mode | `ledger:OpsWrite` | operator surface, no dedicated business route |
 | unknown / malformed / unset variant | `ledger:OpsWrite` | fail-closed default |
 
 Two properties are enforced by tests rather than convention:

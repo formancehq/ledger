@@ -31,6 +31,8 @@ func TestOpenAPI_WriteResourceExhaustion(t *testing.T) {
 	doc, err := openapi3.NewLoader().LoadFromFile("../../../openapi.yml")
 	require.NoError(t, err)
 	operations := []struct{ method, path, body string }{
+		{http.MethodPost, "/v3/_/events-sinks", `{"name":"sink","http":{"endpoint":"http://localhost:9001/events"}}`},
+		{http.MethodDelete, "/v3/_/events-sinks/{sinkName}", ""},
 		{http.MethodPost, "/v3/{ledgerName}", `{}`},
 		{http.MethodDelete, "/v3/{ledgerName}", ""},
 		{http.MethodPost, "/v3/{ledgerName}/promote", ""},
@@ -86,7 +88,7 @@ func TestOpenAPI_WriteResourceExhaustion(t *testing.T) {
 						path := strings.NewReplacer(
 							"{ledgerName}", "ledger1", "{name}", "script", "{canonicalId}", "metadata:TARGET_TYPE_ACCOUNT:color",
 							"{transactionId}", "1", "{address}", "alice", "{key}", "approved", "{targetType}", "account",
-							"{typeName}", "customers", "{queryName}", "query",
+							"{typeName}", "customers", "{queryName}", "query", "{sinkName}", "sink",
 						).Replace(operation.path)
 						r := httptest.NewRequest(operation.method, "http://localhost:9000"+path, strings.NewReader(operation.body))
 						r.Header.Set("Content-Type", "application/json")
