@@ -1,8 +1,9 @@
 # Ledger fctl plugin
 
 Profiles: **CLI** and **library**. This separate Go 1.26 module owns Ledger's
-HTTP commands for fctl v4. It depends on the public `pluginsdk` module only;
-it does not import Ledger server internals, Cobra, or the fctl core.
+shared business command contract and HTTP executor for fctl v4. It depends on
+the public `pluginsdk` module only; it does not import Ledger server internals,
+Cobra, or the fctl core.
 
 The module lives under `misc/fctl-plugin/` and is named
 `github.com/formancehq/ledger/misc/fctl-plugin`. Its executable entry point is
@@ -23,10 +24,18 @@ error. The plugin invokes it once and does not retry. A nil callback permits
 offline manifest inspection only. Input acquisition, credentials, prompts,
 rendering, and output files remain responsibilities of the host.
 
-The [shared CLI experiment](research/shared-cli/README.md) exercises this
-boundary with an opt-in ledgerctl gRPC adapter and the real external fctl HTTP
-plugin. The adapter is an unapplied research patch; the default ledgerctl
-commands and root module dependencies are unchanged.
+`ledgerctl` uses all 31 runnable business operations through this shared
+manifest and validation by default. Its gRPC executor lives in
+`cmd/ledgerctl/shared` in the Ledger root module, which declares Go 1.27.
+The host binds native command names, preserves its flags, prepares input with
+native builders and renders native typed results. Operational commands such
+as cluster, store, audit and restore stay native. The integration is ordinary
+compiled code; it requires no opt-in flag or unapplied patch.
+
+The root gRPC executor owns Ledger protobuf conversion. The plugin retains its
+Go 1.26 module boundary and imports no Ledger server packages or fctl core.
+See the [adapter architecture](../../docs/technical/architecture/subsystems/api/fctl-plugin.md)
+for the responsibilities and validation gates.
 
 The plugin entry point uses the SDK-owned protocol and standard `flag` package
 for its two offline metadata flags. It has no human command tree or operational
@@ -57,12 +66,20 @@ advertised artifact under the same service version and revision.
 From the repository root, use the pinned Nix development environment:
 
 ```sh
+bash scripts/agent-check
+AI_REVIEW_BASE_SHA=BASE_COMMIT_SHA bash scripts/agent-check-pr
+nix develop --command go test -race ./cmd/ledgerctl/shared ./cmd/ledgerctl
 nix develop --command just test-fctl-plugin
 nix develop --command just build-fctl-plugin 3.0.0-beta.5 1
 ./build/fctl-plugin-ledger --version
 ./build/fctl-plugin-ledger --manifest
 nix develop --command just fctl-plugin-manifest
 ```
+
+Replace `BASE_COMMIT_SHA` with the exact review base. Root validation covers
+the normally compiled ledgerctl adapter and command bindings; the nested
+recipe tests the independent plugin module with `-race` and the `it` build tag.
+Real-server readback and terminal behavior require their own integration checks.
 
 The default local build reports service version `dev` and revision `1`. Set the
 two recipe arguments to test the exact service version deployed on your target.

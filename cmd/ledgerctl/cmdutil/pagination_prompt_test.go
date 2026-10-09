@@ -7,9 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
 
 func TestConfirmNextPageRejectsNonTerminalInput(t *testing.T) {

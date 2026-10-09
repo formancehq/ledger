@@ -13,12 +13,13 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/metadata"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/accounts"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/transactions"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc/metadata"
 )
 
 // Exercise the real pager, after it has canceled its first RPC context. Each
@@ -29,6 +30,7 @@ func TestListPagerRestoresTerminal(t *testing.T) {
 		resource, action, ok := strings.Cut(selected, "/")
 		require.True(t, ok)
 		runListPagerPrompt(t, resource, action)
+
 		return
 	}
 	t.Parallel()
@@ -107,21 +109,25 @@ func runListPagerPrompt(t *testing.T, resource, action string) {
 		calls++
 		if calls == 1 {
 			require.Empty(t, page.Cursor)
+
 			return metadata.Pairs(cmdutil.NextCursorTrailerKey, "next", cmdutil.PreviousCursorTrailerKey, "previous")
 		}
 		require.Equal(t, 2, calls, "pager fetched an unexpected additional page")
 		require.Equal(t, "next", page.Cursor)
+
 		return nil
 	}
 	var err error
 	if resource == "accounts" {
 		err = accounts.RunListWithFetch(cmd, func(_ context.Context, page cmdutil.PaginationFlags) ([]*commonpb.Account, metadata.MD, error) {
 			trailer := pageResult(page)
+
 			return []*commonpb.Account{{Address: fmt.Sprintf("pager-row-%d", calls)}}, trailer, nil
 		})
 	} else {
 		err = transactions.RunListWithFetch(cmd, "books", func(_ context.Context, page cmdutil.PaginationFlags) ([]*commonpb.Transaction, metadata.MD, error) {
 			trailer := pageResult(page)
+
 			return []*commonpb.Transaction{{Id: uint64(calls), Reference: fmt.Sprintf("pager-row-%d", calls)}}, trailer, nil
 		})
 	}

@@ -89,11 +89,11 @@ func attachSharedCommands(root *cobra.Command) {
 			}
 			cmd.Annotations["ledger-command"] = strings.Join(path, "/")
 			if strings.Join(path, "/") == "ledger/indexes/delete" {
-                cmd.Use = "drop [index]"
+				cmd.Use = "drop [index]"
 				cmd.Args = cobra.MaximumNArgs(1)
 			}
 			if strings.Join(path, "/") == "ledger/indexes/inspect" {
-                cmd.Use = "inspect [index]"
+				cmd.Use = "inspect [index]"
 				cmd.Args = cobra.MaximumNArgs(1)
 				if flag := cmd.Flag("key"); flag != nil {
 					delete(flag.Annotations, cobra.BashCompOneRequiredFlag)
