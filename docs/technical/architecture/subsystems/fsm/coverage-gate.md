@@ -119,7 +119,7 @@ Consequences to hold in mind:
 
 Making this structurally safe would mean carrying a failure-projection semantics version alongside `HashVersion` so old entries keep reproducing their original bytes. That is a deliberate design decision, not something EN-1379 took on.
 
-The operational consequence is declared where operators look for supported upgrade paths: [deployment.md — Upgrading across an FSM error-identity change](../../../../ops/deployment.md#upgrading-across-an-fsm-error-identity-change) states the standing rule — mixed-binary rolling upgrades are not supported across any such change, and no data wipe is required because no persisted layout changes — and lists EN-1379 alongside the earlier changes it covers.
+The operational consequence is declared where operators look for supported upgrade paths: [deployment.md — Upgrading across an FSM error-identity change](../../../../ops/deployment.md#upgrading-across-an-fsm-error-identity-change) states the standing rule — mixed-binary rolling upgrades are not supported across any such change. No data wipe is required only when the persisted representation stays compatible; revision 29 changes that representation and requires state replacement. The deployment guide lists EN-1379 alongside the earlier identity-only changes it covers.
 
 This holds because FSM read sites build their failure through `domain.StoreFailure(operation, err)` instead of constructing a `domain.ErrStorageOperation` directly:
 
