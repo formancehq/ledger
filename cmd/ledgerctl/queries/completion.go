@@ -8,10 +8,15 @@ import (
 )
 
 // completeQueryNames fetches prepared query names from the server for shell
-// autocompletion. If --ledger is not set, it auto-detects when exactly one
-// ledger exists (same logic as SelectLedger).
+// autocompletion. Query names are per-ledger, so nothing is suggested until
+// --ledger is set.
 func completeQueryNames(cmd *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
 	if len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	ledgerName, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
+	if ledgerName == "" {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 
@@ -29,21 +34,6 @@ func completeQueryNames(cmd *cobra.Command, args []string, _ string) ([]string, 
 	}
 
 	defer func() { _ = conn.Close() }()
-
-	ledgerName, _ := cmd.Flags().GetString("ledger")
-	if ledgerName == "" {
-		ctx, cancel := cmdutil.GetContext(cmd)
-		defer cancel()
-
-		ledgers, listErr := cmdutil.GetAllLedgersInfo(ctx, client)
-		if listErr != nil || len(ledgers) != 1 {
-			return nil, cobra.ShellCompDirectiveNoFileComp
-		}
-
-		for name := range ledgers {
-			ledgerName = name
-		}
-	}
 
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()

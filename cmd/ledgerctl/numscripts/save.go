@@ -30,6 +30,7 @@ Examples:
 		RunE:              runSave,
 	}
 
+	cmdutil.AddLedgerFlag(cmd)
 	cmd.Flags().String("file", "", "Path to the numscript file (reads stdin if omitted)")
 	cmd.Flags().String("version", "", "Explicit full semver (e.g. 1.0.0); required")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
@@ -72,11 +73,7 @@ func runSave(cmd *cobra.Command, args []string) error {
 
 	defer func() { _ = conn.Close() }()
 
-	ledgerFlag, _ := cmd.Flags().GetString("ledger")
-	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
-	if err != nil {
-		return err
-	}
+	ledgerName, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
 
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()

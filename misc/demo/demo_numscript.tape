@@ -19,7 +19,7 @@ Sleep 300ms
 # Setup
 # ============================================================================
 
-Type "ledgerctl ledgers create --name demo-numscript"
+Type "ledgerctl ledgers create demo-numscript"
 Enter
 Sleep 1500ms
 

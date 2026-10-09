@@ -26,6 +26,7 @@ Examples:
 		RunE:              runGet,
 	}
 
+	cmdutil.AddLedgerFlag(cmd)
 	cmd.Flags().String("version", "", "Specific version to retrieve (empty = latest)")
 	cmdutil.AddConsistencyFlags(cmd)
 	cmdutil.AddOutputFlags(cmd)
@@ -45,11 +46,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 
 	defer func() { _ = conn.Close() }()
 
-	ledgerFlag, _ := cmd.Flags().GetString("ledger")
-	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
-	if err != nil {
-		return err
-	}
+	ledgerName, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
 
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()

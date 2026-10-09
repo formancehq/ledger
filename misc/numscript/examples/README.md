@@ -41,7 +41,7 @@ Variables are passed using the `--var` flag:
 
 ```bash
 # 1. Create a ledger
-ledgerctl ledgers create --name demo
+ledgerctl ledgers create demo
 
 # 2. Fund an account from world
 ledgerctl transactions create --ledger demo --script world_funding.num \

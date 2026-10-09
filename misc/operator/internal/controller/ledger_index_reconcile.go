@@ -148,7 +148,7 @@ func reconcileIndexesWithExec(ctx context.Context, ledger *ledgerv1alpha1.Ledger
 		}
 
 		if schema == nil {
-			schemaOut, schemaErr := exec("ledgers", "get-schema", ledgerName, "--json")
+			schemaOut, schemaErr := exec("ledgers", "get-schema", "--json", "--", ledgerName)
 			if schemaErr != nil {
 				return false, schemaErr
 			}

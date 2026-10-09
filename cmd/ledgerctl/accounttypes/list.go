@@ -22,17 +22,15 @@ func NewListCommand() *cobra.Command {
 Account types are embedded in the ledger configuration and naturally bounded
 in size; this endpoint is intentionally not paginated.
 
-If --ledger is not provided and only one ledger exists, it will be used automatically.
-
 Examples:
   ledgerctl account-types list --ledger my-ledger
-  ledgerctl at ls`,
+  ledgerctl at ls --ledger my-ledger`,
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE:              runList,
 	}
 
-	cmd.Flags().String("ledger", "", "Name of the ledger")
+	cmdutil.AddLedgerFlag(cmd)
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
@@ -46,11 +44,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	}
 	defer func() { _ = conn.Close() }()
 
-	ledgerFlag, _ := cmd.Flags().GetString("ledger")
-	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
-	if err != nil {
-		return err
-	}
+	ledgerName, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
 
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()

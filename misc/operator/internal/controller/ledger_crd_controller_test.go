@@ -51,7 +51,7 @@ func TestBuildCreateArgs_NormalMode(t *testing.T) {
 
 	args, err := r.buildCreateArgs(context.Background(), ledger)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"ledgers", "create", "--name", "orders"}, args)
+	assert.Equal(t, []string{"ledgers", "create", "--", "orders"}, args)
 }
 
 func TestBuildCreateArgs_NormalModeExplicit(t *testing.T) {
@@ -63,7 +63,7 @@ func TestBuildCreateArgs_NormalModeExplicit(t *testing.T) {
 
 	args, err := r.buildCreateArgs(context.Background(), ledger)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"ledgers", "create", "--name", "orders"}, args)
+	assert.Equal(t, []string{"ledgers", "create", "--", "orders"}, args)
 }
 
 // ---------------------------------------------------------------------------
@@ -114,10 +114,11 @@ func TestBuildCreateArgs_MirrorHTTPBasic(t *testing.T) {
 	args, err := r.buildCreateArgs(context.Background(), ledger)
 	require.NoError(t, err)
 	assert.Equal(t, []string{
-		"ledgers", "create", "--name", "ledger1",
+		"ledgers", "create",
 		"--mode", "mirror",
 		"--mirror-source-type", "http",
 		"--mirror-base-url", "https://source.example.com",
+		"--", "ledger1",
 	}, args)
 }
 
@@ -139,12 +140,13 @@ func TestBuildCreateArgs_MirrorHTTPWithOptions(t *testing.T) {
 	args, err := r.buildCreateArgs(context.Background(), ledger)
 	require.NoError(t, err)
 	assert.Equal(t, []string{
-		"ledgers", "create", "--name", "ledger1",
+		"ledgers", "create",
 		"--mode", "mirror",
 		"--mirror-ledger-name", "source-ledger",
 		"--mirror-batch-size", "500",
 		"--mirror-source-type", "http",
 		"--mirror-base-url", "https://source.example.com",
+		"--", "ledger1",
 	}, args)
 }
 
@@ -176,12 +178,13 @@ func TestBuildCreateArgs_MirrorHTTPWithRewriteRules(t *testing.T) {
 	args, err := r.buildCreateArgs(context.Background(), ledger)
 	require.NoError(t, err)
 	assert.Equal(t, []string{
-		"ledgers", "create", "--name", "ledger1",
+		"ledgers", "create",
 		"--mode", "mirror",
 		"--mirror-rewrite-rule", `{"anyVariant":{"actions":[{"rewriteAddress":{"pattern":":worker:\\d+","replacement":""}}]}}`,
 		"--mirror-rewrite-rule", `{"createdTransaction":{"match":"log.metadata[\"type\"].string_value == \"payout\"","actions":[{"setMetadata":{"key":"category","value":"external"}}]},"stop":true}`,
 		"--mirror-source-type", "http",
 		"--mirror-base-url", "https://source.example.com",
+		"--", "ledger1",
 	}, args)
 }
 
@@ -225,11 +228,12 @@ func TestBuildCreateArgs_MirrorPostgresWithRewriteRules(t *testing.T) {
 	args, err := r.buildCreateArgs(context.Background(), ledger)
 	require.NoError(t, err)
 	assert.Equal(t, []string{
-		"ledgers", "create", "--name", "ledger1",
+		"ledgers", "create",
 		"--mode", "mirror",
 		"--mirror-rewrite-rule", `{"anyVariant":{"actions":[{"rewriteAddress":{"pattern":":worker:\\d+","replacement":""}}]}}`,
 		"--mirror-source-type", "postgres",
 		"--mirror-dsn", "postgres://ledger:s3cr3t@db.example.com:5432/ledger?sslmode=require",
+		"--", "ledger1",
 	}, args)
 }
 
@@ -267,7 +271,7 @@ func TestBuildCreateArgs_MirrorHTTPWithOAuth2(t *testing.T) {
 	args, err := r.buildCreateArgs(context.Background(), ledger)
 	require.NoError(t, err)
 	assert.Equal(t, []string{
-		"ledgers", "create", "--name", "ledger1",
+		"ledgers", "create",
 		"--mode", "mirror",
 		"--mirror-source-type", "http",
 		"--mirror-base-url", "https://source.example.com",
@@ -276,6 +280,7 @@ func TestBuildCreateArgs_MirrorHTTPWithOAuth2(t *testing.T) {
 		"--mirror-oauth2-client-secret", "super-secret-value",
 		"--mirror-oauth2-scopes", "ledger:read",
 		"--mirror-oauth2-scopes", "ledger:write",
+		"--", "ledger1",
 	}, args)
 }
 
@@ -341,10 +346,11 @@ func TestBuildCreateArgs_MirrorPostgresPassword(t *testing.T) {
 	args, err := r.buildCreateArgs(context.Background(), ledger)
 	require.NoError(t, err)
 	assert.Equal(t, []string{
-		"ledgers", "create", "--name", "ledger1",
+		"ledgers", "create",
 		"--mode", "mirror",
 		"--mirror-source-type", "postgres",
 		"--mirror-dsn", "postgres://ledger:s3cr3t@db.example.com:5432/ledger?sslmode=require",
+		"--", "ledger1",
 	}, args)
 }
 
@@ -405,11 +411,12 @@ func TestBuildCreateArgs_MirrorPostgresAWSIAMAuth(t *testing.T) {
 	args, err := r.buildCreateArgs(context.Background(), ledger)
 	require.NoError(t, err)
 	assert.Equal(t, []string{
-		"ledgers", "create", "--name", "ledger1",
+		"ledgers", "create",
 		"--mode", "mirror",
 		"--mirror-source-type", "postgres",
 		"--mirror-dsn", "postgres://iam-user@db.region.rds.amazonaws.com:5432/ledger?sslmode=require",
 		"--mirror-aws-iam-region", "eu-west-1",
+		"--", "ledger1",
 	}, args)
 }
 
@@ -434,12 +441,13 @@ func TestBuildCreateArgs_MirrorPostgresAWSIAMAuthWithAssumeRole(t *testing.T) {
 	args, err := r.buildCreateArgs(context.Background(), ledger)
 	require.NoError(t, err)
 	assert.Equal(t, []string{
-		"ledgers", "create", "--name", "ledger1",
+		"ledgers", "create",
 		"--mode", "mirror",
 		"--mirror-source-type", "postgres",
 		"--mirror-dsn", "postgres://iam-user@db.region.rds.amazonaws.com:5432/ledger?sslmode=require",
 		"--mirror-aws-iam-region", "eu-west-1",
 		"--mirror-aws-iam-assume-role-arn", "arn:aws:iam::222222222222:role/cross-tenant-mirror",
+		"--", "ledger1",
 	}, args)
 }
 

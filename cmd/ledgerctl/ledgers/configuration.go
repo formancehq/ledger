@@ -43,7 +43,7 @@ Examples:
   ledgerctl ledgers configuration apply myledger -f config.yaml`,
 		Args:              cobra.ExactArgs(1),
 		RunE:              runConfiguration,
-		ValidArgsFunction: cobra.NoFileCompletions,
+		ValidArgsFunction: cmdutil.CompleteLedgerNameArg,
 	}
 
 	cmdutil.AddOutputFlags(cmd)

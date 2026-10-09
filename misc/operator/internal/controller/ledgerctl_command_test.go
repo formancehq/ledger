@@ -2,7 +2,9 @@ package controller
 
 import (
 	"context"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -90,6 +92,30 @@ func TestLedgerctlCommand_TLSModes(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestLedgerctlCommand_TerminatorKeepsConnectionFlagsParsed runs the generated
+// shell against a stub ledgerctl that echoes its argv. A ledger name such as
+// "--help" is valid, so callers pass it after "--"; the connection flags must
+// land before that terminator or ledgerctl would read them as positionals.
+func TestLedgerctlCommand_TerminatorKeepsConnectionFlagsParsed(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "ledgerctl"), []byte("#!/bin/sh\nprintf '%s\\n' \"$@\"\n"), 0o755))
+
+	cmd := ledgerctlCommand("addr:8888", tlsModeDisabled, "ledgers", "create", "--index", "reference", "--", "--help")
+	run := exec.Command(cmd[0], cmd[1:]...)
+	run.Dir = dir
+	run.Env = []string{"CLUSTER_SECRET=token"}
+	out, err := run.CombinedOutput()
+	require.NoError(t, err, "command failed: %s", out)
+
+	require.Equal(t, []string{
+		"ledgers", "create", "--index", "reference",
+		"--server", "addr:8888", "--insecure", "--auth-token", "token",
+		"--", "--help",
+	}, strings.Split(strings.TrimSuffix(string(out), "\n"), "\n"))
 }
 
 func TestOtelExecPrologue(t *testing.T) {

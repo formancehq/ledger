@@ -27,7 +27,7 @@ Examples:
   ledgerctl ledgers configuration export myledger --json > config.json`,
 		Args:              cobra.ExactArgs(1),
 		RunE:              runConfigurationExport,
-		ValidArgsFunction: cobra.NoFileCompletions,
+		ValidArgsFunction: cmdutil.CompleteLedgerNameArg,
 	}
 
 	cmd.Flags().Bool("json", false, "Output as JSON (default if neither --json nor --yaml)")

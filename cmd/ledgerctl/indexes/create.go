@@ -47,7 +47,7 @@ Examples:
 		RunE:              runCreateIndex,
 	}
 
-	cmd.Flags().String("ledger", "", "Name of the ledger")
+	cmdutil.AddLedgerFlag(cmd)
 	cmd.Flags().String("type", "", "Index type: address, source-address, destination-address, metadata")
 	cmdutil.RegisterEnumCompletion(cmd, "type", indexTypeOptions...)
 	cmd.Flags().String("target", "", "Target type for metadata index: account, transaction, or ledger")
@@ -67,12 +67,7 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 
 	defer func() { _ = conn.Close() }()
 
-	ledgerFlag, _ := cmd.Flags().GetString("ledger")
-
-	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
-	if err != nil {
-		return err
-	}
+	ledgerName, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
 
 	indexType, _ := cmd.Flags().GetString("type")
 	if indexType == "" {

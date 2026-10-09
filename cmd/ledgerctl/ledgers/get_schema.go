@@ -29,7 +29,7 @@ Examples:
   ledgerctl ledgers gs my-ledger --json`,
 		Args:              cobra.ExactArgs(1),
 		RunE:              runGetSchema,
-		ValidArgsFunction: cobra.NoFileCompletions,
+		ValidArgsFunction: cmdutil.CompleteLedgerNameArg,
 	}
 
 	cmdutil.AddOutputFlags(cmd)

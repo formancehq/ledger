@@ -27,9 +27,6 @@ func NewListCommand() *cobra.Command {
 Transactions are displayed newest first by default. Use --reverse for oldest first.
 Press Enter to load the next page, or 'q' to quit.
 
-If --ledger is not provided and only one ledger exists, it will be used automatically.
-If multiple ledgers exist, you will be prompted to select one.
-
 Examples:
   ledgerctl transactions list --ledger my-ledger
   ledgerctl transactions list --ledger my-ledger --page-size 20
@@ -39,15 +36,15 @@ Examples:
   ledgerctl transactions list --ledger my-ledger --filter 'source ^= "merchants:"'
   ledgerctl transactions list --ledger my-ledger --filter 'destination == "users:alice"'
   ledgerctl transactions list --ledger my-ledger --filter 'source ^= "merchants:" and destination ^= "users:"'
-  ledgerctl transactions list --reverse   # Oldest first
-  ledgerctl transactions list --all   # Fetch all transactions without pagination
-  ledgerctl transactions list --cursor eyJrZXkiOiI0MiJ9   # Resume after tx id 42 (page token for {"key":"42"})`,
+  ledgerctl transactions list --reverse --ledger my-ledger   # Oldest first
+  ledgerctl transactions list --all --ledger my-ledger   # Fetch all transactions without pagination
+  ledgerctl transactions list --cursor eyJrZXkiOiI0MiJ9 --ledger my-ledger   # Resume after tx id 42 (page token for {"key":"42"})`,
 		Args:              cobra.ExactArgs(0),
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE:              runList,
 	}
 
-	cmd.Flags().String("ledger", "", "Name of the ledger")
+	cmdutil.AddLedgerFlag(cmd)
 	cmdutil.AddPaginationFlags(cmd, cmdutil.PaginationOptions{
 		SupportsReverse: true,
 		SupportsAll:     true,
@@ -69,12 +66,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 
 	defer func() { _ = conn.Close() }()
 
-	ledgerFlag, _ := cmd.Flags().GetString("ledger")
-
-	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
-	if err != nil {
-		return err
-	}
+	ledgerName, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
 
 	pgn := cmdutil.GetPaginationFlags(cmd)
 	flt := cmdutil.GetFilterFlags(cmd)

@@ -30,11 +30,10 @@ Examples:
 		RunE:              runAdd,
 	}
 
-	cmd.Flags().String("ledger", "", "Name of the ledger (required)")
+	cmdutil.AddLedgerFlag(cmd)
 	cmd.Flags().String("persistence", "normal", "Volume persistence mode: normal, ephemeral (purge on zero), transient (never persisted, must be zero at batch end)")
 	cmdutil.RegisterEnumCompletion(cmd, "persistence", "normal", "ephemeral", "transient")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
-	_ = cmd.MarkFlagRequired("ledger")
 
 	return cmd
 }
@@ -43,7 +42,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	name := args[0]
 	pattern := args[1]
 
-	ledgerName, _ := cmd.Flags().GetString("ledger")
+	ledgerName, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
 	persistence, _ := cmd.Flags().GetString("persistence")
 
 	persistenceEnum, err := ParsePersistence(persistence)

@@ -23,7 +23,7 @@ Type "ledgerctl audit enable"
 Enter
 Sleep 1500ms
 
-Type "ledgerctl ledgers create --name demo-audit"
+Type "ledgerctl ledgers create demo-audit"
 Enter
 Sleep 1500ms
 

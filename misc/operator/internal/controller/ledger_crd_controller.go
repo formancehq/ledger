@@ -286,7 +286,7 @@ func (r *LedgerReconciler) reconcilePromotion(ctx context.Context, ledger *ledge
 
 	log.Info("promoting mirror ledger to normal", "name", ledger.Spec.Name)
 	if err := r.ledgerctlExec(execCtx, ledger.Namespace, ledger.Spec.ClusterRef, pod0, grpcPort,
-		"ledgers", "promote", ledger.Spec.Name, "--yes"); err != nil {
+		"ledgers", "promote", "--yes", "--", ledger.Spec.Name); err != nil {
 		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
 			Type:               conditionLedgerSynced,
 			Status:             metav1.ConditionFalse,
@@ -335,7 +335,7 @@ func (r *LedgerReconciler) reconcileDelete(ctx context.Context, ledger *ledgerv1
 
 		log.Info("deleting ledger", "name", ledger.Spec.Name)
 		if err := r.ledgerctlExec(execCtx, ledger.Namespace, ledger.Spec.ClusterRef, pod0, grpcPort,
-			"ledgers", "delete", ledger.Spec.Name, "--yes"); err != nil {
+			"ledgers", "delete", "--yes", "--", ledger.Spec.Name); err != nil {
 			if !isLedgerNotFound(err) {
 				log.Error(err, "failed to delete ledger (best-effort)")
 			}
@@ -397,7 +397,7 @@ func (r *LedgerReconciler) resolveEndpoint(ctx context.Context, ledger *ledgerv1
 
 // buildCreateArgs constructs the ledgerctl ledgers create arguments.
 func (r *LedgerReconciler) buildCreateArgs(ctx context.Context, ledger *ledgerv1alpha1.Ledger) ([]string, error) {
-	args := []string{"ledgers", "create", "--name", ledger.Spec.Name}
+	args := []string{"ledgers", "create"}
 	// A mirror starts consuming as soon as CreateLedger commits. Include the
 	// schema and every initial index in that same ApplyBatch (EN-2070).
 	for _, index := range desiredIndexes(ledger.Spec.Indexes) {
@@ -484,7 +484,9 @@ func (r *LedgerReconciler) buildCreateArgs(ctx context.Context, ledger *ledgerv1
 		}
 	}
 
-	return args, nil
+	// The name goes last, after "--", so a valid ledger name starting with "-"
+	// (e.g. "--help") is never parsed as a flag.
+	return append(args, "--", ledger.Spec.Name), nil
 }
 
 // buildPostgresMirrorArgs assembles ledgerctl flags for a Postgres mirror

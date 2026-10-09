@@ -20,19 +20,15 @@ func NewGetCommand() *cobra.Command {
 		Short:   "Get a transaction by ID",
 		Long: `Get detailed information about a transaction via gRPC.
 
-If --ledger is not provided and only one ledger exists, it will be used automatically.
-If multiple ledgers exist, you will be prompted to select one.
-
 Examples:
   ledgerctl transactions get 42 --ledger my-ledger
-  ledgerctl transactions get 42  # Will prompt for ledger if needed
-  ledgerctl transactions get     # Will prompt for both ledger and transaction ID`,
+  ledgerctl transactions get --ledger my-ledger  # Will prompt for the transaction ID`,
 		Args:              cobra.MaximumNArgs(1),
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE:              runGet,
 	}
 
-	cmd.Flags().String("ledger", "", "Name of the ledger")
+	cmdutil.AddLedgerFlag(cmd)
 	cmd.Flags().Uint64("checkpoint-id", 0, "Read from a query checkpoint instead of the live store")
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
@@ -48,13 +44,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 
 	defer func() { _ = conn.Close() }()
 
-	// Get ledger name (from flag or interactive selection)
-	ledgerFlag, _ := cmd.Flags().GetString("ledger")
-
-	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
-	if err != nil {
-		return err
-	}
+	ledgerName, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
 
 	// Get transaction ID (from args or prompt)
 	var txID uint64

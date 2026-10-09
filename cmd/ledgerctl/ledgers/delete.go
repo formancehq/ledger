@@ -24,14 +24,12 @@ The ledger will be soft-deleted (marked as deleted but data retained).
 
 Examples:
   ledgerctl ledgers delete my-ledger
-  ledgerctl ledgers delete --name my-ledger
   ledgerctl ledgers delete  # Interactive mode`,
 		Args:              cobra.MaximumNArgs(1),
 		RunE:              runDelete,
-		ValidArgsFunction: cobra.NoFileCompletions,
+		ValidArgsFunction: cmdutil.CompleteLedgerNameArg,
 	}
 
-	cmd.Flags().String("name", "", "Name of the ledger to delete")
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
@@ -40,7 +38,7 @@ Examples:
 }
 
 func runDelete(cmd *cobra.Command, args []string) error {
-	name, _ := cmd.Flags().GetString("name")
+	var name string
 	if len(args) > 0 {
 		name = args[0]
 	}
@@ -53,7 +51,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 
 		defer func() { _ = conn.Close() }()
 
-		selectedName, err := cmdutil.SelectLedger(cmd, client, "")
+		selectedName, err := cmdutil.SelectLedger(cmd, client)
 		if err != nil {
 			return err
 		}

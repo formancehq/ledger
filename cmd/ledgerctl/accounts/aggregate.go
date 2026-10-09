@@ -34,7 +34,7 @@ Examples:
 		RunE:              runAggregateVolumes,
 	}
 
-	cmd.Flags().String("ledger", "", "Name of the ledger")
+	cmdutil.AddLedgerFlag(cmd)
 	cmd.Flags().String("prefix", "", "Filter accounts by address prefix (e.g. users:)")
 	cmd.Flags().String("filter", "", `Filter expression (e.g. "metadata[category] == premium")`)
 	cmdutil.AddOutputFlags(cmd)
@@ -53,12 +53,7 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 
 	defer func() { _ = conn.Close() }()
 
-	ledgerFlag, _ := cmd.Flags().GetString("ledger")
-
-	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
-	if err != nil {
-		return err
-	}
+	ledgerName, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
 
 	prefix, _ := cmd.Flags().GetString("prefix")
 	filterExpr, _ := cmd.Flags().GetString("filter")

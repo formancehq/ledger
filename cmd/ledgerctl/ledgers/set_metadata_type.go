@@ -27,13 +27,13 @@ Examples:
   ledgerctl ledgers set-metadata-type --ledger my-ledger --target account --key age --type int64
   ledgerctl ledgers smt --ledger my-ledger --target transaction --key priority --type uint64
   ledgerctl ledgers smt --ledger my-ledger --target ledger --key env --type string
-  ledgerctl ledgers set-metadata-type  # Interactive mode`,
+  ledgerctl ledgers set-metadata-type --ledger my-ledger  # Interactive mode`,
 		Args:              cobra.NoArgs,
 		RunE:              runSetMetadataType,
 		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
-	cmd.Flags().String("ledger", "", "Name of the ledger")
+	cmdutil.AddLedgerFlag(cmd)
 	cmd.Flags().String("target", "", "Target type: account, transaction, or ledger")
 	cmdutil.RegisterEnumCompletion(cmd, "target", cmdutil.TargetTypeOptions()...)
 	cmd.Flags().String("key", "", "Metadata key name")
@@ -52,12 +52,7 @@ func runSetMetadataType(cmd *cobra.Command, _ []string) error {
 
 	defer func() { _ = conn.Close() }()
 
-	ledgerFlag, _ := cmd.Flags().GetString("ledger")
-
-	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
-	if err != nil {
-		return err
-	}
+	ledgerName, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
 
 	targetStr, _ := cmd.Flags().GetString("target")
 	if targetStr == "" {

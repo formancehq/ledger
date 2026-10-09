@@ -288,7 +288,7 @@ All write commands (create/delete ledger, create/revert transaction, set/delete 
 
 ```bash
 # Sign requests with a key file
-ledgerctl --signing-key /path/to/seed.key ledgers create --name my-ledger
+ledgerctl --signing-key /path/to/seed.key ledgers create my-ledger
 
 # Sign with a specific key ID
 ledgerctl --signing-key /path/to/seed.key --signing-key-id admin-key-1 transactions create --ledger my-ledger --posting "world,bank,1000,USD"
@@ -371,14 +371,15 @@ Create a new ledger.
 **Aliases:** `new`, `add`
 
 ```bash
-ledgerctl ledgers create [flags]
+ledgerctl ledgers create [name] [flags]
 ```
+
+The ledger name is a positional argument for `ledgers create`, `ledgers delete`, and `ledgers promote`. A name that starts with `-` must follow a `--` terminator so it is not parsed as a flag, for example `ledgerctl ledgers create -- -orders`.
 
 **Flags:**
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--name` | | Name of the ledger to create |
 | `--metadata` | | Metadata key=value pairs |
 | `--schema` | | Metadata schema in `target:key:type` format (repeatable; keys may contain colons) |
 | `--index` | | Initial index, builtin name or `metadata:target:key` with target `account` or `transaction` (repeatable) |
@@ -414,16 +415,16 @@ ledgerctl ledgers create [flags]
 
 ```bash
 # Create a normal ledger
-ledgerctl ledgers create --name my-ledger
+ledgerctl ledgers create my-ledger
 
 # Create with metadata
-ledgerctl ledgers create --name my-ledger --metadata description="My ledger" --metadata env=prod
+ledgerctl ledgers create my-ledger --metadata description="My ledger" --metadata env=prod
 
 # Create with typed metadata schema
-ledgerctl ledgers create --name my-ledger --schema account:age:int64 --schema account:active:bool
+ledgerctl ledgers create my-ledger --schema account:age:int64 --schema account:active:bool
 
 # Create a mirror with its query indexes before ingestion starts
-ledgerctl ledgers create --name indexed-mirror \
+ledgerctl ledgers create indexed-mirror \
   --mode mirror --mirror-base-url https://v2-api.example.com \
   --schema transaction:external:id:string \
   --index reference --index account-asset \
@@ -431,7 +432,7 @@ ledgerctl ledgers create --name indexed-mirror \
   --idempotency-key indexed-mirror-provisioning
 
 # Create a mirror ledger from an HTTP v2 source with OAuth2
-ledgerctl ledgers create --name my-mirror \
+ledgerctl ledgers create my-mirror \
   --mode mirror \
   --mirror-base-url https://v2-api.example.com \
   --mirror-oauth2-client-id my-client-id \
@@ -439,27 +440,27 @@ ledgerctl ledgers create --name my-mirror \
   --mirror-oauth2-token-endpoint https://auth.example.com/token
 
 # Create a mirror ledger from a PostgreSQL v2 source
-ledgerctl ledgers create --name my-mirror \
+ledgerctl ledgers create my-mirror \
   --mode mirror \
   --mirror-source-type postgres \
   --mirror-dsn "postgres://user:pass@host:5432/ledger?sslmode=disable"
 
 # Create a mirror ledger with CEL rewrite rules (rewrite.yaml holds
 # [{match, cel, stop}] rules applied to every mirror log entry)
-ledgerctl ledgers create --name my-mirror \
+ledgerctl ledgers create my-mirror \
   --mode mirror \
   --mirror-base-url https://v2-api.example.com \
   --mirror-rewrite-file rewrite.yaml
 
 # Create a mirror ledger from an AWS RDS v2 source using IAM authentication
-ledgerctl ledgers create --name my-mirror \
+ledgerctl ledgers create my-mirror \
   --mode mirror \
   --mirror-source-type postgres \
   --mirror-dsn "postgres://iam-user@db.region.rds.amazonaws.com:5432/ledger?sslmode=require" \
   --mirror-aws-iam-region eu-west-1
 
 # Mirror with a different source ledger name
-ledgerctl ledgers create --name my-mirror \
+ledgerctl ledgers create my-mirror \
   --mode mirror \
   --mirror-base-url https://v2-api.example.com \
   --mirror-ledger-name original-ledger-name
@@ -482,7 +483,6 @@ ledgerctl ledgers delete [name] [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--name` | | Name of the ledger to delete |
 | `-y, --yes` | `false` | Skip confirmation prompt |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
@@ -512,7 +512,6 @@ ledgerctl ledgers promote [name] [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--name` | | Name of the ledger to promote |
 | `-y, --yes` | `false` | Skip confirmation prompt |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
@@ -555,7 +554,7 @@ ledgerctl ledgers stats [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--ledger` | | Ledger name (interactive selection if omitted) |
+| `--ledger` | *(required)* | Name of the ledger |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
 
@@ -567,9 +566,6 @@ ledgerctl ledgers stats --ledger my-ledger
 
 # Get stats as JSON
 ledgerctl ledgers stats --ledger my-ledger --json
-
-# Interactive mode (will prompt for ledger selection)
-ledgerctl ledgers stats
 ```
 
 #### ledgers set-metadata
@@ -586,7 +582,7 @@ ledgerctl ledgers set-metadata [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--ledger` | | Name of the ledger |
+| `--ledger` | *(required)* | Name of the ledger |
 | `-m, --metadata` | | Metadata key=value pairs (can be repeated) |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
@@ -600,8 +596,8 @@ ledgerctl ledgers set-metadata --ledger my-ledger -m environment=production -m t
 # Set multiple metadata pairs
 ledgerctl ledgers set-metadata --ledger my-ledger -m region=eu-west-1 -m version=v3
 
-# Interactive mode (will prompt for ledger and metadata)
-ledgerctl ledgers set-metadata
+# Interactive mode (will prompt for metadata)
+ledgerctl ledgers set-metadata --ledger my-ledger
 ```
 
 #### ledgers delete-metadata
@@ -618,7 +614,7 @@ ledgerctl ledgers delete-metadata [key] [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--ledger` | | Name of the ledger |
+| `--ledger` | *(required)* | Name of the ledger |
 | `-y, --yes` | `false` | Skip confirmation prompt |
 | `--timeout` | `10s` | Request timeout |
 
@@ -632,7 +628,7 @@ ledgerctl ledgers delete-metadata region --ledger my-ledger
 ledgerctl ledgers delete-metadata region --ledger my-ledger -y
 
 # Interactive mode
-ledgerctl ledgers delete-metadata
+ledgerctl ledgers delete-metadata --ledger my-ledger
 ```
 
 #### ledgers set-metadata-type
@@ -649,15 +645,13 @@ ledgerctl ledgers set-metadata-type [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--ledger` | | Name of the ledger |
+| `--ledger` | *(required)* | Name of the ledger |
 | `--target` | | Target type: `account`, `transaction`, or `ledger` |
 | `--key` | | Metadata key name |
 | `--type` | | Metadata type: `string`, `int64`, `bool`, `uint64`, `int8`, `int16`, `int32`, `uint8`, `uint16`, `uint32`, `datetime` |
 | `--timeout` | `10s` | Request timeout |
 
 **Behavior:**
-- If `--ledger` is not provided and only one ledger exists, it will be used automatically
-- If multiple ledgers exist, you will be prompted to select one
 - Missing flags will be prompted interactively
 - Always O(1): stored metadata values and log payloads are immutable. The
   declared type only affects the forward-index encoding. Type changes —
@@ -679,7 +673,7 @@ ledgerctl ledgers set-metadata-type --ledger my-ledger --target account --key ag
 ledgerctl ledgers smt --ledger my-ledger --target transaction --key priority --type uint64
 
 # Interactive mode (will prompt for all inputs)
-ledgerctl ledgers set-metadata-type
+ledgerctl ledgers set-metadata-type --ledger my-ledger
 ```
 
 #### ledgers remove-metadata-type
@@ -696,15 +690,13 @@ ledgerctl ledgers remove-metadata-type [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--ledger` | | Name of the ledger |
+| `--ledger` | *(required)* | Name of the ledger |
 | `--target` | | Target type: `account`, `transaction`, or `ledger` |
 | `--key` | | Metadata key name to remove |
 | `-y, --yes` | `false` | Skip confirmation prompt |
 | `--timeout` | `10s` | Request timeout |
 
 **Behavior:**
-- If `--ledger` is not provided and only one ledger exists, it will be used automatically
-- If multiple ledgers exist, you will be prompted to select one
 - Prompts for confirmation before removing (use `-y` to skip)
 - Missing flags will be prompted interactively
 - Always O(1): the declared type is removed from the schema atomically;
@@ -721,7 +713,7 @@ ledgerctl ledgers remove-metadata-type --ledger my-ledger --target account --key
 ledgerctl ledgers rmt --ledger my-ledger --target account --key age -y
 
 # Interactive mode
-ledgerctl ledgers remove-metadata-type
+ledgerctl ledgers remove-metadata-type --ledger my-ledger
 ```
 
 #### ledgers get-schema
@@ -778,7 +770,7 @@ ledgerctl indexes create [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--ledger` | | Name of the ledger |
+| `--ledger` | *(required)* | Name of the ledger |
 | `--type` | | Index type: `address`, `source-address`, `destination-address`, `metadata`, `reference`, `timestamp`, `inserted-at`, `account-asset` |
 | `--target` | | Target type for metadata index: `account` or `transaction` |
 | `--key` | | Metadata key name (for metadata index) |
@@ -832,7 +824,7 @@ ledgerctl indexes create --ledger my-ledger --type inserted-at
 ledgerctl indexes create --ledger my-ledger --type account-asset
 
 # Interactive mode
-ledgerctl indexes create
+ledgerctl indexes create --ledger my-ledger
 ```
 
 #### indexes drop
@@ -849,7 +841,7 @@ ledgerctl indexes drop [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--ledger` | | Name of the ledger |
+| `--ledger` | *(required)* | Name of the ledger |
 | `--type` | | Index type: `address`, `source-address`, `destination-address`, `metadata`, `reference`, `timestamp`, `inserted-at`, `account-asset` |
 | `--target` | | Target type for metadata index: `account` or `transaction` |
 | `--key` | | Metadata key name (for metadata index) |
@@ -887,7 +879,7 @@ ledgerctl indexes list [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--ledger` | | Name of the ledger |
+| `--ledger` | *(required)* | Name of the ledger |
 | `--creation-key-prefix` | | Select current indexes supported by a successful singleton audit creation with this key prefix and matching creation date |
 | `--timeout` | `10s` | Request timeout |
 
@@ -931,7 +923,7 @@ ledgerctl indexes inspect [flags]
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--ledger` | Name of the ledger | (interactive) |
+| `--ledger` | Name of the ledger (required) | |
 | `--key` | Metadata key to inspect (required) | |
 | `--target` | Target type: `account` or `transaction` | `account` |
 | `--mode` | Mode: `summary`, `distinct-values`, `facets` | `summary` |
@@ -1110,7 +1102,7 @@ ledgerctl accounts list [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--ledger` | | Name of the ledger |
+| `--ledger` | *(required)* | Name of the ledger |
 | `--page-size` | `10` | Number of accounts per page |
 | `--prefix` | | Filter accounts by address prefix (e.g. `users:`) |
 | `--filter` | | Filter expression (see [Filter Expression Syntax](#filter-expression-syntax)) |
@@ -1123,8 +1115,6 @@ ledgerctl accounts list [flags]
 - Accounts are listed in alphabetical order by default; use `--reverse` for reverse-alphabetical (Z→A)
 - Each account row includes a **balances** column showing one balance (`input − output`) per `(asset, color)` bucket the account holds. Colored buckets are labelled `ASSET[COLOR]`; the uncolored bucket is labelled by its asset alone
 - The global `--rescale` flag re-expresses those balances at a chosen scale in the table (see [Amount Rescaling](#amount-rescaling)); it does not affect `--json`/`--yaml` output. Colors stay segregated: only precisions of the same color are summed
-- If `--ledger` is not provided and only one ledger exists, it will be used automatically
-- If multiple ledgers exist, you will be prompted to select one
 - Use `--prefix` to filter by address prefix (e.g. `users:` lists only accounts starting with `users:`)
 - Use `--filter` for rich boolean filter expressions on metadata and addresses
 - If both `--prefix` and `--filter` are provided, they are combined with AND
@@ -1318,13 +1308,11 @@ ledgerctl accounts get [address] [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--ledger` | | Name of the ledger |
+| `--ledger` | *(required)* | Name of the ledger |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
 
 **Behavior:**
-- If `--ledger` is not provided and only one ledger exists, it will be used automatically
-- If multiple ledgers exist, you will be prompted to select one
 - If address is not provided, you will be prompted to enter it
 
 **Example:**
@@ -1333,11 +1321,8 @@ ledgerctl accounts get [address] [flags]
 # Get account with explicit ledger
 ledgerctl accounts get bank --ledger my-ledger
 
-# Auto-select ledger if only one exists
-ledgerctl accounts get bank
-
-# Interactive mode
-ledgerctl accounts get
+# Prompt for the address
+ledgerctl accounts get --ledger my-ledger
 ```
 
 #### accounts set-metadata
@@ -1354,7 +1339,7 @@ ledgerctl accounts set-metadata [address] [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--ledger` | | Name of the ledger |
+| `--ledger` | *(required)* | Name of the ledger |
 | `-m, --metadata` | | Metadata key=value pairs (can be repeated) |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
@@ -1366,7 +1351,7 @@ ledgerctl accounts set-metadata [address] [flags]
 ledgerctl accounts set-metadata bank --ledger my-ledger --metadata type=asset
 
 # Set multiple metadata
-ledgerctl accounts set-metadata users:alice -m role=admin -m tier=premium
+ledgerctl accounts set-metadata users:alice -m role=admin -m tier=premium --ledger my-ledger
 
 # Interactive mode (will prompt for metadata)
 ledgerctl accounts set-metadata bank --ledger my-ledger
@@ -1386,7 +1371,7 @@ ledgerctl accounts delete-metadata [address] [key] [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--ledger` | | Name of the ledger |
+| `--ledger` | *(required)* | Name of the ledger |
 | `-y, --yes` | `false` | Skip confirmation prompt |
 | `--timeout` | `10s` | Request timeout |
 
@@ -1397,10 +1382,10 @@ ledgerctl accounts delete-metadata [address] [key] [flags]
 ledgerctl accounts delete-metadata bank type --ledger my-ledger
 
 # Delete without confirmation
-ledgerctl accounts delete-metadata users:alice role -y
+ledgerctl accounts delete-metadata users:alice role -y --ledger my-ledger
 
 # Interactive mode
-ledgerctl accounts delete-metadata
+ledgerctl accounts delete-metadata --ledger my-ledger
 ```
 
 #### accounts analyze
@@ -1417,7 +1402,7 @@ ledgerctl accounts analyze [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--ledger` | | Name of the ledger |
+| `--ledger` | *(required)* | Name of the ledger |
 | `--threshold` | `0` | Variable threshold (0 = default 10): max distinct children before classifying as variable |
 | `--json` | `false` | Output full response as JSON |
 | `--timeout` | `10s` | Request timeout |
@@ -1427,7 +1412,6 @@ ledgerctl accounts analyze [flags]
 - Classifies segments as fixed (constant labels) or variable (IDs, numbers)
 - Infers regex patterns for variable segments (UUID, numeric, alphanumeric)
 - Outputs a suggested Chart of Accounts tree, discovered patterns, and statistics
-- If `--ledger` is not provided and only one ledger exists, it will be used automatically
 
 **Example:**
 
@@ -1466,7 +1450,7 @@ ledgerctl transactions list [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--ledger` | | Name of the ledger |
+| `--ledger` | *(required)* | Name of the ledger |
 | `--page-size` | `10` | Number of transactions per page |
 | `--filter` | | Filter expression (e.g. `"metadata[category] == premium"`) |
 | `--reverse` | `false` | Reverse iteration order (oldest first instead of newest first) |
@@ -1496,9 +1480,6 @@ ledgerctl transactions list --ledger my-ledger --all
 
 # Output as JSON
 ledgerctl transactions list --ledger my-ledger --json
-
-# Interactive mode (will prompt for ledger selection)
-ledgerctl transactions list
 ```
 
 #### transactions get
@@ -1515,7 +1496,7 @@ ledgerctl transactions get [transaction-id] [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--ledger` | | Name of the ledger |
+| `--ledger` | *(required)* | Name of the ledger |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
 
@@ -1526,7 +1507,7 @@ ledgerctl transactions get [transaction-id] [flags]
 ledgerctl transactions get 42 --ledger my-ledger
 
 # Interactive mode
-ledgerctl transactions get
+ledgerctl transactions get --ledger my-ledger
 
 # JSON output
 ledgerctl transactions get 42 --ledger my-ledger --json
@@ -1546,7 +1527,7 @@ ledgerctl transactions create [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--ledger` | | Name of the ledger |
+| `--ledger` | *(required)* | Name of the ledger |
 | `--posting` | | Posting in format: `source,destination,amount,asset[,color]` (can be repeated) |
 | `--script` | | Path to a Numscript file (mutually exclusive with `--posting`) |
 | `--var` | | Script variable in format: `name=value` (can be repeated, only with `--script`) |
@@ -1617,8 +1598,8 @@ ledgerctl transactions create --ledger my-ledger \
 **Interactive mode:**
 
 ```bash
-# Will prompt for ledger and postings
-ledgerctl transactions create
+# Will prompt for postings
+ledgerctl transactions create --ledger my-ledger
 
 # With script - will prompt for missing variables
 ledgerctl transactions create --ledger my-ledger \
@@ -1656,7 +1637,7 @@ ledgerctl transactions revert [transaction-id] [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--ledger` | | Name of the ledger |
+| `--ledger` | *(required)* | Name of the ledger |
 | `--force` | `false` | Force revert even if funds have been spent |
 | `--at-effective-date` | `false` | Use the original transaction timestamp for the revert |
 | `--metadata` | | Metadata for the revert transaction (key=value) |
@@ -1690,8 +1671,8 @@ ledgerctl transactions revert 42 --ledger my-ledger \
   --metadata reason="customer refund" \
   --metadata ticket="JIRA-123"
 
-# Interactive mode (will prompt for ledger and transaction ID)
-ledgerctl transactions revert
+# Interactive mode (will prompt for transaction ID)
+ledgerctl transactions revert --ledger my-ledger
 ```
 
 #### transactions set-metadata
@@ -1708,7 +1689,7 @@ ledgerctl transactions set-metadata [transaction-id] [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--ledger` | | Name of the ledger |
+| `--ledger` | *(required)* | Name of the ledger |
 | `-m, --metadata` | | Metadata key=value pairs (can be repeated) |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
@@ -1720,7 +1701,7 @@ ledgerctl transactions set-metadata [transaction-id] [flags]
 ledgerctl transactions set-metadata 42 --ledger my-ledger --metadata status=processed
 
 # Set multiple metadata
-ledgerctl tx sm 42 -m reason="refund" -m ticket=JIRA-123
+ledgerctl tx sm 42 -m reason="refund" -m ticket=JIRA-123 --ledger my-ledger
 
 # Interactive mode (will prompt for metadata)
 ledgerctl transactions set-metadata 42 --ledger my-ledger
@@ -1740,7 +1721,7 @@ ledgerctl transactions delete-metadata [transaction-id] [key] [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--ledger` | | Name of the ledger |
+| `--ledger` | *(required)* | Name of the ledger |
 | `-y, --yes` | `false` | Skip confirmation prompt |
 | `--timeout` | `10s` | Request timeout |
 
@@ -1751,10 +1732,10 @@ ledgerctl transactions delete-metadata [transaction-id] [key] [flags]
 ledgerctl transactions delete-metadata 42 status --ledger my-ledger
 
 # Delete without confirmation
-ledgerctl tx dm 42 reason -y
+ledgerctl tx dm 42 reason -y --ledger my-ledger
 
 # Interactive mode
-ledgerctl transactions delete-metadata
+ledgerctl transactions delete-metadata --ledger my-ledger
 ```
 
 #### transactions analyze
@@ -1771,7 +1752,7 @@ ledgerctl transactions analyze [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--ledger` | | Name of the ledger |
+| `--ledger` | *(required)* | Name of the ledger |
 | `--threshold` | `0` | Variable threshold (0 = default 10): max distinct children before classifying as variable |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
@@ -1812,7 +1793,7 @@ ledgerctl account-types add <name> <pattern> --ledger <ledger> [--persistence <m
 **Flags:**
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--ledger` | *(required)* | Target ledger name |
+| `--ledger` | *(required)* | Name of the ledger |
 | `--persistence` | `normal` | Volume persistence mode (see below) |
 
 **Persistence modes:**
@@ -1840,10 +1821,8 @@ ledgerctl at add staging "staging:{txhash}" --ledger my-ledger --persistence tra
 List all account types for a ledger.
 
 ```bash
-ledgerctl account-types list [--ledger <ledger>]
+ledgerctl account-types list --ledger <ledger>
 ```
-
-If `--ledger` is not provided and only one ledger exists, it will be used automatically.
 
 **Example:**
 ```bash
@@ -1855,7 +1834,7 @@ ledgerctl at ls --ledger my-ledger
 Get details of a specific account type.
 
 ```bash
-ledgerctl account-types get <name> [--ledger <ledger>]
+ledgerctl account-types get <name> --ledger <ledger>
 ```
 
 Shows name, pattern, and persistence mode.
@@ -1882,7 +1861,7 @@ ledgerctl account-types set-default-enforcement [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--ledger` | *(required)* | Target ledger name |
+| `--ledger` | *(required)* | Name of the ledger |
 | `--mode` | | Enforcement mode: `STRICT` (reject untyped accounts) or `AUDIT` (warn only) |
 
 **Example:**
@@ -1911,7 +1890,7 @@ ledgerctl accounts aggregate-volumes [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--ledger` | | Name of the ledger |
+| `--ledger` | *(required)* | Name of the ledger |
 | `--prefix` | | Filter accounts by address prefix |
 | `--filter` | | Filter expression (same DSL as account list) |
 | `--checkpoint-id` | `0` | Query checkpoint ID (0 = live data) |
@@ -2615,7 +2594,7 @@ ledgerctl logs list [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--ledger` | (required) | Ledger name to list logs for |
+| `--ledger` | *(required)* | Name of the ledger |
 | `--expand` | `false` | Expand details within each log entry |
 
 Also honors the [Shared Flag Contract](#shared-flag-contract) (`--page-size`, `--cursor`, `--reverse`, `--filter`, `--checkpoint-id`, `--json`, `--yaml`, `--timeout`).
@@ -3449,7 +3428,7 @@ ledgerctl signing generate-key ./my-keys
 
 # Use the generated files
 ledgerctl signing register-key --key-id admin --public-key-file ./my-keys/pubkey.hex
-ledgerctl --signing-key ./my-keys/seed.hex ledgers create --name my-ledger
+ledgerctl --signing-key ./my-keys/seed.hex ledgers create my-ledger
 ```
 
 #### signing register-key
@@ -3520,11 +3499,11 @@ Manage the numscript library (per-ledger reusable scripts with semver versioning
 
 **Aliases:** `numscript`, `ns`
 
-**Persistent Flags:**
+**Flags (every subcommand):**
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--ledger` | | Ledger name (interactive selection if omitted) |
+| `--ledger` | *(required)* | Name of the ledger |
 
 #### numscripts list
 
@@ -3636,7 +3615,7 @@ ledgerctl queries create <name> --ledger <ledger-name> [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--ledger` | | Ledger name (interactive selection if omitted) |
+| `--ledger` | *(required)* | Name of the ledger |
 | `--target` | `accounts` | Query target: `accounts`, `transactions`, or `logs` |
 | `--filter` | | Filter expression (same DSL as account/transaction list) |
 | `--timeout` | `10s` | Request timeout |
@@ -3703,7 +3682,7 @@ ledgerctl queries execute <name> --ledger <ledger-name> [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--ledger` | | Ledger name (interactive selection if omitted) |
+| `--ledger` | *(required)* | Name of the ledger |
 | `--param` | | Query parameter as `key=value` (repeatable) |
 | `--page-size` | `10` | Number of results per page |
 | `--mode` | `list` | Query mode: `list` or `aggregate` |
@@ -4863,7 +4842,7 @@ For complete documentation, see:
 
 ```bash
 # 1. Create a ledger
-ledgerctl ledgers create --name demo
+ledgerctl ledgers create demo
 
 # 2. Fund the bank from world
 ledgerctl transactions create --ledger demo \

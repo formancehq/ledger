@@ -22,7 +22,7 @@ func NewGetCommand() *cobra.Command {
 		Long:              "Get detailed information about a ledger by its name via gRPC",
 		Args:              cobra.ExactArgs(1),
 		RunE:              runGet,
-		ValidArgsFunction: cobra.NoFileCompletions,
+		ValidArgsFunction: cmdutil.CompleteLedgerNameArg,
 	}
 
 	cmdutil.AddConsistencyFlags(cmd)

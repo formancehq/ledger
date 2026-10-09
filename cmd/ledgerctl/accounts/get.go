@@ -22,19 +22,15 @@ func NewGetCommand() *cobra.Command {
 		Short:   "Get an account by address",
 		Long: `Get detailed information about an account including its volumes via gRPC.
 
-If --ledger is not provided and only one ledger exists, it will be used automatically.
-If multiple ledgers exist, you will be prompted to select one.
-
 Examples:
   ledgerctl accounts get bank --ledger my-ledger
-  ledgerctl accounts get bank  # Will prompt for ledger if needed
-  ledgerctl accounts get       # Will prompt for both ledger and address`,
+  ledgerctl accounts get --ledger my-ledger  # Will prompt for the address`,
 		Args:              cobra.MaximumNArgs(1),
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE:              runGet,
 	}
 
-	cmd.Flags().String("ledger", "", "Name of the ledger")
+	cmdutil.AddLedgerFlag(cmd)
 	cmd.Flags().Uint64("checkpoint-id", 0, "Read from a query checkpoint instead of the live store")
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
@@ -50,12 +46,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 
 	defer func() { _ = conn.Close() }()
 
-	ledgerFlag, _ := cmd.Flags().GetString("ledger")
-
-	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
-	if err != nil {
-		return err
-	}
+	ledgerName, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
 
 	var address string
 	if len(args) > 0 {

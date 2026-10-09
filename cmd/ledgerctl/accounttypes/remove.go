@@ -26,16 +26,15 @@ Examples:
 		RunE:              runRemove,
 	}
 
-	cmd.Flags().String("ledger", "", "Name of the ledger (required)")
+	cmdutil.AddLedgerFlag(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
-	_ = cmd.MarkFlagRequired("ledger")
 
 	return cmd
 }
 
 func runRemove(cmd *cobra.Command, args []string) error {
 	typeName := args[0]
-	ledgerName, _ := cmd.Flags().GetString("ledger")
+	ledgerName, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
 
 	client, conn, err := cmdutil.GetClient(cmd)
 	if err != nil {

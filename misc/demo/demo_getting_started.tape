@@ -19,7 +19,7 @@ Sleep 300ms
 # Create ledger
 # ============================================================================
 
-Type "ledgerctl ledgers create --name demo"
+Type "ledgerctl ledgers create demo"
 Enter
 Sleep 1500ms
 

@@ -503,6 +503,7 @@ _generate-demo tapes:
     trap cleanup EXIT
     "$DEMO_DIR/ledger-server" run \
         --node-id 1 \
+        --cluster-id demo \
         --bootstrap \
         --bind-addr 127.0.0.1:7777 \
         --wal-dir "$DEMO_DIR/wal" \

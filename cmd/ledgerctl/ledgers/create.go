@@ -20,16 +20,22 @@ import (
 // NewCreateCommand creates the ledgers create command.
 func NewCreateCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:               "create",
-		Aliases:           []string{"new", "add"},
-		Short:             "Create a new ledger",
-		Long:              "Create a new ledger via gRPC.\n\nTo create a mirror ledger, use --mode=mirror with source configuration flags.",
-		Args:              cobra.NoArgs,
+		Use:     "create [name]",
+		Aliases: []string{"new", "add"},
+		Short:   "Create a new ledger",
+		Long: `Create a new ledger via gRPC.
+
+To create a mirror ledger, use --mode=mirror with source configuration flags.
+
+Examples:
+  ledgerctl ledgers create my-ledger
+  ledgerctl ledgers create my-ledger --schema account:age:int64 --index reference
+  ledgerctl ledgers create  # Interactive mode`,
+		Args:              cobra.MaximumNArgs(1),
 		RunE:              runCreate,
 		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
-	cmd.Flags().String("name", "", "Name of the ledger to create")
 	cmd.Flags().StringArray("schema", nil, "Metadata schema entries in target:key:type format (can be repeated, e.g. account:age:int64)")
 	cmd.Flags().StringArray("index", nil, "Initial index: a builtin type (e.g. reference) or metadata:<account|transaction>:<key> (repeatable; atomic with ledger creation)")
 	cmd.Flags().String("idempotency-key", "", "Idempotency key for the entire ledger creation batch")
@@ -61,12 +67,15 @@ func NewCreateCommand() *cobra.Command {
 	return cmd
 }
 
-func runCreate(cmd *cobra.Command, _ []string) error {
-	name, _ := cmd.Flags().GetString("name")
+func runCreate(cmd *cobra.Command, args []string) error {
+	var name string
+	if len(args) > 0 {
+		name = args[0]
+	}
 
 	if name == "" {
 		if !term.IsTerminal(int(os.Stdin.Fd())) {
-			return errors.New("ledger name is required (use --name flag)")
+			return errors.New("ledger name is required (pass it as the first argument)")
 		}
 
 		result, err := pterm.DefaultInteractiveTextInput.

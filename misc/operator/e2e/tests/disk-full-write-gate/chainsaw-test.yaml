@@ -49,7 +49,7 @@ spec:
         - script:
             content: |
               kubectl exec disk-gate-0 -n $NAMESPACE -c ledger -- \
-                /bin/sh -c './ledgerctl ledgers create --name baseline-ledger \
+                /bin/sh -c './ledgerctl ledgers create baseline-ledger \
                   --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
             timeout: 30s
 
@@ -110,7 +110,7 @@ spec:
                   # LEDGER_ALREADY_EXISTS. The loop only succeeds when it
                   # actually observes the disk-full marker, never on a plain
                   # successful create.
-                  OUTPUT=$(./ledgerctl ledgers create --name gated-ledger-$i \
+                  OUTPUT=$(./ledgerctl ledgers create gated-ledger-$i \
                     --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET" 2>&1 || true)
                   echo "$OUTPUT"
                   if echo "$OUTPUT" | grep -q "WRITES_BLOCKED_DISK_FULL"; then
@@ -142,7 +142,7 @@ spec:
               kubectl exec disk-gate-0 -n $NAMESPACE -c ledger -- /bin/sh -c '
                 for i in $(seq 1 20); do
                   echo "Attempt $i: checking write gate cleared..."
-                  if ./ledgerctl ledgers create --name recovered-ledger-$i \
+                  if ./ledgerctl ledgers create recovered-ledger-$i \
                     --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"; then
                     exit 0
                   fi

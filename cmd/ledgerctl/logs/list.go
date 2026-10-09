@@ -1,7 +1,6 @@
 package logs
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/pterm/pterm"
@@ -24,7 +23,7 @@ func NewListCommand() *cobra.Command {
 		RunE:              runList,
 	}
 
-	cmd.Flags().String("ledger", "", "Ledger name (required)")
+	cmdutil.AddLedgerFlag(cmd)
 	cmdutil.AddPaginationFlags(cmd, cmdutil.PaginationOptions{SupportsReverse: true})
 	cmdutil.AddFilterFlags(cmd, cmdutil.FilterOptions{})
 	cmdutil.AddConsistencyFlags(cmd)
@@ -46,15 +45,11 @@ func runList(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	ledger, _ := cmd.Flags().GetString("ledger")
+	ledger, _ := cmd.Flags().GetString(cmdutil.LedgerFlagName)
 	expand, _ := cmd.Flags().GetBool("expand")
 	pgn := cmdutil.GetPaginationFlags(cmd)
 	flt := cmdutil.GetFilterFlags(cmd)
 	cns := cmdutil.GetConsistencyFlags(cmd)
-
-	if ledger == "" {
-		return errors.New("--ledger flag is required")
-	}
 
 	filter, err := cmdutil.BuildQueryFilter(flt.Expr, flt.Prefix, commonpb.QueryTarget_QUERY_TARGET_LOGS)
 	if err != nil {

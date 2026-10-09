@@ -257,7 +257,7 @@ ledgerctl signing generate-key ./root-keys
 ledgerctl signing register-key --key-id root --public-key-file ./root-keys/pubkey.hex
 
 # 3. Sign write commands with the key
-ledgerctl --signing-key ./root-keys/seed.hex ledgers create --name my-ledger
+ledgerctl --signing-key ./root-keys/seed.hex ledgers create my-ledger
 ledgerctl --signing-key ./root-keys/seed.hex transactions create --ledger my-ledger --posting "world,bank,1000,USD"
 
 # 4. Register child keys (signed by root → parent is root)

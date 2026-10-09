@@ -100,22 +100,22 @@ The `BucketService` exposes:
 
 ```bash
 # Save a version (explicit full semver, required)
-ledgerctl numscripts save payment-with-fees --file script.num --version 1.0.0
+ledgerctl numscripts save payment-with-fees --file script.num --version 1.0.0 --ledger my-ledger
 
 # Save from stdin
-cat script.num | ledgerctl numscripts save payment-with-fees --version 1.0.0
+cat script.num | ledgerctl numscripts save payment-with-fees --version 1.0.0 --ledger my-ledger
 
 # Get latest version (greatest stored semver)
-ledgerctl numscripts get payment-with-fees
+ledgerctl numscripts get payment-with-fees --ledger my-ledger
 
 # Get specific version
-ledgerctl numscripts get payment-with-fees --version 1.0.0
+ledgerctl numscripts get payment-with-fees --version 1.0.0 --ledger my-ledger
 
 # List the greatest version of each script
-ledgerctl numscripts list
+ledgerctl numscripts list --ledger my-ledger
 
 # List the latest pointer and every stored version
-ledgerctl numscripts versions payment-with-fees
+ledgerctl numscripts versions payment-with-fees --ledger my-ledger
 ```
 
 ## Error Handling

@@ -238,7 +238,7 @@ func newRealIndexHarness(t *testing.T) *realIndexHarness {
 		Spec:       ledgerv1alpha1.LedgerCRDSpec{ClusterRef: "test-cluster", Name: name, Indexes: &ledgerv1alpha1.LedgerIndexesSpec{Transaction: []string{"reference"}}},
 		Status:     ledgerv1alpha1.LedgerCRDStatus{Phase: ledgerv1alpha1.LedgerPhaseReady},
 	}}
-	_, err := h.run("ledgers", "create", "--name", name)
+	_, err := h.run("ledgers", "create", name)
 	require.NoError(t, err)
 
 	return h
@@ -299,7 +299,10 @@ func (h *realIndexHarness) podExec(ctx context.Context, _ *rest.Config, _ kubern
 	require.Len(h.t, command, 3)
 	end := strings.LastIndex(command[2], " --server ")
 	require.Positive(h.t, end)
-	script := strings.Replace(command[2][:end], "./ledgerctl ", shellSingleQuote(h.cli)+" ", 1) + " --server " + shellSingleQuote(h.endpoint) + " --insecure"
+	// Positional args after a "--" terminator follow the connection flags.
+	const authFlag = ` --auth-token "$CLUSTER_SECRET"`
+	tail := command[2][strings.LastIndex(command[2], authFlag)+len(authFlag):]
+	script := strings.Replace(command[2][:end], "./ledgerctl ", shellSingleQuote(h.cli)+" ", 1) + " --server " + shellSingleQuote(h.endpoint) + " --insecure" + tail
 	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", script)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
