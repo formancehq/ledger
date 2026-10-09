@@ -2639,6 +2639,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '500':
           $ref: '#/components/responses/InternalServerError'
         '503':
@@ -2689,6 +2691,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
         '500':
           $ref: '#/components/responses/InternalServerError'
         '503':

@@ -294,6 +294,8 @@ and `internal/domain/processing/processor.go` (`IncrementNextSequenceID`).
 
 | Method | Path | 429 body |
 | --- | --- | --- |
+| POST | `/_/events-sinks` | `ErrorResponse` |
+| DELETE | `/_/events-sinks/{sinkName}` | `ErrorResponse` |
 | POST, DELETE | `/{ledgerName}` | `ErrorResponse` |
 | POST | `/{ledgerName}/promote` | `ErrorResponse` |
 | PUT | `/{ledgerName}/numscripts/{name}` | `ErrorResponse` |
@@ -1214,6 +1216,11 @@ All errors use `{errorCode, errorMessage}`. For example:
 ```json
 {"errorCode":"SINK_ALREADY_EXISTS","errorMessage":"event sink already exists: primary"}
 ```
+
+Both mutations can return `429 WRITES_BLOCKED_DISK_FULL` or
+`429 SEQUENCE_EXHAUSTED` with the JSON error envelope and no `Retry-After`.
+See the [resource-exhaustion response matrix](#resource-exhaustion-response-matrix)
+before deciding whether a retry can help.
 
 Leader unavailability follows the standard `503` and `Retry-After` contract;
 internal failures retain the existing sanitized `500` response. Neither failure

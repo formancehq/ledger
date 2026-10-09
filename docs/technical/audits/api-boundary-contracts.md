@@ -108,7 +108,7 @@ EN-2783 pins HTTP auth response media types and reachable write-exhaustion
 declarations. Use `TestOpenAPI_NumscriptAuthentication` and
 `TestOpenAPI_WriteResourceExhaustion` as registered-router oracles, including
 anonymous/disabled authentication, local and reconstructed domain errors, and
-the 22 non-bulk Apply paths. Require actual regenerated SDK operation fixtures
+the 24 non-bulk Apply paths. Require actual regenerated SDK operation fixtures
 for bearer transmission and preserved failure details. Primitive plain-text
 auth bodies and JSON controller bodies are different media types; a generator
 limitation must be disclosed rather than hidden with an inaccurate schema.

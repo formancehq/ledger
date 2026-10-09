@@ -62,7 +62,7 @@ the usual JSON `errorCode`/`errorMessage` envelope. Clients dispatch using both
 status and media type. The HTTP response wrapper preserves an explicit content
 type so a plain-text scope denial is not mislabeled JSON.
 
-The 22 non-bulk Apply write operations declare JSON 429 responses for disk gating
+The 24 non-bulk Apply write operations declare JSON 429 responses for disk gating
 and authoritative identifier exhaustion. See the evidence-backed
 [route/status/body matrix](../architecture/subsystems/api/http-api.md#resource-exhaustion-response-matrix).
 No 429 retry interval is supplied. `WRITES_BLOCKED_DISK_FULL` can clear with disk

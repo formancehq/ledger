@@ -150,6 +150,9 @@ var _ = Describe("HTTP events sinks mutations", func() {
 	DescribeTable("rejects invalid JSON or sink configuration without persisting it", func(name, body string) {
 		code, raw := request(http.MethodPost, "", []byte(body), "")
 		Expect(code).To(Equal(http.StatusBadRequest), string(raw))
+		if name == "http-sinks-unknown" {
+			errorReason(raw, "INVALID_REQUEST")
+		}
 		if name == "http-sinks-oversized" {
 			errorReason(raw, domain.ErrReasonSinkBatchSizeTooLarge)
 		}
@@ -160,7 +163,7 @@ var _ = Describe("HTTP events sinks mutations", func() {
 		Entry("malformed JSON", "", `{"name":`),
 		Entry("missing configuration", "", `{}`),
 		Entry("missing name", "", `{"format":"json","nats":{"url":"nats://localhost:4222","topic":"http.events.no-name"}}`),
-		Entry("unknown protobuf field", "http-sinks-unknown", `{"name":"http-sinks-unknown","unknown":true}`),
+		Entry("unknown protobuf field", "http-sinks-unknown", `{"name":"http-sinks-unknown","http":{"endpoint":"http://localhost:9001/events"},"unknown":true}`),
 		Entry("missing sink type", "http-sinks-no-type", `{"name":"http-sinks-no-type","format":"json"}`),
 		Entry("oversized batch", "http-sinks-oversized", fmt.Sprintf(`{"name":"http-sinks-oversized","format":"json","batchSize":%d,"nats":{"url":"nats://localhost:4222","topic":"http.events.invalid"}}`, domain.MaxSinkBatchSize+1)),
 	)
