@@ -414,6 +414,7 @@ func (c *Checker) validateInspectSummary(
 
 	canonical := metadataCanonical(target, key)
 
+	compared := false
 	if c.matchesModel(maxTicket, "INSPECTSUMMARY", func(base oracle.GlobalState) bool {
 		ls, live := liveLedgerState(base, ledger)
 		if !live {
@@ -424,8 +425,14 @@ func (c *Checker) validateInspectSummary(
 			return true
 		}
 
-		return modelInspectCounts(ls, target, key, declared) == served
+		compared = modelInspectCounts(ls, target, key, declared) == served
+
+		return compared
 	}) {
+		if !compared {
+			return true
+		}
+
 		// Coverage: a summary's counters were the model's own fold of the key.
 		// An empty index agrees on zeroes whatever the fold does, so the
 		// populated case is its own fact — that is the one that proves the

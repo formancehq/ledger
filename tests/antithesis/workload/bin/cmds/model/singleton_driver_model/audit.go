@@ -602,10 +602,18 @@ func auditSuccessMismatch(e auditEntry, logs map[uint64]committedLog, bulks map[
 		seen[l.ledger] = true
 	}
 
+	items := map[uint64]bool{}
 	for _, seq := range e.itemSeqs {
 		if seq < e.minLog || seq > e.maxLog {
 			return "item sequence " + strconv.FormatUint(seq, 10) + " outside the entry's range", 0
 		}
+
+		// One item per order, one log per order: with the count already equal
+		// to the span, a repeat means some log of the range has no item.
+		if items[seq] {
+			return "item sequence " + strconv.FormatUint(seq, 10) + " repeated", 0
+		}
+		items[seq] = true
 	}
 
 	ledgers := slices.Sorted(maps.Keys(seen))

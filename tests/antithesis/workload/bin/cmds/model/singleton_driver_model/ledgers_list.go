@@ -142,11 +142,17 @@ func runLedgersList(ctx context.Context, client servicepb.BucketServiceClient, c
 
 	// A deleted ledger leaves the listing, so the window is the live fleet of
 	// whichever base explains the page.
-	if !c.matchesModel(maxTicket, "LEDGERWINDOW", func(base oracle.GlobalState) bool {
-		want, more := ledgerWindow(base.LiveLedgers(), cursor, pageSize, reverse)
+	windowMatches := func(base oracle.GlobalState) bool {
+		return ledgerWindowMatches(base, names, cursor, pageSize, reverse, next)
+	}
 
-		return slices.Equal(names, want) && nextCursorLegal(next, more, lastLedgerKey(names), len(names), pageSize)
-	}) {
+	// One base must explain the window and every row at once; the window-only
+	// search below only picks which finding to report.
+	pageMatches := c.matchesModel(maxTicket, "LEDGERLIST", func(base oracle.GlobalState) bool {
+		return ledgerListingMatches(base, names, served, cursor, pageSize, reverse, next)
+	})
+
+	if !pageMatches && !c.matchesModel(maxTicket, "LEDGERWINDOW", windowMatches) {
 		committed, _ := ledgerWindow(c.modelLiveLedgers(), cursor, pageSize, reverse)
 		assert.Unreachable("singleton_driver_model: ledger listing is not the fleet's window", internal.Details{
 			"served":     strings.Join(names, ","),
@@ -160,15 +166,7 @@ func runLedgersList(ctx context.Context, client servicepb.BucketServiceClient, c
 		return
 	}
 
-	if !c.matchesModel(maxTicket, "LEDGERLIST", func(base oracle.GlobalState) bool {
-		for _, info := range served {
-			if !ledgerInfoMatches(base, info) {
-				return false
-			}
-		}
-
-		return true
-	}) {
+	if !pageMatches {
 		details := internal.Details{"listed": len(served)}
 		for name, info := range served {
 			details["serverMeta:"+name] = renderMetaMap(info.GetMetadata())
@@ -302,4 +300,28 @@ func (c *Checker) deletedLedgerNames() []string {
 	_, deleted := partitionLifecycleLedgers(state, c.ledgerNamesSnapshot())
 
 	return deleted
+}
+
+// ledgerWindowMatches reports whether names and next are the window base's live
+// fleet gives this cursor, page size and direction.
+func ledgerWindowMatches(base oracle.GlobalState, names []string, cursor string, pageSize int, reverse bool, next string) bool {
+	want, more := ledgerWindow(base.LiveLedgers(), cursor, pageSize, reverse)
+
+	return slices.Equal(names, want) && nextCursorLegal(next, more, lastLedgerKey(names), len(names), pageSize)
+}
+
+// ledgerListingMatches reports whether base alone explains the whole page: its
+// window and every row's LedgerInfo.
+func ledgerListingMatches(base oracle.GlobalState, names []string, served map[string]*commonpb.LedgerInfo, cursor string, pageSize int, reverse bool, next string) bool {
+	if !ledgerWindowMatches(base, names, cursor, pageSize, reverse, next) {
+		return false
+	}
+
+	for _, info := range served {
+		if !ledgerInfoMatches(base, info) {
+			return false
+		}
+	}
+
+	return true
 }

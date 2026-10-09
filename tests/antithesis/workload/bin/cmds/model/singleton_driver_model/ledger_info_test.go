@@ -246,3 +246,35 @@ func TestListLedgersRejectsAFilter(t *testing.T) {
 	}
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
+
+// One base must explain the whole listing page. A bulk that updates A's
+// metadata and deletes B splits the page across two states: the old fleet
+// explains the continuation toward B, the new state explains A's row.
+func TestLedgerListingMatchesNeedsOneBase(t *testing.T) {
+	t.Parallel()
+
+	created := oracle.NewGlobalState().Apply(oracle.Bulk{Requests: []*servicepb.Request{
+		{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{Name: "A"}}},
+		{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{Name: "B"}}},
+	}})
+	require.True(t, created.OK, created.Reason)
+	before := created.State
+
+	updated := before.Apply(oracle.Bulk{Requests: []*servicepb.Request{
+		actions.SaveLedgerMetadataAction("A", map[string]string{"owner": "treasury"}),
+		actions.DeleteLedgerAction("B"),
+	}})
+	require.True(t, updated.OK, updated.Reason)
+	after := updated.State
+
+	row := &commonpb.LedgerInfo{Name: "A", Metadata: map[string]*commonpb.MetadataValue{
+		"owner": {Type: &commonpb.MetadataValue_StringValue{StringValue: "treasury"}},
+	}}
+	require.True(t, ledgerInfoMatches(after, row), "the row is the new state's A")
+	served := map[string]*commonpb.LedgerInfo{"A": row}
+	names := []string{"A"}
+
+	require.True(t, ledgerWindowMatches(before, names, "", 1, false, "A"), "the old fleet still holds B past A")
+	require.False(t, ledgerListingMatches(before, names, served, "", 1, false, "A"), "the old state's A has no metadata")
+	require.False(t, ledgerListingMatches(after, names, served, "", 1, false, "A"), "the new fleet has nothing past A")
+}

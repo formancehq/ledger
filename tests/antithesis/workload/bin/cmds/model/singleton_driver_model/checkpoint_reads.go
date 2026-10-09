@@ -144,12 +144,12 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 			return
 		}
 
-		ledger = target.ledger
-
+		// GetLog is sequence-scoped and the global stream outlives its ledger,
+		// so ledger stays empty: a deleted ledger never excuses a NotFound.
 		var log *commonpb.Log
 		log, err = bucket.GetLog(readCtx, &servicepb.GetLogRequest{Sequence: target.sequence, CheckpointId: id})
 		maxTicket = c.ticketSeq.Load()
-		details["ledger"], details["sequence"], details["learned"] = ledger, target.sequence, learned
+		details["ledger"], details["sequence"], details["learned"] = target.ledger, target.sequence, learned
 
 		if !learned {
 			// A sequence the frozen store never held must resolve NotFound.

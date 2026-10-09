@@ -84,6 +84,11 @@ func TestAuditSuccessMismatchPinsOneBulk(t *testing.T) {
 	require.Contains(t, why, "order count")
 
 	e = entry
+	e.itemSeqs = []uint64{10, 10, 12}
+	why, _ = auditSuccessMismatch(e, logs, bulks, 12)
+	require.Contains(t, why, "repeated", "a repeated item leaves log 11 without one")
+
+	e = entry
 	e.maxLog = 13
 	why, _ = auditSuccessMismatch(e, logs, bulks, 12)
 	require.Contains(t, why, "straddles")

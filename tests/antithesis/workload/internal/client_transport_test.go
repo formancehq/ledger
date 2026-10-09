@@ -206,8 +206,22 @@ func testLostCommittedResponse(t *testing.T, mode string) {
 	oldConn := pool.GetConnection(1)
 	require.NoError(t, pool.RestartConnection(1))
 	require.NotSame(t, oldConn, pool.GetConnection(1))
+	// awaitInterruption fails the test, rather than hanging the suite, when the
+	// caller finishes or the deadline expires before the boundary reports.
+	awaitInterruption := func(what string) error {
+		select {
+		case err := <-forwarder.interrupted:
+			return err
+		case outcome := <-finished:
+			t.Fatalf("call finished before the %s reached the boundary: %v", what, outcome.err)
+		case <-ctx.Done():
+			t.Fatalf("no %s reached the boundary: %v", what, ctx.Err())
+		}
+
+		return nil
+	}
 	// The forwarding boundary reports the close first, whatever the mode.
-	interrupted := <-forwarder.interrupted
+	interrupted := awaitInterruption("connection close")
 	require.Equal(t, codes.Unavailable, status.Code(interrupted))
 	require.Equal(t, "grpc: the client connection is closing", status.Convert(interrupted).Message())
 	require.True(t, internal.IsAmbiguousCommit(interrupted), "the workload must recognize the actual forwarding boundary's close status")
@@ -216,7 +230,7 @@ func testLostCommittedResponse(t *testing.T, mode string) {
 		// rejection, so the call only returns once the gate reopens. Wait for
 		// the rejection to reach the boundary before disabling, so the retry
 		// definitely met the gate rather than racing past it.
-		maintenance := <-forwarder.interrupted
+		maintenance := awaitInterruption("maintenance rejection")
 		require.True(t, internal.HasErrorReason(maintenance, domain.ErrReasonMaintenanceMode))
 		_, err = leader.Apply(ctx, actions.WithIdempotencyKey("disable-maintenance", actions.SetMaintenanceModeAction(false)))
 		require.NoError(t, err)
