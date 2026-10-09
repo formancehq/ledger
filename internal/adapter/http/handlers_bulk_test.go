@@ -108,7 +108,7 @@ func TestHandleBulk_OrderSkippedSurfacesInResponse(t *testing.T) {
 										Payload: &commonpb.LedgerLogPayload_OrderSkipped{
 											OrderSkipped: &commonpb.OrderSkippedLog{
 												Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
-												Code: "TRANSACTION_REFERENCE_CONFLICT",
+												Code:   "TRANSACTION_REFERENCE_CONFLICT",
 												Facts: map[string]string{
 													"reference":             "dup",
 													"existingTransactionId": "42",

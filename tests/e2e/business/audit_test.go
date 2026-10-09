@@ -139,7 +139,8 @@ var _ = Describe("Audit Log", Ordered, func() {
 		entry := auditEntryWithIdempotency(entries, idempotencyKey)
 		Expect(entry.GetFailure()).NotTo(BeNil(), "expected failure outcome")
 		Expect(domain.ReasonString(entry.GetFailure().GetReason())).To(Equal(domain.ErrReasonInsufficientFunds))
-		Expect(entry.GetFailure().Message).NotTo(BeEmpty())
+		Expect(entry.GetFailure().GetCode()).To(Equal(domain.ErrReasonInsufficientFunds))
+		Expect(entry.GetFailure().GetFacts()["account"]).To(Equal("empty:account"))
 	})
 
 	It("Should filter audit entries by ledger name", func() {

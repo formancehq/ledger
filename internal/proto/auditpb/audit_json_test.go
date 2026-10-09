@@ -120,9 +120,9 @@ func TestAuditFailure_MarshalJSON(t *testing.T) {
 	t.Parallel()
 
 	f := &AuditFailure{
-		Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
-		Code: "BOOM",
-		Facts: map[string]string{"k": "v"},
+		Reason: commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+		Code:   "BOOM",
+		Facts:  map[string]string{"k": "v"},
 	}
 
 	data, err := f.MarshalJSON()

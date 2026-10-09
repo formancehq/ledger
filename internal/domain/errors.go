@@ -1375,13 +1375,13 @@ func (*ErrNumscriptCompile) Kind() ErrorKind { return KindValidation }
 func (*ErrNumscriptCompile) Reason() string  { return ErrReasonNumscriptCompileError }
 func (e *ErrNumscriptCompile) Metadata() map[string]string {
 	m := map[string]string{"details": e.Detail}
-	for key, value := range e.Facts {
-		m[key] = value
-	}
+	maps.Copy(m, e.Facts)
+
 	return m
 }
 func (e *ErrNumscriptCompile) PublicDetails() (string, map[string]string, bool) {
 	message, facts := RenderFailureFacts(FailureFactsOf(e))
+
 	return message, facts, true
 }
 
@@ -1404,10 +1404,12 @@ func (*ErrNumscriptExecution) Reason() string  { return ErrReasonNumscriptExecut
 func (e *ErrNumscriptExecution) Metadata() map[string]string {
 	metadata := map[string]string{"detail": e.Detail}
 	maps.Copy(metadata, e.Facts)
+
 	return metadata
 }
 func (e *ErrNumscriptExecution) PublicDetails() (string, map[string]string, bool) {
 	message, facts := RenderFailureFacts(FailureFactsOf(e))
+
 	return message, facts, true
 }
 
@@ -1453,12 +1455,15 @@ func (e *ErrDependencyDiscoveryFailed) Metadata() map[string]string {
 func (e *ErrDependencyDiscoveryFailed) PublicDetails() (string, map[string]string, bool) {
 	if cause, ok := errors.AsType[*ErrNumscriptExecution](e.Cause); ok {
 		message, metadata, _ := cause.PublicDetails()
+
 		return "numscript dependency discovery failed: " + message, metadata, true
 	}
 	if cause, ok := errors.AsType[*ErrNumscriptCompile](e.Cause); ok {
 		message, metadata, _ := cause.PublicDetails()
+
 		return "numscript dependency discovery failed: " + message, metadata, true
 	}
+
 	return e.Error(), e.Metadata(), false
 }
 
@@ -1809,6 +1814,7 @@ func (*ErrNumscriptRuntime) Reason() string  { return ErrReasonNumscriptRuntime 
 func (e *ErrNumscriptRuntime) Metadata() map[string]string {
 	metadata := map[string]string{"detail": e.Detail}
 	maps.Copy(metadata, e.Facts)
+
 	return metadata
 }
 

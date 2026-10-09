@@ -78,8 +78,8 @@ func TestInvalidCallerAttributionPreventsRestoreFinalization(t *testing.T) {
 		HashVersion:    uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
 		CallerSnapshot: &commonpb.CallerSnapshot{},
 		Outcome: &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{
-			Reason:  commonpb.ErrorReason_ERROR_REASON_VALIDATION,
-			Code: "VALIDATION",
+			Reason: commonpb.ErrorReason_ERROR_REASON_VALIDATION,
+			Code:   "VALIDATION",
 		}},
 	}
 	header, err := state.BuildHashedHeaderPayload(entry)

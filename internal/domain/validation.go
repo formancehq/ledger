@@ -67,7 +67,7 @@ var ErrFilterTooDeep SerializableError = &ErrFilterCompilation{
 // remain stable.
 type errValidation struct {
 	code string
-	err error
+	err  error
 }
 
 func (e *errValidation) Error() string             { return e.err.Error() }

@@ -221,8 +221,8 @@ func TestHashChain_Envelope_Failure(t *testing.T) {
 		Ledgers:     []string{"ledger-a"},
 		Outcome: &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
-				Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
-				Code: "INSUFFICIENT_FUNDS",
+				Reason: commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+				Code:   "INSUFFICIENT_FUNDS",
 				// Intentionally unsorted: zebra, apple, mango force the
 				// builder to actually sort.
 				Facts: map[string]string{
@@ -303,8 +303,8 @@ func TestAuditEntry_MarshalDeterministicVT_StableAcrossRuns(t *testing.T) {
 		Ledgers:     []string{"ledger-a"},
 		Outcome: &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
-				Reason:  commonpb.ErrorReason_ERROR_REASON_VALIDATION,
-				Code: "Y",
+				Reason: commonpb.ErrorReason_ERROR_REASON_VALIDATION,
+				Code:   "Y",
 				Facts: map[string]string{
 					"k3": "v3",
 					"k1": "v1",

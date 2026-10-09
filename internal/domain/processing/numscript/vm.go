@@ -239,5 +239,6 @@ func mapVMError(err error) domain.SerializableError {
 	if e, ok := errors.AsType[numscriptlib.VmBadMetaValueError](err); ok {
 		return makeError("NUMSCRIPT_BAD_META_VALUE", map[string]string{"account": e.Account, "key": e.Key})
 	}
+
 	return nil
 }

@@ -91,6 +91,7 @@ func mapInterpreterError(err error) domain.SerializableError {
 		if e.Numerator != nil {
 			facts["numerator"] = e.Numerator.String()
 		}
+
 		return makeError("NUMSCRIPT_DIVIDE_BY_ZERO", facts)
 	}
 	if e, ok := errors.AsType[numscriptlib.TypeError](err); ok {
@@ -150,6 +151,7 @@ func mapInterpreterError(err error) domain.SerializableError {
 	if e, ok := errors.AsType[numscriptlib.InvalidFeature](err); ok {
 		return makeError("NUMSCRIPT_INVALID_FEATURE", map[string]string{"feature": e.Feature})
 	}
+
 	return nil
 }
 
@@ -159,6 +161,7 @@ func mapCompilerError(err error) *domain.ErrNumscriptCompile {
 	result := &domain.ErrNumscriptCompile{Detail: err.Error()}
 	set := func(code string, facts map[string]string) *domain.ErrNumscriptCompile {
 		result.Code, result.Facts = code, facts
+
 		return result
 	}
 	if e, ok := errors.AsType[numscriptlib.CompilerTypeError](err); ok {
@@ -193,7 +196,7 @@ func mapCompilerError(err error) *domain.ErrNumscriptCompile {
 		return set("NUMSCRIPT_COMPILE_CANNOT_STORE_SCOPED_ACCOUNT", nil)
 	}
 	if e, ok := errors.AsType[numscriptlib.CompilerExperimentalFeature](err); ok {
-		return set("NUMSCRIPT_COMPILE_EXPERIMENTAL_FEATURE", map[string]string{"flagName": string(e.FlagName)})
+		return set("NUMSCRIPT_COMPILE_EXPERIMENTAL_FEATURE", map[string]string{"flagName": e.FlagName})
 	}
 	if e, ok := errors.AsType[numscriptlib.CompilerInvalidFeature](err); ok {
 		return set("NUMSCRIPT_COMPILE_INVALID_FEATURE", map[string]string{"feature": e.Feature})
@@ -204,6 +207,7 @@ func mapCompilerError(err error) *domain.ErrNumscriptCompile {
 	if e, ok := errors.AsType[numscriptlib.CompilerInvalidVariableValue](err); ok {
 		return set("NUMSCRIPT_COMPILE_INVALID_VARIABLE_VALUE", map[string]string{"name": e.Name, "type": e.Type})
 	}
+
 	return result
 }
 

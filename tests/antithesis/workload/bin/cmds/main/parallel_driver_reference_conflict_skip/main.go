@@ -140,17 +140,17 @@ func run(ctx context.Context, client servicepb.BucketServiceClient, ledger strin
 		"OrderSkipped reason must be TRANSACTION_REFERENCE_CONFLICT",
 		details.With(internal.Details{"reason": reason.String()}))
 
-	gotRef := skipped.GetContext()["reference"]
+	gotRef := skipped.GetFacts()["reference"]
 	assert.AlwaysOrUnreachable(gotRef == ref,
 		"OrderSkipped.context.reference must match the requested reference",
 		details.With(internal.Details{"context_reference": gotRef}))
 
-	gotLedger := skipped.GetContext()["ledger"]
+	gotLedger := skipped.GetFacts()["ledger"]
 	assert.AlwaysOrUnreachable(gotLedger == ledger,
 		"OrderSkipped.context.ledger must match the target ledger",
 		details.With(internal.Details{"context_ledger": gotLedger}))
 
-	gotExistingID := skipped.GetContext()["existingTransactionId"]
+	gotExistingID := skipped.GetFacts()["existingTransactionId"]
 	expectedExistingID := strconv.FormatUint(firstTx.GetTransaction().GetId(), 10)
 	assert.AlwaysOrUnreachable(gotExistingID == expectedExistingID,
 		"OrderSkipped.context.existingTransactionId must point to the first tx",
@@ -206,7 +206,7 @@ func run(ctx context.Context, client servicepb.BucketServiceClient, ledger strin
 			assert.Unreachable("skip-tolerant first-claim on a fresh reference must NOT fire the skip",
 				freshDetails.With(internal.Details{
 					"skipReason":  skipped.GetReason().String(),
-					"skipContext": skipped.GetContext(),
+					"skipFacts":   skipped.GetFacts(),
 					"logSequence": freshResp.GetLogs()[0].GetSequence(),
 				}))
 

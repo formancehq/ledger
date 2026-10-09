@@ -32,7 +32,7 @@ func TestReplayRejectsChangedApplyOutcomes(t *testing.T) {
 			logs[0].GetPayload().GetApply().GetLog().GetData().GetOrderSkipped().Reason = commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
 		},
 		"skip correlator": func(logs []*commonpb.Log) {
-			logs[0].GetPayload().GetApply().GetLog().GetData().GetOrderSkipped().Context["reference"] = "other"
+			logs[0].GetPayload().GetApply().GetLog().GetData().GetOrderSkipped().Facts["reference"] = "other"
 		},
 		"mode": func(logs []*commonpb.Log) {
 			logs[1].GetPayload().GetApply().GetLog().GetData().GetUpdatedDefaultEnforcementMode().EnforcementMode = commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT
