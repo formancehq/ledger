@@ -128,3 +128,10 @@ func attributedIndex(entry *auditpb.AuditEntry, ledger, prefix string, current m
 
 	return canonical, nil
 }
+
+// FilterIndexesByCreationKey applies ledgerctl's audited creation attribution
+// to an index list. It performs no terminal output and can be used by the
+// shared command transport adapter.
+func FilterIndexesByCreationKey(ctx context.Context, client servicepb.BucketServiceClient, ledger, prefix string, entries []*commonpb.Index) ([]*commonpb.Index, error) {
+	return filterIndexesByCreationKey(ctx, client, ledger, prefix, entries)
+}

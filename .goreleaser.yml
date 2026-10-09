@@ -8,6 +8,7 @@ project_name: ledger
 # `formancehq/ledger` published image.
 env:
 - IMAGE_REPOSITORY={{ envOrDefault "IMAGE_REPOSITORY" "ghcr.io/formancehq/ledger" }}
+- PLUGIN_REVISION={{ envOrDefault "PLUGIN_REVISION" "1" }}
 
 builds:
 - binary: ledger-server
@@ -66,6 +67,26 @@ builds:
   - amd64
   - arm64
 
+# The product owns its HTTP fctl commands and co-releases their executable.
+- binary: fctl-plugin-ledger
+  id: fctl-plugin-ledger
+  dir: misc/fctl-plugin
+  main: ./cmd/fctl-plugin-ledger
+  # Keep -ldflags in Go build metadata for publication identity checks.
+  ldflags:
+  - -s -w
+  - -X main.serviceVersion={{ .Version }}
+  - -X main.revision={{ .Env.PLUGIN_REVISION }}
+  env:
+  - CGO_ENABLED=0
+  goos:
+  - linux
+  - darwin
+  - windows
+  goarch:
+  - amd64
+  - arm64
+
 nightly:
   tag_name: nightly
   publish_release: true
@@ -98,6 +119,19 @@ archives:
   - zip
   name_template: "{{ .ProjectName }}_{{ if not .IsNightly }}v{{ end }}{{ .Version }}_{{ .Os }}-{{ .Arch }}"
   wrap_in_directory: true
+- id: fctl-plugin-ledger
+  ids:
+  - fctl-plugin-ledger
+  formats:
+  - tar.gz
+  format_overrides:
+  - goos: windows
+    formats:
+    - zip
+  name_template: "fctl-plugin-ledger_v{{ .Version }}_r{{ .Env.PLUGIN_REVISION }}_{{ .Os }}-{{ .Arch }}"
+  files:
+  - src: misc/fctl-plugin/README.md
+    dst: README.md
 
 checksum:
   name_template: "checksums.txt"

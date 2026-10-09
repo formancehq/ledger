@@ -18,6 +18,9 @@ jobs:
           dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
+      - name: Validate fctl plugin before co-release
+        run: >
+          nix develop --command just test-fctl-plugin
       - name: Set up Docker Buildx
         uses: namespacelabs/nscloud-setup-buildx-action@d059ed7184f0bc7c8b27e8810cea153d02bcc6dd # v0.0.23
       - name: Login to GitHub Container Registry

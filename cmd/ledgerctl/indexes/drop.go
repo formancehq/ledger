@@ -1,13 +1,9 @@
 package indexes
 
 import (
-	"fmt"
-
-	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // NewDropCommand creates the indexes drop command.
@@ -32,7 +28,6 @@ Examples:
   ledgerctl indexes drop --ledger my-ledger --type account-asset`,
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,
-		RunE:              runDropIndex,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")
@@ -44,94 +39,4 @@ Examples:
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
-}
-
-func runDropIndex(cmd *cobra.Command, _ []string) error {
-	client, conn, err := cmdutil.GetClient(cmd)
-	if err != nil {
-		return err
-	}
-
-	defer func() { _ = conn.Close() }()
-
-	ledgerFlag, _ := cmd.Flags().GetString("ledger")
-
-	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
-	if err != nil {
-		return err
-	}
-
-	indexType, _ := cmd.Flags().GetString("type")
-	if indexType == "" {
-		result, err := pterm.DefaultInteractiveSelect.
-			WithOptions(indexTypeOptions).
-			WithDefaultText("Select index type to drop").
-			Show()
-		if err != nil {
-			return fmt.Errorf("failed to read input: %w", err)
-		}
-
-		indexType = result
-	}
-
-	if err := rejectMetadataOnlyFlags(cmd, indexType); err != nil {
-		return err
-	}
-
-	req := &servicepb.DropIndexRequest{
-		Ledger: ledgerName,
-	}
-
-	var indexDesc string
-
-	if indexType == "metadata" {
-		target, key, err := resolveMetadataIndexFlags(cmd)
-		if err != nil {
-			return err
-		}
-		req.Id = metadataIndexID(target, key)
-		indexDesc = fmt.Sprintf("metadata %s.%s", cmdutil.TargetTypeString(target), key)
-	} else {
-		req.Id, indexDesc, err = builtinIndex(indexType)
-		if err != nil {
-			return err
-		}
-	}
-
-	ctx, cancel := cmdutil.GetContext(cmd)
-	defer cancel()
-
-	spinner := cmdutil.StartSpinner(fmt.Sprintf("Dropping index %s on %s...", indexDesc, ledgerName))
-
-	requests := []*servicepb.Request{
-		{
-			Type: &servicepb.Request_DropIndex{
-				DropIndex: req,
-			},
-		},
-	}
-
-	applyReq, err := cmdutil.BuildApplyRequest(cmd, requests...)
-	if err != nil {
-		spinner.Fail("Failed to sign request")
-
-		return cmdutil.Displayed(err)
-	}
-
-	resp, err := client.Apply(ctx, applyReq)
-	if err != nil {
-		_ = spinner.Stop()
-
-		return cmdutil.FormatGRPCError("failed to drop index", err)
-	}
-
-	if err := cmdutil.VerifyResponseSignatures(cmd, resp.GetLogs()); err != nil {
-		spinner.Fail("Response signature verification failed")
-
-		return cmdutil.Displayed(fmt.Errorf("response signature verification failed: %w", err))
-	}
-
-	spinner.Success(fmt.Sprintf("Dropped index %s from ledger %s", indexDesc, ledgerName))
-
-	return nil
 }

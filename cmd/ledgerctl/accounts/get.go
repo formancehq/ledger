@@ -1,7 +1,6 @@
 package accounts
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/pterm/pterm"
@@ -11,7 +10,6 @@ import (
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // NewGetCommand creates the accounts get command.
@@ -31,7 +29,6 @@ Examples:
   ledgerctl accounts get       # Will prompt for both ledger and address`,
 		Args:              cobra.MaximumNArgs(1),
 		ValidArgsFunction: cobra.NoFileCompletions,
-		RunE:              runGet,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")
@@ -42,59 +39,10 @@ Examples:
 	return cmd
 }
 
-func runGet(cmd *cobra.Command, args []string) error {
-	client, conn, err := cmdutil.GetClient(cmd)
-	if err != nil {
-		return err
-	}
-
-	defer func() { _ = conn.Close() }()
-
-	ledgerFlag, _ := cmd.Flags().GetString("ledger")
-
-	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
-	if err != nil {
-		return err
-	}
-
-	var address string
-	if len(args) > 0 {
-		address = args[0]
-	} else {
-		result, err := pterm.DefaultInteractiveTextInput.
-			WithDefaultText("Enter account address").
-			Show()
-		if err != nil {
-			return fmt.Errorf("failed to read input: %w", err)
-		}
-
-		address = result
-		if address == "" {
-			pterm.Error.Println("Account address is required")
-
-			return cmdutil.Displayed(errors.New("account address is required"))
-		}
-	}
-
-	ctx, cancel := cmdutil.GetContext(cmd)
-	defer cancel()
-
-	spinner := cmdutil.StartSpinner(fmt.Sprintf("Fetching account %s...", pterm.Cyan(address)))
-
-	checkpointID, _ := cmd.Flags().GetUint64("checkpoint-id")
-
-	account, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
-		Ledger:       ledgerName,
-		Address:      address,
-		CheckpointId: checkpointID,
-	})
-	if err != nil {
-		_ = spinner.Stop()
-
-		return cmdutil.FormatGRPCError("failed to get account", err)
-	}
-
-	_ = spinner.Stop()
+// RenderGet writes an account using ledgerctl's native structured or human format.
+// The caller owns fetching the account and resolving the ledger.
+func RenderGet(cmd *cobra.Command, account *commonpb.Account) error {
+	text := pterm.DefaultBasicText.WithWriter(cmd.OutOrStdout())
 
 	if handled, err := cmdutil.EncodeStructured(cmd, account); handled || err != nil {
 		return err
@@ -106,7 +54,10 @@ func runGet(cmd *cobra.Command, args []string) error {
 	// printing anything so an invariant failure aborts without a partial view.
 	rescale := cmdutil.RescaleTarget(cmd)
 
-	var aggregated []cmdutil.AssetVolumes
+	var (
+		aggregated []cmdutil.AssetVolumes
+		err        error
+	)
 
 	if rescale != nil && len(account.GetVolumes()) > 0 {
 		raw := make([]cmdutil.RawVolume, 0, len(account.GetVolumes()))
@@ -144,13 +95,13 @@ func runGet(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	pterm.Println()
+	text.Println()
 
-	pterm.Printf("Account: %s\n", pterm.Cyan(account.GetAddress()))
-	pterm.Println(pterm.Gray("─────────────────────────────────"))
+	text.Printf("Account: %s\n", pterm.Cyan(account.GetAddress()))
+	text.Println(pterm.Gray("─────────────────────────────────"))
 
 	if len(account.GetMetadata()) > 0 {
-		pterm.Println("Metadata:")
+		text.Println("Metadata:")
 
 		metadataTable := pterm.TableData{
 			{"KEY", "VALUE"},
@@ -162,15 +113,15 @@ func runGet(cmd *cobra.Command, args []string) error {
 			})
 		}
 
-		err := pterm.DefaultTable.WithHasHeader().WithData(metadataTable).Render()
+		err := pterm.DefaultTable.WithWriter(cmd.OutOrStdout()).WithHasHeader().WithData(metadataTable).Render()
 		if err != nil {
 			return err
 		}
 
-		pterm.Println()
+		text.Println()
 	}
 
-	pterm.Println("Volumes:")
+	text.Println("Volumes:")
 
 	if len(account.GetVolumes()) > 0 {
 		volumesTable := pterm.TableData{
@@ -198,7 +149,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 				})
 			}
 
-			return pterm.DefaultTable.WithHasHeader().WithData(volumesTable).Render()
+			return pterm.DefaultTable.WithWriter(cmd.OutOrStdout()).WithHasHeader().WithData(volumesTable).Render()
 		}
 
 		// account.GetVolumes() is already sorted by (asset, color) ascending
@@ -245,10 +196,10 @@ func runGet(cmd *cobra.Command, args []string) error {
 			})
 		}
 
-		return pterm.DefaultTable.WithHasHeader().WithData(volumesTable).Render()
+		return pterm.DefaultTable.WithWriter(cmd.OutOrStdout()).WithHasHeader().WithData(volumesTable).Render()
 	}
 
-	pterm.Println(pterm.Gray("(no volumes)"))
+	text.Println(pterm.Gray("(no volumes)"))
 
 	return nil
 }

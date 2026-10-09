@@ -1,6 +1,7 @@
 package accounts
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -14,7 +15,6 @@ import (
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // NewListCommand creates the accounts list command.
@@ -42,7 +42,6 @@ Examples:
   ledgerctl accounts list --cursor eyJrZXkiOiJ1c2Vyczpib2IifQ   # Resume after users:bob (page token for {"key":"users:bob"})`,
 		Args:              cobra.ExactArgs(0),
 		ValidArgsFunction: cobra.NoFileCompletions,
-		RunE:              runList,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")
@@ -59,40 +58,25 @@ Examples:
 	return cmd
 }
 
-func runList(cmd *cobra.Command, _ []string) error {
-	client, conn, err := cmdutil.GetClient(cmd)
-	if err != nil {
-		return err
-	}
+// ListPageFetcher fetches one page through the host's chosen executor. It must
+// preserve the supplied context, ordering, page size, and cursor, and return
+// trailers so profiling and adjacent-page hints stay available to the host.
+type ListPageFetcher func(context.Context, cmdutil.PaginationFlags) ([]*commonpb.Account, metadata.MD, error)
 
-	defer func() { _ = conn.Close() }()
-
-	ledgerFlag, _ := cmd.Flags().GetString("ledger")
-
-	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
-	if err != nil {
-		return err
-	}
-
+// RunListWithFetch retains ledgerctl's --all, interactive pager, structured
+// output, and --analyze behavior while leaving transport to the callback.
+// Received items are rendered before returning a fetch failure; no page is retried.
+func RunListWithFetch(cmd *cobra.Command, fetch ListPageFetcher) error {
 	pgn := cmdutil.GetPaginationFlags(cmd)
-	flt := cmdutil.GetFilterFlags(cmd)
-	cns := cmdutil.GetConsistencyFlags(cmd)
 	showProfile, _ := cmd.Flags().GetBool("analyze")
-	rescale := cmdutil.RescaleTarget(cmd)
-
-	filter, err := cmdutil.BuildQueryFilter(flt.Expr, flt.Prefix, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
-	if err != nil {
-		return err
-	}
-
 	if pgn.All {
-		return fetchAllAccounts(cmd, client, ledgerName, filter, pgn.Cursor, pgn.Reverse, cns, showProfile, rescale)
+		return fetchAllAccounts(cmd, fetch, pgn.Cursor, pgn.Reverse, showProfile)
 	}
 
-	return fetchAccountsWithPager(cmd, client, ledgerName, pgn, filter, cns, showProfile, rescale)
+	return fetchAccountsWithPager(cmd, fetch, pgn, showProfile)
 }
 
-func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, filter *commonpb.QueryFilter, initialCursor string, reverse bool, cns cmdutil.ConsistencyFlags, showProfile bool, rescale *uint8) error {
+func fetchAllAccounts(cmd *cobra.Command, fetch ListPageFetcher, initialCursor string, reverse bool, showProfile bool) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
@@ -105,55 +89,39 @@ func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, 
 	var lastTrailer metadata.MD
 
 	accounts, err := cmdutil.DrainAllPages(initialCursor, func(cur string) ([]*commonpb.Account, metadata.MD, error) {
-		stream, err := client.ListAccounts(ctx, &servicepb.ListAccountsRequest{
-			Ledger:  ledgerName,
-			Options: cmdutil.BuildListOptions(cmdutil.PaginationFlags{Cursor: cur, Reverse: reverse}, cns, filter),
-		})
-		if err != nil {
-			return nil, nil, cmdutil.FormatGRPCError("failed to list accounts", err)
-		}
+		items, trailer, err := fetch(ctx, cmdutil.PaginationFlags{Cursor: cur, Reverse: reverse})
+		lastTrailer = trailer
 
-		items, recvErr := cmdutil.CollectStream(stream)
-		if recvErr != nil {
-			return nil, nil, cmdutil.FormatGRPCError("failed to receive account", recvErr)
-		}
-
-		lastTrailer = stream.Trailer()
-
-		return items, lastTrailer, nil
+		return items, trailer, err
 	})
 
 	_ = spinner.Stop()
 
 	if err != nil {
-		return err
-	}
-
-	handled, err := cmdutil.EncodeStructured(cmd, accounts)
-	if err != nil {
-		return err
-	}
-
-	switch {
-	case handled:
-		// Structured output already written.
-	case len(accounts) == 0:
-		pterm.Info.Println("No accounts found.")
-		pterm.Println(pterm.Gray("Create transactions to populate accounts."))
-	default:
-		if err := renderAccountsTable(accounts, rescale); err != nil {
+		if len(accounts) == 0 {
 			return err
 		}
+		renderErr := renderListPage(cmd, accounts, 0)
+		if renderErr == nil && showProfile && lastTrailer != nil {
+			renderListProfile(cmd, lastTrailer)
+		}
+		cmdutil.EmitCursorHints(cmd, cmdutil.CursorsFromTrailer(lastTrailer))
+
+		return errors.Join(err, renderErr)
+	}
+
+	if err := renderListPage(cmd, accounts, 0); err != nil {
+		return err
 	}
 
 	if showProfile && lastTrailer != nil {
-		cmdutil.RenderProfile(cmdutil.ExtractProfile(lastTrailer))
+		renderListProfile(cmd, lastTrailer)
 	}
 
 	return nil
 }
 
-func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, pgn cmdutil.PaginationFlags, filter *commonpb.QueryFilter, cns cmdutil.ConsistencyFlags, showProfile bool, rescale *uint8) error {
+func fetchAccountsWithPager(cmd *cobra.Command, fetch ListPageFetcher, pgn cmdutil.PaginationFlags, showProfile bool) error {
 	page := pgn
 	pageNum := 1
 
@@ -165,52 +133,39 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 
 		spinner := cmdutil.StartSpinner(fmt.Sprintf("Fetching page %d...", pageNum))
 
-		stream, err := client.ListAccounts(ctx, &servicepb.ListAccountsRequest{
-			Ledger:  ledgerName,
-			Options: cmdutil.BuildListOptions(page, cns, filter),
-		})
-		if err != nil {
-			cancel()
-
-			_ = spinner.Stop()
-
-			return cmdutil.FormatGRPCError("failed to list accounts", err)
-		}
-
-		var accounts []*commonpb.Account
-
-		for {
-			account, err := stream.Recv()
-			if errors.Is(err, io.EOF) {
-				break
-			}
-
-			if err != nil {
-				cancel()
-
-				_ = spinner.Stop()
-
-				return cmdutil.FormatGRPCError("failed to receive account", err)
-			}
-
-			accounts = append(accounts, account)
-		}
-
+		accounts, trailer, err := fetch(ctx, page)
 		cancel()
+		if err != nil {
+			_ = spinner.Stop()
+			if len(accounts) == 0 {
+				return err
+			}
+			renderErr := renderListPage(cmd, accounts, pageNum)
+			if renderErr == nil && showProfile {
+				renderListProfile(cmd, trailer)
+			}
+			cmdutil.EmitCursorHints(cmd, cmdutil.CursorsFromTrailer(trailer))
+
+			return errors.Join(err, renderErr)
+		}
 
 		if len(accounts) == 0 {
-			spinner.Info("No more accounts.")
-
-			if pageNum == 1 {
-				pterm.Info.Println("No accounts found.")
-				pterm.Println(pterm.Gray("Create transactions to populate accounts."))
+			if cmdutil.IsStructuredOutput(cmd) {
+				_ = spinner.Stop()
+				if err := renderListPage(cmd, accounts, pageNum); err != nil {
+					return err
+				}
+			} else {
+				spinner.Info("No more accounts.")
+				if pageNum == 1 {
+					pterm.Info.WithWriter(cmd.OutOrStdout()).Println("No accounts found.")
+					pterm.DefaultBasicText.WithWriter(cmd.OutOrStdout()).Println(pterm.Gray("Create transactions to populate accounts."))
+				}
 			}
-
 			if showProfile {
-				cmdutil.RenderProfile(cmdutil.ExtractProfile(stream.Trailer()))
+				renderListProfile(cmd, trailer)
 			}
-
-			cmdutil.EmitCursorHints(cmd, cmdutil.CursorsFromTrailer(stream.Trailer()))
+			cmdutil.EmitCursorHints(cmd, cmdutil.CursorsFromTrailer(trailer))
 
 			return nil
 		}
@@ -219,25 +174,15 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 
 		structuredOutput := cmdutil.IsStructuredOutput(cmd)
 
-		if structuredOutput {
-			if handled, err := cmdutil.EncodeStructured(cmd, accounts); handled && err != nil {
-				return err
-			}
-		} else {
-			pterm.Println()
-			pterm.Printf("Accounts (Page %d)\n", pageNum)
-			pterm.Println(pterm.Gray("─────────────────────────────────"))
-
-			if err := renderAccountsTable(accounts, rescale); err != nil {
-				return err
-			}
+		if err := renderListPage(cmd, accounts, pageNum); err != nil {
+			return err
 		}
 
 		if showProfile {
-			cmdutil.RenderProfile(cmdutil.ExtractProfile(stream.Trailer()))
+			renderListProfile(cmd, trailer)
 		}
 
-		cursors := cmdutil.CursorsFromTrailer(stream.Trailer())
+		cursors := cmdutil.CursorsFromTrailer(trailer)
 
 		if structuredOutput {
 			// The JSON/YAML payload went to stdout above; the page tokens go to
@@ -248,7 +193,7 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 		}
 
 		if cursors.Next == "" {
-			pterm.Info.Println("End of accounts.")
+			pterm.Info.WithWriter(cmd.OutOrStdout()).Println("End of accounts.")
 			cmdutil.EmitPreviousCursorHint(cmd, cursors.Previous)
 
 			return nil
@@ -260,10 +205,7 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 		// first.
 		cmdutil.EmitCursorHints(cmd, cursors)
 
-		result, err := pterm.DefaultInteractiveConfirm.
-			WithDefaultText("Load next page?").
-			WithDefaultValue(true).
-			Show()
+		result, err := cmdutil.ConfirmNextPage(cmd)
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
@@ -276,7 +218,49 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 	}
 }
 
-func renderAccountsTable(accounts []*commonpb.Account, rescale *uint8) error {
+func renderListProfile(cmd *cobra.Command, trailer metadata.MD) {
+	output := cmd.OutOrStdout()
+	if cmdutil.IsStructuredOutput(cmd) {
+		output = cmd.ErrOrStderr()
+	}
+	cmdutil.RenderProfileTo(output, cmdutil.ExtractProfile(trailer))
+}
+
+// RenderList writes one already fetched page. Cursor hints stay separate from
+// structured output; fetching additional pages belongs to RunListWithFetch.
+func RenderList(cmd *cobra.Command, accounts []*commonpb.Account, cursors cmdutil.PageCursors) error {
+	pageNum := 1
+	if cmdutil.GetPaginationFlags(cmd).All {
+		pageNum = 0
+	}
+	if err := renderListPage(cmd, accounts, pageNum); err != nil {
+		return err
+	}
+	cmdutil.EmitCursorHints(cmd, cursors)
+
+	return nil
+}
+
+func renderListPage(cmd *cobra.Command, accounts []*commonpb.Account, pageNum int) error {
+	if handled, err := cmdutil.EncodeStructured(cmd, accounts); handled || err != nil {
+		return err
+	}
+	if len(accounts) == 0 {
+		pterm.Info.WithWriter(cmd.OutOrStdout()).Println("No accounts found.")
+		pterm.DefaultBasicText.WithWriter(cmd.OutOrStdout()).Println(pterm.Gray("Create transactions to populate accounts."))
+
+		return nil
+	}
+	if pageNum > 0 {
+		pterm.DefaultBasicText.WithWriter(cmd.OutOrStdout()).Println()
+		pterm.DefaultBasicText.WithWriter(cmd.OutOrStdout()).Printf("Accounts (Page %d)\n", pageNum)
+		pterm.DefaultBasicText.WithWriter(cmd.OutOrStdout()).Println(pterm.Gray("─────────────────────────────────"))
+	}
+
+	return renderAccountsTable(accounts, cmdutil.RescaleTarget(cmd), cmd.OutOrStdout())
+}
+
+func renderAccountsTable(accounts []*commonpb.Account, rescale *uint8, writer io.Writer) error {
 	termWidth := pterm.GetTerminalWidth()
 
 	const (
@@ -328,9 +312,7 @@ func renderAccountsTable(accounts []*commonpb.Account, rescale *uint8) error {
 		}
 	}
 
-	_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
-
-	return nil
+	return pterm.DefaultTable.WithWriter(writer).WithHasHeader().WithData(tableData).Render()
 }
 
 // formatAccountBalances renders one "ASSET balance" line per (asset, color)

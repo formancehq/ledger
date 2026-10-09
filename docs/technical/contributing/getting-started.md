@@ -43,6 +43,7 @@ ledger/
 ├── pkg/                       # Public packages (actions/, scenario/, testserver/)
 ├── tests/                     # Test suites (e2e/, scenarios/, antithesis/, perf/, schemathesis/)
 ├── misc/
+│   ├── fctl-plugin/           # HTTP command plugin for fctl v4 (own Go module)
 │   ├── proto/                 # Protocol Buffer definitions
 │   ├── demo/                  # VHS tape files for CLI demos
 │   ├── numscript/examples/    # Numscript examples

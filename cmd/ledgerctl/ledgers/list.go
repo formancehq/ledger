@@ -5,21 +5,19 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
-	"google.golang.org/grpc/metadata"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // NewListCommand creates the ledgers list command.
 func NewListCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:               "list",
-		Aliases:           cmdutil.ListAliases,
-		Short:             "List all ledgers",
-		Long:              "List all ledgers in the cluster via gRPC streaming. Ledgers are bounded per cluster; --page-size and --cursor give finer-grained server-side pagination when needed.",
-		RunE:              runList,
+		Use:     "list",
+		Aliases: cmdutil.ListAliases,
+		Short:   "List all ledgers",
+		Long:    "List all ledgers in the cluster via gRPC streaming. Ledgers are bounded per cluster; --page-size and --cursor give finer-grained server-side pagination when needed.",
+
 		Args:              cobra.ExactArgs(0),
 		ValidArgsFunction: cobra.NoFileCompletions,
 	}
@@ -37,48 +35,8 @@ func NewListCommand() *cobra.Command {
 	return cmd
 }
 
-func runList(cmd *cobra.Command, _ []string) error {
-	client, conn, err := cmdutil.GetClient(cmd)
-	if err != nil {
-		return err
-	}
-
-	defer func() { _ = conn.Close() }()
-
-	ctx, cancel := cmdutil.GetContext(cmd)
-	defer cancel()
-
-	pgn := cmdutil.GetPaginationFlags(cmd)
-	cns := cmdutil.GetConsistencyFlags(cmd)
-
-	spinner := cmdutil.StartSpinner("Fetching ledgers...")
-
-	all, cursors, err := cmdutil.FetchSinglePageOrAll(cmd, pgn.Cursor, func(cur string) ([]*commonpb.LedgerInfo, metadata.MD, error) {
-		page := pgn
-		page.Cursor = cur
-
-		stream, err := client.ListLedgers(ctx, &servicepb.ListLedgersRequest{
-			Options: cmdutil.BuildListOptions(page, cns, nil),
-		})
-		if err != nil {
-			return nil, nil, cmdutil.FormatGRPCError("failed to list ledgers", err)
-		}
-
-		items, recvErr := cmdutil.CollectStream(stream)
-		if recvErr != nil {
-			return nil, nil, cmdutil.FormatGRPCError("failed to receive ledger", recvErr)
-		}
-
-		return items, stream.Trailer(), nil
-	})
-	if err != nil {
-		_ = spinner.Stop()
-
-		return err
-	}
-
-	_ = spinner.Stop()
-
+// RenderList writes ledgers in wire order and keeps cursor hints on stderr.
+func RenderList(cmd *cobra.Command, all []*commonpb.LedgerInfo, cursors cmdutil.PageCursors) error {
 	ledgers := make(map[string]*commonpb.LedgerInfo, len(all))
 	for _, l := range all {
 		ledgers[l.GetName()] = l

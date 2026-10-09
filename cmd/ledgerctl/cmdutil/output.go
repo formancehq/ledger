@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"reflect"
 	"strings"
@@ -34,7 +35,7 @@ func AddOutputFlags(cmd *cobra.Command) {
 }
 
 // EncodeStructured checks whether --json or --yaml is set. When one is active
-// it encodes data to os.Stdout and returns (true, nil) on success or
+// it encodes data to the command's output and returns (true, nil) on success or
 // (true, err) on failure. When neither flag is set it returns (false, nil) so
 // the caller can fall through to its pterm rendering.
 //
@@ -49,7 +50,7 @@ func EncodeStructured(cmd *cobra.Command, data any) (bool, error) {
 			return true, err
 		}
 
-		if _, err := os.Stdout.Write(append(b, '\n')); err != nil {
+		if _, err := cmd.OutOrStdout().Write(append(b, '\n')); err != nil {
 			return true, err
 		}
 
@@ -63,7 +64,7 @@ func EncodeStructured(cmd *cobra.Command, data any) (bool, error) {
 	}
 
 	if yamlOutput, _ := cmd.Flags().GetBool("yaml"); yamlOutput {
-		return true, encodeYAMLViaJSON(data)
+		return true, encodeYAMLTo(cmd.OutOrStdout(), data)
 	}
 
 	return false, nil
@@ -92,11 +93,11 @@ func writeResultFile(path string, payload []byte) error {
 	return nil
 }
 
-// encodeYAMLViaJSON marshals data to JSON first (using protojson for proto
+// encodeYAMLTo marshals data to JSON first (using protojson for proto
 // types), then converts to YAML. This ensures YAML keys use camelCase from
 // protobuf canonical JSON rather than lowercased Go field names, and preserves
 // custom JSON projections. Numeric tokens retain their precision and scalar kind.
-func encodeYAMLViaJSON(data any) error {
+func encodeYAMLTo(output io.Writer, data any) error {
 	jsonBytes, err := marshalJSON(data)
 	if err != nil {
 		return err
@@ -109,7 +110,7 @@ func encodeYAMLViaJSON(data any) error {
 		return err
 	}
 
-	encoder := yaml.NewEncoder(os.Stdout)
+	encoder := yaml.NewEncoder(output)
 	encoder.SetIndent(2)
 
 	err = encoder.Encode(yamlNumbers(intermediate))
@@ -192,6 +193,12 @@ func marshalJSON(data any) ([]byte, error) {
 	}
 
 	return json.MarshalIndent(data, "", "  ")
+}
+
+// MarshalJSON encodes a native response without rounding integer amounts or
+// metadata. Transport adapters use the same projection as structured CLI output.
+func MarshalJSON(data any) ([]byte, error) {
+	return marshalJSON(data)
 }
 
 // marshalProtoSlice marshals a slice of proto.Message values.

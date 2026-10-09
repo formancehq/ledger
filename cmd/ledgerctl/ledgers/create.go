@@ -3,9 +3,11 @@ package ledgers
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
+	"github.com/AlecAivazis/survey/v2"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -20,12 +22,12 @@ import (
 // NewCreateCommand creates the ledgers create command.
 func NewCreateCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:               "create",
-		Aliases:           []string{"new", "add"},
-		Short:             "Create a new ledger",
-		Long:              "Create a new ledger via gRPC.\n\nTo create a mirror ledger, use --mode=mirror with source configuration flags.",
-		Args:              cobra.NoArgs,
-		RunE:              runCreate,
+		Use:     "create",
+		Aliases: []string{"new", "add"},
+		Short:   "Create a new ledger",
+		Long:    "Create a new ledger via gRPC.\n\nTo create a mirror ledger, use --mode=mirror with source configuration flags.",
+		Args:    cobra.NoArgs,
+
 		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
@@ -61,73 +63,71 @@ func NewCreateCommand() *cobra.Command {
 	return cmd
 }
 
-func runCreate(cmd *cobra.Command, _ []string) error {
-	name, _ := cmd.Flags().GetString("name")
+// PrepareCreate builds one atomic ledger creation proposal, including initial indexes, without making RPCs.
+func PrepareCreate(cmd *cobra.Command) ([]*servicepb.Request, error) {
+	ctx := cmdutil.CommandContextOrBackground(cmd)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	name, err := cmd.Flags().GetString("name")
+	if err != nil {
+		return nil, err
+	}
 
 	if name == "" {
-		if !term.IsTerminal(int(os.Stdin.Fd())) {
-			return errors.New("ledger name is required (use --name flag)")
+		if !createInputIsTerminal(cmd) {
+			return nil, errors.New("ledger name is required (use --name flag)")
 		}
 
-		result, err := pterm.DefaultInteractiveTextInput.
-			WithDefaultText("Enter ledger name").
-			Show()
-		if err != nil {
-			return fmt.Errorf("failed to read input: %w", err)
+		var result string
+		if err := askCreate(cmd, &survey.Input{Message: "Enter ledger name"}, &result); err != nil {
+			return nil, fmt.Errorf("failed to read input: %w", err)
 		}
 
 		name = result
 		if name == "" {
-			pterm.Error.Println("Ledger name is required")
-
-			return cmdutil.Displayed(errors.New("ledger name is required"))
+			return nil, errors.New("ledger name is required")
 		}
 	}
 
-	schemaEntries, _ := cmd.Flags().GetStringArray("schema")
+	schemaEntries, err := cmd.Flags().GetStringArray("schema")
+	if err != nil {
+		return nil, err
+	}
 
 	initialSchema, err := parseSchemaEntries(cmd, schemaEntries)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	indexEntries, _ := cmd.Flags().GetStringArray("index")
+	indexEntries, err := cmd.Flags().GetStringArray("index")
+	if err != nil {
+		return nil, err
+	}
 	initialIndexes, err := parseInitialIndexes(indexEntries)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Parse mirror mode
 	mode, mirrorSource, err := parseMirrorFlags(cmd, name)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Parse default enforcement mode
 	var defaultEnforcementMode commonpb.ChartEnforcementMode
-	if enforcementStr, _ := cmd.Flags().GetString("default-enforcement-mode"); enforcementStr != "" {
+	enforcementStr, err := cmd.Flags().GetString("default-enforcement-mode")
+	if err != nil {
+		return nil, err
+	}
+	if enforcementStr != "" {
 		defaultEnforcementMode, err = parseEnforcementModeProtoStrict(enforcementStr)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
-
-	client, conn, err := cmdutil.GetClient(cmd)
-	if err != nil {
-		return err
-	}
-
-	defer func() { _ = conn.Close() }()
-
-	ctx, cancel := cmdutil.GetContext(cmd)
-	defer cancel()
-
-	modeStr := "normal"
-	if mode == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
-		modeStr = "mirror"
-	}
-
-	spinner := cmdutil.StartSpinner(fmt.Sprintf("Creating %s ledger %s...", modeStr, name))
 
 	requests := []*servicepb.Request{
 		{
@@ -151,47 +151,57 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		}})
 	}
 
-	applyReq, err := cmdutil.BuildApplyRequest(cmd, requests...)
-	if err != nil {
-		spinner.Fail("Failed to sign request")
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	return requests, nil
+}
+
+// RenderCreate validates and renders the native create response without starting a spinner.
+func RenderCreate(cmd *cobra.Command, resp *servicepb.ApplyResponse) error {
+	return renderCreate(cmd, resp, nil)
+}
+
+func renderCreate(cmd *cobra.Command, resp *servicepb.ApplyResponse, spinner *cmdutil.Spinner) error {
+	if cmdutil.IsStructuredOutput(cmd) && spinner != nil {
+		_ = spinner.Stop() // Structured output must not emit spinner prefixes.
+		spinner = nil
+	}
+
+	fail := func(message string, err error) error {
+		if spinner == nil {
+			return err
+		}
+		spinner.Fail(message)
 
 		return cmdutil.Displayed(err)
 	}
 
-	resp, err := client.Apply(ctx, applyReq)
-	if err != nil {
-		_ = spinner.Stop()
-
-		return cmdutil.FormatGRPCError("failed to create ledger", err)
-	}
-
 	if err := cmdutil.VerifyResponseSignatures(cmd, resp.GetLogs()); err != nil {
-		spinner.Fail("Response signature verification failed")
-
-		return cmdutil.Displayed(fmt.Errorf("response signature verification failed: %w", err))
+		return fail("Response signature verification failed", fmt.Errorf("response signature verification failed: %w", err))
 	}
 
 	if len(resp.GetLogs()) == 0 {
-		spinner.Fail("No response received")
-
-		return cmdutil.Displayed(errors.New("no response received"))
+		return fail("No response received", errors.New("no response received"))
 	}
 
 	log := resp.GetLogs()[0]
 
 	createLedgerLog := log.GetPayload().GetCreateLedger()
 	if createLedgerLog == nil {
-		spinner.Fail("Unexpected response type")
-
-		return cmdutil.Displayed(errors.New("unexpected response type"))
+		return fail("Unexpected response type", errors.New("unexpected response type"))
 	}
 
 	ledger := createLedgerLog.ToLedgerInfo()
-
-	spinner.Success("Created")
+	ledger.Metadata = createLedgerLog.GetMetadata()
 
 	if handled, err := cmdutil.EncodeStructured(cmd, ledger); handled || err != nil {
 		return err
+	}
+
+	if spinner != nil {
+		spinner.Success("Created")
 	}
 
 	pterm.Println()
@@ -264,8 +274,8 @@ func parseSchemaEntries(cmd *cobra.Command, entries []string) ([]*commonpb.SetMe
 	}
 
 	// If no schema entries from flags, offer wizard mode (only in interactive terminals)
-	if len(schema) == 0 && !cmd.Flags().Changed("schema") && term.IsTerminal(int(os.Stdin.Fd())) {
-		wizardSchema, err := schemaWizard()
+	if len(schema) == 0 && !cmd.Flags().Changed("schema") && createInputIsTerminal(cmd) {
+		wizardSchema, err := schemaWizard(cmd)
 		if err != nil {
 			return nil, err
 		}
@@ -276,12 +286,9 @@ func parseSchemaEntries(cmd *cobra.Command, entries []string) ([]*commonpb.SetMe
 	return schema, nil
 }
 
-func schemaWizard() ([]*commonpb.SetMetadataFieldTypeCommand, error) {
-	addSchema, err := pterm.DefaultInteractiveConfirm.
-		WithDefaultText("Add metadata schema?").
-		WithDefaultValue(false).
-		Show()
-	if err != nil {
+func schemaWizard(cmd *cobra.Command) ([]*commonpb.SetMetadataFieldTypeCommand, error) {
+	var addSchema bool
+	if err := askCreate(cmd, &survey.Confirm{Message: "Add metadata schema?", Default: false}, &addSchema); err != nil {
 		return nil, fmt.Errorf("failed to read input: %w", err)
 	}
 
@@ -292,11 +299,8 @@ func schemaWizard() ([]*commonpb.SetMetadataFieldTypeCommand, error) {
 	var schema []*commonpb.SetMetadataFieldTypeCommand
 
 	for {
-		targetStr, err := pterm.DefaultInteractiveSelect.
-			WithOptions(cmdutil.TargetTypeOptions()).
-			WithDefaultText("Select target type").
-			Show()
-		if err != nil {
+		var targetStr string
+		if err := askCreate(cmd, &survey.Select{Message: "Select target type", Options: cmdutil.TargetTypeOptions()}, &targetStr); err != nil {
 			return nil, fmt.Errorf("failed to read input: %w", err)
 		}
 
@@ -305,24 +309,19 @@ func schemaWizard() ([]*commonpb.SetMetadataFieldTypeCommand, error) {
 			return nil, err
 		}
 
-		key, err := pterm.DefaultInteractiveTextInput.
-			WithDefaultText("Enter metadata key name").
-			Show()
-		if err != nil {
+		var key string
+		if err := askCreate(cmd, &survey.Input{Message: "Enter metadata key name"}, &key); err != nil {
 			return nil, fmt.Errorf("failed to read input: %w", err)
 		}
 
 		if key == "" {
-			pterm.Warning.Println("Key cannot be empty, skipping.")
+			pterm.Warning.WithWriter(cmd.ErrOrStderr()).Println("Key cannot be empty, skipping.")
 
 			continue
 		}
 
-		typeStr, err := pterm.DefaultInteractiveSelect.
-			WithOptions(cmdutil.MetadataTypeOptions()).
-			WithDefaultText("Select metadata type").
-			Show()
-		if err != nil {
+		var typeStr string
+		if err := askCreate(cmd, &survey.Select{Message: "Select metadata type", Options: cmdutil.MetadataTypeOptions()}, &typeStr); err != nil {
 			return nil, fmt.Errorf("failed to read input: %w", err)
 		}
 
@@ -337,11 +336,8 @@ func schemaWizard() ([]*commonpb.SetMetadataFieldTypeCommand, error) {
 			Type:       mdType,
 		})
 
-		another, err := pterm.DefaultInteractiveConfirm.
-			WithDefaultText("Add another field?").
-			WithDefaultValue(false).
-			Show()
-		if err != nil {
+		var another bool
+		if err := askCreate(cmd, &survey.Confirm{Message: "Add another field?", Default: false}, &another); err != nil {
 			return nil, fmt.Errorf("failed to read input: %w", err)
 		}
 
@@ -371,3 +367,29 @@ func parseInitialIndexes(entries []string) ([]*commonpb.IndexID, error) {
 
 	return ids, nil
 }
+
+func askCreate(cmd *cobra.Command, prompt survey.Prompt, response any) error {
+	ctx := cmdutil.CommandContextOrBackground(cmd)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	input, ok := cmd.InOrStdin().(*os.File)
+	if !ok {
+		return errors.New("interactive input requires a terminal")
+	}
+
+	return cmdutil.AskOneContext(ctx, prompt, response, input, createPromptOutput{Writer: cmd.ErrOrStderr()}, cmd.ErrOrStderr())
+}
+
+func createInputIsTerminal(cmd *cobra.Command) bool {
+	input, ok := cmd.InOrStdin().(*os.File)
+
+	return ok && term.IsTerminal(int(input.Fd()))
+}
+
+// createPromptOutput supplies Survey with stderr's terminal descriptor while
+// sending prompt bytes through the command's scoped error writer.
+type createPromptOutput struct{ io.Writer }
+
+func (createPromptOutput) Fd() uintptr { return os.Stderr.Fd() }

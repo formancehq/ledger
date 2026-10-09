@@ -11,9 +11,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/formancehq/ledger/v3/cmd/ledgerctl/accounts"
-	"github.com/formancehq/ledger/v3/cmd/ledgerctl/ledgers"
-	"github.com/formancehq/ledger/v3/cmd/ledgerctl/transactions"
+	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cli"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
@@ -29,23 +27,7 @@ import (
 // newTestRootCommand builds a root command tree identical to ledgerctl's main.go
 // but importable from tests.
 func newTestRootCommand() *cobra.Command {
-	rootCmd := &cobra.Command{
-		Use:          "ledgerctl",
-		SilenceUsage: true,
-	}
-
-	rootCmd.PersistentFlags().String("server", "localhost:8888", "gRPC server address")
-	rootCmd.PersistentFlags().Bool("insecure", false, "Use insecure connection (no TLS)")
-	rootCmd.PersistentFlags().String("tls-ca-cert", "", "Path to CA certificate file")
-	rootCmd.PersistentFlags().String("signing-key", "", "Path to Ed25519 private key file")
-	rootCmd.PersistentFlags().String("signing-key-id", "", "Key ID for request signatures")
-	rootCmd.PersistentFlags().String("response-verify-key", "", "Path to Ed25519 seed file for verifying server response signatures")
-
-	rootCmd.AddCommand(ledgers.NewCommand())
-	rootCmd.AddCommand(accounts.NewCommand())
-	rootCmd.AddCommand(transactions.NewCommand())
-
-	return rootCmd
+	return cli.NewCommand()
 }
 
 // captureStdout runs fn while capturing os.Stdout output.

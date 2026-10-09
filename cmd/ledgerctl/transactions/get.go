@@ -29,7 +29,6 @@ Examples:
   ledgerctl transactions get     # Will prompt for both ledger and transaction ID`,
 		Args:              cobra.MaximumNArgs(1),
 		ValidArgsFunction: cobra.NoFileCompletions,
-		RunE:              runGet,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")
@@ -40,66 +39,9 @@ Examples:
 	return cmd
 }
 
-func runGet(cmd *cobra.Command, args []string) error {
-	client, conn, err := cmdutil.GetClient(cmd)
-	if err != nil {
-		return err
-	}
-
-	defer func() { _ = conn.Close() }()
-
-	// Get ledger name (from flag or interactive selection)
-	ledgerFlag, _ := cmd.Flags().GetString("ledger")
-
-	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
-	if err != nil {
-		return err
-	}
-
-	// Get transaction ID (from args or prompt)
-	var txID uint64
-	if len(args) > 0 {
-		txID, err = strconv.ParseUint(args[0], 10, 64)
-		if err != nil {
-			pterm.Error.Printfln("Invalid transaction ID: %v", err)
-
-			return cmdutil.Displayed(fmt.Errorf("invalid transaction ID: %w", err))
-		}
-	} else {
-		input, err := pterm.DefaultInteractiveTextInput.
-			WithDefaultText("Enter transaction ID").
-			Show()
-		if err != nil {
-			return fmt.Errorf("failed to read input: %w", err)
-		}
-
-		txID, err = strconv.ParseUint(input, 10, 64)
-		if err != nil {
-			pterm.Error.Printfln("Invalid transaction ID: %v", err)
-
-			return cmdutil.Displayed(fmt.Errorf("invalid transaction ID: %w", err))
-		}
-	}
-
-	ctx, cancel := cmdutil.GetContext(cmd)
-	defer cancel()
-
-	spinner := cmdutil.StartSpinner(fmt.Sprintf("Fetching transaction #%d...", txID))
-
-	checkpointID, _ := cmd.Flags().GetUint64("checkpoint-id")
-
-	resp, err := client.GetTransaction(ctx, &servicepb.GetTransactionRequest{
-		Ledger:        ledgerName,
-		TransactionId: txID,
-		CheckpointId:  checkpointID,
-	})
-	if err != nil {
-		_ = spinner.Stop()
-
-		return cmdutil.FormatGRPCError("failed to get transaction", err)
-	}
-
-	_ = spinner.Stop()
+// RenderGet writes a transaction with the native response envelope and display options.
+func RenderGet(cmd *cobra.Command, resp *servicepb.GetTransactionResponse) error {
+	text := pterm.DefaultBasicText.WithWriter(cmd.OutOrStdout())
 
 	tx := resp.GetTransaction()
 
@@ -107,40 +49,40 @@ func runGet(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	pterm.Println()
+	text.Println()
 
 	// Display transaction header
-	pterm.Printf("Transaction: %s\n", pterm.Cyan(fmt.Sprintf("#%d", tx.GetId())))
-	pterm.Println(pterm.Gray("─────────────────────────────────"))
+	text.Printf("Transaction: %s\n", pterm.Cyan(fmt.Sprintf("#%d", tx.GetId())))
+	text.Println(pterm.Gray("─────────────────────────────────"))
 
 	// Display basic info
 	if tx.GetReference() != "" {
-		pterm.Printf("Reference:   %s\n", tx.GetReference())
+		text.Printf("Reference:   %s\n", tx.GetReference())
 	}
 
 	if tx.GetTimestamp() != nil {
-		pterm.Printf("Timestamp:   %s\n", pterm.Gray(tx.GetTimestamp().AsTime().Format("2006-01-02T15:04:05Z07:00")))
+		text.Printf("Timestamp:   %s\n", pterm.Gray(tx.GetTimestamp().AsTime().Format("2006-01-02T15:04:05Z07:00")))
 	}
 
 	if tx.GetInsertedAt() != nil {
-		pterm.Printf("Inserted At: %s\n", pterm.Gray(tx.GetInsertedAt().AsTime().Format("2006-01-02T15:04:05Z07:00")))
+		text.Printf("Inserted At: %s\n", pterm.Gray(tx.GetInsertedAt().AsTime().Format("2006-01-02T15:04:05Z07:00")))
 	}
 
 	// Display reverted status
 	if tx.GetReverted() {
-		pterm.Printf("Reverted:    %s\n", pterm.Yellow("Yes"))
+		text.Printf("Reverted:    %s\n", pterm.Yellow("Yes"))
 
 		if tx.GetRevertedAt() != nil {
-			pterm.Printf("Reverted At: %s\n", pterm.Gray(tx.GetRevertedAt().AsTime().Format("2006-01-02T15:04:05Z07:00")))
+			text.Printf("Reverted At: %s\n", pterm.Gray(tx.GetRevertedAt().AsTime().Format("2006-01-02T15:04:05Z07:00")))
 		}
 	} else {
-		pterm.Printf("Reverted:    %s\n", pterm.Green("No"))
+		text.Printf("Reverted:    %s\n", pterm.Green("No"))
 	}
 
 	// Display postings
 	if len(tx.GetPostings()) > 0 {
-		pterm.Println()
-		pterm.Println("Postings:")
+		text.Println()
+		text.Println("Postings:")
 
 		postingsTable := pterm.TableData{
 			{"#", "SOURCE", "", "DESTINATION", "AMOUNT", "ASSET", "COLOR"},
@@ -206,7 +148,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		err := pterm.DefaultTable.WithHasHeader().WithData(postingsTable).Render()
+		err := pterm.DefaultTable.WithWriter(cmd.OutOrStdout()).WithHasHeader().WithData(postingsTable).Render()
 		if err != nil {
 			return err
 		}
@@ -214,8 +156,8 @@ func runGet(cmd *cobra.Command, args []string) error {
 
 	// Display metadata
 	if len(tx.GetMetadata()) > 0 {
-		pterm.Println()
-		pterm.Println("Metadata:")
+		text.Println()
+		text.Println("Metadata:")
 
 		metadataTable := pterm.TableData{
 			{"KEY", "VALUE"},
@@ -227,7 +169,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 			})
 		}
 
-		return pterm.DefaultTable.WithHasHeader().WithData(metadataTable).Render()
+		return pterm.DefaultTable.WithWriter(cmd.OutOrStdout()).WithHasHeader().WithData(metadataTable).Render()
 	}
 
 	return nil

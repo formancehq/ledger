@@ -25,8 +25,10 @@ require (
 	github.com/cockroachdb/pebble/v2 v2.1.7
 	github.com/databricks/databricks-sql-go v1.10.0
 	github.com/dustin/go-humanize v1.0.1
+	github.com/formancehq/fctl/pkg/pluginsdk v0.0.0-20261009101655-a5cfb893d64d
 	github.com/formancehq/go-libs/v5 v5.10.0
 	github.com/formancehq/invariants v0.11.0
+	github.com/formancehq/ledger/misc/fctl-plugin v0.0.0-20261009143954-060fabc5af8d
 	github.com/formancehq/numscript v0.1.1 // #199 compiler+VM, #211 Exec releases the store on return
 	github.com/fsnotify/fsnotify v1.5.4
 	github.com/getkin/kin-openapi v0.144.0
@@ -64,7 +66,7 @@ require (
 	go.etcd.io/raft/v3 v3.7.0
 	go.opentelemetry.io/contrib/bridges/otelzap v0.16.0
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.68.0
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.66.0
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.69.0
 	go.opentelemetry.io/otel v1.45.0
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.15.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.45.0
@@ -84,10 +86,11 @@ require (
 	golang.org/x/mod v0.40.0
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sync v0.22.0
+	golang.org/x/sys v0.47.0
 	golang.org/x/term v0.45.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260803160001-6ac0973c030d
-	google.golang.org/grpc v1.83.2
-	google.golang.org/protobuf v1.36.11
+	google.golang.org/grpc v1.84.0
+	google.golang.org/protobuf v1.36.12
 )
 
 require (
@@ -167,7 +170,7 @@ require (
 	github.com/eapache/queue v1.1.0 // indirect
 	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/fatih/color v1.18.0 // indirect
-	github.com/felixge/httpsnoop v1.0.4 // indirect
+	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/getsentry/sentry-go v0.43.0 // indirect
 	github.com/go-chi/chi v4.1.2+incompatible // indirect
 	github.com/go-chi/render v1.0.3 // indirect
@@ -308,7 +311,6 @@ require (
 	golang.org/x/crypto v0.56.0 // indirect
 	golang.org/x/exp v0.0.0-20260312153236-7ab1446f8b90 // indirect
 	golang.org/x/net v0.58.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/telemetry v0.0.0-20260811182544-a038080d80e5 // indirect
 	golang.org/x/text v0.41.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
@@ -322,3 +324,5 @@ require (
 replace github.com/antithesishq/antithesis-sdk-go => github.com/formancehq/antithesis-sdk-go v0.0.0-20260915065804-1c9afdaf8204
 
 replace github.com/cockroachdb/pebble/v2 => github.com/formancehq/pebble/v2 v2.1.7
+
+replace github.com/formancehq/ledger/misc/fctl-plugin => ./misc/fctl-plugin

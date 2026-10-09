@@ -1,15 +1,9 @@
 package accounts
 
 import (
-	"errors"
-	"fmt"
-
-	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // NewDeleteMetadataCommand creates the accounts delete-metadata command.
@@ -28,7 +22,6 @@ Examples:
   ledgerctl acc dm bank type`,
 		Args:              cobra.MaximumNArgs(2),
 		ValidArgsFunction: cobra.NoFileCompletions,
-		RunE:              runDeleteMetadata,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")
@@ -36,123 +29,4 @@ Examples:
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
-}
-
-func runDeleteMetadata(cmd *cobra.Command, args []string) error {
-	client, conn, err := cmdutil.GetClient(cmd)
-	if err != nil {
-		return err
-	}
-
-	defer func() { _ = conn.Close() }()
-
-	ledgerFlag, _ := cmd.Flags().GetString("ledger")
-
-	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
-	if err != nil {
-		return err
-	}
-
-	var address string
-	if len(args) > 0 {
-		address = args[0]
-	} else {
-		address, err = pterm.DefaultInteractiveTextInput.
-			WithDefaultText("Enter account address").
-			Show()
-		if err != nil {
-			return fmt.Errorf("failed to read input: %w", err)
-		}
-	}
-
-	if address == "" {
-		pterm.Error.Println("Account address is required")
-
-		return cmdutil.Displayed(errors.New("account address is required"))
-	}
-
-	var key string
-	if len(args) > 1 {
-		key = args[1]
-	} else {
-		key, err = pterm.DefaultInteractiveTextInput.
-			WithDefaultText("Enter metadata key to delete").
-			Show()
-		if err != nil {
-			return fmt.Errorf("failed to read input: %w", err)
-		}
-	}
-
-	if key == "" {
-		pterm.Error.Println("Metadata key is required")
-
-		return cmdutil.Displayed(errors.New("metadata key is required"))
-	}
-
-	yes, _ := cmd.Flags().GetBool("yes")
-	if !yes {
-		pterm.Println()
-		pterm.Warning.Printfln("You are about to delete metadata key %q from account %q", key, address)
-
-		confirmed, err := pterm.DefaultInteractiveConfirm.
-			WithDefaultText("Are you sure?").
-			Show()
-		if err != nil {
-			return fmt.Errorf("failed to read confirmation: %w", err)
-		}
-
-		if !confirmed {
-			pterm.Info.Println("Deletion cancelled")
-
-			return nil
-		}
-	}
-
-	ctx, cancel := cmdutil.GetContext(cmd)
-	defer cancel()
-
-	spinner := cmdutil.StartSpinner(fmt.Sprintf("Deleting metadata key %q from account %s...", key, address))
-
-	requests := []*servicepb.Request{
-		{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
-					Ledger: ledgerName,
-					Action: &servicepb.LedgerAction{
-						Data: &servicepb.LedgerAction_DeleteMetadata{
-							DeleteMetadata: &commonpb.DeleteMetadataCommand{
-								Target: &commonpb.Target{
-									Target: &commonpb.Target_Account{
-										Account: &commonpb.TargetAccount{Addr: address},
-									},
-								},
-								Key: key,
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	applyReq, err := cmdutil.BuildApplyRequest(cmd, requests...)
-	if err != nil {
-		spinner.Fail("Failed to sign request")
-
-		return cmdutil.Displayed(err)
-	}
-
-	_, err = client.Apply(ctx, applyReq)
-	if err != nil {
-		_ = spinner.Stop()
-
-		return cmdutil.FormatGRPCError("failed to delete metadata", err)
-	}
-
-	spinner.Success("Deleted")
-
-	pterm.Println()
-	pterm.Printf("Deleted key \"%s\" from account %s\n", pterm.Yellow(key), pterm.Cyan(address))
-
-	return nil
 }

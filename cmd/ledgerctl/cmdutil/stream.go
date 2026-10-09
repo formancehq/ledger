@@ -18,7 +18,7 @@ func CollectStream[T any](stream grpc.ServerStreamingClient[T]) ([]*T, error) {
 		}
 
 		if err != nil {
-			return nil, err
+			return items, err
 		}
 
 		items = append(items, item)
