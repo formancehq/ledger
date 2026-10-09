@@ -13482,9 +13482,9 @@ const file_common_proto_rawDesc = "" +
 	"\x03tls\x18\x03 \x01(\bR\x03tls\x12%\n" +
 	"\x0esasl_mechanism\x18\x04 \x01(\tR\rsaslMechanism\x12#\n" +
 	"\rsasl_username\x18\x05 \x01(\tR\fsaslUsername\x12)\n" +
-	"\rsasl_password\x18\x06 \x01(\tB\x04\xf0\xbc\x18\x01R\fsaslPassword\"J\n" +
-	"\x0eHttpSinkConfig\x12\x1a\n" +
-	"\bendpoint\x18\x01 \x01(\tR\bendpoint\x12\x1c\n" +
+	"\rsasl_password\x18\x06 \x01(\tB\x04\xf0\xbc\x18\x01R\fsaslPassword\"P\n" +
+	"\x0eHttpSinkConfig\x12 \n" +
+	"\bendpoint\x18\x01 \x01(\tB\x04\xf8\xbc\x18\x01R\bendpoint\x12\x1c\n" +
 	"\x06secret\x18\x02 \x01(\tB\x04\xf0\xbc\x18\x01R\x06secret\"\x99\x02\n" +
 	"\x14DatabricksSinkConfig\x12'\n" +
 	"\x0fserver_hostname\x18\x01 \x01(\tR\x0eserverHostname\x12\x1b\n" +

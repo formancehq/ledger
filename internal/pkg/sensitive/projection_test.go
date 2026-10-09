@@ -285,3 +285,40 @@ func TestRedactURLNATSMultiServer(t *testing.T) {
 		})
 	}
 }
+
+func TestRedactURLProxyDoubleEncode(t *testing.T) {
+	t.Parallel()
+	// Inner proxy URL with encoded delimiters in the token must not expose suffix.
+	in := "clickhouse://host:9000/db?http_proxy=http%3A%2F%2Fproxy%2F%3Ftoken%3Dprefix%2526suffix%253Dsecret"
+	result := redactURL(in)
+	require.NotContains(t, result, "prefix")
+	require.NotContains(t, result, "secret")
+	require.NotContains(t, result, "suffix")
+}
+
+func TestRedactURLClickHouseMultiHost(t *testing.T) {
+	t.Parallel()
+	// Multi-host ClickHouse DSN must preserve both hosts, database and options.
+	in := "clickhouse://alice:review-password@host1:9000,host2:9000/default?compress=true"
+	result := redactURL(in)
+	require.NotContains(t, result, "review-password")
+	require.Contains(t, result, "host1:9000,host2:9000")
+	require.Contains(t, result, "/default")
+	require.Contains(t, result, "compress=true")
+}
+
+func TestRedactHTTPSinkEndpoint(t *testing.T) {
+	t.Parallel()
+	// HttpSinkConfig.Endpoint annotated sensitive_url — credentials must be masked.
+	source := &commonpb.HttpSinkConfig{
+		Endpoint: "https://alice:review-password@example.com/events?api_key=review-api-key",
+		Secret:   "hmac-secret",
+	}
+	view := Redact(source)
+	require.NotContains(t, view.GetEndpoint(), "review-password")
+	require.NotContains(t, view.GetEndpoint(), "review-api-key")
+	require.Contains(t, view.GetEndpoint(), "example.com")
+	require.Equal(t, Marker, view.GetSecret())
+	// Original unchanged.
+	require.Contains(t, source.GetEndpoint(), "review-password")
+}

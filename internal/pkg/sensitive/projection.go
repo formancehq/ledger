@@ -63,13 +63,10 @@ func redactSingleURL(raw string) (string, bool) {
 					values[key] = items
 				} else if proxyQueryKeys[norm] {
 					// The value is itself a URL that may contain credentials.
+					// url.ParseQuery already decoded the value; do not call QueryUnescape
+					// again or inner encoded delimiters will be misinterpreted.
 					for i, v := range items {
-						decoded, err := url.QueryUnescape(v)
-						if err != nil {
-							decoded = v
-						}
-						sanitized, ok := redactSingleURL(decoded)
-						if ok {
+						if sanitized, ok := redactSingleURL(v); ok {
 							items[i] = sanitized
 						} else {
 							items[i] = "xxxxx"
@@ -96,19 +93,25 @@ func redactURL(raw string) string {
 
 	// NATS and its TLS/WebSocket variants support comma-separated server URLs.
 	// url.Parse treats everything after the first comma as part of the path, so
-	// we must split and redact each server independently.
-	if strings.Contains(trimmed, ",") {
-		parts := strings.Split(trimmed, ",")
-		redacted := make([]string, len(parts))
-		for i, part := range parts {
-			if s, ok := redactSingleURL(strings.TrimSpace(part)); ok {
-				redacted[i] = s
-			} else {
-				redacted[i] = Marker
+	// we must split and redact each server independently. Other drivers (e.g.
+	// ClickHouse multi-host DSNs) use commas inside the host component and must
+	// be handled by url.Parse as a single URL.
+	schemeEnd := strings.Index(trimmed, "://")
+	if schemeEnd >= 0 && strings.Contains(trimmed, ",") {
+		scheme := strings.ToLower(trimmed[:schemeEnd])
+		if natsTokenSchemes[scheme] {
+			parts := strings.Split(trimmed, ",")
+			redacted := make([]string, len(parts))
+			for i, part := range parts {
+				if s, ok := redactSingleURL(strings.TrimSpace(part)); ok {
+					redacted[i] = s
+				} else {
+					redacted[i] = Marker
+				}
 			}
-		}
 
-		return strings.Join(redacted, ",")
+			return strings.Join(redacted, ",")
+		}
 	}
 
 	if s, ok := redactSingleURL(trimmed); ok {

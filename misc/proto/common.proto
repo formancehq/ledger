@@ -680,7 +680,7 @@ message KafkaSinkConfig {
 
 // HttpSinkConfig holds HTTP webhook sink configuration.
 message HttpSinkConfig {
-  string endpoint = 1;          // Target URL (e.g. "https://example.com/webhooks/ledger")
+  string endpoint = 1 [(sensitive_url) = true];  // Target URL (e.g. "https://example.com/webhooks/ledger")
   string secret = 2 [(sensitive) = true];            // Optional HMAC-SHA256 secret for X-Webhook-Signature header
 }
 
