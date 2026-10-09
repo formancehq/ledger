@@ -1,0 +1,42 @@
+{
+  "id": "transaction-analysis-equivalence",
+  "title": "Transaction analysis result equivalence",
+  "purpose": "Find reachable errors in two-pass transaction flow discovery: source-log enumeration, address normalization, flow grouping, counts, volume statistics, deterministic result ordering, and failure propagation. Compare a non-empty fixture against an independent expected analysis. Query predicate semantics, accounting truth, and API translation have separate owners.",
+  "paths": [
+    "internal/domain/analysis/**",
+    "internal/application/ctrl/controller_default.go",
+    "internal/adapter/grpc/server_bucket.go",
+    "cmd/ledgerctl/transactions/analyze.go",
+    "tests/e2e/business/analyze_transactions_test.go"
+  ],
+  "related_docs": [
+    "AGENTS.md",
+    "docs/technical/agent-context.md",
+    "docs/technical/contributing/ai-audit.md",
+    "docs/technical/audits/transaction-analysis-equivalence.md",
+    "docs/technical/architecture/subsystems/read-path/query-pipeline.md",
+    "docs/technical/contributing/testing.md"
+  ],
+  "invariants": [
+    "Both passes must analyze the intended same ledger and effective transaction set at an established read horizon. Record whether the production read handle actually freezes both scans; do not assume cross-request or concurrent-write snapshot guarantees.",
+    "Each included transaction must contribute once to total count and exactly once to its normalized flow group. Reverted count and skipped or non-transaction logs must follow the production source contract rather than an inferred transaction-list result.",
+    "Address normalization at the effective variable threshold and canonical grouping must preserve the intended distinctions among source, destination, asset, color, and posting multiplicity. Human-readable signatures must not serve as collision-sensitive internal grouping keys.",
+    "Per-flow counts and asset volume statistics must equal an independently enumerated non-empty fixture, including extrema and zero or empty cases that the domain supports. Input accounting truth belongs to accounting-invariants; this domain owns aggregation of the selected transactions.",
+    "Returned flow ordering and signature presentation must be deterministic for equivalent input, including equal-count groups and different posting order where order is semantically irrelevant.",
+    "An iterator, conversion, or aggregation failure must not produce a successful partial final result. Progress events are observational and must not substitute for a final result or hide a terminal error."
+  ],
+  "adversarial_questions": [
+    "Do the two scans see the same effective set when writes occur, and what snapshot or handle lifetime actually establishes that claim?",
+    "Can a skipped, reverted, or malformed log be counted in one pass but omitted from the other?",
+    "Can two distinct flows collide after normalization or display formatting, especially when colors, delimiters, or posting order vary?",
+    "Are total transactions, reverted transactions, group counts, and per-asset extrema independently consistent on a known non-empty fixture?",
+    "Does an error after partial progress result in a terminal error, or can a caller render partial data as complete?",
+    "Is an observed mismatch caused by source selection, analysis aggregation, accounting arithmetic, or API rendering?"
+  ],
+  "dynamic_checks_to_consider": [
+    "Enumerate a small non-empty ledger with known posting flows, colors, repeated addresses, reversions, and skipped logs; calculate expected group membership and statistics without calling production normalization helpers.",
+    "Vary the threshold across supported values and permute transaction and posting order; compare exact group keys, display signatures, counts, volumes, and final ordering.",
+    "Inject an iterator error in each pass after at least one item and distinguish terminal failure from partial success or progress-only completion.",
+    "Use existing flow-discovery unit and business e2e tests as evidence leads, recording the exact commands and assertions actually observed."
+  ]
+}
