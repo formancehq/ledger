@@ -52,11 +52,11 @@ func (v *Volumes) Scan(src any) error {
 		return fmt.Errorf("Volumes.Scan: expected two tuple elements, got %d", len(parts))
 	}
 
-	input, err := parseCanonicalBigUint(strings.TrimSpace(parts[0]))
+	input, err := ParseBigUint(strings.TrimSpace(parts[0]))
 	if err != nil {
 		return fmt.Errorf("Volumes.Scan input: %w", err)
 	}
-	output, err := parseCanonicalBigUint(strings.TrimSpace(parts[1]))
+	output, err := ParseBigUint(strings.TrimSpace(parts[1]))
 	if err != nil {
 		return fmt.Errorf("Volumes.Scan output: %w", err)
 	}
@@ -228,24 +228,6 @@ type volumesJSON struct {
 	Input   *BigUint      `json:"input"`
 	Output  *BigUint      `json:"output"`
 	Balance *SignedBigInt `json:"balance"`
-}
-
-func parseCanonicalBigUint(decimal string) (*BigUint, error) {
-	// Delegate to the shared validator so SQL scan and JSON decode
-	// cannot diverge when the canonical rules change.
-	if err := validateCanonicalDecimalString(decimal, false); err != nil {
-		return nil, err
-	}
-	value, ok := new(big.Int).SetString(decimal, 10)
-	if !ok {
-		return nil, fmt.Errorf("invalid integer %q", decimal)
-	}
-	encoded, err := NewBigUint(value)
-	if err != nil {
-		return nil, err
-	}
-
-	return encoded, nil
 }
 
 // AssetColored is implemented by every volume-bearing message keyed by an

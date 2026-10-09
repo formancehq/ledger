@@ -142,8 +142,8 @@ func toFlowPatternJSON(fp *servicepb.FlowPattern) (*flowPatternJSON, error) {
 			{vs.GetMinVolume(), &statistics.MinVolume},
 			{vs.GetMaxVolume(), &statistics.MaxVolume},
 		} {
-			value := &commonpb.BigUint{}
-			if err := value.UnmarshalJSON(strconv.AppendQuote(nil, amount.decimal)); err != nil {
+			value, err := commonpb.ParseBigUint(amount.decimal)
+			if err != nil {
 				return nil, fmt.Errorf("invalid analysis volume statistic: %w", err)
 			}
 			*amount.target = value

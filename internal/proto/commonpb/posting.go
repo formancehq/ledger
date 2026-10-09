@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json/jsontext"
 	jsonv2 "encoding/json/v2"
-	"errors"
 	"fmt"
 	"math/big"
 
@@ -36,13 +35,8 @@ func (x *Posting) UnmarshalJSON(data []byte) error {
 				return fmt.Errorf("invalid posting amount: %w", err)
 			}
 		}
-		if decimal == "" || (len(decimal) > 1 && decimal[0] == '0') {
-			return errors.New("invalid posting amount: expected canonical unsigned decimal")
-		}
-		for _, digit := range decimal {
-			if digit < '0' || digit > '9' {
-				return errors.New("invalid posting amount: expected canonical unsigned decimal")
-			}
+		if err := validateCanonicalDecimalString(decimal, false); err != nil {
+			return fmt.Errorf("invalid posting amount: %w", err)
 		}
 		var value uint256.Int
 		if err := value.SetFromDecimal(decimal); err != nil {
