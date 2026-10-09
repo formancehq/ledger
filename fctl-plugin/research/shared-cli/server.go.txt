@@ -1,0 +1,97 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"net"
+	"os"
+	"path/filepath"
+	"strconv"
+	"time"
+
+	"github.com/formancehq/go-libs/v5/pkg/service"
+	"github.com/formancehq/ledger/v3/cmd/server"
+	"github.com/formancehq/ledger/v3/internal/pkg/network"
+	"github.com/formancehq/ledger/v3/internal/pkg/version"
+)
+
+var runtimeDir string
+
+func main() {
+	if err := start(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func start() error {
+	runtimeDir = os.Getenv("SHARED_CLI_RUNTIME_DIR")
+	if runtimeDir == "" || !filepath.IsAbs(runtimeDir) {
+		return fmt.Errorf("SHARED_CLI_RUNTIME_DIR must name a new absolute directory")
+	}
+	if err := os.Mkdir(runtimeDir, 0700); err != nil {
+		return fmt.Errorf("create fresh runtime directory: %w", err)
+	}
+	for _, name := range []string{"config", "data", "wal", "logs"} {
+		if err := os.MkdirAll(filepath.Join(runtimeDir, name), 0700); err != nil {
+			return err
+		}
+	}
+
+	listeners := make([]net.Listener, 0, 3)
+	defer func() {
+		for _, listener := range listeners {
+			_ = listener.Close()
+		}
+	}()
+	for range 3 {
+		listener, err := net.Listen("tcp4", "127.0.0.1:0")
+		if err != nil {
+			return err
+		}
+		listeners = append(listeners, listener)
+	}
+	httpAddr := listeners[0].Addr().(*net.TCPAddr)
+	grpcAddr := listeners[1].Addr().(*net.TCPAddr)
+	raftAddr := listeners[2].Addr().(*net.TCPAddr)
+	clusterID := "fctl-shared-cli-local-885e135ef98a"
+	storedEntries, err := os.ReadDir(filepath.Join(runtimeDir, "data"))
+	if err != nil {
+		return err
+	}
+	args := []string{
+		"--node-id", "1", "--cluster-id", clusterID,
+		"--bootstrap=" + strconv.FormatBool(len(storedEntries) == 0), "--bind-addr", raftAddr.String(),
+		"--advertise-addr", raftAddr.String(),
+		"--http-port", strconv.Itoa(httpAddr.Port),
+		"--grpc-port", strconv.Itoa(grpcAddr.Port),
+		"--wal-dir", filepath.Join(runtimeDir, "wal"),
+		"--data-dir", filepath.Join(runtimeDir, "data"),
+		"--auth-enabled=false", "--tls-mode=disabled",
+		"--health-wal-threshold", "0.95", "--health-data-threshold", "0.95",
+		"--health-wal-resume-threshold", "0.90", "--health-data-resume-threshold", "0.90",
+	}
+	metadata := map[string]any{
+		"pid": os.Getpid(), "http": "http://" + httpAddr.String(),
+		"grpc": grpcAddr.String(), "raft": raftAddr.String(),
+		"clusterID": clusterID, "build": version.Get(), "version": version.Get().Version,
+		"startTime": time.Now().UTC().Format(time.RFC3339),
+		"args": args, "ready": false,
+	}
+	data, err := json.MarshalIndent(metadata, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(runtimeDir, "config", "runtime.json"), append(data, '\n'), 0600); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(runtimeDir, "config", "server.pid"), []byte(strconv.Itoa(os.Getpid())+"\n"), 0600); err != nil {
+		return err
+	}
+	cmd := server.NewRunCommandWithBindings(network.Bindings{
+		HTTP: listeners[0], Service: listeners[1], Raft: listeners[2],
+	})
+	cmd.SetArgs(args)
+	service.Execute(cmd)
+	return nil
+}

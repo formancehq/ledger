@@ -1,0 +1,232 @@
+{
+  "status": "PASS",
+  "source": {
+    "ledger": "885e135ef98a232aa9e4c05a5cb2895ce11c4238",
+    "fctl": "7ae581642ae47042c4489d8faf1fbc55a0f6dce8",
+    "prototype": "ledgerctl.patch and NewWithExecutor in this branch"
+  },
+  "runtime": {
+    "serviceVersion": "3.0.0-beta.10+local.885e135ef98a",
+    "protocolVersion": 26,
+    "authEnabled": false,
+    "tlsMode": "disabled",
+    "listeners": "loopback only",
+    "stoppedAfterTest": true
+  },
+  "cases": [
+    {
+      "case": "install external plugin",
+      "exit": 0,
+      "stdoutBytes": 280,
+      "diagnosticsBytes": 0
+    },
+    {
+      "case": "HTTP initial list",
+      "exit": 0,
+      "stdoutBytes": 37,
+      "diagnosticsBytes": 0
+    },
+    {
+      "case": "gRPC initial list",
+      "exit": 0,
+      "stdoutBytes": 3,
+      "diagnosticsBytes": 0
+    },
+    {
+      "case": "http create JSON",
+      "exit": 0,
+      "stdoutBytes": 298,
+      "diagnosticsBytes": 0
+    },
+    {
+      "case": "http transaction inline",
+      "exit": 0,
+      "stdoutBytes": 848,
+      "diagnosticsBytes": 0
+    },
+    {
+      "case": "http transaction file",
+      "exit": 0,
+      "stdoutBytes": 850,
+      "diagnosticsBytes": 0
+    },
+    {
+      "case": "http transaction stdin",
+      "exit": 0,
+      "stdoutBytes": 850,
+      "diagnosticsBytes": 0
+    },
+    {
+      "case": "http invalid input {bad",
+      "exit": 1,
+      "stdoutBytes": 0,
+      "diagnosticsBytes": 45
+    },
+    {
+      "case": "http invalid input @<local file>",
+      "exit": 1,
+      "stdoutBytes": 0,
+      "diagnosticsBytes": 97
+    },
+    {
+      "case": "grpc create JSON",
+      "exit": 0,
+      "stdoutBytes": 211,
+      "diagnosticsBytes": 0
+    },
+    {
+      "case": "grpc transaction inline",
+      "exit": 0,
+      "stdoutBytes": 770,
+      "diagnosticsBytes": 0
+    },
+    {
+      "case": "grpc transaction file",
+      "exit": 0,
+      "stdoutBytes": 772,
+      "diagnosticsBytes": 0
+    },
+    {
+      "case": "grpc transaction stdin",
+      "exit": 0,
+      "stdoutBytes": 772,
+      "diagnosticsBytes": 0
+    },
+    {
+      "case": "grpc invalid input {bad",
+      "exit": 1,
+      "stdoutBytes": 0,
+      "diagnosticsBytes": 45
+    },
+    {
+      "case": "grpc invalid input @<local file>",
+      "exit": 1,
+      "stdoutBytes": 0,
+      "diagnosticsBytes": 78
+    },
+    {
+      "case": "shared gRPC list",
+      "exit": 0,
+      "stdoutBytes": 621,
+      "diagnosticsBytes": 0
+    },
+    {
+      "case": "legacy gRPC list",
+      "exit": 0,
+      "stdoutBytes": 621,
+      "diagnosticsBytes": 0
+    },
+    {
+      "case": "http human list",
+      "exit": 0,
+      "stdoutBytes": 657,
+      "diagnosticsBytes": 0
+    },
+    {
+      "case": "http missing name nonTTY",
+      "exit": 1,
+      "stdoutBytes": 0,
+      "diagnosticsBytes": 81
+    },
+    {
+      "case": "grpc human list",
+      "exit": 0,
+      "stdoutBytes": 87,
+      "diagnosticsBytes": 0
+    },
+    {
+      "case": "grpc missing name nonTTY",
+      "exit": 1,
+      "stdoutBytes": 0,
+      "diagnosticsBytes": 42
+    },
+    {
+      "case": "HTTP real form",
+      "exit": 0,
+      "stdoutBytes": 243,
+      "diagnosticsBytes": 1412,
+      "promptSteps": 5
+    },
+    {
+      "case": "gRPC real native prompt",
+      "exit": 0,
+      "stdoutBytes": 215,
+      "diagnosticsBytes": 37,
+      "promptSteps": 1
+    },
+    {
+      "case": "HTTP form cancellation",
+      "exit": 1,
+      "stdoutBytes": 0,
+      "diagnosticsBytes": 239,
+      "promptSteps": 1
+    },
+    {
+      "case": "gRPC prompt cancellation",
+      "exit": -2,
+      "stdoutBytes": 0,
+      "diagnosticsBytes": 15,
+      "promptSteps": 1
+    },
+    {
+      "case": "cleanup sharedpoc54696grpc",
+      "exit": 0,
+      "stdoutBytes": 5,
+      "diagnosticsBytes": 0
+    },
+    {
+      "case": "cleanup sharedpoc54696grpcform",
+      "exit": 0,
+      "stdoutBytes": 5,
+      "diagnosticsBytes": 0
+    },
+    {
+      "case": "cleanup sharedpoc54696http",
+      "exit": 0,
+      "stdoutBytes": 5,
+      "diagnosticsBytes": 0
+    },
+    {
+      "case": "cleanup sharedpoc54696httpform",
+      "exit": 0,
+      "stdoutBytes": 5,
+      "diagnosticsBytes": 0
+    }
+  ],
+  "assertions": [
+    "Real external fctl plugin installed into an isolated configuration",
+    "Initial HTTP and gRPC ledger lists empty",
+    "Ledger creation metadata read back exactly as 9007199254740993",
+    "Three persisted transactions per host: inline, @file, stdin; amount 9007199254740993 read back exactly",
+    "Malformed JSON and missing file return nonzero with empty stdout and do not add transactions",
+    "Complete gRPC list JSON semantically equal to original ledgerctl",
+    "Human lists execute; no assertion of identical table layout",
+    "Non-TTY create requires name before RPC",
+    "Five-step fctl form and manifest-titled ledgerctl prompt produce valid JSON stdout without ANSI escapes",
+    "Ctrl+C at each host prompt exits without JSON or ledger creation",
+    "Four owned ledgers deleted; no leftover fixtures"
+  ],
+  "scopeLimits": [
+    "Only ledger list/create and transaction create are adapted",
+    "Cobra declarations and gRPC DTO decoding remain host-owned",
+    "Shared validation covers request structure and options, not every business schema",
+    "gRPC ledger create covers metadata and enforcement mode only",
+    "No automatic retries; no graceful signal cancellation claim for ledgerctl",
+    "Prompt cancellation was tested; blocked stdin context cancellation was not",
+    "Partial stream behavior tested separately with synthetic gRPC, not injected into real Ledger",
+    "Account volume projections were not validated by this matrix"
+  ],
+  "cleanup": {
+    "ownedLedgersDeleted": 4,
+    "leftovers": []
+  },
+  "reproduction": {
+    "status": "PASS",
+    "freshRuntime": true,
+    "commandCases": 25,
+    "cleanupCalls": 4,
+    "leftovers": [],
+    "ownedServerStopped": true,
+    "artifacts": "server.go.txt and parameterized probe.py"
+  }
+}

@@ -1,0 +1,536 @@
+diff --git a/cmd/ledgerctl/main.go b/cmd/ledgerctl/main.go
+index 0e561b248..2a0019819 100644
+--- a/cmd/ledgerctl/main.go
++++ b/cmd/ledgerctl/main.go
+@@ -5,0 +6 @@ import (
++	"fmt"
+@@ -67 +68,6 @@ func run() int {
+-			pterm.Error.Println(err.Error())
++			shared, _ := rootCmd.PersistentFlags().GetBool("shared-command-poc")
++			if shared {
++				fmt.Fprintln(rootCmd.ErrOrStderr(), err.Error())
++			} else {
++				pterm.Error.Println(err.Error())
++			}
+@@ -162,0 +169 @@ func newRootCommand() *cobra.Command {
++	attachSharedPOC(rootCmd)
+diff --git a/cmd/ledgerctl/shared_poc.go b/cmd/ledgerctl/shared_poc.go
+new file mode 100644
+index 000000000..691b6a9f5
+--- /dev/null
++++ b/cmd/ledgerctl/shared_poc.go
+@@ -0,0 +1,326 @@
++package main
++
++// This file is an isolated feasibility adapter, enabled only by
++// --shared-command-poc. Existing ledgerctl handlers remain the default.
++
++import (
++	"bufio"
++	"bytes"
++	"context"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"io"
++	"os"
++	"strings"
++
++	"github.com/pterm/pterm"
++	"github.com/spf13/cobra"
++	"github.com/spf13/pflag"
++	"golang.org/x/term"
++
++	"github.com/formancehq/fctl/pkg/pluginsdk"
++	ledgerplugin "github.com/formancehq/ledger/fctl-plugin"
++	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
++	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
++	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
++)
++
++func attachSharedPOC(root *cobra.Command) {
++	root.PersistentFlags().Bool("shared-command-poc", false, "Use the isolated shared-command experiment")
++	for _, path := range [][]string{{"ledgers", "list"}, {"ledgers", "create"}, {"transactions", "create"}} {
++		cmd, _, err := root.Find(path)
++		if err != nil || cmd.RunE == nil {
++			panic("missing prototype command")
++		}
++		original := cmd.RunE
++		if path[1] == "create" {
++			cmd.Flags().String("data", "", "Prototype JSON body, @file or - for stdin")
++		}
++		if path[0] == "transactions" {
++			cmd.Flags().String("idempotency-key", "", "Prototype mutation idempotency key")
++		}
++		cmd.RunE = func(cmd *cobra.Command, args []string) error {
++			enabled, err := cmd.Flags().GetBool("shared-command-poc")
++			if err != nil {
++				return err
++			}
++			if !enabled {
++				return original(cmd, args)
++			}
++			return runSharedPOC(cmd, path)
++		}
++	}
++}
++
++func runSharedPOC(cmd *cobra.Command, path []string) error {
++	allowed := map[string]bool{"shared-command-poc": true, "server": true, "profile": true, "insecure": true, "tls-ca-cert": true, "tls-server-name": true, "signing-key": true, "signing-key-id": true, "response-verify-key": true, "auth-token": true, "result-file": true, "consistency": true, "json": true, "yaml": true, "timeout": true, "ledger": true, "name": true, "data": true, "idempotency-key": true}
++	var unsupported string
++	check := func(flag *pflag.Flag) {
++		if !allowed[flag.Name] {
++			unsupported = flag.Name
++		}
++	}
++	cmd.Flags().Visit(check)
++	cmd.InheritedFlags().Visit(check)
++	if unsupported != "" {
++		return fmt.Errorf("--%s is outside the isolated prototype; use the original handler", unsupported)
++	}
++	req := pluginsdk.ExecuteRequest{CommandPath: []string{"ledger", path[1]}, Flags: map[string]string{}, ChangedFlags: map[string]bool{}}
++	if path[0] == "transactions" {
++		req.CommandPath = []string{"ledger", "transactions", "create"}
++	}
++	if path[1] == "create" {
++		bodyFlag, err := cmd.Flags().GetString("data")
++		if err != nil {
++			return err
++		}
++		if path[0] == "ledgers" {
++			name, err := cmd.Flags().GetString("name")
++			if err != nil {
++				return err
++			}
++			if name == "" {
++				if !term.IsTerminal(int(os.Stdin.Fd())) {
++					return errors.New("ledger name is required (use --name flag)")
++				}
++				// The host owns the prompt. The shared executor receives its value.
++				manifest, err := ledgerplugin.NewWithExecutor("3.0.0", nil).GetManifest(cmd.Context())
++				if err != nil {
++					return err
++				}
++				spec, err := pluginsdk.FindCommand(manifest, []string{"ledger", "create"})
++				if err != nil {
++					return err
++				}
++				if len(spec.Inputs) == 0 {
++					return errors.New("shared manifest has no ledger name field")
++				}
++				if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "%s: ", spec.Inputs[0].Title); err != nil {
++					return err
++				}
++				// Unlike the current native pterm reader, this adapter sends its
++				// prompt explicitly to stderr and consumes host-provided stdin.
++				name, err = bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
++				name = strings.TrimSpace(name)
++				if err != nil {
++					return err
++				}
++			}
++			req.Args = []string{name}
++			if bodyFlag == "" {
++				bodyFlag = "{}"
++			}
++		} else {
++			ledger, err := cmd.Flags().GetString("ledger")
++			if err != nil {
++				return err
++			}
++			req.Flags["ledger"] = ledger
++			if bodyFlag == "" {
++				return errors.New("the transaction prototype requires --data; legacy --posting and --script stay in the original handler")
++			}
++		}
++		body, err := readSharedPOCBody(cmd, bodyFlag)
++		if err != nil {
++			return err
++		}
++		req.Body = body
++		req.Flags["data"] = bodyFlag
++		req.ChangedFlags["data"] = true
++		key, err := cmd.Flags().GetString("idempotency-key")
++		if err != nil {
++			return err
++		}
++		req.Flags["idempotency-key"] = key
++	}
++	shared := ledgerplugin.NewWithExecutor("3.0.0", func(ctx context.Context, request pluginsdk.ExecuteRequest) (pluginsdk.ExecuteResponse, error) {
++		return executeSharedGRPC(ctx, cmd, request)
++	})
++	response, executeErr := shared.Execute(cmd.Context(), req)
++	if len(response.Data) != 0 {
++		if err := renderSharedPOC(cmd, path, response.Data); err != nil {
++			return errors.Join(executeErr, err)
++		}
++	}
++	return executeErr
++}
++
++func readSharedPOCBody(cmd *cobra.Command, value string) (json.RawMessage, error) {
++	var input io.Reader = strings.NewReader(value)
++	if value == "-" {
++		input = cmd.InOrStdin()
++	}
++	if strings.HasPrefix(value, "@") {
++		file, err := os.Open(strings.TrimPrefix(value, "@"))
++		if err != nil {
++			return nil, err
++		}
++		defer func() { _ = file.Close() }()
++		input = file
++	}
++	body, err := io.ReadAll(io.LimitReader(input, (4<<20)+1))
++	if err != nil {
++		return nil, err
++	}
++	if len(body) > 4<<20 {
++		return nil, errors.New("JSON body exceeds 4 MiB")
++	}
++	return body, nil
++}
++
++func executeSharedGRPC(ctx context.Context, cmd *cobra.Command, request pluginsdk.ExecuteRequest) (pluginsdk.ExecuteResponse, error) {
++	client, conn, err := cmdutil.GetClient(cmd)
++	if err != nil {
++		return pluginsdk.ExecuteResponse{}, err
++	}
++	defer func() { _ = conn.Close() }()
++	callCtx, cancel := cmdutil.GetContext(cmd)
++	defer cancel()
++	if err := ctx.Err(); err != nil {
++		return pluginsdk.ExecuteResponse{}, err
++	}
++	switch strings.Join(request.CommandPath, "/") {
++	case "ledger/list":
++		stream, err := client.ListLedgers(callCtx, &servicepb.ListLedgersRequest{})
++		if err != nil {
++			return pluginsdk.ExecuteResponse{}, err
++		}
++		var ledgers []*commonpb.LedgerInfo
++		for {
++			ledger, err := stream.Recv()
++			if errors.Is(err, io.EOF) {
++				return sharedPOCResponse(ledgers, nil)
++			}
++			if err != nil {
++				return sharedPOCResponse(ledgers, err)
++			}
++			ledgers = append(ledgers, ledger)
++		}
++	case "ledger/create":
++		create, err := sharedPOCCreateLedger(request)
++		if err != nil {
++			return pluginsdk.ExecuteResponse{}, err
++		}
++		apply, err := cmdutil.BuildApplyRequestWithIdempotencyKey(cmd, request.Flags["idempotency-key"], &servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: create}})
++		if err != nil {
++			return pluginsdk.ExecuteResponse{}, err
++		}
++		response, err := client.Apply(callCtx, apply)
++		if err != nil {
++			return pluginsdk.ExecuteResponse{}, err
++		}
++		if err := cmdutil.VerifyResponseSignatures(cmd, response.GetLogs()); err != nil {
++			return pluginsdk.ExecuteResponse{}, err
++		}
++		if len(response.GetLogs()) != 1 || response.GetLogs()[0].GetPayload().GetCreateLedger() == nil {
++			return pluginsdk.ExecuteResponse{}, errors.New("unexpected ledger creation response")
++		}
++		return sharedPOCResponse(response.GetLogs()[0].GetPayload().GetCreateLedger().ToLedgerInfo(), nil)
++	case "ledger/transactions/create":
++		payload := &servicepb.CreateTransactionPayload{}
++		if err := json.Unmarshal(request.Body, payload); err != nil {
++			return pluginsdk.ExecuteResponse{}, err
++		}
++		apply, err := cmdutil.BuildApplyRequestWithIdempotencyKey(cmd, request.Flags["idempotency-key"], &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{Ledger: request.Flags["ledger"], Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{CreateTransaction: payload}}}}})
++		if err != nil {
++			return pluginsdk.ExecuteResponse{}, err
++		}
++		response, err := client.Apply(callCtx, apply)
++		if err != nil {
++			return pluginsdk.ExecuteResponse{}, err
++		}
++		if err := cmdutil.VerifyResponseSignatures(cmd, response.GetLogs()); err != nil {
++			return pluginsdk.ExecuteResponse{}, err
++		}
++		if len(response.GetLogs()) != 1 || response.GetLogs()[0].GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction() == nil {
++			return pluginsdk.ExecuteResponse{}, errors.New("unexpected transaction creation response")
++		}
++		return sharedPOCResponse(response.GetLogs()[0].GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction(), nil)
++	default:
++		return pluginsdk.ExecuteResponse{}, errors.New("command is outside the three-operation prototype")
++	}
++}
++
++func sharedPOCCreateLedger(request pluginsdk.ExecuteRequest) (*servicepb.CreateLedgerRequest, error) {
++	var body struct {
++		Metadata               *commonpb.MetadataMap `json:"metadata"`
++		DefaultEnforcementMode string                `json:"defaultEnforcementMode"`
++	}
++	decoder := json.NewDecoder(bytes.NewReader(request.Body))
++	decoder.DisallowUnknownFields()
++	if err := decoder.Decode(&body); err != nil {
++		return nil, err
++	}
++	mode := commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT
++	switch body.DefaultEnforcementMode {
++	case "", "STRICT", "CHART_ENFORCEMENT_STRICT":
++	case "AUDIT", "CHART_ENFORCEMENT_AUDIT":
++		mode = commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT
++	default:
++		return nil, errors.New("invalid default enforcement mode")
++	}
++	name := request.Flags["ledger"]
++	if len(request.Args) == 1 {
++		name = request.Args[0]
++	}
++	return &servicepb.CreateLedgerRequest{Name: name, Metadata: body.Metadata.GetValues(), DefaultEnforcementMode: mode}, nil
++}
++
++func sharedPOCResponse(data any, executeErr error) (pluginsdk.ExecuteResponse, error) {
++	projection, err := cmdutil.MarshalSharedPOC(data)
++	if err != nil {
++		return pluginsdk.ExecuteResponse{}, errors.Join(executeErr, err)
++	}
++	encoded, err := json.Marshal(map[string]json.RawMessage{"data": projection})
++	return pluginsdk.ExecuteResponse{Data: encoded}, errors.Join(executeErr, err)
++}
++
++func renderSharedPOC(cmd *cobra.Command, path []string, data json.RawMessage) error {
++	var envelope struct {
++		Data json.RawMessage `json:"data"`
++	}
++	if err := json.Unmarshal(data, &envelope); err != nil {
++		return err
++	}
++	result := envelope.Data
++	if path[1] == "list" {
++		var ledgers []struct {
++			Name string `json:"name"`
++		}
++		if err := json.Unmarshal(result, &ledgers); err != nil {
++			return err
++		}
++		var records []json.RawMessage
++		if err := json.Unmarshal(result, &records); err != nil {
++			return err
++		}
++		legacy := make(map[string]json.RawMessage, len(ledgers))
++		for i, ledger := range ledgers {
++			legacy[ledger.Name] = records[i]
++		}
++		encoded, err := json.Marshal(legacy)
++		if err != nil {
++			return err
++		}
++		result = encoded
++	}
++	if handled, err := cmdutil.EncodeStructured(cmd, result); handled || err != nil {
++		return err
++	}
++	// Human presentation stays host-specific and does not enter the executor.
++	pterm.DefaultSection.Println("Shared command prototype")
++	if path[1] == "list" {
++		var ledgers map[string]json.RawMessage
++		if err := json.Unmarshal(result, &ledgers); err != nil {
++			return err
++		}
++		table := pterm.TableData{{"NAME"}}
++		for name := range ledgers {
++			table = append(table, []string{name})
++		}
++		return pterm.DefaultTable.WithHasHeader().WithData(table).Render()
++	}
++	pterm.Println(fmt.Sprintf("%s", result))
++	return nil
++}
+diff --git a/cmd/ledgerctl/shared_poc_test.go b/cmd/ledgerctl/shared_poc_test.go
+new file mode 100644
+index 000000000..f41762ef8
+--- /dev/null
++++ b/cmd/ledgerctl/shared_poc_test.go
+@@ -0,0 +1,171 @@
++package main
++
++import (
++	"bytes"
++	"context"
++	"encoding/json"
++	"errors"
++	"io"
++	"net"
++	"os"
++	"path/filepath"
++	"strings"
++	"testing"
++
++	"google.golang.org/grpc"
++	"google.golang.org/grpc/codes"
++	"google.golang.org/grpc/status"
++
++	"github.com/formancehq/fctl/pkg/pluginsdk"
++	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
++	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
++)
++
++type sharedPOCFixture struct {
++	servicepb.UnimplementedBucketServiceServer
++	partial bool
++}
++
++func (f *sharedPOCFixture) ListLedgers(_ *servicepb.ListLedgersRequest, stream grpc.ServerStreamingServer[commonpb.LedgerInfo]) error {
++	if err := stream.Send(&commonpb.LedgerInfo{Name: "books"}); err != nil {
++		return err
++	}
++	if f.partial {
++		return status.Error(codes.Internal, "fixture stream failed after one row")
++	}
++	return nil
++}
++
++func TestSharedPOCGRPCReadAndPartialResult(t *testing.T) {
++	for _, partial := range []bool{false, true} {
++		t.Run(map[bool]string{false: "complete", true: "partial"}[partial], func(t *testing.T) {
++			listener, err := net.Listen("tcp", "127.0.0.1:0")
++			if err != nil {
++				t.Fatal(err)
++			}
++			server := grpc.NewServer()
++			servicepb.RegisterBucketServiceServer(server, &sharedPOCFixture{partial: partial})
++			t.Cleanup(server.Stop)
++			go func() { _ = server.Serve(listener) }()
++			out, err := captureSharedPOC(t, t.Context(), "--shared-command-poc", "--server", listener.Addr().String(), "--insecure", "--auth-token", "fixture", "ledgers", "list", "--json")
++			if (err != nil) != partial {
++				t.Fatalf("partial=%v error=%v", partial, err)
++			}
++			var ledgers map[string]json.RawMessage
++			if json.Unmarshal(out, &ledgers) != nil || ledgers["books"] == nil {
++				t.Fatalf("partial payload lost or stdout contaminated: %q", out)
++			}
++			if partial && status.Code(err) != codes.Internal {
++				t.Fatalf("error category lost: %v", err)
++			}
++			if !partial {
++				original, err := captureSharedPOC(t, t.Context(), "--server", listener.Addr().String(), "--insecure", "--auth-token", "fixture", "ledgers", "list", "--json")
++				if err != nil {
++					t.Fatal(err)
++				}
++				var nativeValue, sharedValue any
++				originalDecoder := json.NewDecoder(bytes.NewReader(original))
++				originalDecoder.UseNumber()
++				sharedDecoder := json.NewDecoder(bytes.NewReader(out))
++				sharedDecoder.UseNumber()
++				if originalDecoder.Decode(&nativeValue) != nil || sharedDecoder.Decode(&sharedValue) != nil {
++					t.Fatal("invalid JSON projection")
++				}
++				canonicalOriginal, err := json.Marshal(nativeValue)
++				if err != nil {
++					t.Fatal(err)
++				}
++				canonicalShared, err := json.Marshal(sharedValue)
++				if err != nil {
++					t.Fatal(err)
++				}
++				if !bytes.Equal(canonicalOriginal, canonicalShared) {
++					t.Fatalf("native JSON contract changed: original=%s shared=%s", original, out)
++				}
++			}
++		})
++	}
++}
++
++func TestSharedPOCBodySourcesAndExactNumbers(t *testing.T) {
++	const body = `{"metadata":{"amount":9007199254740993}}`
++	path := filepath.Join(t.TempDir(), "body.json")
++	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
++		t.Fatal(err)
++	}
++	for _, value := range []string{body, "@" + path, "-"} {
++		cmd := newRootCommand()
++		cmd.SetIn(strings.NewReader(body))
++		got, err := readSharedPOCBody(cmd, value)
++		if err != nil || string(got) != body {
++			t.Fatalf("input %q changed: %q %v", value, got, err)
++		}
++		request := pluginsdk.ExecuteRequest{Args: []string{"books"}, Body: got}
++		create, err := sharedPOCCreateLedger(request)
++		if err != nil {
++			t.Fatal(err)
++		}
++		encoded, err := json.Marshal(&commonpb.MetadataMap{Values: create.Metadata})
++		if err != nil || !bytes.Contains(encoded, []byte("9007199254740993")) {
++			t.Fatalf("metadata precision lost: %s %v", encoded, err)
++		}
++	}
++}
++
++func TestSharedPOCTransactionWirePrecision(t *testing.T) {
++	const body = `{"postings":[{"source":"world","destination":"users:001","asset":"USD/2","amount":9007199254740993}],"metadata":{"number":9007199254740993}}`
++	var payload servicepb.CreateTransactionPayload
++	if err := json.Unmarshal([]byte(body), &payload); err != nil {
++		t.Fatal(err)
++	}
++	if payload.GetPostings()[0].GetAmount().Dec() != "9007199254740993" {
++		t.Fatal("gRPC posting amount changed")
++	}
++	encoded, err := json.Marshal(&payload)
++	if err != nil || bytes.Count(encoded, []byte("9007199254740993")) != 2 {
++		t.Fatalf("transaction precision changed: %s %v", encoded, err)
++	}
++}
++
++func TestSharedPOCCancellation(t *testing.T) {
++	ctx, cancel := context.WithCancel(t.Context())
++	cancel()
++	out, err := captureSharedPOC(t, ctx, "--shared-command-poc", "--server", "127.0.0.1:1", "--insecure", "ledgers", "list", "--json")
++	if !errors.Is(err, context.Canceled) || len(out) != 0 {
++		t.Fatalf("canceled command: %q %v", out, err)
++	}
++}
++
++func TestSharedPOCRejectsAllUnsupportedOptionsBeforeRPC(t *testing.T) {
++	for _, args := range [][]string{{"ledgers", "list", "--page-size", "1"}, {"ledgers", "list", "--checkpoint-id", "123"}, {"ledgers", "create", "--name", "books", "--mirror-dsn", "unused"}} {
++		out, err := captureSharedPOC(t, t.Context(), append([]string{"--shared-command-poc", "--server", "127.0.0.1:1", "--insecure"}, args...)...)
++		if err == nil || !strings.Contains(err.Error(), "outside the isolated prototype") || len(out) != 0 {
++			t.Fatalf("unsupported option reached RPC: %q %v", out, err)
++		}
++	}
++}
++
++func captureSharedPOC(t *testing.T, ctx context.Context, args ...string) ([]byte, error) {
++	t.Helper()
++	// The native ledgerctl encoder writes to os.Stdout, so capture the actual
++	// host boundary rather than assuming Cobra's injected writer is used.
++	read, write, err := os.Pipe()
++	if err != nil {
++		t.Fatal(err)
++	}
++	previous := os.Stdout
++	os.Stdout = write
++	defer func() { os.Stdout = previous; _ = read.Close(); _ = write.Close() }()
++	cmd := newRootCommand()
++	cmd.SetArgs(args)
++	cmd.SetErr(io.Discard)
++	err = cmd.ExecuteContext(ctx)
++	if closeErr := write.Close(); closeErr != nil {
++		t.Fatal(closeErr)
++	}
++	out, readErr := io.ReadAll(read)
++	if readErr != nil {
++		t.Fatal(readErr)
++	}
++	return out, err
++}
+diff --git a/cmd/ledgerctl/cmdutil/shared_poc.go b/cmd/ledgerctl/cmdutil/shared_poc.go
+new file mode 100644
+index 000000000..bd0429101
+--- /dev/null
++++ b/cmd/ledgerctl/cmdutil/shared_poc.go
+@@ -0,0 +1,5 @@
++package cmdutil
++
++// MarshalSharedPOC exposes the existing native projection to the isolated
++// experiment. It performs no terminal IO and preserves ledgerctl JSON shapes.
++func MarshalSharedPOC(data any) ([]byte, error) { return marshalJSON(data) }
