@@ -63,7 +63,7 @@ func runLedgersList(ctx context.Context, client servicepb.BucketServiceClient, c
 	stream, err := client.ListLedgers(readCtx, &servicepb.ListLedgersRequest{
 		Options: &commonpb.ListOptions{
 			PageSize: uint32(requestedPageSize),
-			Cursor:   cursor,
+			Cursor:   pageToken(cursor),
 			Reverse:  reverse,
 			Filter:   filter,
 		},

@@ -281,7 +281,7 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 		cursor = malformed
 	case random.RandomChoice([]uint8{0, 1}) == 0:
 		afterID = 1 + internal.Rand().Uint64()%256
-		cursor = strconv.FormatUint(afterID, 10)
+		cursor = pageToken(strconv.FormatUint(afterID, 10))
 	}
 
 	c.mu.Lock()
@@ -302,7 +302,7 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 		Ledger: ledger,
 		Options: &commonpb.ListOptions{
 			PageSize: uint32(requestedPageSize),
-			Cursor:   pageToken(cursor),
+			Cursor:   cursor,
 			Reverse:  reverse,
 			Filter:   filter,
 		},

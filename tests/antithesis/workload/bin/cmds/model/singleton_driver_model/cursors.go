@@ -7,6 +7,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/v3/pkg/pagecursor"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -28,16 +30,31 @@ const (
 	cursorEither
 )
 
-// nextCursorOf reads the resume token a drained stream published. Empty is the
-// server saying the page it just sent is the last one.
+// nextCursorOf reads the resume token a drained stream published and returns
+// the key it resumes after. Empty is the server saying the page it just sent is
+// the last one.
 func nextCursorOf[T any](stream grpc.ServerStreamingClient[T]) string {
 	values := stream.Trailer().Get(nextCursorTrailer)
 	if len(values) == 0 {
 		return ""
 	}
 
-	return values[0]
+	return nextCursorKey(values[0])
 }
+
+// nextCursorKey decodes a published next token to its key. A token that does
+// not decode to a forward position comes back prefixed with
+// undecodableCursor, so it matches no key a page can end on.
+func nextCursorKey(token string) string {
+	c, err := pagecursor.Decode(token)
+	if err != nil || c.Back || c.Key == "" {
+		return undecodableCursor + token
+	}
+
+	return c.Key
+}
+
+const undecodableCursor = "\x00undecodable:"
 
 // nextCursorLegal reports whether the token published alongside a page is the
 // one that page's own rows imply.
@@ -87,7 +104,14 @@ func rollMalformedCursor() (string, bool) {
 		return "", false
 	}
 
-	return random.RandomChoice(malformedCursors), true
+	// Half are not page tokens at all; half are well-formed tokens whose key the
+	// endpoint cannot read.
+	bad := random.RandomChoice(malformedCursors)
+	if oneIn(2) {
+		return pagecursor.Cursor{Key: bad}.Encode(), true
+	}
+
+	return bad, true
 }
 
 // handleMalformedCursorError validates the outcome of a token the server cannot

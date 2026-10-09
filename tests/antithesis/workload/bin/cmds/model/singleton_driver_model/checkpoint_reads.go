@@ -199,7 +199,7 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 		stream, streamErr := bucket.ListLedgers(readCtx, &servicepb.ListLedgersRequest{Options: &commonpb.ListOptions{
 			Read:     &commonpb.ReadOptions{CheckpointId: id},
 			PageSize: uint32(pageSize),
-			Cursor:   cursor,
+			Cursor:   pageToken(cursor),
 			Reverse:  reverse,
 		}})
 		err = streamErr
@@ -263,7 +263,7 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 				cursor = poolAddress()
 			}
 
-			options.Cursor = cursor
+			options.Cursor = pageToken(cursor)
 			details["cursor"] = cursor
 
 			stream, streamErr := bucket.ListAccounts(readCtx, &servicepb.ListAccountsRequest{Ledger: ledger, Options: options})
@@ -301,7 +301,7 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 				cursor = strconv.FormatUint(afterID, 10)
 			}
 
-			options.Cursor = cursor
+			options.Cursor = pageToken(cursor)
 			details["cursor"] = cursor
 
 			stream, streamErr := bucket.ListTransactions(readCtx, &servicepb.ListTransactionsRequest{Ledger: ledger, Options: options})

@@ -856,7 +856,7 @@ func (c *Checker) rollAuditCursor() (string, uint64) {
 		return "", 0
 	}
 
-	return strconv.FormatUint(seq, 10), seq
+	return pageToken(strconv.FormatUint(seq, 10)), seq
 }
 
 // auditZoneStart is the first sequence a forward zone scan serves: the zone
