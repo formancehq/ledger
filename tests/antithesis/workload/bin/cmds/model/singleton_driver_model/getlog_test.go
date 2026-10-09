@@ -125,3 +125,44 @@ func TestServerLogKindMatchesModelVocabulary(t *testing.T) {
 	require.Equal(t, modelKind, serverLogKind(served))
 	require.Equal(t, "other", serverLogKind(topLevelLog(3)))
 }
+
+// The global stream freezes the transaction its log announces, stamped: a
+// served log carrying a different timestamp is a mismatch, before and after
+// the ledger is deleted.
+func TestCommittedLogComparesTheLearnedStamps(t *testing.T) {
+	t.Parallel()
+
+	bulk := bulkOf(oracletest.TxReq("world", "acc:1", "USD", 1))
+	res := oracle.NewGlobalState().Apply(bulk)
+	require.True(t, res.OK, res.Reason)
+
+	gs := res.State
+	stamp := &commonpb.Timestamp{Data: 1_700_000_000_000_000}
+	learnTxStamps(&gs, bulk, []*commonpb.Log{{
+		Sequence: 9,
+		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+			LedgerName: "L",
+			Log: &commonpb.LedgerLog{Id: 1, Data: &commonpb.LedgerLogPayload{
+				Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{
+					Transaction: &commonpb.Transaction{Id: 1, Timestamp: stamp, InsertedAt: stamp},
+				}},
+			}},
+		}}},
+	}})
+
+	target := committedLogTarget{ledger: "L", id: 1, sequence: 9}
+	served := servedRows(gs.Ledger("L"), "L", 1)[0]
+	corrupted := served
+	corrupted.tx = served.tx.CloneVT()
+	corrupted.tx.Timestamp = &commonpb.Timestamp{Data: stamp.GetData() + 1}
+
+	deleted := gs.Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_DeleteLedger{
+		DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "L"},
+	}}))
+	require.True(t, deleted.OK, deleted.Reason)
+
+	for name, state := range map[string]oracle.GlobalState{"live": gs, "deleted": deleted.State} {
+		require.True(t, committedLogMatches(state, target, served), name)
+		require.False(t, committedLogMatches(state, target, corrupted), "%s: a corrupted timestamp must not match", name)
+	}
+}

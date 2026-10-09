@@ -487,7 +487,6 @@ func learnTxStamps(gs *oracle.GlobalState, bulk oracle.Bulk, logs []*commonpb.Lo
 		// derive; its id is derived, so it is checked against the server
 		// rather than copied from it.
 		gs.LearnLogDate(ledger, entry.GetId(), entry.GetDate())
-		gs.LearnLogSequence(ledger, entry.GetId(), logs[i].GetSequence())
 
 		switch {
 		case data.GetCreatedTransaction() != nil:
@@ -499,6 +498,10 @@ func learnTxStamps(gs *oracle.GlobalState, bulk oracle.Bulk, logs []*commonpb.Lo
 			gs.LearnTxStamps(ledger, revTx.GetId(), revTx.GetTimestamp(), revTx.GetInsertedAt(), nil)
 			gs.LearnTxStamps(ledger, rt.GetRevertedTransactionId(), nil, nil, revTx.GetTimestamp())
 		}
+
+		// The global stream freezes the transaction record it announces, so its
+		// stamps are learned first.
+		gs.LearnLogSequence(ledger, entry.GetId(), logs[i].GetSequence())
 	}
 }
 
