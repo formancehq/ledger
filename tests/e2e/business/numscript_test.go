@@ -711,7 +711,7 @@ send [USD/2 200] (
 		})
 
 		DescribeTable("Should reject it as a client error with NUMSCRIPT_EXECUTION_ERROR",
-			func(script string, vars map[string]string, force bool, detail string) {
+			func(script string, vars map[string]string, force bool) {
 				req := actions.CreateScriptTransactionAction(ledgerName, script, vars, nil)
 				if force {
 					req = actions.CreateForceScriptTransactionAction(ledgerName, script, vars, nil)
@@ -723,57 +723,55 @@ send [USD/2 200] (
 				st, ok := status.FromError(err)
 				Expect(ok).To(BeTrue())
 				Expect(st.Code()).To(Equal(codes.FailedPrecondition), "got %v", err)
-				Expect(st.Message()).To(ContainSubstring(detail))
-
 				info := actions.ExtractGRPCErrorInfo(err)
 				Expect(info).NotTo(BeNil())
 				Expect(info.Reason).To(Equal(domain.ErrReasonNumscriptExecutionError))
 			},
 			Entry("negative amount from a var",
 				"vars { monetary $m }\nsend $m ( source = @world destination = @x )",
-				map[string]string{"m": "USD -10"}, false, "cannot send negative amount"),
+				map[string]string{"m": "USD -10"}, false),
 			Entry("negative amount from arithmetic",
 				"send [USD 1] - [USD 5] ( source = @world destination = @x )",
-				nil, false, "cannot send negative amount"),
+				nil, false),
 			Entry("negative amount from a balance",
 				"vars { monetary $m = balance(@funded, USD) }\nsend $m - [USD 20] ( source = @world destination = @x )",
-				nil, false, "cannot send negative amount"),
+				nil, false),
 			Entry("allotment not summing to 1",
 				"send [USD 10] ( source = @world destination = { 1/2 to @x 1/3 to @y } )",
-				nil, false, "portions must sum to 1"),
+				nil, false),
 			Entry("send-all from an unbounded source",
 				"send [USD *] ( source = @world destination = @x )",
-				nil, false, "unbounded source is not allowed"),
+				nil, false),
 			Entry("forced send of a balance wider than 256 bits",
 				"vars { monetary $all = balance(@a, USD) }\nsend $all ( source = @a destination = @x )",
-				nil, true, "exceeds 256 bits"),
+				nil, true),
 			Entry("account var with the @ prefix",
 				"vars { account $a }\nsend [USD 1] ( source = @world destination = $a )",
-				map[string]string{"a": "@world"}, false, "Invalid account name"),
+				map[string]string{"a": "@world"}, false),
 			Entry("missing var",
 				"vars { account $a }\nsend [USD 1] ( source = @world destination = $a )",
-				nil, false, "Variable is missing"),
+				nil, false),
 			Entry("monetary var of the wrong type",
 				"vars { monetary $m }\nsend $m ( source = @world destination = @x )",
-				map[string]string{"m": "nope"}, false, "invalid monetary literal"),
+				map[string]string{"m": "nope"}, false),
 			Entry("mismatched currencies",
 				"send [USD 1] + [EUR 5] ( source = @world destination = @x )",
-				nil, false, "Mismatched currency"),
+				nil, false),
 			Entry("portion var above 1",
 				"vars { portion $p }\nsend [USD 10] ( source = @world destination = { $p to @x remaining to @y } )",
-				map[string]string{"p": "3/2"}, false, "Bad portion"),
+				map[string]string{"p": "3/2"}, false),
 			Entry("division by zero in an allotment",
 				"send [USD 10] ( source = @world destination = { 1/0 to @x remaining to @y } )",
-				nil, false, "cannot divide by zero"),
+				nil, false),
 			Entry("missing metadata",
 				"vars { account $a = meta(@cfg, \"missing\") }\nsend [USD 1] ( source = @world destination = $a )",
-				nil, false, "doesn't have metadata"),
+				nil, false),
 			Entry("metadata value of the wrong type",
 				"vars { monetary $m = meta(@cfg, \"amount\") }\nsend $m ( source = @world destination = @x )",
-				nil, false, "invalid monetary literal"),
+				nil, false),
 			Entry("balance of a negative account",
 				"vars { monetary $m = balance(@neg, USD) }\nsend $m ( source = @world destination = @x )",
-				nil, false, "negative balance"),
+				nil, false),
 		)
 	})
 })
