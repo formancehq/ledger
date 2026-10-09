@@ -1,7 +1,6 @@
 package numscript
 
-// Benchmarks the FSM's VM execution path and its decode/verify/exec
-// decomposition.
+// Benchmarks the FSM's VM execution path and its verify/exec decomposition.
 
 import (
 	"context"
@@ -68,15 +67,11 @@ func benchCase(b *testing.B, script string, vars map[string]string) {
 
 	source := benchSource()
 
-	// warm_vm vs fresh_vm is the A/B for reusing the cached VM instance: both
-	// decode the vars and hit the decode+verify cache exactly as apply does,
-	// and differ only in executing on the entry's warm instance or on a new
-	// one built from the same verified program.
 	b.Run("warm_vm", func(b *testing.B) {
 		store := NewVMStore(source, false)
 		b.ReportAllocs()
 		for b.Loop() {
-			if _, err := SafeExecCompiled(cache, compiled.ScriptHash, compiled.Program, compiled.Vars, store); err != nil {
+			if _, err := SafeExecCompiled(cache, compiled, store); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -86,49 +81,29 @@ func benchCase(b *testing.B, script string, vars map[string]string) {
 		store := NewVMStore(source, false)
 		b.ReportAllocs()
 		for b.Loop() {
-			vars, decErr := numscriptlib.DecodeVars(compiled.Vars)
-			if decErr != nil {
-				b.Fatal(decErr)
-			}
-
-			entry, err := cache.getOrDecodeCompiled(compiled.ScriptHash, compiled.Program, &vars)
-			if err != nil {
+			if _, err := cache.getOrCreateVM(compiled.scriptHash, compiled.program, &compiled.vars); err != nil {
 				b.Fatal(err)
 			}
-
-			if _, err := safeExecVM(numscriptlib.NewVm(entry.vm.Program), &vars, store); err != nil {
-				b.Fatal(err)
-			}
-		}
-	})
-
-	b.Run("vm_decode_only", func(b *testing.B) {
-		b.ReportAllocs()
-		for b.Loop() {
-			if _, err := numscriptlib.DecodeCompiledProgram(compiled.Program); err != nil {
+			if _, err := safeExecVM(numscriptlib.NewVm(compiled.program.program), &compiled.vars, store); err != nil {
 				b.Fatal(err)
 			}
 		}
 	})
 
 	b.Run("vm_verify_only", func(b *testing.B) {
-		program, _ := numscriptlib.DecodeCompiledProgram(compiled.Program)
-		encodedVars, _ := numscriptlib.DecodeVars(compiled.Vars)
 		b.ReportAllocs()
 		for b.Loop() {
-			if _, err := numscriptlib.VerifyCompiledProgramWithVars(program, &encodedVars); err != nil {
+			if _, err := numscriptlib.VerifyCompiledProgramWithVars(compiled.program.program, &compiled.vars); err != nil {
 				b.Fatal(err)
 			}
 		}
 	})
 
 	b.Run("vm_exec_only", func(b *testing.B) {
-		program, _ := numscriptlib.DecodeCompiledProgram(compiled.Program)
-		encodedVars, _ := numscriptlib.DecodeVars(compiled.Vars)
 		store := NewVMStore(source, false)
 		b.ReportAllocs()
 		for b.Loop() {
-			if _, err := numscriptlib.ExecVm(context.Background(), numscriptlib.NewVm(program), &encodedVars, store); err != nil {
+			if _, err := numscriptlib.ExecVm(context.Background(), numscriptlib.NewVm(compiled.program.program), &compiled.vars, store); err != nil {
 				b.Fatal(err)
 			}
 		}

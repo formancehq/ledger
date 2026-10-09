@@ -230,14 +230,14 @@ under declared coverage, compiles it with its bundled Numscript library, binds
 the order's variables, and executes the VM. Audit replay takes the same text
 path. See [numscript-library.md](../architecture/subsystems/scripting/numscript-library.md).
 
-The `RequestProcessor` owns a parsed-script cache and a decoded, verified warm
+The `RequestProcessor` owns a parsed-script cache and a verified warm
 VM cache. Admission owns a separate `NumscriptCache`; it shares neither
 programs nor VM instances with apply. Cache size is node-local. Cold compile,
-decode and verification, warm hits, LRU eviction, and a previous order's
+verification, warm hits, LRU eviction, and a previous order's
 variable values may change cost but not the transition. A warm VM must never
 execute concurrently or retain a completed run's store, Scope, or proposal
 plan. A run that fails or panics must leave the VM reusable for the next
-order. A cache hit must match the locally compiled program bytes and verify
+order. A cache hit must match the exact local compilation and verify
 that the current variables fit its layout.
 
 **Committed inputs.** The resolved script text, business variables, `force`,

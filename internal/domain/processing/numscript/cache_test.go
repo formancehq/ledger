@@ -8,8 +8,6 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
-	numscriptlib "github.com/formancehq/numscript"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
 
@@ -173,7 +171,7 @@ func TestNumscriptCache_RecordSize_WithGauge(t *testing.T) {
 }
 
 // TestNumscriptCache_RecordSize_ReportsBothSides pins that numscript.cache.size
-// reports the compiled-artifact LRU next to the parse LRU: the compiled side
+// reports the warm-VM LRU next to the parse LRU: the compiled side
 // holds the warm VMs, so a gauge fed by the parse side alone under-reports the
 // cache's footprint.
 func TestNumscriptCache_RecordSize_ReportsBothSides(t *testing.T) {
@@ -189,10 +187,7 @@ func TestNumscriptCache_RecordSize_ReportsBothSides(t *testing.T) {
 	require.Nil(t, entry.script.err)
 
 	compiled := mustCompile(t, entry, nil)
-	vars, decErr := numscriptlib.DecodeVars(compiled.Vars)
-	require.NoError(t, decErr)
-
-	_, err := c.getOrDecodeCompiled(compiled.ScriptHash, compiled.Program, &vars)
+	_, err := c.getOrCreateVM(compiled.scriptHash, compiled.program, &compiled.vars)
 	require.Nil(t, err)
 
 	var rm metricdata.ResourceMetrics
@@ -233,5 +228,4 @@ func TestLruEntry_CompileParsedAcrossEviction(t *testing.T) {
 	second, err := replacement.compileParsed()
 	require.Nil(t, err)
 	require.NotSame(t, first, second)
-	require.Equal(t, first.encoded, second.encoded)
 }
