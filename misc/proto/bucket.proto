@@ -507,6 +507,7 @@ message ServerInfo {
 message DiscoveryResponse {
   ResponseSigningInfo response_signing = 1;  // Response signing config (nil if disabled)
   ServerInfo server_info = 2;                // Server build metadata
+  common.ClusterPolicy cluster_policy = 3;  // Committed policy (nil before initialization)
 }
 
 // ResponseSigningInfo describes the server's response signing configuration.

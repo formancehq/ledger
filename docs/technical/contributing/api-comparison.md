@@ -68,6 +68,8 @@ Discovery's `ServerInfo.protocol_version` and the flat JSON response from
 need gRPC metadata. The gate does not version the HTTP API or Raft/storage
 formats. See [the service protocol contract](../architecture/subsystems/api/protocol-compatibility.md)
 for client setup, restore behavior, failure limitations, and revision changes.
+Discovery also returns the committed `ClusterPolicy` when initialized, so clients
+can use effective metadata ceilings instead of compiled default estimates.
 
 ### Authentication and resource exhaustion (EN-2783)
 
@@ -1289,7 +1291,7 @@ Paged list RPCs follow the shared `ListOptions` contract and publish the
 | `ListLogs` | Stream system logs for a ledger (requires `ledger` field). Follows the shared `ListOptions` contract: cursor/page_size/reverse (descending ledger-local id)/checkpoint_id plus `log_id` and date filters. Ledger-scoped read → requires `ledger:read` (granular `ledger:LedgerRead`), same as the HTTP `GET /v3/{ledgerName}/logs` route | ✅ |
 | `GetLog` | Get a single system log by bucket-wide sequence number. No ledger identity in the request → requires `ledger` ops-read (granular `ledger:OpsRead`), like the HTTP `GET /v3/_/logs/{sequence}` route | ✅ |
 | `ListSigningKeys` | Stream registered signing keys, paged by key id | ✅ |
-| `Discovery` | Return server capabilities (response signing config) and build info (`ServerInfo`: version, commit, build date, Go version) | ✅ |
+| `Discovery` | Return server capabilities (response signing config), build info (`ServerInfo`: version, commit, build date, Go version), and committed `ClusterPolicy` | ✅ |
 | `AnalyzeAccounts` | Analyze accounts and suggest Chart of Accounts | ✅ |
 | `GetIndexStatus` | Read index builder progress (lag, file size) | ✅ |
 | `GetLedgerStats` | Get aggregate usage statistics (transaction, volume, reference, posting, log, revert, Numscript-execution, ephemeral-evicted and transient-used counts) | ✅ |
