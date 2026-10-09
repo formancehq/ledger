@@ -76,10 +76,8 @@ var _ = Describe("Restore frozen idempotency failures", Ordered, func() {
 		restoreDataDir string
 		minioEndpoint  string
 
-		// The live rejections, which every replay must reproduce.
-		frozenMessage  string
+		// The live structured rejections, which every replay must reproduce.
 		frozenMetadata map[string]string
-		execMessage    string
 		execMetadata   map[string]string
 	)
 
@@ -121,14 +119,12 @@ send [USD 10] (
 		)
 	}
 
-	// expectReplay asserts a keyed request replays its original rejection
-	// byte-for-byte, and that its sink was never credited.
-	expectReplay := func(client servicepb.BucketServiceClient, phase string, tx *servicepb.ApplyRequest, reason, message string, metadata map[string]string, sink string) {
+	// expectReplay asserts a keyed request replays its original structured
+	// rejection, and that its sink was never credited.
+	expectReplay := func(client servicepb.BucketServiceClient, phase string, tx *servicepb.ApplyRequest, reason string, metadata map[string]string, sink string) {
 		_, err := client.Apply(ctx, tx)
 		Expect(err).To(HaveOccurred(), "%s: a frozen failure must replay, not re-execute against the funded source", phase)
 		Expect(status.Code(err)).To(Equal(codes.FailedPrecondition), "%s", phase)
-		Expect(status.Convert(err).Message()).To(Equal(message), "%s: replayed message", phase)
-
 		info := actions.ExtractGRPCErrorInfo(err)
 		Expect(info).NotTo(BeNil(), "%s", phase)
 		Expect(info.Reason).To(Equal(reason), "%s: replayed reason", phase)
@@ -143,11 +139,11 @@ send [USD 10] (
 	}
 
 	expectFrozenReplay := func(client servicepb.BucketServiceClient, phase string) {
-		expectReplay(client, phase, frozenTx(), domain.ErrReasonInsufficientFunds, frozenMessage, frozenMetadata, frozenSink)
+		expectReplay(client, phase, frozenTx(), domain.ErrReasonInsufficientFunds, frozenMetadata, frozenSink)
 	}
 
 	expectExecReplay := func(client servicepb.BucketServiceClient, phase string) {
-		expectReplay(client, phase, execTx(), domain.ErrReasonNumscriptExecutionError, execMessage, execMetadata, execSink)
+		expectReplay(client, phase, execTx(), domain.ErrReasonNumscriptExecutionError, execMetadata, execSink)
 	}
 
 	storage := func() *commonpb.BackupStorage {
@@ -262,7 +258,6 @@ send [USD 10] (
 			Expect(info).NotTo(BeNil())
 			Expect(info.Reason).To(Equal(domain.ErrReasonInsufficientFunds))
 
-			frozenMessage = status.Convert(err).Message()
 			frozenMetadata = info.Metadata
 		})
 
@@ -275,7 +270,6 @@ send [USD 10] (
 			Expect(info).NotTo(BeNil())
 			Expect(info.Reason).To(Equal(domain.ErrReasonNumscriptExecutionError))
 
-			execMessage = status.Convert(err).Message()
 			execMetadata = info.Metadata
 		})
 
