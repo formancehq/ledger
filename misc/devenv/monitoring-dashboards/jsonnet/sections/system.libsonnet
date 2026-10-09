@@ -9,7 +9,7 @@ panels.row('System', 0, [
     'Logs per Second',
     { h: 8, w: 12, x: 0, y: 1 },
     [
-      { expr: 'sum(rate(raft.fsm.logs_appended{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)', legendFormat: '{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}' },
+      { expr: 'sum(rate(raft.fsm.logs_appended{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}' },
     ], unit='ops',
     description=|||
       Number of logs appended to the store per second per node. This metric represents the actual throughput of the system - how many logs (transactions, metadata changes, etc.) are being committed.
@@ -27,7 +27,7 @@ panels.row('System', 0, [
     'Ping latency',
     { h: 8, w: 12, x: 12, y: 1 },
     [
-      { expr: queries.histogramAvg('raft.transport.ping.duration', by=['k8s.namespace.name', 'formance.ledger.cluster.name', 'formance.ledger.node.id', 'peer']), legendFormat: '{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} / Peer {{peer}}' },
+      { expr: queries.histogramAvg('raft.transport.ping.duration', by=['k8s.namespace.name', 'formance.ledger.cluster.name', 'formance.ledger.node.id', 'peer']), legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} / Peer {{peer}}' },
     ], unit='s',
     description=|||
       Round-trip time (RTT) latency of ping requests between nodes. Measures network health between cluster members.
@@ -47,7 +47,7 @@ panels.row('System', 0, [
     'HTTP requests count',
     { h: 8, w: 12, x: 0, y: 93 },
     [
-      { expr: queries.histogramCountRate('http.server.request.duration', by=['k8s.namespace.name', 'formance.ledger.cluster.name', 'formance.ledger.node.id', 'http.response.status_code']), legendFormat: '{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} : {{http.response.status_code}}' },
+      { expr: queries.histogramCountRate('http.server.request.duration', by=['k8s.namespace.name', 'formance.ledger.cluster.name', 'formance.ledger.node.id', 'http.response.status_code']), legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} : {{http.response.status_code}}' },
     ], unit='ops',
     description=|||
       HTTP request rate per node, grouped by status code. Shows API traffic and error rates.
@@ -67,8 +67,8 @@ panels.row('System', 0, [
     'Memory utilization',
     { h: 8, w: 12, x: 12, y: 93 },
     [
-      { expr: '{"system.memory.utilization", "system.memory.state"="used", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}', legendFormat: '{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} : Used' },
-      { expr: '{"system.memory.utilization", "system.memory.state"="free", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}', legendFormat: '{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} : Free' },
+      { expr: '{"system.memory.utilization", "system.memory.state"="used", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} : Used' },
+      { expr: '{"system.memory.utilization", "system.memory.state"="free", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} : Free' },
     ], unit='percentunit',
     description=|||
       System memory utilization ratio (0-1) showing used vs free memory.
@@ -94,7 +94,7 @@ panels.row('System', 0, [
 /
 max by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id) (
   go.processor.limit{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}
-)', legendFormat: '{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}' },
+)', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}' },
     ], unit='percentunit',
     description=|||
       CPU utilization: process CPU seconds per second divided by the Go processor limit (GOMAXPROCS), per node. 1.0 means every available processor is busy.
@@ -112,8 +112,8 @@ max by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.i
     'System network traffic',
     { h: 8, w: 12, x: 12, y: 101 },
     [
-      { expr: 'rate(system.network.io{network.io.direction="receive", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])', legendFormat: '{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Reception' },
-      { expr: 'rate(system.network.io{network.io.direction="transmit", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])', legendFormat: '{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Transmission' },
+      { expr: 'rate(system.network.io{network.io.direction="receive", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Reception' },
+      { expr: 'rate(system.network.io{network.io.direction="transmit", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}[$__rate_interval])', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Transmission' },
     ], unit='binBps',
     description=|||
       Network I/O throughput showing bytes received and transmitted per second.
@@ -133,7 +133,7 @@ max by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.i
     'System memory usage',
     { h: 8, w: 8, x: 0, y: 109 },
     [
-      { expr: '{"system.memory.usage", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}', legendFormat: '{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: {{system.memory.state}}' },
+      { expr: '{"system.memory.usage", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: {{system.memory.state}}' },
     ], unit='bytes',
     description=|||
       Absolute system memory usage in bytes, broken down by state (used, free, cached, buffered).
@@ -148,7 +148,7 @@ max by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.i
     'Go memory allocated',
     { h: 8, w: 8, x: 8, y: 109 },
     [
-      { expr: 'rate(go.memory.allocated{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])', legendFormat: '{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Allocated' },
+      { expr: 'rate(go.memory.allocated{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Allocated' },
     ], unit='binBps',
     description=|||
       Rate of memory allocation by the Go runtime (bytes per second). High allocation rates cause increased GC pressure.
@@ -166,7 +166,7 @@ max by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.i
     'Leadership status',
     { h: 8, w: 8, x: 16, y: 109 },
     [
-      { expr: '{"raft.node.leader", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}', legendFormat: '{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} → leader {{leader_id}}' },
+      { expr: '{"raft.node.leader", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}} → leader {{leader_id}}' },
     ],
     description=|||
       Shows which node is recognized as the Raft leader by each node: each series is 1 for the leader_id a node currently recognizes. All nodes should report the same leader_id.
@@ -184,7 +184,7 @@ max by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.i
     'Goroutine count',
     { h: 8, w: 8, x: 0, y: 117 },
     [
-      { expr: 'go.goroutine.count{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: '{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}' },
+      { expr: 'go.goroutine.count{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}' },
     ],
     description=|||
       Number of active goroutines in the Go runtime. A steadily increasing count may indicate goroutine leaks.
@@ -201,7 +201,7 @@ max by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.i
     'Go memory used',
     { h: 8, w: 8, x: 8, y: 117 },
     [
-      { expr: '{"go.memory.used", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}', legendFormat: '{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: {{go.memory.type}}' },
+      { expr: '{"go.memory.used", "k8s.namespace.name"=~"$namespace", "formance.ledger.cluster.name"=~"$cluster", "formance.ledger.node.id"=~"$node"}', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: {{go.memory.type}}' },
     ], unit='bytes',
     description=|||
       Memory currently in use by the Go runtime, broken down by type (stack, heap).
@@ -219,7 +219,7 @@ max by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.i
     'Go memory allocations',
     { h: 8, w: 8, x: 16, y: 117 },
     [
-      { expr: 'rate(go.memory.allocations{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])', legendFormat: '{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Allocations' },
+      { expr: 'rate(go.memory.allocations{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Allocations' },
     ], unit='ops',
     description=|||
       Rate of memory allocations (objects per second) by the Go runtime.
@@ -234,7 +234,7 @@ max by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.i
     'Go GC goal',
     { h: 8, w: 12, x: 0, y: 125 },
     [
-      { expr: 'go.memory.gc.goal{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: '{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Goal' },
+      { expr: 'go.memory.gc.goal{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Goal' },
     ], unit='bytes',
     description=|||
       Target heap size for the next GC cycle, set by the Go runtime's pacer.

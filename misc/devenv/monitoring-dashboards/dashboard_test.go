@@ -19,6 +19,17 @@ var (
 	namespaceLabel = regexp.MustCompile(`k8s[._]namespace[._]name`)
 )
 
+// groupsByNode reports whether a query keeps one series per node.
+func groupsByNode(expr string) bool {
+	for _, clause := range groupingClause.FindAllStringSubmatch(expr, -1) {
+		if clause[1] == "by" && nodeLabel.MatchString(clause[2]) {
+			return true
+		}
+	}
+
+	return false
+}
+
 var wellFormedLegend = regexp.MustCompile(`^(?:[^{}]|\{\{[A-Za-z_][A-Za-z0-9_.]*\}\})*$`)
 
 var nativeClassicHistogramSuffix = regexp.MustCompile(`(?:raft|admission|wal|pebble|http)[A-Za-z0-9_]*(?:_sum|_count)(?:\{|\[)`)
@@ -211,8 +222,19 @@ func assertDashboardTree(t *testing.T, value any, native bool) {
 					}
 				}
 			}
-			if legend, ok := value["legendFormat"].(string); ok && nodeLabel.MatchString(legend) && !clusterLabel.MatchString(legend) {
-				t.Errorf("legend names a node without its cluster at %s: %q", path, legend)
+			// Two namespaces can hold a cluster of the same name, so the
+			// legend needs both to tell the series apart.
+			if legend, ok := value["legendFormat"].(string); ok {
+				if nodeLabel.MatchString(legend) && (!clusterLabel.MatchString(legend) || !namespaceLabel.MatchString(legend)) {
+					t.Errorf("legend names a node without its namespace and cluster at %s: %q", path, legend)
+				}
+				// A per-node series needs the node in its legend, unless
+				// Grafana derives the legend (__auto) or it is a heatmap
+				// bucket ({{le}}).
+				expr, _ := value["expr"].(string)
+				if groupsByNode(expr) && !nodeLabel.MatchString(legend) && legend != "__auto" && !strings.Contains(legend, "{{le}}") {
+					t.Errorf("per-node series have a legend without the node at %s: %q", path, legend)
+				}
 			}
 
 			// Grafana substitutes {{label}}; rewriteLegendFormat only
