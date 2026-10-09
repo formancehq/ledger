@@ -540,7 +540,7 @@ send [USD/2 1000] (
 			Expect(err).To(Succeed())
 		})
 
-		It("Should reject a division by zero as a runtime error", func() {
+		It("Should reject a division by zero as an execution error", func() {
 			script := `
 set_tx_meta("bad", 3 / 0)
 
@@ -553,8 +553,8 @@ send [USD/2 1] (
 			Expect(err).To(HaveOccurred())
 			info := actions.ExtractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil(), "error must carry error info: %v", err)
-			Expect(info.Reason).To(Equal(domain.ErrReasonNumscriptRuntime),
-				"division by zero must be a runtime error, got %q", info.Reason)
+			Expect(info.Reason).To(Equal(domain.ErrReasonNumscriptExecutionError),
+				"division by zero must be an execution error, got %q", info.Reason)
 		})
 
 		It("Should reject a send of a negative amount as an execution error", func() {
@@ -575,8 +575,8 @@ send -[USD/2 100] (
 		})
 
 		It("Should reject a non-numeric value for a number variable", func() {
-			// A number var whose raw value cannot parse as an integer is a parse
-			// error surfaced at variable binding.
+			// A number var whose raw value cannot parse as an integer fails
+			// variable binding during dependency resolution.
 			script := `
 vars {
   number $count
@@ -593,11 +593,8 @@ send [USD/2 $count] (
 			Expect(err).To(HaveOccurred())
 			info := actions.ExtractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil(), "error must carry error info: %v", err)
-			Expect(info.Reason).To(BeElementOf(
-				domain.ErrReasonNumscriptParseError,
-				domain.ErrReasonNumscriptRuntime,
-				domain.ErrReasonValidation,
-			), "invalid number var must be rejected, got %q", info.Reason)
+			Expect(info.Reason).To(Equal(domain.ErrReasonNumscriptExecutionError),
+				"invalid number var must be an execution error, got %q", info.Reason)
 		})
 	})
 })

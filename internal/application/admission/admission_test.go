@@ -1227,8 +1227,8 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		// the real numscript cause directly. It is NOT wrapped in the retryable
 		// ErrDependencyDiscoveryFailed: it can never succeed on retry, so it must
 		// terminate rather than invite a retry loop.
-		var runtimeErr *domain.ErrNumscriptRuntime
-		require.ErrorAs(t, err, &runtimeErr)
+		var execErr *domain.ErrNumscriptExecution
+		require.ErrorAs(t, err, &execErr)
 
 		var discoveryErr *domain.ErrDependencyDiscoveryFailed
 		require.NotErrorAs(t, err, &discoveryErr,

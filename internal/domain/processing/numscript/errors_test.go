@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"math/big"
 	"testing"
 
@@ -184,6 +185,96 @@ func TestConvertNumscriptError_OtherError(t *testing.T) {
 
 	require.IsType(t, &domain.ErrNumscriptRuntime{}, got)
 	require.Equal(t, "numscript runtime error: some other error", got.Error())
+}
+
+// TestSafeResolveDependencies_ScriptFailuresAreExecutionErrors: a resolution
+// failure caused by the script, its vars, or the metadata and balances it read
+// is a client error (NUMSCRIPT_EXECUTION_ERROR), never NUMSCRIPT_RUNTIME.
+func TestSafeResolveDependencies_ScriptFailuresAreExecutionErrors(t *testing.T) {
+	t.Parallel()
+
+	const sendToVar = `vars { account $a }
+send [USD 1] ( source = @world destination = $a )`
+
+	for _, tc := range []struct {
+		name   string
+		script string
+		vars   map[string]string
+		source mapValueSource
+		detail string
+	}{
+		{name: "account var with the @ prefix", script: sendToVar, vars: map[string]string{"a": "@world"}, detail: "Invalid account name"},
+		{name: "missing var", script: sendToVar, detail: "Variable is missing"},
+		{
+			name: "monetary var of the wrong type",
+			script: `vars { monetary $m }
+send $m ( source = @world destination = @x )`,
+			vars:   map[string]string{"m": "nope"},
+			detail: "invalid monetary literal",
+		},
+		{name: "mismatched currencies", script: `send [USD 1] + [EUR 5] ( source = @world destination = @x )`, detail: "Mismatched currency"},
+		{
+			name: "portion var above 1",
+			script: `vars { portion $p }
+send [USD 10] ( source = @world destination = { $p to @x remaining to @y } )`,
+			vars:   map[string]string{"p": "3/2"},
+			detail: "Bad portion",
+		},
+		{name: "division by zero", script: `send [USD 10] ( source = @world destination = { 1/0 to @x remaining to @y } )`, detail: "divide by zero"},
+		{
+			name: "missing metadata",
+			script: `vars { account $a = meta(@cfg, "dst") }
+send [USD 1] ( source = @world destination = $a )`,
+			detail: "doesn't have metadata",
+		},
+		{
+			name: "metadata value of the wrong type",
+			script: `vars { monetary $m = meta(@cfg, "amount") }
+send $m ( source = @world destination = @x )`,
+			source: mapValueSource{metadata: map[string]string{"cfg\x00amount": "not a monetary"}},
+			detail: "invalid monetary literal",
+		},
+		{
+			name: "balance of a negative account",
+			script: `vars { monetary $m = balance(@neg, USD) }
+send $m ( source = @world destination = @x )`,
+			source: mapValueSource{balances: map[string]*big.Int{"neg\x00USD\x00": big.NewInt(-10)}},
+			detail: "negative balance",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			parsed, parseErr := NewNumscriptCache(16).GetOrParse(tc.script)
+			require.Nil(t, parseErr)
+
+			vars := numscriptlib.VariablesMap{}
+			maps.Copy(vars, tc.vars)
+
+			_, err := SafeResolveDependencies(parsed, context.Background(), vars, NewStore(tc.source, false))
+			require.NotNil(t, err)
+			require.False(t, IsPanic(err))
+
+			var execErr *domain.ErrNumscriptExecution
+			require.ErrorAs(t, err, &execErr)
+			require.Contains(t, execErr.Detail, tc.detail)
+			require.Equal(t, domain.KindPrecondition, err.Kind())
+		})
+	}
+}
+
+// TestConvertNumscriptError_LibraryDefectsStayInternal: a numscript defect is a
+// server fault, not a client error.
+func TestConvertNumscriptError_LibraryDefectsStayInternal(t *testing.T) {
+	t.Parallel()
+
+	for _, err := range []error{
+		numscriptlib.InternalError{},
+		numscriptlib.UnhandledError{},
+	} {
+		got := convertNumscriptError(err)
+		require.Equal(t, domain.ErrReasonNumscriptRuntime, got.Reason(), "%T", err)
+	}
 }
 
 func TestConvertNumscriptError_Nil(t *testing.T) {

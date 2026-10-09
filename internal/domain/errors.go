@@ -1373,12 +1373,13 @@ func (e *ErrNumscriptCompile) Metadata() map[string]string {
 	return map[string]string{"details": e.Detail}
 }
 
-// ErrNumscriptExecution — the script ran and failed on its own terms: a
-// negative amount, an allotment that does not sum to 1, a division by zero, a
-// send-all from an unbounded source, a posting amount wider than 256 bits, and
-// the like. KindPrecondition because amounts and portions can come from
-// balance() or meta(), so the same script and vars may succeed against other
-// state — the same class as ErrInsufficientFunds.
+// ErrNumscriptExecution — the script failed on its own terms, during dependency
+// resolution or on the VM: an invalid account name, a missing or mistyped var,
+// a negative amount, an allotment that does not sum to 1, a division by zero, a
+// missing metadata value, a posting amount wider than 256 bits, and the like.
+// KindPrecondition because values can come from balance() or meta(), so the
+// same script and vars may succeed against other state — the same class as
+// ErrInsufficientFunds.
 type ErrNumscriptExecution struct {
 	Detail string
 }

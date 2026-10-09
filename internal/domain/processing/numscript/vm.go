@@ -200,22 +200,22 @@ func convertVMError(err error) domain.SerializableError {
 // isScriptExecutionError reports whether err is a VM failure caused by the
 // script, its vars, or the balances and metadata it read.
 func isScriptExecutionError(err error) bool {
-	return isVMError[numscriptlib.VmNegativeAmountError](err) ||
-		isVMError[numscriptlib.VmNegativeBalanceError](err) ||
-		isVMError[numscriptlib.VmAssetMismatchError](err) ||
-		isVMError[numscriptlib.VmInvalidAllotmentSum](err) ||
-		isVMError[numscriptlib.VmNegativePortionError](err) ||
-		isVMError[numscriptlib.VmDivideByZeroError](err) ||
-		isVMError[numscriptlib.VmInvalidAccountName](err) ||
-		isVMError[numscriptlib.VmInvalidColor](err) ||
-		isVMError[numscriptlib.VmInvalidScope](err) ||
-		isVMError[numscriptlib.VmCannotCastScopedAccountToString](err) ||
-		isVMError[numscriptlib.VmInvalidUncappedSource](err) ||
-		isVMError[numscriptlib.VmMetadataNotFoundError](err) ||
-		isVMError[numscriptlib.VmBadMetaValueError](err)
+	return isErrorType[numscriptlib.VmNegativeAmountError](err) ||
+		isErrorType[numscriptlib.VmNegativeBalanceError](err) ||
+		isErrorType[numscriptlib.VmAssetMismatchError](err) ||
+		isErrorType[numscriptlib.VmInvalidAllotmentSum](err) ||
+		isErrorType[numscriptlib.VmNegativePortionError](err) ||
+		isErrorType[numscriptlib.VmDivideByZeroError](err) ||
+		isErrorType[numscriptlib.VmInvalidAccountName](err) ||
+		isErrorType[numscriptlib.VmInvalidColor](err) ||
+		isErrorType[numscriptlib.VmInvalidScope](err) ||
+		isErrorType[numscriptlib.VmCannotCastScopedAccountToString](err) ||
+		isErrorType[numscriptlib.VmInvalidUncappedSource](err) ||
+		isErrorType[numscriptlib.VmMetadataNotFoundError](err) ||
+		isErrorType[numscriptlib.VmBadMetaValueError](err)
 }
 
-func isVMError[T error](err error) bool {
+func isErrorType[T error](err error) bool {
 	_, ok := errors.AsType[T](err)
 
 	return ok

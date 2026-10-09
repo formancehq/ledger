@@ -392,9 +392,12 @@ to 1, a send-all from an unbounded source, a posting amount wider than 256
 bits, and the other script-caused VM errors — returns gRPC `FailedPrecondition`
 (HTTP 400) with that reason. Revision 27 returned `Internal` with
 `NUMSCRIPT_RUNTIME` for the same requests. The failure is now freezable under
-an idempotency key, like `INSUFFICIENT_FUNDS`. `NUMSCRIPT_RUNTIME` remains for
-genuine server faults: recovered library panics, VM internal errors, and dependency-resolution errors the library
-exposes no public type for.
+an idempotency key, like `INSUFFICIENT_FUNDS`. Dependency-resolution failures
+caused by the script, its vars, or the state it read (an invalid account name,
+a missing or mistyped var, mismatched currencies, a bad portion, a division by
+zero, a missing or malformed metadata value, a negative balance) return the same
+reason. `NUMSCRIPT_RUNTIME` remains for genuine server faults: recovered library
+panics, numscript internal errors, and unmapped library errors.
 
 This is an incompatible response-semantic change: a revision-27 client sees a
 status code and reason it does not know. Clients and servers must use the
