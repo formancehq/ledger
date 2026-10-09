@@ -522,3 +522,25 @@ func TestRequestLogKindCoversEveryAuditToken(t *testing.T) {
 		require.True(t, produced[token], "no request produces kind %q", kind)
 	}
 }
+
+// With the committed order types known, a filter mixing an order-type leaf
+// with another field is decided in one pass: an Or holds only if one of its
+// arms does.
+func TestAuditEntryMatchesMixedOrInOnePass(t *testing.T) {
+	t.Parallel()
+
+	ledgerB := auditEntry{seq: 10, ledgers: []string{"b"}, orderCount: 1, minLog: 40, maxLog: 40}
+	metadataOnly := map[string]bool{"add_metadata": true}
+	mixed := filterOr(
+		filterAuditString(commonpb.AuditField_AUDIT_FIELD_LEDGER, "a"),
+		filterAuditString(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "create_transaction"),
+	)
+
+	require.False(t, auditEntryMatches(mixed, ledgerB, metadataOnly), "neither arm holds")
+	require.True(t, auditEntryMatches(mixed, ledgerB, map[string]bool{"create_transaction": true}), "the order-type arm holds")
+
+	ledgerA := ledgerB
+	ledgerA.ledgers = []string{"a"}
+	require.True(t, auditEntryMatches(mixed, ledgerA, metadataOnly), "the ledger arm holds")
+	require.True(t, auditEntryMatches(mixed, ledgerB, nil), "unknown orders leave the order-type arm holding")
+}

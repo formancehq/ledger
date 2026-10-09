@@ -338,8 +338,10 @@ func (c *Checker) validateAuditPage(maxTicket, learnedBefore uint64, entries []a
 		}
 
 		// The order types the model committed under this entry's logs are the
-		// only ones the order-type index can hold for it.
-		if typed && !auditEntrySatisfiesTypes(filter, committedOrderTypes(e, logs)) {
+		// only ones the order-type index can hold for it, so with them the whole
+		// filter is decided at once — an Or of an order-type leaf and another
+		// field holds only if one of them does.
+		if typed && !auditEntryMatches(filter, e, committedOrderTypes(e, logs)) {
 			return auditVerdict{finding: "audit entry outside the order-type scope", entry: describeAuditEntry(e), why: "model committed " + strings.Join(slices.Sorted(maps.Keys(committedOrderTypes(e, logs))), ",")}
 		}
 
@@ -697,9 +699,15 @@ func auditPageViolation(entries []auditEntry, pageSize int, reverse bool, filter
 
 // auditEntrySatisfies reports whether a served entry meets the filter it was
 // selected by, on the entry's own fields. An order-type leaf holds here: the
-// list entry does not carry its orders, so validateAuditPage judges it from
-// the model's log kinds instead.
+// list entry does not carry its orders.
 func auditEntrySatisfies(filter *commonpb.QueryFilter, e auditEntry) bool {
+	return auditEntryMatches(filter, e, nil)
+}
+
+// auditEntryMatches evaluates filter on e in one pass, with an order-type leaf
+// read from orderTypes — the kinds the model committed under e's logs. A nil
+// orderTypes leaves that leaf holding, for when the orders are not known.
+func auditEntryMatches(filter *commonpb.QueryFilter, e auditEntry, orderTypes map[string]bool) bool {
 	return foldFilter(filter, filterFold[bool]{
 		and: allOf,
 		or:  anyOf,
@@ -741,27 +749,11 @@ func auditEntrySatisfies(filter *commonpb.QueryFilter, e auditEntry) bool {
 				}
 
 				return e.idemKey == value
+			case commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE:
+				return orderTypes == nil || orderTypes[value]
 			default:
 				return true
 			}
-		},
-	})
-}
-
-// auditEntrySatisfiesTypes evaluates only the order-type leaves of filter
-// against the types the model committed for the entry; every other leaf holds.
-func auditEntrySatisfiesTypes(filter *commonpb.QueryFilter, types map[string]bool) bool {
-	return foldFilter(filter, filterFold[bool]{
-		and: allOf,
-		or:  anyOf,
-		not: negate,
-		leaf: func(leaf *commonpb.QueryFilter) bool {
-			a := leaf.GetAudit()
-			if a == nil || a.GetField() != commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE {
-				return true
-			}
-
-			return types[a.GetStringCond().GetHardcoded()]
 		},
 	})
 }
