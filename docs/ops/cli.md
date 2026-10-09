@@ -4957,6 +4957,12 @@ Manage event sinks (NATS, ClickHouse, Kafka, HTTP, Databricks) that receive doma
 ### `events list`
 
 List all configured event sinks and their current status (cursor position, errors).
+The human view shows `pending` while a sink has no error and its cursor is 0,
+`healthy` when its cursor has advanced without a recorded error, and the current
+error when startup or delivery fails. `healthy` reports observed processing
+progress, not proof of external delivery: internal or filtered logs can advance
+the cursor without a publish. The human view also shows the error occurrence time.
+Startup errors clear after the sink starts successfully.
 Human, JSON, YAML, and JSON result-file output mask credentials embedded in
 NATS, HTTP, and ClickHouse URLs. Usernames and connection details remain
 visible, while passwords and token-only NATS userinfo display as `****`.

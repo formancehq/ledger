@@ -77,8 +77,10 @@ func TestEventSinkDeliveryConditionRequiresObservedStatus(t *testing.T) {
 		message string
 	}{
 		{name: "missing status", want: metav1.ConditionUnknown, reason: "StatusUnavailable", message: "Ledger has not reported delivery status for this sink"},
-		{name: "observed without error", status: `{"sinkName":"primary","cursor":"0"}`, want: metav1.ConditionTrue, reason: "NoError", message: "Ledger reports no delivery error"},
+		{name: "observed without delivery", status: `{"sinkName":"primary","cursor":"0"}`, want: metav1.ConditionUnknown, reason: "PendingDelivery", message: "Ledger has not delivered an event for this sink"},
+		{name: "observed after delivery", status: `{"sinkName":"primary","cursor":"1"}`, want: metav1.ConditionTrue, reason: "NoError", message: "Ledger reports no delivery error"},
 		{name: "observed with error", status: `{"sinkName":"primary","error":{"message":"unsupported sink type"}}`, want: metav1.ConditionFalse, reason: "RuntimeError", message: "unsupported sink type"},
+		{name: "observed startup error", status: `{"sinkName":"primary","error":{"message":"sink startup: connection refused"}}`, want: metav1.ConditionFalse, reason: "RuntimeError", message: "sink startup: connection refused"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()

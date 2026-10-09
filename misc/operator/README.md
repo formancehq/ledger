@@ -200,7 +200,11 @@ The operator applies creation and edits through Ledger's replicated runtime
 API without restarting the StatefulSet. `status.conditions` reports
 reconciliation state; `status.cursor` and `status.error` expose delivery
 progress and the current delivery error. `Delivering=Unknown` means Ledger has
-not yet reported a sink status, even when its configuration is synced. The
+not yet reported a sink status or the cursor remains zero, even
+when its configuration is synced. Startup and delivery errors set
+`Delivering=False`; cursor progress without a recorded error sets
+`Delivering=True`. Filtered or internal logs can advance the cursor without
+external delivery, so this condition alone does not prove a publish. The
 operator adds a finalizer and removes the runtime sink before the `EventSink`
 can be deleted. A same-name sink that this resource does not own is left
 untouched.

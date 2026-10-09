@@ -168,6 +168,10 @@ func sinkDeliveryCondition(observed actualEventSink, generation int64) metav1.Co
 		condition.Status = metav1.ConditionFalse
 		condition.Reason = "RuntimeError"
 		condition.Message = observed.deliveryError
+	case observed.cursor == 0:
+		condition.Status = metav1.ConditionUnknown
+		condition.Reason = "PendingDelivery"
+		condition.Message = "Ledger has not delivered an event for this sink"
 	default:
 		condition.Status = metav1.ConditionTrue
 		condition.Reason = "NoError"
