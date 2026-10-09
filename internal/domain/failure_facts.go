@@ -35,8 +35,7 @@ func FailureFactsOf(d SerializableError) FailureFacts {
 	case *ErrInvalidSkippableReason:
 		code = "INVALID_SKIPPABLE_REASON"
 	case *ErrDependencyDiscoveryFailed:
-		var cause SerializableError
-		if errors.As(e.Cause, &cause) {
+		if cause, ok := errors.AsType[SerializableError](e.Cause); ok {
 			code = FailureFactsOf(cause).Code
 		} else {
 			code = "DEPENDENCY_DISCOVERY_FAILED"
@@ -78,8 +77,7 @@ func FailureFactsOf(d SerializableError) FailureFacts {
 		facts[key] = normalizeFailureFact(value)
 	}
 	if e, ok := d.(*ErrDependencyDiscoveryFailed); ok {
-		var cause SerializableError
-		if errors.As(e.Cause, &cause) {
+		if cause, ok := errors.AsType[SerializableError](e.Cause); ok {
 			maps.Copy(facts, FailureFactsOf(cause).Facts)
 		}
 	}
