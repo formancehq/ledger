@@ -161,11 +161,11 @@ func TestLogOutcome_AbsentDateIndexRequiresTheRefusal(t *testing.T) {
 	ls := buildGlobal(t, oracletest.TxReq("world", "acc:1", "USD/2", 5)).Ledger("L")
 	filter := filterLogDateLeaf()
 	needed := neededLogIndexes(filter)
-	window := logWindow(ls, "L", filter, 0, logTestPageSize)
+	window := logWindow(ls, "L", filter, 0, false, logTestPageSize)
 
-	require.False(t, logOutcomeLegal(ls, "L", filter, needed, indexedErrNone, servedRows(ls, "L", window...), 0, logTestPageSize, ""),
+	require.False(t, logOutcomeLegal(ls, "L", filter, needed, indexedErrNone, servedRows(ls, "L", window...), 0, false, logTestPageSize, ""),
 		"a page served from an index no base holds is a finding, matching rows or not")
-	require.True(t, logOutcomeLegal(ls, "L", filter, needed, indexedErrNotReady, nil, 0, logTestPageSize, ""),
+	require.True(t, logOutcomeLegal(ls, "L", filter, needed, indexedErrNotReady, nil, 0, false, logTestPageSize, ""),
 		"the not-ready refusal is the legal outcome while the index is absent")
 }
 
@@ -180,12 +180,12 @@ func TestLogOutcome_ActiveDateIndexRequiresThePage(t *testing.T) {
 	ls := gs.Ledger("L")
 	filter := filterLogDateLeaf()
 	needed := neededLogIndexes(filter)
-	window := logWindow(ls, "L", filter, 0, logTestPageSize)
+	window := logWindow(ls, "L", filter, 0, false, logTestPageSize)
 
-	require.True(t, logOutcomeLegal(ls, "L", filter, needed, indexedErrNone, servedRows(ls, "L", window...), 0, logTestPageSize, ""))
-	require.False(t, logOutcomeLegal(ls, "L", filter, needed, indexedErrNone, servedRows(ls, "L", append(window, 999)...), 0, logTestPageSize, ""),
+	require.True(t, logOutcomeLegal(ls, "L", filter, needed, indexedErrNone, servedRows(ls, "L", window...), 0, false, logTestPageSize, ""))
+	require.False(t, logOutcomeLegal(ls, "L", filter, needed, indexedErrNone, servedRows(ls, "L", append(window, 999)...), 0, false, logTestPageSize, ""),
 		"a page whose rows are not the base's window is a finding")
-	require.False(t, logOutcomeLegal(ls, "L", filter, needed, indexedErrNotReady, nil, 0, logTestPageSize, ""),
+	require.False(t, logOutcomeLegal(ls, "L", filter, needed, indexedErrNotReady, nil, 0, false, logTestPageSize, ""),
 		"refusing an index every base holds active is a finding")
 }
 
@@ -204,11 +204,11 @@ func TestLogWindowMatches_UnlearnedDateIsOptional(t *testing.T) {
 
 	id := rows[0].ID
 
-	require.True(t, logWindowMatches(ls, "L", filter, 0, logTestPageSize, nil, ""),
+	require.True(t, logWindowMatches(ls, "L", filter, 0, false, logTestPageSize, nil, ""),
 		"an undecided row may be absent from the page")
-	require.True(t, logWindowMatches(ls, "L", filter, 0, logTestPageSize, servedRows(ls, "L", id), ""),
+	require.True(t, logWindowMatches(ls, "L", filter, 0, false, logTestPageSize, servedRows(ls, "L", id), ""),
 		"and it may be present")
-	require.False(t, logWindowMatches(ls, "L", filter, 0, logTestPageSize, servedRows(ls, "L", id+7), ""),
+	require.False(t, logWindowMatches(ls, "L", filter, 0, false, logTestPageSize, servedRows(ls, "L", id+7), ""),
 		"a row the base does not hold at all is never legal")
 }
 
@@ -225,9 +225,9 @@ func TestLogWindowMatches_LearnedDateIsRequired(t *testing.T) {
 	ls := gs.Ledger("L")
 	filter := filterLogDateLeaf() // date >= 1
 
-	require.Equal(t, []uint64{id}, logWindow(ls, "L", filter, 0, logTestPageSize))
-	require.True(t, logWindowMatches(ls, "L", filter, 0, logTestPageSize, servedRows(ls, "L", id), ""))
-	require.False(t, logWindowMatches(ls, "L", filter, 0, logTestPageSize, nil, ""),
+	require.Equal(t, []uint64{id}, logWindow(ls, "L", filter, 0, false, logTestPageSize))
+	require.True(t, logWindowMatches(ls, "L", filter, 0, false, logTestPageSize, servedRows(ls, "L", id), ""))
+	require.False(t, logWindowMatches(ls, "L", filter, 0, false, logTestPageSize, nil, ""),
 		"a page with room may not omit a required row")
 }
 
@@ -246,7 +246,7 @@ func TestLogWindowMatches_ComparesEveryPinnedField(t *testing.T) {
 	ls := gs.Ledger("L")
 	filter := filterLogIDLeaf()
 
-	require.True(t, logWindowMatches(ls, "L", filter, 0, logTestPageSize, servedRows(ls, "L", id), ""),
+	require.True(t, logWindowMatches(ls, "L", filter, 0, false, logTestPageSize, servedRows(ls, "L", id), ""),
 		"the model's own view of the row is what the server owes")
 
 	for _, tc := range []struct {
@@ -270,7 +270,7 @@ func TestLogWindowMatches_ComparesEveryPinnedField(t *testing.T) {
 			page := servedRows(ls, "L", id)
 			tc.break_(&page[0])
 
-			require.False(t, logWindowMatches(ls, "L", filter, 0, logTestPageSize, page, ""))
+			require.False(t, logWindowMatches(ls, "L", filter, 0, false, logTestPageSize, page, ""))
 		})
 	}
 }
@@ -290,11 +290,11 @@ func TestLogWindowMatches_UnlearnedDateSkipsOnlyTheDate(t *testing.T) {
 
 	page := servedRows(ls, "L", rows[0].ID)
 	page[0].date, page[0].hasDate = 999, true
-	require.True(t, logWindowMatches(ls, "L", filter, 0, logTestPageSize, page, ""),
+	require.True(t, logWindowMatches(ls, "L", filter, 0, false, logTestPageSize, page, ""),
 		"an unlearned date says nothing about the served one")
 
 	page[0].kind = "drop_index"
-	require.False(t, logWindowMatches(ls, "L", filter, 0, logTestPageSize, page, ""),
+	require.False(t, logWindowMatches(ls, "L", filter, 0, false, logTestPageSize, page, ""),
 		"the kind is derived from the request and is compared regardless")
 }
 
@@ -316,7 +316,7 @@ func TestLogWindowMatches_ComparesCanonicalPayload(t *testing.T) {
 
 	filter := filterLogIDLeaf()
 
-	require.True(t, logWindowMatches(ls, "L", filter, 0, logTestPageSize, servedRows(ls, "L", rows[0].ID), ""))
+	require.True(t, logWindowMatches(ls, "L", filter, 0, false, logTestPageSize, servedRows(ls, "L", rows[0].ID), ""))
 
 	for _, tc := range []struct {
 		name    string
@@ -333,7 +333,7 @@ func TestLogWindowMatches_ComparesCanonicalPayload(t *testing.T) {
 			page := servedRows(ls, "L", rows[0].ID)
 			page[0].payload = tc.payload
 
-			require.False(t, logWindowMatches(ls, "L", filter, 0, logTestPageSize, page, ""))
+			require.False(t, logWindowMatches(ls, "L", filter, 0, false, logTestPageSize, page, ""))
 		})
 	}
 }
@@ -405,14 +405,14 @@ func TestLogWindowMatches_GlobalSequenceComparedOnceLearned(t *testing.T) {
 
 	page := servedRows(ls, "L", id)
 	page[0].sequence = 4242
-	require.True(t, logWindowMatches(ls, "L", filter, 0, logTestPageSize, page, ""),
+	require.True(t, logWindowMatches(ls, "L", filter, 0, false, logTestPageSize, page, ""),
 		"an unlearned sequence says nothing about the served one")
 
 	gs.LearnLogSequence("L", id, 12)
 	ls = gs.Ledger("L")
 
-	require.True(t, logWindowMatches(ls, "L", filter, 0, logTestPageSize, servedRows(ls, "L", id), ""))
-	require.False(t, logWindowMatches(ls, "L", filter, 0, logTestPageSize, page, ""),
+	require.True(t, logWindowMatches(ls, "L", filter, 0, false, logTestPageSize, servedRows(ls, "L", id), ""))
+	require.False(t, logWindowMatches(ls, "L", filter, 0, false, logTestPageSize, page, ""),
 		"a served sequence other than the learned one is a finding")
 }
 
@@ -437,14 +437,14 @@ func TestLogWindowMatches_RequiredRowMayNotBeSkipped(t *testing.T) {
 	ls := gs.Ledger("L")
 	filter := filterLogDateLeaf() // date >= 1: both rows required
 
-	require.True(t, logWindowMatches(ls, "L", filter, 0, logTestPageSize, servedRows(ls, "L", rows[0].ID, rows[1].ID), ""))
-	require.False(t, logWindowMatches(ls, "L", filter, 0, logTestPageSize, servedRows(ls, "L", rows[1].ID), ""),
+	require.True(t, logWindowMatches(ls, "L", filter, 0, false, logTestPageSize, servedRows(ls, "L", rows[0].ID, rows[1].ID), ""))
+	require.False(t, logWindowMatches(ls, "L", filter, 0, false, logTestPageSize, servedRows(ls, "L", rows[1].ID), ""),
 		"skipping an earlier required row is a finding")
-	require.True(t, logWindowMatches(ls, "L", filter, 0, 1, servedRows(ls, "L", rows[0].ID), strconv.FormatUint(rows[0].ID, 10)),
+	require.True(t, logWindowMatches(ls, "L", filter, 0, false, 1, servedRows(ls, "L", rows[0].ID), strconv.FormatUint(rows[0].ID, 10)),
 		"a full page of one legitimately truncates the rest, naming its last row")
-	require.False(t, logWindowMatches(ls, "L", filter, 0, 1, servedRows(ls, "L", rows[0].ID), ""),
+	require.False(t, logWindowMatches(ls, "L", filter, 0, false, 1, servedRows(ls, "L", rows[0].ID), ""),
 		"a truncated page must hand back a resume token")
-	require.False(t, logWindowMatches(ls, "L", filter, 0, 1, servedRows(ls, "L", rows[1].ID), ""),
+	require.False(t, logWindowMatches(ls, "L", filter, 0, false, 1, servedRows(ls, "L", rows[1].ID), ""),
 		"a full page must still start at the first required row")
 }
 
@@ -470,13 +470,13 @@ func TestLogOutcome_IndexFreeFilterMayNotBeGated(t *testing.T) {
 	ls := buildGlobal(t, oracletest.TxReq("world", "acc:1", "USD/2", 5)).Ledger("L")
 	filter := filterLogIDLeaf()
 	needed := neededLogIndexes(filter)
-	window := logWindow(ls, "L", filter, 0, logTestPageSize)
+	window := logWindow(ls, "L", filter, 0, false, logTestPageSize)
 
 	require.NotEmpty(t, window, "the id filter must select the committed log, or this pins nothing")
-	require.True(t, logOutcomeLegal(ls, "L", filter, needed, indexedErrNone, servedRows(ls, "L", window...), 0, logTestPageSize, ""))
-	require.False(t, logOutcomeLegal(ls, "L", filter, needed, indexedErrNone, nil, 0, logTestPageSize, ""),
+	require.True(t, logOutcomeLegal(ls, "L", filter, needed, indexedErrNone, servedRows(ls, "L", window...), 0, false, logTestPageSize, ""))
+	require.False(t, logOutcomeLegal(ls, "L", filter, needed, indexedErrNone, nil, 0, false, logTestPageSize, ""),
 		"an empty page where the model holds rows is a finding")
-	require.False(t, logOutcomeLegal(ls, "L", filter, needed, indexedErrNotReady, nil, 0, logTestPageSize, ""),
+	require.False(t, logOutcomeLegal(ls, "L", filter, needed, indexedErrNotReady, nil, 0, false, logTestPageSize, ""),
 		"a not-ready refusal of an index-free filter is a finding")
 }
 
@@ -524,11 +524,11 @@ func TestLogWindowMatches_ColourSplitIsAMismatch(t *testing.T) {
 	filter := filterLogIDLeaf()
 	id := ls.LogRows()[0].ID
 
-	require.True(t, logWindowMatches(ls, "L", filter, 0, logTestPageSize, servedRows(ls, "L", id), ""))
+	require.True(t, logWindowMatches(ls, "L", filter, 0, false, logTestPageSize, servedRows(ls, "L", id), ""))
 
 	page := servedRows(ls, "L", id)
 	page[0].newKept = strings.ReplaceAll(page[0].newKept, "USD/2:", "USD/2:GRANTS")
-	require.False(t, logWindowMatches(ls, "L", filter, 0, logTestPageSize, page, ""))
+	require.False(t, logWindowMatches(ls, "L", filter, 0, false, logTestPageSize, page, ""))
 }
 
 // A transaction log carries its own copy of the transaction. ListTransactions
@@ -553,7 +553,7 @@ func TestLogWindowMatches_ComparesTheEmbeddedTransaction(t *testing.T) {
 	require.Equal(t, uint64(2), rows[1].TxID, "the revert log names the compensating one")
 
 	ids := []uint64{rows[0].ID, rows[1].ID}
-	require.True(t, logWindowMatches(ls, "L", filter, 0, logTestPageSize, servedRows(ls, "L", ids...), ""))
+	require.True(t, logWindowMatches(ls, "L", filter, 0, false, logTestPageSize, servedRows(ls, "L", ids...), ""))
 
 	for name, corrupt := range map[string]func(*serverLogRow){
 		"a different transaction id": func(r *serverLogRow) { r.tx.Id = 99 },
@@ -567,20 +567,20 @@ func TestLogWindowMatches_ComparesTheEmbeddedTransaction(t *testing.T) {
 
 			page := servedRows(ls, "L", ids...)
 			corrupt(&page[0])
-			require.False(t, logWindowMatches(ls, "L", filter, 0, logTestPageSize, page, ""))
+			require.False(t, logWindowMatches(ls, "L", filter, 0, false, logTestPageSize, page, ""))
 		})
 	}
 
 	// The revert log's reverted_transaction_id is part of the payload too.
 	page := servedRows(ls, "L", ids...)
 	page[1].revertsID = 42
-	require.False(t, logWindowMatches(ls, "L", filter, 0, logTestPageSize, page, ""))
+	require.False(t, logWindowMatches(ls, "L", filter, 0, false, logTestPageSize, page, ""))
 
 	// A config-mutation log announces no transaction; one appearing is a finding.
 	cfg := buildGlobal(t, oracletest.AddTypeReq("T")).Ledger("L")
 	cfgPage := servedRows(cfg, "L", cfg.LogRows()[0].ID)
 	cfgPage[0].tx = &commonpb.Transaction{Id: 1}
-	require.False(t, logWindowMatches(cfg, "L", filter, 0, logTestPageSize, cfgPage, ""))
+	require.False(t, logWindowMatches(cfg, "L", filter, 0, false, logTestPageSize, cfgPage, ""))
 }
 
 // The payload is frozen at creation while the record keeps moving, so a
@@ -611,5 +611,24 @@ func TestLogTxMatches_IgnoresPostCreationMutation(t *testing.T) {
 		ids = append(ids, row.ID)
 	}
 
-	require.True(t, logWindowMatches(ls, "L", filterLogIDLeaf(), 0, logTestPageSize, servedRows(ls, "L", ids...), ""))
+	require.True(t, logWindowMatches(ls, "L", filterLogIDLeaf(), 0, false, logTestPageSize, servedRows(ls, "L", ids...), ""))
+}
+
+// A reverse page lists logs newest first, strictly below its cursor.
+func TestLogWindowMatches_ReverseDescendsBelowTheCursor(t *testing.T) {
+	t.Parallel()
+
+	ls := buildGlobal(t,
+		oracletest.TxReq("world", "acc:1", "USD/2", 1),
+		oracletest.TxReq("world", "acc:2", "USD/2", 1),
+		oracletest.TxReq("world", "acc:3", "USD/2", 1),
+	).Ledger("L")
+	rows := ls.LogRows()
+	newest, middle, oldest := rows[len(rows)-1].ID, rows[len(rows)-2].ID, rows[len(rows)-3].ID
+
+	require.Equal(t, []uint64{newest, middle}, logWindow(ls, "L", nil, 0, true, 2))
+	require.Equal(t, []uint64{oldest}, logWindow(ls, "L", nil, middle, true, 1))
+	require.True(t, logWindowMatches(ls, "L", nil, 0, true, 2, servedRows(ls, "L", newest, middle), strconv.FormatUint(middle, 10)))
+	require.False(t, logWindowMatches(ls, "L", nil, 0, true, 2, servedRows(ls, "L", middle, newest), strconv.FormatUint(newest, 10)),
+		"an ascending page is outside a reverse window")
 }

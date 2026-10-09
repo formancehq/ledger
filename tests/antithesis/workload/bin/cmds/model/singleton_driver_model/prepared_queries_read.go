@@ -798,7 +798,7 @@ func preparedTransactionWindowRows(ls oracle.LedgerState, bound *commonpb.QueryF
 }
 
 func preparedLogWindowRows(ls oracle.LedgerState, ledger string, bound *commonpb.QueryFilter, after []byte, reverse bool) []logWindowRow {
-	rows := logWindowRows(ls, ledger, bound, 0)
+	rows := logWindowRows(ls, ledger, bound, 0, false)
 	if reverse {
 		slices.Reverse(rows)
 	}

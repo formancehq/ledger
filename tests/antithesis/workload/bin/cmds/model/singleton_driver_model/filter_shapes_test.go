@@ -58,7 +58,7 @@ func TestAnyFilterShapeIsTotal(t *testing.T) {
 			case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
 				transactionWindowRows(ls, f, 0, oneIn(2))
 			default:
-				logWindowRows(ls, "L", f, 0)
+				logWindowRows(ls, "L", f, 0, oneIn(2))
 			}
 		}
 
