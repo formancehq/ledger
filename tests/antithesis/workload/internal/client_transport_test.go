@@ -206,6 +206,54 @@ func testLostCommittedResponse(t *testing.T, mode string) {
 	oldConn := pool.GetConnection(1)
 	require.NoError(t, pool.RestartConnection(1))
 	require.NotSame(t, oldConn, pool.GetConnection(1))
+	// awaitInterruption fails the test, rather than hanging the suite, when the
+	// caller finishes or the deadline expires before the boundary reports.
+	// The boundary records an interruption before the caller sees it, so one
+	// already queued wins over a completion or deadline observed alongside it.
+	awaitInterruption := func(what string) error {
+		queued := func() (error, bool) {
+			select {
+			case err := <-forwarder.interrupted:
+				return err, true
+			default:
+				return nil, false
+			}
+		}
+
+		select {
+		case err := <-forwarder.interrupted:
+			return err
+		case outcome := <-finished:
+			if err, ok := queued(); ok {
+				finished <- outcome
+
+				return err
+			}
+			t.Fatalf("call finished before the %s reached the boundary: %v", what, outcome.err)
+		case <-ctx.Done():
+			if err, ok := queued(); ok {
+				return err
+			}
+			t.Fatalf("no %s reached the boundary: %v", what, ctx.Err())
+		}
+
+		return nil
+	}
+	// The forwarding boundary reports the close first, whatever the mode.
+	interrupted := awaitInterruption("connection close")
+	require.Equal(t, codes.Unavailable, status.Code(interrupted))
+	require.Equal(t, "grpc: the client connection is closing", status.Convert(interrupted).Message())
+	require.True(t, internal.IsAmbiguousCommit(interrupted), "the workload must recognize the actual forwarding boundary's close status")
+	if mode == "maintenance" {
+		// The retry now rides the window out instead of surfacing the
+		// rejection, so the call only returns once the gate reopens. Wait for
+		// the rejection to reach the boundary before disabling, so the retry
+		// definitely met the gate rather than racing past it.
+		maintenance := awaitInterruption("maintenance rejection")
+		require.True(t, internal.HasErrorReason(maintenance, domain.ErrReasonMaintenanceMode))
+		_, err = leader.Apply(ctx, actions.WithIdempotencyKey("disable-maintenance", actions.SetMaintenanceModeAction(false)))
+		require.NoError(t, err)
+	}
 	var outcome result
 	select {
 	case outcome = <-finished:
@@ -213,10 +261,6 @@ func testLostCommittedResponse(t *testing.T, mode string) {
 		t.Fatal("retry did not finish", ctx.Err())
 	}
 	require.NoError(t, ctx.Err(), "caller remains live through recovery")
-	interrupted := <-forwarder.interrupted
-	require.Equal(t, codes.Unavailable, status.Code(interrupted))
-	require.Equal(t, "grpc: the client connection is closing", status.Convert(interrupted).Message())
-	require.True(t, internal.IsAmbiguousCommit(interrupted), "the workload must recognize the actual forwarding boundary's close status")
 	wantAttempts := int32(2)
 	switch mode {
 	case "disabled":
@@ -225,14 +269,10 @@ func testLostCommittedResponse(t *testing.T, mode string) {
 		// The caller can still explicitly recover the same keyed outcome.
 		outcome.response, outcome.err = servicepb.NewBucketServiceClient(callerConn).Apply(ctx, request, grpc.Trailer(&outcome.trailers))
 	case "maintenance":
-		require.Equal(t, int32(2), loss.attempts.Load(), "maintenance must escape the retry loop")
-		require.True(t, internal.HasErrorReason(outcome.err, domain.ErrReasonMaintenanceMode))
-		require.True(t, internal.IsMaintenanceAfterAmbiguousCommit(outcome.err), "a real committed write must not become a definitive rejection")
-		maintenance := <-forwarder.interrupted
-		require.True(t, proto.Equal(status.Convert(maintenance).Proto(), status.Convert(outcome.err).Proto()), "ambiguity wrapper must preserve the structured maintenance status")
-		_, err = leader.Apply(ctx, actions.WithIdempotencyKey("disable-maintenance", actions.SetMaintenanceModeAction(false)))
-		require.NoError(t, err)
-		outcome.response, outcome.err = servicepb.NewBucketServiceClient(callerConn).Apply(ctx, request, grpc.Trailer(&outcome.trailers))
+		// A committed write refused by the gate on its retry must not be lost:
+		// the retry rides the window out and replays the frozen outcome under
+		// the same key, so the caller sees the success it already earned.
+		require.NoError(t, outcome.err, "a committed write must survive the window its retry landed in")
 		wantAttempts = 3
 	}
 	require.NoError(t, outcome.err)

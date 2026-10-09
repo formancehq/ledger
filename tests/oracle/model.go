@@ -563,6 +563,34 @@ type GlobalState struct {
 	// Entries are immutable once frozen (infinite TTL — the model never evicts),
 	// so forks share the pointers.
 	idempotency Map[string, *frozenOutcome]
+	// logs is the global log stream the server keeps in its log zone, keyed by
+	// the cluster-wide sequence: every ledger's logs in commit order. It outlives
+	// the ledgers it indexes — a deleted ledger's rows stay readable by sequence
+	// — so it is filled as sequences are learned (LearnLogSequence) and never
+	// pruned by Apply.
+	logs Map[uint64, *globalLog]
+}
+
+// globalLog is one entry of the global log stream: the ledger and ledger-local
+// id that own it, the row as the ledger stream holds it, and the transaction it
+// announces, frozen at the moment the sequence was learned (tx records are
+// copy-on-write, so the pointer never sees later metadata or revert updates).
+type globalLog struct {
+	ledger string
+	id     uint64
+	rec    *logRecord
+	tx     *txRecord
+}
+
+// globalLogTerm fingerprints an entry by identity only. The stream is filled
+// by LearnLogSequence, never by Apply, so every base forked from one committed
+// state shares it verbatim and the row's content is already in logTerm.
+func globalLogTerm(seq uint64, l *globalLog) Digest {
+	t := newTerm("GLOG")
+	t.u64(seq, l.id)
+	t.str(l.ledger)
+
+	return t.sum()
 }
 
 // frozenOutcome is a keyed bulk's recorded outcome: the exact requests it
@@ -602,6 +630,7 @@ func NewGlobalState() GlobalState {
 		nextCheckpointID: 1,
 		lifecycle:        NewMap[string, LedgerLifecycle](stringComparer{}, lifecycleTerm),
 		idempotency:      NewMap[string, *frozenOutcome](stringComparer{}, frozenOutcomeTerm),
+		logs:             NewMap[uint64, *globalLog](uint64Comparer{}, globalLogTerm),
 	}
 }
 
@@ -664,7 +693,7 @@ func (g GlobalState) Fingerprint() Digest {
 		maintenance.u64(1)
 	}
 
-	return d.add(g.idempotency.Fingerprint()).add(g.lifecycle.Fingerprint()).add(t.sum()).add(maintenance.sum())
+	return d.add(g.idempotency.Fingerprint()).add(g.lifecycle.Fingerprint()).add(g.logs.Fingerprint()).add(t.sum()).add(maintenance.sum())
 }
 
 // OrderResult is the predicted outcome of one request in a bulk. PCV holds the
@@ -874,6 +903,9 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 		}
 		if ct := req.GetApply().GetAction().GetCreateTransaction(); ct != nil && len(ct.GetPostings()) == 0 {
 			return ApplyResult{OK: false, Reason: domain.ErrReasonValidation, State: g}
+		}
+		if reason := preparedQueryAdmissionReason(req); reason != "" {
+			return ApplyResult{OK: false, Reason: reason, State: g}
 		}
 	}
 
@@ -1983,6 +2015,49 @@ func (s *LedgerState) fieldTypes(target commonpb.TargetType) Map[string, commonp
 	}
 }
 
+// preparedQueryPayloadReason is the payload validation a prepared-query create
+// gets at admission and again in the FSM: presence, name, executable target,
+// and the filter's write-time checks. Empty when the payload is valid.
+func preparedQueryPayloadReason(q *commonpb.PreparedQuery) string {
+	if q == nil {
+		return domain.ErrPreparedQueryRequired.Reason()
+	}
+
+	if err := domain.ValidatePreparedQueryName(q.GetName()); err != nil {
+		return err.Reason()
+	}
+
+	if !domain.IsPreparedQueryExecutableTarget(q.GetTarget()) {
+		return domain.ErrPreparedQueryTargetUnsupported.Reason()
+	}
+
+	if err := domain.ValidateFilterForTarget(q.GetFilter(), q.GetTarget()); err != nil {
+		return err.Reason()
+	}
+
+	return ""
+}
+
+// preparedQueryAdmissionReason mirrors admission's validateOrderPreparedQuery:
+// a create's whole payload, and only the name of an update or delete. Empty
+// when admission lets the request through.
+func preparedQueryAdmissionReason(req *servicepb.Request) string {
+	switch r := req.GetType().(type) {
+	case *servicepb.Request_CreatePreparedQuery:
+		return preparedQueryPayloadReason(r.CreatePreparedQuery.GetQuery())
+	case *servicepb.Request_UpdatePreparedQuery:
+		if err := domain.ValidatePreparedQueryName(r.UpdatePreparedQuery.GetName()); err != nil {
+			return err.Reason()
+		}
+	case *servicepb.Request_DeletePreparedQuery:
+		if err := domain.ValidatePreparedQueryName(r.DeletePreparedQuery.GetName()); err != nil {
+			return err.Reason()
+		}
+	}
+
+	return ""
+}
+
 // applyCreatePreparedQuery registers a new prepared query, mirroring
 // processCreatePreparedQuery: payload validation, then ledger load (the caller
 // already routed to an existing ledger), then the duplicate-name check. The
@@ -1996,22 +2071,11 @@ func (s *LedgerState) fieldTypes(target commonpb.TargetType) Map[string, commonp
 // message: a later mutation of the submitted proto must not reach committed
 // state.
 func (s *LedgerState) applyCreatePreparedQuery(req *servicepb.CreatePreparedQueryRequest) OrderResult {
+	if reason := preparedQueryPayloadReason(req.GetQuery()); reason != "" {
+		return OrderResult{Reason: reason}
+	}
+
 	q := req.GetQuery()
-	if q == nil {
-		return OrderResult{Reason: domain.ErrPreparedQueryRequired.Reason()}
-	}
-
-	if err := domain.ValidatePreparedQueryName(q.GetName()); err != nil {
-		return OrderResult{Reason: err.Reason()}
-	}
-
-	if !domain.IsPreparedQueryExecutableTarget(q.GetTarget()) {
-		return OrderResult{Reason: domain.ErrPreparedQueryTargetUnsupported.Reason()}
-	}
-
-	if err := domain.ValidateFilterForTarget(q.GetFilter(), q.GetTarget()); err != nil {
-		return OrderResult{Reason: err.Reason()}
-	}
 
 	if s.preparedQueries.Has(q.GetName()) {
 		return OrderResult{Reason: domain.ErrReasonPreparedQueryAlreadyExists}
@@ -2312,6 +2376,21 @@ func (g *GlobalState) applyCheckpoint(req *servicepb.Request) (OrderResult, bool
 }
 
 // Lifecycle returns an owned snapshot of an explicitly modeled ledger's identity.
+// LiveLedgers names every ledger the state still holds, ascending. A deleted
+// ledger is gone from it, so it is the membership a listing must serve.
+func (g GlobalState) LiveLedgers() []string {
+	var out []string
+	for name, lc := range g.lifecycle.All() {
+		if !lc.Deleted {
+			out = append(out, name)
+		}
+	}
+
+	slices.Sort(out)
+
+	return out
+}
+
 func (g GlobalState) Lifecycle(name string) (LedgerLifecycle, bool) {
 	lc, ok := g.lifecycle.Get(name)
 	lc.MirrorSource = lc.MirrorSource.CloneVT()

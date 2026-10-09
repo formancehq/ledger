@@ -134,8 +134,9 @@ do not interpret shutdown as proof of status origin.
 `internal/adapter/grpcerr/conn_cancellation_test.go` provides these controls.
 `tests/antithesis/workload/internal/client_transport_test.go` adds a real Ledger
 commit before response loss, preserving the native retry control and separately
-testing the current `NewGRPCConn` factory. Its maintenance case retains ambiguity
-and recovers with the same key/payload after the gate is disabled. The actual
+testing the current `NewGRPCConn` factory. Its maintenance case retries through
+the window rather than reporting the rejection, so the committed write surfaces
+as the success it earned once the gate reopens. The actual
 forwarded close error must satisfy the workload's ambiguity predicate, pinning
 both boundaries without deriving the expected wire text from production code. The companion
 `client_transport_controls_test.go` checks terminal statuses and cancellation

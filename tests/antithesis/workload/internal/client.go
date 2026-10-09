@@ -43,9 +43,7 @@ func NewGRPCConn() (*grpc.ClientConn, error) {
 	// "ambiguous commit" class of errors becomes eventually-definitive: combined
 	// with the idempotency key on every Request, a retry that lands after the
 	// cluster recovers hits the server's idempotency cache and returns the recorded
-	// outcome. A later maintenance refusal still surfaces with its ambiguity
-	// marker so the driver can arrange recovery instead of assuming non-commit.
-	// retryMaxDelay caps each interval at 5s.
+	// outcome. retryMaxDelay caps each interval at 5s.
 	retryForever := os.Getenv("LEDGER_RETRY_FOREVER") != ""
 
 	maxAttempts := 50
@@ -63,8 +61,9 @@ func NewGRPCConn() (*grpc.ClientConn, error) {
 		streamInterceptorAttempts = maxAttempts
 	}
 
-	// Retry in the interceptor, where business-reason details are visible. A
-	// service-config UNAVAILABLE retry cannot distinguish maintenance rejection.
+	// Retry in the interceptor, where business-reason details are visible: a
+	// service-config UNAVAILABLE retry cannot tell a business rejection carrying
+	// that code from an infrastructure one.
 	serviceConfig := `{"loadBalancingConfig": [{"round_robin": {}}]}`
 
 	addrs := strings.Split(target, ",")
@@ -161,20 +160,11 @@ func retryUnaryInterceptor(maxAttempts int) grpc.UnaryClientInterceptor {
 		opts ...grpc.CallOption,
 	) error {
 		var err error
-		hadAmbiguousAttempt := false
 		for attempt := range maxAttempts {
 			err = invoker(ctx, method, req, reply, cc, opts...)
-			if HasErrorReason(err, domain.ErrReasonMaintenanceMode) {
-				if hadAmbiguousAttempt {
-					return maintenanceAfterAmbiguousCommitError{err: err}
-				}
-
-				return err
-			}
 			if !retryableRPCError(err) {
 				return err
 			}
-			hadAmbiguousAttempt = hadAmbiguousAttempt || IsAmbiguousCommit(err)
 			select {
 			case <-ctx.Done():
 				return err
@@ -186,37 +176,18 @@ func retryUnaryInterceptor(maxAttempts int) grpc.UnaryClientInterceptor {
 	}
 }
 
-// retryableRPCError keeps maintenance as a definitive model outcome even though
-// its transport code is Unavailable. Every other transient retains the existing
-// retry behavior.
+// retryableRPCError reports whether an RPC error is worth another attempt.
+//
+// A maintenance rejection is one of them. The gate sits at admission, ahead of
+// the FSM's idempotency replay, so a write whose response was lost can be
+// refused on its retry even though it committed — treating that refusal as a
+// definitive answer loses the write. Retrying instead rides the window out,
+// which terminates: a batch of nothing but SetMaintenanceMode is exempt from
+// the gate (admission.allRequestsAreMaintenanceMode), so an enable whose own
+// response was lost still reaches the success that schedules its disable, and
+// the retry then replays the frozen outcome under the same idempotency key.
 func retryableRPCError(err error) bool {
-	return IsTransient(err) && !HasErrorReason(err, domain.ErrReasonMaintenanceMode)
-}
-
-type maintenanceAfterAmbiguousCommitError struct {
-	err error
-}
-
-func (e maintenanceAfterAmbiguousCommitError) Error() string {
-	return e.err.Error()
-}
-
-func (e maintenanceAfterAmbiguousCommitError) Unwrap() error {
-	return e.err
-}
-
-func (e maintenanceAfterAmbiguousCommitError) GRPCStatus() *status.Status {
-	return status.Convert(e.err)
-}
-
-// IsMaintenanceAfterAmbiguousCommit reports that an RPC may have committed and
-// a later attempt was rejected by the maintenance gate. Callers must preserve
-// the ambiguous request while arranging any recovery needed to leave
-// maintenance mode.
-func IsMaintenanceAfterAmbiguousCommit(err error) bool {
-	var target maintenanceAfterAmbiguousCommitError
-
-	return errors.As(err, &target)
+	return IsTransient(err)
 }
 
 // classifyUnaryInterceptor asserts that every error escaping an RPC is
@@ -369,8 +340,8 @@ func IsCanceled(err error) bool {
 
 // IsAmbiguousCommit identifies deadline expiry and the exact bare Unavailable
 // status emitted when a forwarding connection closes. Either can follow a
-// committed write whose response was lost, including before a later maintenance
-// rejection. The wire status identifies a potentially ambiguous outcome, not
+// committed write whose response was lost. The wire status identifies a
+// potentially ambiguous outcome, not
 // proof of its physical origin or of a commit. This is not an exhaustive
 // non-commit test; every retried write still needs its original key and payload.
 //

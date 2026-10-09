@@ -34,34 +34,34 @@ func TestAccountVolumesMatch(t *testing.T) {
 		}
 	}
 	require.Len(t, exact, 3)
-	require.True(t, accountVolumesMatch(ls, "t-0:5", exact))
+	require.True(t, accountVolumesMatch(ls, "t-0:5", exact, false))
 
 	ghost := maps.Clone(exact)
 	var g oracle.VolumePair
 	g.Input.SetUint64(7)
 	g.Output.SetUint64(7)
 	ghost[assetColor{Asset: "EUR/2"}] = g
-	require.False(t, accountVolumesMatch(ls, "t-0:5", ghost), "ghost cell under an unprobed asset must mismatch")
+	require.False(t, accountVolumesMatch(ls, "t-0:5", ghost, false), "ghost cell under an unprobed asset must mismatch")
 
 	omitted := maps.Clone(exact)
 	delete(omitted, assetColor{Asset: "USD/2"})
-	require.False(t, accountVolumesMatch(ls, "t-0:5", omitted), "omitted cell must mismatch")
+	require.False(t, accountVolumesMatch(ls, "t-0:5", omitted, false), "omitted cell must mismatch")
 
 	divergent := maps.Clone(exact)
 	d := divergent[assetColor{Asset: "USD/2"}]
 	d.Input.AddUint64(&d.Input, 1)
 	divergent[assetColor{Asset: "USD/2"}] = d
-	require.False(t, accountVolumesMatch(ls, "t-0:5", divergent))
+	require.False(t, accountVolumesMatch(ls, "t-0:5", divergent, false))
 
 	recoloured := maps.Clone(exact)
 	grants := assetColor{Asset: "USD/2", Color: "GRANTS"}
 	recoloured[assetColor{Asset: "USD/2", Color: "GOLD"}] = recoloured[grants]
 	delete(recoloured, grants)
-	require.False(t, accountVolumesMatch(ls, "t-0:5", recoloured), "the right amounts in the wrong bucket must mismatch")
+	require.False(t, accountVolumesMatch(ls, "t-0:5", recoloured, false), "the right amounts in the wrong bucket must mismatch")
 
 	// An account the base doesn't hold: only the empty reading matches.
-	require.True(t, accountVolumesMatch(ls, "t-9:9", nil))
-	require.False(t, accountVolumesMatch(ls, "t-9:9", map[assetColor]oracle.VolumePair{{Asset: "USD/2"}: {}}))
+	require.True(t, accountVolumesMatch(ls, "t-9:9", nil, false))
+	require.False(t, accountVolumesMatch(ls, "t-9:9", map[assetColor]oracle.VolumePair{{Asset: "USD/2"}: {}}, false))
 }
 
 func TestSuccessfulBusinessWriteClassification(t *testing.T) {

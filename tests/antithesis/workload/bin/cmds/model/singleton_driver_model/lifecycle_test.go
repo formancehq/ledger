@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -35,6 +36,12 @@ type scriptedApplyClient struct {
 }
 
 func (c *scriptedApplyClient) Apply(context.Context, *servicepb.ApplyRequest, ...grpc.CallOption) (*servicepb.ApplyResponse, error) {
+	if c.calls >= len(c.errors) {
+		// Silently answering an unscripted call would let a stray Apply pass as
+		// a success in every test sharing this client.
+		panic(fmt.Sprintf("scriptedApplyClient: unscripted Apply #%d (script has %d)", c.calls+1, len(c.errors)))
+	}
+
 	response := (*servicepb.ApplyResponse)(nil)
 	if c.calls < len(c.responses) {
 		response = c.responses[c.calls]
@@ -54,7 +61,7 @@ func TestDispatchMaintenanceRecoveryWaitsForObservationProcessing(t *testing.T) 
 	c.mu.Unlock()
 	done := make(chan struct{})
 	go func() {
-		dispatchMaintenanceRecovery(t.Context(), immediateApplyClient{}, c, recoveryID, 1)
+		dispatchMaintenanceRecovery(t.Context(), immediateApplyClient{}, c, recoveryID)
 		close(done)
 	}()
 
@@ -73,38 +80,6 @@ func TestDispatchMaintenanceRecoveryWaitsForObservationProcessing(t *testing.T) 
 	c.mu.Unlock()
 	<-done
 	require.NotContains(t, c.inflight, obs.ticket)
-}
-
-func TestAmbiguousEnableSchedulesRecoveryOnLaterMaintenanceRejection(t *testing.T) {
-	t.Parallel()
-
-	maintenanceStatus, err := status.New(codes.Unavailable, "maintenance").WithDetails(&errdetails.ErrorInfo{Reason: domain.ErrReasonMaintenanceMode})
-	require.NoError(t, err)
-	client := &scriptedApplyClient{errors: []error{
-		status.Error(codes.Canceled, "response lost"),
-		maintenanceStatus.Err(),
-	}}
-	c := NewChecker([]string{"L"}, nil)
-	ctx, cancel := context.WithCancel(t.Context())
-	done := make(chan struct{})
-	enable := oracle.Bulk{Requests: []*servicepb.Request{actions.SetMaintenanceModeAction(true)}}
-	go func() {
-		dispatchBulk(ctx, client, nil, c, enable)
-		close(done)
-	}()
-
-	obs := <-c.incoming
-	require.Equal(t, 2, client.calls)
-	require.Equal(t, uint64(1), c.maintenanceEnableSeq)
-	require.True(t, obs.ambiguousEnable)
-
-	c.mu.Lock()
-	c.removeInflight(obs.ticket)
-	markObservationProcessed(obs)
-	c.mu.Unlock()
-	cancel()
-	<-done
-	c.recoveries.Wait()
 }
 
 func TestScheduleMaintenanceRecoveryDoesNotRefreshActiveWindow(t *testing.T) {
@@ -132,7 +107,11 @@ func TestScheduleMaintenanceRecoveryQueuesFollowUpAfterDisableDispatch(t *testin
 	require.Equal(t, uint64(8), c.maintenanceEnableSeq)
 }
 
-func TestAmbiguousBusinessBulkRetriesThroughMaintenanceRecovery(t *testing.T) {
+// A write whose response was lost must survive the maintenance window its
+// retry lands in. The gate sits at admission, ahead of the FSM's idempotency
+// replay, so breaking on the rejection would record a committed bulk as one
+// that never happened — the bug that dropped DeleteQueryCheckpoint(48).
+func TestBulkRetriesThroughMaintenanceAfterLostResponse(t *testing.T) {
 	t.Parallel()
 
 	maintenanceStatus, err := status.New(codes.Unavailable, "maintenance").WithDetails(&errdetails.ErrorInfo{Reason: domain.ErrReasonMaintenanceMode})
@@ -154,9 +133,8 @@ func TestAmbiguousBusinessBulkRetriesThroughMaintenanceRecovery(t *testing.T) {
 	}()
 
 	obs := <-c.incoming
-	require.Equal(t, 3, client.calls)
-	require.NoError(t, obs.err)
-	require.False(t, obs.ambiguousEnable)
+	require.Equal(t, 3, client.calls, "the maintenance rejection is retried, not taken as an answer")
+	require.NoError(t, obs.err, "the committed bulk must be observed as the success it was")
 	c.mu.Lock()
 	c.removeInflight(obs.ticket)
 	markObservationProcessed(obs)
@@ -164,71 +142,70 @@ func TestAmbiguousBusinessBulkRetriesThroughMaintenanceRecovery(t *testing.T) {
 	<-done
 }
 
-func TestProcessorPreservesAmbiguousMaintenanceEnableAsCandidate(t *testing.T) {
+// Retrying through maintenance is only safe because the window always ends,
+// and the disable is scheduled off the enable's OWN success. An enable whose
+// response is lost must therefore still reach that success: a toggle batch is
+// exempt from the admission gate, and the retry carries the same idempotency
+// key, so it replays the frozen outcome rather than being refused by the
+// window it opened. Without that, retry-forever would hang instead.
+func TestLostEnableResponseStillSchedulesItsRecovery(t *testing.T) {
 	t.Parallel()
 
 	maintenanceStatus, err := status.New(codes.Unavailable, "maintenance").WithDetails(&errdetails.ErrorInfo{Reason: domain.ErrReasonMaintenanceMode})
 	require.NoError(t, err)
-	c := NewChecker([]string{"L"}, nil)
-	enable := oracle.Bulk{Requests: []*servicepb.Request{actions.SetMaintenanceModeAction(true)}}
-	ticket := c.registerInflight(enable)
 
-	c.handleObservation(observation{
-		ticket:          ticket,
-		bulk:            enable,
-		err:             maintenanceStatus.Err(),
-		ambiguousEnable: true,
-		observeTicket:   ticket,
-	})
-
-	require.NotContains(t, c.inflight, ticket)
-	require.Contains(t, c.ambiguousBulks, ticket)
-	found := false
-	c.candidateBases(ticket, func(state oracle.GlobalState) bool {
-		found = found || state.MaintenanceMode()
-
-		return found
-	})
-	require.True(t, found)
-}
-
-func TestProcessorCoalescesAmbiguousMaintenanceEnables(t *testing.T) {
-	t.Parallel()
-
-	maintenanceStatus, err := status.New(codes.Unavailable, "maintenance").WithDetails(&errdetails.ErrorInfo{Reason: domain.ErrReasonMaintenanceMode})
-	require.NoError(t, err)
-	c := NewChecker([]string{"L"}, nil)
-	enable := bulkOf(actions.SetMaintenanceModeAction(true))
-	for _, ticket := range []uint64{2, 1} {
-		c.inflight[ticket] = enable
-		c.handleObservation(observation{
-			ticket:          ticket,
-			bulk:            enable,
-			err:             maintenanceStatus.Err(),
-			ambiguousEnable: true,
-			observeTicket:   ticket,
-		})
+	client := &scriptedApplyClient{
+		responses: []*servicepb.ApplyResponse{nil, nil, {}},
+		errors: []error{
+			status.Error(codes.Canceled, "response lost"),
+			maintenanceStatus.Err(),
+			nil,
+		},
 	}
 
-	require.Len(t, c.ambiguousBulks, 1)
-	retainedTicket, retained := c.ambiguousMaintenanceEnableTicket()
-	require.True(t, retained)
-	require.Equal(t, uint64(1), retainedTicket)
-}
-
-func TestAmbiguousEnableClearsOnlyAfterScheduledRecoveryGeneration(t *testing.T) {
-	t.Parallel()
-
 	c := NewChecker([]string{"L"}, nil)
-	c.ambiguousBulks[1] = bulkOf(actions.SetMaintenanceModeAction(true))
-	c.ambiguousEnableClearSeq = 2
+	ctx, cancel := context.WithCancel(t.Context())
+	enable := bulkOf(actions.SetMaintenanceModeAction(true))
+	done := make(chan struct{})
 
-	c.clearAmbiguousMaintenanceEnable(1)
-	require.Contains(t, c.ambiguousBulks, uint64(1))
+	go func() {
+		dispatchBulk(ctx, client, nil, c, enable)
+		close(done)
+	}()
 
-	c.clearAmbiguousMaintenanceEnable(2)
-	require.NotContains(t, c.ambiguousBulks, uint64(1))
-	require.Zero(t, c.ambiguousEnableClearSeq)
+	obs := <-c.incoming
+	require.Equal(t, 3, client.calls)
+	require.NoError(t, obs.err, "the enable committed, so the driver must observe a success")
+
+	c.mu.Lock()
+	scheduled := c.maintenanceRecoveryActive
+	c.removeInflight(obs.ticket)
+	c.mu.Unlock()
+	markObservationProcessed(obs)
+	require.True(t, scheduled, "the enable's success must arm the disable that ends the window")
+	<-done
+
+	// No processor runs here, so absorb whatever the recovery publishes rather
+	// than letting it block on an observation nobody drains.
+	drained := make(chan struct{})
+	go func() {
+		defer close(drained)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case recovery := <-c.incoming:
+				c.mu.Lock()
+				c.removeInflight(recovery.ticket)
+				c.mu.Unlock()
+				markObservationProcessed(recovery)
+			}
+		}
+	}()
+
+	cancel()
+	c.recoveries.Wait()
+	<-drained
 }
 
 func TestResponseHighWaterExcludesWriterBlockedBeforeRegistration(t *testing.T) {

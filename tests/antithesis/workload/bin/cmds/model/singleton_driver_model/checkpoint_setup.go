@@ -69,6 +69,8 @@ func setupQueryCheckpoints(ctx context.Context, node *internal.PerNodeConn, c *C
 	}
 	c.modelState = c.modelState.SeedQueryCheckpoints(ids, nextID)
 	c.checkpoints[created.GetCheckpointId()] = checkpointSnapshot{state: c.modelState, maxSequence: created.GetMaxSequence()}
+	// The probe is setup's last write.
+	c.setupMaxSeq = log.GetSequence()
 
 	return true
 }

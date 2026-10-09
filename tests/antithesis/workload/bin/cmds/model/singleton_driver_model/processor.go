@@ -5,7 +5,6 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
@@ -27,8 +26,14 @@ func (c *Checker) removeInflight(ticket uint64) {
 	delete(c.inflight, ticket)
 }
 
-// registerRead reserves a ticket for an outstanding read. Holding it gates
-// draining (see tryDrain), so the read needs no drain-race skip. Caller holds c.mu.
+// registerRead reserves a ticket for an outstanding read. While it is held, no
+// bulk whose commit was observed at or after this ticket can drain (see
+// tryDrain), so a state snapshotted in the same critical section cannot advance
+// past what the read could have seen. Bulks observed BEFORE the ticket are not
+// held back: the server had already applied them when the read was issued, so
+// the read saw their result, and the model is right to fold them in under it.
+// Take the ticket in the same critical section as the snapshot it protects,
+// before picking anything from that snapshot. Caller holds c.mu.
 func (c *Checker) registerRead() uint64 {
 	t := c.ticketSeq.Add(1)
 	c.reads[t] = struct{}{}
@@ -101,21 +106,6 @@ func (c *Checker) handleObservation(obs observation) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if obs.ambiguousEnable {
-		// A maintenance rejection after an ambiguous enable does not determine
-		// whether that enable committed. Keep it as an optional predecessor after
-		// its worker observation leaves inflight so validation can serialize
-		// through either outcome. Ordinary bulks retry through recovery instead.
-		if retainedTicket, retained := c.ambiguousMaintenanceEnableTicket(); !retained {
-			c.ambiguousBulks[obs.ticket] = obs.bulk
-		} else if obs.ticket < retainedTicket {
-			delete(c.ambiguousBulks, retainedTicket)
-			c.ambiguousBulks[obs.ticket] = obs.bulk
-		}
-		if obs.recoverySeq > c.ambiguousEnableClearSeq {
-			c.ambiguousEnableClearSeq = obs.recoverySeq
-		}
-	}
 	c.removeInflight(obs.ticket)
 	defer c.tryDrain()
 
@@ -123,7 +113,7 @@ func (c *Checker) handleObservation(obs observation) {
 	// effectively didn't happen. Shutdown errors (ctx cancelled / deadline
 	// from MODEL_MAX_SECONDS) are dropped the same way: the outcome is
 	// unknown but we're tearing down, so there's nothing to validate.
-	if obs.err != nil && ((internal.IsTransient(obs.err) && !internal.HasErrorReason(obs.err, domain.ErrReasonMaintenanceMode)) || isShutdownError(obs.err)) {
+	if obs.err != nil && (internal.IsTransient(obs.err) || isShutdownError(obs.err)) {
 		dbgf("TRANSIENT/SHUTDOWN SKIP: ledgers=%s kinds=%s meta=%s err=%v", bulkLedgers(obs.bulk), requestKinds(obs.bulk), bulkMeta(obs.bulk), obs.err)
 		markObservationProcessed(obs)
 
@@ -136,9 +126,6 @@ func (c *Checker) handleObservation(obs observation) {
 		// high-water reproduces the observed error (validateFailure).
 		dbgf("BULK ERR: ledgers=%s kinds=%s meta=%s err=%v", bulkLedgers(obs.bulk), requestKinds(obs.bulk), bulkMeta(obs.bulk), obs.err)
 		c.validateFailure(obs.observeTicket, obs.bulk, obs.err)
-		if internal.HasErrorReason(obs.err, domain.ErrReasonMaintenanceMode) {
-			emitCoverage(true, coverageMaintenanceMessage, internal.Details{})
-		}
 		markModelOutcomeVerified()
 		markObservationProcessed(obs)
 
@@ -158,25 +145,14 @@ func (c *Checker) handleObservation(obs observation) {
 	c.insertPending(&pendingObservation{minSeq: minSeq, obs: obs})
 }
 
-// Multiple optional maintenance enables are state-equivalent until the
-// recovery disable. Coalescing them keeps the candidate-search capacity bound
-// while preserving both possible maintenance states. Caller holds c.mu.
-func (c *Checker) ambiguousMaintenanceEnableTicket() (uint64, bool) {
-	for ticket, bulk := range c.ambiguousBulks {
-		if bulkEnablesMaintenance(bulk) {
-			return ticket, true
-		}
-	}
-
-	return 0, false
-}
-
 // Drains buffered observations in log-sequence order while safe: the head drains
 // only once every outstanding operation (in-flight bulk or read) has a ticket
 // greater than the head's observeTicket — i.e. was dispatched after the head was
 // observed, so a bulk committed after it (can't precede it) and a read saw it.
 // That gate is what lets failures and reads validate against the model with no
-// skip. Caller holds c.mu.
+// skip. Conversely a head observed before every outstanding ticket drains at
+// once, reads in flight or not: the server had applied it before those reads
+// were issued, so they saw its result. Caller holds c.mu.
 func (c *Checker) tryDrain() {
 	for len(c.pending) > 0 {
 		head := c.pending[0]
@@ -187,28 +163,8 @@ func (c *Checker) tryDrain() {
 
 		c.pending = c.pending[1:]
 		c.validateBulkSuccess(head.obs.bulk, head.obs.resp)
-		if bulkDisablesMaintenance(head.obs.bulk) {
-			c.clearAmbiguousMaintenanceEnable(head.obs.recoverySeq)
-		}
 		markModelOutcomeVerified()
 		markObservationProcessed(head.obs)
-	}
-}
-
-// clearAmbiguousMaintenanceEnable removes the optional enable only after the
-// recovery generation scheduled for that ambiguity has committed. Dispatch
-// ticket order alone cannot establish the Raft commit order. Caller holds c.mu.
-func (c *Checker) clearAmbiguousMaintenanceEnable(recoverySeq uint64) {
-	if c.ambiguousEnableClearSeq == 0 || recoverySeq < c.ambiguousEnableClearSeq {
-		return
-	}
-	for ticket, bulk := range c.ambiguousBulks {
-		if bulkEnablesMaintenance(bulk) {
-			delete(c.ambiguousBulks, ticket)
-			c.ambiguousEnableClearSeq = 0
-
-			return
-		}
 	}
 }
 

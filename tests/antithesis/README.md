@@ -260,17 +260,28 @@ The workload uses a layered predicate set (`internal/client.go`):
   outcomes before evaluating it. Tolerated errors never prove acceptance.
 - `IsAmbiguousCommit(err)` — strict subset of `IsTransient` where the
   request may have committed despite the error: `DeadlineExceeded` and the exact bare
-  `Unavailable: grpc: the client connection is closing` category. A later
-  maintenance rejection must preserve that possible earlier commit. Other
+  `Unavailable: grpc: the client connection is closing` category. Other
   `Unavailable` messages, `Canceled`, `Unknown`, and structured lookalikes are
   not added to this category. A false result is still not proof of non-commit.
   Retried writes need the original idempotency key and payload. Neither code
   establishes a definitive business rejection; verify the resulting state or
   recover the keyed outcome before asserting non-execution.
+- A **maintenance rejection is transient**, so the retry loop rides the window
+  out rather than reporting it. The gate sits at admission, ahead of the FSM's
+  idempotency replay, so a write whose response was lost can be refused on its
+  retry even though it committed — treating that refusal as an answer records a
+  committed write as one that never happened, which is how a
+  `DeleteQueryCheckpoint` was once dropped. Retrying is safe because the window
+  always ends: a batch of nothing but `SetMaintenanceMode` is exempt from the
+  gate, so the enable's own retry reaches the success that schedules its
+  disable, and business retries then replay the frozen outcome under the same
+  key.
 - `NewGRPCConn` performs application retries in interceptors, with no native
   service-config retry policy. `internal/client_transport_test.go` tests this
   real factory after a committed response is lost, including default, forever,
-  disabled-retry, and maintenance/recovery cases. The original native retry
+  disabled-retry, and maintenance cases — the last asserting that a committed
+  write refused by the gate on its retry still surfaces as the success it
+  earned. The original native retry
   control remains separate. The fixture asserts that `IsAmbiguousCommit`
   recognizes the actual forwarded close error, so producer/consumer drift fails
   the cross-package test. Retry budgets belong to the interceptors; the former

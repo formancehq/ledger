@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"github.com/antithesishq/antithesis-sdk-go/random"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -20,13 +23,13 @@ import (
 
 // Checkpoint data is compared only with the drained state captured at creation.
 // Live candidate states may explain deletion, never different business data.
-func checkpointAccountReadMatches(state oracle.GlobalState, ledger, address string, account *commonpb.Account, found bool) bool {
+func checkpointAccountReadMatches(state oracle.GlobalState, ledger, address string, account *commonpb.Account, found, collapsed bool) bool {
 	ls := state.Ledger(ledger)
 	if !found {
 		return !modelKnowsAccount(ls, address)
 	}
 
-	return account != nil && account.GetAddress() == address && accountMatches(ls, address, account)
+	return account != nil && account.GetAddress() == address && accountMatchesCollapsed(ls, address, account, collapsed)
 }
 
 func checkpointTransactionReadMatches(state oracle.GlobalState, ledger string, id uint64, transaction *commonpb.Transaction, found bool) bool {
@@ -64,7 +67,7 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 	defer c.finishRead(readID)
 	ledgerNames := liveLedgerNames(frozen, c.ledgerNamesSnapshot())
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
-	choice := internal.Rand().Uint64() % 6
+	choice := internal.Rand().Uint64() % 10
 	if choice == 0 || id == 0 {
 		runCheckpointListRead(readCtx, node, c)
 
@@ -89,11 +92,21 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 		if !ok {
 			return
 		}
+		// A frozen store folds colours the same way a live one does, so the
+		// option is rolled here too rather than only on the live read.
+		collapsed := oneIn(3)
+
 		var account *commonpb.Account
-		account, err = bucket.GetAccount(readCtx, &servicepb.GetAccountRequest{Ledger: ledger, Address: address, CheckpointId: id})
+		account, err = bucket.GetAccount(readCtx, &servicepb.GetAccountRequest{
+			Ledger:         ledger,
+			Address:        address,
+			CheckpointId:   id,
+			CollapseColors: collapsed,
+		})
 		maxTicket = c.ticketSeq.Load()
 		details["ledger"], details["address"], details["returned"] = ledger, address, account
-		matches = checkpointAccountReadMatches(frozen, ledger, address, account, err == nil)
+		details["collapseColors"] = collapsed
+		matches = checkpointAccountReadMatches(frozen, ledger, address, account, err == nil, collapsed)
 		concrete = err == nil && account != nil && modelKnowsAccount(frozen.Ledger(ledger), address)
 	case 3:
 		var txID uint64
@@ -108,6 +121,129 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 		details["ledger"], details["transactionId"], details["returned"] = ledger, txID, response.GetTransaction()
 		matches = checkpointTransactionReadMatches(frozen, ledger, txID, response.GetTransaction(), err == nil)
 		concrete = err == nil && response.GetTransaction() != nil
+	case 7:
+		if len(ledgerNames) == 0 {
+			return
+		}
+
+		// A frozen store answers the boundaries it froze, exactly.
+		ledger = ledgerNames[internal.Rand().Uint64()%uint64(len(ledgerNames))]
+
+		var stats *commonpb.LedgerStats
+		stats, err = bucket.GetLedgerStats(readCtx, &servicepb.GetLedgerStatsRequest{Ledger: ledger, CheckpointId: id})
+		maxTicket = c.ticketSeq.Load()
+		frozenLS := frozen.Ledger(ledger)
+		details["ledger"], details["returned"] = ledger, stats
+		matches = err == nil &&
+			stats.GetTransactionCount() == uint64(frozenLS.Txs().Len()) &&
+			stats.GetLogCount() == uint64(len(frozenLS.LogDates()))
+		concrete = err == nil && stats.GetLogCount() > 0
+	case 8:
+		target, learned, ok := pickLogSequence(frozen)
+		if !ok {
+			return
+		}
+
+		// GetLog is sequence-scoped and the global stream outlives its ledger,
+		// so ledger stays empty: a deleted ledger never excuses a NotFound.
+		var log *commonpb.Log
+		log, err = bucket.GetLog(readCtx, &servicepb.GetLogRequest{Sequence: target.sequence, CheckpointId: id})
+		maxTicket = c.ticketSeq.Load()
+		details["ledger"], details["sequence"], details["learned"] = target.ledger, target.sequence, learned
+
+		if !learned {
+			// A sequence the frozen store never held must resolve NotFound.
+			matches = err != nil && status.Code(err) == codes.NotFound
+			concrete = matches
+		} else {
+			rows := serverLogRows([]*commonpb.Log{log})
+			matches = err == nil && len(rows) == 1 && committedLogMatches(frozen, target, rows[0])
+			concrete = matches
+		}
+	case 6:
+		if len(ledgerNames) == 0 {
+			return
+		}
+
+		ledger = ledgerNames[internal.Rand().Uint64()%uint64(len(ledgerNames))]
+		// A nil filter keeps the frozen fold clear of index readiness: every cell
+		// the checkpoint holds is required by its own primary-store state.
+		opts := aggOptions{collapseColors: oneIn(3), useMaxPrecision: oneIn(4), groupByPrefixes: genGroupPrefixes()}
+
+		var res *commonpb.AggregateResult
+		res, err = bucket.AggregateVolumes(readCtx, &servicepb.AggregateVolumesRequest{
+			Ledger:          ledger,
+			CheckpointId:    id,
+			CollapseColors:  opts.collapseColors,
+			UseMaxPrecision: opts.useMaxPrecision,
+			GroupByPrefixes: opts.groupByPrefixes,
+		})
+		maxTicket = c.ticketSeq.Load()
+		details["ledger"], details["prefixes"] = ledger, strings.Join(opts.groupByPrefixes, ",")
+		matches, concrete = checkpointAggregateMatches(frozen.Ledger(ledger), opts, res, err == nil)
+
+		if matches && err == nil {
+			details["returned"] = describeCheckpointAggregate(opts, res)
+		}
+	case 9:
+		// A frozen fleet cannot move under a resumed page, so the window, its
+		// resume token and every row's whole record are predicted exactly.
+		pageSize := 1 + int(internal.Rand().Uint64()%16)
+		reverse := percentChance(50)
+
+		var cursor string
+		if oneIn(2) {
+			cursor = random.RandomChoice(c.ledgerNamesSnapshot())
+		}
+
+		stream, streamErr := bucket.ListLedgers(readCtx, &servicepb.ListLedgersRequest{Options: &commonpb.ListOptions{
+			Read:     &commonpb.ReadOptions{CheckpointId: id},
+			PageSize: uint32(pageSize),
+			Cursor:   pageToken(cursor),
+			Reverse:  reverse,
+		}})
+		err = streamErr
+
+		var rows []*commonpb.LedgerInfo
+		if err == nil {
+			rows, err = drainStream(stream)
+		}
+
+		var next string
+		if err == nil {
+			next = nextCursorOf(stream)
+		}
+
+		maxTicket = c.ticketSeq.Load()
+
+		names := make([]string, len(rows))
+		for i, row := range rows {
+			names[i] = row.GetName()
+		}
+
+		want, more := ledgerWindow(frozen.LiveLedgers(), cursor, pageSize, reverse)
+		details["cursor"], details["pageSize"], details["reverse"] = cursor, pageSize, reverse
+		details["expectedLedgers"], details["returned"], details["nextCursor"] = want, names, next
+		matches = err == nil && slices.Equal(names, want) &&
+			nextCursorLegal(next, more, lastLedgerKey(names), len(names), pageSize)
+		concrete = err == nil && len(rows) > 0
+
+		if matches {
+			for _, row := range rows {
+				if ledgerInfoStructureViolation(row) != "" || !ledgerInfoMatches(frozen, row) {
+					matches = false
+
+					break
+				}
+			}
+		}
+
+		if matches && len(rows) > 0 {
+			// Coverage: the fleet a checkpoint froze was listed back whole. The
+			// other arms read one ledger's contents; this is the only one whose
+			// subject is the membership itself.
+			assert.Reachable("singleton_driver_model: coverage a checkpoint served the frozen fleet listing", internal.Details{"checkpoint": id, "rows": len(rows)})
+		}
 	default:
 		if len(ledgerNames) == 0 {
 			return
@@ -120,20 +256,34 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 		// Nil filters deliberately avoid asynchronous index readiness: every row
 		// in this page is required by the frozen primary-store state.
 		if choice == 4 {
+			// The frozen state cannot move under a resumed page, so a cursor here
+			// is the one window the model predicts exactly.
+			var cursor string
+			if oneIn(2) {
+				cursor = poolAddress()
+			}
+
+			options.Cursor = pageToken(cursor)
+			details["cursor"] = cursor
+
 			stream, streamErr := bucket.ListAccounts(readCtx, &servicepb.ListAccountsRequest{Ledger: ledger, Options: options})
 			err = streamErr
 			var rows []*commonpb.Account
 			if err == nil {
 				rows, err = drainStream(stream)
 			}
+			var next string
+			if err == nil {
+				next = nextCursorOf(stream)
+			}
 			maxTicket = c.ticketSeq.Load()
-			want := accountWindow(frozen.Ledger(ledger), nil, "", pageSize, reverse)
-			details["expectedAddresses"], details["returned"] = want, rows
-			matches = err == nil && len(rows) == len(want)
+			want, more := checkpointAccountWindow(frozen.Ledger(ledger), cursor, pageSize, reverse)
+			details["expectedAddresses"], details["returned"], details["nextCursor"] = want, rows, next
+			matches = err == nil && len(rows) == len(want) && nextCursorLegal(next, more, lastAccountKey(rows), len(rows), pageSize)
 			concrete = err == nil && len(rows) > 0
 			if matches {
 				for i, address := range want {
-					if !checkpointAccountReadMatches(frozen, ledger, address, rows[i], true) {
+					if !checkpointAccountReadMatches(frozen, ledger, address, rows[i], true, false) {
 						matches = false
 
 						break
@@ -141,15 +291,32 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 				}
 			}
 		} else {
+			var (
+				cursor  string
+				afterID uint64
+			)
+
+			if oneIn(2) {
+				afterID = 1 + internal.Rand().Uint64()%256
+				cursor = strconv.FormatUint(afterID, 10)
+			}
+
+			options.Cursor = pageToken(cursor)
+			details["cursor"] = cursor
+
 			stream, streamErr := bucket.ListTransactions(readCtx, &servicepb.ListTransactionsRequest{Ledger: ledger, Options: options})
 			err = streamErr
 			var rows []*commonpb.Transaction
 			if err == nil {
 				rows, err = drainStream(stream)
 			}
+			var next string
+			if err == nil {
+				next = nextCursorOf(stream)
+			}
 			maxTicket = c.ticketSeq.Load()
-			details["returned"] = rows
-			matches = err == nil && txWindowMatches(frozen.Ledger(ledger), nil, 0, pageSize, reverse, rows)
+			details["returned"], details["nextCursor"] = rows, next
+			matches = err == nil && txWindowMatches(frozen.Ledger(ledger), nil, afterID, pageSize, reverse, rows, next)
 			concrete = err == nil && len(rows) > 0
 		}
 	}
@@ -157,7 +324,7 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 		return
 	}
 	frozenMatches := matches
-	matches = c.checkpointReadOutcomeMatches(id, maxTicket, frozenMatches, err)
+	matches = c.checkpointLedgerReadOutcomeMatches(id, maxTicket, ledger, frozenMatches, err)
 	if !matches {
 		details["error"] = fmt.Sprint(err)
 		assert.Unreachable("singleton_driver_model: checkpoint read outside frozen model", details)
@@ -226,13 +393,7 @@ func runPredictedCheckpointRead(ctx context.Context, bucket servicepb.BucketServ
 }
 
 func predictedCheckpointLedgerMatches(state oracle.GlobalState, ledger string, info *commonpb.LedgerInfo) bool {
-	lifecycle, exists := state.Lifecycle(ledger)
-	if !exists || lifecycle.Deleted {
-		return false
-	}
-	ls := state.Ledger(ledger)
-
-	return chartMatches(ls, info.GetAccountTypes()) && ledgerMetaMatches(ls, info.GetMetadata())
+	return info.GetName() == ledger && ledgerInfoMatches(state, info)
 }
 
 // pickCheckpointReadTarget samples uniformly from every retained snapshot.
@@ -331,6 +492,96 @@ func (c *Checker) checkpointReadOutcomeMatches(id, maxTicket uint64, frozenMatch
 	matches := false
 	c.candidateBases(maxTicket, func(base oracle.GlobalState) bool {
 		matches = !base.QueryCheckpointExists(id)
+
+		return matches
+	})
+
+	return matches
+}
+
+// checkpointAccountWindow is the unfiltered accounts page a frozen checkpoint
+// must serve, with the verdict on whether a further row is waiting. The frozen
+// state cannot move, so both are exact.
+func checkpointAccountWindow(ls oracle.LedgerState, cursor string, pageSize int, reverse bool) ([]string, cursorMore) {
+	want := accountWindow(ls, nil, cursor, pageSize+1, reverse)
+	if len(want) > pageSize {
+		return want[:pageSize], cursorRequired
+	}
+
+	return want, cursorForbidden
+}
+
+// checkpointAggregateMatches compares an aggregate served from a frozen
+// checkpoint against that checkpoint's own state. The frozen state cannot move,
+// so the fold is exact; concrete reports whether the answer carried any total,
+// which is what makes the read coverage-worthy.
+func checkpointAggregateMatches(ls oracle.LedgerState, opts aggOptions, res *commonpb.AggregateResult, served bool) (matches, concrete bool) {
+	if !served {
+		return false, false
+	}
+
+	if len(opts.groupByPrefixes) > 0 {
+		if len(res.GetVolumes()) != 0 {
+			return false, false
+		}
+
+		groups, ok := serverAggregateGroups(res)
+		if !ok {
+			return false, false
+		}
+
+		for _, g := range groups {
+			if len(g.sums) > 0 {
+				concrete = true
+			}
+		}
+
+		return aggGroupsEqual(modelAggregateGroups(ls, nil, opts), groups), concrete
+	}
+
+	if len(res.GetGroups()) != 0 {
+		return false, false
+	}
+
+	sums, ok := serverAggregate(res)
+	if !ok {
+		return false, false
+	}
+
+	return aggEqual(modelAggregate(ls, nil, opts), sums), len(sums) > 0
+}
+
+// describeCheckpointAggregate renders whichever arm the request asked for.
+func describeCheckpointAggregate(opts aggOptions, res *commonpb.AggregateResult) string {
+	if len(opts.groupByPrefixes) > 0 {
+		groups, _ := serverAggregateGroups(res)
+
+		return renderAggGroups(groups)
+	}
+
+	sums, _ := serverAggregate(res)
+
+	return renderAgg(sums)
+}
+
+// checkpointLedgerReadOutcomeMatches is checkpointReadOutcomeMatches for a
+// ledger-scoped read: a NotFound is equally explained by the ledger being
+// deleted, which no frozen checkpoint keeps serving.
+func (c *Checker) checkpointLedgerReadOutcomeMatches(id, maxTicket uint64, ledger string, frozenMatches bool, err error) bool {
+	if c.checkpointReadOutcomeMatches(id, maxTicket, frozenMatches, err) {
+		return true
+	}
+
+	if ledger == "" || !checkpointNotFound(err) {
+		return false
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	matches := false
+	c.candidateBases(maxTicket, func(base oracle.GlobalState) bool {
+		matches = !ledgerIsLive(base, ledger)
 
 		return matches
 	})

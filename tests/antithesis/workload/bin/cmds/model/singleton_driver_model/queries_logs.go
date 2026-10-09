@@ -33,24 +33,17 @@ import (
 // genLogFilter builds a filter over the conditions valid on LOGS: ledger name,
 // log id range, and the boolean combinators. Returns nil for the unfiltered
 // case, which exercises the universe scan itself.
-func genLogFilter(ledger string, depth int) *commonpb.QueryFilter {
+func genLogFilter(ledger string, dates []uint64, depth int) *commonpb.QueryFilter {
 	if depth >= 2 || oneIn(3) {
-		return genLogLeaf(ledger)
+		return genLogLeaf(ledger, dates)
 	}
 
-	switch random.RandomChoice([]uint8{0, 1, 2}) {
-	case 0:
-		return filterAnd(genLogFilter(ledger, depth+1), genLogFilter(ledger, depth+1))
-	case 1:
-		return filterOr(genLogFilter(ledger, depth+1), genLogFilter(ledger, depth+1))
-	default:
-		return filterNot(genLogFilter(ledger, depth+1))
-	}
+	return genBoolean(depth, func(d int) *commonpb.QueryFilter { return genLogFilter(ledger, dates, d) })
 }
 
 // genLogLeaf picks one LOGS-valid leaf. Bounds straddle the populated range so
 // empty, partial and total windows all occur.
-func genLogLeaf(ledger string) *commonpb.QueryFilter {
+func genLogLeaf(ledger string, dates []uint64) *commonpb.QueryFilter {
 	switch random.RandomChoice([]uint8{0, 1, 2}) {
 	case 0:
 		name := ledger
@@ -71,7 +64,7 @@ func genLogLeaf(ledger string) *commonpb.QueryFilter {
 		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogBuiltinUint{
 			LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
 				Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
-				Cond:  genLogUintCond(),
+				Cond:  genLogDateCond(dates),
 			},
 		}}
 	}
@@ -89,6 +82,46 @@ func genLogUintCond() *commonpb.UintCondition {
 	if oneIn(2) {
 		upper := 8 + internal.Rand().Uint64()%64
 		cond.Max = &upper
+		cond.MaxExclusive = oneIn(2)
+	}
+
+	return cond
+}
+
+// genLogDateCond rolls date bounds on the learned-date scale. A log date is a
+// wall-clock microsecond count, so bounds drawn from the small numeric range
+// the id conditions use would put every date on one side and the window would
+// be total or empty; sampling a served date and jittering around it makes the
+// partial windows the date index is read for. With no date learned yet the
+// bounds stay unset and the leaf is the trivial match.
+func genLogDateCond(dates []uint64) *commonpb.UintCondition {
+	cond := &commonpb.UintCondition{}
+	if len(dates) == 0 {
+		return cond
+	}
+
+	const jitterMicros = 1000
+
+	pick := func() uint64 {
+		d := dates[int(internal.Rand().Uint64()%uint64(len(dates)))]
+		offset := internal.Rand().Uint64() % (2*jitterMicros + 1)
+
+		if offset > d {
+			return 0
+		}
+
+		return d + offset - jitterMicros
+	}
+
+	if oneIn(2) {
+		lo := pick()
+		cond.Min = &lo
+		cond.MinExclusive = oneIn(2)
+	}
+
+	if cond.Min == nil || oneIn(2) {
+		hi := pick()
+		cond.Max = &hi
 		cond.MaxExclusive = oneIn(2)
 	}
 
@@ -296,17 +329,21 @@ func serverLogKind(l *commonpb.Log) string {
 }
 
 // logWindowRows is the ordered, cursor-filtered, UNTRUNCATED row sequence a
-// ListLogs page draws from. The endpoint has no reverse mode
-// (ValidateListOptions rejects it) and paginates forward only, so rows are
-// ascending by id with the cursor as an exclusive lower bound — exactly how
-// the controller translates afterSequence into a LogId condition. Truncation is
-// logWindowMatches' job: optional rows may or may not consume page slots, so a
-// fixed prefix cut would be wrong.
-func logWindowRows(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilter, afterSeq uint64) []logWindowRow {
+// ListLogs page draws from: ascending by id with the cursor as an exclusive
+// lower bound, or descending with it as an exclusive upper bound when reverse.
+// Truncation is logWindowMatches' job: optional rows may or may not consume
+// page slots, so a fixed prefix cut would be wrong.
+func logWindowRows(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilter, afterSeq uint64, reverse bool) []logWindowRow {
 	var rows []logWindowRow
 
-	for _, row := range ls.LogRows() {
-		if row.ID <= afterSeq {
+	all := ls.LogRows()
+	if reverse {
+		all = slices.Clone(all)
+		slices.Reverse(all)
+	}
+
+	for _, row := range all {
+		if afterSeq > 0 && (!reverse && row.ID <= afterSeq || reverse && row.ID >= afterSeq) {
 			continue
 		}
 
@@ -315,16 +352,21 @@ func logWindowRows(ls oracle.LedgerState, ledger string, filter *commonpb.QueryF
 			continue
 		}
 
-		rows = append(rows, logWindowRow{
-			id: row.ID, kind: row.Kind, payload: row.Payload,
-			tx: modelTxForLog(ls, row.TxID), revertsID: revertedIDForLog(ls, row),
-			date: row.Date, sequence: row.Sequence,
-			purged: row.PurgedVolumes, newKept: row.NewKeptVolumes, ephemeral: row.EphemeralVolumes,
-			required: known,
-		})
+		rows = append(rows, logWindowRowOf(ls, row, known))
 	}
 
 	return rows
+}
+
+// logWindowRowOf is one committed log as a comparable row of its base.
+func logWindowRowOf(ls oracle.LedgerState, row oracle.LogRow, required bool) logWindowRow {
+	return logWindowRow{
+		id: row.ID, kind: row.Kind, payload: row.Payload,
+		tx: modelTxForLog(ls, row.TxID), revertsID: revertedIDForLog(ls, row),
+		date: row.Date, sequence: row.Sequence,
+		purged: row.PurgedVolumes, newKept: row.NewKeptVolumes, ephemeral: row.EphemeralVolumes,
+		required: required,
+	}
 }
 
 // modelTxForLog resolves the transaction a log announces, nil when the log
@@ -352,8 +394,36 @@ func revertedIDForLog(ls oracle.LedgerState, row oracle.LogRow) uint64 {
 // candidate's row sequence: required rows appear in order, optional rows may,
 // nothing else does, and a required row may only be missing past a full
 // (truncated) page.
-func logWindowMatches(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilter, afterSeq uint64, pageSize int, page []serverLogRow) bool {
-	return logRowsMatch(ledger, logWindowRows(ls, ledger, filter, afterSeq), pageSize, page)
+func logWindowMatches(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilter, afterSeq uint64, reverse bool, pageSize int, page []serverLogRow, next string) bool {
+	rows := logWindowRows(ls, ledger, filter, afterSeq, reverse)
+	if !logRowsMatch(ledger, rows, pageSize, page) {
+		return false
+	}
+
+	return nextCursorLegal(next, logRowsLeftoverMore(rows, page), lastLogKey(page), len(page), pageSize)
+}
+
+// logRowsLeftoverMore turns the rows a page left behind into the verdict on
+// whether a resume cursor was owed: a required row certainly follows, one whose
+// date the model has not learned may or may not.
+func logRowsLeftoverMore(rows []logWindowRow, page []serverLogRow) cursorMore {
+	j, i := 0, 0
+	for ; i < len(rows) && j < len(page); i++ {
+		if page[j].id == rows[i].id {
+			j++
+		}
+	}
+
+	more := cursorForbidden
+	for _, row := range rows[i:] {
+		if row.required {
+			return cursorRequired
+		}
+
+		more = cursorEither
+	}
+
+	return more
 }
 
 func logRowsMatch(ledger string, rows []logWindowRow, pageSize int, page []serverLogRow) bool {
@@ -388,6 +458,18 @@ func logRowsMatch(ledger string, rows []logWindowRow, pageSize int, page []serve
 	}
 
 	return j == len(page)
+}
+
+// lastLogKey is the cursor a logs page implies: the ledger-local id of its last
+// row in decimal, empty for a page that showed none. The handler emits the empty
+// token for a row carrying no apply payload, which this workload never produces
+// — a token missing from a page of apply logs is a finding here.
+func lastLogKey(page []serverLogRow) string {
+	if len(page) == 0 {
+		return ""
+	}
+
+	return strconv.FormatUint(page[len(page)-1].id, 10)
 }
 
 // logRowMatches compares a served log against the model's record of it, field
@@ -469,10 +551,10 @@ func logTxMatches(rec txRecordView, got *commonpb.Transaction) bool {
 // logWindow is the page the model predicts when every row is decided: the
 // required rows, truncated to pageSize. Optional rows are left out, so it is a
 // diagnostic rendering only — legality is logWindowMatches, which admits them.
-func logWindow(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilter, afterSeq uint64, pageSize int) []uint64 {
+func logWindow(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilter, afterSeq uint64, reverse bool, pageSize int) []uint64 {
 	var window []uint64
 
-	for _, row := range logWindowRows(ls, ledger, filter, afterSeq) {
+	for _, row := range logWindowRows(ls, ledger, filter, afterSeq, reverse) {
 		if !row.required {
 			continue
 		}
@@ -492,18 +574,32 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 
 	var filter *commonpb.QueryFilter
 	if !oneIn(4) {
-		filter = genLogFilter(ledger, 0)
+		filter = genLogFilter(ledger, c.modelLogDateSample(ledger), 0)
 	}
+	filter = rollFilterShape(filter)
 
-	pageSize := queryPageSize()
+	refused := classifyRejectedFilter(filter, commonpb.QueryTarget_QUERY_TARGET_LOGS)
+
+	requestedPageSize, pageSize := queryPageSize()
+	noteClampedPageSize(requestedPageSize, pageSize)
 
 	var (
 		cursor   string
 		afterSeq uint64
 	)
 
-	if oneIn(2) {
-		afterSeq = internal.Rand().Uint64() % 16
+	reverse := oneIn(2)
+
+	malformed, rolled := rollMalformedCursor()
+	switch {
+	case rolled:
+		cursor = malformed
+	case oneIn(2):
+		// A ledger-local log id, aimed at the log the ledger actually holds so
+		// the resume lands inside the range rather than always in its first
+		// page: a few below the model's head, and occasionally far past it so
+		// the empty tail is exercised too.
+		afterSeq = c.rollLogResumeID(ledger)
 		cursor = pageToken(strconv.FormatUint(afterSeq, 10))
 	}
 
@@ -522,15 +618,24 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 	stream, err := client.ListLogs(readCtx, &servicepb.ListLogsRequest{
 		Ledger: ledger,
 		Options: &commonpb.ListOptions{
-			PageSize: uint32(pageSize),
+			PageSize: uint32(requestedPageSize),
 			Cursor:   cursor,
+			Reverse:  reverse,
 			Filter:   filter,
 		},
 	})
 
-	var logs []*commonpb.Log
+	var (
+		logs []*commonpb.Log
+		next string
+	)
+
 	if err == nil {
 		logs, err = drainStream(stream)
+	}
+
+	if err == nil {
+		next = nextCursorOf(stream)
 	}
 
 	maxTicket := responseFrontier()
@@ -540,9 +645,22 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 		return
 	}
 
+	if err != nil && !internal.IsTransient(err) && !isShutdownError(err) && rolled && status.Code(err) == codes.InvalidArgument {
+		// A refused cursor may be reported ahead of a refused filter.
+		refused = rejectedFilter{}
+	}
+	if err != nil && (!internal.IsTransient(err) || isIndexNotReady(err)) && !isShutdownError(err) &&
+		c.handleRejectedFilterError(maxTicket, refused, commonpb.QueryTarget_QUERY_TARGET_LOGS, ledger, filter, err) {
+		return
+	}
+
 	errKind, gated := classifyLogQueryError(err)
 	if !gated {
 		if internal.IsTransient(err) || isShutdownError(err) {
+			return
+		}
+
+		if handleMalformedCursorError(rolled, "log", cursor, err) {
 			return
 		}
 
@@ -555,7 +673,28 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 		return
 	}
 
-	c.validateLogQuery(ctx, client, maxTicket, ledger, filter, afterSeq, pageSize, logs, neededLogIndexes(filter), errKind, err)
+	if rolled && err != nil {
+		// The handler decodes the cursor before the filter compiles, so an
+		// index gate cannot answer ahead of the cursor's refusal.
+		handleMalformedCursorError(rolled, "log", cursor, err)
+
+		return
+	}
+
+	if rolled {
+		assert.Unreachable("singleton_driver_model: malformed log cursor returned results", internal.Details{
+			"cursor": cursor,
+			"rows":   len(logs),
+		})
+
+		return
+	}
+
+	if err == nil && assertRefusedFilterServedNothing(refused, commonpb.QueryTarget_QUERY_TARGET_LOGS, ledger, filter, len(logs)) {
+		return
+	}
+
+	c.validateLogQuery(ctx, client, maxTicket, ledger, filter, afterSeq, reverse, pageSize, logs, next, neededLogIndexes(filter), errKind, err)
 }
 
 // classifyLogQueryError maps a ListLogs outcome to its class. ok=false means
@@ -595,18 +734,21 @@ func serverLogIDs(logs []*commonpb.Log) []uint64 {
 //   - a not-ready refusal is legal iff some needed index is not active on the
 //     base — so a refusal of a filter needing no index is a finding, and so is
 //     a page served for an index no base holds.
-func (c *Checker) validateLogQuery(ctx context.Context, client servicepb.BucketServiceClient, maxTicket uint64, ledger string, filter *commonpb.QueryFilter, afterSeq uint64, pageSize int, serverLogs []*commonpb.Log, needed map[string]struct{}, errKind indexedErrKind, err error) {
+func (c *Checker) validateLogQuery(ctx context.Context, client servicepb.BucketServiceClient, maxTicket uint64, ledger string, filter *commonpb.QueryFilter, afterSeq uint64, reverse bool, pageSize int, serverLogs []*commonpb.Log, next string, needed map[string]struct{}, errKind indexedErrKind, err error) {
 	page := serverLogRows(serverLogs)
 	ids := serverLogIDs(serverLogs)
 
-	// A page must always be ascending, within the cursor, and no longer than
-	// requested — properties that hold whatever the filter reads.
+	// A page must always be ordered in its direction, within the cursor, and no
+	// longer than requested — properties that hold whatever the filter reads.
 	for i, id := range ids {
-		if id <= afterSeq || (i > 0 && id <= ids[i-1]) || len(ids) > pageSize {
+		outsideCursor := afterSeq > 0 && (!reverse && id <= afterSeq || reverse && id >= afterSeq)
+		outOfOrder := i > 0 && (!reverse && id <= ids[i-1] || reverse && id >= ids[i-1])
+		if outsideCursor || outOfOrder || len(ids) > pageSize {
 			assert.Unreachable("singleton_driver_model: log page violates its own ordering", internal.Details{
 				"ledger":    ledger,
 				"filter":    describeFilter(filter),
 				"afterSeq":  afterSeq,
+				"reverse":   reverse,
 				"pageSize":  pageSize,
 				"serverIds": joinUint64(ids),
 			})
@@ -634,7 +776,7 @@ func (c *Checker) validateLogQuery(ctx context.Context, client servicepb.BucketS
 			return false
 		}
 
-		return logOutcomeLegal(ls, ledger, filter, needed, errKind, page, afterSeq, pageSize)
+		return logOutcomeLegal(ls, ledger, filter, needed, errKind, page, afterSeq, reverse, pageSize, next)
 	})
 
 	c.noteQueryCoverage(ledger, commonpb.QueryTarget_QUERY_TARGET_LOGS, filter, needed,
@@ -645,6 +787,10 @@ func (c *Checker) validateLogQuery(ctx context.Context, client servicepb.BucketS
 			assert.Reachable("singleton_driver_model: log query gated on a missing index", internal.Details{"ledger": ledger})
 		} else {
 			assert.Reachable("singleton_driver_model: log query served results", internal.Details{"ledger": ledger})
+			if reverse && len(page) > 0 {
+				// Coverage: a descending page matched the model.
+				assert.Reachable("singleton_driver_model: reverse log query served results", internal.Details{"ledger": ledger})
+			}
 		}
 
 		return
@@ -656,12 +802,13 @@ func (c *Checker) validateLogQuery(ctx context.Context, client servicepb.BucketS
 	details := internal.Details{
 		"ledger":      ledger,
 		"filter":      describeFilter(filter),
+		"nextCursor":  next,
 		"afterSeq":    afterSeq,
 		"pageSize":    pageSize,
 		"rows":        len(ids),
 		"serverIds":   joinUint64(ids),
 		"serverRows":  describeServerLogRows(page),
-		"modelIds":    joinUint64(c.modelLogWindow(ledger, filter, afterSeq, pageSize)),
+		"modelIds":    joinUint64(c.modelLogWindow(ledger, filter, afterSeq, reverse, pageSize)),
 		"modelIdx":    c.describeLogIndexStates(ledger, needed),
 		"modelDates":  c.describeLogDates(ledger),
 		"recheck":     diagnosticDetail(joinUint64(recheckIDs), recheckErr),
@@ -697,9 +844,9 @@ func describeServerLogRows(page []serverLogRow) string {
 // logOutcomeLegal is the per-candidate verdict for one ListLogs outcome: the
 // shared index-lifecycle legality, with the base's ordered log window as the
 // result check.
-func logOutcomeLegal(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilter, needed map[string]struct{}, errKind indexedErrKind, page []serverLogRow, afterSeq uint64, pageSize int) bool {
+func logOutcomeLegal(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilter, needed map[string]struct{}, errKind indexedErrKind, page []serverLogRow, afterSeq uint64, reverse bool, pageSize int, next string) bool {
 	return indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_LOGS, filter, needed, errKind, "", func(view oracle.LedgerState) bool {
-		return logWindowMatches(view, ledger, filter, afterSeq, pageSize, page)
+		return logWindowMatches(view, ledger, filter, afterSeq, reverse, pageSize, page, next)
 	})
 }
 
@@ -734,6 +881,31 @@ func (c *Checker) describeLogDates(ledger string) string {
 	return strings.Join(parts, ",")
 }
 
+// modelLogDateSample returns the dates the committed model has learned for this
+// ledger's logs, the scale genLogDateCond draws its bounds from. Acquires c.mu.
+func (c *Checker) modelLogDateSample(ledger string) []uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return logDateSample(c.modelState.Ledger(ledger))
+}
+
+// logDateSample lists the dates ls's logs carry, the pool log-date bounds are
+// drawn from.
+func logDateSample(ls oracle.LedgerState) []uint64 {
+	rows := ls.LogDates()
+
+	out := make([]uint64, 0, len(rows))
+
+	for _, row := range rows {
+		if row.Date != nil {
+			out = append(out, row.Date.GetData())
+		}
+	}
+
+	return out
+}
+
 // describeLogIndexStates renders the committed model's lifecycle state for each
 // needed index, for a finding's diagnostics. Acquires c.mu.
 func (c *Checker) describeLogIndexStates(ledger string, needed map[string]struct{}) string {
@@ -753,11 +925,11 @@ func (c *Checker) describeLogIndexStates(ledger string, needed map[string]struct
 
 // modelLogWindow returns the log window on the committed modelState for a
 // finding's diagnostics. Acquires c.mu.
-func (c *Checker) modelLogWindow(ledger string, filter *commonpb.QueryFilter, afterSeq uint64, pageSize int) []uint64 {
+func (c *Checker) modelLogWindow(ledger string, filter *commonpb.QueryFilter, afterSeq uint64, reverse bool, pageSize int) []uint64 {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	return logWindow(c.modelState.Ledger(ledger), ledger, filter, afterSeq, pageSize)
+	return logWindow(c.modelState.Ledger(ledger), ledger, filter, afterSeq, reverse, pageSize)
 }
 
 // recheckLogIDs re-reads the ledger's logs unfiltered after the finding, at a
@@ -806,30 +978,7 @@ func recheckLogKinds(ctx context.Context, client servicepb.BucketServiceClient, 
 
 	out := make([]string, 0, len(logs))
 	for _, l := range logs {
-		switch d := l.GetPayload().GetApply().GetLog().GetData(); {
-		case d.GetCreatedTransaction() != nil:
-			out = append(out, "created_transaction")
-		case d.GetRevertedTransaction() != nil:
-			out = append(out, "reverted_transaction")
-		case d.GetSavedMetadata() != nil:
-			out = append(out, "saved_metadata")
-		case d.GetDeletedMetadata() != nil:
-			out = append(out, "deleted_metadata")
-		case d.GetSetMetadataFieldType() != nil:
-			out = append(out, "set_metadata_field_type")
-		case d.GetRemovedMetadataFieldType() != nil:
-			out = append(out, "removed_metadata_field_type")
-		case d.GetCreateIndex() != nil:
-			out = append(out, "create_index")
-		case d.GetDropIndex() != nil:
-			out = append(out, "drop_index")
-		case d.GetAddedAccountType() != nil:
-			out = append(out, "added_account_type")
-		case d.GetRemovedAccountType() != nil:
-			out = append(out, "removed_account_type")
-		default:
-			out = append(out, "other")
-		}
+		out = append(out, serverLogKind(l))
 	}
 
 	return out, nil
@@ -844,4 +993,25 @@ func diagnosticDetail(value string, err error) string {
 	}
 
 	return value
+}
+
+// rollLogResumeID picks a ledger-local log id to resume a ListLogs page at.
+// Mostly just inside the ledger's committed head so the skip lands in the middle
+// of the range; one roll in eight lands past everything it holds, which must
+// serve an empty page rather than wrap. Acquires c.mu.
+func (c *Checker) rollLogResumeID(ledger string) uint64 {
+	c.mu.Lock()
+	rows := c.modelState.Ledger(ledger).LogRows()
+	c.mu.Unlock()
+
+	var head uint64
+	for _, row := range rows {
+		head = max(head, row.ID)
+	}
+
+	if head == 0 || oneIn(8) {
+		return head + 1 + internal.Rand().Uint64()%16
+	}
+
+	return 1 + internal.Rand().Uint64()%head
 }
