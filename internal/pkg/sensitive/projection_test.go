@@ -22,7 +22,9 @@ func TestClonePreservesSourceAndDropsOpaqueEvidence(t *testing.T) {
 	before := proto.Clone(source)
 	view := Redact(source)
 	require.Equal(t, uint64(17), view.GetSequence())
-	require.Nil(t, view.GetResponseSignature())
+	// response_signature is a public verification envelope, not a secret; Redact preserves it.
+	require.NotNil(t, view.GetResponseSignature())
+	require.Equal(t, source.GetResponseSignature().GetKeyId(), view.GetResponseSignature().GetKeyId())
 	require.Empty(t, view.ProtoReflect().GetUnknown())
 	require.True(t, proto.Equal(before, source))
 	require.NotSame(t, source, view)

@@ -374,7 +374,7 @@ message Log {
   LogPayload payload = 2;
   // Batch identity (idempotency key + signature) lives on AppliedProposal
   // (proposal.proto), not on the log.
-  signature.SignedLog response_signature = 3 [(sensitive) = true];
+  signature.SignedLog response_signature = 3; // public verification envelope, not a secret
 }
 
 message LogPayload {

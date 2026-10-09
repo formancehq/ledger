@@ -3292,7 +3292,7 @@ type Log struct {
 	Payload  *LogPayload            `protobuf:"bytes,2,opt,name=payload,proto3" json:"payload,omitempty"`
 	// Batch identity (idempotency key + signature) lives on AppliedProposal
 	// (proposal.proto), not on the log.
-	ResponseSignature *signaturepb.SignedLog `protobuf:"bytes,3,opt,name=response_signature,json=responseSignature,proto3" json:"response_signature,omitempty"`
+	ResponseSignature *signaturepb.SignedLog `protobuf:"bytes,3,opt,name=response_signature,json=responseSignature,proto3" json:"response_signature,omitempty"` // public verification envelope, not a secret
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -13304,11 +13304,11 @@ const file_common_proto_rawDesc = "" +
 	"\vIdempotency\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x1d\n" +
 	"\n" +
-	"expires_at\x18\x02 \x01(\x06R\texpiresAt\"\x9a\x01\n" +
+	"expires_at\x18\x02 \x01(\x06R\texpiresAt\"\x94\x01\n" +
 	"\x03Log\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x06R\bsequence\x12,\n" +
-	"\apayload\x18\x02 \x01(\v2\x12.common.LogPayloadR\apayload\x12I\n" +
-	"\x12response_signature\x18\x03 \x01(\v2\x14.signature.SignedLogB\x04\xf0\xbc\x18\x01R\x11responseSignature\"\xd7\r\n" +
+	"\apayload\x18\x02 \x01(\v2\x12.common.LogPayloadR\apayload\x12C\n" +
+	"\x12response_signature\x18\x03 \x01(\v2\x14.signature.SignedLogR\x11responseSignature\"\xd7\r\n" +
 	"\n" +
 	"LogPayload\x12?\n" +
 	"\rcreate_ledger\x18\x01 \x01(\v2\x18.common.CreatedLedgerLogH\x00R\fcreateLedger\x12?\n" +

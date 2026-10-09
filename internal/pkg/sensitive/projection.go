@@ -96,9 +96,9 @@ func redactURL(raw string) string {
 	// we must split and redact each server independently. Other drivers (e.g.
 	// ClickHouse multi-host DSNs) use commas inside the host component and must
 	// be handled by url.Parse as a single URL.
-	schemeEnd := strings.Index(trimmed, "://")
-	if schemeEnd >= 0 && strings.Contains(trimmed, ",") {
-		scheme := strings.ToLower(trimmed[:schemeEnd])
+	before, _, ok := strings.Cut(trimmed, "://")
+	if ok && strings.Contains(trimmed, ",") {
+		scheme := strings.ToLower(before)
 		if natsTokenSchemes[scheme] {
 			parts := strings.Split(trimmed, ",")
 			redacted := make([]string, len(parts))
