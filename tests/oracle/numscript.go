@@ -722,3 +722,57 @@ func isErrorType[T error](err error) bool {
 
 	return errors.As(err, &target)
 }
+
+// NumscriptSelect resolves a read-side version selector the way GetNumscript
+// does: "" or "latest" is the greatest stored version, a full version is that
+// version, and a partial one ("1", "1.2") the greatest stored version under it.
+func (s LedgerState) NumscriptSelect(name, selector string) (version, content string, ok bool) {
+	if selector == "" || selector == "latest" {
+		version = s.NumscriptLatest(name)
+		content, ok = s.NumscriptContent(name, version)
+
+		return version, content, ok
+	}
+
+	major, minor, patch, depth, err := semver.ParsePartial(selector)
+	if err != nil {
+		return "", "", false
+	}
+
+	if depth == 3 {
+		version = semver.Version{Major: major, Minor: minor, Patch: patch}.String()
+		content, ok = s.NumscriptContent(name, version)
+
+		return version, content, ok
+	}
+
+	var best semver.Version
+	for k, c := range s.numscripts.From(NumscriptKey{Name: name}) {
+		if k.Name != name {
+			break
+		}
+
+		v, err := semver.Parse(k.Version)
+		if err != nil || v.Major != major || (depth == 2 && v.Minor != minor) {
+			continue
+		}
+
+		if !ok || v.Compare(best) > 0 {
+			best, version, content, ok = v, k.Version, c, true
+		}
+	}
+
+	return version, content, ok
+}
+
+// TemplateUsage counts the committed creates that ran a version of name.
+func (s LedgerState) TemplateUsage(name string) uint64 {
+	var n uint64
+	for i := range s.txs.Len() {
+		if s.txs.Get(i).template == name {
+			n++
+		}
+	}
+
+	return n
+}

@@ -571,7 +571,7 @@ func bulkEnablesMaintenance(bulk oracle.Bulk) bool {
 // slot of the read mix, so the entity queries the coverage sondes depend on
 // keep their share of the worker's reads.
 func runSecondaryRead(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7}) {
+	switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8}) {
 	case 0:
 		runAggregateQuery(ctx, client, c)
 	case 1:
@@ -588,6 +588,8 @@ func runSecondaryRead(ctx context.Context, client servicepb.BucketServiceClient,
 		runAuditEntryRead(ctx, client, c)
 	case 7:
 		runInspectIndex(ctx, client, c)
+	case 8:
+		runNumscriptRead(ctx, client, c)
 	default:
 		// Every slot the roll can produce has an arm; a fall-through means the
 		// two lists drifted and a read surface stopped being dispatched.
