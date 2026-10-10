@@ -64,7 +64,7 @@ func TestQueriesRun(t *testing.T) {
 				"bar": "barnacle",
 			},
 		}, storagecommon.PaginationConfig{
-			MaxPageSize:     paginate.MaxPageSize,
+			MaxPageSize:     DefaultMaxPageSize,
 			DefaultPageSize: paginate.QueryDefaultPageSize,
 		}).
 		Return(&expectedResourceKind, &expectedCursor, nil)

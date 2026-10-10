@@ -3315,8 +3315,8 @@ components:
           format: int64
           minimum: 1
           maximum: 1000
-          description: |
-            The maximum number of results to return per page.
+          description: >
+            The maximum number of results to return per page. The server may return fewer items than requested if the value exceeds the effective server limit. Clients should read `cursor.pageSize` and follow `hasMore` rather than computing page counts from the requested size.
           example: 100
         cursor:
           description: >
