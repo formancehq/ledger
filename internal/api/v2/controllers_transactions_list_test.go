@@ -185,7 +185,7 @@ func TestTransactionsList(t *testing.T) {
 				"pageSize": []string{"1000000"},
 			},
 			expectQuery: storagecommon.InitialPaginatedQuery[any]{
-				PageSize: paginate.MaxPageSize,
+				PageSize: DefaultMaxPageSize,
 				Column:   "id",
 				Order:    pointer.For(paginate.Order(paginate.OrderDesc)),
 				Options: storagecommon.ResourceQuery[any]{

@@ -131,7 +131,7 @@ func TestAccountsList(t *testing.T) {
 				"pageSize": []string{"1000000"},
 			},
 			expectQuery: storagecommon.InitialPaginatedQuery[any]{
-				PageSize: paginate.MaxPageSize,
+				PageSize: DefaultMaxPageSize,
 				Options: storagecommon.ResourceQuery[any]{
 					PIT:    &before,
 					Expand: make([]string, 0),

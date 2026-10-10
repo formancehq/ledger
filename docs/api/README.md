@@ -1,3 +1,19 @@
+---
+title: Ledger API v2
+language_tabs:
+  - shell: Shell
+  - javascript: Javascript
+language_clients:
+  - shell: ""
+  - javascript: ""
+toc_footers: []
+includes: []
+search: false
+highlight_theme: darkula
+headingLevel: 2
+
+---
+
 <!-- Generator: Widdershins v4.0.1 -->
 
 <h1 id="ledger-api">Ledger API v2</h1>
@@ -27,10 +43,32 @@ Base URLs:
 
 > Code samples
 
-```http
-GET http://localhost:8080/_/info HTTP/1.1
-Host: localhost:8080
-Accept: application/json
+```shell
+# You can also use wget
+curl -X GET http://localhost:8080/_/info \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+
+const headers = {
+  'Accept':'application/json',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/_/info',
+{
+  method: 'GET',
+
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -69,10 +107,32 @@ Authorization ( Scopes: ledger:read )
 
 > Code samples
 
-```http
-GET http://localhost:8080/_/metrics HTTP/1.1
-Host: localhost:8080
-Accept: application/json
+```shell
+# You can also use wget
+curl -X GET http://localhost:8080/_/metrics \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+
+const headers = {
+  'Accept':'application/json',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/_/metrics',
+{
+  method: 'GET',
+
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -117,11 +177,34 @@ Authorization ( Scopes: ledger:read )
 
 > Code samples
 
-```http
-GET http://localhost:8080/v2 HTTP/1.1
-Host: localhost:8080
-Content-Type: application/json
-Accept: application/json
+```shell
+# You can also use wget
+curl -X GET http://localhost:8080/v2 \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+const inputBody = '{}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'application/json',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/v2',
+{
+  method: 'GET',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -206,10 +289,32 @@ Authorization ( Scopes: ledger:read )
 
 > Code samples
 
-```http
-GET http://localhost:8080/v2/{ledger} HTTP/1.1
-Host: localhost:8080
-Accept: application/json
+```shell
+# You can also use wget
+curl -X GET http://localhost:8080/v2/{ledger} \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+
+const headers = {
+  'Accept':'application/json',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/v2/{ledger}',
+{
+  method: 'GET',
+
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -262,11 +367,43 @@ Authorization ( Scopes: ledger:read )
 
 > Code samples
 
-```http
-POST http://localhost:8080/v2/{ledger} HTTP/1.1
-Host: localhost:8080
-Content-Type: application/json
-Accept: application/json
+```shell
+# You can also use wget
+curl -X POST http://localhost:8080/v2/{ledger} \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+const inputBody = '{
+  "bucket": "string",
+  "metadata": {
+    "admin": "true"
+  },
+  "features": {
+    "property1": "string",
+    "property2": "string"
+  }
+}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'application/json',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/v2/{ledger}',
+{
+  method: 'POST',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -302,7 +439,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
 }
 ```
 
@@ -324,12 +461,104 @@ Authorization ( Scopes: ledger:write )
 
 > Code samples
 
-```http
-POST http://localhost:8080/v2/{ledger}/schemas/{version} HTTP/1.1
-Host: localhost:8080
-Content-Type: application/json
-Accept: application/json
-Idempotency-Key: string
+```shell
+# You can also use wget
+curl -X POST http://localhost:8080/v2/{ledger}/schemas/{version} \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -H 'Idempotency-Key: string' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+const inputBody = '{
+  "chart": {
+    "users": {
+      "$userID": {
+        ".pattern": "^[0-9]{16}$"
+      }
+    }
+  },
+  "transactions": {
+    "property1": {
+      "description": "string",
+      "script": "string",
+      "runtime": "experimental-interpreter"
+    },
+    "property2": {
+      "description": "string",
+      "script": "string",
+      "runtime": "experimental-interpreter"
+    }
+  },
+  "queries": {
+    "property1": {
+      "description": "string",
+      "resource": "transactions",
+      "params": {
+        "pageSize": 100,
+        "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
+        "expand": "string",
+        "pit": "2019-08-24T14:15:22Z",
+        "sort": "id:desc",
+        "resource": "accounts"
+      },
+      "vars": {
+        "property1": {
+          "type": "string",
+          "default": null
+        },
+        "property2": {
+          "type": "string",
+          "default": null
+        }
+      },
+      "body": {}
+    },
+    "property2": {
+      "description": "string",
+      "resource": "transactions",
+      "params": {
+        "pageSize": 100,
+        "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
+        "expand": "string",
+        "pit": "2019-08-24T14:15:22Z",
+        "sort": "id:desc",
+        "resource": "accounts"
+      },
+      "vars": {
+        "property1": {
+          "type": "string",
+          "default": null
+        },
+        "property2": {
+          "type": "string",
+          "default": null
+        }
+      },
+      "body": {}
+    }
+  }
+}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'application/json',
+  'Idempotency-Key':'string',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/schemas/{version}',
+{
+  method: 'POST',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -426,7 +655,7 @@ Idempotency-Key: string
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
 }
 ```
 
@@ -454,10 +683,32 @@ Authorization ( Scopes: ledger:write )
 
 > Code samples
 
-```http
-GET http://localhost:8080/v2/{ledger}/schemas/{version} HTTP/1.1
-Host: localhost:8080
-Accept: application/json
+```shell
+# You can also use wget
+curl -X GET http://localhost:8080/v2/{ledger}/schemas/{version} \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+
+const headers = {
+  'Accept':'application/json',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/schemas/{version}',
+{
+  method: 'GET',
+
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -568,10 +819,32 @@ Authorization ( Scopes: ledger:read )
 
 > Code samples
 
-```http
-GET http://localhost:8080/v2/{ledger}/schemas HTTP/1.1
-Host: localhost:8080
-Accept: application/json
+```shell
+# You can also use wget
+curl -X GET http://localhost:8080/v2/{ledger}/schemas \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+
+const headers = {
+  'Accept':'application/json',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/schemas',
+{
+  method: 'GET',
+
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -701,11 +974,36 @@ Authorization ( Scopes: ledger:read )
 
 > Code samples
 
-```http
-PUT http://localhost:8080/v2/{ledger}/metadata HTTP/1.1
-Host: localhost:8080
-Content-Type: application/json
-Accept: application/json
+```shell
+# You can also use wget
+curl -X PUT http://localhost:8080/v2/{ledger}/metadata \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+const inputBody = '{
+  "admin": "true"
+}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'application/json',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/metadata',
+{
+  method: 'PUT',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -734,7 +1032,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
 }
 ```
 
@@ -757,10 +1055,32 @@ Authorization ( Scopes: ledger:write )
 
 > Code samples
 
-```http
-DELETE http://localhost:8080/v2/{ledger}/metadata/{key} HTTP/1.1
-Host: localhost:8080
-Accept: application/json
+```shell
+# You can also use wget
+curl -X DELETE http://localhost:8080/v2/{ledger}/metadata/{key} \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+
+const headers = {
+  'Accept':'application/json',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/metadata/{key}',
+{
+  method: 'DELETE',
+
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -781,7 +1101,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
 }
 ```
 
@@ -803,10 +1123,32 @@ Authorization ( Scopes: ledger:write )
 
 > Code samples
 
-```http
-GET http://localhost:8080/v2/{ledger}/_info HTTP/1.1
-Host: localhost:8080
-Accept: application/json
+```shell
+# You can also use wget
+curl -X GET http://localhost:8080/v2/{ledger}/_info \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+
+const headers = {
+  'Accept':'application/json',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/_info',
+{
+  method: 'GET',
+
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -858,11 +1200,71 @@ Authorization ( Scopes: ledger:read )
 
 > Code samples
 
-```http
-POST http://localhost:8080/v2/{ledger}/_bulk HTTP/1.1
-Host: localhost:8080
-Content-Type: application/json
-Accept: application/json
+```shell
+# You can also use wget
+curl -X POST http://localhost:8080/v2/{ledger}/_bulk \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+const inputBody = '[
+  {
+    "action": "string",
+    "ik": "string",
+    "data": {
+      "timestamp": "2019-08-24T14:15:22Z",
+      "postings": [
+        {
+          "amount": 100,
+          "asset": "COIN",
+          "destination": "users:002",
+          "source": "users:001"
+        }
+      ],
+      "script": {
+        "template": "CUSTOMER_DEPOSIT",
+        "plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n",
+        "vars": {
+          "user": "users:042"
+        }
+      },
+      "runtime": "experimental-interpreter",
+      "reference": "ref:001",
+      "metadata": {
+        "admin": "true"
+      },
+      "accountMetadata": {
+        "property1": {
+          "admin": "true"
+        },
+        "property2": {
+          "admin": "true"
+        }
+      },
+      "force": true
+    }
+  }
+]';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'application/json',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/_bulk',
+{
+  method: 'POST',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -1043,11 +1445,34 @@ Authorization ( Scopes: ledger:write )
 
 > Code samples
 
-```http
-HEAD http://localhost:8080/v2/{ledger}/accounts HTTP/1.1
-Host: localhost:8080
-Content-Type: application/json
-Accept: application/json
+```shell
+# You can also use wget
+curl -X HEAD http://localhost:8080/v2/{ledger}/accounts \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+const inputBody = '{}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'application/json',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/accounts',
+{
+  method: 'HEAD',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -1075,7 +1500,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
 }
 ```
 
@@ -1103,12 +1528,36 @@ Authorization ( Scopes: ledger:read )
 
 > Code samples
 
-```http
-GET http://localhost:8080/v2/{ledger}/accounts HTTP/1.1
-Host: localhost:8080
-Content-Type: application/json
-Accept: application/json
-Formance-Bigint-As-String: false
+```shell
+# You can also use wget
+curl -X GET http://localhost:8080/v2/{ledger}/accounts \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -H 'Formance-Bigint-As-String: false' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+const inputBody = '{}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'application/json',
+  'Formance-Bigint-As-String':'false',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/accounts',
+{
+  method: 'GET',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -1220,11 +1669,34 @@ Authorization ( Scopes: ledger:read )
 
 > Code samples
 
-```http
-GET http://localhost:8080/v2/{ledger}/accounts/{address} HTTP/1.1
-Host: localhost:8080
-Accept: application/json
-Formance-Bigint-As-String: false
+```shell
+# You can also use wget
+curl -X GET http://localhost:8080/v2/{ledger}/accounts/{address} \
+  -H 'Accept: application/json' \
+  -H 'Formance-Bigint-As-String: false' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+
+const headers = {
+  'Accept':'application/json',
+  'Formance-Bigint-As-String':'false',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/accounts/{address}',
+{
+  method: 'GET',
+
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -1311,12 +1783,38 @@ Authorization ( Scopes: ledger:read )
 
 > Code samples
 
-```http
-POST http://localhost:8080/v2/{ledger}/accounts/{address}/metadata HTTP/1.1
-Host: localhost:8080
-Content-Type: application/json
-Accept: application/json
-Idempotency-Key: string
+```shell
+# You can also use wget
+curl -X POST http://localhost:8080/v2/{ledger}/accounts/{address}/metadata \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -H 'Idempotency-Key: string' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+const inputBody = '{
+  "admin": "true"
+}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'application/json',
+  'Idempotency-Key':'string',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/accounts/{address}/metadata',
+{
+  method: 'POST',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -1356,7 +1854,7 @@ Idempotency-Key: string
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
 }
 ```
 
@@ -1386,11 +1884,34 @@ Authorization ( Scopes: ledger:write )
 
 > Code samples
 
-```http
-DELETE http://localhost:8080/v2/{ledger}/transactions/{id}/metadata/{key} HTTP/1.1
-Host: localhost:8080
-Accept: application/json
-Idempotency-Key: string
+```shell
+# You can also use wget
+curl -X DELETE http://localhost:8080/v2/{ledger}/transactions/{id}/metadata/{key} \
+  -H 'Accept: application/json' \
+  -H 'Idempotency-Key: string' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+
+const headers = {
+  'Accept':'application/json',
+  'Idempotency-Key':'string',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/transactions/{id}/metadata/{key}',
+{
+  method: 'DELETE',
+
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -1415,7 +1936,7 @@ Delete metadata by key
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
 }
 ```
 
@@ -1445,10 +1966,32 @@ Authorization ( Scopes: ledger:write )
 
 > Code samples
 
-```http
-GET http://localhost:8080/v2/{ledger}/stats HTTP/1.1
-Host: localhost:8080
-Accept: application/json
+```shell
+# You can also use wget
+curl -X GET http://localhost:8080/v2/{ledger}/stats \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+
+const headers = {
+  'Accept':'application/json',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/stats',
+{
+  method: 'GET',
+
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -1493,11 +2036,34 @@ Authorization ( Scopes: ledger:read )
 
 > Code samples
 
-```http
-HEAD http://localhost:8080/v2/{ledger}/transactions HTTP/1.1
-Host: localhost:8080
-Content-Type: application/json
-Accept: application/json
+```shell
+# You can also use wget
+curl -X HEAD http://localhost:8080/v2/{ledger}/transactions \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+const inputBody = '{}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'application/json',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/transactions',
+{
+  method: 'HEAD',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -1525,7 +2091,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
 }
 ```
 
@@ -1553,12 +2119,36 @@ Authorization ( Scopes: ledger:read )
 
 > Code samples
 
-```http
-GET http://localhost:8080/v2/{ledger}/transactions HTTP/1.1
-Host: localhost:8080
-Content-Type: application/json
-Accept: application/json
-Formance-Bigint-As-String: false
+```shell
+# You can also use wget
+curl -X GET http://localhost:8080/v2/{ledger}/transactions \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -H 'Formance-Bigint-As-String: false' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+const inputBody = '{}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'application/json',
+  'Formance-Bigint-As-String':'false',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/transactions',
+{
+  method: 'GET',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -1730,13 +2320,69 @@ Authorization ( Scopes: ledger:read )
 
 > Code samples
 
-```http
-POST http://localhost:8080/v2/{ledger}/transactions HTTP/1.1
-Host: localhost:8080
-Content-Type: application/json
-Accept: application/json
-Formance-Bigint-As-String: false
-Idempotency-Key: string
+```shell
+# You can also use wget
+curl -X POST http://localhost:8080/v2/{ledger}/transactions \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -H 'Formance-Bigint-As-String: false' \
+  -H 'Idempotency-Key: string' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+const inputBody = '{
+  "timestamp": "2019-08-24T14:15:22Z",
+  "postings": [
+    {
+      "amount": 100,
+      "asset": "COIN",
+      "destination": "users:002",
+      "source": "users:001"
+    }
+  ],
+  "script": {
+    "template": "CUSTOMER_DEPOSIT",
+    "plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n",
+    "vars": {
+      "user": "users:042"
+    }
+  },
+  "runtime": "experimental-interpreter",
+  "reference": "ref:001",
+  "metadata": {
+    "admin": "true"
+  },
+  "accountMetadata": {
+    "property1": {
+      "admin": "true"
+    },
+    "property2": {
+      "admin": "true"
+    }
+  },
+  "force": true
+}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'application/json',
+  'Formance-Bigint-As-String':'false',
+  'Idempotency-Key':'string',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/transactions',
+{
+  method: 'POST',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -1919,11 +2565,34 @@ Authorization ( Scopes: ledger:write )
 
 > Code samples
 
-```http
-GET http://localhost:8080/v2/{ledger}/transactions/{id} HTTP/1.1
-Host: localhost:8080
-Accept: application/json
-Formance-Bigint-As-String: false
+```shell
+# You can also use wget
+curl -X GET http://localhost:8080/v2/{ledger}/transactions/{id} \
+  -H 'Accept: application/json' \
+  -H 'Formance-Bigint-As-String: false' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+
+const headers = {
+  'Accept':'application/json',
+  'Formance-Bigint-As-String':'false',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/transactions/{id}',
+{
+  method: 'GET',
+
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -2057,12 +2726,38 @@ Authorization ( Scopes: ledger:read )
 
 > Code samples
 
-```http
-POST http://localhost:8080/v2/{ledger}/transactions/{id}/metadata HTTP/1.1
-Host: localhost:8080
-Content-Type: application/json
-Accept: application/json
-Idempotency-Key: string
+```shell
+# You can also use wget
+curl -X POST http://localhost:8080/v2/{ledger}/transactions/{id}/metadata \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -H 'Idempotency-Key: string' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+const inputBody = '{
+  "admin": "true"
+}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'application/json',
+  'Idempotency-Key':'string',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/transactions/{id}/metadata',
+{
+  method: 'POST',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -2095,7 +2790,7 @@ Idempotency-Key: string
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
 }
 ```
 
@@ -2125,13 +2820,43 @@ Authorization ( Scopes: ledger:write )
 
 > Code samples
 
-```http
-POST http://localhost:8080/v2/{ledger}/transactions/{id}/revert HTTP/1.1
-Host: localhost:8080
-Content-Type: application/json
-Accept: application/json
-Formance-Bigint-As-String: false
-Idempotency-Key: string
+```shell
+# You can also use wget
+curl -X POST http://localhost:8080/v2/{ledger}/transactions/{id}/revert \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -H 'Formance-Bigint-As-String: false' \
+  -H 'Idempotency-Key: string' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+const inputBody = '{
+  "metadata": {
+    "property1": "string",
+    "property2": "string"
+  }
+}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'application/json',
+  'Formance-Bigint-As-String':'false',
+  'Idempotency-Key':'string',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/transactions/{id}/revert',
+{
+  method: 'POST',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -2286,12 +3011,36 @@ Authorization ( Scopes: ledger:write )
 
 > Code samples
 
-```http
-GET http://localhost:8080/v2/{ledger}/aggregate/balances HTTP/1.1
-Host: localhost:8080
-Content-Type: application/json
-Accept: application/json
-Formance-Bigint-As-String: false
+```shell
+# You can also use wget
+curl -X GET http://localhost:8080/v2/{ledger}/aggregate/balances \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -H 'Formance-Bigint-As-String: false' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+const inputBody = '{}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'application/json',
+  'Formance-Bigint-As-String':'false',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/aggregate/balances',
+{
+  method: 'GET',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -2350,12 +3099,36 @@ Authorization ( Scopes: ledger:read )
 
 > Code samples
 
-```http
-GET http://localhost:8080/v2/{ledger}/volumes HTTP/1.1
-Host: localhost:8080
-Content-Type: application/json
-Accept: application/json
-Formance-Bigint-As-String: false
+```shell
+# You can also use wget
+curl -X GET http://localhost:8080/v2/{ledger}/volumes \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -H 'Formance-Bigint-As-String: false' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+const inputBody = '{}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'application/json',
+  'Formance-Bigint-As-String':'false',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/volumes',
+{
+  method: 'GET',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -2441,12 +3214,36 @@ Authorization ( Scopes: ledger:read )
 
 > Code samples
 
-```http
-GET http://localhost:8080/v2/{ledger}/logs HTTP/1.1
-Host: localhost:8080
-Content-Type: application/json
-Accept: application/json
-Formance-Bigint-As-String: false
+```shell
+# You can also use wget
+curl -X GET http://localhost:8080/v2/{ledger}/logs \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -H 'Formance-Bigint-As-String: false' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+const inputBody = '{}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'application/json',
+  'Formance-Bigint-As-String':'false',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/logs',
+{
+  method: 'GET',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -2553,11 +3350,36 @@ Authorization ( Scopes: ledger:read )
 
 > Code samples
 
-```http
-POST http://localhost:8080/v2/{ledger}/logs/import HTTP/1.1
-Host: localhost:8080
-Content-Type: application/octet-stream
-Accept: application/json
+```shell
+# You can also use wget
+curl -X POST http://localhost:8080/v2/{ledger}/logs/import \
+  -H 'Content-Type: application/octet-stream' \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+const inputBody = '{
+  "file": "string"
+}';
+const headers = {
+  'Content-Type':'application/octet-stream',
+  'Accept':'application/json',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/logs/import',
+{
+  method: 'POST',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -2585,7 +3407,7 @@ file: string
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
 }
 ```
 
@@ -2607,10 +3429,32 @@ Authorization ( Scopes: ledger:write )
 
 > Code samples
 
-```http
-POST http://localhost:8080/v2/{ledger}/logs/export HTTP/1.1
-Host: localhost:8080
-Accept: application/octet-stream
+```shell
+# You can also use wget
+curl -X POST http://localhost:8080/v2/{ledger}/logs/export \
+  -H 'Accept: application/octet-stream' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+
+const headers = {
+  'Accept':'application/octet-stream',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/logs/export',
+{
+  method: 'POST',
+
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -2632,7 +3476,7 @@ Accept: application/octet-stream
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
 }
 ```
 
@@ -2654,12 +3498,50 @@ Authorization ( Scopes: ledger:write )
 
 > Code samples
 
-```http
-POST http://localhost:8080/v2/{ledger}/queries/{id}/run?schemaVersion=v1.0.0 HTTP/1.1
-Host: localhost:8080
-Content-Type: application/json
-Accept: application/json
-Formance-Bigint-As-String: false
+```shell
+# You can also use wget
+curl -X POST http://localhost:8080/v2/{ledger}/queries/{id}/run?schemaVersion=v1.0.0 \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -H 'Formance-Bigint-As-String: false' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+const inputBody = '{
+  "cursor": "string",
+  "params": {
+    "pageSize": 100,
+    "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
+    "expand": "string",
+    "pit": "2019-08-24T14:15:22Z",
+    "sort": "id:desc",
+    "resource": "accounts"
+  },
+  "vars": {
+    "property1": "string",
+    "property2": "string"
+  }
+}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'application/json',
+  'Formance-Bigint-As-String':'false',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/queries/{id}/run?schemaVersion=v1.0.0',
+{
+  method: 'POST',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -2705,7 +3587,7 @@ Run a query template on a ledger
 |body|body|object|true|none|
 |» cursor|body|string|false|none|
 |» params|body|[V2QueryParams](#schemav2queryparams)|false|Parameters applied when running a query template|
-|»» pageSize|body|integer(int64)|false|The maximum number of results to return per page.|
+|»» pageSize|body|integer(int64)|false|The maximum number of results to return per page. The server may return fewer items than requested if the value exceeds the effective server limit. Clients should read `cursor.pageSize` and follow `hasMore` rather than computing page counts from the requested size.|
 |»» cursor|body|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
 |»» expand|body|string|false|Additional data to include in the response, such as volumes|
 |»» pit|body|string(date-time)|false|Point-in-time. Returns the state as it existed at this timestamp|
@@ -2908,10 +3790,30 @@ Authorization ( Scopes: ledger:read )
 
 > Code samples
 
-```http
-GET http://localhost:8080/v2/_/exporters HTTP/1.1
-Host: localhost:8080
-Accept: application/json
+```shell
+# You can also use wget
+curl -X GET http://localhost:8080/v2/_/exporters \
+  -H 'Accept: application/json'
+
+```
+
+```javascript
+
+const headers = {
+  'Accept':'application/json'
+};
+
+fetch('http://localhost:8080/v2/_/exporters',
+{
+  method: 'GET',
+
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -2957,11 +3859,35 @@ This operation does not require authentication
 
 > Code samples
 
-```http
-POST http://localhost:8080/v2/_/exporters HTTP/1.1
-Host: localhost:8080
-Content-Type: application/json
-Accept: application/json
+```shell
+# You can also use wget
+curl -X POST http://localhost:8080/v2/_/exporters \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json'
+
+```
+
+```javascript
+const inputBody = '{
+  "driver": "string",
+  "config": {}
+}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'application/json'
+};
+
+fetch('http://localhost:8080/v2/_/exporters',
+{
+  method: 'POST',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -3038,10 +3964,30 @@ This operation does not require authentication
 
 > Code samples
 
-```http
-GET http://localhost:8080/v2/_/exporters/{exporterID} HTTP/1.1
-Host: localhost:8080
-Accept: application/json
+```shell
+# You can also use wget
+curl -X GET http://localhost:8080/v2/_/exporters/{exporterID} \
+  -H 'Accept: application/json'
+
+```
+
+```javascript
+
+const headers = {
+  'Accept':'application/json'
+};
+
+fetch('http://localhost:8080/v2/_/exporters/{exporterID}',
+{
+  method: 'GET',
+
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -3109,11 +4055,37 @@ This operation does not require authentication
 
 > Code samples
 
-```http
-PUT http://localhost:8080/v2/_/exporters/{exporterID} HTTP/1.1
-Host: localhost:8080
-Content-Type: application/json
-Accept: application/json
+```shell
+# You can also use wget
+curl -X PUT http://localhost:8080/v2/_/exporters/{exporterID} \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+const inputBody = '{
+  "driver": "string",
+  "config": {}
+}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'application/json',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/v2/_/exporters/{exporterID}',
+{
+  method: 'PUT',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -3143,7 +4115,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
 }
 ```
 
@@ -3165,10 +4137,30 @@ Authorization ( Scopes: ledger:write )
 
 > Code samples
 
-```http
-DELETE http://localhost:8080/v2/_/exporters/{exporterID} HTTP/1.1
-Host: localhost:8080
-Accept: application/json
+```shell
+# You can also use wget
+curl -X DELETE http://localhost:8080/v2/_/exporters/{exporterID} \
+  -H 'Accept: application/json'
+
+```
+
+```javascript
+
+const headers = {
+  'Accept':'application/json'
+};
+
+fetch('http://localhost:8080/v2/_/exporters/{exporterID}',
+{
+  method: 'DELETE',
+
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -3188,7 +4180,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
 }
 ```
 
@@ -3209,10 +4201,32 @@ This operation does not require authentication
 
 > Code samples
 
-```http
-DELETE http://localhost:8080/v2/_/buckets/{bucket} HTTP/1.1
-Host: localhost:8080
-Accept: application/json
+```shell
+# You can also use wget
+curl -X DELETE http://localhost:8080/v2/_/buckets/{bucket} \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+
+const headers = {
+  'Accept':'application/json',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/v2/_/buckets/{bucket}',
+{
+  method: 'DELETE',
+
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -3234,7 +4248,7 @@ Delete a bucket by marking all ledgers in the bucket as deleted (soft delete). A
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
 }
 ```
 
@@ -3257,10 +4271,32 @@ Authorization ( Scopes: ledger:write )
 
 > Code samples
 
-```http
-POST http://localhost:8080/v2/_/buckets/{bucket}/restore HTTP/1.1
-Host: localhost:8080
-Accept: application/json
+```shell
+# You can also use wget
+curl -X POST http://localhost:8080/v2/_/buckets/{bucket}/restore \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+```javascript
+
+const headers = {
+  'Accept':'application/json',
+  'Authorization':'Bearer {access-token}'
+};
+
+fetch('http://localhost:8080/v2/_/buckets/{bucket}/restore',
+{
+  method: 'POST',
+
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -3282,7 +4318,7 @@ Restore a deleted bucket by unmarking all ledgers in the bucket as deleted. All 
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
 }
 ```
 
@@ -3305,10 +4341,30 @@ Authorization ( Scopes: ledger:write )
 
 > Code samples
 
-```http
-GET http://localhost:8080/v2/{ledger}/pipelines HTTP/1.1
-Host: localhost:8080
-Accept: application/json
+```shell
+# You can also use wget
+curl -X GET http://localhost:8080/v2/{ledger}/pipelines \
+  -H 'Accept: application/json'
+
+```
+
+```javascript
+
+const headers = {
+  'Accept':'application/json'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/pipelines',
+{
+  method: 'GET',
+
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -3360,11 +4416,34 @@ This operation does not require authentication
 
 > Code samples
 
-```http
-POST http://localhost:8080/v2/{ledger}/pipelines HTTP/1.1
-Host: localhost:8080
-Content-Type: application/json
-Accept: application/json
+```shell
+# You can also use wget
+curl -X POST http://localhost:8080/v2/{ledger}/pipelines \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json'
+
+```
+
+```javascript
+const inputBody = '{
+  "exporterID": "string"
+}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'application/json'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/pipelines',
+{
+  method: 'POST',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -3443,10 +4522,30 @@ This operation does not require authentication
 
 > Code samples
 
-```http
-GET http://localhost:8080/v2/{ledger}/pipelines/{pipelineID} HTTP/1.1
-Host: localhost:8080
-Accept: application/json
+```shell
+# You can also use wget
+curl -X GET http://localhost:8080/v2/{ledger}/pipelines/{pipelineID} \
+  -H 'Accept: application/json'
+
+```
+
+```javascript
+
+const headers = {
+  'Accept':'application/json'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/pipelines/{pipelineID}',
+{
+  method: 'GET',
+
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -3517,10 +4616,30 @@ This operation does not require authentication
 
 > Code samples
 
-```http
-DELETE http://localhost:8080/v2/{ledger}/pipelines/{pipelineID} HTTP/1.1
-Host: localhost:8080
-Accept: application/json
+```shell
+# You can also use wget
+curl -X DELETE http://localhost:8080/v2/{ledger}/pipelines/{pipelineID} \
+  -H 'Accept: application/json'
+
+```
+
+```javascript
+
+const headers = {
+  'Accept':'application/json'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/pipelines/{pipelineID}',
+{
+  method: 'DELETE',
+
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -3541,7 +4660,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
 }
 ```
 
@@ -3562,10 +4681,30 @@ This operation does not require authentication
 
 > Code samples
 
-```http
-POST http://localhost:8080/v2/{ledger}/pipelines/{pipelineID}/reset HTTP/1.1
-Host: localhost:8080
-Accept: application/json
+```shell
+# You can also use wget
+curl -X POST http://localhost:8080/v2/{ledger}/pipelines/{pipelineID}/reset \
+  -H 'Accept: application/json'
+
+```
+
+```javascript
+
+const headers = {
+  'Accept':'application/json'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/pipelines/{pipelineID}/reset',
+{
+  method: 'POST',
+
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -3586,7 +4725,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
 }
 ```
 
@@ -3607,10 +4746,30 @@ This operation does not require authentication
 
 > Code samples
 
-```http
-POST http://localhost:8080/v2/{ledger}/pipelines/{pipelineID}/start HTTP/1.1
-Host: localhost:8080
-Accept: application/json
+```shell
+# You can also use wget
+curl -X POST http://localhost:8080/v2/{ledger}/pipelines/{pipelineID}/start \
+  -H 'Accept: application/json'
+
+```
+
+```javascript
+
+const headers = {
+  'Accept':'application/json'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/pipelines/{pipelineID}/start',
+{
+  method: 'POST',
+
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -3631,7 +4790,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
 }
 ```
 
@@ -3652,10 +4811,30 @@ This operation does not require authentication
 
 > Code samples
 
-```http
-POST http://localhost:8080/v2/{ledger}/pipelines/{pipelineID}/stop HTTP/1.1
-Host: localhost:8080
-Accept: application/json
+```shell
+# You can also use wget
+curl -X POST http://localhost:8080/v2/{ledger}/pipelines/{pipelineID}/stop \
+  -H 'Accept: application/json'
+
+```
+
+```javascript
+
+const headers = {
+  'Accept':'application/json'
+};
+
+fetch('http://localhost:8080/v2/{ledger}/pipelines/{pipelineID}/stop',
+{
+  method: 'POST',
+
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
 
 ```
 
@@ -3676,7 +4855,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
 }
 ```
 
@@ -5507,7 +6686,7 @@ Volumes aggregated per account and per asset
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
 }
 
 ```
@@ -6874,7 +8053,7 @@ Parameters applied when running a query template
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|pageSize|integer(int64)|false|none|The maximum number of results to return per page.|
+|pageSize|integer(int64)|false|none|The maximum number of results to return per page. The server may return fewer items than requested if the value exceeds the effective server limit. Clients should read `cursor.pageSize` and follow `hasMore` rather than computing page counts from the requested size.|
 |cursor|string|false|none|Parameter used in pagination requests. Maximum page size is set to 15.<br>Set to the value of next for the next page of results.<br>Set to the value of previous for the previous page of results.<br>No other parameters can be set when this parameter is set.|
 |expand|string|false|none|Additional data to include in the response, such as volumes|
 |pit|string(date-time)|false|none|Point-in-time. Returns the state as it existed at this timestamp|

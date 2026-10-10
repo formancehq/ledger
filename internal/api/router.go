@@ -181,14 +181,17 @@ func WithMeterProvider(mp metric.MeterProvider) RouterOption {
 	}
 }
 
+const (
+	DefaultBulkMaxSize = 100
+	DefaultMaxPageSize = 1000
+)
+
 var defaultRouterOptions = []RouterOption{
 	WithTracer(nooptracer.Tracer{}),
 	WithMeterProvider(noopmetrics.MeterProvider{}),
 	WithBulkMaxSize(DefaultBulkMaxSize),
 	WithPaginationConfiguration(storagecommon.PaginationConfig{
-		MaxPageSize:     paginate.MaxPageSize,
+		MaxPageSize:     DefaultMaxPageSize,
 		DefaultPageSize: paginate.QueryDefaultPageSize,
 	}),
 }
-
-const DefaultBulkMaxSize = 100

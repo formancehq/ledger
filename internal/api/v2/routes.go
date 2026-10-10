@@ -192,12 +192,14 @@ func WithDefaultBulkHandlerFactories(bulkMaxSize int) RouterOption {
 	})
 }
 
+const DefaultMaxPageSize = 1000
+
 var defaultRouterOptions = []RouterOption{
 	WithTracer(nooptracer.Tracer{}),
 	WithBulkerFactory(bulking.NewDefaultBulkerFactory()),
 	WithDefaultBulkHandlerFactories(100),
 	WithPaginationConfig(storagecommon.PaginationConfig{
 		DefaultPageSize: paginate.QueryDefaultPageSize,
-		MaxPageSize:     paginate.MaxPageSize,
+		MaxPageSize:     DefaultMaxPageSize,
 	}),
 }
