@@ -472,7 +472,7 @@ paths:
 
             On failure, it will also return a 200 status code, and the following
             fields:
-              - `details`: contains a URL. When there is an error parsing Numscript, the result can be difficult to read—the provided URL will render the error in an easy-to-read format.
+              - `details`: optional additional context about the error
               - `errorCode` and `error_code` (deprecated): contains the string code of the error
               - `errorMessage` and `error_message` (deprecated): contains a human-readable indication of what went wrong, for example that an account had insufficient funds, or that there was an error in the provided Numscript.
           content:
@@ -1526,10 +1526,10 @@ components:
         details:
           type: string
           description: >-
-            Optional link carrying additional context about the error, such as a Numscript playground URL
-            reproducing it
-          example: >-
-            https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9
+            Optional additional context about the error. Currently only returned for some
+            request validation errors, and it may duplicate `errorMessage`. Clients should not
+            parse this field or rely on its presence.
+          example: 'invalid account address: user:john:'
         transaction:
           $ref: '#/components/schemas/Transaction'
     Account:
@@ -1932,10 +1932,10 @@ components:
         details:
           type: string
           description: >-
-            Optional link carrying additional context about the error, such as a Numscript playground URL
-            reproducing it
-          example: >-
-            https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9
+            Optional additional context about the error. Currently only returned for some
+            request validation errors, and it may duplicate `errorMessage`. Clients should not
+            parse this field or rely on its presence.
+          example: 'invalid account address: user:john:'
     ErrorsEnum:
       type: string
       description: Machine-readable error code identifying the failure
