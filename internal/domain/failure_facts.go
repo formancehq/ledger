@@ -73,6 +73,7 @@ func (e *ErrDependencyDiscoveryFailed) FailureCode() string {
 	if cause, ok := errors.AsType[SerializableError](e.Cause); ok {
 		return FailureFactsOf(cause).Code
 	}
+
 	return "DEPENDENCY_DISCOVERY_FAILED"
 }
 
@@ -80,6 +81,7 @@ func (e *ErrMetadataKeyValidation) FailureCode() string {
 	if cause, ok := e.Cause.(SerializableError); ok {
 		return FailureFactsOf(cause).Code
 	}
+
 	return ""
 }
 
@@ -87,6 +89,7 @@ func (e *ErrAccountValidation) FailureCode() string {
 	if cause, ok := e.Cause.(SerializableError); ok {
 		return FailureFactsOf(cause).Code
 	}
+
 	return ""
 }
 

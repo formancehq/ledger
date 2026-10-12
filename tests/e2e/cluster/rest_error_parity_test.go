@@ -208,7 +208,7 @@ var _ = Describe("REST error parity across cluster nodes (EN-1636)", Ordered, fu
 
 		onLeader := apply(leader)
 		Expect(onLeader.Code()).To(Equal(codes.AlreadyExists))
-		Expect(onLeader.Message()).To(Equal("ledger already exists: " + ledgerName))
+		Expect(onLeader.Message()).To(Equal("ledger already exists: name=\"" + ledgerName + "\""))
 		Expect(onLeader.Details()).To(HaveLen(1))
 		info, ok := onLeader.Details()[0].(*errdetails.ErrorInfo)
 		Expect(ok).To(BeTrue())

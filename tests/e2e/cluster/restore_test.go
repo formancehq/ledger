@@ -975,7 +975,7 @@ var _ = Describe("Restore", Ordered, func() {
 
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", dup))
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("already exists"))
+			Expect(err.Error()).To(ContainSubstring("transaction reference conflict"))
 		})
 
 		It("should accept transactions on a ledger created after the checkpoint", func() {

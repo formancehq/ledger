@@ -105,7 +105,8 @@ func TestApplyProposal_PerProposalIdempotency(t *testing.T) {
 	require.NoError(t, err)
 	require.Error(t, r.Results[0].Error)
 	require.False(t, r.Results[0].Replayed)
-	initialError := r.Results[0].Error.(domain.Describable)
+	initialError, ok := errors.AsType[domain.Describable](r.Results[0].Error)
+	require.True(t, ok)
 	var initial domain.SerializableError
 	require.ErrorAs(t, r.Results[0].Error, &initial)
 	frozenFacts := domain.FailureFactsOf(initial)
@@ -122,7 +123,9 @@ func TestApplyProposal_PerProposalIdempotency(t *testing.T) {
 	// The same audited rejection without a key has the same public response as
 	// both the first keyed attempt and its replay.
 	firstMessage, firstMetadata, firstOverride := domain.PublicErrorDetails(initialError)
-	replayMessage, replayMetadata, _ := domain.PublicErrorDetails(r.Results[0].Error.(domain.Describable))
+	replayError, ok := errors.AsType[domain.Describable](r.Results[0].Error)
+	require.True(t, ok)
+	replayMessage, replayMetadata, _ := domain.PublicErrorDetails(replayError)
 	require.True(t, firstOverride)
 	require.Equal(t, firstMessage, replayMessage)
 	require.Equal(t, firstMetadata, replayMetadata)
@@ -130,7 +133,9 @@ func TestApplyProposal_PerProposalIdempotency(t *testing.T) {
 	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 7, makeProposal(7, badRevert())))
 	require.NoError(t, err)
 	require.Error(t, r.Results[0].Error)
-	unkeyedMessage, unkeyedMetadata, unkeyedOverride := domain.PublicErrorDetails(r.Results[0].Error.(domain.Describable))
+	unkeyedError, ok := errors.AsType[domain.Describable](r.Results[0].Error)
+	require.True(t, ok)
+	unkeyedMessage, unkeyedMetadata, unkeyedOverride := domain.PublicErrorDetails(unkeyedError)
 	require.True(t, unkeyedOverride)
 	require.Equal(t, firstMessage, unkeyedMessage)
 	require.Equal(t, firstMetadata, unkeyedMetadata)

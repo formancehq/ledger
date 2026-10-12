@@ -1784,6 +1784,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 // in the chain for internal callers.
 func auditedFailurePresentation(err domain.SerializableError) *domain.BusinessError {
 	facts := domain.FailureFactsOf(err)
+
 	return &domain.BusinessError{Err: err, PublicFailure: &facts}
 }
 
