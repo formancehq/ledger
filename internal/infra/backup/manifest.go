@@ -82,19 +82,6 @@ func (m *Manifest) LastExportAuditSequence() uint64 {
 	return 0
 }
 
-// ErrLegacyManifestFormat is returned by ReadManifest when the stored manifest
-// uses the pre-content-addressing schema (checkpoint.files encoded as
-// filename→size numbers instead of filename→{size,key} objects). Such backups
-// were written by an older binary and store their checkpoint objects under
-// bare data/<filename> keys with no content hash; the current restore path
-// resolves objects by the content-addressed key recorded in the manifest and
-// cannot read them. This is a deliberate pre-GA break — the fix is to retake
-// the backup with the current binary, not to migrate the old manifest in place.
-var ErrLegacyManifestFormat = errors.New(
-	"backup: manifest uses the legacy pre-content-addressing format " +
-		"(checkpoint.files as sizes, not {size,key}); this backup was written by an " +
-		"older binary and must be retaken with the current version before it can be restored")
-
 // ErrNoFullCheckpoint is returned by RunIncrementalBackup when the destination
 // manifest has no full checkpoint (Checkpoint == nil): either the destination is
 // empty/fresh, or it holds an export-only manifest. An incremental backup is
@@ -124,55 +111,15 @@ func ReadManifest(ctx context.Context, storage Storage, key string) (*Manifest, 
 	return DecodeManifest(data)
 }
 
-// DecodeManifest decodes already-read manifest bytes, translating a decode
-// failure caused by the legacy pre-content-addressing schema into the
-// actionable ErrLegacyManifestFormat. Callers that read the manifest bytes
-// themselves (e.g. the gRPC restore path and the offline bootstrap command,
-// which each apply their own size guards and progress reporting around the
-// read) MUST decode through this helper rather than a bare json.Unmarshal so
-// legacy detection stays consistent everywhere.
+// DecodeManifest decodes already-read manifest bytes. The gRPC restore path
+// and offline bootstrap command use this helper after their own size guards.
 func DecodeManifest(data []byte) (*Manifest, error) {
 	var manifest Manifest
 	if err := json.Unmarshal(data, &manifest); err != nil {
-		// A legacy manifest (checkpoint.files as filename→number) fails to
-		// decode into the current filename→{size,key} shape. Detect that exact
-		// shape and surface a clear, actionable error instead of the raw
-		// "cannot unmarshal number into Go struct field" — the operator needs
-		// to know the backup must be retaken, not that the JSON is malformed.
-		if isLegacyManifest(data) {
-			return nil, ErrLegacyManifestFormat
-		}
-
 		return nil, fmt.Errorf("decoding manifest: %w", err)
 	}
 
 	return &manifest, nil
-}
-
-// isLegacyManifest reports whether the manifest bytes use the pre-content-
-// addressing schema, i.e. checkpoint.files maps filenames to plain numbers
-// (sizes) rather than to {size,key} objects. It parses loosely into
-// interface{} so it never itself fails on the shape difference.
-func isLegacyManifest(data []byte) bool {
-	var loose struct {
-		Checkpoint *struct {
-			Files map[string]json.RawMessage `json:"files"`
-		} `json:"checkpoint"`
-	}
-
-	if err := json.Unmarshal(data, &loose); err != nil || loose.Checkpoint == nil {
-		return false
-	}
-
-	for _, raw := range loose.Checkpoint.Files {
-		trimmed := bytes.TrimSpace(raw)
-		// A legacy entry is a bare JSON number; the current entry is an object.
-		if len(trimmed) > 0 && trimmed[0] != '{' {
-			return true
-		}
-	}
-
-	return false
 }
 
 // WriteManifest encodes and writes a manifest to storage.

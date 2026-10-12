@@ -14,29 +14,23 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
 
-// TestReadManifest_LegacyFormatSurfacesActionableError verifies that a manifest
-// written in the pre-content-addressing schema (checkpoint.files as
-// filename→size numbers) is rejected with the typed ErrLegacyManifestFormat
-// rather than a cryptic "cannot unmarshal number" JSON error, so an operator
-// knows the backup must be retaken (pre-GA break; addresses the NumaryBot
-// backward-compat review on PR #1543).
-func TestReadManifest_LegacyFormatSurfacesActionableError(t *testing.T) {
+// A manifest with an invalid checkpoint file entry must fail closed.
+func TestReadManifest_InvalidFileEntryReturnsError(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
 	storage := NewMockStorage(ctrl)
 
-	legacy := `{"checkpoint":{"timestamp":"t","lastAppliedIndex":1,"lastLogSequence":1,"lastAuditSequence":1,"files":{"000001.sst":123}},"exports":null}`
+	invalid := `{"checkpoint":{"timestamp":"t","lastAppliedIndex":1,"lastLogSequence":1,"lastAuditSequence":1,"files":{"000001.sst":123}},"exports":null}`
 	storage.EXPECT().GetFile(gomock.Any(), "k").
-		Return(io.NopCloser(bytes.NewReader([]byte(legacy))), nil)
+		Return(io.NopCloser(bytes.NewReader([]byte(invalid))), nil)
 
 	m, err := ReadManifest(context.Background(), storage, "k")
 	require.Nil(t, m)
-	require.ErrorIs(t, err, ErrLegacyManifestFormat)
+	require.ErrorContains(t, err, "decoding manifest")
 }
 
-// TestReadManifest_CurrentFormatDecodes verifies the current filename→{size,key}
-// shape still decodes cleanly and is NOT mistaken for legacy.
+// TestReadManifest_CurrentFormatDecodes verifies the filename→{size,key} shape.
 func TestReadManifest_CurrentFormatDecodes(t *testing.T) {
 	t.Parallel()
 

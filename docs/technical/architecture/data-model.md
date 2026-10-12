@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Ledger v3 POC system uses a **single Raft group architecture** where all ledgers are managed together. This organization simplifies operations while maintaining strong consistency guarantees.
+The Ledger v3 system uses a **single Raft group architecture** where all ledgers are managed together. This organization simplifies operations while maintaining strong consistency guarantees.
 
 ## Architecture
 

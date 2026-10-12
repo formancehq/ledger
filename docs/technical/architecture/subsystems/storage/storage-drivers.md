@@ -1,6 +1,6 @@
 # Storage Drivers
 
-This document describes the storage driver for the Store in the Ledger v3 POC.
+This document describes the storage driver for the Store in the Ledger v3.
 
 ## Overview
 

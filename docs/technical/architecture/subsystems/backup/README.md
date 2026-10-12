@@ -84,15 +84,9 @@ points at a deleted or half-overwritten object. A failed segment upload aborts
 the run before the manifest is touched, so a partial upload can never publish a
 dangling reference.
 
-> **Manifest schema note (pre-GA, breaking):** `checkpoint.files` changed from
-> `{ filename: size }` to `{ filename: { size, key } }`, where `key` is the
-> content-addressed storage key. Restore resolves objects by that recorded
-> `key`, never by reconstructing `prefix + filename`. Backups written by an
-> older binary (bare-`data/<filename>` layout) are not readable by the new
-> restore path and must be retaken. Reading a legacy manifest fails fast with a
-> typed, actionable error (`ErrLegacyManifestFormat`) rather than a cryptic JSON
-> decode error, so the operator knows to retake the backup. No in-place
-> migration is provided — deliberately, as this is a pre-GA break.
+`checkpoint.files` maps each filename to its size and content-addressed storage
+key. An unreadable manifest aborts backup and restore; a full backup never
+overwrites it. Restore resolves objects by the recorded key.
 
 The work is split between **Raft-coordinated lifecycle orders** (`BackupOrder`, `CompleteBackupOrder`, `FailBackupOrder` at `raft_cmd.proto:431-593`) and **executor work on the leader** (`internal/infra/backup/manager.go:40-180`). The FSM never blocks on the upload — it only records start, success, and failure.
 

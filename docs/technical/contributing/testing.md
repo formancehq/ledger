@@ -2,7 +2,7 @@
 
 ## Overview
 
-Ledger v3 POC uses a multi-level testing strategy to ensure system quality and reliability.
+Ledger v3 uses a multi-level testing strategy to ensure system quality and reliability.
 
 Local validation provides fast engineering feedback and focused evidence. CI
 provides the authoritative broad, clean validation before merge. A change must

@@ -33,7 +33,7 @@ import (
 type batch struct {
 	ticket  uint64 // dispatch order (single-worker serialization)
 	seq     uint64 // min committed log sequence (server serialization); 0 if not committed
-	outcome string // "OK", a rejection reason, or "TRANSIENT" ("" for legacy dumps)
+	outcome string // "OK", a rejection reason, or "TRANSIENT"
 	req     *servicepb.ApplyRequest
 }
 
@@ -142,9 +142,8 @@ func replayCommitted(batches []batch, target string) {
 
 	for _, b := range batches {
 		// Only committed bulks form the server's log-ordered serialization. Skip
-		// failures/transients; a legacy dump carries no outcome — treat as
-		// committed.
-		if b.outcome != "" && b.outcome != "OK" {
+		// failures/transients.
+		if b.outcome != "OK" {
 			continue
 		}
 
@@ -192,8 +191,7 @@ func replayCommitted(batches []batch, target string) {
 }
 
 // parse reads "[batch-dump] key=value ..." lines, extracting the ticket, commit
-// sequence, outcome, and b64-encoded ApplyRequest. Missing keys default to zero
-// values (legacy dumps carry only seq= and b64=), so older captures still load.
+// sequence, outcome, and b64-encoded ApplyRequest.
 func parse(path string) ([]batch, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -231,7 +229,7 @@ func parse(path string) ([]batch, error) {
 			}
 		}
 
-		if encoded == "" {
+		if encoded == "" || outcome == "" {
 			continue
 		}
 		raw, err := base64.StdEncoding.DecodeString(encoded)
