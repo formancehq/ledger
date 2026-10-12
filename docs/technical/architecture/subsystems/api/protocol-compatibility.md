@@ -59,7 +59,7 @@ Revision 5 (EN-1623) removes internal index/coverage details from public
 error messages and ErrorInfo metadata while retaining their reasons and status
 codes. Internal read failures in restore validation retain `Internal` with a
 sanitized correlation message. AuditFailure records retained their diagnostic
-message and context until revision 29.
+message and context until revision 30.
 
 Revision 8 (EN-1771) removes `CreatedIndexLog.initial` and renumbers the
 remaining exposed fields. Clients and servers built against revision 7 would

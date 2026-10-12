@@ -55,7 +55,7 @@ all granular-scope authorization behavior is unchanged.
 
 ### Service protocol compatibility (EN-1851)
 
-Revision 29 replaces failure messages stored in audit, idempotency, and
+Revision 30 replaces failure messages stored in audit, idempotency, and
 skipped-order records with reason, subcode, and structured facts. Revision 32
 stores those facts in a `FailureDetails` protobuf `oneof` selected by the
 concrete code. Bulk skip responses still expose `reason`, `code`, and `facts`;
