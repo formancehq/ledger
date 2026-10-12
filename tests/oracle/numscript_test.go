@@ -287,3 +287,64 @@ func TestScript_GeneratedScriptsAreTotal(t *testing.T) {
 	t.Logf("outcomes: %v", outcomes)
 	require.Greater(t, outcomes["OK"], 500)
 }
+
+// Admission resolves a script against the batch's earlier orders as bare
+// effects, whether or not the FSM would accept those orders.
+func TestScript_AdmissionSeesEffectsTheFSMRefuses(t *testing.T) {
+	t.Parallel()
+
+	readsBalance := scriptReq("L", `vars {
+	monetary $m = balance(@a:1, USD)
+}
+send $m (
+	source = @a:1
+	destination = @b:1
+)`, nil, false)
+
+	// The unfunded debit fails the floor in the FSM, yet admission folds it:
+	// a:1 reads negative, a state-dependent resolution failure.
+	fwd, reason := NewGlobalState().admitScripts(bulkOf(oracletest.TxReqL("L", "a:1", "b:1", "USD", 10), readsBalance))
+	require.Empty(t, reason)
+	require.True(t, fwd[1])
+
+	readsMeta := scriptReq("L", `vars {
+	account $dst = meta(@cfg:1, "dst")
+}
+send [USD 1] (
+	source = @world
+	destination = $dst
+)`, nil, false)
+
+	// The chart refuses the metadata write in the FSM; admission still sees it.
+	strict := NewGlobalState().Apply(bulkOf(oracletest.AddTypeReq("users")))
+	require.True(t, strict.OK)
+
+	fwd, reason = strict.State.admitScripts(bulkOf(oracletest.AddAccountMetaReq("cfg:1", "dst", commonpb.NewStringValue("b:1")), readsMeta))
+	require.Empty(t, reason)
+	require.False(t, fwd[1])
+}
+
+// A script on a deleted ledger is refused as such, ahead of anything its
+// resolution would decide.
+func TestScript_DeletedLedgerWinsOverAdmission(t *testing.T) {
+	t.Parallel()
+
+	created := NewGlobalState().Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_CreateLedger{
+		CreateLedger: &servicepb.CreateLedgerRequest{Name: "L"},
+	}}))
+	require.True(t, created.OK, created.Reason)
+
+	deleted := created.State.Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_DeleteLedger{
+		DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "L"},
+	}}))
+	require.True(t, deleted.OK, deleted.Reason)
+
+	res := deleted.State.Apply(bulkOf(scriptReq("L", `vars {
+	account $dst = meta(@cfg:1, "dst")
+}
+send [USD 1] (
+	source = @world
+	destination = $dst
+)`, nil, false)))
+	require.Equal(t, domain.ErrReasonLedgerDeleted, res.Reason)
+}

@@ -409,7 +409,12 @@ type scriptProduct struct {
 // the scope, sign and width checks and the overflow-checked volume update, then
 // the script's metadata validation.
 func (s *LedgerState) produceScript(ct *servicepb.CreateTransactionPayload, touched map[VolumeKey]bool) (scriptProduct, map[VolumeKey]VolumePair, string) {
-	text, vars, _, reason, _ := s.scriptOf(ct, nil)
+	return s.produceScriptWith(ct, nil, touched)
+}
+
+// produceScriptWith is produceScript resolving a reference through ov too.
+func (s *LedgerState) produceScriptWith(ct *servicepb.CreateTransactionPayload, ov *saveOverlay, touched map[VolumeKey]bool) (scriptProduct, map[VolumeKey]VolumePair, string) {
+	text, vars, _, reason, _ := s.scriptOf(ct, ov)
 	if reason != "" {
 		return scriptProduct{}, nil, reason
 	}
@@ -600,11 +605,18 @@ func createContentReason(ct *servicepb.CreateTransactionPayload) string {
 }
 
 // admitScripts runs admission's script pass over a bulk that passed the
-// structural gates: each scripted create, in order, is resolved against the
-// state the orders before it leave behind (admission's batch overlay), and
-// either rejects the batch or is forwarded to fail in the FSM with
-// PRELOAD_UNAVAILABLE. An order admission predicts the FSM will skip is not
-// resolved at all.
+// structural gates (resolveScriptsAndEnrichNeeds): each scripted create, in
+// order, is resolved against the pre-batch state plus the effects of the
+// orders before it, and either rejects the batch or is forwarded to fail in
+// the FSM with PRELOAD_UNAVAILABLE. An order admission predicts the FSM will
+// skip is not resolved and contributes nothing.
+//
+// The effects are admission's, not the FSM's: a create's postings, the account
+// metadata it carries and its reference fold in whether or not the FSM would
+// accept them; a script folds what its run produces, or nothing when the run
+// fails; account metadata writes and deletes fold unconditionally; a revert
+// folds its reversed postings when its target predates the batch. Orders on a
+// deleted ledger are left to the FSM, which refuses them before any script.
 func (g GlobalState) admitScripts(bulk Bulk) (forwarded map[int]bool, reason string) {
 	if !slices.ContainsFunc(bulk.Requests, func(req *servicepb.Request) bool {
 		return IsScripted(req.GetApply().GetAction().GetCreateTransaction())
@@ -616,32 +628,6 @@ func (g GlobalState) admitScripts(bulk Bulk) (forwarded map[int]bool, reason str
 	overlays := map[string]*saveOverlay{}
 	for i, req := range bulk.Requests {
 		name := LedgerOf(req)
-		ls, ok := scratch.ledgers[name]
-		if !ok {
-			ls = NewLedgerState()
-		}
-
-		if ct := req.GetApply().GetAction().GetCreateTransaction(); IsScripted(ct) {
-			if ref := ct.GetReference(); ref != "" && ls.txByRef.Has(ref) &&
-				slices.Contains(req.GetApply().GetSkippableReasons(), domain.ReasonCode(domain.ErrReasonTransactionReferenceConflict)) {
-				continue
-			}
-
-			reason, fwd := ls.scriptAdmission(ct, overlays[name])
-			if reason != "" {
-				return nil, reason
-			}
-
-			if fwd {
-				if forwarded == nil {
-					forwarded = map[int]bool{}
-				}
-
-				forwarded[i] = true
-
-				continue
-			}
-		}
 
 		if save := req.GetSaveNumscript(); save != nil {
 			if overlays[name] == nil {
@@ -649,15 +635,105 @@ func (g GlobalState) admitScripts(bulk Bulk) (forwarded map[int]bool, reason str
 			}
 
 			overlays[name].record(save)
-		}
 
-		if !ledgerScopedRequest(req) {
 			continue
 		}
 
-		before := ls
-		if oc := ls.applyOne(req, map[VolumeKey]bool{}, uint64(ls.txs.Len())); !oc.OK {
-			ls = before
+		apply := req.GetApply()
+		if apply == nil {
+			continue
+		}
+
+		if lc, exists := g.lifecycle.Get(name); exists && lc.Deleted {
+			continue
+		}
+
+		ls, ok := scratch.ledgers[name]
+		if !ok {
+			ls = NewLedgerState()
+		}
+
+		skippable := func(reason string) bool {
+			return slices.Contains(apply.GetSkippableReasons(), domain.ReasonCode(reason))
+		}
+
+		switch a := apply.GetAction().GetData().(type) {
+		case *servicepb.LedgerAction_CreateTransaction:
+			ct := a.CreateTransaction
+			if ref := ct.GetReference(); ref != "" && ls.txByRef.Has(ref) && skippable(domain.ErrReasonTransactionReferenceConflict) {
+				continue
+			}
+
+			if IsScripted(ct) {
+				reason, fwd := ls.scriptAdmission(ct, overlays[name])
+				if reason != "" {
+					return nil, reason
+				}
+
+				if fwd {
+					if forwarded == nil {
+						forwarded = map[int]bool{}
+					}
+
+					forwarded[i] = true
+
+					continue
+				}
+
+				ls.foldScriptEffects(ct, overlays[name])
+			} else {
+				ls.foldPostings(ct.GetPostings())
+			}
+
+			for account, mm := range ct.GetAccountMetadata() {
+				for key, val := range mm.GetValues() {
+					ls.metadata = ls.metadata.Set(MetaKey{Address: account, Key: key}, val)
+				}
+			}
+
+			if ref := ct.GetReference(); ref != "" {
+				ls.txByRef = ls.txByRef.Set(ref, 0)
+			}
+
+		case *servicepb.LedgerAction_RevertTransaction:
+			id := a.RevertTransaction.GetTransactionId()
+			base := g.Ledger(name)
+			if id == 0 || id > uint64(base.txs.Len()) {
+				continue
+			}
+
+			orig := ls.txs.Get(int(id - 1))
+			if orig.reverted && skippable(domain.ErrReasonTransactionAlreadyReverted) {
+				continue
+			}
+
+			reversed := make([]*commonpb.Posting, len(orig.postings))
+			for j, p := range orig.postings {
+				reversed[j] = &commonpb.Posting{Source: p.GetDestination(), Destination: p.GetSource(), Amount: p.GetAmount(), Asset: p.GetAsset(), Color: p.GetColor()}
+			}
+
+			ls.foldPostings(reversed)
+
+			marked := *orig
+			marked.reverted = true
+			ls.txs = ls.txs.Set(int(id-1), &marked)
+
+		case *servicepb.LedgerAction_AddMetadata:
+			if acct := a.AddMetadata.GetTarget().GetAccount(); acct != nil {
+				for key, val := range a.AddMetadata.GetMetadata() {
+					ls.metadata = ls.metadata.Set(MetaKey{Address: acct.GetAddr(), Key: key}, val)
+				}
+			}
+
+		case *servicepb.LedgerAction_DeleteMetadata:
+			if acct := a.DeleteMetadata.GetTarget().GetAccount(); acct != nil {
+				key := MetaKey{Address: acct.GetAddr(), Key: a.DeleteMetadata.GetKey()}
+				if !ls.metadata.Has(key) && skippable(domain.ErrReasonMetadataNotFound) {
+					continue
+				}
+
+				ls.metadata = ls.metadata.Delete(key)
+			}
 		}
 
 		scratch.ledgers[name] = ls
@@ -666,19 +742,44 @@ func (g GlobalState) admitScripts(bulk Bulk) (forwarded map[int]bool, reason str
 	return forwarded, ""
 }
 
-// ledgerScopedRequest reports whether applyOne handles req: everything but the
-// lifecycle and checkpoint orders GlobalState applies itself.
-func ledgerScopedRequest(req *servicepb.Request) bool {
-	switch req.GetType().(type) {
-	case *servicepb.Request_SetMaintenanceMode, *servicepb.Request_CreateLedger,
-		*servicepb.Request_DeleteLedger, *servicepb.Request_PromoteLedger,
-		*servicepb.Request_CreateQueryCheckpoint, *servicepb.Request_DeleteQueryCheckpoint,
-		*servicepb.Request_SetQueryCheckpointSchedule, *servicepb.Request_DeleteQueryCheckpointSchedule:
-		return false
+// foldPostings moves the volumes by postings with no balance, overflow or
+// chart check: admission's batch effects are bare balance deltas.
+func (s *LedgerState) foldPostings(postings []*commonpb.Posting) {
+	for _, p := range postings {
+		var amt uint256.Int
+		p.GetAmount().IntoUint256(&amt)
+
+		src := VolumeKey{Address: p.GetSource(), Asset: p.GetAsset(), Color: p.GetColor()}
+		sv := s.vol(src)
+		sv.Output.Add(&sv.Output, &amt)
+		s.volumes = s.volumes.Set(src, sv)
+
+		dst := VolumeKey{Address: p.GetDestination(), Asset: p.GetAsset(), Color: p.GetColor()}
+		dv := s.vol(dst)
+		dv.Input.Add(&dv.Input, &amt)
+		s.volumes = s.volumes.Set(dst, dv)
+	}
+}
+
+// foldScriptEffects folds what a script's admission-time run produces: its
+// postings and the account metadata it sets. A run that fails folds nothing.
+func (s *LedgerState) foldScriptEffects(ct *servicepb.CreateTransactionPayload, ov *saveOverlay) {
+	before := *s
+
+	product, _, reason := s.produceScriptWith(ct, ov, map[VolumeKey]bool{})
+	*s = before
+	if reason != "" {
+		return
 	}
 
-	return true
+	s.foldPostings(product.postings)
+	for account, values := range product.accountMeta {
+		for key, val := range values {
+			s.metadata = s.metadata.Set(MetaKey{Address: account, Key: key}, val)
+		}
+	}
 }
+
 
 // isScriptError reports whether an interpreter error is a failure the script
 // caused — its text, its vars, or the balances and metadata it read — which the
