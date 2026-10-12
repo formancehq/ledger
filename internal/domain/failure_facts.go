@@ -74,7 +74,7 @@ func FailureFactsOf(d SerializableError) FailureFacts {
 		case "detail", "details", "operation", "reason", "typeName":
 			continue
 		}
-		facts[key] = normalizeFailureFact(value)
+		facts[key] = NormalizeFailureFact(value)
 	}
 	if e, ok := d.(*ErrDependencyDiscoveryFailed); ok {
 		if cause, ok := errors.AsType[SerializableError](e.Cause); ok {
@@ -88,10 +88,10 @@ func FailureFactsOf(d SerializableError) FailureFacts {
 	return FailureFacts{Reason: ReasonCode(d.Reason()), Code: code, Facts: facts}
 }
 
-// Bound arbitrary caller values before writing them to a persisted failure.
+// NormalizeFailureFact bounds arbitrary caller values before writing them to a persisted failure.
 // The audited order still contains the original input; the digest preserves a
 // stable distinction between oversized or invalid UTF-8 fact values.
-func normalizeFailureFact(value string) string {
+func NormalizeFailureFact(value string) string {
 	if utf8.ValidString(value) && len(value) <= 4096 {
 		return value
 	}

@@ -339,7 +339,7 @@ Three paths need correlated server-side diagnostics because the raw value can co
 2. **Unmapped errors** (`handleError` fallthrough → `writeInternalServerError`) — any error that is not a domain `Classifiable` or a known sentinel.
 3. **`KindInternal` domain errors** — recognized internal failures whose status and reason are preserved. `INDEX_INCONSISTENT` and `COVERAGE_MISS` supply public messages (`index is inconsistent` and `preload coverage miss`) that omit internal identifiers and storage details, including when wrapped. Other recognized errors retain their type-owned message, with outer diagnostic prefixes omitted.
 
-Type-owned public details are selected through `domain.PublicErrorDetails` at the response boundary. Diagnostic `Error()` and `Metadata()` values remain unchanged, including the coverage failure context in the authoritative audit chain.
+Type-owned public details are selected through `domain.PublicErrorDetails` at the response boundary. The authoritative audit chain records a structured failure reason, code and bounded facts for freezable business failures. Diagnostic `Error()` text is used for server logs and is not hashed into that outcome.
 
 Every path logs the raw cause **server-side** with a `correlation_id` field. When the request span is recording, the log also carries `trace_id` and `span_id`, and the span records both the correlation ID and the error. Panic spans additionally carry the panic value and stack. Unmapped errors and panics remain sanitized identically to the gRPC adapter, so the client receives only a generic body:
 
@@ -512,8 +512,8 @@ violation: no package under `internal/domain`, `internal/application/admission`,
 `internal/infra/state`, `internal/infra/plan` or `internal/infra/preload` may
 import it, which `scripts/check-repo-invariants` enforces. A decoded failure
 must never be raised by admission, the FSM or order processing, nor persisted,
-frozen, audited or hashed — the audit chain hashes an error's `Error()` string,
-and a message that varies with a peer's build would break the chain.
+frozen, audited or hashed. The chain hashes the structured failure reason,
+code and facts; a decoded peer message has no place in that identity.
 
 ### Two Classification Axes
 

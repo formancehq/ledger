@@ -133,6 +133,9 @@ sorted key order. It does not hash `Error()` text or Numscript diagnostics.
 `RenderFailureFacts` creates presentation text when a caller reads or replays
 the failure. Audit and idempotency store the same tuple so the checker can
 compare the two outcomes without depending on wording.
+The broad `reason` is a protobuf enum; the finer `code` remains a validated
+string so older readers can retain new codes and their facts when Numscript
+adds a category without a coordinated protobuf regeneration.
 
 The log surface has **two levels**:
 

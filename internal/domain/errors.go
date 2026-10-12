@@ -161,8 +161,8 @@ type Describable interface {
 // the tier only when it actually has context to publish.
 //
 // API adapters read the presentation through PublicErrorDetails, so a type with
-// sensitive diagnostic context can publish a separate view; audit projections
-// always consume Error() and Metadata() directly.
+// sensitive diagnostic context can publish a separate view. Audited failures
+// use a stable reason, code and bounded facts derived from Metadata().
 type SerializableError interface {
 	Describable
 
@@ -187,7 +187,6 @@ func PublicErrorDetails(d Describable) (message string, metadata map[string]stri
 	}); ok {
 		return public.PublicDetails()
 	}
-
 	return d.Error(), MetadataOf(d), false
 }
 
@@ -365,7 +364,8 @@ func (e *ErrSequenceExhausted) Metadata() map[string]string {
 // the inner error, and PublicDetails() below forwards its full presentation
 // (metadata included) to the API edge.
 type BusinessError struct {
-	Err Describable
+	Err           Describable
+	PublicFailure *FailureFacts
 }
 
 func (e *BusinessError) Error() string   { return e.Err.Error() }
@@ -374,6 +374,10 @@ func (e *BusinessError) Kind() ErrorKind { return e.Err.Kind() }
 func (e *BusinessError) Reason() string  { return e.Err.Reason() }
 
 func (e *BusinessError) PublicDetails() (string, map[string]string, bool) {
+	if e.PublicFailure != nil {
+		message, metadata := RenderFailureFacts(*e.PublicFailure)
+		return message, metadata, true
+	}
 	return PublicErrorDetails(e.Err)
 }
 

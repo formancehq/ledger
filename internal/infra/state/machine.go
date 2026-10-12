@@ -1589,7 +1589,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			return nil, recErr
 		}
 
-		result.Error = &domain.BusinessError{Err: err}
+		result.Error = idempotencyFailurePresentation(idempotencyKey, err)
 		result.AuditEntryWritten = true
 
 		return result, nil
@@ -1638,7 +1638,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			return nil, recErr
 		}
 
-		result.Error = &domain.BusinessError{Err: err}
+		result.Error = idempotencyFailurePresentation(idempotencyKey, err)
 		result.AuditEntryWritten = true
 
 		return result, nil
@@ -1777,6 +1777,19 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		createdTransactions: ordersResult.CreatedTransactions,
 		revertedTransaction: ordersResult.RevertedTransaction,
 	}, nil
+}
+
+// idempotencyFailurePresentation gives the first keyed rejection the same
+// public representation as a replay of its persisted structured facts while
+// retaining the original error in the chain for internal callers.
+func idempotencyFailurePresentation(key string, err domain.SerializableError) *domain.BusinessError {
+	result := &domain.BusinessError{Err: err}
+	if key == "" || !domain.IsFreezableFailure(err.Kind()) {
+		return result
+	}
+	facts := domain.FailureFactsOf(err)
+	result.PublicFailure = &facts
+	return result
 }
 
 // recordIdempotencyFailure freezes a definitive business rejection against the

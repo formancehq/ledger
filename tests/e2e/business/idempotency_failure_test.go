@@ -59,6 +59,7 @@ var _ = Describe("Idempotency replays failures", Ordered, func() {
 		Expect(status.Code(err)).To(Equal(codes.FailedPrecondition))
 		firstInfo := actions.ExtractGRPCErrorInfo(err)
 		Expect(firstInfo).NotTo(BeNil())
+		firstMessage := status.Convert(err).Message()
 
 		// 2. Change state so the identical request would now succeed.
 		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.AddAccountTypeAction(ledgerName, "bank", "bank:{id}")))
@@ -73,6 +74,7 @@ var _ = Describe("Idempotency replays failures", Ordered, func() {
 		replayedInfo := actions.ExtractGRPCErrorInfo(err)
 		Expect(replayedInfo).NotTo(BeNil())
 		Expect(replayedInfo.Reason).To(Equal(firstInfo.Reason))
+		Expect(status.Convert(err).Message()).To(Equal(firstMessage))
 		Expect(replayedInfo.Metadata["address"]).To(Equal("bank:1"))
 	})
 

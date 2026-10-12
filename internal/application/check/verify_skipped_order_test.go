@@ -1,6 +1,7 @@
 package check
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -1905,6 +1906,23 @@ func TestVerifySkippedOrder_AccountTypeNotFoundAcceptsMatchingContext(t *testing
 	payload := skippedPayloadWithContext(reason, map[string]string{"name": "customer"})
 	events := captureEvents(t, "L", 7, payload, expected, nil)
 	require.Empty(t, events)
+}
+
+func TestVerifySkippedOrder_LongAccountTypeName(t *testing.T) {
+	t.Parallel()
+
+	name := strings.Repeat("a", 5000)
+	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:            []commonpb.ErrorReason{reason},
+			ledger:             "L",
+			accountTypeName:    name,
+			isAccountTypeOrder: true,
+		},
+	}
+	payload := skippedPayloadWithContext(reason, map[string]string{"name": domain.NormalizeFailureFact(name)})
+	require.Empty(t, captureEvents(t, "L", 7, payload, expected, nil))
 }
 
 // TestVerifySkippedOrder_AccountTypeNotFoundRejectsWhenPresent closes the

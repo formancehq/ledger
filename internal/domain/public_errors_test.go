@@ -50,6 +50,20 @@ func TestPublicErrorDetails(t *testing.T) {
 	}
 }
 
+func TestBusinessErrorStructuredPublicFailureRetainsCause(t *testing.T) {
+	t.Parallel()
+
+	cause := &ErrLedgerNotFound{Name: "caller-ledger"}
+	facts := FailureFactsOf(cause)
+	business := &BusinessError{Err: cause, PublicFailure: &facts}
+	message, metadata, overridden := PublicErrorDetails(business)
+	wantMessage, wantMetadata := RenderFailureFacts(facts)
+	require.True(t, overridden)
+	require.Equal(t, wantMessage, message)
+	require.Equal(t, wantMetadata, metadata)
+	require.ErrorIs(t, business, cause)
+}
+
 // TestMetadataOfDoesNotWalkTheChain pins the selection rule MetadataOf exists
 // to enforce: it reads the context of the error it is handed and nothing
 // deeper. Walking the chain would let a wrapped internal cause substitute its
