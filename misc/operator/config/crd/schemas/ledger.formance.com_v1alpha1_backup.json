@@ -102,9 +102,6 @@
               "type": "object"
             }
           },
-          "required": [
-            "driver"
-          ],
           "type": "object"
         },
         "failedRunsHistoryLimit": {

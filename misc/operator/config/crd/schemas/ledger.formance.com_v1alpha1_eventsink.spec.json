@@ -51,6 +51,7 @@
         "type": "string"
       },
       "type": "array",
+      "uniqueItems": true,
       "x-kubernetes-list-type": "set"
     },
     "format": {

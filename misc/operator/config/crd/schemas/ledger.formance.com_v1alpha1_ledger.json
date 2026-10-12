@@ -41,6 +41,7 @@
                 "type": "string"
               },
               "type": "array",
+              "uniqueItems": true,
               "x-kubernetes-list-type": "set"
             },
             "metadata": {
@@ -112,6 +113,7 @@
                 "type": "string"
               },
               "type": "array",
+              "uniqueItems": true,
               "x-kubernetes-list-type": "set"
             }
           },

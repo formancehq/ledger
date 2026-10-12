@@ -258,6 +258,76 @@ func TestRunDoesNotEnforceCELRules(t *testing.T) {
 		"CEL-only rules (mutually exclusive auth, TLS-with-IAM) are not enforced by the exported schema")
 }
 
+// TestRunRejectsDuplicateSetItems reproduces a review finding: without
+// uniqueItems, a draft-04 validator accepts duplicate entries in a field
+// marked x-kubernetes-list-type: set, even though Kubernetes'
+// ValidateListSetsAndMaps rejects the duplicate at the API server.
+func TestRunRejectsDuplicateSetItems(t *testing.T) {
+	t.Parallel()
+
+	crdDir := filepath.Join("..", "..", "config", "crd", "bases")
+	outDir := t.TempDir()
+
+	require.NoError(t, run(crdDir, outDir))
+
+	schemaFile, err := os.Open(filepath.Join(outDir, "ledger.formance.com_v1alpha1_eventsink.spec.json"))
+	require.NoError(t, err)
+	defer func() { require.NoError(t, schemaFile.Close()) }()
+
+	schemaDoc, err := jsonschema.UnmarshalJSON(schemaFile)
+	require.NoError(t, err)
+
+	compiler := jsonschema.NewCompiler()
+	require.NoError(t, compiler.AddResource("ledger.formance.com_v1alpha1_eventsink.spec.json", schemaDoc))
+
+	sch, err := compiler.Compile("ledger.formance.com_v1alpha1_eventsink.spec.json")
+	require.NoError(t, err)
+
+	instance, err := jsonschema.UnmarshalJSON(strings.NewReader(`{
+		"eventTypes": ["COMMITTED_TRANSACTION", "COMMITTED_TRANSACTION"]
+	}`))
+	require.NoError(t, err)
+
+	require.Error(t, sch.Validate(instance), "duplicate entries in a set-type list must be rejected")
+}
+
+// TestRunDoesNotRequireDefaultedFields reproduces a review finding: a field
+// that is both "required" and carries a "default" (e.g. Backup's
+// destination.driver, defaulted to "s3") is filled in by Kubernetes
+// admission before required-field validation runs, so a manifest omitting it
+// is valid to apply. Exporting "required" unchanged would make these
+// schemas reject manifests the API server actually accepts.
+func TestRunDoesNotRequireDefaultedFields(t *testing.T) {
+	t.Parallel()
+
+	crdDir := filepath.Join("..", "..", "config", "crd", "bases")
+	outDir := t.TempDir()
+
+	require.NoError(t, run(crdDir, outDir))
+
+	schemaFile, err := os.Open(filepath.Join(outDir, "ledger.formance.com_v1alpha1_backup.spec.json"))
+	require.NoError(t, err)
+	defer func() { require.NoError(t, schemaFile.Close()) }()
+
+	schemaDoc, err := jsonschema.UnmarshalJSON(schemaFile)
+	require.NoError(t, err)
+
+	compiler := jsonschema.NewCompiler()
+	require.NoError(t, compiler.AddResource("ledger.formance.com_v1alpha1_backup.spec.json", schemaDoc))
+
+	sch, err := compiler.Compile("ledger.formance.com_v1alpha1_backup.spec.json")
+	require.NoError(t, err)
+
+	instance, err := jsonschema.UnmarshalJSON(strings.NewReader(`{
+		"clusterRef": "c",
+		"destination": {"s3": {"bucket": "b"}}
+	}`))
+	require.NoError(t, err)
+
+	require.NoError(t, sch.Validate(instance),
+		"destination.driver is defaulted by the API server, so omitting it must still validate")
+}
+
 func TestEnforceAdditionalPropertiesFalse(t *testing.T) {
 	t.Parallel()
 
@@ -310,6 +380,66 @@ func TestEnforceAdditionalPropertiesFalse(t *testing.T) {
 		false,
 		properties["list"].(map[string]any)["items"].(map[string]any)["additionalProperties"],
 	)
+}
+
+func TestEnforceUniqueSetItems(t *testing.T) {
+	t.Parallel()
+
+	doc := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"setField": map[string]any{
+				"type":                   "array",
+				"items":                  map[string]any{"type": "string"},
+				"x-kubernetes-list-type": "set",
+			},
+			"atomicField": map[string]any{
+				"type":                   "array",
+				"items":                  map[string]any{"type": "string"},
+				"x-kubernetes-list-type": "atomic",
+			},
+			"plainField": map[string]any{
+				"type":  "array",
+				"items": map[string]any{"type": "string"},
+			},
+		},
+	}
+
+	enforceUniqueSetItems(doc)
+
+	properties := doc["properties"].(map[string]any)
+	require.Equal(t, true, properties["setField"].(map[string]any)["uniqueItems"])
+	require.NotContains(t, properties["atomicField"].(map[string]any), "uniqueItems")
+	require.NotContains(t, properties["plainField"].(map[string]any), "uniqueItems")
+}
+
+func TestRelaxDefaultedRequiredFields(t *testing.T) {
+	t.Parallel()
+
+	doc := map[string]any{
+		"type": "object",
+		"required": []any{
+			"defaulted", "plain",
+		},
+		"properties": map[string]any{
+			"defaulted": map[string]any{"type": "string", "default": "x"},
+			"plain":     map[string]any{"type": "string"},
+			"nested": map[string]any{
+				"type":     "object",
+				"required": []any{"onlyDefaulted"},
+				"properties": map[string]any{
+					"onlyDefaulted": map[string]any{"type": "string", "default": "y"},
+				},
+			},
+		},
+	}
+
+	relaxDefaultedRequiredFields(doc)
+
+	require.Equal(t, []any{"plain"}, doc["required"], "a required field with a default must be dropped")
+
+	nested := doc["properties"].(map[string]any)["nested"].(map[string]any)
+	require.NotContains(t, nested, "required", "an empty required list must be removed entirely")
 }
 
 func TestRunFailsWhenNoStorageVersion(t *testing.T) {

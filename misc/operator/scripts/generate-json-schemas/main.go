@@ -297,8 +297,79 @@ func withJSONSchemaMeta(schema *apiextv1.JSONSchemaProps) map[string]any {
 
 	doc["$schema"] = jsonSchemaDraft04
 	enforceAdditionalPropertiesFalse(doc)
+	enforceUniqueSetItems(doc)
+	relaxDefaultedRequiredFields(doc)
 
 	return doc
+}
+
+// enforceUniqueSetItems sets "uniqueItems": true on every array schema marked
+// x-kubernetes-list-type: set. Kubernetes' own structural-schema validation
+// (ValidateListSetsAndMaps) rejects a manifest with duplicate entries in such
+// a list; a plain draft-04 validator does not; unless told to via
+// uniqueItems, it accepts duplicates the API server would reject.
+func enforceUniqueSetItems(node any) {
+	switch n := node.(type) {
+	case map[string]any:
+		if listType, _ := n["x-kubernetes-list-type"].(string); listType == "set" {
+			n["uniqueItems"] = true
+		}
+
+		for _, value := range n {
+			enforceUniqueSetItems(value)
+		}
+	case []any:
+		for _, item := range n {
+			enforceUniqueSetItems(item)
+		}
+	}
+}
+
+// relaxDefaultedRequiredFields drops a property from its parent's "required"
+// list wherever that property also declares a "default". Kubernetes applies
+// CRD defaulting before validating required fields, so a manifest omitting
+// such a field is accepted by the API server; keeping it in "required" here
+// would make these exported schemas reject manifests admission actually
+// accepts. JSON Schema's own "default" keyword is documentation-only and has
+// no such effect on validators, so this has to be done explicitly.
+func relaxDefaultedRequiredFields(node any) {
+	switch n := node.(type) {
+	case map[string]any:
+		if required, ok := n["required"].([]any); ok {
+			properties, _ := n["properties"].(map[string]any)
+
+			kept := make([]any, 0, len(required))
+			for _, r := range required {
+				key, ok := r.(string)
+				if !ok {
+					kept = append(kept, r)
+
+					continue
+				}
+
+				prop, _ := properties[key].(map[string]any)
+				if _, hasDefault := prop["default"]; hasDefault {
+					continue
+				}
+
+				kept = append(kept, r)
+			}
+
+			if len(kept) == 0 {
+				delete(n, "required")
+			} else {
+				n["required"] = kept
+			}
+		}
+
+		for _, value := range n {
+			relaxDefaultedRequiredFields(value)
+		}
+	case []any:
+		for _, item := range n {
+			relaxDefaultedRequiredFields(item)
+		}
+	}
 }
 
 // enforceAdditionalPropertiesFalse makes the schema reject unknown properties
