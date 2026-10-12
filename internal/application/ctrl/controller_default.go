@@ -1491,7 +1491,9 @@ func (ctrl *DefaultController) ListIndexes(ctx context.Context, req *servicepb.L
 		return nil, domain.ErrLedgerNameRequired
 	}
 
-	handle, err := ctrl.store.NewDirectReadHandle()
+	// One snapshot serves both the registry scan and every owner-ledger
+	// liveness check, so the response matches a single committed state.
+	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
 	}
