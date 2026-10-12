@@ -10,83 +10,85 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPortionsListSumsToOne(t *testing.T) {
-	// portionsList isn't exported; exercise it indirectly via many
-	// generated programs and check every allotment clause set found sums
-	// to 1 — or, with a `remaining` clause, to strictly less than 1 (the
-	// oracle compile-rejects `remaining` on a block already at 100%, and a
-	// sum above it is oracle/DIVERGENCES.md #6).
-	for seed := range 200 {
+// Allotments mostly sum the way the engines accept — exactly 1, or under 1
+// before a remaining clause — and sometimes miss, so the refusals are reached
+// too.
+func TestAllotmentSumsHitAndMiss(t *testing.T) {
+	counts := map[string]int{}
+	for seed := range 500 {
 		rng := rand.New(rand.NewSource(int64(seed)))
 		p := gen.GenerateProgram(rng)
 		for _, stmt := range p {
-			checkSourcePortions(t, stmt.Source)
-			checkDestinationPortions(t, stmt.Destination)
+			countSourceSums(stmt.Source, counts)
+			countDestinationSums(stmt.Destination, counts)
 		}
+	}
+
+	t.Logf("allotment sums: %v", counts)
+	for _, k := range []string{"exact", "missed", "under-remaining", "over-remaining"} {
+		require.Positive(t, counts[k], k)
+	}
+	require.Greater(t, counts["exact"], counts["missed"])
+}
+
+func classifySum(total *big.Rat, withRemaining bool, counts map[string]int) {
+	one := big.NewRat(1, 1)
+	switch {
+	case withRemaining && total.Cmp(one) < 0:
+		counts["under-remaining"]++
+	case withRemaining:
+		counts["over-remaining"]++
+	case total.Cmp(one) == 0:
+		counts["exact"]++
+	default:
+		counts["missed"]++
 	}
 }
 
-func checkSourcePortions(t *testing.T, s gen.Source) {
-	t.Helper()
+func countSourceSums(s gen.Source, counts map[string]int) {
 	switch s.Kind {
 	case gen.SrcCapped:
-		checkSourcePortions(t, *s.Inner)
-	case gen.SrcInorder:
+		countSourceSums(*s.Inner, counts)
+	case gen.SrcInorder, gen.SrcOneof:
 		for _, inner := range s.Sources {
-			checkSourcePortions(t, inner)
+			countSourceSums(inner, counts)
 		}
 	case gen.SrcAllotment:
 		total := new(big.Rat)
 		for _, c := range s.Clauses {
 			total.Add(total, c.Portion)
-			checkSourcePortions(t, c.Source)
+			countSourceSums(c.Source, counts)
 		}
-		if s.AllotmentRemaining != nil {
-			require.True(t, total.Cmp(big.NewRat(1, 1)) < 0, "source allotment portions with remaining must sum below 1, got %s", total)
-			checkSourcePortions(t, *s.AllotmentRemaining)
-		} else {
-			require.True(t, total.Cmp(big.NewRat(1, 1)) == 0, "source allotment portions must sum to 1, got %s", total)
-		}
+		classifySum(total, s.AllotmentRemaining != nil, counts)
 	}
 }
 
-func checkDestinationPortions(t *testing.T, d gen.Destination) {
-	t.Helper()
+func countDestinationSums(d gen.Destination, counts map[string]int) {
+	keptOrDest := func(k gen.KeptOrDest) {
+		if k.Kind == gen.To {
+			countDestinationSums(*k.Dest, counts)
+		}
+	}
+
 	switch d.Kind {
-	case gen.DestInorder:
+	case gen.DestInorder, gen.DestOneof:
 		for _, c := range d.InorderClauses {
-			checkKeptOrDestPortions(t, c.KeptOrDest)
+			keptOrDest(c.KeptOrDest)
 		}
-		if d.Remaining != nil {
-			checkKeptOrDestPortions(t, *d.Remaining)
-		}
+		keptOrDest(*d.Remaining)
 	case gen.DestAllotment:
 		total := new(big.Rat)
 		for _, c := range d.AllotClauses {
 			total.Add(total, c.Portion)
-			checkKeptOrDestPortions(t, c.KeptOrDest)
+			keptOrDest(c.KeptOrDest)
 		}
-		if d.AllotRemaining != nil {
-			require.True(t, total.Cmp(big.NewRat(1, 1)) < 0, "destination allotment portions with remaining must sum below 1, got %s", total)
-			checkKeptOrDestPortions(t, *d.AllotRemaining)
-		} else {
-			require.True(t, total.Cmp(big.NewRat(1, 1)) == 0, "destination allotment portions must sum to 1, got %s", total)
-		}
-	}
-}
-
-func checkKeptOrDestPortions(t *testing.T, k gen.KeptOrDest) {
-	t.Helper()
-	if k.Kind == gen.To {
-		checkDestinationPortions(t, *k.Dest)
+		classifySum(total, d.AllotRemaining != nil, counts)
 	}
 }
 
 func TestGenerateScriptParses(t *testing.T) {
-	// Every generated script must be syntactically valid numscript. This
-	// doesn't guarantee it also compiles against the oracle (that's the
-	// difftest harness's job), but a parse failure here would mean the
-	// generator/cleanup pass produced something structurally broken.
+	// Every generated script must be syntactically valid numscript: a parse
+	// failure here means the generator produced something structurally broken.
 	for seed := range 500 {
 		rng := rand.New(rand.NewSource(int64(seed)))
 		_, _, _, script := gen.GenerateScript(rng)

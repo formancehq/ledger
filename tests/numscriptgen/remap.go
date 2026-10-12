@@ -92,6 +92,10 @@ func (r accountRenamer) statement(st *Statement) {
 func (r accountRenamer) extra(e *ExtraStatement) {
 	e.Account = r.name(e.Account)
 	e.Destination = r.name(e.Destination)
+
+	if e.Literal != nil {
+		e.Literal.Account = r.name(e.Literal.Account)
+	}
 }
 
 func (r accountRenamer) source(s *Source) {
