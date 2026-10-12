@@ -23,46 +23,19 @@ type FailureFacts struct {
 	Facts  map[string]string
 }
 
+// FailureCoder lets errors with a more precise audited identity than Reason
+// provide it directly. Other errors use their Reason as the code.
+type FailureCoder interface {
+	FailureCode() string
+}
+
 // FailureFactsOf selects the semantic identity of an FSM error. Wrappers keep
 // the underlying code while adding their own structured correlators.
 func FailureFactsOf(d SerializableError) FailureFacts {
 	code := d.Reason()
-	switch e := d.(type) {
-	case *validationSentinel:
-		code = e.code
-	case *errValidation:
-		code = e.code
-	case *ErrInvalidSkippableReason:
-		code = "INVALID_SKIPPABLE_REASON"
-	case *ErrDependencyDiscoveryFailed:
-		if cause, ok := errors.AsType[SerializableError](e.Cause); ok {
-			code = FailureFactsOf(cause).Code
-		} else {
-			code = "DEPENDENCY_DISCOVERY_FAILED"
-		}
-	case errMetadataLimitsUnconfigured:
-		code = "METADATA_LIMITS_UNCONFIGURED"
-	case *ErrMetadataKeyValidation:
-		if cause, ok := e.Cause.(SerializableError); ok {
-			code = FailureFactsOf(cause).Code
-		}
-	case *ErrAccountValidation:
-		if cause, ok := e.Cause.(SerializableError); ok {
-			code = FailureFactsOf(cause).Code
-		}
-	case *ReplayedFailure:
-		code = e.Code
-	case *ErrNumscriptRuntime:
-		if e.Code != "" {
-			code = e.Code
-		}
-	case *ErrNumscriptExecution:
-		if e.Code != "" {
-			code = e.Code
-		}
-	case *ErrNumscriptCompile:
-		if e.Code != "" {
-			code = e.Code
+	if coded, ok := d.(FailureCoder); ok {
+		if specific := coded.FailureCode(); specific != "" {
+			code = specific
 		}
 	}
 
@@ -87,6 +60,39 @@ func FailureFactsOf(d SerializableError) FailureFacts {
 
 	return FailureFacts{Reason: ReasonCode(d.Reason()), Code: code, Facts: facts}
 }
+
+func (e *validationSentinel) FailureCode() string      { return e.code }
+func (e *errValidation) FailureCode() string           { return e.code }
+func (*ErrInvalidSkippableReason) FailureCode() string { return "INVALID_SKIPPABLE_REASON" }
+func (e *ReplayedFailure) FailureCode() string         { return e.Code }
+func (errMetadataLimitsUnconfigured) FailureCode() string {
+	return "METADATA_LIMITS_UNCONFIGURED"
+}
+
+func (e *ErrDependencyDiscoveryFailed) FailureCode() string {
+	if cause, ok := errors.AsType[SerializableError](e.Cause); ok {
+		return FailureFactsOf(cause).Code
+	}
+	return "DEPENDENCY_DISCOVERY_FAILED"
+}
+
+func (e *ErrMetadataKeyValidation) FailureCode() string {
+	if cause, ok := e.Cause.(SerializableError); ok {
+		return FailureFactsOf(cause).Code
+	}
+	return ""
+}
+
+func (e *ErrAccountValidation) FailureCode() string {
+	if cause, ok := e.Cause.(SerializableError); ok {
+		return FailureFactsOf(cause).Code
+	}
+	return ""
+}
+
+func (e *ErrNumscriptRuntime) FailureCode() string   { return e.Code }
+func (e *ErrNumscriptExecution) FailureCode() string { return e.Code }
+func (e *ErrNumscriptCompile) FailureCode() string   { return e.Code }
 
 // NormalizeFailureFact bounds arbitrary caller values before writing them to a persisted failure.
 // The audited order still contains the original input; the digest preserves a

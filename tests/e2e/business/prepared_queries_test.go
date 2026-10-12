@@ -1137,7 +1137,9 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 				}},
 			}))
 			Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
-			Expect(err.Error()).To(ContainSubstring("has asset precision"))
+			// The update is audited, so its public message comes from stable
+			// failure facts rather than the compiler's diagnostic text.
+			Expect(err.Error()).To(ContainSubstring("filter compilation error"))
 		})
 
 		It("Should return NOT_FOUND when updating a non-existent query", func() {

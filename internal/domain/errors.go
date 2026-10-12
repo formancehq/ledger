@@ -162,7 +162,8 @@ type Describable interface {
 //
 // API adapters read the presentation through PublicErrorDetails, so a type with
 // sensitive diagnostic context can publish a separate view. Audited failures
-// use a stable reason, code and bounded facts derived from Metadata().
+// use a stable reason, code and bounded facts derived from Metadata(). Errors
+// with a more specific code implement FailureCoder; others use Reason().
 type SerializableError interface {
 	Describable
 
