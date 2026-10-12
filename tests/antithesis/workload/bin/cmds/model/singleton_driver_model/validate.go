@@ -43,6 +43,7 @@ func (c *Checker) validateBulkSuccess(bulk oracle.Bulk, resp *servicepb.ApplyRes
 		case req.GetDeleteLedger() != nil:
 			name := req.GetDeleteLedger().GetName()
 			delete(c.indexCreateSeq, name)
+			delete(c.indexPromotions, name)
 			for key, obs := range c.retypeObs {
 				if obs.ledger == name {
 					delete(c.retypeObs, key)
@@ -456,6 +457,8 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 		}
 	}
 	learnTxStamps(&c.modelState, bulk, logs)
+	c.learnLedgerLogSequences(bulk, logs)
+	c.recordCommittedBulk(bulk, logs)
 
 	// A committed keyed bulk is frozen in modelState; remember it (with the
 	// sequences it committed at) so runReplay can re-send it and check the server
@@ -484,7 +487,6 @@ func learnTxStamps(gs *oracle.GlobalState, bulk oracle.Bulk, logs []*commonpb.Lo
 		// derive; its id is derived, so it is checked against the server
 		// rather than copied from it.
 		gs.LearnLogDate(ledger, entry.GetId(), entry.GetDate())
-		gs.LearnLogSequence(ledger, entry.GetId(), logs[i].GetSequence())
 
 		switch {
 		case data.GetCreatedTransaction() != nil:
@@ -496,6 +498,10 @@ func learnTxStamps(gs *oracle.GlobalState, bulk oracle.Bulk, logs []*commonpb.Lo
 			gs.LearnTxStamps(ledger, revTx.GetId(), revTx.GetTimestamp(), revTx.GetInsertedAt(), nil)
 			gs.LearnTxStamps(ledger, rt.GetRevertedTransactionId(), nil, nil, revTx.GetTimestamp())
 		}
+
+		// The global stream freezes the transaction record it announces, so its
+		// stamps are learned first.
+		gs.LearnLogSequence(ledger, entry.GetId(), logs[i].GetSequence())
 	}
 }
 
@@ -536,6 +542,7 @@ func (c *Checker) validateFailure(maxTicket uint64, failedBulk oracle.Bulk, reqE
 		}
 		invalidOptIn := reason == domain.ErrReasonValidation && bulkHasInvalidSkippableReason(failedBulk)
 		emitCoverage(invalidOptIn, invalidSkipCoverageMessage, nil)
+		c.recordRejection(failedBulk, reason)
 		// Coverage: each deliberately-triggered rejection branch must actually be
 		// exercised — if one stops firing, the generator has stopped emitting that
 		// shape and the branch is no longer tested.
@@ -552,6 +559,8 @@ func (c *Checker) validateFailure(maxTicket uint64, failedBulk oracle.Bulk, reqE
 			assert.Reachable("singleton_driver_model: validation rejection exercised", internal.Details{})
 		case domain.ErrReasonIdempotencyKeyConflict:
 			assert.Reachable("singleton_driver_model: idempotency-conflict rejection exercised", internal.Details{})
+		case domain.ErrReasonFilterCompilation:
+			assert.Reachable("singleton_driver_model: malformed prepared-query filter refused at save", internal.Details{})
 		}
 
 		dbgf("MODEL FAIL OK: ledgers=%s kinds=%s explained by %s", bulkLedgers(failedBulk), requestKinds(failedBulk), reason)
@@ -639,14 +648,14 @@ func liveLedgerState(base oracle.GlobalState, ledger string) (oracle.LedgerState
 // is legal iff some candidate base holds both the picked (gotIn, gotOut, found)
 // volume cell and exactly the server's metadata for the address. Both must hold
 // on the SAME base — the read is one atomic snapshot.
-func (c *Checker) validateAccountRead(maxTicket uint64, ledger, addr, asset string, serverVols map[assetColor]oracle.VolumePair, wellFormed bool, serverMeta map[string]*commonpb.MetadataValue, found bool) {
+func (c *Checker) validateAccountRead(maxTicket uint64, ledger, addr, asset string, serverVols map[assetColor]oracle.VolumePair, wellFormed bool, serverMeta map[string]*commonpb.MetadataValue, found, collapsed bool) {
 	if wellFormed && c.matchesModel(maxTicket, "READ", func(base oracle.GlobalState) bool {
 		ls, live := liveLedgerState(base, ledger)
 		if !live {
 			return !found
 		}
 
-		return accountVolumesMatch(ls, addr, serverVols) && metadataMatches(ls, addr, serverMeta)
+		return accountVolumesMatch(ls, addr, serverVols, collapsed) && metadataMatches(ls, addr, serverMeta)
 	}) {
 		return
 	}
@@ -675,21 +684,38 @@ func (k assetColor) String() string { return k.Asset + "|" + k.Color }
 // zero-balance row the base's purge sweep removed) and a base cell the server
 // omitted are both mismatches. Seeks to addr's key range — O(log n + cells of
 // addr), not a table walk (this runs per candidate base).
-func accountVolumesMatch(ls oracle.LedgerState, addr string, got map[assetColor]oracle.VolumePair) bool {
-	cells := 0
+func accountVolumesMatch(ls oracle.LedgerState, addr string, got map[assetColor]oracle.VolumePair, collapsed bool) bool {
+	want := map[assetColor]oracle.VolumePair{}
+
 	for k, vp := range ls.Volumes().From(oracle.VolumeKey{Address: addr}) {
 		if k.Address != addr {
 			break
 		}
 
-		g, ok := got[assetColor{Asset: k.Asset, Color: k.Color}]
+		key := assetColor{Asset: k.Asset, Color: k.Color}
+		if collapsed {
+			// Every colour of an asset is summed into the uncolored bucket.
+			key = assetColor{Asset: k.Asset}
+		}
+
+		acc := want[key]
+		acc.Input.Add(&acc.Input, &vp.Input)
+		acc.Output.Add(&acc.Output, &vp.Output)
+		want[key] = acc
+	}
+
+	if len(want) != len(got) {
+		return false
+	}
+
+	for key, vp := range want {
+		g, ok := got[key]
 		if !ok || g.Input.Cmp(&vp.Input) != 0 || g.Output.Cmp(&vp.Output) != 0 {
 			return false
 		}
-		cells++
 	}
 
-	return cells == len(got)
+	return true
 }
 
 // metadataMatches reports whether ls holds exactly serverMeta for addr — same

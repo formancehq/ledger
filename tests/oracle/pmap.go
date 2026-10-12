@@ -236,6 +236,19 @@ func (stringComparer) Compare(a, b string) int {
 	}
 }
 
+type uint64Comparer struct{}
+
+func (uint64Comparer) Compare(a, b uint64) int {
+	switch {
+	case a < b:
+		return -1
+	case a > b:
+		return 1
+	default:
+		return 0
+	}
+}
+
 type volumeKeyComparer struct{}
 
 func (volumeKeyComparer) Compare(a, b VolumeKey) int { return CompareVolumeKey(a, b) }

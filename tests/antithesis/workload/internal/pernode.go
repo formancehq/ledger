@@ -109,12 +109,15 @@ func DialPerNode(ctx context.Context) (PerNodeConns, error) {
 		}]
 	}`
 
+	// As in NewGRPCConn, only a retry-forever client rides maintenance out.
+	retryMaintenance := os.Getenv("LEDGER_RETRY_FOREVER") != ""
+
 	opts := []grpc.DialOption{
 		grpcprotocol.ClientOption(),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithDefaultServiceConfig(serviceConfig),
-		grpc.WithUnaryInterceptor(retryUnaryInterceptor(retryMaxAttempts)),
-		grpc.WithStreamInterceptor(retryStreamInterceptor(retryMaxAttempts)),
+		grpc.WithUnaryInterceptor(retryUnaryInterceptor(retryMaxAttempts, retryMaintenance)),
+		grpc.WithStreamInterceptor(retryStreamInterceptor(retryMaxAttempts, retryMaintenance)),
 	}
 
 	var conns PerNodeConns

@@ -26,7 +26,7 @@ func TestCoverageMessages_OneProbePerWorkloadIndex(t *testing.T) {
 			"index %s is churned but has no coverage probe", wi.canonical)
 	}
 
-	require.Len(t, msgs, len(workloadIndexes())+15+len(applyCoverageMessages()),
+	require.Len(t, msgs, len(workloadIndexes())+14+len(applyCoverageMessages()),
 		"index, metadata, retype, Apply, checkpoint, and lifecycle probes")
 }
 

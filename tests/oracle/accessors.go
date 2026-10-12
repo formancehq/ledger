@@ -1,6 +1,8 @@
 package oracle
 
 import (
+	"iter"
+
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
@@ -143,6 +145,21 @@ func (s LedgerState) HasEverAsset(address, base string, precision uint32) bool {
 	return s.everAsset.Has(assetTouch{address: address, base: base, precision: precision})
 }
 
+// EverAssetAddresses returns, sorted ascending, every account in the
+// account-by-asset index under any asset — the accounts a has-asset leaf can
+// select even after their volume rows are gone.
+func (s LedgerState) EverAssetAddresses() []string {
+	var out []string
+	for k := range s.everAsset.All() {
+		if len(out) == 0 || out[len(out)-1] != k.address {
+			out = append(out, k.address)
+		}
+	}
+
+	// The map iterates in (address, base, precision) order, so out is sorted.
+	return out
+}
+
 // EverAssetAccounts returns, sorted ascending by address, every account that has
 // ever touched (base, precision) — the exact account set a bare has-asset query
 // over (base, precision) returns, in the server's address order.
@@ -221,7 +238,9 @@ func (g *GlobalState) LearnLogDate(ledger string, id uint64, date *commonpb.Time
 
 // LearnLogSequence fills in a log's global sequence, the second field of the
 // stream the model cannot derive: it counts every ledger's logs and the
-// technical entries among them. Fill-once, like the date.
+// technical entries among them. Fill-once, like the date. Learning a sequence
+// also files the row in the global log stream (Log), which is what GetLog by
+// sequence reads and what survives the ledger's deletion.
 func (g *GlobalState) LearnLogSequence(ledger string, id, sequence uint64) {
 	ls, ok := g.ledgers[ledger]
 	if !ok || id == 0 || id > uint64(ls.logs.Len()) || sequence == 0 {
@@ -229,13 +248,53 @@ func (g *GlobalState) LearnLogSequence(ledger string, id, sequence uint64) {
 	}
 
 	rec := *ls.logs.Get(int(id - 1))
-	if rec.sequence == 0 {
-		rec.sequence = sequence
+	if rec.sequence != 0 {
+		return
+	}
+
+	rec.sequence = sequence
+
+	var tx *txRecord
+	if rec.txID != 0 && rec.txID <= uint64(ls.txs.Len()) {
+		tx = ls.txs.Get(int(rec.txID - 1))
 	}
 
 	ls.logs = ls.logs.Set(int(id-1), &rec)
 	*g = g.clone()
 	g.ledgers[ledger] = ls
+	g.logs = g.logs.Set(sequence, &globalLog{ledger: ledger, id: id, rec: &rec, tx: tx})
+}
+
+// GlobalLogRow is one entry of the global log stream as the model holds it:
+// the owning ledger and ledger-local id, the row itself, and the transaction
+// the row announces (nil for kinds that announce none), frozen at learn time.
+type GlobalLogRow struct {
+	Ledger string
+	ID     uint64
+	Row    LogRow
+	Tx     *txRecord
+}
+
+// Log returns the global log stream's entry at sequence, ok=false when no
+// learned log sits there. Entries outlive their ledger, as the server's do.
+func (g GlobalState) Log(sequence uint64) (GlobalLogRow, bool) {
+	l, ok := g.logs.Get(sequence)
+	if !ok {
+		return GlobalLogRow{}, false
+	}
+
+	return GlobalLogRow{Ledger: l.ledger, ID: l.id, Row: logRowOf(l.rec), Tx: l.tx}, true
+}
+
+// Logs iterates the global log stream ascending by sequence.
+func (g GlobalState) Logs() iter.Seq2[uint64, GlobalLogRow] {
+	return func(yield func(uint64, GlobalLogRow) bool) {
+		for seq, l := range g.logs.All() {
+			if !yield(seq, GlobalLogRow{Ledger: l.ledger, ID: l.id, Row: logRowOf(l.rec), Tx: l.tx}) {
+				return
+			}
+		}
+	}
 }
 
 // LogKinds returns each committed log's kind, ascending by id.
@@ -275,21 +334,24 @@ type LogRow struct {
 func (s LedgerState) LogRows() []LogRow {
 	out := make([]LogRow, 0, s.logs.Len())
 	for i := range s.logs.Len() {
-		rec := s.logs.Get(i)
-		out = append(out, LogRow{
-			ID:               rec.id,
-			Kind:             rec.kind,
-			Payload:          rec.payload,
-			TxID:             rec.txID,
-			Date:             rec.date,
-			Sequence:         rec.sequence,
-			PurgedVolumes:    rec.purged,
-			NewKeptVolumes:   rec.newKept,
-			EphemeralVolumes: rec.ephemeral,
-		})
+		out = append(out, logRowOf(s.logs.Get(i)))
 	}
 
 	return out
+}
+
+func logRowOf(rec *logRecord) LogRow {
+	return LogRow{
+		ID:               rec.id,
+		Kind:             rec.kind,
+		Payload:          rec.payload,
+		TxID:             rec.txID,
+		Date:             rec.date,
+		Sequence:         rec.sequence,
+		PurgedVolumes:    rec.purged,
+		NewKeptVolumes:   rec.newKept,
+		EphemeralVolumes: rec.ephemeral,
+	}
 }
 
 // LogDates returns each committed log's (id, date), ascending. A nil date is

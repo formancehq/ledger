@@ -71,9 +71,8 @@ func coverageTargetName(target commonpb.QueryTarget) string {
 const coverageRetypeMessage = coveragePrefix + "a query was served while a retype window was open"
 
 const (
-	coverageDeletionMessage    = coveragePrefix + "ledger deletion and reserved-name rejection verified"
-	coveragePromotionMessage   = coveragePrefix + "mirror promotion and write recovery verified"
-	coverageMaintenanceMessage = coveragePrefix + "concurrent maintenance rejection verified"
+	coverageDeletionMessage  = coveragePrefix + "ledger deletion and reserved-name rejection verified"
+	coveragePromotionMessage = coveragePrefix + "mirror promotion and write recovery verified"
 )
 
 // Query probes are evaluated by served pages; lifecycle probes are evaluated
@@ -102,7 +101,7 @@ func checkpointCoverageMessages() []string {
 func coverageMessages() []string {
 	out := append(queryCoverageMessages(), checkpointCoverageMessages()...)
 
-	return append(out, coverageDeletionMessage, coveragePromotionMessage, coverageMaintenanceMessage)
+	return append(out, coverageDeletionMessage, coveragePromotionMessage)
 }
 
 // registerCoverage declares every probe before the run loop starts, so one that

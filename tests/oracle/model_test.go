@@ -308,6 +308,26 @@ func TestGlobalState_Apply_TransientGrandfather(t *testing.T) {
 	require.Equal(t, "8", dec(rl.vol(VolumeKey{"g:1", "USD", ""}).Input))
 }
 
+func TestGlobalState_Apply_TransientBalancedPersistedRowNotGrandfathered(t *testing.T) {
+	t.Parallel()
+
+	// g:1 holds a persisted row at zero balance ({5, 5}) when g becomes TRANSIENT.
+	s := NewGlobalState().Apply(bulkOf(oracletest.TxReq("world", "g:1", "USD", 5))).State
+	s = s.Apply(bulkOf(oracletest.TxReq("g:1", "world", "USD", 5))).State
+	s = s.Apply(bulkOf(oracletest.AddTypeReqP("g", commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT))).State
+	require.True(t, s.Ledger("L").volumes.Has(VolumeKey{"g:1", "USD", ""}))
+
+	// Only a non-zero pre-bulk balance is grandfathered, so leaving the
+	// balanced row non-zero is rejected.
+	bad := s.Apply(bulkOf(oracletest.TxReq("world", "g:1", "USD", 5)))
+	require.False(t, bad.OK)
+	require.Equal(t, domain.ErrReasonTransientAccountNonZero, bad.Reason)
+
+	revert := s.Apply(bulkOf(oracletest.RevertReqL("L", 2, false)))
+	require.False(t, revert.OK)
+	require.Equal(t, domain.ErrReasonTransientAccountNonZero, revert.Reason)
+}
+
 // Asset touches land in everAsset iff the cell escapes the server's exclusion
 // projection, which is derived at END of bulk (end-of-bulk chart, final merged
 // volumes) — not per order.
@@ -1022,4 +1042,18 @@ func TestGlobalState_Apply_PreparedQueryNoAliasing(t *testing.T) {
 	stored, ok := created.State.Ledger("L").PreparedQuery("q")
 	require.True(t, ok)
 	require.Equal(t, "a:", stored.GetFilter().GetAddress().GetHardcodedPrefix())
+}
+
+func TestGlobalState_MalformedPreparedQueryRefusedAtAdmission(t *testing.T) {
+	t.Parallel()
+
+	seeded := NewGlobalState().Apply(keyedBulk("k", oracletest.TxReq("world", "a:1", "USD", 1)))
+	require.True(t, seeded.OK, seeded.Reason)
+
+	// Admission refuses the malformed filter before the FSM's idempotency
+	// lookup, so the reused key never gets to report a conflict.
+	malformed := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{Address: &commonpb.AddressMatch{}}}
+	got := seeded.State.Apply(keyedBulk("k", pqReq("q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, malformed)))
+	require.False(t, got.OK)
+	require.Equal(t, domain.ErrReasonFilterCompilation, got.Reason)
 }

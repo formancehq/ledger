@@ -38,17 +38,14 @@ func TestModelAggregateFoldsMatchedAccountsOnly(t *testing.T) {
 		oracletest.TxReq("world", "keep:3", "EUR/2", 4),
 	)
 
-	got := modelAggregate(ls, filterAddrPrefix("keep:"))
+	got := modelAggregate(ls, filterAddrPrefix("keep:"), aggOptions{})
 
-	require.Equal(t, map[aggregateBucket]oracle.VolumePair{
-		{asset: "USD/2"}: {Input: *uint256.NewInt(12)},
-		{asset: "EUR/2"}: {Input: *uint256.NewInt(4)},
-	}, got)
+	require.Equal(t, "EUR/2|=in:4,out:0 USD/2|=in:12,out:0", renderAgg(got))
 
 	// The unfiltered universe additionally picks up world's outputs and skip:1.
-	all := modelAggregate(ls, nil)
-	require.Equal(t, *uint256.NewInt(21), all[aggregateBucket{asset: "USD/2"}].Input)
-	require.Equal(t, *uint256.NewInt(21), all[aggregateBucket{asset: "USD/2"}].Output)
+	all := modelAggregate(ls, nil, aggOptions{})
+	require.Equal(t, *uint256.NewInt(21), all[assetColor{Asset: "USD/2"}].in)
+	require.Equal(t, *uint256.NewInt(21), all[assetColor{Asset: "USD/2"}].out)
 }
 
 func TestModelAggregateKeepsColorBucketsSeparate(t *testing.T) {
@@ -56,9 +53,7 @@ func TestModelAggregateKeepsColorBucketsSeparate(t *testing.T) {
 
 	ls := buildLedger(t, oracletest.TxReqColoredL("L", "world", "keep:1", "USD/2", "A", 5))
 
-	require.Equal(t, map[aggregateBucket]oracle.VolumePair{
-		{asset: "USD/2", color: "A"}: {Input: *uint256.NewInt(5)},
-	}, modelAggregate(ls, filterAddrPrefix("keep:")))
+	require.Equal(t, "USD/2|A=in:5,out:0", renderAgg(modelAggregate(ls, filterAddrPrefix("keep:"), aggOptions{})))
 }
 
 // TestAggregateMatchesRejectsDivergence pins that the comparison is on the
@@ -447,4 +442,26 @@ func TestPreparedReverseWindowsDescend(t *testing.T) {
 	require.False(t, txPage(nil, first, true), "an ascending first page is outside a reverse window")
 	require.True(t, txPage(uint64EntityKey(second.GetId()), first, false), "a reverse continuation resumes below the cursor")
 	require.False(t, txPage(uint64EntityKey(first.GetId()), second, false), "a reverse continuation cannot climb above the cursor")
+}
+
+func TestPreparedCursorResumesInEitherDirection(t *testing.T) {
+	t.Parallel()
+
+	ls := buildLedger(t,
+		oracletest.TxReq("world", "acc:1", "USD/2", 1),
+		oracletest.TxReq("world", "acc:2", "USD/2", 1),
+		oracletest.TxReq("world", "acc:3", "USD/2", 1),
+	)
+	tx := func(i int) *commonpb.Transaction { return serverTxFromRec(ls.Txs().Get(i)) }
+	page := func(reverse bool, after *commonpb.Transaction, txs ...*commonpb.Transaction) bool {
+		call := preparedCall{ledger: "L", pageSize: 10, reverse: reverse}
+		cur := &commonpb.PreparedQueryCursor{TransactionData: txs}
+
+		return preparedWindowMatches(ls, call, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, nil, uint64EntityKey(after.GetId()), cur)
+	}
+
+	require.True(t, page(true, tx(1), tx(0)), "a forward cursor resumed in reverse runs back below its row")
+	require.False(t, page(true, tx(1), tx(2)), "a forward cursor resumed in reverse never climbs past its row")
+	require.True(t, page(false, tx(1), tx(2)), "a reverse cursor resumed forward runs up above its row")
+	require.False(t, page(false, tx(1), tx(0)), "a reverse cursor resumed forward never drops below its row")
 }

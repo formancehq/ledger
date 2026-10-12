@@ -555,7 +555,7 @@ the harness around it:
 
 | File | Role |
 |------|------|
-| `tests/oracle/model.go` | The pure forward model: `GlobalState`/`LedgerState` + `Apply`, which predicts the server's legal outcome for a bulk, atomically across whatever ledgers it touches. |
+| `tests/oracle/model.go` | The pure forward model: `GlobalState`/`LedgerState` + `Apply`, which predicts the server's legal outcome for a bulk, atomically across whatever ledgers it touches. `GlobalState` also holds the global log stream keyed by sequence (`Log`/`Logs`), filled as sequences are learned from commit responses; like the server's log zone it outlives the ledgers it indexes. |
 | `tests/oracle/bulk.go` / `accessors.go` | The `Bulk` submission shape the model consumes; read-only accessors over model state for validators and tools. |
 | `tests/oracle/oracletest/` | Shared helpers for tests that drive the oracle. |
 | `tests/oracle/cmd/replay` | Offline replayer for `MODEL_DUMP_BATCHES` captures (see below). |

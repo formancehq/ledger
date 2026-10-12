@@ -1,6 +1,10 @@
 package main
 
 import (
+	"math"
+
+	"github.com/antithesishq/antithesis-sdk-go/random"
+
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
@@ -264,7 +268,8 @@ func sampleFieldSeeds(ls oracle.LedgerState, target commonpb.QueryTarget) []fiel
 
 // genFieldLeaf rolls a kind-compatible Field leaf on a declared key, aiming
 // bounds/values at a committed sample when one exists so the filter actually
-// straddles live rows. One-in-eight it deliberately rolls a kind-MISMATCHED
+// straddles live rows. A numeric range sometimes comes out as two half-range
+// leaves on the key under And. One-in-eight it deliberately rolls a kind-MISMATCHED
 // leaf (the FILTER_COMPILATION_ERROR probe). Returns nil when the target has
 // no declared fields.
 func genFieldLeaf(seeds []fieldSeed) *commonpb.QueryFilter {
@@ -302,7 +307,21 @@ func genFieldLeaf(seeds []fieldSeed) *commonpb.QueryFilter {
 			center = uv.UintValue
 		}
 
-		return filterFieldUint(seed.key, uintBound(center, true), uintBound(center, false))
+		lo, hi := uintBound(center, true), uintBound(center, false)
+		if lo != nil && hi != nil && oneIn(3) {
+			// The range as two half-ranges on one key under And, the shape the
+			// compiler merges into a single scan.
+			low, high := filterFieldUint(seed.key, lo, nil), filterFieldUint(seed.key, nil, hi)
+			rollExclusiveUint(low.GetField().GetUintCond())
+			rollExclusiveUint(high.GetField().GetUintCond())
+
+			return filterAnd(low, high)
+		}
+
+		f := filterFieldUint(seed.key, lo, hi)
+		rollExclusiveUint(f.GetField().GetUintCond())
+
+		return f
 	default:
 		// Signed and datetime both take int bounds.
 		var center int64
@@ -315,7 +334,41 @@ func genFieldLeaf(seeds []fieldSeed) *commonpb.QueryFilter {
 			center = internal.Rand().Int63n(1024)
 		}
 
-		return filterFieldInt(seed.key, intBound(center, true), intBound(center, false))
+		lo, hi := intBound(center, true), intBound(center, false)
+		if lo != nil && hi != nil && oneIn(3) {
+			low, high := filterFieldInt(seed.key, lo, nil), filterFieldInt(seed.key, nil, hi)
+			rollExclusiveInt(low.GetField().GetIntCond())
+			rollExclusiveInt(high.GetField().GetIntCond())
+
+			return filterAnd(low, high)
+		}
+
+		f := filterFieldInt(seed.key, lo, hi)
+		rollExclusiveInt(f.GetField().GetIntCond())
+
+		return f
+	}
+}
+
+// rollExclusiveUint makes each present bound exclusive one time in four.
+func rollExclusiveUint(cond *commonpb.UintCondition) {
+	if cond.Min != nil {
+		cond.MinExclusive = oneIn(4)
+	}
+
+	if cond.Max != nil {
+		cond.MaxExclusive = oneIn(4)
+	}
+}
+
+// rollExclusiveInt makes each present bound exclusive one time in four.
+func rollExclusiveInt(cond *commonpb.IntCondition) {
+	if cond.Min != nil {
+		cond.MinExclusive = oneIn(4)
+	}
+
+	if cond.Max != nil {
+		cond.MaxExclusive = oneIn(4)
 	}
 }
 
@@ -344,11 +397,18 @@ func genMismatchedFieldLeaf(seeds []fieldSeed) *commonpb.QueryFilter {
 	}
 }
 
-// intBound rolls an inclusive bound around center: lower ≤ center for lo,
-// ≥ center for hi, occasionally open (nil).
+// intBound rolls a bound around center: lower ≤ center for lo, ≥ center for
+// hi, occasionally open (nil) and occasionally an extremum of the type, where
+// the compiler's bound arithmetic has no room left.
 func intBound(center int64, lo bool) *int64 {
 	if oneIn(4) {
 		return nil
+	}
+
+	if oneIn(8) {
+		v := random.RandomChoice([]int64{math.MinInt64, math.MaxInt64})
+
+		return &v
 	}
 
 	delta := internal.Rand().Int63n(64)
@@ -363,6 +423,12 @@ func intBound(center int64, lo bool) *int64 {
 func uintBound(center uint64, lo bool) *uint64 {
 	if oneIn(4) {
 		return nil
+	}
+
+	if oneIn(8) {
+		v := random.RandomChoice([]uint64{0, math.MaxUint64})
+
+		return &v
 	}
 
 	delta := internal.Rand().Uint64() % 64

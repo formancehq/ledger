@@ -224,7 +224,9 @@ func runExecutePreparedQuery(ctx context.Context, client servicepb.BucketService
 		return
 	}
 
-	pageSize := queryPageSize()
+	// The executor echoes the page size it was asked for, so this path asks for
+	// one the server serves unchanged.
+	_, pageSize := queryPageSize()
 	reverse := mode == commonpb.QueryMode_QUERY_MODE_LIST && oneIn(2)
 
 	c.mu.Lock()
@@ -306,8 +308,10 @@ type preparedCall struct {
 	wrongResult bool
 }
 
-// runExecuteNextPage issues the follow-on page for prev, in prev's direction,
-// and validates it with the after-key derived from prev's last row.
+// runExecuteNextPage issues the follow-on page for prev and validates it with
+// the after-key derived from prev's last row. The cursor carries a position and
+// no direction, so one page in four resumes in the opposite direction: the
+// window then runs from that row back the way the first page came.
 func (c *Checker) runExecuteNextPage(
 	ctx context.Context,
 	client servicepb.BucketServiceClient,
@@ -317,6 +321,11 @@ func (c *Checker) runExecuteNextPage(
 	after := lastPageKey(prev)
 	if len(after) == 0 {
 		return
+	}
+
+	flipped := oneIn(4)
+	if flipped {
+		call.reverse = !call.reverse
 	}
 
 	c.mu.Lock()
@@ -349,7 +358,14 @@ func (c *Checker) runExecuteNextPage(
 	_, cursorResult := resp.GetResult().(*servicepb.ExecutePreparedQueryResponse_Cursor)
 	call.wrongResult = err == nil && !cursorResult
 
-	c.validateExecuteList(maxTicket, call, after, resp.GetCursor())
+	if c.validateExecuteList(maxTicket, call, after, resp.GetCursor()) && flipped && call.errKind == pqErrNone {
+		// Coverage: a cursor from one direction resumed the other way, and the
+		// window back from its row matched the model.
+		assert.Reachable("singleton_driver_model: prepared query page resumed in the opposite direction", internal.Details{
+			"ledger":  call.ledger,
+			"reverse": call.reverse,
+		})
+	}
 }
 
 // preparedQuerySnapshot returns the committed stored definition for (ledger,
@@ -493,8 +509,9 @@ func runAggregateReverseMisuse(
 // lifecycle verdict, and the ordered window itself — all on the same base.
 //
 // after is the model-side cursor: "" for a first page, else the previous
-// page's last key (address, transaction id, or log id).
-func (c *Checker) validateExecuteList(maxTicket uint64, call preparedCall, after []byte, cur *commonpb.PreparedQueryCursor) {
+// page's last key (address, transaction id, or log id). Reports whether the
+// outcome matched the model.
+func (c *Checker) validateExecuteList(maxTicket uint64, call preparedCall, after []byte, cur *commonpb.PreparedQueryCursor) bool {
 	if call.errKind == pqErrOther || call.errKind == pqErrAggregateTarget {
 		assert.Unreachable("singleton_driver_model: prepared query execution returned unexpected error", internal.Details{
 			"ledger": call.ledger,
@@ -503,7 +520,7 @@ func (c *Checker) validateExecuteList(maxTicket uint64, call preparedCall, after
 			"error":  call.err.Error(),
 		})
 
-		return
+		return false
 	}
 	if call.errKind == pqErrNone && cur.GetPageSize() != uint32(call.pageSize) {
 		assert.Unreachable("singleton_driver_model: prepared query cursor page size mismatch", internal.Details{
@@ -511,7 +528,7 @@ func (c *Checker) validateExecuteList(maxTicket uint64, call preparedCall, after
 			"pageSize": cur.GetPageSize(), "expectedPageSize": call.pageSize,
 		})
 
-		return
+		return false
 	}
 
 	if c.matchesModel(maxTicket, "PQEXEC", func(base oracle.GlobalState) bool {
@@ -521,7 +538,7 @@ func (c *Checker) validateExecuteList(maxTicket uint64, call preparedCall, after
 
 		return preparedListOutcomeLegal(base.Ledger(call.ledger), call, after, cur)
 	}) {
-		return
+		return true
 	}
 
 	serverRows, modelRows := c.preparedPageDiag(call, after, cur)
@@ -543,6 +560,8 @@ func (c *Checker) validateExecuteList(maxTicket uint64, call preparedCall, after
 		"modelRows":    modelRows,
 		"modelQueries": c.modelPreparedQueries(call.ledger),
 	})
+
+	return false
 }
 
 // preparedLedgerOutcomeLegal handles lifecycle outcomes before validators read
@@ -779,7 +798,7 @@ func preparedTransactionWindowRows(ls oracle.LedgerState, bound *commonpb.QueryF
 }
 
 func preparedLogWindowRows(ls oracle.LedgerState, ledger string, bound *commonpb.QueryFilter, after []byte, reverse bool) []logWindowRow {
-	rows := logWindowRows(ls, ledger, bound, 0)
+	rows := logWindowRows(ls, ledger, bound, 0, false)
 	if reverse {
 		slices.Reverse(rows)
 	}
@@ -872,91 +891,22 @@ func preparedAggregateOutcomeLegal(ls oracle.LedgerState, call preparedCall, agg
 		})
 }
 
-// aggregateBucket is one (asset, color) total.
-type aggregateBucket struct {
-	asset string
-	color string
-}
-
 // aggregateMatches folds the base's volume cells over the accounts the filter
-// selects and compares the bucket set and every total exactly.
+// selects and compares the bucket set and every total exactly. A prepared query
+// carries no result-stage options, so the fold runs with none.
 func aggregateMatches(ls oracle.LedgerState, bound *commonpb.QueryFilter, agg *commonpb.AggregateResult) bool {
 	if len(agg.GetGroups()) != 0 {
 		return false
 	}
 
-	want := modelAggregate(ls, bound)
-
-	got := map[aggregateBucket]oracle.VolumePair{}
-	for _, v := range agg.GetVolumes() {
-		key := aggregateBucket{asset: v.GetAsset(), color: v.GetColor()}
-		if _, dup := got[key]; dup {
-			// One entry per bucket: a repeated bucket is a server-side fold bug
-			// that summing into a map would silently absorb.
-			return false
-		}
-
-		var pair oracle.VolumePair
-		v.GetInput().IntoUint256(&pair.Input)
-		v.GetOutput().IntoUint256(&pair.Output)
-		got[key] = pair
-	}
-
-	if len(got) != len(want) {
+	got, ok := serverAggregate(agg)
+	if !ok {
+		// One entry per bucket: a repeated bucket is a server-side fold bug that
+		// summing into a map would silently absorb.
 		return false
 	}
 
-	for key, wantPair := range want {
-		gotPair, ok := got[key]
-		if !ok || !gotPair.Input.Eq(&wantPair.Input) || !gotPair.Output.Eq(&wantPair.Output) {
-			return false
-		}
-	}
-
-	return true
-}
-
-// modelAggregate is the model's prediction: every volume cell of every account
-// the filter selects, summed per (asset, color). Grouping is by the account
-// universe the ACCOUNTS compiler iterates — the same universe accountWindow
-// pages over — so the aggregate and the list agree on membership by
-// construction.
-func modelAggregate(ls oracle.LedgerState, bound *commonpb.QueryFilter) map[aggregateBucket]oracle.VolumePair {
-	matched := map[string]struct{}{}
-
-	if base, precision, bare := hasAssetTarget(bound); bare {
-		// Same universe rule as preparedAccountProbe. A purged account carries
-		// no volume cell, so it adds nothing to the totals — but taking the
-		// universe from the projection the server iterates keeps the aggregate
-		// and the list agreeing on membership by construction rather than by
-		// coincidence.
-		for _, addr := range ls.EverAssetAccounts(base, precision) {
-			matched[addr] = struct{}{}
-		}
-	} else {
-		for _, addr := range accountUniverse(ls) {
-			if matchAccountFilter(ls, bound, addr) {
-				matched[addr] = struct{}{}
-			}
-		}
-	}
-
-	out := map[aggregateBucket]oracle.VolumePair{}
-
-	for key, pair := range ls.Volumes().All() {
-		if _, ok := matched[key.Address]; !ok {
-			continue
-		}
-
-		bucket := aggregateBucket{asset: key.Asset, color: key.Color}
-
-		acc := out[bucket]
-		acc.Input.Add(&acc.Input, &pair.Input)
-		acc.Output.Add(&acc.Output, &pair.Output)
-		out[bucket] = acc
-	}
-
-	return out
+	return aggEqual(modelAggregate(ls, bound, aggOptions{}), got)
 }
 
 // describeAggregate renders an aggregate result for a finding's details,

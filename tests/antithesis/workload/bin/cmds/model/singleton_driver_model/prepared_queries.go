@@ -128,15 +128,12 @@ func generatePreparedQueryOp(g oracle.GlobalState, ledger string) *servicepb.Req
 	return updatePreparedQueryReq(ledger, name, filter)
 }
 
-// genPreparedQueryFilter builds a storable filter for target: a concrete filter
+// genPreparedQueryFilter builds a filter to save for target: a concrete filter
 // from the ad-hoc generators, with a random subset of its leaves rewritten into
-// parameter references.
-//
-// Filters carrying a condition invalid on the target are discarded rather than
-// stored — the FSM rejects those at write time (ValidateFilterForTarget), so
-// storing one would only ever exercise the write-side rejection the ad-hoc
-// generators already cover. Returns nil when the roll produced nothing storable;
-// the caller then emits no op this round.
+// parameter references, and occasionally one node rewritten into an arbitrary
+// shape (rollFilterShape). A filter the write-time validation refuses is sent
+// all the same; the model predicts the refusal. Returns nil when the generator
+// produced no concrete filter; the caller then emits no op this round.
 func genPreparedQueryFilter(ls oracle.LedgerState, ledger string, target commonpb.QueryTarget) *commonpb.QueryFilter {
 	var concrete *commonpb.QueryFilter
 
@@ -146,14 +143,14 @@ func genPreparedQueryFilter(ls oracle.LedgerState, ledger string, target commonp
 	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
 		concrete = genTransactionFilter(txFilterSeedsOf(ls))
 	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
-		concrete = genLogFilter(ledger, 0)
+		concrete = genLogFilter(ledger, logDateSample(ls), 0)
 	default:
 		panic(fmt.Sprintf("genPreparedQueryFilter: non-executable target %v", target))
 	}
 
 	// Match-all writes are selected explicitly by generatePreparedQueryOp. A nil
 	// here means the ad-hoc generator produced no concrete filter this round.
-	if concrete == nil || filterInvalidForTarget(concrete, target) || !bareOrNoHasAsset(concrete) {
+	if concrete == nil {
 		return nil
 	}
 
@@ -161,7 +158,7 @@ func genPreparedQueryFilter(ls oracle.LedgerState, ledger string, target commonp
 	// stored, and every execution binds fresh values discovered from the stored
 	// filter itself (genPreparedParams). Keeping a driver-side copy would be a
 	// second source of truth that a concurrent update immediately invalidates.
-	return parameterizeFilter(concrete, preparedParams{})
+	return rollFilterShape(parameterizeFilter(concrete, preparedParams{}))
 }
 
 // --- parameterization ----------------------------------------------------
@@ -868,24 +865,4 @@ func sampleUint(ls oracle.LedgerState) uint64 {
 	}
 
 	return seeds.stamps[internal.Rand().Intn(len(seeds.stamps))]
-}
-
-// bareOrNoHasAsset reports whether f is storable under the has-asset rule the
-// validators rely on: the leaf may appear only as the whole filter, never
-// inside a boolean. The has-asset index serves accounts that may have been
-// purged from the volume table, while every other accounts leaf scans the live
-// universe, so a boolean of the two is the read-store's own iterator
-// intersection — set semantics the model would have to reimplement the
-// read-store to predict. genAccountAssetFilter already emits only bare leaves;
-// this holds the invariant at the storage boundary instead of assuming it.
-func bareOrNoHasAsset(f *commonpb.QueryFilter) bool {
-	if _, _, bare := hasAssetTarget(f); bare {
-		return true
-	}
-
-	return !anyLeaf(f, func(leaf *commonpb.QueryFilter) bool {
-		_, isHasAsset := leaf.GetFilter().(*commonpb.QueryFilter_AccountHasAsset)
-
-		return isHasAsset
-	})
 }
