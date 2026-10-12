@@ -475,7 +475,7 @@ classification. `TestEveryDomainErrorImplementsDescribable` and the
 `internal/adapter/apierr` is the contract every business-facing surface reads a
 failure through: `handleError`, the bulk per-element mapper and `ledgerctl`.
 `apierr.Describe(err)` returns a `Descriptor` — semantic `Kind`, stable
-`Reason`, client-safe `Message`, structured `Metadata` — and normalises the two
+`Reason`, client-safe `Message`, structured `Facts` — and normalises the two
 provenances a failure can have:
 
 | Provenance | Classification |

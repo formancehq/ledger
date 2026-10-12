@@ -81,7 +81,7 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 				Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
 			})
 			Expect(err).To(HaveOccurred())
-			Expect(actions.ExtractGRPCErrorInfo(err).Reason).To(Equal("FILTER_COMPILATION"))
+			Expect(actions.ExtractGRPCErrorInfo(err).Reason).To(Equal("FILTER_COMPILATION_ERROR"))
 		})
 
 		It("Should error when using int filter on string field", func() {

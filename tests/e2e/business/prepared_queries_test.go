@@ -670,7 +670,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 				},
 			})
 			Expect(err).To(HaveOccurred())
-			Expect(actions.ExtractGRPCErrorInfo(err).Reason).To(Equal("FILTER_COMPILATION"))
+			Expect(actions.ExtractGRPCErrorInfo(err).Reason).To(Equal("FILTER_COMPILATION_ERROR"))
 		})
 	})
 

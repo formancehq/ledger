@@ -1384,7 +1384,7 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 - **`domain`**: Always `"ledger"`
 - **`metadata`**: Error-specific key-value pairs with context
 
-**Adding a new error**: define a typed error implementing `domain.Describable` (`Kind`, `Reason`, `Metadata`). The exhaustive `kindToGRPCCode` switch + reflection test enforce that no new error reaches the API without a mapping. No edit to this table required to keep it accurate — but please keep it in sync as a reference.
+**Adding a new error**: define a typed error implementing `domain.Describable` (`Kind`, `Reason`). If the FSM can emit it, also implement `domain.SerializableError` with `FailureFacts()` to supply its stable reason, code and fact values. Keep diagnostic text in `Error()`; only the structured projection is persisted and rendered publicly. The exhaustive `kindToGRPCCode` switch + reflection test enforce that no new error reaches the API without a mapping. Keep this table in sync as a reference.
 
 | Error | gRPC Code | Reason | Metadata |
 |-------|-----------|--------|----------|
@@ -1405,10 +1405,10 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Volume not materialized | `INTERNAL` | `VOLUME_NOT_MATERIALIZED` | `account`, `asset`, `side` |
 | Balance not found | `FAILED_PRECONDITION` | `BALANCE_NOT_FOUND` | `account`, `asset` |
 | Balance not preloaded | `FAILED_PRECONDITION` | `BALANCE_NOT_PRELOADED` | `account`, `asset` |
-| Numscript parse error | `INVALID_ARGUMENT` | `NUMSCRIPT_PARSE_ERROR` | `details` |
-| Numscript compile error | `INVALID_ARGUMENT` | `NUMSCRIPT_COMPILE_ERROR` | `details` |
-| Numscript execution error | `FAILED_PRECONDITION` | `NUMSCRIPT_EXECUTION_ERROR` | `detail` |
-| Numscript runtime error | `INTERNAL` | `NUMSCRIPT_RUNTIME` | `detail` |
+| Numscript parse error | `INVALID_ARGUMENT` | `NUMSCRIPT_PARSE_ERROR` | *(none; diagnostic text stays server-side)* |
+| Numscript compile error | `INVALID_ARGUMENT` | `NUMSCRIPT_COMPILE_ERROR` | Code-specific stable facts, such as `expected` and `got` for a type mismatch |
+| Numscript execution error | `FAILED_PRECONDITION` | `NUMSCRIPT_EXECUTION_ERROR` | Code-specific stable facts, such as `asset`, `needed` and `available` for missing funds |
+| Numscript runtime error | `INTERNAL` | `NUMSCRIPT_RUNTIME` | *(none unless the error supplies stable facts)* |
 | Numscript not found | `NOT_FOUND` | `NUMSCRIPT_NOT_FOUND` | `name` |
 | Numscript invalid version | `INVALID_ARGUMENT` | `NUMSCRIPT_INVALID_VERSION` | `version` |
 | Numscript version already exists | `ALREADY_EXISTS` | `NUMSCRIPT_VERSION_ALREADY_EXISTS` | `name`, `version` |
@@ -1429,7 +1429,7 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Invalid cron expression | `INVALID_ARGUMENT` | `INVALID_CRON_EXPRESSION` | `expression`, `details` |
 | Prepared query already exists | `ALREADY_EXISTS` | `PREPARED_QUERY_ALREADY_EXISTS` | `ledger`, `name` |
 | Prepared query not found | `NOT_FOUND` | `PREPARED_QUERY_NOT_FOUND` | `ledger`, `name` |
-| Filter compilation error | `INVALID_ARGUMENT` | `FILTER_COMPILATION_ERROR` | `detail` |
+| Filter compilation error | `INVALID_ARGUMENT` | `FILTER_COMPILATION_ERROR` | *(none; diagnostic text stays server-side)* |
 | Index not found | `FAILED_PRECONDITION` | `INDEX_NOT_FOUND` | `index` |
 | Index building | `UNAVAILABLE` | `INDEX_BUILDING` | `index` |
 | Index inconsistent | `INTERNAL` | `INDEX_INCONSISTENT` | *(none — internal index/storage details remain server-side)* |
@@ -1512,9 +1512,9 @@ with the original idempotency key and payload. See the
 
 That proviso is the catch for third-party SDKs: a client older than the server, or one that derives the kind from the status code alone, still reports `KindPrecondition` for every `FailedPrecondition` response and will misclassify a conflict (e.g. ledger deleted, transaction already reverted). Match on `Reason()` (`LEDGER_DELETED`, `TRANSACTION_ALREADY_REVERTED`, etc.) rather than on the reconstructed `Kind()` — the reason is preserved end-to-end and never depends on the client's version.
 
-**The normalized boundary contract.** Inside ledger, every business-facing surface — the HTTP error handler, the bulk per-element mapper and `ledgerctl` — reads a failure through one contract, `internal/adapter/apierr`. `apierr.Describe(err)` returns a `Descriptor` (semantic `Kind`, stable `Reason`, client-safe `Message`, structured `Metadata`) and hides which of two provenances the failure had: raised locally, where the kind is `domain.Kind(d)` and therefore a pure function of the reason; or decoded from a peer, where the kind is the one the wire carried. There is no second mapping table per surface — HTTP maps `Kind` to a status through `kindToHTTPStatus`, gRPC through `grpcerr.CodeForKind`, and the decoder reverses that same table. `apierr` imports `internal/domain` and nothing else, so HTTP is not coupled to any gRPC detail.
+**The normalized boundary contract.** Inside ledger, every business-facing surface — the HTTP error handler, the bulk per-element mapper and `ledgerctl` — reads a failure through one contract, `internal/adapter/apierr`. `apierr.Describe(err)` returns a `Descriptor` (semantic `Kind`, stable `Reason`, client-safe `Message`, structured `Facts`) and hides which of two provenances the failure had: raised locally, where the kind is `domain.Kind(d)` and therefore a pure function of the reason; or decoded from a peer, where the kind is the one the wire carried. There is no second mapping table per surface — HTTP maps `Kind` to a status through `kindToHTTPStatus`, gRPC through `grpcerr.CodeForKind`, and the decoder reverses that same table. `apierr` imports `internal/domain` and nothing else, so HTTP is not coupled to any gRPC detail.
 
-The decoded representation lives at the adapter boundary by design, not in `internal/domain`. A decoded failure carries a reason and message belonging to the *sending* build, and the audit chain hashes an error's `Error()` string, so a message that varies with a peer's version would break the chain. No package under `internal/domain`, `internal/application/admission`, `internal/infra/state`, `internal/infra/plan` or `internal/infra/preload` may import `apierr`; `scripts/check-repo-invariants` enforces that as a dependency rule.
+The decoded representation lives at the adapter boundary by design, not in `internal/domain`. A decoded failure carries a reason and message belonging to the *sending* build. The audit chain hashes the stable reason, code and facts from `FailureFacts()`, never the diagnostic `Error()` text. No package under `internal/domain`, `internal/application/admission`, `internal/infra/state`, `internal/infra/plan` or `internal/infra/preload` may import `apierr`; `scripts/check-repo-invariants` enforces that as a dependency rule.
 
 **Two axes, deliberately separate.** The semantic `ErrorKind` answers the client; the gRPC status code is a transport-behaviour signal that drives retry and hop behaviour. The receiver preserves both: the kind through the `Descriptor`, the exact original status through the decoder's carrier (`GRPCStatus()`). Do not reconstruct a status from a `Kind`; it is lossy in both directions — `CodeForKind` sends both `KindConflict` and `KindPrecondition` as `codes.FailedPrecondition`, so a code cannot name a kind, and a reason from a newer build carries a kind this enum cannot derive at all. The axes may also disagree deliberately: the removed `READ_INDEX_NOT_CAUGHT_UP` was semantically `KindUnavailable` (`503` + `Retry-After` on REST) while travelling as `codes.FailedPrecondition`, because `actions.GRPCRetryPolicy` retries `codes.Unavailable` fifty times at 0.2s and the semantic code would have turned a read-index lag into a ten-second client-side hang.
 
