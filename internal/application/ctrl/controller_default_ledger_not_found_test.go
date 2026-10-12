@@ -60,6 +60,11 @@ func TestDefaultController_LedgerNotFound(t *testing.T) {
 
 			return err
 		},
+		"ListNumscriptVersions": func(ctrl *DefaultController) error {
+			_, _, err := ctrl.ListNumscriptVersions(context.Background(), ledger, "script")
+
+			return err
+		},
 		"ListPreparedQueries": func(ctrl *DefaultController) error {
 			_, err := ctrl.ListPreparedQueries(context.Background(), ledger)
 
