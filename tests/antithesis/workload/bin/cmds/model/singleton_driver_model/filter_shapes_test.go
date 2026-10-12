@@ -119,9 +119,9 @@ func TestHasAssetComposesOverCurrentAccounts(t *testing.T) {
 	require.Equal(t, []string{"world"}, accountWindow(ls, filterAnd(filterHasAsset("USD", 2), filterNot(filterAddrPrefix("acc:"))), "", 10, false))
 }
 
-// A leaf compiled before the refused one may answer not-ready while its key's
-// retype window is open, even though its index is active — but only when the
-// refusal names that index.
+// A leaf compiled before the refused one may answer not-ready while its index
+// is not active, or while its key's retype window is open even though its index
+// is active — but only when the refusal names that index.
 func TestRefusedFilterAcceptsAWindowedEarlierLeaf(t *testing.T) {
 	t.Parallel()
 
@@ -138,11 +138,10 @@ func TestRefusedFilterAcceptsAWindowedEarlierLeaf(t *testing.T) {
 		require.True(t, res.OK, res.Reason)
 		gs = res.State
 	}
-	gs.SetIndexActive("L", canon)
 
 	broken := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{Address: &commonpb.AddressMatch{}}}
 	rf := classifyRejectedFilter(filterAnd(filterMetaExists("k0"), broken), accounts)
-	require.Equal(t, []string{"k0"}, rf.priorKeys)
+	require.Equal(t, priorIndex{label: `metadata["k0"] on accounts`, metadata: true}, rf.prior[canon])
 
 	building := func(index string) error {
 		st, err := status.New(codes.Unavailable, "index is building").WithDetails(&errdetails.ErrorInfo{
@@ -155,6 +154,11 @@ func TestRefusedFilterAcceptsAWindowedEarlierLeaf(t *testing.T) {
 	own := building(`metadata["k0"] on accounts`)
 	sibling := building(`metadata["k9"] on accounts`)
 
+	require.True(t, refusedFilterNotReadyLegal(gs.Ledger("L"), rf, accounts, own), "the not-yet-active index may refuse")
+	require.False(t, refusedFilterNotReadyLegal(gs.Ledger("L"), rf, accounts, sibling), "a not-active prior does not excuse a refusal naming another index")
+	require.False(t, refusedFilterNotReadyLegal(gs.Ledger("L"), rf, accounts, building("has asset")), "nor one naming a builtin")
+
+	gs.SetIndexActive("L", canon)
 	require.False(t, refusedFilterNotReadyLegal(gs.Ledger("L"), rf, accounts, own), "active and no window: the refusal is illegal")
 
 	res := gs.Apply(oracle.Bulk{Requests: []*servicepb.Request{

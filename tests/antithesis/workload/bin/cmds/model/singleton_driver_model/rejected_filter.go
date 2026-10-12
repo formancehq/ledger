@@ -20,13 +20,19 @@ import (
 // parameter, which a plain list query never binds.
 type rejectedFilter struct {
 	rejected bool
-	// prior names the indexes the leaves compiled before the first refused one
-	// need. The compiler walks the tree in order and checks each leaf's index as
-	// it compiles it, so a not-ready rejection from one of these may come first.
-	prior map[string]struct{}
-	// priorKeys are the metadata keys those leaves read: a key under an open
-	// retype window may answer not-ready even while its index is active.
-	priorKeys []string
+	// prior maps each index the leaves compiled before the first refused one
+	// need to the label the server names it by. The compiler walks the tree in
+	// order and checks each leaf's index as it compiles it, so a not-ready
+	// rejection from one of these may come first.
+	prior map[string]priorIndex
+}
+
+type priorIndex struct {
+	// label is the server's ErrorInfo "index" label; empty when unknown.
+	label string
+	// metadata is set for a metadata index: under an open retype window it may
+	// answer not-ready even while active.
+	metadata bool
 }
 
 // classifyRejectedFilter decides whether f must be refused on target, and which
@@ -36,8 +42,7 @@ func classifyRejectedFilter(f *commonpb.QueryFilter, target commonpb.QueryTarget
 		return rejectedFilter{}
 	}
 
-	prior := map[string]struct{}{}
-	var priorKeys []string
+	prior := map[string]priorIndex{}
 	stopped := false
 	visitLeaves(f, func(leaf *commonpb.QueryFilter) {
 		if stopped {
@@ -49,22 +54,60 @@ func classifyRejectedFilter(f *commonpb.QueryFilter, target commonpb.QueryTarget
 			return
 		}
 
-		if key := leaf.GetField().GetField().GetMetadata(); key != "" {
-			priorKeys = append(priorKeys, key)
-		}
-
 		// A leaf checks its index before it resolves its parameters.
+		needed := map[string]struct{}{}
 		if target == commonpb.QueryTarget_QUERY_TARGET_LOGS {
-			for canon := range neededLogIndexes(leaf) {
-				prior[canon] = struct{}{}
-			}
+			needed = neededLogIndexes(leaf)
 		} else {
-			neededIndexCanonicals(leaf, target, prior)
+			neededIndexCanonicals(leaf, target, needed)
+		}
+		for canon := range needed {
+			prior[canon] = priorIndex{
+				label:    serverIndexLabel(leaf, target),
+				metadata: leaf.GetField().GetField().GetMetadata() != "",
+			}
 		}
 		stopped = len(collectParams(leaf)) > 0
 	})
 
-	return rejectedFilter{rejected: true, prior: prior, priorKeys: priorKeys}
+	return rejectedFilter{rejected: true, prior: prior}
+}
+
+// serverIndexLabel is the label the compiler names leaf's index by in an
+// INDEX_NOT_FOUND / INDEX_BUILDING ErrorInfo (internal/query/compile.go).
+func serverIndexLabel(leaf *commonpb.QueryFilter, target commonpb.QueryTarget) string {
+	if target == commonpb.QueryTarget_QUERY_TARGET_LOGS {
+		return "log date"
+	}
+
+	switch x := leaf.GetFilter().(type) {
+	case *commonpb.QueryFilter_Field:
+		return fmt.Sprintf("metadata[%q] on %s", x.Field.GetField().GetMetadata(), commonpb.TargetHumanName(target))
+	case *commonpb.QueryFilter_AccountHasAsset:
+		return "has asset"
+	case *commonpb.QueryFilter_Reference:
+		return "reference"
+	case *commonpb.QueryFilter_Address:
+		switch x.Address.GetRole() {
+		case commonpb.AddressRole_ADDRESS_ROLE_SOURCE:
+			return "source"
+		case commonpb.AddressRole_ADDRESS_ROLE_DESTINATION:
+			return "destination"
+		default:
+			return "address"
+		}
+	case *commonpb.QueryFilter_BuiltinUint:
+		switch x.BuiltinUint.GetField() {
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
+			return "timestamp"
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
+			return "inserted_at"
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
+			return "reverted_at"
+		}
+	}
+
+	return ""
 }
 
 // handleRejectedFilterError validates the error a refused filter drew: the
@@ -127,25 +170,22 @@ func assertRefusedFilterServedNothing(rf rejectedFilter, target commonpb.QueryTa
 }
 
 // refusedFilterNotReadyLegal reports whether ls explains a not-ready answer to
-// a refused filter: an index a leaf compiled before the refused one needs is
-// absent or not active, or a key such a leaf reads is under an open retype
-// window and the refusal names that key's index itself — an active sibling's
-// refusal stays illegal.
+// a refused filter: the refusal names an index a leaf compiled before the
+// refused one needs, and that index is absent or not active, or is a metadata
+// index under an open retype window. A refusal naming any other index stays
+// illegal.
 func refusedFilterNotReadyLegal(ls oracle.LedgerState, rf rejectedFilter, target commonpb.QueryTarget, err error) bool {
-	for canon := range rf.prior {
+	rejectedIndex := rejectedIndexLabel(err)
+	for canon, p := range rf.prior {
+		if p.label != "" && p.label != rejectedIndex {
+			continue
+		}
+
 		if exists, active := ls.IndexState(canon); !exists || !active {
 			return true
 		}
-	}
 
-	if !isIndexNotReady(err) {
-		return false
-	}
-
-	rejectedIndex := rejectedIndexLabel(err)
-	for _, key := range rf.priorKeys {
-		_, open := ls.RetypeWindow(metadataCanonical(target, key))
-		if open && rejectedIndex == fmt.Sprintf("metadata[%q] on %s", key, commonpb.TargetHumanName(target)) {
+		if _, open := ls.RetypeWindow(canon); p.metadata && open && isIndexNotReady(err) {
 			return true
 		}
 	}
