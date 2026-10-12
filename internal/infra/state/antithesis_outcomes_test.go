@@ -80,6 +80,7 @@ func TestIdempotencyCoverageExclusions(t *testing.T) {
 			if scenario == "frozen_failure" {
 				stored.Failure = &commonpb.IdempotencyFailure{
 					Reason: domain.ReasonCode(domain.ErrReasonTransactionNotFound), Code: domain.ErrReasonTransactionNotFound,
+					Details: commonpb.MustFailureDetails(domain.ErrReasonTransactionNotFound, nil),
 				}
 			} else {
 				// Expiry is frozen on the outcome (EN-1827), so an expired one
