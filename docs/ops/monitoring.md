@@ -213,8 +213,8 @@ A write batch reaches the controller through the gRPC Apply handler.
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `grpc.apply.duration` | Histogram | s | Total duration of the gRPC Apply handler: forwarded identity, `ctrl.Apply`, checkpoint wait and response signing. Recorded on every exit, failures included. |
-| `ctrl.apply.duration` | Histogram | s | Duration of a batch's admission in the controller. Recorded on every exit, failures included. |
+| `grpc.apply.duration` | Histogram | s | Total duration of the gRPC Apply handler: forwarded identity, `ctrl.Apply`, checkpoint wait and response signing. Recorded on every exit, failures included; a panic recovered by the gRPC server counts as `error`. |
+| `ctrl.apply.duration` | Histogram | s | Duration of a batch's admission in the controller. Recorded whenever admission returns, failures included; a panic during admission is not recorded here. |
 
 **Attributes**:
 - `batch_size`: number of requests in the batch

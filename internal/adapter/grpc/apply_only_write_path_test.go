@@ -34,7 +34,7 @@ import (
 // Add a row only for a call that is provably not an audited business write,
 // and say why in the value.
 var applyWriteSites = map[string]string{
-	"server_bucket.go:BucketServiceServerImpl.Apply": "the single gRPC business-write entry point",
+	"server_bucket.go:BucketServiceServerImpl.apply": "the body of BucketService.Apply, the single gRPC business-write entry point; only Apply calls it",
 	"client_bucket.go:BucketGrpcClient.Apply":        "the follower-side forwarder relaying that same batch to the leader",
 }
 

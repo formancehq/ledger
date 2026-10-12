@@ -97,32 +97,45 @@ func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl 
 	}
 }
 
-func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.ApplyRequest) (_ *servicepb.ApplyResponse, err error) {
+func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.ApplyRequest) (resp *servicepb.ApplyResponse, err error) {
 	start := time.Now()
 	batchSize := 0
 	// Record every exit, failures included, so the histogram covers the
-	// same population as ctrl.apply.duration; status tells them apart.
+	// same population as ctrl.apply.duration; status tells them apart. A
+	// panic unwinds through this defer while err is still nil (the recovery
+	// interceptor turns it into codes.Internal afterwards), so only a call
+	// that returned normally can count as a success.
+	returned := false
 	defer func() {
 		if impl.applyDuration == nil {
 			return
 		}
-		status := "success"
-		if err != nil {
-			status = "error"
+		status := "error"
+		if returned && err == nil {
+			status = "success"
 		}
 		impl.applyDuration.Record(ctx, time.Since(start).Seconds(),
 			metric.WithAttributes(attribute.Int("batch_size", batchSize), attribute.String("status", status)))
 	}()
 
-	ctx, err = impl.adoptForwardedSnapshotIfTrusted(ctx, req)
+	resp, err = impl.apply(ctx, req, &batchSize)
+	returned = true
+
+	return resp, err
+}
+
+// apply is the Apply handler body. It reports the batch size through
+// batchSize as soon as it is known, so the caller records it on every exit.
+func (impl *BucketServiceServerImpl) apply(ctx context.Context, req *servicepb.ApplyRequest, batchSize *int) (*servicepb.ApplyResponse, error) {
+	ctx, err := impl.adoptForwardedSnapshotIfTrusted(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	batchSize, _ = ctx.Value(applyBatchSizeKey{}).(int)
+	*batchSize, _ = ctx.Value(applyBatchSizeKey{}).(int)
 
 	if impl.logger.Enabled(logging.TraceLevel) {
-		impl.logger.Tracef("Apply request received with %d requests", batchSize)
+		impl.logger.Tracef("Apply request received with %d requests", *batchSize)
 	}
 
 	result, err := impl.ctrl.Apply(ctx, req)
