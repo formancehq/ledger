@@ -2,30 +2,39 @@ package numscriptgen
 
 import (
 	"math/big"
+	"math/rand"
 
-	"github.com/formancehq/numscript/builder"
+	"github.com/formancehq/ledger/v3/tests/numscriptgen/builder"
 )
 
-// toBuilder converts a (post-cleanup) generated program into builder
+// renderer turns the generator's AST into builder statements. The AST fixes
+// every value; the renderer draws how each one is written — a literal, a var,
+// or one of the arithmetic forms the grammar allows — so the same value
+// reaches the engines through every expression shape.
+type renderer struct {
+	rng *rand.Rand
+}
+
+// toBuilder converts a generated program into builder
 // statements, ready to be passed to builder.BuildProgram. Each account and
 // asset occurrence is rendered inline or through a var according to its
 // AsVar flag — see toBuilderAccount.
-func toBuilder(p Program) []builder.Statement {
+func (rd renderer) toBuilder(p Program) []builder.Statement {
 	out := make([]builder.Statement, len(p))
 	for i, s := range p {
-		out[i] = toBuilderStatement(s)
+		out[i] = rd.toBuilderStatement(s)
 	}
 	return out
 }
 
-func toBuilderStatement(s Statement) builder.Statement {
-	src := toBuilderSource(s.Source)
-	dest := toBuilderDestination(s.Destination)
+func (rd renderer) toBuilderStatement(s Statement) builder.Statement {
+	src := rd.toBuilderSource(s.Source)
+	dest := rd.toBuilderDestination(s.Destination)
 
 	if s.IsSendAll {
-		return builder.StmtSendAll(toBuilderAsset(s.Asset, s.AssetAsVar), src, dest)
+		return builder.StmtSendAll(rd.toBuilderAsset(s.Asset, s.AssetAsVar), src, dest)
 	}
-	return builder.StmtSend(toBuilderMonetary(s.Amount), src, dest)
+	return builder.StmtSend(rd.toBuilderMonetary(s.Amount), src, dest)
 }
 
 // toBuilderAccount renders one account occurrence, either inline (`@addr`) or
@@ -33,7 +42,7 @@ func toBuilderStatement(s Statement) builder.Statement {
 // by address, so every var-form occurrence of an address shares one var while
 // inline occurrences stay literal — letting a single script reference the same
 // account both ways.
-func toBuilderAccount(address string, asVar bool) builder.Expression[builder.ExprTypeAccount] {
+func (rd renderer) toBuilderAccount(address string, asVar bool) builder.Expression[builder.ExprTypeAccount] {
 	if asVar {
 		return builder.ExprAccount(address)
 	}
@@ -41,7 +50,7 @@ func toBuilderAccount(address string, asVar bool) builder.Expression[builder.Exp
 }
 
 // toBuilderString renders one string occurrence, var or inline.
-func toBuilderString(s string, asVar bool) builder.Expression[builder.ExprTypeString] {
+func (rd renderer) toBuilderString(s string, asVar bool) builder.Expression[builder.ExprTypeString] {
 	if asVar {
 		return builder.ExprString(s)
 	}
@@ -51,46 +60,120 @@ func toBuilderString(s string, asVar bool) builder.Expression[builder.ExprTypeSt
 // toBuilderAsset renders one asset occurrence, var or inline. Note the asset
 // slot of a monetary literal accepts a var in both grammars (`[$assetN 10]`),
 // unlike the amount slot — see toBuilderMonetary.
-func toBuilderAsset(asset string, asVar bool) builder.Expression[builder.ExprTypeAsset] {
+func (rd renderer) toBuilderAsset(asset string, asVar bool) builder.Expression[builder.ExprTypeAsset] {
 	if asVar {
 		return builder.ExprAsset(asset)
 	}
 	return builder.UnsafeAsset(asset)
 }
 
-func toBuilderMonetary(m Monetary) builder.Expression[builder.ExprTypeMonetary] {
+func (rd renderer) toBuilderMonetary(m Monetary) builder.Expression[builder.ExprTypeMonetary] {
 	if m.AsVar && m.Amount.Sign() >= 0 {
 		return builder.ExprMonetaryVar(m.Asset + " " + m.Amount.String())
 	}
-	if m.Amount.Sign() < 0 {
-		// A bracketed monetary literal's amount slot (`[ASSET N]`) only ever
-		// accepts a bare non-negative number in both grammars — there's no
-		// legal way to write `[ASSET -7]` directly. `[ASSET 0] - [ASSET 7]`
-		// is the only legal way to reach a negative monetary value
-		// (verified directly against the oracle); see
-		// builder.ExprMonetarySub.
-		abs := new(big.Int).Neg(m.Amount)
-		zero := builder.ExprMonetary(toBuilderAsset(m.Asset, m.AssetAsVar), builder.ExprNumberBigInt(big.NewInt(0)))
-		magnitude := builder.ExprMonetary(toBuilderAsset(m.Asset, m.AssetAsVar), builder.ExprNumberBigInt(abs))
-		return builder.ExprMonetarySub(zero, magnitude)
+
+	asset := func() builder.Expression[builder.ExprTypeAsset] { return rd.toBuilderAsset(m.Asset, m.AssetAsVar) }
+	lit := func(n *big.Int) builder.Expression[builder.ExprTypeMonetary] {
+		return builder.ExprMonetary(asset(), builder.ExprNumberBigInt(n))
 	}
-	return builder.ExprMonetary(toBuilderAsset(m.Asset, m.AssetAsVar), builder.ExprNumberBigInt(m.Amount))
+
+	if m.Amount.Sign() < 0 {
+		abs := new(big.Int).Neg(m.Amount)
+		switch rd.rng.Intn(3) {
+		case 0:
+			return builder.ExprMonetarySub(lit(big.NewInt(0)), lit(abs))
+		case 1:
+			return builder.ExprNeg(lit(abs))
+		default:
+			return builder.ExprMonetary(asset(), builder.ExprNeg(builder.ExprNumberBigInt(abs)))
+		}
+	}
+
+	switch rd.rng.Intn(16) {
+	case 0:
+		return builder.ExprMonetary(asset(), builder.ExprNumberVar(m.Amount))
+	case 1:
+		x, y := rd.split(m.Amount)
+		return builder.ExprMonetary(asset(), rd.sum(builder.ExprNumberBigInt(x), y))
+	case 2:
+		x, y := rd.split(m.Amount)
+		if y.Sign() < 0 {
+			return builder.ExprMonetarySub(lit(x), lit(new(big.Int).Neg(y)))
+		}
+		return builder.ExprMonetaryAdd(lit(x), lit(y))
+	case 3:
+		return builder.ExprParen(lit(m.Amount))
+	default:
+		return lit(m.Amount)
+	}
 }
 
-func toBuilderNumExpr(e NumExpr) builder.Expression[builder.ExprTypeNumber] {
+// split draws x and y with x + y = n, x non-negative and y of either sign.
+func (rd renderer) split(n *big.Int) (x, y *big.Int) {
+	x = big.NewInt(int64(rd.rng.Intn(1000)))
+	return x, new(big.Int).Sub(n, x)
+}
+
+// sum renders x + y, writing a negative y as a subtraction.
+func (rd renderer) sum(x builder.Expression[builder.ExprTypeNumber], y *big.Int) builder.Expression[builder.ExprTypeNumber] {
+	if y.Sign() < 0 {
+		return builder.ExprSub(x, builder.ExprNumberBigInt(new(big.Int).Neg(y)))
+	}
+	return builder.ExprAdd(x, builder.ExprNumberBigInt(y))
+}
+
+func (rd renderer) toBuilderNumExpr(e NumExpr) builder.Expression[builder.ExprTypeNumber] {
+	var out builder.Expression[builder.ExprTypeNumber]
 	switch e.Kind {
 	case NumLit:
-		if e.LitAsVar {
-			return builder.ExprNumberVar(e.Lit)
+		switch {
+		case e.LitAsVar:
+			out = builder.ExprNumberVar(e.Lit)
+		case e.Lit.Sign() < 0:
+			out = builder.ExprNeg(builder.ExprNumberBigInt(new(big.Int).Neg(e.Lit)))
+		default:
+			out = builder.ExprNumberBigInt(e.Lit)
 		}
-		return builder.ExprNumberBigInt(e.Lit)
 	case NumAdd:
-		return builder.ExprAdd(toBuilderNumExpr(*e.Left), toBuilderNumExpr(*e.Right))
+		out = builder.ExprAdd(rd.toBuilderNumExpr(*e.Left), rd.toBuilderNumExpr(*e.Right))
 	case NumSub:
-		return builder.ExprSub(toBuilderNumExpr(*e.Left), toBuilderNumExpr(*e.Right))
+		out = builder.ExprSub(rd.toBuilderNumExpr(*e.Left), rd.toBuilderNumExpr(*e.Right))
 	default:
 		panic("gen: unknown num expr kind")
 	}
+
+	if e.Paren {
+		out = builder.ExprParen(out)
+	}
+	if e.Neg {
+		out = builder.ExprNeg(out)
+	}
+
+	return out
+}
+
+// toBuilderMetaLiteral renders set_tx_meta (account nil) or set_account_meta
+// of a value typed other than number or string.
+func (rd renderer) toBuilderMetaLiteral(l MetaLiteral, account builder.Expression[builder.ExprTypeAccount], key string) builder.Statement {
+	switch l.Type {
+	case MetaMonetary:
+		return setMeta(account, key, rd.toBuilderMonetary(l.Monetary))
+	case MetaAccount:
+		return setMeta(account, key, rd.toBuilderAccount(l.Account, rd.rng.Intn(3) == 0))
+	case MetaAsset:
+		return setMeta(account, key, rd.toBuilderAsset(l.Asset, rd.rng.Intn(3) == 0))
+	case MetaPortion:
+		return setMeta(account, key, rd.toBuilderPortion(l.Portion, rd.rng.Intn(3) == 0))
+	default:
+		panic("gen: meta literal of an unsupported type")
+	}
+}
+
+func setMeta[T builder.ExprType](account builder.Expression[builder.ExprTypeAccount], key string, value builder.Expression[T]) builder.Statement {
+	if account == nil {
+		return builder.StmtSetTxMeta(key, value)
+	}
+	return builder.StmtSetAccountMeta(account, key, value)
 }
 
 // varExprs holds the converted builder expression for each declared var,
@@ -109,7 +192,7 @@ type varExprs struct {
 	setTxMeta []func(key string) builder.Statement
 }
 
-func toBuilderVarExprs(vars []VarDecl) varExprs {
+func (rd renderer) toBuilderVarExprs(vars []VarDecl) varExprs {
 	ve := varExprs{
 		monetary:  make([]builder.Expression[builder.ExprTypeMonetary], len(vars)),
 		number:    make([]builder.Expression[builder.ExprTypeNumber], len(vars)),
@@ -127,11 +210,11 @@ func toBuilderVarExprs(vars []VarDecl) varExprs {
 				panic("gen: AccountFromVarIdx does not point at an earlier MetaAccount declaration")
 			}
 		} else {
-			account = toBuilderAccount(v.Account, v.AccountAsVar)
+			account = rd.toBuilderAccount(v.Account, v.AccountAsVar)
 		}
 		switch v.Kind {
 		case VarFromBalance:
-			ve.monetary[i] = builder.NewMonetaryVarFromBalance(account, toBuilderAsset(v.Asset, v.AssetAsVar))
+			ve.monetary[i] = builder.NewMonetaryVarFromBalance(account, rd.toBuilderAsset(v.Asset, v.AssetAsVar))
 		case VarFromMeta:
 			switch v.MetaType {
 			case MetaString:
@@ -180,8 +263,8 @@ type AccountVarFill struct {
 // extra non-send statements per Script.Order) into a flat list of builder
 // statements, ready for builder.BuildProgram, plus the account-var runtime
 // bindings the caller must additionally fill in (see AccountVarFill).
-func toBuilderScript(s Script) ([]builder.Statement, []AccountVarFill) {
-	ve := toBuilderVarExprs(s.Vars)
+func (rd renderer) toBuilderScript(s Script) ([]builder.Statement, []AccountVarFill) {
+	ve := rd.toBuilderVarExprs(s.Vars)
 
 	accountVars := make([]builder.Var[builder.ExprTypeAccount], len(s.AccountVars))
 	accountVarExprs := make([]builder.Expression[builder.ExprTypeAccount], len(s.AccountVars))
@@ -194,50 +277,56 @@ func toBuilderScript(s Script) ([]builder.Statement, []AccountVarFill) {
 
 	body := bodyStatements(s)
 	out := make([]builder.Statement, 0, len(s.Seeds)+len(body))
-	out = append(out, toBuilder(s.Seeds)...)
+	out = append(out, rd.toBuilder(s.Seeds)...)
 	for _, st := range body {
 		if st.send != nil {
-			out = append(out, toBuilderStatement(*st.send))
+			out = append(out, rd.toBuilderStatement(*st.send))
 		} else {
-			out = append(out, toBuilderExtra(*st.extra, ve, accountVarExprs))
+			out = append(out, rd.toBuilderExtra(*st.extra, ve, accountVarExprs))
 		}
 	}
 
 	return out, fills
 }
 
-func toBuilderExtra(e ExtraStatement, ve varExprs, accountVarExprs []builder.Expression[builder.ExprTypeAccount]) builder.Statement {
+func (rd renderer) toBuilderExtra(e ExtraStatement, ve varExprs, accountVarExprs []builder.Expression[builder.ExprTypeAccount]) builder.Statement {
 	switch e.Kind {
 	case ExtraSave:
 		var mon builder.Expression[builder.ExprTypeMonetary]
 		if e.VarIdx != nil {
 			mon = ve.monetary[*e.VarIdx]
 		} else {
-			mon = toBuilderMonetary(*e.Monetary)
+			mon = rd.toBuilderMonetary(*e.Monetary)
 		}
-		return builder.StmtSave(mon, toBuilderAccount(e.Account, e.AccountAsVar))
+		return builder.StmtSave(mon, rd.toBuilderAccount(e.Account, e.AccountAsVar))
 
 	case ExtraSaveAll:
-		return builder.StmtSaveAll(toBuilderAsset(e.Asset, e.AssetAsVar), toBuilderAccount(e.Account, e.AccountAsVar))
+		return builder.StmtSaveAll(rd.toBuilderAsset(e.Asset, e.AssetAsVar), rd.toBuilderAccount(e.Account, e.AccountAsVar))
 
 	case ExtraSetTxMeta:
-		if e.StringValue != nil {
-			return builder.StmtSetTxMeta(e.Key, toBuilderString(*e.StringValue, e.StringValueAsVar))
+		if e.Literal != nil {
+			return rd.toBuilderMetaLiteral(*e.Literal, nil, e.Key)
 		}
-		return builder.StmtSetTxMeta(e.Key, toBuilderNumExpr(e.Value))
+		if e.StringValue != nil {
+			return builder.StmtSetTxMeta(e.Key, rd.toBuilderString(*e.StringValue, e.StringValueAsVar))
+		}
+		return builder.StmtSetTxMeta(e.Key, rd.toBuilderNumExpr(e.Value))
 
 	case ExtraSetAccountMeta:
-		acct := toBuilderAccount(e.Account, e.AccountAsVar)
-		if e.StringValue != nil {
-			return builder.StmtSetAccountMeta(acct, e.Key, toBuilderString(*e.StringValue, e.StringValueAsVar))
+		acct := rd.toBuilderAccount(e.Account, e.AccountAsVar)
+		if e.Literal != nil {
+			return rd.toBuilderMetaLiteral(*e.Literal, acct, e.Key)
 		}
-		return builder.StmtSetAccountMeta(acct, e.Key, toBuilderNumExpr(e.Value))
+		if e.StringValue != nil {
+			return builder.StmtSetAccountMeta(acct, e.Key, rd.toBuilderString(*e.StringValue, e.StringValueAsVar))
+		}
+		return builder.StmtSetAccountMeta(acct, e.Key, rd.toBuilderNumExpr(e.Value))
 
 	case ExtraSendVar:
 		return builder.StmtSend(
 			ve.monetary[*e.VarIdx],
-			builder.SrcAccountOverdraft(toBuilderAccount(e.Account, e.AccountAsVar), builder.UnboundedOverdraft()),
-			builder.DestAccount(toBuilderAccount(e.Destination, e.DestinationAsVar)),
+			builder.SrcAccountOverdraft(rd.toBuilderAccount(e.Account, e.AccountAsVar), builder.UnboundedOverdraft()),
+			builder.DestAccount(rd.toBuilderAccount(e.Destination, e.DestinationAsVar)),
 		)
 
 	case ExtraSetTxMetaVar:
@@ -245,15 +334,15 @@ func toBuilderExtra(e ExtraStatement, ve varExprs, accountVarExprs []builder.Exp
 
 	case ExtraSendFromAccountVar:
 		return builder.StmtSend(
-			toBuilderMonetary(*e.Monetary),
+			rd.toBuilderMonetary(*e.Monetary),
 			builder.SrcAccount(accountVarExprs[*e.AccountVarIdx]),
-			builder.DestAccount(toBuilderAccount(e.Account, e.AccountAsVar)),
+			builder.DestAccount(rd.toBuilderAccount(e.Account, e.AccountAsVar)),
 		)
 
 	case ExtraSendToAccountVar:
 		return builder.StmtSend(
-			toBuilderMonetary(*e.Monetary),
-			builder.SrcAccount(toBuilderAccount(e.Account, e.AccountAsVar)),
+			rd.toBuilderMonetary(*e.Monetary),
+			builder.SrcAccount(rd.toBuilderAccount(e.Account, e.AccountAsVar)),
 			builder.DestAccount(accountVarExprs[*e.AccountVarIdx]),
 		)
 
@@ -262,46 +351,58 @@ func toBuilderExtra(e ExtraStatement, ve varExprs, accountVarExprs []builder.Exp
 	}
 }
 
-// toBuilderPortion renders a portion inline as an `n/d` literal, or through a
-// runtime-bound var. The var form only compiles inside an allotment with a
-// `remaining` clause: without one, the oracle cannot prove the block sums to
-// 100% and rejects it at compile time ("might be less than 100%"), which
-// Compare tolerates, silently skipping the comparison. gen.go only sets
-// PortionAsVar alongside a remaining clause for that reason.
-//
-// The binding uses big.Rat's normalized num/denom, which both engines parse.
-func toBuilderPortion(r *big.Rat, asVar bool) builder.Expression[builder.ExprTypePortion] {
+// toBuilderPortion renders a portion inline — an `n/d` literal, or a
+// percentage when it has one — or through a runtime-bound var bound to
+// big.Rat's normalized num/denom.
+func (rd renderer) toBuilderPortion(r *big.Rat, asVar bool) builder.Expression[builder.ExprTypePortion] {
 	if asVar {
 		return builder.ExprPortionVar(r.Num().String() + "/" + r.Denom().String())
+	}
+	if finiteDecimal(r) && rd.rng.Intn(3) == 0 {
+		return builder.ExprPercent(r)
 	}
 	return builder.ExprPortion(builder.NewPortion(new(big.Int).Set(r.Num()), new(big.Int).Set(r.Denom())))
 }
 
-func toBuilderSource(s Source) builder.Source {
+// finiteDecimal reports whether r has a terminating decimal expansion — its
+// reduced denominator has no prime factor but 2 and 5 — so it can be written
+// as a percentage literal.
+func finiteDecimal(r *big.Rat) bool {
+	d := new(big.Int).Set(r.Denom())
+	for _, p := range []int64{2, 5} {
+		bp := big.NewInt(p)
+		for new(big.Int).Mod(d, bp).Sign() == 0 {
+			d.Div(d, bp)
+		}
+	}
+	return d.Cmp(big.NewInt(1)) == 0
+}
+
+func (rd renderer) toBuilderSource(s Source) builder.Source {
 	switch s.Kind {
 	case SrcAccount:
 		if s.Color != "" {
-			return builder.SrcColored(toBuilderAccount(s.Account, s.AccountAsVar), toBuilderString(s.Color, s.ColorAsVar))
+			return builder.SrcColored(rd.toBuilderAccount(s.Account, s.AccountAsVar), rd.toBuilderString(s.Color, s.ColorAsVar))
 		}
-		return builder.SrcAccount(toBuilderAccount(s.Account, s.AccountAsVar))
+		return builder.SrcAccount(rd.toBuilderAccount(s.Account, s.AccountAsVar))
 
 	case SrcAccountOverdraft:
 		overdraft := builder.UnboundedOverdraft()
 		if s.Overdraft != nil {
-			overdraft = builder.BoundedOverdraft(toBuilderMonetary(*s.Overdraft))
+			overdraft = builder.BoundedOverdraft(rd.toBuilderMonetary(*s.Overdraft))
 		}
 		if s.Color != "" {
-			return builder.SrcColoredOverdraft(toBuilderAccount(s.Account, s.AccountAsVar), toBuilderString(s.Color, s.ColorAsVar), overdraft)
+			return builder.SrcColoredOverdraft(rd.toBuilderAccount(s.Account, s.AccountAsVar), rd.toBuilderString(s.Color, s.ColorAsVar), overdraft)
 		}
-		return builder.SrcAccountOverdraft(toBuilderAccount(s.Account, s.AccountAsVar), overdraft)
+		return builder.SrcAccountOverdraft(rd.toBuilderAccount(s.Account, s.AccountAsVar), overdraft)
 
 	case SrcCapped:
-		return builder.SrcCapped(toBuilderMonetary(*s.Cap), toBuilderSource(*s.Inner))
+		return builder.SrcCapped(rd.toBuilderMonetary(*s.Cap), rd.toBuilderSource(*s.Inner))
 
 	case SrcInorder, SrcOneof:
 		sources := make([]builder.Source, len(s.Sources))
 		for i, inner := range s.Sources {
-			sources[i] = toBuilderSource(inner)
+			sources[i] = rd.toBuilderSource(inner)
 		}
 		if s.Kind == SrcOneof {
 			return builder.SrcOneof(sources...)
@@ -312,12 +413,12 @@ func toBuilderSource(s Source) builder.Source {
 		clauses := make([]builder.AllotmentClause[builder.Source], len(s.Clauses))
 		for i, c := range s.Clauses {
 			clauses[i] = builder.AllotmentClause[builder.Source]{
-				Portion: toBuilderClausePortion(c.Portion, c.PortionAsVar, c.Div),
-				Payload: toBuilderSource(c.Source),
+				Portion: rd.toBuilderClausePortion(c.Portion, c.PortionAsVar, c.Div),
+				Payload: rd.toBuilderSource(c.Source),
 			}
 		}
 		if s.AllotmentRemaining != nil {
-			return builder.SrcAllotmentWithRemaining(clauses, toBuilderSource(*s.AllotmentRemaining))
+			return builder.SrcAllotmentWithRemaining(clauses, rd.toBuilderSource(*s.AllotmentRemaining))
 		}
 		return builder.SrcAllotment(clauses...)
 
@@ -329,44 +430,44 @@ func toBuilderSource(s Source) builder.Source {
 // toBuilderClausePortion renders one allotment clause's portion: a division
 // expression when Div is set (numerator through a number var, so negative
 // values need no unary minus), otherwise the literal/var portion.
-func toBuilderClausePortion(r *big.Rat, asVar bool, div *PortionDiv) builder.Expression[builder.ExprTypePortion] {
+func (rd renderer) toBuilderClausePortion(r *big.Rat, asVar bool, div *PortionDiv) builder.Expression[builder.ExprTypePortion] {
 	if div != nil {
 		return builder.ExprPortionDiv(
 			builder.ExprNumberVar(div.Num),
 			builder.ExprNumberBigInt(div.Den),
 		)
 	}
-	return toBuilderPortion(r, asVar)
+	return rd.toBuilderPortion(r, asVar)
 }
 
-func toBuilderDestination(d Destination) builder.Destination {
+func (rd renderer) toBuilderDestination(d Destination) builder.Destination {
 	switch d.Kind {
 	case DestAccount:
-		return builder.DestAccount(toBuilderAccount(d.Account, d.AccountAsVar))
+		return builder.DestAccount(rd.toBuilderAccount(d.Account, d.AccountAsVar))
 
 	case DestInorder, DestOneof:
 		clauses := make([]builder.DestInorderClause, len(d.InorderClauses))
 		for i, c := range d.InorderClauses {
 			clauses[i] = builder.DestInorderClause{
-				Max:  toBuilderMonetary(c.Max),
-				Dest: toBuilderKeptOrDest(c.KeptOrDest),
+				Max:  rd.toBuilderMonetary(c.Max),
+				Dest: rd.toBuilderKeptOrDest(c.KeptOrDest),
 			}
 		}
 		if d.Kind == DestOneof {
-			return builder.DestOneof(clauses, toBuilderKeptOrDest(*d.Remaining))
+			return builder.DestOneof(clauses, rd.toBuilderKeptOrDest(*d.Remaining))
 		}
-		return builder.DestInorder(clauses, toBuilderKeptOrDest(*d.Remaining))
+		return builder.DestInorder(clauses, rd.toBuilderKeptOrDest(*d.Remaining))
 
 	case DestAllotment:
 		clauses := make([]builder.AllotmentClause[builder.KeptOrDest], len(d.AllotClauses))
 		for i, c := range d.AllotClauses {
 			clauses[i] = builder.AllotmentClause[builder.KeptOrDest]{
-				Portion: toBuilderClausePortion(c.Portion, c.PortionAsVar, c.Div),
-				Payload: toBuilderKeptOrDest(c.KeptOrDest),
+				Portion: rd.toBuilderClausePortion(c.Portion, c.PortionAsVar, c.Div),
+				Payload: rd.toBuilderKeptOrDest(c.KeptOrDest),
 			}
 		}
 		if d.AllotRemaining != nil {
-			return builder.DestAllotmentWithRemaining(clauses, toBuilderKeptOrDest(*d.AllotRemaining))
+			return builder.DestAllotmentWithRemaining(clauses, rd.toBuilderKeptOrDest(*d.AllotRemaining))
 		}
 		return builder.DestAllotment(clauses...)
 
@@ -375,9 +476,9 @@ func toBuilderDestination(d Destination) builder.Destination {
 	}
 }
 
-func toBuilderKeptOrDest(k KeptOrDest) builder.KeptOrDest {
+func (rd renderer) toBuilderKeptOrDest(k KeptOrDest) builder.KeptOrDest {
 	if k.Kind == Kept {
 		return builder.Kept()
 	}
-	return builder.To(toBuilderDestination(*k.Dest))
+	return builder.To(rd.toBuilderDestination(*k.Dest))
 }

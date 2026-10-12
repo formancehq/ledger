@@ -294,20 +294,46 @@ func metaAccountVarIndices(vars []VarDecl) []int {
 // genNumExpr generates a small arithmetic expression for
 // set_tx_meta/set_account_meta values. depth bounds recursion.
 //
-// Leaf literals are never negative: the grammar has no unary minus, so a
-// negative leaf would make the oracle reject every such script, which Compare
-// tolerates and which is therefore no coverage at all. NumSub can still produce
-// a negative value at run time.
+// Leaves are negative one time in five, and any node may be parenthesized or
+// negated.
 func genNumExpr(rng *rand.Rand, depth int) NumExpr {
+	var e NumExpr
 	if depth <= 0 || rng.Intn(3) != 0 {
-		return NumExpr{Kind: NumLit, Lit: big.NewInt(int64(rng.Intn(1000))), LitAsVar: asVar(rng)}
+		lit := big.NewInt(int64(rng.Intn(1000)))
+		if rng.Intn(5) == 0 {
+			lit.Neg(lit)
+		}
+		e = NumExpr{Kind: NumLit, Lit: lit, LitAsVar: asVar(rng)}
+	} else {
+		left := genNumExpr(rng, depth-1)
+		right := genNumExpr(rng, depth-1)
+		e = NumExpr{Kind: NumSub, Left: &left, Right: &right}
+		if rng.Intn(2) == 0 {
+			e.Kind = NumAdd
+		}
 	}
-	left := genNumExpr(rng, depth-1)
-	right := genNumExpr(rng, depth-1)
-	if rng.Intn(2) == 0 {
-		return NumExpr{Kind: NumAdd, Left: &left, Right: &right}
+	e.Paren = rng.Intn(4) == 0
+	e.Neg = rng.Intn(8) == 0
+	return e
+}
+
+// genMetaLiteral occasionally makes a meta value a monetary, an account, an
+// asset or a portion. nil means "keep the number or string".
+func genMetaLiteral(rng *rand.Rand, poolSize int) *MetaLiteral {
+	if rng.Intn(4) != 0 {
+		return nil
 	}
-	return NumExpr{Kind: NumSub, Left: &left, Right: &right}
+	switch rng.Intn(4) {
+	case 0:
+		return &MetaLiteral{Type: MetaMonetary, Monetary: statementAmount(rng, pickAsset(rng))}
+	case 1:
+		return &MetaLiteral{Type: MetaAccount, Account: overdraftAccount(rng, poolSize)}
+	case 2:
+		return &MetaLiteral{Type: MetaAsset, Asset: pickAsset(rng)}
+	default:
+		den := int64(rng.Intn(9) + 2)
+		return &MetaLiteral{Type: MetaPortion, Portion: big.NewRat(int64(rng.Intn(int(den)+1)), den)}
+	}
 }
 
 // genMetaStringValue occasionally makes a meta value a string instead of a
@@ -404,6 +430,7 @@ func genExtraStatements(rng *rand.Rand, poolSize int, vars []VarDecl, accountVar
 				Value:            genNumExpr(rng, 3),
 				StringValue:      sv,
 				StringValueAsVar: svVar,
+				Literal:          genMetaLiteral(rng, poolSize),
 			})
 
 		case ExtraSetAccountMeta:
@@ -415,6 +442,7 @@ func genExtraStatements(rng *rand.Rand, poolSize int, vars []VarDecl, accountVar
 				Value:            genNumExpr(rng, 3),
 				StringValue:      sv,
 				StringValueAsVar: svVar,
+				Literal:          genMetaLiteral(rng, poolSize),
 			})
 
 		case ExtraSendVar:
@@ -535,18 +563,13 @@ func riffleOrder(rng *rand.Rand, a, b int) []bool {
 // genExtraStatements for the same reason, and drops their output.
 func generateScriptAST(rng *rand.Rand) Script {
 	poolSize := pickPoolSize(rng)
-	// Decided per script, not per occurrence: most scripts must stay inside the
-	// oracle's grammar or the oracle legs lose their corpus. A quarter may use
-	// numscript-only shapes (oneof, colors, wrong-asset caps, division
-	// portions); those that actually do skip the oracle — see scriptFlags.
-	numscriptOnly := rng.Intn(4) == 0
 
 	balances, seeds := genBalances(rng, poolSize, assetPool)
 	metadata := map[MetaKey]string{}
 	metaTypes := genPresetMetadata(rng, poolSize, metadata)
 	vars := genVarDecls(rng, poolSize, balances, metadata, metaTypes)
 	accountVars := genAccountVarDecls(rng, poolSize)
-	program := cleanupProgram(genProgram(rng, poolSize, numscriptOnly))
+	program := genProgram(rng, poolSize)
 	extra := genExtraStatements(rng, poolSize, vars, accountVars)
 	order := riffleOrder(rng, len(program), len(extra))
 

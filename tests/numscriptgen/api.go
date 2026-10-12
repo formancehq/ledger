@@ -5,7 +5,7 @@ import (
 	"math/big"
 	"math/rand"
 
-	"github.com/formancehq/numscript/builder"
+	"github.com/formancehq/ledger/v3/tests/numscriptgen/builder"
 )
 
 // Feature flags a generated script may declare in its #![feature(...)] header.
@@ -35,17 +35,12 @@ type Generated struct {
 	// Flags are the feature flags the script needs on the numscript engines
 	// (interpreter and compiler+VM). Derived from Shape.
 	Flags []string
-	// OracleCompatible is false when the script uses shapes outside the legacy
-	// machine's grammar or decided behavior (oneof, colors, division portions,
-	// wrong-asset caps): the harness then runs only the two numscript engines
-	// and compares them against each other.
-	OracleCompatible bool
 }
 
 // Generate formats a random Script as a runnable numscript program. The
 // caller loads Balances and Metadata into each engine store before executing.
 func Generate(rng *rand.Rand) Generated {
-	return render(generateScriptAST(rng))
+	return render(rng, generateScriptAST(rng))
 }
 
 // GenerateFor is Generate over the caller's accounts: acc<i> becomes
@@ -55,12 +50,12 @@ func GenerateFor(rng *rand.Rand, accounts []string) Generated {
 	s := generateScriptAST(rng)
 	newAccountRenamer(accounts).script(&s)
 
-	return render(s)
+	return render(rng, s)
 }
 
 // render builds the program text, declaring the feature flags its shape needs
 // in the script header.
-func render(s Script) Generated {
+func render(rng *rand.Rand, s Script) Generated {
 	shape := computeShape(s)
 	var featureFlags []string
 	if shape.HasOneof {
@@ -70,7 +65,7 @@ func render(s Script) Generated {
 		featureFlags = append(featureFlags, FlagAssetColors)
 	}
 
-	stmts, accountVarFills := toBuilderScript(s)
+	stmts, accountVarFills := renderer{rng: rng}.toBuilderScript(s)
 
 	build := builder.BuildProgram
 	if len(featureFlags) > 0 {
@@ -97,8 +92,7 @@ func render(s Script) Generated {
 		Script:   script,
 		Shape:    shape,
 
-		Flags:            featureFlags,
-		OracleCompatible: !shape.HasOneof && !shape.HasColoredSource && !shape.HasWrongAssetCap && !shape.HasPortionDiv,
+		Flags: featureFlags,
 	}
 }
 

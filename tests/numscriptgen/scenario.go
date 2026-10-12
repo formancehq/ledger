@@ -209,12 +209,12 @@ func (g *scenarioGen) toFocus() Destination {
 }
 
 func (g *scenarioGen) send(kind string, amt *big.Int, src Source, dest Destination) ScenarioStmt {
-	st := cleanupStatement(Statement{Amount: g.mon(amt), Source: src, Destination: dest})
+	st := Statement{Amount: g.mon(amt), Source: src, Destination: dest}
 	return ScenarioStmt{Kind: kind, Send: &st}
 }
 
 func (g *scenarioGen) sendAll(kind string, src Source, dest Destination) ScenarioStmt {
-	st := cleanupStatement(Statement{IsSendAll: true, Asset: g.focus.Asset, AssetAsVar: asVar(g.rng), Source: src, Destination: dest})
+	st := Statement{IsSendAll: true, Asset: g.focus.Asset, AssetAsVar: asVar(g.rng), Source: src, Destination: dest}
 	return ScenarioStmt{Kind: kind, Send: &st}
 }
 
