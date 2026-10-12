@@ -1,8 +1,6 @@
 package domain
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"maps"
 	"regexp"
@@ -33,27 +31,13 @@ func FailureFactsOf(d SerializableError) FailureFacts {
 	return facts
 }
 
-// NewFailureFacts normalizes caller-provided values before they enter an
-// audited projection. Error implementations choose the reason, code and keys.
+// NewFailureFacts copies the values supplied by an error into its audited
+// projection. Producers must validate their values before constructing it.
 func NewFailureFacts(reason, code string, values map[string]string) FailureFacts {
 	facts := make(map[string]string, len(values))
-	for key, value := range values {
-		facts[key] = NormalizeFailureFact(value)
-	}
+	maps.Copy(facts, values)
 
 	return FailureFacts{Reason: ReasonCode(reason), Code: code, Facts: facts}
-}
-
-// NormalizeFailureFact bounds arbitrary caller values before writing them to a persisted failure.
-// The audited order still contains the original input; the digest preserves a
-// stable distinction between oversized or invalid UTF-8 fact values.
-func NormalizeFailureFact(value string) string {
-	if utf8.ValidString(value) && len(value) <= 4096 {
-		return value
-	}
-	digest := sha256.Sum256([]byte(value))
-
-	return "sha256:" + hex.EncodeToString(digest[:])
 }
 
 var failureCodePattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
@@ -64,7 +48,8 @@ var validationFailureCodes = map[string]struct{}{
 	"TARGET_REQUIRED": {}, "METADATA_KEY_REQUIRED": {},
 	"NUMSCRIPT_CONTENT_REQUIRED": {}, "SCRIPT_AND_REFERENCE_CONFLICT": {},
 	"EMPTY_TRANSACTION": {}, "POSTINGS_AND_SCRIPT_CONFLICT": {},
-	"SCRIPT_REQUIRED": {}, "NUMSCRIPT_NAME_REQUIRED": {},
+	"TRANSACTION_REFERENCE_TOO_LONG": {},
+	"SCRIPT_REQUIRED":                {}, "NUMSCRIPT_NAME_REQUIRED": {},
 	"NUMSCRIPT_NAME_INVALID_CHAR": {}, "NUMSCRIPT_NAME_TOO_LONG": {},
 	"SCOPED_BALANCE_UNSUPPORTED": {}, "NUMSCRIPT_SCALING_UNSUPPORTED": {},
 	"PREPARED_QUERY_REQUIRED": {}, "PREPARED_QUERY_NAME_REQUIRED": {},
@@ -72,6 +57,7 @@ var validationFailureCodes = map[string]struct{}{
 	"PREPARED_QUERY_TARGET_UNSUPPORTED": {}, "SIGNING_KEY_ID_REQUIRED": {},
 	"SIGNING_KEY_ID_INVALID_CHAR": {}, "SIGNING_KEY_ID_TOO_LONG": {},
 	"COLOR_INVALID": {}, "COLOR_TOO_LONG": {},
+	"ACCOUNT_TYPE_NAME_TOO_LONG": {}, "ACCOUNT_TYPE_PATTERN_TOO_LONG": {},
 	"TRANSACTION_TARGET_MISSING": {}, "INVALID_SKIPPABLE_REASON": {},
 	"MIRROR_HTTP_URL_INVALID": {}, "MIRROR_IAM_REGION_REQUIRED": {},
 	"MIRROR_IAM_REQUIRES_TLS": {}, "MIRROR_REWRITE_RULE_INVALID": {},
@@ -245,8 +231,8 @@ func ValidateFailureFacts(f FailureFacts) error {
 		if !slices.Contains(allowed, key) {
 			return fmt.Errorf("fact %q is not allowed for %s", key, reason)
 		}
-		if !utf8.ValidString(value) || len(value) > 4096 {
-			return fmt.Errorf("fact %q is not valid UTF-8 or exceeds 4096 bytes", key)
+		if !utf8.ValidString(value) {
+			return fmt.Errorf("fact %q is not valid UTF-8", key)
 		}
 		_, numeric := numericFailureFacts[key]
 		if (reason == ErrReasonMirrorV2LogIDGap || f.Code == "NUMSCRIPT_COMPILE_BAD_ARITY") && (key == "got" || key == "expected") {

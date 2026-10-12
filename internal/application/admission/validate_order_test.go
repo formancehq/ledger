@@ -3,6 +3,7 @@ package admission
 import (
 	"bytes"
 	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -12,6 +13,40 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
+
+func TestValidateOrder_AccountTypeFactBounds(t *testing.T) {
+	t.Parallel()
+	order := func() *raftcmdpb.Order {
+		return &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+			Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{}},
+		}}}
+	}
+	add := order()
+	add.GetLedgerScoped().GetApply().Data = &raftcmdpb.LedgerApplyOrder_AddAccountType{AddAccountType: &raftcmdpb.AddAccountTypeOrder{
+		AccountType: &commonpb.AccountType{Name: strings.Repeat("a", 257), Pattern: "wallet:{id}"},
+	}}
+	require.ErrorIs(t, validateOrder(add), domain.ErrAccountTypeNameTooLong)
+
+	add.GetLedgerScoped().GetApply().GetAddAccountType().AccountType.Name = "wallet"
+	add.GetLedgerScoped().GetApply().GetAddAccountType().AccountType.Pattern = strings.Repeat("a", 4097)
+	require.ErrorIs(t, validateOrder(add), domain.ErrAccountTypePatternTooLong)
+
+	remove := order()
+	remove.GetLedgerScoped().GetApply().Data = &raftcmdpb.LedgerApplyOrder_RemoveAccountType{RemoveAccountType: &raftcmdpb.RemoveAccountTypeOrder{Name: strings.Repeat("a", 257)}}
+	require.ErrorIs(t, validateOrder(remove), domain.ErrAccountTypeNameTooLong)
+}
+
+func TestValidateOrder_TransactionReferenceFactBound(t *testing.T) {
+	t.Parallel()
+	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+			Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+				Reference: strings.Repeat("r", domain.MaxTransactionReferenceLength+1),
+			}},
+		}},
+	}}}
+	require.ErrorIs(t, validateOrder(order), domain.ErrTransactionReferenceTooLong)
+}
 
 func TestValidateOrder_LedgerName(t *testing.T) {
 	t.Parallel()

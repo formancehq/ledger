@@ -1911,7 +1911,7 @@ func TestVerifySkippedOrder_AccountTypeNotFoundAcceptsMatchingContext(t *testing
 func TestVerifySkippedOrder_LongAccountTypeName(t *testing.T) {
 	t.Parallel()
 
-	name := strings.Repeat("a", 5000)
+	name := strings.Repeat("a", 256)
 	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
@@ -1921,7 +1921,7 @@ func TestVerifySkippedOrder_LongAccountTypeName(t *testing.T) {
 			isAccountTypeOrder: true,
 		},
 	}
-	payload := skippedPayloadWithContext(reason, map[string]string{"name": domain.NormalizeFailureFact(name)})
+	payload := skippedPayloadWithContext(reason, map[string]string{"name": name})
 	require.Empty(t, captureEvents(t, "L", 7, payload, expected, nil))
 }
 

@@ -78,9 +78,6 @@ func predictSkippedLog(s LedgerState, req *servicepb.Request, reason string) *co
 	default:
 		panic("model: unmodeled skipped reason " + reason)
 	}
-	for key, value := range context {
-		context[key] = domain.NormalizeFailureFact(value)
-	}
 
 	return &commonpb.OrderSkippedLog{Reason: domain.ReasonCode(reason), Code: reason, Facts: context}
 }

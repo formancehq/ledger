@@ -25,6 +25,8 @@ The complementary rule is in [`feedback_admission_structural_fsm_invariant`](../
 | Metadata size of the map Numscript merges into the caller's | — | ✅ | `processCreateTransaction` re-checks the *merged* transaction and per-account maps. Admission cannot: the union of caller metadata and `set_tx_meta` / `set_account_meta` output only exists after the script runs. |
 | HTTP mirror base URL syntax, HTTP(S) scheme and nonempty hostname | ✅ | — | Rejected with a safe `VALIDATION` error before Raft or ledger creation. No connectivity probe or configuration rewrite; raw URL parser errors may contain credentials and must not be exposed. |
 | Ledger name shape (no null, printable ASCII, ≤ `dal.LedgerNameFixedSize`) | ✅ | — | `ValidateLedgerName`. The fixed size matters because ledger names pad into Pebble keys. |
+| Account type name ≤ 256 bytes and pattern ≤ 4096 bytes | ✅ | ✅ | Admission rejects oversized inputs before consensus. The FSM repeats the bounds for replay and directly proposed orders so error facts retain the original value rather than a digest. |
+| Transaction reference ≤ 4096 bytes | ✅ | ✅ | The conflict fact contains the exact reference; both layers reject an oversized reference before a conflict can be audited. |
 | Idempotency key (UTF-8, ≤ 256 bytes) | ✅ | — | The *uniqueness* of the key is checked at FSM time against `SubIdempKeys`; the *shape* is checked at admission. |
 | Numscript parses + dependency analysis | ✅ | — | `DiscoverNumscriptDependencies` in admission. Syntax errors caught here. |
 | Numscript runtime execution | — | ✅ | `processCreateTransaction` runs the program with preloaded state. Runtime errors → `AuditFailure`. |

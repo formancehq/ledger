@@ -7,16 +7,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestFailureFactsBoundUntrustedValues(t *testing.T) {
+func TestFailureFactsPreserveValues(t *testing.T) {
 	err := &ErrNumscriptExecution{
 		Detail: "diagnostic only",
 		Code:   "NUMSCRIPT_INVALID_ACCOUNT_NAME",
-		Facts:  map[string]string{"name": strings.Repeat("a", 5000)},
+		Facts:  map[string]string{"name": "account"},
 	}
 	facts := FailureFactsOf(err)
 	require.NoError(t, ValidateFailureFacts(facts))
-	require.Regexp(t, `^sha256:[0-9a-f]{64}$`, facts.Facts["name"])
+	require.Equal(t, "account", facts.Facts["name"])
 	require.NotContains(t, facts.Facts["name"], "diagnostic")
+}
+
+func TestFailureFactsPreserveLongProducerValue(t *testing.T) {
+	t.Parallel()
+	facts := NewFailureFacts(ErrReasonNumscriptExecutionError, "NUMSCRIPT_INVALID_ACCOUNT_NAME",
+		map[string]string{"name": strings.Repeat("a", 4097)})
+	require.Equal(t, strings.Repeat("a", 4097), facts.Facts["name"])
+	require.NoError(t, ValidateFailureFacts(facts))
 }
 
 func TestFailureFactsMetadataValidationWrappers(t *testing.T) {

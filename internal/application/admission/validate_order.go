@@ -37,6 +37,9 @@ func validateOrder(order *raftcmdpb.Order) error {
 	if err := validateOrderPreparedQuery(order); err != nil {
 		return &domain.BusinessError{Err: err}
 	}
+	if err := validateOrderAccountType(order); err != nil {
+		return &domain.BusinessError{Err: err}
+	}
 
 	if err := validateOrderCreateIndex(order); err != nil {
 		return &domain.BusinessError{Err: err}
@@ -52,6 +55,32 @@ func validateOrder(order *raftcmdpb.Order) error {
 
 	if err := validateOrderSigningKey(order); err != nil {
 		return &domain.BusinessError{Err: err}
+	}
+
+	return nil
+}
+
+// validateOrderAccountType rejects identifiers that could later become
+// oversized audited failure facts. The same bounds run in the FSM for orders
+// received directly from Raft or replayed by the checker.
+func validateOrderAccountType(order *raftcmdpb.Order) domain.Describable {
+	apply, ok := order.GetLedgerScoped().GetPayload().(*raftcmdpb.LedgerScopedOrder_Apply)
+	if !ok {
+		return nil
+	}
+	switch d := apply.Apply.GetData().(type) {
+	case *raftcmdpb.LedgerApplyOrder_AddAccountType:
+		at := d.AddAccountType.GetAccountType()
+		if len(at.GetName()) > domain.MaxAccountTypeNameLength {
+			return domain.ErrAccountTypeNameTooLong
+		}
+		if len(at.GetPattern()) > domain.MaxAccountTypePatternLength {
+			return domain.ErrAccountTypePatternTooLong
+		}
+	case *raftcmdpb.LedgerApplyOrder_RemoveAccountType:
+		if len(d.RemoveAccountType.GetName()) > domain.MaxAccountTypeNameLength {
+			return domain.ErrAccountTypeNameTooLong
+		}
 	}
 
 	return nil
@@ -167,6 +196,9 @@ func validateOrderContent(order *raftcmdpb.Order) domain.Describable {
 	}
 
 	o := ct.CreateTransaction
+	if len(o.GetReference()) > domain.MaxTransactionReferenceLength {
+		return domain.ErrTransactionReferenceTooLong
+	}
 	hasPostings := len(o.GetPostings()) > 0
 	hasInlineScript := o.GetScript() != nil && o.GetScript().GetPlain() != ""
 	// Two booleans on the reference because the two gates have different needs:

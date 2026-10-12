@@ -26,6 +26,13 @@ const maxPreparedQueryNameLength = 256
 // the numscript-name bound above.
 const maxSigningKeyIDLength = 256
 
+// Account type identifiers can be included verbatim in audited failure facts.
+const (
+	MaxAccountTypeNameLength      = 256
+	MaxAccountTypePatternLength   = 4096
+	MaxTransactionReferenceLength = 4096
+)
+
 // MaxFilterDepth bounds the recursion depth of any walk over a QueryFilter
 // proto tree. A hostile client can hand-craft a deeply-nested filter (e.g. 100k
 // repetitions of and/or/not) and submit it via gRPC; without a depth cap a

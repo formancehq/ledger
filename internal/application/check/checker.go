@@ -3789,7 +3789,7 @@ func verifySkippedOrder(
 		// client-facing fields (invariant #8).
 		ctx := skipped.OrderSkipped.GetFacts()
 
-		if got := ctx["reference"]; got != domain.NormalizeFailureFact(expected.reference) {
+		if got := ctx["reference"]; got != expected.reference {
 			callback(errorEvent(
 				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 				fmt.Sprintf("log %d records TRANSACTION_REFERENCE_CONFLICT skip with context.reference=%q but the chain-bound order references %q", seq, got, expected.reference),
@@ -3799,7 +3799,7 @@ func verifySkippedOrder(
 			return
 		}
 
-		if got := ctx["ledger"]; got != domain.NormalizeFailureFact(expected.ledger) {
+		if got := ctx["ledger"]; got != expected.ledger {
 			callback(errorEvent(
 				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 				fmt.Sprintf("log %d records TRANSACTION_REFERENCE_CONFLICT skip with context.ledger=%q but the chain-bound order targets ledger %q", seq, got, expected.ledger),
@@ -3938,7 +3938,7 @@ func verifySkippedOrder(
 		}
 
 		ctx := skipped.OrderSkipped.GetFacts()
-		if got := ctx["key"]; got != domain.NormalizeFailureFact(expected.metadataKey) {
+		if got := ctx["key"]; got != expected.metadataKey {
 			callback(errorEvent(
 				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 				fmt.Sprintf("log %d records METADATA_NOT_FOUND skip with context.key=%q but the chain-bound order targets key %q", seq, got, expected.metadataKey),
@@ -3948,7 +3948,7 @@ func verifySkippedOrder(
 			return
 		}
 
-		if got := ctx["target"]; got != domain.NormalizeFailureFact(expected.metadataTarget) {
+		if got := ctx["target"]; got != expected.metadataTarget {
 			callback(errorEvent(
 				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 				fmt.Sprintf("log %d records METADATA_NOT_FOUND skip with context.target=%q but the chain-bound order targets %q", seq, got, expected.metadataTarget),
@@ -4011,7 +4011,7 @@ func verifySkippedOrder(
 		}
 
 		ctx := skipped.OrderSkipped.GetFacts()
-		if got := ctx["name"]; got != domain.NormalizeFailureFact(expected.accountTypeName) {
+		if got := ctx["name"]; got != expected.accountTypeName {
 			callback(errorEvent(
 				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 				fmt.Sprintf("log %d records %s skip with context.name=%q but the chain-bound order targets %q", seq, reason, got, expected.accountTypeName),

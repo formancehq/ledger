@@ -184,7 +184,7 @@ type Describable interface {
 //
 // API adapters read the presentation through PublicErrorDetails, so a type with
 // sensitive diagnostic context can publish a separate view. Audited failures
-// use a stable reason, code and bounded facts supplied by FailureFacts().
+// use a stable reason, code and source-validated facts supplied by FailureFacts().
 type SerializableError interface {
 	Describable
 	// FailureFacts is the complete audited projection owned by the error.
@@ -637,13 +637,14 @@ var ErrWritesBlockedClockSkew Describable = errWritesBlockedClockSkew{}
 // the comparison is stable). No per-occurrence metadata — the message is
 // the same every time and the Reason() is shared (ErrReasonValidation).
 var (
-	ErrTargetRequired             = NewValidationSentinel("TARGET_REQUIRED", "target is required")
-	ErrMetadataKeyRequired        = NewValidationSentinel("METADATA_KEY_REQUIRED", "key is required")
-	ErrNumscriptContentRequired   = NewValidationSentinel("NUMSCRIPT_CONTENT_REQUIRED", "numscript content is required")
-	ErrScriptAndReferenceConflict = NewValidationSentinel("SCRIPT_AND_REFERENCE_CONFLICT", "cannot specify both script and scriptReference")
-	ErrEmptyTransaction           = NewValidationSentinel("EMPTY_TRANSACTION", "transaction must produce at least one posting")
-	ErrPostingsAndScriptConflict  = NewValidationSentinel("POSTINGS_AND_SCRIPT_CONFLICT", "postings cannot be combined with script or scriptReference")
-	ErrScriptRequired             = NewValidationSentinel("SCRIPT_REQUIRED", "numscript: script is required")
+	ErrTargetRequired              = NewValidationSentinel("TARGET_REQUIRED", "target is required")
+	ErrMetadataKeyRequired         = NewValidationSentinel("METADATA_KEY_REQUIRED", "key is required")
+	ErrNumscriptContentRequired    = NewValidationSentinel("NUMSCRIPT_CONTENT_REQUIRED", "numscript content is required")
+	ErrScriptAndReferenceConflict  = NewValidationSentinel("SCRIPT_AND_REFERENCE_CONFLICT", "cannot specify both script and scriptReference")
+	ErrEmptyTransaction            = NewValidationSentinel("EMPTY_TRANSACTION", "transaction must produce at least one posting")
+	ErrPostingsAndScriptConflict   = NewValidationSentinel("POSTINGS_AND_SCRIPT_CONFLICT", "postings cannot be combined with script or scriptReference")
+	ErrTransactionReferenceTooLong = NewValidationSentinel("TRANSACTION_REFERENCE_TOO_LONG", "transaction reference exceeds maximum length of 4096 bytes")
+	ErrScriptRequired              = NewValidationSentinel("SCRIPT_REQUIRED", "numscript: script is required")
 	// Numscript identifier sentinels stay local: numscript is a
 	// ledger-internal DSL, not part of the Formance-wide invariants in
 	// github.com/formancehq/invariants.
@@ -688,8 +689,10 @@ var (
 	// Color sentinels stay local: color is a ledger-internal posting
 	// dimension label, not part of the Formance-wide invariants in
 	// github.com/formancehq/invariants. See ValidateColor in validation.go.
-	ErrColorInvalid = NewValidationSentinel("COLOR_INVALID", "color must match ^[A-Z]*$ (uppercase letters only)")
-	ErrColorTooLong = NewValidationSentinel("COLOR_TOO_LONG", "color exceeds maximum length of 32 bytes")
+	ErrColorInvalid              = NewValidationSentinel("COLOR_INVALID", "color must match ^[A-Z]*$ (uppercase letters only)")
+	ErrColorTooLong              = NewValidationSentinel("COLOR_TOO_LONG", "color exceeds maximum length of 32 bytes")
+	ErrAccountTypeNameTooLong    = NewValidationSentinel("ACCOUNT_TYPE_NAME_TOO_LONG", "account type name exceeds maximum length of 256 bytes")
+	ErrAccountTypePatternTooLong = NewValidationSentinel("ACCOUNT_TYPE_PATTERN_TOO_LONG", "account type pattern exceeds maximum length of 4096 bytes")
 	// ErrLedgerNameRequired moved to validation.go; it wraps the
 	// github.com/formancehq/invariants sentinel.
 )

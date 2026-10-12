@@ -9,7 +9,6 @@ import (
 	"io"
 	"math/big"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -364,15 +363,14 @@ var _ = Describe("Restore", Ordered, func() {
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.AddAccountTypeAction(chartLedger, "wallet", "wallet:{id}")))
 			Expect(err).To(Succeed())
 
-			// The skipped outcome stores a digest for this oversized name while
-			// the audited order retains the raw name. Restore and CheckStore must
-			// compare the normalized fact without changing the raw lookup key.
-			longTypeName := strings.Repeat("a", 5000)
+			// Restore and CheckStore must compare the skipped failure fact
+			// with the original name from the audited order.
+			missingTypeName := "missing-type"
 			skipResponse, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 				Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
 					Ledger: chartLedger,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RemoveAccountType{
-						RemoveAccountType: &servicepb.RemoveAccountTypeRequest{Name: longTypeName},
+						RemoveAccountType: &servicepb.RemoveAccountTypeRequest{Name: missingTypeName},
 					}},
 					SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND},
 				}},
@@ -381,10 +379,10 @@ var _ = Describe("Restore", Ordered, func() {
 			Expect(skipResponse.GetLogs()).To(HaveLen(1))
 			skipped := skipResponse.GetLogs()[0].GetPayload().GetApply().GetLog().GetData().GetOrderSkipped()
 			Expect(skipped).NotTo(BeNil())
-			Expect(skipped.GetFacts()).To(HaveKeyWithValue("name", domain.NormalizeFailureFact(longTypeName)))
+			Expect(skipped.GetFacts()).To(HaveKeyWithValue("name", missingTypeName))
 			sourceCheck, err := actions.CollectCheckStoreEvents(ctx, client)
 			Expect(err).To(Succeed())
-			Expect(sourceCheck.Errors).To(BeEmpty(), "the source checker must accept the bounded skip fact")
+			Expect(sourceCheck.Errors).To(BeEmpty(), "the source checker must accept the exact skip fact")
 
 			// A ledger created AFTER the full checkpoint lives only in the
 			// incremental exports. Its LedgerInfo + LedgerBoundaries must be

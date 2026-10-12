@@ -12,9 +12,9 @@ import (
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
-func TestPredictSkippedLogNormalizesLongAccountTypeName(t *testing.T) {
+func TestPredictSkippedLogPreservesAccountTypeName(t *testing.T) {
 	t.Parallel()
-	name := strings.Repeat("a", 5000)
+	name := strings.Repeat("a", 256)
 	req := &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
 		Ledger: "L",
 		Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RemoveAccountType{
@@ -22,7 +22,7 @@ func TestPredictSkippedLogNormalizesLongAccountTypeName(t *testing.T) {
 		}},
 	}}}
 	got := predictSkippedLog(NewLedgerState(), req, domain.ErrReasonAccountTypeNotFound)
-	require.Equal(t, domain.NormalizeFailureFact(name), got.GetFacts()["name"])
+	require.Equal(t, name, got.GetFacts()["name"])
 	require.Equal(t, name, req.GetApply().GetAction().GetRemoveAccountType().GetName(), "model lookup keeps the raw identifier")
 }
 

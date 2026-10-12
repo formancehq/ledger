@@ -129,7 +129,8 @@ Each successful order produces a `Log` (`internal/proto/commonpb/common.proto`, 
 
 `FailureFactsOf` reads each error's required `FailureFacts()` projection.
 The error owns its reason, code, and explicit fact keys; `NewFailureFacts`
-normalizes values before they are persisted.
+copies values exactly. Field-specific size rules are enforced at their producers,
+before a command enters Raft when the value comes from the request.
 Diagnostic `Error()` text never feeds this tuple; a producer must choose each
 fact deliberately instead of relying on a list of excluded metadata keys.
 `ValidateFailureFacts` rejects unknown codes, fact keys and malformed values
