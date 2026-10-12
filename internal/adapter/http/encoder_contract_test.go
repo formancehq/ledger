@@ -108,7 +108,9 @@ func TestMonetaryRoutes_PayloadHasCustomMarshalJSON(t *testing.T) {
 // out of an incoming request body, which sonic's decoder cannot dispatch.
 // That file never marshals a response through protojson, so it carries no
 // protojsonRoutes row, but the gate below fires on the import itself, so it
-// still needs an entry here.
+// still needs an entry here. handlers_add_events_sink.go likewise only decodes
+// a request: SinkConfig has a sink oneof (and Databricks an auth oneof). Its
+// response is a hand-written name acknowledgement, serialized through sonic.
 //
 // This gate exists because matching call SHAPES is not sound: protojson is
 // reachable as protojson.Marshal(m), as protojson.MarshalOptions{...}.Marshal(m)
@@ -128,6 +130,7 @@ var allowedProtojsonImporters = map[string]bool{
 	"response.go":                  true,
 	"handlers_get_events_sinks.go": true,
 	"handlers_create_ledger.go":    true,
+	"handlers_add_events_sink.go":  true,
 }
 
 func TestProtojsonImportIsRestricted(t *testing.T) {
