@@ -849,8 +849,8 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	compareExclusionProjections(stored, excluded, callback)
 
 	// Comparison passes: expected = replayed state. A cell SimulateEphemeralPurge
-	// deleted from the replay store is expected absent from the live store too.
-	c.compareVolumes(ctx, snap, replay, callback)
+	// deleted from the replay store must be absent from the live store too.
+	c.compareVolumes(ctx, snap, replay, excluded, callback)
 	c.compareMetadata(ctx, snap, replay, callback)
 	c.compareTransactions(ctx, snap, replay, callback)
 
@@ -1546,10 +1546,17 @@ func (c *Checker) compareNumscripts(
 // index builder and cannot be trusted by the integrity checker.
 type excludedVolumesSet map[string]map[domain.AccountAssetKey]struct{}
 
-// compareVolumes compares the replayed volumes with the live rows. A key
-// absent on either side counts as zero, so a cell the replay purged is
-// expected absent from the live store.
-func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, replay *replayStore, callback func(*servicepb.CheckStoreEvent)) int {
+func (e excludedVolumesSet) contains(key domain.VolumeKey) bool {
+	_, has := e[key.LedgerName][domain.AccountAssetKey{Account: key.Account, Asset: key.Asset, Color: key.Color}]
+
+	return has
+}
+
+// compareVolumes compares the replayed volumes with the live rows. A key absent
+// on either side counts as zero, so values alone cannot tell an absent cell
+// from a persisted zero row; a cell in `excluded` with no replay delta was
+// purged and never re-funded, and any live row for it is reported.
+func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, replay *replayStore, excluded excludedVolumesSet, callback func(*servicepb.CheckStoreEvent)) int {
 	errorCount := 0
 
 	// Collect live volumes
@@ -1655,6 +1662,19 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, r
 				fmt.Sprintf("unparseable volume projection key %x: %v", key, err), 0, "", "", ""))
 
 			errorCount++
+
+			continue
+		}
+
+		if replayDeltas[key] == nil && excluded.contains(vk) {
+			if actual := liveVolumes[key]; actual != nil {
+				callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+					fmt.Sprintf("volume row survives replay purge for %s/%s: got %s/%s",
+						vk.Account, vk.Asset, actual.GetInput().ToBigInt().String(), actual.GetOutput().ToBigInt().String()),
+					0, vk.LedgerName, vk.Account, vk.Asset))
+
+				errorCount++
+			}
 
 			continue
 		}

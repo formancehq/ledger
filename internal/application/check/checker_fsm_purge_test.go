@@ -315,35 +315,42 @@ func TestCheckerFSMTransientPurgeIsClean(t *testing.T) {
 	require.Empty(t, runFSMPurgeCheck(t, store, attrs))
 }
 
-// A drained transient cell the FSM failed to delete sits at input == output
-// with non-zero limbs; the replay expects it absent, so it must be reported.
+// A drained transient cell the FSM failed to delete may sit at input == output
+// with non-zero limbs or at an explicit zero; the replay expects no row at all,
+// so either must be reported.
 func TestCheckerFSMRejectsStrandedTransientVolume(t *testing.T) {
 	t.Parallel()
 
-	store, attrs := setupPurgedTransientCell(t)
+	for name, stranded := range map[string]*raftcmdpb.VolumePair{
+		"balanced": {Input: commonpb.NewUint256FromUint64(5), Output: commonpb.NewUint256FromUint64(5)},
+		"zero":     {Input: commonpb.NewUint256FromUint64(0), Output: commonpb.NewUint256FromUint64(0)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-	batch := store.OpenWriteSession()
-	_, err := attrs.Volume.Set(batch, domain.NewVolumeKey("ledger", "t-13:98", "USD", "").Bytes(), &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(5),
-		Output: commonpb.NewUint256FromUint64(5),
-	})
-	require.NoError(t, err)
-	require.NoError(t, batch.Commit())
-	require.NoError(t, store.Flush())
+			store, attrs := setupPurgedTransientCell(t)
 
-	findings := runFSMPurgeCheck(t, store, attrs)
+			batch := store.OpenWriteSession()
+			_, err := attrs.Volume.Set(batch, domain.NewVolumeKey("ledger", "t-13:98", "USD", "").Bytes(), stranded)
+			require.NoError(t, err)
+			require.NoError(t, batch.Commit())
+			require.NoError(t, store.Flush())
 
-	var found bool
-	for _, finding := range findings {
-		if finding.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH &&
-			finding.GetAccount() == "t-13:98" && finding.GetAsset() == "USD" {
-			found = true
+			findings := runFSMPurgeCheck(t, store, attrs)
 
-			break
-		}
+			var found bool
+			for _, finding := range findings {
+				if finding.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH &&
+					finding.GetAccount() == "t-13:98" && finding.GetAsset() == "USD" {
+					found = true
+
+					break
+				}
+			}
+
+			require.True(t, found, "checker must reject a stranded transient volume row: %v", findings)
+		})
 	}
-
-	require.True(t, found, "checker must reject a stranded transient volume row: %v", findings)
 }
 
 // A purged volume cell says nothing about the account's metadata: a row the
