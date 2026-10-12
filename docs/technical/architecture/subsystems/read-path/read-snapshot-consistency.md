@@ -66,6 +66,14 @@ of the rule is that it holds *by construction*: a future change that starts
 embedding `LedgerInfo` content (schema, account types, metadata) next to
 attribute data cannot silently reintroduce a torn read.
 
+`ListIndexes` is the case where the pair *is* mutually constrained today: the
+registry scan and the per-entry owner-ledger liveness check (`SCOPE_ALL` drops
+entries whose ledger is gone) must observe the same commit. A Pebble iterator
+pins its view when it opens, so a registry iterator over a direct handle paired
+with live liveness reads could skip an entry whose ledger was deleted after the
+scan began while never seeing an index created in between — a response matching
+no committed state. The cursor therefore owns one snapshot handle for both.
+
 ## Listed mirror progress
 
 ListLedgers enriches each consumed mirror through its existing listing handle,
@@ -82,9 +90,6 @@ add nothing or actively hurt:
   self-consistent regardless of snapshotting.
 - **`GetIndexStatus`** — reports the *lag* between the main store and the read
   store; a snapshot of one store would make the reported lag stale.
-- **`ListIndexes`** — a forward-only streaming scan of the index registry; a
-  long-lived snapshot would pin SSTs and block compaction for the scan's
-  duration. It already routes all reads through one direct handle.
 
 A new read handler that stitches `LedgerInfo` with attribute reads and does *not*
 open a single handle is a bug unless it is added to this list with a reason.
