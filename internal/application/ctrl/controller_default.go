@@ -2108,6 +2108,10 @@ func (ctrl *DefaultController) ListNumscriptVersions(ctx context.Context, ledger
 
 	ledgerInfo, err := query.GetLedgerByName(ctx, handle, ledger)
 	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return "", nil, &domain.ErrLedgerNotFound{Name: ledger}
+		}
+
 		return "", nil, err
 	}
 
