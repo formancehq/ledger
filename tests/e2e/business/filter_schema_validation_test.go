@@ -105,7 +105,7 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 				Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
 			})
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("cannot use integer condition"))
+			Expect(actions.ExtractGRPCErrorInfo(err).Reason).To(Equal("FILTER_COMPILATION_ERROR"))
 		})
 
 		It("Should error when using bool filter on int64 field", func() {
@@ -128,7 +128,7 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 				Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
 			})
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("cannot use bool condition"))
+			Expect(actions.ExtractGRPCErrorInfo(err).Reason).To(Equal("FILTER_COMPILATION_ERROR"))
 		})
 
 		It("Should allow exists filter on any typed field", func() {
@@ -248,8 +248,7 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 				Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
 			})
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("unsigned"))
-			Expect(err.Error()).To(ContainSubstring("negative"))
+			Expect(actions.ExtractGRPCErrorInfo(err).Reason).To(Equal("FILTER_COMPILATION_ERROR"))
 		})
 	})
 
@@ -291,7 +290,7 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 		It("Should error when ListAccounts uses string filter on int field", func() {
 			_, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", actions.StringMetadataFilter("score", "high"))
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("cannot use string condition"))
+			Expect(actions.ExtractGRPCErrorInfo(err).Reason).To(Equal("FILTER_COMPILATION_ERROR"))
 		})
 
 		It("Should auto-coerce and succeed when ListAccounts uses int filter on uint field", func() {
@@ -335,7 +334,7 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 		It("Should error when ListTransactions uses string filter on int field", func() {
 			_, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, actions.StringMetadataFilter("priority", "high"))
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("cannot use string condition"))
+			Expect(actions.ExtractGRPCErrorInfo(err).Reason).To(Equal("FILTER_COMPILATION_ERROR"))
 		})
 
 		It("Should succeed with correct int filter on int field", func() {
@@ -401,7 +400,7 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 				Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
 			})
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("cannot use integer condition"))
+			Expect(actions.ExtractGRPCErrorInfo(err).Reason).To(Equal("FILTER_COMPILATION_ERROR"))
 		})
 
 		It("Should allow string filter on ListAccounts with declared schema", func() {

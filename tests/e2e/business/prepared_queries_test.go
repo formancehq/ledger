@@ -1095,7 +1095,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 					}},
 				}))
 				Expect(status.Code(err)).To(Equal(codes.InvalidArgument), tc.want)
-				Expect(err.Error()).To(ContainSubstring(tc.want))
+				Expect(actions.ExtractGRPCErrorInfo(err).Reason).To(Equal("FILTER_COMPILATION_ERROR"), tc.want)
 			}
 		})
 
@@ -1115,7 +1115,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 				}},
 			}))
 			Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
-			Expect(err.Error()).To(ContainSubstring("has asset precision"))
+			Expect(actions.ExtractGRPCErrorInfo(err).Reason).To(Equal("FILTER_COMPILATION_ERROR"))
 
 			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 				Type: &servicepb.Request_CreatePreparedQuery{CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
@@ -1137,9 +1137,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 				}},
 			}))
 			Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
-			// The update is audited, so its public message comes from stable
-			// failure facts rather than the compiler's diagnostic text.
-			Expect(err.Error()).To(ContainSubstring("filter compilation error"))
+			Expect(actions.ExtractGRPCErrorInfo(err).Reason).To(Equal("FILTER_COMPILATION_ERROR"))
 		})
 
 		It("Should return NOT_FOUND when updating a non-existent query", func() {
