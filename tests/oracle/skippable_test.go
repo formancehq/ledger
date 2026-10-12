@@ -1,14 +1,30 @@
 package oracle
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
+
+func TestPredictSkippedLogNormalizesLongAccountTypeName(t *testing.T) {
+	t.Parallel()
+	name := strings.Repeat("a", 5000)
+	req := &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
+		Ledger: "L",
+		Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RemoveAccountType{
+			RemoveAccountType: &servicepb.RemoveAccountTypeRequest{Name: name},
+		}},
+	}}}
+	got := predictSkippedLog(NewLedgerState(), req, domain.ErrReasonAccountTypeNotFound)
+	require.Equal(t, domain.NormalizeFailureFact(name), got.GetFacts()["name"])
+	require.Equal(t, name, req.GetApply().GetAction().GetRemoveAccountType().GetName(), "model lookup keeps the raw identifier")
+}
 
 func skipRequest(req *servicepb.Request, reason commonpb.ErrorReason) *servicepb.Request {
 	req.GetApply().SkippableReasons = []commonpb.ErrorReason{reason}
