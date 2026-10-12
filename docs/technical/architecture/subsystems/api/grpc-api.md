@@ -576,7 +576,7 @@ See [Idempotency](../admission/idempotency.md) for detailed documentation.
 
 Processing errors (insufficient funds, ledger not found, etc.) are wrapped in a `BusinessError` struct in the FSM layer. The gRPC interceptor converts `BusinessError` instances to proper gRPC status codes with structured `google.rpc.ErrorInfo` details. This allows clients to programmatically identify error types without parsing error messages.
 
-Unknown errors, `KindInternal` errors, and recovered panics are logged with a generated `correlation_id`. When the RPC span is recording, the same log also carries `trace_id` and `span_id`, and the span records the correlation ID and error. This applies to both unary and streaming interceptors. Existing wire contracts remain distinct: unknown errors and panics return sanitized messages containing the correlation ID, while recognized `KindInternal` errors retain their status and reason. `INDEX_INCONSISTENT` and `COVERAGE_MISS` use type-owned public messages (`index is inconsistent` and `preload coverage miss`) and empty `ErrorInfo.metadata`; their internal identifiers, storage details, and coverage keys remain in server diagnostics. Other recognized error presentations are unchanged. The adapters consume `domain.PublicErrorDetails`; this optional presentation never changes `Error()` or `Metadata()` used by the authoritative audit projection.
+Unknown errors, `KindInternal` errors, and recovered panics are logged with a generated `correlation_id`. When the RPC span is recording, the same log also carries `trace_id` and `span_id`, and the span records the correlation ID and error. This applies to both unary and streaming interceptors. Unknown errors and panics return sanitized messages containing the correlation ID; recognized `KindInternal` errors retain their status and reason. `INDEX_INCONSISTENT` and `COVERAGE_MISS` use generic public messages (`index is inconsistent` and `preload coverage miss`) and empty `ErrorInfo.metadata`. Other local domain errors render their public message and metadata from explicit stable facts. `Error()` and `Metadata()` remain diagnostic and do not enter the audit chain or public response.
 
 Failures reading the staged restore configuration retain `Internal` but return
 a generic message with a correlation ID. The handler records the underlying cause
@@ -585,11 +585,11 @@ other intentionally authored gRPC statuses keep their existing behavior.
 
 Each business error response includes:
 - A **gRPC status code** (e.g., `NOT_FOUND`, `ALREADY_EXISTS`, `FAILED_PRECONDITION`)
-- A **human-readable message** (the original error string)
+- A **human-readable message** rendered from the stable failure code and facts
 - An **`ErrorInfo` detail** with:
   - `reason`: Machine-readable constant (e.g., `LEDGER_ALREADY_EXISTS`)
   - `domain`: Always `"ledger"`
-  - `metadata`: Error-specific key-value pairs with context
+  - `metadata`: Explicit stable fact keys and values; no diagnostic prose
 
 ### gRPC Status Codes
 

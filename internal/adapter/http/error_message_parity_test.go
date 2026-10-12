@@ -22,10 +22,10 @@ func TestErrorMessageParityThroughRoutingWrappers(t *testing.T) {
 		status  int
 		message string
 	}{
-		{"metadata", &domain.ErrMetadataFieldNotInSchema{Target: "TARGET_TYPE_ACCOUNT", Key: "never-declared"}, http.StatusBadRequest, "metadata field not declared in schema: TARGET_TYPE_ACCOUNT/never-declared"},
-		{"not found", &domain.ErrLedgerNotFound{Name: "test"}, http.StatusNotFound, "ledger does not exist: test"},
+		{"metadata", &domain.ErrMetadataFieldNotInSchema{Target: "TARGET_TYPE_ACCOUNT", Key: "never-declared"}, http.StatusBadRequest, "metadata field not in schema: key=\"never-declared\", target=\"TARGET_TYPE_ACCOUNT\""},
+		{"not found", &domain.ErrLedgerNotFound{Name: "test"}, http.StatusNotFound, "ledger not found: name=\"test\""},
 		{"public internal", &domain.ErrIndexInconsistent{Index: "private-index", Detail: "private-storage-failure"}, http.StatusInternalServerError, "index is inconsistent"},
-		{"numscript", &domain.ErrNumscriptRuntime{Detail: "negative posting amount"}, http.StatusInternalServerError, "numscript runtime error: negative posting amount"},
+		{"numscript", &domain.ErrNumscriptRuntime{Detail: "negative posting amount"}, http.StatusInternalServerError, "numscript runtime"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

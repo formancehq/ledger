@@ -127,8 +127,12 @@ Reference: `internal/infra/state/machine.go:1370-1384`. The hash is bound to the
 
 Each successful order produces a `Log` (`internal/proto/commonpb/common.proto`, `message Log { LogPayload payload = …; }`). The audit chain binds the orders via `AuditItem.SerializedOrder` (the order's canonical vtprotobuf bytes); the resulting `Log` rows are addressable separately by `LogSequence` and bound transitively through the items.
 
-`FailureFactsOf` selects a stable code and validated fact keys from the typed
-domain error. `buildAuditFailurePayload` hashes the reason, code, and facts in
+`FailureFactsOf` reads each error's required `FailureCode()` and explicit
+`StableFacts()` implementation.
+Diagnostic `Metadata()` never feeds this tuple; a producer must choose each
+fact deliberately instead of relying on a list of excluded metadata keys.
+`ValidateFailureFacts` rejects unknown codes, fact keys and malformed values
+before persistence. `buildAuditFailurePayload` hashes the reason, code, and facts in
 sorted key order. It does not hash `Error()` text or Numscript diagnostics.
 `RenderFailureFacts` creates presentation text when a caller reads or replays
 the failure. Audit and idempotency store the same tuple so the checker can

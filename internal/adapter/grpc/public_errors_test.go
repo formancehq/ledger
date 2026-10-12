@@ -53,8 +53,8 @@ func TestGRPCPublicDetailsPreserveNumscriptDiagnostics(t *testing.T) {
 	err := &domain.ErrNumscriptRuntime{Detail: "negative posting amount"}
 	st := status.Convert(convertToGRPCError(&domain.BusinessError{Err: err}, logging.Testing()))
 	require.Equal(t, codes.Internal, st.Code())
-	require.Equal(t, err.Error(), st.Message())
+	require.Equal(t, "numscript runtime", st.Message())
 	info := extractErrorInfo(t, st)
 	require.Equal(t, domain.ErrReasonNumscriptRuntime, info.GetReason())
-	require.Equal(t, map[string]string{"detail": "negative posting amount"}, info.GetMetadata())
+	require.Empty(t, info.GetMetadata())
 }

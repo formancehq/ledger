@@ -26,9 +26,8 @@
 // no package under internal/domain, internal/infra/state or internal/admission
 // may import it, which scripts/check-repo-invariants enforces. A network-
 // decoded failure must never be raised by admission, the FSM or order
-// processing, never be persisted, frozen, audited or hashed: the audit chain
-// hashes an error's Error() string, and a message that varies with a peer's
-// build would break it.
+// processing, never be persisted, frozen or audited: the audit chain hashes
+// only the locally generated reason, code and stable facts.
 package apierr
 
 import (
@@ -50,14 +49,11 @@ type Descriptor struct {
 	// Reason is the stable, client-facing UPPER_SNAKE_CASE identifier.
 	Reason string
 
-	// Message is the client-safe human-readable message: the public
-	// presentation the error type owns when it has one (domain.PublicDetails),
-	// otherwise its Error(). Never the diagnostic identity of a type that
-	// separates the two.
+	// Message is the client-safe human-readable message rendered from stable
+	// facts for local errors, or supplied by the sending ledger for remote ones.
 	Message string
 
-	// Metadata is the client-safe structured per-occurrence context, or nil.
-	// Same selection as Message.
+	// Metadata is the client-safe stable fact set, or nil.
 	Metadata map[string]string
 
 	// PublicOverride reports that the error type owns a public presentation

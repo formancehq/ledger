@@ -26,15 +26,15 @@ func TestPublicErrorDetails(t *testing.T) {
 		{"private", private, true, nil},
 		{"business private", &BusinessError{Err: private}, true, nil},
 		{"nested business private", &BusinessError{Err: &BusinessError{Err: private}}, true, nil},
-		{"ordinary", ordinary, false, map[string]string{"name": "caller-ledger"}},
-		{"business ordinary", &BusinessError{Err: ordinary}, false, map[string]string{"name": "caller-ledger"}},
-		{"distinct outer reason", outer, false, map[string]string{"operation": "loading index"}},
+		{"ordinary", ordinary, true, map[string]string{"name": "caller-ledger"}},
+		{"business ordinary", &BusinessError{Err: ordinary}, true, map[string]string{"name": "caller-ledger"}},
+		{"distinct outer reason", outer, true, map[string]string{}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			message, metadata, overridden := PublicErrorDetails(tc.err)
 			require.Equal(t, tc.overridden, overridden)
-			if overridden {
+			if tc.err.Reason() == ErrReasonIndexInconsistent {
 				require.Equal(t, "index is inconsistent", message)
 				require.Empty(t, metadata)
 				require.Equal(t, "index private-index is inconsistent: private storage detail", tc.err.Error())
@@ -43,7 +43,12 @@ func TestPublicErrorDetails(t *testing.T) {
 				// carrier exposes no Metadata of its own.
 				require.Equal(t, map[string]string{"index": "private-index", "detail": "private storage detail"}, MetadataOf(private))
 			} else {
-				require.Equal(t, tc.err.Error(), message)
+				require.True(t, overridden)
+				if tc.err.Reason() == ErrReasonLedgerNotFound {
+					require.Equal(t, "ledger not found: name=\"caller-ledger\"", message)
+				} else {
+					require.Equal(t, "storage operation failed", message)
+				}
 				require.Equal(t, tc.wantMetadata, metadata)
 			}
 		})
@@ -62,6 +67,26 @@ func TestBusinessErrorStructuredPublicFailureRetainsCause(t *testing.T) {
 	require.Equal(t, wantMessage, message)
 	require.Equal(t, wantMetadata, metadata)
 	require.ErrorIs(t, business, cause)
+}
+
+func TestPublicErrorDetailsRejectMalformedFacts(t *testing.T) {
+	t.Parallel()
+
+	invalid := &ErrNumscriptExecution{
+		Detail: "private diagnostic",
+		Code:   "NUMSCRIPT_INVALID_ACCOUNT_NAME",
+		Facts:  map[string]string{"detail": "private diagnostic"},
+	}
+	message, metadata, overridden := PublicErrorDetails(invalid)
+	require.True(t, overridden)
+	require.Equal(t, "numscript execution error", message)
+	require.Empty(t, metadata)
+
+	facts := FailureFactsOf(invalid)
+	message, metadata, overridden = PublicErrorDetails(&BusinessError{Err: invalid, PublicFailure: &facts})
+	require.True(t, overridden)
+	require.Equal(t, "numscript execution error", message)
+	require.Empty(t, metadata)
 }
 
 // TestMetadataOfDoesNotWalkTheChain pins the selection rule MetadataOf exists

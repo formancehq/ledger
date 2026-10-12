@@ -83,6 +83,17 @@ func (e *ErrCoverageMiss) Metadata() map[string]string {
 	}
 }
 
+func (e *ErrCoverageMiss) StableFacts() map[string]string {
+	return map[string]string{
+		"attribute":    e.Attribute,
+		"canonicalHex": e.CanonicalHex,
+		"idHex":        e.IDHex,
+		"raftIndex":    strconv.FormatUint(e.RaftIndex, 10),
+	}
+}
+
+func (e *ErrCoverageMiss) FailureCode() string { return e.Reason() }
+
 // PublicDetails hides cache keys and Raft position from API error responses.
 // Error() and Metadata() must retain their diagnostic values: both are copied
 // into the authoritative, hash-chained AuditFailure by buildAuditFailure.

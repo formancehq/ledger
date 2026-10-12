@@ -284,9 +284,9 @@ token, or a key that is not a valid position for the endpoint, is
 
 Non-bulk writes return JSON `ErrorResponse` on 429, preserving `errorCode` and
 `errorMessage` for both local and reconstructed leader failures. Disk gating uses
-`WRITES_BLOCKED_DISK_FULL` (`writes blocked: disk usage exceeds threshold`),
+`WRITES_BLOCKED_DISK_FULL` (`writes blocked disk full`),
 including a missing or obsolete gate verdict. Authoritative identifier allocation
-uses `SEQUENCE_EXHAUSTED` (`<counter> exhausted: cannot allocate another identifier`).
+uses `SEQUENCE_EXHAUSTED` (`sequence exhausted: counter="<counter>"`).
 Disk blocking can clear; allocator exhaustion is permanent for that allocator.
 Neither branch supplies `Retry-After`, and clients must not retry unconditionally.
 
@@ -337,7 +337,7 @@ Three paths need correlated server-side diagnostics because the raw value can co
 
 1. **Panic recovery** (`jsonRecoverer`) — a panic in any handler.
 2. **Unmapped errors** (`handleError` fallthrough → `writeInternalServerError`) — any error that is not a domain `Classifiable` or a known sentinel.
-3. **`KindInternal` domain errors** — recognized internal failures whose status and reason are preserved. `INDEX_INCONSISTENT` and `COVERAGE_MISS` supply public messages (`index is inconsistent` and `preload coverage miss`) that omit internal identifiers and storage details, including when wrapped. Other recognized errors retain their type-owned message, with outer diagnostic prefixes omitted.
+3. **`KindInternal` domain errors** — recognized internal failures whose status and reason are preserved. `INDEX_INCONSISTENT` and `COVERAGE_MISS` supply generic public messages (`index is inconsistent` and `preload coverage miss`). Other recognized errors render from stable facts; diagnostic text and outer prefixes are omitted.
 
 Type-owned public details are selected through `domain.PublicErrorDetails` at the response boundary. The authoritative audit chain records a structured failure reason, code and bounded facts for freezable business failures. Diagnostic `Error()` text is used for server logs and is not hashed into that outcome.
 
@@ -449,7 +449,7 @@ so a layer commits only to what it can actually honour (EN-2081):
 |---|---|---|---|
 | `Classifiable` | `Kind() ErrorKind` | anything that names no business outcome — the gRPC envelope guard, the admission idempotency-key and checkpoint-order guards, the read path's prepared-query argument checks | selects the status code; sends no `ErrorInfo` and no `errorCode` beyond the coarse kind-level one |
 | `Describable` | `Reason() string` | every domain business error | adds the `ErrorInfo` / `errorCode` clients pattern-match on |
-| `SerializableError` | `Metadata() map[string]string` | every error the FSM can emit | supplies typed facts to `FailureFactsOf`; validated reason, code, and facts are written into the audit chain and idempotency projection |
+| `SerializableError` | `Metadata()`, `StableFacts()`, `FailureCode()` | every error the FSM can emit | keeps diagnostics separate from explicit code and stable facts; validated reason, code, and facts are written into the audit chain and idempotency projection |
 
 The tiers are enforced by the type system rather than by convention. The FSM
 apply path (`internal/domain/processing`, `internal/infra/state`) types its
@@ -496,9 +496,8 @@ error code it already uses for a reason-less classified status
 sanitizer.
 
 `Message` and `Metadata` are the client-safe presentation, not the diagnostic
-identity. A locally raised failure uses `domain.PublicErrorDetails` when its
-type owns a separate public presentation (EN-1623); otherwise its describable
-message is used. A decoded failure already contains the sender's selection.
+identity. A locally raised serializable failure renders them from its stable
+reason, code, and facts. A decoded failure already contains the sender's selection.
 Both unitary and bulk HTTP responses render the descriptor's message rather
 than outer routing or Raft context, so local and forwarded failures have the
 same public text. `Descriptor.PublicOverride` still identifies a separate
@@ -614,7 +613,7 @@ The `Retry-After` header is used to indicate when a client should retry a reques
 
 3. **`KindUnavailable` domain errors** (`errorCode` = the error's `Reason()`) — the whole kind shares the contract: an index still building, writes blocked on clock skew, a node syncing. Anything `kindToHTTPStatus` maps to `503` gets the header.
 
-4. **gRPC `Unavailable` statuses** (`errorCode: UNAVAILABLE`) — an internal forwarding failure surfaced by the read path: a forwarded stream torn down mid-transfer (peer connection churn during a syncing follower's leader fallback), or a peer connection missing from the pool. The original transport message is preserved in `errorMessage`.
+4. **gRPC `Unavailable` statuses** (`errorCode: UNAVAILABLE`) — an internal forwarding failure surfaced by the read path: a forwarded stream torn down mid-transfer (peer connection churn during a syncing follower's leader fallback), or a peer connection missing from the pool. `errorMessage` uses a generic public message.
 
 #### Response Format
 
@@ -912,8 +911,8 @@ Bulk internal failures are logged and stamped on the recording request span
 with a validated correlation ID, including sequential and atomic apply failures.
 Unknown errors expose only `internal server error (correlation ID: <id>)` in
 `errorDescription`; the existing `ERROR` code and bulk envelope stay unchanged.
-Typed internal failures keep their reason and use their type-owned public
-presentation when provided; actionable Numscript diagnostics remain visible.
+Typed internal failures keep their reason and use stable public facts. Numscript
+diagnostic text remains available only in server logs.
 The `continueOnFailure` rollup and retry semantics are unaffected.
 
 - `atomic=true`: Execute atomically (all or nothing) - not yet supported

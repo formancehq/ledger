@@ -174,7 +174,7 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 			w.Header().Set("Retry-After", "1")
 		}
 
-		writeErrorResponse(w, httpStatus, classifiedErrorCode(c.Kind()), errors.New(c.Error()))
+		writeErrorResponse(w, httpStatus, classifiedErrorCode(c.Kind()), errors.New(domain.PublicKindMessage(c.Kind())))
 
 		return
 	}
@@ -201,12 +201,12 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	if st, ok := status.FromError(err); ok {
 		switch st.Code() {
 		case codes.InvalidArgument:
-			writeErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New(st.Message()))
+			writeErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("invalid request"))
 
 			return
 		case codes.Unavailable:
 			w.Header().Set("Retry-After", "1")
-			writeErrorResponse(w, http.StatusServiceUnavailable, "UNAVAILABLE", errors.New(st.Message()))
+			writeErrorResponse(w, http.StatusServiceUnavailable, "UNAVAILABLE", errors.New("unavailable"))
 
 			return
 		}

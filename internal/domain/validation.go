@@ -76,6 +76,14 @@ func (*errValidation) Kind() ErrorKind             { return KindValidation }
 func (*errValidation) Reason() string              { return ErrReasonValidation }
 func (*errValidation) Metadata() map[string]string { return nil }
 
+func (*errValidation) StableFacts() map[string]string {
+	return nil
+}
+
+func (e *errValidation) FailureCode() string {
+	return e.code
+}
+
 // maxColorLength caps the optional Color tag on a Posting. Color is a small
 // dimension label (e.g. "GRANTS", "OPS") not a free-form string; 32 bytes is
 // large enough for any sensible tag and short enough to stay cheap to repeat

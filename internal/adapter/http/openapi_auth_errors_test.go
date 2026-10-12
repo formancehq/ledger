@@ -100,7 +100,7 @@ func TestOpenAPI_NumscriptAuthentication(t *testing.T) {
 					handler.ServeHTTP(w, r)
 					require.Equal(t, tc.status, w.Code)
 					if tc.status == http.StatusNotFound {
-						require.JSONEq(t, `{"errorCode":"LEDGER_NOT_FOUND","errorMessage":"ledger does not exist: ledger1"}`, w.Body.String())
+						require.JSONEq(t, `{"errorCode":"LEDGER_NOT_FOUND","errorMessage":"ledger not found: name=\"ledger1\""}`, w.Body.String())
 
 						return
 					}

@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"29"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"30"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 29:
+leader. For example, with a schema implementing revision 30:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 29' \
+grpcurl -plaintext -H 'ledger-protocol-version: 30' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -444,3 +444,13 @@ as failure messages or copied into their public error details. A skipped order
 exposes its code and facts in gRPC, HTTP bulk, and
 event payloads. This changes exposed log and audit responses, so service
 clients and servers must use the same revision.
+
+## Stable public failure details (revision 31)
+
+Revision 31 renders local business error messages and `ErrorInfo.metadata` from
+the same explicit stable facts used by the audit chain. `Error()` and
+`Metadata()` remain diagnostic and do not enter the public response. Errors
+that have no declared reason receive a generic message for their error kind.
+The status code and broad reason remain stable. Clients that parsed former
+free-form text must switch to the reason and stable fact keys. No persisted
+failure format changes between revisions 30 and 31.

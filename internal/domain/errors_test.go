@@ -33,7 +33,7 @@ func TestBusinessError(t *testing.T) {
 	require.Equal(t, map[string]string{"name": "missing"}, MetadataOf(inner))
 
 	message, metadata, _ := PublicErrorDetails(bErr)
-	require.Equal(t, "ledger does not exist: missing", message)
+	require.Equal(t, "ledger not found: name=\"missing\"", message)
 	require.Equal(t, map[string]string{"name": "missing"}, metadata)
 }
 

@@ -147,8 +147,10 @@ func (unknownReasonErr) Error() string { return "unknown" }
 func (unknownReasonErr) Kind() domain.ErrorKind {
 	return domain.KindForReason(domain.ReasonCode("THIS_IS_NOT_A_KNOWN_REASON"))
 }
-func (unknownReasonErr) Reason() string              { return "THIS_IS_NOT_A_KNOWN_REASON" }
-func (unknownReasonErr) Metadata() map[string]string { return nil }
+func (unknownReasonErr) Reason() string                 { return "THIS_IS_NOT_A_KNOWN_REASON" }
+func (unknownReasonErr) Metadata() map[string]string    { return nil }
+func (unknownReasonErr) StableFacts() map[string]string { return nil }
+func (unknownReasonErr) FailureCode() string            { return "THIS_IS_NOT_A_KNOWN_REASON" }
 
 var _ domain.SerializableError = unknownReasonErr{}
 

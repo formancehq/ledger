@@ -21,6 +21,8 @@ func (s *stubDescribable) Reason() string  { return s.reason }
 func (s *stubDescribable) Metadata() map[string]string {
 	return map[string]string{"stub": s.reason}
 }
+func (s *stubDescribable) StableFacts() map[string]string { return nil }
+func (s *stubDescribable) FailureCode() string            { return s.reason }
 
 func TestCoverageContractViolation(t *testing.T) {
 	t.Parallel()

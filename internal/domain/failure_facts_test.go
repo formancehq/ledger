@@ -54,3 +54,28 @@ func TestFailureFactsMetadataValidationWrappers(t *testing.T) {
 		})
 	}
 }
+
+func TestFailureFactsExcludeDiagnosticMetadata(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		err  SerializableError
+	}{
+		{"parse", &ErrNumscriptParse{Details: "unexpected token at /private/source"}},
+		{"filter", &ErrFilterCompilation{Detail: "parameter secret: parse failed"}},
+		{"storage", &ErrStorageOperation{Operation: "reading /private/ledger"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.NotEmpty(t, tc.err.Metadata())
+			facts := FailureFactsOf(tc.err)
+			require.NoError(t, ValidateFailureFacts(facts))
+			require.Empty(t, facts.Facts)
+			message, metadata, _ := PublicErrorDetails(tc.err)
+			require.NotContains(t, message, "private")
+			require.NotContains(t, message, "secret")
+			require.Empty(t, metadata)
+		})
+	}
+}

@@ -34,8 +34,8 @@ func TestHandleBulkInternalDiagnostics(t *testing.T) {
 			{"unknown", errors.New("pebble: /private/ledger/000123.sst broken"), "pebble: /private/ledger/000123.sst broken", "ERROR", "internal server error (correlation ID: bulk-diagnostics)"},
 			{"missing-log", nil, "no log returned from apply", "ERROR", "internal server error (correlation ID: bulk-diagnostics)"},
 			{"private-typed", &domain.BusinessError{Err: &domain.ErrIndexInconsistent{Index: "ledger-index", Detail: "/private/index.sst broken"}}, "index ledger-index is inconsistent: /private/index.sst broken", domain.ErrReasonIndexInconsistent, "index is inconsistent"},
-			{"numscript", &domain.ErrNumscriptRuntime{Detail: "negative posting amount"}, "numscript runtime error: negative posting amount", domain.ErrReasonNumscriptRuntime, "numscript runtime error: negative posting amount"},
-			{"typed-internal", &domain.ErrStorageOperation{Operation: "reading ledger", Cause: errors.New("private")}, "storage operation failed: reading ledger", domain.ErrReasonStorageOperation, "storage operation failed: reading ledger"},
+			{"numscript", &domain.ErrNumscriptRuntime{Detail: "negative posting amount"}, "numscript runtime error: negative posting amount", domain.ErrReasonNumscriptRuntime, "numscript runtime"},
+			{"typed-internal", &domain.ErrStorageOperation{Operation: "reading ledger", Cause: errors.New("private")}, "storage operation failed: reading ledger", domain.ErrReasonStorageOperation, "storage operation failed"},
 		} {
 			if atomic && tc.err == nil {
 				continue

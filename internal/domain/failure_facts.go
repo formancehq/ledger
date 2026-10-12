@@ -3,7 +3,6 @@ package domain
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"maps"
 	"regexp"
@@ -23,79 +22,18 @@ type FailureFacts struct {
 	Facts  map[string]string
 }
 
-// FailureCoder lets errors with a more precise audited identity than Reason
-// provide it directly. Other errors use their Reason as the code.
-type FailureCoder interface {
-	FailureCode() string
-}
-
 // FailureFactsOf selects the semantic identity of an FSM error. Wrappers keep
 // the underlying code while adding their own structured correlators.
 func FailureFactsOf(d SerializableError) FailureFacts {
-	code := d.Reason()
-	if coded, ok := d.(FailureCoder); ok {
-		if specific := coded.FailureCode(); specific != "" {
-			code = specific
-		}
-	}
+	code := d.FailureCode()
 
 	facts := make(map[string]string)
-	for key, value := range d.Metadata() {
-		// These fields currently contain formatted diagnostics, not facts. A
-		// producer needs a typed replacement before it can enter the chain.
-		switch key {
-		case "detail", "details", "operation", "reason", "typeName":
-			continue
-		}
+	for key, value := range d.StableFacts() {
 		facts[key] = NormalizeFailureFact(value)
-	}
-	if e, ok := d.(*ErrDependencyDiscoveryFailed); ok {
-		if cause, ok := errors.AsType[SerializableError](e.Cause); ok {
-			maps.Copy(facts, FailureFactsOf(cause).Facts)
-		}
-	}
-	if e, ok := d.(*ErrInvalidSkippableReason); ok {
-		facts["providedReason"] = ReasonString(e.Provided)
 	}
 
 	return FailureFacts{Reason: ReasonCode(d.Reason()), Code: code, Facts: facts}
 }
-
-func (e *validationSentinel) FailureCode() string      { return e.code }
-func (e *errValidation) FailureCode() string           { return e.code }
-func (*ErrInvalidSkippableReason) FailureCode() string { return "INVALID_SKIPPABLE_REASON" }
-func (e *ReplayedFailure) FailureCode() string         { return e.Code }
-func (errMetadataLimitsUnconfigured) FailureCode() string {
-	return "METADATA_LIMITS_UNCONFIGURED"
-}
-
-func (e *ErrDependencyDiscoveryFailed) FailureCode() string {
-	if cause, ok := errors.AsType[SerializableError](e.Cause); ok {
-		return FailureFactsOf(cause).Code
-	}
-
-	return "DEPENDENCY_DISCOVERY_FAILED"
-}
-
-func (e *ErrMetadataKeyValidation) FailureCode() string {
-	if cause, ok := e.Cause.(SerializableError); ok {
-		return FailureFactsOf(cause).Code
-	}
-
-	return ""
-}
-
-func (e *ErrAccountValidation) FailureCode() string {
-	if cause, ok := e.Cause.(SerializableError); ok {
-		return FailureFactsOf(cause).Code
-	}
-
-	return ""
-}
-
-func (e *ErrNumscriptRuntime) FailureCode() string   { return e.Code }
-func (e *ErrNumscriptExecution) FailureCode() string { return e.Code }
-func (e *ErrNumscriptCompile) FailureCode() string   { return e.Code }
 
 // NormalizeFailureFact bounds arbitrary caller values before writing them to a persisted failure.
 // The audited order still contains the original input; the digest preserves a
@@ -245,6 +183,7 @@ var failureFactKeys = map[string]string{
 	"COVERAGE_MISS":                    "attribute canonicalHex idHex raftIndex",
 	"NUMSCRIPT_RUNTIME":                "key",
 	"EXECUTION_PLAN_TOO_LARGE":         "size limit",
+	"AGGREGATE_OVERFLOW":               "stage side",
 	"VALIDATION":                       "key account providedReason",
 }
 

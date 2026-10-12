@@ -36,6 +36,12 @@ func (e *ErrAggregateOverflow) Metadata() map[string]string {
 	return map[string]string{"stage": e.Stage, "side": e.Side}
 }
 
+func (e *ErrAggregateOverflow) StableFacts() map[string]string {
+	return map[string]string{"stage": e.Stage, "side": e.Side}
+}
+
+func (e *ErrAggregateOverflow) FailureCode() string { return e.Reason() }
+
 // Compile-time assertion that ErrAggregateOverflow keeps the full contract, so
 // it goes on flowing through the shared error edge (gRPC/HTTP mapping) with its
 // reason and structured context intact.

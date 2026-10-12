@@ -23,7 +23,7 @@ func TestDescribe_LocalDescribableClassifiesFromItsReason(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, domain.KindConflict, d.Kind)
 	require.Equal(t, domain.ErrReasonLedgerDeleted, d.Reason)
-	require.Equal(t, err.Error(), d.Message)
+	require.Equal(t, "ledger deleted: name=\"foo\"", d.Message)
 	require.Equal(t, err.Metadata(), d.Metadata)
 }
 
@@ -207,8 +207,8 @@ func TestDescribe_LocalDescribableWithoutPublicPresentation(t *testing.T) {
 	d, ok := Describe(&domain.ErrLedgerDeleted{Name: "foo"})
 	require.True(t, ok)
 
-	require.False(t, d.PublicOverride)
-	require.Equal(t, (&domain.ErrLedgerDeleted{Name: "foo"}).Error(), d.Message)
+	require.True(t, d.PublicOverride)
+	require.Equal(t, "ledger deleted: name=\"foo\"", d.Message)
 }
 
 // TestDescribe_RemoteNeedsNoPublicSelection: the sender applied its own public
