@@ -1377,7 +1377,7 @@ Note that `POST /v3/{ledgerName}/bulk` shares this classifier but can only expre
 
 ### gRPC Error Mapping
 
-Business errors from the processing layer are mapped to gRPC status codes with structured `ErrorInfo` details via the `Describable` contract in `internal/domain`. This allows clients to programmatically identify error types without parsing error messages. See `internal/domain/errors.go` for the canonical list — the `Reason()` method on each typed error returns the constant below, and `Metadata()` supplies the diagnostic context. The optional `domain.PublicErrorDetails` presentation supplies the public message and metadata for types whose diagnostic values are not safe to expose; the keys listed below describe the public response.
+Business errors from the processing layer are mapped to gRPC status codes with structured `ErrorInfo` details via the `Describable` contract in `internal/domain`. This allows clients to programmatically identify error types without parsing error messages. See `internal/domain/errors.go` for the canonical list — the `Reason()` method on each typed error returns the constant below, while `StableFacts()` supplies public structured context for serializable errors. `domain.PublicErrorDetails` renders the public message and facts without exposing diagnostic `Error()` text; the keys listed below describe the public response.
 
 Each error response includes a `google.rpc.ErrorInfo` detail with:
 - **`reason`**: Machine-readable error reason constant (e.g., `LEDGER_ALREADY_EXISTS`)

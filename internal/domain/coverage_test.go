@@ -15,12 +15,9 @@ type stubDescribable struct {
 	msg    string
 }
 
-func (s *stubDescribable) Error() string   { return s.msg }
-func (s *stubDescribable) Kind() ErrorKind { return KindForReason(ReasonCode(s.reason)) }
-func (s *stubDescribable) Reason() string  { return s.reason }
-func (s *stubDescribable) Metadata() map[string]string {
-	return map[string]string{"stub": s.reason}
-}
+func (s *stubDescribable) Error() string                  { return s.msg }
+func (s *stubDescribable) Kind() ErrorKind                { return KindForReason(ReasonCode(s.reason)) }
+func (s *stubDescribable) Reason() string                 { return s.reason }
 func (s *stubDescribable) StableFacts() map[string]string { return nil }
 func (s *stubDescribable) FailureCode() string            { return s.reason }
 
@@ -134,7 +131,7 @@ func TestStoreFailure(t *testing.T) {
 
 		require.Same(t, miss, got)
 		require.Equal(t, ErrReasonCoverageMiss, got.Reason())
-		require.Equal(t, map[string]string{"stub": ErrReasonCoverageMiss}, got.Metadata())
+		require.Empty(t, got.StableFacts())
 	})
 
 	t.Run("propagates a wrapped coverage miss verbatim", func(t *testing.T) {
@@ -165,7 +162,8 @@ func TestStoreFailure(t *testing.T) {
 		got := StoreFailure("loading ledger", cause)
 
 		require.Equal(t, ErrReasonStorageOperation, got.Reason())
-		require.Equal(t, map[string]string{"operation": "loading ledger"}, got.Metadata())
+		require.Empty(t, got.StableFacts())
+		require.Contains(t, got.Error(), "loading ledger")
 		require.ErrorIs(t, got, cause)
 	})
 }

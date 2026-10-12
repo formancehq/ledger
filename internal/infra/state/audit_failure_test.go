@@ -18,23 +18,23 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
-// TestIdempotencyFailureMessageMatchesAudit pins the equality the checker's
-// idempotencyMismatch depends on: the reason and message frozen into the
-// SubIdempKeys projection by recordIdempotencyFailure MUST equal the ones
+// TestIdempotencyFailureFactsMatchAudit pins the equality the checker's
+// idempotencyMismatch depends on: the reason, code, and facts frozen into the
+// SubIdempKeys projection by recordIdempotencyFailure must equal the ones
 // buildAuditFailure wrote into the hash-chained AuditFailure for the same
 // error. On a drift a perfectly healthy store reports
 // CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH on every frozen failure, and the
 // audit side of the divergence is inside the hash chain, so it cannot be
 // corrected afterwards.
 //
-// Both sites derive those two fields from describeFailure, so on that half the
+// Both sites derive those fields from describeFailure, so on that half the
 // test is a forcing function against a future re-split of the derivation, not
 // an independent oracle. The independent half is the round trip through
 // state.IdempotencyValueFromAudit — the same derivation
 // check.expectedIdempotencyOutcome builds its expectation with — which crosses
 // the auditpb.AuditFailure to commonpb.IdempotencyFailure field mapping
-// (Context to Metadata included) that describeFailure does not cover.
-func TestIdempotencyFailureMessageMatchesAudit(t *testing.T) {
+// (including code and facts) that describeFailure does not cover.
+func TestIdempotencyFailureFactsMatchAudit(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -49,7 +49,7 @@ func TestIdempotencyFailureMessageMatchesAudit(t *testing.T) {
 		{
 			// Every field distinct and non-zero, so a projection bug cannot
 			// hide behind a zero value that both sides happen to share.
-			name: "populated metadata",
+			name: "populated facts",
 			err: &domain.ErrInsufficientFunds{
 				Account:    "user:alice",
 				Asset:      "USD/2",
@@ -60,8 +60,8 @@ func TestIdempotencyFailureMessageMatchesAudit(t *testing.T) {
 			},
 		},
 		{
-			// Metadata() is nil here, so both stored fact maps are empty.
-			name: "nil metadata",
+			// StableFacts() is nil here, so both stored fact maps are empty.
+			name: "nil facts",
 			err:  domain.NewValidationSentinel("TARGET_REQUIRED", "EN-1772 fixture: value must not be empty"),
 		},
 		{
@@ -79,7 +79,7 @@ func TestIdempotencyFailureMessageMatchesAudit(t *testing.T) {
 
 			// Side A — the hash-chained audit entry, round-tripped through the
 			// wire because that is how the checker reads it: a proto3 map with
-			// no entries comes back nil, so the empty Context does not survive.
+			// no entries comes back nil, so the empty fact map does not survive.
 			entry := &auditpb.AuditEntry{
 				Timestamp: &commonpb.Timestamp{Data: proposalCreatedAt},
 				Outcome:   &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(tc.err)},
@@ -107,23 +107,21 @@ func TestIdempotencyFailureMessageMatchesAudit(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, stored.GetFailure(), "the failure outcome must have been frozen")
 
-			// IdempotencyFailure.EqualVT compares metadata by length then by
-			// key, so it carries the same nil-vs-empty tolerance as
-			// checker.metadataEqual — no hand-maintained copy of that rule.
+			// IdempotencyFailure.EqualVT compares facts by length then by
+			// key, so it carries the same nil-vs-empty tolerance as the
+			// checker — no hand-maintained copy of that rule.
 			expected, ok := IdempotencyValueFromAudit(audited, nil)
 			require.True(t, ok, "a freezable failure must yield an expectation")
 			require.True(t, expected.GetFailure().EqualVT(stored.GetFailure()),
-				"audit chain %+v and idempotency projection %+v must carry the same reason, message and metadata",
+				"audit chain %+v and idempotency projection %+v must carry the same reason, code and facts",
 				expected.GetFailure(), stored.GetFailure())
 		})
 	}
 }
 
-// auditFailureCase is one row of the buildAuditFailure projection table. The
-// expected message is deliberately absent: it is derived in the shared body as
-// tc.err.Error(), so no row can assert a subset of the projected fields. That
-// per-row drift is exactly what left AuditFailure.Message unasserted for every
-// error type but one (EN-1772).
+// auditFailureCase is one row of the buildAuditFailure projection table. Each
+// row fixes the reason and fact map written to the audit chain. The shared
+// assertion also validates the code and fact schema.
 type auditFailureCase struct {
 	name        string
 	err         domain.SerializableError
@@ -140,7 +138,7 @@ func auditFailureCases() []auditFailureCase {
 		// boolean, NOT on Color != "": the empty color IS the uncolored bucket,
 		// so the type needs a third state for "the Numscript path could not
 		// resolve which bucket failed". All three branches of Error() and both
-		// branches of Metadata() get a row (errors.go:660-697).
+		// branches of StableFacts() get a row (errors.go:660-697).
 		{
 			name: "InsufficientFundsColoredBucket",
 			err: &domain.ErrInsufficientFunds{
@@ -220,9 +218,9 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{"transactionId": "42"},
 		},
 		{
-			// validationSentinel.Metadata() returns nil (errors.go:297) and
+			// validationSentinel.StableFacts() returns nil (errors.go:297) and
 			// buildAuditFailure always allocates the map, so the projected
-			// Context is empty-but-non-nil.
+			// The fact map is empty but non-nil.
 			name:        "ValidationSentinel",
 			err:         domain.ErrScriptRequired,
 			wantReason:  domain.ErrReasonValidation,
@@ -262,7 +260,7 @@ func auditFailureCases() []auditFailureCase {
 			name:        "ClusterPolicyInvalid",
 			err:         &domain.ErrClusterPolicyInvalid{Detail: "query_checkpoint_limit must be at least 1"},
 			wantReason:  domain.ErrReasonClusterPolicyInvalid,
-			wantContext: map[string]string{"detail": "query_checkpoint_limit must be at least 1"},
+			wantContext: map[string]string{},
 		},
 		{
 			name:        "CheckpointLimitReached",
@@ -302,7 +300,7 @@ func auditFailureCases() []auditFailureCase {
 			name:        "InvalidCronExpression",
 			err:         &domain.ErrInvalidCronExpression{Expression: "* * * *", Details: "expected 5 or 6 fields"},
 			wantReason:  domain.ErrReasonInvalidCronExpression,
-			wantContext: map[string]string{"expression": "* * * *", "details": "expected 5 or 6 fields"},
+			wantContext: map[string]string{"expression": "* * * *"},
 		},
 		{
 			name:        "SinkAlreadyExists",
@@ -392,7 +390,6 @@ func auditFailureCases() []auditFailureCase {
 			wantReason: domain.ErrReasonTransactionStateInconsistent,
 			wantContext: map[string]string{
 				"transactionId": "91",
-				"operation":     "reverting transaction",
 			},
 		},
 		{
@@ -401,7 +398,7 @@ func auditFailureCases() []auditFailureCase {
 			name:        "InvalidSkippableReason",
 			err:         &domain.ErrInvalidSkippableReason{Provided: commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND},
 			wantReason:  domain.ErrReasonValidation,
-			wantContext: map[string]string{"reason": domain.ErrReasonLedgerNotFound},
+			wantContext: map[string]string{"providedReason": domain.ErrReasonLedgerNotFound},
 		},
 		{
 			name:        "VolumeOverflow",
@@ -513,7 +510,7 @@ func auditFailureCases() []auditFailureCase {
 			name:        "IndexInconsistent",
 			err:         &domain.ErrIndexInconsistent{Index: "main/TRANSACTION/invoice", Detail: "logId 7 missing from the log index"},
 			wantReason:  domain.ErrReasonIndexInconsistent,
-			wantContext: map[string]string{"index": "main/TRANSACTION/invoice", "detail": "logId 7 missing from the log index"},
+			wantContext: map[string]string{"index": "main/TRANSACTION/invoice"},
 		},
 		{
 			name:        "CheckpointNotReady",
@@ -551,25 +548,25 @@ func auditFailureCases() []auditFailureCase {
 			name:        "NumscriptParse",
 			err:         &domain.ErrNumscriptParse{Details: "unexpected token at line 3"},
 			wantReason:  domain.ErrReasonNumscriptParseError,
-			wantContext: map[string]string{"details": "unexpected token at line 3"},
+			wantContext: map[string]string{},
 		},
 		{
 			name:        "NumscriptCompile",
 			err:         &domain.ErrNumscriptCompile{Detail: "cannot take all balance of an unbounded source"},
 			wantReason:  domain.ErrReasonNumscriptCompileError,
-			wantContext: map[string]string{"details": "cannot take all balance of an unbounded source"},
+			wantContext: map[string]string{},
 		},
 		{
 			name:        "NumscriptExecution",
 			err:         &domain.ErrNumscriptExecution{Detail: "cannot send negative amount: -4"},
 			wantReason:  domain.ErrReasonNumscriptExecutionError,
-			wantContext: map[string]string{"detail": "cannot send negative amount: -4"},
+			wantContext: map[string]string{},
 		},
 		{
 			name:        "NumscriptRuntime",
 			err:         &domain.ErrNumscriptRuntime{Detail: "numscript panic: boom"},
 			wantReason:  domain.ErrReasonNumscriptRuntime,
-			wantContext: map[string]string{"detail": "numscript panic: boom"},
+			wantContext: map[string]string{},
 		},
 		{
 			name:        "AccountNotMatchingType",
@@ -615,23 +612,23 @@ func auditFailureCases() []auditFailureCase {
 			name:        "InvalidPattern",
 			err:         &domain.ErrInvalidPattern{Pattern: "user:[", Details: "unterminated character class"},
 			wantReason:  domain.ErrReasonInvalidPattern,
-			wantContext: map[string]string{"pattern": "user:[", "details": "unterminated character class"},
+			wantContext: map[string]string{"pattern": "user:["},
 		},
 		{
 			// Reason() delegates to the Cause when it is a Describable
 			// (errors.go:1218-1225) and falls back to VALIDATION otherwise, so
-			// each of the three Cause shapes gets a row. Metadata() projects
-			// details = Error(), which itself branches on a nil Cause.
+			// each of the three Cause shapes gets a row. Only a structured
+			// cause contributes facts; diagnostic Error() text is excluded.
 			name:        "DependencyDiscoveryFailedNilCause",
 			err:         &domain.ErrDependencyDiscoveryFailed{},
 			wantReason:  domain.ErrReasonValidation,
-			wantContext: map[string]string{"details": "numscript dependency discovery failed"},
+			wantContext: map[string]string{},
 		},
 		{
 			name:        "DependencyDiscoveryFailedOpaqueCause",
 			err:         &domain.ErrDependencyDiscoveryFailed{Cause: errors.New("resolver timed out")},
 			wantReason:  domain.ErrReasonValidation,
-			wantContext: map[string]string{"details": "numscript dependency discovery failed: resolver timed out"},
+			wantContext: map[string]string{},
 		},
 		{
 			name:        "DependencyDiscoveryFailedDescribableCause",
@@ -643,19 +640,19 @@ func auditFailureCases() []auditFailureCase {
 			name:        "FilterCompilation",
 			err:         &domain.ErrFilterCompilation{Detail: "cannot parse 'x' as int64"},
 			wantReason:  domain.ErrReasonFilterCompilation,
-			wantContext: map[string]string{"detail": "cannot parse 'x' as int64"},
+			wantContext: map[string]string{},
 		},
 		{
 			name:        "InvalidOrderType",
 			err:         &domain.ErrInvalidOrderType{TypeName: "*raftcmdpb.Order_Unknown"},
 			wantReason:  domain.ErrReasonInvalidOrderType,
-			wantContext: map[string]string{"typeName": "*raftcmdpb.Order_Unknown"},
+			wantContext: map[string]string{},
 		},
 		{
 			name:        "InvalidApplyType",
 			err:         &domain.ErrInvalidApplyType{TypeName: "*raftcmdpb.LedgerApplyOrder_Unknown"},
 			wantReason:  domain.ErrReasonInvalidApplyType,
-			wantContext: map[string]string{"typeName": "*raftcmdpb.LedgerApplyOrder_Unknown"},
+			wantContext: map[string]string{},
 		},
 		{
 			// The Go field is Reason_ (the name Reason() is taken by the
@@ -663,13 +660,13 @@ func auditFailureCases() []auditFailureCase {
 			name:        "InvalidExecutionPlan",
 			err:         &domain.ErrInvalidExecutionPlan{Reason_: "coverage bit 9 past the attribute slice"},
 			wantReason:  domain.ErrReasonInvalidExecutionPlan,
-			wantContext: map[string]string{"reason": "coverage bit 9 past the attribute slice"},
+			wantContext: map[string]string{},
 		},
 		{
 			name:        "InvalidCallerAttribution",
 			err:         &domain.ErrInvalidCallerAttribution{Detail: "missing principal"},
 			wantReason:  domain.ErrReasonInvalidCallerAttribution,
-			wantContext: map[string]string{"detail": "missing principal"},
+			wantContext: map[string]string{},
 		},
 		{
 			name:        "ExecutionPlanTooLarge",
@@ -678,23 +675,22 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{"size": "4096", "limit": "1024"},
 		},
 		{
-			// Metadata() returns nil and Error() is a constant: the Cause is
-			// deliberately kept off the wire (#326), so a populated Cause must
-			// change neither the message nor the context.
+			// StableFacts() returns nil and Error() is a constant: the Cause is
+			// deliberately kept off the wire (#326).
 			name:        "IdempotencyCheckFailed",
 			err:         &domain.ErrIdempotencyCheckFailed{Cause: errors.New("pebble: /var/lib/ledger: io error")},
 			wantReason:  domain.ErrReasonIdempotencyCheckFailed,
 			wantContext: map[string]string{},
 		},
 		{
-			// Only Operation is projected; the Cause stays server-side (#326).
+			// Operation and Cause remain diagnostic (#326).
 			name:        "StorageOperation",
 			err:         &domain.ErrStorageOperation{Operation: "loading volume", Cause: errors.New("pebble: /var/lib/ledger: io error")},
 			wantReason:  domain.ErrReasonStorageOperation,
-			wantContext: map[string]string{"operation": "loading volume"},
+			wantContext: map[string]string{},
 		},
-		// The stateless sentinels below all return nil from Metadata(), so their
-		// projected Context is the empty-but-non-nil map buildAuditFailure
+		// The stateless sentinels below all return nil from StableFacts(), so their
+		// projected fact map is the empty-but-non-nil map buildAuditFailure
 		// allocates. They are reached through their exported SerializableError
 		// var — the concrete type is unexported, and that var IS the identity
 		// every call site compares against with errors.Is.
@@ -724,8 +720,8 @@ func auditFailureCases() []auditFailureCase {
 		},
 		{
 			// errValidation wraps a github.com/formancehq/invariants primitive so
-			// it satisfies Describable; Metadata() is nil (validation.go:66), so
-			// the invariants message reaches the chain with no structured context.
+			// it satisfies Describable; StableFacts() is nil, so the
+			// invariants message does not enter the chain.
 			name:        "ValidationWrappedInvariant",
 			err:         domain.ErrLedgerNameRequired,
 			wantReason:  domain.ErrReasonValidation,
@@ -733,9 +729,9 @@ func auditFailureCases() []auditFailureCase {
 		},
 		{
 			// ErrMetadataKeyValidation adds {"key": Key} and merges the Cause's
-			// metadata over it (errors.go:1483-1489); Reason() delegates to the
-			// Cause. The practical Cause is a nil-metadata validation sentinel.
-			name: "MetadataKeyValidationNilCauseMetadata",
+			// stable facts. Reason() delegates to the Cause. The practical
+			// Cause here is a factless validation sentinel.
+			name: "MetadataKeyValidationFactlessCause",
 			err: &domain.ErrMetadataKeyValidation{
 				Key:   "invoice",
 				Cause: domain.ErrMetadataValueContainsNullByte,
@@ -744,23 +740,21 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{"key": "invoice"},
 		},
 		{
-			// A Cause that carries its own metadata: both key sets must land, and
-			// the Reason must be the Cause's, not VALIDATION.
-			name: "MetadataKeyValidationMergesCauseMetadata",
+			// A diagnostic Cause keeps its Reason but contributes no free-form
+			// text to the facts.
+			name: "MetadataKeyValidationOmitsDiagnosticCause",
 			err: &domain.ErrMetadataKeyValidation{
 				Key:   "invoice",
 				Cause: &domain.ErrNumscriptRuntime{Detail: "metadata key produced by expression is malformed"},
 			},
 			wantReason: domain.ErrReasonNumscriptRuntime,
 			wantContext: map[string]string{
-				"key":    "invoice",
-				"detail": "metadata key produced by expression is malformed",
+				"key": "invoice",
 			},
 		},
 		{
-			// Same shape as ErrMetadataKeyValidation but keyed on the account
-			// (errors.go:1506-1512).
-			name: "AccountValidationNilCauseMetadata",
+			// Same shape as ErrMetadataKeyValidation but keyed on the account.
+			name: "AccountValidationFactlessCause",
 			err: &domain.ErrAccountValidation{
 				Account: "user:jack",
 				Cause:   domain.ErrAccountAddressInvalidChar,
@@ -769,7 +763,7 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{"account": "user:jack"},
 		},
 		{
-			name: "AccountValidationMergesCauseMetadata",
+			name: "AccountValidationMergesCauseFacts",
 			err: &domain.ErrAccountValidation{
 				Account: "user:jack",
 				Cause:   &domain.ErrMetadataNotFound{Target: "account:user:jack", Key: "tier"},
@@ -782,9 +776,9 @@ func auditFailureCases() []auditFailureCase {
 			},
 		},
 		{
-			// ReplayedFailure carries reason, message and metadata verbatim from a
-			// stored idempotency outcome rather than deriving them, so this row
-			// pins the pass-through — including that ReasonCode round-trips the
+			// ReplayedFailure carries reason, code and facts from a stored
+			// idempotency outcome, so this row pins the pass-through — including
+			// that ReasonCode round-trips the
 			// stored reason string.
 			name: "ReplayedFailure",
 			err: &domain.ReplayedFailure{
@@ -800,7 +794,7 @@ func auditFailureCases() []auditFailureCase {
 			// The EN-1379 key set, pinned on the surface that matters most: an
 			// undeclared key is an admission bug, never a storage fault, and
 			// operator tooling greps these exact camelCase names out of the
-			// hash-chained Context.
+			// hash-chained facts.
 			name: "CoverageMiss",
 			err: &ErrCoverageMiss{
 				Attribute:    "volumes",
@@ -847,12 +841,7 @@ var describableScanDirs = map[string]string{
 // SerializableError without adding a row to auditFailureCases fails this test.
 //
 // Since EN-2081 the scan predicate is the SerializableError contract rather
-// than "any typed error". That is what buildAuditFailure now accepts, so a
-// domain error that sheds Metadata() — because it is raised at admission or on
-// the read path and can no longer reach the FSM — drops out of both the scan
-// and the table together. ErrAuditDisabled and the two write-gate sentinels
-// left this way: the write gate and the audit-read controller raise them before
-// any proposal exists.
+// than "any typed error". That is what buildAuditFailure now accepts.
 //
 // The table covers only types with a production path to the audit chain. A
 // failure decoded from a peer has none by construction — it lives outside
@@ -862,8 +851,8 @@ var describableScanDirs = map[string]string{
 // It therefore needs no unreachable row here.
 //
 // Discovery is by METHOD SET, not by type name. It collects every receiver type
-// declaring both Reason() string and Metadata() map[string]string — which is the
-// SerializableError contract itself. The name-prefix scan used by
+// declaring Reason(), FailureCode(), and StableFacts() — the structured
+// SerializableError contract. The name-prefix scan used by
 // TestEveryDomainErrorImplementsDescribable (internal/domain/errors_test.go:318)
 // would miss domain.ReplayedFailure, which does reach buildAuditFailure, and it
 // would need a hand-maintained
@@ -902,8 +891,8 @@ func TestBuildAuditFailureCoversEveryDescribable(t *testing.T) {
 }
 
 // describableTypesIn returns the names of every type declared in dir whose
-// method set includes both Reason() string and Metadata() map[string]string —
-// the SerializableError contract, and so exactly what buildAuditFailure accepts.
+// method set includes Reason(), FailureCode(), and StableFacts() — the
+// structured SerializableError contract accepted by buildAuditFailure.
 func describableTypesIn(t *testing.T, dir string) map[string]bool {
 	t.Helper()
 
@@ -912,7 +901,8 @@ func describableTypesIn(t *testing.T, dir string) map[string]bool {
 	require.NotEmpty(t, paths, "no Go files found in %s — the relative scan path is wrong", dir)
 
 	hasReason := make(map[string]bool)
-	hasMetadata := make(map[string]bool)
+	hasCode := make(map[string]bool)
+	hasFacts := make(map[string]bool)
 
 	for _, path := range paths {
 		if strings.HasSuffix(path, "_test.go") {
@@ -938,8 +928,10 @@ func describableTypesIn(t *testing.T, dir string) map[string]bool {
 			switch fn.Name.Name {
 			case "Reason":
 				hasReason[receiver] = true
-			case "Metadata":
-				hasMetadata[receiver] = true
+			case "FailureCode":
+				hasCode[receiver] = true
+			case "StableFacts":
+				hasFacts[receiver] = true
 			}
 		}
 	}
@@ -947,7 +939,7 @@ func describableTypesIn(t *testing.T, dir string) map[string]bool {
 	out := make(map[string]bool)
 
 	for name := range hasReason {
-		if hasMetadata[name] {
+		if hasCode[name] && hasFacts[name] {
 			out[name] = true
 		}
 	}
@@ -970,18 +962,10 @@ func receiverTypeName(expr ast.Expr) string {
 	}
 }
 
-// TestBuildAuditFailure asserts the full projection buildAuditFailure performs,
-// for every Describable the FSM can reach. The three assertions live in this
-// shared body rather than per row, so a row cannot assert a subset — which is
-// how AuditFailure.Message ended up pinned for exactly one error type while
-// Reason was pinned for all of them (EN-1772).
-//
-// The expected message is derived (tc.err.Error()) rather than a literal. That
-// proves the projection — the message reaches the proto unmodified — without
-// pinning the wording, because rewording a domain error is a legitimate change
-// and 74 literal strings would invite blind bulk-updates that destroy the signal.
-//
-// wantContext IS a literal, because the sorted context keys and values are folded
+// TestBuildAuditFailure asserts the structured projection buildAuditFailure
+// performs for every SerializableError the FSM can reach. Each row supplies
+// literal facts, so changes to the audited tuple are visible in review.
+// The sorted fact keys and values are folded
 // into the audit hash pre-image by buildAuditFailurePayload (audit_envelope.go).
 // A renamed key changes bytes that are immutable once written — the EN-1379 lesson,
 // where a snake_case to camelCase rename shipped green.
@@ -996,25 +980,14 @@ func TestBuildAuditFailure(t *testing.T) {
 
 			require.Equal(t, tc.wantReason, domain.ReasonString(failure.GetReason()))
 			require.NotEmpty(t, failure.GetCode())
-			wantFacts := make(map[string]string, len(tc.wantContext))
-			for key, value := range tc.wantContext {
-				switch key {
-				case "detail", "details", "operation", "reason", "typeName":
-					continue
-				}
-				wantFacts[key] = value
-			}
-			if invalid, ok := tc.err.(*domain.ErrInvalidSkippableReason); ok {
-				wantFacts["providedReason"] = domain.ReasonString(invalid.Provided)
-			}
-			require.Equal(t, wantFacts, failure.GetFacts())
+			require.Equal(t, tc.wantContext, failure.GetFacts())
 			require.NoError(t, domain.ValidateFailureFacts(domain.FailureFacts{
 				Reason: failure.GetReason(), Code: failure.GetCode(), Facts: failure.GetFacts(),
 			}))
 
 			// The audit projection and the idempotency projection must agree on
 			// both shared fields for every error type, not just the one exercised
-			// end to end by TestIdempotencyFailureMessageMatchesAudit.
+			// end to end by TestIdempotencyFailureFactsMatchAudit.
 			require.Equal(t, domain.ReasonCode(tc.err.Reason()), failure.GetReason())
 
 			// A frozen failure replays from the persisted reason alone, so the
@@ -1039,7 +1012,7 @@ func sortedKeys(set map[describableTypeKey]bool) []string {
 }
 
 // TestBuildAuditFailureDoesNotUnwrap is the negative control for the CoverageMiss
-// row in auditFailureCases: buildAuditFailure reads Reason()/Metadata() off the
+// row in auditFailureCases: buildAuditFailure reads Reason()/StableFacts() off the
 // OUTERMOST Describable and genuinely does NOT unwrap, so the no-wrap contract has
 // to be upheld by every FSM read site going through domain.StoreFailure. If someone
 // reintroduces a bare wrap, this is the shape the audit chain would record forever —

@@ -88,9 +88,9 @@ func TestProcessOrders_NumscriptCommandMetadataCeiling(t *testing.T) {
 			require.Nil(t, result)
 			require.NotNil(t, procErr)
 			require.Equal(t, domain.ErrReasonMetadataLimitExceeded, procErr.Reason())
-			require.Equal(t, domain.MetadataLimitDimensionCommand, procErr.Metadata()["dimension"])
-			require.Equal(t, "12", procErr.Metadata()["actual"])
-			require.Equal(t, "10", procErr.Metadata()["limit"])
+			require.Equal(t, domain.MetadataLimitDimensionCommand, procErr.StableFacts()["dimension"])
+			require.Equal(t, "12", procErr.StableFacts()["actual"])
+			require.Equal(t, "10", procErr.StableFacts()["limit"])
 		})
 	}
 }

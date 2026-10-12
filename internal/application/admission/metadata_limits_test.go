@@ -256,7 +256,7 @@ func TestValidateCommandMetadata_EveryOrderShape(t *testing.T) {
 			require.ErrorAs(t, err, &d)
 			require.Equal(t, domain.ErrReasonMetadataLimitExceeded, d.Reason())
 			require.Equal(t, domain.KindValidation, d.Kind())
-			require.Equal(t, tc.wantDimension, domain.MetadataOf(d)["dimension"])
+			require.Equal(t, tc.wantDimension, d.StableFacts()["dimension"])
 		})
 	}
 }
@@ -282,7 +282,7 @@ func TestValidateCommandMetadata_NamesOffendingAccount(t *testing.T) {
 
 	var d domain.SerializableError
 	require.ErrorAs(t, err, &d)
-	require.Equal(t, "users:bob", domain.MetadataOf(d)["account"])
+	require.Equal(t, "users:bob", d.StableFacts()["account"])
 }
 
 // The per-command ceiling spans the whole batch: each order is individually
@@ -311,9 +311,9 @@ func TestValidateCommandMetadata_PerCommandTotalAcrossOrders(t *testing.T) {
 
 	var d domain.SerializableError
 	require.ErrorAs(t, err, &d)
-	require.Equal(t, domain.MetadataLimitDimensionCommand, domain.MetadataOf(d)["dimension"])
-	require.Equal(t, "60", domain.MetadataOf(d)["limit"])
-	require.Equal(t, "72", domain.MetadataOf(d)["actual"])
+	require.Equal(t, domain.MetadataLimitDimensionCommand, d.StableFacts()["dimension"])
+	require.Equal(t, "60", d.StableFacts()["limit"])
+	require.Equal(t, "72", d.StableFacts()["actual"])
 }
 
 // A bare metadata key counts toward the command total too: the delete and
@@ -438,7 +438,7 @@ func TestMirrorDeletedMetadataValidation(t *testing.T) {
 	var failure domain.SerializableError
 	require.ErrorAs(t, err, &failure)
 	require.Equal(t, domain.ErrReasonMetadataLimitExceeded, failure.Reason())
-	require.Equal(t, domain.MetadataLimitDimensionKey, domain.MetadataOf(failure)["dimension"])
+	require.Equal(t, domain.MetadataLimitDimensionKey, failure.StableFacts()["dimension"])
 
 	// Each deletion fits the key ceiling; the batch must still count all keys.
 	orders := make([]*raftcmdpb.Order, 8)
@@ -449,8 +449,8 @@ func TestMirrorDeletedMetadataValidation(t *testing.T) {
 	err = validateCommandMetadata(orders, limits)
 	require.ErrorAs(t, err, &failure)
 	require.Equal(t, domain.ErrReasonMetadataLimitExceeded, failure.Reason())
-	require.Equal(t, domain.MetadataLimitDimensionCommand, domain.MetadataOf(failure)["dimension"])
-	require.Equal(t, "64", domain.MetadataOf(failure)["actual"])
+	require.Equal(t, domain.MetadataLimitDimensionCommand, failure.StableFacts()["dimension"])
+	require.Equal(t, "64", failure.StableFacts()["actual"])
 }
 
 func TestValidateOrderMetadataShapeSelectsStableKey(t *testing.T) {

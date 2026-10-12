@@ -47,18 +47,18 @@ func (e *ErrCoverageMiss) Error() string {
 func (*ErrCoverageMiss) Kind() domain.ErrorKind { return domain.KindInternal }
 func (*ErrCoverageMiss) Reason() string         { return domain.ErrReasonCoverageMiss }
 
-// Metadata keys are camelCase, matching every other Describable and the
+// Stable fact keys are camelCase, matching every other Describable and the
 // repo-wide wire convention (CLAUDE.md). This map was NOT unreachable before
 // EN-1379: two paths already surfaced the bare miss, so the EN-1379 rename from
 // snake_case is a deliberate breaking change, not an incidental cleanup —
 //
 //   - numscript re-resolution returns the bare miss (convertNumscriptError
 //     flattens the chain via errors.As), and a ProcessOrders failure feeds
-//     buildAuditFailure, which copies Metadata() into the hash-chained
+//     buildAuditFailure, which copies StableFacts() into the hash-chained
 //     AuditFailure.Facts. The snake_case keys were already in the audit.
 //   - planInvariantFailure returns the bare miss to applyProposal, which
 //     surfaces it wrapped in a domain.BusinessError. The carrier declares no
-//     Metadata() of its own, so the context is read off the miss itself through
+//     StableFacts() of its own, so the context is read off the miss itself through
 //     domain.PublicErrorDetails. That metadata used to reach the gRPC ErrorInfo;
 //     API error responses now use PublicDetails while the audit identity stays
 //     intact.
@@ -74,15 +74,6 @@ func (*ErrCoverageMiss) Reason() string         { return domain.ErrReasonCoverag
 //
 // The structured log emitted by coverageMiss keeps its own snake_case field
 // names — that is a log, not a wire payload.
-func (e *ErrCoverageMiss) Metadata() map[string]string {
-	return map[string]string{
-		"attribute":    e.Attribute,
-		"canonicalHex": e.CanonicalHex,
-		"idHex":        e.IDHex,
-		"raftIndex":    strconv.FormatUint(e.RaftIndex, 10),
-	}
-}
-
 func (e *ErrCoverageMiss) StableFacts() map[string]string {
 	return map[string]string{
 		"attribute":    e.Attribute,
@@ -95,8 +86,8 @@ func (e *ErrCoverageMiss) StableFacts() map[string]string {
 func (e *ErrCoverageMiss) FailureCode() string { return e.Reason() }
 
 // PublicDetails hides cache keys and Raft position from API error responses.
-// Error() and Metadata() must retain their diagnostic values: both are copied
-// into the authoritative, hash-chained AuditFailure by buildAuditFailure.
+// Error() retains diagnostic values. StableFacts() supplies the separate
+// authoritative, hash-chained AuditFailure through buildAuditFailure.
 func (*ErrCoverageMiss) PublicDetails() (string, map[string]string, bool) {
 	return "preload coverage miss", nil, true
 }

@@ -32,10 +32,6 @@ func (e *ErrAggregateOverflow) Error() string {
 }
 func (*ErrAggregateOverflow) Kind() domain.ErrorKind { return domain.KindPrecondition }
 func (*ErrAggregateOverflow) Reason() string         { return domain.ErrReasonAggregateOverflow }
-func (e *ErrAggregateOverflow) Metadata() map[string]string {
-	return map[string]string{"stage": e.Stage, "side": e.Side}
-}
-
 func (e *ErrAggregateOverflow) StableFacts() map[string]string {
 	return map[string]string{"stage": e.Stage, "side": e.Side}
 }

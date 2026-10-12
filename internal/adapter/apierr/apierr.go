@@ -97,10 +97,9 @@ type Remote struct {
 
 var _ domain.Describable = (*Remote)(nil)
 
-func (e *Remote) Error() string               { return e.Msg }
-func (e *Remote) Kind() domain.ErrorKind      { return e.KindValue }
-func (e *Remote) Reason() string              { return e.ReasonValue }
-func (e *Remote) Metadata() map[string]string { return e.Meta }
+func (e *Remote) Error() string          { return e.Msg }
+func (e *Remote) Kind() domain.ErrorKind { return e.KindValue }
+func (e *Remote) Reason() string         { return e.ReasonValue }
 
 // InvalidWireError reports a decoded failure whose reason and transport code
 // contradict each other: a reason this build knows, carried under a code that

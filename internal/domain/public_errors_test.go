@@ -38,10 +38,9 @@ func TestPublicErrorDetails(t *testing.T) {
 				require.Equal(t, "index is inconsistent", message)
 				require.Empty(t, metadata)
 				require.Equal(t, "index private-index is inconsistent: private storage detail", tc.err.Error())
-				// The diagnostic identity the override withholds lives on the
-				// error itself, not on the BusinessError carrying it — a
-				// carrier exposes no Metadata of its own.
-				require.Equal(t, map[string]string{"index": "private-index", "detail": "private storage detail"}, MetadataOf(private))
+				// Diagnostic identity remains available through the typed error.
+				require.Equal(t, "private-index", private.Index)
+				require.Equal(t, "private storage detail", private.Detail)
 			} else {
 				require.True(t, overridden)
 				if tc.err.Reason() == ErrReasonLedgerNotFound {
@@ -89,21 +88,14 @@ func TestPublicErrorDetailsRejectMalformedFacts(t *testing.T) {
 	require.Empty(t, metadata)
 }
 
-// TestMetadataOfDoesNotWalkTheChain pins the selection rule MetadataOf exists
-// to enforce: it reads the context of the error it is handed and nothing
-// deeper. Walking the chain would let a wrapped internal cause substitute its
-// diagnostic context for the outer reason's, which is exactly the leak #326 and
-// EN-1379 close — ErrStorageOperation publishes only the operation it names,
-// never the Pebble-level detail it carries.
-func TestMetadataOfDoesNotWalkTheChain(t *testing.T) {
+// TestPublicErrorDetailsDoesNotWalkTheChain pins the selection rule: an outer
+// storage error cannot publish facts or diagnostic text from its inner cause.
+func TestPublicErrorDetailsDoesNotWalkTheChain(t *testing.T) {
 	t.Parallel()
 
 	inner := &ErrIndexInconsistent{Index: "private-index", Detail: "private storage detail"}
-
-	require.Equal(t, map[string]string{"operation": "loading index"},
-		MetadataOf(&ErrStorageOperation{Operation: "loading index", Cause: inner}))
-
-	// A carrier declares no Metadata of its own, and MetadataOf must not
-	// substitute the carried error's.
-	require.Nil(t, MetadataOf(&BusinessError{Err: inner}))
+	message, facts, overridden := PublicErrorDetails(&ErrStorageOperation{Operation: "loading index", Cause: inner})
+	require.True(t, overridden)
+	require.Equal(t, "storage operation failed", message)
+	require.Empty(t, facts)
 }

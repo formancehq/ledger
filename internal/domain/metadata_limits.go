@@ -7,7 +7,7 @@ import (
 )
 
 // Metadata limit dimension names. They are carried in
-// ErrMetadataLimitExceeded.Metadata()["dimension"] and reach the client through
+// ErrMetadataLimitExceeded.StableFacts()["dimension"] and reach the client through
 // the gRPC ErrorInfo, so a caller can tell "too many entries" from "one value
 // too large" without parsing the message. Stable wire identifiers: renaming one
 // is a client-visible change.

@@ -61,7 +61,7 @@ func TestVerifySkippedOrder_AllowedReasonEmitsNothing(t *testing.T) {
 
 // TestVerifySkippedOrder_ReferenceConflictRejectsStrippedContext catches a
 // tampered LedgerLog where the persisted context fields were removed.
-// ErrTransactionReferenceConflict.Metadata() always writes both `ledger`
+// ErrTransactionReferenceConflict.StableFacts() always writes both `ledger`
 // and `reference`, so missing/empty values are a tampering signal —
 // validating only "present and mismatched" lets a stripped context dodge
 // the check.

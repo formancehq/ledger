@@ -27,10 +27,9 @@ func TestBusinessError(t *testing.T) {
 	require.Equal(t, inner, bErr.Unwrap())
 	require.Equal(t, KindNotFound, bErr.Kind())
 	require.Equal(t, ErrReasonLedgerNotFound, bErr.Reason())
-	// BusinessError is a carrier, not a SerializableError: it exposes no
-	// Metadata() of its own. The inner context still reaches the API edge
+	// BusinessError is a carrier. The inner facts still reach the API edge
 	// through the presentation helper, and errors.As reaches the inner type.
-	require.Equal(t, map[string]string{"name": "missing"}, MetadataOf(inner))
+	require.Equal(t, map[string]string{"name": "missing"}, inner.StableFacts())
 
 	message, metadata, _ := PublicErrorDetails(bErr)
 	require.Equal(t, "ledger not found: name=\"missing\"", message)
@@ -195,11 +194,11 @@ func TestErrTransientAccountNonZeroMetadata(t *testing.T) {
 		{Account: "staging:a", Asset: "USD"},
 		{Account: "staging:b", Asset: "EUR"},
 	}}
-	require.Equal(t, map[string]string{"accounts": "staging:a/USD, staging:b/EUR"}, err.Metadata())
+	require.Equal(t, map[string]string{"accounts": "staging:a/USD, staging:b/EUR"}, err.StableFacts())
 
 	// Zero value (nil slice) must render an empty list, never panic.
 	empty := &ErrTransientAccountNonZero{}
-	require.Equal(t, map[string]string{"accounts": ""}, empty.Metadata())
+	require.Equal(t, map[string]string{"accounts": ""}, empty.StableFacts())
 	require.Equal(t, "transient accounts with non-zero balance at end of batch (input != output): ", empty.Error())
 
 	// Colored offenders render as account/asset/color so two color buckets of
@@ -209,7 +208,7 @@ func TestErrTransientAccountNonZeroMetadata(t *testing.T) {
 		{Account: "staging:a", Asset: "USD"},
 		{Account: "staging:a", Asset: "USD", Color: "RED"},
 	}}
-	require.Equal(t, map[string]string{"accounts": "staging:a/USD, staging:a/USD/RED"}, colored.Metadata())
+	require.Equal(t, map[string]string{"accounts": "staging:a/USD, staging:a/USD/RED"}, colored.StableFacts())
 }
 
 // TestErrInsufficientFundsColorMetadata pins the wire disambiguation of the
@@ -223,18 +222,18 @@ func TestErrInsufficientFundsColorMetadata(t *testing.T) {
 
 	// Resolved uncolored bucket: color published as "".
 	uncolored := &ErrInsufficientFunds{Account: "a", Asset: "USD", ColorKnown: true, Amount: "100", Balance: "40"}
-	require.Equal(t, "", uncolored.Metadata()["color"])
-	_, present := uncolored.Metadata()["color"]
+	require.Equal(t, "", uncolored.StableFacts()["color"])
+	_, present := uncolored.StableFacts()["color"]
 	require.True(t, present, "resolved bucket must always publish the color key")
 
 	// Resolved colored bucket: color published verbatim.
 	red := &ErrInsufficientFunds{Account: "a", Asset: "USD", Color: "RED", ColorKnown: true, Amount: "100", Balance: "40"}
-	require.Equal(t, "RED", red.Metadata()["color"])
+	require.Equal(t, "RED", red.StableFacts()["color"])
 
 	// Numscript path: color unresolved, key omitted so "" is not mistaken for
 	// the uncolored bucket.
 	unknown := &ErrInsufficientFunds{Asset: "COIN", Amount: "100", Balance: "40"}
-	_, present = unknown.Metadata()["color"]
+	_, present = unknown.StableFacts()["color"]
 	require.False(t, present, "unresolved color must be absent from metadata, not empty")
 }
 
@@ -480,7 +479,7 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 
 		require.True(t,
 			reflect.TypeOf(inst).Implements(describableType),
-			"type %s in internal/domain does not implement Describable — every domain error type must declare Kind(), Reason(), and Metadata() so the gRPC and HTTP adapters can route it",
+			"type %s in internal/domain does not implement Describable — every domain error type must declare Kind() and Reason() so the gRPC and HTTP adapters can route it",
 			name)
 
 		// Every domain reason must resolve to an ErrorReason enum value —

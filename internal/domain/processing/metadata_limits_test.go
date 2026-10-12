@@ -82,8 +82,8 @@ func TestProcessCreateTransaction_NumscriptMergedMetadataOverEntityCeiling(t *te
 	_, procErr := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.NotNil(t, procErr, "the merged metadata must be rejected inside apply")
 	require.Equal(t, domain.ErrReasonMetadataLimitExceeded, procErr.Reason())
-	require.Equal(t, domain.MetadataLimitDimensionEntity, procErr.Metadata()["dimension"])
-	require.Equal(t, "31", procErr.Metadata()["actual"])
+	require.Equal(t, domain.MetadataLimitDimensionEntity, procErr.StableFacts()["dimension"])
+	require.Equal(t, "31", procErr.StableFacts()["actual"])
 }
 
 // Numscript-produced account metadata is bounded the same way, and the failure
@@ -139,7 +139,7 @@ func TestProcessCreateTransaction_NumscriptAccountMetadataOverCeiling(t *testing
 	_, procErr := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.NotNil(t, procErr)
 	require.Equal(t, domain.ErrReasonMetadataLimitExceeded, procErr.Reason())
-	require.Equal(t, "users:alice", procErr.Metadata()["account"])
+	require.Equal(t, "users:alice", procErr.StableFacts()["account"])
 }
 
 // A committed policy must always carry usable ceilings: zero is the absence of
@@ -250,10 +250,10 @@ func TestValidateMergedAccountMetadataIsDeterministic(t *testing.T) {
 		again := validateMergedAccountMetadata(accountMetadata, limits)
 		require.NotNil(t, again)
 		require.Equal(t, first.Error(), again.Error())
-		require.Equal(t, first.Metadata(), again.Metadata())
+		require.Equal(t, first.StableFacts(), again.StableFacts())
 	}
 
-	require.Equal(t, "users:alice", first.Metadata()["account"])
+	require.Equal(t, "users:alice", first.StableFacts()["account"])
 }
 
 // Nothing to check means nothing to reject: an empty account-map set is not a

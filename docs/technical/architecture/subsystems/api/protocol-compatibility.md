@@ -448,8 +448,8 @@ clients and servers must use the same revision.
 ## Stable public failure details (revision 31)
 
 Revision 31 renders local business error messages and `ErrorInfo.metadata` from
-the same explicit stable facts used by the audit chain. `Error()` and
-`Metadata()` remain diagnostic and do not enter the public response. Errors
+the same explicit stable facts used by the audit chain. Diagnostic `Error()`
+text does not enter the public response. Errors
 that have no declared reason receive a generic message for their error kind.
 The status code and broad reason remain stable. Clients that parsed former
 free-form text must switch to the reason and stable fact keys. No persisted

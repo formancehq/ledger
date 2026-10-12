@@ -23,7 +23,6 @@ type coverageMissDescribable struct{}
 func (coverageMissDescribable) Error() string                  { return "preload coverage miss (test)" }
 func (coverageMissDescribable) Kind() domain.ErrorKind         { return domain.KindInternal }
 func (coverageMissDescribable) Reason() string                 { return domain.ErrReasonCoverageMiss }
-func (coverageMissDescribable) Metadata() map[string]string    { return nil }
 func (coverageMissDescribable) StableFacts() map[string]string { return nil }
 func (coverageMissDescribable) FailureCode() string            { return domain.ErrReasonCoverageMiss }
 

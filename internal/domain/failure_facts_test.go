@@ -55,7 +55,7 @@ func TestFailureFactsMetadataValidationWrappers(t *testing.T) {
 	}
 }
 
-func TestFailureFactsExcludeDiagnosticMetadata(t *testing.T) {
+func TestFailureFactsExcludeDiagnosticText(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
@@ -68,7 +68,7 @@ func TestFailureFactsExcludeDiagnosticMetadata(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			require.NotEmpty(t, tc.err.Metadata())
+			require.NotEmpty(t, tc.err.Error())
 			facts := FailureFactsOf(tc.err)
 			require.NoError(t, ValidateFailureFacts(facts))
 			require.Empty(t, facts.Facts)

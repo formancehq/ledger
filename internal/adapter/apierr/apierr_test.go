@@ -24,7 +24,7 @@ func TestDescribe_LocalDescribableClassifiesFromItsReason(t *testing.T) {
 	require.Equal(t, domain.KindConflict, d.Kind)
 	require.Equal(t, domain.ErrReasonLedgerDeleted, d.Reason)
 	require.Equal(t, "ledger deleted: name=\"foo\"", d.Message)
-	require.Equal(t, err.Metadata(), d.Metadata)
+	require.Equal(t, err.StableFacts(), d.Metadata)
 }
 
 // TestDescribe_BusinessErrorUnwraps: domain.BusinessError is transparent, so a
@@ -174,7 +174,7 @@ func TestRemote_SatisfiesDescribable(t *testing.T) {
 	require.Equal(t, domain.ErrReasonLedgerDeleted, d.Reason())
 	require.Equal(t, "ledger deleted: foo", d.Error())
 	require.Equal(t, domain.KindConflict, d.Kind())
-	require.Equal(t, map[string]string{"name": "foo"}, domain.MetadataOf(d))
+	require.Equal(t, map[string]string{"name": "foo"}, d.(*Remote).Meta)
 }
 
 // TestDescribe_LocalDescribableUsesItsPublicPresentation pins the EN-1623

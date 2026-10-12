@@ -70,12 +70,10 @@ type errValidation struct {
 	err  error
 }
 
-func (e *errValidation) Error() string             { return e.err.Error() }
-func (e *errValidation) Unwrap() error             { return e.err }
-func (*errValidation) Kind() ErrorKind             { return KindValidation }
-func (*errValidation) Reason() string              { return ErrReasonValidation }
-func (*errValidation) Metadata() map[string]string { return nil }
-
+func (e *errValidation) Error() string { return e.err.Error() }
+func (e *errValidation) Unwrap() error { return e.err }
+func (*errValidation) Kind() ErrorKind { return KindValidation }
+func (*errValidation) Reason() string  { return ErrReasonValidation }
 func (*errValidation) StableFacts() map[string]string {
 	return nil
 }

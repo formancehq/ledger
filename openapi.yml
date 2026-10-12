@@ -6642,7 +6642,7 @@ components:
           description: |
             For local domain errors, a human-readable presentation derived
             from the stable failure code and facts. Diagnostic Error() text and
-            Metadata() are not returned for those errors.
+            diagnostic fields are not returned for those errors.
             INDEX_INCONSISTENT and COVERAGE_MISS use generic public messages.
 
     AuditEntry:

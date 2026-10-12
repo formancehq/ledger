@@ -129,7 +129,7 @@ Each successful order produces a `Log` (`internal/proto/commonpb/common.proto`, 
 
 `FailureFactsOf` reads each error's required `FailureCode()` and explicit
 `StableFacts()` implementation.
-Diagnostic `Metadata()` never feeds this tuple; a producer must choose each
+Diagnostic `Error()` text never feeds this tuple; a producer must choose each
 fact deliberately instead of relying on a list of excluded metadata keys.
 `ValidateFailureFacts` rejects unknown codes, fact keys and malformed values
 before persistence. `buildAuditFailurePayload` hashes the reason, code, and facts in

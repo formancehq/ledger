@@ -26,7 +26,7 @@ func TestWriteSetRejectsExhaustedLogSequenceWithoutMutation(t *testing.T) {
 	for range 2 {
 		sequence, err := buf.IncrementNextSequenceID()
 		require.Zero(t, sequence)
-		require.Equal(t, "logSequence", err.Metadata()["counter"])
+		require.Equal(t, "logSequence", err.StableFacts()["counter"])
 		require.Equal(t, uint64(math.MaxUint64), buf.NextSequenceID)
 	}
 }
@@ -944,6 +944,6 @@ func TestValidateTransientVolumesLedgerCoverageMissPropagates(t *testing.T) {
 	miss, ok := describ.(*ErrCoverageMiss)
 	require.True(t, ok, "the ledger-load site must propagate the miss verbatim, got %T", describ)
 	require.Equal(t, domain.ErrReasonCoverageMiss, miss.Reason())
-	require.Equal(t, "ledgers", miss.Metadata()["attribute"],
+	require.Equal(t, "ledgers", miss.StableFacts()["attribute"],
 		"the identifying key must survive to the audit context")
 }
