@@ -311,7 +311,16 @@ func TestRestoreDownloadRemainsAsynchronousAndSucceeds(t *testing.T) {
 				requested.Do(func() {
 					manifestRequested <- ctx
 				})
-				<-releaseManifest
+
+				// Also release on cancellation. If the test fails before
+				// closing releaseManifest, a worker parked here would never
+				// close job.done, and Shutdown waits on that unbounded in
+				// t.Cleanup — turning a clean failure into a hung package.
+				select {
+				case <-releaseManifest:
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
 
 				return io.NopCloser(bytes.NewReader(manifestData)), nil
 			}
