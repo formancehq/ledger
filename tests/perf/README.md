@@ -31,7 +31,6 @@ tests/perf/
 │   └── single_hot_account.js            # Extreme single account contention
 └── archives/                            # Generated k6 archives (gitignored)
 ```
-
 ## Kubernetes Deployment
 
 The Pulumi program creates:
