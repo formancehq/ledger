@@ -31,7 +31,7 @@ func TestErrCoverageMiss_Describable(t *testing.T) {
 	require.Equal(t, domain.KindInternal, miss.Kind())
 	require.Equal(t, domain.ErrReasonCoverageMiss, miss.Reason())
 
-	md := miss.StableFacts()
+	md := domain.FailureFactsOf(miss).Facts
 	require.Equal(t, "ledgers", md["attribute"])
 	require.Equal(t, "deadbeef", md["canonicalHex"])
 	require.Equal(t, "0102", md["idHex"])
@@ -84,7 +84,7 @@ func TestErrCoverageMissSurvivesStoreFailure(t *testing.T) {
 			require.Same(t, miss, got)
 			require.Equal(t, domain.ErrReasonCoverageMiss, got.Reason())
 
-			md := got.StableFacts()
+			md := domain.FailureFactsOf(got).Facts
 			require.Equal(t, "volumes", md["attribute"])
 			require.Equal(t, "deadbeef", md["canonicalHex"])
 			require.Equal(t, "0102", md["idHex"])

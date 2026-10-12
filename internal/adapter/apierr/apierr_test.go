@@ -24,7 +24,7 @@ func TestDescribe_LocalDescribableClassifiesFromItsReason(t *testing.T) {
 	require.Equal(t, domain.KindConflict, d.Kind)
 	require.Equal(t, domain.ErrReasonLedgerDeleted, d.Reason)
 	require.Equal(t, "ledger deleted: name=\"foo\"", d.Message)
-	require.Equal(t, err.StableFacts(), d.Metadata)
+	require.Equal(t, domain.FailureFactsOf(err).Facts, d.Facts)
 }
 
 // TestDescribe_BusinessErrorUnwraps: domain.BusinessError is transparent, so a
@@ -67,7 +67,7 @@ func TestDescribe_RemoteKeepsTheKindItCarries(t *testing.T) {
 	require.Equal(t, domain.KindAlreadyExists, d.Kind, "the carried kind must win")
 	require.Equal(t, unknownReason, d.Reason)
 	require.Equal(t, "something conflicted", d.Message)
-	require.Equal(t, map[string]string{"name": "foo"}, d.Metadata)
+	require.Equal(t, map[string]string{"name": "foo"}, d.Facts)
 }
 
 // TestDescribe_RemoteIsFoundThroughAWrapper: the decoder wraps the Remote in a
@@ -192,7 +192,7 @@ func TestDescribe_LocalDescribableUsesItsPublicPresentation(t *testing.T) {
 
 	require.True(t, d.PublicOverride, "the type owns a separate public presentation")
 	require.Equal(t, "index is inconsistent", d.Message)
-	require.Nil(t, d.Metadata)
+	require.Nil(t, d.Facts)
 	require.NotContains(t, d.Message, "secret-index")
 	require.Equal(t, domain.ErrReasonIndexInconsistent, d.Reason,
 		"the reason is the wire contract and is never redacted")

@@ -1408,9 +1408,13 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			case stored.GetFailure() != nil:
 				replayed = true
 				fr := stored.GetFailure()
-				message, metadata := domain.RenderFailureFacts(domain.FailureFacts{
+				failure := domain.FailureFacts{
 					Reason: fr.GetReason(), Code: fr.GetCode(), Facts: fr.GetFacts(),
-				})
+				}
+				if validationErr := domain.ValidateFailureFacts(failure); validationErr != nil {
+					return nil, fmt.Errorf("invalid stored idempotency failure: %w", validationErr)
+				}
+				message, metadata := domain.RenderFailureFacts(failure)
 				err = &domain.ReplayedFailure{
 					ErrReason: domain.ReasonString(fr.GetReason()),
 					Code:      fr.GetCode(),

@@ -53,11 +53,11 @@ type Descriptor struct {
 	// facts for local errors, or supplied by the sending ledger for remote ones.
 	Message string
 
-	// Metadata is the client-safe stable fact set, or nil.
-	Metadata map[string]string
+	// Facts is the client-safe stable fact set, or nil.
+	Facts map[string]string
 
 	// PublicOverride reports that the error type owns a public presentation
-	// distinct from its diagnostic identity, so Message and Metadata are that
+	// distinct from its diagnostic identity, so Message and Facts are that
 	// redacted view. A consumer that would otherwise render the whole error
 	// chain — outer wrapping text included — must render Message instead:
 	// the wrapping was built from Error(), which is what the override exists
@@ -170,10 +170,10 @@ func InvalidWire(err error) (*InvalidWireError, bool) {
 func Describe(err error) (Descriptor, bool) {
 	if remote, ok := errors.AsType[*Remote](err); ok {
 		return Descriptor{
-			Kind:     remote.KindValue,
-			Reason:   remote.ReasonValue,
-			Message:  remote.Msg,
-			Metadata: remote.Meta,
+			Kind:    remote.KindValue,
+			Reason:  remote.ReasonValue,
+			Message: remote.Msg,
+			Facts:   remote.Meta,
 		}, true
 	}
 
@@ -184,7 +184,7 @@ func Describe(err error) (Descriptor, bool) {
 			Kind:           d.Kind(),
 			Reason:         d.Reason(),
 			Message:        message,
-			Metadata:       metadata,
+			Facts:          metadata,
 			PublicOverride: overridden,
 		}, true
 	}

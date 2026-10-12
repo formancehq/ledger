@@ -48,7 +48,7 @@ func TestValidateWrapping(t *testing.T) {
 			require.Same(t, tt.want, tt.got, "wrapper must return the pre-instantiated sentinel")
 			require.Equal(t, KindValidation, tt.got.Kind())
 			require.Equal(t, ErrReasonValidation, tt.got.Reason())
-			require.Nil(t, tt.got.(SerializableError).StableFacts())
+			require.Empty(t, FailureFactsOf(tt.got.(SerializableError)).Facts)
 		})
 	}
 }

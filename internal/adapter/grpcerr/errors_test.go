@@ -878,5 +878,5 @@ func TestFromStatusError_UnknownReasonPreservesExactCode(t *testing.T) {
 	require.Equal(t, domain.KindInternal, d.Kind)
 	require.Equal(t, unknownReason, d.Reason, "the sender's reason is preserved verbatim")
 	require.Equal(t, "aborted upstream", d.Message)
-	require.Equal(t, map[string]string{"k": "v"}, d.Metadata)
+	require.Equal(t, map[string]string{"k": "v"}, d.Facts)
 }

@@ -132,7 +132,7 @@ func printErrorDetails(err error) {
 		return
 	}
 
-	meta := d.Metadata
+	meta := d.Facts
 
 	switch d.Reason {
 	case domain.ErrReasonInsufficientFunds:

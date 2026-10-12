@@ -25,14 +25,23 @@ type FailureFacts struct {
 // FailureFactsOf selects the semantic identity of an FSM error. Wrappers keep
 // the underlying code while adding their own structured correlators.
 func FailureFactsOf(d SerializableError) FailureFacts {
-	code := d.FailureCode()
+	facts := d.FailureFacts()
+	if expected := ReasonCode(d.Reason()); facts.Reason != expected {
+		panic(fmt.Errorf("failure reason %s does not match error reason %s", facts.Reason, expected))
+	}
 
-	facts := make(map[string]string)
-	for key, value := range d.StableFacts() {
+	return facts
+}
+
+// NewFailureFacts normalizes caller-provided values before they enter an
+// audited projection. Error implementations choose the reason, code and keys.
+func NewFailureFacts(reason, code string, values map[string]string) FailureFacts {
+	facts := make(map[string]string, len(values))
+	for key, value := range values {
 		facts[key] = NormalizeFailureFact(value)
 	}
 
-	return FailureFacts{Reason: ReasonCode(d.Reason()), Code: code, Facts: facts}
+	return FailureFacts{Reason: ReasonCode(reason), Code: code, Facts: facts}
 }
 
 // NormalizeFailureFact bounds arbitrary caller values before writing them to a persisted failure.

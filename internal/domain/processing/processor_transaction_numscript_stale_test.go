@@ -20,11 +20,12 @@ import (
 // proves the concrete *state.ErrCoverageMiss round-trips with this same reason.
 type coverageMissDescribable struct{}
 
-func (coverageMissDescribable) Error() string                  { return "preload coverage miss (test)" }
-func (coverageMissDescribable) Kind() domain.ErrorKind         { return domain.KindInternal }
-func (coverageMissDescribable) Reason() string                 { return domain.ErrReasonCoverageMiss }
-func (coverageMissDescribable) StableFacts() map[string]string { return nil }
-func (coverageMissDescribable) FailureCode() string            { return domain.ErrReasonCoverageMiss }
+func (coverageMissDescribable) Error() string          { return "preload coverage miss (test)" }
+func (coverageMissDescribable) Kind() domain.ErrorKind { return domain.KindInternal }
+func (coverageMissDescribable) Reason() string         { return domain.ErrReasonCoverageMiss }
+func (e coverageMissDescribable) FailureFacts() domain.FailureFacts {
+	return domain.NewFailureFacts(e.Reason(), e.Reason(), nil)
+}
 
 // staleScript reads a balance DURING dependency resolution via balance() in a
 // var origin, so the apply-path re-resolution consults the Scope for @wallet's

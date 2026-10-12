@@ -187,7 +187,7 @@ send [COIN 100] (
 	// as a definite hit on the uncolored bucket. The wire metadata therefore
 	// omits the color key entirely.
 	require.False(t, insufficientFunds.ColorKnown)
-	_, colorPresent := insufficientFunds.StableFacts()["color"]
+	_, colorPresent := domain.FailureFactsOf(insufficientFunds).Facts["color"]
 	require.False(t, colorPresent, "colored Numscript failure must not publish an empty color as the uncolored bucket")
 }
 

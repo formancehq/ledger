@@ -670,7 +670,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 				},
 			})
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("cannot parse"))
+			Expect(actions.ExtractGRPCErrorInfo(err).Reason).To(Equal("FILTER_COMPILATION"))
 		})
 	})
 

@@ -78,7 +78,7 @@ func TestForwardedCursorPreservesCanceledLedgerStatus(t *testing.T) {
 					return
 				}
 
-				want := apierr.Descriptor{Kind: domain.KindInternal, Reason: reason, Message: message, Metadata: metadata}
+				want := apierr.Descriptor{Kind: domain.KindInternal, Reason: reason, Message: message, Facts: metadata}
 				// Once the actual wire failure has arrived, caller teardown
 				// must not turn the already-decoded business failure into EOF.
 				cancel()

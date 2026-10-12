@@ -42,7 +42,7 @@ func TestScope_DeclaredAccessAndRejectedAccess(t *testing.T) {
 	require.Equal(t, map[string]string{
 		"attribute": "ledgers", "canonicalHex": hex.EncodeToString(key.Bytes()),
 		"idHex": id.Hex(), "raftIndex": "42",
-	}, miss.StableFacts())
+	}, domain.FailureFactsOf(miss).Facts)
 	require.False(t, domain.IsFreezableFailure(miss.Kind()))
 
 	// The refused access did not delete or alter the staged value.

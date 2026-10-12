@@ -61,7 +61,10 @@ func TestQueryOracleReadErrors(t *testing.T) {
 				require.Equal(t, tc.code, status.Code(err))
 				require.Nil(t, ids, "an incomplete page must not certify any business result")
 				if tc.missingIndex {
-					require.ErrorContains(t, err, "index not found: reference")
+					info := actions.ExtractGRPCErrorInfo(err)
+					require.NotNil(t, info)
+					require.Equal(t, domain.ErrReasonIndexNotFound, info.GetReason())
+					require.Equal(t, "reference", info.GetMetadata()["index"])
 				}
 			}, func(records []drivertest.Assertion) {
 				found := false

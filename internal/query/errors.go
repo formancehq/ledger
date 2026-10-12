@@ -32,11 +32,14 @@ func (e *ErrAggregateOverflow) Error() string {
 }
 func (*ErrAggregateOverflow) Kind() domain.ErrorKind { return domain.KindPrecondition }
 func (*ErrAggregateOverflow) Reason() string         { return domain.ErrReasonAggregateOverflow }
-func (e *ErrAggregateOverflow) StableFacts() map[string]string {
+func (e *ErrAggregateOverflow) stableFacts() map[string]string {
 	return map[string]string{"stage": e.Stage, "side": e.Side}
 }
 
-func (e *ErrAggregateOverflow) FailureCode() string { return e.Reason() }
+func (e *ErrAggregateOverflow) failureCode() string { return e.Reason() }
+func (e *ErrAggregateOverflow) FailureFacts() domain.FailureFacts {
+	return domain.NewFailureFacts(e.Reason(), e.failureCode(), e.stableFacts())
+}
 
 // Compile-time assertion that ErrAggregateOverflow keeps the full contract, so
 // it goes on flowing through the shared error edge (gRPC/HTTP mapping) with its

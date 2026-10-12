@@ -60,7 +60,7 @@ func TestIdempotencyFailureFactsMatchAudit(t *testing.T) {
 			},
 		},
 		{
-			// StableFacts() is nil here, so both stored fact maps are empty.
+			// FailureFacts().Facts is nil here, so both stored fact maps are empty.
 			name: "nil facts",
 			err:  domain.NewValidationSentinel("TARGET_REQUIRED", "EN-1772 fixture: value must not be empty"),
 		},
@@ -138,7 +138,7 @@ func auditFailureCases() []auditFailureCase {
 		// boolean, NOT on Color != "": the empty color IS the uncolored bucket,
 		// so the type needs a third state for "the Numscript path could not
 		// resolve which bucket failed". All three branches of Error() and both
-		// branches of StableFacts() get a row (errors.go:660-697).
+		// branches of FailureFacts().Facts get a row (errors.go:660-697).
 		{
 			name: "InsufficientFundsColoredBucket",
 			err: &domain.ErrInsufficientFunds{
@@ -218,7 +218,7 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{"transactionId": "42"},
 		},
 		{
-			// validationSentinel.StableFacts() returns nil (errors.go:297) and
+			// domain.FailureFactsOf(validationSentinel).Facts returns nil (errors.go:297) and
 			// buildAuditFailure always allocates the map, so the projected
 			// The fact map is empty but non-nil.
 			name:        "ValidationSentinel",
@@ -675,7 +675,7 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{"size": "4096", "limit": "1024"},
 		},
 		{
-			// StableFacts() returns nil and Error() is a constant: the Cause is
+			// FailureFacts().Facts returns nil and Error() is a constant: the Cause is
 			// deliberately kept off the wire (#326).
 			name:        "IdempotencyCheckFailed",
 			err:         &domain.ErrIdempotencyCheckFailed{Cause: errors.New("pebble: /var/lib/ledger: io error")},
@@ -689,7 +689,7 @@ func auditFailureCases() []auditFailureCase {
 			wantReason:  domain.ErrReasonStorageOperation,
 			wantContext: map[string]string{},
 		},
-		// The stateless sentinels below all return nil from StableFacts(), so their
+		// The stateless sentinels below all return nil from FailureFacts().Facts, so their
 		// projected fact map is the empty-but-non-nil map buildAuditFailure
 		// allocates. They are reached through their exported SerializableError
 		// var — the concrete type is unexported, and that var IS the identity
@@ -720,7 +720,7 @@ func auditFailureCases() []auditFailureCase {
 		},
 		{
 			// errValidation wraps a github.com/formancehq/invariants primitive so
-			// it satisfies Describable; StableFacts() is nil, so the
+			// it satisfies Describable; FailureFacts().Facts is nil, so the
 			// invariants message does not enter the chain.
 			name:        "ValidationWrappedInvariant",
 			err:         domain.ErrLedgerNameRequired,
@@ -851,7 +851,7 @@ var describableScanDirs = map[string]string{
 // It therefore needs no unreachable row here.
 //
 // Discovery is by METHOD SET, not by type name. It collects every receiver type
-// declaring Reason(), FailureCode(), and StableFacts() — the structured
+// declaring Reason() and FailureFacts() — the structured
 // SerializableError contract. The name-prefix scan used by
 // TestEveryDomainErrorImplementsDescribable (internal/domain/errors_test.go:318)
 // would miss domain.ReplayedFailure, which does reach buildAuditFailure, and it
@@ -891,7 +891,7 @@ func TestBuildAuditFailureCoversEveryDescribable(t *testing.T) {
 }
 
 // describableTypesIn returns the names of every type declared in dir whose
-// method set includes Reason(), FailureCode(), and StableFacts() — the
+// method set includes Reason() and FailureFacts() — the
 // structured SerializableError contract accepted by buildAuditFailure.
 func describableTypesIn(t *testing.T, dir string) map[string]bool {
 	t.Helper()
@@ -901,7 +901,6 @@ func describableTypesIn(t *testing.T, dir string) map[string]bool {
 	require.NotEmpty(t, paths, "no Go files found in %s — the relative scan path is wrong", dir)
 
 	hasReason := make(map[string]bool)
-	hasCode := make(map[string]bool)
 	hasFacts := make(map[string]bool)
 
 	for _, path := range paths {
@@ -928,9 +927,7 @@ func describableTypesIn(t *testing.T, dir string) map[string]bool {
 			switch fn.Name.Name {
 			case "Reason":
 				hasReason[receiver] = true
-			case "FailureCode":
-				hasCode[receiver] = true
-			case "StableFacts":
+			case "FailureFacts":
 				hasFacts[receiver] = true
 			}
 		}
@@ -939,7 +936,7 @@ func describableTypesIn(t *testing.T, dir string) map[string]bool {
 	out := make(map[string]bool)
 
 	for name := range hasReason {
-		if hasCode[name] && hasFacts[name] {
+		if hasFacts[name] {
 			out[name] = true
 		}
 	}
@@ -1012,7 +1009,7 @@ func sortedKeys(set map[describableTypeKey]bool) []string {
 }
 
 // TestBuildAuditFailureDoesNotUnwrap is the negative control for the CoverageMiss
-// row in auditFailureCases: buildAuditFailure reads Reason()/StableFacts() off the
+// row in auditFailureCases: buildAuditFailure reads Reason()/FailureFacts().Facts off the
 // OUTERMOST Describable and genuinely does NOT unwrap, so the no-wrap contract has
 // to be upheld by every FSM read site going through domain.StoreFailure. If someone
 // reintroduces a bare wrap, this is the shape the audit chain would record forever —
