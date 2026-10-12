@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"testing"
 	"testing/synctest"
@@ -299,15 +298,29 @@ func TestRestoreDownloadRemainsAsynchronousAndSucceeds(t *testing.T) {
 	releaseManifest := make(chan struct{})
 	var requested sync.Once
 
+	// Match the manifest object by its exact key, derived from the same helper
+	// production uses, so a future layout change cannot silently stop matching
+	// and strand the barrier below.
+	manifestKey := backup.ManifestKey(testRestoreClusterID)
+
 	storage.EXPECT().
 		GetFile(gomock.Any(), gomock.Any()).
 		AnyTimes().
 		DoAndReturn(func(ctx context.Context, key string) (io.ReadCloser, error) {
-			if strings.HasSuffix(key, "/backups/manifest.json") {
+			if key == manifestKey {
 				requested.Do(func() {
 					manifestRequested <- ctx
 				})
-				<-releaseManifest
+
+				// Also release on cancellation. If the test fails before
+				// closing releaseManifest, a worker parked here would never
+				// close job.done, and Shutdown waits on that unbounded in
+				// t.Cleanup — turning a clean failure into a hung package.
+				select {
+				case <-releaseManifest:
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
 
 				return io.NopCloser(bytes.NewReader(manifestData)), nil
 			}
@@ -325,7 +338,13 @@ func TestRestoreDownloadRemainsAsynchronousAndSucceeds(t *testing.T) {
 	started, err := server.StartDownloadBackup(context.Background(), &restorepb.StartDownloadBackupRequest{})
 	require.NoError(t, err)
 	require.NotEmpty(t, started.GetJobId())
-	downloadCtx := <-manifestRequested
+
+	var downloadCtx context.Context
+	select {
+	case downloadCtx = <-manifestRequested:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("worker never requested the manifest at %q", manifestKey)
+	}
 
 	server.mu.Lock()
 	job := server.job

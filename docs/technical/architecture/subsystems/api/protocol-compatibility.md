@@ -412,3 +412,23 @@ panics, numscript internal errors, and unmapped library errors.
 This is an incompatible response-semantic change: a revision-27 client sees a
 status code and reason it does not know. Clients and servers must use the
 matching revision.
+
+## Flat backup object keys (revision 29)
+
+Backup object keys drop the hardcoded `backups/` segment. The manifest moves
+from `<bucketID>/backups/manifest.json` to `<bucketID>/manifest.json`, and
+checkpoint and export objects move from `<bucketID>/backups/{data,exports}/` to
+`<bucketID>/{data,exports}/`.
+
+The protobuf contract is untouched: no field is added, removed, renumbered, or
+retyped. What changes is the interpretation of `bucket_id`. A byte-identical
+`Backup`, `IncrementalBackup`, or `StartDownloadBackup` request writes and reads
+a different set of object locations against a revision 28 and a revision 29
+server. A revision 28 client that passed the gate against a revision 29 server
+would publish or look for a manifest the other never reads, so an incremental
+backup fails for want of a checkpoint, a restore 404s, or — if both layouts are
+present in one bucket — either side silently selects the wrong chain.
+
+Ledger v3 is unreleased and no backup written under the old layout is
+supported, so there is no migration: operators re-run a full backup under the
+new layout.

@@ -64,7 +64,26 @@ Recoverability rests on two rules, both enforced in `internal/infra/backup/manag
    checkpoint files, obsolete export segments, files leaked by earlier crashed
    runs) is a single orphan-prune pass that runs *after* `WriteManifest`.
 
-2. **Immutability via content-addressing.** Checkpoint file objects are stored
+2. **The prune deletes only this chain's own key shapes.** Pruning is a
+   delete-by-listing, and an object-store listing by prefix also returns the
+   objects of any *other* backup chain whose `bucket-id` nests under this one:
+   a chain at `tenant/data/archive` is returned when the chain at `tenant`
+   lists its `data/` root, and the export prune runs with no expected set at
+   all. Deleting what the listing returned would therefore destroy a live
+   backup, manifest included. So the prune deletes only keys this chain's own
+   writers could have produced — one path segment under the root, carrying the
+   content hash (`data/`) or the `.bin` suffix (`exports/`). Anything deeper
+   belongs to a nested chain and is left alone, with one log line per prune
+   naming how many objects were skipped. See `ownsCheckpointKey` /
+   `ownsExportKey` in `internal/infra/backup/segment.go`; the recognisers are
+   pinned to the key builders by `TestKeyBuildersProduceOwnedKeys`.
+
+   This bounds the damage but does not make nesting *supported*: two chains
+   sharing a prefix tree still interleave their listings, and a nested
+   `bucket-id` remains a configuration smell. Give each chain a disjoint
+   `bucket-id`.
+
+3. **Immutability via content-addressing.** Checkpoint file objects are stored
    under **content-addressed keys** — `data/<filename>.<sha256>` — so any object
    a published manifest references is immutable. This matters because a Pebble
    checkpoint contains a `MANIFEST-NNNNNN` file that keeps the *same local name*
