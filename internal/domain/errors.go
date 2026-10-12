@@ -187,6 +187,7 @@ func PublicErrorDetails(d Describable) (message string, metadata map[string]stri
 	}); ok {
 		return public.PublicDetails()
 	}
+
 	return d.Error(), MetadataOf(d), false
 }
 
@@ -376,8 +377,10 @@ func (e *BusinessError) Reason() string  { return e.Err.Reason() }
 func (e *BusinessError) PublicDetails() (string, map[string]string, bool) {
 	if e.PublicFailure != nil {
 		message, metadata := RenderFailureFacts(*e.PublicFailure)
+
 		return message, metadata, true
 	}
+
 	return PublicErrorDetails(e.Err)
 }
 

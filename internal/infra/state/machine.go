@@ -1789,6 +1789,7 @@ func idempotencyFailurePresentation(key string, err domain.SerializableError) *d
 	}
 	facts := domain.FailureFactsOf(err)
 	result.PublicFailure = &facts
+
 	return result
 }
 

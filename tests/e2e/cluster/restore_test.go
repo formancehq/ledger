@@ -368,10 +368,15 @@ var _ = Describe("Restore", Ordered, func() {
 			// the audited order retains the raw name. Restore and CheckStore must
 			// compare the normalized fact without changing the raw lookup key.
 			longTypeName := strings.Repeat("a", 5000)
-			skipResponse, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.WithSkippableReasons(
-				actions.RemoveAccountTypeAction(chartLedger, longTypeName),
-				commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND,
-			)))
+			skipResponse, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
+					Ledger: chartLedger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RemoveAccountType{
+						RemoveAccountType: &servicepb.RemoveAccountTypeRequest{Name: longTypeName},
+					}},
+					SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND},
+				}},
+			}))
 			Expect(err).To(Succeed())
 			Expect(skipResponse.GetLogs()).To(HaveLen(1))
 			skipped := skipResponse.GetLogs()[0].GetPayload().GetApply().GetLog().GetData().GetOrderSkipped()
