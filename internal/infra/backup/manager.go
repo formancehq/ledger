@@ -234,13 +234,13 @@ func RunBackup(
 		expectedKeys[cf.Key] = struct{}{}
 	}
 
-	deletedCheckpointKeys := pruneOrphans(ctx, logger, storage, CheckpointPrefix(bucketID), expectedKeys)
+	deletedCheckpointKeys := pruneOrphans(ctx, logger, storage, checkpointKeyspace(bucketID), expectedKeys)
 	// A full backup writes Exports: nil, so every export segment in storage is
 	// removed here. When this full backup follows one or more incrementals, the
 	// previous committed manifest referenced those export segments as live
 	// objects now rolled up into the new checkpoint — deleting them is ordinary
 	// supersede churn (files_deleted), not a failed-run leftover (orphans_deleted).
-	deletedExportKeys := pruneOrphans(ctx, logger, storage, ExportPrefix(bucketID), nil)
+	deletedExportKeys := pruneOrphans(ctx, logger, storage, exportKeyspace(bucketID), nil)
 
 	// Classify every deletion: a key the PREVIOUS manifest referenced — as a
 	// checkpoint file OR an export segment — is something this run superseded,
@@ -306,29 +306,70 @@ func pruneOrphanExports(ctx context.Context, logger logging.Logger, storage Stor
 		expectedKeys[seg.Key] = struct{}{}
 	}
 
-	return len(pruneOrphans(ctx, logger, storage, ExportPrefix(bucketID), expectedKeys))
+	return len(pruneOrphans(ctx, logger, storage, exportKeyspace(bucketID), expectedKeys))
 }
 
-// pruneOrphans lists every object under prefix and deletes any whose key is not
-// in expectedKeys. A nil or empty expectedKeys deletes every object under the
-// prefix. It returns the keys it successfully deleted so callers can classify
-// them (e.g. stale-vs-orphan). Failures are logged and skipped (a transient
-// List or Delete error must never fail the surrounding backup — the manifest is
-// already committed and the next run will retry).
-func pruneOrphans(ctx context.Context, logger logging.Logger, storage Storage, prefix string, expectedKeys map[string]struct{}) []string {
-	keys, err := storage.ListFiles(ctx, prefix)
+// keyspace is one object namespace a backup chain owns: the listing root, and
+// the test for whether a listed key was written by this chain rather than by
+// another chain whose bucketID nests under this root. The two travel together
+// so a prune can never be pointed at a root without the matching ownership
+// test — see the recognisers in segment.go for why that matters.
+type keyspace struct {
+	root  string
+	owned func(key string) bool
+}
+
+// checkpointKeyspace is the chain's checkpoint objects under data/.
+func checkpointKeyspace(bucketID string) keyspace {
+	return keyspace{
+		root:  CheckpointPrefix(bucketID),
+		owned: func(key string) bool { return ownsCheckpointKey(bucketID, key) },
+	}
+}
+
+// exportKeyspace is the chain's incremental export segments under exports/.
+func exportKeyspace(bucketID string) keyspace {
+	return keyspace{
+		root:  ExportPrefix(bucketID),
+		owned: func(key string) bool { return ownsExportKey(bucketID, key) },
+	}
+}
+
+// pruneOrphans lists every object under space.root and deletes those this chain
+// owns whose key is not in expectedKeys. A nil or empty expectedKeys deletes
+// every object this chain owns under the root. Keys the chain does not own are
+// left untouched: a listing by prefix also returns a nested chain's live
+// objects, and deleting those would destroy that backup.
+//
+// It returns the keys it successfully deleted so callers can classify them
+// (e.g. stale-vs-orphan). Failures are logged and skipped (a transient List or
+// Delete error must never fail the surrounding backup — the manifest is already
+// committed and the next run will retry).
+func pruneOrphans(ctx context.Context, logger logging.Logger, storage Storage, space keyspace, expectedKeys map[string]struct{}) []string {
+	keys, err := storage.ListFiles(ctx, space.root)
 	if err != nil {
 		logger.WithFields(map[string]any{
-			"prefix": prefix,
+			"prefix": space.root,
 			"error":  err,
 		}).Errorf("Failed to list backup objects for orphan prune (non-fatal)")
 
 		return nil
 	}
 
-	var deleted []string
+	var (
+		deleted []string
+		foreign int
+	)
 
 	for _, key := range keys {
+		// Another chain's object, reachable here only because its bucketID
+		// nests under this root. Never ours to delete.
+		if !space.owned(key) {
+			foreign++
+
+			continue
+		}
+
 		if _, kept := expectedKeys[key]; kept {
 			continue
 		}
@@ -343,6 +384,13 @@ func pruneOrphans(ctx context.Context, logger logging.Logger, storage Storage, p
 		}
 
 		deleted = append(deleted, key)
+	}
+
+	if foreign > 0 {
+		logger.WithFields(map[string]any{
+			"prefix": space.root,
+			"count":  foreign,
+		}).Infof("Left objects of another backup chain untouched under this prefix; a backup bucket-id nests under this one")
 	}
 
 	return deleted

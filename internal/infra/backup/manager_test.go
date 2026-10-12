@@ -301,6 +301,14 @@ func TestRunIncrementalBackup_ProceedsOnFullCheckpoint(t *testing.T) {
 	require.NotNil(t, findExport(manifest, "audit"), "the new audit segment must be published")
 }
 
+// anyKeyspace is the prune mechanics under test with ownership held constant:
+// every listed key is this chain's. The ownership rule has dedicated coverage
+// in TestPruneOrphans_LeavesNestedChainObjects and the segment recogniser
+// tests, so these units stay focused on list/delete/error behaviour.
+func anyKeyspace(root string) keyspace {
+	return keyspace{root: root, owned: func(string) bool { return true }}
+}
+
 // TestPruneOrphans_DeletesUnexpectedKeysAndKeepsExpected verifies the unit's
 // core contract: list everything under prefix, delete the keys not in
 // expectedKeys, and return only the successfully deleted keys.
@@ -314,7 +322,7 @@ func TestPruneOrphans_DeletesUnexpectedKeysAndKeepsExpected(t *testing.T) {
 
 	expected := map[string]struct{}{"p/keep1": {}, "p/keep2": {}}
 
-	deleted := pruneOrphans(context.Background(), logging.Testing(), storage, "p/", expected)
+	deleted := pruneOrphans(context.Background(), logging.Testing(), storage, anyKeyspace("p/"), expected)
 	require.Equal(t, []string{"p/orphan"}, deleted)
 }
 
@@ -331,7 +339,7 @@ func TestPruneOrphans_EmptyExpectedDeletesAll(t *testing.T) {
 	storage.EXPECT().DeleteFile(gomock.Any(), "p/b").Return(nil)
 	storage.EXPECT().DeleteFile(gomock.Any(), "p/c").Return(nil)
 
-	deleted := pruneOrphans(context.Background(), logging.Testing(), storage, "p/", nil)
+	deleted := pruneOrphans(context.Background(), logging.Testing(), storage, anyKeyspace("p/"), nil)
 	require.ElementsMatch(t, []string{"p/a", "p/b", "p/c"}, deleted)
 }
 
@@ -346,7 +354,7 @@ func TestPruneOrphans_ToleratesListError(t *testing.T) {
 	storage.EXPECT().ListFiles(gomock.Any(), "p/").
 		Return(nil, errors.New("s3 timeout"))
 
-	deleted := pruneOrphans(context.Background(), logging.Testing(), storage, "p/", nil)
+	deleted := pruneOrphans(context.Background(), logging.Testing(), storage, anyKeyspace("p/"), nil)
 	require.Empty(t, deleted)
 }
 
@@ -364,7 +372,7 @@ func TestPruneOrphans_ContinuesOnIndividualDeleteError(t *testing.T) {
 	storage.EXPECT().DeleteFile(gomock.Any(), "p/b").Return(errors.New("s3 throttled"))
 	storage.EXPECT().DeleteFile(gomock.Any(), "p/c").Return(nil)
 
-	deleted := pruneOrphans(context.Background(), logging.Testing(), storage, "p/", nil)
+	deleted := pruneOrphans(context.Background(), logging.Testing(), storage, anyKeyspace("p/"), nil)
 	require.Equal(t, []string{"p/a", "p/c"}, deleted)
 }
 
@@ -437,7 +445,9 @@ func TestRunBackup_ClassifiesStaleVsOrphanDeletions(t *testing.T) {
 
 	// Inject a true orphan under data/ that no manifest references (as a run
 	// crashing after upload but before manifest commit would leave behind).
-	orphanKey := CheckpointPrefix(bucketID) + "leaked-by-crashed-run.sst"
+	// Built through CheckpointFileKey: a crashed run leaves a real uploader's
+	// key, and only such a key is this chain's to prune.
+	orphanKey := CheckpointFileKey(bucketID, "leaked-by-crashed-run.sst", strings.Repeat("ab", sha256HexLen/2))
 	require.NoError(t, storage.PutFile(context.Background(), orphanKey,
 		bytes.NewReader([]byte("garbage")), int64(len("garbage"))))
 
@@ -525,8 +535,10 @@ func TestRunBackup_ClassifiesSupersededExportsAsFiles(t *testing.T) {
 	require.NotEmpty(t, prevExportKeys, "incremental must have produced export segments")
 	prevCheckpointKeys := checkpointKeySet(incManifest)
 
-	// 3. Inject a true orphan export object no manifest references.
-	orphanExport := ExportPrefix(bucketID) + "leaked-by-crashed-run.seg"
+	// 3. Inject a true orphan export object no manifest references. Built
+	// through a real segment builder, for the same reason as the checkpoint
+	// orphan above; the sequence range cannot collide with a published segment.
+	orphanExport := ExportLogSegmentKey(bucketID, 900000, 900001, 0)
 	require.NoError(t, storage.PutFile(context.Background(), orphanExport,
 		bytes.NewReader([]byte("garbage")), int64(len("garbage"))))
 
