@@ -18,7 +18,6 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
-	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
