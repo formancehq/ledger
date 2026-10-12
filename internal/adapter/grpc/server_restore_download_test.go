@@ -42,10 +42,15 @@ func TestClampParallelism(t *testing.T) {
 // newServerForTest returns a RestoreServiceServerImpl wired with a test data
 // directory and the provided storage factory. parallelism = 4 keeps the worker
 // pool small enough to reason about while exercising concurrency.
+// testRestoreClusterID is the cluster id every restore test server is built
+// with. A request that leaves Prefix empty falls back to it, so tests derive
+// expected object keys from this rather than repeating the literal.
+const testRestoreClusterID = "test-cluster"
+
 func newServerForTest(t *testing.T, factory storageFactory) *RestoreServiceServerImpl {
 	t.Helper()
 
-	s := NewRestoreServiceServer(t.TempDir(), "test-cluster", 4, noopLogger{})
+	s := NewRestoreServiceServer(t.TempDir(), testRestoreClusterID, 4, noopLogger{})
 	s.storageFactory = factory
 
 	return s

@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"testing"
 	"testing/synctest"
@@ -299,11 +298,16 @@ func TestRestoreDownloadRemainsAsynchronousAndSucceeds(t *testing.T) {
 	releaseManifest := make(chan struct{})
 	var requested sync.Once
 
+	// Match the manifest object by its exact key, derived from the same helper
+	// production uses, so a future layout change cannot silently stop matching
+	// and strand the barrier below.
+	manifestKey := backup.ManifestKey(testRestoreClusterID)
+
 	storage.EXPECT().
 		GetFile(gomock.Any(), gomock.Any()).
 		AnyTimes().
 		DoAndReturn(func(ctx context.Context, key string) (io.ReadCloser, error) {
-			if strings.HasSuffix(key, "/backups/manifest.json") {
+			if key == manifestKey {
 				requested.Do(func() {
 					manifestRequested <- ctx
 				})
@@ -325,7 +329,13 @@ func TestRestoreDownloadRemainsAsynchronousAndSucceeds(t *testing.T) {
 	started, err := server.StartDownloadBackup(context.Background(), &restorepb.StartDownloadBackupRequest{})
 	require.NoError(t, err)
 	require.NotEmpty(t, started.GetJobId())
-	downloadCtx := <-manifestRequested
+
+	var downloadCtx context.Context
+	select {
+	case downloadCtx = <-manifestRequested:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("worker never requested the manifest at %q", manifestKey)
+	}
 
 	server.mu.Lock()
 	job := server.job
