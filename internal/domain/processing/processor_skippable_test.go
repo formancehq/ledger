@@ -28,8 +28,8 @@ func TestMatchOrderSkip_RequiresNonEmptyWhitelist(t *testing.T) {
 
 // TestMatchOrderSkip_AllowsListedReason validates the success path: a reason
 // the order explicitly authorised converts the failure into an
-// OrderSkippedLog carrying the error's Metadata() on its `context` field
-// (clients correlate via the existing tx id without an extra lookup).
+// OrderSkippedLog carrying the validated reason, code, and typed details
+// from FailureFactsOf(err). Clients can correlate through its rendered facts.
 func TestMatchOrderSkip_AllowsListedReason(t *testing.T) {
 	t.Parallel()
 

@@ -85,7 +85,7 @@ func TestHandleBulk_SizeLimitExceeded(t *testing.T) {
 //     captures the request and asserts the list arrives untruncated.
 //   - Response side: when the FSM matched a whitelisted business failure
 //     and returned an OrderSkipped log, the bulk result's `data` carries
-//     a structured OrderSkippedResponse (skipped/reason/context) — not
+//     a structured OrderSkippedResponse (skipped/reason/code/facts) — not
 //     the legacy null that dropped the correlator.
 func TestHandleBulk_OrderSkippedSurfacesInResponse(t *testing.T) {
 	t.Parallel()

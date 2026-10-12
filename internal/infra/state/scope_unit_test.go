@@ -14,10 +14,9 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// TestErrCoverageMiss_Describable pins the Describable contract: the
-// runtime wires *ErrCoverageMiss into a domain.BusinessError, so its
-// Kind / Reason / Metadata must surface stable values consumed by
-// adapters at the API edge.
+// TestErrCoverageMiss_Describable pins its stable Kind, Reason, and
+// FailureFacts audit identity. PublicDetails separately redacts the
+// identifying facts at the API boundary.
 func TestErrCoverageMiss_Describable(t *testing.T) {
 	t.Parallel()
 
@@ -48,8 +47,8 @@ func TestErrCoverageMiss_Describable(t *testing.T) {
 // — import cycle), so this is the test that proves the string contract and the
 // concrete type actually agree.
 //
-// It matters because buildAuditFailure reads Reason()/Metadata() off the
-// OUTERMOST Describable and never unwraps: if StoreFailure wrapped the miss,
+// It matters because buildAuditFailure reads FailureFactsOf from the
+// outermost serializable error: if StoreFailure wrapped the miss,
 // the hash-chained audit entry would permanently record
 // STORAGE_OPERATION_FAILED with the identifying key stripped.
 func TestErrCoverageMissSurvivesStoreFailure(t *testing.T) {

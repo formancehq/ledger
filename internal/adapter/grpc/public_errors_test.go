@@ -48,7 +48,7 @@ func TestGRPCPublicInternalDetails(t *testing.T) {
 	}
 }
 
-func TestGRPCPublicDetailsPreserveNumscriptDiagnostics(t *testing.T) {
+func TestGRPCPublicDetailsExcludeNumscriptDiagnostics(t *testing.T) {
 	t.Parallel()
 	err := &domain.ErrNumscriptRuntime{Detail: "negative posting amount"}
 	st := status.Convert(convertToGRPCError(&domain.BusinessError{Err: err}, logging.Testing()))
