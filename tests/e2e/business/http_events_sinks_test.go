@@ -28,6 +28,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
+	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	"github.com/go-jose/go-jose/v4"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -40,11 +41,20 @@ import (
 
 var _ = Describe("HTTP events sinks mutations", func() {
 	const path = "/v3/_/events-sinks"
+	var (
+		ctx  context.Context
+		node *testutil.ServiceWithClient
+	)
+	BeforeEach(func() {
+		// Startup diagnostics can outlive a removed configuration. Keep each
+		// fixture's node and persisted status independent of the shared suite.
+		ctx, node = testutil.SetupSingleNode()
+	})
 	client := &http.Client{Timeout: 10 * time.Second}
 	request := func(method, suffix string, body []byte, key string) (int, []byte) {
 		GinkgoHelper()
-		req, err := http.NewRequestWithContext(sharedCtx, method,
-			fmt.Sprintf("http://localhost:%d%s%s", sharedHTTPPort, path, suffix), bytes.NewReader(body))
+		req, err := http.NewRequestWithContext(ctx, method,
+			fmt.Sprintf("http://localhost:%d%s%s", node.HTTPPort, path, suffix), bytes.NewReader(body))
 		Expect(err).To(Succeed())
 		req.Header.Set("Content-Type", "application/json")
 		if key != "" {
@@ -100,14 +110,14 @@ var _ = Describe("HTTP events sinks mutations", func() {
 			}
 			action := removeEventsSinkAction(config.GetName())
 			action.GetRemoveEventsSink().ControllerId = config.GetControllerId()
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", action))
+			_, err := node.Client.Apply(ctx, servicepb.UnsignedApplyRequest("", action))
 			Expect(err).To(Succeed())
 		})
 	}
 	seed := func(config *commonpb.SinkConfig) {
 		GinkgoHelper()
 		cleanup(config)
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", addEventsSinkAction(config)))
+		_, err := node.Client.Apply(ctx, servicepb.UnsignedApplyRequest("", addEventsSinkAction(config)))
 		Expect(err).To(Succeed())
 	}
 	created := func(code int, raw []byte, name string) {
@@ -128,7 +138,7 @@ var _ = Describe("HTTP events sinks mutations", func() {
 		code, raw := request(http.MethodPost, "", encode(config), "")
 		created(code, raw, config.GetName())
 		Expect(proto.Equal(find(config.GetName()), config)).To(BeTrue())
-		persisted, err := sharedClient.GetEventsSinks(sharedCtx, &servicepb.GetEventsSinksRequest{})
+		persisted, err := node.Client.GetEventsSinks(ctx, &servicepb.GetEventsSinksRequest{})
 		Expect(err).To(Succeed())
 		Expect(persisted.GetSinks()).To(ContainElement(Satisfy(func(s *commonpb.SinkConfig) bool { return proto.Equal(s, config) })))
 		code, raw = request(http.MethodDelete, "/"+config.GetName()+"?controllerId="+url.QueryEscape(config.GetControllerId()), nil, "")
@@ -251,7 +261,7 @@ var _ = Describe("HTTP events sinks mutations", func() {
 		removed(code, raw)
 		replacement := proto.Clone(config).(*commonpb.SinkConfig)
 		replacement.ControllerId = "replacement-owner"
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", addEventsSinkAction(replacement)))
+		_, err := node.Client.Apply(ctx, servicepb.UnsignedApplyRequest("", addEventsSinkAction(replacement)))
 		Expect(err).To(Succeed())
 		// Cleanup must use the replacement owner even if a later assertion fails.
 		config.ControllerId = replacement.GetControllerId()
