@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"net"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -158,10 +159,24 @@ func TestCheckpointMetadataRejectsUnprovenLocalProgress(t *testing.T) {
 				probe := newCheckpointFenceProbe()
 				id := uint32(2)
 				tc.mutate(probe, &id)
+				var ctx context.Context
+				var cancel context.CancelFunc
+				if tc.timeout {
+					// Expire on the second refused poll: a fence that accepts the
+					// first poll reads metadata before the deadline can mask it.
+					deadline := newExpiringContext(t.Context())
+					ctx, cancel = deadline, deadline.expire
+					probe.onLocalPoll = func(polls int32) {
+						if polls == 2 {
+							deadline.expire()
+						}
+					}
+				} else {
+					ctx, cancel = context.WithTimeout(t.Context(), 5*time.Second)
+				}
 				bucket, cluster := serveCheckpointMetadata(t, probe, probe)
 				node := checkpointTestNode(bucket, cluster)
 				node.NodeID = id
-				ctx, cancel := context.WithTimeout(context.Background(), 75*time.Millisecond)
 				var err error
 				if schedule {
 					_, err = readCheckpointSchedule(ctx, node)
@@ -209,6 +224,9 @@ type checkpointFenceProbe struct {
 	barrierErr error
 	stateErr   error
 	barriers   atomic.Int32
+
+	localPolls  atomic.Int32
+	onLocalPoll func(polls int32)
 }
 
 func newCheckpointFenceProbe() *checkpointFenceProbe {
@@ -232,6 +250,36 @@ func (s *checkpointFenceProbe) GetClusterState(_ context.Context, req *clusterpb
 	if req.GetNodeId() == 0 {
 		return s.topology, nil
 	}
+	polls := s.localPolls.Add(1)
+	if s.onLocalPoll != nil {
+		s.onLocalPoll(polls)
+	}
 
 	return s.state, s.stateErr
 }
+
+// expiringContext reports DeadlineExceeded once expire is called, letting a
+// test end a wait at a chosen point independently of wall-clock time.
+type expiringContext struct {
+	context.Context
+
+	done chan struct{}
+	once sync.Once
+}
+
+func newExpiringContext(parent context.Context) *expiringContext {
+	return &expiringContext{Context: parent, done: make(chan struct{})}
+}
+
+func (c *expiringContext) Done() <-chan struct{} { return c.done }
+
+func (c *expiringContext) Err() error {
+	select {
+	case <-c.done:
+		return context.DeadlineExceeded
+	default:
+		return nil
+	}
+}
+
+func (c *expiringContext) expire() { c.once.Do(func() { close(c.done) }) }
