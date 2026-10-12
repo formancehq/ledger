@@ -579,6 +579,22 @@ func (m *Membership) WriteConfChange(entry *raftpb.Entry, session *dal.WriteSess
 	return WalkConfChangeContexts(cc, func(t raftpb.ConfChangeType, nodeID uint64, ctx *ConfChangeContext) error {
 		switch t {
 		case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode, raftpb.ConfChangeUpdateNode:
+			// EN-1413: when this node is the promotion/add target, use locally authoritative
+			// endpoints instead of the leader's potentially-stale cached payload. Pebble is
+			// node-local and not replicated via Raft, so each replica applying the same
+			// ConfChange may write its own authoritative self row without violating FSM
+			// determinism — only the business-audit projection (invariant #8) must be identical.
+			if t == raftpb.ConfChangeAddNode && nodeID == m.selfNodeID {
+				selfCtx := &ConfChangeContext{
+					RaftAddress:    m.selfRaftAddr,
+					ServiceAddress: m.selfServiceAddr,
+					InstanceID:     m.selfInstanceID,
+					ProposalID:     ctx.ProposalID,
+				}
+
+				return writeRegistration(nodeID, selfCtx)
+			}
+
 			return writeRegistration(nodeID, ctx)
 		case raftpb.ConfChangeRemoveNode:
 			if err := session.DeleteKey(peerKey(nodeID)); err != nil {

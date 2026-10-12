@@ -35,7 +35,7 @@ well as passwords and uses a distinct schema
 from unchanged flat creation input. Read rewrite actions model protojson
 `valueExpr` and optional empty replacements; creation schemas retain
 `value_expr` and their existing required fields. v2 has no mirror rewrite-rule
-configuration counterpart. gRPC revision 27 covers detached current and
+configuration counterpart. gRPC revision 28 covers detached current and
 checkpoint projections. See [the contract](../architecture/subsystems/api/ledger-info.md).
 
 ### Prepared-query filter shape validation
@@ -56,9 +56,9 @@ all granular-scope authorization behavior is unchanged.
 ### Service protocol compatibility (EN-1851)
 
 The v3 gRPC service requires one `ledger-protocol-version` metadata value per
-business RPC, equal to `pkg/grpcprotocol.Version` (currently `"27"`). Revision 27
+business RPC, equal to `pkg/grpcprotocol.Version` (currently `"28"`). Revision 28
 requires the target's 16-byte `instance_id` on administrative `AddLearner`
-requests; revision 26 clients that omit it are incompatible. Missing,
+requests; revision 27 clients that omit it are incompatible. Missing,
 invalid, duplicate, or different revisions fail with `FailedPrecondition` before
 business handler execution. This applies to unary and streaming Bucket, Cluster,
 and Restore operations, including internal forwarding. Discovery, gRPC health,

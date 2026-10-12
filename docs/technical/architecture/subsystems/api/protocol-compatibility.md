@@ -335,10 +335,10 @@ service-compatibility assessment and an upgrade plan for in-flight Raft
 entries; the absence of committed bytecode does not make rolling upgrades
 safe across such changes.
 
-## Required member identity on AddLearner (revision 27)
+## Required member identity on AddLearner (revision 28)
 
-Revision 27 makes the target node's 16-byte `instance_id` mandatory on
-administrative `ClusterService.AddLearner` requests. A revision-27 server
+Revision 28 makes the target node's 16-byte `instance_id` mandatory on
+administrative `ClusterService.AddLearner` requests. A revision-28 server
 rejects requests that omit `instance_id` with `InvalidArgument` at the
 handler boundary. In practice, a client implementing a different revision will
 first be rejected by the protocol-version gate (lines 29-35 above) with
