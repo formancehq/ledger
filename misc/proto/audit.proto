@@ -102,5 +102,5 @@ message AuditSuccess {
 message AuditFailure {
   common.ErrorReason reason = 1;
   string code = 2;
-  map<string, string> facts = 3;
+  common.FailureDetails details = 3;
 }

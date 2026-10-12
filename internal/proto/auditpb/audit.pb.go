@@ -368,10 +368,10 @@ func (x *AuditSuccess) GetMaxLogSequence() uint64 {
 // AuditFailure records the stable reason, subcode, and structured facts of a
 // failed proposal. Presentation text is rendered when the record is read.
 type AuditFailure struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Reason        commonpb.ErrorReason   `protobuf:"varint,1,opt,name=reason,proto3,enum=common.ErrorReason" json:"reason,omitempty"`
-	Code          string                 `protobuf:"bytes,2,opt,name=code,proto3" json:"code,omitempty"`
-	Facts         map[string]string      `protobuf:"bytes,3,rep,name=facts,proto3" json:"facts,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	state         protoimpl.MessageState   `protogen:"open.v1"`
+	Reason        commonpb.ErrorReason     `protobuf:"varint,1,opt,name=reason,proto3,enum=common.ErrorReason" json:"reason,omitempty"`
+	Code          string                   `protobuf:"bytes,2,opt,name=code,proto3" json:"code,omitempty"`
+	Details       *commonpb.FailureDetails `protobuf:"bytes,3,opt,name=details,proto3" json:"details,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -420,9 +420,9 @@ func (x *AuditFailure) GetCode() string {
 	return ""
 }
 
-func (x *AuditFailure) GetFacts() map[string]string {
+func (x *AuditFailure) GetDetails() *commonpb.FailureDetails {
 	if x != nil {
-		return x.Facts
+		return x.Details
 	}
 	return nil
 }
@@ -458,15 +458,11 @@ const file_audit_proto_rawDesc = "" +
 	"\flog_sequence\x18\x03 \x01(\x06R\vlogSequence\"b\n" +
 	"\fAuditSuccess\x12(\n" +
 	"\x10min_log_sequence\x18\x01 \x01(\x06R\x0eminLogSequence\x12(\n" +
-	"\x10max_log_sequence\x18\x02 \x01(\x06R\x0emaxLogSequence\"\xbf\x01\n" +
+	"\x10max_log_sequence\x18\x02 \x01(\x06R\x0emaxLogSequence\"\x81\x01\n" +
 	"\fAuditFailure\x12+\n" +
 	"\x06reason\x18\x01 \x01(\x0e2\x13.common.ErrorReasonR\x06reason\x12\x12\n" +
-	"\x04code\x18\x02 \x01(\tR\x04code\x124\n" +
-	"\x05facts\x18\x03 \x03(\v2\x1e.audit.AuditFailure.FactsEntryR\x05facts\x1a8\n" +
-	"\n" +
-	"FactsEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B8Z6github.com/formancehq/ledger/v3/internal/proto/auditpbb\x06proto3"
+	"\x04code\x18\x02 \x01(\tR\x04code\x120\n" +
+	"\adetails\x18\x03 \x01(\v2\x16.common.FailureDetailsR\adetailsB8Z6github.com/formancehq/ledger/v3/internal/proto/auditpbb\x06proto3"
 
 var (
 	file_audit_proto_rawDescOnce sync.Once
@@ -480,29 +476,29 @@ func file_audit_proto_rawDescGZIP() []byte {
 	return file_audit_proto_rawDescData
 }
 
-var file_audit_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_audit_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_audit_proto_goTypes = []any{
 	(*AuditEntry)(nil),                   // 0: audit.AuditEntry
 	(*AuditItem)(nil),                    // 1: audit.AuditItem
 	(*AuditSuccess)(nil),                 // 2: audit.AuditSuccess
 	(*AuditFailure)(nil),                 // 3: audit.AuditFailure
-	nil,                                  // 4: audit.AuditFailure.FactsEntry
-	(*commonpb.Timestamp)(nil),           // 5: common.Timestamp
-	(*commonpb.CallerSnapshot)(nil),      // 6: common.CallerSnapshot
-	(*commonpb.Idempotency)(nil),         // 7: common.Idempotency
-	(*signaturepb.SignedApplyBatch)(nil), // 8: signature.SignedApplyBatch
-	(commonpb.ErrorReason)(0),            // 9: common.ErrorReason
+	(*commonpb.Timestamp)(nil),           // 4: common.Timestamp
+	(*commonpb.CallerSnapshot)(nil),      // 5: common.CallerSnapshot
+	(*commonpb.Idempotency)(nil),         // 6: common.Idempotency
+	(*signaturepb.SignedApplyBatch)(nil), // 7: signature.SignedApplyBatch
+	(commonpb.ErrorReason)(0),            // 8: common.ErrorReason
+	(*commonpb.FailureDetails)(nil),      // 9: common.FailureDetails
 }
 var file_audit_proto_depIdxs = []int32{
-	5, // 0: audit.AuditEntry.timestamp:type_name -> common.Timestamp
+	4, // 0: audit.AuditEntry.timestamp:type_name -> common.Timestamp
 	2, // 1: audit.AuditEntry.success:type_name -> audit.AuditSuccess
 	3, // 2: audit.AuditEntry.failure:type_name -> audit.AuditFailure
 	1, // 3: audit.AuditEntry.items:type_name -> audit.AuditItem
-	6, // 4: audit.AuditEntry.caller_snapshot:type_name -> common.CallerSnapshot
-	7, // 5: audit.AuditEntry.idempotency:type_name -> common.Idempotency
-	8, // 6: audit.AuditEntry.signature:type_name -> signature.SignedApplyBatch
-	9, // 7: audit.AuditFailure.reason:type_name -> common.ErrorReason
-	4, // 8: audit.AuditFailure.facts:type_name -> audit.AuditFailure.FactsEntry
+	5, // 4: audit.AuditEntry.caller_snapshot:type_name -> common.CallerSnapshot
+	6, // 5: audit.AuditEntry.idempotency:type_name -> common.Idempotency
+	7, // 6: audit.AuditEntry.signature:type_name -> signature.SignedApplyBatch
+	8, // 7: audit.AuditFailure.reason:type_name -> common.ErrorReason
+	9, // 8: audit.AuditFailure.details:type_name -> common.FailureDetails
 	9, // [9:9] is the sub-list for method output_type
 	9, // [9:9] is the sub-list for method input_type
 	9, // [9:9] is the sub-list for extension type_name
@@ -525,7 +521,7 @@ func file_audit_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_audit_proto_rawDesc), len(file_audit_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

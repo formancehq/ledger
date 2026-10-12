@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"errors"
 	"fmt"
 	"maps"
 	"regexp"
@@ -38,6 +39,41 @@ func NewFailureFacts(reason, code string, values map[string]string) FailureFacts
 	maps.Copy(facts, values)
 
 	return FailureFacts{Reason: ReasonCode(reason), Code: code, Facts: facts}
+}
+
+// FailureDetailsOf validates the domain outcome before encoding its concrete
+// code as a typed protobuf variant. Invalid producers fail at the FSM edge.
+func FailureDetailsOf(f FailureFacts) (*commonpb.FailureDetails, error) {
+	if err := ValidateFailureFacts(f); err != nil {
+		return nil, err
+	}
+
+	return commonpb.NewFailureDetails(f.Code, f.Facts)
+}
+
+// FailureFactsFromDetails checks that persisted reason, code, and typed variant
+// all describe the same outcome before exposing its public fact map.
+func FailureFactsFromDetails(reason commonpb.ErrorReason, code string, details *commonpb.FailureDetails) (FailureFacts, error) {
+	if details == nil {
+		return FailureFacts{}, errors.New("failure details are missing")
+	}
+	parent := details.ProtoReflect()
+	if len(parent.GetUnknown()) != 0 {
+		return FailureFacts{}, errors.New("failure details contain unknown fields")
+	}
+	arm := parent.WhichOneof(parent.Descriptor().Oneofs().ByName("kind"))
+	if arm != nil && len(parent.Get(arm).Message().GetUnknown()) != 0 {
+		return FailureFacts{}, errors.New("failure detail variant contains unknown fields")
+	}
+	if actual := commonpb.FailureDetailsCode(details); actual != code {
+		return FailureFacts{}, fmt.Errorf("failure detail code %q does not match %q", actual, code)
+	}
+	f := FailureFacts{Reason: reason, Code: code, Facts: commonpb.FailureDetailsFacts(details)}
+	if err := ValidateFailureFacts(f); err != nil {
+		return FailureFacts{}, err
+	}
+
+	return f, nil
 }
 
 var failureCodePattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
@@ -141,7 +177,7 @@ var failureFactKeys = map[string]string{
 	"TRANSACTION_REFERENCE_NOT_FOUND": "reference",
 	"TRANSACTION_ALREADY_REVERTED":    "transactionId",
 	"REVERT_TARGET_CREATED_IN_BATCH":  "transactionId",
-	"INSUFFICIENT_FUNDS":              "account asset amount balance color colorKnown",
+	"INSUFFICIENT_FUNDS":              "account asset amount balance color",
 	"VOLUME_OVERFLOW":                 "account asset color side amount current",
 	"BALANCE_NOT_FOUND":               "account asset",
 	"SINK_ALREADY_EXISTS":             "name", "SINK_NOT_FOUND": "name",
@@ -228,6 +264,9 @@ func ValidateFailureFacts(f FailureFacts) error {
 		allowed = strings.Fields(numscriptCompileFailureCodes[f.Code])
 	}
 	for key, value := range f.Facts {
+		if key == "providedReason" && f.Code != "INVALID_SKIPPABLE_REASON" {
+			return fmt.Errorf("fact %q is not allowed for %s", key, f.Code)
+		}
 		if !slices.Contains(allowed, key) {
 			return fmt.Errorf("fact %q is not allowed for %s", key, reason)
 		}
@@ -239,8 +278,12 @@ func ValidateFailureFacts(f FailureFacts) error {
 			numeric = true
 		}
 		if numeric {
-			if _, err := strconv.ParseUint(value, 10, 64); err != nil {
+			number, err := strconv.ParseUint(value, 10, 64)
+			if err != nil {
 				return fmt.Errorf("fact %q must be an unsigned integer: %w", key, err)
+			}
+			if strconv.FormatUint(number, 10) != value {
+				return fmt.Errorf("fact %q must use canonical unsigned decimal notation", key)
 			}
 		}
 	}

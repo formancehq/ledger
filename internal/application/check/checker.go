@@ -2363,6 +2363,10 @@ func (c *Checker) verifyAuditHashChain(
 		}
 
 		headerPayload, headerErr := state.BuildHashedHeaderPayload(entry)
+		if headerErr == nil && entry.GetFailure() != nil {
+			failure := entry.GetFailure()
+			_, headerErr = domain.FailureFactsFromDetails(failure.GetReason(), failure.GetCode(), failure.GetDetails())
+		}
 		if headerErr != nil {
 			// A persisted entry that fails to rebuild its own header
 			// is either tampered (e.g. outcome wiped) or pre-dated a
@@ -3669,15 +3673,11 @@ func verifySkippedOrder(
 	}
 
 	reason := skipped.OrderSkipped.GetReason()
-	failure := domain.FailureFacts{
-		Reason: reason,
-		Code:   skipped.OrderSkipped.GetCode(),
-		Facts:  skipped.OrderSkipped.GetFacts(),
-	}
-	if err := domain.ValidateFailureFacts(failure); err != nil {
+	_, detailsErr := domain.FailureFactsFromDetails(reason, skipped.OrderSkipped.GetCode(), skipped.OrderSkipped.GetDetails())
+	if detailsErr != nil {
 		callback(errorEvent(
 			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
-			fmt.Sprintf("log %d records invalid structured skip failure on ledger %q: %v", seq, ledger, err),
+			fmt.Sprintf("log %d records invalid structured skip failure on ledger %q: %v", seq, ledger, detailsErr),
 			seq, ledger, "", "",
 		))
 
@@ -4356,6 +4356,11 @@ func idempotencyMismatch(stored *commonpb.IdempotencyKeyValue, exp expectedIdemp
 
 	if exp.failure {
 		f := stored.GetFailure()
+		if f != nil {
+			if _, err := domain.FailureFactsFromDetails(f.GetReason(), f.GetCode(), f.GetDetails()); err != nil {
+				return fmt.Sprintf("stored invalid typed failure details: %v", err)
+			}
+		}
 		switch {
 		case f == nil:
 			return "stored a success outcome where the audit recorded a failure"

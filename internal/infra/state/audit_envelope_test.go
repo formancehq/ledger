@@ -223,14 +223,13 @@ func TestHashChain_Envelope_Failure(t *testing.T) {
 			Failure: &auditpb.AuditFailure{
 				Reason: commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
 				Code:   "INSUFFICIENT_FUNDS",
-				// Intentionally unsorted: zebra, apple, mango force the
-				// builder to actually sort.
-				Facts: map[string]string{
-					"zebra":  "z-value",
-					"apple":  "a-value",
-					"mango":  "m-value",
-					"banana": "b-value",
-				},
+				// Intentionally unsorted: the builder must sort the field keys.
+				Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{
+					"balance": "9",
+					"account": "bank",
+					"amount":  "10",
+					"asset":   "USD",
+				}),
 			},
 		},
 	}
@@ -304,12 +303,12 @@ func TestAuditEntry_MarshalDeterministicVT_StableAcrossRuns(t *testing.T) {
 		Outcome: &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
 				Reason: commonpb.ErrorReason_ERROR_REASON_VALIDATION,
-				Code:   "Y",
-				Facts: map[string]string{
-					"k3": "v3",
-					"k1": "v1",
-					"k2": "v2",
-				},
+				Code:   "INVALID_SKIPPABLE_REASON",
+				Details: commonpb.MustFailureDetails("INVALID_SKIPPABLE_REASON", map[string]string{
+					"providedReason": "LEDGER_NOT_FOUND",
+					"key":            "k1",
+					"account":        "bank",
+				}),
 			},
 		},
 	}
@@ -397,6 +396,14 @@ func goldenBuildFailure(f *auditpb.AuditFailure) []byte {
 	var buf []byte
 	buf = goldenU32(buf, uint32(f.GetReason()))
 	buf = goldenLenString(buf, f.GetCode())
+	var armNumber uint32
+	if details := f.GetDetails(); details != nil {
+		message := details.ProtoReflect()
+		if arm := message.WhichOneof(message.Descriptor().Oneofs().ByName("kind")); arm != nil {
+			armNumber = uint32(arm.Number())
+		}
+	}
+	buf = goldenU32(buf, armNumber)
 
 	keys := make([]string, 0, len(f.GetFacts()))
 	for k := range f.GetFacts() {
@@ -409,6 +416,18 @@ func goldenBuildFailure(f *auditpb.AuditFailure) []byte {
 	for _, k := range keys {
 		buf = goldenLenString(buf, k)
 		buf = goldenLenString(buf, f.GetFacts()[k])
+	}
+	if details := f.GetDetails(); details != nil {
+		message := details.ProtoReflect()
+		buf = goldenLenBytes(buf, message.GetUnknown())
+		if arm := message.WhichOneof(message.Descriptor().Oneofs().ByName("kind")); arm != nil {
+			buf = goldenLenBytes(buf, message.Get(arm).Message().GetUnknown())
+		} else {
+			buf = goldenLenBytes(buf, nil)
+		}
+	} else {
+		buf = goldenLenBytes(buf, nil)
+		buf = goldenLenBytes(buf, nil)
 	}
 
 	return buf

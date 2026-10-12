@@ -21,14 +21,15 @@ import (
 // to an unspecified business outcome in the authoritative chain.
 func buildAuditFailure(d domain.SerializableError) *auditpb.AuditFailure {
 	facts := domain.FailureFactsOf(d)
-	if err := domain.ValidateFailureFacts(facts); err != nil {
+	details, err := domain.FailureDetailsOf(facts)
+	if err != nil {
 		panic(fmt.Errorf("invalid audited failure facts: %w", err))
 	}
 
 	failure := &auditpb.AuditFailure{
-		Reason: facts.Reason,
-		Code:   facts.Code,
-		Facts:  facts.Facts,
+		Reason:  facts.Reason,
+		Code:    facts.Code,
+		Details: details,
 	}
 
 	return failure

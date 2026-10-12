@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"31"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"32"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 31:
+leader. For example, with a schema implementing revision 32:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 31' \
+grpcurl -plaintext -H 'ledger-protocol-version: 32' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -454,3 +454,21 @@ that have no declared reason receive a generic message for their error kind.
 The status code and broad reason remain stable. Clients that parsed former
 free-form text must switch to the reason and stable fact keys. No persisted
 failure format changes between revisions 30 and 31.
+
+## Typed audited failure details (revision 32)
+
+Revision 32 replaces the persisted and service-visible `facts` string maps in
+`AuditFailure`, `IdempotencyFailure`, and `OrderSkippedLog` with one shared
+`FailureDetails` protobuf oneof. Each arm names a concrete stable failure code
+and carries optional fields with explicit protobuf types; numeric correlators
+are `uint64` instead of decimal text. The containing reason and code must
+match the selected arm. Ledger rejects missing arms, mismatched codes, unknown
+fields, and malformed values when reading audited failures. HTTP and public
+`ErrorInfo.metadata` still render the named facts as strings at their API
+boundaries.
+
+The audit hash pre-image now binds the selected arm number alongside the
+sorted rendered fact keys and values. Persisted failures from revision 31
+cannot be read or verified under revision 32. Ledger v3 is unreleased, so
+deployments must start with fresh state; mixed revisions cannot share a
+cluster or service connection.

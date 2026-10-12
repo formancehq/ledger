@@ -6634,6 +6634,11121 @@ func (*LedgerLogPayload_OrderSkipped) isLedgerLogPayload_Payload() {}
 
 // OrderSkippedLog records an order that the FSM rejected with a business
 // error whose reason was listed in the order's `skippable_reasons` whitelist.
+// FailureDetails is the typed business context of an audited failure.
+// Each arm identifies one concrete stable failure code. The reason and
+// code on the containing record are validated against the selected arm.
+// Scalar fields are optional so absence remains distinct from a present
+// zero or empty value.
+type FailureDetails struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Kind:
+	//
+	//	*FailureDetails_AccountAddressEmpty
+	//	*FailureDetails_AccountAddressEmptySegment
+	//	*FailureDetails_AccountAddressInvalidChar
+	//	*FailureDetails_AccountAddressTooLong
+	//	*FailureDetails_AccountNotMatchingType
+	//	*FailureDetails_AccountTypeAlreadyExists
+	//	*FailureDetails_AccountTypeConflict
+	//	*FailureDetails_AccountTypeHasAccounts
+	//	*FailureDetails_AccountTypeNameTooLong
+	//	*FailureDetails_AccountTypeNotFound
+	//	*FailureDetails_AccountTypePatternTooLong
+	//	*FailureDetails_AggregateOverflow
+	//	*FailureDetails_AssetInvalid
+	//	*FailureDetails_AuditDisabled
+	//	*FailureDetails_BalanceNotFound
+	//	*FailureDetails_BalanceNotPreloaded
+	//	*FailureDetails_CheckpointIdRequired
+	//	*FailureDetails_CheckpointLimitReached
+	//	*FailureDetails_CheckpointNotFound
+	//	*FailureDetails_CheckpointNotReady
+	//	*FailureDetails_ClusterPolicyInvalid
+	//	*FailureDetails_ClusterPolicyRevisionConflict
+	//	*FailureDetails_ClusterUnhealthy
+	//	*FailureDetails_ColorInvalid
+	//	*FailureDetails_ColorTooLong
+	//	*FailureDetails_CoverageMiss
+	//	*FailureDetails_DependencyDiscoveryFailed
+	//	*FailureDetails_EmptyTransaction
+	//	*FailureDetails_ExecutionPlanTooLarge
+	//	*FailureDetails_FilterCompilationError
+	//	*FailureDetails_IdempotencyCheckFailed
+	//	*FailureDetails_IdempotencyKeyConflict
+	//	*FailureDetails_IdRequired
+	//	*FailureDetails_IndexAlreadyExists
+	//	*FailureDetails_IndexBuilding
+	//	*FailureDetails_IndexInconsistent
+	//	*FailureDetails_IndexNotFound
+	//	*FailureDetails_IndexTargetUnsupported
+	//	*FailureDetails_InsufficientFunds
+	//	*FailureDetails_InvalidApplyType
+	//	*FailureDetails_InvalidCallerAttribution
+	//	*FailureDetails_InvalidCronExpression
+	//	*FailureDetails_InvalidExecutionPlan
+	//	*FailureDetails_InvalidOrderType
+	//	*FailureDetails_InvalidPattern
+	//	*FailureDetails_InvalidSkippableReason
+	//	*FailureDetails_LedgerAlreadyExists
+	//	*FailureDetails_LedgerDeleted
+	//	*FailureDetails_LedgerInMirrorMode
+	//	*FailureDetails_LedgerNameInvalidChar
+	//	*FailureDetails_LedgerNameRequired
+	//	*FailureDetails_LedgerNameReservedPrefix
+	//	*FailureDetails_LedgerNameTooLong
+	//	*FailureDetails_LedgerNotFound
+	//	*FailureDetails_LedgerNotInMirrorMode
+	//	*FailureDetails_MaintenanceMode
+	//	*FailureDetails_MetadataFieldNotInSchema
+	//	*FailureDetails_MetadataKeyEmpty
+	//	*FailureDetails_MetadataKeyInvalidChar
+	//	*FailureDetails_MetadataKeyRequired
+	//	*FailureDetails_MetadataLimitsUnconfigured
+	//	*FailureDetails_MetadataLimitExceeded
+	//	*FailureDetails_MetadataNotFound
+	//	*FailureDetails_MetadataValueContainsNullByte
+	//	*FailureDetails_MirrorHttpUrlInvalid
+	//	*FailureDetails_MirrorIamRegionRequired
+	//	*FailureDetails_MirrorIamRequiresTls
+	//	*FailureDetails_MirrorRewriteRuleInvalid
+	//	*FailureDetails_MirrorV2LogIdGap
+	//	*FailureDetails_MirrorV2LogIdInvalid
+	//	*FailureDetails_NumscriptAssetMismatch
+	//	*FailureDetails_NumscriptBadArity
+	//	*FailureDetails_NumscriptBadMetaValue
+	//	*FailureDetails_NumscriptBadPortion
+	//	*FailureDetails_NumscriptCannotCastScopedAccount
+	//	*FailureDetails_NumscriptCannotCastToString
+	//	*FailureDetails_NumscriptCannotStoreScopedAccount
+	//	*FailureDetails_NumscriptCompileBadArity
+	//	*FailureDetails_NumscriptCompileCannotCastToString
+	//	*FailureDetails_NumscriptCompileCannotStoreScopedAccount
+	//	*FailureDetails_NumscriptCompileDuplicateRemaining
+	//	*FailureDetails_NumscriptCompileDuplicateVariable
+	//	*FailureDetails_NumscriptCompileError
+	//	*FailureDetails_NumscriptCompileExperimentalFeature
+	//	*FailureDetails_NumscriptCompileInvalidFeature
+	//	*FailureDetails_NumscriptCompileInvalidMetaPosition
+	//	*FailureDetails_NumscriptCompileInvalidType
+	//	*FailureDetails_NumscriptCompileInvalidUncappedSource
+	//	*FailureDetails_NumscriptCompileInvalidVariableValue
+	//	*FailureDetails_NumscriptCompileMissingVariable
+	//	*FailureDetails_NumscriptCompileTypeMismatch
+	//	*FailureDetails_NumscriptCompileUnboundVariable
+	//	*FailureDetails_NumscriptCompileUnknownFunction
+	//	*FailureDetails_NumscriptContentRequired
+	//	*FailureDetails_NumscriptCurrencyMismatch
+	//	*FailureDetails_NumscriptDivideByZero
+	//	*FailureDetails_NumscriptExecutionError
+	//	*FailureDetails_NumscriptExperimentalFeature
+	//	*FailureDetails_NumscriptInvalidAccountName
+	//	*FailureDetails_NumscriptInvalidAllotmentInSendAll
+	//	*FailureDetails_NumscriptInvalidAllotmentSum
+	//	*FailureDetails_NumscriptInvalidAsset
+	//	*FailureDetails_NumscriptInvalidColor
+	//	*FailureDetails_NumscriptInvalidFeature
+	//	*FailureDetails_NumscriptInvalidMonetaryLiteral
+	//	*FailureDetails_NumscriptInvalidNestedMeta
+	//	*FailureDetails_NumscriptInvalidNumberLiteral
+	//	*FailureDetails_NumscriptInvalidRemainingAllotment
+	//	*FailureDetails_NumscriptInvalidScope
+	//	*FailureDetails_NumscriptInvalidType
+	//	*FailureDetails_NumscriptInvalidUnboundedScalingAddress
+	//	*FailureDetails_NumscriptInvalidUnboundedSendAll
+	//	*FailureDetails_NumscriptInvalidUncappedSource
+	//	*FailureDetails_NumscriptInvalidVersion
+	//	*FailureDetails_NumscriptMetadataNotFound
+	//	*FailureDetails_NumscriptMissingFunds
+	//	*FailureDetails_NumscriptMissingVariable
+	//	*FailureDetails_NumscriptNameInvalidChar
+	//	*FailureDetails_NumscriptNameRequired
+	//	*FailureDetails_NumscriptNameTooLong
+	//	*FailureDetails_NumscriptNegativeAmount
+	//	*FailureDetails_NumscriptNegativeBalance
+	//	*FailureDetails_NumscriptNegativePortion
+	//	*FailureDetails_NumscriptNotFound
+	//	*FailureDetails_NumscriptParseError
+	//	*FailureDetails_NumscriptPostingAmountOverflow
+	//	*FailureDetails_NumscriptPostingNegativeAmount
+	//	*FailureDetails_NumscriptRuntime
+	//	*FailureDetails_NumscriptScalingUnsupported
+	//	*FailureDetails_NumscriptTypeError
+	//	*FailureDetails_NumscriptUnboundFunction
+	//	*FailureDetails_NumscriptUnboundVariable
+	//	*FailureDetails_NumscriptVersionAlreadyExists
+	//	*FailureDetails_PostingsAndScriptConflict
+	//	*FailureDetails_PreloadUnavailable
+	//	*FailureDetails_PreparedQueryAlreadyExists
+	//	*FailureDetails_PreparedQueryNameInvalidChar
+	//	*FailureDetails_PreparedQueryNameRequired
+	//	*FailureDetails_PreparedQueryNameTooLong
+	//	*FailureDetails_PreparedQueryNotFound
+	//	*FailureDetails_PreparedQueryRequired
+	//	*FailureDetails_PreparedQueryTargetUnsupported
+	//	*FailureDetails_RevertTargetCreatedInBatch
+	//	*FailureDetails_ScopedBalanceUnsupported
+	//	*FailureDetails_ScriptAndReferenceConflict
+	//	*FailureDetails_ScriptRequired
+	//	*FailureDetails_SequenceExhausted
+	//	*FailureDetails_SigningKeyIdInvalidChar
+	//	*FailureDetails_SigningKeyIdRequired
+	//	*FailureDetails_SigningKeyIdTooLong
+	//	*FailureDetails_SigningKeyInvalidLength
+	//	*FailureDetails_SinkAlreadyExists
+	//	*FailureDetails_SinkBatchSizeTooLarge
+	//	*FailureDetails_SinkControllerMismatch
+	//	*FailureDetails_SinkNotFound
+	//	*FailureDetails_StaleClusterPolicy
+	//	*FailureDetails_StaleInputsResolution
+	//	*FailureDetails_StaleProposal
+	//	*FailureDetails_StorageOperationFailed
+	//	*FailureDetails_TargetRequired
+	//	*FailureDetails_TransactionAlreadyReverted
+	//	*FailureDetails_TransactionNotFound
+	//	*FailureDetails_TransactionReferenceConflict
+	//	*FailureDetails_TransactionReferenceNotFound
+	//	*FailureDetails_TransactionReferenceTooLong
+	//	*FailureDetails_TransactionStateInconsistent
+	//	*FailureDetails_TransactionTargetMissing
+	//	*FailureDetails_TransientAccountNonZero
+	//	*FailureDetails_Validation
+	//	*FailureDetails_VolumeNotMaterialized
+	//	*FailureDetails_VolumeOverflow
+	//	*FailureDetails_WritesBlockedClockSkew
+	//	*FailureDetails_WritesBlockedDiskFull
+	Kind          isFailureDetails_Kind `protobuf_oneof:"kind"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FailureDetails) Reset() {
+	*x = FailureDetails{}
+	mi := &file_common_proto_msgTypes[71]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FailureDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FailureDetails) ProtoMessage() {}
+
+func (x *FailureDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[71]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FailureDetails.ProtoReflect.Descriptor instead.
+func (*FailureDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{71}
+}
+
+func (x *FailureDetails) GetKind() isFailureDetails_Kind {
+	if x != nil {
+		return x.Kind
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetAccountAddressEmpty() *AccountAddressEmptyDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_AccountAddressEmpty); ok {
+			return x.AccountAddressEmpty
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetAccountAddressEmptySegment() *AccountAddressEmptySegmentDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_AccountAddressEmptySegment); ok {
+			return x.AccountAddressEmptySegment
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetAccountAddressInvalidChar() *AccountAddressInvalidCharDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_AccountAddressInvalidChar); ok {
+			return x.AccountAddressInvalidChar
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetAccountAddressTooLong() *AccountAddressTooLongDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_AccountAddressTooLong); ok {
+			return x.AccountAddressTooLong
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetAccountNotMatchingType() *AccountNotMatchingTypeDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_AccountNotMatchingType); ok {
+			return x.AccountNotMatchingType
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetAccountTypeAlreadyExists() *AccountTypeAlreadyExistsDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_AccountTypeAlreadyExists); ok {
+			return x.AccountTypeAlreadyExists
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetAccountTypeConflict() *AccountTypeConflictDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_AccountTypeConflict); ok {
+			return x.AccountTypeConflict
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetAccountTypeHasAccounts() *AccountTypeHasAccountsDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_AccountTypeHasAccounts); ok {
+			return x.AccountTypeHasAccounts
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetAccountTypeNameTooLong() *AccountTypeNameTooLongDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_AccountTypeNameTooLong); ok {
+			return x.AccountTypeNameTooLong
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetAccountTypeNotFound() *AccountTypeNotFoundDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_AccountTypeNotFound); ok {
+			return x.AccountTypeNotFound
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetAccountTypePatternTooLong() *AccountTypePatternTooLongDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_AccountTypePatternTooLong); ok {
+			return x.AccountTypePatternTooLong
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetAggregateOverflow() *AggregateOverflowDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_AggregateOverflow); ok {
+			return x.AggregateOverflow
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetAssetInvalid() *AssetInvalidDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_AssetInvalid); ok {
+			return x.AssetInvalid
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetAuditDisabled() *AuditDisabledDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_AuditDisabled); ok {
+			return x.AuditDisabled
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetBalanceNotFound() *BalanceNotFoundDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_BalanceNotFound); ok {
+			return x.BalanceNotFound
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetBalanceNotPreloaded() *BalanceNotPreloadedDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_BalanceNotPreloaded); ok {
+			return x.BalanceNotPreloaded
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetCheckpointIdRequired() *CheckpointIdRequiredDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_CheckpointIdRequired); ok {
+			return x.CheckpointIdRequired
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetCheckpointLimitReached() *CheckpointLimitReachedDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_CheckpointLimitReached); ok {
+			return x.CheckpointLimitReached
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetCheckpointNotFound() *CheckpointNotFoundDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_CheckpointNotFound); ok {
+			return x.CheckpointNotFound
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetCheckpointNotReady() *CheckpointNotReadyDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_CheckpointNotReady); ok {
+			return x.CheckpointNotReady
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetClusterPolicyInvalid() *ClusterPolicyInvalidDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_ClusterPolicyInvalid); ok {
+			return x.ClusterPolicyInvalid
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetClusterPolicyRevisionConflict() *ClusterPolicyRevisionConflictDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_ClusterPolicyRevisionConflict); ok {
+			return x.ClusterPolicyRevisionConflict
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetClusterUnhealthy() *ClusterUnhealthyDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_ClusterUnhealthy); ok {
+			return x.ClusterUnhealthy
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetColorInvalid() *ColorInvalidDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_ColorInvalid); ok {
+			return x.ColorInvalid
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetColorTooLong() *ColorTooLongDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_ColorTooLong); ok {
+			return x.ColorTooLong
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetCoverageMiss() *CoverageMissDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_CoverageMiss); ok {
+			return x.CoverageMiss
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetDependencyDiscoveryFailed() *DependencyDiscoveryFailedDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_DependencyDiscoveryFailed); ok {
+			return x.DependencyDiscoveryFailed
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetEmptyTransaction() *EmptyTransactionDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_EmptyTransaction); ok {
+			return x.EmptyTransaction
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetExecutionPlanTooLarge() *ExecutionPlanTooLargeDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_ExecutionPlanTooLarge); ok {
+			return x.ExecutionPlanTooLarge
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetFilterCompilationError() *FilterCompilationErrorDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_FilterCompilationError); ok {
+			return x.FilterCompilationError
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetIdempotencyCheckFailed() *IdempotencyCheckFailedDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_IdempotencyCheckFailed); ok {
+			return x.IdempotencyCheckFailed
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetIdempotencyKeyConflict() *IdempotencyKeyConflictDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_IdempotencyKeyConflict); ok {
+			return x.IdempotencyKeyConflict
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetIdRequired() *IdRequiredDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_IdRequired); ok {
+			return x.IdRequired
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetIndexAlreadyExists() *IndexAlreadyExistsDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_IndexAlreadyExists); ok {
+			return x.IndexAlreadyExists
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetIndexBuilding() *IndexBuildingDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_IndexBuilding); ok {
+			return x.IndexBuilding
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetIndexInconsistent() *IndexInconsistentDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_IndexInconsistent); ok {
+			return x.IndexInconsistent
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetIndexNotFound() *IndexNotFoundDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_IndexNotFound); ok {
+			return x.IndexNotFound
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetIndexTargetUnsupported() *IndexTargetUnsupportedDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_IndexTargetUnsupported); ok {
+			return x.IndexTargetUnsupported
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetInsufficientFunds() *InsufficientFundsDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_InsufficientFunds); ok {
+			return x.InsufficientFunds
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetInvalidApplyType() *InvalidApplyTypeDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_InvalidApplyType); ok {
+			return x.InvalidApplyType
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetInvalidCallerAttribution() *InvalidCallerAttributionDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_InvalidCallerAttribution); ok {
+			return x.InvalidCallerAttribution
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetInvalidCronExpression() *InvalidCronExpressionDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_InvalidCronExpression); ok {
+			return x.InvalidCronExpression
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetInvalidExecutionPlan() *InvalidExecutionPlanDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_InvalidExecutionPlan); ok {
+			return x.InvalidExecutionPlan
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetInvalidOrderType() *InvalidOrderTypeDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_InvalidOrderType); ok {
+			return x.InvalidOrderType
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetInvalidPattern() *InvalidPatternDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_InvalidPattern); ok {
+			return x.InvalidPattern
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetInvalidSkippableReason() *InvalidSkippableReasonDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_InvalidSkippableReason); ok {
+			return x.InvalidSkippableReason
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetLedgerAlreadyExists() *LedgerAlreadyExistsDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_LedgerAlreadyExists); ok {
+			return x.LedgerAlreadyExists
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetLedgerDeleted() *LedgerDeletedDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_LedgerDeleted); ok {
+			return x.LedgerDeleted
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetLedgerInMirrorMode() *LedgerInMirrorModeDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_LedgerInMirrorMode); ok {
+			return x.LedgerInMirrorMode
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetLedgerNameInvalidChar() *LedgerNameInvalidCharDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_LedgerNameInvalidChar); ok {
+			return x.LedgerNameInvalidChar
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetLedgerNameRequired() *LedgerNameRequiredDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_LedgerNameRequired); ok {
+			return x.LedgerNameRequired
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetLedgerNameReservedPrefix() *LedgerNameReservedPrefixDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_LedgerNameReservedPrefix); ok {
+			return x.LedgerNameReservedPrefix
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetLedgerNameTooLong() *LedgerNameTooLongDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_LedgerNameTooLong); ok {
+			return x.LedgerNameTooLong
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetLedgerNotFound() *LedgerNotFoundDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_LedgerNotFound); ok {
+			return x.LedgerNotFound
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetLedgerNotInMirrorMode() *LedgerNotInMirrorModeDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_LedgerNotInMirrorMode); ok {
+			return x.LedgerNotInMirrorMode
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetMaintenanceMode() *MaintenanceModeDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_MaintenanceMode); ok {
+			return x.MaintenanceMode
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetMetadataFieldNotInSchema() *MetadataFieldNotInSchemaDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_MetadataFieldNotInSchema); ok {
+			return x.MetadataFieldNotInSchema
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetMetadataKeyEmpty() *MetadataKeyEmptyDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_MetadataKeyEmpty); ok {
+			return x.MetadataKeyEmpty
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetMetadataKeyInvalidChar() *MetadataKeyInvalidCharDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_MetadataKeyInvalidChar); ok {
+			return x.MetadataKeyInvalidChar
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetMetadataKeyRequired() *MetadataKeyRequiredDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_MetadataKeyRequired); ok {
+			return x.MetadataKeyRequired
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetMetadataLimitsUnconfigured() *MetadataLimitsUnconfiguredDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_MetadataLimitsUnconfigured); ok {
+			return x.MetadataLimitsUnconfigured
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetMetadataLimitExceeded() *MetadataLimitExceededDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_MetadataLimitExceeded); ok {
+			return x.MetadataLimitExceeded
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetMetadataNotFound() *MetadataNotFoundDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_MetadataNotFound); ok {
+			return x.MetadataNotFound
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetMetadataValueContainsNullByte() *MetadataValueContainsNullByteDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_MetadataValueContainsNullByte); ok {
+			return x.MetadataValueContainsNullByte
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetMirrorHttpUrlInvalid() *MirrorHttpUrlInvalidDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_MirrorHttpUrlInvalid); ok {
+			return x.MirrorHttpUrlInvalid
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetMirrorIamRegionRequired() *MirrorIamRegionRequiredDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_MirrorIamRegionRequired); ok {
+			return x.MirrorIamRegionRequired
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetMirrorIamRequiresTls() *MirrorIamRequiresTlsDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_MirrorIamRequiresTls); ok {
+			return x.MirrorIamRequiresTls
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetMirrorRewriteRuleInvalid() *MirrorRewriteRuleInvalidDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_MirrorRewriteRuleInvalid); ok {
+			return x.MirrorRewriteRuleInvalid
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetMirrorV2LogIdGap() *MirrorV2LogIdGapDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_MirrorV2LogIdGap); ok {
+			return x.MirrorV2LogIdGap
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetMirrorV2LogIdInvalid() *MirrorV2LogIdInvalidDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_MirrorV2LogIdInvalid); ok {
+			return x.MirrorV2LogIdInvalid
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptAssetMismatch() *NumscriptAssetMismatchDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptAssetMismatch); ok {
+			return x.NumscriptAssetMismatch
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptBadArity() *NumscriptBadArityDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptBadArity); ok {
+			return x.NumscriptBadArity
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptBadMetaValue() *NumscriptBadMetaValueDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptBadMetaValue); ok {
+			return x.NumscriptBadMetaValue
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptBadPortion() *NumscriptBadPortionDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptBadPortion); ok {
+			return x.NumscriptBadPortion
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptCannotCastScopedAccount() *NumscriptCannotCastScopedAccountDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptCannotCastScopedAccount); ok {
+			return x.NumscriptCannotCastScopedAccount
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptCannotCastToString() *NumscriptCannotCastToStringDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptCannotCastToString); ok {
+			return x.NumscriptCannotCastToString
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptCannotStoreScopedAccount() *NumscriptCannotStoreScopedAccountDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptCannotStoreScopedAccount); ok {
+			return x.NumscriptCannotStoreScopedAccount
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptCompileBadArity() *NumscriptCompileBadArityDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptCompileBadArity); ok {
+			return x.NumscriptCompileBadArity
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptCompileCannotCastToString() *NumscriptCompileCannotCastToStringDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptCompileCannotCastToString); ok {
+			return x.NumscriptCompileCannotCastToString
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptCompileCannotStoreScopedAccount() *NumscriptCompileCannotStoreScopedAccountDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptCompileCannotStoreScopedAccount); ok {
+			return x.NumscriptCompileCannotStoreScopedAccount
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptCompileDuplicateRemaining() *NumscriptCompileDuplicateRemainingDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptCompileDuplicateRemaining); ok {
+			return x.NumscriptCompileDuplicateRemaining
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptCompileDuplicateVariable() *NumscriptCompileDuplicateVariableDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptCompileDuplicateVariable); ok {
+			return x.NumscriptCompileDuplicateVariable
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptCompileError() *NumscriptCompileErrorDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptCompileError); ok {
+			return x.NumscriptCompileError
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptCompileExperimentalFeature() *NumscriptCompileExperimentalFeatureDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptCompileExperimentalFeature); ok {
+			return x.NumscriptCompileExperimentalFeature
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptCompileInvalidFeature() *NumscriptCompileInvalidFeatureDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptCompileInvalidFeature); ok {
+			return x.NumscriptCompileInvalidFeature
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptCompileInvalidMetaPosition() *NumscriptCompileInvalidMetaPositionDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptCompileInvalidMetaPosition); ok {
+			return x.NumscriptCompileInvalidMetaPosition
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptCompileInvalidType() *NumscriptCompileInvalidTypeDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptCompileInvalidType); ok {
+			return x.NumscriptCompileInvalidType
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptCompileInvalidUncappedSource() *NumscriptCompileInvalidUncappedSourceDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptCompileInvalidUncappedSource); ok {
+			return x.NumscriptCompileInvalidUncappedSource
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptCompileInvalidVariableValue() *NumscriptCompileInvalidVariableValueDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptCompileInvalidVariableValue); ok {
+			return x.NumscriptCompileInvalidVariableValue
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptCompileMissingVariable() *NumscriptCompileMissingVariableDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptCompileMissingVariable); ok {
+			return x.NumscriptCompileMissingVariable
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptCompileTypeMismatch() *NumscriptCompileTypeMismatchDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptCompileTypeMismatch); ok {
+			return x.NumscriptCompileTypeMismatch
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptCompileUnboundVariable() *NumscriptCompileUnboundVariableDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptCompileUnboundVariable); ok {
+			return x.NumscriptCompileUnboundVariable
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptCompileUnknownFunction() *NumscriptCompileUnknownFunctionDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptCompileUnknownFunction); ok {
+			return x.NumscriptCompileUnknownFunction
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptContentRequired() *NumscriptContentRequiredDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptContentRequired); ok {
+			return x.NumscriptContentRequired
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptCurrencyMismatch() *NumscriptCurrencyMismatchDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptCurrencyMismatch); ok {
+			return x.NumscriptCurrencyMismatch
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptDivideByZero() *NumscriptDivideByZeroDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptDivideByZero); ok {
+			return x.NumscriptDivideByZero
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptExecutionError() *NumscriptExecutionErrorDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptExecutionError); ok {
+			return x.NumscriptExecutionError
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptExperimentalFeature() *NumscriptExperimentalFeatureDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptExperimentalFeature); ok {
+			return x.NumscriptExperimentalFeature
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptInvalidAccountName() *NumscriptInvalidAccountNameDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptInvalidAccountName); ok {
+			return x.NumscriptInvalidAccountName
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptInvalidAllotmentInSendAll() *NumscriptInvalidAllotmentInSendAllDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptInvalidAllotmentInSendAll); ok {
+			return x.NumscriptInvalidAllotmentInSendAll
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptInvalidAllotmentSum() *NumscriptInvalidAllotmentSumDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptInvalidAllotmentSum); ok {
+			return x.NumscriptInvalidAllotmentSum
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptInvalidAsset() *NumscriptInvalidAssetDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptInvalidAsset); ok {
+			return x.NumscriptInvalidAsset
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptInvalidColor() *NumscriptInvalidColorDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptInvalidColor); ok {
+			return x.NumscriptInvalidColor
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptInvalidFeature() *NumscriptInvalidFeatureDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptInvalidFeature); ok {
+			return x.NumscriptInvalidFeature
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptInvalidMonetaryLiteral() *NumscriptInvalidMonetaryLiteralDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptInvalidMonetaryLiteral); ok {
+			return x.NumscriptInvalidMonetaryLiteral
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptInvalidNestedMeta() *NumscriptInvalidNestedMetaDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptInvalidNestedMeta); ok {
+			return x.NumscriptInvalidNestedMeta
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptInvalidNumberLiteral() *NumscriptInvalidNumberLiteralDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptInvalidNumberLiteral); ok {
+			return x.NumscriptInvalidNumberLiteral
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptInvalidRemainingAllotment() *NumscriptInvalidRemainingAllotmentDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptInvalidRemainingAllotment); ok {
+			return x.NumscriptInvalidRemainingAllotment
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptInvalidScope() *NumscriptInvalidScopeDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptInvalidScope); ok {
+			return x.NumscriptInvalidScope
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptInvalidType() *NumscriptInvalidTypeDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptInvalidType); ok {
+			return x.NumscriptInvalidType
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptInvalidUnboundedScalingAddress() *NumscriptInvalidUnboundedScalingAddressDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptInvalidUnboundedScalingAddress); ok {
+			return x.NumscriptInvalidUnboundedScalingAddress
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptInvalidUnboundedSendAll() *NumscriptInvalidUnboundedSendAllDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptInvalidUnboundedSendAll); ok {
+			return x.NumscriptInvalidUnboundedSendAll
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptInvalidUncappedSource() *NumscriptInvalidUncappedSourceDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptInvalidUncappedSource); ok {
+			return x.NumscriptInvalidUncappedSource
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptInvalidVersion() *NumscriptInvalidVersionDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptInvalidVersion); ok {
+			return x.NumscriptInvalidVersion
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptMetadataNotFound() *NumscriptMetadataNotFoundDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptMetadataNotFound); ok {
+			return x.NumscriptMetadataNotFound
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptMissingFunds() *NumscriptMissingFundsDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptMissingFunds); ok {
+			return x.NumscriptMissingFunds
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptMissingVariable() *NumscriptMissingVariableDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptMissingVariable); ok {
+			return x.NumscriptMissingVariable
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptNameInvalidChar() *NumscriptNameInvalidCharDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptNameInvalidChar); ok {
+			return x.NumscriptNameInvalidChar
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptNameRequired() *NumscriptNameRequiredDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptNameRequired); ok {
+			return x.NumscriptNameRequired
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptNameTooLong() *NumscriptNameTooLongDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptNameTooLong); ok {
+			return x.NumscriptNameTooLong
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptNegativeAmount() *NumscriptNegativeAmountDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptNegativeAmount); ok {
+			return x.NumscriptNegativeAmount
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptNegativeBalance() *NumscriptNegativeBalanceDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptNegativeBalance); ok {
+			return x.NumscriptNegativeBalance
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptNegativePortion() *NumscriptNegativePortionDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptNegativePortion); ok {
+			return x.NumscriptNegativePortion
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptNotFound() *NumscriptNotFoundDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptNotFound); ok {
+			return x.NumscriptNotFound
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptParseError() *NumscriptParseErrorDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptParseError); ok {
+			return x.NumscriptParseError
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptPostingAmountOverflow() *NumscriptPostingAmountOverflowDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptPostingAmountOverflow); ok {
+			return x.NumscriptPostingAmountOverflow
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptPostingNegativeAmount() *NumscriptPostingNegativeAmountDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptPostingNegativeAmount); ok {
+			return x.NumscriptPostingNegativeAmount
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptRuntime() *NumscriptRuntimeDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptRuntime); ok {
+			return x.NumscriptRuntime
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptScalingUnsupported() *NumscriptScalingUnsupportedDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptScalingUnsupported); ok {
+			return x.NumscriptScalingUnsupported
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptTypeError() *NumscriptTypeErrorDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptTypeError); ok {
+			return x.NumscriptTypeError
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptUnboundFunction() *NumscriptUnboundFunctionDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptUnboundFunction); ok {
+			return x.NumscriptUnboundFunction
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptUnboundVariable() *NumscriptUnboundVariableDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptUnboundVariable); ok {
+			return x.NumscriptUnboundVariable
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetNumscriptVersionAlreadyExists() *NumscriptVersionAlreadyExistsDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_NumscriptVersionAlreadyExists); ok {
+			return x.NumscriptVersionAlreadyExists
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetPostingsAndScriptConflict() *PostingsAndScriptConflictDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_PostingsAndScriptConflict); ok {
+			return x.PostingsAndScriptConflict
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetPreloadUnavailable() *PreloadUnavailableDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_PreloadUnavailable); ok {
+			return x.PreloadUnavailable
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetPreparedQueryAlreadyExists() *PreparedQueryAlreadyExistsDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_PreparedQueryAlreadyExists); ok {
+			return x.PreparedQueryAlreadyExists
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetPreparedQueryNameInvalidChar() *PreparedQueryNameInvalidCharDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_PreparedQueryNameInvalidChar); ok {
+			return x.PreparedQueryNameInvalidChar
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetPreparedQueryNameRequired() *PreparedQueryNameRequiredDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_PreparedQueryNameRequired); ok {
+			return x.PreparedQueryNameRequired
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetPreparedQueryNameTooLong() *PreparedQueryNameTooLongDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_PreparedQueryNameTooLong); ok {
+			return x.PreparedQueryNameTooLong
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetPreparedQueryNotFound() *PreparedQueryNotFoundDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_PreparedQueryNotFound); ok {
+			return x.PreparedQueryNotFound
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetPreparedQueryRequired() *PreparedQueryRequiredDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_PreparedQueryRequired); ok {
+			return x.PreparedQueryRequired
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetPreparedQueryTargetUnsupported() *PreparedQueryTargetUnsupportedDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_PreparedQueryTargetUnsupported); ok {
+			return x.PreparedQueryTargetUnsupported
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetRevertTargetCreatedInBatch() *RevertTargetCreatedInBatchDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_RevertTargetCreatedInBatch); ok {
+			return x.RevertTargetCreatedInBatch
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetScopedBalanceUnsupported() *ScopedBalanceUnsupportedDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_ScopedBalanceUnsupported); ok {
+			return x.ScopedBalanceUnsupported
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetScriptAndReferenceConflict() *ScriptAndReferenceConflictDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_ScriptAndReferenceConflict); ok {
+			return x.ScriptAndReferenceConflict
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetScriptRequired() *ScriptRequiredDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_ScriptRequired); ok {
+			return x.ScriptRequired
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetSequenceExhausted() *SequenceExhaustedDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_SequenceExhausted); ok {
+			return x.SequenceExhausted
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetSigningKeyIdInvalidChar() *SigningKeyIdInvalidCharDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_SigningKeyIdInvalidChar); ok {
+			return x.SigningKeyIdInvalidChar
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetSigningKeyIdRequired() *SigningKeyIdRequiredDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_SigningKeyIdRequired); ok {
+			return x.SigningKeyIdRequired
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetSigningKeyIdTooLong() *SigningKeyIdTooLongDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_SigningKeyIdTooLong); ok {
+			return x.SigningKeyIdTooLong
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetSigningKeyInvalidLength() *SigningKeyInvalidLengthDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_SigningKeyInvalidLength); ok {
+			return x.SigningKeyInvalidLength
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetSinkAlreadyExists() *SinkAlreadyExistsDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_SinkAlreadyExists); ok {
+			return x.SinkAlreadyExists
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetSinkBatchSizeTooLarge() *SinkBatchSizeTooLargeDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_SinkBatchSizeTooLarge); ok {
+			return x.SinkBatchSizeTooLarge
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetSinkControllerMismatch() *SinkControllerMismatchDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_SinkControllerMismatch); ok {
+			return x.SinkControllerMismatch
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetSinkNotFound() *SinkNotFoundDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_SinkNotFound); ok {
+			return x.SinkNotFound
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetStaleClusterPolicy() *StaleClusterPolicyDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_StaleClusterPolicy); ok {
+			return x.StaleClusterPolicy
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetStaleInputsResolution() *StaleInputsResolutionDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_StaleInputsResolution); ok {
+			return x.StaleInputsResolution
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetStaleProposal() *StaleProposalDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_StaleProposal); ok {
+			return x.StaleProposal
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetStorageOperationFailed() *StorageOperationFailedDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_StorageOperationFailed); ok {
+			return x.StorageOperationFailed
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetTargetRequired() *TargetRequiredDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_TargetRequired); ok {
+			return x.TargetRequired
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetTransactionAlreadyReverted() *TransactionAlreadyRevertedDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_TransactionAlreadyReverted); ok {
+			return x.TransactionAlreadyReverted
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetTransactionNotFound() *TransactionNotFoundDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_TransactionNotFound); ok {
+			return x.TransactionNotFound
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetTransactionReferenceConflict() *TransactionReferenceConflictDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_TransactionReferenceConflict); ok {
+			return x.TransactionReferenceConflict
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetTransactionReferenceNotFound() *TransactionReferenceNotFoundDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_TransactionReferenceNotFound); ok {
+			return x.TransactionReferenceNotFound
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetTransactionReferenceTooLong() *TransactionReferenceTooLongDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_TransactionReferenceTooLong); ok {
+			return x.TransactionReferenceTooLong
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetTransactionStateInconsistent() *TransactionStateInconsistentDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_TransactionStateInconsistent); ok {
+			return x.TransactionStateInconsistent
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetTransactionTargetMissing() *TransactionTargetMissingDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_TransactionTargetMissing); ok {
+			return x.TransactionTargetMissing
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetTransientAccountNonZero() *TransientAccountNonZeroDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_TransientAccountNonZero); ok {
+			return x.TransientAccountNonZero
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetValidation() *ValidationDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_Validation); ok {
+			return x.Validation
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetVolumeNotMaterialized() *VolumeNotMaterializedDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_VolumeNotMaterialized); ok {
+			return x.VolumeNotMaterialized
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetVolumeOverflow() *VolumeOverflowDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_VolumeOverflow); ok {
+			return x.VolumeOverflow
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetWritesBlockedClockSkew() *WritesBlockedClockSkewDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_WritesBlockedClockSkew); ok {
+			return x.WritesBlockedClockSkew
+		}
+	}
+	return nil
+}
+
+func (x *FailureDetails) GetWritesBlockedDiskFull() *WritesBlockedDiskFullDetails {
+	if x != nil {
+		if x, ok := x.Kind.(*FailureDetails_WritesBlockedDiskFull); ok {
+			return x.WritesBlockedDiskFull
+		}
+	}
+	return nil
+}
+
+type isFailureDetails_Kind interface {
+	isFailureDetails_Kind()
+}
+
+type FailureDetails_AccountAddressEmpty struct {
+	AccountAddressEmpty *AccountAddressEmptyDetails `protobuf:"bytes,1,opt,name=account_address_empty,json=accountAddressEmpty,proto3,oneof"`
+}
+
+type FailureDetails_AccountAddressEmptySegment struct {
+	AccountAddressEmptySegment *AccountAddressEmptySegmentDetails `protobuf:"bytes,2,opt,name=account_address_empty_segment,json=accountAddressEmptySegment,proto3,oneof"`
+}
+
+type FailureDetails_AccountAddressInvalidChar struct {
+	AccountAddressInvalidChar *AccountAddressInvalidCharDetails `protobuf:"bytes,3,opt,name=account_address_invalid_char,json=accountAddressInvalidChar,proto3,oneof"`
+}
+
+type FailureDetails_AccountAddressTooLong struct {
+	AccountAddressTooLong *AccountAddressTooLongDetails `protobuf:"bytes,4,opt,name=account_address_too_long,json=accountAddressTooLong,proto3,oneof"`
+}
+
+type FailureDetails_AccountNotMatchingType struct {
+	AccountNotMatchingType *AccountNotMatchingTypeDetails `protobuf:"bytes,5,opt,name=account_not_matching_type,json=accountNotMatchingType,proto3,oneof"`
+}
+
+type FailureDetails_AccountTypeAlreadyExists struct {
+	AccountTypeAlreadyExists *AccountTypeAlreadyExistsDetails `protobuf:"bytes,6,opt,name=account_type_already_exists,json=accountTypeAlreadyExists,proto3,oneof"`
+}
+
+type FailureDetails_AccountTypeConflict struct {
+	AccountTypeConflict *AccountTypeConflictDetails `protobuf:"bytes,7,opt,name=account_type_conflict,json=accountTypeConflict,proto3,oneof"`
+}
+
+type FailureDetails_AccountTypeHasAccounts struct {
+	AccountTypeHasAccounts *AccountTypeHasAccountsDetails `protobuf:"bytes,8,opt,name=account_type_has_accounts,json=accountTypeHasAccounts,proto3,oneof"`
+}
+
+type FailureDetails_AccountTypeNameTooLong struct {
+	AccountTypeNameTooLong *AccountTypeNameTooLongDetails `protobuf:"bytes,9,opt,name=account_type_name_too_long,json=accountTypeNameTooLong,proto3,oneof"`
+}
+
+type FailureDetails_AccountTypeNotFound struct {
+	AccountTypeNotFound *AccountTypeNotFoundDetails `protobuf:"bytes,10,opt,name=account_type_not_found,json=accountTypeNotFound,proto3,oneof"`
+}
+
+type FailureDetails_AccountTypePatternTooLong struct {
+	AccountTypePatternTooLong *AccountTypePatternTooLongDetails `protobuf:"bytes,11,opt,name=account_type_pattern_too_long,json=accountTypePatternTooLong,proto3,oneof"`
+}
+
+type FailureDetails_AggregateOverflow struct {
+	AggregateOverflow *AggregateOverflowDetails `protobuf:"bytes,12,opt,name=aggregate_overflow,json=aggregateOverflow,proto3,oneof"`
+}
+
+type FailureDetails_AssetInvalid struct {
+	AssetInvalid *AssetInvalidDetails `protobuf:"bytes,13,opt,name=asset_invalid,json=assetInvalid,proto3,oneof"`
+}
+
+type FailureDetails_AuditDisabled struct {
+	AuditDisabled *AuditDisabledDetails `protobuf:"bytes,14,opt,name=audit_disabled,json=auditDisabled,proto3,oneof"`
+}
+
+type FailureDetails_BalanceNotFound struct {
+	BalanceNotFound *BalanceNotFoundDetails `protobuf:"bytes,15,opt,name=balance_not_found,json=balanceNotFound,proto3,oneof"`
+}
+
+type FailureDetails_BalanceNotPreloaded struct {
+	BalanceNotPreloaded *BalanceNotPreloadedDetails `protobuf:"bytes,16,opt,name=balance_not_preloaded,json=balanceNotPreloaded,proto3,oneof"`
+}
+
+type FailureDetails_CheckpointIdRequired struct {
+	CheckpointIdRequired *CheckpointIdRequiredDetails `protobuf:"bytes,17,opt,name=checkpoint_id_required,json=checkpointIdRequired,proto3,oneof"`
+}
+
+type FailureDetails_CheckpointLimitReached struct {
+	CheckpointLimitReached *CheckpointLimitReachedDetails `protobuf:"bytes,18,opt,name=checkpoint_limit_reached,json=checkpointLimitReached,proto3,oneof"`
+}
+
+type FailureDetails_CheckpointNotFound struct {
+	CheckpointNotFound *CheckpointNotFoundDetails `protobuf:"bytes,19,opt,name=checkpoint_not_found,json=checkpointNotFound,proto3,oneof"`
+}
+
+type FailureDetails_CheckpointNotReady struct {
+	CheckpointNotReady *CheckpointNotReadyDetails `protobuf:"bytes,20,opt,name=checkpoint_not_ready,json=checkpointNotReady,proto3,oneof"`
+}
+
+type FailureDetails_ClusterPolicyInvalid struct {
+	ClusterPolicyInvalid *ClusterPolicyInvalidDetails `protobuf:"bytes,21,opt,name=cluster_policy_invalid,json=clusterPolicyInvalid,proto3,oneof"`
+}
+
+type FailureDetails_ClusterPolicyRevisionConflict struct {
+	ClusterPolicyRevisionConflict *ClusterPolicyRevisionConflictDetails `protobuf:"bytes,22,opt,name=cluster_policy_revision_conflict,json=clusterPolicyRevisionConflict,proto3,oneof"`
+}
+
+type FailureDetails_ClusterUnhealthy struct {
+	ClusterUnhealthy *ClusterUnhealthyDetails `protobuf:"bytes,23,opt,name=cluster_unhealthy,json=clusterUnhealthy,proto3,oneof"`
+}
+
+type FailureDetails_ColorInvalid struct {
+	ColorInvalid *ColorInvalidDetails `protobuf:"bytes,24,opt,name=color_invalid,json=colorInvalid,proto3,oneof"`
+}
+
+type FailureDetails_ColorTooLong struct {
+	ColorTooLong *ColorTooLongDetails `protobuf:"bytes,25,opt,name=color_too_long,json=colorTooLong,proto3,oneof"`
+}
+
+type FailureDetails_CoverageMiss struct {
+	CoverageMiss *CoverageMissDetails `protobuf:"bytes,26,opt,name=coverage_miss,json=coverageMiss,proto3,oneof"`
+}
+
+type FailureDetails_DependencyDiscoveryFailed struct {
+	DependencyDiscoveryFailed *DependencyDiscoveryFailedDetails `protobuf:"bytes,27,opt,name=dependency_discovery_failed,json=dependencyDiscoveryFailed,proto3,oneof"`
+}
+
+type FailureDetails_EmptyTransaction struct {
+	EmptyTransaction *EmptyTransactionDetails `protobuf:"bytes,28,opt,name=empty_transaction,json=emptyTransaction,proto3,oneof"`
+}
+
+type FailureDetails_ExecutionPlanTooLarge struct {
+	ExecutionPlanTooLarge *ExecutionPlanTooLargeDetails `protobuf:"bytes,29,opt,name=execution_plan_too_large,json=executionPlanTooLarge,proto3,oneof"`
+}
+
+type FailureDetails_FilterCompilationError struct {
+	FilterCompilationError *FilterCompilationErrorDetails `protobuf:"bytes,30,opt,name=filter_compilation_error,json=filterCompilationError,proto3,oneof"`
+}
+
+type FailureDetails_IdempotencyCheckFailed struct {
+	IdempotencyCheckFailed *IdempotencyCheckFailedDetails `protobuf:"bytes,31,opt,name=idempotency_check_failed,json=idempotencyCheckFailed,proto3,oneof"`
+}
+
+type FailureDetails_IdempotencyKeyConflict struct {
+	IdempotencyKeyConflict *IdempotencyKeyConflictDetails `protobuf:"bytes,32,opt,name=idempotency_key_conflict,json=idempotencyKeyConflict,proto3,oneof"`
+}
+
+type FailureDetails_IdRequired struct {
+	IdRequired *IdRequiredDetails `protobuf:"bytes,33,opt,name=id_required,json=idRequired,proto3,oneof"`
+}
+
+type FailureDetails_IndexAlreadyExists struct {
+	IndexAlreadyExists *IndexAlreadyExistsDetails `protobuf:"bytes,34,opt,name=index_already_exists,json=indexAlreadyExists,proto3,oneof"`
+}
+
+type FailureDetails_IndexBuilding struct {
+	IndexBuilding *IndexBuildingDetails `protobuf:"bytes,35,opt,name=index_building,json=indexBuilding,proto3,oneof"`
+}
+
+type FailureDetails_IndexInconsistent struct {
+	IndexInconsistent *IndexInconsistentDetails `protobuf:"bytes,36,opt,name=index_inconsistent,json=indexInconsistent,proto3,oneof"`
+}
+
+type FailureDetails_IndexNotFound struct {
+	IndexNotFound *IndexNotFoundDetails `protobuf:"bytes,37,opt,name=index_not_found,json=indexNotFound,proto3,oneof"`
+}
+
+type FailureDetails_IndexTargetUnsupported struct {
+	IndexTargetUnsupported *IndexTargetUnsupportedDetails `protobuf:"bytes,38,opt,name=index_target_unsupported,json=indexTargetUnsupported,proto3,oneof"`
+}
+
+type FailureDetails_InsufficientFunds struct {
+	InsufficientFunds *InsufficientFundsDetails `protobuf:"bytes,39,opt,name=insufficient_funds,json=insufficientFunds,proto3,oneof"`
+}
+
+type FailureDetails_InvalidApplyType struct {
+	InvalidApplyType *InvalidApplyTypeDetails `protobuf:"bytes,40,opt,name=invalid_apply_type,json=invalidApplyType,proto3,oneof"`
+}
+
+type FailureDetails_InvalidCallerAttribution struct {
+	InvalidCallerAttribution *InvalidCallerAttributionDetails `protobuf:"bytes,41,opt,name=invalid_caller_attribution,json=invalidCallerAttribution,proto3,oneof"`
+}
+
+type FailureDetails_InvalidCronExpression struct {
+	InvalidCronExpression *InvalidCronExpressionDetails `protobuf:"bytes,42,opt,name=invalid_cron_expression,json=invalidCronExpression,proto3,oneof"`
+}
+
+type FailureDetails_InvalidExecutionPlan struct {
+	InvalidExecutionPlan *InvalidExecutionPlanDetails `protobuf:"bytes,43,opt,name=invalid_execution_plan,json=invalidExecutionPlan,proto3,oneof"`
+}
+
+type FailureDetails_InvalidOrderType struct {
+	InvalidOrderType *InvalidOrderTypeDetails `protobuf:"bytes,44,opt,name=invalid_order_type,json=invalidOrderType,proto3,oneof"`
+}
+
+type FailureDetails_InvalidPattern struct {
+	InvalidPattern *InvalidPatternDetails `protobuf:"bytes,45,opt,name=invalid_pattern,json=invalidPattern,proto3,oneof"`
+}
+
+type FailureDetails_InvalidSkippableReason struct {
+	InvalidSkippableReason *InvalidSkippableReasonDetails `protobuf:"bytes,46,opt,name=invalid_skippable_reason,json=invalidSkippableReason,proto3,oneof"`
+}
+
+type FailureDetails_LedgerAlreadyExists struct {
+	LedgerAlreadyExists *LedgerAlreadyExistsDetails `protobuf:"bytes,47,opt,name=ledger_already_exists,json=ledgerAlreadyExists,proto3,oneof"`
+}
+
+type FailureDetails_LedgerDeleted struct {
+	LedgerDeleted *LedgerDeletedDetails `protobuf:"bytes,48,opt,name=ledger_deleted,json=ledgerDeleted,proto3,oneof"`
+}
+
+type FailureDetails_LedgerInMirrorMode struct {
+	LedgerInMirrorMode *LedgerInMirrorModeDetails `protobuf:"bytes,49,opt,name=ledger_in_mirror_mode,json=ledgerInMirrorMode,proto3,oneof"`
+}
+
+type FailureDetails_LedgerNameInvalidChar struct {
+	LedgerNameInvalidChar *LedgerNameInvalidCharDetails `protobuf:"bytes,50,opt,name=ledger_name_invalid_char,json=ledgerNameInvalidChar,proto3,oneof"`
+}
+
+type FailureDetails_LedgerNameRequired struct {
+	LedgerNameRequired *LedgerNameRequiredDetails `protobuf:"bytes,51,opt,name=ledger_name_required,json=ledgerNameRequired,proto3,oneof"`
+}
+
+type FailureDetails_LedgerNameReservedPrefix struct {
+	LedgerNameReservedPrefix *LedgerNameReservedPrefixDetails `protobuf:"bytes,52,opt,name=ledger_name_reserved_prefix,json=ledgerNameReservedPrefix,proto3,oneof"`
+}
+
+type FailureDetails_LedgerNameTooLong struct {
+	LedgerNameTooLong *LedgerNameTooLongDetails `protobuf:"bytes,53,opt,name=ledger_name_too_long,json=ledgerNameTooLong,proto3,oneof"`
+}
+
+type FailureDetails_LedgerNotFound struct {
+	LedgerNotFound *LedgerNotFoundDetails `protobuf:"bytes,54,opt,name=ledger_not_found,json=ledgerNotFound,proto3,oneof"`
+}
+
+type FailureDetails_LedgerNotInMirrorMode struct {
+	LedgerNotInMirrorMode *LedgerNotInMirrorModeDetails `protobuf:"bytes,55,opt,name=ledger_not_in_mirror_mode,json=ledgerNotInMirrorMode,proto3,oneof"`
+}
+
+type FailureDetails_MaintenanceMode struct {
+	MaintenanceMode *MaintenanceModeDetails `protobuf:"bytes,56,opt,name=maintenance_mode,json=maintenanceMode,proto3,oneof"`
+}
+
+type FailureDetails_MetadataFieldNotInSchema struct {
+	MetadataFieldNotInSchema *MetadataFieldNotInSchemaDetails `protobuf:"bytes,57,opt,name=metadata_field_not_in_schema,json=metadataFieldNotInSchema,proto3,oneof"`
+}
+
+type FailureDetails_MetadataKeyEmpty struct {
+	MetadataKeyEmpty *MetadataKeyEmptyDetails `protobuf:"bytes,58,opt,name=metadata_key_empty,json=metadataKeyEmpty,proto3,oneof"`
+}
+
+type FailureDetails_MetadataKeyInvalidChar struct {
+	MetadataKeyInvalidChar *MetadataKeyInvalidCharDetails `protobuf:"bytes,59,opt,name=metadata_key_invalid_char,json=metadataKeyInvalidChar,proto3,oneof"`
+}
+
+type FailureDetails_MetadataKeyRequired struct {
+	MetadataKeyRequired *MetadataKeyRequiredDetails `protobuf:"bytes,60,opt,name=metadata_key_required,json=metadataKeyRequired,proto3,oneof"`
+}
+
+type FailureDetails_MetadataLimitsUnconfigured struct {
+	MetadataLimitsUnconfigured *MetadataLimitsUnconfiguredDetails `protobuf:"bytes,61,opt,name=metadata_limits_unconfigured,json=metadataLimitsUnconfigured,proto3,oneof"`
+}
+
+type FailureDetails_MetadataLimitExceeded struct {
+	MetadataLimitExceeded *MetadataLimitExceededDetails `protobuf:"bytes,62,opt,name=metadata_limit_exceeded,json=metadataLimitExceeded,proto3,oneof"`
+}
+
+type FailureDetails_MetadataNotFound struct {
+	MetadataNotFound *MetadataNotFoundDetails `protobuf:"bytes,63,opt,name=metadata_not_found,json=metadataNotFound,proto3,oneof"`
+}
+
+type FailureDetails_MetadataValueContainsNullByte struct {
+	MetadataValueContainsNullByte *MetadataValueContainsNullByteDetails `protobuf:"bytes,64,opt,name=metadata_value_contains_null_byte,json=metadataValueContainsNullByte,proto3,oneof"`
+}
+
+type FailureDetails_MirrorHttpUrlInvalid struct {
+	MirrorHttpUrlInvalid *MirrorHttpUrlInvalidDetails `protobuf:"bytes,65,opt,name=mirror_http_url_invalid,json=mirrorHttpUrlInvalid,proto3,oneof"`
+}
+
+type FailureDetails_MirrorIamRegionRequired struct {
+	MirrorIamRegionRequired *MirrorIamRegionRequiredDetails `protobuf:"bytes,66,opt,name=mirror_iam_region_required,json=mirrorIamRegionRequired,proto3,oneof"`
+}
+
+type FailureDetails_MirrorIamRequiresTls struct {
+	MirrorIamRequiresTls *MirrorIamRequiresTlsDetails `protobuf:"bytes,67,opt,name=mirror_iam_requires_tls,json=mirrorIamRequiresTls,proto3,oneof"`
+}
+
+type FailureDetails_MirrorRewriteRuleInvalid struct {
+	MirrorRewriteRuleInvalid *MirrorRewriteRuleInvalidDetails `protobuf:"bytes,68,opt,name=mirror_rewrite_rule_invalid,json=mirrorRewriteRuleInvalid,proto3,oneof"`
+}
+
+type FailureDetails_MirrorV2LogIdGap struct {
+	MirrorV2LogIdGap *MirrorV2LogIdGapDetails `protobuf:"bytes,69,opt,name=mirror_v2_log_id_gap,json=mirrorV2LogIdGap,proto3,oneof"`
+}
+
+type FailureDetails_MirrorV2LogIdInvalid struct {
+	MirrorV2LogIdInvalid *MirrorV2LogIdInvalidDetails `protobuf:"bytes,70,opt,name=mirror_v2_log_id_invalid,json=mirrorV2LogIdInvalid,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptAssetMismatch struct {
+	NumscriptAssetMismatch *NumscriptAssetMismatchDetails `protobuf:"bytes,71,opt,name=numscript_asset_mismatch,json=numscriptAssetMismatch,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptBadArity struct {
+	NumscriptBadArity *NumscriptBadArityDetails `protobuf:"bytes,72,opt,name=numscript_bad_arity,json=numscriptBadArity,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptBadMetaValue struct {
+	NumscriptBadMetaValue *NumscriptBadMetaValueDetails `protobuf:"bytes,73,opt,name=numscript_bad_meta_value,json=numscriptBadMetaValue,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptBadPortion struct {
+	NumscriptBadPortion *NumscriptBadPortionDetails `protobuf:"bytes,74,opt,name=numscript_bad_portion,json=numscriptBadPortion,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptCannotCastScopedAccount struct {
+	NumscriptCannotCastScopedAccount *NumscriptCannotCastScopedAccountDetails `protobuf:"bytes,75,opt,name=numscript_cannot_cast_scoped_account,json=numscriptCannotCastScopedAccount,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptCannotCastToString struct {
+	NumscriptCannotCastToString *NumscriptCannotCastToStringDetails `protobuf:"bytes,76,opt,name=numscript_cannot_cast_to_string,json=numscriptCannotCastToString,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptCannotStoreScopedAccount struct {
+	NumscriptCannotStoreScopedAccount *NumscriptCannotStoreScopedAccountDetails `protobuf:"bytes,77,opt,name=numscript_cannot_store_scoped_account,json=numscriptCannotStoreScopedAccount,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptCompileBadArity struct {
+	NumscriptCompileBadArity *NumscriptCompileBadArityDetails `protobuf:"bytes,78,opt,name=numscript_compile_bad_arity,json=numscriptCompileBadArity,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptCompileCannotCastToString struct {
+	NumscriptCompileCannotCastToString *NumscriptCompileCannotCastToStringDetails `protobuf:"bytes,79,opt,name=numscript_compile_cannot_cast_to_string,json=numscriptCompileCannotCastToString,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptCompileCannotStoreScopedAccount struct {
+	NumscriptCompileCannotStoreScopedAccount *NumscriptCompileCannotStoreScopedAccountDetails `protobuf:"bytes,80,opt,name=numscript_compile_cannot_store_scoped_account,json=numscriptCompileCannotStoreScopedAccount,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptCompileDuplicateRemaining struct {
+	NumscriptCompileDuplicateRemaining *NumscriptCompileDuplicateRemainingDetails `protobuf:"bytes,81,opt,name=numscript_compile_duplicate_remaining,json=numscriptCompileDuplicateRemaining,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptCompileDuplicateVariable struct {
+	NumscriptCompileDuplicateVariable *NumscriptCompileDuplicateVariableDetails `protobuf:"bytes,82,opt,name=numscript_compile_duplicate_variable,json=numscriptCompileDuplicateVariable,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptCompileError struct {
+	NumscriptCompileError *NumscriptCompileErrorDetails `protobuf:"bytes,83,opt,name=numscript_compile_error,json=numscriptCompileError,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptCompileExperimentalFeature struct {
+	NumscriptCompileExperimentalFeature *NumscriptCompileExperimentalFeatureDetails `protobuf:"bytes,84,opt,name=numscript_compile_experimental_feature,json=numscriptCompileExperimentalFeature,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptCompileInvalidFeature struct {
+	NumscriptCompileInvalidFeature *NumscriptCompileInvalidFeatureDetails `protobuf:"bytes,85,opt,name=numscript_compile_invalid_feature,json=numscriptCompileInvalidFeature,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptCompileInvalidMetaPosition struct {
+	NumscriptCompileInvalidMetaPosition *NumscriptCompileInvalidMetaPositionDetails `protobuf:"bytes,86,opt,name=numscript_compile_invalid_meta_position,json=numscriptCompileInvalidMetaPosition,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptCompileInvalidType struct {
+	NumscriptCompileInvalidType *NumscriptCompileInvalidTypeDetails `protobuf:"bytes,87,opt,name=numscript_compile_invalid_type,json=numscriptCompileInvalidType,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptCompileInvalidUncappedSource struct {
+	NumscriptCompileInvalidUncappedSource *NumscriptCompileInvalidUncappedSourceDetails `protobuf:"bytes,88,opt,name=numscript_compile_invalid_uncapped_source,json=numscriptCompileInvalidUncappedSource,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptCompileInvalidVariableValue struct {
+	NumscriptCompileInvalidVariableValue *NumscriptCompileInvalidVariableValueDetails `protobuf:"bytes,89,opt,name=numscript_compile_invalid_variable_value,json=numscriptCompileInvalidVariableValue,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptCompileMissingVariable struct {
+	NumscriptCompileMissingVariable *NumscriptCompileMissingVariableDetails `protobuf:"bytes,90,opt,name=numscript_compile_missing_variable,json=numscriptCompileMissingVariable,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptCompileTypeMismatch struct {
+	NumscriptCompileTypeMismatch *NumscriptCompileTypeMismatchDetails `protobuf:"bytes,91,opt,name=numscript_compile_type_mismatch,json=numscriptCompileTypeMismatch,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptCompileUnboundVariable struct {
+	NumscriptCompileUnboundVariable *NumscriptCompileUnboundVariableDetails `protobuf:"bytes,92,opt,name=numscript_compile_unbound_variable,json=numscriptCompileUnboundVariable,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptCompileUnknownFunction struct {
+	NumscriptCompileUnknownFunction *NumscriptCompileUnknownFunctionDetails `protobuf:"bytes,93,opt,name=numscript_compile_unknown_function,json=numscriptCompileUnknownFunction,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptContentRequired struct {
+	NumscriptContentRequired *NumscriptContentRequiredDetails `protobuf:"bytes,94,opt,name=numscript_content_required,json=numscriptContentRequired,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptCurrencyMismatch struct {
+	NumscriptCurrencyMismatch *NumscriptCurrencyMismatchDetails `protobuf:"bytes,95,opt,name=numscript_currency_mismatch,json=numscriptCurrencyMismatch,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptDivideByZero struct {
+	NumscriptDivideByZero *NumscriptDivideByZeroDetails `protobuf:"bytes,96,opt,name=numscript_divide_by_zero,json=numscriptDivideByZero,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptExecutionError struct {
+	NumscriptExecutionError *NumscriptExecutionErrorDetails `protobuf:"bytes,97,opt,name=numscript_execution_error,json=numscriptExecutionError,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptExperimentalFeature struct {
+	NumscriptExperimentalFeature *NumscriptExperimentalFeatureDetails `protobuf:"bytes,98,opt,name=numscript_experimental_feature,json=numscriptExperimentalFeature,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptInvalidAccountName struct {
+	NumscriptInvalidAccountName *NumscriptInvalidAccountNameDetails `protobuf:"bytes,99,opt,name=numscript_invalid_account_name,json=numscriptInvalidAccountName,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptInvalidAllotmentInSendAll struct {
+	NumscriptInvalidAllotmentInSendAll *NumscriptInvalidAllotmentInSendAllDetails `protobuf:"bytes,100,opt,name=numscript_invalid_allotment_in_send_all,json=numscriptInvalidAllotmentInSendAll,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptInvalidAllotmentSum struct {
+	NumscriptInvalidAllotmentSum *NumscriptInvalidAllotmentSumDetails `protobuf:"bytes,101,opt,name=numscript_invalid_allotment_sum,json=numscriptInvalidAllotmentSum,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptInvalidAsset struct {
+	NumscriptInvalidAsset *NumscriptInvalidAssetDetails `protobuf:"bytes,102,opt,name=numscript_invalid_asset,json=numscriptInvalidAsset,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptInvalidColor struct {
+	NumscriptInvalidColor *NumscriptInvalidColorDetails `protobuf:"bytes,103,opt,name=numscript_invalid_color,json=numscriptInvalidColor,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptInvalidFeature struct {
+	NumscriptInvalidFeature *NumscriptInvalidFeatureDetails `protobuf:"bytes,104,opt,name=numscript_invalid_feature,json=numscriptInvalidFeature,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptInvalidMonetaryLiteral struct {
+	NumscriptInvalidMonetaryLiteral *NumscriptInvalidMonetaryLiteralDetails `protobuf:"bytes,105,opt,name=numscript_invalid_monetary_literal,json=numscriptInvalidMonetaryLiteral,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptInvalidNestedMeta struct {
+	NumscriptInvalidNestedMeta *NumscriptInvalidNestedMetaDetails `protobuf:"bytes,106,opt,name=numscript_invalid_nested_meta,json=numscriptInvalidNestedMeta,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptInvalidNumberLiteral struct {
+	NumscriptInvalidNumberLiteral *NumscriptInvalidNumberLiteralDetails `protobuf:"bytes,107,opt,name=numscript_invalid_number_literal,json=numscriptInvalidNumberLiteral,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptInvalidRemainingAllotment struct {
+	NumscriptInvalidRemainingAllotment *NumscriptInvalidRemainingAllotmentDetails `protobuf:"bytes,108,opt,name=numscript_invalid_remaining_allotment,json=numscriptInvalidRemainingAllotment,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptInvalidScope struct {
+	NumscriptInvalidScope *NumscriptInvalidScopeDetails `protobuf:"bytes,109,opt,name=numscript_invalid_scope,json=numscriptInvalidScope,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptInvalidType struct {
+	NumscriptInvalidType *NumscriptInvalidTypeDetails `protobuf:"bytes,110,opt,name=numscript_invalid_type,json=numscriptInvalidType,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptInvalidUnboundedScalingAddress struct {
+	NumscriptInvalidUnboundedScalingAddress *NumscriptInvalidUnboundedScalingAddressDetails `protobuf:"bytes,111,opt,name=numscript_invalid_unbounded_scaling_address,json=numscriptInvalidUnboundedScalingAddress,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptInvalidUnboundedSendAll struct {
+	NumscriptInvalidUnboundedSendAll *NumscriptInvalidUnboundedSendAllDetails `protobuf:"bytes,112,opt,name=numscript_invalid_unbounded_send_all,json=numscriptInvalidUnboundedSendAll,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptInvalidUncappedSource struct {
+	NumscriptInvalidUncappedSource *NumscriptInvalidUncappedSourceDetails `protobuf:"bytes,113,opt,name=numscript_invalid_uncapped_source,json=numscriptInvalidUncappedSource,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptInvalidVersion struct {
+	NumscriptInvalidVersion *NumscriptInvalidVersionDetails `protobuf:"bytes,114,opt,name=numscript_invalid_version,json=numscriptInvalidVersion,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptMetadataNotFound struct {
+	NumscriptMetadataNotFound *NumscriptMetadataNotFoundDetails `protobuf:"bytes,115,opt,name=numscript_metadata_not_found,json=numscriptMetadataNotFound,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptMissingFunds struct {
+	NumscriptMissingFunds *NumscriptMissingFundsDetails `protobuf:"bytes,116,opt,name=numscript_missing_funds,json=numscriptMissingFunds,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptMissingVariable struct {
+	NumscriptMissingVariable *NumscriptMissingVariableDetails `protobuf:"bytes,117,opt,name=numscript_missing_variable,json=numscriptMissingVariable,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptNameInvalidChar struct {
+	NumscriptNameInvalidChar *NumscriptNameInvalidCharDetails `protobuf:"bytes,118,opt,name=numscript_name_invalid_char,json=numscriptNameInvalidChar,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptNameRequired struct {
+	NumscriptNameRequired *NumscriptNameRequiredDetails `protobuf:"bytes,119,opt,name=numscript_name_required,json=numscriptNameRequired,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptNameTooLong struct {
+	NumscriptNameTooLong *NumscriptNameTooLongDetails `protobuf:"bytes,120,opt,name=numscript_name_too_long,json=numscriptNameTooLong,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptNegativeAmount struct {
+	NumscriptNegativeAmount *NumscriptNegativeAmountDetails `protobuf:"bytes,121,opt,name=numscript_negative_amount,json=numscriptNegativeAmount,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptNegativeBalance struct {
+	NumscriptNegativeBalance *NumscriptNegativeBalanceDetails `protobuf:"bytes,122,opt,name=numscript_negative_balance,json=numscriptNegativeBalance,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptNegativePortion struct {
+	NumscriptNegativePortion *NumscriptNegativePortionDetails `protobuf:"bytes,123,opt,name=numscript_negative_portion,json=numscriptNegativePortion,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptNotFound struct {
+	NumscriptNotFound *NumscriptNotFoundDetails `protobuf:"bytes,124,opt,name=numscript_not_found,json=numscriptNotFound,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptParseError struct {
+	NumscriptParseError *NumscriptParseErrorDetails `protobuf:"bytes,125,opt,name=numscript_parse_error,json=numscriptParseError,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptPostingAmountOverflow struct {
+	NumscriptPostingAmountOverflow *NumscriptPostingAmountOverflowDetails `protobuf:"bytes,126,opt,name=numscript_posting_amount_overflow,json=numscriptPostingAmountOverflow,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptPostingNegativeAmount struct {
+	NumscriptPostingNegativeAmount *NumscriptPostingNegativeAmountDetails `protobuf:"bytes,127,opt,name=numscript_posting_negative_amount,json=numscriptPostingNegativeAmount,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptRuntime struct {
+	NumscriptRuntime *NumscriptRuntimeDetails `protobuf:"bytes,128,opt,name=numscript_runtime,json=numscriptRuntime,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptScalingUnsupported struct {
+	NumscriptScalingUnsupported *NumscriptScalingUnsupportedDetails `protobuf:"bytes,129,opt,name=numscript_scaling_unsupported,json=numscriptScalingUnsupported,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptTypeError struct {
+	NumscriptTypeError *NumscriptTypeErrorDetails `protobuf:"bytes,130,opt,name=numscript_type_error,json=numscriptTypeError,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptUnboundFunction struct {
+	NumscriptUnboundFunction *NumscriptUnboundFunctionDetails `protobuf:"bytes,131,opt,name=numscript_unbound_function,json=numscriptUnboundFunction,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptUnboundVariable struct {
+	NumscriptUnboundVariable *NumscriptUnboundVariableDetails `protobuf:"bytes,132,opt,name=numscript_unbound_variable,json=numscriptUnboundVariable,proto3,oneof"`
+}
+
+type FailureDetails_NumscriptVersionAlreadyExists struct {
+	NumscriptVersionAlreadyExists *NumscriptVersionAlreadyExistsDetails `protobuf:"bytes,133,opt,name=numscript_version_already_exists,json=numscriptVersionAlreadyExists,proto3,oneof"`
+}
+
+type FailureDetails_PostingsAndScriptConflict struct {
+	PostingsAndScriptConflict *PostingsAndScriptConflictDetails `protobuf:"bytes,134,opt,name=postings_and_script_conflict,json=postingsAndScriptConflict,proto3,oneof"`
+}
+
+type FailureDetails_PreloadUnavailable struct {
+	PreloadUnavailable *PreloadUnavailableDetails `protobuf:"bytes,135,opt,name=preload_unavailable,json=preloadUnavailable,proto3,oneof"`
+}
+
+type FailureDetails_PreparedQueryAlreadyExists struct {
+	PreparedQueryAlreadyExists *PreparedQueryAlreadyExistsDetails `protobuf:"bytes,136,opt,name=prepared_query_already_exists,json=preparedQueryAlreadyExists,proto3,oneof"`
+}
+
+type FailureDetails_PreparedQueryNameInvalidChar struct {
+	PreparedQueryNameInvalidChar *PreparedQueryNameInvalidCharDetails `protobuf:"bytes,137,opt,name=prepared_query_name_invalid_char,json=preparedQueryNameInvalidChar,proto3,oneof"`
+}
+
+type FailureDetails_PreparedQueryNameRequired struct {
+	PreparedQueryNameRequired *PreparedQueryNameRequiredDetails `protobuf:"bytes,138,opt,name=prepared_query_name_required,json=preparedQueryNameRequired,proto3,oneof"`
+}
+
+type FailureDetails_PreparedQueryNameTooLong struct {
+	PreparedQueryNameTooLong *PreparedQueryNameTooLongDetails `protobuf:"bytes,139,opt,name=prepared_query_name_too_long,json=preparedQueryNameTooLong,proto3,oneof"`
+}
+
+type FailureDetails_PreparedQueryNotFound struct {
+	PreparedQueryNotFound *PreparedQueryNotFoundDetails `protobuf:"bytes,140,opt,name=prepared_query_not_found,json=preparedQueryNotFound,proto3,oneof"`
+}
+
+type FailureDetails_PreparedQueryRequired struct {
+	PreparedQueryRequired *PreparedQueryRequiredDetails `protobuf:"bytes,141,opt,name=prepared_query_required,json=preparedQueryRequired,proto3,oneof"`
+}
+
+type FailureDetails_PreparedQueryTargetUnsupported struct {
+	PreparedQueryTargetUnsupported *PreparedQueryTargetUnsupportedDetails `protobuf:"bytes,142,opt,name=prepared_query_target_unsupported,json=preparedQueryTargetUnsupported,proto3,oneof"`
+}
+
+type FailureDetails_RevertTargetCreatedInBatch struct {
+	RevertTargetCreatedInBatch *RevertTargetCreatedInBatchDetails `protobuf:"bytes,143,opt,name=revert_target_created_in_batch,json=revertTargetCreatedInBatch,proto3,oneof"`
+}
+
+type FailureDetails_ScopedBalanceUnsupported struct {
+	ScopedBalanceUnsupported *ScopedBalanceUnsupportedDetails `protobuf:"bytes,144,opt,name=scoped_balance_unsupported,json=scopedBalanceUnsupported,proto3,oneof"`
+}
+
+type FailureDetails_ScriptAndReferenceConflict struct {
+	ScriptAndReferenceConflict *ScriptAndReferenceConflictDetails `protobuf:"bytes,145,opt,name=script_and_reference_conflict,json=scriptAndReferenceConflict,proto3,oneof"`
+}
+
+type FailureDetails_ScriptRequired struct {
+	ScriptRequired *ScriptRequiredDetails `protobuf:"bytes,146,opt,name=script_required,json=scriptRequired,proto3,oneof"`
+}
+
+type FailureDetails_SequenceExhausted struct {
+	SequenceExhausted *SequenceExhaustedDetails `protobuf:"bytes,147,opt,name=sequence_exhausted,json=sequenceExhausted,proto3,oneof"`
+}
+
+type FailureDetails_SigningKeyIdInvalidChar struct {
+	SigningKeyIdInvalidChar *SigningKeyIdInvalidCharDetails `protobuf:"bytes,148,opt,name=signing_key_id_invalid_char,json=signingKeyIdInvalidChar,proto3,oneof"`
+}
+
+type FailureDetails_SigningKeyIdRequired struct {
+	SigningKeyIdRequired *SigningKeyIdRequiredDetails `protobuf:"bytes,149,opt,name=signing_key_id_required,json=signingKeyIdRequired,proto3,oneof"`
+}
+
+type FailureDetails_SigningKeyIdTooLong struct {
+	SigningKeyIdTooLong *SigningKeyIdTooLongDetails `protobuf:"bytes,150,opt,name=signing_key_id_too_long,json=signingKeyIdTooLong,proto3,oneof"`
+}
+
+type FailureDetails_SigningKeyInvalidLength struct {
+	SigningKeyInvalidLength *SigningKeyInvalidLengthDetails `protobuf:"bytes,151,opt,name=signing_key_invalid_length,json=signingKeyInvalidLength,proto3,oneof"`
+}
+
+type FailureDetails_SinkAlreadyExists struct {
+	SinkAlreadyExists *SinkAlreadyExistsDetails `protobuf:"bytes,152,opt,name=sink_already_exists,json=sinkAlreadyExists,proto3,oneof"`
+}
+
+type FailureDetails_SinkBatchSizeTooLarge struct {
+	SinkBatchSizeTooLarge *SinkBatchSizeTooLargeDetails `protobuf:"bytes,153,opt,name=sink_batch_size_too_large,json=sinkBatchSizeTooLarge,proto3,oneof"`
+}
+
+type FailureDetails_SinkControllerMismatch struct {
+	SinkControllerMismatch *SinkControllerMismatchDetails `protobuf:"bytes,154,opt,name=sink_controller_mismatch,json=sinkControllerMismatch,proto3,oneof"`
+}
+
+type FailureDetails_SinkNotFound struct {
+	SinkNotFound *SinkNotFoundDetails `protobuf:"bytes,155,opt,name=sink_not_found,json=sinkNotFound,proto3,oneof"`
+}
+
+type FailureDetails_StaleClusterPolicy struct {
+	StaleClusterPolicy *StaleClusterPolicyDetails `protobuf:"bytes,156,opt,name=stale_cluster_policy,json=staleClusterPolicy,proto3,oneof"`
+}
+
+type FailureDetails_StaleInputsResolution struct {
+	StaleInputsResolution *StaleInputsResolutionDetails `protobuf:"bytes,157,opt,name=stale_inputs_resolution,json=staleInputsResolution,proto3,oneof"`
+}
+
+type FailureDetails_StaleProposal struct {
+	StaleProposal *StaleProposalDetails `protobuf:"bytes,158,opt,name=stale_proposal,json=staleProposal,proto3,oneof"`
+}
+
+type FailureDetails_StorageOperationFailed struct {
+	StorageOperationFailed *StorageOperationFailedDetails `protobuf:"bytes,159,opt,name=storage_operation_failed,json=storageOperationFailed,proto3,oneof"`
+}
+
+type FailureDetails_TargetRequired struct {
+	TargetRequired *TargetRequiredDetails `protobuf:"bytes,160,opt,name=target_required,json=targetRequired,proto3,oneof"`
+}
+
+type FailureDetails_TransactionAlreadyReverted struct {
+	TransactionAlreadyReverted *TransactionAlreadyRevertedDetails `protobuf:"bytes,161,opt,name=transaction_already_reverted,json=transactionAlreadyReverted,proto3,oneof"`
+}
+
+type FailureDetails_TransactionNotFound struct {
+	TransactionNotFound *TransactionNotFoundDetails `protobuf:"bytes,162,opt,name=transaction_not_found,json=transactionNotFound,proto3,oneof"`
+}
+
+type FailureDetails_TransactionReferenceConflict struct {
+	TransactionReferenceConflict *TransactionReferenceConflictDetails `protobuf:"bytes,163,opt,name=transaction_reference_conflict,json=transactionReferenceConflict,proto3,oneof"`
+}
+
+type FailureDetails_TransactionReferenceNotFound struct {
+	TransactionReferenceNotFound *TransactionReferenceNotFoundDetails `protobuf:"bytes,164,opt,name=transaction_reference_not_found,json=transactionReferenceNotFound,proto3,oneof"`
+}
+
+type FailureDetails_TransactionReferenceTooLong struct {
+	TransactionReferenceTooLong *TransactionReferenceTooLongDetails `protobuf:"bytes,165,opt,name=transaction_reference_too_long,json=transactionReferenceTooLong,proto3,oneof"`
+}
+
+type FailureDetails_TransactionStateInconsistent struct {
+	TransactionStateInconsistent *TransactionStateInconsistentDetails `protobuf:"bytes,166,opt,name=transaction_state_inconsistent,json=transactionStateInconsistent,proto3,oneof"`
+}
+
+type FailureDetails_TransactionTargetMissing struct {
+	TransactionTargetMissing *TransactionTargetMissingDetails `protobuf:"bytes,167,opt,name=transaction_target_missing,json=transactionTargetMissing,proto3,oneof"`
+}
+
+type FailureDetails_TransientAccountNonZero struct {
+	TransientAccountNonZero *TransientAccountNonZeroDetails `protobuf:"bytes,168,opt,name=transient_account_non_zero,json=transientAccountNonZero,proto3,oneof"`
+}
+
+type FailureDetails_Validation struct {
+	Validation *ValidationDetails `protobuf:"bytes,169,opt,name=validation,proto3,oneof"`
+}
+
+type FailureDetails_VolumeNotMaterialized struct {
+	VolumeNotMaterialized *VolumeNotMaterializedDetails `protobuf:"bytes,170,opt,name=volume_not_materialized,json=volumeNotMaterialized,proto3,oneof"`
+}
+
+type FailureDetails_VolumeOverflow struct {
+	VolumeOverflow *VolumeOverflowDetails `protobuf:"bytes,171,opt,name=volume_overflow,json=volumeOverflow,proto3,oneof"`
+}
+
+type FailureDetails_WritesBlockedClockSkew struct {
+	WritesBlockedClockSkew *WritesBlockedClockSkewDetails `protobuf:"bytes,172,opt,name=writes_blocked_clock_skew,json=writesBlockedClockSkew,proto3,oneof"`
+}
+
+type FailureDetails_WritesBlockedDiskFull struct {
+	WritesBlockedDiskFull *WritesBlockedDiskFullDetails `protobuf:"bytes,173,opt,name=writes_blocked_disk_full,json=writesBlockedDiskFull,proto3,oneof"`
+}
+
+func (*FailureDetails_AccountAddressEmpty) isFailureDetails_Kind() {}
+
+func (*FailureDetails_AccountAddressEmptySegment) isFailureDetails_Kind() {}
+
+func (*FailureDetails_AccountAddressInvalidChar) isFailureDetails_Kind() {}
+
+func (*FailureDetails_AccountAddressTooLong) isFailureDetails_Kind() {}
+
+func (*FailureDetails_AccountNotMatchingType) isFailureDetails_Kind() {}
+
+func (*FailureDetails_AccountTypeAlreadyExists) isFailureDetails_Kind() {}
+
+func (*FailureDetails_AccountTypeConflict) isFailureDetails_Kind() {}
+
+func (*FailureDetails_AccountTypeHasAccounts) isFailureDetails_Kind() {}
+
+func (*FailureDetails_AccountTypeNameTooLong) isFailureDetails_Kind() {}
+
+func (*FailureDetails_AccountTypeNotFound) isFailureDetails_Kind() {}
+
+func (*FailureDetails_AccountTypePatternTooLong) isFailureDetails_Kind() {}
+
+func (*FailureDetails_AggregateOverflow) isFailureDetails_Kind() {}
+
+func (*FailureDetails_AssetInvalid) isFailureDetails_Kind() {}
+
+func (*FailureDetails_AuditDisabled) isFailureDetails_Kind() {}
+
+func (*FailureDetails_BalanceNotFound) isFailureDetails_Kind() {}
+
+func (*FailureDetails_BalanceNotPreloaded) isFailureDetails_Kind() {}
+
+func (*FailureDetails_CheckpointIdRequired) isFailureDetails_Kind() {}
+
+func (*FailureDetails_CheckpointLimitReached) isFailureDetails_Kind() {}
+
+func (*FailureDetails_CheckpointNotFound) isFailureDetails_Kind() {}
+
+func (*FailureDetails_CheckpointNotReady) isFailureDetails_Kind() {}
+
+func (*FailureDetails_ClusterPolicyInvalid) isFailureDetails_Kind() {}
+
+func (*FailureDetails_ClusterPolicyRevisionConflict) isFailureDetails_Kind() {}
+
+func (*FailureDetails_ClusterUnhealthy) isFailureDetails_Kind() {}
+
+func (*FailureDetails_ColorInvalid) isFailureDetails_Kind() {}
+
+func (*FailureDetails_ColorTooLong) isFailureDetails_Kind() {}
+
+func (*FailureDetails_CoverageMiss) isFailureDetails_Kind() {}
+
+func (*FailureDetails_DependencyDiscoveryFailed) isFailureDetails_Kind() {}
+
+func (*FailureDetails_EmptyTransaction) isFailureDetails_Kind() {}
+
+func (*FailureDetails_ExecutionPlanTooLarge) isFailureDetails_Kind() {}
+
+func (*FailureDetails_FilterCompilationError) isFailureDetails_Kind() {}
+
+func (*FailureDetails_IdempotencyCheckFailed) isFailureDetails_Kind() {}
+
+func (*FailureDetails_IdempotencyKeyConflict) isFailureDetails_Kind() {}
+
+func (*FailureDetails_IdRequired) isFailureDetails_Kind() {}
+
+func (*FailureDetails_IndexAlreadyExists) isFailureDetails_Kind() {}
+
+func (*FailureDetails_IndexBuilding) isFailureDetails_Kind() {}
+
+func (*FailureDetails_IndexInconsistent) isFailureDetails_Kind() {}
+
+func (*FailureDetails_IndexNotFound) isFailureDetails_Kind() {}
+
+func (*FailureDetails_IndexTargetUnsupported) isFailureDetails_Kind() {}
+
+func (*FailureDetails_InsufficientFunds) isFailureDetails_Kind() {}
+
+func (*FailureDetails_InvalidApplyType) isFailureDetails_Kind() {}
+
+func (*FailureDetails_InvalidCallerAttribution) isFailureDetails_Kind() {}
+
+func (*FailureDetails_InvalidCronExpression) isFailureDetails_Kind() {}
+
+func (*FailureDetails_InvalidExecutionPlan) isFailureDetails_Kind() {}
+
+func (*FailureDetails_InvalidOrderType) isFailureDetails_Kind() {}
+
+func (*FailureDetails_InvalidPattern) isFailureDetails_Kind() {}
+
+func (*FailureDetails_InvalidSkippableReason) isFailureDetails_Kind() {}
+
+func (*FailureDetails_LedgerAlreadyExists) isFailureDetails_Kind() {}
+
+func (*FailureDetails_LedgerDeleted) isFailureDetails_Kind() {}
+
+func (*FailureDetails_LedgerInMirrorMode) isFailureDetails_Kind() {}
+
+func (*FailureDetails_LedgerNameInvalidChar) isFailureDetails_Kind() {}
+
+func (*FailureDetails_LedgerNameRequired) isFailureDetails_Kind() {}
+
+func (*FailureDetails_LedgerNameReservedPrefix) isFailureDetails_Kind() {}
+
+func (*FailureDetails_LedgerNameTooLong) isFailureDetails_Kind() {}
+
+func (*FailureDetails_LedgerNotFound) isFailureDetails_Kind() {}
+
+func (*FailureDetails_LedgerNotInMirrorMode) isFailureDetails_Kind() {}
+
+func (*FailureDetails_MaintenanceMode) isFailureDetails_Kind() {}
+
+func (*FailureDetails_MetadataFieldNotInSchema) isFailureDetails_Kind() {}
+
+func (*FailureDetails_MetadataKeyEmpty) isFailureDetails_Kind() {}
+
+func (*FailureDetails_MetadataKeyInvalidChar) isFailureDetails_Kind() {}
+
+func (*FailureDetails_MetadataKeyRequired) isFailureDetails_Kind() {}
+
+func (*FailureDetails_MetadataLimitsUnconfigured) isFailureDetails_Kind() {}
+
+func (*FailureDetails_MetadataLimitExceeded) isFailureDetails_Kind() {}
+
+func (*FailureDetails_MetadataNotFound) isFailureDetails_Kind() {}
+
+func (*FailureDetails_MetadataValueContainsNullByte) isFailureDetails_Kind() {}
+
+func (*FailureDetails_MirrorHttpUrlInvalid) isFailureDetails_Kind() {}
+
+func (*FailureDetails_MirrorIamRegionRequired) isFailureDetails_Kind() {}
+
+func (*FailureDetails_MirrorIamRequiresTls) isFailureDetails_Kind() {}
+
+func (*FailureDetails_MirrorRewriteRuleInvalid) isFailureDetails_Kind() {}
+
+func (*FailureDetails_MirrorV2LogIdGap) isFailureDetails_Kind() {}
+
+func (*FailureDetails_MirrorV2LogIdInvalid) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptAssetMismatch) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptBadArity) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptBadMetaValue) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptBadPortion) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptCannotCastScopedAccount) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptCannotCastToString) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptCannotStoreScopedAccount) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptCompileBadArity) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptCompileCannotCastToString) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptCompileCannotStoreScopedAccount) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptCompileDuplicateRemaining) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptCompileDuplicateVariable) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptCompileError) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptCompileExperimentalFeature) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptCompileInvalidFeature) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptCompileInvalidMetaPosition) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptCompileInvalidType) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptCompileInvalidUncappedSource) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptCompileInvalidVariableValue) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptCompileMissingVariable) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptCompileTypeMismatch) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptCompileUnboundVariable) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptCompileUnknownFunction) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptContentRequired) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptCurrencyMismatch) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptDivideByZero) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptExecutionError) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptExperimentalFeature) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptInvalidAccountName) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptInvalidAllotmentInSendAll) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptInvalidAllotmentSum) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptInvalidAsset) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptInvalidColor) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptInvalidFeature) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptInvalidMonetaryLiteral) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptInvalidNestedMeta) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptInvalidNumberLiteral) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptInvalidRemainingAllotment) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptInvalidScope) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptInvalidType) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptInvalidUnboundedScalingAddress) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptInvalidUnboundedSendAll) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptInvalidUncappedSource) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptInvalidVersion) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptMetadataNotFound) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptMissingFunds) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptMissingVariable) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptNameInvalidChar) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptNameRequired) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptNameTooLong) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptNegativeAmount) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptNegativeBalance) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptNegativePortion) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptNotFound) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptParseError) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptPostingAmountOverflow) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptPostingNegativeAmount) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptRuntime) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptScalingUnsupported) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptTypeError) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptUnboundFunction) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptUnboundVariable) isFailureDetails_Kind() {}
+
+func (*FailureDetails_NumscriptVersionAlreadyExists) isFailureDetails_Kind() {}
+
+func (*FailureDetails_PostingsAndScriptConflict) isFailureDetails_Kind() {}
+
+func (*FailureDetails_PreloadUnavailable) isFailureDetails_Kind() {}
+
+func (*FailureDetails_PreparedQueryAlreadyExists) isFailureDetails_Kind() {}
+
+func (*FailureDetails_PreparedQueryNameInvalidChar) isFailureDetails_Kind() {}
+
+func (*FailureDetails_PreparedQueryNameRequired) isFailureDetails_Kind() {}
+
+func (*FailureDetails_PreparedQueryNameTooLong) isFailureDetails_Kind() {}
+
+func (*FailureDetails_PreparedQueryNotFound) isFailureDetails_Kind() {}
+
+func (*FailureDetails_PreparedQueryRequired) isFailureDetails_Kind() {}
+
+func (*FailureDetails_PreparedQueryTargetUnsupported) isFailureDetails_Kind() {}
+
+func (*FailureDetails_RevertTargetCreatedInBatch) isFailureDetails_Kind() {}
+
+func (*FailureDetails_ScopedBalanceUnsupported) isFailureDetails_Kind() {}
+
+func (*FailureDetails_ScriptAndReferenceConflict) isFailureDetails_Kind() {}
+
+func (*FailureDetails_ScriptRequired) isFailureDetails_Kind() {}
+
+func (*FailureDetails_SequenceExhausted) isFailureDetails_Kind() {}
+
+func (*FailureDetails_SigningKeyIdInvalidChar) isFailureDetails_Kind() {}
+
+func (*FailureDetails_SigningKeyIdRequired) isFailureDetails_Kind() {}
+
+func (*FailureDetails_SigningKeyIdTooLong) isFailureDetails_Kind() {}
+
+func (*FailureDetails_SigningKeyInvalidLength) isFailureDetails_Kind() {}
+
+func (*FailureDetails_SinkAlreadyExists) isFailureDetails_Kind() {}
+
+func (*FailureDetails_SinkBatchSizeTooLarge) isFailureDetails_Kind() {}
+
+func (*FailureDetails_SinkControllerMismatch) isFailureDetails_Kind() {}
+
+func (*FailureDetails_SinkNotFound) isFailureDetails_Kind() {}
+
+func (*FailureDetails_StaleClusterPolicy) isFailureDetails_Kind() {}
+
+func (*FailureDetails_StaleInputsResolution) isFailureDetails_Kind() {}
+
+func (*FailureDetails_StaleProposal) isFailureDetails_Kind() {}
+
+func (*FailureDetails_StorageOperationFailed) isFailureDetails_Kind() {}
+
+func (*FailureDetails_TargetRequired) isFailureDetails_Kind() {}
+
+func (*FailureDetails_TransactionAlreadyReverted) isFailureDetails_Kind() {}
+
+func (*FailureDetails_TransactionNotFound) isFailureDetails_Kind() {}
+
+func (*FailureDetails_TransactionReferenceConflict) isFailureDetails_Kind() {}
+
+func (*FailureDetails_TransactionReferenceNotFound) isFailureDetails_Kind() {}
+
+func (*FailureDetails_TransactionReferenceTooLong) isFailureDetails_Kind() {}
+
+func (*FailureDetails_TransactionStateInconsistent) isFailureDetails_Kind() {}
+
+func (*FailureDetails_TransactionTargetMissing) isFailureDetails_Kind() {}
+
+func (*FailureDetails_TransientAccountNonZero) isFailureDetails_Kind() {}
+
+func (*FailureDetails_Validation) isFailureDetails_Kind() {}
+
+func (*FailureDetails_VolumeNotMaterialized) isFailureDetails_Kind() {}
+
+func (*FailureDetails_VolumeOverflow) isFailureDetails_Kind() {}
+
+func (*FailureDetails_WritesBlockedClockSkew) isFailureDetails_Kind() {}
+
+func (*FailureDetails_WritesBlockedDiskFull) isFailureDetails_Kind() {}
+
+type AccountAddressEmptyDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AccountAddressEmptyDetails) Reset() {
+	*x = AccountAddressEmptyDetails{}
+	mi := &file_common_proto_msgTypes[72]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AccountAddressEmptyDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AccountAddressEmptyDetails) ProtoMessage() {}
+
+func (x *AccountAddressEmptyDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[72]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AccountAddressEmptyDetails.ProtoReflect.Descriptor instead.
+func (*AccountAddressEmptyDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{72}
+}
+
+func (x *AccountAddressEmptyDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *AccountAddressEmptyDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type AccountAddressEmptySegmentDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AccountAddressEmptySegmentDetails) Reset() {
+	*x = AccountAddressEmptySegmentDetails{}
+	mi := &file_common_proto_msgTypes[73]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AccountAddressEmptySegmentDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AccountAddressEmptySegmentDetails) ProtoMessage() {}
+
+func (x *AccountAddressEmptySegmentDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[73]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AccountAddressEmptySegmentDetails.ProtoReflect.Descriptor instead.
+func (*AccountAddressEmptySegmentDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{73}
+}
+
+func (x *AccountAddressEmptySegmentDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *AccountAddressEmptySegmentDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type AccountAddressInvalidCharDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AccountAddressInvalidCharDetails) Reset() {
+	*x = AccountAddressInvalidCharDetails{}
+	mi := &file_common_proto_msgTypes[74]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AccountAddressInvalidCharDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AccountAddressInvalidCharDetails) ProtoMessage() {}
+
+func (x *AccountAddressInvalidCharDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[74]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AccountAddressInvalidCharDetails.ProtoReflect.Descriptor instead.
+func (*AccountAddressInvalidCharDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{74}
+}
+
+func (x *AccountAddressInvalidCharDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *AccountAddressInvalidCharDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type AccountAddressTooLongDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AccountAddressTooLongDetails) Reset() {
+	*x = AccountAddressTooLongDetails{}
+	mi := &file_common_proto_msgTypes[75]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AccountAddressTooLongDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AccountAddressTooLongDetails) ProtoMessage() {}
+
+func (x *AccountAddressTooLongDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[75]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AccountAddressTooLongDetails.ProtoReflect.Descriptor instead.
+func (*AccountAddressTooLongDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{75}
+}
+
+func (x *AccountAddressTooLongDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *AccountAddressTooLongDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type AccountNotMatchingTypeDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Address       *string                `protobuf:"bytes,1,opt,name=address,proto3,oneof" json:"address,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AccountNotMatchingTypeDetails) Reset() {
+	*x = AccountNotMatchingTypeDetails{}
+	mi := &file_common_proto_msgTypes[76]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AccountNotMatchingTypeDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AccountNotMatchingTypeDetails) ProtoMessage() {}
+
+func (x *AccountNotMatchingTypeDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[76]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AccountNotMatchingTypeDetails.ProtoReflect.Descriptor instead.
+func (*AccountNotMatchingTypeDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{76}
+}
+
+func (x *AccountNotMatchingTypeDetails) GetAddress() string {
+	if x != nil && x.Address != nil {
+		return *x.Address
+	}
+	return ""
+}
+
+type AccountTypeAlreadyExistsDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          *string                `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AccountTypeAlreadyExistsDetails) Reset() {
+	*x = AccountTypeAlreadyExistsDetails{}
+	mi := &file_common_proto_msgTypes[77]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AccountTypeAlreadyExistsDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AccountTypeAlreadyExistsDetails) ProtoMessage() {}
+
+func (x *AccountTypeAlreadyExistsDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[77]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AccountTypeAlreadyExistsDetails.ProtoReflect.Descriptor instead.
+func (*AccountTypeAlreadyExistsDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{77}
+}
+
+func (x *AccountTypeAlreadyExistsDetails) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+type AccountTypeConflictDetails struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Pattern         *string                `protobuf:"bytes,1,opt,name=pattern,proto3,oneof" json:"pattern,omitempty"`
+	ExistingName    *string                `protobuf:"bytes,2,opt,name=existing_name,json=existingName,proto3,oneof" json:"existing_name,omitempty"`
+	ExistingPattern *string                `protobuf:"bytes,3,opt,name=existing_pattern,json=existingPattern,proto3,oneof" json:"existing_pattern,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *AccountTypeConflictDetails) Reset() {
+	*x = AccountTypeConflictDetails{}
+	mi := &file_common_proto_msgTypes[78]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AccountTypeConflictDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AccountTypeConflictDetails) ProtoMessage() {}
+
+func (x *AccountTypeConflictDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[78]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AccountTypeConflictDetails.ProtoReflect.Descriptor instead.
+func (*AccountTypeConflictDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{78}
+}
+
+func (x *AccountTypeConflictDetails) GetPattern() string {
+	if x != nil && x.Pattern != nil {
+		return *x.Pattern
+	}
+	return ""
+}
+
+func (x *AccountTypeConflictDetails) GetExistingName() string {
+	if x != nil && x.ExistingName != nil {
+		return *x.ExistingName
+	}
+	return ""
+}
+
+func (x *AccountTypeConflictDetails) GetExistingPattern() string {
+	if x != nil && x.ExistingPattern != nil {
+		return *x.ExistingPattern
+	}
+	return ""
+}
+
+type AccountTypeHasAccountsDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          *string                `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AccountTypeHasAccountsDetails) Reset() {
+	*x = AccountTypeHasAccountsDetails{}
+	mi := &file_common_proto_msgTypes[79]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AccountTypeHasAccountsDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AccountTypeHasAccountsDetails) ProtoMessage() {}
+
+func (x *AccountTypeHasAccountsDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[79]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AccountTypeHasAccountsDetails.ProtoReflect.Descriptor instead.
+func (*AccountTypeHasAccountsDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{79}
+}
+
+func (x *AccountTypeHasAccountsDetails) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+type AccountTypeNameTooLongDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AccountTypeNameTooLongDetails) Reset() {
+	*x = AccountTypeNameTooLongDetails{}
+	mi := &file_common_proto_msgTypes[80]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AccountTypeNameTooLongDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AccountTypeNameTooLongDetails) ProtoMessage() {}
+
+func (x *AccountTypeNameTooLongDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[80]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AccountTypeNameTooLongDetails.ProtoReflect.Descriptor instead.
+func (*AccountTypeNameTooLongDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{80}
+}
+
+func (x *AccountTypeNameTooLongDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *AccountTypeNameTooLongDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type AccountTypeNotFoundDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          *string                `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AccountTypeNotFoundDetails) Reset() {
+	*x = AccountTypeNotFoundDetails{}
+	mi := &file_common_proto_msgTypes[81]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AccountTypeNotFoundDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AccountTypeNotFoundDetails) ProtoMessage() {}
+
+func (x *AccountTypeNotFoundDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[81]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AccountTypeNotFoundDetails.ProtoReflect.Descriptor instead.
+func (*AccountTypeNotFoundDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{81}
+}
+
+func (x *AccountTypeNotFoundDetails) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+type AccountTypePatternTooLongDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AccountTypePatternTooLongDetails) Reset() {
+	*x = AccountTypePatternTooLongDetails{}
+	mi := &file_common_proto_msgTypes[82]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AccountTypePatternTooLongDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AccountTypePatternTooLongDetails) ProtoMessage() {}
+
+func (x *AccountTypePatternTooLongDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[82]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AccountTypePatternTooLongDetails.ProtoReflect.Descriptor instead.
+func (*AccountTypePatternTooLongDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{82}
+}
+
+func (x *AccountTypePatternTooLongDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *AccountTypePatternTooLongDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type AggregateOverflowDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Stage         *string                `protobuf:"bytes,1,opt,name=stage,proto3,oneof" json:"stage,omitempty"`
+	Side          *string                `protobuf:"bytes,2,opt,name=side,proto3,oneof" json:"side,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AggregateOverflowDetails) Reset() {
+	*x = AggregateOverflowDetails{}
+	mi := &file_common_proto_msgTypes[83]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AggregateOverflowDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AggregateOverflowDetails) ProtoMessage() {}
+
+func (x *AggregateOverflowDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[83]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AggregateOverflowDetails.ProtoReflect.Descriptor instead.
+func (*AggregateOverflowDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{83}
+}
+
+func (x *AggregateOverflowDetails) GetStage() string {
+	if x != nil && x.Stage != nil {
+		return *x.Stage
+	}
+	return ""
+}
+
+func (x *AggregateOverflowDetails) GetSide() string {
+	if x != nil && x.Side != nil {
+		return *x.Side
+	}
+	return ""
+}
+
+type AssetInvalidDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AssetInvalidDetails) Reset() {
+	*x = AssetInvalidDetails{}
+	mi := &file_common_proto_msgTypes[84]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AssetInvalidDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AssetInvalidDetails) ProtoMessage() {}
+
+func (x *AssetInvalidDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[84]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AssetInvalidDetails.ProtoReflect.Descriptor instead.
+func (*AssetInvalidDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{84}
+}
+
+func (x *AssetInvalidDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *AssetInvalidDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type AuditDisabledDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AuditDisabledDetails) Reset() {
+	*x = AuditDisabledDetails{}
+	mi := &file_common_proto_msgTypes[85]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AuditDisabledDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AuditDisabledDetails) ProtoMessage() {}
+
+func (x *AuditDisabledDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[85]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AuditDisabledDetails.ProtoReflect.Descriptor instead.
+func (*AuditDisabledDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{85}
+}
+
+type BalanceNotFoundDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Account       *string                `protobuf:"bytes,1,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	Asset         *string                `protobuf:"bytes,2,opt,name=asset,proto3,oneof" json:"asset,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BalanceNotFoundDetails) Reset() {
+	*x = BalanceNotFoundDetails{}
+	mi := &file_common_proto_msgTypes[86]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BalanceNotFoundDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BalanceNotFoundDetails) ProtoMessage() {}
+
+func (x *BalanceNotFoundDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[86]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BalanceNotFoundDetails.ProtoReflect.Descriptor instead.
+func (*BalanceNotFoundDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{86}
+}
+
+func (x *BalanceNotFoundDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+func (x *BalanceNotFoundDetails) GetAsset() string {
+	if x != nil && x.Asset != nil {
+		return *x.Asset
+	}
+	return ""
+}
+
+type BalanceNotPreloadedDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Account       *string                `protobuf:"bytes,1,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	Asset         *string                `protobuf:"bytes,2,opt,name=asset,proto3,oneof" json:"asset,omitempty"`
+	Color         *string                `protobuf:"bytes,3,opt,name=color,proto3,oneof" json:"color,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BalanceNotPreloadedDetails) Reset() {
+	*x = BalanceNotPreloadedDetails{}
+	mi := &file_common_proto_msgTypes[87]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BalanceNotPreloadedDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BalanceNotPreloadedDetails) ProtoMessage() {}
+
+func (x *BalanceNotPreloadedDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[87]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BalanceNotPreloadedDetails.ProtoReflect.Descriptor instead.
+func (*BalanceNotPreloadedDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{87}
+}
+
+func (x *BalanceNotPreloadedDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+func (x *BalanceNotPreloadedDetails) GetAsset() string {
+	if x != nil && x.Asset != nil {
+		return *x.Asset
+	}
+	return ""
+}
+
+func (x *BalanceNotPreloadedDetails) GetColor() string {
+	if x != nil && x.Color != nil {
+		return *x.Color
+	}
+	return ""
+}
+
+type CheckpointIdRequiredDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CheckpointIdRequiredDetails) Reset() {
+	*x = CheckpointIdRequiredDetails{}
+	mi := &file_common_proto_msgTypes[88]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CheckpointIdRequiredDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CheckpointIdRequiredDetails) ProtoMessage() {}
+
+func (x *CheckpointIdRequiredDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[88]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CheckpointIdRequiredDetails.ProtoReflect.Descriptor instead.
+func (*CheckpointIdRequiredDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{88}
+}
+
+type CheckpointLimitReachedDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Limit         *uint64                `protobuf:"varint,1,opt,name=limit,proto3,oneof" json:"limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CheckpointLimitReachedDetails) Reset() {
+	*x = CheckpointLimitReachedDetails{}
+	mi := &file_common_proto_msgTypes[89]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CheckpointLimitReachedDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CheckpointLimitReachedDetails) ProtoMessage() {}
+
+func (x *CheckpointLimitReachedDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[89]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CheckpointLimitReachedDetails.ProtoReflect.Descriptor instead.
+func (*CheckpointLimitReachedDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{89}
+}
+
+func (x *CheckpointLimitReachedDetails) GetLimit() uint64 {
+	if x != nil && x.Limit != nil {
+		return *x.Limit
+	}
+	return 0
+}
+
+type CheckpointNotFoundDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CheckpointId  *uint64                `protobuf:"varint,1,opt,name=checkpoint_id,json=checkpointId,proto3,oneof" json:"checkpoint_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CheckpointNotFoundDetails) Reset() {
+	*x = CheckpointNotFoundDetails{}
+	mi := &file_common_proto_msgTypes[90]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CheckpointNotFoundDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CheckpointNotFoundDetails) ProtoMessage() {}
+
+func (x *CheckpointNotFoundDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[90]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CheckpointNotFoundDetails.ProtoReflect.Descriptor instead.
+func (*CheckpointNotFoundDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{90}
+}
+
+func (x *CheckpointNotFoundDetails) GetCheckpointId() uint64 {
+	if x != nil && x.CheckpointId != nil {
+		return *x.CheckpointId
+	}
+	return 0
+}
+
+type CheckpointNotReadyDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CheckpointId  *uint64                `protobuf:"varint,1,opt,name=checkpoint_id,json=checkpointId,proto3,oneof" json:"checkpoint_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CheckpointNotReadyDetails) Reset() {
+	*x = CheckpointNotReadyDetails{}
+	mi := &file_common_proto_msgTypes[91]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CheckpointNotReadyDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CheckpointNotReadyDetails) ProtoMessage() {}
+
+func (x *CheckpointNotReadyDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[91]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CheckpointNotReadyDetails.ProtoReflect.Descriptor instead.
+func (*CheckpointNotReadyDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{91}
+}
+
+func (x *CheckpointNotReadyDetails) GetCheckpointId() uint64 {
+	if x != nil && x.CheckpointId != nil {
+		return *x.CheckpointId
+	}
+	return 0
+}
+
+type ClusterPolicyInvalidDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Account       *string                `protobuf:"bytes,1,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	Key           *string                `protobuf:"bytes,2,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ClusterPolicyInvalidDetails) Reset() {
+	*x = ClusterPolicyInvalidDetails{}
+	mi := &file_common_proto_msgTypes[92]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ClusterPolicyInvalidDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ClusterPolicyInvalidDetails) ProtoMessage() {}
+
+func (x *ClusterPolicyInvalidDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[92]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ClusterPolicyInvalidDetails.ProtoReflect.Descriptor instead.
+func (*ClusterPolicyInvalidDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{92}
+}
+
+func (x *ClusterPolicyInvalidDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+func (x *ClusterPolicyInvalidDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+type ClusterPolicyRevisionConflictDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Revision      *uint64                `protobuf:"varint,1,opt,name=revision,proto3,oneof" json:"revision,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ClusterPolicyRevisionConflictDetails) Reset() {
+	*x = ClusterPolicyRevisionConflictDetails{}
+	mi := &file_common_proto_msgTypes[93]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ClusterPolicyRevisionConflictDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ClusterPolicyRevisionConflictDetails) ProtoMessage() {}
+
+func (x *ClusterPolicyRevisionConflictDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[93]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ClusterPolicyRevisionConflictDetails.ProtoReflect.Descriptor instead.
+func (*ClusterPolicyRevisionConflictDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{93}
+}
+
+func (x *ClusterPolicyRevisionConflictDetails) GetRevision() uint64 {
+	if x != nil && x.Revision != nil {
+		return *x.Revision
+	}
+	return 0
+}
+
+type ClusterUnhealthyDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ClusterUnhealthyDetails) Reset() {
+	*x = ClusterUnhealthyDetails{}
+	mi := &file_common_proto_msgTypes[94]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ClusterUnhealthyDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ClusterUnhealthyDetails) ProtoMessage() {}
+
+func (x *ClusterUnhealthyDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[94]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ClusterUnhealthyDetails.ProtoReflect.Descriptor instead.
+func (*ClusterUnhealthyDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{94}
+}
+
+type ColorInvalidDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ColorInvalidDetails) Reset() {
+	*x = ColorInvalidDetails{}
+	mi := &file_common_proto_msgTypes[95]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ColorInvalidDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ColorInvalidDetails) ProtoMessage() {}
+
+func (x *ColorInvalidDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[95]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ColorInvalidDetails.ProtoReflect.Descriptor instead.
+func (*ColorInvalidDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{95}
+}
+
+func (x *ColorInvalidDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *ColorInvalidDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type ColorTooLongDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ColorTooLongDetails) Reset() {
+	*x = ColorTooLongDetails{}
+	mi := &file_common_proto_msgTypes[96]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ColorTooLongDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ColorTooLongDetails) ProtoMessage() {}
+
+func (x *ColorTooLongDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[96]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ColorTooLongDetails.ProtoReflect.Descriptor instead.
+func (*ColorTooLongDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{96}
+}
+
+func (x *ColorTooLongDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *ColorTooLongDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type CoverageMissDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Attribute     *string                `protobuf:"bytes,1,opt,name=attribute,proto3,oneof" json:"attribute,omitempty"`
+	CanonicalHex  *string                `protobuf:"bytes,2,opt,name=canonical_hex,json=canonicalHex,proto3,oneof" json:"canonical_hex,omitempty"`
+	IdHex         *string                `protobuf:"bytes,3,opt,name=id_hex,json=idHex,proto3,oneof" json:"id_hex,omitempty"`
+	RaftIndex     *uint64                `protobuf:"varint,4,opt,name=raft_index,json=raftIndex,proto3,oneof" json:"raft_index,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CoverageMissDetails) Reset() {
+	*x = CoverageMissDetails{}
+	mi := &file_common_proto_msgTypes[97]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CoverageMissDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CoverageMissDetails) ProtoMessage() {}
+
+func (x *CoverageMissDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[97]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CoverageMissDetails.ProtoReflect.Descriptor instead.
+func (*CoverageMissDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{97}
+}
+
+func (x *CoverageMissDetails) GetAttribute() string {
+	if x != nil && x.Attribute != nil {
+		return *x.Attribute
+	}
+	return ""
+}
+
+func (x *CoverageMissDetails) GetCanonicalHex() string {
+	if x != nil && x.CanonicalHex != nil {
+		return *x.CanonicalHex
+	}
+	return ""
+}
+
+func (x *CoverageMissDetails) GetIdHex() string {
+	if x != nil && x.IdHex != nil {
+		return *x.IdHex
+	}
+	return ""
+}
+
+func (x *CoverageMissDetails) GetRaftIndex() uint64 {
+	if x != nil && x.RaftIndex != nil {
+		return *x.RaftIndex
+	}
+	return 0
+}
+
+type DependencyDiscoveryFailedDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DependencyDiscoveryFailedDetails) Reset() {
+	*x = DependencyDiscoveryFailedDetails{}
+	mi := &file_common_proto_msgTypes[98]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DependencyDiscoveryFailedDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DependencyDiscoveryFailedDetails) ProtoMessage() {}
+
+func (x *DependencyDiscoveryFailedDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[98]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DependencyDiscoveryFailedDetails.ProtoReflect.Descriptor instead.
+func (*DependencyDiscoveryFailedDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{98}
+}
+
+func (x *DependencyDiscoveryFailedDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *DependencyDiscoveryFailedDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type EmptyTransactionDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EmptyTransactionDetails) Reset() {
+	*x = EmptyTransactionDetails{}
+	mi := &file_common_proto_msgTypes[99]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EmptyTransactionDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EmptyTransactionDetails) ProtoMessage() {}
+
+func (x *EmptyTransactionDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[99]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EmptyTransactionDetails.ProtoReflect.Descriptor instead.
+func (*EmptyTransactionDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{99}
+}
+
+func (x *EmptyTransactionDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *EmptyTransactionDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type ExecutionPlanTooLargeDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Size          *uint64                `protobuf:"varint,1,opt,name=size,proto3,oneof" json:"size,omitempty"`
+	Limit         *uint64                `protobuf:"varint,2,opt,name=limit,proto3,oneof" json:"limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExecutionPlanTooLargeDetails) Reset() {
+	*x = ExecutionPlanTooLargeDetails{}
+	mi := &file_common_proto_msgTypes[100]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExecutionPlanTooLargeDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExecutionPlanTooLargeDetails) ProtoMessage() {}
+
+func (x *ExecutionPlanTooLargeDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[100]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExecutionPlanTooLargeDetails.ProtoReflect.Descriptor instead.
+func (*ExecutionPlanTooLargeDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{100}
+}
+
+func (x *ExecutionPlanTooLargeDetails) GetSize() uint64 {
+	if x != nil && x.Size != nil {
+		return *x.Size
+	}
+	return 0
+}
+
+func (x *ExecutionPlanTooLargeDetails) GetLimit() uint64 {
+	if x != nil && x.Limit != nil {
+		return *x.Limit
+	}
+	return 0
+}
+
+type FilterCompilationErrorDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FilterCompilationErrorDetails) Reset() {
+	*x = FilterCompilationErrorDetails{}
+	mi := &file_common_proto_msgTypes[101]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FilterCompilationErrorDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FilterCompilationErrorDetails) ProtoMessage() {}
+
+func (x *FilterCompilationErrorDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[101]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FilterCompilationErrorDetails.ProtoReflect.Descriptor instead.
+func (*FilterCompilationErrorDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{101}
+}
+
+type IdempotencyCheckFailedDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IdempotencyCheckFailedDetails) Reset() {
+	*x = IdempotencyCheckFailedDetails{}
+	mi := &file_common_proto_msgTypes[102]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IdempotencyCheckFailedDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IdempotencyCheckFailedDetails) ProtoMessage() {}
+
+func (x *IdempotencyCheckFailedDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[102]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IdempotencyCheckFailedDetails.ProtoReflect.Descriptor instead.
+func (*IdempotencyCheckFailedDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{102}
+}
+
+type IdempotencyKeyConflictDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IdempotencyKeyConflictDetails) Reset() {
+	*x = IdempotencyKeyConflictDetails{}
+	mi := &file_common_proto_msgTypes[103]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IdempotencyKeyConflictDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IdempotencyKeyConflictDetails) ProtoMessage() {}
+
+func (x *IdempotencyKeyConflictDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[103]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IdempotencyKeyConflictDetails.ProtoReflect.Descriptor instead.
+func (*IdempotencyKeyConflictDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{103}
+}
+
+func (x *IdempotencyKeyConflictDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+type IdRequiredDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IdRequiredDetails) Reset() {
+	*x = IdRequiredDetails{}
+	mi := &file_common_proto_msgTypes[104]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IdRequiredDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IdRequiredDetails) ProtoMessage() {}
+
+func (x *IdRequiredDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[104]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IdRequiredDetails.ProtoReflect.Descriptor instead.
+func (*IdRequiredDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{104}
+}
+
+func (x *IdRequiredDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *IdRequiredDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type IndexAlreadyExistsDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Index         *string                `protobuf:"bytes,1,opt,name=index,proto3,oneof" json:"index,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IndexAlreadyExistsDetails) Reset() {
+	*x = IndexAlreadyExistsDetails{}
+	mi := &file_common_proto_msgTypes[105]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IndexAlreadyExistsDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IndexAlreadyExistsDetails) ProtoMessage() {}
+
+func (x *IndexAlreadyExistsDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[105]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IndexAlreadyExistsDetails.ProtoReflect.Descriptor instead.
+func (*IndexAlreadyExistsDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{105}
+}
+
+func (x *IndexAlreadyExistsDetails) GetIndex() string {
+	if x != nil && x.Index != nil {
+		return *x.Index
+	}
+	return ""
+}
+
+type IndexBuildingDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Index         *string                `protobuf:"bytes,1,opt,name=index,proto3,oneof" json:"index,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IndexBuildingDetails) Reset() {
+	*x = IndexBuildingDetails{}
+	mi := &file_common_proto_msgTypes[106]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IndexBuildingDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IndexBuildingDetails) ProtoMessage() {}
+
+func (x *IndexBuildingDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[106]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IndexBuildingDetails.ProtoReflect.Descriptor instead.
+func (*IndexBuildingDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{106}
+}
+
+func (x *IndexBuildingDetails) GetIndex() string {
+	if x != nil && x.Index != nil {
+		return *x.Index
+	}
+	return ""
+}
+
+type IndexInconsistentDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Index         *string                `protobuf:"bytes,1,opt,name=index,proto3,oneof" json:"index,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IndexInconsistentDetails) Reset() {
+	*x = IndexInconsistentDetails{}
+	mi := &file_common_proto_msgTypes[107]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IndexInconsistentDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IndexInconsistentDetails) ProtoMessage() {}
+
+func (x *IndexInconsistentDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[107]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IndexInconsistentDetails.ProtoReflect.Descriptor instead.
+func (*IndexInconsistentDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{107}
+}
+
+func (x *IndexInconsistentDetails) GetIndex() string {
+	if x != nil && x.Index != nil {
+		return *x.Index
+	}
+	return ""
+}
+
+type IndexNotFoundDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Index         *string                `protobuf:"bytes,1,opt,name=index,proto3,oneof" json:"index,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IndexNotFoundDetails) Reset() {
+	*x = IndexNotFoundDetails{}
+	mi := &file_common_proto_msgTypes[108]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IndexNotFoundDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IndexNotFoundDetails) ProtoMessage() {}
+
+func (x *IndexNotFoundDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[108]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IndexNotFoundDetails.ProtoReflect.Descriptor instead.
+func (*IndexNotFoundDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{108}
+}
+
+func (x *IndexNotFoundDetails) GetIndex() string {
+	if x != nil && x.Index != nil {
+		return *x.Index
+	}
+	return ""
+}
+
+type IndexTargetUnsupportedDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IndexTargetUnsupportedDetails) Reset() {
+	*x = IndexTargetUnsupportedDetails{}
+	mi := &file_common_proto_msgTypes[109]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IndexTargetUnsupportedDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IndexTargetUnsupportedDetails) ProtoMessage() {}
+
+func (x *IndexTargetUnsupportedDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[109]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IndexTargetUnsupportedDetails.ProtoReflect.Descriptor instead.
+func (*IndexTargetUnsupportedDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{109}
+}
+
+func (x *IndexTargetUnsupportedDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *IndexTargetUnsupportedDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type InsufficientFundsDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Account       *string                `protobuf:"bytes,1,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	Asset         *string                `protobuf:"bytes,2,opt,name=asset,proto3,oneof" json:"asset,omitempty"`
+	Amount        *string                `protobuf:"bytes,3,opt,name=amount,proto3,oneof" json:"amount,omitempty"`
+	Balance       *string                `protobuf:"bytes,4,opt,name=balance,proto3,oneof" json:"balance,omitempty"`
+	Color         *string                `protobuf:"bytes,5,opt,name=color,proto3,oneof" json:"color,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InsufficientFundsDetails) Reset() {
+	*x = InsufficientFundsDetails{}
+	mi := &file_common_proto_msgTypes[110]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InsufficientFundsDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InsufficientFundsDetails) ProtoMessage() {}
+
+func (x *InsufficientFundsDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[110]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InsufficientFundsDetails.ProtoReflect.Descriptor instead.
+func (*InsufficientFundsDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{110}
+}
+
+func (x *InsufficientFundsDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+func (x *InsufficientFundsDetails) GetAsset() string {
+	if x != nil && x.Asset != nil {
+		return *x.Asset
+	}
+	return ""
+}
+
+func (x *InsufficientFundsDetails) GetAmount() string {
+	if x != nil && x.Amount != nil {
+		return *x.Amount
+	}
+	return ""
+}
+
+func (x *InsufficientFundsDetails) GetBalance() string {
+	if x != nil && x.Balance != nil {
+		return *x.Balance
+	}
+	return ""
+}
+
+func (x *InsufficientFundsDetails) GetColor() string {
+	if x != nil && x.Color != nil {
+		return *x.Color
+	}
+	return ""
+}
+
+type InvalidApplyTypeDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InvalidApplyTypeDetails) Reset() {
+	*x = InvalidApplyTypeDetails{}
+	mi := &file_common_proto_msgTypes[111]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InvalidApplyTypeDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InvalidApplyTypeDetails) ProtoMessage() {}
+
+func (x *InvalidApplyTypeDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[111]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InvalidApplyTypeDetails.ProtoReflect.Descriptor instead.
+func (*InvalidApplyTypeDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{111}
+}
+
+type InvalidCallerAttributionDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InvalidCallerAttributionDetails) Reset() {
+	*x = InvalidCallerAttributionDetails{}
+	mi := &file_common_proto_msgTypes[112]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InvalidCallerAttributionDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InvalidCallerAttributionDetails) ProtoMessage() {}
+
+func (x *InvalidCallerAttributionDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[112]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InvalidCallerAttributionDetails.ProtoReflect.Descriptor instead.
+func (*InvalidCallerAttributionDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{112}
+}
+
+type InvalidCronExpressionDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Expression    *string                `protobuf:"bytes,1,opt,name=expression,proto3,oneof" json:"expression,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InvalidCronExpressionDetails) Reset() {
+	*x = InvalidCronExpressionDetails{}
+	mi := &file_common_proto_msgTypes[113]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InvalidCronExpressionDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InvalidCronExpressionDetails) ProtoMessage() {}
+
+func (x *InvalidCronExpressionDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[113]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InvalidCronExpressionDetails.ProtoReflect.Descriptor instead.
+func (*InvalidCronExpressionDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{113}
+}
+
+func (x *InvalidCronExpressionDetails) GetExpression() string {
+	if x != nil && x.Expression != nil {
+		return *x.Expression
+	}
+	return ""
+}
+
+type InvalidExecutionPlanDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InvalidExecutionPlanDetails) Reset() {
+	*x = InvalidExecutionPlanDetails{}
+	mi := &file_common_proto_msgTypes[114]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InvalidExecutionPlanDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InvalidExecutionPlanDetails) ProtoMessage() {}
+
+func (x *InvalidExecutionPlanDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[114]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InvalidExecutionPlanDetails.ProtoReflect.Descriptor instead.
+func (*InvalidExecutionPlanDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{114}
+}
+
+type InvalidOrderTypeDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InvalidOrderTypeDetails) Reset() {
+	*x = InvalidOrderTypeDetails{}
+	mi := &file_common_proto_msgTypes[115]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InvalidOrderTypeDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InvalidOrderTypeDetails) ProtoMessage() {}
+
+func (x *InvalidOrderTypeDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[115]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InvalidOrderTypeDetails.ProtoReflect.Descriptor instead.
+func (*InvalidOrderTypeDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{115}
+}
+
+type InvalidPatternDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Pattern       *string                `protobuf:"bytes,1,opt,name=pattern,proto3,oneof" json:"pattern,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InvalidPatternDetails) Reset() {
+	*x = InvalidPatternDetails{}
+	mi := &file_common_proto_msgTypes[116]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InvalidPatternDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InvalidPatternDetails) ProtoMessage() {}
+
+func (x *InvalidPatternDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[116]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InvalidPatternDetails.ProtoReflect.Descriptor instead.
+func (*InvalidPatternDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{116}
+}
+
+func (x *InvalidPatternDetails) GetPattern() string {
+	if x != nil && x.Pattern != nil {
+		return *x.Pattern
+	}
+	return ""
+}
+
+type InvalidSkippableReasonDetails struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Key            *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account        *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	ProvidedReason *string                `protobuf:"bytes,3,opt,name=provided_reason,json=providedReason,proto3,oneof" json:"provided_reason,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *InvalidSkippableReasonDetails) Reset() {
+	*x = InvalidSkippableReasonDetails{}
+	mi := &file_common_proto_msgTypes[117]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InvalidSkippableReasonDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InvalidSkippableReasonDetails) ProtoMessage() {}
+
+func (x *InvalidSkippableReasonDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[117]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InvalidSkippableReasonDetails.ProtoReflect.Descriptor instead.
+func (*InvalidSkippableReasonDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{117}
+}
+
+func (x *InvalidSkippableReasonDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *InvalidSkippableReasonDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+func (x *InvalidSkippableReasonDetails) GetProvidedReason() string {
+	if x != nil && x.ProvidedReason != nil {
+		return *x.ProvidedReason
+	}
+	return ""
+}
+
+type LedgerAlreadyExistsDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          *string                `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LedgerAlreadyExistsDetails) Reset() {
+	*x = LedgerAlreadyExistsDetails{}
+	mi := &file_common_proto_msgTypes[118]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LedgerAlreadyExistsDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LedgerAlreadyExistsDetails) ProtoMessage() {}
+
+func (x *LedgerAlreadyExistsDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[118]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LedgerAlreadyExistsDetails.ProtoReflect.Descriptor instead.
+func (*LedgerAlreadyExistsDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{118}
+}
+
+func (x *LedgerAlreadyExistsDetails) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+type LedgerDeletedDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          *string                `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LedgerDeletedDetails) Reset() {
+	*x = LedgerDeletedDetails{}
+	mi := &file_common_proto_msgTypes[119]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LedgerDeletedDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LedgerDeletedDetails) ProtoMessage() {}
+
+func (x *LedgerDeletedDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[119]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LedgerDeletedDetails.ProtoReflect.Descriptor instead.
+func (*LedgerDeletedDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{119}
+}
+
+func (x *LedgerDeletedDetails) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+type LedgerInMirrorModeDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          *string                `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LedgerInMirrorModeDetails) Reset() {
+	*x = LedgerInMirrorModeDetails{}
+	mi := &file_common_proto_msgTypes[120]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LedgerInMirrorModeDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LedgerInMirrorModeDetails) ProtoMessage() {}
+
+func (x *LedgerInMirrorModeDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[120]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LedgerInMirrorModeDetails.ProtoReflect.Descriptor instead.
+func (*LedgerInMirrorModeDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{120}
+}
+
+func (x *LedgerInMirrorModeDetails) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+type LedgerNameInvalidCharDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LedgerNameInvalidCharDetails) Reset() {
+	*x = LedgerNameInvalidCharDetails{}
+	mi := &file_common_proto_msgTypes[121]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LedgerNameInvalidCharDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LedgerNameInvalidCharDetails) ProtoMessage() {}
+
+func (x *LedgerNameInvalidCharDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[121]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LedgerNameInvalidCharDetails.ProtoReflect.Descriptor instead.
+func (*LedgerNameInvalidCharDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{121}
+}
+
+func (x *LedgerNameInvalidCharDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *LedgerNameInvalidCharDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type LedgerNameRequiredDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LedgerNameRequiredDetails) Reset() {
+	*x = LedgerNameRequiredDetails{}
+	mi := &file_common_proto_msgTypes[122]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LedgerNameRequiredDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LedgerNameRequiredDetails) ProtoMessage() {}
+
+func (x *LedgerNameRequiredDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[122]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LedgerNameRequiredDetails.ProtoReflect.Descriptor instead.
+func (*LedgerNameRequiredDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{122}
+}
+
+func (x *LedgerNameRequiredDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *LedgerNameRequiredDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type LedgerNameReservedPrefixDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LedgerNameReservedPrefixDetails) Reset() {
+	*x = LedgerNameReservedPrefixDetails{}
+	mi := &file_common_proto_msgTypes[123]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LedgerNameReservedPrefixDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LedgerNameReservedPrefixDetails) ProtoMessage() {}
+
+func (x *LedgerNameReservedPrefixDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[123]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LedgerNameReservedPrefixDetails.ProtoReflect.Descriptor instead.
+func (*LedgerNameReservedPrefixDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{123}
+}
+
+func (x *LedgerNameReservedPrefixDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *LedgerNameReservedPrefixDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type LedgerNameTooLongDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LedgerNameTooLongDetails) Reset() {
+	*x = LedgerNameTooLongDetails{}
+	mi := &file_common_proto_msgTypes[124]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LedgerNameTooLongDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LedgerNameTooLongDetails) ProtoMessage() {}
+
+func (x *LedgerNameTooLongDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[124]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LedgerNameTooLongDetails.ProtoReflect.Descriptor instead.
+func (*LedgerNameTooLongDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{124}
+}
+
+func (x *LedgerNameTooLongDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *LedgerNameTooLongDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type LedgerNotFoundDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          *string                `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LedgerNotFoundDetails) Reset() {
+	*x = LedgerNotFoundDetails{}
+	mi := &file_common_proto_msgTypes[125]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LedgerNotFoundDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LedgerNotFoundDetails) ProtoMessage() {}
+
+func (x *LedgerNotFoundDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[125]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LedgerNotFoundDetails.ProtoReflect.Descriptor instead.
+func (*LedgerNotFoundDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{125}
+}
+
+func (x *LedgerNotFoundDetails) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+type LedgerNotInMirrorModeDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          *string                `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LedgerNotInMirrorModeDetails) Reset() {
+	*x = LedgerNotInMirrorModeDetails{}
+	mi := &file_common_proto_msgTypes[126]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LedgerNotInMirrorModeDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LedgerNotInMirrorModeDetails) ProtoMessage() {}
+
+func (x *LedgerNotInMirrorModeDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[126]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LedgerNotInMirrorModeDetails.ProtoReflect.Descriptor instead.
+func (*LedgerNotInMirrorModeDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{126}
+}
+
+func (x *LedgerNotInMirrorModeDetails) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+type MaintenanceModeDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MaintenanceModeDetails) Reset() {
+	*x = MaintenanceModeDetails{}
+	mi := &file_common_proto_msgTypes[127]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MaintenanceModeDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MaintenanceModeDetails) ProtoMessage() {}
+
+func (x *MaintenanceModeDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[127]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MaintenanceModeDetails.ProtoReflect.Descriptor instead.
+func (*MaintenanceModeDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{127}
+}
+
+type MetadataFieldNotInSchemaDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Target        *string                `protobuf:"bytes,1,opt,name=target,proto3,oneof" json:"target,omitempty"`
+	Key           *string                `protobuf:"bytes,2,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MetadataFieldNotInSchemaDetails) Reset() {
+	*x = MetadataFieldNotInSchemaDetails{}
+	mi := &file_common_proto_msgTypes[128]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MetadataFieldNotInSchemaDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MetadataFieldNotInSchemaDetails) ProtoMessage() {}
+
+func (x *MetadataFieldNotInSchemaDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[128]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MetadataFieldNotInSchemaDetails.ProtoReflect.Descriptor instead.
+func (*MetadataFieldNotInSchemaDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{128}
+}
+
+func (x *MetadataFieldNotInSchemaDetails) GetTarget() string {
+	if x != nil && x.Target != nil {
+		return *x.Target
+	}
+	return ""
+}
+
+func (x *MetadataFieldNotInSchemaDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+type MetadataKeyEmptyDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MetadataKeyEmptyDetails) Reset() {
+	*x = MetadataKeyEmptyDetails{}
+	mi := &file_common_proto_msgTypes[129]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MetadataKeyEmptyDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MetadataKeyEmptyDetails) ProtoMessage() {}
+
+func (x *MetadataKeyEmptyDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[129]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MetadataKeyEmptyDetails.ProtoReflect.Descriptor instead.
+func (*MetadataKeyEmptyDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{129}
+}
+
+func (x *MetadataKeyEmptyDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *MetadataKeyEmptyDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type MetadataKeyInvalidCharDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MetadataKeyInvalidCharDetails) Reset() {
+	*x = MetadataKeyInvalidCharDetails{}
+	mi := &file_common_proto_msgTypes[130]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MetadataKeyInvalidCharDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MetadataKeyInvalidCharDetails) ProtoMessage() {}
+
+func (x *MetadataKeyInvalidCharDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[130]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MetadataKeyInvalidCharDetails.ProtoReflect.Descriptor instead.
+func (*MetadataKeyInvalidCharDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{130}
+}
+
+func (x *MetadataKeyInvalidCharDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *MetadataKeyInvalidCharDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type MetadataKeyRequiredDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MetadataKeyRequiredDetails) Reset() {
+	*x = MetadataKeyRequiredDetails{}
+	mi := &file_common_proto_msgTypes[131]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MetadataKeyRequiredDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MetadataKeyRequiredDetails) ProtoMessage() {}
+
+func (x *MetadataKeyRequiredDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[131]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MetadataKeyRequiredDetails.ProtoReflect.Descriptor instead.
+func (*MetadataKeyRequiredDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{131}
+}
+
+func (x *MetadataKeyRequiredDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *MetadataKeyRequiredDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type MetadataLimitsUnconfiguredDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Account       *string                `protobuf:"bytes,1,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	Key           *string                `protobuf:"bytes,2,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MetadataLimitsUnconfiguredDetails) Reset() {
+	*x = MetadataLimitsUnconfiguredDetails{}
+	mi := &file_common_proto_msgTypes[132]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MetadataLimitsUnconfiguredDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MetadataLimitsUnconfiguredDetails) ProtoMessage() {}
+
+func (x *MetadataLimitsUnconfiguredDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[132]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MetadataLimitsUnconfiguredDetails.ProtoReflect.Descriptor instead.
+func (*MetadataLimitsUnconfiguredDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{132}
+}
+
+func (x *MetadataLimitsUnconfiguredDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+func (x *MetadataLimitsUnconfiguredDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+type MetadataLimitExceededDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Dimension     *string                `protobuf:"bytes,1,opt,name=dimension,proto3,oneof" json:"dimension,omitempty"`
+	Limit         *uint64                `protobuf:"varint,2,opt,name=limit,proto3,oneof" json:"limit,omitempty"`
+	Actual        *uint64                `protobuf:"varint,3,opt,name=actual,proto3,oneof" json:"actual,omitempty"`
+	Key           *string                `protobuf:"bytes,4,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,5,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MetadataLimitExceededDetails) Reset() {
+	*x = MetadataLimitExceededDetails{}
+	mi := &file_common_proto_msgTypes[133]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MetadataLimitExceededDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MetadataLimitExceededDetails) ProtoMessage() {}
+
+func (x *MetadataLimitExceededDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[133]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MetadataLimitExceededDetails.ProtoReflect.Descriptor instead.
+func (*MetadataLimitExceededDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{133}
+}
+
+func (x *MetadataLimitExceededDetails) GetDimension() string {
+	if x != nil && x.Dimension != nil {
+		return *x.Dimension
+	}
+	return ""
+}
+
+func (x *MetadataLimitExceededDetails) GetLimit() uint64 {
+	if x != nil && x.Limit != nil {
+		return *x.Limit
+	}
+	return 0
+}
+
+func (x *MetadataLimitExceededDetails) GetActual() uint64 {
+	if x != nil && x.Actual != nil {
+		return *x.Actual
+	}
+	return 0
+}
+
+func (x *MetadataLimitExceededDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *MetadataLimitExceededDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type MetadataNotFoundDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Target        *string                `protobuf:"bytes,1,opt,name=target,proto3,oneof" json:"target,omitempty"`
+	Key           *string                `protobuf:"bytes,2,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,3,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MetadataNotFoundDetails) Reset() {
+	*x = MetadataNotFoundDetails{}
+	mi := &file_common_proto_msgTypes[134]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MetadataNotFoundDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MetadataNotFoundDetails) ProtoMessage() {}
+
+func (x *MetadataNotFoundDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[134]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MetadataNotFoundDetails.ProtoReflect.Descriptor instead.
+func (*MetadataNotFoundDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{134}
+}
+
+func (x *MetadataNotFoundDetails) GetTarget() string {
+	if x != nil && x.Target != nil {
+		return *x.Target
+	}
+	return ""
+}
+
+func (x *MetadataNotFoundDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *MetadataNotFoundDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type MetadataValueContainsNullByteDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MetadataValueContainsNullByteDetails) Reset() {
+	*x = MetadataValueContainsNullByteDetails{}
+	mi := &file_common_proto_msgTypes[135]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MetadataValueContainsNullByteDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MetadataValueContainsNullByteDetails) ProtoMessage() {}
+
+func (x *MetadataValueContainsNullByteDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[135]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MetadataValueContainsNullByteDetails.ProtoReflect.Descriptor instead.
+func (*MetadataValueContainsNullByteDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{135}
+}
+
+func (x *MetadataValueContainsNullByteDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *MetadataValueContainsNullByteDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type MirrorHttpUrlInvalidDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MirrorHttpUrlInvalidDetails) Reset() {
+	*x = MirrorHttpUrlInvalidDetails{}
+	mi := &file_common_proto_msgTypes[136]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MirrorHttpUrlInvalidDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MirrorHttpUrlInvalidDetails) ProtoMessage() {}
+
+func (x *MirrorHttpUrlInvalidDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[136]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MirrorHttpUrlInvalidDetails.ProtoReflect.Descriptor instead.
+func (*MirrorHttpUrlInvalidDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{136}
+}
+
+func (x *MirrorHttpUrlInvalidDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *MirrorHttpUrlInvalidDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type MirrorIamRegionRequiredDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MirrorIamRegionRequiredDetails) Reset() {
+	*x = MirrorIamRegionRequiredDetails{}
+	mi := &file_common_proto_msgTypes[137]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MirrorIamRegionRequiredDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MirrorIamRegionRequiredDetails) ProtoMessage() {}
+
+func (x *MirrorIamRegionRequiredDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[137]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MirrorIamRegionRequiredDetails.ProtoReflect.Descriptor instead.
+func (*MirrorIamRegionRequiredDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{137}
+}
+
+func (x *MirrorIamRegionRequiredDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *MirrorIamRegionRequiredDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type MirrorIamRequiresTlsDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MirrorIamRequiresTlsDetails) Reset() {
+	*x = MirrorIamRequiresTlsDetails{}
+	mi := &file_common_proto_msgTypes[138]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MirrorIamRequiresTlsDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MirrorIamRequiresTlsDetails) ProtoMessage() {}
+
+func (x *MirrorIamRequiresTlsDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[138]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MirrorIamRequiresTlsDetails.ProtoReflect.Descriptor instead.
+func (*MirrorIamRequiresTlsDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{138}
+}
+
+func (x *MirrorIamRequiresTlsDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *MirrorIamRequiresTlsDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type MirrorRewriteRuleInvalidDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MirrorRewriteRuleInvalidDetails) Reset() {
+	*x = MirrorRewriteRuleInvalidDetails{}
+	mi := &file_common_proto_msgTypes[139]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MirrorRewriteRuleInvalidDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MirrorRewriteRuleInvalidDetails) ProtoMessage() {}
+
+func (x *MirrorRewriteRuleInvalidDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[139]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MirrorRewriteRuleInvalidDetails.ProtoReflect.Descriptor instead.
+func (*MirrorRewriteRuleInvalidDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{139}
+}
+
+func (x *MirrorRewriteRuleInvalidDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *MirrorRewriteRuleInvalidDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type MirrorV2LogIdGapDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          *string                `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	Got           *uint64                `protobuf:"varint,2,opt,name=got,proto3,oneof" json:"got,omitempty"`
+	Expected      *uint64                `protobuf:"varint,3,opt,name=expected,proto3,oneof" json:"expected,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MirrorV2LogIdGapDetails) Reset() {
+	*x = MirrorV2LogIdGapDetails{}
+	mi := &file_common_proto_msgTypes[140]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MirrorV2LogIdGapDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MirrorV2LogIdGapDetails) ProtoMessage() {}
+
+func (x *MirrorV2LogIdGapDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[140]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MirrorV2LogIdGapDetails.ProtoReflect.Descriptor instead.
+func (*MirrorV2LogIdGapDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{140}
+}
+
+func (x *MirrorV2LogIdGapDetails) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+func (x *MirrorV2LogIdGapDetails) GetGot() uint64 {
+	if x != nil && x.Got != nil {
+		return *x.Got
+	}
+	return 0
+}
+
+func (x *MirrorV2LogIdGapDetails) GetExpected() uint64 {
+	if x != nil && x.Expected != nil {
+		return *x.Expected
+	}
+	return 0
+}
+
+type MirrorV2LogIdInvalidDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          *string                `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MirrorV2LogIdInvalidDetails) Reset() {
+	*x = MirrorV2LogIdInvalidDetails{}
+	mi := &file_common_proto_msgTypes[141]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MirrorV2LogIdInvalidDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MirrorV2LogIdInvalidDetails) ProtoMessage() {}
+
+func (x *MirrorV2LogIdInvalidDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[141]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MirrorV2LogIdInvalidDetails.ProtoReflect.Descriptor instead.
+func (*MirrorV2LogIdInvalidDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{141}
+}
+
+func (x *MirrorV2LogIdInvalidDetails) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+type NumscriptAssetMismatchDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Expected      *string                `protobuf:"bytes,1,opt,name=expected,proto3,oneof" json:"expected,omitempty"`
+	Got           *string                `protobuf:"bytes,2,opt,name=got,proto3,oneof" json:"got,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptAssetMismatchDetails) Reset() {
+	*x = NumscriptAssetMismatchDetails{}
+	mi := &file_common_proto_msgTypes[142]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptAssetMismatchDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptAssetMismatchDetails) ProtoMessage() {}
+
+func (x *NumscriptAssetMismatchDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[142]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptAssetMismatchDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptAssetMismatchDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{142}
+}
+
+func (x *NumscriptAssetMismatchDetails) GetExpected() string {
+	if x != nil && x.Expected != nil {
+		return *x.Expected
+	}
+	return ""
+}
+
+func (x *NumscriptAssetMismatchDetails) GetGot() string {
+	if x != nil && x.Got != nil {
+		return *x.Got
+	}
+	return ""
+}
+
+type NumscriptBadArityDetails struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	ExpectedArity  *string                `protobuf:"bytes,1,opt,name=expected_arity,json=expectedArity,proto3,oneof" json:"expected_arity,omitempty"`
+	GivenArguments *string                `protobuf:"bytes,2,opt,name=given_arguments,json=givenArguments,proto3,oneof" json:"given_arguments,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *NumscriptBadArityDetails) Reset() {
+	*x = NumscriptBadArityDetails{}
+	mi := &file_common_proto_msgTypes[143]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptBadArityDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptBadArityDetails) ProtoMessage() {}
+
+func (x *NumscriptBadArityDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[143]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptBadArityDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptBadArityDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{143}
+}
+
+func (x *NumscriptBadArityDetails) GetExpectedArity() string {
+	if x != nil && x.ExpectedArity != nil {
+		return *x.ExpectedArity
+	}
+	return ""
+}
+
+func (x *NumscriptBadArityDetails) GetGivenArguments() string {
+	if x != nil && x.GivenArguments != nil {
+		return *x.GivenArguments
+	}
+	return ""
+}
+
+type NumscriptBadMetaValueDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Account       *string                `protobuf:"bytes,1,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	Key           *string                `protobuf:"bytes,2,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptBadMetaValueDetails) Reset() {
+	*x = NumscriptBadMetaValueDetails{}
+	mi := &file_common_proto_msgTypes[144]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptBadMetaValueDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptBadMetaValueDetails) ProtoMessage() {}
+
+func (x *NumscriptBadMetaValueDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[144]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptBadMetaValueDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptBadMetaValueDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{144}
+}
+
+func (x *NumscriptBadMetaValueDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+func (x *NumscriptBadMetaValueDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+type NumscriptBadPortionDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Source        *string                `protobuf:"bytes,1,opt,name=source,proto3,oneof" json:"source,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptBadPortionDetails) Reset() {
+	*x = NumscriptBadPortionDetails{}
+	mi := &file_common_proto_msgTypes[145]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptBadPortionDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptBadPortionDetails) ProtoMessage() {}
+
+func (x *NumscriptBadPortionDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[145]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptBadPortionDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptBadPortionDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{145}
+}
+
+func (x *NumscriptBadPortionDetails) GetSource() string {
+	if x != nil && x.Source != nil {
+		return *x.Source
+	}
+	return ""
+}
+
+type NumscriptCannotCastScopedAccountDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Account       *string                `protobuf:"bytes,1,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	Scope         *string                `protobuf:"bytes,2,opt,name=scope,proto3,oneof" json:"scope,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptCannotCastScopedAccountDetails) Reset() {
+	*x = NumscriptCannotCastScopedAccountDetails{}
+	mi := &file_common_proto_msgTypes[146]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptCannotCastScopedAccountDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptCannotCastScopedAccountDetails) ProtoMessage() {}
+
+func (x *NumscriptCannotCastScopedAccountDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[146]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptCannotCastScopedAccountDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptCannotCastScopedAccountDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{146}
+}
+
+func (x *NumscriptCannotCastScopedAccountDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+func (x *NumscriptCannotCastScopedAccountDetails) GetScope() string {
+	if x != nil && x.Scope != nil {
+		return *x.Scope
+	}
+	return ""
+}
+
+type NumscriptCannotCastToStringDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptCannotCastToStringDetails) Reset() {
+	*x = NumscriptCannotCastToStringDetails{}
+	mi := &file_common_proto_msgTypes[147]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptCannotCastToStringDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptCannotCastToStringDetails) ProtoMessage() {}
+
+func (x *NumscriptCannotCastToStringDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[147]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptCannotCastToStringDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptCannotCastToStringDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{147}
+}
+
+type NumscriptCannotStoreScopedAccountDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Account       *string                `protobuf:"bytes,1,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	Scope         *string                `protobuf:"bytes,2,opt,name=scope,proto3,oneof" json:"scope,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptCannotStoreScopedAccountDetails) Reset() {
+	*x = NumscriptCannotStoreScopedAccountDetails{}
+	mi := &file_common_proto_msgTypes[148]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptCannotStoreScopedAccountDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptCannotStoreScopedAccountDetails) ProtoMessage() {}
+
+func (x *NumscriptCannotStoreScopedAccountDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[148]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptCannotStoreScopedAccountDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptCannotStoreScopedAccountDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{148}
+}
+
+func (x *NumscriptCannotStoreScopedAccountDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+func (x *NumscriptCannotStoreScopedAccountDetails) GetScope() string {
+	if x != nil && x.Scope != nil {
+		return *x.Scope
+	}
+	return ""
+}
+
+type NumscriptCompileBadArityDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Expected      *uint64                `protobuf:"varint,1,opt,name=expected,proto3,oneof" json:"expected,omitempty"`
+	Actual        *uint64                `protobuf:"varint,2,opt,name=actual,proto3,oneof" json:"actual,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptCompileBadArityDetails) Reset() {
+	*x = NumscriptCompileBadArityDetails{}
+	mi := &file_common_proto_msgTypes[149]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptCompileBadArityDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptCompileBadArityDetails) ProtoMessage() {}
+
+func (x *NumscriptCompileBadArityDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[149]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptCompileBadArityDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptCompileBadArityDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{149}
+}
+
+func (x *NumscriptCompileBadArityDetails) GetExpected() uint64 {
+	if x != nil && x.Expected != nil {
+		return *x.Expected
+	}
+	return 0
+}
+
+func (x *NumscriptCompileBadArityDetails) GetActual() uint64 {
+	if x != nil && x.Actual != nil {
+		return *x.Actual
+	}
+	return 0
+}
+
+type NumscriptCompileCannotCastToStringDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Type          *string                `protobuf:"bytes,1,opt,name=type,proto3,oneof" json:"type,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptCompileCannotCastToStringDetails) Reset() {
+	*x = NumscriptCompileCannotCastToStringDetails{}
+	mi := &file_common_proto_msgTypes[150]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptCompileCannotCastToStringDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptCompileCannotCastToStringDetails) ProtoMessage() {}
+
+func (x *NumscriptCompileCannotCastToStringDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[150]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptCompileCannotCastToStringDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptCompileCannotCastToStringDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{150}
+}
+
+func (x *NumscriptCompileCannotCastToStringDetails) GetType() string {
+	if x != nil && x.Type != nil {
+		return *x.Type
+	}
+	return ""
+}
+
+type NumscriptCompileCannotStoreScopedAccountDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptCompileCannotStoreScopedAccountDetails) Reset() {
+	*x = NumscriptCompileCannotStoreScopedAccountDetails{}
+	mi := &file_common_proto_msgTypes[151]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptCompileCannotStoreScopedAccountDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptCompileCannotStoreScopedAccountDetails) ProtoMessage() {}
+
+func (x *NumscriptCompileCannotStoreScopedAccountDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[151]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptCompileCannotStoreScopedAccountDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptCompileCannotStoreScopedAccountDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{151}
+}
+
+type NumscriptCompileDuplicateRemainingDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptCompileDuplicateRemainingDetails) Reset() {
+	*x = NumscriptCompileDuplicateRemainingDetails{}
+	mi := &file_common_proto_msgTypes[152]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptCompileDuplicateRemainingDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptCompileDuplicateRemainingDetails) ProtoMessage() {}
+
+func (x *NumscriptCompileDuplicateRemainingDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[152]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptCompileDuplicateRemainingDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptCompileDuplicateRemainingDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{152}
+}
+
+type NumscriptCompileDuplicateVariableDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          *string                `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptCompileDuplicateVariableDetails) Reset() {
+	*x = NumscriptCompileDuplicateVariableDetails{}
+	mi := &file_common_proto_msgTypes[153]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptCompileDuplicateVariableDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptCompileDuplicateVariableDetails) ProtoMessage() {}
+
+func (x *NumscriptCompileDuplicateVariableDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[153]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptCompileDuplicateVariableDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptCompileDuplicateVariableDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{153}
+}
+
+func (x *NumscriptCompileDuplicateVariableDetails) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+type NumscriptCompileErrorDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptCompileErrorDetails) Reset() {
+	*x = NumscriptCompileErrorDetails{}
+	mi := &file_common_proto_msgTypes[154]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptCompileErrorDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptCompileErrorDetails) ProtoMessage() {}
+
+func (x *NumscriptCompileErrorDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[154]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptCompileErrorDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptCompileErrorDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{154}
+}
+
+type NumscriptCompileExperimentalFeatureDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	FlagName      *string                `protobuf:"bytes,1,opt,name=flag_name,json=flagName,proto3,oneof" json:"flag_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptCompileExperimentalFeatureDetails) Reset() {
+	*x = NumscriptCompileExperimentalFeatureDetails{}
+	mi := &file_common_proto_msgTypes[155]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptCompileExperimentalFeatureDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptCompileExperimentalFeatureDetails) ProtoMessage() {}
+
+func (x *NumscriptCompileExperimentalFeatureDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[155]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptCompileExperimentalFeatureDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptCompileExperimentalFeatureDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{155}
+}
+
+func (x *NumscriptCompileExperimentalFeatureDetails) GetFlagName() string {
+	if x != nil && x.FlagName != nil {
+		return *x.FlagName
+	}
+	return ""
+}
+
+type NumscriptCompileInvalidFeatureDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Feature       *string                `protobuf:"bytes,1,opt,name=feature,proto3,oneof" json:"feature,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptCompileInvalidFeatureDetails) Reset() {
+	*x = NumscriptCompileInvalidFeatureDetails{}
+	mi := &file_common_proto_msgTypes[156]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptCompileInvalidFeatureDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptCompileInvalidFeatureDetails) ProtoMessage() {}
+
+func (x *NumscriptCompileInvalidFeatureDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[156]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptCompileInvalidFeatureDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptCompileInvalidFeatureDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{156}
+}
+
+func (x *NumscriptCompileInvalidFeatureDetails) GetFeature() string {
+	if x != nil && x.Feature != nil {
+		return *x.Feature
+	}
+	return ""
+}
+
+type NumscriptCompileInvalidMetaPositionDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptCompileInvalidMetaPositionDetails) Reset() {
+	*x = NumscriptCompileInvalidMetaPositionDetails{}
+	mi := &file_common_proto_msgTypes[157]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptCompileInvalidMetaPositionDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptCompileInvalidMetaPositionDetails) ProtoMessage() {}
+
+func (x *NumscriptCompileInvalidMetaPositionDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[157]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptCompileInvalidMetaPositionDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptCompileInvalidMetaPositionDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{157}
+}
+
+type NumscriptCompileInvalidTypeDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          *string                `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptCompileInvalidTypeDetails) Reset() {
+	*x = NumscriptCompileInvalidTypeDetails{}
+	mi := &file_common_proto_msgTypes[158]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptCompileInvalidTypeDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptCompileInvalidTypeDetails) ProtoMessage() {}
+
+func (x *NumscriptCompileInvalidTypeDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[158]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptCompileInvalidTypeDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptCompileInvalidTypeDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{158}
+}
+
+func (x *NumscriptCompileInvalidTypeDetails) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+type NumscriptCompileInvalidUncappedSourceDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptCompileInvalidUncappedSourceDetails) Reset() {
+	*x = NumscriptCompileInvalidUncappedSourceDetails{}
+	mi := &file_common_proto_msgTypes[159]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptCompileInvalidUncappedSourceDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptCompileInvalidUncappedSourceDetails) ProtoMessage() {}
+
+func (x *NumscriptCompileInvalidUncappedSourceDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[159]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptCompileInvalidUncappedSourceDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptCompileInvalidUncappedSourceDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{159}
+}
+
+type NumscriptCompileInvalidVariableValueDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          *string                `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	Type          *string                `protobuf:"bytes,2,opt,name=type,proto3,oneof" json:"type,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptCompileInvalidVariableValueDetails) Reset() {
+	*x = NumscriptCompileInvalidVariableValueDetails{}
+	mi := &file_common_proto_msgTypes[160]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptCompileInvalidVariableValueDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptCompileInvalidVariableValueDetails) ProtoMessage() {}
+
+func (x *NumscriptCompileInvalidVariableValueDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[160]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptCompileInvalidVariableValueDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptCompileInvalidVariableValueDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{160}
+}
+
+func (x *NumscriptCompileInvalidVariableValueDetails) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+func (x *NumscriptCompileInvalidVariableValueDetails) GetType() string {
+	if x != nil && x.Type != nil {
+		return *x.Type
+	}
+	return ""
+}
+
+type NumscriptCompileMissingVariableDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          *string                `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptCompileMissingVariableDetails) Reset() {
+	*x = NumscriptCompileMissingVariableDetails{}
+	mi := &file_common_proto_msgTypes[161]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptCompileMissingVariableDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptCompileMissingVariableDetails) ProtoMessage() {}
+
+func (x *NumscriptCompileMissingVariableDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[161]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptCompileMissingVariableDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptCompileMissingVariableDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{161}
+}
+
+func (x *NumscriptCompileMissingVariableDetails) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+type NumscriptCompileTypeMismatchDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Expected      *string                `protobuf:"bytes,1,opt,name=expected,proto3,oneof" json:"expected,omitempty"`
+	Got           *string                `protobuf:"bytes,2,opt,name=got,proto3,oneof" json:"got,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptCompileTypeMismatchDetails) Reset() {
+	*x = NumscriptCompileTypeMismatchDetails{}
+	mi := &file_common_proto_msgTypes[162]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptCompileTypeMismatchDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptCompileTypeMismatchDetails) ProtoMessage() {}
+
+func (x *NumscriptCompileTypeMismatchDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[162]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptCompileTypeMismatchDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptCompileTypeMismatchDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{162}
+}
+
+func (x *NumscriptCompileTypeMismatchDetails) GetExpected() string {
+	if x != nil && x.Expected != nil {
+		return *x.Expected
+	}
+	return ""
+}
+
+func (x *NumscriptCompileTypeMismatchDetails) GetGot() string {
+	if x != nil && x.Got != nil {
+		return *x.Got
+	}
+	return ""
+}
+
+type NumscriptCompileUnboundVariableDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          *string                `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	Type          *string                `protobuf:"bytes,2,opt,name=type,proto3,oneof" json:"type,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptCompileUnboundVariableDetails) Reset() {
+	*x = NumscriptCompileUnboundVariableDetails{}
+	mi := &file_common_proto_msgTypes[163]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptCompileUnboundVariableDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptCompileUnboundVariableDetails) ProtoMessage() {}
+
+func (x *NumscriptCompileUnboundVariableDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[163]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptCompileUnboundVariableDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptCompileUnboundVariableDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{163}
+}
+
+func (x *NumscriptCompileUnboundVariableDetails) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+func (x *NumscriptCompileUnboundVariableDetails) GetType() string {
+	if x != nil && x.Type != nil {
+		return *x.Type
+	}
+	return ""
+}
+
+type NumscriptCompileUnknownFunctionDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          *string                `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	WrongContext  *string                `protobuf:"bytes,2,opt,name=wrong_context,json=wrongContext,proto3,oneof" json:"wrong_context,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptCompileUnknownFunctionDetails) Reset() {
+	*x = NumscriptCompileUnknownFunctionDetails{}
+	mi := &file_common_proto_msgTypes[164]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptCompileUnknownFunctionDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptCompileUnknownFunctionDetails) ProtoMessage() {}
+
+func (x *NumscriptCompileUnknownFunctionDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[164]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptCompileUnknownFunctionDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptCompileUnknownFunctionDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{164}
+}
+
+func (x *NumscriptCompileUnknownFunctionDetails) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+func (x *NumscriptCompileUnknownFunctionDetails) GetWrongContext() string {
+	if x != nil && x.WrongContext != nil {
+		return *x.WrongContext
+	}
+	return ""
+}
+
+type NumscriptContentRequiredDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptContentRequiredDetails) Reset() {
+	*x = NumscriptContentRequiredDetails{}
+	mi := &file_common_proto_msgTypes[165]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptContentRequiredDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptContentRequiredDetails) ProtoMessage() {}
+
+func (x *NumscriptContentRequiredDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[165]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptContentRequiredDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptContentRequiredDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{165}
+}
+
+func (x *NumscriptContentRequiredDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *NumscriptContentRequiredDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type NumscriptCurrencyMismatchDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Expected      *string                `protobuf:"bytes,1,opt,name=expected,proto3,oneof" json:"expected,omitempty"`
+	Got           *string                `protobuf:"bytes,2,opt,name=got,proto3,oneof" json:"got,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptCurrencyMismatchDetails) Reset() {
+	*x = NumscriptCurrencyMismatchDetails{}
+	mi := &file_common_proto_msgTypes[166]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptCurrencyMismatchDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptCurrencyMismatchDetails) ProtoMessage() {}
+
+func (x *NumscriptCurrencyMismatchDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[166]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptCurrencyMismatchDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptCurrencyMismatchDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{166}
+}
+
+func (x *NumscriptCurrencyMismatchDetails) GetExpected() string {
+	if x != nil && x.Expected != nil {
+		return *x.Expected
+	}
+	return ""
+}
+
+func (x *NumscriptCurrencyMismatchDetails) GetGot() string {
+	if x != nil && x.Got != nil {
+		return *x.Got
+	}
+	return ""
+}
+
+type NumscriptDivideByZeroDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Numerator     *string                `protobuf:"bytes,1,opt,name=numerator,proto3,oneof" json:"numerator,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptDivideByZeroDetails) Reset() {
+	*x = NumscriptDivideByZeroDetails{}
+	mi := &file_common_proto_msgTypes[167]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptDivideByZeroDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptDivideByZeroDetails) ProtoMessage() {}
+
+func (x *NumscriptDivideByZeroDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[167]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptDivideByZeroDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptDivideByZeroDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{167}
+}
+
+func (x *NumscriptDivideByZeroDetails) GetNumerator() string {
+	if x != nil && x.Numerator != nil {
+		return *x.Numerator
+	}
+	return ""
+}
+
+type NumscriptExecutionErrorDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptExecutionErrorDetails) Reset() {
+	*x = NumscriptExecutionErrorDetails{}
+	mi := &file_common_proto_msgTypes[168]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptExecutionErrorDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptExecutionErrorDetails) ProtoMessage() {}
+
+func (x *NumscriptExecutionErrorDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[168]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptExecutionErrorDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptExecutionErrorDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{168}
+}
+
+type NumscriptExperimentalFeatureDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	FlagName      *string                `protobuf:"bytes,1,opt,name=flag_name,json=flagName,proto3,oneof" json:"flag_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptExperimentalFeatureDetails) Reset() {
+	*x = NumscriptExperimentalFeatureDetails{}
+	mi := &file_common_proto_msgTypes[169]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptExperimentalFeatureDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptExperimentalFeatureDetails) ProtoMessage() {}
+
+func (x *NumscriptExperimentalFeatureDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[169]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptExperimentalFeatureDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptExperimentalFeatureDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{169}
+}
+
+func (x *NumscriptExperimentalFeatureDetails) GetFlagName() string {
+	if x != nil && x.FlagName != nil {
+		return *x.FlagName
+	}
+	return ""
+}
+
+type NumscriptInvalidAccountNameDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          *string                `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptInvalidAccountNameDetails) Reset() {
+	*x = NumscriptInvalidAccountNameDetails{}
+	mi := &file_common_proto_msgTypes[170]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptInvalidAccountNameDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptInvalidAccountNameDetails) ProtoMessage() {}
+
+func (x *NumscriptInvalidAccountNameDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[170]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptInvalidAccountNameDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptInvalidAccountNameDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{170}
+}
+
+func (x *NumscriptInvalidAccountNameDetails) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+type NumscriptInvalidAllotmentInSendAllDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptInvalidAllotmentInSendAllDetails) Reset() {
+	*x = NumscriptInvalidAllotmentInSendAllDetails{}
+	mi := &file_common_proto_msgTypes[171]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptInvalidAllotmentInSendAllDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptInvalidAllotmentInSendAllDetails) ProtoMessage() {}
+
+func (x *NumscriptInvalidAllotmentInSendAllDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[171]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptInvalidAllotmentInSendAllDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptInvalidAllotmentInSendAllDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{171}
+}
+
+type NumscriptInvalidAllotmentSumDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ActualSum     *string                `protobuf:"bytes,1,opt,name=actual_sum,json=actualSum,proto3,oneof" json:"actual_sum,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptInvalidAllotmentSumDetails) Reset() {
+	*x = NumscriptInvalidAllotmentSumDetails{}
+	mi := &file_common_proto_msgTypes[172]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptInvalidAllotmentSumDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptInvalidAllotmentSumDetails) ProtoMessage() {}
+
+func (x *NumscriptInvalidAllotmentSumDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[172]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptInvalidAllotmentSumDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptInvalidAllotmentSumDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{172}
+}
+
+func (x *NumscriptInvalidAllotmentSumDetails) GetActualSum() string {
+	if x != nil && x.ActualSum != nil {
+		return *x.ActualSum
+	}
+	return ""
+}
+
+type NumscriptInvalidAssetDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          *string                `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptInvalidAssetDetails) Reset() {
+	*x = NumscriptInvalidAssetDetails{}
+	mi := &file_common_proto_msgTypes[173]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptInvalidAssetDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptInvalidAssetDetails) ProtoMessage() {}
+
+func (x *NumscriptInvalidAssetDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[173]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptInvalidAssetDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptInvalidAssetDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{173}
+}
+
+func (x *NumscriptInvalidAssetDetails) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+type NumscriptInvalidColorDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Color         *string                `protobuf:"bytes,1,opt,name=color,proto3,oneof" json:"color,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptInvalidColorDetails) Reset() {
+	*x = NumscriptInvalidColorDetails{}
+	mi := &file_common_proto_msgTypes[174]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptInvalidColorDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptInvalidColorDetails) ProtoMessage() {}
+
+func (x *NumscriptInvalidColorDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[174]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptInvalidColorDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptInvalidColorDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{174}
+}
+
+func (x *NumscriptInvalidColorDetails) GetColor() string {
+	if x != nil && x.Color != nil {
+		return *x.Color
+	}
+	return ""
+}
+
+type NumscriptInvalidFeatureDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Feature       *string                `protobuf:"bytes,1,opt,name=feature,proto3,oneof" json:"feature,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptInvalidFeatureDetails) Reset() {
+	*x = NumscriptInvalidFeatureDetails{}
+	mi := &file_common_proto_msgTypes[175]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptInvalidFeatureDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptInvalidFeatureDetails) ProtoMessage() {}
+
+func (x *NumscriptInvalidFeatureDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[175]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptInvalidFeatureDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptInvalidFeatureDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{175}
+}
+
+func (x *NumscriptInvalidFeatureDetails) GetFeature() string {
+	if x != nil && x.Feature != nil {
+		return *x.Feature
+	}
+	return ""
+}
+
+type NumscriptInvalidMonetaryLiteralDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Source        *string                `protobuf:"bytes,1,opt,name=source,proto3,oneof" json:"source,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptInvalidMonetaryLiteralDetails) Reset() {
+	*x = NumscriptInvalidMonetaryLiteralDetails{}
+	mi := &file_common_proto_msgTypes[176]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptInvalidMonetaryLiteralDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptInvalidMonetaryLiteralDetails) ProtoMessage() {}
+
+func (x *NumscriptInvalidMonetaryLiteralDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[176]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptInvalidMonetaryLiteralDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptInvalidMonetaryLiteralDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{176}
+}
+
+func (x *NumscriptInvalidMonetaryLiteralDetails) GetSource() string {
+	if x != nil && x.Source != nil {
+		return *x.Source
+	}
+	return ""
+}
+
+type NumscriptInvalidNestedMetaDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptInvalidNestedMetaDetails) Reset() {
+	*x = NumscriptInvalidNestedMetaDetails{}
+	mi := &file_common_proto_msgTypes[177]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptInvalidNestedMetaDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptInvalidNestedMetaDetails) ProtoMessage() {}
+
+func (x *NumscriptInvalidNestedMetaDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[177]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptInvalidNestedMetaDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptInvalidNestedMetaDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{177}
+}
+
+type NumscriptInvalidNumberLiteralDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Source        *string                `protobuf:"bytes,1,opt,name=source,proto3,oneof" json:"source,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptInvalidNumberLiteralDetails) Reset() {
+	*x = NumscriptInvalidNumberLiteralDetails{}
+	mi := &file_common_proto_msgTypes[178]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptInvalidNumberLiteralDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptInvalidNumberLiteralDetails) ProtoMessage() {}
+
+func (x *NumscriptInvalidNumberLiteralDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[178]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptInvalidNumberLiteralDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptInvalidNumberLiteralDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{178}
+}
+
+func (x *NumscriptInvalidNumberLiteralDetails) GetSource() string {
+	if x != nil && x.Source != nil {
+		return *x.Source
+	}
+	return ""
+}
+
+type NumscriptInvalidRemainingAllotmentDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptInvalidRemainingAllotmentDetails) Reset() {
+	*x = NumscriptInvalidRemainingAllotmentDetails{}
+	mi := &file_common_proto_msgTypes[179]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptInvalidRemainingAllotmentDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptInvalidRemainingAllotmentDetails) ProtoMessage() {}
+
+func (x *NumscriptInvalidRemainingAllotmentDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[179]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptInvalidRemainingAllotmentDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptInvalidRemainingAllotmentDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{179}
+}
+
+type NumscriptInvalidScopeDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Scope         *string                `protobuf:"bytes,1,opt,name=scope,proto3,oneof" json:"scope,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptInvalidScopeDetails) Reset() {
+	*x = NumscriptInvalidScopeDetails{}
+	mi := &file_common_proto_msgTypes[180]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptInvalidScopeDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptInvalidScopeDetails) ProtoMessage() {}
+
+func (x *NumscriptInvalidScopeDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[180]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptInvalidScopeDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptInvalidScopeDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{180}
+}
+
+func (x *NumscriptInvalidScopeDetails) GetScope() string {
+	if x != nil && x.Scope != nil {
+		return *x.Scope
+	}
+	return ""
+}
+
+type NumscriptInvalidTypeDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          *string                `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptInvalidTypeDetails) Reset() {
+	*x = NumscriptInvalidTypeDetails{}
+	mi := &file_common_proto_msgTypes[181]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptInvalidTypeDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptInvalidTypeDetails) ProtoMessage() {}
+
+func (x *NumscriptInvalidTypeDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[181]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptInvalidTypeDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptInvalidTypeDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{181}
+}
+
+func (x *NumscriptInvalidTypeDetails) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+type NumscriptInvalidUnboundedScalingAddressDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptInvalidUnboundedScalingAddressDetails) Reset() {
+	*x = NumscriptInvalidUnboundedScalingAddressDetails{}
+	mi := &file_common_proto_msgTypes[182]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptInvalidUnboundedScalingAddressDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptInvalidUnboundedScalingAddressDetails) ProtoMessage() {}
+
+func (x *NumscriptInvalidUnboundedScalingAddressDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[182]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptInvalidUnboundedScalingAddressDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptInvalidUnboundedScalingAddressDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{182}
+}
+
+type NumscriptInvalidUnboundedSendAllDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          *string                `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	Scope         *string                `protobuf:"bytes,2,opt,name=scope,proto3,oneof" json:"scope,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptInvalidUnboundedSendAllDetails) Reset() {
+	*x = NumscriptInvalidUnboundedSendAllDetails{}
+	mi := &file_common_proto_msgTypes[183]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptInvalidUnboundedSendAllDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptInvalidUnboundedSendAllDetails) ProtoMessage() {}
+
+func (x *NumscriptInvalidUnboundedSendAllDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[183]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptInvalidUnboundedSendAllDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptInvalidUnboundedSendAllDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{183}
+}
+
+func (x *NumscriptInvalidUnboundedSendAllDetails) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+func (x *NumscriptInvalidUnboundedSendAllDetails) GetScope() string {
+	if x != nil && x.Scope != nil {
+		return *x.Scope
+	}
+	return ""
+}
+
+type NumscriptInvalidUncappedSourceDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Account       *string                `protobuf:"bytes,1,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptInvalidUncappedSourceDetails) Reset() {
+	*x = NumscriptInvalidUncappedSourceDetails{}
+	mi := &file_common_proto_msgTypes[184]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptInvalidUncappedSourceDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptInvalidUncappedSourceDetails) ProtoMessage() {}
+
+func (x *NumscriptInvalidUncappedSourceDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[184]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptInvalidUncappedSourceDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptInvalidUncappedSourceDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{184}
+}
+
+func (x *NumscriptInvalidUncappedSourceDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type NumscriptInvalidVersionDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Version       *string                `protobuf:"bytes,1,opt,name=version,proto3,oneof" json:"version,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptInvalidVersionDetails) Reset() {
+	*x = NumscriptInvalidVersionDetails{}
+	mi := &file_common_proto_msgTypes[185]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptInvalidVersionDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptInvalidVersionDetails) ProtoMessage() {}
+
+func (x *NumscriptInvalidVersionDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[185]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptInvalidVersionDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptInvalidVersionDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{185}
+}
+
+func (x *NumscriptInvalidVersionDetails) GetVersion() string {
+	if x != nil && x.Version != nil {
+		return *x.Version
+	}
+	return ""
+}
+
+type NumscriptMetadataNotFoundDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Account       *string                `protobuf:"bytes,1,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	Scope         *string                `protobuf:"bytes,2,opt,name=scope,proto3,oneof" json:"scope,omitempty"`
+	Key           *string                `protobuf:"bytes,3,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptMetadataNotFoundDetails) Reset() {
+	*x = NumscriptMetadataNotFoundDetails{}
+	mi := &file_common_proto_msgTypes[186]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptMetadataNotFoundDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptMetadataNotFoundDetails) ProtoMessage() {}
+
+func (x *NumscriptMetadataNotFoundDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[186]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptMetadataNotFoundDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptMetadataNotFoundDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{186}
+}
+
+func (x *NumscriptMetadataNotFoundDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+func (x *NumscriptMetadataNotFoundDetails) GetScope() string {
+	if x != nil && x.Scope != nil {
+		return *x.Scope
+	}
+	return ""
+}
+
+func (x *NumscriptMetadataNotFoundDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+type NumscriptMissingFundsDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Asset         *string                `protobuf:"bytes,1,opt,name=asset,proto3,oneof" json:"asset,omitempty"`
+	Needed        *string                `protobuf:"bytes,2,opt,name=needed,proto3,oneof" json:"needed,omitempty"`
+	Available     *string                `protobuf:"bytes,3,opt,name=available,proto3,oneof" json:"available,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptMissingFundsDetails) Reset() {
+	*x = NumscriptMissingFundsDetails{}
+	mi := &file_common_proto_msgTypes[187]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptMissingFundsDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptMissingFundsDetails) ProtoMessage() {}
+
+func (x *NumscriptMissingFundsDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[187]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptMissingFundsDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptMissingFundsDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{187}
+}
+
+func (x *NumscriptMissingFundsDetails) GetAsset() string {
+	if x != nil && x.Asset != nil {
+		return *x.Asset
+	}
+	return ""
+}
+
+func (x *NumscriptMissingFundsDetails) GetNeeded() string {
+	if x != nil && x.Needed != nil {
+		return *x.Needed
+	}
+	return ""
+}
+
+func (x *NumscriptMissingFundsDetails) GetAvailable() string {
+	if x != nil && x.Available != nil {
+		return *x.Available
+	}
+	return ""
+}
+
+type NumscriptMissingVariableDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          *string                `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptMissingVariableDetails) Reset() {
+	*x = NumscriptMissingVariableDetails{}
+	mi := &file_common_proto_msgTypes[188]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptMissingVariableDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptMissingVariableDetails) ProtoMessage() {}
+
+func (x *NumscriptMissingVariableDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[188]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptMissingVariableDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptMissingVariableDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{188}
+}
+
+func (x *NumscriptMissingVariableDetails) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+type NumscriptNameInvalidCharDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptNameInvalidCharDetails) Reset() {
+	*x = NumscriptNameInvalidCharDetails{}
+	mi := &file_common_proto_msgTypes[189]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptNameInvalidCharDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptNameInvalidCharDetails) ProtoMessage() {}
+
+func (x *NumscriptNameInvalidCharDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[189]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptNameInvalidCharDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptNameInvalidCharDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{189}
+}
+
+func (x *NumscriptNameInvalidCharDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *NumscriptNameInvalidCharDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type NumscriptNameRequiredDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptNameRequiredDetails) Reset() {
+	*x = NumscriptNameRequiredDetails{}
+	mi := &file_common_proto_msgTypes[190]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptNameRequiredDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptNameRequiredDetails) ProtoMessage() {}
+
+func (x *NumscriptNameRequiredDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[190]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptNameRequiredDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptNameRequiredDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{190}
+}
+
+func (x *NumscriptNameRequiredDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *NumscriptNameRequiredDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type NumscriptNameTooLongDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptNameTooLongDetails) Reset() {
+	*x = NumscriptNameTooLongDetails{}
+	mi := &file_common_proto_msgTypes[191]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptNameTooLongDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptNameTooLongDetails) ProtoMessage() {}
+
+func (x *NumscriptNameTooLongDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[191]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptNameTooLongDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptNameTooLongDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{191}
+}
+
+func (x *NumscriptNameTooLongDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *NumscriptNameTooLongDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type NumscriptNegativeAmountDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Amount        *string                `protobuf:"bytes,1,opt,name=amount,proto3,oneof" json:"amount,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptNegativeAmountDetails) Reset() {
+	*x = NumscriptNegativeAmountDetails{}
+	mi := &file_common_proto_msgTypes[192]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptNegativeAmountDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptNegativeAmountDetails) ProtoMessage() {}
+
+func (x *NumscriptNegativeAmountDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[192]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptNegativeAmountDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptNegativeAmountDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{192}
+}
+
+func (x *NumscriptNegativeAmountDetails) GetAmount() string {
+	if x != nil && x.Amount != nil {
+		return *x.Amount
+	}
+	return ""
+}
+
+type NumscriptNegativeBalanceDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Account       *string                `protobuf:"bytes,1,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	Scope         *string                `protobuf:"bytes,2,opt,name=scope,proto3,oneof" json:"scope,omitempty"`
+	Asset         *string                `protobuf:"bytes,3,opt,name=asset,proto3,oneof" json:"asset,omitempty"`
+	Amount        *string                `protobuf:"bytes,4,opt,name=amount,proto3,oneof" json:"amount,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptNegativeBalanceDetails) Reset() {
+	*x = NumscriptNegativeBalanceDetails{}
+	mi := &file_common_proto_msgTypes[193]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptNegativeBalanceDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptNegativeBalanceDetails) ProtoMessage() {}
+
+func (x *NumscriptNegativeBalanceDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[193]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptNegativeBalanceDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptNegativeBalanceDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{193}
+}
+
+func (x *NumscriptNegativeBalanceDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+func (x *NumscriptNegativeBalanceDetails) GetScope() string {
+	if x != nil && x.Scope != nil {
+		return *x.Scope
+	}
+	return ""
+}
+
+func (x *NumscriptNegativeBalanceDetails) GetAsset() string {
+	if x != nil && x.Asset != nil {
+		return *x.Asset
+	}
+	return ""
+}
+
+func (x *NumscriptNegativeBalanceDetails) GetAmount() string {
+	if x != nil && x.Amount != nil {
+		return *x.Amount
+	}
+	return ""
+}
+
+type NumscriptNegativePortionDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Portion       *string                `protobuf:"bytes,1,opt,name=portion,proto3,oneof" json:"portion,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptNegativePortionDetails) Reset() {
+	*x = NumscriptNegativePortionDetails{}
+	mi := &file_common_proto_msgTypes[194]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptNegativePortionDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptNegativePortionDetails) ProtoMessage() {}
+
+func (x *NumscriptNegativePortionDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[194]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptNegativePortionDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptNegativePortionDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{194}
+}
+
+func (x *NumscriptNegativePortionDetails) GetPortion() string {
+	if x != nil && x.Portion != nil {
+		return *x.Portion
+	}
+	return ""
+}
+
+type NumscriptNotFoundDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          *string                `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	Version       *string                `protobuf:"bytes,2,opt,name=version,proto3,oneof" json:"version,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptNotFoundDetails) Reset() {
+	*x = NumscriptNotFoundDetails{}
+	mi := &file_common_proto_msgTypes[195]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptNotFoundDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptNotFoundDetails) ProtoMessage() {}
+
+func (x *NumscriptNotFoundDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[195]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptNotFoundDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptNotFoundDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{195}
+}
+
+func (x *NumscriptNotFoundDetails) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+func (x *NumscriptNotFoundDetails) GetVersion() string {
+	if x != nil && x.Version != nil {
+		return *x.Version
+	}
+	return ""
+}
+
+type NumscriptParseErrorDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptParseErrorDetails) Reset() {
+	*x = NumscriptParseErrorDetails{}
+	mi := &file_common_proto_msgTypes[196]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptParseErrorDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptParseErrorDetails) ProtoMessage() {}
+
+func (x *NumscriptParseErrorDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[196]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptParseErrorDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptParseErrorDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{196}
+}
+
+type NumscriptPostingAmountOverflowDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PostingIndex  *uint64                `protobuf:"varint,1,opt,name=posting_index,json=postingIndex,proto3,oneof" json:"posting_index,omitempty"`
+	Amount        *string                `protobuf:"bytes,2,opt,name=amount,proto3,oneof" json:"amount,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptPostingAmountOverflowDetails) Reset() {
+	*x = NumscriptPostingAmountOverflowDetails{}
+	mi := &file_common_proto_msgTypes[197]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptPostingAmountOverflowDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptPostingAmountOverflowDetails) ProtoMessage() {}
+
+func (x *NumscriptPostingAmountOverflowDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[197]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptPostingAmountOverflowDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptPostingAmountOverflowDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{197}
+}
+
+func (x *NumscriptPostingAmountOverflowDetails) GetPostingIndex() uint64 {
+	if x != nil && x.PostingIndex != nil {
+		return *x.PostingIndex
+	}
+	return 0
+}
+
+func (x *NumscriptPostingAmountOverflowDetails) GetAmount() string {
+	if x != nil && x.Amount != nil {
+		return *x.Amount
+	}
+	return ""
+}
+
+type NumscriptPostingNegativeAmountDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PostingIndex  *uint64                `protobuf:"varint,1,opt,name=posting_index,json=postingIndex,proto3,oneof" json:"posting_index,omitempty"`
+	Amount        *string                `protobuf:"bytes,2,opt,name=amount,proto3,oneof" json:"amount,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptPostingNegativeAmountDetails) Reset() {
+	*x = NumscriptPostingNegativeAmountDetails{}
+	mi := &file_common_proto_msgTypes[198]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptPostingNegativeAmountDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptPostingNegativeAmountDetails) ProtoMessage() {}
+
+func (x *NumscriptPostingNegativeAmountDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[198]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptPostingNegativeAmountDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptPostingNegativeAmountDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{198}
+}
+
+func (x *NumscriptPostingNegativeAmountDetails) GetPostingIndex() uint64 {
+	if x != nil && x.PostingIndex != nil {
+		return *x.PostingIndex
+	}
+	return 0
+}
+
+func (x *NumscriptPostingNegativeAmountDetails) GetAmount() string {
+	if x != nil && x.Amount != nil {
+		return *x.Amount
+	}
+	return ""
+}
+
+type NumscriptRuntimeDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptRuntimeDetails) Reset() {
+	*x = NumscriptRuntimeDetails{}
+	mi := &file_common_proto_msgTypes[199]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptRuntimeDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptRuntimeDetails) ProtoMessage() {}
+
+func (x *NumscriptRuntimeDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[199]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptRuntimeDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptRuntimeDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{199}
+}
+
+func (x *NumscriptRuntimeDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+type NumscriptScalingUnsupportedDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptScalingUnsupportedDetails) Reset() {
+	*x = NumscriptScalingUnsupportedDetails{}
+	mi := &file_common_proto_msgTypes[200]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptScalingUnsupportedDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptScalingUnsupportedDetails) ProtoMessage() {}
+
+func (x *NumscriptScalingUnsupportedDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[200]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptScalingUnsupportedDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptScalingUnsupportedDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{200}
+}
+
+func (x *NumscriptScalingUnsupportedDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *NumscriptScalingUnsupportedDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type NumscriptTypeErrorDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Expected      *string                `protobuf:"bytes,1,opt,name=expected,proto3,oneof" json:"expected,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptTypeErrorDetails) Reset() {
+	*x = NumscriptTypeErrorDetails{}
+	mi := &file_common_proto_msgTypes[201]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptTypeErrorDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptTypeErrorDetails) ProtoMessage() {}
+
+func (x *NumscriptTypeErrorDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[201]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptTypeErrorDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptTypeErrorDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{201}
+}
+
+func (x *NumscriptTypeErrorDetails) GetExpected() string {
+	if x != nil && x.Expected != nil {
+		return *x.Expected
+	}
+	return ""
+}
+
+type NumscriptUnboundFunctionDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          *string                `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptUnboundFunctionDetails) Reset() {
+	*x = NumscriptUnboundFunctionDetails{}
+	mi := &file_common_proto_msgTypes[202]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptUnboundFunctionDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptUnboundFunctionDetails) ProtoMessage() {}
+
+func (x *NumscriptUnboundFunctionDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[202]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptUnboundFunctionDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptUnboundFunctionDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{202}
+}
+
+func (x *NumscriptUnboundFunctionDetails) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+type NumscriptUnboundVariableDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          *string                `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptUnboundVariableDetails) Reset() {
+	*x = NumscriptUnboundVariableDetails{}
+	mi := &file_common_proto_msgTypes[203]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptUnboundVariableDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptUnboundVariableDetails) ProtoMessage() {}
+
+func (x *NumscriptUnboundVariableDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[203]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptUnboundVariableDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptUnboundVariableDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{203}
+}
+
+func (x *NumscriptUnboundVariableDetails) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+type NumscriptVersionAlreadyExistsDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          *string                `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	Version       *string                `protobuf:"bytes,2,opt,name=version,proto3,oneof" json:"version,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NumscriptVersionAlreadyExistsDetails) Reset() {
+	*x = NumscriptVersionAlreadyExistsDetails{}
+	mi := &file_common_proto_msgTypes[204]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NumscriptVersionAlreadyExistsDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NumscriptVersionAlreadyExistsDetails) ProtoMessage() {}
+
+func (x *NumscriptVersionAlreadyExistsDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[204]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NumscriptVersionAlreadyExistsDetails.ProtoReflect.Descriptor instead.
+func (*NumscriptVersionAlreadyExistsDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{204}
+}
+
+func (x *NumscriptVersionAlreadyExistsDetails) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+func (x *NumscriptVersionAlreadyExistsDetails) GetVersion() string {
+	if x != nil && x.Version != nil {
+		return *x.Version
+	}
+	return ""
+}
+
+type PostingsAndScriptConflictDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PostingsAndScriptConflictDetails) Reset() {
+	*x = PostingsAndScriptConflictDetails{}
+	mi := &file_common_proto_msgTypes[205]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PostingsAndScriptConflictDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PostingsAndScriptConflictDetails) ProtoMessage() {}
+
+func (x *PostingsAndScriptConflictDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[205]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PostingsAndScriptConflictDetails.ProtoReflect.Descriptor instead.
+func (*PostingsAndScriptConflictDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{205}
+}
+
+func (x *PostingsAndScriptConflictDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *PostingsAndScriptConflictDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type PreloadUnavailableDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PreloadUnavailableDetails) Reset() {
+	*x = PreloadUnavailableDetails{}
+	mi := &file_common_proto_msgTypes[206]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PreloadUnavailableDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PreloadUnavailableDetails) ProtoMessage() {}
+
+func (x *PreloadUnavailableDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[206]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PreloadUnavailableDetails.ProtoReflect.Descriptor instead.
+func (*PreloadUnavailableDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{206}
+}
+
+type PreparedQueryAlreadyExistsDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ledger        *string                `protobuf:"bytes,1,opt,name=ledger,proto3,oneof" json:"ledger,omitempty"`
+	Name          *string                `protobuf:"bytes,2,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PreparedQueryAlreadyExistsDetails) Reset() {
+	*x = PreparedQueryAlreadyExistsDetails{}
+	mi := &file_common_proto_msgTypes[207]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PreparedQueryAlreadyExistsDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PreparedQueryAlreadyExistsDetails) ProtoMessage() {}
+
+func (x *PreparedQueryAlreadyExistsDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[207]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PreparedQueryAlreadyExistsDetails.ProtoReflect.Descriptor instead.
+func (*PreparedQueryAlreadyExistsDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{207}
+}
+
+func (x *PreparedQueryAlreadyExistsDetails) GetLedger() string {
+	if x != nil && x.Ledger != nil {
+		return *x.Ledger
+	}
+	return ""
+}
+
+func (x *PreparedQueryAlreadyExistsDetails) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+type PreparedQueryNameInvalidCharDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PreparedQueryNameInvalidCharDetails) Reset() {
+	*x = PreparedQueryNameInvalidCharDetails{}
+	mi := &file_common_proto_msgTypes[208]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PreparedQueryNameInvalidCharDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PreparedQueryNameInvalidCharDetails) ProtoMessage() {}
+
+func (x *PreparedQueryNameInvalidCharDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[208]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PreparedQueryNameInvalidCharDetails.ProtoReflect.Descriptor instead.
+func (*PreparedQueryNameInvalidCharDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{208}
+}
+
+func (x *PreparedQueryNameInvalidCharDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *PreparedQueryNameInvalidCharDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type PreparedQueryNameRequiredDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PreparedQueryNameRequiredDetails) Reset() {
+	*x = PreparedQueryNameRequiredDetails{}
+	mi := &file_common_proto_msgTypes[209]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PreparedQueryNameRequiredDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PreparedQueryNameRequiredDetails) ProtoMessage() {}
+
+func (x *PreparedQueryNameRequiredDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[209]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PreparedQueryNameRequiredDetails.ProtoReflect.Descriptor instead.
+func (*PreparedQueryNameRequiredDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{209}
+}
+
+func (x *PreparedQueryNameRequiredDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *PreparedQueryNameRequiredDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type PreparedQueryNameTooLongDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PreparedQueryNameTooLongDetails) Reset() {
+	*x = PreparedQueryNameTooLongDetails{}
+	mi := &file_common_proto_msgTypes[210]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PreparedQueryNameTooLongDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PreparedQueryNameTooLongDetails) ProtoMessage() {}
+
+func (x *PreparedQueryNameTooLongDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[210]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PreparedQueryNameTooLongDetails.ProtoReflect.Descriptor instead.
+func (*PreparedQueryNameTooLongDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{210}
+}
+
+func (x *PreparedQueryNameTooLongDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *PreparedQueryNameTooLongDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type PreparedQueryNotFoundDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ledger        *string                `protobuf:"bytes,1,opt,name=ledger,proto3,oneof" json:"ledger,omitempty"`
+	Name          *string                `protobuf:"bytes,2,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PreparedQueryNotFoundDetails) Reset() {
+	*x = PreparedQueryNotFoundDetails{}
+	mi := &file_common_proto_msgTypes[211]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PreparedQueryNotFoundDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PreparedQueryNotFoundDetails) ProtoMessage() {}
+
+func (x *PreparedQueryNotFoundDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[211]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PreparedQueryNotFoundDetails.ProtoReflect.Descriptor instead.
+func (*PreparedQueryNotFoundDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{211}
+}
+
+func (x *PreparedQueryNotFoundDetails) GetLedger() string {
+	if x != nil && x.Ledger != nil {
+		return *x.Ledger
+	}
+	return ""
+}
+
+func (x *PreparedQueryNotFoundDetails) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+type PreparedQueryRequiredDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PreparedQueryRequiredDetails) Reset() {
+	*x = PreparedQueryRequiredDetails{}
+	mi := &file_common_proto_msgTypes[212]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PreparedQueryRequiredDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PreparedQueryRequiredDetails) ProtoMessage() {}
+
+func (x *PreparedQueryRequiredDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[212]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PreparedQueryRequiredDetails.ProtoReflect.Descriptor instead.
+func (*PreparedQueryRequiredDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{212}
+}
+
+func (x *PreparedQueryRequiredDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *PreparedQueryRequiredDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type PreparedQueryTargetUnsupportedDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PreparedQueryTargetUnsupportedDetails) Reset() {
+	*x = PreparedQueryTargetUnsupportedDetails{}
+	mi := &file_common_proto_msgTypes[213]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PreparedQueryTargetUnsupportedDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PreparedQueryTargetUnsupportedDetails) ProtoMessage() {}
+
+func (x *PreparedQueryTargetUnsupportedDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[213]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PreparedQueryTargetUnsupportedDetails.ProtoReflect.Descriptor instead.
+func (*PreparedQueryTargetUnsupportedDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{213}
+}
+
+func (x *PreparedQueryTargetUnsupportedDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *PreparedQueryTargetUnsupportedDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type RevertTargetCreatedInBatchDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TransactionId *uint64                `protobuf:"varint,1,opt,name=transaction_id,json=transactionId,proto3,oneof" json:"transaction_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevertTargetCreatedInBatchDetails) Reset() {
+	*x = RevertTargetCreatedInBatchDetails{}
+	mi := &file_common_proto_msgTypes[214]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevertTargetCreatedInBatchDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevertTargetCreatedInBatchDetails) ProtoMessage() {}
+
+func (x *RevertTargetCreatedInBatchDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[214]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevertTargetCreatedInBatchDetails.ProtoReflect.Descriptor instead.
+func (*RevertTargetCreatedInBatchDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{214}
+}
+
+func (x *RevertTargetCreatedInBatchDetails) GetTransactionId() uint64 {
+	if x != nil && x.TransactionId != nil {
+		return *x.TransactionId
+	}
+	return 0
+}
+
+type ScopedBalanceUnsupportedDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ScopedBalanceUnsupportedDetails) Reset() {
+	*x = ScopedBalanceUnsupportedDetails{}
+	mi := &file_common_proto_msgTypes[215]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ScopedBalanceUnsupportedDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ScopedBalanceUnsupportedDetails) ProtoMessage() {}
+
+func (x *ScopedBalanceUnsupportedDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[215]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ScopedBalanceUnsupportedDetails.ProtoReflect.Descriptor instead.
+func (*ScopedBalanceUnsupportedDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{215}
+}
+
+func (x *ScopedBalanceUnsupportedDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *ScopedBalanceUnsupportedDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type ScriptAndReferenceConflictDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ScriptAndReferenceConflictDetails) Reset() {
+	*x = ScriptAndReferenceConflictDetails{}
+	mi := &file_common_proto_msgTypes[216]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ScriptAndReferenceConflictDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ScriptAndReferenceConflictDetails) ProtoMessage() {}
+
+func (x *ScriptAndReferenceConflictDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[216]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ScriptAndReferenceConflictDetails.ProtoReflect.Descriptor instead.
+func (*ScriptAndReferenceConflictDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{216}
+}
+
+func (x *ScriptAndReferenceConflictDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *ScriptAndReferenceConflictDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type ScriptRequiredDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ScriptRequiredDetails) Reset() {
+	*x = ScriptRequiredDetails{}
+	mi := &file_common_proto_msgTypes[217]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ScriptRequiredDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ScriptRequiredDetails) ProtoMessage() {}
+
+func (x *ScriptRequiredDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[217]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ScriptRequiredDetails.ProtoReflect.Descriptor instead.
+func (*ScriptRequiredDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{217}
+}
+
+func (x *ScriptRequiredDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *ScriptRequiredDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type SequenceExhaustedDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Counter       *string                `protobuf:"bytes,1,opt,name=counter,proto3,oneof" json:"counter,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SequenceExhaustedDetails) Reset() {
+	*x = SequenceExhaustedDetails{}
+	mi := &file_common_proto_msgTypes[218]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SequenceExhaustedDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SequenceExhaustedDetails) ProtoMessage() {}
+
+func (x *SequenceExhaustedDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[218]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SequenceExhaustedDetails.ProtoReflect.Descriptor instead.
+func (*SequenceExhaustedDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{218}
+}
+
+func (x *SequenceExhaustedDetails) GetCounter() string {
+	if x != nil && x.Counter != nil {
+		return *x.Counter
+	}
+	return ""
+}
+
+type SigningKeyIdInvalidCharDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SigningKeyIdInvalidCharDetails) Reset() {
+	*x = SigningKeyIdInvalidCharDetails{}
+	mi := &file_common_proto_msgTypes[219]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SigningKeyIdInvalidCharDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SigningKeyIdInvalidCharDetails) ProtoMessage() {}
+
+func (x *SigningKeyIdInvalidCharDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[219]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SigningKeyIdInvalidCharDetails.ProtoReflect.Descriptor instead.
+func (*SigningKeyIdInvalidCharDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{219}
+}
+
+func (x *SigningKeyIdInvalidCharDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *SigningKeyIdInvalidCharDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type SigningKeyIdRequiredDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SigningKeyIdRequiredDetails) Reset() {
+	*x = SigningKeyIdRequiredDetails{}
+	mi := &file_common_proto_msgTypes[220]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SigningKeyIdRequiredDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SigningKeyIdRequiredDetails) ProtoMessage() {}
+
+func (x *SigningKeyIdRequiredDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[220]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SigningKeyIdRequiredDetails.ProtoReflect.Descriptor instead.
+func (*SigningKeyIdRequiredDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{220}
+}
+
+func (x *SigningKeyIdRequiredDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *SigningKeyIdRequiredDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type SigningKeyIdTooLongDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SigningKeyIdTooLongDetails) Reset() {
+	*x = SigningKeyIdTooLongDetails{}
+	mi := &file_common_proto_msgTypes[221]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SigningKeyIdTooLongDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SigningKeyIdTooLongDetails) ProtoMessage() {}
+
+func (x *SigningKeyIdTooLongDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[221]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SigningKeyIdTooLongDetails.ProtoReflect.Descriptor instead.
+func (*SigningKeyIdTooLongDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{221}
+}
+
+func (x *SigningKeyIdTooLongDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *SigningKeyIdTooLongDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type SigningKeyInvalidLengthDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SigningKeyInvalidLengthDetails) Reset() {
+	*x = SigningKeyInvalidLengthDetails{}
+	mi := &file_common_proto_msgTypes[222]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SigningKeyInvalidLengthDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SigningKeyInvalidLengthDetails) ProtoMessage() {}
+
+func (x *SigningKeyInvalidLengthDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[222]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SigningKeyInvalidLengthDetails.ProtoReflect.Descriptor instead.
+func (*SigningKeyInvalidLengthDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{222}
+}
+
+func (x *SigningKeyInvalidLengthDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *SigningKeyInvalidLengthDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type SinkAlreadyExistsDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          *string                `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SinkAlreadyExistsDetails) Reset() {
+	*x = SinkAlreadyExistsDetails{}
+	mi := &file_common_proto_msgTypes[223]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SinkAlreadyExistsDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SinkAlreadyExistsDetails) ProtoMessage() {}
+
+func (x *SinkAlreadyExistsDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[223]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SinkAlreadyExistsDetails.ProtoReflect.Descriptor instead.
+func (*SinkAlreadyExistsDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{223}
+}
+
+func (x *SinkAlreadyExistsDetails) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+type SinkBatchSizeTooLargeDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          *string                `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	BatchSize     *uint64                `protobuf:"varint,2,opt,name=batch_size,json=batchSize,proto3,oneof" json:"batch_size,omitempty"`
+	Max           *uint64                `protobuf:"varint,3,opt,name=max,proto3,oneof" json:"max,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SinkBatchSizeTooLargeDetails) Reset() {
+	*x = SinkBatchSizeTooLargeDetails{}
+	mi := &file_common_proto_msgTypes[224]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SinkBatchSizeTooLargeDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SinkBatchSizeTooLargeDetails) ProtoMessage() {}
+
+func (x *SinkBatchSizeTooLargeDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[224]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SinkBatchSizeTooLargeDetails.ProtoReflect.Descriptor instead.
+func (*SinkBatchSizeTooLargeDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{224}
+}
+
+func (x *SinkBatchSizeTooLargeDetails) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+func (x *SinkBatchSizeTooLargeDetails) GetBatchSize() uint64 {
+	if x != nil && x.BatchSize != nil {
+		return *x.BatchSize
+	}
+	return 0
+}
+
+func (x *SinkBatchSizeTooLargeDetails) GetMax() uint64 {
+	if x != nil && x.Max != nil {
+		return *x.Max
+	}
+	return 0
+}
+
+type SinkControllerMismatchDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          *string                `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	ControllerId  *string                `protobuf:"bytes,2,opt,name=controller_id,json=controllerId,proto3,oneof" json:"controller_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SinkControllerMismatchDetails) Reset() {
+	*x = SinkControllerMismatchDetails{}
+	mi := &file_common_proto_msgTypes[225]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SinkControllerMismatchDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SinkControllerMismatchDetails) ProtoMessage() {}
+
+func (x *SinkControllerMismatchDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[225]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SinkControllerMismatchDetails.ProtoReflect.Descriptor instead.
+func (*SinkControllerMismatchDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{225}
+}
+
+func (x *SinkControllerMismatchDetails) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+func (x *SinkControllerMismatchDetails) GetControllerId() string {
+	if x != nil && x.ControllerId != nil {
+		return *x.ControllerId
+	}
+	return ""
+}
+
+type SinkNotFoundDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          *string                `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SinkNotFoundDetails) Reset() {
+	*x = SinkNotFoundDetails{}
+	mi := &file_common_proto_msgTypes[226]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SinkNotFoundDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SinkNotFoundDetails) ProtoMessage() {}
+
+func (x *SinkNotFoundDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[226]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SinkNotFoundDetails.ProtoReflect.Descriptor instead.
+func (*SinkNotFoundDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{226}
+}
+
+func (x *SinkNotFoundDetails) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+type StaleClusterPolicyDetails struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	ProposedRevision *uint64                `protobuf:"varint,1,opt,name=proposed_revision,json=proposedRevision,proto3,oneof" json:"proposed_revision,omitempty"`
+	AppliedRevision  *uint64                `protobuf:"varint,2,opt,name=applied_revision,json=appliedRevision,proto3,oneof" json:"applied_revision,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *StaleClusterPolicyDetails) Reset() {
+	*x = StaleClusterPolicyDetails{}
+	mi := &file_common_proto_msgTypes[227]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StaleClusterPolicyDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StaleClusterPolicyDetails) ProtoMessage() {}
+
+func (x *StaleClusterPolicyDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[227]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StaleClusterPolicyDetails.ProtoReflect.Descriptor instead.
+func (*StaleClusterPolicyDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{227}
+}
+
+func (x *StaleClusterPolicyDetails) GetProposedRevision() uint64 {
+	if x != nil && x.ProposedRevision != nil {
+		return *x.ProposedRevision
+	}
+	return 0
+}
+
+func (x *StaleClusterPolicyDetails) GetAppliedRevision() uint64 {
+	if x != nil && x.AppliedRevision != nil {
+		return *x.AppliedRevision
+	}
+	return 0
+}
+
+type StaleInputsResolutionDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StaleInputsResolutionDetails) Reset() {
+	*x = StaleInputsResolutionDetails{}
+	mi := &file_common_proto_msgTypes[228]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StaleInputsResolutionDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StaleInputsResolutionDetails) ProtoMessage() {}
+
+func (x *StaleInputsResolutionDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[228]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StaleInputsResolutionDetails.ProtoReflect.Descriptor instead.
+func (*StaleInputsResolutionDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{228}
+}
+
+type StaleProposalDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StaleProposalDetails) Reset() {
+	*x = StaleProposalDetails{}
+	mi := &file_common_proto_msgTypes[229]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StaleProposalDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StaleProposalDetails) ProtoMessage() {}
+
+func (x *StaleProposalDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[229]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StaleProposalDetails.ProtoReflect.Descriptor instead.
+func (*StaleProposalDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{229}
+}
+
+type StorageOperationFailedDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StorageOperationFailedDetails) Reset() {
+	*x = StorageOperationFailedDetails{}
+	mi := &file_common_proto_msgTypes[230]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StorageOperationFailedDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StorageOperationFailedDetails) ProtoMessage() {}
+
+func (x *StorageOperationFailedDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[230]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StorageOperationFailedDetails.ProtoReflect.Descriptor instead.
+func (*StorageOperationFailedDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{230}
+}
+
+type TargetRequiredDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TargetRequiredDetails) Reset() {
+	*x = TargetRequiredDetails{}
+	mi := &file_common_proto_msgTypes[231]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TargetRequiredDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TargetRequiredDetails) ProtoMessage() {}
+
+func (x *TargetRequiredDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[231]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TargetRequiredDetails.ProtoReflect.Descriptor instead.
+func (*TargetRequiredDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{231}
+}
+
+func (x *TargetRequiredDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *TargetRequiredDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type TransactionAlreadyRevertedDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TransactionId *uint64                `protobuf:"varint,1,opt,name=transaction_id,json=transactionId,proto3,oneof" json:"transaction_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TransactionAlreadyRevertedDetails) Reset() {
+	*x = TransactionAlreadyRevertedDetails{}
+	mi := &file_common_proto_msgTypes[232]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TransactionAlreadyRevertedDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TransactionAlreadyRevertedDetails) ProtoMessage() {}
+
+func (x *TransactionAlreadyRevertedDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[232]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TransactionAlreadyRevertedDetails.ProtoReflect.Descriptor instead.
+func (*TransactionAlreadyRevertedDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{232}
+}
+
+func (x *TransactionAlreadyRevertedDetails) GetTransactionId() uint64 {
+	if x != nil && x.TransactionId != nil {
+		return *x.TransactionId
+	}
+	return 0
+}
+
+type TransactionNotFoundDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TransactionId *uint64                `protobuf:"varint,1,opt,name=transaction_id,json=transactionId,proto3,oneof" json:"transaction_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TransactionNotFoundDetails) Reset() {
+	*x = TransactionNotFoundDetails{}
+	mi := &file_common_proto_msgTypes[233]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TransactionNotFoundDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TransactionNotFoundDetails) ProtoMessage() {}
+
+func (x *TransactionNotFoundDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[233]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TransactionNotFoundDetails.ProtoReflect.Descriptor instead.
+func (*TransactionNotFoundDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{233}
+}
+
+func (x *TransactionNotFoundDetails) GetTransactionId() uint64 {
+	if x != nil && x.TransactionId != nil {
+		return *x.TransactionId
+	}
+	return 0
+}
+
+type TransactionReferenceConflictDetails struct {
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	Ledger                *string                `protobuf:"bytes,1,opt,name=ledger,proto3,oneof" json:"ledger,omitempty"`
+	Reference             *string                `protobuf:"bytes,2,opt,name=reference,proto3,oneof" json:"reference,omitempty"`
+	ExistingTransactionId *uint64                `protobuf:"varint,3,opt,name=existing_transaction_id,json=existingTransactionId,proto3,oneof" json:"existing_transaction_id,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *TransactionReferenceConflictDetails) Reset() {
+	*x = TransactionReferenceConflictDetails{}
+	mi := &file_common_proto_msgTypes[234]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TransactionReferenceConflictDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TransactionReferenceConflictDetails) ProtoMessage() {}
+
+func (x *TransactionReferenceConflictDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[234]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TransactionReferenceConflictDetails.ProtoReflect.Descriptor instead.
+func (*TransactionReferenceConflictDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{234}
+}
+
+func (x *TransactionReferenceConflictDetails) GetLedger() string {
+	if x != nil && x.Ledger != nil {
+		return *x.Ledger
+	}
+	return ""
+}
+
+func (x *TransactionReferenceConflictDetails) GetReference() string {
+	if x != nil && x.Reference != nil {
+		return *x.Reference
+	}
+	return ""
+}
+
+func (x *TransactionReferenceConflictDetails) GetExistingTransactionId() uint64 {
+	if x != nil && x.ExistingTransactionId != nil {
+		return *x.ExistingTransactionId
+	}
+	return 0
+}
+
+type TransactionReferenceNotFoundDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Reference     *string                `protobuf:"bytes,1,opt,name=reference,proto3,oneof" json:"reference,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TransactionReferenceNotFoundDetails) Reset() {
+	*x = TransactionReferenceNotFoundDetails{}
+	mi := &file_common_proto_msgTypes[235]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TransactionReferenceNotFoundDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TransactionReferenceNotFoundDetails) ProtoMessage() {}
+
+func (x *TransactionReferenceNotFoundDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[235]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TransactionReferenceNotFoundDetails.ProtoReflect.Descriptor instead.
+func (*TransactionReferenceNotFoundDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{235}
+}
+
+func (x *TransactionReferenceNotFoundDetails) GetReference() string {
+	if x != nil && x.Reference != nil {
+		return *x.Reference
+	}
+	return ""
+}
+
+type TransactionReferenceTooLongDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TransactionReferenceTooLongDetails) Reset() {
+	*x = TransactionReferenceTooLongDetails{}
+	mi := &file_common_proto_msgTypes[236]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TransactionReferenceTooLongDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TransactionReferenceTooLongDetails) ProtoMessage() {}
+
+func (x *TransactionReferenceTooLongDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[236]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TransactionReferenceTooLongDetails.ProtoReflect.Descriptor instead.
+func (*TransactionReferenceTooLongDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{236}
+}
+
+func (x *TransactionReferenceTooLongDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *TransactionReferenceTooLongDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type TransactionStateInconsistentDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TransactionId *uint64                `protobuf:"varint,1,opt,name=transaction_id,json=transactionId,proto3,oneof" json:"transaction_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TransactionStateInconsistentDetails) Reset() {
+	*x = TransactionStateInconsistentDetails{}
+	mi := &file_common_proto_msgTypes[237]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TransactionStateInconsistentDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TransactionStateInconsistentDetails) ProtoMessage() {}
+
+func (x *TransactionStateInconsistentDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[237]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TransactionStateInconsistentDetails.ProtoReflect.Descriptor instead.
+func (*TransactionStateInconsistentDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{237}
+}
+
+func (x *TransactionStateInconsistentDetails) GetTransactionId() uint64 {
+	if x != nil && x.TransactionId != nil {
+		return *x.TransactionId
+	}
+	return 0
+}
+
+type TransactionTargetMissingDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TransactionTargetMissingDetails) Reset() {
+	*x = TransactionTargetMissingDetails{}
+	mi := &file_common_proto_msgTypes[238]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TransactionTargetMissingDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TransactionTargetMissingDetails) ProtoMessage() {}
+
+func (x *TransactionTargetMissingDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[238]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TransactionTargetMissingDetails.ProtoReflect.Descriptor instead.
+func (*TransactionTargetMissingDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{238}
+}
+
+func (x *TransactionTargetMissingDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *TransactionTargetMissingDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type TransientAccountNonZeroDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Accounts      *string                `protobuf:"bytes,1,opt,name=accounts,proto3,oneof" json:"accounts,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TransientAccountNonZeroDetails) Reset() {
+	*x = TransientAccountNonZeroDetails{}
+	mi := &file_common_proto_msgTypes[239]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TransientAccountNonZeroDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TransientAccountNonZeroDetails) ProtoMessage() {}
+
+func (x *TransientAccountNonZeroDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[239]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TransientAccountNonZeroDetails.ProtoReflect.Descriptor instead.
+func (*TransientAccountNonZeroDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{239}
+}
+
+func (x *TransientAccountNonZeroDetails) GetAccounts() string {
+	if x != nil && x.Accounts != nil {
+		return *x.Accounts
+	}
+	return ""
+}
+
+type ValidationDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           *string                `protobuf:"bytes,1,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Account       *string                `protobuf:"bytes,2,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ValidationDetails) Reset() {
+	*x = ValidationDetails{}
+	mi := &file_common_proto_msgTypes[240]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ValidationDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ValidationDetails) ProtoMessage() {}
+
+func (x *ValidationDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[240]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ValidationDetails.ProtoReflect.Descriptor instead.
+func (*ValidationDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{240}
+}
+
+func (x *ValidationDetails) GetKey() string {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return ""
+}
+
+func (x *ValidationDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+type VolumeNotMaterializedDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Account       *string                `protobuf:"bytes,1,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	Asset         *string                `protobuf:"bytes,2,opt,name=asset,proto3,oneof" json:"asset,omitempty"`
+	Color         *string                `protobuf:"bytes,3,opt,name=color,proto3,oneof" json:"color,omitempty"`
+	Side          *string                `protobuf:"bytes,4,opt,name=side,proto3,oneof" json:"side,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *VolumeNotMaterializedDetails) Reset() {
+	*x = VolumeNotMaterializedDetails{}
+	mi := &file_common_proto_msgTypes[241]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VolumeNotMaterializedDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VolumeNotMaterializedDetails) ProtoMessage() {}
+
+func (x *VolumeNotMaterializedDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[241]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VolumeNotMaterializedDetails.ProtoReflect.Descriptor instead.
+func (*VolumeNotMaterializedDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{241}
+}
+
+func (x *VolumeNotMaterializedDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+func (x *VolumeNotMaterializedDetails) GetAsset() string {
+	if x != nil && x.Asset != nil {
+		return *x.Asset
+	}
+	return ""
+}
+
+func (x *VolumeNotMaterializedDetails) GetColor() string {
+	if x != nil && x.Color != nil {
+		return *x.Color
+	}
+	return ""
+}
+
+func (x *VolumeNotMaterializedDetails) GetSide() string {
+	if x != nil && x.Side != nil {
+		return *x.Side
+	}
+	return ""
+}
+
+type VolumeOverflowDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Account       *string                `protobuf:"bytes,1,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	Asset         *string                `protobuf:"bytes,2,opt,name=asset,proto3,oneof" json:"asset,omitempty"`
+	Color         *string                `protobuf:"bytes,3,opt,name=color,proto3,oneof" json:"color,omitempty"`
+	Side          *string                `protobuf:"bytes,4,opt,name=side,proto3,oneof" json:"side,omitempty"`
+	Amount        *string                `protobuf:"bytes,5,opt,name=amount,proto3,oneof" json:"amount,omitempty"`
+	Current       *string                `protobuf:"bytes,6,opt,name=current,proto3,oneof" json:"current,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *VolumeOverflowDetails) Reset() {
+	*x = VolumeOverflowDetails{}
+	mi := &file_common_proto_msgTypes[242]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VolumeOverflowDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VolumeOverflowDetails) ProtoMessage() {}
+
+func (x *VolumeOverflowDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[242]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VolumeOverflowDetails.ProtoReflect.Descriptor instead.
+func (*VolumeOverflowDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{242}
+}
+
+func (x *VolumeOverflowDetails) GetAccount() string {
+	if x != nil && x.Account != nil {
+		return *x.Account
+	}
+	return ""
+}
+
+func (x *VolumeOverflowDetails) GetAsset() string {
+	if x != nil && x.Asset != nil {
+		return *x.Asset
+	}
+	return ""
+}
+
+func (x *VolumeOverflowDetails) GetColor() string {
+	if x != nil && x.Color != nil {
+		return *x.Color
+	}
+	return ""
+}
+
+func (x *VolumeOverflowDetails) GetSide() string {
+	if x != nil && x.Side != nil {
+		return *x.Side
+	}
+	return ""
+}
+
+func (x *VolumeOverflowDetails) GetAmount() string {
+	if x != nil && x.Amount != nil {
+		return *x.Amount
+	}
+	return ""
+}
+
+func (x *VolumeOverflowDetails) GetCurrent() string {
+	if x != nil && x.Current != nil {
+		return *x.Current
+	}
+	return ""
+}
+
+type WritesBlockedClockSkewDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WritesBlockedClockSkewDetails) Reset() {
+	*x = WritesBlockedClockSkewDetails{}
+	mi := &file_common_proto_msgTypes[243]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WritesBlockedClockSkewDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WritesBlockedClockSkewDetails) ProtoMessage() {}
+
+func (x *WritesBlockedClockSkewDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[243]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WritesBlockedClockSkewDetails.ProtoReflect.Descriptor instead.
+func (*WritesBlockedClockSkewDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{243}
+}
+
+type WritesBlockedDiskFullDetails struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WritesBlockedDiskFullDetails) Reset() {
+	*x = WritesBlockedDiskFullDetails{}
+	mi := &file_common_proto_msgTypes[244]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WritesBlockedDiskFullDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WritesBlockedDiskFullDetails) ProtoMessage() {}
+
+func (x *WritesBlockedDiskFullDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[244]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WritesBlockedDiskFullDetails.ProtoReflect.Descriptor instead.
+func (*WritesBlockedDiskFullDetails) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{244}
+}
+
 // No state mutation occurred for the skipped order, but the rest of the
 // proposal applied normally. The `reason` here is a PROJECTION and is NOT
 // hash-chain-bound — only the AuditItem.serialized_order (the submitted
@@ -6647,14 +17762,14 @@ type OrderSkippedLog struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Reason        ErrorReason            `protobuf:"varint,1,opt,name=reason,proto3,enum=common.ErrorReason" json:"reason,omitempty"`
 	Code          string                 `protobuf:"bytes,2,opt,name=code,proto3" json:"code,omitempty"`
-	Facts         map[string]string      `protobuf:"bytes,3,rep,name=facts,proto3" json:"facts,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Details       *FailureDetails        `protobuf:"bytes,3,opt,name=details,proto3" json:"details,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *OrderSkippedLog) Reset() {
 	*x = OrderSkippedLog{}
-	mi := &file_common_proto_msgTypes[71]
+	mi := &file_common_proto_msgTypes[245]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6666,7 +17781,7 @@ func (x *OrderSkippedLog) String() string {
 func (*OrderSkippedLog) ProtoMessage() {}
 
 func (x *OrderSkippedLog) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[71]
+	mi := &file_common_proto_msgTypes[245]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6679,7 +17794,7 @@ func (x *OrderSkippedLog) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OrderSkippedLog.ProtoReflect.Descriptor instead.
 func (*OrderSkippedLog) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{71}
+	return file_common_proto_rawDescGZIP(), []int{245}
 }
 
 func (x *OrderSkippedLog) GetReason() ErrorReason {
@@ -6696,9 +17811,9 @@ func (x *OrderSkippedLog) GetCode() string {
 	return ""
 }
 
-func (x *OrderSkippedLog) GetFacts() map[string]string {
+func (x *OrderSkippedLog) GetDetails() *FailureDetails {
 	if x != nil {
-		return x.Facts
+		return x.Details
 	}
 	return nil
 }
@@ -6726,7 +17841,7 @@ type CreatedIndexLog struct {
 
 func (x *CreatedIndexLog) Reset() {
 	*x = CreatedIndexLog{}
-	mi := &file_common_proto_msgTypes[72]
+	mi := &file_common_proto_msgTypes[246]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6738,7 +17853,7 @@ func (x *CreatedIndexLog) String() string {
 func (*CreatedIndexLog) ProtoMessage() {}
 
 func (x *CreatedIndexLog) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[72]
+	mi := &file_common_proto_msgTypes[246]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6751,7 +17866,7 @@ func (x *CreatedIndexLog) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreatedIndexLog.ProtoReflect.Descriptor instead.
 func (*CreatedIndexLog) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{72}
+	return file_common_proto_rawDescGZIP(), []int{246}
 }
 
 func (x *CreatedIndexLog) GetId() *IndexID {
@@ -6785,7 +17900,7 @@ type DroppedIndexLog struct {
 
 func (x *DroppedIndexLog) Reset() {
 	*x = DroppedIndexLog{}
-	mi := &file_common_proto_msgTypes[73]
+	mi := &file_common_proto_msgTypes[247]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6797,7 +17912,7 @@ func (x *DroppedIndexLog) String() string {
 func (*DroppedIndexLog) ProtoMessage() {}
 
 func (x *DroppedIndexLog) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[73]
+	mi := &file_common_proto_msgTypes[247]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6810,7 +17925,7 @@ func (x *DroppedIndexLog) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DroppedIndexLog.ProtoReflect.Descriptor instead.
 func (*DroppedIndexLog) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{73}
+	return file_common_proto_rawDescGZIP(), []int{247}
 }
 
 func (x *DroppedIndexLog) GetId() *IndexID {
@@ -6829,7 +17944,7 @@ type FilledGapLog struct {
 
 func (x *FilledGapLog) Reset() {
 	*x = FilledGapLog{}
-	mi := &file_common_proto_msgTypes[74]
+	mi := &file_common_proto_msgTypes[248]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6841,7 +17956,7 @@ func (x *FilledGapLog) String() string {
 func (*FilledGapLog) ProtoMessage() {}
 
 func (x *FilledGapLog) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[74]
+	mi := &file_common_proto_msgTypes[248]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6854,7 +17969,7 @@ func (x *FilledGapLog) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FilledGapLog.ProtoReflect.Descriptor instead.
 func (*FilledGapLog) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{74}
+	return file_common_proto_rawDescGZIP(), []int{248}
 }
 
 func (x *FilledGapLog) GetOriginalId() uint64 {
@@ -6874,7 +17989,7 @@ type CreatedTransaction struct {
 
 func (x *CreatedTransaction) Reset() {
 	*x = CreatedTransaction{}
-	mi := &file_common_proto_msgTypes[75]
+	mi := &file_common_proto_msgTypes[249]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6886,7 +18001,7 @@ func (x *CreatedTransaction) String() string {
 func (*CreatedTransaction) ProtoMessage() {}
 
 func (x *CreatedTransaction) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[75]
+	mi := &file_common_proto_msgTypes[249]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6899,7 +18014,7 @@ func (x *CreatedTransaction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreatedTransaction.ProtoReflect.Descriptor instead.
 func (*CreatedTransaction) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{75}
+	return file_common_proto_rawDescGZIP(), []int{249}
 }
 
 func (x *CreatedTransaction) GetTransaction() *Transaction {
@@ -6926,7 +18041,7 @@ type RevertedTransaction struct {
 
 func (x *RevertedTransaction) Reset() {
 	*x = RevertedTransaction{}
-	mi := &file_common_proto_msgTypes[76]
+	mi := &file_common_proto_msgTypes[250]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6938,7 +18053,7 @@ func (x *RevertedTransaction) String() string {
 func (*RevertedTransaction) ProtoMessage() {}
 
 func (x *RevertedTransaction) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[76]
+	mi := &file_common_proto_msgTypes[250]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6951,7 +18066,7 @@ func (x *RevertedTransaction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevertedTransaction.ProtoReflect.Descriptor instead.
 func (*RevertedTransaction) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{76}
+	return file_common_proto_rawDescGZIP(), []int{250}
 }
 
 func (x *RevertedTransaction) GetRevertedTransactionId() uint64 {
@@ -6978,7 +18093,7 @@ type SavedMetadata struct {
 
 func (x *SavedMetadata) Reset() {
 	*x = SavedMetadata{}
-	mi := &file_common_proto_msgTypes[77]
+	mi := &file_common_proto_msgTypes[251]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6990,7 +18105,7 @@ func (x *SavedMetadata) String() string {
 func (*SavedMetadata) ProtoMessage() {}
 
 func (x *SavedMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[77]
+	mi := &file_common_proto_msgTypes[251]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7003,7 +18118,7 @@ func (x *SavedMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SavedMetadata.ProtoReflect.Descriptor instead.
 func (*SavedMetadata) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{77}
+	return file_common_proto_rawDescGZIP(), []int{251}
 }
 
 func (x *SavedMetadata) GetTarget() *Target {
@@ -7030,7 +18145,7 @@ type DeletedMetadata struct {
 
 func (x *DeletedMetadata) Reset() {
 	*x = DeletedMetadata{}
-	mi := &file_common_proto_msgTypes[78]
+	mi := &file_common_proto_msgTypes[252]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7042,7 +18157,7 @@ func (x *DeletedMetadata) String() string {
 func (*DeletedMetadata) ProtoMessage() {}
 
 func (x *DeletedMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[78]
+	mi := &file_common_proto_msgTypes[252]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7055,7 +18170,7 @@ func (x *DeletedMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletedMetadata.ProtoReflect.Descriptor instead.
 func (*DeletedMetadata) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{78}
+	return file_common_proto_rawDescGZIP(), []int{252}
 }
 
 func (x *DeletedMetadata) GetTarget() *Target {
@@ -7084,7 +18199,7 @@ type SetMetadataFieldTypeLog struct {
 
 func (x *SetMetadataFieldTypeLog) Reset() {
 	*x = SetMetadataFieldTypeLog{}
-	mi := &file_common_proto_msgTypes[79]
+	mi := &file_common_proto_msgTypes[253]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7096,7 +18211,7 @@ func (x *SetMetadataFieldTypeLog) String() string {
 func (*SetMetadataFieldTypeLog) ProtoMessage() {}
 
 func (x *SetMetadataFieldTypeLog) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[79]
+	mi := &file_common_proto_msgTypes[253]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7109,7 +18224,7 @@ func (x *SetMetadataFieldTypeLog) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetMetadataFieldTypeLog.ProtoReflect.Descriptor instead.
 func (*SetMetadataFieldTypeLog) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{79}
+	return file_common_proto_rawDescGZIP(), []int{253}
 }
 
 func (x *SetMetadataFieldTypeLog) GetTargetType() TargetType {
@@ -7147,7 +18262,7 @@ type RemovedMetadataFieldTypeLog struct {
 
 func (x *RemovedMetadataFieldTypeLog) Reset() {
 	*x = RemovedMetadataFieldTypeLog{}
-	mi := &file_common_proto_msgTypes[80]
+	mi := &file_common_proto_msgTypes[254]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7159,7 +18274,7 @@ func (x *RemovedMetadataFieldTypeLog) String() string {
 func (*RemovedMetadataFieldTypeLog) ProtoMessage() {}
 
 func (x *RemovedMetadataFieldTypeLog) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[80]
+	mi := &file_common_proto_msgTypes[254]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7172,7 +18287,7 @@ func (x *RemovedMetadataFieldTypeLog) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemovedMetadataFieldTypeLog.ProtoReflect.Descriptor instead.
 func (*RemovedMetadataFieldTypeLog) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{80}
+	return file_common_proto_rawDescGZIP(), []int{254}
 }
 
 func (x *RemovedMetadataFieldTypeLog) GetTargetType() TargetType {
@@ -7215,7 +18330,7 @@ type MirrorSourceConfig struct {
 
 func (x *MirrorSourceConfig) Reset() {
 	*x = MirrorSourceConfig{}
-	mi := &file_common_proto_msgTypes[81]
+	mi := &file_common_proto_msgTypes[255]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7227,7 +18342,7 @@ func (x *MirrorSourceConfig) String() string {
 func (*MirrorSourceConfig) ProtoMessage() {}
 
 func (x *MirrorSourceConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[81]
+	mi := &file_common_proto_msgTypes[255]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7240,7 +18355,7 @@ func (x *MirrorSourceConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MirrorSourceConfig.ProtoReflect.Descriptor instead.
 func (*MirrorSourceConfig) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{81}
+	return file_common_proto_rawDescGZIP(), []int{255}
 }
 
 func (x *MirrorSourceConfig) GetLedgerName() string {
@@ -7338,7 +18453,7 @@ type MirrorRewriteRule struct {
 
 func (x *MirrorRewriteRule) Reset() {
 	*x = MirrorRewriteRule{}
-	mi := &file_common_proto_msgTypes[82]
+	mi := &file_common_proto_msgTypes[256]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7350,7 +18465,7 @@ func (x *MirrorRewriteRule) String() string {
 func (*MirrorRewriteRule) ProtoMessage() {}
 
 func (x *MirrorRewriteRule) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[82]
+	mi := &file_common_proto_msgTypes[256]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7363,7 +18478,7 @@ func (x *MirrorRewriteRule) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MirrorRewriteRule.ProtoReflect.Descriptor instead.
 func (*MirrorRewriteRule) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{82}
+	return file_common_proto_rawDescGZIP(), []int{256}
 }
 
 func (x *MirrorRewriteRule) GetScope() isMirrorRewriteRule_Scope {
@@ -7469,7 +18584,7 @@ type CreatedTransactionRule struct {
 
 func (x *CreatedTransactionRule) Reset() {
 	*x = CreatedTransactionRule{}
-	mi := &file_common_proto_msgTypes[83]
+	mi := &file_common_proto_msgTypes[257]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7481,7 +18596,7 @@ func (x *CreatedTransactionRule) String() string {
 func (*CreatedTransactionRule) ProtoMessage() {}
 
 func (x *CreatedTransactionRule) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[83]
+	mi := &file_common_proto_msgTypes[257]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7494,7 +18609,7 @@ func (x *CreatedTransactionRule) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreatedTransactionRule.ProtoReflect.Descriptor instead.
 func (*CreatedTransactionRule) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{83}
+	return file_common_proto_rawDescGZIP(), []int{257}
 }
 
 func (x *CreatedTransactionRule) GetMatch() string {
@@ -7521,7 +18636,7 @@ type RevertedTransactionRule struct {
 
 func (x *RevertedTransactionRule) Reset() {
 	*x = RevertedTransactionRule{}
-	mi := &file_common_proto_msgTypes[84]
+	mi := &file_common_proto_msgTypes[258]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7533,7 +18648,7 @@ func (x *RevertedTransactionRule) String() string {
 func (*RevertedTransactionRule) ProtoMessage() {}
 
 func (x *RevertedTransactionRule) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[84]
+	mi := &file_common_proto_msgTypes[258]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7546,7 +18661,7 @@ func (x *RevertedTransactionRule) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevertedTransactionRule.ProtoReflect.Descriptor instead.
 func (*RevertedTransactionRule) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{84}
+	return file_common_proto_rawDescGZIP(), []int{258}
 }
 
 func (x *RevertedTransactionRule) GetMatch() string {
@@ -7573,7 +18688,7 @@ type SavedMetadataRule struct {
 
 func (x *SavedMetadataRule) Reset() {
 	*x = SavedMetadataRule{}
-	mi := &file_common_proto_msgTypes[85]
+	mi := &file_common_proto_msgTypes[259]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7585,7 +18700,7 @@ func (x *SavedMetadataRule) String() string {
 func (*SavedMetadataRule) ProtoMessage() {}
 
 func (x *SavedMetadataRule) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[85]
+	mi := &file_common_proto_msgTypes[259]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7598,7 +18713,7 @@ func (x *SavedMetadataRule) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SavedMetadataRule.ProtoReflect.Descriptor instead.
 func (*SavedMetadataRule) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{85}
+	return file_common_proto_rawDescGZIP(), []int{259}
 }
 
 func (x *SavedMetadataRule) GetMatch() string {
@@ -7625,7 +18740,7 @@ type DeletedMetadataRule struct {
 
 func (x *DeletedMetadataRule) Reset() {
 	*x = DeletedMetadataRule{}
-	mi := &file_common_proto_msgTypes[86]
+	mi := &file_common_proto_msgTypes[260]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7637,7 +18752,7 @@ func (x *DeletedMetadataRule) String() string {
 func (*DeletedMetadataRule) ProtoMessage() {}
 
 func (x *DeletedMetadataRule) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[86]
+	mi := &file_common_proto_msgTypes[260]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7650,7 +18765,7 @@ func (x *DeletedMetadataRule) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletedMetadataRule.ProtoReflect.Descriptor instead.
 func (*DeletedMetadataRule) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{86}
+	return file_common_proto_rawDescGZIP(), []int{260}
 }
 
 func (x *DeletedMetadataRule) GetMatch() string {
@@ -7681,7 +18796,7 @@ type AnyVariantRule struct {
 
 func (x *AnyVariantRule) Reset() {
 	*x = AnyVariantRule{}
-	mi := &file_common_proto_msgTypes[87]
+	mi := &file_common_proto_msgTypes[261]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7693,7 +18808,7 @@ func (x *AnyVariantRule) String() string {
 func (*AnyVariantRule) ProtoMessage() {}
 
 func (x *AnyVariantRule) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[87]
+	mi := &file_common_proto_msgTypes[261]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7706,7 +18821,7 @@ func (x *AnyVariantRule) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnyVariantRule.ProtoReflect.Descriptor instead.
 func (*AnyVariantRule) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{87}
+	return file_common_proto_rawDescGZIP(), []int{261}
 }
 
 func (x *AnyVariantRule) GetMatch() string {
@@ -7741,7 +18856,7 @@ type CreatedTransactionAction struct {
 
 func (x *CreatedTransactionAction) Reset() {
 	*x = CreatedTransactionAction{}
-	mi := &file_common_proto_msgTypes[88]
+	mi := &file_common_proto_msgTypes[262]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7753,7 +18868,7 @@ func (x *CreatedTransactionAction) String() string {
 func (*CreatedTransactionAction) ProtoMessage() {}
 
 func (x *CreatedTransactionAction) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[88]
+	mi := &file_common_proto_msgTypes[262]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7766,7 +18881,7 @@ func (x *CreatedTransactionAction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreatedTransactionAction.ProtoReflect.Descriptor instead.
 func (*CreatedTransactionAction) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{88}
+	return file_common_proto_rawDescGZIP(), []int{262}
 }
 
 func (x *CreatedTransactionAction) GetAction() isCreatedTransactionAction_Action {
@@ -7900,7 +19015,7 @@ type RevertedTransactionAction struct {
 
 func (x *RevertedTransactionAction) Reset() {
 	*x = RevertedTransactionAction{}
-	mi := &file_common_proto_msgTypes[89]
+	mi := &file_common_proto_msgTypes[263]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7912,7 +19027,7 @@ func (x *RevertedTransactionAction) String() string {
 func (*RevertedTransactionAction) ProtoMessage() {}
 
 func (x *RevertedTransactionAction) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[89]
+	mi := &file_common_proto_msgTypes[263]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7925,7 +19040,7 @@ func (x *RevertedTransactionAction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevertedTransactionAction.ProtoReflect.Descriptor instead.
 func (*RevertedTransactionAction) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{89}
+	return file_common_proto_rawDescGZIP(), []int{263}
 }
 
 func (x *RevertedTransactionAction) GetAction() isRevertedTransactionAction_Action {
@@ -8014,7 +19129,7 @@ type SavedMetadataAction struct {
 
 func (x *SavedMetadataAction) Reset() {
 	*x = SavedMetadataAction{}
-	mi := &file_common_proto_msgTypes[90]
+	mi := &file_common_proto_msgTypes[264]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8026,7 +19141,7 @@ func (x *SavedMetadataAction) String() string {
 func (*SavedMetadataAction) ProtoMessage() {}
 
 func (x *SavedMetadataAction) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[90]
+	mi := &file_common_proto_msgTypes[264]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8039,7 +19154,7 @@ func (x *SavedMetadataAction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SavedMetadataAction.ProtoReflect.Descriptor instead.
 func (*SavedMetadataAction) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{90}
+	return file_common_proto_rawDescGZIP(), []int{264}
 }
 
 func (x *SavedMetadataAction) GetAction() isSavedMetadataAction_Action {
@@ -8126,7 +19241,7 @@ type DeletedMetadataAction struct {
 
 func (x *DeletedMetadataAction) Reset() {
 	*x = DeletedMetadataAction{}
-	mi := &file_common_proto_msgTypes[91]
+	mi := &file_common_proto_msgTypes[265]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8138,7 +19253,7 @@ func (x *DeletedMetadataAction) String() string {
 func (*DeletedMetadataAction) ProtoMessage() {}
 
 func (x *DeletedMetadataAction) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[91]
+	mi := &file_common_proto_msgTypes[265]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8151,7 +19266,7 @@ func (x *DeletedMetadataAction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletedMetadataAction.ProtoReflect.Descriptor instead.
 func (*DeletedMetadataAction) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{91}
+	return file_common_proto_rawDescGZIP(), []int{265}
 }
 
 func (x *DeletedMetadataAction) GetAction() isDeletedMetadataAction_Action {
@@ -8208,7 +19323,7 @@ type AnyVariantAction struct {
 
 func (x *AnyVariantAction) Reset() {
 	*x = AnyVariantAction{}
-	mi := &file_common_proto_msgTypes[92]
+	mi := &file_common_proto_msgTypes[266]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8220,7 +19335,7 @@ func (x *AnyVariantAction) String() string {
 func (*AnyVariantAction) ProtoMessage() {}
 
 func (x *AnyVariantAction) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[92]
+	mi := &file_common_proto_msgTypes[266]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8233,7 +19348,7 @@ func (x *AnyVariantAction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnyVariantAction.ProtoReflect.Descriptor instead.
 func (*AnyVariantAction) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{92}
+	return file_common_proto_rawDescGZIP(), []int{266}
 }
 
 func (x *AnyVariantAction) GetAction() isAnyVariantAction_Action {
@@ -8287,7 +19402,7 @@ type RewriteAddressAction struct {
 
 func (x *RewriteAddressAction) Reset() {
 	*x = RewriteAddressAction{}
-	mi := &file_common_proto_msgTypes[93]
+	mi := &file_common_proto_msgTypes[267]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8299,7 +19414,7 @@ func (x *RewriteAddressAction) String() string {
 func (*RewriteAddressAction) ProtoMessage() {}
 
 func (x *RewriteAddressAction) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[93]
+	mi := &file_common_proto_msgTypes[267]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8312,7 +19427,7 @@ func (x *RewriteAddressAction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RewriteAddressAction.ProtoReflect.Descriptor instead.
 func (*RewriteAddressAction) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{93}
+	return file_common_proto_rawDescGZIP(), []int{267}
 }
 
 func (x *RewriteAddressAction) GetPattern() string {
@@ -8355,7 +19470,7 @@ type SetMetadataAction struct {
 
 func (x *SetMetadataAction) Reset() {
 	*x = SetMetadataAction{}
-	mi := &file_common_proto_msgTypes[94]
+	mi := &file_common_proto_msgTypes[268]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8367,7 +19482,7 @@ func (x *SetMetadataAction) String() string {
 func (*SetMetadataAction) ProtoMessage() {}
 
 func (x *SetMetadataAction) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[94]
+	mi := &file_common_proto_msgTypes[268]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8380,7 +19495,7 @@ func (x *SetMetadataAction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetMetadataAction.ProtoReflect.Descriptor instead.
 func (*SetMetadataAction) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{94}
+	return file_common_proto_rawDescGZIP(), []int{268}
 }
 
 func (x *SetMetadataAction) GetKey() string {
@@ -8447,7 +19562,7 @@ type DeleteMetadataAction struct {
 
 func (x *DeleteMetadataAction) Reset() {
 	*x = DeleteMetadataAction{}
-	mi := &file_common_proto_msgTypes[95]
+	mi := &file_common_proto_msgTypes[269]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8459,7 +19574,7 @@ func (x *DeleteMetadataAction) String() string {
 func (*DeleteMetadataAction) ProtoMessage() {}
 
 func (x *DeleteMetadataAction) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[95]
+	mi := &file_common_proto_msgTypes[269]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8472,7 +19587,7 @@ func (x *DeleteMetadataAction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteMetadataAction.ProtoReflect.Descriptor instead.
 func (*DeleteMetadataAction) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{95}
+	return file_common_proto_rawDescGZIP(), []int{269}
 }
 
 func (x *DeleteMetadataAction) GetKey() string {
@@ -8501,7 +19616,7 @@ type SetAccountMetadataAction struct {
 
 func (x *SetAccountMetadataAction) Reset() {
 	*x = SetAccountMetadataAction{}
-	mi := &file_common_proto_msgTypes[96]
+	mi := &file_common_proto_msgTypes[270]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8513,7 +19628,7 @@ func (x *SetAccountMetadataAction) String() string {
 func (*SetAccountMetadataAction) ProtoMessage() {}
 
 func (x *SetAccountMetadataAction) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[96]
+	mi := &file_common_proto_msgTypes[270]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8526,7 +19641,7 @@ func (x *SetAccountMetadataAction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetAccountMetadataAction.ProtoReflect.Descriptor instead.
 func (*SetAccountMetadataAction) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{96}
+	return file_common_proto_rawDescGZIP(), []int{270}
 }
 
 func (x *SetAccountMetadataAction) GetAccount() string {
@@ -8601,7 +19716,7 @@ type DeleteAccountMetadataAction struct {
 
 func (x *DeleteAccountMetadataAction) Reset() {
 	*x = DeleteAccountMetadataAction{}
-	mi := &file_common_proto_msgTypes[97]
+	mi := &file_common_proto_msgTypes[271]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8613,7 +19728,7 @@ func (x *DeleteAccountMetadataAction) String() string {
 func (*DeleteAccountMetadataAction) ProtoMessage() {}
 
 func (x *DeleteAccountMetadataAction) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[97]
+	mi := &file_common_proto_msgTypes[271]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8626,7 +19741,7 @@ func (x *DeleteAccountMetadataAction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteAccountMetadataAction.ProtoReflect.Descriptor instead.
 func (*DeleteAccountMetadataAction) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{97}
+	return file_common_proto_rawDescGZIP(), []int{271}
 }
 
 func (x *DeleteAccountMetadataAction) GetAccount() string {
@@ -8659,7 +19774,7 @@ type SetAccountMetadataFromAddressAction struct {
 
 func (x *SetAccountMetadataFromAddressAction) Reset() {
 	*x = SetAccountMetadataFromAddressAction{}
-	mi := &file_common_proto_msgTypes[98]
+	mi := &file_common_proto_msgTypes[272]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8671,7 +19786,7 @@ func (x *SetAccountMetadataFromAddressAction) String() string {
 func (*SetAccountMetadataFromAddressAction) ProtoMessage() {}
 
 func (x *SetAccountMetadataFromAddressAction) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[98]
+	mi := &file_common_proto_msgTypes[272]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8684,7 +19799,7 @@ func (x *SetAccountMetadataFromAddressAction) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use SetAccountMetadataFromAddressAction.ProtoReflect.Descriptor instead.
 func (*SetAccountMetadataFromAddressAction) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{98}
+	return file_common_proto_rawDescGZIP(), []int{272}
 }
 
 func (x *SetAccountMetadataFromAddressAction) GetPattern() string {
@@ -8712,7 +19827,7 @@ type SetAccountMetadataFromAddressReplacement struct {
 
 func (x *SetAccountMetadataFromAddressReplacement) Reset() {
 	*x = SetAccountMetadataFromAddressReplacement{}
-	mi := &file_common_proto_msgTypes[99]
+	mi := &file_common_proto_msgTypes[273]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8724,7 +19839,7 @@ func (x *SetAccountMetadataFromAddressReplacement) String() string {
 func (*SetAccountMetadataFromAddressReplacement) ProtoMessage() {}
 
 func (x *SetAccountMetadataFromAddressReplacement) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[99]
+	mi := &file_common_proto_msgTypes[273]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8737,7 +19852,7 @@ func (x *SetAccountMetadataFromAddressReplacement) ProtoReflect() protoreflect.M
 
 // Deprecated: Use SetAccountMetadataFromAddressReplacement.ProtoReflect.Descriptor instead.
 func (*SetAccountMetadataFromAddressReplacement) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{99}
+	return file_common_proto_rawDescGZIP(), []int{273}
 }
 
 func (x *SetAccountMetadataFromAddressReplacement) GetKey() string {
@@ -8769,7 +19884,7 @@ type DropAction struct {
 
 func (x *DropAction) Reset() {
 	*x = DropAction{}
-	mi := &file_common_proto_msgTypes[100]
+	mi := &file_common_proto_msgTypes[274]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8781,7 +19896,7 @@ func (x *DropAction) String() string {
 func (*DropAction) ProtoMessage() {}
 
 func (x *DropAction) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[100]
+	mi := &file_common_proto_msgTypes[274]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8794,7 +19909,7 @@ func (x *DropAction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DropAction.ProtoReflect.Descriptor instead.
 func (*DropAction) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{100}
+	return file_common_proto_rawDescGZIP(), []int{274}
 }
 
 type HttpMirrorSourceConfig struct {
@@ -8807,7 +19922,7 @@ type HttpMirrorSourceConfig struct {
 
 func (x *HttpMirrorSourceConfig) Reset() {
 	*x = HttpMirrorSourceConfig{}
-	mi := &file_common_proto_msgTypes[101]
+	mi := &file_common_proto_msgTypes[275]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8819,7 +19934,7 @@ func (x *HttpMirrorSourceConfig) String() string {
 func (*HttpMirrorSourceConfig) ProtoMessage() {}
 
 func (x *HttpMirrorSourceConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[101]
+	mi := &file_common_proto_msgTypes[275]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8832,7 +19947,7 @@ func (x *HttpMirrorSourceConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HttpMirrorSourceConfig.ProtoReflect.Descriptor instead.
 func (*HttpMirrorSourceConfig) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{101}
+	return file_common_proto_rawDescGZIP(), []int{275}
 }
 
 func (x *HttpMirrorSourceConfig) GetBaseUrl() string {
@@ -8861,7 +19976,7 @@ type OAuth2ClientCredentials struct {
 
 func (x *OAuth2ClientCredentials) Reset() {
 	*x = OAuth2ClientCredentials{}
-	mi := &file_common_proto_msgTypes[102]
+	mi := &file_common_proto_msgTypes[276]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8873,7 +19988,7 @@ func (x *OAuth2ClientCredentials) String() string {
 func (*OAuth2ClientCredentials) ProtoMessage() {}
 
 func (x *OAuth2ClientCredentials) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[102]
+	mi := &file_common_proto_msgTypes[276]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8886,7 +20001,7 @@ func (x *OAuth2ClientCredentials) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OAuth2ClientCredentials.ProtoReflect.Descriptor instead.
 func (*OAuth2ClientCredentials) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{102}
+	return file_common_proto_rawDescGZIP(), []int{276}
 }
 
 func (x *OAuth2ClientCredentials) GetClientId() string {
@@ -8932,7 +20047,7 @@ type PostgresMirrorSourceConfig struct {
 
 func (x *PostgresMirrorSourceConfig) Reset() {
 	*x = PostgresMirrorSourceConfig{}
-	mi := &file_common_proto_msgTypes[103]
+	mi := &file_common_proto_msgTypes[277]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8944,7 +20059,7 @@ func (x *PostgresMirrorSourceConfig) String() string {
 func (*PostgresMirrorSourceConfig) ProtoMessage() {}
 
 func (x *PostgresMirrorSourceConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[103]
+	mi := &file_common_proto_msgTypes[277]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8957,7 +20072,7 @@ func (x *PostgresMirrorSourceConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PostgresMirrorSourceConfig.ProtoReflect.Descriptor instead.
 func (*PostgresMirrorSourceConfig) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{103}
+	return file_common_proto_rawDescGZIP(), []int{277}
 }
 
 func (x *PostgresMirrorSourceConfig) GetDsn() string {
@@ -8990,7 +20105,7 @@ type PostgresAwsIamAuth struct {
 
 func (x *PostgresAwsIamAuth) Reset() {
 	*x = PostgresAwsIamAuth{}
-	mi := &file_common_proto_msgTypes[104]
+	mi := &file_common_proto_msgTypes[278]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9002,7 +20117,7 @@ func (x *PostgresAwsIamAuth) String() string {
 func (*PostgresAwsIamAuth) ProtoMessage() {}
 
 func (x *PostgresAwsIamAuth) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[104]
+	mi := &file_common_proto_msgTypes[278]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9015,7 +20130,7 @@ func (x *PostgresAwsIamAuth) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PostgresAwsIamAuth.ProtoReflect.Descriptor instead.
 func (*PostgresAwsIamAuth) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{104}
+	return file_common_proto_rawDescGZIP(), []int{278}
 }
 
 func (x *PostgresAwsIamAuth) GetRegion() string {
@@ -9042,7 +20157,7 @@ type MirrorSyncError struct {
 
 func (x *MirrorSyncError) Reset() {
 	*x = MirrorSyncError{}
-	mi := &file_common_proto_msgTypes[105]
+	mi := &file_common_proto_msgTypes[279]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9054,7 +20169,7 @@ func (x *MirrorSyncError) String() string {
 func (*MirrorSyncError) ProtoMessage() {}
 
 func (x *MirrorSyncError) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[105]
+	mi := &file_common_proto_msgTypes[279]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9067,7 +20182,7 @@ func (x *MirrorSyncError) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MirrorSyncError.ProtoReflect.Descriptor instead.
 func (*MirrorSyncError) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{105}
+	return file_common_proto_rawDescGZIP(), []int{279}
 }
 
 func (x *MirrorSyncError) GetMessage() string {
@@ -9101,7 +20216,7 @@ type MirrorSyncProgress struct {
 
 func (x *MirrorSyncProgress) Reset() {
 	*x = MirrorSyncProgress{}
-	mi := &file_common_proto_msgTypes[106]
+	mi := &file_common_proto_msgTypes[280]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9113,7 +20228,7 @@ func (x *MirrorSyncProgress) String() string {
 func (*MirrorSyncProgress) ProtoMessage() {}
 
 func (x *MirrorSyncProgress) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[106]
+	mi := &file_common_proto_msgTypes[280]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9126,7 +20241,7 @@ func (x *MirrorSyncProgress) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MirrorSyncProgress.ProtoReflect.Descriptor instead.
 func (*MirrorSyncProgress) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{106}
+	return file_common_proto_rawDescGZIP(), []int{280}
 }
 
 func (x *MirrorSyncProgress) GetState() MirrorSyncState {
@@ -9187,7 +20302,7 @@ type LedgerInfo struct {
 
 func (x *LedgerInfo) Reset() {
 	*x = LedgerInfo{}
-	mi := &file_common_proto_msgTypes[107]
+	mi := &file_common_proto_msgTypes[281]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9199,7 +20314,7 @@ func (x *LedgerInfo) String() string {
 func (*LedgerInfo) ProtoMessage() {}
 
 func (x *LedgerInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[107]
+	mi := &file_common_proto_msgTypes[281]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9212,7 +20327,7 @@ func (x *LedgerInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LedgerInfo.ProtoReflect.Descriptor instead.
 func (*LedgerInfo) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{107}
+	return file_common_proto_rawDescGZIP(), []int{281}
 }
 
 func (x *LedgerInfo) GetName() string {
@@ -9303,7 +20418,7 @@ type SaveMetadataCommand struct {
 
 func (x *SaveMetadataCommand) Reset() {
 	*x = SaveMetadataCommand{}
-	mi := &file_common_proto_msgTypes[108]
+	mi := &file_common_proto_msgTypes[282]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9315,7 +20430,7 @@ func (x *SaveMetadataCommand) String() string {
 func (*SaveMetadataCommand) ProtoMessage() {}
 
 func (x *SaveMetadataCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[108]
+	mi := &file_common_proto_msgTypes[282]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9328,7 +20443,7 @@ func (x *SaveMetadataCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SaveMetadataCommand.ProtoReflect.Descriptor instead.
 func (*SaveMetadataCommand) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{108}
+	return file_common_proto_rawDescGZIP(), []int{282}
 }
 
 func (x *SaveMetadataCommand) GetTarget() *Target {
@@ -9356,7 +20471,7 @@ type DeleteMetadataCommand struct {
 
 func (x *DeleteMetadataCommand) Reset() {
 	*x = DeleteMetadataCommand{}
-	mi := &file_common_proto_msgTypes[109]
+	mi := &file_common_proto_msgTypes[283]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9368,7 +20483,7 @@ func (x *DeleteMetadataCommand) String() string {
 func (*DeleteMetadataCommand) ProtoMessage() {}
 
 func (x *DeleteMetadataCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[109]
+	mi := &file_common_proto_msgTypes[283]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9381,7 +20496,7 @@ func (x *DeleteMetadataCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteMetadataCommand.ProtoReflect.Descriptor instead.
 func (*DeleteMetadataCommand) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{109}
+	return file_common_proto_rawDescGZIP(), []int{283}
 }
 
 func (x *DeleteMetadataCommand) GetTarget() *Target {
@@ -9427,7 +20542,7 @@ type TransactionState struct {
 
 func (x *TransactionState) Reset() {
 	*x = TransactionState{}
-	mi := &file_common_proto_msgTypes[110]
+	mi := &file_common_proto_msgTypes[284]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9439,7 +20554,7 @@ func (x *TransactionState) String() string {
 func (*TransactionState) ProtoMessage() {}
 
 func (x *TransactionState) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[110]
+	mi := &file_common_proto_msgTypes[284]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9452,7 +20567,7 @@ func (x *TransactionState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TransactionState.ProtoReflect.Descriptor instead.
 func (*TransactionState) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{110}
+	return file_common_proto_rawDescGZIP(), []int{284}
 }
 
 func (x *TransactionState) GetCreatedByLog() uint64 {
@@ -9524,7 +20639,7 @@ type IdempotencyKeyValue struct {
 
 func (x *IdempotencyKeyValue) Reset() {
 	*x = IdempotencyKeyValue{}
-	mi := &file_common_proto_msgTypes[111]
+	mi := &file_common_proto_msgTypes[285]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9536,7 +20651,7 @@ func (x *IdempotencyKeyValue) String() string {
 func (*IdempotencyKeyValue) ProtoMessage() {}
 
 func (x *IdempotencyKeyValue) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[111]
+	mi := &file_common_proto_msgTypes[285]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9549,7 +20664,7 @@ func (x *IdempotencyKeyValue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IdempotencyKeyValue.ProtoReflect.Descriptor instead.
 func (*IdempotencyKeyValue) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{111}
+	return file_common_proto_rawDescGZIP(), []int{285}
 }
 
 func (x *IdempotencyKeyValue) GetFirstLogSequence() uint64 {
@@ -9608,16 +20723,16 @@ func (x *IdempotencyKeyValue) GetExpiresAt() uint64 {
 // verify this projection against the hash-chained AuditFailure.
 type IdempotencyFailure struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Reason        ErrorReason            `protobuf:"varint,1,opt,name=reason,proto3,enum=common.ErrorReason" json:"reason,omitempty"`                                                // typed reason; kind derived via domain.KindForReason
-	Code          string                 `protobuf:"bytes,2,opt,name=code,proto3" json:"code,omitempty"`                                                                             // stable subcode
-	Facts         map[string]string      `protobuf:"bytes,3,rep,name=facts,proto3" json:"facts,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // validated structured facts
+	Reason        ErrorReason            `protobuf:"varint,1,opt,name=reason,proto3,enum=common.ErrorReason" json:"reason,omitempty"` // typed reason; kind derived via domain.KindForReason
+	Code          string                 `protobuf:"bytes,2,opt,name=code,proto3" json:"code,omitempty"`                              // stable subcode
+	Details       *FailureDetails        `protobuf:"bytes,3,opt,name=details,proto3" json:"details,omitempty"`                        // typed structured facts
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *IdempotencyFailure) Reset() {
 	*x = IdempotencyFailure{}
-	mi := &file_common_proto_msgTypes[112]
+	mi := &file_common_proto_msgTypes[286]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9629,7 +20744,7 @@ func (x *IdempotencyFailure) String() string {
 func (*IdempotencyFailure) ProtoMessage() {}
 
 func (x *IdempotencyFailure) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[112]
+	mi := &file_common_proto_msgTypes[286]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9642,7 +20757,7 @@ func (x *IdempotencyFailure) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IdempotencyFailure.ProtoReflect.Descriptor instead.
 func (*IdempotencyFailure) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{112}
+	return file_common_proto_rawDescGZIP(), []int{286}
 }
 
 func (x *IdempotencyFailure) GetReason() ErrorReason {
@@ -9659,9 +20774,9 @@ func (x *IdempotencyFailure) GetCode() string {
 	return ""
 }
 
-func (x *IdempotencyFailure) GetFacts() map[string]string {
+func (x *IdempotencyFailure) GetDetails() *FailureDetails {
 	if x != nil {
-		return x.Facts
+		return x.Details
 	}
 	return nil
 }
@@ -9676,7 +20791,7 @@ type TransactionReferenceValue struct {
 
 func (x *TransactionReferenceValue) Reset() {
 	*x = TransactionReferenceValue{}
-	mi := &file_common_proto_msgTypes[113]
+	mi := &file_common_proto_msgTypes[287]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9688,7 +20803,7 @@ func (x *TransactionReferenceValue) String() string {
 func (*TransactionReferenceValue) ProtoMessage() {}
 
 func (x *TransactionReferenceValue) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[113]
+	mi := &file_common_proto_msgTypes[287]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9701,7 +20816,7 @@ func (x *TransactionReferenceValue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TransactionReferenceValue.ProtoReflect.Descriptor instead.
 func (*TransactionReferenceValue) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{113}
+	return file_common_proto_rawDescGZIP(), []int{287}
 }
 
 func (x *TransactionReferenceValue) GetTransactionId() uint64 {
@@ -9721,7 +20836,7 @@ type NumscriptVersionValue struct {
 
 func (x *NumscriptVersionValue) Reset() {
 	*x = NumscriptVersionValue{}
-	mi := &file_common_proto_msgTypes[114]
+	mi := &file_common_proto_msgTypes[288]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9733,7 +20848,7 @@ func (x *NumscriptVersionValue) String() string {
 func (*NumscriptVersionValue) ProtoMessage() {}
 
 func (x *NumscriptVersionValue) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[114]
+	mi := &file_common_proto_msgTypes[288]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9746,7 +20861,7 @@ func (x *NumscriptVersionValue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NumscriptVersionValue.ProtoReflect.Descriptor instead.
 func (*NumscriptVersionValue) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{114}
+	return file_common_proto_rawDescGZIP(), []int{288}
 }
 
 func (x *NumscriptVersionValue) GetVersion() string {
@@ -9773,7 +20888,7 @@ type SegmentType struct {
 
 func (x *SegmentType) Reset() {
 	*x = SegmentType{}
-	mi := &file_common_proto_msgTypes[115]
+	mi := &file_common_proto_msgTypes[289]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9785,7 +20900,7 @@ func (x *SegmentType) String() string {
 func (*SegmentType) ProtoMessage() {}
 
 func (x *SegmentType) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[115]
+	mi := &file_common_proto_msgTypes[289]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9798,7 +20913,7 @@ func (x *SegmentType) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SegmentType.ProtoReflect.Descriptor instead.
 func (*SegmentType) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{115}
+	return file_common_proto_rawDescGZIP(), []int{289}
 }
 
 func (x *SegmentType) GetConstraint() isSegmentType_Constraint {
@@ -9880,7 +20995,7 @@ type UUIDConstraint struct {
 
 func (x *UUIDConstraint) Reset() {
 	*x = UUIDConstraint{}
-	mi := &file_common_proto_msgTypes[116]
+	mi := &file_common_proto_msgTypes[290]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9892,7 +21007,7 @@ func (x *UUIDConstraint) String() string {
 func (*UUIDConstraint) ProtoMessage() {}
 
 func (x *UUIDConstraint) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[116]
+	mi := &file_common_proto_msgTypes[290]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9905,7 +21020,7 @@ func (x *UUIDConstraint) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UUIDConstraint.ProtoReflect.Descriptor instead.
 func (*UUIDConstraint) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{116}
+	return file_common_proto_rawDescGZIP(), []int{290}
 }
 
 type Uint64Constraint struct {
@@ -9916,7 +21031,7 @@ type Uint64Constraint struct {
 
 func (x *Uint64Constraint) Reset() {
 	*x = Uint64Constraint{}
-	mi := &file_common_proto_msgTypes[117]
+	mi := &file_common_proto_msgTypes[291]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9928,7 +21043,7 @@ func (x *Uint64Constraint) String() string {
 func (*Uint64Constraint) ProtoMessage() {}
 
 func (x *Uint64Constraint) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[117]
+	mi := &file_common_proto_msgTypes[291]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9941,7 +21056,7 @@ func (x *Uint64Constraint) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Uint64Constraint.ProtoReflect.Descriptor instead.
 func (*Uint64Constraint) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{117}
+	return file_common_proto_rawDescGZIP(), []int{291}
 }
 
 type BytesConstraint struct {
@@ -9952,7 +21067,7 @@ type BytesConstraint struct {
 
 func (x *BytesConstraint) Reset() {
 	*x = BytesConstraint{}
-	mi := &file_common_proto_msgTypes[118]
+	mi := &file_common_proto_msgTypes[292]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9964,7 +21079,7 @@ func (x *BytesConstraint) String() string {
 func (*BytesConstraint) ProtoMessage() {}
 
 func (x *BytesConstraint) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[118]
+	mi := &file_common_proto_msgTypes[292]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9977,7 +21092,7 @@ func (x *BytesConstraint) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BytesConstraint.ProtoReflect.Descriptor instead.
 func (*BytesConstraint) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{118}
+	return file_common_proto_rawDescGZIP(), []int{292}
 }
 
 // AccountType defines a single account address pattern for a ledger.
@@ -9993,7 +21108,7 @@ type AccountType struct {
 
 func (x *AccountType) Reset() {
 	*x = AccountType{}
-	mi := &file_common_proto_msgTypes[119]
+	mi := &file_common_proto_msgTypes[293]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10005,7 +21120,7 @@ func (x *AccountType) String() string {
 func (*AccountType) ProtoMessage() {}
 
 func (x *AccountType) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[119]
+	mi := &file_common_proto_msgTypes[293]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10018,7 +21133,7 @@ func (x *AccountType) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AccountType.ProtoReflect.Descriptor instead.
 func (*AccountType) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{119}
+	return file_common_proto_rawDescGZIP(), []int{293}
 }
 
 func (x *AccountType) GetName() string {
@@ -10059,7 +21174,7 @@ type AddedAccountTypeLog struct {
 
 func (x *AddedAccountTypeLog) Reset() {
 	*x = AddedAccountTypeLog{}
-	mi := &file_common_proto_msgTypes[120]
+	mi := &file_common_proto_msgTypes[294]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10071,7 +21186,7 @@ func (x *AddedAccountTypeLog) String() string {
 func (*AddedAccountTypeLog) ProtoMessage() {}
 
 func (x *AddedAccountTypeLog) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[120]
+	mi := &file_common_proto_msgTypes[294]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10084,7 +21199,7 @@ func (x *AddedAccountTypeLog) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddedAccountTypeLog.ProtoReflect.Descriptor instead.
 func (*AddedAccountTypeLog) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{120}
+	return file_common_proto_rawDescGZIP(), []int{294}
 }
 
 func (x *AddedAccountTypeLog) GetAccountType() *AccountType {
@@ -10104,7 +21219,7 @@ type RemovedAccountTypeLog struct {
 
 func (x *RemovedAccountTypeLog) Reset() {
 	*x = RemovedAccountTypeLog{}
-	mi := &file_common_proto_msgTypes[121]
+	mi := &file_common_proto_msgTypes[295]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10116,7 +21231,7 @@ func (x *RemovedAccountTypeLog) String() string {
 func (*RemovedAccountTypeLog) ProtoMessage() {}
 
 func (x *RemovedAccountTypeLog) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[121]
+	mi := &file_common_proto_msgTypes[295]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10129,7 +21244,7 @@ func (x *RemovedAccountTypeLog) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemovedAccountTypeLog.ProtoReflect.Descriptor instead.
 func (*RemovedAccountTypeLog) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{121}
+	return file_common_proto_rawDescGZIP(), []int{295}
 }
 
 func (x *RemovedAccountTypeLog) GetName() string {
@@ -10149,7 +21264,7 @@ type UpdatedDefaultEnforcementModeLog struct {
 
 func (x *UpdatedDefaultEnforcementModeLog) Reset() {
 	*x = UpdatedDefaultEnforcementModeLog{}
-	mi := &file_common_proto_msgTypes[122]
+	mi := &file_common_proto_msgTypes[296]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10161,7 +21276,7 @@ func (x *UpdatedDefaultEnforcementModeLog) String() string {
 func (*UpdatedDefaultEnforcementModeLog) ProtoMessage() {}
 
 func (x *UpdatedDefaultEnforcementModeLog) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[122]
+	mi := &file_common_proto_msgTypes[296]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10174,7 +21289,7 @@ func (x *UpdatedDefaultEnforcementModeLog) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdatedDefaultEnforcementModeLog.ProtoReflect.Descriptor instead.
 func (*UpdatedDefaultEnforcementModeLog) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{122}
+	return file_common_proto_rawDescGZIP(), []int{296}
 }
 
 func (x *UpdatedDefaultEnforcementModeLog) GetEnforcementMode() ChartEnforcementMode {
@@ -10208,7 +21323,7 @@ type QueryFilter struct {
 
 func (x *QueryFilter) Reset() {
 	*x = QueryFilter{}
-	mi := &file_common_proto_msgTypes[123]
+	mi := &file_common_proto_msgTypes[297]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10220,7 +21335,7 @@ func (x *QueryFilter) String() string {
 func (*QueryFilter) ProtoMessage() {}
 
 func (x *QueryFilter) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[123]
+	mi := &file_common_proto_msgTypes[297]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10233,7 +21348,7 @@ func (x *QueryFilter) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QueryFilter.ProtoReflect.Descriptor instead.
 func (*QueryFilter) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{123}
+	return file_common_proto_rawDescGZIP(), []int{297}
 }
 
 func (x *QueryFilter) GetFilter() isQueryFilter_Filter {
@@ -10485,7 +21600,7 @@ type ReferenceCondition struct {
 
 func (x *ReferenceCondition) Reset() {
 	*x = ReferenceCondition{}
-	mi := &file_common_proto_msgTypes[124]
+	mi := &file_common_proto_msgTypes[298]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10497,7 +21612,7 @@ func (x *ReferenceCondition) String() string {
 func (*ReferenceCondition) ProtoMessage() {}
 
 func (x *ReferenceCondition) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[124]
+	mi := &file_common_proto_msgTypes[298]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10510,7 +21625,7 @@ func (x *ReferenceCondition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReferenceCondition.ProtoReflect.Descriptor instead.
 func (*ReferenceCondition) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{124}
+	return file_common_proto_rawDescGZIP(), []int{298}
 }
 
 func (x *ReferenceCondition) GetCond() *StringCondition {
@@ -10532,7 +21647,7 @@ type RevertedCondition struct {
 
 func (x *RevertedCondition) Reset() {
 	*x = RevertedCondition{}
-	mi := &file_common_proto_msgTypes[125]
+	mi := &file_common_proto_msgTypes[299]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10544,7 +21659,7 @@ func (x *RevertedCondition) String() string {
 func (*RevertedCondition) ProtoMessage() {}
 
 func (x *RevertedCondition) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[125]
+	mi := &file_common_proto_msgTypes[299]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10557,7 +21672,7 @@ func (x *RevertedCondition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevertedCondition.ProtoReflect.Descriptor instead.
 func (*RevertedCondition) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{125}
+	return file_common_proto_rawDescGZIP(), []int{299}
 }
 
 func (x *RevertedCondition) GetValue() bool {
@@ -10603,7 +21718,7 @@ type AuditCondition struct {
 
 func (x *AuditCondition) Reset() {
 	*x = AuditCondition{}
-	mi := &file_common_proto_msgTypes[126]
+	mi := &file_common_proto_msgTypes[300]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10615,7 +21730,7 @@ func (x *AuditCondition) String() string {
 func (*AuditCondition) ProtoMessage() {}
 
 func (x *AuditCondition) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[126]
+	mi := &file_common_proto_msgTypes[300]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10628,7 +21743,7 @@ func (x *AuditCondition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditCondition.ProtoReflect.Descriptor instead.
 func (*AuditCondition) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{126}
+	return file_common_proto_rawDescGZIP(), []int{300}
 }
 
 func (x *AuditCondition) GetField() AuditField {
@@ -10706,7 +21821,7 @@ type LedgerCondition struct {
 
 func (x *LedgerCondition) Reset() {
 	*x = LedgerCondition{}
-	mi := &file_common_proto_msgTypes[127]
+	mi := &file_common_proto_msgTypes[301]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10718,7 +21833,7 @@ func (x *LedgerCondition) String() string {
 func (*LedgerCondition) ProtoMessage() {}
 
 func (x *LedgerCondition) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[127]
+	mi := &file_common_proto_msgTypes[301]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10731,7 +21846,7 @@ func (x *LedgerCondition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LedgerCondition.ProtoReflect.Descriptor instead.
 func (*LedgerCondition) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{127}
+	return file_common_proto_rawDescGZIP(), []int{301}
 }
 
 func (x *LedgerCondition) GetCond() *StringCondition {
@@ -10751,7 +21866,7 @@ type LogIdCondition struct {
 
 func (x *LogIdCondition) Reset() {
 	*x = LogIdCondition{}
-	mi := &file_common_proto_msgTypes[128]
+	mi := &file_common_proto_msgTypes[302]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10763,7 +21878,7 @@ func (x *LogIdCondition) String() string {
 func (*LogIdCondition) ProtoMessage() {}
 
 func (x *LogIdCondition) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[128]
+	mi := &file_common_proto_msgTypes[302]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10776,7 +21891,7 @@ func (x *LogIdCondition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogIdCondition.ProtoReflect.Descriptor instead.
 func (*LogIdCondition) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{128}
+	return file_common_proto_rawDescGZIP(), []int{302}
 }
 
 func (x *LogIdCondition) GetCond() *UintCondition {
@@ -10797,7 +21912,7 @@ type BuiltinUintCondition struct {
 
 func (x *BuiltinUintCondition) Reset() {
 	*x = BuiltinUintCondition{}
-	mi := &file_common_proto_msgTypes[129]
+	mi := &file_common_proto_msgTypes[303]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10809,7 +21924,7 @@ func (x *BuiltinUintCondition) String() string {
 func (*BuiltinUintCondition) ProtoMessage() {}
 
 func (x *BuiltinUintCondition) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[129]
+	mi := &file_common_proto_msgTypes[303]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10822,7 +21937,7 @@ func (x *BuiltinUintCondition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuiltinUintCondition.ProtoReflect.Descriptor instead.
 func (*BuiltinUintCondition) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{129}
+	return file_common_proto_rawDescGZIP(), []int{303}
 }
 
 func (x *BuiltinUintCondition) GetField() TransactionBuiltinIndex {
@@ -10850,7 +21965,7 @@ type LogBuiltinUintCondition struct {
 
 func (x *LogBuiltinUintCondition) Reset() {
 	*x = LogBuiltinUintCondition{}
-	mi := &file_common_proto_msgTypes[130]
+	mi := &file_common_proto_msgTypes[304]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10862,7 +21977,7 @@ func (x *LogBuiltinUintCondition) String() string {
 func (*LogBuiltinUintCondition) ProtoMessage() {}
 
 func (x *LogBuiltinUintCondition) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[130]
+	mi := &file_common_proto_msgTypes[304]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10875,7 +21990,7 @@ func (x *LogBuiltinUintCondition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogBuiltinUintCondition.ProtoReflect.Descriptor instead.
 func (*LogBuiltinUintCondition) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{130}
+	return file_common_proto_rawDescGZIP(), []int{304}
 }
 
 func (x *LogBuiltinUintCondition) GetField() LogBuiltinIndex {
@@ -10906,7 +22021,7 @@ type AccountHasAssetCondition struct {
 
 func (x *AccountHasAssetCondition) Reset() {
 	*x = AccountHasAssetCondition{}
-	mi := &file_common_proto_msgTypes[131]
+	mi := &file_common_proto_msgTypes[305]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10918,7 +22033,7 @@ func (x *AccountHasAssetCondition) String() string {
 func (*AccountHasAssetCondition) ProtoMessage() {}
 
 func (x *AccountHasAssetCondition) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[131]
+	mi := &file_common_proto_msgTypes[305]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10931,7 +22046,7 @@ func (x *AccountHasAssetCondition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AccountHasAssetCondition.ProtoReflect.Descriptor instead.
 func (*AccountHasAssetCondition) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{131}
+	return file_common_proto_rawDescGZIP(), []int{305}
 }
 
 func (x *AccountHasAssetCondition) GetAssetBase() string {
@@ -10957,7 +22072,7 @@ type AndFilter struct {
 
 func (x *AndFilter) Reset() {
 	*x = AndFilter{}
-	mi := &file_common_proto_msgTypes[132]
+	mi := &file_common_proto_msgTypes[306]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10969,7 +22084,7 @@ func (x *AndFilter) String() string {
 func (*AndFilter) ProtoMessage() {}
 
 func (x *AndFilter) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[132]
+	mi := &file_common_proto_msgTypes[306]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10982,7 +22097,7 @@ func (x *AndFilter) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AndFilter.ProtoReflect.Descriptor instead.
 func (*AndFilter) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{132}
+	return file_common_proto_rawDescGZIP(), []int{306}
 }
 
 func (x *AndFilter) GetFilters() []*QueryFilter {
@@ -11001,7 +22116,7 @@ type OrFilter struct {
 
 func (x *OrFilter) Reset() {
 	*x = OrFilter{}
-	mi := &file_common_proto_msgTypes[133]
+	mi := &file_common_proto_msgTypes[307]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11013,7 +22128,7 @@ func (x *OrFilter) String() string {
 func (*OrFilter) ProtoMessage() {}
 
 func (x *OrFilter) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[133]
+	mi := &file_common_proto_msgTypes[307]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11026,7 +22141,7 @@ func (x *OrFilter) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OrFilter.ProtoReflect.Descriptor instead.
 func (*OrFilter) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{133}
+	return file_common_proto_rawDescGZIP(), []int{307}
 }
 
 func (x *OrFilter) GetFilters() []*QueryFilter {
@@ -11045,7 +22160,7 @@ type NotFilter struct {
 
 func (x *NotFilter) Reset() {
 	*x = NotFilter{}
-	mi := &file_common_proto_msgTypes[134]
+	mi := &file_common_proto_msgTypes[308]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11057,7 +22172,7 @@ func (x *NotFilter) String() string {
 func (*NotFilter) ProtoMessage() {}
 
 func (x *NotFilter) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[134]
+	mi := &file_common_proto_msgTypes[308]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11070,7 +22185,7 @@ func (x *NotFilter) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NotFilter.ProtoReflect.Descriptor instead.
 func (*NotFilter) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{134}
+	return file_common_proto_rawDescGZIP(), []int{308}
 }
 
 func (x *NotFilter) GetFilter() *QueryFilter {
@@ -11092,7 +22207,7 @@ type FieldRef struct {
 
 func (x *FieldRef) Reset() {
 	*x = FieldRef{}
-	mi := &file_common_proto_msgTypes[135]
+	mi := &file_common_proto_msgTypes[309]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11104,7 +22219,7 @@ func (x *FieldRef) String() string {
 func (*FieldRef) ProtoMessage() {}
 
 func (x *FieldRef) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[135]
+	mi := &file_common_proto_msgTypes[309]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11117,7 +22232,7 @@ func (x *FieldRef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FieldRef.ProtoReflect.Descriptor instead.
 func (*FieldRef) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{135}
+	return file_common_proto_rawDescGZIP(), []int{309}
 }
 
 func (x *FieldRef) GetMetadata() string {
@@ -11145,7 +22260,7 @@ type FieldCondition struct {
 
 func (x *FieldCondition) Reset() {
 	*x = FieldCondition{}
-	mi := &file_common_proto_msgTypes[136]
+	mi := &file_common_proto_msgTypes[310]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11157,7 +22272,7 @@ func (x *FieldCondition) String() string {
 func (*FieldCondition) ProtoMessage() {}
 
 func (x *FieldCondition) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[136]
+	mi := &file_common_proto_msgTypes[310]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11170,7 +22285,7 @@ func (x *FieldCondition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FieldCondition.ProtoReflect.Descriptor instead.
 func (*FieldCondition) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{136}
+	return file_common_proto_rawDescGZIP(), []int{310}
 }
 
 func (x *FieldCondition) GetField() *FieldRef {
@@ -11279,7 +22394,7 @@ type StringCondition struct {
 
 func (x *StringCondition) Reset() {
 	*x = StringCondition{}
-	mi := &file_common_proto_msgTypes[137]
+	mi := &file_common_proto_msgTypes[311]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11291,7 +22406,7 @@ func (x *StringCondition) String() string {
 func (*StringCondition) ProtoMessage() {}
 
 func (x *StringCondition) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[137]
+	mi := &file_common_proto_msgTypes[311]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11304,7 +22419,7 @@ func (x *StringCondition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StringCondition.ProtoReflect.Descriptor instead.
 func (*StringCondition) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{137}
+	return file_common_proto_rawDescGZIP(), []int{311}
 }
 
 func (x *StringCondition) GetValue() isStringCondition_Value {
@@ -11362,7 +22477,7 @@ type IntCondition struct {
 
 func (x *IntCondition) Reset() {
 	*x = IntCondition{}
-	mi := &file_common_proto_msgTypes[138]
+	mi := &file_common_proto_msgTypes[312]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11374,7 +22489,7 @@ func (x *IntCondition) String() string {
 func (*IntCondition) ProtoMessage() {}
 
 func (x *IntCondition) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[138]
+	mi := &file_common_proto_msgTypes[312]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11387,7 +22502,7 @@ func (x *IntCondition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IntCondition.ProtoReflect.Descriptor instead.
 func (*IntCondition) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{138}
+	return file_common_proto_rawDescGZIP(), []int{312}
 }
 
 func (x *IntCondition) GetMin() int64 {
@@ -11446,7 +22561,7 @@ type UintCondition struct {
 
 func (x *UintCondition) Reset() {
 	*x = UintCondition{}
-	mi := &file_common_proto_msgTypes[139]
+	mi := &file_common_proto_msgTypes[313]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11458,7 +22573,7 @@ func (x *UintCondition) String() string {
 func (*UintCondition) ProtoMessage() {}
 
 func (x *UintCondition) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[139]
+	mi := &file_common_proto_msgTypes[313]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11471,7 +22586,7 @@ func (x *UintCondition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UintCondition.ProtoReflect.Descriptor instead.
 func (*UintCondition) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{139}
+	return file_common_proto_rawDescGZIP(), []int{313}
 }
 
 func (x *UintCondition) GetMin() uint64 {
@@ -11529,7 +22644,7 @@ type BoolCondition struct {
 
 func (x *BoolCondition) Reset() {
 	*x = BoolCondition{}
-	mi := &file_common_proto_msgTypes[140]
+	mi := &file_common_proto_msgTypes[314]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11541,7 +22656,7 @@ func (x *BoolCondition) String() string {
 func (*BoolCondition) ProtoMessage() {}
 
 func (x *BoolCondition) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[140]
+	mi := &file_common_proto_msgTypes[314]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11554,7 +22669,7 @@ func (x *BoolCondition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BoolCondition.ProtoReflect.Descriptor instead.
 func (*BoolCondition) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{140}
+	return file_common_proto_rawDescGZIP(), []int{314}
 }
 
 func (x *BoolCondition) GetValue() isBoolCondition_Value {
@@ -11607,7 +22722,7 @@ type ExistsCondition struct {
 
 func (x *ExistsCondition) Reset() {
 	*x = ExistsCondition{}
-	mi := &file_common_proto_msgTypes[141]
+	mi := &file_common_proto_msgTypes[315]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11619,7 +22734,7 @@ func (x *ExistsCondition) String() string {
 func (*ExistsCondition) ProtoMessage() {}
 
 func (x *ExistsCondition) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[141]
+	mi := &file_common_proto_msgTypes[315]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11632,7 +22747,7 @@ func (x *ExistsCondition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExistsCondition.ProtoReflect.Descriptor instead.
 func (*ExistsCondition) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{141}
+	return file_common_proto_rawDescGZIP(), []int{315}
 }
 
 func (x *ExistsCondition) GetIncludeNull() bool {
@@ -11658,7 +22773,7 @@ type AddressMatch struct {
 
 func (x *AddressMatch) Reset() {
 	*x = AddressMatch{}
-	mi := &file_common_proto_msgTypes[142]
+	mi := &file_common_proto_msgTypes[316]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11670,7 +22785,7 @@ func (x *AddressMatch) String() string {
 func (*AddressMatch) ProtoMessage() {}
 
 func (x *AddressMatch) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[142]
+	mi := &file_common_proto_msgTypes[316]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11683,7 +22798,7 @@ func (x *AddressMatch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddressMatch.ProtoReflect.Descriptor instead.
 func (*AddressMatch) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{142}
+	return file_common_proto_rawDescGZIP(), []int{316}
 }
 
 func (x *AddressMatch) GetMatch() isAddressMatch_Match {
@@ -11781,7 +22896,7 @@ type PreparedQuery struct {
 
 func (x *PreparedQuery) Reset() {
 	*x = PreparedQuery{}
-	mi := &file_common_proto_msgTypes[143]
+	mi := &file_common_proto_msgTypes[317]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11793,7 +22908,7 @@ func (x *PreparedQuery) String() string {
 func (*PreparedQuery) ProtoMessage() {}
 
 func (x *PreparedQuery) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[143]
+	mi := &file_common_proto_msgTypes[317]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11806,7 +22921,7 @@ func (x *PreparedQuery) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreparedQuery.ProtoReflect.Descriptor instead.
 func (*PreparedQuery) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{143}
+	return file_common_proto_rawDescGZIP(), []int{317}
 }
 
 func (x *PreparedQuery) GetName() string {
@@ -11846,7 +22961,7 @@ type AggregatedVolume struct {
 
 func (x *AggregatedVolume) Reset() {
 	*x = AggregatedVolume{}
-	mi := &file_common_proto_msgTypes[144]
+	mi := &file_common_proto_msgTypes[318]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11858,7 +22973,7 @@ func (x *AggregatedVolume) String() string {
 func (*AggregatedVolume) ProtoMessage() {}
 
 func (x *AggregatedVolume) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[144]
+	mi := &file_common_proto_msgTypes[318]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11871,7 +22986,7 @@ func (x *AggregatedVolume) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AggregatedVolume.ProtoReflect.Descriptor instead.
 func (*AggregatedVolume) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{144}
+	return file_common_proto_rawDescGZIP(), []int{318}
 }
 
 func (x *AggregatedVolume) GetAsset() string {
@@ -11913,7 +23028,7 @@ type AggregateResult struct {
 
 func (x *AggregateResult) Reset() {
 	*x = AggregateResult{}
-	mi := &file_common_proto_msgTypes[145]
+	mi := &file_common_proto_msgTypes[319]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11925,7 +23040,7 @@ func (x *AggregateResult) String() string {
 func (*AggregateResult) ProtoMessage() {}
 
 func (x *AggregateResult) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[145]
+	mi := &file_common_proto_msgTypes[319]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11938,7 +23053,7 @@ func (x *AggregateResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AggregateResult.ProtoReflect.Descriptor instead.
 func (*AggregateResult) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{145}
+	return file_common_proto_rawDescGZIP(), []int{319}
 }
 
 func (x *AggregateResult) GetVolumes() []*AggregatedVolume {
@@ -11966,7 +23081,7 @@ type GroupedAggregateResult struct {
 
 func (x *GroupedAggregateResult) Reset() {
 	*x = GroupedAggregateResult{}
-	mi := &file_common_proto_msgTypes[146]
+	mi := &file_common_proto_msgTypes[320]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11978,7 +23093,7 @@ func (x *GroupedAggregateResult) String() string {
 func (*GroupedAggregateResult) ProtoMessage() {}
 
 func (x *GroupedAggregateResult) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[146]
+	mi := &file_common_proto_msgTypes[320]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11991,7 +23106,7 @@ func (x *GroupedAggregateResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GroupedAggregateResult.ProtoReflect.Descriptor instead.
 func (*GroupedAggregateResult) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{146}
+	return file_common_proto_rawDescGZIP(), []int{320}
 }
 
 func (x *GroupedAggregateResult) GetPrefix() string {
@@ -12026,7 +23141,7 @@ type PreparedQueryCursor struct {
 
 func (x *PreparedQueryCursor) Reset() {
 	*x = PreparedQueryCursor{}
-	mi := &file_common_proto_msgTypes[147]
+	mi := &file_common_proto_msgTypes[321]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12038,7 +23153,7 @@ func (x *PreparedQueryCursor) String() string {
 func (*PreparedQueryCursor) ProtoMessage() {}
 
 func (x *PreparedQueryCursor) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[147]
+	mi := &file_common_proto_msgTypes[321]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12051,7 +23166,7 @@ func (x *PreparedQueryCursor) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreparedQueryCursor.ProtoReflect.Descriptor instead.
 func (*PreparedQueryCursor) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{147}
+	return file_common_proto_rawDescGZIP(), []int{321}
 }
 
 func (x *PreparedQueryCursor) GetPageSize() uint32 {
@@ -12121,7 +23236,7 @@ type LedgerStats struct {
 
 func (x *LedgerStats) Reset() {
 	*x = LedgerStats{}
-	mi := &file_common_proto_msgTypes[148]
+	mi := &file_common_proto_msgTypes[322]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12133,7 +23248,7 @@ func (x *LedgerStats) String() string {
 func (*LedgerStats) ProtoMessage() {}
 
 func (x *LedgerStats) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[148]
+	mi := &file_common_proto_msgTypes[322]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12146,7 +23261,7 @@ func (x *LedgerStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LedgerStats.ProtoReflect.Descriptor instead.
 func (*LedgerStats) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{148}
+	return file_common_proto_rawDescGZIP(), []int{322}
 }
 
 func (x *LedgerStats) GetTransactionCount() uint64 {
@@ -12227,7 +23342,7 @@ type PersistedConfig struct {
 
 func (x *PersistedConfig) Reset() {
 	*x = PersistedConfig{}
-	mi := &file_common_proto_msgTypes[149]
+	mi := &file_common_proto_msgTypes[323]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12239,7 +23354,7 @@ func (x *PersistedConfig) String() string {
 func (*PersistedConfig) ProtoMessage() {}
 
 func (x *PersistedConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[149]
+	mi := &file_common_proto_msgTypes[323]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12252,7 +23367,7 @@ func (x *PersistedConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PersistedConfig.ProtoReflect.Descriptor instead.
 func (*PersistedConfig) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{149}
+	return file_common_proto_rawDescGZIP(), []int{323}
 }
 
 func (x *PersistedConfig) GetNodeId() uint64 {
@@ -12304,7 +23419,7 @@ type CallerIdentity struct {
 
 func (x *CallerIdentity) Reset() {
 	*x = CallerIdentity{}
-	mi := &file_common_proto_msgTypes[150]
+	mi := &file_common_proto_msgTypes[324]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12316,7 +23431,7 @@ func (x *CallerIdentity) String() string {
 func (*CallerIdentity) ProtoMessage() {}
 
 func (x *CallerIdentity) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[150]
+	mi := &file_common_proto_msgTypes[324]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12329,7 +23444,7 @@ func (x *CallerIdentity) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CallerIdentity.ProtoReflect.Descriptor instead.
 func (*CallerIdentity) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{150}
+	return file_common_proto_rawDescGZIP(), []int{324}
 }
 
 func (x *CallerIdentity) GetSubject() string {
@@ -12391,7 +23506,7 @@ type AuthenticatedCaller struct {
 
 func (x *AuthenticatedCaller) Reset() {
 	*x = AuthenticatedCaller{}
-	mi := &file_common_proto_msgTypes[151]
+	mi := &file_common_proto_msgTypes[325]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12403,7 +23518,7 @@ func (x *AuthenticatedCaller) String() string {
 func (*AuthenticatedCaller) ProtoMessage() {}
 
 func (x *AuthenticatedCaller) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[151]
+	mi := &file_common_proto_msgTypes[325]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12416,7 +23531,7 @@ func (x *AuthenticatedCaller) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuthenticatedCaller.ProtoReflect.Descriptor instead.
 func (*AuthenticatedCaller) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{151}
+	return file_common_proto_rawDescGZIP(), []int{325}
 }
 
 func (x *AuthenticatedCaller) GetIdentity() *CallerIdentity {
@@ -12449,7 +23564,7 @@ type AnonymousCaller struct {
 
 func (x *AnonymousCaller) Reset() {
 	*x = AnonymousCaller{}
-	mi := &file_common_proto_msgTypes[152]
+	mi := &file_common_proto_msgTypes[326]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12461,7 +23576,7 @@ func (x *AnonymousCaller) String() string {
 func (*AnonymousCaller) ProtoMessage() {}
 
 func (x *AnonymousCaller) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[152]
+	mi := &file_common_proto_msgTypes[326]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12474,7 +23589,7 @@ func (x *AnonymousCaller) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnonymousCaller.ProtoReflect.Descriptor instead.
 func (*AnonymousCaller) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{152}
+	return file_common_proto_rawDescGZIP(), []int{326}
 }
 
 func (x *AnonymousCaller) GetScopes() []string {
@@ -12493,7 +23608,7 @@ type SystemCaller struct {
 
 func (x *SystemCaller) Reset() {
 	*x = SystemCaller{}
-	mi := &file_common_proto_msgTypes[153]
+	mi := &file_common_proto_msgTypes[327]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12505,7 +23620,7 @@ func (x *SystemCaller) String() string {
 func (*SystemCaller) ProtoMessage() {}
 
 func (x *SystemCaller) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[153]
+	mi := &file_common_proto_msgTypes[327]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12518,7 +23633,7 @@ func (x *SystemCaller) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SystemCaller.ProtoReflect.Descriptor instead.
 func (*SystemCaller) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{153}
+	return file_common_proto_rawDescGZIP(), []int{327}
 }
 
 func (x *SystemCaller) GetComponent() string {
@@ -12536,7 +23651,7 @@ type AuthDisabledCaller struct {
 
 func (x *AuthDisabledCaller) Reset() {
 	*x = AuthDisabledCaller{}
-	mi := &file_common_proto_msgTypes[154]
+	mi := &file_common_proto_msgTypes[328]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12548,7 +23663,7 @@ func (x *AuthDisabledCaller) String() string {
 func (*AuthDisabledCaller) ProtoMessage() {}
 
 func (x *AuthDisabledCaller) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[154]
+	mi := &file_common_proto_msgTypes[328]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12561,7 +23676,7 @@ func (x *AuthDisabledCaller) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuthDisabledCaller.ProtoReflect.Descriptor instead.
 func (*AuthDisabledCaller) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{154}
+	return file_common_proto_rawDescGZIP(), []int{328}
 }
 
 // CallerSnapshot is the *admission-time* record of who initiated an action.
@@ -12587,7 +23702,7 @@ type CallerSnapshot struct {
 
 func (x *CallerSnapshot) Reset() {
 	*x = CallerSnapshot{}
-	mi := &file_common_proto_msgTypes[155]
+	mi := &file_common_proto_msgTypes[329]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12599,7 +23714,7 @@ func (x *CallerSnapshot) String() string {
 func (*CallerSnapshot) ProtoMessage() {}
 
 func (x *CallerSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[155]
+	mi := &file_common_proto_msgTypes[329]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12612,7 +23727,7 @@ func (x *CallerSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CallerSnapshot.ProtoReflect.Descriptor instead.
 func (*CallerSnapshot) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{155}
+	return file_common_proto_rawDescGZIP(), []int{329}
 }
 
 func (x *CallerSnapshot) GetPrincipal() isCallerSnapshot_Principal {
@@ -12700,7 +23815,7 @@ type S3StorageConfig struct {
 
 func (x *S3StorageConfig) Reset() {
 	*x = S3StorageConfig{}
-	mi := &file_common_proto_msgTypes[156]
+	mi := &file_common_proto_msgTypes[330]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12712,7 +23827,7 @@ func (x *S3StorageConfig) String() string {
 func (*S3StorageConfig) ProtoMessage() {}
 
 func (x *S3StorageConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[156]
+	mi := &file_common_proto_msgTypes[330]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12725,7 +23840,7 @@ func (x *S3StorageConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use S3StorageConfig.ProtoReflect.Descriptor instead.
 func (*S3StorageConfig) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{156}
+	return file_common_proto_rawDescGZIP(), []int{330}
 }
 
 func (x *S3StorageConfig) GetBucket() string {
@@ -12776,7 +23891,7 @@ type AzureStorageConfig struct {
 
 func (x *AzureStorageConfig) Reset() {
 	*x = AzureStorageConfig{}
-	mi := &file_common_proto_msgTypes[157]
+	mi := &file_common_proto_msgTypes[331]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12788,7 +23903,7 @@ func (x *AzureStorageConfig) String() string {
 func (*AzureStorageConfig) ProtoMessage() {}
 
 func (x *AzureStorageConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[157]
+	mi := &file_common_proto_msgTypes[331]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12801,7 +23916,7 @@ func (x *AzureStorageConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AzureStorageConfig.ProtoReflect.Descriptor instead.
 func (*AzureStorageConfig) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{157}
+	return file_common_proto_rawDescGZIP(), []int{331}
 }
 
 func (x *AzureStorageConfig) GetAccountName() string {
@@ -12848,7 +23963,7 @@ type BackupStorage struct {
 
 func (x *BackupStorage) Reset() {
 	*x = BackupStorage{}
-	mi := &file_common_proto_msgTypes[158]
+	mi := &file_common_proto_msgTypes[332]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12860,7 +23975,7 @@ func (x *BackupStorage) String() string {
 func (*BackupStorage) ProtoMessage() {}
 
 func (x *BackupStorage) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[158]
+	mi := &file_common_proto_msgTypes[332]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12873,7 +23988,7 @@ func (x *BackupStorage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BackupStorage.ProtoReflect.Descriptor instead.
 func (*BackupStorage) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{158}
+	return file_common_proto_rawDescGZIP(), []int{332}
 }
 
 func (x *BackupStorage) GetProvider() isBackupStorage_Provider {
@@ -12932,7 +24047,7 @@ type ReadOptions struct {
 
 func (x *ReadOptions) Reset() {
 	*x = ReadOptions{}
-	mi := &file_common_proto_msgTypes[159]
+	mi := &file_common_proto_msgTypes[333]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12944,7 +24059,7 @@ func (x *ReadOptions) String() string {
 func (*ReadOptions) ProtoMessage() {}
 
 func (x *ReadOptions) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[159]
+	mi := &file_common_proto_msgTypes[333]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12957,7 +24072,7 @@ func (x *ReadOptions) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadOptions.ProtoReflect.Descriptor instead.
 func (*ReadOptions) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{159}
+	return file_common_proto_rawDescGZIP(), []int{333}
 }
 
 func (x *ReadOptions) GetCheckpointId() uint64 {
@@ -13005,7 +24120,7 @@ type ListOptions struct {
 
 func (x *ListOptions) Reset() {
 	*x = ListOptions{}
-	mi := &file_common_proto_msgTypes[160]
+	mi := &file_common_proto_msgTypes[334]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13017,7 +24132,7 @@ func (x *ListOptions) String() string {
 func (*ListOptions) ProtoMessage() {}
 
 func (x *ListOptions) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[160]
+	mi := &file_common_proto_msgTypes[334]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13030,7 +24145,7 @@ func (x *ListOptions) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListOptions.ProtoReflect.Descriptor instead.
 func (*ListOptions) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{160}
+	return file_common_proto_rawDescGZIP(), []int{334}
 }
 
 func (x *ListOptions) GetRead() *ReadOptions {
@@ -13562,15 +24677,967 @@ const file_common_proto_rawDesc = "" +
 	"\x14removed_account_type\x18\v \x01(\v2\x1d.common.RemovedAccountTypeLogB\x04\xe8\xbc\x18\x00H\x00R\x12removedAccountType\x12y\n" +
 	" updated_default_enforcement_mode\x18\f \x01(\v2(.common.UpdatedDefaultEnforcementModeLogB\x04\xe8\xbc\x18\x00H\x00R\x1dupdatedDefaultEnforcementMode\x12D\n" +
 	"\rorder_skipped\x18\r \x01(\v2\x17.common.OrderSkippedLogB\x04\xe8\xbc\x18\x01H\x00R\forderSkippedB\t\n" +
-	"\apayload\"\xc6\x01\n" +
+	"\apayload\"\xfc\x88\x01\n" +
+	"\x0eFailureDetails\x12X\n" +
+	"\x15account_address_empty\x18\x01 \x01(\v2\".common.AccountAddressEmptyDetailsH\x00R\x13accountAddressEmpty\x12n\n" +
+	"\x1daccount_address_empty_segment\x18\x02 \x01(\v2).common.AccountAddressEmptySegmentDetailsH\x00R\x1aaccountAddressEmptySegment\x12k\n" +
+	"\x1caccount_address_invalid_char\x18\x03 \x01(\v2(.common.AccountAddressInvalidCharDetailsH\x00R\x19accountAddressInvalidChar\x12_\n" +
+	"\x18account_address_too_long\x18\x04 \x01(\v2$.common.AccountAddressTooLongDetailsH\x00R\x15accountAddressTooLong\x12b\n" +
+	"\x19account_not_matching_type\x18\x05 \x01(\v2%.common.AccountNotMatchingTypeDetailsH\x00R\x16accountNotMatchingType\x12h\n" +
+	"\x1baccount_type_already_exists\x18\x06 \x01(\v2'.common.AccountTypeAlreadyExistsDetailsH\x00R\x18accountTypeAlreadyExists\x12X\n" +
+	"\x15account_type_conflict\x18\a \x01(\v2\".common.AccountTypeConflictDetailsH\x00R\x13accountTypeConflict\x12b\n" +
+	"\x19account_type_has_accounts\x18\b \x01(\v2%.common.AccountTypeHasAccountsDetailsH\x00R\x16accountTypeHasAccounts\x12c\n" +
+	"\x1aaccount_type_name_too_long\x18\t \x01(\v2%.common.AccountTypeNameTooLongDetailsH\x00R\x16accountTypeNameTooLong\x12Y\n" +
+	"\x16account_type_not_found\x18\n" +
+	" \x01(\v2\".common.AccountTypeNotFoundDetailsH\x00R\x13accountTypeNotFound\x12l\n" +
+	"\x1daccount_type_pattern_too_long\x18\v \x01(\v2(.common.AccountTypePatternTooLongDetailsH\x00R\x19accountTypePatternTooLong\x12Q\n" +
+	"\x12aggregate_overflow\x18\f \x01(\v2 .common.AggregateOverflowDetailsH\x00R\x11aggregateOverflow\x12B\n" +
+	"\rasset_invalid\x18\r \x01(\v2\x1b.common.AssetInvalidDetailsH\x00R\fassetInvalid\x12E\n" +
+	"\x0eaudit_disabled\x18\x0e \x01(\v2\x1c.common.AuditDisabledDetailsH\x00R\rauditDisabled\x12L\n" +
+	"\x11balance_not_found\x18\x0f \x01(\v2\x1e.common.BalanceNotFoundDetailsH\x00R\x0fbalanceNotFound\x12X\n" +
+	"\x15balance_not_preloaded\x18\x10 \x01(\v2\".common.BalanceNotPreloadedDetailsH\x00R\x13balanceNotPreloaded\x12[\n" +
+	"\x16checkpoint_id_required\x18\x11 \x01(\v2#.common.CheckpointIdRequiredDetailsH\x00R\x14checkpointIdRequired\x12a\n" +
+	"\x18checkpoint_limit_reached\x18\x12 \x01(\v2%.common.CheckpointLimitReachedDetailsH\x00R\x16checkpointLimitReached\x12U\n" +
+	"\x14checkpoint_not_found\x18\x13 \x01(\v2!.common.CheckpointNotFoundDetailsH\x00R\x12checkpointNotFound\x12U\n" +
+	"\x14checkpoint_not_ready\x18\x14 \x01(\v2!.common.CheckpointNotReadyDetailsH\x00R\x12checkpointNotReady\x12[\n" +
+	"\x16cluster_policy_invalid\x18\x15 \x01(\v2#.common.ClusterPolicyInvalidDetailsH\x00R\x14clusterPolicyInvalid\x12w\n" +
+	" cluster_policy_revision_conflict\x18\x16 \x01(\v2,.common.ClusterPolicyRevisionConflictDetailsH\x00R\x1dclusterPolicyRevisionConflict\x12N\n" +
+	"\x11cluster_unhealthy\x18\x17 \x01(\v2\x1f.common.ClusterUnhealthyDetailsH\x00R\x10clusterUnhealthy\x12B\n" +
+	"\rcolor_invalid\x18\x18 \x01(\v2\x1b.common.ColorInvalidDetailsH\x00R\fcolorInvalid\x12C\n" +
+	"\x0ecolor_too_long\x18\x19 \x01(\v2\x1b.common.ColorTooLongDetailsH\x00R\fcolorTooLong\x12B\n" +
+	"\rcoverage_miss\x18\x1a \x01(\v2\x1b.common.CoverageMissDetailsH\x00R\fcoverageMiss\x12j\n" +
+	"\x1bdependency_discovery_failed\x18\x1b \x01(\v2(.common.DependencyDiscoveryFailedDetailsH\x00R\x19dependencyDiscoveryFailed\x12N\n" +
+	"\x11empty_transaction\x18\x1c \x01(\v2\x1f.common.EmptyTransactionDetailsH\x00R\x10emptyTransaction\x12_\n" +
+	"\x18execution_plan_too_large\x18\x1d \x01(\v2$.common.ExecutionPlanTooLargeDetailsH\x00R\x15executionPlanTooLarge\x12a\n" +
+	"\x18filter_compilation_error\x18\x1e \x01(\v2%.common.FilterCompilationErrorDetailsH\x00R\x16filterCompilationError\x12a\n" +
+	"\x18idempotency_check_failed\x18\x1f \x01(\v2%.common.IdempotencyCheckFailedDetailsH\x00R\x16idempotencyCheckFailed\x12a\n" +
+	"\x18idempotency_key_conflict\x18  \x01(\v2%.common.IdempotencyKeyConflictDetailsH\x00R\x16idempotencyKeyConflict\x12<\n" +
+	"\vid_required\x18! \x01(\v2\x19.common.IdRequiredDetailsH\x00R\n" +
+	"idRequired\x12U\n" +
+	"\x14index_already_exists\x18\" \x01(\v2!.common.IndexAlreadyExistsDetailsH\x00R\x12indexAlreadyExists\x12E\n" +
+	"\x0eindex_building\x18# \x01(\v2\x1c.common.IndexBuildingDetailsH\x00R\rindexBuilding\x12Q\n" +
+	"\x12index_inconsistent\x18$ \x01(\v2 .common.IndexInconsistentDetailsH\x00R\x11indexInconsistent\x12F\n" +
+	"\x0findex_not_found\x18% \x01(\v2\x1c.common.IndexNotFoundDetailsH\x00R\rindexNotFound\x12a\n" +
+	"\x18index_target_unsupported\x18& \x01(\v2%.common.IndexTargetUnsupportedDetailsH\x00R\x16indexTargetUnsupported\x12Q\n" +
+	"\x12insufficient_funds\x18' \x01(\v2 .common.InsufficientFundsDetailsH\x00R\x11insufficientFunds\x12O\n" +
+	"\x12invalid_apply_type\x18( \x01(\v2\x1f.common.InvalidApplyTypeDetailsH\x00R\x10invalidApplyType\x12g\n" +
+	"\x1ainvalid_caller_attribution\x18) \x01(\v2'.common.InvalidCallerAttributionDetailsH\x00R\x18invalidCallerAttribution\x12^\n" +
+	"\x17invalid_cron_expression\x18* \x01(\v2$.common.InvalidCronExpressionDetailsH\x00R\x15invalidCronExpression\x12[\n" +
+	"\x16invalid_execution_plan\x18+ \x01(\v2#.common.InvalidExecutionPlanDetailsH\x00R\x14invalidExecutionPlan\x12O\n" +
+	"\x12invalid_order_type\x18, \x01(\v2\x1f.common.InvalidOrderTypeDetailsH\x00R\x10invalidOrderType\x12H\n" +
+	"\x0finvalid_pattern\x18- \x01(\v2\x1d.common.InvalidPatternDetailsH\x00R\x0einvalidPattern\x12a\n" +
+	"\x18invalid_skippable_reason\x18. \x01(\v2%.common.InvalidSkippableReasonDetailsH\x00R\x16invalidSkippableReason\x12X\n" +
+	"\x15ledger_already_exists\x18/ \x01(\v2\".common.LedgerAlreadyExistsDetailsH\x00R\x13ledgerAlreadyExists\x12E\n" +
+	"\x0eledger_deleted\x180 \x01(\v2\x1c.common.LedgerDeletedDetailsH\x00R\rledgerDeleted\x12V\n" +
+	"\x15ledger_in_mirror_mode\x181 \x01(\v2!.common.LedgerInMirrorModeDetailsH\x00R\x12ledgerInMirrorMode\x12_\n" +
+	"\x18ledger_name_invalid_char\x182 \x01(\v2$.common.LedgerNameInvalidCharDetailsH\x00R\x15ledgerNameInvalidChar\x12U\n" +
+	"\x14ledger_name_required\x183 \x01(\v2!.common.LedgerNameRequiredDetailsH\x00R\x12ledgerNameRequired\x12h\n" +
+	"\x1bledger_name_reserved_prefix\x184 \x01(\v2'.common.LedgerNameReservedPrefixDetailsH\x00R\x18ledgerNameReservedPrefix\x12S\n" +
+	"\x14ledger_name_too_long\x185 \x01(\v2 .common.LedgerNameTooLongDetailsH\x00R\x11ledgerNameTooLong\x12I\n" +
+	"\x10ledger_not_found\x186 \x01(\v2\x1d.common.LedgerNotFoundDetailsH\x00R\x0eledgerNotFound\x12`\n" +
+	"\x19ledger_not_in_mirror_mode\x187 \x01(\v2$.common.LedgerNotInMirrorModeDetailsH\x00R\x15ledgerNotInMirrorMode\x12K\n" +
+	"\x10maintenance_mode\x188 \x01(\v2\x1e.common.MaintenanceModeDetailsH\x00R\x0fmaintenanceMode\x12i\n" +
+	"\x1cmetadata_field_not_in_schema\x189 \x01(\v2'.common.MetadataFieldNotInSchemaDetailsH\x00R\x18metadataFieldNotInSchema\x12O\n" +
+	"\x12metadata_key_empty\x18: \x01(\v2\x1f.common.MetadataKeyEmptyDetailsH\x00R\x10metadataKeyEmpty\x12b\n" +
+	"\x19metadata_key_invalid_char\x18; \x01(\v2%.common.MetadataKeyInvalidCharDetailsH\x00R\x16metadataKeyInvalidChar\x12X\n" +
+	"\x15metadata_key_required\x18< \x01(\v2\".common.MetadataKeyRequiredDetailsH\x00R\x13metadataKeyRequired\x12m\n" +
+	"\x1cmetadata_limits_unconfigured\x18= \x01(\v2).common.MetadataLimitsUnconfiguredDetailsH\x00R\x1ametadataLimitsUnconfigured\x12^\n" +
+	"\x17metadata_limit_exceeded\x18> \x01(\v2$.common.MetadataLimitExceededDetailsH\x00R\x15metadataLimitExceeded\x12O\n" +
+	"\x12metadata_not_found\x18? \x01(\v2\x1f.common.MetadataNotFoundDetailsH\x00R\x10metadataNotFound\x12x\n" +
+	"!metadata_value_contains_null_byte\x18@ \x01(\v2,.common.MetadataValueContainsNullByteDetailsH\x00R\x1dmetadataValueContainsNullByte\x12\\\n" +
+	"\x17mirror_http_url_invalid\x18A \x01(\v2#.common.MirrorHttpUrlInvalidDetailsH\x00R\x14mirrorHttpUrlInvalid\x12e\n" +
+	"\x1amirror_iam_region_required\x18B \x01(\v2&.common.MirrorIamRegionRequiredDetailsH\x00R\x17mirrorIamRegionRequired\x12\\\n" +
+	"\x17mirror_iam_requires_tls\x18C \x01(\v2#.common.MirrorIamRequiresTlsDetailsH\x00R\x14mirrorIamRequiresTls\x12h\n" +
+	"\x1bmirror_rewrite_rule_invalid\x18D \x01(\v2'.common.MirrorRewriteRuleInvalidDetailsH\x00R\x18mirrorRewriteRuleInvalid\x12Q\n" +
+	"\x14mirror_v2_log_id_gap\x18E \x01(\v2\x1f.common.MirrorV2LogIdGapDetailsH\x00R\x10mirrorV2LogIdGap\x12]\n" +
+	"\x18mirror_v2_log_id_invalid\x18F \x01(\v2#.common.MirrorV2LogIdInvalidDetailsH\x00R\x14mirrorV2LogIdInvalid\x12a\n" +
+	"\x18numscript_asset_mismatch\x18G \x01(\v2%.common.NumscriptAssetMismatchDetailsH\x00R\x16numscriptAssetMismatch\x12R\n" +
+	"\x13numscript_bad_arity\x18H \x01(\v2 .common.NumscriptBadArityDetailsH\x00R\x11numscriptBadArity\x12_\n" +
+	"\x18numscript_bad_meta_value\x18I \x01(\v2$.common.NumscriptBadMetaValueDetailsH\x00R\x15numscriptBadMetaValue\x12X\n" +
+	"\x15numscript_bad_portion\x18J \x01(\v2\".common.NumscriptBadPortionDetailsH\x00R\x13numscriptBadPortion\x12\x81\x01\n" +
+	"$numscript_cannot_cast_scoped_account\x18K \x01(\v2/.common.NumscriptCannotCastScopedAccountDetailsH\x00R numscriptCannotCastScopedAccount\x12r\n" +
+	"\x1fnumscript_cannot_cast_to_string\x18L \x01(\v2*.common.NumscriptCannotCastToStringDetailsH\x00R\x1bnumscriptCannotCastToString\x12\x84\x01\n" +
+	"%numscript_cannot_store_scoped_account\x18M \x01(\v20.common.NumscriptCannotStoreScopedAccountDetailsH\x00R!numscriptCannotStoreScopedAccount\x12h\n" +
+	"\x1bnumscript_compile_bad_arity\x18N \x01(\v2'.common.NumscriptCompileBadArityDetailsH\x00R\x18numscriptCompileBadArity\x12\x88\x01\n" +
+	"'numscript_compile_cannot_cast_to_string\x18O \x01(\v21.common.NumscriptCompileCannotCastToStringDetailsH\x00R\"numscriptCompileCannotCastToString\x12\x9a\x01\n" +
+	"-numscript_compile_cannot_store_scoped_account\x18P \x01(\v27.common.NumscriptCompileCannotStoreScopedAccountDetailsH\x00R(numscriptCompileCannotStoreScopedAccount\x12\x86\x01\n" +
+	"%numscript_compile_duplicate_remaining\x18Q \x01(\v21.common.NumscriptCompileDuplicateRemainingDetailsH\x00R\"numscriptCompileDuplicateRemaining\x12\x83\x01\n" +
+	"$numscript_compile_duplicate_variable\x18R \x01(\v20.common.NumscriptCompileDuplicateVariableDetailsH\x00R!numscriptCompileDuplicateVariable\x12^\n" +
+	"\x17numscript_compile_error\x18S \x01(\v2$.common.NumscriptCompileErrorDetailsH\x00R\x15numscriptCompileError\x12\x89\x01\n" +
+	"&numscript_compile_experimental_feature\x18T \x01(\v22.common.NumscriptCompileExperimentalFeatureDetailsH\x00R#numscriptCompileExperimentalFeature\x12z\n" +
+	"!numscript_compile_invalid_feature\x18U \x01(\v2-.common.NumscriptCompileInvalidFeatureDetailsH\x00R\x1enumscriptCompileInvalidFeature\x12\x8a\x01\n" +
+	"'numscript_compile_invalid_meta_position\x18V \x01(\v22.common.NumscriptCompileInvalidMetaPositionDetailsH\x00R#numscriptCompileInvalidMetaPosition\x12q\n" +
+	"\x1enumscript_compile_invalid_type\x18W \x01(\v2*.common.NumscriptCompileInvalidTypeDetailsH\x00R\x1bnumscriptCompileInvalidType\x12\x90\x01\n" +
+	")numscript_compile_invalid_uncapped_source\x18X \x01(\v24.common.NumscriptCompileInvalidUncappedSourceDetailsH\x00R%numscriptCompileInvalidUncappedSource\x12\x8d\x01\n" +
+	"(numscript_compile_invalid_variable_value\x18Y \x01(\v23.common.NumscriptCompileInvalidVariableValueDetailsH\x00R$numscriptCompileInvalidVariableValue\x12}\n" +
+	"\"numscript_compile_missing_variable\x18Z \x01(\v2..common.NumscriptCompileMissingVariableDetailsH\x00R\x1fnumscriptCompileMissingVariable\x12t\n" +
+	"\x1fnumscript_compile_type_mismatch\x18[ \x01(\v2+.common.NumscriptCompileTypeMismatchDetailsH\x00R\x1cnumscriptCompileTypeMismatch\x12}\n" +
+	"\"numscript_compile_unbound_variable\x18\\ \x01(\v2..common.NumscriptCompileUnboundVariableDetailsH\x00R\x1fnumscriptCompileUnboundVariable\x12}\n" +
+	"\"numscript_compile_unknown_function\x18] \x01(\v2..common.NumscriptCompileUnknownFunctionDetailsH\x00R\x1fnumscriptCompileUnknownFunction\x12g\n" +
+	"\x1anumscript_content_required\x18^ \x01(\v2'.common.NumscriptContentRequiredDetailsH\x00R\x18numscriptContentRequired\x12j\n" +
+	"\x1bnumscript_currency_mismatch\x18_ \x01(\v2(.common.NumscriptCurrencyMismatchDetailsH\x00R\x19numscriptCurrencyMismatch\x12_\n" +
+	"\x18numscript_divide_by_zero\x18` \x01(\v2$.common.NumscriptDivideByZeroDetailsH\x00R\x15numscriptDivideByZero\x12d\n" +
+	"\x19numscript_execution_error\x18a \x01(\v2&.common.NumscriptExecutionErrorDetailsH\x00R\x17numscriptExecutionError\x12s\n" +
+	"\x1enumscript_experimental_feature\x18b \x01(\v2+.common.NumscriptExperimentalFeatureDetailsH\x00R\x1cnumscriptExperimentalFeature\x12q\n" +
+	"\x1enumscript_invalid_account_name\x18c \x01(\v2*.common.NumscriptInvalidAccountNameDetailsH\x00R\x1bnumscriptInvalidAccountName\x12\x88\x01\n" +
+	"'numscript_invalid_allotment_in_send_all\x18d \x01(\v21.common.NumscriptInvalidAllotmentInSendAllDetailsH\x00R\"numscriptInvalidAllotmentInSendAll\x12t\n" +
+	"\x1fnumscript_invalid_allotment_sum\x18e \x01(\v2+.common.NumscriptInvalidAllotmentSumDetailsH\x00R\x1cnumscriptInvalidAllotmentSum\x12^\n" +
+	"\x17numscript_invalid_asset\x18f \x01(\v2$.common.NumscriptInvalidAssetDetailsH\x00R\x15numscriptInvalidAsset\x12^\n" +
+	"\x17numscript_invalid_color\x18g \x01(\v2$.common.NumscriptInvalidColorDetailsH\x00R\x15numscriptInvalidColor\x12d\n" +
+	"\x19numscript_invalid_feature\x18h \x01(\v2&.common.NumscriptInvalidFeatureDetailsH\x00R\x17numscriptInvalidFeature\x12}\n" +
+	"\"numscript_invalid_monetary_literal\x18i \x01(\v2..common.NumscriptInvalidMonetaryLiteralDetailsH\x00R\x1fnumscriptInvalidMonetaryLiteral\x12n\n" +
+	"\x1dnumscript_invalid_nested_meta\x18j \x01(\v2).common.NumscriptInvalidNestedMetaDetailsH\x00R\x1anumscriptInvalidNestedMeta\x12w\n" +
+	" numscript_invalid_number_literal\x18k \x01(\v2,.common.NumscriptInvalidNumberLiteralDetailsH\x00R\x1dnumscriptInvalidNumberLiteral\x12\x86\x01\n" +
+	"%numscript_invalid_remaining_allotment\x18l \x01(\v21.common.NumscriptInvalidRemainingAllotmentDetailsH\x00R\"numscriptInvalidRemainingAllotment\x12^\n" +
+	"\x17numscript_invalid_scope\x18m \x01(\v2$.common.NumscriptInvalidScopeDetailsH\x00R\x15numscriptInvalidScope\x12[\n" +
+	"\x16numscript_invalid_type\x18n \x01(\v2#.common.NumscriptInvalidTypeDetailsH\x00R\x14numscriptInvalidType\x12\x96\x01\n" +
+	"+numscript_invalid_unbounded_scaling_address\x18o \x01(\v26.common.NumscriptInvalidUnboundedScalingAddressDetailsH\x00R'numscriptInvalidUnboundedScalingAddress\x12\x81\x01\n" +
+	"$numscript_invalid_unbounded_send_all\x18p \x01(\v2/.common.NumscriptInvalidUnboundedSendAllDetailsH\x00R numscriptInvalidUnboundedSendAll\x12z\n" +
+	"!numscript_invalid_uncapped_source\x18q \x01(\v2-.common.NumscriptInvalidUncappedSourceDetailsH\x00R\x1enumscriptInvalidUncappedSource\x12d\n" +
+	"\x19numscript_invalid_version\x18r \x01(\v2&.common.NumscriptInvalidVersionDetailsH\x00R\x17numscriptInvalidVersion\x12k\n" +
+	"\x1cnumscript_metadata_not_found\x18s \x01(\v2(.common.NumscriptMetadataNotFoundDetailsH\x00R\x19numscriptMetadataNotFound\x12^\n" +
+	"\x17numscript_missing_funds\x18t \x01(\v2$.common.NumscriptMissingFundsDetailsH\x00R\x15numscriptMissingFunds\x12g\n" +
+	"\x1anumscript_missing_variable\x18u \x01(\v2'.common.NumscriptMissingVariableDetailsH\x00R\x18numscriptMissingVariable\x12h\n" +
+	"\x1bnumscript_name_invalid_char\x18v \x01(\v2'.common.NumscriptNameInvalidCharDetailsH\x00R\x18numscriptNameInvalidChar\x12^\n" +
+	"\x17numscript_name_required\x18w \x01(\v2$.common.NumscriptNameRequiredDetailsH\x00R\x15numscriptNameRequired\x12\\\n" +
+	"\x17numscript_name_too_long\x18x \x01(\v2#.common.NumscriptNameTooLongDetailsH\x00R\x14numscriptNameTooLong\x12d\n" +
+	"\x19numscript_negative_amount\x18y \x01(\v2&.common.NumscriptNegativeAmountDetailsH\x00R\x17numscriptNegativeAmount\x12g\n" +
+	"\x1anumscript_negative_balance\x18z \x01(\v2'.common.NumscriptNegativeBalanceDetailsH\x00R\x18numscriptNegativeBalance\x12g\n" +
+	"\x1anumscript_negative_portion\x18{ \x01(\v2'.common.NumscriptNegativePortionDetailsH\x00R\x18numscriptNegativePortion\x12R\n" +
+	"\x13numscript_not_found\x18| \x01(\v2 .common.NumscriptNotFoundDetailsH\x00R\x11numscriptNotFound\x12X\n" +
+	"\x15numscript_parse_error\x18} \x01(\v2\".common.NumscriptParseErrorDetailsH\x00R\x13numscriptParseError\x12z\n" +
+	"!numscript_posting_amount_overflow\x18~ \x01(\v2-.common.NumscriptPostingAmountOverflowDetailsH\x00R\x1enumscriptPostingAmountOverflow\x12z\n" +
+	"!numscript_posting_negative_amount\x18\x7f \x01(\v2-.common.NumscriptPostingNegativeAmountDetailsH\x00R\x1enumscriptPostingNegativeAmount\x12O\n" +
+	"\x11numscript_runtime\x18\x80\x01 \x01(\v2\x1f.common.NumscriptRuntimeDetailsH\x00R\x10numscriptRuntime\x12q\n" +
+	"\x1dnumscript_scaling_unsupported\x18\x81\x01 \x01(\v2*.common.NumscriptScalingUnsupportedDetailsH\x00R\x1bnumscriptScalingUnsupported\x12V\n" +
+	"\x14numscript_type_error\x18\x82\x01 \x01(\v2!.common.NumscriptTypeErrorDetailsH\x00R\x12numscriptTypeError\x12h\n" +
+	"\x1anumscript_unbound_function\x18\x83\x01 \x01(\v2'.common.NumscriptUnboundFunctionDetailsH\x00R\x18numscriptUnboundFunction\x12h\n" +
+	"\x1anumscript_unbound_variable\x18\x84\x01 \x01(\v2'.common.NumscriptUnboundVariableDetailsH\x00R\x18numscriptUnboundVariable\x12x\n" +
+	" numscript_version_already_exists\x18\x85\x01 \x01(\v2,.common.NumscriptVersionAlreadyExistsDetailsH\x00R\x1dnumscriptVersionAlreadyExists\x12l\n" +
+	"\x1cpostings_and_script_conflict\x18\x86\x01 \x01(\v2(.common.PostingsAndScriptConflictDetailsH\x00R\x19postingsAndScriptConflict\x12U\n" +
+	"\x13preload_unavailable\x18\x87\x01 \x01(\v2!.common.PreloadUnavailableDetailsH\x00R\x12preloadUnavailable\x12o\n" +
+	"\x1dprepared_query_already_exists\x18\x88\x01 \x01(\v2).common.PreparedQueryAlreadyExistsDetailsH\x00R\x1apreparedQueryAlreadyExists\x12v\n" +
+	" prepared_query_name_invalid_char\x18\x89\x01 \x01(\v2+.common.PreparedQueryNameInvalidCharDetailsH\x00R\x1cpreparedQueryNameInvalidChar\x12l\n" +
+	"\x1cprepared_query_name_required\x18\x8a\x01 \x01(\v2(.common.PreparedQueryNameRequiredDetailsH\x00R\x19preparedQueryNameRequired\x12j\n" +
+	"\x1cprepared_query_name_too_long\x18\x8b\x01 \x01(\v2'.common.PreparedQueryNameTooLongDetailsH\x00R\x18preparedQueryNameTooLong\x12`\n" +
+	"\x18prepared_query_not_found\x18\x8c\x01 \x01(\v2$.common.PreparedQueryNotFoundDetailsH\x00R\x15preparedQueryNotFound\x12_\n" +
+	"\x17prepared_query_required\x18\x8d\x01 \x01(\v2$.common.PreparedQueryRequiredDetailsH\x00R\x15preparedQueryRequired\x12{\n" +
+	"!prepared_query_target_unsupported\x18\x8e\x01 \x01(\v2-.common.PreparedQueryTargetUnsupportedDetailsH\x00R\x1epreparedQueryTargetUnsupported\x12p\n" +
+	"\x1erevert_target_created_in_batch\x18\x8f\x01 \x01(\v2).common.RevertTargetCreatedInBatchDetailsH\x00R\x1arevertTargetCreatedInBatch\x12h\n" +
+	"\x1ascoped_balance_unsupported\x18\x90\x01 \x01(\v2'.common.ScopedBalanceUnsupportedDetailsH\x00R\x18scopedBalanceUnsupported\x12o\n" +
+	"\x1dscript_and_reference_conflict\x18\x91\x01 \x01(\v2).common.ScriptAndReferenceConflictDetailsH\x00R\x1ascriptAndReferenceConflict\x12I\n" +
+	"\x0fscript_required\x18\x92\x01 \x01(\v2\x1d.common.ScriptRequiredDetailsH\x00R\x0escriptRequired\x12R\n" +
+	"\x12sequence_exhausted\x18\x93\x01 \x01(\v2 .common.SequenceExhaustedDetailsH\x00R\x11sequenceExhausted\x12g\n" +
+	"\x1bsigning_key_id_invalid_char\x18\x94\x01 \x01(\v2&.common.SigningKeyIdInvalidCharDetailsH\x00R\x17signingKeyIdInvalidChar\x12]\n" +
+	"\x17signing_key_id_required\x18\x95\x01 \x01(\v2#.common.SigningKeyIdRequiredDetailsH\x00R\x14signingKeyIdRequired\x12[\n" +
+	"\x17signing_key_id_too_long\x18\x96\x01 \x01(\v2\".common.SigningKeyIdTooLongDetailsH\x00R\x13signingKeyIdTooLong\x12f\n" +
+	"\x1asigning_key_invalid_length\x18\x97\x01 \x01(\v2&.common.SigningKeyInvalidLengthDetailsH\x00R\x17signingKeyInvalidLength\x12S\n" +
+	"\x13sink_already_exists\x18\x98\x01 \x01(\v2 .common.SinkAlreadyExistsDetailsH\x00R\x11sinkAlreadyExists\x12a\n" +
+	"\x19sink_batch_size_too_large\x18\x99\x01 \x01(\v2$.common.SinkBatchSizeTooLargeDetailsH\x00R\x15sinkBatchSizeTooLarge\x12b\n" +
+	"\x18sink_controller_mismatch\x18\x9a\x01 \x01(\v2%.common.SinkControllerMismatchDetailsH\x00R\x16sinkControllerMismatch\x12D\n" +
+	"\x0esink_not_found\x18\x9b\x01 \x01(\v2\x1b.common.SinkNotFoundDetailsH\x00R\fsinkNotFound\x12V\n" +
+	"\x14stale_cluster_policy\x18\x9c\x01 \x01(\v2!.common.StaleClusterPolicyDetailsH\x00R\x12staleClusterPolicy\x12_\n" +
+	"\x17stale_inputs_resolution\x18\x9d\x01 \x01(\v2$.common.StaleInputsResolutionDetailsH\x00R\x15staleInputsResolution\x12F\n" +
+	"\x0estale_proposal\x18\x9e\x01 \x01(\v2\x1c.common.StaleProposalDetailsH\x00R\rstaleProposal\x12b\n" +
+	"\x18storage_operation_failed\x18\x9f\x01 \x01(\v2%.common.StorageOperationFailedDetailsH\x00R\x16storageOperationFailed\x12I\n" +
+	"\x0ftarget_required\x18\xa0\x01 \x01(\v2\x1d.common.TargetRequiredDetailsH\x00R\x0etargetRequired\x12n\n" +
+	"\x1ctransaction_already_reverted\x18\xa1\x01 \x01(\v2).common.TransactionAlreadyRevertedDetailsH\x00R\x1atransactionAlreadyReverted\x12Y\n" +
+	"\x15transaction_not_found\x18\xa2\x01 \x01(\v2\".common.TransactionNotFoundDetailsH\x00R\x13transactionNotFound\x12t\n" +
+	"\x1etransaction_reference_conflict\x18\xa3\x01 \x01(\v2+.common.TransactionReferenceConflictDetailsH\x00R\x1ctransactionReferenceConflict\x12u\n" +
+	"\x1ftransaction_reference_not_found\x18\xa4\x01 \x01(\v2+.common.TransactionReferenceNotFoundDetailsH\x00R\x1ctransactionReferenceNotFound\x12r\n" +
+	"\x1etransaction_reference_too_long\x18\xa5\x01 \x01(\v2*.common.TransactionReferenceTooLongDetailsH\x00R\x1btransactionReferenceTooLong\x12t\n" +
+	"\x1etransaction_state_inconsistent\x18\xa6\x01 \x01(\v2+.common.TransactionStateInconsistentDetailsH\x00R\x1ctransactionStateInconsistent\x12h\n" +
+	"\x1atransaction_target_missing\x18\xa7\x01 \x01(\v2'.common.TransactionTargetMissingDetailsH\x00R\x18transactionTargetMissing\x12f\n" +
+	"\x1atransient_account_non_zero\x18\xa8\x01 \x01(\v2&.common.TransientAccountNonZeroDetailsH\x00R\x17transientAccountNonZero\x12<\n" +
+	"\n" +
+	"validation\x18\xa9\x01 \x01(\v2\x19.common.ValidationDetailsH\x00R\n" +
+	"validation\x12_\n" +
+	"\x17volume_not_materialized\x18\xaa\x01 \x01(\v2$.common.VolumeNotMaterializedDetailsH\x00R\x15volumeNotMaterialized\x12I\n" +
+	"\x0fvolume_overflow\x18\xab\x01 \x01(\v2\x1d.common.VolumeOverflowDetailsH\x00R\x0evolumeOverflow\x12c\n" +
+	"\x19writes_blocked_clock_skew\x18\xac\x01 \x01(\v2%.common.WritesBlockedClockSkewDetailsH\x00R\x16writesBlockedClockSkew\x12`\n" +
+	"\x18writes_blocked_disk_full\x18\xad\x01 \x01(\v2$.common.WritesBlockedDiskFullDetailsH\x00R\x15writesBlockedDiskFullB\x06\n" +
+	"\x04kind\"f\n" +
+	"\x1aAccountAddressEmptyDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"m\n" +
+	"!AccountAddressEmptySegmentDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"l\n" +
+	" AccountAddressInvalidCharDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"h\n" +
+	"\x1cAccountAddressTooLongDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"J\n" +
+	"\x1dAccountNotMatchingTypeDetails\x12\x1d\n" +
+	"\aaddress\x18\x01 \x01(\tH\x00R\aaddress\x88\x01\x01B\n" +
+	"\n" +
+	"\b_address\"C\n" +
+	"\x1fAccountTypeAlreadyExistsDetails\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x05_name\"\xc8\x01\n" +
+	"\x1aAccountTypeConflictDetails\x12\x1d\n" +
+	"\apattern\x18\x01 \x01(\tH\x00R\apattern\x88\x01\x01\x12(\n" +
+	"\rexisting_name\x18\x02 \x01(\tH\x01R\fexistingName\x88\x01\x01\x12.\n" +
+	"\x10existing_pattern\x18\x03 \x01(\tH\x02R\x0fexistingPattern\x88\x01\x01B\n" +
+	"\n" +
+	"\b_patternB\x10\n" +
+	"\x0e_existing_nameB\x13\n" +
+	"\x11_existing_pattern\"A\n" +
+	"\x1dAccountTypeHasAccountsDetails\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x05_name\"i\n" +
+	"\x1dAccountTypeNameTooLongDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\">\n" +
+	"\x1aAccountTypeNotFoundDetails\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x05_name\"l\n" +
+	" AccountTypePatternTooLongDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"a\n" +
+	"\x18AggregateOverflowDetails\x12\x19\n" +
+	"\x05stage\x18\x01 \x01(\tH\x00R\x05stage\x88\x01\x01\x12\x17\n" +
+	"\x04side\x18\x02 \x01(\tH\x01R\x04side\x88\x01\x01B\b\n" +
+	"\x06_stageB\a\n" +
+	"\x05_side\"_\n" +
+	"\x13AssetInvalidDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"\x16\n" +
+	"\x14AuditDisabledDetails\"h\n" +
+	"\x16BalanceNotFoundDetails\x12\x1d\n" +
+	"\aaccount\x18\x01 \x01(\tH\x00R\aaccount\x88\x01\x01\x12\x19\n" +
+	"\x05asset\x18\x02 \x01(\tH\x01R\x05asset\x88\x01\x01B\n" +
+	"\n" +
+	"\b_accountB\b\n" +
+	"\x06_asset\"\x91\x01\n" +
+	"\x1aBalanceNotPreloadedDetails\x12\x1d\n" +
+	"\aaccount\x18\x01 \x01(\tH\x00R\aaccount\x88\x01\x01\x12\x19\n" +
+	"\x05asset\x18\x02 \x01(\tH\x01R\x05asset\x88\x01\x01\x12\x19\n" +
+	"\x05color\x18\x03 \x01(\tH\x02R\x05color\x88\x01\x01B\n" +
+	"\n" +
+	"\b_accountB\b\n" +
+	"\x06_assetB\b\n" +
+	"\x06_color\"\x1d\n" +
+	"\x1bCheckpointIdRequiredDetails\"D\n" +
+	"\x1dCheckpointLimitReachedDetails\x12\x19\n" +
+	"\x05limit\x18\x01 \x01(\x04H\x00R\x05limit\x88\x01\x01B\b\n" +
+	"\x06_limit\"W\n" +
+	"\x19CheckpointNotFoundDetails\x12(\n" +
+	"\rcheckpoint_id\x18\x01 \x01(\x04H\x00R\fcheckpointId\x88\x01\x01B\x10\n" +
+	"\x0e_checkpoint_id\"W\n" +
+	"\x19CheckpointNotReadyDetails\x12(\n" +
+	"\rcheckpoint_id\x18\x01 \x01(\x04H\x00R\fcheckpointId\x88\x01\x01B\x10\n" +
+	"\x0e_checkpoint_id\"g\n" +
+	"\x1bClusterPolicyInvalidDetails\x12\x1d\n" +
+	"\aaccount\x18\x01 \x01(\tH\x00R\aaccount\x88\x01\x01\x12\x15\n" +
+	"\x03key\x18\x02 \x01(\tH\x01R\x03key\x88\x01\x01B\n" +
+	"\n" +
+	"\b_accountB\x06\n" +
+	"\x04_key\"T\n" +
+	"$ClusterPolicyRevisionConflictDetails\x12\x1f\n" +
+	"\brevision\x18\x01 \x01(\x04H\x00R\brevision\x88\x01\x01B\v\n" +
+	"\t_revision\"\x19\n" +
+	"\x17ClusterUnhealthyDetails\"_\n" +
+	"\x13ColorInvalidDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"_\n" +
+	"\x13ColorTooLongDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"\xdc\x01\n" +
+	"\x13CoverageMissDetails\x12!\n" +
+	"\tattribute\x18\x01 \x01(\tH\x00R\tattribute\x88\x01\x01\x12(\n" +
+	"\rcanonical_hex\x18\x02 \x01(\tH\x01R\fcanonicalHex\x88\x01\x01\x12\x1a\n" +
+	"\x06id_hex\x18\x03 \x01(\tH\x02R\x05idHex\x88\x01\x01\x12\"\n" +
+	"\n" +
+	"raft_index\x18\x04 \x01(\x04H\x03R\traftIndex\x88\x01\x01B\f\n" +
+	"\n" +
+	"_attributeB\x10\n" +
+	"\x0e_canonical_hexB\t\n" +
+	"\a_id_hexB\r\n" +
+	"\v_raft_index\"l\n" +
+	" DependencyDiscoveryFailedDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"c\n" +
+	"\x17EmptyTransactionDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"e\n" +
+	"\x1cExecutionPlanTooLargeDetails\x12\x17\n" +
+	"\x04size\x18\x01 \x01(\x04H\x00R\x04size\x88\x01\x01\x12\x19\n" +
+	"\x05limit\x18\x02 \x01(\x04H\x01R\x05limit\x88\x01\x01B\a\n" +
+	"\x05_sizeB\b\n" +
+	"\x06_limit\"\x1f\n" +
+	"\x1dFilterCompilationErrorDetails\"\x1f\n" +
+	"\x1dIdempotencyCheckFailedDetails\">\n" +
+	"\x1dIdempotencyKeyConflictDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01B\x06\n" +
+	"\x04_key\"]\n" +
+	"\x11IdRequiredDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"@\n" +
+	"\x19IndexAlreadyExistsDetails\x12\x19\n" +
+	"\x05index\x18\x01 \x01(\tH\x00R\x05index\x88\x01\x01B\b\n" +
+	"\x06_index\";\n" +
+	"\x14IndexBuildingDetails\x12\x19\n" +
+	"\x05index\x18\x01 \x01(\tH\x00R\x05index\x88\x01\x01B\b\n" +
+	"\x06_index\"?\n" +
+	"\x18IndexInconsistentDetails\x12\x19\n" +
+	"\x05index\x18\x01 \x01(\tH\x00R\x05index\x88\x01\x01B\b\n" +
+	"\x06_index\";\n" +
+	"\x14IndexNotFoundDetails\x12\x19\n" +
+	"\x05index\x18\x01 \x01(\tH\x00R\x05index\x88\x01\x01B\b\n" +
+	"\x06_index\"i\n" +
+	"\x1dIndexTargetUnsupportedDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"\xe2\x01\n" +
+	"\x18InsufficientFundsDetails\x12\x1d\n" +
+	"\aaccount\x18\x01 \x01(\tH\x00R\aaccount\x88\x01\x01\x12\x19\n" +
+	"\x05asset\x18\x02 \x01(\tH\x01R\x05asset\x88\x01\x01\x12\x1b\n" +
+	"\x06amount\x18\x03 \x01(\tH\x02R\x06amount\x88\x01\x01\x12\x1d\n" +
+	"\abalance\x18\x04 \x01(\tH\x03R\abalance\x88\x01\x01\x12\x19\n" +
+	"\x05color\x18\x05 \x01(\tH\x04R\x05color\x88\x01\x01B\n" +
+	"\n" +
+	"\b_accountB\b\n" +
+	"\x06_assetB\t\n" +
+	"\a_amountB\n" +
+	"\n" +
+	"\b_balanceB\b\n" +
+	"\x06_color\"\x19\n" +
+	"\x17InvalidApplyTypeDetails\"!\n" +
+	"\x1fInvalidCallerAttributionDetails\"R\n" +
+	"\x1cInvalidCronExpressionDetails\x12#\n" +
+	"\n" +
+	"expression\x18\x01 \x01(\tH\x00R\n" +
+	"expression\x88\x01\x01B\r\n" +
+	"\v_expression\"\x1d\n" +
+	"\x1bInvalidExecutionPlanDetails\"\x19\n" +
+	"\x17InvalidOrderTypeDetails\"B\n" +
+	"\x15InvalidPatternDetails\x12\x1d\n" +
+	"\apattern\x18\x01 \x01(\tH\x00R\apattern\x88\x01\x01B\n" +
+	"\n" +
+	"\b_pattern\"\xab\x01\n" +
+	"\x1dInvalidSkippableReasonDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01\x12,\n" +
+	"\x0fprovided_reason\x18\x03 \x01(\tH\x02R\x0eprovidedReason\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_accountB\x12\n" +
+	"\x10_provided_reason\">\n" +
+	"\x1aLedgerAlreadyExistsDetails\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x05_name\"8\n" +
+	"\x14LedgerDeletedDetails\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x05_name\"=\n" +
+	"\x19LedgerInMirrorModeDetails\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x05_name\"h\n" +
+	"\x1cLedgerNameInvalidCharDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"e\n" +
+	"\x19LedgerNameRequiredDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"k\n" +
+	"\x1fLedgerNameReservedPrefixDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"d\n" +
+	"\x18LedgerNameTooLongDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"9\n" +
+	"\x15LedgerNotFoundDetails\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x05_name\"@\n" +
+	"\x1cLedgerNotInMirrorModeDetails\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x05_name\"\x18\n" +
+	"\x16MaintenanceModeDetails\"h\n" +
+	"\x1fMetadataFieldNotInSchemaDetails\x12\x1b\n" +
+	"\x06target\x18\x01 \x01(\tH\x00R\x06target\x88\x01\x01\x12\x15\n" +
+	"\x03key\x18\x02 \x01(\tH\x01R\x03key\x88\x01\x01B\t\n" +
+	"\a_targetB\x06\n" +
+	"\x04_key\"c\n" +
+	"\x17MetadataKeyEmptyDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"i\n" +
+	"\x1dMetadataKeyInvalidCharDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"f\n" +
+	"\x1aMetadataKeyRequiredDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"m\n" +
+	"!MetadataLimitsUnconfiguredDetails\x12\x1d\n" +
+	"\aaccount\x18\x01 \x01(\tH\x00R\aaccount\x88\x01\x01\x12\x15\n" +
+	"\x03key\x18\x02 \x01(\tH\x01R\x03key\x88\x01\x01B\n" +
+	"\n" +
+	"\b_accountB\x06\n" +
+	"\x04_key\"\xe6\x01\n" +
+	"\x1cMetadataLimitExceededDetails\x12!\n" +
+	"\tdimension\x18\x01 \x01(\tH\x00R\tdimension\x88\x01\x01\x12\x19\n" +
+	"\x05limit\x18\x02 \x01(\x04H\x01R\x05limit\x88\x01\x01\x12\x1b\n" +
+	"\x06actual\x18\x03 \x01(\x04H\x02R\x06actual\x88\x01\x01\x12\x15\n" +
+	"\x03key\x18\x04 \x01(\tH\x03R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x05 \x01(\tH\x04R\aaccount\x88\x01\x01B\f\n" +
+	"\n" +
+	"_dimensionB\b\n" +
+	"\x06_limitB\t\n" +
+	"\a_actualB\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"\x8b\x01\n" +
+	"\x17MetadataNotFoundDetails\x12\x1b\n" +
+	"\x06target\x18\x01 \x01(\tH\x00R\x06target\x88\x01\x01\x12\x15\n" +
+	"\x03key\x18\x02 \x01(\tH\x01R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x03 \x01(\tH\x02R\aaccount\x88\x01\x01B\t\n" +
+	"\a_targetB\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"p\n" +
+	"$MetadataValueContainsNullByteDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"g\n" +
+	"\x1bMirrorHttpUrlInvalidDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"j\n" +
+	"\x1eMirrorIamRegionRequiredDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"g\n" +
+	"\x1bMirrorIamRequiresTlsDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"k\n" +
+	"\x1fMirrorRewriteRuleInvalidDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"\x88\x01\n" +
+	"\x17MirrorV2LogIdGapDetails\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01\x12\x15\n" +
+	"\x03got\x18\x02 \x01(\x04H\x01R\x03got\x88\x01\x01\x12\x1f\n" +
+	"\bexpected\x18\x03 \x01(\x04H\x02R\bexpected\x88\x01\x01B\a\n" +
+	"\x05_nameB\x06\n" +
+	"\x04_gotB\v\n" +
+	"\t_expected\"?\n" +
+	"\x1bMirrorV2LogIdInvalidDetails\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x05_name\"l\n" +
+	"\x1dNumscriptAssetMismatchDetails\x12\x1f\n" +
+	"\bexpected\x18\x01 \x01(\tH\x00R\bexpected\x88\x01\x01\x12\x15\n" +
+	"\x03got\x18\x02 \x01(\tH\x01R\x03got\x88\x01\x01B\v\n" +
+	"\t_expectedB\x06\n" +
+	"\x04_got\"\x9b\x01\n" +
+	"\x18NumscriptBadArityDetails\x12*\n" +
+	"\x0eexpected_arity\x18\x01 \x01(\tH\x00R\rexpectedArity\x88\x01\x01\x12,\n" +
+	"\x0fgiven_arguments\x18\x02 \x01(\tH\x01R\x0egivenArguments\x88\x01\x01B\x11\n" +
+	"\x0f_expected_arityB\x12\n" +
+	"\x10_given_arguments\"h\n" +
+	"\x1cNumscriptBadMetaValueDetails\x12\x1d\n" +
+	"\aaccount\x18\x01 \x01(\tH\x00R\aaccount\x88\x01\x01\x12\x15\n" +
+	"\x03key\x18\x02 \x01(\tH\x01R\x03key\x88\x01\x01B\n" +
+	"\n" +
+	"\b_accountB\x06\n" +
+	"\x04_key\"D\n" +
+	"\x1aNumscriptBadPortionDetails\x12\x1b\n" +
+	"\x06source\x18\x01 \x01(\tH\x00R\x06source\x88\x01\x01B\t\n" +
+	"\a_source\"y\n" +
+	"'NumscriptCannotCastScopedAccountDetails\x12\x1d\n" +
+	"\aaccount\x18\x01 \x01(\tH\x00R\aaccount\x88\x01\x01\x12\x19\n" +
+	"\x05scope\x18\x02 \x01(\tH\x01R\x05scope\x88\x01\x01B\n" +
+	"\n" +
+	"\b_accountB\b\n" +
+	"\x06_scope\"$\n" +
+	"\"NumscriptCannotCastToStringDetails\"z\n" +
+	"(NumscriptCannotStoreScopedAccountDetails\x12\x1d\n" +
+	"\aaccount\x18\x01 \x01(\tH\x00R\aaccount\x88\x01\x01\x12\x19\n" +
+	"\x05scope\x18\x02 \x01(\tH\x01R\x05scope\x88\x01\x01B\n" +
+	"\n" +
+	"\b_accountB\b\n" +
+	"\x06_scope\"w\n" +
+	"\x1fNumscriptCompileBadArityDetails\x12\x1f\n" +
+	"\bexpected\x18\x01 \x01(\x04H\x00R\bexpected\x88\x01\x01\x12\x1b\n" +
+	"\x06actual\x18\x02 \x01(\x04H\x01R\x06actual\x88\x01\x01B\v\n" +
+	"\t_expectedB\t\n" +
+	"\a_actual\"M\n" +
+	")NumscriptCompileCannotCastToStringDetails\x12\x17\n" +
+	"\x04type\x18\x01 \x01(\tH\x00R\x04type\x88\x01\x01B\a\n" +
+	"\x05_type\"1\n" +
+	"/NumscriptCompileCannotStoreScopedAccountDetails\"+\n" +
+	")NumscriptCompileDuplicateRemainingDetails\"L\n" +
+	"(NumscriptCompileDuplicateVariableDetails\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x05_name\"\x1e\n" +
+	"\x1cNumscriptCompileErrorDetails\"\\\n" +
+	"*NumscriptCompileExperimentalFeatureDetails\x12 \n" +
+	"\tflag_name\x18\x01 \x01(\tH\x00R\bflagName\x88\x01\x01B\f\n" +
+	"\n" +
+	"_flag_name\"R\n" +
+	"%NumscriptCompileInvalidFeatureDetails\x12\x1d\n" +
+	"\afeature\x18\x01 \x01(\tH\x00R\afeature\x88\x01\x01B\n" +
+	"\n" +
+	"\b_feature\",\n" +
+	"*NumscriptCompileInvalidMetaPositionDetails\"F\n" +
+	"\"NumscriptCompileInvalidTypeDetails\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x05_name\".\n" +
+	",NumscriptCompileInvalidUncappedSourceDetails\"q\n" +
+	"+NumscriptCompileInvalidVariableValueDetails\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01\x12\x17\n" +
+	"\x04type\x18\x02 \x01(\tH\x01R\x04type\x88\x01\x01B\a\n" +
+	"\x05_nameB\a\n" +
+	"\x05_type\"J\n" +
+	"&NumscriptCompileMissingVariableDetails\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x05_name\"r\n" +
+	"#NumscriptCompileTypeMismatchDetails\x12\x1f\n" +
+	"\bexpected\x18\x01 \x01(\tH\x00R\bexpected\x88\x01\x01\x12\x15\n" +
+	"\x03got\x18\x02 \x01(\tH\x01R\x03got\x88\x01\x01B\v\n" +
+	"\t_expectedB\x06\n" +
+	"\x04_got\"l\n" +
+	"&NumscriptCompileUnboundVariableDetails\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01\x12\x17\n" +
+	"\x04type\x18\x02 \x01(\tH\x01R\x04type\x88\x01\x01B\a\n" +
+	"\x05_nameB\a\n" +
+	"\x05_type\"\x86\x01\n" +
+	"&NumscriptCompileUnknownFunctionDetails\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01\x12(\n" +
+	"\rwrong_context\x18\x02 \x01(\tH\x01R\fwrongContext\x88\x01\x01B\a\n" +
+	"\x05_nameB\x10\n" +
+	"\x0e_wrong_context\"k\n" +
+	"\x1fNumscriptContentRequiredDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"o\n" +
+	" NumscriptCurrencyMismatchDetails\x12\x1f\n" +
+	"\bexpected\x18\x01 \x01(\tH\x00R\bexpected\x88\x01\x01\x12\x15\n" +
+	"\x03got\x18\x02 \x01(\tH\x01R\x03got\x88\x01\x01B\v\n" +
+	"\t_expectedB\x06\n" +
+	"\x04_got\"O\n" +
+	"\x1cNumscriptDivideByZeroDetails\x12!\n" +
+	"\tnumerator\x18\x01 \x01(\tH\x00R\tnumerator\x88\x01\x01B\f\n" +
+	"\n" +
+	"_numerator\" \n" +
+	"\x1eNumscriptExecutionErrorDetails\"U\n" +
+	"#NumscriptExperimentalFeatureDetails\x12 \n" +
+	"\tflag_name\x18\x01 \x01(\tH\x00R\bflagName\x88\x01\x01B\f\n" +
+	"\n" +
+	"_flag_name\"F\n" +
+	"\"NumscriptInvalidAccountNameDetails\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x05_name\"+\n" +
+	")NumscriptInvalidAllotmentInSendAllDetails\"X\n" +
+	"#NumscriptInvalidAllotmentSumDetails\x12\"\n" +
+	"\n" +
+	"actual_sum\x18\x01 \x01(\tH\x00R\tactualSum\x88\x01\x01B\r\n" +
+	"\v_actual_sum\"@\n" +
+	"\x1cNumscriptInvalidAssetDetails\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x05_name\"C\n" +
+	"\x1cNumscriptInvalidColorDetails\x12\x19\n" +
+	"\x05color\x18\x01 \x01(\tH\x00R\x05color\x88\x01\x01B\b\n" +
+	"\x06_color\"K\n" +
+	"\x1eNumscriptInvalidFeatureDetails\x12\x1d\n" +
+	"\afeature\x18\x01 \x01(\tH\x00R\afeature\x88\x01\x01B\n" +
+	"\n" +
+	"\b_feature\"P\n" +
+	"&NumscriptInvalidMonetaryLiteralDetails\x12\x1b\n" +
+	"\x06source\x18\x01 \x01(\tH\x00R\x06source\x88\x01\x01B\t\n" +
+	"\a_source\"#\n" +
+	"!NumscriptInvalidNestedMetaDetails\"N\n" +
+	"$NumscriptInvalidNumberLiteralDetails\x12\x1b\n" +
+	"\x06source\x18\x01 \x01(\tH\x00R\x06source\x88\x01\x01B\t\n" +
+	"\a_source\"+\n" +
+	")NumscriptInvalidRemainingAllotmentDetails\"C\n" +
+	"\x1cNumscriptInvalidScopeDetails\x12\x19\n" +
+	"\x05scope\x18\x01 \x01(\tH\x00R\x05scope\x88\x01\x01B\b\n" +
+	"\x06_scope\"?\n" +
+	"\x1bNumscriptInvalidTypeDetails\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x05_name\"0\n" +
+	".NumscriptInvalidUnboundedScalingAddressDetails\"p\n" +
+	"'NumscriptInvalidUnboundedSendAllDetails\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01\x12\x19\n" +
+	"\x05scope\x18\x02 \x01(\tH\x01R\x05scope\x88\x01\x01B\a\n" +
+	"\x05_nameB\b\n" +
+	"\x06_scope\"R\n" +
+	"%NumscriptInvalidUncappedSourceDetails\x12\x1d\n" +
+	"\aaccount\x18\x01 \x01(\tH\x00R\aaccount\x88\x01\x01B\n" +
+	"\n" +
+	"\b_account\"K\n" +
+	"\x1eNumscriptInvalidVersionDetails\x12\x1d\n" +
+	"\aversion\x18\x01 \x01(\tH\x00R\aversion\x88\x01\x01B\n" +
+	"\n" +
+	"\b_version\"\x91\x01\n" +
+	" NumscriptMetadataNotFoundDetails\x12\x1d\n" +
+	"\aaccount\x18\x01 \x01(\tH\x00R\aaccount\x88\x01\x01\x12\x19\n" +
+	"\x05scope\x18\x02 \x01(\tH\x01R\x05scope\x88\x01\x01\x12\x15\n" +
+	"\x03key\x18\x03 \x01(\tH\x02R\x03key\x88\x01\x01B\n" +
+	"\n" +
+	"\b_accountB\b\n" +
+	"\x06_scopeB\x06\n" +
+	"\x04_key\"\x9c\x01\n" +
+	"\x1cNumscriptMissingFundsDetails\x12\x19\n" +
+	"\x05asset\x18\x01 \x01(\tH\x00R\x05asset\x88\x01\x01\x12\x1b\n" +
+	"\x06needed\x18\x02 \x01(\tH\x01R\x06needed\x88\x01\x01\x12!\n" +
+	"\tavailable\x18\x03 \x01(\tH\x02R\tavailable\x88\x01\x01B\b\n" +
+	"\x06_assetB\t\n" +
+	"\a_neededB\f\n" +
+	"\n" +
+	"_available\"C\n" +
+	"\x1fNumscriptMissingVariableDetails\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x05_name\"k\n" +
+	"\x1fNumscriptNameInvalidCharDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"h\n" +
+	"\x1cNumscriptNameRequiredDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"g\n" +
+	"\x1bNumscriptNameTooLongDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"H\n" +
+	"\x1eNumscriptNegativeAmountDetails\x12\x1b\n" +
+	"\x06amount\x18\x01 \x01(\tH\x00R\x06amount\x88\x01\x01B\t\n" +
+	"\a_amount\"\xbe\x01\n" +
+	"\x1fNumscriptNegativeBalanceDetails\x12\x1d\n" +
+	"\aaccount\x18\x01 \x01(\tH\x00R\aaccount\x88\x01\x01\x12\x19\n" +
+	"\x05scope\x18\x02 \x01(\tH\x01R\x05scope\x88\x01\x01\x12\x19\n" +
+	"\x05asset\x18\x03 \x01(\tH\x02R\x05asset\x88\x01\x01\x12\x1b\n" +
+	"\x06amount\x18\x04 \x01(\tH\x03R\x06amount\x88\x01\x01B\n" +
+	"\n" +
+	"\b_accountB\b\n" +
+	"\x06_scopeB\b\n" +
+	"\x06_assetB\t\n" +
+	"\a_amount\"L\n" +
+	"\x1fNumscriptNegativePortionDetails\x12\x1d\n" +
+	"\aportion\x18\x01 \x01(\tH\x00R\aportion\x88\x01\x01B\n" +
+	"\n" +
+	"\b_portion\"g\n" +
+	"\x18NumscriptNotFoundDetails\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01\x12\x1d\n" +
+	"\aversion\x18\x02 \x01(\tH\x01R\aversion\x88\x01\x01B\a\n" +
+	"\x05_nameB\n" +
+	"\n" +
+	"\b_version\"\x1c\n" +
+	"\x1aNumscriptParseErrorDetails\"\x8b\x01\n" +
+	"%NumscriptPostingAmountOverflowDetails\x12(\n" +
+	"\rposting_index\x18\x01 \x01(\x04H\x00R\fpostingIndex\x88\x01\x01\x12\x1b\n" +
+	"\x06amount\x18\x02 \x01(\tH\x01R\x06amount\x88\x01\x01B\x10\n" +
+	"\x0e_posting_indexB\t\n" +
+	"\a_amount\"\x8b\x01\n" +
+	"%NumscriptPostingNegativeAmountDetails\x12(\n" +
+	"\rposting_index\x18\x01 \x01(\x04H\x00R\fpostingIndex\x88\x01\x01\x12\x1b\n" +
+	"\x06amount\x18\x02 \x01(\tH\x01R\x06amount\x88\x01\x01B\x10\n" +
+	"\x0e_posting_indexB\t\n" +
+	"\a_amount\"8\n" +
+	"\x17NumscriptRuntimeDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01B\x06\n" +
+	"\x04_key\"n\n" +
+	"\"NumscriptScalingUnsupportedDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"I\n" +
+	"\x19NumscriptTypeErrorDetails\x12\x1f\n" +
+	"\bexpected\x18\x01 \x01(\tH\x00R\bexpected\x88\x01\x01B\v\n" +
+	"\t_expected\"C\n" +
+	"\x1fNumscriptUnboundFunctionDetails\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x05_name\"C\n" +
+	"\x1fNumscriptUnboundVariableDetails\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x05_name\"s\n" +
+	"$NumscriptVersionAlreadyExistsDetails\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01\x12\x1d\n" +
+	"\aversion\x18\x02 \x01(\tH\x01R\aversion\x88\x01\x01B\a\n" +
+	"\x05_nameB\n" +
+	"\n" +
+	"\b_version\"l\n" +
+	" PostingsAndScriptConflictDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"\x1b\n" +
+	"\x19PreloadUnavailableDetails\"m\n" +
+	"!PreparedQueryAlreadyExistsDetails\x12\x1b\n" +
+	"\x06ledger\x18\x01 \x01(\tH\x00R\x06ledger\x88\x01\x01\x12\x17\n" +
+	"\x04name\x18\x02 \x01(\tH\x01R\x04name\x88\x01\x01B\t\n" +
+	"\a_ledgerB\a\n" +
+	"\x05_name\"o\n" +
+	"#PreparedQueryNameInvalidCharDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"l\n" +
+	" PreparedQueryNameRequiredDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"k\n" +
+	"\x1fPreparedQueryNameTooLongDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"h\n" +
+	"\x1cPreparedQueryNotFoundDetails\x12\x1b\n" +
+	"\x06ledger\x18\x01 \x01(\tH\x00R\x06ledger\x88\x01\x01\x12\x17\n" +
+	"\x04name\x18\x02 \x01(\tH\x01R\x04name\x88\x01\x01B\t\n" +
+	"\a_ledgerB\a\n" +
+	"\x05_name\"h\n" +
+	"\x1cPreparedQueryRequiredDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"q\n" +
+	"%PreparedQueryTargetUnsupportedDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"b\n" +
+	"!RevertTargetCreatedInBatchDetails\x12*\n" +
+	"\x0etransaction_id\x18\x01 \x01(\x04H\x00R\rtransactionId\x88\x01\x01B\x11\n" +
+	"\x0f_transaction_id\"k\n" +
+	"\x1fScopedBalanceUnsupportedDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"m\n" +
+	"!ScriptAndReferenceConflictDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"a\n" +
+	"\x15ScriptRequiredDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"E\n" +
+	"\x18SequenceExhaustedDetails\x12\x1d\n" +
+	"\acounter\x18\x01 \x01(\tH\x00R\acounter\x88\x01\x01B\n" +
+	"\n" +
+	"\b_counter\"j\n" +
+	"\x1eSigningKeyIdInvalidCharDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"g\n" +
+	"\x1bSigningKeyIdRequiredDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"f\n" +
+	"\x1aSigningKeyIdTooLongDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"j\n" +
+	"\x1eSigningKeyInvalidLengthDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"<\n" +
+	"\x18SinkAlreadyExistsDetails\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x05_name\"\x92\x01\n" +
+	"\x1cSinkBatchSizeTooLargeDetails\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01\x12\"\n" +
+	"\n" +
+	"batch_size\x18\x02 \x01(\x04H\x01R\tbatchSize\x88\x01\x01\x12\x15\n" +
+	"\x03max\x18\x03 \x01(\x04H\x02R\x03max\x88\x01\x01B\a\n" +
+	"\x05_nameB\r\n" +
+	"\v_batch_sizeB\x06\n" +
+	"\x04_max\"}\n" +
+	"\x1dSinkControllerMismatchDetails\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01\x12(\n" +
+	"\rcontroller_id\x18\x02 \x01(\tH\x01R\fcontrollerId\x88\x01\x01B\a\n" +
+	"\x05_nameB\x10\n" +
+	"\x0e_controller_id\"7\n" +
+	"\x13SinkNotFoundDetails\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01B\a\n" +
+	"\x05_name\"\xa8\x01\n" +
+	"\x19StaleClusterPolicyDetails\x120\n" +
+	"\x11proposed_revision\x18\x01 \x01(\x04H\x00R\x10proposedRevision\x88\x01\x01\x12.\n" +
+	"\x10applied_revision\x18\x02 \x01(\x04H\x01R\x0fappliedRevision\x88\x01\x01B\x14\n" +
+	"\x12_proposed_revisionB\x13\n" +
+	"\x11_applied_revision\"\x1e\n" +
+	"\x1cStaleInputsResolutionDetails\"\x16\n" +
+	"\x14StaleProposalDetails\"\x1f\n" +
+	"\x1dStorageOperationFailedDetails\"a\n" +
+	"\x15TargetRequiredDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"b\n" +
+	"!TransactionAlreadyRevertedDetails\x12*\n" +
+	"\x0etransaction_id\x18\x01 \x01(\x04H\x00R\rtransactionId\x88\x01\x01B\x11\n" +
+	"\x0f_transaction_id\"[\n" +
+	"\x1aTransactionNotFoundDetails\x12*\n" +
+	"\x0etransaction_id\x18\x01 \x01(\x04H\x00R\rtransactionId\x88\x01\x01B\x11\n" +
+	"\x0f_transaction_id\"\xd7\x01\n" +
+	"#TransactionReferenceConflictDetails\x12\x1b\n" +
+	"\x06ledger\x18\x01 \x01(\tH\x00R\x06ledger\x88\x01\x01\x12!\n" +
+	"\treference\x18\x02 \x01(\tH\x01R\treference\x88\x01\x01\x12;\n" +
+	"\x17existing_transaction_id\x18\x03 \x01(\x04H\x02R\x15existingTransactionId\x88\x01\x01B\t\n" +
+	"\a_ledgerB\f\n" +
+	"\n" +
+	"_referenceB\x1a\n" +
+	"\x18_existing_transaction_id\"V\n" +
+	"#TransactionReferenceNotFoundDetails\x12!\n" +
+	"\treference\x18\x01 \x01(\tH\x00R\treference\x88\x01\x01B\f\n" +
+	"\n" +
+	"_reference\"n\n" +
+	"\"TransactionReferenceTooLongDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"d\n" +
+	"#TransactionStateInconsistentDetails\x12*\n" +
+	"\x0etransaction_id\x18\x01 \x01(\x04H\x00R\rtransactionId\x88\x01\x01B\x11\n" +
+	"\x0f_transaction_id\"k\n" +
+	"\x1fTransactionTargetMissingDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"N\n" +
+	"\x1eTransientAccountNonZeroDetails\x12\x1f\n" +
+	"\baccounts\x18\x01 \x01(\tH\x00R\baccounts\x88\x01\x01B\v\n" +
+	"\t_accounts\"]\n" +
+	"\x11ValidationDetails\x12\x15\n" +
+	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
+	"\aaccount\x18\x02 \x01(\tH\x01R\aaccount\x88\x01\x01B\x06\n" +
+	"\x04_keyB\n" +
+	"\n" +
+	"\b_account\"\xb5\x01\n" +
+	"\x1cVolumeNotMaterializedDetails\x12\x1d\n" +
+	"\aaccount\x18\x01 \x01(\tH\x00R\aaccount\x88\x01\x01\x12\x19\n" +
+	"\x05asset\x18\x02 \x01(\tH\x01R\x05asset\x88\x01\x01\x12\x19\n" +
+	"\x05color\x18\x03 \x01(\tH\x02R\x05color\x88\x01\x01\x12\x17\n" +
+	"\x04side\x18\x04 \x01(\tH\x03R\x04side\x88\x01\x01B\n" +
+	"\n" +
+	"\b_accountB\b\n" +
+	"\x06_assetB\b\n" +
+	"\x06_colorB\a\n" +
+	"\x05_side\"\x81\x02\n" +
+	"\x15VolumeOverflowDetails\x12\x1d\n" +
+	"\aaccount\x18\x01 \x01(\tH\x00R\aaccount\x88\x01\x01\x12\x19\n" +
+	"\x05asset\x18\x02 \x01(\tH\x01R\x05asset\x88\x01\x01\x12\x19\n" +
+	"\x05color\x18\x03 \x01(\tH\x02R\x05color\x88\x01\x01\x12\x17\n" +
+	"\x04side\x18\x04 \x01(\tH\x03R\x04side\x88\x01\x01\x12\x1b\n" +
+	"\x06amount\x18\x05 \x01(\tH\x04R\x06amount\x88\x01\x01\x12\x1d\n" +
+	"\acurrent\x18\x06 \x01(\tH\x05R\acurrent\x88\x01\x01B\n" +
+	"\n" +
+	"\b_accountB\b\n" +
+	"\x06_assetB\b\n" +
+	"\x06_colorB\a\n" +
+	"\x05_sideB\t\n" +
+	"\a_amountB\n" +
+	"\n" +
+	"\b_current\"\x1f\n" +
+	"\x1dWritesBlockedClockSkewDetails\"\x1e\n" +
+	"\x1cWritesBlockedDiskFullDetails\"\x84\x01\n" +
 	"\x0fOrderSkippedLog\x12+\n" +
 	"\x06reason\x18\x01 \x01(\x0e2\x13.common.ErrorReasonR\x06reason\x12\x12\n" +
-	"\x04code\x18\x02 \x01(\tR\x04code\x128\n" +
-	"\x05facts\x18\x03 \x03(\v2\".common.OrderSkippedLog.FactsEntryR\x05facts\x1a8\n" +
-	"\n" +
-	"FactsEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x97\x01\n" +
+	"\x04code\x18\x02 \x01(\tR\x04code\x120\n" +
+	"\adetails\x18\x03 \x01(\v2\x16.common.FailureDetailsR\adetails\"\x97\x01\n" +
 	"\x0fCreatedIndexLog\x12\x1f\n" +
 	"\x02id\x18\x01 \x01(\v2\x0f.common.IndexIDR\x02id\x123\n" +
 	"\n" +
@@ -13780,15 +25847,11 @@ const file_common_proto_rawDesc = "" +
 	"\afailure\x18\x05 \x01(\v2\x1a.common.IdempotencyFailureR\afailure\x12\x1b\n" +
 	"\tlog_count\x18\x06 \x01(\rR\blogCount\x12\x1d\n" +
 	"\n" +
-	"expires_at\x18\a \x01(\x06R\texpiresAt\"\xcc\x01\n" +
+	"expires_at\x18\a \x01(\x06R\texpiresAt\"\x87\x01\n" +
 	"\x12IdempotencyFailure\x12+\n" +
 	"\x06reason\x18\x01 \x01(\x0e2\x13.common.ErrorReasonR\x06reason\x12\x12\n" +
-	"\x04code\x18\x02 \x01(\tR\x04code\x12;\n" +
-	"\x05facts\x18\x03 \x03(\v2%.common.IdempotencyFailure.FactsEntryR\x05facts\x1a8\n" +
-	"\n" +
-	"FactsEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"B\n" +
+	"\x04code\x18\x02 \x01(\tR\x04code\x120\n" +
+	"\adetails\x18\x03 \x01(\v2\x16.common.FailureDetailsR\adetails\"B\n" +
 	"\x19TransactionReferenceValue\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\x06R\rtransactionId\"1\n" +
 	"\x15NumscriptVersionValue\x12\x18\n" +
@@ -14199,225 +26262,397 @@ func file_common_proto_rawDescGZIP() []byte {
 }
 
 var file_common_proto_enumTypes = make([]protoimpl.EnumInfo, 18)
-var file_common_proto_msgTypes = make([]protoimpl.MessageInfo, 181)
+var file_common_proto_msgTypes = make([]protoimpl.MessageInfo, 353)
 var file_common_proto_goTypes = []any{
-	(AuthScope)(0),                                   // 0: common.AuthScope
-	(DynamicAuthResolver)(0),                         // 1: common.DynamicAuthResolver
-	(TargetType)(0),                                  // 2: common.TargetType
-	(MetadataType)(0),                                // 3: common.MetadataType
-	(TransactionBuiltinIndex)(0),                     // 4: common.TransactionBuiltinIndex
-	(AccountBuiltinIndex)(0),                         // 5: common.AccountBuiltinIndex
-	(LogBuiltinIndex)(0),                             // 6: common.LogBuiltinIndex
-	(HashAlgorithm)(0),                               // 7: common.HashAlgorithm
-	(EventType)(0),                                   // 8: common.EventType
-	(LedgerMode)(0),                                  // 9: common.LedgerMode
-	(MirrorSyncState)(0),                             // 10: common.MirrorSyncState
-	(ErrorReason)(0),                                 // 11: common.ErrorReason
-	(ChartEnforcementMode)(0),                        // 12: common.ChartEnforcementMode
-	(AccountTypePersistence)(0),                      // 13: common.AccountTypePersistence
-	(AuditField)(0),                                  // 14: common.AuditField
-	(AddressRole)(0),                                 // 15: common.AddressRole
-	(QueryTarget)(0),                                 // 16: common.QueryTarget
-	(QueryMode)(0),                                   // 17: common.QueryMode
-	(*MethodAuthPolicy)(nil),                         // 18: common.MethodAuthPolicy
-	(*Timestamp)(nil),                                // 19: common.Timestamp
-	(*NullValue)(nil),                                // 20: common.NullValue
-	(*MetadataValue)(nil),                            // 21: common.MetadataValue
-	(*MetadataMap)(nil),                              // 22: common.MetadataMap
-	(*ParameterValue)(nil),                           // 23: common.ParameterValue
-	(*Uint256)(nil),                                  // 24: common.Uint256
-	(*Posting)(nil),                                  // 25: common.Posting
-	(*Transaction)(nil),                              // 26: common.Transaction
-	(*Script)(nil),                                   // 27: common.Script
-	(*BigUint)(nil),                                  // 28: common.BigUint
-	(*SignedBigInt)(nil),                             // 29: common.SignedBigInt
-	(*Volumes)(nil),                                  // 30: common.Volumes
-	(*VolumesWithBalance)(nil),                       // 31: common.VolumesWithBalance
-	(*VolumesByAssets)(nil),                          // 32: common.VolumesByAssets
-	(*VolumeEntry)(nil),                              // 33: common.VolumeEntry
-	(*PostCommitVolumes)(nil),                        // 34: common.PostCommitVolumes
-	(*AccountVolume)(nil),                            // 35: common.AccountVolume
-	(*Account)(nil),                                  // 36: common.Account
-	(*TargetAccount)(nil),                            // 37: common.TargetAccount
-	(*Target)(nil),                                   // 38: common.Target
-	(*MetadataFieldSchema)(nil),                      // 39: common.MetadataFieldSchema
-	(*MetadataSchema)(nil),                           // 40: common.MetadataSchema
-	(*SetMetadataFieldTypeCommand)(nil),              // 41: common.SetMetadataFieldTypeCommand
-	(*MetadataIndexID)(nil),                          // 42: common.MetadataIndexID
-	(*IndexID)(nil),                                  // 43: common.IndexID
-	(*Index)(nil),                                    // 44: common.Index
-	(*Idempotency)(nil),                              // 45: common.Idempotency
-	(*Log)(nil),                                      // 46: common.Log
-	(*LogPayload)(nil),                               // 47: common.LogPayload
-	(*PromotedLedgerLog)(nil),                        // 48: common.PromotedLedgerLog
-	(*RegisteredSigningKeyLog)(nil),                  // 49: common.RegisteredSigningKeyLog
-	(*RevokedSigningKeyLog)(nil),                     // 50: common.RevokedSigningKeyLog
-	(*SigningKey)(nil),                               // 51: common.SigningKey
-	(*SetSigningConfigLog)(nil),                      // 52: common.SetSigningConfigLog
-	(*AddedEventsSinkLog)(nil),                       // 53: common.AddedEventsSinkLog
-	(*RemovedEventsSinkLog)(nil),                     // 54: common.RemovedEventsSinkLog
-	(*SetMaintenanceModeLog)(nil),                    // 55: common.SetMaintenanceModeLog
-	(*SetClusterPolicyLog)(nil),                      // 56: common.SetClusterPolicyLog
-	(*BloomTypeConfig)(nil),                          // 57: common.BloomTypeConfig
-	(*ClusterConfig)(nil),                            // 58: common.ClusterConfig
-	(*PersistedClusterState)(nil),                    // 59: common.PersistedClusterState
-	(*ClusterPolicy)(nil),                            // 60: common.ClusterPolicy
-	(*CreatedPreparedQueryLog)(nil),                  // 61: common.CreatedPreparedQueryLog
-	(*UpdatedPreparedQueryLog)(nil),                  // 62: common.UpdatedPreparedQueryLog
-	(*DeletedPreparedQueryLog)(nil),                  // 63: common.DeletedPreparedQueryLog
-	(*SavedLedgerMetadataLog)(nil),                   // 64: common.SavedLedgerMetadataLog
-	(*DeletedLedgerMetadataLog)(nil),                 // 65: common.DeletedLedgerMetadataLog
-	(*NumscriptInfo)(nil),                            // 66: common.NumscriptInfo
-	(*SavedNumscriptLog)(nil),                        // 67: common.SavedNumscriptLog
-	(*NumscriptVersionEntry)(nil),                    // 68: common.NumscriptVersionEntry
-	(*TemplateUsage)(nil),                            // 69: common.TemplateUsage
-	(*SetQueryCheckpointScheduleLog)(nil),            // 70: common.SetQueryCheckpointScheduleLog
-	(*DeletedQueryCheckpointScheduleLog)(nil),        // 71: common.DeletedQueryCheckpointScheduleLog
-	(*CreatedQueryCheckpointLog)(nil),                // 72: common.CreatedQueryCheckpointLog
-	(*DeletedQueryCheckpointLog)(nil),                // 73: common.DeletedQueryCheckpointLog
-	(*SinkConfig)(nil),                               // 74: common.SinkConfig
-	(*SinkStatus)(nil),                               // 75: common.SinkStatus
-	(*SinkError)(nil),                                // 76: common.SinkError
-	(*NatsSinkConfig)(nil),                           // 77: common.NatsSinkConfig
-	(*ClickHouseSinkConfig)(nil),                     // 78: common.ClickHouseSinkConfig
-	(*KafkaSinkConfig)(nil),                          // 79: common.KafkaSinkConfig
-	(*HttpSinkConfig)(nil),                           // 80: common.HttpSinkConfig
-	(*DatabricksSinkConfig)(nil),                     // 81: common.DatabricksSinkConfig
-	(*DatabricksOAuthM2M)(nil),                       // 82: common.DatabricksOAuthM2M
-	(*CreatedLedgerLog)(nil),                         // 83: common.CreatedLedgerLog
-	(*DeletedLedgerLog)(nil),                         // 84: common.DeletedLedgerLog
-	(*ApplyLedgerLog)(nil),                           // 85: common.ApplyLedgerLog
-	(*LedgerLog)(nil),                                // 86: common.LedgerLog
-	(*TouchedVolume)(nil),                            // 87: common.TouchedVolume
-	(*LedgerLogPayload)(nil),                         // 88: common.LedgerLogPayload
-	(*OrderSkippedLog)(nil),                          // 89: common.OrderSkippedLog
-	(*CreatedIndexLog)(nil),                          // 90: common.CreatedIndexLog
-	(*DroppedIndexLog)(nil),                          // 91: common.DroppedIndexLog
-	(*FilledGapLog)(nil),                             // 92: common.FilledGapLog
-	(*CreatedTransaction)(nil),                       // 93: common.CreatedTransaction
-	(*RevertedTransaction)(nil),                      // 94: common.RevertedTransaction
-	(*SavedMetadata)(nil),                            // 95: common.SavedMetadata
-	(*DeletedMetadata)(nil),                          // 96: common.DeletedMetadata
-	(*SetMetadataFieldTypeLog)(nil),                  // 97: common.SetMetadataFieldTypeLog
-	(*RemovedMetadataFieldTypeLog)(nil),              // 98: common.RemovedMetadataFieldTypeLog
-	(*MirrorSourceConfig)(nil),                       // 99: common.MirrorSourceConfig
-	(*MirrorRewriteRule)(nil),                        // 100: common.MirrorRewriteRule
-	(*CreatedTransactionRule)(nil),                   // 101: common.CreatedTransactionRule
-	(*RevertedTransactionRule)(nil),                  // 102: common.RevertedTransactionRule
-	(*SavedMetadataRule)(nil),                        // 103: common.SavedMetadataRule
-	(*DeletedMetadataRule)(nil),                      // 104: common.DeletedMetadataRule
-	(*AnyVariantRule)(nil),                           // 105: common.AnyVariantRule
-	(*CreatedTransactionAction)(nil),                 // 106: common.CreatedTransactionAction
-	(*RevertedTransactionAction)(nil),                // 107: common.RevertedTransactionAction
-	(*SavedMetadataAction)(nil),                      // 108: common.SavedMetadataAction
-	(*DeletedMetadataAction)(nil),                    // 109: common.DeletedMetadataAction
-	(*AnyVariantAction)(nil),                         // 110: common.AnyVariantAction
-	(*RewriteAddressAction)(nil),                     // 111: common.RewriteAddressAction
-	(*SetMetadataAction)(nil),                        // 112: common.SetMetadataAction
-	(*DeleteMetadataAction)(nil),                     // 113: common.DeleteMetadataAction
-	(*SetAccountMetadataAction)(nil),                 // 114: common.SetAccountMetadataAction
-	(*DeleteAccountMetadataAction)(nil),              // 115: common.DeleteAccountMetadataAction
-	(*SetAccountMetadataFromAddressAction)(nil),      // 116: common.SetAccountMetadataFromAddressAction
-	(*SetAccountMetadataFromAddressReplacement)(nil), // 117: common.SetAccountMetadataFromAddressReplacement
-	(*DropAction)(nil),                               // 118: common.DropAction
-	(*HttpMirrorSourceConfig)(nil),                   // 119: common.HttpMirrorSourceConfig
-	(*OAuth2ClientCredentials)(nil),                  // 120: common.OAuth2ClientCredentials
-	(*PostgresMirrorSourceConfig)(nil),               // 121: common.PostgresMirrorSourceConfig
-	(*PostgresAwsIamAuth)(nil),                       // 122: common.PostgresAwsIamAuth
-	(*MirrorSyncError)(nil),                          // 123: common.MirrorSyncError
-	(*MirrorSyncProgress)(nil),                       // 124: common.MirrorSyncProgress
-	(*LedgerInfo)(nil),                               // 125: common.LedgerInfo
-	(*SaveMetadataCommand)(nil),                      // 126: common.SaveMetadataCommand
-	(*DeleteMetadataCommand)(nil),                    // 127: common.DeleteMetadataCommand
-	(*TransactionState)(nil),                         // 128: common.TransactionState
-	(*IdempotencyKeyValue)(nil),                      // 129: common.IdempotencyKeyValue
-	(*IdempotencyFailure)(nil),                       // 130: common.IdempotencyFailure
-	(*TransactionReferenceValue)(nil),                // 131: common.TransactionReferenceValue
-	(*NumscriptVersionValue)(nil),                    // 132: common.NumscriptVersionValue
-	(*SegmentType)(nil),                              // 133: common.SegmentType
-	(*UUIDConstraint)(nil),                           // 134: common.UUIDConstraint
-	(*Uint64Constraint)(nil),                         // 135: common.Uint64Constraint
-	(*BytesConstraint)(nil),                          // 136: common.BytesConstraint
-	(*AccountType)(nil),                              // 137: common.AccountType
-	(*AddedAccountTypeLog)(nil),                      // 138: common.AddedAccountTypeLog
-	(*RemovedAccountTypeLog)(nil),                    // 139: common.RemovedAccountTypeLog
-	(*UpdatedDefaultEnforcementModeLog)(nil),         // 140: common.UpdatedDefaultEnforcementModeLog
-	(*QueryFilter)(nil),                              // 141: common.QueryFilter
-	(*ReferenceCondition)(nil),                       // 142: common.ReferenceCondition
-	(*RevertedCondition)(nil),                        // 143: common.RevertedCondition
-	(*AuditCondition)(nil),                           // 144: common.AuditCondition
-	(*LedgerCondition)(nil),                          // 145: common.LedgerCondition
-	(*LogIdCondition)(nil),                           // 146: common.LogIdCondition
-	(*BuiltinUintCondition)(nil),                     // 147: common.BuiltinUintCondition
-	(*LogBuiltinUintCondition)(nil),                  // 148: common.LogBuiltinUintCondition
-	(*AccountHasAssetCondition)(nil),                 // 149: common.AccountHasAssetCondition
-	(*AndFilter)(nil),                                // 150: common.AndFilter
-	(*OrFilter)(nil),                                 // 151: common.OrFilter
-	(*NotFilter)(nil),                                // 152: common.NotFilter
-	(*FieldRef)(nil),                                 // 153: common.FieldRef
-	(*FieldCondition)(nil),                           // 154: common.FieldCondition
-	(*StringCondition)(nil),                          // 155: common.StringCondition
-	(*IntCondition)(nil),                             // 156: common.IntCondition
-	(*UintCondition)(nil),                            // 157: common.UintCondition
-	(*BoolCondition)(nil),                            // 158: common.BoolCondition
-	(*ExistsCondition)(nil),                          // 159: common.ExistsCondition
-	(*AddressMatch)(nil),                             // 160: common.AddressMatch
-	(*PreparedQuery)(nil),                            // 161: common.PreparedQuery
-	(*AggregatedVolume)(nil),                         // 162: common.AggregatedVolume
-	(*AggregateResult)(nil),                          // 163: common.AggregateResult
-	(*GroupedAggregateResult)(nil),                   // 164: common.GroupedAggregateResult
-	(*PreparedQueryCursor)(nil),                      // 165: common.PreparedQueryCursor
-	(*LedgerStats)(nil),                              // 166: common.LedgerStats
-	(*PersistedConfig)(nil),                          // 167: common.PersistedConfig
-	(*CallerIdentity)(nil),                           // 168: common.CallerIdentity
-	(*AuthenticatedCaller)(nil),                      // 169: common.AuthenticatedCaller
-	(*AnonymousCaller)(nil),                          // 170: common.AnonymousCaller
-	(*SystemCaller)(nil),                             // 171: common.SystemCaller
-	(*AuthDisabledCaller)(nil),                       // 172: common.AuthDisabledCaller
-	(*CallerSnapshot)(nil),                           // 173: common.CallerSnapshot
-	(*S3StorageConfig)(nil),                          // 174: common.S3StorageConfig
-	(*AzureStorageConfig)(nil),                       // 175: common.AzureStorageConfig
-	(*BackupStorage)(nil),                            // 176: common.BackupStorage
-	(*ReadOptions)(nil),                              // 177: common.ReadOptions
-	(*ListOptions)(nil),                              // 178: common.ListOptions
-	nil,                                              // 179: common.MetadataMap.ValuesEntry
-	nil,                                              // 180: common.Transaction.MetadataEntry
-	nil,                                              // 181: common.Script.VarsEntry
-	nil,                                              // 182: common.PostCommitVolumes.VolumesByAccountEntry
-	nil,                                              // 183: common.Account.MetadataEntry
-	nil,                                              // 184: common.MetadataSchema.AccountFieldsEntry
-	nil,                                              // 185: common.MetadataSchema.TransactionFieldsEntry
-	nil,                                              // 186: common.MetadataSchema.LedgerFieldsEntry
-	nil,                                              // 187: common.SavedLedgerMetadataLog.MetadataEntry
-	nil,                                              // 188: common.CreatedLedgerLog.AccountTypesEntry
-	nil,                                              // 189: common.CreatedLedgerLog.MetadataEntry
-	nil,                                              // 190: common.OrderSkippedLog.FactsEntry
-	nil,                                              // 191: common.CreatedTransaction.AccountMetadataEntry
-	nil,                                              // 192: common.SavedMetadata.MetadataEntry
-	nil,                                              // 193: common.LedgerInfo.AccountTypesEntry
-	nil,                                              // 194: common.LedgerInfo.MetadataEntry
-	nil,                                              // 195: common.SaveMetadataCommand.MetadataEntry
-	nil,                                              // 196: common.TransactionState.MetadataEntry
-	nil,                                              // 197: common.IdempotencyFailure.FactsEntry
-	nil,                                              // 198: common.AccountType.SegmentTypesEntry
-	(*signaturepb.SignedLog)(nil),                    // 199: signature.SignedLog
-	(*descriptorpb.MethodOptions)(nil),               // 200: google.protobuf.MethodOptions
-	(*descriptorpb.FieldOptions)(nil),                // 201: google.protobuf.FieldOptions
+	(AuthScope)(0),                                          // 0: common.AuthScope
+	(DynamicAuthResolver)(0),                                // 1: common.DynamicAuthResolver
+	(TargetType)(0),                                         // 2: common.TargetType
+	(MetadataType)(0),                                       // 3: common.MetadataType
+	(TransactionBuiltinIndex)(0),                            // 4: common.TransactionBuiltinIndex
+	(AccountBuiltinIndex)(0),                                // 5: common.AccountBuiltinIndex
+	(LogBuiltinIndex)(0),                                    // 6: common.LogBuiltinIndex
+	(HashAlgorithm)(0),                                      // 7: common.HashAlgorithm
+	(EventType)(0),                                          // 8: common.EventType
+	(LedgerMode)(0),                                         // 9: common.LedgerMode
+	(MirrorSyncState)(0),                                    // 10: common.MirrorSyncState
+	(ErrorReason)(0),                                        // 11: common.ErrorReason
+	(ChartEnforcementMode)(0),                               // 12: common.ChartEnforcementMode
+	(AccountTypePersistence)(0),                             // 13: common.AccountTypePersistence
+	(AuditField)(0),                                         // 14: common.AuditField
+	(AddressRole)(0),                                        // 15: common.AddressRole
+	(QueryTarget)(0),                                        // 16: common.QueryTarget
+	(QueryMode)(0),                                          // 17: common.QueryMode
+	(*MethodAuthPolicy)(nil),                                // 18: common.MethodAuthPolicy
+	(*Timestamp)(nil),                                       // 19: common.Timestamp
+	(*NullValue)(nil),                                       // 20: common.NullValue
+	(*MetadataValue)(nil),                                   // 21: common.MetadataValue
+	(*MetadataMap)(nil),                                     // 22: common.MetadataMap
+	(*ParameterValue)(nil),                                  // 23: common.ParameterValue
+	(*Uint256)(nil),                                         // 24: common.Uint256
+	(*Posting)(nil),                                         // 25: common.Posting
+	(*Transaction)(nil),                                     // 26: common.Transaction
+	(*Script)(nil),                                          // 27: common.Script
+	(*BigUint)(nil),                                         // 28: common.BigUint
+	(*SignedBigInt)(nil),                                    // 29: common.SignedBigInt
+	(*Volumes)(nil),                                         // 30: common.Volumes
+	(*VolumesWithBalance)(nil),                              // 31: common.VolumesWithBalance
+	(*VolumesByAssets)(nil),                                 // 32: common.VolumesByAssets
+	(*VolumeEntry)(nil),                                     // 33: common.VolumeEntry
+	(*PostCommitVolumes)(nil),                               // 34: common.PostCommitVolumes
+	(*AccountVolume)(nil),                                   // 35: common.AccountVolume
+	(*Account)(nil),                                         // 36: common.Account
+	(*TargetAccount)(nil),                                   // 37: common.TargetAccount
+	(*Target)(nil),                                          // 38: common.Target
+	(*MetadataFieldSchema)(nil),                             // 39: common.MetadataFieldSchema
+	(*MetadataSchema)(nil),                                  // 40: common.MetadataSchema
+	(*SetMetadataFieldTypeCommand)(nil),                     // 41: common.SetMetadataFieldTypeCommand
+	(*MetadataIndexID)(nil),                                 // 42: common.MetadataIndexID
+	(*IndexID)(nil),                                         // 43: common.IndexID
+	(*Index)(nil),                                           // 44: common.Index
+	(*Idempotency)(nil),                                     // 45: common.Idempotency
+	(*Log)(nil),                                             // 46: common.Log
+	(*LogPayload)(nil),                                      // 47: common.LogPayload
+	(*PromotedLedgerLog)(nil),                               // 48: common.PromotedLedgerLog
+	(*RegisteredSigningKeyLog)(nil),                         // 49: common.RegisteredSigningKeyLog
+	(*RevokedSigningKeyLog)(nil),                            // 50: common.RevokedSigningKeyLog
+	(*SigningKey)(nil),                                      // 51: common.SigningKey
+	(*SetSigningConfigLog)(nil),                             // 52: common.SetSigningConfigLog
+	(*AddedEventsSinkLog)(nil),                              // 53: common.AddedEventsSinkLog
+	(*RemovedEventsSinkLog)(nil),                            // 54: common.RemovedEventsSinkLog
+	(*SetMaintenanceModeLog)(nil),                           // 55: common.SetMaintenanceModeLog
+	(*SetClusterPolicyLog)(nil),                             // 56: common.SetClusterPolicyLog
+	(*BloomTypeConfig)(nil),                                 // 57: common.BloomTypeConfig
+	(*ClusterConfig)(nil),                                   // 58: common.ClusterConfig
+	(*PersistedClusterState)(nil),                           // 59: common.PersistedClusterState
+	(*ClusterPolicy)(nil),                                   // 60: common.ClusterPolicy
+	(*CreatedPreparedQueryLog)(nil),                         // 61: common.CreatedPreparedQueryLog
+	(*UpdatedPreparedQueryLog)(nil),                         // 62: common.UpdatedPreparedQueryLog
+	(*DeletedPreparedQueryLog)(nil),                         // 63: common.DeletedPreparedQueryLog
+	(*SavedLedgerMetadataLog)(nil),                          // 64: common.SavedLedgerMetadataLog
+	(*DeletedLedgerMetadataLog)(nil),                        // 65: common.DeletedLedgerMetadataLog
+	(*NumscriptInfo)(nil),                                   // 66: common.NumscriptInfo
+	(*SavedNumscriptLog)(nil),                               // 67: common.SavedNumscriptLog
+	(*NumscriptVersionEntry)(nil),                           // 68: common.NumscriptVersionEntry
+	(*TemplateUsage)(nil),                                   // 69: common.TemplateUsage
+	(*SetQueryCheckpointScheduleLog)(nil),                   // 70: common.SetQueryCheckpointScheduleLog
+	(*DeletedQueryCheckpointScheduleLog)(nil),               // 71: common.DeletedQueryCheckpointScheduleLog
+	(*CreatedQueryCheckpointLog)(nil),                       // 72: common.CreatedQueryCheckpointLog
+	(*DeletedQueryCheckpointLog)(nil),                       // 73: common.DeletedQueryCheckpointLog
+	(*SinkConfig)(nil),                                      // 74: common.SinkConfig
+	(*SinkStatus)(nil),                                      // 75: common.SinkStatus
+	(*SinkError)(nil),                                       // 76: common.SinkError
+	(*NatsSinkConfig)(nil),                                  // 77: common.NatsSinkConfig
+	(*ClickHouseSinkConfig)(nil),                            // 78: common.ClickHouseSinkConfig
+	(*KafkaSinkConfig)(nil),                                 // 79: common.KafkaSinkConfig
+	(*HttpSinkConfig)(nil),                                  // 80: common.HttpSinkConfig
+	(*DatabricksSinkConfig)(nil),                            // 81: common.DatabricksSinkConfig
+	(*DatabricksOAuthM2M)(nil),                              // 82: common.DatabricksOAuthM2M
+	(*CreatedLedgerLog)(nil),                                // 83: common.CreatedLedgerLog
+	(*DeletedLedgerLog)(nil),                                // 84: common.DeletedLedgerLog
+	(*ApplyLedgerLog)(nil),                                  // 85: common.ApplyLedgerLog
+	(*LedgerLog)(nil),                                       // 86: common.LedgerLog
+	(*TouchedVolume)(nil),                                   // 87: common.TouchedVolume
+	(*LedgerLogPayload)(nil),                                // 88: common.LedgerLogPayload
+	(*FailureDetails)(nil),                                  // 89: common.FailureDetails
+	(*AccountAddressEmptyDetails)(nil),                      // 90: common.AccountAddressEmptyDetails
+	(*AccountAddressEmptySegmentDetails)(nil),               // 91: common.AccountAddressEmptySegmentDetails
+	(*AccountAddressInvalidCharDetails)(nil),                // 92: common.AccountAddressInvalidCharDetails
+	(*AccountAddressTooLongDetails)(nil),                    // 93: common.AccountAddressTooLongDetails
+	(*AccountNotMatchingTypeDetails)(nil),                   // 94: common.AccountNotMatchingTypeDetails
+	(*AccountTypeAlreadyExistsDetails)(nil),                 // 95: common.AccountTypeAlreadyExistsDetails
+	(*AccountTypeConflictDetails)(nil),                      // 96: common.AccountTypeConflictDetails
+	(*AccountTypeHasAccountsDetails)(nil),                   // 97: common.AccountTypeHasAccountsDetails
+	(*AccountTypeNameTooLongDetails)(nil),                   // 98: common.AccountTypeNameTooLongDetails
+	(*AccountTypeNotFoundDetails)(nil),                      // 99: common.AccountTypeNotFoundDetails
+	(*AccountTypePatternTooLongDetails)(nil),                // 100: common.AccountTypePatternTooLongDetails
+	(*AggregateOverflowDetails)(nil),                        // 101: common.AggregateOverflowDetails
+	(*AssetInvalidDetails)(nil),                             // 102: common.AssetInvalidDetails
+	(*AuditDisabledDetails)(nil),                            // 103: common.AuditDisabledDetails
+	(*BalanceNotFoundDetails)(nil),                          // 104: common.BalanceNotFoundDetails
+	(*BalanceNotPreloadedDetails)(nil),                      // 105: common.BalanceNotPreloadedDetails
+	(*CheckpointIdRequiredDetails)(nil),                     // 106: common.CheckpointIdRequiredDetails
+	(*CheckpointLimitReachedDetails)(nil),                   // 107: common.CheckpointLimitReachedDetails
+	(*CheckpointNotFoundDetails)(nil),                       // 108: common.CheckpointNotFoundDetails
+	(*CheckpointNotReadyDetails)(nil),                       // 109: common.CheckpointNotReadyDetails
+	(*ClusterPolicyInvalidDetails)(nil),                     // 110: common.ClusterPolicyInvalidDetails
+	(*ClusterPolicyRevisionConflictDetails)(nil),            // 111: common.ClusterPolicyRevisionConflictDetails
+	(*ClusterUnhealthyDetails)(nil),                         // 112: common.ClusterUnhealthyDetails
+	(*ColorInvalidDetails)(nil),                             // 113: common.ColorInvalidDetails
+	(*ColorTooLongDetails)(nil),                             // 114: common.ColorTooLongDetails
+	(*CoverageMissDetails)(nil),                             // 115: common.CoverageMissDetails
+	(*DependencyDiscoveryFailedDetails)(nil),                // 116: common.DependencyDiscoveryFailedDetails
+	(*EmptyTransactionDetails)(nil),                         // 117: common.EmptyTransactionDetails
+	(*ExecutionPlanTooLargeDetails)(nil),                    // 118: common.ExecutionPlanTooLargeDetails
+	(*FilterCompilationErrorDetails)(nil),                   // 119: common.FilterCompilationErrorDetails
+	(*IdempotencyCheckFailedDetails)(nil),                   // 120: common.IdempotencyCheckFailedDetails
+	(*IdempotencyKeyConflictDetails)(nil),                   // 121: common.IdempotencyKeyConflictDetails
+	(*IdRequiredDetails)(nil),                               // 122: common.IdRequiredDetails
+	(*IndexAlreadyExistsDetails)(nil),                       // 123: common.IndexAlreadyExistsDetails
+	(*IndexBuildingDetails)(nil),                            // 124: common.IndexBuildingDetails
+	(*IndexInconsistentDetails)(nil),                        // 125: common.IndexInconsistentDetails
+	(*IndexNotFoundDetails)(nil),                            // 126: common.IndexNotFoundDetails
+	(*IndexTargetUnsupportedDetails)(nil),                   // 127: common.IndexTargetUnsupportedDetails
+	(*InsufficientFundsDetails)(nil),                        // 128: common.InsufficientFundsDetails
+	(*InvalidApplyTypeDetails)(nil),                         // 129: common.InvalidApplyTypeDetails
+	(*InvalidCallerAttributionDetails)(nil),                 // 130: common.InvalidCallerAttributionDetails
+	(*InvalidCronExpressionDetails)(nil),                    // 131: common.InvalidCronExpressionDetails
+	(*InvalidExecutionPlanDetails)(nil),                     // 132: common.InvalidExecutionPlanDetails
+	(*InvalidOrderTypeDetails)(nil),                         // 133: common.InvalidOrderTypeDetails
+	(*InvalidPatternDetails)(nil),                           // 134: common.InvalidPatternDetails
+	(*InvalidSkippableReasonDetails)(nil),                   // 135: common.InvalidSkippableReasonDetails
+	(*LedgerAlreadyExistsDetails)(nil),                      // 136: common.LedgerAlreadyExistsDetails
+	(*LedgerDeletedDetails)(nil),                            // 137: common.LedgerDeletedDetails
+	(*LedgerInMirrorModeDetails)(nil),                       // 138: common.LedgerInMirrorModeDetails
+	(*LedgerNameInvalidCharDetails)(nil),                    // 139: common.LedgerNameInvalidCharDetails
+	(*LedgerNameRequiredDetails)(nil),                       // 140: common.LedgerNameRequiredDetails
+	(*LedgerNameReservedPrefixDetails)(nil),                 // 141: common.LedgerNameReservedPrefixDetails
+	(*LedgerNameTooLongDetails)(nil),                        // 142: common.LedgerNameTooLongDetails
+	(*LedgerNotFoundDetails)(nil),                           // 143: common.LedgerNotFoundDetails
+	(*LedgerNotInMirrorModeDetails)(nil),                    // 144: common.LedgerNotInMirrorModeDetails
+	(*MaintenanceModeDetails)(nil),                          // 145: common.MaintenanceModeDetails
+	(*MetadataFieldNotInSchemaDetails)(nil),                 // 146: common.MetadataFieldNotInSchemaDetails
+	(*MetadataKeyEmptyDetails)(nil),                         // 147: common.MetadataKeyEmptyDetails
+	(*MetadataKeyInvalidCharDetails)(nil),                   // 148: common.MetadataKeyInvalidCharDetails
+	(*MetadataKeyRequiredDetails)(nil),                      // 149: common.MetadataKeyRequiredDetails
+	(*MetadataLimitsUnconfiguredDetails)(nil),               // 150: common.MetadataLimitsUnconfiguredDetails
+	(*MetadataLimitExceededDetails)(nil),                    // 151: common.MetadataLimitExceededDetails
+	(*MetadataNotFoundDetails)(nil),                         // 152: common.MetadataNotFoundDetails
+	(*MetadataValueContainsNullByteDetails)(nil),            // 153: common.MetadataValueContainsNullByteDetails
+	(*MirrorHttpUrlInvalidDetails)(nil),                     // 154: common.MirrorHttpUrlInvalidDetails
+	(*MirrorIamRegionRequiredDetails)(nil),                  // 155: common.MirrorIamRegionRequiredDetails
+	(*MirrorIamRequiresTlsDetails)(nil),                     // 156: common.MirrorIamRequiresTlsDetails
+	(*MirrorRewriteRuleInvalidDetails)(nil),                 // 157: common.MirrorRewriteRuleInvalidDetails
+	(*MirrorV2LogIdGapDetails)(nil),                         // 158: common.MirrorV2LogIdGapDetails
+	(*MirrorV2LogIdInvalidDetails)(nil),                     // 159: common.MirrorV2LogIdInvalidDetails
+	(*NumscriptAssetMismatchDetails)(nil),                   // 160: common.NumscriptAssetMismatchDetails
+	(*NumscriptBadArityDetails)(nil),                        // 161: common.NumscriptBadArityDetails
+	(*NumscriptBadMetaValueDetails)(nil),                    // 162: common.NumscriptBadMetaValueDetails
+	(*NumscriptBadPortionDetails)(nil),                      // 163: common.NumscriptBadPortionDetails
+	(*NumscriptCannotCastScopedAccountDetails)(nil),         // 164: common.NumscriptCannotCastScopedAccountDetails
+	(*NumscriptCannotCastToStringDetails)(nil),              // 165: common.NumscriptCannotCastToStringDetails
+	(*NumscriptCannotStoreScopedAccountDetails)(nil),        // 166: common.NumscriptCannotStoreScopedAccountDetails
+	(*NumscriptCompileBadArityDetails)(nil),                 // 167: common.NumscriptCompileBadArityDetails
+	(*NumscriptCompileCannotCastToStringDetails)(nil),       // 168: common.NumscriptCompileCannotCastToStringDetails
+	(*NumscriptCompileCannotStoreScopedAccountDetails)(nil), // 169: common.NumscriptCompileCannotStoreScopedAccountDetails
+	(*NumscriptCompileDuplicateRemainingDetails)(nil),       // 170: common.NumscriptCompileDuplicateRemainingDetails
+	(*NumscriptCompileDuplicateVariableDetails)(nil),        // 171: common.NumscriptCompileDuplicateVariableDetails
+	(*NumscriptCompileErrorDetails)(nil),                    // 172: common.NumscriptCompileErrorDetails
+	(*NumscriptCompileExperimentalFeatureDetails)(nil),      // 173: common.NumscriptCompileExperimentalFeatureDetails
+	(*NumscriptCompileInvalidFeatureDetails)(nil),           // 174: common.NumscriptCompileInvalidFeatureDetails
+	(*NumscriptCompileInvalidMetaPositionDetails)(nil),      // 175: common.NumscriptCompileInvalidMetaPositionDetails
+	(*NumscriptCompileInvalidTypeDetails)(nil),              // 176: common.NumscriptCompileInvalidTypeDetails
+	(*NumscriptCompileInvalidUncappedSourceDetails)(nil),    // 177: common.NumscriptCompileInvalidUncappedSourceDetails
+	(*NumscriptCompileInvalidVariableValueDetails)(nil),     // 178: common.NumscriptCompileInvalidVariableValueDetails
+	(*NumscriptCompileMissingVariableDetails)(nil),          // 179: common.NumscriptCompileMissingVariableDetails
+	(*NumscriptCompileTypeMismatchDetails)(nil),             // 180: common.NumscriptCompileTypeMismatchDetails
+	(*NumscriptCompileUnboundVariableDetails)(nil),          // 181: common.NumscriptCompileUnboundVariableDetails
+	(*NumscriptCompileUnknownFunctionDetails)(nil),          // 182: common.NumscriptCompileUnknownFunctionDetails
+	(*NumscriptContentRequiredDetails)(nil),                 // 183: common.NumscriptContentRequiredDetails
+	(*NumscriptCurrencyMismatchDetails)(nil),                // 184: common.NumscriptCurrencyMismatchDetails
+	(*NumscriptDivideByZeroDetails)(nil),                    // 185: common.NumscriptDivideByZeroDetails
+	(*NumscriptExecutionErrorDetails)(nil),                  // 186: common.NumscriptExecutionErrorDetails
+	(*NumscriptExperimentalFeatureDetails)(nil),             // 187: common.NumscriptExperimentalFeatureDetails
+	(*NumscriptInvalidAccountNameDetails)(nil),              // 188: common.NumscriptInvalidAccountNameDetails
+	(*NumscriptInvalidAllotmentInSendAllDetails)(nil),       // 189: common.NumscriptInvalidAllotmentInSendAllDetails
+	(*NumscriptInvalidAllotmentSumDetails)(nil),             // 190: common.NumscriptInvalidAllotmentSumDetails
+	(*NumscriptInvalidAssetDetails)(nil),                    // 191: common.NumscriptInvalidAssetDetails
+	(*NumscriptInvalidColorDetails)(nil),                    // 192: common.NumscriptInvalidColorDetails
+	(*NumscriptInvalidFeatureDetails)(nil),                  // 193: common.NumscriptInvalidFeatureDetails
+	(*NumscriptInvalidMonetaryLiteralDetails)(nil),          // 194: common.NumscriptInvalidMonetaryLiteralDetails
+	(*NumscriptInvalidNestedMetaDetails)(nil),               // 195: common.NumscriptInvalidNestedMetaDetails
+	(*NumscriptInvalidNumberLiteralDetails)(nil),            // 196: common.NumscriptInvalidNumberLiteralDetails
+	(*NumscriptInvalidRemainingAllotmentDetails)(nil),       // 197: common.NumscriptInvalidRemainingAllotmentDetails
+	(*NumscriptInvalidScopeDetails)(nil),                    // 198: common.NumscriptInvalidScopeDetails
+	(*NumscriptInvalidTypeDetails)(nil),                     // 199: common.NumscriptInvalidTypeDetails
+	(*NumscriptInvalidUnboundedScalingAddressDetails)(nil),  // 200: common.NumscriptInvalidUnboundedScalingAddressDetails
+	(*NumscriptInvalidUnboundedSendAllDetails)(nil),         // 201: common.NumscriptInvalidUnboundedSendAllDetails
+	(*NumscriptInvalidUncappedSourceDetails)(nil),           // 202: common.NumscriptInvalidUncappedSourceDetails
+	(*NumscriptInvalidVersionDetails)(nil),                  // 203: common.NumscriptInvalidVersionDetails
+	(*NumscriptMetadataNotFoundDetails)(nil),                // 204: common.NumscriptMetadataNotFoundDetails
+	(*NumscriptMissingFundsDetails)(nil),                    // 205: common.NumscriptMissingFundsDetails
+	(*NumscriptMissingVariableDetails)(nil),                 // 206: common.NumscriptMissingVariableDetails
+	(*NumscriptNameInvalidCharDetails)(nil),                 // 207: common.NumscriptNameInvalidCharDetails
+	(*NumscriptNameRequiredDetails)(nil),                    // 208: common.NumscriptNameRequiredDetails
+	(*NumscriptNameTooLongDetails)(nil),                     // 209: common.NumscriptNameTooLongDetails
+	(*NumscriptNegativeAmountDetails)(nil),                  // 210: common.NumscriptNegativeAmountDetails
+	(*NumscriptNegativeBalanceDetails)(nil),                 // 211: common.NumscriptNegativeBalanceDetails
+	(*NumscriptNegativePortionDetails)(nil),                 // 212: common.NumscriptNegativePortionDetails
+	(*NumscriptNotFoundDetails)(nil),                        // 213: common.NumscriptNotFoundDetails
+	(*NumscriptParseErrorDetails)(nil),                      // 214: common.NumscriptParseErrorDetails
+	(*NumscriptPostingAmountOverflowDetails)(nil),           // 215: common.NumscriptPostingAmountOverflowDetails
+	(*NumscriptPostingNegativeAmountDetails)(nil),           // 216: common.NumscriptPostingNegativeAmountDetails
+	(*NumscriptRuntimeDetails)(nil),                         // 217: common.NumscriptRuntimeDetails
+	(*NumscriptScalingUnsupportedDetails)(nil),              // 218: common.NumscriptScalingUnsupportedDetails
+	(*NumscriptTypeErrorDetails)(nil),                       // 219: common.NumscriptTypeErrorDetails
+	(*NumscriptUnboundFunctionDetails)(nil),                 // 220: common.NumscriptUnboundFunctionDetails
+	(*NumscriptUnboundVariableDetails)(nil),                 // 221: common.NumscriptUnboundVariableDetails
+	(*NumscriptVersionAlreadyExistsDetails)(nil),            // 222: common.NumscriptVersionAlreadyExistsDetails
+	(*PostingsAndScriptConflictDetails)(nil),                // 223: common.PostingsAndScriptConflictDetails
+	(*PreloadUnavailableDetails)(nil),                       // 224: common.PreloadUnavailableDetails
+	(*PreparedQueryAlreadyExistsDetails)(nil),               // 225: common.PreparedQueryAlreadyExistsDetails
+	(*PreparedQueryNameInvalidCharDetails)(nil),             // 226: common.PreparedQueryNameInvalidCharDetails
+	(*PreparedQueryNameRequiredDetails)(nil),                // 227: common.PreparedQueryNameRequiredDetails
+	(*PreparedQueryNameTooLongDetails)(nil),                 // 228: common.PreparedQueryNameTooLongDetails
+	(*PreparedQueryNotFoundDetails)(nil),                    // 229: common.PreparedQueryNotFoundDetails
+	(*PreparedQueryRequiredDetails)(nil),                    // 230: common.PreparedQueryRequiredDetails
+	(*PreparedQueryTargetUnsupportedDetails)(nil),           // 231: common.PreparedQueryTargetUnsupportedDetails
+	(*RevertTargetCreatedInBatchDetails)(nil),               // 232: common.RevertTargetCreatedInBatchDetails
+	(*ScopedBalanceUnsupportedDetails)(nil),                 // 233: common.ScopedBalanceUnsupportedDetails
+	(*ScriptAndReferenceConflictDetails)(nil),               // 234: common.ScriptAndReferenceConflictDetails
+	(*ScriptRequiredDetails)(nil),                           // 235: common.ScriptRequiredDetails
+	(*SequenceExhaustedDetails)(nil),                        // 236: common.SequenceExhaustedDetails
+	(*SigningKeyIdInvalidCharDetails)(nil),                  // 237: common.SigningKeyIdInvalidCharDetails
+	(*SigningKeyIdRequiredDetails)(nil),                     // 238: common.SigningKeyIdRequiredDetails
+	(*SigningKeyIdTooLongDetails)(nil),                      // 239: common.SigningKeyIdTooLongDetails
+	(*SigningKeyInvalidLengthDetails)(nil),                  // 240: common.SigningKeyInvalidLengthDetails
+	(*SinkAlreadyExistsDetails)(nil),                        // 241: common.SinkAlreadyExistsDetails
+	(*SinkBatchSizeTooLargeDetails)(nil),                    // 242: common.SinkBatchSizeTooLargeDetails
+	(*SinkControllerMismatchDetails)(nil),                   // 243: common.SinkControllerMismatchDetails
+	(*SinkNotFoundDetails)(nil),                             // 244: common.SinkNotFoundDetails
+	(*StaleClusterPolicyDetails)(nil),                       // 245: common.StaleClusterPolicyDetails
+	(*StaleInputsResolutionDetails)(nil),                    // 246: common.StaleInputsResolutionDetails
+	(*StaleProposalDetails)(nil),                            // 247: common.StaleProposalDetails
+	(*StorageOperationFailedDetails)(nil),                   // 248: common.StorageOperationFailedDetails
+	(*TargetRequiredDetails)(nil),                           // 249: common.TargetRequiredDetails
+	(*TransactionAlreadyRevertedDetails)(nil),               // 250: common.TransactionAlreadyRevertedDetails
+	(*TransactionNotFoundDetails)(nil),                      // 251: common.TransactionNotFoundDetails
+	(*TransactionReferenceConflictDetails)(nil),             // 252: common.TransactionReferenceConflictDetails
+	(*TransactionReferenceNotFoundDetails)(nil),             // 253: common.TransactionReferenceNotFoundDetails
+	(*TransactionReferenceTooLongDetails)(nil),              // 254: common.TransactionReferenceTooLongDetails
+	(*TransactionStateInconsistentDetails)(nil),             // 255: common.TransactionStateInconsistentDetails
+	(*TransactionTargetMissingDetails)(nil),                 // 256: common.TransactionTargetMissingDetails
+	(*TransientAccountNonZeroDetails)(nil),                  // 257: common.TransientAccountNonZeroDetails
+	(*ValidationDetails)(nil),                               // 258: common.ValidationDetails
+	(*VolumeNotMaterializedDetails)(nil),                    // 259: common.VolumeNotMaterializedDetails
+	(*VolumeOverflowDetails)(nil),                           // 260: common.VolumeOverflowDetails
+	(*WritesBlockedClockSkewDetails)(nil),                   // 261: common.WritesBlockedClockSkewDetails
+	(*WritesBlockedDiskFullDetails)(nil),                    // 262: common.WritesBlockedDiskFullDetails
+	(*OrderSkippedLog)(nil),                                 // 263: common.OrderSkippedLog
+	(*CreatedIndexLog)(nil),                                 // 264: common.CreatedIndexLog
+	(*DroppedIndexLog)(nil),                                 // 265: common.DroppedIndexLog
+	(*FilledGapLog)(nil),                                    // 266: common.FilledGapLog
+	(*CreatedTransaction)(nil),                              // 267: common.CreatedTransaction
+	(*RevertedTransaction)(nil),                             // 268: common.RevertedTransaction
+	(*SavedMetadata)(nil),                                   // 269: common.SavedMetadata
+	(*DeletedMetadata)(nil),                                 // 270: common.DeletedMetadata
+	(*SetMetadataFieldTypeLog)(nil),                         // 271: common.SetMetadataFieldTypeLog
+	(*RemovedMetadataFieldTypeLog)(nil),                     // 272: common.RemovedMetadataFieldTypeLog
+	(*MirrorSourceConfig)(nil),                              // 273: common.MirrorSourceConfig
+	(*MirrorRewriteRule)(nil),                               // 274: common.MirrorRewriteRule
+	(*CreatedTransactionRule)(nil),                          // 275: common.CreatedTransactionRule
+	(*RevertedTransactionRule)(nil),                         // 276: common.RevertedTransactionRule
+	(*SavedMetadataRule)(nil),                               // 277: common.SavedMetadataRule
+	(*DeletedMetadataRule)(nil),                             // 278: common.DeletedMetadataRule
+	(*AnyVariantRule)(nil),                                  // 279: common.AnyVariantRule
+	(*CreatedTransactionAction)(nil),                        // 280: common.CreatedTransactionAction
+	(*RevertedTransactionAction)(nil),                       // 281: common.RevertedTransactionAction
+	(*SavedMetadataAction)(nil),                             // 282: common.SavedMetadataAction
+	(*DeletedMetadataAction)(nil),                           // 283: common.DeletedMetadataAction
+	(*AnyVariantAction)(nil),                                // 284: common.AnyVariantAction
+	(*RewriteAddressAction)(nil),                            // 285: common.RewriteAddressAction
+	(*SetMetadataAction)(nil),                               // 286: common.SetMetadataAction
+	(*DeleteMetadataAction)(nil),                            // 287: common.DeleteMetadataAction
+	(*SetAccountMetadataAction)(nil),                        // 288: common.SetAccountMetadataAction
+	(*DeleteAccountMetadataAction)(nil),                     // 289: common.DeleteAccountMetadataAction
+	(*SetAccountMetadataFromAddressAction)(nil),             // 290: common.SetAccountMetadataFromAddressAction
+	(*SetAccountMetadataFromAddressReplacement)(nil),        // 291: common.SetAccountMetadataFromAddressReplacement
+	(*DropAction)(nil),                                      // 292: common.DropAction
+	(*HttpMirrorSourceConfig)(nil),                          // 293: common.HttpMirrorSourceConfig
+	(*OAuth2ClientCredentials)(nil),                         // 294: common.OAuth2ClientCredentials
+	(*PostgresMirrorSourceConfig)(nil),                      // 295: common.PostgresMirrorSourceConfig
+	(*PostgresAwsIamAuth)(nil),                              // 296: common.PostgresAwsIamAuth
+	(*MirrorSyncError)(nil),                                 // 297: common.MirrorSyncError
+	(*MirrorSyncProgress)(nil),                              // 298: common.MirrorSyncProgress
+	(*LedgerInfo)(nil),                                      // 299: common.LedgerInfo
+	(*SaveMetadataCommand)(nil),                             // 300: common.SaveMetadataCommand
+	(*DeleteMetadataCommand)(nil),                           // 301: common.DeleteMetadataCommand
+	(*TransactionState)(nil),                                // 302: common.TransactionState
+	(*IdempotencyKeyValue)(nil),                             // 303: common.IdempotencyKeyValue
+	(*IdempotencyFailure)(nil),                              // 304: common.IdempotencyFailure
+	(*TransactionReferenceValue)(nil),                       // 305: common.TransactionReferenceValue
+	(*NumscriptVersionValue)(nil),                           // 306: common.NumscriptVersionValue
+	(*SegmentType)(nil),                                     // 307: common.SegmentType
+	(*UUIDConstraint)(nil),                                  // 308: common.UUIDConstraint
+	(*Uint64Constraint)(nil),                                // 309: common.Uint64Constraint
+	(*BytesConstraint)(nil),                                 // 310: common.BytesConstraint
+	(*AccountType)(nil),                                     // 311: common.AccountType
+	(*AddedAccountTypeLog)(nil),                             // 312: common.AddedAccountTypeLog
+	(*RemovedAccountTypeLog)(nil),                           // 313: common.RemovedAccountTypeLog
+	(*UpdatedDefaultEnforcementModeLog)(nil),                // 314: common.UpdatedDefaultEnforcementModeLog
+	(*QueryFilter)(nil),                                     // 315: common.QueryFilter
+	(*ReferenceCondition)(nil),                              // 316: common.ReferenceCondition
+	(*RevertedCondition)(nil),                               // 317: common.RevertedCondition
+	(*AuditCondition)(nil),                                  // 318: common.AuditCondition
+	(*LedgerCondition)(nil),                                 // 319: common.LedgerCondition
+	(*LogIdCondition)(nil),                                  // 320: common.LogIdCondition
+	(*BuiltinUintCondition)(nil),                            // 321: common.BuiltinUintCondition
+	(*LogBuiltinUintCondition)(nil),                         // 322: common.LogBuiltinUintCondition
+	(*AccountHasAssetCondition)(nil),                        // 323: common.AccountHasAssetCondition
+	(*AndFilter)(nil),                                       // 324: common.AndFilter
+	(*OrFilter)(nil),                                        // 325: common.OrFilter
+	(*NotFilter)(nil),                                       // 326: common.NotFilter
+	(*FieldRef)(nil),                                        // 327: common.FieldRef
+	(*FieldCondition)(nil),                                  // 328: common.FieldCondition
+	(*StringCondition)(nil),                                 // 329: common.StringCondition
+	(*IntCondition)(nil),                                    // 330: common.IntCondition
+	(*UintCondition)(nil),                                   // 331: common.UintCondition
+	(*BoolCondition)(nil),                                   // 332: common.BoolCondition
+	(*ExistsCondition)(nil),                                 // 333: common.ExistsCondition
+	(*AddressMatch)(nil),                                    // 334: common.AddressMatch
+	(*PreparedQuery)(nil),                                   // 335: common.PreparedQuery
+	(*AggregatedVolume)(nil),                                // 336: common.AggregatedVolume
+	(*AggregateResult)(nil),                                 // 337: common.AggregateResult
+	(*GroupedAggregateResult)(nil),                          // 338: common.GroupedAggregateResult
+	(*PreparedQueryCursor)(nil),                             // 339: common.PreparedQueryCursor
+	(*LedgerStats)(nil),                                     // 340: common.LedgerStats
+	(*PersistedConfig)(nil),                                 // 341: common.PersistedConfig
+	(*CallerIdentity)(nil),                                  // 342: common.CallerIdentity
+	(*AuthenticatedCaller)(nil),                             // 343: common.AuthenticatedCaller
+	(*AnonymousCaller)(nil),                                 // 344: common.AnonymousCaller
+	(*SystemCaller)(nil),                                    // 345: common.SystemCaller
+	(*AuthDisabledCaller)(nil),                              // 346: common.AuthDisabledCaller
+	(*CallerSnapshot)(nil),                                  // 347: common.CallerSnapshot
+	(*S3StorageConfig)(nil),                                 // 348: common.S3StorageConfig
+	(*AzureStorageConfig)(nil),                              // 349: common.AzureStorageConfig
+	(*BackupStorage)(nil),                                   // 350: common.BackupStorage
+	(*ReadOptions)(nil),                                     // 351: common.ReadOptions
+	(*ListOptions)(nil),                                     // 352: common.ListOptions
+	nil,                                                     // 353: common.MetadataMap.ValuesEntry
+	nil,                                                     // 354: common.Transaction.MetadataEntry
+	nil,                                                     // 355: common.Script.VarsEntry
+	nil,                                                     // 356: common.PostCommitVolumes.VolumesByAccountEntry
+	nil,                                                     // 357: common.Account.MetadataEntry
+	nil,                                                     // 358: common.MetadataSchema.AccountFieldsEntry
+	nil,                                                     // 359: common.MetadataSchema.TransactionFieldsEntry
+	nil,                                                     // 360: common.MetadataSchema.LedgerFieldsEntry
+	nil,                                                     // 361: common.SavedLedgerMetadataLog.MetadataEntry
+	nil,                                                     // 362: common.CreatedLedgerLog.AccountTypesEntry
+	nil,                                                     // 363: common.CreatedLedgerLog.MetadataEntry
+	nil,                                                     // 364: common.CreatedTransaction.AccountMetadataEntry
+	nil,                                                     // 365: common.SavedMetadata.MetadataEntry
+	nil,                                                     // 366: common.LedgerInfo.AccountTypesEntry
+	nil,                                                     // 367: common.LedgerInfo.MetadataEntry
+	nil,                                                     // 368: common.SaveMetadataCommand.MetadataEntry
+	nil,                                                     // 369: common.TransactionState.MetadataEntry
+	nil,                                                     // 370: common.AccountType.SegmentTypesEntry
+	(*signaturepb.SignedLog)(nil),                           // 371: signature.SignedLog
+	(*descriptorpb.MethodOptions)(nil),                      // 372: google.protobuf.MethodOptions
+	(*descriptorpb.FieldOptions)(nil),                       // 373: google.protobuf.FieldOptions
 }
 var file_common_proto_depIdxs = []int32{
 	0,   // 0: common.MethodAuthPolicy.fixed_scope:type_name -> common.AuthScope
 	1,   // 1: common.MethodAuthPolicy.dynamic_resolver:type_name -> common.DynamicAuthResolver
 	20,  // 2: common.MetadataValue.null_value:type_name -> common.NullValue
-	179, // 3: common.MetadataMap.values:type_name -> common.MetadataMap.ValuesEntry
+	353, // 3: common.MetadataMap.values:type_name -> common.MetadataMap.ValuesEntry
 	24,  // 4: common.Posting.amount:type_name -> common.Uint256
 	25,  // 5: common.Transaction.postings:type_name -> common.Posting
-	180, // 6: common.Transaction.metadata:type_name -> common.Transaction.MetadataEntry
+	354, // 6: common.Transaction.metadata:type_name -> common.Transaction.MetadataEntry
 	19,  // 7: common.Transaction.timestamp:type_name -> common.Timestamp
 	19,  // 8: common.Transaction.inserted_at:type_name -> common.Timestamp
 	19,  // 9: common.Transaction.updated_at:type_name -> common.Timestamp
 	19,  // 10: common.Transaction.reverted_at:type_name -> common.Timestamp
 	34,  // 11: common.Transaction.post_commit_volumes:type_name -> common.PostCommitVolumes
-	181, // 12: common.Script.vars:type_name -> common.Script.VarsEntry
+	355, // 12: common.Script.vars:type_name -> common.Script.VarsEntry
 	28,  // 13: common.SignedBigInt.magnitude:type_name -> common.BigUint
 	28,  // 14: common.Volumes.input:type_name -> common.BigUint
 	28,  // 15: common.Volumes.output:type_name -> common.BigUint
@@ -14426,18 +26661,18 @@ var file_common_proto_depIdxs = []int32{
 	29,  // 18: common.VolumesWithBalance.balance:type_name -> common.SignedBigInt
 	33,  // 19: common.VolumesByAssets.volumes:type_name -> common.VolumeEntry
 	30,  // 20: common.VolumeEntry.volumes:type_name -> common.Volumes
-	182, // 21: common.PostCommitVolumes.volumes_by_account:type_name -> common.PostCommitVolumes.VolumesByAccountEntry
+	356, // 21: common.PostCommitVolumes.volumes_by_account:type_name -> common.PostCommitVolumes.VolumesByAccountEntry
 	31,  // 22: common.AccountVolume.volumes:type_name -> common.VolumesWithBalance
-	183, // 23: common.Account.metadata:type_name -> common.Account.MetadataEntry
+	357, // 23: common.Account.metadata:type_name -> common.Account.MetadataEntry
 	19,  // 24: common.Account.first_usage:type_name -> common.Timestamp
 	19,  // 25: common.Account.insertion_date:type_name -> common.Timestamp
 	19,  // 26: common.Account.updated_at:type_name -> common.Timestamp
 	35,  // 27: common.Account.volumes:type_name -> common.AccountVolume
 	37,  // 28: common.Target.account:type_name -> common.TargetAccount
 	3,   // 29: common.MetadataFieldSchema.type:type_name -> common.MetadataType
-	184, // 30: common.MetadataSchema.account_fields:type_name -> common.MetadataSchema.AccountFieldsEntry
-	185, // 31: common.MetadataSchema.transaction_fields:type_name -> common.MetadataSchema.TransactionFieldsEntry
-	186, // 32: common.MetadataSchema.ledger_fields:type_name -> common.MetadataSchema.LedgerFieldsEntry
+	358, // 30: common.MetadataSchema.account_fields:type_name -> common.MetadataSchema.AccountFieldsEntry
+	359, // 31: common.MetadataSchema.transaction_fields:type_name -> common.MetadataSchema.TransactionFieldsEntry
+	360, // 32: common.MetadataSchema.ledger_fields:type_name -> common.MetadataSchema.LedgerFieldsEntry
 	2,   // 33: common.SetMetadataFieldTypeCommand.target_type:type_name -> common.TargetType
 	3,   // 34: common.SetMetadataFieldTypeCommand.type:type_name -> common.MetadataType
 	2,   // 35: common.MetadataIndexID.target:type_name -> common.TargetType
@@ -14448,7 +26683,7 @@ var file_common_proto_depIdxs = []int32{
 	43,  // 40: common.Index.id:type_name -> common.IndexID
 	19,  // 41: common.Index.created_at:type_name -> common.Timestamp
 	47,  // 42: common.Log.payload:type_name -> common.LogPayload
-	199, // 43: common.Log.response_signature:type_name -> signature.SignedLog
+	371, // 43: common.Log.response_signature:type_name -> signature.SignedLog
 	83,  // 44: common.LogPayload.create_ledger:type_name -> common.CreatedLedgerLog
 	84,  // 45: common.LogPayload.delete_ledger:type_name -> common.DeletedLedgerLog
 	85,  // 46: common.LogPayload.apply:type_name -> common.ApplyLedgerLog
@@ -14486,10 +26721,10 @@ var file_common_proto_depIdxs = []int32{
 	57,  // 78: common.ClusterConfig.bloom_prepared_queries:type_name -> common.BloomTypeConfig
 	57,  // 79: common.ClusterConfig.bloom_indexes:type_name -> common.BloomTypeConfig
 	58,  // 80: common.PersistedClusterState.config:type_name -> common.ClusterConfig
-	161, // 81: common.CreatedPreparedQueryLog.query:type_name -> common.PreparedQuery
-	141, // 82: common.UpdatedPreparedQueryLog.previous_filter:type_name -> common.QueryFilter
-	141, // 83: common.UpdatedPreparedQueryLog.new_filter:type_name -> common.QueryFilter
-	187, // 84: common.SavedLedgerMetadataLog.metadata:type_name -> common.SavedLedgerMetadataLog.MetadataEntry
+	335, // 81: common.CreatedPreparedQueryLog.query:type_name -> common.PreparedQuery
+	315, // 82: common.UpdatedPreparedQueryLog.previous_filter:type_name -> common.QueryFilter
+	315, // 83: common.UpdatedPreparedQueryLog.new_filter:type_name -> common.QueryFilter
+	361, // 84: common.SavedLedgerMetadataLog.metadata:type_name -> common.SavedLedgerMetadataLog.MetadataEntry
 	19,  // 85: common.NumscriptInfo.created_at:type_name -> common.Timestamp
 	66,  // 86: common.SavedNumscriptLog.info:type_name -> common.NumscriptInfo
 	19,  // 87: common.NumscriptVersionEntry.created_at:type_name -> common.Timestamp
@@ -14507,10 +26742,10 @@ var file_common_proto_depIdxs = []int32{
 	19,  // 99: common.CreatedLedgerLog.created_at:type_name -> common.Timestamp
 	40,  // 100: common.CreatedLedgerLog.metadata_schema:type_name -> common.MetadataSchema
 	9,   // 101: common.CreatedLedgerLog.mode:type_name -> common.LedgerMode
-	99,  // 102: common.CreatedLedgerLog.mirror_source:type_name -> common.MirrorSourceConfig
-	188, // 103: common.CreatedLedgerLog.account_types:type_name -> common.CreatedLedgerLog.AccountTypesEntry
+	273, // 102: common.CreatedLedgerLog.mirror_source:type_name -> common.MirrorSourceConfig
+	362, // 103: common.CreatedLedgerLog.account_types:type_name -> common.CreatedLedgerLog.AccountTypesEntry
 	12,  // 104: common.CreatedLedgerLog.default_enforcement_mode:type_name -> common.ChartEnforcementMode
-	189, // 105: common.CreatedLedgerLog.metadata:type_name -> common.CreatedLedgerLog.MetadataEntry
+	363, // 105: common.CreatedLedgerLog.metadata:type_name -> common.CreatedLedgerLog.MetadataEntry
 	19,  // 106: common.DeletedLedgerLog.deleted_at:type_name -> common.Timestamp
 	86,  // 107: common.ApplyLedgerLog.log:type_name -> common.LedgerLog
 	88,  // 108: common.LedgerLog.data:type_name -> common.LedgerLogPayload
@@ -14518,180 +26753,353 @@ var file_common_proto_depIdxs = []int32{
 	87,  // 110: common.LedgerLog.purged_volumes:type_name -> common.TouchedVolume
 	87,  // 111: common.LedgerLog.new_kept_volumes:type_name -> common.TouchedVolume
 	87,  // 112: common.LedgerLog.ephemeral_volumes:type_name -> common.TouchedVolume
-	93,  // 113: common.LedgerLogPayload.created_transaction:type_name -> common.CreatedTransaction
-	94,  // 114: common.LedgerLogPayload.reverted_transaction:type_name -> common.RevertedTransaction
-	95,  // 115: common.LedgerLogPayload.saved_metadata:type_name -> common.SavedMetadata
-	96,  // 116: common.LedgerLogPayload.deleted_metadata:type_name -> common.DeletedMetadata
-	97,  // 117: common.LedgerLogPayload.set_metadata_field_type:type_name -> common.SetMetadataFieldTypeLog
-	98,  // 118: common.LedgerLogPayload.removed_metadata_field_type:type_name -> common.RemovedMetadataFieldTypeLog
-	92,  // 119: common.LedgerLogPayload.fill_gap:type_name -> common.FilledGapLog
-	90,  // 120: common.LedgerLogPayload.create_index:type_name -> common.CreatedIndexLog
-	91,  // 121: common.LedgerLogPayload.drop_index:type_name -> common.DroppedIndexLog
-	138, // 122: common.LedgerLogPayload.added_account_type:type_name -> common.AddedAccountTypeLog
-	139, // 123: common.LedgerLogPayload.removed_account_type:type_name -> common.RemovedAccountTypeLog
-	140, // 124: common.LedgerLogPayload.updated_default_enforcement_mode:type_name -> common.UpdatedDefaultEnforcementModeLog
-	89,  // 125: common.LedgerLogPayload.order_skipped:type_name -> common.OrderSkippedLog
-	11,  // 126: common.OrderSkippedLog.reason:type_name -> common.ErrorReason
-	190, // 127: common.OrderSkippedLog.facts:type_name -> common.OrderSkippedLog.FactsEntry
-	43,  // 128: common.CreatedIndexLog.id:type_name -> common.IndexID
-	3,   // 129: common.CreatedIndexLog.bound_type:type_name -> common.MetadataType
-	43,  // 130: common.DroppedIndexLog.id:type_name -> common.IndexID
-	26,  // 131: common.CreatedTransaction.transaction:type_name -> common.Transaction
-	191, // 132: common.CreatedTransaction.account_metadata:type_name -> common.CreatedTransaction.AccountMetadataEntry
-	26,  // 133: common.RevertedTransaction.revert_transaction:type_name -> common.Transaction
-	38,  // 134: common.SavedMetadata.target:type_name -> common.Target
-	192, // 135: common.SavedMetadata.metadata:type_name -> common.SavedMetadata.MetadataEntry
-	38,  // 136: common.DeletedMetadata.target:type_name -> common.Target
-	2,   // 137: common.SetMetadataFieldTypeLog.target_type:type_name -> common.TargetType
-	3,   // 138: common.SetMetadataFieldTypeLog.type:type_name -> common.MetadataType
-	2,   // 139: common.RemovedMetadataFieldTypeLog.target_type:type_name -> common.TargetType
-	43,  // 140: common.RemovedMetadataFieldTypeLog.dropped_index:type_name -> common.IndexID
-	119, // 141: common.MirrorSourceConfig.http:type_name -> common.HttpMirrorSourceConfig
-	121, // 142: common.MirrorSourceConfig.postgres:type_name -> common.PostgresMirrorSourceConfig
-	100, // 143: common.MirrorSourceConfig.rewrite_rules:type_name -> common.MirrorRewriteRule
-	101, // 144: common.MirrorRewriteRule.created_transaction:type_name -> common.CreatedTransactionRule
-	102, // 145: common.MirrorRewriteRule.reverted_transaction:type_name -> common.RevertedTransactionRule
-	103, // 146: common.MirrorRewriteRule.saved_metadata:type_name -> common.SavedMetadataRule
-	104, // 147: common.MirrorRewriteRule.deleted_metadata:type_name -> common.DeletedMetadataRule
-	105, // 148: common.MirrorRewriteRule.any_variant:type_name -> common.AnyVariantRule
-	106, // 149: common.CreatedTransactionRule.actions:type_name -> common.CreatedTransactionAction
-	107, // 150: common.RevertedTransactionRule.actions:type_name -> common.RevertedTransactionAction
-	108, // 151: common.SavedMetadataRule.actions:type_name -> common.SavedMetadataAction
-	109, // 152: common.DeletedMetadataRule.actions:type_name -> common.DeletedMetadataAction
-	110, // 153: common.AnyVariantRule.actions:type_name -> common.AnyVariantAction
-	111, // 154: common.CreatedTransactionAction.rewrite_address:type_name -> common.RewriteAddressAction
-	112, // 155: common.CreatedTransactionAction.set_metadata:type_name -> common.SetMetadataAction
-	113, // 156: common.CreatedTransactionAction.delete_metadata:type_name -> common.DeleteMetadataAction
-	114, // 157: common.CreatedTransactionAction.set_account_metadata:type_name -> common.SetAccountMetadataAction
-	115, // 158: common.CreatedTransactionAction.delete_account_metadata:type_name -> common.DeleteAccountMetadataAction
-	116, // 159: common.CreatedTransactionAction.set_account_metadata_from_address:type_name -> common.SetAccountMetadataFromAddressAction
-	118, // 160: common.CreatedTransactionAction.drop:type_name -> common.DropAction
-	111, // 161: common.RevertedTransactionAction.rewrite_address:type_name -> common.RewriteAddressAction
-	112, // 162: common.RevertedTransactionAction.set_metadata:type_name -> common.SetMetadataAction
-	113, // 163: common.RevertedTransactionAction.delete_metadata:type_name -> common.DeleteMetadataAction
-	118, // 164: common.RevertedTransactionAction.drop:type_name -> common.DropAction
-	111, // 165: common.SavedMetadataAction.rewrite_address:type_name -> common.RewriteAddressAction
-	112, // 166: common.SavedMetadataAction.set_metadata:type_name -> common.SetMetadataAction
-	113, // 167: common.SavedMetadataAction.delete_metadata:type_name -> common.DeleteMetadataAction
-	118, // 168: common.SavedMetadataAction.drop:type_name -> common.DropAction
-	111, // 169: common.DeletedMetadataAction.rewrite_address:type_name -> common.RewriteAddressAction
-	118, // 170: common.DeletedMetadataAction.drop:type_name -> common.DropAction
-	111, // 171: common.AnyVariantAction.rewrite_address:type_name -> common.RewriteAddressAction
-	118, // 172: common.AnyVariantAction.drop:type_name -> common.DropAction
-	117, // 173: common.SetAccountMetadataFromAddressAction.replacements:type_name -> common.SetAccountMetadataFromAddressReplacement
-	120, // 174: common.HttpMirrorSourceConfig.oauth2_client_credentials:type_name -> common.OAuth2ClientCredentials
-	122, // 175: common.PostgresMirrorSourceConfig.aws_iam_auth:type_name -> common.PostgresAwsIamAuth
-	19,  // 176: common.MirrorSyncError.occurred_at:type_name -> common.Timestamp
-	10,  // 177: common.MirrorSyncProgress.state:type_name -> common.MirrorSyncState
-	123, // 178: common.MirrorSyncProgress.error:type_name -> common.MirrorSyncError
-	19,  // 179: common.LedgerInfo.created_at:type_name -> common.Timestamp
-	19,  // 180: common.LedgerInfo.deleted_at:type_name -> common.Timestamp
-	40,  // 181: common.LedgerInfo.metadata_schema:type_name -> common.MetadataSchema
-	9,   // 182: common.LedgerInfo.mode:type_name -> common.LedgerMode
-	99,  // 183: common.LedgerInfo.mirror_source:type_name -> common.MirrorSourceConfig
-	124, // 184: common.LedgerInfo.mirror_sync_progress:type_name -> common.MirrorSyncProgress
-	193, // 185: common.LedgerInfo.account_types:type_name -> common.LedgerInfo.AccountTypesEntry
-	12,  // 186: common.LedgerInfo.default_enforcement_mode:type_name -> common.ChartEnforcementMode
-	194, // 187: common.LedgerInfo.metadata:type_name -> common.LedgerInfo.MetadataEntry
-	38,  // 188: common.SaveMetadataCommand.target:type_name -> common.Target
-	195, // 189: common.SaveMetadataCommand.metadata:type_name -> common.SaveMetadataCommand.MetadataEntry
-	38,  // 190: common.DeleteMetadataCommand.target:type_name -> common.Target
-	196, // 191: common.TransactionState.metadata:type_name -> common.TransactionState.MetadataEntry
-	19,  // 192: common.TransactionState.timestamp:type_name -> common.Timestamp
-	25,  // 193: common.TransactionState.postings:type_name -> common.Posting
-	19,  // 194: common.TransactionState.reverted_at:type_name -> common.Timestamp
-	130, // 195: common.IdempotencyKeyValue.failure:type_name -> common.IdempotencyFailure
-	11,  // 196: common.IdempotencyFailure.reason:type_name -> common.ErrorReason
-	197, // 197: common.IdempotencyFailure.facts:type_name -> common.IdempotencyFailure.FactsEntry
-	134, // 198: common.SegmentType.uuid:type_name -> common.UUIDConstraint
-	135, // 199: common.SegmentType.uint64:type_name -> common.Uint64Constraint
-	136, // 200: common.SegmentType.bytes:type_name -> common.BytesConstraint
-	13,  // 201: common.AccountType.persistence:type_name -> common.AccountTypePersistence
-	198, // 202: common.AccountType.segment_types:type_name -> common.AccountType.SegmentTypesEntry
-	137, // 203: common.AddedAccountTypeLog.account_type:type_name -> common.AccountType
-	12,  // 204: common.UpdatedDefaultEnforcementModeLog.enforcement_mode:type_name -> common.ChartEnforcementMode
-	154, // 205: common.QueryFilter.field:type_name -> common.FieldCondition
-	160, // 206: common.QueryFilter.address:type_name -> common.AddressMatch
-	150, // 207: common.QueryFilter.and:type_name -> common.AndFilter
-	151, // 208: common.QueryFilter.or:type_name -> common.OrFilter
-	152, // 209: common.QueryFilter.not:type_name -> common.NotFilter
-	142, // 210: common.QueryFilter.reference:type_name -> common.ReferenceCondition
-	147, // 211: common.QueryFilter.builtin_uint:type_name -> common.BuiltinUintCondition
-	145, // 212: common.QueryFilter.ledger:type_name -> common.LedgerCondition
-	146, // 213: common.QueryFilter.log_id:type_name -> common.LogIdCondition
-	148, // 214: common.QueryFilter.log_builtin_uint:type_name -> common.LogBuiltinUintCondition
-	149, // 215: common.QueryFilter.account_has_asset:type_name -> common.AccountHasAssetCondition
-	143, // 216: common.QueryFilter.reverted:type_name -> common.RevertedCondition
-	144, // 217: common.QueryFilter.audit:type_name -> common.AuditCondition
-	155, // 218: common.ReferenceCondition.cond:type_name -> common.StringCondition
-	14,  // 219: common.AuditCondition.field:type_name -> common.AuditField
-	155, // 220: common.AuditCondition.string_cond:type_name -> common.StringCondition
-	157, // 221: common.AuditCondition.uint_cond:type_name -> common.UintCondition
-	155, // 222: common.LedgerCondition.cond:type_name -> common.StringCondition
-	157, // 223: common.LogIdCondition.cond:type_name -> common.UintCondition
-	4,   // 224: common.BuiltinUintCondition.field:type_name -> common.TransactionBuiltinIndex
-	157, // 225: common.BuiltinUintCondition.cond:type_name -> common.UintCondition
-	6,   // 226: common.LogBuiltinUintCondition.field:type_name -> common.LogBuiltinIndex
-	157, // 227: common.LogBuiltinUintCondition.cond:type_name -> common.UintCondition
-	141, // 228: common.AndFilter.filters:type_name -> common.QueryFilter
-	141, // 229: common.OrFilter.filters:type_name -> common.QueryFilter
-	141, // 230: common.NotFilter.filter:type_name -> common.QueryFilter
-	153, // 231: common.FieldCondition.field:type_name -> common.FieldRef
-	155, // 232: common.FieldCondition.string_cond:type_name -> common.StringCondition
-	156, // 233: common.FieldCondition.int_cond:type_name -> common.IntCondition
-	157, // 234: common.FieldCondition.uint_cond:type_name -> common.UintCondition
-	158, // 235: common.FieldCondition.bool_cond:type_name -> common.BoolCondition
-	159, // 236: common.FieldCondition.exists_cond:type_name -> common.ExistsCondition
-	15,  // 237: common.AddressMatch.role:type_name -> common.AddressRole
-	141, // 238: common.PreparedQuery.filter:type_name -> common.QueryFilter
-	16,  // 239: common.PreparedQuery.target:type_name -> common.QueryTarget
-	24,  // 240: common.AggregatedVolume.input:type_name -> common.Uint256
-	24,  // 241: common.AggregatedVolume.output:type_name -> common.Uint256
-	162, // 242: common.AggregateResult.volumes:type_name -> common.AggregatedVolume
-	164, // 243: common.AggregateResult.groups:type_name -> common.GroupedAggregateResult
-	162, // 244: common.GroupedAggregateResult.volumes:type_name -> common.AggregatedVolume
-	36,  // 245: common.PreparedQueryCursor.account_data:type_name -> common.Account
-	26,  // 246: common.PreparedQueryCursor.transaction_data:type_name -> common.Transaction
-	46,  // 247: common.PreparedQueryCursor.log_data:type_name -> common.Log
-	168, // 248: common.AuthenticatedCaller.identity:type_name -> common.CallerIdentity
-	169, // 249: common.CallerSnapshot.authenticated:type_name -> common.AuthenticatedCaller
-	170, // 250: common.CallerSnapshot.anonymous:type_name -> common.AnonymousCaller
-	171, // 251: common.CallerSnapshot.system:type_name -> common.SystemCaller
-	172, // 252: common.CallerSnapshot.auth_disabled:type_name -> common.AuthDisabledCaller
-	174, // 253: common.BackupStorage.s3:type_name -> common.S3StorageConfig
-	175, // 254: common.BackupStorage.azure:type_name -> common.AzureStorageConfig
-	177, // 255: common.ListOptions.read:type_name -> common.ReadOptions
-	141, // 256: common.ListOptions.filter:type_name -> common.QueryFilter
-	21,  // 257: common.MetadataMap.ValuesEntry.value:type_name -> common.MetadataValue
-	21,  // 258: common.Transaction.MetadataEntry.value:type_name -> common.MetadataValue
-	32,  // 259: common.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> common.VolumesByAssets
-	21,  // 260: common.Account.MetadataEntry.value:type_name -> common.MetadataValue
-	39,  // 261: common.MetadataSchema.AccountFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	39,  // 262: common.MetadataSchema.TransactionFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	39,  // 263: common.MetadataSchema.LedgerFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	21,  // 264: common.SavedLedgerMetadataLog.MetadataEntry.value:type_name -> common.MetadataValue
-	137, // 265: common.CreatedLedgerLog.AccountTypesEntry.value:type_name -> common.AccountType
-	21,  // 266: common.CreatedLedgerLog.MetadataEntry.value:type_name -> common.MetadataValue
-	22,  // 267: common.CreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataMap
-	21,  // 268: common.SavedMetadata.MetadataEntry.value:type_name -> common.MetadataValue
-	137, // 269: common.LedgerInfo.AccountTypesEntry.value:type_name -> common.AccountType
-	21,  // 270: common.LedgerInfo.MetadataEntry.value:type_name -> common.MetadataValue
-	21,  // 271: common.SaveMetadataCommand.MetadataEntry.value:type_name -> common.MetadataValue
-	21,  // 272: common.TransactionState.MetadataEntry.value:type_name -> common.MetadataValue
-	133, // 273: common.AccountType.SegmentTypesEntry.value:type_name -> common.SegmentType
-	200, // 274: common.auth_policy:extendee -> google.protobuf.MethodOptions
-	201, // 275: common.allowed_query_targets:extendee -> google.protobuf.FieldOptions
-	201, // 276: common.valid_on_no_query_target:extendee -> google.protobuf.FieldOptions
-	201, // 277: common.ledger_log_is_history:extendee -> google.protobuf.FieldOptions
-	201, // 278: common.sensitive:extendee -> google.protobuf.FieldOptions
-	201, // 279: common.sensitive_url:extendee -> google.protobuf.FieldOptions
-	18,  // 280: common.auth_policy:type_name -> common.MethodAuthPolicy
-	16,  // 281: common.allowed_query_targets:type_name -> common.QueryTarget
-	282, // [282:282] is the sub-list for method output_type
-	282, // [282:282] is the sub-list for method input_type
-	280, // [280:282] is the sub-list for extension type_name
-	274, // [274:280] is the sub-list for extension extendee
-	0,   // [0:274] is the sub-list for field type_name
+	267, // 113: common.LedgerLogPayload.created_transaction:type_name -> common.CreatedTransaction
+	268, // 114: common.LedgerLogPayload.reverted_transaction:type_name -> common.RevertedTransaction
+	269, // 115: common.LedgerLogPayload.saved_metadata:type_name -> common.SavedMetadata
+	270, // 116: common.LedgerLogPayload.deleted_metadata:type_name -> common.DeletedMetadata
+	271, // 117: common.LedgerLogPayload.set_metadata_field_type:type_name -> common.SetMetadataFieldTypeLog
+	272, // 118: common.LedgerLogPayload.removed_metadata_field_type:type_name -> common.RemovedMetadataFieldTypeLog
+	266, // 119: common.LedgerLogPayload.fill_gap:type_name -> common.FilledGapLog
+	264, // 120: common.LedgerLogPayload.create_index:type_name -> common.CreatedIndexLog
+	265, // 121: common.LedgerLogPayload.drop_index:type_name -> common.DroppedIndexLog
+	312, // 122: common.LedgerLogPayload.added_account_type:type_name -> common.AddedAccountTypeLog
+	313, // 123: common.LedgerLogPayload.removed_account_type:type_name -> common.RemovedAccountTypeLog
+	314, // 124: common.LedgerLogPayload.updated_default_enforcement_mode:type_name -> common.UpdatedDefaultEnforcementModeLog
+	263, // 125: common.LedgerLogPayload.order_skipped:type_name -> common.OrderSkippedLog
+	90,  // 126: common.FailureDetails.account_address_empty:type_name -> common.AccountAddressEmptyDetails
+	91,  // 127: common.FailureDetails.account_address_empty_segment:type_name -> common.AccountAddressEmptySegmentDetails
+	92,  // 128: common.FailureDetails.account_address_invalid_char:type_name -> common.AccountAddressInvalidCharDetails
+	93,  // 129: common.FailureDetails.account_address_too_long:type_name -> common.AccountAddressTooLongDetails
+	94,  // 130: common.FailureDetails.account_not_matching_type:type_name -> common.AccountNotMatchingTypeDetails
+	95,  // 131: common.FailureDetails.account_type_already_exists:type_name -> common.AccountTypeAlreadyExistsDetails
+	96,  // 132: common.FailureDetails.account_type_conflict:type_name -> common.AccountTypeConflictDetails
+	97,  // 133: common.FailureDetails.account_type_has_accounts:type_name -> common.AccountTypeHasAccountsDetails
+	98,  // 134: common.FailureDetails.account_type_name_too_long:type_name -> common.AccountTypeNameTooLongDetails
+	99,  // 135: common.FailureDetails.account_type_not_found:type_name -> common.AccountTypeNotFoundDetails
+	100, // 136: common.FailureDetails.account_type_pattern_too_long:type_name -> common.AccountTypePatternTooLongDetails
+	101, // 137: common.FailureDetails.aggregate_overflow:type_name -> common.AggregateOverflowDetails
+	102, // 138: common.FailureDetails.asset_invalid:type_name -> common.AssetInvalidDetails
+	103, // 139: common.FailureDetails.audit_disabled:type_name -> common.AuditDisabledDetails
+	104, // 140: common.FailureDetails.balance_not_found:type_name -> common.BalanceNotFoundDetails
+	105, // 141: common.FailureDetails.balance_not_preloaded:type_name -> common.BalanceNotPreloadedDetails
+	106, // 142: common.FailureDetails.checkpoint_id_required:type_name -> common.CheckpointIdRequiredDetails
+	107, // 143: common.FailureDetails.checkpoint_limit_reached:type_name -> common.CheckpointLimitReachedDetails
+	108, // 144: common.FailureDetails.checkpoint_not_found:type_name -> common.CheckpointNotFoundDetails
+	109, // 145: common.FailureDetails.checkpoint_not_ready:type_name -> common.CheckpointNotReadyDetails
+	110, // 146: common.FailureDetails.cluster_policy_invalid:type_name -> common.ClusterPolicyInvalidDetails
+	111, // 147: common.FailureDetails.cluster_policy_revision_conflict:type_name -> common.ClusterPolicyRevisionConflictDetails
+	112, // 148: common.FailureDetails.cluster_unhealthy:type_name -> common.ClusterUnhealthyDetails
+	113, // 149: common.FailureDetails.color_invalid:type_name -> common.ColorInvalidDetails
+	114, // 150: common.FailureDetails.color_too_long:type_name -> common.ColorTooLongDetails
+	115, // 151: common.FailureDetails.coverage_miss:type_name -> common.CoverageMissDetails
+	116, // 152: common.FailureDetails.dependency_discovery_failed:type_name -> common.DependencyDiscoveryFailedDetails
+	117, // 153: common.FailureDetails.empty_transaction:type_name -> common.EmptyTransactionDetails
+	118, // 154: common.FailureDetails.execution_plan_too_large:type_name -> common.ExecutionPlanTooLargeDetails
+	119, // 155: common.FailureDetails.filter_compilation_error:type_name -> common.FilterCompilationErrorDetails
+	120, // 156: common.FailureDetails.idempotency_check_failed:type_name -> common.IdempotencyCheckFailedDetails
+	121, // 157: common.FailureDetails.idempotency_key_conflict:type_name -> common.IdempotencyKeyConflictDetails
+	122, // 158: common.FailureDetails.id_required:type_name -> common.IdRequiredDetails
+	123, // 159: common.FailureDetails.index_already_exists:type_name -> common.IndexAlreadyExistsDetails
+	124, // 160: common.FailureDetails.index_building:type_name -> common.IndexBuildingDetails
+	125, // 161: common.FailureDetails.index_inconsistent:type_name -> common.IndexInconsistentDetails
+	126, // 162: common.FailureDetails.index_not_found:type_name -> common.IndexNotFoundDetails
+	127, // 163: common.FailureDetails.index_target_unsupported:type_name -> common.IndexTargetUnsupportedDetails
+	128, // 164: common.FailureDetails.insufficient_funds:type_name -> common.InsufficientFundsDetails
+	129, // 165: common.FailureDetails.invalid_apply_type:type_name -> common.InvalidApplyTypeDetails
+	130, // 166: common.FailureDetails.invalid_caller_attribution:type_name -> common.InvalidCallerAttributionDetails
+	131, // 167: common.FailureDetails.invalid_cron_expression:type_name -> common.InvalidCronExpressionDetails
+	132, // 168: common.FailureDetails.invalid_execution_plan:type_name -> common.InvalidExecutionPlanDetails
+	133, // 169: common.FailureDetails.invalid_order_type:type_name -> common.InvalidOrderTypeDetails
+	134, // 170: common.FailureDetails.invalid_pattern:type_name -> common.InvalidPatternDetails
+	135, // 171: common.FailureDetails.invalid_skippable_reason:type_name -> common.InvalidSkippableReasonDetails
+	136, // 172: common.FailureDetails.ledger_already_exists:type_name -> common.LedgerAlreadyExistsDetails
+	137, // 173: common.FailureDetails.ledger_deleted:type_name -> common.LedgerDeletedDetails
+	138, // 174: common.FailureDetails.ledger_in_mirror_mode:type_name -> common.LedgerInMirrorModeDetails
+	139, // 175: common.FailureDetails.ledger_name_invalid_char:type_name -> common.LedgerNameInvalidCharDetails
+	140, // 176: common.FailureDetails.ledger_name_required:type_name -> common.LedgerNameRequiredDetails
+	141, // 177: common.FailureDetails.ledger_name_reserved_prefix:type_name -> common.LedgerNameReservedPrefixDetails
+	142, // 178: common.FailureDetails.ledger_name_too_long:type_name -> common.LedgerNameTooLongDetails
+	143, // 179: common.FailureDetails.ledger_not_found:type_name -> common.LedgerNotFoundDetails
+	144, // 180: common.FailureDetails.ledger_not_in_mirror_mode:type_name -> common.LedgerNotInMirrorModeDetails
+	145, // 181: common.FailureDetails.maintenance_mode:type_name -> common.MaintenanceModeDetails
+	146, // 182: common.FailureDetails.metadata_field_not_in_schema:type_name -> common.MetadataFieldNotInSchemaDetails
+	147, // 183: common.FailureDetails.metadata_key_empty:type_name -> common.MetadataKeyEmptyDetails
+	148, // 184: common.FailureDetails.metadata_key_invalid_char:type_name -> common.MetadataKeyInvalidCharDetails
+	149, // 185: common.FailureDetails.metadata_key_required:type_name -> common.MetadataKeyRequiredDetails
+	150, // 186: common.FailureDetails.metadata_limits_unconfigured:type_name -> common.MetadataLimitsUnconfiguredDetails
+	151, // 187: common.FailureDetails.metadata_limit_exceeded:type_name -> common.MetadataLimitExceededDetails
+	152, // 188: common.FailureDetails.metadata_not_found:type_name -> common.MetadataNotFoundDetails
+	153, // 189: common.FailureDetails.metadata_value_contains_null_byte:type_name -> common.MetadataValueContainsNullByteDetails
+	154, // 190: common.FailureDetails.mirror_http_url_invalid:type_name -> common.MirrorHttpUrlInvalidDetails
+	155, // 191: common.FailureDetails.mirror_iam_region_required:type_name -> common.MirrorIamRegionRequiredDetails
+	156, // 192: common.FailureDetails.mirror_iam_requires_tls:type_name -> common.MirrorIamRequiresTlsDetails
+	157, // 193: common.FailureDetails.mirror_rewrite_rule_invalid:type_name -> common.MirrorRewriteRuleInvalidDetails
+	158, // 194: common.FailureDetails.mirror_v2_log_id_gap:type_name -> common.MirrorV2LogIdGapDetails
+	159, // 195: common.FailureDetails.mirror_v2_log_id_invalid:type_name -> common.MirrorV2LogIdInvalidDetails
+	160, // 196: common.FailureDetails.numscript_asset_mismatch:type_name -> common.NumscriptAssetMismatchDetails
+	161, // 197: common.FailureDetails.numscript_bad_arity:type_name -> common.NumscriptBadArityDetails
+	162, // 198: common.FailureDetails.numscript_bad_meta_value:type_name -> common.NumscriptBadMetaValueDetails
+	163, // 199: common.FailureDetails.numscript_bad_portion:type_name -> common.NumscriptBadPortionDetails
+	164, // 200: common.FailureDetails.numscript_cannot_cast_scoped_account:type_name -> common.NumscriptCannotCastScopedAccountDetails
+	165, // 201: common.FailureDetails.numscript_cannot_cast_to_string:type_name -> common.NumscriptCannotCastToStringDetails
+	166, // 202: common.FailureDetails.numscript_cannot_store_scoped_account:type_name -> common.NumscriptCannotStoreScopedAccountDetails
+	167, // 203: common.FailureDetails.numscript_compile_bad_arity:type_name -> common.NumscriptCompileBadArityDetails
+	168, // 204: common.FailureDetails.numscript_compile_cannot_cast_to_string:type_name -> common.NumscriptCompileCannotCastToStringDetails
+	169, // 205: common.FailureDetails.numscript_compile_cannot_store_scoped_account:type_name -> common.NumscriptCompileCannotStoreScopedAccountDetails
+	170, // 206: common.FailureDetails.numscript_compile_duplicate_remaining:type_name -> common.NumscriptCompileDuplicateRemainingDetails
+	171, // 207: common.FailureDetails.numscript_compile_duplicate_variable:type_name -> common.NumscriptCompileDuplicateVariableDetails
+	172, // 208: common.FailureDetails.numscript_compile_error:type_name -> common.NumscriptCompileErrorDetails
+	173, // 209: common.FailureDetails.numscript_compile_experimental_feature:type_name -> common.NumscriptCompileExperimentalFeatureDetails
+	174, // 210: common.FailureDetails.numscript_compile_invalid_feature:type_name -> common.NumscriptCompileInvalidFeatureDetails
+	175, // 211: common.FailureDetails.numscript_compile_invalid_meta_position:type_name -> common.NumscriptCompileInvalidMetaPositionDetails
+	176, // 212: common.FailureDetails.numscript_compile_invalid_type:type_name -> common.NumscriptCompileInvalidTypeDetails
+	177, // 213: common.FailureDetails.numscript_compile_invalid_uncapped_source:type_name -> common.NumscriptCompileInvalidUncappedSourceDetails
+	178, // 214: common.FailureDetails.numscript_compile_invalid_variable_value:type_name -> common.NumscriptCompileInvalidVariableValueDetails
+	179, // 215: common.FailureDetails.numscript_compile_missing_variable:type_name -> common.NumscriptCompileMissingVariableDetails
+	180, // 216: common.FailureDetails.numscript_compile_type_mismatch:type_name -> common.NumscriptCompileTypeMismatchDetails
+	181, // 217: common.FailureDetails.numscript_compile_unbound_variable:type_name -> common.NumscriptCompileUnboundVariableDetails
+	182, // 218: common.FailureDetails.numscript_compile_unknown_function:type_name -> common.NumscriptCompileUnknownFunctionDetails
+	183, // 219: common.FailureDetails.numscript_content_required:type_name -> common.NumscriptContentRequiredDetails
+	184, // 220: common.FailureDetails.numscript_currency_mismatch:type_name -> common.NumscriptCurrencyMismatchDetails
+	185, // 221: common.FailureDetails.numscript_divide_by_zero:type_name -> common.NumscriptDivideByZeroDetails
+	186, // 222: common.FailureDetails.numscript_execution_error:type_name -> common.NumscriptExecutionErrorDetails
+	187, // 223: common.FailureDetails.numscript_experimental_feature:type_name -> common.NumscriptExperimentalFeatureDetails
+	188, // 224: common.FailureDetails.numscript_invalid_account_name:type_name -> common.NumscriptInvalidAccountNameDetails
+	189, // 225: common.FailureDetails.numscript_invalid_allotment_in_send_all:type_name -> common.NumscriptInvalidAllotmentInSendAllDetails
+	190, // 226: common.FailureDetails.numscript_invalid_allotment_sum:type_name -> common.NumscriptInvalidAllotmentSumDetails
+	191, // 227: common.FailureDetails.numscript_invalid_asset:type_name -> common.NumscriptInvalidAssetDetails
+	192, // 228: common.FailureDetails.numscript_invalid_color:type_name -> common.NumscriptInvalidColorDetails
+	193, // 229: common.FailureDetails.numscript_invalid_feature:type_name -> common.NumscriptInvalidFeatureDetails
+	194, // 230: common.FailureDetails.numscript_invalid_monetary_literal:type_name -> common.NumscriptInvalidMonetaryLiteralDetails
+	195, // 231: common.FailureDetails.numscript_invalid_nested_meta:type_name -> common.NumscriptInvalidNestedMetaDetails
+	196, // 232: common.FailureDetails.numscript_invalid_number_literal:type_name -> common.NumscriptInvalidNumberLiteralDetails
+	197, // 233: common.FailureDetails.numscript_invalid_remaining_allotment:type_name -> common.NumscriptInvalidRemainingAllotmentDetails
+	198, // 234: common.FailureDetails.numscript_invalid_scope:type_name -> common.NumscriptInvalidScopeDetails
+	199, // 235: common.FailureDetails.numscript_invalid_type:type_name -> common.NumscriptInvalidTypeDetails
+	200, // 236: common.FailureDetails.numscript_invalid_unbounded_scaling_address:type_name -> common.NumscriptInvalidUnboundedScalingAddressDetails
+	201, // 237: common.FailureDetails.numscript_invalid_unbounded_send_all:type_name -> common.NumscriptInvalidUnboundedSendAllDetails
+	202, // 238: common.FailureDetails.numscript_invalid_uncapped_source:type_name -> common.NumscriptInvalidUncappedSourceDetails
+	203, // 239: common.FailureDetails.numscript_invalid_version:type_name -> common.NumscriptInvalidVersionDetails
+	204, // 240: common.FailureDetails.numscript_metadata_not_found:type_name -> common.NumscriptMetadataNotFoundDetails
+	205, // 241: common.FailureDetails.numscript_missing_funds:type_name -> common.NumscriptMissingFundsDetails
+	206, // 242: common.FailureDetails.numscript_missing_variable:type_name -> common.NumscriptMissingVariableDetails
+	207, // 243: common.FailureDetails.numscript_name_invalid_char:type_name -> common.NumscriptNameInvalidCharDetails
+	208, // 244: common.FailureDetails.numscript_name_required:type_name -> common.NumscriptNameRequiredDetails
+	209, // 245: common.FailureDetails.numscript_name_too_long:type_name -> common.NumscriptNameTooLongDetails
+	210, // 246: common.FailureDetails.numscript_negative_amount:type_name -> common.NumscriptNegativeAmountDetails
+	211, // 247: common.FailureDetails.numscript_negative_balance:type_name -> common.NumscriptNegativeBalanceDetails
+	212, // 248: common.FailureDetails.numscript_negative_portion:type_name -> common.NumscriptNegativePortionDetails
+	213, // 249: common.FailureDetails.numscript_not_found:type_name -> common.NumscriptNotFoundDetails
+	214, // 250: common.FailureDetails.numscript_parse_error:type_name -> common.NumscriptParseErrorDetails
+	215, // 251: common.FailureDetails.numscript_posting_amount_overflow:type_name -> common.NumscriptPostingAmountOverflowDetails
+	216, // 252: common.FailureDetails.numscript_posting_negative_amount:type_name -> common.NumscriptPostingNegativeAmountDetails
+	217, // 253: common.FailureDetails.numscript_runtime:type_name -> common.NumscriptRuntimeDetails
+	218, // 254: common.FailureDetails.numscript_scaling_unsupported:type_name -> common.NumscriptScalingUnsupportedDetails
+	219, // 255: common.FailureDetails.numscript_type_error:type_name -> common.NumscriptTypeErrorDetails
+	220, // 256: common.FailureDetails.numscript_unbound_function:type_name -> common.NumscriptUnboundFunctionDetails
+	221, // 257: common.FailureDetails.numscript_unbound_variable:type_name -> common.NumscriptUnboundVariableDetails
+	222, // 258: common.FailureDetails.numscript_version_already_exists:type_name -> common.NumscriptVersionAlreadyExistsDetails
+	223, // 259: common.FailureDetails.postings_and_script_conflict:type_name -> common.PostingsAndScriptConflictDetails
+	224, // 260: common.FailureDetails.preload_unavailable:type_name -> common.PreloadUnavailableDetails
+	225, // 261: common.FailureDetails.prepared_query_already_exists:type_name -> common.PreparedQueryAlreadyExistsDetails
+	226, // 262: common.FailureDetails.prepared_query_name_invalid_char:type_name -> common.PreparedQueryNameInvalidCharDetails
+	227, // 263: common.FailureDetails.prepared_query_name_required:type_name -> common.PreparedQueryNameRequiredDetails
+	228, // 264: common.FailureDetails.prepared_query_name_too_long:type_name -> common.PreparedQueryNameTooLongDetails
+	229, // 265: common.FailureDetails.prepared_query_not_found:type_name -> common.PreparedQueryNotFoundDetails
+	230, // 266: common.FailureDetails.prepared_query_required:type_name -> common.PreparedQueryRequiredDetails
+	231, // 267: common.FailureDetails.prepared_query_target_unsupported:type_name -> common.PreparedQueryTargetUnsupportedDetails
+	232, // 268: common.FailureDetails.revert_target_created_in_batch:type_name -> common.RevertTargetCreatedInBatchDetails
+	233, // 269: common.FailureDetails.scoped_balance_unsupported:type_name -> common.ScopedBalanceUnsupportedDetails
+	234, // 270: common.FailureDetails.script_and_reference_conflict:type_name -> common.ScriptAndReferenceConflictDetails
+	235, // 271: common.FailureDetails.script_required:type_name -> common.ScriptRequiredDetails
+	236, // 272: common.FailureDetails.sequence_exhausted:type_name -> common.SequenceExhaustedDetails
+	237, // 273: common.FailureDetails.signing_key_id_invalid_char:type_name -> common.SigningKeyIdInvalidCharDetails
+	238, // 274: common.FailureDetails.signing_key_id_required:type_name -> common.SigningKeyIdRequiredDetails
+	239, // 275: common.FailureDetails.signing_key_id_too_long:type_name -> common.SigningKeyIdTooLongDetails
+	240, // 276: common.FailureDetails.signing_key_invalid_length:type_name -> common.SigningKeyInvalidLengthDetails
+	241, // 277: common.FailureDetails.sink_already_exists:type_name -> common.SinkAlreadyExistsDetails
+	242, // 278: common.FailureDetails.sink_batch_size_too_large:type_name -> common.SinkBatchSizeTooLargeDetails
+	243, // 279: common.FailureDetails.sink_controller_mismatch:type_name -> common.SinkControllerMismatchDetails
+	244, // 280: common.FailureDetails.sink_not_found:type_name -> common.SinkNotFoundDetails
+	245, // 281: common.FailureDetails.stale_cluster_policy:type_name -> common.StaleClusterPolicyDetails
+	246, // 282: common.FailureDetails.stale_inputs_resolution:type_name -> common.StaleInputsResolutionDetails
+	247, // 283: common.FailureDetails.stale_proposal:type_name -> common.StaleProposalDetails
+	248, // 284: common.FailureDetails.storage_operation_failed:type_name -> common.StorageOperationFailedDetails
+	249, // 285: common.FailureDetails.target_required:type_name -> common.TargetRequiredDetails
+	250, // 286: common.FailureDetails.transaction_already_reverted:type_name -> common.TransactionAlreadyRevertedDetails
+	251, // 287: common.FailureDetails.transaction_not_found:type_name -> common.TransactionNotFoundDetails
+	252, // 288: common.FailureDetails.transaction_reference_conflict:type_name -> common.TransactionReferenceConflictDetails
+	253, // 289: common.FailureDetails.transaction_reference_not_found:type_name -> common.TransactionReferenceNotFoundDetails
+	254, // 290: common.FailureDetails.transaction_reference_too_long:type_name -> common.TransactionReferenceTooLongDetails
+	255, // 291: common.FailureDetails.transaction_state_inconsistent:type_name -> common.TransactionStateInconsistentDetails
+	256, // 292: common.FailureDetails.transaction_target_missing:type_name -> common.TransactionTargetMissingDetails
+	257, // 293: common.FailureDetails.transient_account_non_zero:type_name -> common.TransientAccountNonZeroDetails
+	258, // 294: common.FailureDetails.validation:type_name -> common.ValidationDetails
+	259, // 295: common.FailureDetails.volume_not_materialized:type_name -> common.VolumeNotMaterializedDetails
+	260, // 296: common.FailureDetails.volume_overflow:type_name -> common.VolumeOverflowDetails
+	261, // 297: common.FailureDetails.writes_blocked_clock_skew:type_name -> common.WritesBlockedClockSkewDetails
+	262, // 298: common.FailureDetails.writes_blocked_disk_full:type_name -> common.WritesBlockedDiskFullDetails
+	11,  // 299: common.OrderSkippedLog.reason:type_name -> common.ErrorReason
+	89,  // 300: common.OrderSkippedLog.details:type_name -> common.FailureDetails
+	43,  // 301: common.CreatedIndexLog.id:type_name -> common.IndexID
+	3,   // 302: common.CreatedIndexLog.bound_type:type_name -> common.MetadataType
+	43,  // 303: common.DroppedIndexLog.id:type_name -> common.IndexID
+	26,  // 304: common.CreatedTransaction.transaction:type_name -> common.Transaction
+	364, // 305: common.CreatedTransaction.account_metadata:type_name -> common.CreatedTransaction.AccountMetadataEntry
+	26,  // 306: common.RevertedTransaction.revert_transaction:type_name -> common.Transaction
+	38,  // 307: common.SavedMetadata.target:type_name -> common.Target
+	365, // 308: common.SavedMetadata.metadata:type_name -> common.SavedMetadata.MetadataEntry
+	38,  // 309: common.DeletedMetadata.target:type_name -> common.Target
+	2,   // 310: common.SetMetadataFieldTypeLog.target_type:type_name -> common.TargetType
+	3,   // 311: common.SetMetadataFieldTypeLog.type:type_name -> common.MetadataType
+	2,   // 312: common.RemovedMetadataFieldTypeLog.target_type:type_name -> common.TargetType
+	43,  // 313: common.RemovedMetadataFieldTypeLog.dropped_index:type_name -> common.IndexID
+	293, // 314: common.MirrorSourceConfig.http:type_name -> common.HttpMirrorSourceConfig
+	295, // 315: common.MirrorSourceConfig.postgres:type_name -> common.PostgresMirrorSourceConfig
+	274, // 316: common.MirrorSourceConfig.rewrite_rules:type_name -> common.MirrorRewriteRule
+	275, // 317: common.MirrorRewriteRule.created_transaction:type_name -> common.CreatedTransactionRule
+	276, // 318: common.MirrorRewriteRule.reverted_transaction:type_name -> common.RevertedTransactionRule
+	277, // 319: common.MirrorRewriteRule.saved_metadata:type_name -> common.SavedMetadataRule
+	278, // 320: common.MirrorRewriteRule.deleted_metadata:type_name -> common.DeletedMetadataRule
+	279, // 321: common.MirrorRewriteRule.any_variant:type_name -> common.AnyVariantRule
+	280, // 322: common.CreatedTransactionRule.actions:type_name -> common.CreatedTransactionAction
+	281, // 323: common.RevertedTransactionRule.actions:type_name -> common.RevertedTransactionAction
+	282, // 324: common.SavedMetadataRule.actions:type_name -> common.SavedMetadataAction
+	283, // 325: common.DeletedMetadataRule.actions:type_name -> common.DeletedMetadataAction
+	284, // 326: common.AnyVariantRule.actions:type_name -> common.AnyVariantAction
+	285, // 327: common.CreatedTransactionAction.rewrite_address:type_name -> common.RewriteAddressAction
+	286, // 328: common.CreatedTransactionAction.set_metadata:type_name -> common.SetMetadataAction
+	287, // 329: common.CreatedTransactionAction.delete_metadata:type_name -> common.DeleteMetadataAction
+	288, // 330: common.CreatedTransactionAction.set_account_metadata:type_name -> common.SetAccountMetadataAction
+	289, // 331: common.CreatedTransactionAction.delete_account_metadata:type_name -> common.DeleteAccountMetadataAction
+	290, // 332: common.CreatedTransactionAction.set_account_metadata_from_address:type_name -> common.SetAccountMetadataFromAddressAction
+	292, // 333: common.CreatedTransactionAction.drop:type_name -> common.DropAction
+	285, // 334: common.RevertedTransactionAction.rewrite_address:type_name -> common.RewriteAddressAction
+	286, // 335: common.RevertedTransactionAction.set_metadata:type_name -> common.SetMetadataAction
+	287, // 336: common.RevertedTransactionAction.delete_metadata:type_name -> common.DeleteMetadataAction
+	292, // 337: common.RevertedTransactionAction.drop:type_name -> common.DropAction
+	285, // 338: common.SavedMetadataAction.rewrite_address:type_name -> common.RewriteAddressAction
+	286, // 339: common.SavedMetadataAction.set_metadata:type_name -> common.SetMetadataAction
+	287, // 340: common.SavedMetadataAction.delete_metadata:type_name -> common.DeleteMetadataAction
+	292, // 341: common.SavedMetadataAction.drop:type_name -> common.DropAction
+	285, // 342: common.DeletedMetadataAction.rewrite_address:type_name -> common.RewriteAddressAction
+	292, // 343: common.DeletedMetadataAction.drop:type_name -> common.DropAction
+	285, // 344: common.AnyVariantAction.rewrite_address:type_name -> common.RewriteAddressAction
+	292, // 345: common.AnyVariantAction.drop:type_name -> common.DropAction
+	291, // 346: common.SetAccountMetadataFromAddressAction.replacements:type_name -> common.SetAccountMetadataFromAddressReplacement
+	294, // 347: common.HttpMirrorSourceConfig.oauth2_client_credentials:type_name -> common.OAuth2ClientCredentials
+	296, // 348: common.PostgresMirrorSourceConfig.aws_iam_auth:type_name -> common.PostgresAwsIamAuth
+	19,  // 349: common.MirrorSyncError.occurred_at:type_name -> common.Timestamp
+	10,  // 350: common.MirrorSyncProgress.state:type_name -> common.MirrorSyncState
+	297, // 351: common.MirrorSyncProgress.error:type_name -> common.MirrorSyncError
+	19,  // 352: common.LedgerInfo.created_at:type_name -> common.Timestamp
+	19,  // 353: common.LedgerInfo.deleted_at:type_name -> common.Timestamp
+	40,  // 354: common.LedgerInfo.metadata_schema:type_name -> common.MetadataSchema
+	9,   // 355: common.LedgerInfo.mode:type_name -> common.LedgerMode
+	273, // 356: common.LedgerInfo.mirror_source:type_name -> common.MirrorSourceConfig
+	298, // 357: common.LedgerInfo.mirror_sync_progress:type_name -> common.MirrorSyncProgress
+	366, // 358: common.LedgerInfo.account_types:type_name -> common.LedgerInfo.AccountTypesEntry
+	12,  // 359: common.LedgerInfo.default_enforcement_mode:type_name -> common.ChartEnforcementMode
+	367, // 360: common.LedgerInfo.metadata:type_name -> common.LedgerInfo.MetadataEntry
+	38,  // 361: common.SaveMetadataCommand.target:type_name -> common.Target
+	368, // 362: common.SaveMetadataCommand.metadata:type_name -> common.SaveMetadataCommand.MetadataEntry
+	38,  // 363: common.DeleteMetadataCommand.target:type_name -> common.Target
+	369, // 364: common.TransactionState.metadata:type_name -> common.TransactionState.MetadataEntry
+	19,  // 365: common.TransactionState.timestamp:type_name -> common.Timestamp
+	25,  // 366: common.TransactionState.postings:type_name -> common.Posting
+	19,  // 367: common.TransactionState.reverted_at:type_name -> common.Timestamp
+	304, // 368: common.IdempotencyKeyValue.failure:type_name -> common.IdempotencyFailure
+	11,  // 369: common.IdempotencyFailure.reason:type_name -> common.ErrorReason
+	89,  // 370: common.IdempotencyFailure.details:type_name -> common.FailureDetails
+	308, // 371: common.SegmentType.uuid:type_name -> common.UUIDConstraint
+	309, // 372: common.SegmentType.uint64:type_name -> common.Uint64Constraint
+	310, // 373: common.SegmentType.bytes:type_name -> common.BytesConstraint
+	13,  // 374: common.AccountType.persistence:type_name -> common.AccountTypePersistence
+	370, // 375: common.AccountType.segment_types:type_name -> common.AccountType.SegmentTypesEntry
+	311, // 376: common.AddedAccountTypeLog.account_type:type_name -> common.AccountType
+	12,  // 377: common.UpdatedDefaultEnforcementModeLog.enforcement_mode:type_name -> common.ChartEnforcementMode
+	328, // 378: common.QueryFilter.field:type_name -> common.FieldCondition
+	334, // 379: common.QueryFilter.address:type_name -> common.AddressMatch
+	324, // 380: common.QueryFilter.and:type_name -> common.AndFilter
+	325, // 381: common.QueryFilter.or:type_name -> common.OrFilter
+	326, // 382: common.QueryFilter.not:type_name -> common.NotFilter
+	316, // 383: common.QueryFilter.reference:type_name -> common.ReferenceCondition
+	321, // 384: common.QueryFilter.builtin_uint:type_name -> common.BuiltinUintCondition
+	319, // 385: common.QueryFilter.ledger:type_name -> common.LedgerCondition
+	320, // 386: common.QueryFilter.log_id:type_name -> common.LogIdCondition
+	322, // 387: common.QueryFilter.log_builtin_uint:type_name -> common.LogBuiltinUintCondition
+	323, // 388: common.QueryFilter.account_has_asset:type_name -> common.AccountHasAssetCondition
+	317, // 389: common.QueryFilter.reverted:type_name -> common.RevertedCondition
+	318, // 390: common.QueryFilter.audit:type_name -> common.AuditCondition
+	329, // 391: common.ReferenceCondition.cond:type_name -> common.StringCondition
+	14,  // 392: common.AuditCondition.field:type_name -> common.AuditField
+	329, // 393: common.AuditCondition.string_cond:type_name -> common.StringCondition
+	331, // 394: common.AuditCondition.uint_cond:type_name -> common.UintCondition
+	329, // 395: common.LedgerCondition.cond:type_name -> common.StringCondition
+	331, // 396: common.LogIdCondition.cond:type_name -> common.UintCondition
+	4,   // 397: common.BuiltinUintCondition.field:type_name -> common.TransactionBuiltinIndex
+	331, // 398: common.BuiltinUintCondition.cond:type_name -> common.UintCondition
+	6,   // 399: common.LogBuiltinUintCondition.field:type_name -> common.LogBuiltinIndex
+	331, // 400: common.LogBuiltinUintCondition.cond:type_name -> common.UintCondition
+	315, // 401: common.AndFilter.filters:type_name -> common.QueryFilter
+	315, // 402: common.OrFilter.filters:type_name -> common.QueryFilter
+	315, // 403: common.NotFilter.filter:type_name -> common.QueryFilter
+	327, // 404: common.FieldCondition.field:type_name -> common.FieldRef
+	329, // 405: common.FieldCondition.string_cond:type_name -> common.StringCondition
+	330, // 406: common.FieldCondition.int_cond:type_name -> common.IntCondition
+	331, // 407: common.FieldCondition.uint_cond:type_name -> common.UintCondition
+	332, // 408: common.FieldCondition.bool_cond:type_name -> common.BoolCondition
+	333, // 409: common.FieldCondition.exists_cond:type_name -> common.ExistsCondition
+	15,  // 410: common.AddressMatch.role:type_name -> common.AddressRole
+	315, // 411: common.PreparedQuery.filter:type_name -> common.QueryFilter
+	16,  // 412: common.PreparedQuery.target:type_name -> common.QueryTarget
+	24,  // 413: common.AggregatedVolume.input:type_name -> common.Uint256
+	24,  // 414: common.AggregatedVolume.output:type_name -> common.Uint256
+	336, // 415: common.AggregateResult.volumes:type_name -> common.AggregatedVolume
+	338, // 416: common.AggregateResult.groups:type_name -> common.GroupedAggregateResult
+	336, // 417: common.GroupedAggregateResult.volumes:type_name -> common.AggregatedVolume
+	36,  // 418: common.PreparedQueryCursor.account_data:type_name -> common.Account
+	26,  // 419: common.PreparedQueryCursor.transaction_data:type_name -> common.Transaction
+	46,  // 420: common.PreparedQueryCursor.log_data:type_name -> common.Log
+	342, // 421: common.AuthenticatedCaller.identity:type_name -> common.CallerIdentity
+	343, // 422: common.CallerSnapshot.authenticated:type_name -> common.AuthenticatedCaller
+	344, // 423: common.CallerSnapshot.anonymous:type_name -> common.AnonymousCaller
+	345, // 424: common.CallerSnapshot.system:type_name -> common.SystemCaller
+	346, // 425: common.CallerSnapshot.auth_disabled:type_name -> common.AuthDisabledCaller
+	348, // 426: common.BackupStorage.s3:type_name -> common.S3StorageConfig
+	349, // 427: common.BackupStorage.azure:type_name -> common.AzureStorageConfig
+	351, // 428: common.ListOptions.read:type_name -> common.ReadOptions
+	315, // 429: common.ListOptions.filter:type_name -> common.QueryFilter
+	21,  // 430: common.MetadataMap.ValuesEntry.value:type_name -> common.MetadataValue
+	21,  // 431: common.Transaction.MetadataEntry.value:type_name -> common.MetadataValue
+	32,  // 432: common.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> common.VolumesByAssets
+	21,  // 433: common.Account.MetadataEntry.value:type_name -> common.MetadataValue
+	39,  // 434: common.MetadataSchema.AccountFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	39,  // 435: common.MetadataSchema.TransactionFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	39,  // 436: common.MetadataSchema.LedgerFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	21,  // 437: common.SavedLedgerMetadataLog.MetadataEntry.value:type_name -> common.MetadataValue
+	311, // 438: common.CreatedLedgerLog.AccountTypesEntry.value:type_name -> common.AccountType
+	21,  // 439: common.CreatedLedgerLog.MetadataEntry.value:type_name -> common.MetadataValue
+	22,  // 440: common.CreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataMap
+	21,  // 441: common.SavedMetadata.MetadataEntry.value:type_name -> common.MetadataValue
+	311, // 442: common.LedgerInfo.AccountTypesEntry.value:type_name -> common.AccountType
+	21,  // 443: common.LedgerInfo.MetadataEntry.value:type_name -> common.MetadataValue
+	21,  // 444: common.SaveMetadataCommand.MetadataEntry.value:type_name -> common.MetadataValue
+	21,  // 445: common.TransactionState.MetadataEntry.value:type_name -> common.MetadataValue
+	307, // 446: common.AccountType.SegmentTypesEntry.value:type_name -> common.SegmentType
+	372, // 447: common.auth_policy:extendee -> google.protobuf.MethodOptions
+	373, // 448: common.allowed_query_targets:extendee -> google.protobuf.FieldOptions
+	373, // 449: common.valid_on_no_query_target:extendee -> google.protobuf.FieldOptions
+	373, // 450: common.ledger_log_is_history:extendee -> google.protobuf.FieldOptions
+	373, // 451: common.sensitive:extendee -> google.protobuf.FieldOptions
+	373, // 452: common.sensitive_url:extendee -> google.protobuf.FieldOptions
+	18,  // 453: common.auth_policy:type_name -> common.MethodAuthPolicy
+	16,  // 454: common.allowed_query_targets:type_name -> common.QueryTarget
+	455, // [455:455] is the sub-list for method output_type
+	455, // [455:455] is the sub-list for method input_type
+	453, // [453:455] is the sub-list for extension type_name
+	447, // [447:453] is the sub-list for extension extendee
+	0,   // [0:447] is the sub-list for field type_name
 }
 
 func init() { file_common_proto_init() }
@@ -14777,18 +27185,338 @@ func file_common_proto_init() {
 		(*LedgerLogPayload_UpdatedDefaultEnforcementMode)(nil),
 		(*LedgerLogPayload_OrderSkipped)(nil),
 	}
-	file_common_proto_msgTypes[81].OneofWrappers = []any{
+	file_common_proto_msgTypes[71].OneofWrappers = []any{
+		(*FailureDetails_AccountAddressEmpty)(nil),
+		(*FailureDetails_AccountAddressEmptySegment)(nil),
+		(*FailureDetails_AccountAddressInvalidChar)(nil),
+		(*FailureDetails_AccountAddressTooLong)(nil),
+		(*FailureDetails_AccountNotMatchingType)(nil),
+		(*FailureDetails_AccountTypeAlreadyExists)(nil),
+		(*FailureDetails_AccountTypeConflict)(nil),
+		(*FailureDetails_AccountTypeHasAccounts)(nil),
+		(*FailureDetails_AccountTypeNameTooLong)(nil),
+		(*FailureDetails_AccountTypeNotFound)(nil),
+		(*FailureDetails_AccountTypePatternTooLong)(nil),
+		(*FailureDetails_AggregateOverflow)(nil),
+		(*FailureDetails_AssetInvalid)(nil),
+		(*FailureDetails_AuditDisabled)(nil),
+		(*FailureDetails_BalanceNotFound)(nil),
+		(*FailureDetails_BalanceNotPreloaded)(nil),
+		(*FailureDetails_CheckpointIdRequired)(nil),
+		(*FailureDetails_CheckpointLimitReached)(nil),
+		(*FailureDetails_CheckpointNotFound)(nil),
+		(*FailureDetails_CheckpointNotReady)(nil),
+		(*FailureDetails_ClusterPolicyInvalid)(nil),
+		(*FailureDetails_ClusterPolicyRevisionConflict)(nil),
+		(*FailureDetails_ClusterUnhealthy)(nil),
+		(*FailureDetails_ColorInvalid)(nil),
+		(*FailureDetails_ColorTooLong)(nil),
+		(*FailureDetails_CoverageMiss)(nil),
+		(*FailureDetails_DependencyDiscoveryFailed)(nil),
+		(*FailureDetails_EmptyTransaction)(nil),
+		(*FailureDetails_ExecutionPlanTooLarge)(nil),
+		(*FailureDetails_FilterCompilationError)(nil),
+		(*FailureDetails_IdempotencyCheckFailed)(nil),
+		(*FailureDetails_IdempotencyKeyConflict)(nil),
+		(*FailureDetails_IdRequired)(nil),
+		(*FailureDetails_IndexAlreadyExists)(nil),
+		(*FailureDetails_IndexBuilding)(nil),
+		(*FailureDetails_IndexInconsistent)(nil),
+		(*FailureDetails_IndexNotFound)(nil),
+		(*FailureDetails_IndexTargetUnsupported)(nil),
+		(*FailureDetails_InsufficientFunds)(nil),
+		(*FailureDetails_InvalidApplyType)(nil),
+		(*FailureDetails_InvalidCallerAttribution)(nil),
+		(*FailureDetails_InvalidCronExpression)(nil),
+		(*FailureDetails_InvalidExecutionPlan)(nil),
+		(*FailureDetails_InvalidOrderType)(nil),
+		(*FailureDetails_InvalidPattern)(nil),
+		(*FailureDetails_InvalidSkippableReason)(nil),
+		(*FailureDetails_LedgerAlreadyExists)(nil),
+		(*FailureDetails_LedgerDeleted)(nil),
+		(*FailureDetails_LedgerInMirrorMode)(nil),
+		(*FailureDetails_LedgerNameInvalidChar)(nil),
+		(*FailureDetails_LedgerNameRequired)(nil),
+		(*FailureDetails_LedgerNameReservedPrefix)(nil),
+		(*FailureDetails_LedgerNameTooLong)(nil),
+		(*FailureDetails_LedgerNotFound)(nil),
+		(*FailureDetails_LedgerNotInMirrorMode)(nil),
+		(*FailureDetails_MaintenanceMode)(nil),
+		(*FailureDetails_MetadataFieldNotInSchema)(nil),
+		(*FailureDetails_MetadataKeyEmpty)(nil),
+		(*FailureDetails_MetadataKeyInvalidChar)(nil),
+		(*FailureDetails_MetadataKeyRequired)(nil),
+		(*FailureDetails_MetadataLimitsUnconfigured)(nil),
+		(*FailureDetails_MetadataLimitExceeded)(nil),
+		(*FailureDetails_MetadataNotFound)(nil),
+		(*FailureDetails_MetadataValueContainsNullByte)(nil),
+		(*FailureDetails_MirrorHttpUrlInvalid)(nil),
+		(*FailureDetails_MirrorIamRegionRequired)(nil),
+		(*FailureDetails_MirrorIamRequiresTls)(nil),
+		(*FailureDetails_MirrorRewriteRuleInvalid)(nil),
+		(*FailureDetails_MirrorV2LogIdGap)(nil),
+		(*FailureDetails_MirrorV2LogIdInvalid)(nil),
+		(*FailureDetails_NumscriptAssetMismatch)(nil),
+		(*FailureDetails_NumscriptBadArity)(nil),
+		(*FailureDetails_NumscriptBadMetaValue)(nil),
+		(*FailureDetails_NumscriptBadPortion)(nil),
+		(*FailureDetails_NumscriptCannotCastScopedAccount)(nil),
+		(*FailureDetails_NumscriptCannotCastToString)(nil),
+		(*FailureDetails_NumscriptCannotStoreScopedAccount)(nil),
+		(*FailureDetails_NumscriptCompileBadArity)(nil),
+		(*FailureDetails_NumscriptCompileCannotCastToString)(nil),
+		(*FailureDetails_NumscriptCompileCannotStoreScopedAccount)(nil),
+		(*FailureDetails_NumscriptCompileDuplicateRemaining)(nil),
+		(*FailureDetails_NumscriptCompileDuplicateVariable)(nil),
+		(*FailureDetails_NumscriptCompileError)(nil),
+		(*FailureDetails_NumscriptCompileExperimentalFeature)(nil),
+		(*FailureDetails_NumscriptCompileInvalidFeature)(nil),
+		(*FailureDetails_NumscriptCompileInvalidMetaPosition)(nil),
+		(*FailureDetails_NumscriptCompileInvalidType)(nil),
+		(*FailureDetails_NumscriptCompileInvalidUncappedSource)(nil),
+		(*FailureDetails_NumscriptCompileInvalidVariableValue)(nil),
+		(*FailureDetails_NumscriptCompileMissingVariable)(nil),
+		(*FailureDetails_NumscriptCompileTypeMismatch)(nil),
+		(*FailureDetails_NumscriptCompileUnboundVariable)(nil),
+		(*FailureDetails_NumscriptCompileUnknownFunction)(nil),
+		(*FailureDetails_NumscriptContentRequired)(nil),
+		(*FailureDetails_NumscriptCurrencyMismatch)(nil),
+		(*FailureDetails_NumscriptDivideByZero)(nil),
+		(*FailureDetails_NumscriptExecutionError)(nil),
+		(*FailureDetails_NumscriptExperimentalFeature)(nil),
+		(*FailureDetails_NumscriptInvalidAccountName)(nil),
+		(*FailureDetails_NumscriptInvalidAllotmentInSendAll)(nil),
+		(*FailureDetails_NumscriptInvalidAllotmentSum)(nil),
+		(*FailureDetails_NumscriptInvalidAsset)(nil),
+		(*FailureDetails_NumscriptInvalidColor)(nil),
+		(*FailureDetails_NumscriptInvalidFeature)(nil),
+		(*FailureDetails_NumscriptInvalidMonetaryLiteral)(nil),
+		(*FailureDetails_NumscriptInvalidNestedMeta)(nil),
+		(*FailureDetails_NumscriptInvalidNumberLiteral)(nil),
+		(*FailureDetails_NumscriptInvalidRemainingAllotment)(nil),
+		(*FailureDetails_NumscriptInvalidScope)(nil),
+		(*FailureDetails_NumscriptInvalidType)(nil),
+		(*FailureDetails_NumscriptInvalidUnboundedScalingAddress)(nil),
+		(*FailureDetails_NumscriptInvalidUnboundedSendAll)(nil),
+		(*FailureDetails_NumscriptInvalidUncappedSource)(nil),
+		(*FailureDetails_NumscriptInvalidVersion)(nil),
+		(*FailureDetails_NumscriptMetadataNotFound)(nil),
+		(*FailureDetails_NumscriptMissingFunds)(nil),
+		(*FailureDetails_NumscriptMissingVariable)(nil),
+		(*FailureDetails_NumscriptNameInvalidChar)(nil),
+		(*FailureDetails_NumscriptNameRequired)(nil),
+		(*FailureDetails_NumscriptNameTooLong)(nil),
+		(*FailureDetails_NumscriptNegativeAmount)(nil),
+		(*FailureDetails_NumscriptNegativeBalance)(nil),
+		(*FailureDetails_NumscriptNegativePortion)(nil),
+		(*FailureDetails_NumscriptNotFound)(nil),
+		(*FailureDetails_NumscriptParseError)(nil),
+		(*FailureDetails_NumscriptPostingAmountOverflow)(nil),
+		(*FailureDetails_NumscriptPostingNegativeAmount)(nil),
+		(*FailureDetails_NumscriptRuntime)(nil),
+		(*FailureDetails_NumscriptScalingUnsupported)(nil),
+		(*FailureDetails_NumscriptTypeError)(nil),
+		(*FailureDetails_NumscriptUnboundFunction)(nil),
+		(*FailureDetails_NumscriptUnboundVariable)(nil),
+		(*FailureDetails_NumscriptVersionAlreadyExists)(nil),
+		(*FailureDetails_PostingsAndScriptConflict)(nil),
+		(*FailureDetails_PreloadUnavailable)(nil),
+		(*FailureDetails_PreparedQueryAlreadyExists)(nil),
+		(*FailureDetails_PreparedQueryNameInvalidChar)(nil),
+		(*FailureDetails_PreparedQueryNameRequired)(nil),
+		(*FailureDetails_PreparedQueryNameTooLong)(nil),
+		(*FailureDetails_PreparedQueryNotFound)(nil),
+		(*FailureDetails_PreparedQueryRequired)(nil),
+		(*FailureDetails_PreparedQueryTargetUnsupported)(nil),
+		(*FailureDetails_RevertTargetCreatedInBatch)(nil),
+		(*FailureDetails_ScopedBalanceUnsupported)(nil),
+		(*FailureDetails_ScriptAndReferenceConflict)(nil),
+		(*FailureDetails_ScriptRequired)(nil),
+		(*FailureDetails_SequenceExhausted)(nil),
+		(*FailureDetails_SigningKeyIdInvalidChar)(nil),
+		(*FailureDetails_SigningKeyIdRequired)(nil),
+		(*FailureDetails_SigningKeyIdTooLong)(nil),
+		(*FailureDetails_SigningKeyInvalidLength)(nil),
+		(*FailureDetails_SinkAlreadyExists)(nil),
+		(*FailureDetails_SinkBatchSizeTooLarge)(nil),
+		(*FailureDetails_SinkControllerMismatch)(nil),
+		(*FailureDetails_SinkNotFound)(nil),
+		(*FailureDetails_StaleClusterPolicy)(nil),
+		(*FailureDetails_StaleInputsResolution)(nil),
+		(*FailureDetails_StaleProposal)(nil),
+		(*FailureDetails_StorageOperationFailed)(nil),
+		(*FailureDetails_TargetRequired)(nil),
+		(*FailureDetails_TransactionAlreadyReverted)(nil),
+		(*FailureDetails_TransactionNotFound)(nil),
+		(*FailureDetails_TransactionReferenceConflict)(nil),
+		(*FailureDetails_TransactionReferenceNotFound)(nil),
+		(*FailureDetails_TransactionReferenceTooLong)(nil),
+		(*FailureDetails_TransactionStateInconsistent)(nil),
+		(*FailureDetails_TransactionTargetMissing)(nil),
+		(*FailureDetails_TransientAccountNonZero)(nil),
+		(*FailureDetails_Validation)(nil),
+		(*FailureDetails_VolumeNotMaterialized)(nil),
+		(*FailureDetails_VolumeOverflow)(nil),
+		(*FailureDetails_WritesBlockedClockSkew)(nil),
+		(*FailureDetails_WritesBlockedDiskFull)(nil),
+	}
+	file_common_proto_msgTypes[72].OneofWrappers = []any{}
+	file_common_proto_msgTypes[73].OneofWrappers = []any{}
+	file_common_proto_msgTypes[74].OneofWrappers = []any{}
+	file_common_proto_msgTypes[75].OneofWrappers = []any{}
+	file_common_proto_msgTypes[76].OneofWrappers = []any{}
+	file_common_proto_msgTypes[77].OneofWrappers = []any{}
+	file_common_proto_msgTypes[78].OneofWrappers = []any{}
+	file_common_proto_msgTypes[79].OneofWrappers = []any{}
+	file_common_proto_msgTypes[80].OneofWrappers = []any{}
+	file_common_proto_msgTypes[81].OneofWrappers = []any{}
+	file_common_proto_msgTypes[82].OneofWrappers = []any{}
+	file_common_proto_msgTypes[83].OneofWrappers = []any{}
+	file_common_proto_msgTypes[84].OneofWrappers = []any{}
+	file_common_proto_msgTypes[86].OneofWrappers = []any{}
+	file_common_proto_msgTypes[87].OneofWrappers = []any{}
+	file_common_proto_msgTypes[89].OneofWrappers = []any{}
+	file_common_proto_msgTypes[90].OneofWrappers = []any{}
+	file_common_proto_msgTypes[91].OneofWrappers = []any{}
+	file_common_proto_msgTypes[92].OneofWrappers = []any{}
+	file_common_proto_msgTypes[93].OneofWrappers = []any{}
+	file_common_proto_msgTypes[95].OneofWrappers = []any{}
+	file_common_proto_msgTypes[96].OneofWrappers = []any{}
+	file_common_proto_msgTypes[97].OneofWrappers = []any{}
+	file_common_proto_msgTypes[98].OneofWrappers = []any{}
+	file_common_proto_msgTypes[99].OneofWrappers = []any{}
+	file_common_proto_msgTypes[100].OneofWrappers = []any{}
+	file_common_proto_msgTypes[103].OneofWrappers = []any{}
+	file_common_proto_msgTypes[104].OneofWrappers = []any{}
+	file_common_proto_msgTypes[105].OneofWrappers = []any{}
+	file_common_proto_msgTypes[106].OneofWrappers = []any{}
+	file_common_proto_msgTypes[107].OneofWrappers = []any{}
+	file_common_proto_msgTypes[108].OneofWrappers = []any{}
+	file_common_proto_msgTypes[109].OneofWrappers = []any{}
+	file_common_proto_msgTypes[110].OneofWrappers = []any{}
+	file_common_proto_msgTypes[113].OneofWrappers = []any{}
+	file_common_proto_msgTypes[116].OneofWrappers = []any{}
+	file_common_proto_msgTypes[117].OneofWrappers = []any{}
+	file_common_proto_msgTypes[118].OneofWrappers = []any{}
+	file_common_proto_msgTypes[119].OneofWrappers = []any{}
+	file_common_proto_msgTypes[120].OneofWrappers = []any{}
+	file_common_proto_msgTypes[121].OneofWrappers = []any{}
+	file_common_proto_msgTypes[122].OneofWrappers = []any{}
+	file_common_proto_msgTypes[123].OneofWrappers = []any{}
+	file_common_proto_msgTypes[124].OneofWrappers = []any{}
+	file_common_proto_msgTypes[125].OneofWrappers = []any{}
+	file_common_proto_msgTypes[126].OneofWrappers = []any{}
+	file_common_proto_msgTypes[128].OneofWrappers = []any{}
+	file_common_proto_msgTypes[129].OneofWrappers = []any{}
+	file_common_proto_msgTypes[130].OneofWrappers = []any{}
+	file_common_proto_msgTypes[131].OneofWrappers = []any{}
+	file_common_proto_msgTypes[132].OneofWrappers = []any{}
+	file_common_proto_msgTypes[133].OneofWrappers = []any{}
+	file_common_proto_msgTypes[134].OneofWrappers = []any{}
+	file_common_proto_msgTypes[135].OneofWrappers = []any{}
+	file_common_proto_msgTypes[136].OneofWrappers = []any{}
+	file_common_proto_msgTypes[137].OneofWrappers = []any{}
+	file_common_proto_msgTypes[138].OneofWrappers = []any{}
+	file_common_proto_msgTypes[139].OneofWrappers = []any{}
+	file_common_proto_msgTypes[140].OneofWrappers = []any{}
+	file_common_proto_msgTypes[141].OneofWrappers = []any{}
+	file_common_proto_msgTypes[142].OneofWrappers = []any{}
+	file_common_proto_msgTypes[143].OneofWrappers = []any{}
+	file_common_proto_msgTypes[144].OneofWrappers = []any{}
+	file_common_proto_msgTypes[145].OneofWrappers = []any{}
+	file_common_proto_msgTypes[146].OneofWrappers = []any{}
+	file_common_proto_msgTypes[148].OneofWrappers = []any{}
+	file_common_proto_msgTypes[149].OneofWrappers = []any{}
+	file_common_proto_msgTypes[150].OneofWrappers = []any{}
+	file_common_proto_msgTypes[153].OneofWrappers = []any{}
+	file_common_proto_msgTypes[155].OneofWrappers = []any{}
+	file_common_proto_msgTypes[156].OneofWrappers = []any{}
+	file_common_proto_msgTypes[158].OneofWrappers = []any{}
+	file_common_proto_msgTypes[160].OneofWrappers = []any{}
+	file_common_proto_msgTypes[161].OneofWrappers = []any{}
+	file_common_proto_msgTypes[162].OneofWrappers = []any{}
+	file_common_proto_msgTypes[163].OneofWrappers = []any{}
+	file_common_proto_msgTypes[164].OneofWrappers = []any{}
+	file_common_proto_msgTypes[165].OneofWrappers = []any{}
+	file_common_proto_msgTypes[166].OneofWrappers = []any{}
+	file_common_proto_msgTypes[167].OneofWrappers = []any{}
+	file_common_proto_msgTypes[169].OneofWrappers = []any{}
+	file_common_proto_msgTypes[170].OneofWrappers = []any{}
+	file_common_proto_msgTypes[172].OneofWrappers = []any{}
+	file_common_proto_msgTypes[173].OneofWrappers = []any{}
+	file_common_proto_msgTypes[174].OneofWrappers = []any{}
+	file_common_proto_msgTypes[175].OneofWrappers = []any{}
+	file_common_proto_msgTypes[176].OneofWrappers = []any{}
+	file_common_proto_msgTypes[178].OneofWrappers = []any{}
+	file_common_proto_msgTypes[180].OneofWrappers = []any{}
+	file_common_proto_msgTypes[181].OneofWrappers = []any{}
+	file_common_proto_msgTypes[183].OneofWrappers = []any{}
+	file_common_proto_msgTypes[184].OneofWrappers = []any{}
+	file_common_proto_msgTypes[185].OneofWrappers = []any{}
+	file_common_proto_msgTypes[186].OneofWrappers = []any{}
+	file_common_proto_msgTypes[187].OneofWrappers = []any{}
+	file_common_proto_msgTypes[188].OneofWrappers = []any{}
+	file_common_proto_msgTypes[189].OneofWrappers = []any{}
+	file_common_proto_msgTypes[190].OneofWrappers = []any{}
+	file_common_proto_msgTypes[191].OneofWrappers = []any{}
+	file_common_proto_msgTypes[192].OneofWrappers = []any{}
+	file_common_proto_msgTypes[193].OneofWrappers = []any{}
+	file_common_proto_msgTypes[194].OneofWrappers = []any{}
+	file_common_proto_msgTypes[195].OneofWrappers = []any{}
+	file_common_proto_msgTypes[197].OneofWrappers = []any{}
+	file_common_proto_msgTypes[198].OneofWrappers = []any{}
+	file_common_proto_msgTypes[199].OneofWrappers = []any{}
+	file_common_proto_msgTypes[200].OneofWrappers = []any{}
+	file_common_proto_msgTypes[201].OneofWrappers = []any{}
+	file_common_proto_msgTypes[202].OneofWrappers = []any{}
+	file_common_proto_msgTypes[203].OneofWrappers = []any{}
+	file_common_proto_msgTypes[204].OneofWrappers = []any{}
+	file_common_proto_msgTypes[205].OneofWrappers = []any{}
+	file_common_proto_msgTypes[207].OneofWrappers = []any{}
+	file_common_proto_msgTypes[208].OneofWrappers = []any{}
+	file_common_proto_msgTypes[209].OneofWrappers = []any{}
+	file_common_proto_msgTypes[210].OneofWrappers = []any{}
+	file_common_proto_msgTypes[211].OneofWrappers = []any{}
+	file_common_proto_msgTypes[212].OneofWrappers = []any{}
+	file_common_proto_msgTypes[213].OneofWrappers = []any{}
+	file_common_proto_msgTypes[214].OneofWrappers = []any{}
+	file_common_proto_msgTypes[215].OneofWrappers = []any{}
+	file_common_proto_msgTypes[216].OneofWrappers = []any{}
+	file_common_proto_msgTypes[217].OneofWrappers = []any{}
+	file_common_proto_msgTypes[218].OneofWrappers = []any{}
+	file_common_proto_msgTypes[219].OneofWrappers = []any{}
+	file_common_proto_msgTypes[220].OneofWrappers = []any{}
+	file_common_proto_msgTypes[221].OneofWrappers = []any{}
+	file_common_proto_msgTypes[222].OneofWrappers = []any{}
+	file_common_proto_msgTypes[223].OneofWrappers = []any{}
+	file_common_proto_msgTypes[224].OneofWrappers = []any{}
+	file_common_proto_msgTypes[225].OneofWrappers = []any{}
+	file_common_proto_msgTypes[226].OneofWrappers = []any{}
+	file_common_proto_msgTypes[227].OneofWrappers = []any{}
+	file_common_proto_msgTypes[231].OneofWrappers = []any{}
+	file_common_proto_msgTypes[232].OneofWrappers = []any{}
+	file_common_proto_msgTypes[233].OneofWrappers = []any{}
+	file_common_proto_msgTypes[234].OneofWrappers = []any{}
+	file_common_proto_msgTypes[235].OneofWrappers = []any{}
+	file_common_proto_msgTypes[236].OneofWrappers = []any{}
+	file_common_proto_msgTypes[237].OneofWrappers = []any{}
+	file_common_proto_msgTypes[238].OneofWrappers = []any{}
+	file_common_proto_msgTypes[239].OneofWrappers = []any{}
+	file_common_proto_msgTypes[240].OneofWrappers = []any{}
+	file_common_proto_msgTypes[241].OneofWrappers = []any{}
+	file_common_proto_msgTypes[242].OneofWrappers = []any{}
+	file_common_proto_msgTypes[255].OneofWrappers = []any{
 		(*MirrorSourceConfig_Http)(nil),
 		(*MirrorSourceConfig_Postgres)(nil),
 	}
-	file_common_proto_msgTypes[82].OneofWrappers = []any{
+	file_common_proto_msgTypes[256].OneofWrappers = []any{
 		(*MirrorRewriteRule_CreatedTransaction)(nil),
 		(*MirrorRewriteRule_RevertedTransaction)(nil),
 		(*MirrorRewriteRule_SavedMetadata)(nil),
 		(*MirrorRewriteRule_DeletedMetadata)(nil),
 		(*MirrorRewriteRule_AnyVariant)(nil),
 	}
-	file_common_proto_msgTypes[88].OneofWrappers = []any{
+	file_common_proto_msgTypes[262].OneofWrappers = []any{
 		(*CreatedTransactionAction_RewriteAddress)(nil),
 		(*CreatedTransactionAction_SetMetadata)(nil),
 		(*CreatedTransactionAction_DeleteMetadata)(nil),
@@ -14797,41 +27525,41 @@ func file_common_proto_init() {
 		(*CreatedTransactionAction_SetAccountMetadataFromAddress)(nil),
 		(*CreatedTransactionAction_Drop)(nil),
 	}
-	file_common_proto_msgTypes[89].OneofWrappers = []any{
+	file_common_proto_msgTypes[263].OneofWrappers = []any{
 		(*RevertedTransactionAction_RewriteAddress)(nil),
 		(*RevertedTransactionAction_SetMetadata)(nil),
 		(*RevertedTransactionAction_DeleteMetadata)(nil),
 		(*RevertedTransactionAction_Drop)(nil),
 	}
-	file_common_proto_msgTypes[90].OneofWrappers = []any{
+	file_common_proto_msgTypes[264].OneofWrappers = []any{
 		(*SavedMetadataAction_RewriteAddress)(nil),
 		(*SavedMetadataAction_SetMetadata)(nil),
 		(*SavedMetadataAction_DeleteMetadata)(nil),
 		(*SavedMetadataAction_Drop)(nil),
 	}
-	file_common_proto_msgTypes[91].OneofWrappers = []any{
+	file_common_proto_msgTypes[265].OneofWrappers = []any{
 		(*DeletedMetadataAction_RewriteAddress)(nil),
 		(*DeletedMetadataAction_Drop)(nil),
 	}
-	file_common_proto_msgTypes[92].OneofWrappers = []any{
+	file_common_proto_msgTypes[266].OneofWrappers = []any{
 		(*AnyVariantAction_RewriteAddress)(nil),
 		(*AnyVariantAction_Drop)(nil),
 	}
-	file_common_proto_msgTypes[94].OneofWrappers = []any{
+	file_common_proto_msgTypes[268].OneofWrappers = []any{
 		(*SetMetadataAction_Value)(nil),
 		(*SetMetadataAction_ValueExpr)(nil),
 	}
-	file_common_proto_msgTypes[96].OneofWrappers = []any{
+	file_common_proto_msgTypes[270].OneofWrappers = []any{
 		(*SetAccountMetadataAction_Value)(nil),
 		(*SetAccountMetadataAction_ValueExpr)(nil),
 	}
-	file_common_proto_msgTypes[115].OneofWrappers = []any{
+	file_common_proto_msgTypes[289].OneofWrappers = []any{
 		(*SegmentType_Regex)(nil),
 		(*SegmentType_Uuid)(nil),
 		(*SegmentType_Uint64)(nil),
 		(*SegmentType_Bytes)(nil),
 	}
-	file_common_proto_msgTypes[123].OneofWrappers = []any{
+	file_common_proto_msgTypes[297].OneofWrappers = []any{
 		(*QueryFilter_Field)(nil),
 		(*QueryFilter_Address)(nil),
 		(*QueryFilter_And)(nil),
@@ -14846,45 +27574,45 @@ func file_common_proto_init() {
 		(*QueryFilter_Reverted)(nil),
 		(*QueryFilter_Audit)(nil),
 	}
-	file_common_proto_msgTypes[126].OneofWrappers = []any{
+	file_common_proto_msgTypes[300].OneofWrappers = []any{
 		(*AuditCondition_StringCond)(nil),
 		(*AuditCondition_UintCond)(nil),
 		(*AuditCondition_StringPrefix)(nil),
 	}
-	file_common_proto_msgTypes[136].OneofWrappers = []any{
+	file_common_proto_msgTypes[310].OneofWrappers = []any{
 		(*FieldCondition_StringCond)(nil),
 		(*FieldCondition_IntCond)(nil),
 		(*FieldCondition_UintCond)(nil),
 		(*FieldCondition_BoolCond)(nil),
 		(*FieldCondition_ExistsCond)(nil),
 	}
-	file_common_proto_msgTypes[137].OneofWrappers = []any{
+	file_common_proto_msgTypes[311].OneofWrappers = []any{
 		(*StringCondition_Hardcoded)(nil),
 		(*StringCondition_Param)(nil),
 	}
-	file_common_proto_msgTypes[138].OneofWrappers = []any{}
-	file_common_proto_msgTypes[139].OneofWrappers = []any{}
-	file_common_proto_msgTypes[140].OneofWrappers = []any{
+	file_common_proto_msgTypes[312].OneofWrappers = []any{}
+	file_common_proto_msgTypes[313].OneofWrappers = []any{}
+	file_common_proto_msgTypes[314].OneofWrappers = []any{
 		(*BoolCondition_Hardcoded)(nil),
 		(*BoolCondition_Param)(nil),
 	}
-	file_common_proto_msgTypes[142].OneofWrappers = []any{
+	file_common_proto_msgTypes[316].OneofWrappers = []any{
 		(*AddressMatch_HardcodedPrefix)(nil),
 		(*AddressMatch_HardcodedExact)(nil),
 		(*AddressMatch_ParamPrefix)(nil),
 		(*AddressMatch_ParamExact)(nil),
 	}
-	file_common_proto_msgTypes[150].OneofWrappers = []any{
+	file_common_proto_msgTypes[324].OneofWrappers = []any{
 		(*CallerIdentity_Issuer)(nil),
 		(*CallerIdentity_KeyId)(nil),
 	}
-	file_common_proto_msgTypes[155].OneofWrappers = []any{
+	file_common_proto_msgTypes[329].OneofWrappers = []any{
 		(*CallerSnapshot_Authenticated)(nil),
 		(*CallerSnapshot_Anonymous)(nil),
 		(*CallerSnapshot_System)(nil),
 		(*CallerSnapshot_AuthDisabled)(nil),
 	}
-	file_common_proto_msgTypes[158].OneofWrappers = []any{
+	file_common_proto_msgTypes[332].OneofWrappers = []any{
 		(*BackupStorage_S3)(nil),
 		(*BackupStorage_Azure)(nil),
 	}
@@ -14894,7 +27622,7 @@ func file_common_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_common_proto_rawDesc), len(file_common_proto_rawDesc)),
 			NumEnums:      18,
-			NumMessages:   181,
+			NumMessages:   353,
 			NumExtensions: 6,
 			NumServices:   0,
 		},

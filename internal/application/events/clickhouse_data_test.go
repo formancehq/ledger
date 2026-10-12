@@ -350,9 +350,9 @@ func TestEventToClickHouseJSON_OrderSkipped(t *testing.T) {
 							Data: &commonpb.LedgerLogPayload{
 								Payload: &commonpb.LedgerLogPayload_OrderSkipped{
 									OrderSkipped: &commonpb.OrderSkippedLog{
-										Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
-										Code:   "TRANSACTION_REFERENCE_CONFLICT",
-										Facts:  map[string]string{"reference": "ref-1"},
+										Reason:  commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+										Code:    "TRANSACTION_REFERENCE_CONFLICT",
+										Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{"reference": "ref-1"}),
 									},
 								},
 							},

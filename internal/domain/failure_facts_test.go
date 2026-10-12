@@ -5,7 +5,55 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
+
+func TestTypedFailureDetailsCoverEveryStableCode(t *testing.T) {
+	t.Parallel()
+	codes := make(map[string]struct{})
+	for reason := range commonpb.ErrorReason_value {
+		code := strings.TrimPrefix(reason, "ERROR_REASON_")
+		if code != "UNSPECIFIED" {
+			codes[code] = struct{}{}
+		}
+	}
+	for code := range validationFailureCodes {
+		codes[code] = struct{}{}
+	}
+	for code := range numscriptFailureCodes {
+		codes[code] = struct{}{}
+	}
+	for code := range numscriptCompileFailureCodes {
+		codes[code] = struct{}{}
+	}
+	codes["METADATA_LIMITS_UNCONFIGURED"] = struct{}{}
+	for code := range codes {
+		details, err := commonpb.NewFailureDetails(code, nil)
+		require.NoError(t, err, code)
+		require.Equal(t, code, commonpb.FailureDetailsCode(details))
+	}
+}
+
+func TestTypedFailureDetailsRoundTripAndRejectMismatches(t *testing.T) {
+	t.Parallel()
+	f := NewFailureFacts(ErrReasonTransactionReferenceConflict, "TRANSACTION_REFERENCE_CONFLICT", map[string]string{
+		"ledger": "L", "reference": "ref", "existingTransactionId": "42",
+	})
+	details, err := FailureDetailsOf(f)
+	require.NoError(t, err)
+	actual, err := FailureFactsFromDetails(f.Reason, f.Code, details)
+	require.NoError(t, err)
+	require.Equal(t, f, actual)
+	require.Equal(t, uint64(42), details.GetTransactionReferenceConflict().GetExistingTransactionId())
+
+	_, err = FailureFactsFromDetails(f.Reason, "TRANSACTION_NOT_FOUND", details)
+	require.ErrorContains(t, err, "does not match")
+	_, err = FailureFactsFromDetails(f.Reason, f.Code, nil)
+	require.ErrorContains(t, err, "missing")
+	_, err = commonpb.NewFailureDetails(f.Code, map[string]string{"arbitrary": "text"})
+	require.ErrorContains(t, err, "not part of")
+}
 
 func TestFailureFactsPreserveValues(t *testing.T) {
 	err := &ErrNumscriptExecution{

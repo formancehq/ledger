@@ -48,9 +48,9 @@ func TestVerifySkippedOrder_AllowedReasonEmitsNothing(t *testing.T) {
 	payload := &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
 			OrderSkipped: &commonpb.OrderSkippedLog{
-				Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
-				Code:   "TRANSACTION_REFERENCE_CONFLICT",
-				Facts:  map[string]string{"ledger": "L", "reference": "ref-x"},
+				Reason:  commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+				Code:    "TRANSACTION_REFERENCE_CONFLICT",
+				Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{"ledger": "L", "reference": "ref-x"}),
 			},
 		},
 	}
@@ -88,9 +88,9 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsStrippedContext(t *testing.T
 	payload = &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
 			OrderSkipped: &commonpb.OrderSkippedLog{
-				Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
-				Code:   "TRANSACTION_REFERENCE_CONFLICT",
-				Facts:  map[string]string{"ledger": "L"}, // reference missing
+				Reason:  commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+				Code:    "TRANSACTION_REFERENCE_CONFLICT",
+				Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{"ledger": "L"}), // reference missing
 			},
 		},
 	}
@@ -604,9 +604,9 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsTamperedContextReference(t *
 	payload := &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
 			OrderSkipped: &commonpb.OrderSkippedLog{
-				Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
-				Code:   "TRANSACTION_REFERENCE_CONFLICT",
-				Facts:  map[string]string{"reference": "ref-tampered"},
+				Reason:  commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+				Code:    "TRANSACTION_REFERENCE_CONFLICT",
+				Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{"reference": "ref-tampered"}),
 			},
 		},
 	}
@@ -634,9 +634,9 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsTamperedContextLedger(t *tes
 	payload := &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
 			OrderSkipped: &commonpb.OrderSkippedLog{
-				Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
-				Code:   "TRANSACTION_REFERENCE_CONFLICT",
-				Facts:  map[string]string{"ledger": "L-tampered"},
+				Reason:  commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+				Code:    "TRANSACTION_REFERENCE_CONFLICT",
+				Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{"ledger": "L-tampered"}),
 			},
 		},
 	}
@@ -671,11 +671,11 @@ func TestVerifySkippedOrder_ReferenceConflictAcceptsMatchingContext(t *testing.T
 			OrderSkipped: &commonpb.OrderSkippedLog{
 				Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 				Code:   "TRANSACTION_REFERENCE_CONFLICT",
-				Facts: map[string]string{
+				Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{
 					"ledger":                "L",
 					"reference":             "ref",
 					"existingTransactionId": "42",
-				},
+				}),
 			},
 		},
 	}
@@ -711,11 +711,11 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsTamperedExistingTxID(t *test
 			OrderSkipped: &commonpb.OrderSkippedLog{
 				Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 				Code:   "TRANSACTION_REFERENCE_CONFLICT",
-				Facts: map[string]string{
+				Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{
 					"ledger":                "L",
 					"reference":             "ref",
 					"existingTransactionId": "99", // audit-derived owner is 42
-				},
+				}),
 			},
 		},
 	}
@@ -752,11 +752,11 @@ func TestVerifySkippedOrder_ReferenceConflictPermissiveWhenOwnerUnknown(t *testi
 			OrderSkipped: &commonpb.OrderSkippedLog{
 				Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 				Code:   "TRANSACTION_REFERENCE_CONFLICT",
-				Facts: map[string]string{
+				Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{
 					"ledger":                "L",
 					"reference":             "ref",
 					"existingTransactionId": "7", // arbitrary — must NOT fail when owner unknown
-				},
+				}),
 			},
 		},
 	}
@@ -1604,9 +1604,9 @@ func skippedPayloadWithContext(reason commonpb.ErrorReason, ctx map[string]strin
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
 			OrderSkipped: &commonpb.OrderSkippedLog{
-				Reason: reason,
-				Code:   domain.ReasonString(reason),
-				Facts:  ctx,
+				Reason:  reason,
+				Code:    domain.ReasonString(reason),
+				Details: commonpb.MustFailureDetails(domain.ReasonString(reason), ctx),
 			},
 		},
 	}

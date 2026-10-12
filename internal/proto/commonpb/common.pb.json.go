@@ -259,7 +259,15 @@ func (x *OrderSkippedLog) UnmarshalJSON(data []byte) error {
 	}
 
 	x.Code = aux.Code
-	x.Facts = aux.Facts
+	if aux.Code != "" {
+		details, err := NewFailureDetails(aux.Code, aux.Facts)
+		if err != nil {
+			return err
+		}
+		x.Details = details
+	} else if len(aux.Facts) != 0 {
+		return errors.New("failure facts require a code")
+	}
 
 	return nil
 }

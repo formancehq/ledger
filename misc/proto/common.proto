@@ -792,6 +792,965 @@ message LedgerLogPayload {
 
 // OrderSkippedLog records an order that the FSM rejected with a business
 // error whose reason was listed in the order's `skippable_reasons` whitelist.
+// FailureDetails is the typed business context of an audited failure.
+// Each arm identifies one concrete stable failure code. The reason and
+// code on the containing record are validated against the selected arm.
+// Scalar fields are optional so absence remains distinct from a present
+// zero or empty value.
+message FailureDetails {
+  oneof kind {
+    AccountAddressEmptyDetails account_address_empty = 1;
+    AccountAddressEmptySegmentDetails account_address_empty_segment = 2;
+    AccountAddressInvalidCharDetails account_address_invalid_char = 3;
+    AccountAddressTooLongDetails account_address_too_long = 4;
+    AccountNotMatchingTypeDetails account_not_matching_type = 5;
+    AccountTypeAlreadyExistsDetails account_type_already_exists = 6;
+    AccountTypeConflictDetails account_type_conflict = 7;
+    AccountTypeHasAccountsDetails account_type_has_accounts = 8;
+    AccountTypeNameTooLongDetails account_type_name_too_long = 9;
+    AccountTypeNotFoundDetails account_type_not_found = 10;
+    AccountTypePatternTooLongDetails account_type_pattern_too_long = 11;
+    AggregateOverflowDetails aggregate_overflow = 12;
+    AssetInvalidDetails asset_invalid = 13;
+    AuditDisabledDetails audit_disabled = 14;
+    BalanceNotFoundDetails balance_not_found = 15;
+    BalanceNotPreloadedDetails balance_not_preloaded = 16;
+    CheckpointIdRequiredDetails checkpoint_id_required = 17;
+    CheckpointLimitReachedDetails checkpoint_limit_reached = 18;
+    CheckpointNotFoundDetails checkpoint_not_found = 19;
+    CheckpointNotReadyDetails checkpoint_not_ready = 20;
+    ClusterPolicyInvalidDetails cluster_policy_invalid = 21;
+    ClusterPolicyRevisionConflictDetails cluster_policy_revision_conflict = 22;
+    ClusterUnhealthyDetails cluster_unhealthy = 23;
+    ColorInvalidDetails color_invalid = 24;
+    ColorTooLongDetails color_too_long = 25;
+    CoverageMissDetails coverage_miss = 26;
+    DependencyDiscoveryFailedDetails dependency_discovery_failed = 27;
+    EmptyTransactionDetails empty_transaction = 28;
+    ExecutionPlanTooLargeDetails execution_plan_too_large = 29;
+    FilterCompilationErrorDetails filter_compilation_error = 30;
+    IdempotencyCheckFailedDetails idempotency_check_failed = 31;
+    IdempotencyKeyConflictDetails idempotency_key_conflict = 32;
+    IdRequiredDetails id_required = 33;
+    IndexAlreadyExistsDetails index_already_exists = 34;
+    IndexBuildingDetails index_building = 35;
+    IndexInconsistentDetails index_inconsistent = 36;
+    IndexNotFoundDetails index_not_found = 37;
+    IndexTargetUnsupportedDetails index_target_unsupported = 38;
+    InsufficientFundsDetails insufficient_funds = 39;
+    InvalidApplyTypeDetails invalid_apply_type = 40;
+    InvalidCallerAttributionDetails invalid_caller_attribution = 41;
+    InvalidCronExpressionDetails invalid_cron_expression = 42;
+    InvalidExecutionPlanDetails invalid_execution_plan = 43;
+    InvalidOrderTypeDetails invalid_order_type = 44;
+    InvalidPatternDetails invalid_pattern = 45;
+    InvalidSkippableReasonDetails invalid_skippable_reason = 46;
+    LedgerAlreadyExistsDetails ledger_already_exists = 47;
+    LedgerDeletedDetails ledger_deleted = 48;
+    LedgerInMirrorModeDetails ledger_in_mirror_mode = 49;
+    LedgerNameInvalidCharDetails ledger_name_invalid_char = 50;
+    LedgerNameRequiredDetails ledger_name_required = 51;
+    LedgerNameReservedPrefixDetails ledger_name_reserved_prefix = 52;
+    LedgerNameTooLongDetails ledger_name_too_long = 53;
+    LedgerNotFoundDetails ledger_not_found = 54;
+    LedgerNotInMirrorModeDetails ledger_not_in_mirror_mode = 55;
+    MaintenanceModeDetails maintenance_mode = 56;
+    MetadataFieldNotInSchemaDetails metadata_field_not_in_schema = 57;
+    MetadataKeyEmptyDetails metadata_key_empty = 58;
+    MetadataKeyInvalidCharDetails metadata_key_invalid_char = 59;
+    MetadataKeyRequiredDetails metadata_key_required = 60;
+    MetadataLimitsUnconfiguredDetails metadata_limits_unconfigured = 61;
+    MetadataLimitExceededDetails metadata_limit_exceeded = 62;
+    MetadataNotFoundDetails metadata_not_found = 63;
+    MetadataValueContainsNullByteDetails metadata_value_contains_null_byte = 64;
+    MirrorHttpUrlInvalidDetails mirror_http_url_invalid = 65;
+    MirrorIamRegionRequiredDetails mirror_iam_region_required = 66;
+    MirrorIamRequiresTlsDetails mirror_iam_requires_tls = 67;
+    MirrorRewriteRuleInvalidDetails mirror_rewrite_rule_invalid = 68;
+    MirrorV2LogIdGapDetails mirror_v2_log_id_gap = 69;
+    MirrorV2LogIdInvalidDetails mirror_v2_log_id_invalid = 70;
+    NumscriptAssetMismatchDetails numscript_asset_mismatch = 71;
+    NumscriptBadArityDetails numscript_bad_arity = 72;
+    NumscriptBadMetaValueDetails numscript_bad_meta_value = 73;
+    NumscriptBadPortionDetails numscript_bad_portion = 74;
+    NumscriptCannotCastScopedAccountDetails numscript_cannot_cast_scoped_account = 75;
+    NumscriptCannotCastToStringDetails numscript_cannot_cast_to_string = 76;
+    NumscriptCannotStoreScopedAccountDetails numscript_cannot_store_scoped_account = 77;
+    NumscriptCompileBadArityDetails numscript_compile_bad_arity = 78;
+    NumscriptCompileCannotCastToStringDetails numscript_compile_cannot_cast_to_string = 79;
+    NumscriptCompileCannotStoreScopedAccountDetails numscript_compile_cannot_store_scoped_account = 80;
+    NumscriptCompileDuplicateRemainingDetails numscript_compile_duplicate_remaining = 81;
+    NumscriptCompileDuplicateVariableDetails numscript_compile_duplicate_variable = 82;
+    NumscriptCompileErrorDetails numscript_compile_error = 83;
+    NumscriptCompileExperimentalFeatureDetails numscript_compile_experimental_feature = 84;
+    NumscriptCompileInvalidFeatureDetails numscript_compile_invalid_feature = 85;
+    NumscriptCompileInvalidMetaPositionDetails numscript_compile_invalid_meta_position = 86;
+    NumscriptCompileInvalidTypeDetails numscript_compile_invalid_type = 87;
+    NumscriptCompileInvalidUncappedSourceDetails numscript_compile_invalid_uncapped_source = 88;
+    NumscriptCompileInvalidVariableValueDetails numscript_compile_invalid_variable_value = 89;
+    NumscriptCompileMissingVariableDetails numscript_compile_missing_variable = 90;
+    NumscriptCompileTypeMismatchDetails numscript_compile_type_mismatch = 91;
+    NumscriptCompileUnboundVariableDetails numscript_compile_unbound_variable = 92;
+    NumscriptCompileUnknownFunctionDetails numscript_compile_unknown_function = 93;
+    NumscriptContentRequiredDetails numscript_content_required = 94;
+    NumscriptCurrencyMismatchDetails numscript_currency_mismatch = 95;
+    NumscriptDivideByZeroDetails numscript_divide_by_zero = 96;
+    NumscriptExecutionErrorDetails numscript_execution_error = 97;
+    NumscriptExperimentalFeatureDetails numscript_experimental_feature = 98;
+    NumscriptInvalidAccountNameDetails numscript_invalid_account_name = 99;
+    NumscriptInvalidAllotmentInSendAllDetails numscript_invalid_allotment_in_send_all = 100;
+    NumscriptInvalidAllotmentSumDetails numscript_invalid_allotment_sum = 101;
+    NumscriptInvalidAssetDetails numscript_invalid_asset = 102;
+    NumscriptInvalidColorDetails numscript_invalid_color = 103;
+    NumscriptInvalidFeatureDetails numscript_invalid_feature = 104;
+    NumscriptInvalidMonetaryLiteralDetails numscript_invalid_monetary_literal = 105;
+    NumscriptInvalidNestedMetaDetails numscript_invalid_nested_meta = 106;
+    NumscriptInvalidNumberLiteralDetails numscript_invalid_number_literal = 107;
+    NumscriptInvalidRemainingAllotmentDetails numscript_invalid_remaining_allotment = 108;
+    NumscriptInvalidScopeDetails numscript_invalid_scope = 109;
+    NumscriptInvalidTypeDetails numscript_invalid_type = 110;
+    NumscriptInvalidUnboundedScalingAddressDetails numscript_invalid_unbounded_scaling_address = 111;
+    NumscriptInvalidUnboundedSendAllDetails numscript_invalid_unbounded_send_all = 112;
+    NumscriptInvalidUncappedSourceDetails numscript_invalid_uncapped_source = 113;
+    NumscriptInvalidVersionDetails numscript_invalid_version = 114;
+    NumscriptMetadataNotFoundDetails numscript_metadata_not_found = 115;
+    NumscriptMissingFundsDetails numscript_missing_funds = 116;
+    NumscriptMissingVariableDetails numscript_missing_variable = 117;
+    NumscriptNameInvalidCharDetails numscript_name_invalid_char = 118;
+    NumscriptNameRequiredDetails numscript_name_required = 119;
+    NumscriptNameTooLongDetails numscript_name_too_long = 120;
+    NumscriptNegativeAmountDetails numscript_negative_amount = 121;
+    NumscriptNegativeBalanceDetails numscript_negative_balance = 122;
+    NumscriptNegativePortionDetails numscript_negative_portion = 123;
+    NumscriptNotFoundDetails numscript_not_found = 124;
+    NumscriptParseErrorDetails numscript_parse_error = 125;
+    NumscriptPostingAmountOverflowDetails numscript_posting_amount_overflow = 126;
+    NumscriptPostingNegativeAmountDetails numscript_posting_negative_amount = 127;
+    NumscriptRuntimeDetails numscript_runtime = 128;
+    NumscriptScalingUnsupportedDetails numscript_scaling_unsupported = 129;
+    NumscriptTypeErrorDetails numscript_type_error = 130;
+    NumscriptUnboundFunctionDetails numscript_unbound_function = 131;
+    NumscriptUnboundVariableDetails numscript_unbound_variable = 132;
+    NumscriptVersionAlreadyExistsDetails numscript_version_already_exists = 133;
+    PostingsAndScriptConflictDetails postings_and_script_conflict = 134;
+    PreloadUnavailableDetails preload_unavailable = 135;
+    PreparedQueryAlreadyExistsDetails prepared_query_already_exists = 136;
+    PreparedQueryNameInvalidCharDetails prepared_query_name_invalid_char = 137;
+    PreparedQueryNameRequiredDetails prepared_query_name_required = 138;
+    PreparedQueryNameTooLongDetails prepared_query_name_too_long = 139;
+    PreparedQueryNotFoundDetails prepared_query_not_found = 140;
+    PreparedQueryRequiredDetails prepared_query_required = 141;
+    PreparedQueryTargetUnsupportedDetails prepared_query_target_unsupported = 142;
+    RevertTargetCreatedInBatchDetails revert_target_created_in_batch = 143;
+    ScopedBalanceUnsupportedDetails scoped_balance_unsupported = 144;
+    ScriptAndReferenceConflictDetails script_and_reference_conflict = 145;
+    ScriptRequiredDetails script_required = 146;
+    SequenceExhaustedDetails sequence_exhausted = 147;
+    SigningKeyIdInvalidCharDetails signing_key_id_invalid_char = 148;
+    SigningKeyIdRequiredDetails signing_key_id_required = 149;
+    SigningKeyIdTooLongDetails signing_key_id_too_long = 150;
+    SigningKeyInvalidLengthDetails signing_key_invalid_length = 151;
+    SinkAlreadyExistsDetails sink_already_exists = 152;
+    SinkBatchSizeTooLargeDetails sink_batch_size_too_large = 153;
+    SinkControllerMismatchDetails sink_controller_mismatch = 154;
+    SinkNotFoundDetails sink_not_found = 155;
+    StaleClusterPolicyDetails stale_cluster_policy = 156;
+    StaleInputsResolutionDetails stale_inputs_resolution = 157;
+    StaleProposalDetails stale_proposal = 158;
+    StorageOperationFailedDetails storage_operation_failed = 159;
+    TargetRequiredDetails target_required = 160;
+    TransactionAlreadyRevertedDetails transaction_already_reverted = 161;
+    TransactionNotFoundDetails transaction_not_found = 162;
+    TransactionReferenceConflictDetails transaction_reference_conflict = 163;
+    TransactionReferenceNotFoundDetails transaction_reference_not_found = 164;
+    TransactionReferenceTooLongDetails transaction_reference_too_long = 165;
+    TransactionStateInconsistentDetails transaction_state_inconsistent = 166;
+    TransactionTargetMissingDetails transaction_target_missing = 167;
+    TransientAccountNonZeroDetails transient_account_non_zero = 168;
+    ValidationDetails validation = 169;
+    VolumeNotMaterializedDetails volume_not_materialized = 170;
+    VolumeOverflowDetails volume_overflow = 171;
+    WritesBlockedClockSkewDetails writes_blocked_clock_skew = 172;
+    WritesBlockedDiskFullDetails writes_blocked_disk_full = 173;
+  }
+}
+
+message AccountAddressEmptyDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message AccountAddressEmptySegmentDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message AccountAddressInvalidCharDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message AccountAddressTooLongDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message AccountNotMatchingTypeDetails {
+  optional string address = 1;
+}
+
+message AccountTypeAlreadyExistsDetails {
+  optional string name = 1;
+}
+
+message AccountTypeConflictDetails {
+  optional string pattern = 1;
+  optional string existing_name = 2;
+  optional string existing_pattern = 3;
+}
+
+message AccountTypeHasAccountsDetails {
+  optional string name = 1;
+}
+
+message AccountTypeNameTooLongDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message AccountTypeNotFoundDetails {
+  optional string name = 1;
+}
+
+message AccountTypePatternTooLongDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message AggregateOverflowDetails {
+  optional string stage = 1;
+  optional string side = 2;
+}
+
+message AssetInvalidDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message AuditDisabledDetails {
+}
+
+message BalanceNotFoundDetails {
+  optional string account = 1;
+  optional string asset = 2;
+}
+
+message BalanceNotPreloadedDetails {
+  optional string account = 1;
+  optional string asset = 2;
+  optional string color = 3;
+}
+
+message CheckpointIdRequiredDetails {
+}
+
+message CheckpointLimitReachedDetails {
+  optional uint64 limit = 1;
+}
+
+message CheckpointNotFoundDetails {
+  optional uint64 checkpoint_id = 1;
+}
+
+message CheckpointNotReadyDetails {
+  optional uint64 checkpoint_id = 1;
+}
+
+message ClusterPolicyInvalidDetails {
+  optional string account = 1;
+  optional string key = 2;
+}
+
+message ClusterPolicyRevisionConflictDetails {
+  optional uint64 revision = 1;
+}
+
+message ClusterUnhealthyDetails {
+}
+
+message ColorInvalidDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message ColorTooLongDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message CoverageMissDetails {
+  optional string attribute = 1;
+  optional string canonical_hex = 2;
+  optional string id_hex = 3;
+  optional uint64 raft_index = 4;
+}
+
+message DependencyDiscoveryFailedDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message EmptyTransactionDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message ExecutionPlanTooLargeDetails {
+  optional uint64 size = 1;
+  optional uint64 limit = 2;
+}
+
+message FilterCompilationErrorDetails {
+}
+
+message IdempotencyCheckFailedDetails {
+}
+
+message IdempotencyKeyConflictDetails {
+  optional string key = 1;
+}
+
+message IdRequiredDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message IndexAlreadyExistsDetails {
+  optional string index = 1;
+}
+
+message IndexBuildingDetails {
+  optional string index = 1;
+}
+
+message IndexInconsistentDetails {
+  optional string index = 1;
+}
+
+message IndexNotFoundDetails {
+  optional string index = 1;
+}
+
+message IndexTargetUnsupportedDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message InsufficientFundsDetails {
+  optional string account = 1;
+  optional string asset = 2;
+  optional string amount = 3;
+  optional string balance = 4;
+  optional string color = 5;
+}
+
+message InvalidApplyTypeDetails {
+}
+
+message InvalidCallerAttributionDetails {
+}
+
+message InvalidCronExpressionDetails {
+  optional string expression = 1;
+}
+
+message InvalidExecutionPlanDetails {
+}
+
+message InvalidOrderTypeDetails {
+}
+
+message InvalidPatternDetails {
+  optional string pattern = 1;
+}
+
+message InvalidSkippableReasonDetails {
+  optional string key = 1;
+  optional string account = 2;
+  optional string provided_reason = 3;
+}
+
+message LedgerAlreadyExistsDetails {
+  optional string name = 1;
+}
+
+message LedgerDeletedDetails {
+  optional string name = 1;
+}
+
+message LedgerInMirrorModeDetails {
+  optional string name = 1;
+}
+
+message LedgerNameInvalidCharDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message LedgerNameRequiredDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message LedgerNameReservedPrefixDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message LedgerNameTooLongDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message LedgerNotFoundDetails {
+  optional string name = 1;
+}
+
+message LedgerNotInMirrorModeDetails {
+  optional string name = 1;
+}
+
+message MaintenanceModeDetails {
+}
+
+message MetadataFieldNotInSchemaDetails {
+  optional string target = 1;
+  optional string key = 2;
+}
+
+message MetadataKeyEmptyDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message MetadataKeyInvalidCharDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message MetadataKeyRequiredDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message MetadataLimitsUnconfiguredDetails {
+  optional string account = 1;
+  optional string key = 2;
+}
+
+message MetadataLimitExceededDetails {
+  optional string dimension = 1;
+  optional uint64 limit = 2;
+  optional uint64 actual = 3;
+  optional string key = 4;
+  optional string account = 5;
+}
+
+message MetadataNotFoundDetails {
+  optional string target = 1;
+  optional string key = 2;
+  optional string account = 3;
+}
+
+message MetadataValueContainsNullByteDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message MirrorHttpUrlInvalidDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message MirrorIamRegionRequiredDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message MirrorIamRequiresTlsDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message MirrorRewriteRuleInvalidDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message MirrorV2LogIdGapDetails {
+  optional string name = 1;
+  optional uint64 got = 2;
+  optional uint64 expected = 3;
+}
+
+message MirrorV2LogIdInvalidDetails {
+  optional string name = 1;
+}
+
+message NumscriptAssetMismatchDetails {
+  optional string expected = 1;
+  optional string got = 2;
+}
+
+message NumscriptBadArityDetails {
+  optional string expected_arity = 1;
+  optional string given_arguments = 2;
+}
+
+message NumscriptBadMetaValueDetails {
+  optional string account = 1;
+  optional string key = 2;
+}
+
+message NumscriptBadPortionDetails {
+  optional string source = 1;
+}
+
+message NumscriptCannotCastScopedAccountDetails {
+  optional string account = 1;
+  optional string scope = 2;
+}
+
+message NumscriptCannotCastToStringDetails {
+}
+
+message NumscriptCannotStoreScopedAccountDetails {
+  optional string account = 1;
+  optional string scope = 2;
+}
+
+message NumscriptCompileBadArityDetails {
+  optional uint64 expected = 1;
+  optional uint64 actual = 2;
+}
+
+message NumscriptCompileCannotCastToStringDetails {
+  optional string type = 1;
+}
+
+message NumscriptCompileCannotStoreScopedAccountDetails {
+}
+
+message NumscriptCompileDuplicateRemainingDetails {
+}
+
+message NumscriptCompileDuplicateVariableDetails {
+  optional string name = 1;
+}
+
+message NumscriptCompileErrorDetails {
+}
+
+message NumscriptCompileExperimentalFeatureDetails {
+  optional string flag_name = 1;
+}
+
+message NumscriptCompileInvalidFeatureDetails {
+  optional string feature = 1;
+}
+
+message NumscriptCompileInvalidMetaPositionDetails {
+}
+
+message NumscriptCompileInvalidTypeDetails {
+  optional string name = 1;
+}
+
+message NumscriptCompileInvalidUncappedSourceDetails {
+}
+
+message NumscriptCompileInvalidVariableValueDetails {
+  optional string name = 1;
+  optional string type = 2;
+}
+
+message NumscriptCompileMissingVariableDetails {
+  optional string name = 1;
+}
+
+message NumscriptCompileTypeMismatchDetails {
+  optional string expected = 1;
+  optional string got = 2;
+}
+
+message NumscriptCompileUnboundVariableDetails {
+  optional string name = 1;
+  optional string type = 2;
+}
+
+message NumscriptCompileUnknownFunctionDetails {
+  optional string name = 1;
+  optional string wrong_context = 2;
+}
+
+message NumscriptContentRequiredDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message NumscriptCurrencyMismatchDetails {
+  optional string expected = 1;
+  optional string got = 2;
+}
+
+message NumscriptDivideByZeroDetails {
+  optional string numerator = 1;
+}
+
+message NumscriptExecutionErrorDetails {
+}
+
+message NumscriptExperimentalFeatureDetails {
+  optional string flag_name = 1;
+}
+
+message NumscriptInvalidAccountNameDetails {
+  optional string name = 1;
+}
+
+message NumscriptInvalidAllotmentInSendAllDetails {
+}
+
+message NumscriptInvalidAllotmentSumDetails {
+  optional string actual_sum = 1;
+}
+
+message NumscriptInvalidAssetDetails {
+  optional string name = 1;
+}
+
+message NumscriptInvalidColorDetails {
+  optional string color = 1;
+}
+
+message NumscriptInvalidFeatureDetails {
+  optional string feature = 1;
+}
+
+message NumscriptInvalidMonetaryLiteralDetails {
+  optional string source = 1;
+}
+
+message NumscriptInvalidNestedMetaDetails {
+}
+
+message NumscriptInvalidNumberLiteralDetails {
+  optional string source = 1;
+}
+
+message NumscriptInvalidRemainingAllotmentDetails {
+}
+
+message NumscriptInvalidScopeDetails {
+  optional string scope = 1;
+}
+
+message NumscriptInvalidTypeDetails {
+  optional string name = 1;
+}
+
+message NumscriptInvalidUnboundedScalingAddressDetails {
+}
+
+message NumscriptInvalidUnboundedSendAllDetails {
+  optional string name = 1;
+  optional string scope = 2;
+}
+
+message NumscriptInvalidUncappedSourceDetails {
+  optional string account = 1;
+}
+
+message NumscriptInvalidVersionDetails {
+  optional string version = 1;
+}
+
+message NumscriptMetadataNotFoundDetails {
+  optional string account = 1;
+  optional string scope = 2;
+  optional string key = 3;
+}
+
+message NumscriptMissingFundsDetails {
+  optional string asset = 1;
+  optional string needed = 2;
+  optional string available = 3;
+}
+
+message NumscriptMissingVariableDetails {
+  optional string name = 1;
+}
+
+message NumscriptNameInvalidCharDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message NumscriptNameRequiredDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message NumscriptNameTooLongDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message NumscriptNegativeAmountDetails {
+  optional string amount = 1;
+}
+
+message NumscriptNegativeBalanceDetails {
+  optional string account = 1;
+  optional string scope = 2;
+  optional string asset = 3;
+  optional string amount = 4;
+}
+
+message NumscriptNegativePortionDetails {
+  optional string portion = 1;
+}
+
+message NumscriptNotFoundDetails {
+  optional string name = 1;
+  optional string version = 2;
+}
+
+message NumscriptParseErrorDetails {
+}
+
+message NumscriptPostingAmountOverflowDetails {
+  optional uint64 posting_index = 1;
+  optional string amount = 2;
+}
+
+message NumscriptPostingNegativeAmountDetails {
+  optional uint64 posting_index = 1;
+  optional string amount = 2;
+}
+
+message NumscriptRuntimeDetails {
+  optional string key = 1;
+}
+
+message NumscriptScalingUnsupportedDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message NumscriptTypeErrorDetails {
+  optional string expected = 1;
+}
+
+message NumscriptUnboundFunctionDetails {
+  optional string name = 1;
+}
+
+message NumscriptUnboundVariableDetails {
+  optional string name = 1;
+}
+
+message NumscriptVersionAlreadyExistsDetails {
+  optional string name = 1;
+  optional string version = 2;
+}
+
+message PostingsAndScriptConflictDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message PreloadUnavailableDetails {
+}
+
+message PreparedQueryAlreadyExistsDetails {
+  optional string ledger = 1;
+  optional string name = 2;
+}
+
+message PreparedQueryNameInvalidCharDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message PreparedQueryNameRequiredDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message PreparedQueryNameTooLongDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message PreparedQueryNotFoundDetails {
+  optional string ledger = 1;
+  optional string name = 2;
+}
+
+message PreparedQueryRequiredDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message PreparedQueryTargetUnsupportedDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message RevertTargetCreatedInBatchDetails {
+  optional uint64 transaction_id = 1;
+}
+
+message ScopedBalanceUnsupportedDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message ScriptAndReferenceConflictDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message ScriptRequiredDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message SequenceExhaustedDetails {
+  optional string counter = 1;
+}
+
+message SigningKeyIdInvalidCharDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message SigningKeyIdRequiredDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message SigningKeyIdTooLongDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message SigningKeyInvalidLengthDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message SinkAlreadyExistsDetails {
+  optional string name = 1;
+}
+
+message SinkBatchSizeTooLargeDetails {
+  optional string name = 1;
+  optional uint64 batch_size = 2;
+  optional uint64 max = 3;
+}
+
+message SinkControllerMismatchDetails {
+  optional string name = 1;
+  optional string controller_id = 2;
+}
+
+message SinkNotFoundDetails {
+  optional string name = 1;
+}
+
+message StaleClusterPolicyDetails {
+  optional uint64 proposed_revision = 1;
+  optional uint64 applied_revision = 2;
+}
+
+message StaleInputsResolutionDetails {
+}
+
+message StaleProposalDetails {
+}
+
+message StorageOperationFailedDetails {
+}
+
+message TargetRequiredDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message TransactionAlreadyRevertedDetails {
+  optional uint64 transaction_id = 1;
+}
+
+message TransactionNotFoundDetails {
+  optional uint64 transaction_id = 1;
+}
+
+message TransactionReferenceConflictDetails {
+  optional string ledger = 1;
+  optional string reference = 2;
+  optional uint64 existing_transaction_id = 3;
+}
+
+message TransactionReferenceNotFoundDetails {
+  optional string reference = 1;
+}
+
+message TransactionReferenceTooLongDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message TransactionStateInconsistentDetails {
+  optional uint64 transaction_id = 1;
+}
+
+message TransactionTargetMissingDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message TransientAccountNonZeroDetails {
+  optional string accounts = 1;
+}
+
+message ValidationDetails {
+  optional string key = 1;
+  optional string account = 2;
+}
+
+message VolumeNotMaterializedDetails {
+  optional string account = 1;
+  optional string asset = 2;
+  optional string color = 3;
+  optional string side = 4;
+}
+
+message VolumeOverflowDetails {
+  optional string account = 1;
+  optional string asset = 2;
+  optional string color = 3;
+  optional string side = 4;
+  optional string amount = 5;
+  optional string current = 6;
+}
+
+message WritesBlockedClockSkewDetails {
+}
+
+message WritesBlockedDiskFullDetails {
+}
 // No state mutation occurred for the skipped order, but the rest of the
 // proposal applied normally. The `reason` here is a PROJECTION and is NOT
 // hash-chain-bound — only the AuditItem.serialized_order (the submitted
@@ -804,7 +1763,7 @@ message LedgerLogPayload {
 message OrderSkippedLog {
   ErrorReason reason = 1;
   string code = 2;
-  map<string, string> facts = 3;
+  FailureDetails details = 3;
 }
 
 // CreatedIndexLog records the creation of an index.
@@ -1365,7 +2324,7 @@ enum ErrorReason {
 message IdempotencyFailure {
   ErrorReason reason = 1;             // typed reason; kind derived via domain.KindForReason
   string code = 2;                    // stable subcode
-  map<string, string> facts = 3;      // validated structured facts
+  FailureDetails details = 3;       // typed structured facts
 }
 
 // TransactionReferenceValue stores the transaction ID associated with a unique reference within a ledger.

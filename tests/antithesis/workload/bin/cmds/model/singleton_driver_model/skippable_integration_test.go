@@ -139,7 +139,8 @@ func TestSkippableOrdersAgainstServer(t *testing.T) {
 		require.True(t, proto.Equal(first, replay), "replay must preserve original logs and sequences")
 		require.Equal(t, fingerprint, checker.modelState.Fingerprint())
 		corrupted := proto.Clone(replay).(*servicepb.ApplyResponse)
-		corrupted.Logs[0].GetPayload().GetApply().GetLog().GetData().GetOrderSkipped().Facts["reference"] = "wrong"
+		wrong := "wrong"
+		corrupted.Logs[0].GetPayload().GetApply().GetLog().GetData().GetOrderSkipped().GetDetails().GetTransactionReferenceConflict().Reference = &wrong
 		require.False(t, replayOrdersMatch(bulk, expected.Orders, corrupted.GetLogs()))
 	})
 	t.Run("later fatal order rolls back skipped log and earlier success", func(t *testing.T) {
@@ -174,7 +175,7 @@ func TestSkippableOrdersAgainstServer(t *testing.T) {
 				continue
 			}
 			found = true
-			skipped.Facts["unexpected"] = "corrupted"
+			skipped.Details = nil
 			require.False(t, logWindowMatches(checker.modelState.Ledger("L"), "L", nil, 0, false, 100, serverLogRows(logs), ""))
 
 			break

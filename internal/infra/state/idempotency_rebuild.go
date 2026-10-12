@@ -45,9 +45,9 @@ func IdempotencyValueFromAudit(entry *auditpb.AuditEntry, items []*auditpb.Audit
 			CreatedAt: entry.GetTimestamp().GetData(),
 			ExpiresAt: entry.GetIdempotency().GetExpiresAt(),
 			Failure: &commonpb.IdempotencyFailure{
-				Reason: reason,
-				Code:   out.Failure.GetCode(),
-				Facts:  out.Failure.GetFacts(),
+				Reason:  reason,
+				Code:    out.Failure.GetCode(),
+				Details: out.Failure.GetDetails(),
 			},
 		}, true
 

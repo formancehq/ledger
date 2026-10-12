@@ -72,10 +72,12 @@ func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 		}},
 		{"failure_message", "failure", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.GetFailure().Code = "tampered" }},
 		{"failure_context_add", "failure", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
-			e.GetFailure().GetFacts()["new-key"] = "new-value"
+			asset := "USD"
+			e.GetFailure().GetDetails().GetInsufficientFunds().Asset = &asset
 		}},
 		{"failure_context_value", "failure", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
-			e.GetFailure().GetFacts()["original-key"] = "changed"
+			account := "changed"
+			e.GetFailure().GetDetails().GetInsufficientFunds().Account = &account
 		}},
 
 		// CallerSnapshot sub-fields.
@@ -261,12 +263,9 @@ func newRichAuditEntry(outcomeKind string) (*auditpb.AuditEntry, []*auditpb.Audi
 	case "failure":
 		entry.Outcome = &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
-				Reason: commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
-				Code:   "INSUFFICIENT_FUNDS",
-				Facts: map[string]string{
-					"original-key": "original-value",
-					"ledger":       "ledger-a",
-				},
+				Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+				Code:    "INSUFFICIENT_FUNDS",
+				Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank"}),
 			},
 		}
 	default:
@@ -417,9 +416,9 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 		Idempotency: &commonpb.Idempotency{Key: idemKey},
 		Outcome: &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
-				Reason: commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
-				Code:   "INSUFFICIENT_FUNDS",
-				Facts:  map[string]string{"account": "bank"},
+				Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+				Code:    "INSUFFICIENT_FUNDS",
+				Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank"}),
 			},
 		},
 	}
@@ -430,9 +429,9 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 		CreatedAt: createdAt,
 		Hash:      proposalHash,
 		Failure: &commonpb.IdempotencyFailure{
-			Reason: commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
-			Code:   "INSUFFICIENT_FUNDS",
-			Facts:  map[string]string{"account": "bank"},
+			Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+			Code:    "INSUFFICIENT_FUNDS",
+			Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank"}),
 		},
 	}
 

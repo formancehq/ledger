@@ -298,7 +298,7 @@ func NewAuditSuccessListReader(s []*AuditSuccess) AuditSuccessListReader {
 type AuditFailureReader interface {
 	GetReason() commonpb.ErrorReason
 	GetCode() string
-	GetFacts() AuditFailure_FactsMapReader
+	GetDetails() commonpb.FailureDetailsReader
 	Mutate() *AuditFailure
 }
 
@@ -312,8 +312,12 @@ func (r *auditFailureReadonly) GetCode() string {
 	return (*AuditFailure)(r).GetCode()
 }
 
-func (r *auditFailureReadonly) GetFacts() AuditFailure_FactsMapReader {
-	return auditFailure_factsMapReadonly((*AuditFailure)(r).GetFacts())
+func (r *auditFailureReadonly) GetDetails() commonpb.FailureDetailsReader {
+	v := (*AuditFailure)(r).GetDetails()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *auditFailureReadonly) Mutate() *AuditFailure {
@@ -368,28 +372,4 @@ func (l auditFailureListReadonly) Range(yield func(int, AuditFailureReader) bool
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewAuditFailureListReader(s []*AuditFailure) AuditFailureListReader {
 	return auditFailureListReadonly(s)
-}
-
-// AuditFailure_FactsMapReader provides read-only access to AuditFailure.Facts.
-type AuditFailure_FactsMapReader interface {
-	Len() int
-	Get(k string) (string, bool)
-	Range(yield func(string, string) bool)
-}
-
-type auditFailure_factsMapReadonly map[string]string
-
-func (m auditFailure_factsMapReadonly) Len() int { return len(m) }
-
-func (m auditFailure_factsMapReadonly) Get(k string) (string, bool) {
-	v, ok := m[k]
-	return v, ok
-}
-
-func (m auditFailure_factsMapReadonly) Range(yield func(string, string) bool) {
-	for k, v := range m {
-		if !yield(k, v) {
-			return
-		}
-	}
 }
