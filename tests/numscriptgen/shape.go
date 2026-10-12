@@ -36,10 +36,7 @@ type Shape struct {
 	// script.
 	HasChainedOrigin bool
 
-	// numscript-only shapes (see sourceOptions.numscriptOnly). Any of these
-	// makes the script skip the oracle legs: the legacy machine's grammar has
-	// no oneof, colors or division expressions, and its clause-evaluation
-	// order on wrong-asset caps is not the behavior under test.
+	// Shapes outside numscript's core: the first two need feature flags.
 	HasOneof         bool
 	HasColoredSource bool
 	HasWrongAssetCap bool
@@ -138,8 +135,8 @@ func computeShape(s Script) Shape {
 		destRem, destVar := allotmentShapeDest(st.send.Destination)
 		sh.HasAllotmentRemaining = sh.HasAllotmentRemaining || srcRem || destRem
 		sh.HasPortionVar = sh.HasPortionVar || srcVar || destVar
-		numscriptOnlyFactsSrc(st.send.Source, asset, &sh)
-		numscriptOnlyFactsDest(st.send.Destination, asset, &sh)
+		extendedFactsSrc(st.send.Source, asset, &sh)
+		extendedFactsDest(st.send.Destination, asset, &sh)
 	}
 	sh.HasSave = len(saves) > 0
 	sh.HasBoundedOverdraft = len(overdrafts) > 0
@@ -188,9 +185,9 @@ func saveOf(index int, e ExtraStatement, vars []VarDecl) (saveFact, bool) {
 	}
 }
 
-// numscriptOnlyFactsSrc records the numscript-only shapes present in one
+// extendedFactsSrc records the shapes outside numscript's core present in one
 // source tree; asset is the statement's asset, for wrong-asset cap detection.
-func numscriptOnlyFactsSrc(src Source, asset string, sh *Shape) {
+func extendedFactsSrc(src Source, asset string, sh *Shape) {
 	switch src.Kind {
 	case SrcAccount:
 		sh.HasColoredSource = sh.HasColoredSource || src.Color != ""
@@ -203,27 +200,27 @@ func numscriptOnlyFactsSrc(src Source, asset string, sh *Shape) {
 		if src.Cap.Asset != asset {
 			sh.HasWrongAssetCap = true
 		}
-		numscriptOnlyFactsSrc(*src.Inner, asset, sh)
+		extendedFactsSrc(*src.Inner, asset, sh)
 	case SrcInorder, SrcOneof:
 		sh.HasOneof = sh.HasOneof || src.Kind == SrcOneof
 		for _, inner := range src.Sources {
-			numscriptOnlyFactsSrc(inner, asset, sh)
+			extendedFactsSrc(inner, asset, sh)
 		}
 	case SrcAllotment:
 		for _, c := range src.Clauses {
 			sh.HasPortionDiv = sh.HasPortionDiv || c.Div != nil
-			numscriptOnlyFactsSrc(c.Source, asset, sh)
+			extendedFactsSrc(c.Source, asset, sh)
 		}
 		if src.AllotmentRemaining != nil {
-			numscriptOnlyFactsSrc(*src.AllotmentRemaining, asset, sh)
+			extendedFactsSrc(*src.AllotmentRemaining, asset, sh)
 		}
 	}
 }
 
-func numscriptOnlyFactsDest(d Destination, asset string, sh *Shape) {
+func extendedFactsDest(d Destination, asset string, sh *Shape) {
 	keptOrDest := func(k KeptOrDest) {
 		if k.Kind == To {
-			numscriptOnlyFactsDest(*k.Dest, asset, sh)
+			extendedFactsDest(*k.Dest, asset, sh)
 		}
 	}
 	switch d.Kind {

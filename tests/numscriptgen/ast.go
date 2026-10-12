@@ -1,8 +1,9 @@
-// Package gen produces random numscript programs for differential testing.
+// Package numscriptgen produces random numscript programs, adapted from
+// numscript's internal/gen for the ledger's model test.
 //
 // Generation targets this package's own AST rather than builder/ directly:
-// cleanup.go rewrites the tree in place, and builder's Source/Destination are
-// opaque render closures. convert.go renders once cleanup has settled.
+// builder's Source/Destination are opaque render closures, and the AST is what
+// the account renaming and the shape facts walk. convert.go renders it.
 package numscriptgen
 
 import "math/big"
@@ -11,8 +12,6 @@ import "math/big"
 // variable instead of inline. Per occurrence, not per value: the same account
 // can be inline in one place and a var in another, which is what makes two
 // resources alias one account (formancehq/ledger#2056).
-//
-// Only the rendering changes, never the value, so cleanup.go is unaffected.
 type Monetary struct {
 	Asset      string
 	AssetAsVar bool
@@ -29,8 +28,7 @@ const (
 	SrcCapped
 	SrcInorder
 	SrcAllotment
-	// numscript-only (experimental-oneof): scripts containing it skip the
-	// oracle legs.
+	// experimental-oneof
 	SrcOneof
 )
 
@@ -42,8 +40,7 @@ type Source struct {
 	AccountAsVar bool
 
 	// SrcAccount, SrcAccountOverdraft: non-empty adds a `\ "COLOR"` clause.
-	// numscript-only (experimental-asset-colors): scripts containing it skip
-	// the oracle legs.
+	// experimental-asset-colors
 	Color      string
 	ColorAsVar bool
 
@@ -68,8 +65,7 @@ type Source struct {
 // numerator always renders through a runtime-bound number var, so any sign is
 // expressible without unary minus). Unlike literals and portion vars, the value
 // is unconstrained: negative and over-one portions are reachable this way, and
-// both engines must reject them the same way. numscript-only: the oracle's grammar
-// has no division expression.
+// both engines must reject them the same way.
 type PortionDiv struct {
 	Num *big.Int
 	Den *big.Int
@@ -79,9 +75,7 @@ func (d PortionDiv) Rat() *big.Rat { return new(big.Rat).SetFrac(d.Num, d.Den) }
 
 type SourceAllotmentClause struct {
 	Portion *big.Rat
-	// Rendered as a runtime-bound portion var instead of an n/d literal. Only
-	// legal in an allotment with a remaining clause: without one, the oracle
-	// rejects the block at compile time ("might be less than 100%").
+	// Rendered as a runtime-bound portion var instead of an n/d literal.
 	PortionAsVar bool
 	// When non-nil, the clause portion is Div rendered as a division expression
 	// and Portion/PortionAsVar are ignored.
@@ -95,7 +89,7 @@ const (
 	DestAccount DestKind = iota
 	DestInorder
 	DestAllotment
-	// numscript-only (experimental-oneof), same clause fields as DestInorder.
+	// experimental-oneof, same clause fields as DestInorder.
 	DestOneof
 )
 
@@ -173,6 +167,10 @@ type NumExpr struct {
 	Lit *big.Int
 	// NumLit only.
 	LitAsVar bool
+
+	// Paren wraps the expression in parentheses; Neg prefixes it with a minus.
+	Paren bool
+	Neg   bool
 
 	// NumAdd, NumSub only
 	Left, Right *NumExpr
@@ -260,9 +258,7 @@ const (
 // from the vars map, unlike VarDecl which the compiler computes from an origin
 // call.
 //
-// Value is sometimes "world": the oracle rejects a var resolving to @world in
-// source position, the interpreter accepts it. Compare tolerates that
-// direction.
+// Value is sometimes "world".
 type AccountVarDecl struct {
 	Value string
 }
@@ -303,10 +299,23 @@ type ExtraStatement struct {
 	// string rather than the Value expression, exercising string-typed values.
 	StringValue      *string
 	StringValueAsVar bool
+	// ExtraSetTxMeta, ExtraSetAccountMeta: when non-nil the meta value is this
+	// literal of another type, taking precedence over StringValue and Value.
+	Literal *MetaLiteral
 
 	// ExtraSendVar: `send $<Vars[VarIdx]> (source = Account, destination = Destination)`
 	Destination      string
 	DestinationAsVar bool
+}
+
+// MetaLiteral is a set_tx_meta / set_account_meta value of a type other than
+// number or string; only the field matching Type is set.
+type MetaLiteral struct {
+	Type     MetaType
+	Monetary Monetary
+	Account  string
+	Asset    string
+	Portion  *big.Rat
 }
 
 // Focus is the (account, asset) every statement of a scenario block shares.
