@@ -81,7 +81,7 @@ type DefaultWAL struct {
 	zapLogger *zap.Logger
 
 	// Metrics
-	appendSaveHistogram      metric.Int64Histogram
+	appendSaveHistogram      metric.Float64Histogram
 	appendBatchSizeHistogram metric.Int64Histogram
 }
 
@@ -218,10 +218,10 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 	}
 
 	// Create metrics
-	s.appendSaveHistogram, err = meter.Int64Histogram(
+	s.appendSaveHistogram, err = meter.Float64Histogram(
 		"wal.append.save.duration",
 		metric.WithDescription("Time spent saving entries to DefaultWAL"),
-		metric.WithUnit("us"),
+		metric.WithUnit("s"),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating append save histogram: %w", err)
@@ -230,7 +230,7 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 	s.appendBatchSizeHistogram, err = meter.Int64Histogram(
 		"wal.append.batch_size",
 		metric.WithDescription("Number of entries appended at once"),
-		metric.WithUnit("1"),
+		metric.WithUnit("{entry}"),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating append batch size histogram: %w", err)
@@ -743,7 +743,7 @@ func (s *DefaultWAL) Append(hardState *raftpb.HardState, entries []*raftpb.Entry
 	// Save to DefaultWAL
 	saveStart := time.Now()
 	err := s.wal.Save(newHardState, entries)
-	s.appendSaveHistogram.Record(context.Background(), time.Since(saveStart).Microseconds())
+	s.appendSaveHistogram.Record(context.Background(), time.Since(saveStart).Seconds())
 	s.appendBatchSizeHistogram.Record(context.Background(), int64(len(entries)))
 
 	if err != nil {

@@ -3,8 +3,10 @@ package apitrace
 
 import (
 	"context"
+	"fmt"
 
 	"go.opentelemetry.io/otel/attribute"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/formancehq/go-libs/v5/pkg/observe"
@@ -26,6 +28,23 @@ func Fields(ctx context.Context) map[string]any {
 	fields["span_id"] = spanContext.SpanID().String()
 
 	return fields
+}
+
+// RecordPanic records a recovered panic on a recording request span as the
+// OpenTelemetry exception event (exception.type, exception.message,
+// exception.stacktrace), so trace backends render it as an exception. The
+// panic value is diagnostic only: callers must never return it to clients.
+func RecordPanic(ctx context.Context, recovered any, stack []byte) {
+	span := trace.SpanFromContext(ctx)
+	if !span.IsRecording() {
+		return
+	}
+
+	span.AddEvent(semconv.ExceptionEventName, trace.WithAttributes(
+		semconv.ExceptionType(fmt.Sprintf("%T", recovered)),
+		semconv.ExceptionMessage(fmt.Sprintf("%v", recovered)),
+		semconv.ExceptionStacktrace(string(stack)),
+	))
 }
 
 // Stamp records the correlation ID and raw error on a recording request span.

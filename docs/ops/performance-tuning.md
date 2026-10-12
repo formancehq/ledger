@@ -235,7 +235,7 @@ The default configuration is tuned for write-heavy workloads:
 
 Monitor these metrics for write stalls:
 ```promql
-increase(pebble_write_stall_total[5m]) > 0
+increase(formance_ledger_pebble_write_stalls_total[5m]) > 0
 ```
 
 ### 5.3. Generation Rotation Threshold
@@ -363,17 +363,21 @@ Current balance = `base + latest cumulative diff`. Pebble range scans are effici
 
 ## 8. Monitoring Checklist
 
+Metric names are OpenTelemetry names, with ledger metrics listed without
+their `formance.ledger.` prefix; see the [naming convention](monitoring.md#naming-convention)
+for how they appear in Prometheus.
+
 | Metric | What to watch | Action |
 |--------|--------------|--------|
 | `numscript.cache.size` | Either `cache` side (`parsed`, `compiled`) approaching max (default 1024) | Increase cache size or reduce unique scripts |
 | `admission.preload.duration` | High latency | Increase generation threshold K |
 | `admission.preload.cache_hits` | Low hit rate | Review account access patterns |
 | `raft.apply_entries.duration` p99 | > 50ms | Check disk I/O, compaction backlog |
-| `pebble_write_stall_total` | Any increase | Add disk IOPS, tune compaction |
+| `pebble.write_stalls` | Any increase | Add disk IOPS, tune compaction |
 | `cache.rotations` | Frequency | Informational: correlates with K |
 | `bloom.negatives` / `bloom.lookups` | Low ratio per type | Filter not effective for that type — consider disabling it |
 | `bloom.ready` | 0 after startup | Filter still populating — preloads fall back to Pebble |
-| Memory usage | Sustained growth | Check generation size, snapshot frequency |
+| `go.memory.used` | Sustained growth | Check generation size, snapshot frequency |
 
 ---
 

@@ -8,7 +8,7 @@ panels.row('Caching & Attributes', 167, [
     'Cache Size by Type',
     { h: 8, w: 12, x: 0, y: 89 },
     [
-      { expr: 'cache.size{service.cluster=~"$cluster", service.node_id=~"$node"}', legendFormat: '{{type}} (Node {{service.node_id}})' },
+      { expr: 'cache.size{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: '{{type}} ({{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}})' },
     ], unit='none',
     description=|||
       Number of entries in the attribute cache by type.
@@ -22,7 +22,7 @@ panels.row('Caching & Attributes', 167, [
     'Numscript Cache Size',
     { h: 8, w: 12, x: 12, y: 89 },
     [
-      { expr: 'numscript.cache.size{service.cluster=~"$cluster", service.node_id=~"$node"}', legendFormat: 'Node {{service.node_id}}' },
+      { expr: 'numscript.cache.size{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}' },
     ], unit='none',
     description='Number of cached Numscript programs per node. Shows how many unique scripts are currently stored in the cache.',
   ),
@@ -31,8 +31,8 @@ panels.row('Caching & Attributes', 167, [
     'Cache Generation & Rotations',
     { h: 8, w: 12, x: 0, y: 97 },
     [
-      { expr: 'cache.generation{service.cluster=~"$cluster", service.node_id=~"$node"}', legendFormat: 'Node {{service.node_id}}: Generation' },
-      { expr: 'sum(rate(cache.rotations{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id)', legendFormat: 'Node {{service.node_id}}: Rotations/s' },
+      { expr: 'cache.generation{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Generation' },
+      { expr: 'sum(rate(cache.rotations{k8s.namespace.name=~"$namespace", formance.ledger.cluster.name=~"$cluster", formance.ledger.node.id=~"$node"}[$__rate_interval])) by (k8s.namespace.name, formance.ledger.cluster.name, formance.ledger.node.id)', legendFormat: '{{k8s.namespace.name}}/{{formance.ledger.cluster.name}} / Node {{formance.ledger.node.id}}: Rotations/s' },
     ], unit='none',
     description=|||
       Number of cache generation rotations and current generation.

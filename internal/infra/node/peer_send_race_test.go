@@ -25,13 +25,13 @@ func newRaceTestPeerConn(t *testing.T) *peerConnection {
 
 	var (
 		loadH metric.Int64Histogram
-		fullC metric.Float64Counter
+		fullC metric.Int64Counter
 		err   error
 	)
 
 	loadH, err = m.Int64Histogram("noop.load")
 	require.NoError(t, err)
-	fullC, err = m.Float64Counter("noop.full")
+	fullC, err = m.Int64Counter("noop.full")
 	require.NoError(t, err)
 
 	loopDone := make(chan struct{})
@@ -47,7 +47,7 @@ func newRaceTestPeerConn(t *testing.T) *peerConnection {
 		logger:                 logging.Testing(),
 		pushUnreachable:        func(uint64) bool { return true },
 		sendQueueLoadHistogram: [3]metric.Int64Histogram{loadH, loadH, loadH},
-		sendQueueFullCounter:   [3]metric.Float64Counter{fullC, fullC, fullC},
+		sendQueueFullCounter:   [3]metric.Int64Counter{fullC, fullC, fullC},
 	}
 }
 

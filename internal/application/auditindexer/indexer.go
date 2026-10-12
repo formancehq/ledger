@@ -315,7 +315,7 @@ func (i *Indexer) Start() {
 
 		return
 	}
-	if reg, err := tailworker.RegisterTailGauges(i.meter, "audit_index", "audit", &i.lastIndexed, &i.auditLast); err == nil {
+	if reg, err := tailworker.RegisterTailGauges(i.meter, "audit.indexer", "audit", &i.lastIndexed, &i.auditLast); err == nil {
 		i.reg = reg
 	}
 	i.tw = tailworker.New(tailworker.Config{

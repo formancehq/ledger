@@ -18,8 +18,8 @@ import (
 )
 
 const (
-	mActionTotal  = "admission.action.total"
-	mActionErrors = "admission.action.errors.total"
+	mActionTotal  = "admission.actions"
+	mActionErrors = "admission.action.errors"
 )
 
 // recordedActionCounts collects, from the manual reader, the value of each

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -102,6 +103,7 @@ func NewHealthChecker(
 	hc.pollFailures, _ = meter.Int64Counter(
 		"health.disk.poll.failures",
 		metric.WithDescription("Count of failed GetDiskUsage polls to peers (failures cannot clear an existing disk write gate)"),
+		metric.WithUnit("{failure}"),
 	)
 
 	// The gate pointer defaults to nil, which CheckWritesAllowed treats as an
@@ -278,7 +280,7 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 				"node_id": peerID,
 				"error":   err,
 			}).Errorf("Failed to get disk usage from peer")
-			hc.pollFailures.Add(context.Background(), 1, metric.WithAttributes(attribute.Int64("node_id", int64(peerID))))
+			hc.pollFailures.Add(context.Background(), 1, metric.WithAttributes(attribute.String("peer", strconv.FormatUint(peerID, 10))))
 			reports = append(reports, nodeUsageReport{nodeID: peerID, fetchErr: err})
 			samples = append(samples, VolumeSample{})
 
@@ -299,7 +301,7 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 				"error":   err,
 			}).Errorf("Failed to get disk usage from peer")
 
-			hc.pollFailures.Add(context.Background(), 1, metric.WithAttributes(attribute.Int64("node_id", int64(peerID))))
+			hc.pollFailures.Add(context.Background(), 1, metric.WithAttributes(attribute.String("peer", strconv.FormatUint(peerID, 10))))
 
 			reports = append(reports, nodeUsageReport{
 				nodeID:   peerID,

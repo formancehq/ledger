@@ -139,7 +139,7 @@ func newCheckpointWaitHarness(t *testing.T) (*BucketServiceServerImpl, *ctrlmock
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = rs.Close() })
 
-	applyDuration, err := meter.Int64Histogram("test.apply.duration")
+	applyDuration, err := meter.Float64Histogram("test.apply.duration")
 	require.NoError(t, err)
 
 	mockCtrl := ctrlmock.NewMockController(gomock.NewController(t))

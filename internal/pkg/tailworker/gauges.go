@@ -37,7 +37,8 @@ func RegisterTailGauges(meter metric.Meter, ns, source string, indexed, sourceLa
 	}
 
 	lagGauge, err := meter.Int64ObservableGauge(ns+".lag",
-		metric.WithDescription("Sequences the worker is behind upstream"))
+		metric.WithDescription("Sequences the worker is behind upstream"),
+		metric.WithUnit("{sequence}"))
 	if err != nil {
 		return nil, err
 	}

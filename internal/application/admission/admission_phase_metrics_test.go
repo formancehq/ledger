@@ -85,14 +85,18 @@ func recordedPhaseCounts(t *testing.T, reader *sdkmetric.ManualReader) map[strin
 	counts := make(map[string]uint64)
 	for _, sm := range rm.ScopeMetrics {
 		for _, m := range sm.Metrics {
-			hist, ok := m.Data.(metricdata.Histogram[int64])
-			if !ok {
-				continue
-			}
-
 			var total uint64
-			for _, dp := range hist.DataPoints {
-				total += dp.Count
+			switch hist := m.Data.(type) {
+			case metricdata.Histogram[float64]:
+				for _, dp := range hist.DataPoints {
+					total += dp.Count
+				}
+			case metricdata.Histogram[int64]:
+				for _, dp := range hist.DataPoints {
+					total += dp.Count
+				}
+			default:
+				continue
 			}
 			counts[m.Name] = total
 		}
@@ -116,7 +120,7 @@ func TestAdmitRecordsEnteredPhasesOnFailure(t *testing.T) {
 	const (
 		mResolveBatch       = "admission.resolve_batch.duration"
 		mOrdersPreparation  = "admission.orders_preparation.duration"
-		mScripts            = "admission.scripts.duration"
+		mScripts            = "admission.script.duration"
 		mResponseResolution = "admission.response_resolution.duration"
 		mFSMFutureWait      = "admission.fsm_future.wait.duration"
 		mProposalGuard      = "admission.proposal_guard.duration"
