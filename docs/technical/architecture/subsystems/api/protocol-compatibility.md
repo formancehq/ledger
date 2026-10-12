@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"28"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"29"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 28:
+leader. For example, with a schema implementing revision 29:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 28' \
+grpcurl -plaintext -H 'ledger-protocol-version: 29' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -334,6 +334,16 @@ Semantic changes in a later Numscript library update still need their own
 service-compatibility assessment and an upgrade plan for in-flight Raft
 entries; the absence of committed bytecode does not make rolling upgrades
 safe across such changes.
+
+## Required member identity on AddLearner (revision 29)
+
+Revision 29 makes the target node's 16-byte `instance_id` mandatory on
+administrative `ClusterService.AddLearner` requests. A revision-29 server
+rejects requests that omit `instance_id` with `InvalidArgument` at the
+handler boundary. In practice, a client implementing a different revision will
+first be rejected by the protocol-version gate (lines 29-35 above) with
+`FailedPrecondition` before reaching identity validation. Clients and servers
+must implement the same revision; there is no compatibility fallback.
 
 ## Maintaining the revision
 

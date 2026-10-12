@@ -26,6 +26,39 @@ type unauthClusterBootstrapServer struct {
 	clusterbootstrappb.UnimplementedClusterBootstrapServiceServer
 }
 
+type staticClusterBootstrapServer struct {
+	clusterbootstrappb.UnimplementedClusterBootstrapServiceServer
+
+	peers     []*clusterbootstrappb.PeerInfo
+	calls     *atomic.Int64
+	failFirst bool
+}
+
+func (s staticClusterBootstrapServer) GetPeers(context.Context, *clusterbootstrappb.GetPeersRequest) (*clusterbootstrappb.GetPeersResponse, error) {
+	if s.calls != nil && s.calls.Add(1) == 1 && s.failFirst {
+		return nil, status.Error(codes.Unavailable, "bootstrap member is starting")
+	}
+
+	return &clusterbootstrappb.GetPeersResponse{Peers: s.peers}, nil
+}
+
+func startBootstrapTestServer(t *testing.T, service clusterbootstrappb.ClusterBootstrapServiceServer) string {
+	t.Helper()
+
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	srv := grpc.NewServer()
+	clusterbootstrappb.RegisterClusterBootstrapServiceServer(srv, service)
+	go func() {
+		// Cleanup owns server shutdown; Serve's shutdown result is not the assertion under test.
+		_ = srv.Serve(lis)
+	}()
+	t.Cleanup(srv.Stop)
+
+	return lis.Addr().String()
+}
+
 func (unauthClusterBootstrapServer) GetPeers(context.Context, *clusterbootstrappb.GetPeersRequest) (*clusterbootstrappb.GetPeersResponse, error) {
 	return nil, status.Error(codes.Unauthenticated, "missing authorization metadata on Raft RPC")
 }
@@ -143,7 +176,7 @@ func (s *flakyBootstrapServer) GetPeers(context.Context, *clusterbootstrappb.Get
 	}
 
 	return &clusterbootstrappb.GetPeersResponse{Peers: []*clusterbootstrappb.PeerInfo{
-		{Id: 1, RaftAddress: "node-1:7777", ServiceAddress: "node-1:8888"},
+		{Id: 1, RaftAddress: "node-1:7777", ServiceAddress: "node-1:8888", InstanceId: []byte("0123456789abcdef")},
 	}}, nil
 }
 
@@ -163,7 +196,7 @@ func TestDiscoverPeers_RetriesTransientFailureThenSucceeds(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, int32(2), srv.attempts.Load())
-	require.Equal(t, []node.Peer{{ID: 1, Address: "node-1:7777", ServiceAddress: "node-1:8888"}}, peers)
+	require.Equal(t, []node.Peer{{ID: 1, Address: "node-1:7777", ServiceAddress: "node-1:8888", InstanceID: []byte("0123456789abcdef")}}, peers)
 }
 
 func serveClusterBootstrap(t *testing.T, impl clusterbootstrappb.ClusterBootstrapServiceServer) string {
@@ -178,4 +211,105 @@ func serveClusterBootstrap(t *testing.T, impl clusterbootstrappb.ClusterBootstra
 	t.Cleanup(srv.Stop)
 
 	return lis.Addr().String()
+}
+func TestDiscoverPeersPropagatesInstanceID(t *testing.T) {
+	t.Parallel()
+
+	instanceID := []byte("0123456789abcdef")
+	address := startBootstrapTestServer(t, staticClusterBootstrapServer{peers: []*clusterbootstrappb.PeerInfo{{
+		Id:             1,
+		RaftAddress:    "node-1:7777",
+		ServiceAddress: "node-1:8888",
+		InstanceId:     instanceID,
+	}}})
+
+	peers, err := discoverPeersFromCluster(address, bootstrap.TLSConfig{Mode: bootstrap.TLSModeDisabled}, "", "")
+	require.NoError(t, err)
+	require.Len(t, peers, 1)
+	require.Equal(t, instanceID, peers[0].InstanceID)
+}
+
+func TestDiscoverPeersRejectsMissingInstanceID(t *testing.T) {
+	t.Parallel()
+
+	address := startBootstrapTestServer(t, staticClusterBootstrapServer{peers: []*clusterbootstrappb.PeerInfo{{
+		Id:             1,
+		RaftAddress:    "node-1:7777",
+		ServiceAddress: "node-1:8888",
+	}}})
+
+	_, err := discoverPeersFromCluster(address, bootstrap.TLSConfig{Mode: bootstrap.TLSModeDisabled}, "", "")
+	require.ErrorContains(t, err, "has invalid identity")
+}
+
+func TestDiscoverPeersWithRetryRejectsInvalidInstanceID(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name                  string
+		identity              []byte
+		missingRaftAddress    bool
+		missingServiceAddress bool
+	}{
+		{name: "missing"},
+		{name: "short", identity: make([]byte, 15)},
+		{name: "long", identity: make([]byte, 17)},
+		{name: "missing identity and addresses", missingRaftAddress: true, missingServiceAddress: true},
+		{name: "short identity and missing raft address", identity: make([]byte, 15), missingRaftAddress: true},
+		{name: "long identity and missing service address", identity: make([]byte, 17), missingServiceAddress: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var calls atomic.Int64
+			peer := &clusterbootstrappb.PeerInfo{
+				Id: 1, RaftAddress: "node-1:7777", ServiceAddress: "node-1:8888", InstanceId: tt.identity,
+			}
+			if tt.missingRaftAddress {
+				peer.RaftAddress = ""
+			}
+			if tt.missingServiceAddress {
+				peer.ServiceAddress = ""
+			}
+			address := startBootstrapTestServer(t, staticClusterBootstrapServer{
+				calls: &calls,
+				peers: []*clusterbootstrappb.PeerInfo{peer},
+			})
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			t.Cleanup(cancel)
+
+			peers, err := discoverPeersFromClusterWithRetry(ctx, address, bootstrap.TLSConfig{Mode: bootstrap.TLSModeDisabled}, "", "")
+			require.Nil(t, peers)
+			var identityErr *invalidDiscoveredPeerIdentityError
+			require.ErrorAs(t, err, &identityErr)
+			require.ErrorContains(t, err, "peer 1 returned by "+address+" has invalid identity")
+			require.NoError(t, ctx.Err(), "malformed identities must abort before the discovery deadline")
+			require.Equal(t, int64(1), calls.Load(), "malformed identities must never be retried")
+		})
+	}
+}
+
+func TestDiscoverPeersWithRetryRecoversFromTransientFailure(t *testing.T) {
+	t.Parallel()
+
+	var calls atomic.Int64
+	identity := []byte("0123456789abcdef")
+	address := startBootstrapTestServer(t, staticClusterBootstrapServer{
+		calls:     &calls,
+		failFirst: true,
+		peers: []*clusterbootstrappb.PeerInfo{{
+			Id: 1, RaftAddress: "node-1:7777", ServiceAddress: "node-1:8888", InstanceId: identity,
+		}},
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+
+	peers, err := discoverPeersFromClusterWithRetry(ctx, address, bootstrap.TLSConfig{Mode: bootstrap.TLSModeDisabled}, "", "")
+	require.NoError(t, err)
+	require.Equal(t, int64(2), calls.Load())
+	require.Len(t, peers, 1)
+	require.Equal(t, uint64(1), peers[0].ID)
+	require.Equal(t, "node-1:7777", peers[0].Address)
+	require.Equal(t, "node-1:8888", peers[0].ServiceAddress)
+	require.Equal(t, identity, peers[0].InstanceID)
 }

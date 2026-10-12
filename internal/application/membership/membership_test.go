@@ -3,20 +3,22 @@ package membership
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-
 	"github.com/formancehq/ledger/v3/internal/infra/node"
-	"github.com/formancehq/ledger/v3/internal/infra/transport"
 )
+
+// These tests cover input validation before any dependency is touched.
+// membership_node_test.go exercises admission and discovery through a real
+// *node.Node; the e2e cluster suite covers inter-node routing.
 
 func TestService_AddLearner_ValidatesRequest(t *testing.T) {
 	t.Parallel()
 
-	// node, raftTransport, servicePool intentionally nil — the
+	// node intentionally nil — the
 	// validation paths must reject before reaching them.
 	s := &Service{}
 
@@ -25,17 +27,20 @@ func TestService_AddLearner_ValidatesRequest(t *testing.T) {
 		nodeID      uint64
 		raftAddr    string
 		serviceAddr string
+		instanceID  []byte
 		wantSubstr  string
 	}{
-		{"missing node_id", 0, "r:1", "s:1", "node_id"},
-		{"missing raft_address", 1, "", "s:1", "raft_address"},
-		{"missing service_address", 1, "r:1", "", "service_address"},
+		{"missing node_id", 0, "r:1", "s:1", []byte("0123456789abcdef"), "node_id"},
+		{"missing raft_address", 1, "", "s:1", []byte("0123456789abcdef"), "raft_address"},
+		{"missing service_address", 1, "r:1", "", []byte("0123456789abcdef"), "service_address"},
+		{"missing instance_id", 1, "r:1", "s:1", nil, "instance_id"},
+		{"short instance_id", 1, "r:1", "s:1", []byte("short"), "instance_id"},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			err := s.AddLearner(context.Background(), tc.nodeID, tc.raftAddr, tc.serviceAddr, nil)
+			err := s.AddLearner(context.Background(), tc.nodeID, tc.raftAddr, tc.serviceAddr, tc.instanceID)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.wantSubstr)
 		})
@@ -45,28 +50,22 @@ func TestService_AddLearner_ValidatesRequest(t *testing.T) {
 func TestService_AddLearner_RejectionPreservesServiceRouting(t *testing.T) {
 	t.Parallel()
 
-	const (
-		nodeID          = uint64(2)
-		committedAddr   = "member-2:8080"
-		uncommittedAddr = "attacker:8080"
-	)
+	s, servicePool := newMembershipServiceNodeWithPool(t)
+	const committedAddr = "self:8888"
+	require.NoError(t, servicePool.AddPeer(1, committedAddr))
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
 
-	servicePool := transport.NewConnectionPool(transport.TLSPolicy{}, transport.PoolConfig{})
-	require.NoError(t, servicePool.AddPeer(nodeID, committedAddr))
-	t.Cleanup(func() { require.NoError(t, servicePool.Close()) })
-
-	s := &Service{
-		servicePool: servicePool,
-		addRaftPeer: func(uint64, string) {},
-		addLearner: func(context.Context, uint64, string, string, []byte) error {
-			return node.ErrNodeAlreadyInCluster
-		},
-		logger: logging.Testing(),
-	}
-
-	err := s.AddLearner(context.Background(), nodeID, "member-2:7070", uncommittedAddr, nil)
+	err := s.AddLearner(ctx, 1, "self:7777", "attacker:8080", []byte("self-instance-id"))
 	require.ErrorIs(t, err, node.ErrNodeAlreadyInCluster)
-	require.Equal(t, committedAddr, servicePool.GetPeerAddress(nodeID))
+	require.Equal(t, committedAddr, servicePool.GetPeerAddress(1))
+}
+
+func TestService_JoinAsLearner_RejectsMissingInstanceID(t *testing.T) {
+	t.Parallel()
+
+	err := (&Service{}).JoinAsLearner(context.Background(), 1, "r:1", "s:1", nil)
+	require.ErrorContains(t, err, "instance_id")
 }
 
 func TestService_PromoteLearner_RejectsZeroNodeID(t *testing.T) {
