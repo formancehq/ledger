@@ -9,6 +9,7 @@ import (
 	"io"
 	"math/big"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -18,6 +19,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
@@ -361,6 +363,23 @@ var _ = Describe("Restore", Ordered, func() {
 			// changes only in the delta. Phase 3 checks the apply path enforces it.
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.AddAccountTypeAction(chartLedger, "wallet", "wallet:{id}")))
 			Expect(err).To(Succeed())
+
+			// The skipped outcome stores a digest for this oversized name while
+			// the audited order retains the raw name. Restore and CheckStore must
+			// compare the normalized fact without changing the raw lookup key.
+			longTypeName := strings.Repeat("a", 5000)
+			skipResponse, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.WithSkippableReasons(
+				actions.RemoveAccountTypeAction(chartLedger, longTypeName),
+				commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND,
+			)))
+			Expect(err).To(Succeed())
+			Expect(skipResponse.GetLogs()).To(HaveLen(1))
+			skipped := skipResponse.GetLogs()[0].GetPayload().GetApply().GetLog().GetData().GetOrderSkipped()
+			Expect(skipped).NotTo(BeNil())
+			Expect(skipped.GetFacts()).To(HaveKeyWithValue("name", domain.NormalizeFailureFact(longTypeName)))
+			sourceCheck, err := actions.CollectCheckStoreEvents(ctx, client)
+			Expect(err).To(Succeed())
+			Expect(sourceCheck.Errors).To(BeEmpty(), "the source checker must accept the bounded skip fact")
 
 			// A ledger created AFTER the full checkpoint lives only in the
 			// incremental exports. Its LedgerInfo + LedgerBoundaries must be
