@@ -78,6 +78,7 @@ release:
   prerelease: auto
   extra_files:
   - glob: openapi.yml
+  - glob: misc/operator/config/crd/schemas/*.json
 
 # Archive names carry the version (e.g. ledger_v3.0.0_linux-amd64.tar.gz) so
 # several releases can be downloaded side by side. `ledgerctl upgrade` matches
