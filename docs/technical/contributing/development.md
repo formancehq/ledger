@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide provides the information needed to contribute to the Ledger v3 POC project, understand the code Structure, and follow project conventions.
+This guide provides the information needed to contribute to the Ledger v3 project, understand the code Structure, and follow project conventions.
 
 ## Project Structure
 

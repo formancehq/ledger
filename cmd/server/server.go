@@ -85,7 +85,7 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 	runCmd := &cobra.Command{
 		Use:   "run",
 		Short: "Run the ledger server",
-		Long:  "Start the Ledger v3 POC server with Raft consensus cluster",
+		Long:  "Start the Ledger v3 server with Raft consensus cluster",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runServer(cmd, bindings)
 		},

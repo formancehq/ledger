@@ -2,7 +2,7 @@
 
 ## Overview
 
-Ledger v3 POC exposes OpenTelemetry-compatible metrics that can be collected via OTLP and stored in any compatible backend (VictoriaMetrics, Prometheus, etc.).
+Ledger v3 exposes OpenTelemetry-compatible metrics that can be collected via OTLP and stored in any compatible backend (VictoriaMetrics, Prometheus, etc.).
 
 Metrics are organized into several categories:
 - **System Metrics**: CPU, memory, network, and Go runtime
@@ -686,7 +686,7 @@ The dashboard is organized into the following sections:
 
 ## Continuous Profiling with Pyroscope
 
-Ledger v3 POC supports continuous profiling with [Grafana Pyroscope](https://grafana.com/docs/pyroscope/latest/), enabling deep performance analysis and bottleneck identification.
+Ledger v3 supports continuous profiling with [Grafana Pyroscope](https://grafana.com/docs/pyroscope/latest/), enabling deep performance analysis and bottleneck identification.
 
 ### Overview
 

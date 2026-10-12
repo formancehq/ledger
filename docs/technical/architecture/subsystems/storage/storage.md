@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Ledger v3 POC system uses multiple storage layers to ensure data durability and recovery:
+The Ledger v3 system uses multiple storage layers to ensure data durability and recovery:
 
 1. **WAL (Write-Ahead Log)**: Raft log for consensus
 2. **Snapshots**: Periodic restoration points

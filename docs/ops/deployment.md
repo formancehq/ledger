@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the different deployment methods for Ledger v3 POC, from local configuration to production deployment on Kubernetes.
+This document describes the different deployment methods for Ledger v3, from local configuration to production deployment on Kubernetes.
 
 ### Service protocol compatibility
 
@@ -1037,7 +1037,7 @@ The project includes a Pulumi-based development environment in `misc/devenv/` th
 | **k6-operator** | Kubernetes operator for running k6 load tests | `bench` |
 | **Benchmark Operator** | Automated test reporting and Grafana snapshots | `bench` |
 | **Ledger Operator** | Kubernetes operator managing Ledger clusters | `ledger` |
-| **Ledger v3 POC** | The application itself (deployed via operator CR) | `ledger` |
+| **Ledger v3** | The application itself (deployed via operator CR) | `ledger` |
 
 ### Quick Start
 

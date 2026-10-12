@@ -98,24 +98,9 @@ func RunBackup(
 	// it did not are true orphans leaked by a crashed run (OrphansDeleted).
 	// Correctness of the upload no longer depends on diffing sizes — the
 	// content-addressed key is the diff.
-	// A legacy pre-content-addressing manifest is NOT fatal here: a full backup
-	// overwrites the manifest wholesale and never diffs against it, so retaking a
-	// full backup with the current binary is exactly the documented recovery path
-	// out of a legacy manifest. Treat it as a warning and proceed with no
-	// previous-manifest keys (so its objects, which live under bare data/<name>
-	// keys, all classify as orphans on prune). (The incremental path, which does
-	// depend on the existing manifest, keeps the error fatal — see
-	// RunIncrementalBackup.)
 	prevManifest, err := ReadManifestOrEmpty(ctx, logger, storage, manifestKey)
 	if err != nil {
-		if errors.Is(err, ErrLegacyManifestFormat) {
-			logger.Infof("Existing manifest uses the legacy pre-content-addressing format; " +
-				"a full backup replaces it wholesale, so proceeding and overwriting it")
-
-			prevManifest = &Manifest{}
-		} else {
-			return nil, err
-		}
+		return nil, err
 	}
 
 	prevCheckpointKeys := checkpointKeySet(prevManifest)
