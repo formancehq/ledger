@@ -201,16 +201,12 @@ func TestGetConfiguredPeers_TopologySnapshotIsAtomicWithConcurrentRehydrate(t *t
 }
 func TestGetConfiguredPeers_TopologySnapshotIsAtomicWithConcurrentRehydrate_DeterministicOracle(t *testing.T) {
 	t.Parallel()
-	// This test provides the deterministic Rehydrate oracle that the concurrent-Set
-	// test above cannot supply. Rehydrate holds m.mu.Lock for the entire cache swap,
-	// which blocks WithPeerAddresses (m.mu.RLock). The snapshot captured inside
-	// cmd.fn() must therefore see either the pre-Rehydrate or the post-Rehydrate
-	// state for peer 2, never a mix of old address with new identity or vice versa.
-	//
-	// Without the WithPeerAddresses fix a concurrent Rehydrate can interleave
-	// between the rawNode.Status() and the PeerAddresses() call: Status would
-	// still include peer 2, but PeerAddresses would return the new incarnation,
-	// pairing address "old:7777" with identity "next-instance-id".
+	// This test exercises the Rehydrate path to ensure that after Rehydrate completes
+	// and replaces the entire cache, a subsequent GetConfiguredPeers call reads the
+	// post-Rehydrate state consistently. The test asserts internal consistency: for
+	// peer 2, address and identity must belong to the same generation (both old or
+	// both new), never a mix. It does not claim to reproduce a specific failure
+	// interleaving; it verifies that Rehydrate-then-query produces a coherent result.
 	n := newConfiguredPeersTestNode(t)
 	// Persist all configured members to Pebble so Rehydrate does not drop
 	// voter 1 from the cache. Set() updates only the in-memory cache;
