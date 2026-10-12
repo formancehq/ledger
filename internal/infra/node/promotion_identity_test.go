@@ -198,8 +198,10 @@ func TestPromoteLearner_CommitsLeaderCachedAddresses(t *testing.T) {
 	//
 	// This test documents the current behavior: promotion commits the addresses
 	// the leader has registered, not the target's self-reported endpoints.
-	// The operator must issue AddLearner with the new addresses (triggering
-	// a ConfChangeUpdateNode) before auto-promotion if the endpoints changed.
+	// This is a known limitation: there is no supported procedure to propagate
+	// refreshed endpoints for an existing active learner (Match > 0) before
+	// auto-promotion, because AddLearner returns ErrNodeAlreadyInCluster for
+	// the same identity once replication has started.
 	n := newConfiguredPeersTestNode(t)
 	n.logger = logging.Testing()
 	n.lastAutoPromote = make(map[uint64]time.Time)
