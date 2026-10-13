@@ -31,7 +31,10 @@ jobs:
   #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   Dirty:
-    runs-on: namespace-profile-linux-amd64-4vcpu
+    # Dirty needs modules no other job fetches (operator, dashboards,
+    # controller-gen, full `go mod tidy` graph). Its own cache tag keeps
+    # other jobs' commits from replacing the shared volume it restores.
+    runs-on: namespace-profile-linux-amd64-4vcpu;overrides.cache-tag=ledger-dirty
     env:
       GOPATH: /tmp/go
     steps:
