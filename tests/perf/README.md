@@ -92,7 +92,7 @@ config:
 Run tests locally without Kubernetes:
 
 ```bash
-k6 run scripts/world_to_bank.js
+nix develop .#perf --command k6 run scripts/world_to_bank.js
 ```
 
 With environment variables:
@@ -101,7 +101,7 @@ With environment variables:
 LEDGER_URL=http://localhost:9000 \
 LEDGER_NAME=my-ledger \
 K6_STAGES="1m:10" \
-k6 run scripts/world_to_bank.js
+nix develop .#perf --command k6 run scripts/world_to_bank.js
 ```
 
 ## Configuration

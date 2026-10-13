@@ -27,16 +27,16 @@ jobs:
           username: NumaryBot
           password: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - run: >
-          nix develop --command just release
+          nix develop .#ci --command just release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
       - name: Build and push operator image
         run: >
-          nix develop --command just operator-docker-build ${{ github.ref_name }}
+          nix develop .#ci --command just operator-docker-build ${{ github.ref_name }}
       - name: Publish operator Helm charts
         env:
           GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
         run: |
           version="${GITHUB_REF_NAME#v}"
-          nix develop --command just operator-helm-publish "$version"
+          nix develop .#ci --command just operator-helm-publish "$version"

@@ -794,7 +794,7 @@ runs in-process, and the current internal Azure and Databricks tests require
 no cloud credentials. Reproduce the CI step with:
 
 ```bash
-nix develop --command just test-internal-coverage
+nix develop .#ci --command just test-internal-coverage
 ```
 
 The job uploads `build/coverage/internal.out` alongside `unit.out`. CI coverage
@@ -867,14 +867,12 @@ export DOCKER_HOST=unix://$HOME/.orbstack/run/docker.sock
 
 ### Operator Integration Tests
 
-```bash
-# Install envtest binaries (one-time)
-go run sigs.k8s.io/controller-runtime/tools/setup-envtest@latest use --bin-dir /tmp/envtest-bins
+The default Nix shell provides `setup-envtest`, and its shell hook exports `KUBEBUILDER_ASSETS`. The first shell start downloads the etcd and kube-apiserver binaries. The `ci` shell does not include envtest because no CI job runs the `integration` tag.
 
-# Run from misc/operator/
+```bash
+# Run from misc/operator/ inside the default shell
 cd misc/operator
-KUBEBUILDER_ASSETS=$(/tmp/envtest-bins/setup-envtest use -p path) \
-  go test -tags=integration ./internal/controller/ -v -count=1 -timeout=120s
+go test -tags=integration ./internal/controller/ -v -count=1 -timeout=120s
 ```
 
 ### Specific Tests
@@ -942,23 +940,25 @@ Each test gets an isolated namespace via `createTestNamespace(t)`. Helpers `newC
 
 ## Performance Tests
 
-Performance tests use k6 for load testing. See `k6/README.md` for complete documentation.
+Performance tests use k6 for load testing. See `tests/perf/README.md` for complete documentation.
 
 ### Running k6 Tests Locally
 
+`k6` lives in the dedicated `perf` Nix shell, not the default one. Enter it with `nix develop .#perf` first.
+
 ```bash
 # Run a specific scenario
-k6 run k6/scripts/world_to_bank.js
+k6 run tests/perf/scripts/world_to_bank.js
 
 # With environment variables
 LEDGER_URL=http://localhost:9000 \
 LEDGER_NAME=my-ledger \
 DURATION=60s \
 VUS=20 \
-k6 run k6/scripts/world_to_bank.js
+k6 run tests/perf/scripts/world_to_bank.js
 
 # Run all scenarios
-for test in k6/scripts/*.js; do
+for test in tests/perf/scripts/*.js; do
   echo "Running $test..."
   k6 run "$test"
 done

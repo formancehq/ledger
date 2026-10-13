@@ -477,7 +477,8 @@ k8s-rollout-restart:
 # Available demo tapes
 demos := "demo_getting_started demo_numscript demo_transactions demo_metadata demo_operations demo_audit demo_signing"
 
-# Generate all CLI demo GIFs (starts a temporary server automatically)
+# Generate all CLI demo GIFs (starts a temporary server automatically).
+# Run inside the demo shell: nix develop .#demo --command just generate-demo
 generate-demo: (_generate-demo demos)
 
 # Generate a single CLI demo GIF
@@ -487,6 +488,12 @@ generate-demo-only name: (_generate-demo name)
 _generate-demo tapes:
     #!/usr/bin/env bash
     set -euo pipefail
+    for tool in vhs grpcurl; do
+        if ! command -v "$tool" >/dev/null 2>&1; then
+            echo "$tool not found: run inside the demo shell (nix develop .#demo)" >&2
+            exit 1
+        fi
+    done
     DEMO_DIR=$(mktemp -d)
     echo "Generating CLI demo GIFs..."
     echo "Using temporary directory: $DEMO_DIR"
@@ -537,9 +544,16 @@ _generate-demo tapes:
 
 # Regenerate the real TypeScript SDK and exercise it against Ledger HTTP handlers.
 # Requires Speakeasy authentication; separate from default CI validation.
+# Run inside the sdk shell: nix develop .#sdk --command just test-sdk-bigint
 test-sdk-bigint:
     #!/usr/bin/env bash
     set -euo pipefail
+    for tool in speakeasy node npm; do
+        if ! command -v "$tool" >/dev/null 2>&1; then
+            echo "$tool not found: run inside the sdk shell (nix develop .#sdk)" >&2
+            exit 1
+        fi
+    done
     sdk_dir="{{justfile_directory()}}/build/sdk-bigint"
     rm -rf "$sdk_dir"
     mkdir -p "$sdk_dir"

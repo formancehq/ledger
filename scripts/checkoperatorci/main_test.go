@@ -13,7 +13,7 @@ func TestCheckOperatorTestsWorkflowAcceptsPinnedDefaultSuite(t *testing.T) {
   Tests-Operator:
     steps:
       - run: >
-          nix develop --command bash -c "unset GOROOT;
+          nix develop .#ci --command bash -c "unset GOROOT;
           cd misc/operator && go test ./..."
 `)
 
@@ -37,11 +37,16 @@ func TestCheckOperatorTestsWorkflowRejectsMissingOrWeakenedRunner(t *testing.T) 
 		"integration tags": `jobs:
   Tests-Operator:
     steps:
-      - run: nix develop --command bash -c "unset GOROOT; cd misc/operator && go test -tags integration ./..."
+      - run: nix develop .#ci --command bash -c "unset GOROOT; cd misc/operator && go test -tags integration ./..."
 `,
 		"conditional job": `jobs:
   Tests-Operator:
     if: github.event_name == 'push'
+    steps:
+      - run: nix develop .#ci --command bash -c "unset GOROOT; cd misc/operator && go test ./..."
+`,
+		"default dev shell": `jobs:
+  Tests-Operator:
     steps:
       - run: nix develop --command bash -c "unset GOROOT; cd misc/operator && go test ./..."
 `,
@@ -49,7 +54,7 @@ func TestCheckOperatorTestsWorkflowRejectsMissingOrWeakenedRunner(t *testing.T) 
   Tests-Operator:
     continue-on-error: true
     steps:
-      - run: nix develop --command bash -c "unset GOROOT; cd misc/operator && go test ./..."
+      - run: nix develop .#ci --command bash -c "unset GOROOT; cd misc/operator && go test ./..."
 `,
 	}
 

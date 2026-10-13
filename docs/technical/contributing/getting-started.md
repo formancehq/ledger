@@ -22,6 +22,20 @@ After setup, `direnv` automatically loads the Nix development environment whenev
 
 Repository scripts and contributor workflows must not rely on host-installed CLIs. When adding a CLI dependency, add it to `flake.nix` so its version is pinned by `flake.lock`. External service authentication, such as `acli` credentials, remains an explicit operator setup step and is not managed by Nix.
 
+### Development shells
+
+`flake.nix` defines several shells so that heavy, rarely used tools are not downloaded every time a shell starts:
+
+| Shell | Command | Contents |
+|---|---|---|
+| `default` | `nix develop` (loaded by direnv) | `ci` plus everyday local tools: `trufflehog` and `uv` (pre-commit hooks set up by `.envrc`), the `ginkgo` CLI, `grpcurl`, `acli` (Jira publication) and `setup-envtest`. The shell hook exports `KUBEBUILDER_ASSETS`. |
+| `ci` | `nix develop .#ci` | Only the tools CI jobs run: Go, Just, golangci-lint, protoc and its plugins, mockgen, jsonnet, `jq`, Python, Helm, GoReleaser Pro. |
+| `demo` | `nix develop .#demo --command just generate-demo` | `ci` plus `vhs` (which wraps ffmpeg, ttyd and, on Linux, chromium) and `grpcurl`. |
+| `sdk` | `nix develop .#sdk --command just test-sdk-bigint` | `ci` plus Speakeasy and Node.js. |
+| `perf` | `nix develop .#perf` | `ci` plus `k6` and `benchstat` (goperf). |
+
+Add a tool to `ci` only when a workflow step, or a recipe or script that a workflow step runs, executes it. Every CI job downloads the `ci` closure when its Nix cache is cold. A tool needed only by one local workflow goes in a task shell, not in `default`. To reproduce a CI step with exactly CI's tools, run it with `nix develop .#ci --command …`.
+
 ## Project Structure
 
 ```

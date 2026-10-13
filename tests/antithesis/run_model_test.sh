@@ -460,14 +460,14 @@ fi
 build_cmd="${build_cmd}cd '$MODEL_HARNESS_REPO/tests/antithesis/workload' && go build -tags enable_antithesis_sdk -o '$DRIVER_BIN' ./bin/cmds/model/singleton_driver_model"
 
 # Build inside the nix dev shell for a reproducible toolchain — unless we are
-# already in one (CI runs this as `nix develop --command just test-model`), in
+# already in one (CI runs this as `nix develop .#ci --command just test-model-cluster`), in
 # which case nesting another `nix develop` is redundant.
 if [ -n "${IN_NIX_SHELL:-}" ]; then
 	log "building (already in nix shell)..."
 	build_runner=( bash -c "$build_cmd" )
 else
 	log "building (via nix develop)..."
-	build_runner=( nix develop --command bash -c "$build_cmd" )
+	build_runner=( nix develop .#ci --command bash -c "$build_cmd" )
 fi
 if ! ( cd "$REPO" && "${build_runner[@]}" ) > "$WORKDIR/build.log" 2>&1; then
 	echo "ERROR: build failed:" >&2
