@@ -123,8 +123,8 @@ jsonpath='{.spec.clusterID}'` to discover the resolved value.
 
 Objects derived from a Cluster are named `ledger-<metadata.name>` by default.
 Set `spec.resourceName` at creation to replace that whole base name (for
-example `resourceName: payments` yields StatefulSet `payments`, pods
-`payments-<n>`, Service `payments-headless`). It is create-time only, at most
+example `resourceName: ledger-v3` yields StatefulSet `ledger-v3`, pods
+`ledger-v3-<n>`, Service `ledger-v3-headless`). It is create-time only, at most
 52 characters (the StatefulSet `controller-revision-hash` label limit, which
 also caps `metadata.name` at 45 characters without an override), and must be
 unique in the namespace: the operator never adopts
