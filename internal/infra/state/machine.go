@@ -1605,7 +1605,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			return nil, recErr
 		}
 
-		result.Error = auditedFailurePresentation(err)
+		result.Error = &domain.BusinessError{Err: err}
 		result.AuditEntryWritten = true
 
 		return result, nil
@@ -1654,7 +1654,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			return nil, recErr
 		}
 
-		result.Error = auditedFailurePresentation(err)
+		result.Error = &domain.BusinessError{Err: err}
 		result.AuditEntryWritten = true
 
 		return result, nil
@@ -1793,13 +1793,6 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		createdTransactions: ordersResult.CreatedTransactions,
 		revertedTransaction: ordersResult.RevertedTransaction,
 	}, nil
-}
-
-// auditedFailurePresentation retains the typed error and its own public
-// presentation. Audit facts are stored separately and may contain private
-// correlators that the error deliberately redacts from API responses.
-func auditedFailurePresentation(err domain.SerializableError) *domain.BusinessError {
-	return &domain.BusinessError{Err: err}
 }
 
 // recordIdempotencyFailure freezes a definitive business rejection against the

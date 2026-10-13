@@ -958,21 +958,20 @@ message FailureDetails {
     TransactionStateInconsistentDetails transaction_state_inconsistent = 157 [(failure_reasons) = ERROR_REASON_TRANSACTION_STATE_INCONSISTENT];
     TransactionTargetMissingDetails transaction_target_missing = 158 [(failure_reasons) = ERROR_REASON_VALIDATION];
     TransientAccountNonZeroDetails transient_account_non_zero = 159 [(failure_reasons) = ERROR_REASON_TRANSIENT_ACCOUNT_NON_ZERO];
-    ValidationDetails validation = 160;
-    VolumeNotMaterializedDetails volume_not_materialized = 161 [(failure_reasons) = ERROR_REASON_VOLUME_NOT_MATERIALIZED];
-    VolumeOverflowDetails volume_overflow = 162 [(failure_reasons) = ERROR_REASON_VOLUME_OVERFLOW];
-    AccountMetadataKeyEmptyDetails account_metadata_key_empty = 163 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    AccountMetadataKeyInvalidCharDetails account_metadata_key_invalid_char = 164 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    AccountMetadataValueContainsNullByteDetails account_metadata_value_contains_null_byte = 165 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    AccountMetadataLimitsUnconfiguredDetails account_metadata_limits_unconfigured = 166 [(failure_reasons) = ERROR_REASON_CLUSTER_POLICY_INVALID];
-    AccountMetadataLimitExceededDetails account_metadata_limit_exceeded = 167 [(failure_reasons) = ERROR_REASON_METADATA_LIMIT_EXCEEDED];
-    MetadataKeyLimitExceededDetails metadata_key_limit_exceeded = 168 [(failure_reasons) = ERROR_REASON_METADATA_LIMIT_EXCEEDED];
-    AccountMetadataKeyLimitExceededDetails account_metadata_key_limit_exceeded = 169 [(failure_reasons) = ERROR_REASON_METADATA_LIMIT_EXCEEDED];
-    NumscriptInsufficientFundsDetails numscript_insufficient_funds = 170 [(failure_reasons) = ERROR_REASON_INSUFFICIENT_FUNDS];
-    NumscriptDivideByZeroWithNumeratorDetails numscript_divide_by_zero_with_numerator = 171 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptScopedMetadataNotFoundDetails numscript_scoped_metadata_not_found = 172 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptScopedNegativeBalanceDetails numscript_scoped_negative_balance = 173 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptVersionNotFoundDetails numscript_version_not_found = 174 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_NOT_FOUND];
+    VolumeNotMaterializedDetails volume_not_materialized = 160 [(failure_reasons) = ERROR_REASON_VOLUME_NOT_MATERIALIZED];
+    VolumeOverflowDetails volume_overflow = 161 [(failure_reasons) = ERROR_REASON_VOLUME_OVERFLOW];
+    AccountMetadataKeyEmptyDetails account_metadata_key_empty = 162 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    AccountMetadataKeyInvalidCharDetails account_metadata_key_invalid_char = 163 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    AccountMetadataValueContainsNullByteDetails account_metadata_value_contains_null_byte = 164 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    AccountMetadataLimitsUnconfiguredDetails account_metadata_limits_unconfigured = 165 [(failure_reasons) = ERROR_REASON_CLUSTER_POLICY_INVALID];
+    AccountMetadataLimitExceededDetails account_metadata_limit_exceeded = 166 [(failure_reasons) = ERROR_REASON_METADATA_LIMIT_EXCEEDED];
+    MetadataKeyLimitExceededDetails metadata_key_limit_exceeded = 167 [(failure_reasons) = ERROR_REASON_METADATA_LIMIT_EXCEEDED];
+    AccountMetadataKeyLimitExceededDetails account_metadata_key_limit_exceeded = 168 [(failure_reasons) = ERROR_REASON_METADATA_LIMIT_EXCEEDED];
+    NumscriptInsufficientFundsDetails numscript_insufficient_funds = 169 [(failure_reasons) = ERROR_REASON_INSUFFICIENT_FUNDS];
+    NumscriptDivideByZeroWithNumeratorDetails numscript_divide_by_zero_with_numerator = 170 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptScopedMetadataNotFoundDetails numscript_scoped_metadata_not_found = 171 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptScopedNegativeBalanceDetails numscript_scoped_negative_balance = 172 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptVersionNotFoundDetails numscript_version_not_found = 173 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_NOT_FOUND];
   }
 }
 
@@ -1657,9 +1656,6 @@ message TransactionTargetMissingDetails {
 
 message TransientAccountNonZeroDetails {
   optional string accounts = 1;
-}
-
-message ValidationDetails {
 }
 
 message VolumeNotMaterializedDetails {

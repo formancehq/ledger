@@ -527,7 +527,9 @@ preparation interruption with no audit entry or frozen result.
 
 The `FailureDetails` oneof now contains only variants eligible for the audited
 projection. Removed arms are renumbered sequentially because Ledger v3 is
-unreleased. The service revision changes to 35 because this shared protobuf type
+unreleased. This also removes the unreachable bare `validation` arm: it had no
+allowed failure reason or producer; concrete validation failures retain their
+own typed arms. The service revision changes to 35 because this shared protobuf type
 is exposed by gRPC. Existing revision-34 state must be discarded; clients and
 servers must use the same revision. Public `ErrorInfo` identifiers and metadata
 are unchanged.

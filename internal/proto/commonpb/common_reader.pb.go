@@ -17436,68 +17436,6 @@ func NewTransientAccountNonZeroDetailsListReader(s []*TransientAccountNonZeroDet
 	return transientAccountNonZeroDetailsListReadonly(s)
 }
 
-// ValidationDetailsReader provides read-only access to ValidationDetails.
-// Call Mutate() to obtain a mutable clone.
-type ValidationDetailsReader interface {
-	Mutate() *ValidationDetails
-}
-
-type validationDetailsReadonly ValidationDetails
-
-func (r *validationDetailsReadonly) Mutate() *ValidationDetails {
-	return (*ValidationDetails)(r).CloneVT()
-}
-
-// AsReader returns a read-only view of this ValidationDetails.
-func (m *ValidationDetails) AsReader() ValidationDetailsReader {
-	if m == nil {
-		return nil
-	}
-	return (*validationDetailsReadonly)(m)
-}
-
-// Mutate returns a mutable deep clone of this ValidationDetails.
-func (m *ValidationDetails) Mutate() *ValidationDetails {
-	return m.CloneVT()
-}
-
-// ValidationDetailsListReader provides read-only iteration over []*ValidationDetails.
-type ValidationDetailsListReader interface {
-	Len() int
-	Get(i int) ValidationDetailsReader
-	Range(yield func(int, ValidationDetailsReader) bool)
-}
-
-type validationDetailsListReadonly []*ValidationDetails
-
-func (l validationDetailsListReadonly) Len() int { return len(l) }
-
-func (l validationDetailsListReadonly) Get(i int) ValidationDetailsReader {
-	v := l[i]
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (l validationDetailsListReadonly) Range(yield func(int, ValidationDetailsReader) bool) {
-	for i, v := range l {
-		var r ValidationDetailsReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(i, r) {
-			return
-		}
-	}
-}
-
-// NewValidationDetailsListReader wraps s for read-only iteration. The returned
-// view aliases the underlying slice; do not mutate s afterwards.
-func NewValidationDetailsListReader(s []*ValidationDetails) ValidationDetailsListReader {
-	return validationDetailsListReadonly(s)
-}
-
 // VolumeNotMaterializedDetailsReader provides read-only access to VolumeNotMaterializedDetails.
 // Call Mutate() to obtain a mutable clone.
 type VolumeNotMaterializedDetailsReader interface {
