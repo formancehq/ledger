@@ -150,6 +150,7 @@ func TestBackup_UncommittedRejectionKeepsHLCParityAfterDelta(t *testing.T) {
 		if preloadUnavailable {
 			order.Technical = &raftcmdpb.OrderTechnical{PreloadUnavailable: true}
 		}
+
 		return &raftcmdpb.Proposal{
 			Id: id, Orders: []*raftcmdpb.Order{order},
 			Date:           &commonpb.Timestamp{Data: auditedTimestamp + 1_000_000},
@@ -166,6 +167,7 @@ func TestBackup_UncommittedRejectionKeepsHLCParityAfterDelta(t *testing.T) {
 		})
 		require.NoError(t, applyErr)
 		require.Len(t, result.Results, 1)
+
 		return result.Results[0]
 	}
 
