@@ -1,5 +1,4 @@
 # Ledger
-(*Ledger*)
 
 ## Overview
 
@@ -14,6 +13,7 @@ Show server information
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2GetInfo" method="get" path="/_/info" -->
 ```go
 package main
 
@@ -30,8 +30,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -69,6 +69,7 @@ Read in memory metrics
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="getMetrics" method="get" path="/_/metrics" -->
 ```go
 package main
 
@@ -85,8 +86,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 

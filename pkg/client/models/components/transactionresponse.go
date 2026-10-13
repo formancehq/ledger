@@ -3,12 +3,13 @@
 package components
 
 type TransactionResponse struct {
+	// A transaction recorded in the ledger, carrying its postings and metadata
 	Data Transaction `json:"data"`
 }
 
-func (o *TransactionResponse) GetData() Transaction {
-	if o == nil {
+func (t *TransactionResponse) GetData() Transaction {
+	if t == nil {
 		return Transaction{}
 	}
-	return o.Data
+	return t.Data
 }

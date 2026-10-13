@@ -11,20 +11,26 @@ type V2DeleteExporterRequest struct {
 	ExporterID string `pathParam:"style=simple,explode=false,name=exporterID"`
 }
 
-func (o *V2DeleteExporterRequest) GetExporterID() string {
-	if o == nil {
+func (v *V2DeleteExporterRequest) GetExporterID() string {
+	if v == nil {
 		return ""
 	}
-	return o.ExporterID
+	return v.ExporterID
 }
+
+// #region class-body-v2deleteexporterrequest
+// #endregion class-body-v2deleteexporterrequest
 
 type V2DeleteExporterResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
 }
 
-func (o *V2DeleteExporterResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2DeleteExporterResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
+
+// #region class-body-v2deleteexporterresponse
+// #endregion class-body-v2deleteexporterresponse

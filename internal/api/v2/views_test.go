@@ -332,6 +332,56 @@ func TestVolumesWithBalanceByAssetByAccountRender(t *testing.T) {
 	}
 }
 
+func TestBalancesByAssetsRender(t *testing.T) {
+	t.Parallel()
+
+	balances := ledger.BalancesByAssets{
+		"EUR": big.NewInt(-200),
+		"USD": big.NewInt(100),
+	}
+
+	for _, tc := range []struct {
+		name     string
+		headers  http.Header
+		expected map[string]any
+	}{
+		{
+			name: "nominal",
+			expected: map[string]any{
+				"EUR": float64(-200),
+				"USD": float64(100),
+			},
+		},
+		{
+			name: "big int as string",
+			headers: http.Header{
+				HeaderBigIntAsString: []string{"true"},
+			},
+			expected: map[string]any{
+				"EUR": "-200",
+				"USD": "100",
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r, err := http.NewRequest(http.MethodGet, "/", nil)
+			require.NoError(t, err)
+			r.Header = tc.headers
+
+			data, err := json.Marshal(renderBalancesByAssets(r, balances))
+			require.NoError(t, err)
+
+			m := make(map[string]any)
+			err = json.Unmarshal(data, &m)
+			require.NoError(t, err)
+
+			require.Equal(t, tc.expected, m)
+		})
+	}
+}
+
 func TestAccountRender(t *testing.T) {
 	t.Parallel()
 
@@ -683,6 +733,39 @@ func TestLogRender(t *testing.T) {
 			require.NoError(t, err)
 
 			require.Equal(t, tc.expected, m)
+		})
+	}
+}
+
+func TestNeedBigIntAsString(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name     string
+		value    string
+		expected bool
+	}{
+		{name: "true", value: "true", expected: true},
+		{name: "true uppercase", value: "TRUE", expected: true},
+		{name: "true mixed case", value: "TrUe", expected: true},
+		{name: "yes", value: "yes", expected: true},
+		{name: "yes uppercase", value: "YES", expected: true},
+		{name: "y", value: "y", expected: true},
+		{name: "y uppercase", value: "Y", expected: true},
+		{name: "one", value: "1", expected: true},
+		{name: "empty", value: "", expected: false},
+		{name: "false", value: "false", expected: false},
+		{name: "no", value: "no", expected: false},
+		{name: "zero", value: "0", expected: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r, err := http.NewRequest(http.MethodGet, "/", nil)
+			require.NoError(t, err)
+			r.Header.Set(HeaderBigIntAsString, tc.value)
+
+			require.Equal(t, tc.expected, needBigIntAsString(r))
 		})
 	}
 }

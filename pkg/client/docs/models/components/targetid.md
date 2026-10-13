@@ -1,5 +1,7 @@
 # TargetID
 
+Identifier of the entity the metadata was set on, either an account address or a transaction ID
+
 
 ## Supported Types
 
@@ -15,3 +17,15 @@ targetID := components.CreateTargetIDStr(string{/* values here */})
 targetID := components.CreateTargetIDBigint(*big.Int{/* values here */})
 ```
 
+## Union Discrimination
+
+Use the `Type` field to determine which variant is active, then access the corresponding field:
+
+```go
+switch targetID.Type {
+	case components.TargetIDTypeStr:
+		// targetID.Str is populated
+	case components.TargetIDTypeBigint:
+		// targetID.Bigint is populated
+}
+```

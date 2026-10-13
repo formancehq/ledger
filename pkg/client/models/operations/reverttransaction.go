@@ -22,31 +22,31 @@ func (r RevertTransactionRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (r *RevertTransactionRequest) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &r, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &r, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *RevertTransactionRequest) GetLedger() string {
-	if o == nil {
+func (r *RevertTransactionRequest) GetLedger() string {
+	if r == nil {
 		return ""
 	}
-	return o.Ledger
+	return r.Ledger
 }
 
-func (o *RevertTransactionRequest) GetTxid() *big.Int {
-	if o == nil {
+func (r *RevertTransactionRequest) GetTxid() *big.Int {
+	if r == nil {
 		return big.NewInt(0)
 	}
-	return o.Txid
+	return r.Txid
 }
 
-func (o *RevertTransactionRequest) GetDisableChecks() *bool {
-	if o == nil {
+func (r *RevertTransactionRequest) GetDisableChecks() *bool {
+	if r == nil {
 		return nil
 	}
-	return o.DisableChecks
+	return r.DisableChecks
 }
 
 type RevertTransactionResponse struct {
@@ -56,23 +56,23 @@ type RevertTransactionResponse struct {
 	Headers             map[string][]string
 }
 
-func (o *RevertTransactionResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (r *RevertTransactionResponse) GetHTTPMeta() components.HTTPMetadata {
+	if r == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return r.HTTPMeta
 }
 
-func (o *RevertTransactionResponse) GetTransactionResponse() *components.TransactionResponse {
-	if o == nil {
+func (r *RevertTransactionResponse) GetTransactionResponse() *components.TransactionResponse {
+	if r == nil {
 		return nil
 	}
-	return o.TransactionResponse
+	return r.TransactionResponse
 }
 
-func (o *RevertTransactionResponse) GetHeaders() map[string][]string {
-	if o == nil {
+func (r *RevertTransactionResponse) GetHeaders() map[string][]string {
+	if r == nil {
 		return map[string][]string{}
 	}
-	return o.Headers
+	return r.Headers
 }

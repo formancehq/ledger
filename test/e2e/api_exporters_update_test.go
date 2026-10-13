@@ -48,13 +48,13 @@ var _ = Context("Exporters update API tests", func() {
 	When("updating an exporter", func() {
 		var (
 			createExporterResponse *operations.V2CreateExporterResponse
-			updateExporterRequest  components.V2ExporterConfiguration
+			updateExporterRequest  components.V2CreateExporterRequest
 			err                    error
 		)
 
 		BeforeEach(func(specContext SpecContext) {
 			// Create an exporter first
-			createExporterResponse, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateExporter(ctx, components.V2ExporterConfiguration{
+			createExporterResponse, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateExporter(ctx, components.V2CreateExporterRequest{
 				Driver: "clickhouse",
 				Config: map[string]any{
 					"dsn": "clickhouse://localhost:9000",
@@ -65,7 +65,7 @@ var _ = Context("Exporters update API tests", func() {
 
 		Context("with invalid configuration", func() {
 			BeforeEach(func() {
-				updateExporterRequest = components.V2ExporterConfiguration{
+				updateExporterRequest = components.V2CreateExporterRequest{
 					Driver: "clickhouse",
 					// Missing required config
 				}
@@ -73,7 +73,7 @@ var _ = Context("Exporters update API tests", func() {
 			JustBeforeEach(func(specContext SpecContext) {
 				_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.UpdateExporter(ctx, operations.V2UpdateExporterRequest{
 					ExporterID:              createExporterResponse.V2CreateExporterResponse.Data.ID,
-					V2ExporterConfiguration: updateExporterRequest,
+					V2CreateExporterRequest: updateExporterRequest,
 				})
 			})
 			It("should return an error", func() {
@@ -86,7 +86,7 @@ var _ = Context("Exporters update API tests", func() {
 			JustBeforeEach(func(specContext SpecContext) {
 				_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.UpdateExporter(ctx, operations.V2UpdateExporterRequest{
 					ExporterID: "non-existent-id",
-					V2ExporterConfiguration: components.V2ExporterConfiguration{
+					V2CreateExporterRequest: components.V2CreateExporterRequest{
 						Driver: "clickhouse",
 						Config: map[string]any{
 							"dsn": "clickhouse://localhost:9000",
@@ -102,7 +102,7 @@ var _ = Context("Exporters update API tests", func() {
 
 		Context("with valid configuration", func() {
 			BeforeEach(func() {
-				updateExporterRequest = components.V2ExporterConfiguration{
+				updateExporterRequest = components.V2CreateExporterRequest{
 					Driver: "clickhouse",
 					Config: map[string]any{
 						"dsn": "clickhouse://localhost:9001",
@@ -112,7 +112,7 @@ var _ = Context("Exporters update API tests", func() {
 			JustBeforeEach(func(specContext SpecContext) {
 				_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.UpdateExporter(ctx, operations.V2UpdateExporterRequest{
 					ExporterID:              createExporterResponse.V2CreateExporterResponse.Data.ID,
-					V2ExporterConfiguration: updateExporterRequest,
+					V2CreateExporterRequest: updateExporterRequest,
 				})
 			})
 			It("should be ok", func() {
@@ -136,7 +136,7 @@ var _ = Context("Exporters update API tests", func() {
 			})
 			Context("then updating with a different driver", func() {
 				BeforeEach(func() {
-					updateExporterRequest = components.V2ExporterConfiguration{
+					updateExporterRequest = components.V2CreateExporterRequest{
 						Driver: "http",
 						Config: map[string]any{
 							"url": "http://example.com",
@@ -147,7 +147,7 @@ var _ = Context("Exporters update API tests", func() {
 					Expect(err).To(BeNil())
 					_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.UpdateExporter(ctx, operations.V2UpdateExporterRequest{
 						ExporterID:              createExporterResponse.V2CreateExporterResponse.Data.ID,
-						V2ExporterConfiguration: updateExporterRequest,
+						V2CreateExporterRequest: updateExporterRequest,
 					})
 				})
 				It("should be ok", func() {
@@ -194,7 +194,7 @@ var _ = Context("Exporters update API tests", func() {
 
 		BeforeEach(func(specContext SpecContext) {
 			// Create exporter pointing to first HTTP server
-			createExporterResponse, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateExporter(ctx, components.V2ExporterConfiguration{
+			createExporterResponse, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateExporter(ctx, components.V2CreateExporterRequest{
 				Driver: "http",
 				Config: map[string]any{
 					"url": firstHTTPDriver.Config()["url"],
@@ -271,7 +271,7 @@ var _ = Context("Exporters update API tests", func() {
 					// Update exporter to point to second HTTP server
 					_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.UpdateExporter(ctx, operations.V2UpdateExporterRequest{
 						ExporterID: createExporterResponse.V2CreateExporterResponse.Data.ID,
-						V2ExporterConfiguration: components.V2ExporterConfiguration{
+						V2CreateExporterRequest: components.V2CreateExporterRequest{
 							Driver: "http",
 							Config: map[string]any{
 								"url": secondHTTPDriver.Config()["url"],

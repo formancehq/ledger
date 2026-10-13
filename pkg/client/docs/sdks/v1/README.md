@@ -1,5 +1,4 @@
-# V1
-(*Ledger.V1*)
+# Ledger.V1
 
 ## Overview
 
@@ -32,6 +31,7 @@ Show server information
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="getInfo" method="get" path="/_info" -->
 ```go
 package main
 
@@ -48,8 +48,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -87,6 +87,7 @@ Get information about a ledger
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="getLedgerInfo" method="get" path="/{ledger}/_info" -->
 ```go
 package main
 
@@ -104,8 +105,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -146,6 +147,7 @@ Count the accounts from a ledger
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="countAccounts" method="head" path="/{ledger}/accounts" -->
 ```go
 package main
 
@@ -163,14 +165,14 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
     res, err := s.Ledger.V1.CountAccounts(ctx, operations.CountAccountsRequest{
         Ledger: "ledger001",
-        Address: client.String("users:.+"),
+        Address: client.Pointer("users:.+"),
         Metadata: map[string]any{
             "0": "m",
             "1": "e",
@@ -258,6 +260,7 @@ List accounts from a ledger, sorted by address in descending order.
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="listAccounts" method="get" path="/{ledger}/accounts" -->
 ```go
 package main
 
@@ -275,16 +278,16 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
     res, err := s.Ledger.V1.ListAccounts(ctx, operations.ListAccountsRequest{
         Ledger: "ledger001",
-        PageSize: client.Int64(100),
-        After: client.String("users:003"),
-        Address: client.String("users:.+"),
+        PageSize: client.Pointer[int64](100),
+        After: client.Pointer("users:003"),
+        Address: client.Pointer("users:.+"),
         Metadata: map[string]any{
             "0": "m",
             "1": "e",
@@ -337,8 +340,8 @@ func main() {
             "48": "e",
             "49": "2",
         },
-        Balance: client.Int64(2400),
-        Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
+        Balance: client.Pointer[int64](2400),
+        Cursor: client.Pointer("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
     })
     if err != nil {
         log.Fatal(err)
@@ -374,6 +377,7 @@ Get account by its address
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="getAccount" method="get" path="/{ledger}/accounts/{address}" -->
 ```go
 package main
 
@@ -391,8 +395,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -434,6 +438,7 @@ Add metadata to an account
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="addMetadataToAccount" method="post" path="/{ledger}/accounts/{address}/metadata" -->
 ```go
 package main
 
@@ -451,8 +456,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -499,6 +504,7 @@ Get the mapping of a ledger
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="getMapping" method="get" path="/{ledger}/mapping" -->
 ```go
 package main
 
@@ -516,8 +522,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -558,6 +564,7 @@ Update the mapping of a ledger
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="updateMapping" method="put" path="/{ledger}/mapping" -->
 ```go
 package main
 
@@ -575,8 +582,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -621,6 +628,7 @@ This route is deprecated, and has been merged into `POST /{ledger}/transactions`
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="runScript" method="post" path="/{ledger}/script" -->
 ```go
 package main
 
@@ -638,27 +646,20 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
     res, err := s.Ledger.V1.RunScript(ctx, operations.RunScriptRequest{
         Ledger: "ledger001",
-        Preview: client.Bool(true),
+        Preview: client.Pointer(true),
         Script: components.Script{
-            Plain: "vars {\n" +
-            "account $user\n" +
-            "}\n" +
-            "send [COIN 10] (\n" +
-            "	source = @world\n" +
-            "	destination = $user\n" +
-            ")\n" +
-            "",
+            Plain: "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n",
             Vars: map[string]any{
                 "user": "users:042",
             },
-            Reference: client.String("order_1234"),
+            Reference: client.Pointer("order_1234"),
         },
     })
     if err != nil {
@@ -695,6 +696,7 @@ Get statistics from a ledger. (aggregate metrics on accounts and transactions)
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="readStats" method="get" path="/{ledger}/stats" -->
 ```go
 package main
 
@@ -712,8 +714,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -754,6 +756,7 @@ Count the transactions from a ledger
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="countTransactions" method="head" path="/{ledger}/transactions" -->
 ```go
 package main
 
@@ -771,17 +774,17 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
     res, err := s.Ledger.V1.CountTransactions(ctx, operations.CountTransactionsRequest{
         Ledger: "ledger001",
-        Reference: client.String("ref:001"),
-        Account: client.String("users:001"),
-        Source: client.String("users:001"),
-        Destination: client.String("users:001"),
+        Reference: client.Pointer("ref:001"),
+        Account: client.Pointer("users:001"),
+        Source: client.Pointer("users:001"),
+        Destination: client.Pointer("users:001"),
         Metadata: &operations.Metadata{},
     })
     if err != nil {
@@ -818,6 +821,7 @@ List transactions from a ledger, sorted by txid in descending order.
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="listTransactions" method="get" path="/{ledger}/transactions" -->
 ```go
 package main
 
@@ -835,20 +839,20 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
     res, err := s.Ledger.V1.ListTransactions(ctx, operations.ListTransactionsRequest{
         Ledger: "ledger001",
-        PageSize: client.Int64(100),
-        After: client.String("1234"),
-        Reference: client.String("ref:001"),
-        Account: client.String("users:001"),
-        Source: client.String("users:001"),
-        Destination: client.String("users:001"),
-        Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
+        PageSize: client.Pointer[int64](100),
+        After: client.Pointer("1234"),
+        Reference: client.Pointer("ref:001"),
+        Account: client.Pointer("users:001"),
+        Source: client.Pointer("users:001"),
+        Destination: client.Pointer("users:001"),
+        Cursor: client.Pointer("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
     })
     if err != nil {
         log.Fatal(err)
@@ -884,6 +888,7 @@ Create a new transaction to a ledger
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="createTransaction" method="post" path="/{ledger}/transactions" -->
 ```go
 package main
 
@@ -902,14 +907,14 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
     res, err := s.Ledger.V1.CreateTransaction(ctx, operations.CreateTransactionRequest{
         Ledger: "ledger001",
-        Preview: client.Bool(true),
+        Preview: client.Pointer(true),
         PostTransaction: components.PostTransaction{
             Postings: []components.Posting{
                 components.Posting{
@@ -920,19 +925,12 @@ func main() {
                 },
             },
             Script: &components.PostTransactionScript{
-                Plain: "vars {\n" +
-                "account $user\n" +
-                "}\n" +
-                "send [COIN 10] (\n" +
-                "	source = @world\n" +
-                "	destination = $user\n" +
-                ")\n" +
-                "",
+                Plain: "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n",
                 Vars: map[string]any{
                     "user": "users:042",
                 },
             },
-            Reference: client.String("ref:001"),
+            Reference: client.Pointer("ref:001"),
         },
     })
     if err != nil {
@@ -969,6 +967,7 @@ Get transaction from a ledger by its ID
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="getTransaction" method="get" path="/{ledger}/transactions/{txid}" -->
 ```go
 package main
 
@@ -987,8 +986,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -1030,6 +1029,7 @@ Set the metadata of a transaction by its ID
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="addMetadataOnTransaction" method="post" path="/{ledger}/transactions/{txid}/metadata" -->
 ```go
 package main
 
@@ -1048,8 +1048,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -1094,6 +1094,7 @@ Revert a ledger transaction by its ID
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="revertTransaction" method="post" path="/{ledger}/transactions/{txid}/revert" -->
 ```go
 package main
 
@@ -1112,8 +1113,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -1155,6 +1156,7 @@ Create a new batch of transactions to a ledger
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="CreateTransactions" method="post" path="/{ledger}/transactions/batch" -->
 ```go
 package main
 
@@ -1173,8 +1175,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -1191,7 +1193,7 @@ func main() {
                             Source: "users:001",
                         },
                     },
-                    Reference: client.String("ref:001"),
+                    Reference: client.Pointer("ref:001"),
                 },
             },
         },
@@ -1230,6 +1232,7 @@ Get the balances from a ledger's account
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="getBalances" method="get" path="/{ledger}/balances" -->
 ```go
 package main
 
@@ -1247,16 +1250,16 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
     res, err := s.Ledger.V1.GetBalances(ctx, operations.GetBalancesRequest{
         Ledger: "ledger001",
-        Address: client.String("users:001"),
-        After: client.String("users:003"),
-        Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
+        Address: client.Pointer("users:001"),
+        After: client.Pointer("users:003"),
+        Cursor: client.Pointer("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
     })
     if err != nil {
         log.Fatal(err)
@@ -1292,6 +1295,7 @@ Get the aggregated balances from selected accounts
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="getBalancesAggregated" method="get" path="/{ledger}/aggregate/balances" -->
 ```go
 package main
 
@@ -1309,14 +1313,14 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
     res, err := s.Ledger.V1.GetBalancesAggregated(ctx, operations.GetBalancesAggregatedRequest{
         Ledger: "ledger001",
-        Address: client.String("users:001"),
+        Address: client.Pointer("users:001"),
     })
     if err != nil {
         log.Fatal(err)
@@ -1352,6 +1356,7 @@ List the logs from a ledger, sorted by ID in descending order.
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="listLogs" method="get" path="/{ledger}/logs" -->
 ```go
 package main
 
@@ -1369,16 +1374,16 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
     res, err := s.Ledger.V1.ListLogs(ctx, operations.ListLogsRequest{
         Ledger: "ledger001",
-        PageSize: client.Int64(100),
-        After: client.String("1234"),
-        Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
+        PageSize: client.Pointer[int64](100),
+        After: client.Pointer("1234"),
+        Cursor: client.Pointer("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
     })
     if err != nil {
         log.Fatal(err)

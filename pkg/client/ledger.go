@@ -67,7 +67,7 @@ func (s *Ledger) GetInfo(ctx context.Context, opts ...operations.Option) (*opera
 		BaseURL:          baseURL,
 		Context:          ctx,
 		OperationID:      "v2GetInfo",
-		OAuth2Scopes:     []string{"ledger:read", "ledger:read"},
+		OAuth2Scopes:     []string{"ledger:read"},
 		SecuritySource:   s.sdkConfiguration.Security,
 	}
 
@@ -296,7 +296,7 @@ func (s *Ledger) GetMetrics(ctx context.Context, opts ...operations.Option) (*op
 		BaseURL:          baseURL,
 		Context:          ctx,
 		OperationID:      "getMetrics",
-		OAuth2Scopes:     []string{"ledger:read", "ledger:read"},
+		OAuth2Scopes:     []string{"ledger:read"},
 		SecuritySource:   s.sdkConfiguration.Security,
 	}
 

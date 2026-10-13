@@ -3,10 +3,16 @@
 package operations
 
 import (
+	"github.com/formancehq/ledger/pkg/client/internal/utils"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 )
 
 type V2CreateTransactionRequest struct {
+	// When set to `true`, all bigint values in the response will be serialized
+	// as strings instead of JSON numbers.
+	// Useful for clients that cannot handle large numbers natively (e.g. JavaScript).
+	//
+	FormanceBigintAsString *bool `default:"false" header:"style=simple,explode=false,name=Formance-Bigint-As-String"`
 	// Name of the ledger.
 	Ledger string `pathParam:"style=simple,explode=false,name=ledger"`
 	// Set the dryRun mode. dry run mode doesn't add the logs to the database or publish a message to the message broker.
@@ -24,47 +30,68 @@ type V2CreateTransactionRequest struct {
 	V2PostTransaction components.V2PostTransaction `request:"mediaType=application/json"`
 }
 
-func (o *V2CreateTransactionRequest) GetLedger() string {
-	if o == nil {
+func (v V2CreateTransactionRequest) MarshalJSON() ([]byte, error) {
+	return utils.MarshalJSON(v, "", false)
+}
+
+func (v *V2CreateTransactionRequest) UnmarshalJSON(data []byte) error {
+	if err := utils.UnmarshalJSON(data, &v, "", false, nil); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (v *V2CreateTransactionRequest) GetFormanceBigintAsString() *bool {
+	if v == nil {
+		return nil
+	}
+	return v.FormanceBigintAsString
+}
+
+func (v *V2CreateTransactionRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
 
-func (o *V2CreateTransactionRequest) GetDryRun() *bool {
-	if o == nil {
+func (v *V2CreateTransactionRequest) GetDryRun() *bool {
+	if v == nil {
 		return nil
 	}
-	return o.DryRun
+	return v.DryRun
 }
 
-func (o *V2CreateTransactionRequest) GetIdempotencyKey() *string {
-	if o == nil {
+func (v *V2CreateTransactionRequest) GetIdempotencyKey() *string {
+	if v == nil {
 		return nil
 	}
-	return o.IdempotencyKey
+	return v.IdempotencyKey
 }
 
-func (o *V2CreateTransactionRequest) GetForce() *bool {
-	if o == nil {
+func (v *V2CreateTransactionRequest) GetForce() *bool {
+	if v == nil {
 		return nil
 	}
-	return o.Force
+	return v.Force
 }
 
-func (o *V2CreateTransactionRequest) GetSchemaVersion() *string {
-	if o == nil {
+func (v *V2CreateTransactionRequest) GetSchemaVersion() *string {
+	if v == nil {
 		return nil
 	}
-	return o.SchemaVersion
+	return v.SchemaVersion
 }
 
-func (o *V2CreateTransactionRequest) GetV2PostTransaction() components.V2PostTransaction {
-	if o == nil {
+func (v *V2CreateTransactionRequest) GetV2PostTransaction() components.V2PostTransaction {
+	if v == nil {
 		return components.V2PostTransaction{}
 	}
-	return o.V2PostTransaction
+	return v.V2PostTransaction
 }
+
+// #region class-body-v2createtransactionrequest
+// #endregion class-body-v2createtransactionrequest
 
 type V2CreateTransactionResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
@@ -73,23 +100,26 @@ type V2CreateTransactionResponse struct {
 	Headers                     map[string][]string
 }
 
-func (o *V2CreateTransactionResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2CreateTransactionResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2CreateTransactionResponse) GetV2CreateTransactionResponse() *components.V2CreateTransactionResponse {
-	if o == nil {
+func (v *V2CreateTransactionResponse) GetV2CreateTransactionResponse() *components.V2CreateTransactionResponse {
+	if v == nil {
 		return nil
 	}
-	return o.V2CreateTransactionResponse
+	return v.V2CreateTransactionResponse
 }
 
-func (o *V2CreateTransactionResponse) GetHeaders() map[string][]string {
-	if o == nil {
+func (v *V2CreateTransactionResponse) GetHeaders() map[string][]string {
+	if v == nil {
 		return map[string][]string{}
 	}
-	return o.Headers
+	return v.Headers
 }
+
+// #region class-body-v2createtransactionresponse
+// #endregion class-body-v2createtransactionresponse

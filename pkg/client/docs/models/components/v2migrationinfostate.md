@@ -1,5 +1,17 @@
 # V2MigrationInfoState
 
+Current state of the migration
+
+## Example Usage
+
+```go
+import (
+	"github.com/formancehq/ledger/pkg/client/models/components"
+)
+
+value := components.V2MigrationInfoStateToDo
+```
+
 
 ## Values
 

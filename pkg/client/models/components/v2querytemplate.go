@@ -2,45 +2,68 @@
 
 package components
 
+import (
+	"github.com/formancehq/ledger/pkg/client/internal/utils"
+)
+
 type V2QueryTemplate struct {
-	Description *string                       `json:"description,omitempty"`
-	Resource    *V2QueryResource              `json:"resource,omitempty"`
-	Params      *V2QueryParams                `json:"params,omitempty"`
-	Vars        map[string]V2QueryTemplateVar `json:"vars,omitempty"`
-	Body        map[string]any                `json:"body,omitempty"`
+	// Human-readable description of what the query returns
+	Description *string `json:"description,omitempty"`
+	// The resource a query template targets
+	Resource *V2QueryResource `json:"resource,omitempty"`
+	// Parameters applied when running a query template
+	Params *V2QueryParams `json:"params,omitempty"`
+	// Variables the query accepts, keyed by variable name
+	Vars map[string]V2QueryTemplateVar `json:"vars,omitempty"`
+	// The filter expression the query evaluates
+	Body map[string]any `json:"body,omitempty"`
 }
 
-func (o *V2QueryTemplate) GetDescription() *string {
-	if o == nil {
-		return nil
-	}
-	return o.Description
+func (v V2QueryTemplate) MarshalJSON() ([]byte, error) {
+	return utils.MarshalJSON(v, "", false)
 }
 
-func (o *V2QueryTemplate) GetResource() *V2QueryResource {
-	if o == nil {
-		return nil
+func (v *V2QueryTemplate) UnmarshalJSON(data []byte) error {
+	if err := utils.UnmarshalJSON(data, &v, "", false, nil); err != nil {
+		return err
 	}
-	return o.Resource
+	return nil
 }
 
-func (o *V2QueryTemplate) GetParams() *V2QueryParams {
-	if o == nil {
+func (v *V2QueryTemplate) GetDescription() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Params
+	return v.Description
 }
 
-func (o *V2QueryTemplate) GetVars() map[string]V2QueryTemplateVar {
-	if o == nil {
+func (v *V2QueryTemplate) GetResource() *V2QueryResource {
+	if v == nil {
 		return nil
 	}
-	return o.Vars
+	return v.Resource
 }
 
-func (o *V2QueryTemplate) GetBody() map[string]any {
-	if o == nil {
+func (v *V2QueryTemplate) GetParams() *V2QueryParams {
+	if v == nil {
 		return nil
 	}
-	return o.Body
+	return v.Params
 }
+
+func (v *V2QueryTemplate) GetVars() map[string]V2QueryTemplateVar {
+	if v == nil {
+		return nil
+	}
+	return v.Vars
+}
+
+func (v *V2QueryTemplate) GetBody() map[string]any {
+	if v == nil {
+		return nil
+	}
+	return v.Body
+}
+
+// #region class-body-v2querytemplate
+// #endregion class-body-v2querytemplate

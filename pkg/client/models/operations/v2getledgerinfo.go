@@ -11,12 +11,15 @@ type V2GetLedgerInfoRequest struct {
 	Ledger string `pathParam:"style=simple,explode=false,name=ledger"`
 }
 
-func (o *V2GetLedgerInfoRequest) GetLedger() string {
-	if o == nil {
+func (v *V2GetLedgerInfoRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
+
+// #region class-body-v2getledgerinforequest
+// #endregion class-body-v2getledgerinforequest
 
 type V2GetLedgerInfoResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
@@ -24,16 +27,19 @@ type V2GetLedgerInfoResponse struct {
 	V2LedgerInfoResponse *components.V2LedgerInfoResponse
 }
 
-func (o *V2GetLedgerInfoResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2GetLedgerInfoResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2GetLedgerInfoResponse) GetV2LedgerInfoResponse() *components.V2LedgerInfoResponse {
-	if o == nil {
+func (v *V2GetLedgerInfoResponse) GetV2LedgerInfoResponse() *components.V2LedgerInfoResponse {
+	if v == nil {
 		return nil
 	}
-	return o.V2LedgerInfoResponse
+	return v.V2LedgerInfoResponse
 }
+
+// #region class-body-v2getledgerinforesponse
+// #endregion class-body-v2getledgerinforesponse

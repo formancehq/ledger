@@ -5,4 +5,4 @@
 
 | Field                                                  | Type                                                   | Required                                               | Description                                            | Example                                                |
 | ------------------------------------------------------ | ------------------------------------------------------ | ------------------------------------------------------ | ------------------------------------------------------ | ------------------------------------------------------ |
-| `Data`                                                 | map[string][*big.Int](https://pkg.go.dev/math/big#Int) | :heavy_check_mark:                                     | N/A                                                    | {<br/>"USD": 100,<br/>"EUR": 12<br/>}                  |
+| `Data`                                                 | map[string][*big.Int](https://pkg.go.dev/math/big#Int) | :heavy_check_mark:                                     | Balances keyed by asset                                | {<br/>"USD": 100,<br/>"EUR": 12<br/>}                  |

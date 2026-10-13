@@ -27,3 +27,19 @@ v2BulkElement := components.CreateV2BulkElementRevertTransaction(components.V2Bu
 v2BulkElement := components.CreateV2BulkElementDeleteMetadata(components.V2BulkElementDeleteMetadata{/* values here */})
 ```
 
+## Union Discrimination
+
+Use the `Type` field to determine which variant is active, then access the corresponding field:
+
+```go
+switch v2BulkElement.Type {
+	case components.V2BulkElementTypeCreateTransaction:
+		// v2BulkElement.V2BulkElementCreateTransaction is populated
+	case components.V2BulkElementTypeAddMetadata:
+		// v2BulkElement.V2BulkElementAddMetadata is populated
+	case components.V2BulkElementTypeRevertTransaction:
+		// v2BulkElement.V2BulkElementRevertTransaction is populated
+	case components.V2BulkElementTypeDeleteMetadata:
+		// v2BulkElement.V2BulkElementDeleteMetadata is populated
+}
+```

@@ -9,6 +9,7 @@ import (
 	"time"
 )
 
+// Type - The type of operation this log represents
 type Type string
 
 const (
@@ -36,11 +37,16 @@ func (e *Type) UnmarshalJSON(data []byte) error {
 }
 
 type Log struct {
-	ID   int64          `json:"id"`
-	Type Type           `json:"type"`
+	// Unique sequential identifier for this log entry within the ledger
+	ID int64 `json:"id"`
+	// The type of operation this log represents
+	Type Type `json:"type"`
+	// The payload of the log entry, whose shape depends on the log type
 	Data map[string]any `json:"data"`
-	Hash string         `json:"hash"`
-	Date time.Time      `json:"date"`
+	// SHA256 hash of the log entry, chained from the previous log for integrity verification
+	Hash string `json:"hash"`
+	// Timestamp when the operation was recorded
+	Date time.Time `json:"date"`
 }
 
 func (l Log) MarshalJSON() ([]byte, error) {
@@ -48,43 +54,43 @@ func (l Log) MarshalJSON() ([]byte, error) {
 }
 
 func (l *Log) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &l, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &l, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *Log) GetID() int64 {
-	if o == nil {
+func (l *Log) GetID() int64 {
+	if l == nil {
 		return 0
 	}
-	return o.ID
+	return l.ID
 }
 
-func (o *Log) GetType() Type {
-	if o == nil {
+func (l *Log) GetType() Type {
+	if l == nil {
 		return Type("")
 	}
-	return o.Type
+	return l.Type
 }
 
-func (o *Log) GetData() map[string]any {
-	if o == nil {
+func (l *Log) GetData() map[string]any {
+	if l == nil {
 		return map[string]any{}
 	}
-	return o.Data
+	return l.Data
 }
 
-func (o *Log) GetHash() string {
-	if o == nil {
+func (l *Log) GetHash() string {
+	if l == nil {
 		return ""
 	}
-	return o.Hash
+	return l.Hash
 }
 
-func (o *Log) GetDate() time.Time {
-	if o == nil {
+func (l *Log) GetDate() time.Time {
+	if l == nil {
 		return time.Time{}
 	}
-	return o.Date
+	return l.Date
 }

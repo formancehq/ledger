@@ -86,7 +86,7 @@ func addWorkerFlags(cmd *cobra.Command) {
 }
 
 // NewWorkerCommand constructs the "worker" Cobra command which initializes and runs the worker service using loaded configuration and composed FX modules.
-// The command registers worker-specific flags via addWorkerFlags and common service, connect, and OTLP flags, and exposes the --worker-grpc-address flag (default ":8081").
+// The command registers worker-specific flags via addWorkerFlags and common service, bunconnect, and OTLP flags, and exposes the --worker-grpc-address flag (default ":8081").
 // When executed it loads configuration and starts the service with the configured modules and a gRPC server.
 func NewWorkerCommand() *cobra.Command {
 	cmd := &cobra.Command{

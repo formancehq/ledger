@@ -17,49 +17,55 @@ type V2DeleteAccountMetadataRequest struct {
 	IdempotencyKey *string `header:"style=simple,explode=false,name=Idempotency-Key"`
 }
 
-func (o *V2DeleteAccountMetadataRequest) GetLedger() string {
-	if o == nil {
+func (v *V2DeleteAccountMetadataRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
 
-func (o *V2DeleteAccountMetadataRequest) GetAddress() string {
-	if o == nil {
+func (v *V2DeleteAccountMetadataRequest) GetAddress() string {
+	if v == nil {
 		return ""
 	}
-	return o.Address
+	return v.Address
 }
 
-func (o *V2DeleteAccountMetadataRequest) GetKey() string {
-	if o == nil {
+func (v *V2DeleteAccountMetadataRequest) GetKey() string {
+	if v == nil {
 		return ""
 	}
-	return o.Key
+	return v.Key
 }
 
-func (o *V2DeleteAccountMetadataRequest) GetIdempotencyKey() *string {
-	if o == nil {
+func (v *V2DeleteAccountMetadataRequest) GetIdempotencyKey() *string {
+	if v == nil {
 		return nil
 	}
-	return o.IdempotencyKey
+	return v.IdempotencyKey
 }
+
+// #region class-body-v2deleteaccountmetadatarequest
+// #endregion class-body-v2deleteaccountmetadatarequest
 
 type V2DeleteAccountMetadataResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
 	Headers  map[string][]string
 }
 
-func (o *V2DeleteAccountMetadataResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2DeleteAccountMetadataResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2DeleteAccountMetadataResponse) GetHeaders() map[string][]string {
-	if o == nil {
+func (v *V2DeleteAccountMetadataResponse) GetHeaders() map[string][]string {
+	if v == nil {
 		return map[string][]string{}
 	}
-	return o.Headers
+	return v.Headers
 }
+
+// #region class-body-v2deleteaccountmetadataresponse
+// #endregion class-body-v2deleteaccountmetadataresponse

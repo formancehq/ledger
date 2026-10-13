@@ -5,6 +5,7 @@ package utils
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"reflect"
@@ -14,20 +15,31 @@ import (
 	"unsafe"
 
 	"github.com/formancehq/ledger/pkg/client/types"
-
-	"github.com/ericlagergren/decimal"
 )
 
 func MarshalJSON(v interface{}, tag reflect.StructTag, topLevel bool) ([]byte, error) {
-	typ, val := dereferencePointers(reflect.TypeOf(v), reflect.ValueOf(v))
+	// Handle nil interface early
+	if v == nil {
+		return []byte("null"), nil
+	}
+
+	// Check for nil pointer before dereferencing to avoid creating invalid reflect.Value
+	origVal := reflect.ValueOf(v)
+	if origVal.Kind() == reflect.Ptr && origVal.IsNil() {
+		return []byte("null"), nil
+	}
+
+	typ, val := dereferencePointers(reflect.TypeOf(v), origVal)
 
 	switch {
 	case isModelType(typ):
-		if topLevel {
+		// When topLevel=true, only use json.Marshal if the type has a custom MarshalJSON
+		// to ensure nested structs with custom tags (like integer:"string") are handled correctly
+		if topLevel && implementsJSONMarshaler(v) {
 			return json.Marshal(v)
 		}
 
-		if isNil(typ, val) {
+		if isNil(typ, val) || !val.IsValid() {
 			return []byte("null"), nil
 		}
 
@@ -40,19 +52,35 @@ func MarshalJSON(v interface{}, tag reflect.StructTag, topLevel bool) ([]byte, e
 			fieldName := field.Name
 
 			omitEmpty := false
+			omitZero := false
 			jsonTag := field.Tag.Get("json")
 			if jsonTag != "" {
 				for _, tag := range strings.Split(jsonTag, ",") {
 					if tag == "omitempty" {
 						omitEmpty = true
+					} else if tag == "omitzero" {
+						omitZero = true
 					} else {
 						fieldName = tag
 					}
 				}
 			}
 
-			if isNil(field.Type, fieldVal) && field.Tag.Get("const") == "" {
-				if omitEmpty {
+			if (omitEmpty || omitZero) && field.Tag.Get("const") == "" {
+				// Both omitempty and omitzero skip zero values (including nil)
+				if isNil(field.Type, fieldVal) {
+					continue
+				}
+
+				if omitZero && fieldVal.IsZero() {
+					continue
+				}
+
+				if omitEmpty && fieldVal.Kind() != reflect.Struct && fieldVal.IsZero() {
+					continue
+				}
+
+				if omitEmpty && isEmptyContainer(field.Type, fieldVal) {
 					continue
 				}
 			}
@@ -114,27 +142,38 @@ func MarshalJSON(v interface{}, tag reflect.StructTag, topLevel bool) ([]byte, e
 	}
 }
 
-func UnmarshalJSON(b []byte, v interface{}, tag reflect.StructTag, topLevel bool, disallowUnknownFields bool) error {
+func UnmarshalJSON(b []byte, v interface{}, tag reflect.StructTag, topLevel bool, requiredFields []string) error {
 	if reflect.TypeOf(v).Kind() != reflect.Ptr {
-		return fmt.Errorf("v must be a pointer")
+		return errors.New("v must be a pointer")
 	}
 
 	typ, val := dereferencePointers(reflect.TypeOf(v), reflect.ValueOf(v))
 
 	switch {
 	case isModelType(typ):
-		if topLevel || bytes.Equal(b, []byte("null")) {
-			d := json.NewDecoder(bytes.NewReader(b))
-			if disallowUnknownFields {
-				d.DisallowUnknownFields()
-			}
-			return d.Decode(v)
+		if bytes.Equal(b, []byte("null")) {
+			return json.Unmarshal(b, v)
+		}
+		// When topLevel=true, only use json.Unmarshal if the type has a custom UnmarshalJSON
+		// to ensure nested structs with custom tags (like integer:"string") are handled correctly
+		if topLevel && implementsJSONUnmarshaler(reflect.TypeOf(v)) {
+			return json.Unmarshal(b, v)
 		}
 
-		var unmarhsaled map[string]json.RawMessage
+		var unmarshaled map[string]json.RawMessage
 
-		if err := json.Unmarshal(b, &unmarhsaled); err != nil {
+		if err := json.Unmarshal(b, &unmarshaled); err != nil {
 			return err
+		}
+
+		missingFields := []string{}
+		for _, requiredField := range requiredFields {
+			if _, ok := unmarshaled[requiredField]; !ok {
+				missingFields = append(missingFields, requiredField)
+			}
+		}
+		if len(missingFields) > 0 {
+			return fmt.Errorf("missing required fields: %s", strings.Join(missingFields, ", "))
 		}
 
 		var additionalPropertiesField *reflect.StructField
@@ -149,7 +188,7 @@ func UnmarshalJSON(b []byte, v interface{}, tag reflect.StructTag, topLevel bool
 			jsonTag := field.Tag.Get("json")
 			if jsonTag != "" {
 				for _, tag := range strings.Split(jsonTag, ",") {
-					if tag != "omitempty" {
+					if tag != "omitempty" && tag != "omitzero" {
 						fieldName = tag
 					}
 				}
@@ -163,7 +202,7 @@ func UnmarshalJSON(b []byte, v interface{}, tag reflect.StructTag, topLevel bool
 
 			// If we receive a value for a const field ignore it but mark it as unmarshaled
 			if field.Tag.Get("const") != "" {
-				if r, ok := unmarhsaled[fieldName]; ok {
+				if r, ok := unmarshaled[fieldName]; ok {
 					val := string(r)
 
 					if strings.HasPrefix(val, `"`) && strings.HasSuffix(val, `"`) {
@@ -178,13 +217,13 @@ func UnmarshalJSON(b []byte, v interface{}, tag reflect.StructTag, topLevel bool
 						return fmt.Errorf("const field `%s` does not match expected value `%s` got `%s`", fieldName, constValue, val)
 					}
 
-					delete(unmarhsaled, fieldName)
+					delete(unmarshaled, fieldName)
 				}
 			} else if !field.IsExported() {
 				continue
 			}
 
-			value, ok := unmarhsaled[fieldName]
+			value, ok := unmarshaled[fieldName]
 			if !ok {
 				defaultTag, defaultOk := field.Tag.Lookup("default")
 				if defaultOk {
@@ -192,26 +231,22 @@ func UnmarshalJSON(b []byte, v interface{}, tag reflect.StructTag, topLevel bool
 					ok = true
 				}
 			} else {
-				delete(unmarhsaled, fieldName)
+				delete(unmarshaled, fieldName)
 			}
 
 			if ok {
-				if err := unmarshalValue(value, fieldVal, field.Tag, disallowUnknownFields); err != nil {
+				if err := unmarshalValue(value, fieldVal, field.Tag); err != nil {
 					return err
 				}
 			}
 		}
 
-		keys := make([]string, 0, len(unmarhsaled))
-		for k := range unmarhsaled {
+		keys := make([]string, 0, len(unmarshaled))
+		for k := range unmarshaled {
 			keys = append(keys, k)
 		}
 
 		if len(keys) > 0 {
-			if disallowUnknownFields && (additionalPropertiesField == nil || additionalPropertiesValue == nil) {
-				return fmt.Errorf("unknown fields: %v", keys)
-			}
-
 			if additionalPropertiesField != nil && additionalPropertiesValue != nil {
 				typeOfMap := additionalPropertiesField.Type
 				if additionalPropertiesValue.Type().Kind() == reflect.Interface {
@@ -222,10 +257,10 @@ func UnmarshalJSON(b []byte, v interface{}, tag reflect.StructTag, topLevel bool
 
 				mapValue := reflect.MakeMap(typeOfMap)
 
-				for key, value := range unmarhsaled {
+				for key, value := range unmarshaled {
 					val := reflect.New(typeOfMap.Elem())
 
-					if err := unmarshalValue(value, val, additionalPropertiesField.Tag, disallowUnknownFields); err != nil {
+					if err := unmarshalValue(value, val, additionalPropertiesField.Tag); err != nil {
 						return err
 					}
 
@@ -244,7 +279,7 @@ func UnmarshalJSON(b []byte, v interface{}, tag reflect.StructTag, topLevel bool
 			}
 		}
 	default:
-		return unmarshalValue(b, reflect.ValueOf(v), tag, disallowUnknownFields)
+		return unmarshalValue(b, reflect.ValueOf(v), tag)
 	}
 
 	return nil
@@ -282,6 +317,11 @@ func marshalValue(v interface{}, tag reflect.StructTag) (json.RawMessage, error)
 	case reflect.Map:
 		if isNil(typ, val) {
 			return []byte("null"), nil
+		}
+
+		// Check if the map implements json.Marshaler (like optionalnullable.OptionalNullable[T])
+		if marshaler, ok := val.Interface().(json.Marshaler); ok {
+			return marshaler.MarshalJSON()
 		}
 
 		out := map[string]json.RawMessage{}
@@ -337,21 +377,34 @@ func marshalValue(v interface{}, tag reflect.StructTag) (json.RawMessage, error)
 				b := val.Interface().(big.Int)
 				return []byte(fmt.Sprintf(`"%s"`, (&b).String())), nil
 			}
-		case reflect.TypeOf(decimal.Big{}):
-			format := tag.Get("decimal")
-			if format == "number" {
-				b := val.Interface().(decimal.Big)
-				f, ok := (&b).Float64()
-				if ok {
-					return []byte(b.String()), nil
-				}
-
-				return []byte(fmt.Sprintf(`%f`, f)), nil
+		default:
+			// For model types without custom MarshalJSON, use field processing
+			// to handle custom tags like integer:"string"
+			if isModelType(typ) && !implementsJSONMarshaler(v) {
+				return MarshalJSON(v, "", false)
 			}
 		}
 	}
 
 	return json.Marshal(v)
+}
+
+func implementsJSONMarshaler(v interface{}) bool {
+	marshalerType := reflect.TypeOf((*json.Marshaler)(nil)).Elem()
+	vType := reflect.TypeOf(v)
+	if vType.Implements(marshalerType) {
+		return true
+	}
+	if vType.Kind() == reflect.Ptr {
+		// For double pointers (e.g., **TypeA), check if the inner pointer type
+		// implements the interface (e.g., *TypeA)
+		if vType.Elem().Implements(marshalerType) {
+			return true
+		}
+		// Also check if pointer to element implements it
+		return reflect.PtrTo(vType.Elem()).Implements(marshalerType)
+	}
+	return reflect.PtrTo(vType).Implements(marshalerType)
 }
 
 func handleDefaultConstValue(tagValue string, val interface{}, tag reflect.StructTag) json.RawMessage {
@@ -378,11 +431,6 @@ func handleDefaultConstValue(tagValue string, val interface{}, tag reflect.Struc
 		if format == "string" {
 			return []byte(fmt.Sprintf(`"%s"`, tagValue))
 		}
-	case reflect.TypeOf(decimal.Big{}):
-		decimalTag := tag.Get("decimal")
-		if decimalTag != "number" {
-			return []byte(fmt.Sprintf(`"%s"`, tagValue))
-		}
 	case reflect.TypeOf(types.Date{}):
 		return []byte(fmt.Sprintf(`"%s"`, tagValue))
 	default:
@@ -394,7 +442,7 @@ func handleDefaultConstValue(tagValue string, val interface{}, tag reflect.Struc
 	return []byte(tagValue)
 }
 
-func unmarshalValue(value json.RawMessage, v reflect.Value, tag reflect.StructTag, disallowUnknownFields bool) error {
+func unmarshalValue(value json.RawMessage, v reflect.Value, tag reflect.StructTag) error {
 	if bytes.Equal(value, []byte("null")) {
 		if v.CanAddr() {
 			return json.Unmarshal(value, v.Addr().Interface())
@@ -466,24 +514,29 @@ func unmarshalValue(value json.RawMessage, v reflect.Value, tag reflect.StructTa
 			}
 		}
 
-		var unmarhsaled map[string]json.RawMessage
+		var unmarshaled map[string]json.RawMessage
 
-		if err := json.Unmarshal(value, &unmarhsaled); err != nil {
+		if err := json.Unmarshal(value, &unmarshaled); err != nil {
 			return err
 		}
 
 		m := reflect.MakeMap(typ)
 
-		for k, value := range unmarhsaled {
+		for k, value := range unmarshaled {
 			itemVal := reflect.New(typ.Elem())
 
-			if err := unmarshalValue(value, itemVal, tag, disallowUnknownFields); err != nil {
+			if err := unmarshalValue(value, itemVal, tag); err != nil {
 				return err
 			}
 
 			m.SetMapIndex(reflect.ValueOf(k), itemVal.Elem())
 		}
 
+		// Dereference pointer before setting the map value.
+		// v may be a pointer to a map (e.g., from reflect.ValueOf(&mapVar)).
+		if v.Kind() == reflect.Ptr {
+			v = v.Elem()
+		}
 		v.Set(m)
 		return nil
 	case reflect.Slice, reflect.Array:
@@ -498,7 +551,7 @@ func unmarshalValue(value json.RawMessage, v reflect.Value, tag reflect.StructTa
 		for index, value := range unmarshaled {
 			itemVal := reflect.New(typ.Elem())
 
-			if err := unmarshalValue(value, itemVal, tag, disallowUnknownFields); err != nil {
+			if err := unmarshalValue(value, itemVal, tag); err != nil {
 				return err
 			}
 
@@ -528,7 +581,7 @@ func unmarshalValue(value json.RawMessage, v reflect.Value, tag reflect.StructTa
 			}
 
 			if v.Kind() == reflect.Ptr {
-				if v.IsNil() {
+				if v.IsNil() && v.CanSet() {
 					v.Set(reflect.New(typ))
 				}
 				v = v.Elem()
@@ -563,27 +616,6 @@ func unmarshalValue(value json.RawMessage, v reflect.Value, tag reflect.StructTa
 
 			v.Set(reflect.ValueOf(b))
 			return nil
-		case reflect.TypeOf(decimal.Big{}):
-			var d *decimal.Big
-			format := tag.Get("decimal")
-			if format == "number" {
-				var ok bool
-				d, ok = new(decimal.Big).SetString(string(value))
-				if !ok {
-					return fmt.Errorf("failed to parse number as decimal.Big")
-				}
-			} else {
-				if err := json.Unmarshal(value, &d); err != nil {
-					return err
-				}
-			}
-
-			if v.Kind() == reflect.Ptr && v.Elem().Kind() == reflect.Ptr {
-				v = v.Elem()
-			}
-
-			v.Set(reflect.ValueOf(d))
-			return nil
 		case reflect.TypeOf(types.Date{}):
 			var s string
 
@@ -597,7 +629,7 @@ func unmarshalValue(value json.RawMessage, v reflect.Value, tag reflect.StructTa
 			}
 
 			if v.Kind() == reflect.Ptr {
-				if v.IsNil() {
+				if v.IsNil() && v.CanSet() {
 					v.Set(reflect.New(typ))
 				}
 				v = v.Elem()
@@ -605,6 +637,31 @@ func unmarshalValue(value json.RawMessage, v reflect.Value, tag reflect.StructTa
 
 			v.Set(reflect.ValueOf(d))
 			return nil
+		default:
+			// For model types without custom UnmarshalJSON, use field processing
+			// to handle custom tags like integer:"string"
+			if isModelType(typ) && !implementsJSONUnmarshaler(v.Type()) {
+				// If v is already a pointer, we can unmarshal directly into it
+				if v.Kind() == reflect.Ptr {
+					if v.IsNil() {
+						v.Set(reflect.New(v.Type().Elem()))
+					}
+					// Handle double pointers (e.g., **Struct for nullable array elements)
+					inner := v.Elem()
+					if inner.Kind() == reflect.Ptr {
+						if inner.IsNil() {
+							inner.Set(reflect.New(typ))
+						}
+						return UnmarshalJSON(value, inner.Interface(), "", false, nil)
+					}
+					return UnmarshalJSON(value, v.Interface(), "", false, nil)
+				}
+				// For non-pointer struct values that are addressable
+				if v.CanAddr() {
+					return UnmarshalJSON(value, v.Addr().Interface(), "", false, nil)
+				}
+				// For non-addressable struct values, fall through to json.Unmarshal
+			}
 		}
 	}
 
@@ -616,11 +673,24 @@ func unmarshalValue(value json.RawMessage, v reflect.Value, tag reflect.StructTa
 		val = v.Interface()
 	}
 
-	d := json.NewDecoder(bytes.NewReader(value))
-	if disallowUnknownFields {
-		d.DisallowUnknownFields()
+	return json.Unmarshal(value, val)
+}
+
+func implementsJSONUnmarshaler(typ reflect.Type) bool {
+	unmarshalerType := reflect.TypeOf((*json.Unmarshaler)(nil)).Elem()
+	if typ.Implements(unmarshalerType) {
+		return true
 	}
-	return d.Decode(val)
+	if typ.Kind() == reflect.Ptr {
+		// For double pointers (e.g., **TypeA), check if the inner pointer type
+		// implements the interface (e.g., *TypeA)
+		if typ.Elem().Implements(unmarshalerType) {
+			return true
+		}
+		// Also check if pointer to element implements it
+		return reflect.PtrTo(typ.Elem()).Implements(unmarshalerType)
+	}
+	return reflect.PtrTo(typ).Implements(unmarshalerType)
 }
 
 func dereferencePointers(typ reflect.Type, val reflect.Value) (reflect.Type, reflect.Value) {
@@ -651,8 +721,6 @@ func isComplexValueType(typ reflect.Type) bool {
 		case reflect.TypeOf(time.Time{}):
 			fallthrough
 		case reflect.TypeOf(big.Int{}):
-			fallthrough
-		case reflect.TypeOf(decimal.Big{}):
 			fallthrough
 		case reflect.TypeOf(types.Date{}):
 			return true

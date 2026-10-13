@@ -64,11 +64,11 @@ const (
 // - DELETE_METADATA: V2LogDataDeleteMetadata
 // - INSERTED_SCHEMA: V2LogDataInsertedSchema
 type V2LogData struct {
-	V2LogDataNewTransaction      *V2LogDataNewTransaction      `queryParam:"inline"`
-	V2LogDataSetMetadata         *V2LogDataSetMetadata         `queryParam:"inline"`
-	V2LogDataRevertedTransaction *V2LogDataRevertedTransaction `queryParam:"inline"`
-	V2LogDataDeleteMetadata      *V2LogDataDeleteMetadata      `queryParam:"inline"`
-	V2LogDataInsertedSchema      *V2LogDataInsertedSchema      `queryParam:"inline"`
+	V2LogDataNewTransaction      *V2LogDataNewTransaction      `queryParam:"inline" union:"member"`
+	V2LogDataSetMetadata         *V2LogDataSetMetadata         `queryParam:"inline" union:"member"`
+	V2LogDataRevertedTransaction *V2LogDataRevertedTransaction `queryParam:"inline" union:"member"`
+	V2LogDataDeleteMetadata      *V2LogDataDeleteMetadata      `queryParam:"inline" union:"member"`
+	V2LogDataInsertedSchema      *V2LogDataInsertedSchema      `queryParam:"inline" union:"member"`
 
 	Type V2LogDataType
 }
@@ -120,38 +120,38 @@ func CreateV2LogDataV2LogDataInsertedSchema(v2LogDataInsertedSchema V2LogDataIns
 
 func (u *V2LogData) UnmarshalJSON(data []byte) error {
 
-	var v2LogDataInsertedSchema V2LogDataInsertedSchema = V2LogDataInsertedSchema{}
-	if err := utils.UnmarshalJSON(data, &v2LogDataInsertedSchema, "", true, true); err == nil {
-		u.V2LogDataInsertedSchema = &v2LogDataInsertedSchema
-		u.Type = V2LogDataTypeV2LogDataInsertedSchema
-		return nil
-	}
-
-	var v2LogDataNewTransaction V2LogDataNewTransaction = V2LogDataNewTransaction{}
-	if err := utils.UnmarshalJSON(data, &v2LogDataNewTransaction, "", true, true); err == nil {
-		u.V2LogDataNewTransaction = &v2LogDataNewTransaction
-		u.Type = V2LogDataTypeV2LogDataNewTransaction
-		return nil
-	}
-
-	var v2LogDataRevertedTransaction V2LogDataRevertedTransaction = V2LogDataRevertedTransaction{}
-	if err := utils.UnmarshalJSON(data, &v2LogDataRevertedTransaction, "", true, true); err == nil {
-		u.V2LogDataRevertedTransaction = &v2LogDataRevertedTransaction
-		u.Type = V2LogDataTypeV2LogDataRevertedTransaction
-		return nil
-	}
-
 	var v2LogDataSetMetadata V2LogDataSetMetadata = V2LogDataSetMetadata{}
-	if err := utils.UnmarshalJSON(data, &v2LogDataSetMetadata, "", true, true); err == nil {
+	if err := utils.UnmarshalJSON(data, &v2LogDataSetMetadata, "", true, nil); err == nil {
 		u.V2LogDataSetMetadata = &v2LogDataSetMetadata
 		u.Type = V2LogDataTypeV2LogDataSetMetadata
 		return nil
 	}
 
 	var v2LogDataDeleteMetadata V2LogDataDeleteMetadata = V2LogDataDeleteMetadata{}
-	if err := utils.UnmarshalJSON(data, &v2LogDataDeleteMetadata, "", true, true); err == nil {
+	if err := utils.UnmarshalJSON(data, &v2LogDataDeleteMetadata, "", true, nil); err == nil {
 		u.V2LogDataDeleteMetadata = &v2LogDataDeleteMetadata
 		u.Type = V2LogDataTypeV2LogDataDeleteMetadata
+		return nil
+	}
+
+	var v2LogDataNewTransaction V2LogDataNewTransaction = V2LogDataNewTransaction{}
+	if err := utils.UnmarshalJSON(data, &v2LogDataNewTransaction, "", true, nil); err == nil {
+		u.V2LogDataNewTransaction = &v2LogDataNewTransaction
+		u.Type = V2LogDataTypeV2LogDataNewTransaction
+		return nil
+	}
+
+	var v2LogDataRevertedTransaction V2LogDataRevertedTransaction = V2LogDataRevertedTransaction{}
+	if err := utils.UnmarshalJSON(data, &v2LogDataRevertedTransaction, "", true, nil); err == nil {
+		u.V2LogDataRevertedTransaction = &v2LogDataRevertedTransaction
+		u.Type = V2LogDataTypeV2LogDataRevertedTransaction
+		return nil
+	}
+
+	var v2LogDataInsertedSchema V2LogDataInsertedSchema = V2LogDataInsertedSchema{}
+	if err := utils.UnmarshalJSON(data, &v2LogDataInsertedSchema, "", true, nil); err == nil {
+		u.V2LogDataInsertedSchema = &v2LogDataInsertedSchema
+		u.Type = V2LogDataTypeV2LogDataInsertedSchema
 		return nil
 	}
 
@@ -211,50 +211,53 @@ func (v V2Log) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2Log) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, []string{"id", "type", "data", "hash", "date"}); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *V2Log) GetID() *big.Int {
-	if o == nil {
+func (v *V2Log) GetID() *big.Int {
+	if v == nil {
 		return big.NewInt(0)
 	}
-	return o.ID
+	return v.ID
 }
 
-func (o *V2Log) GetType() V2LogType {
-	if o == nil {
+func (v *V2Log) GetType() V2LogType {
+	if v == nil {
 		return V2LogType("")
 	}
-	return o.Type
+	return v.Type
 }
 
-func (o *V2Log) GetData() V2LogData {
-	if o == nil {
+func (v *V2Log) GetData() V2LogData {
+	if v == nil {
 		return V2LogData{}
 	}
-	return o.Data
+	return v.Data
 }
 
-func (o *V2Log) GetHash() string {
-	if o == nil {
+func (v *V2Log) GetHash() string {
+	if v == nil {
 		return ""
 	}
-	return o.Hash
+	return v.Hash
 }
 
-func (o *V2Log) GetDate() time.Time {
-	if o == nil {
+func (v *V2Log) GetDate() time.Time {
+	if v == nil {
 		return time.Time{}
 	}
-	return o.Date
+	return v.Date
 }
 
-func (o *V2Log) GetSchemaVersion() *string {
-	if o == nil {
+func (v *V2Log) GetSchemaVersion() *string {
+	if v == nil {
 		return nil
 	}
-	return o.SchemaVersion
+	return v.SchemaVersion
 }
+
+// #region class-body-v2log
+// #endregion class-body-v2log

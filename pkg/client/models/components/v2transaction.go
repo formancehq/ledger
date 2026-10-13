@@ -8,21 +8,36 @@ import (
 	"time"
 )
 
+// V2Transaction - A transaction recorded in the ledger, carrying its postings, metadata and both bi-temporal timestamps
 type V2Transaction struct {
-	InsertedAt                 *time.Time                     `json:"insertedAt,omitempty"`
-	UpdatedAt                  *time.Time                     `json:"updatedAt,omitempty"`
-	Timestamp                  time.Time                      `json:"timestamp"`
-	Postings                   []V2Posting                    `json:"postings"`
-	Reference                  *string                        `json:"reference,omitempty"`
-	Metadata                   map[string]string              `json:"metadata"`
-	ID                         *big.Int                       `json:"id"`
-	Reverted                   bool                           `json:"reverted"`
-	RevertedAt                 *time.Time                     `json:"revertedAt,omitempty"`
-	PreCommitVolumes           map[string]map[string]V2Volume `json:"preCommitVolumes,omitempty"`
-	PostCommitVolumes          map[string]map[string]V2Volume `json:"postCommitVolumes,omitempty"`
-	PreCommitEffectiveVolumes  map[string]map[string]V2Volume `json:"preCommitEffectiveVolumes,omitempty"`
+	// The request time: when the transaction was actually written to the ledger. Set by the ledger, not the caller. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
+	InsertedAt *time.Time `json:"insertedAt,omitempty"`
+	// When the transaction row was last modified, for example by a metadata change or a revert
+	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
+	// The transaction time: when the transaction is considered to have occurred, also called the effective or booking date. This is the axis the ledger uses to compute balances and resolve point-in-time queries. Settable at creation, defaulting to current machine time if omitted, and immutable once written. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
+	Timestamp time.Time `json:"timestamp"`
+	// The fund movements making up the transaction
+	Postings []V2Posting `json:"postings"`
+	// Optional caller-supplied identifier, unique within the ledger, used to deduplicate transactions
+	Reference *string `json:"reference,omitempty"`
+	// Arbitrary key/value pairs attached to the transaction. Transaction metadata is bi-temporal, so a point-in-time query returns it as it stood at that time
+	Metadata map[string]string `json:"metadata"`
+	// Unique sequential identifier for this transaction within the ledger
+	ID *big.Int `json:"id"`
+	// Indicates if the transaction has been reverted
+	Reverted bool `json:"reverted"`
+	// When the transaction was reverted, on the request-time axis. Absent if the transaction has not been reverted
+	RevertedAt *time.Time `json:"revertedAt,omitempty"`
+	// Volumes aggregated per account and per asset
+	PreCommitVolumes map[string]map[string]V2Volume `json:"preCommitVolumes,omitempty"`
+	// Volumes aggregated per account and per asset
+	PostCommitVolumes map[string]map[string]V2Volume `json:"postCommitVolumes,omitempty"`
+	// Volumes aggregated per account and per asset
+	PreCommitEffectiveVolumes map[string]map[string]V2Volume `json:"preCommitEffectiveVolumes,omitempty"`
+	// Volumes aggregated per account and per asset
 	PostCommitEffectiveVolumes map[string]map[string]V2Volume `json:"postCommitEffectiveVolumes,omitempty"`
-	Template                   *string                        `json:"template,omitempty"`
+	// Name of the transaction template this transaction was created from, if any
+	Template *string `json:"template,omitempty"`
 }
 
 func (v V2Transaction) MarshalJSON() ([]byte, error) {
@@ -30,106 +45,109 @@ func (v V2Transaction) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2Transaction) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, []string{"timestamp", "postings", "metadata", "id", "reverted"}); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *V2Transaction) GetInsertedAt() *time.Time {
-	if o == nil {
+func (v *V2Transaction) GetInsertedAt() *time.Time {
+	if v == nil {
 		return nil
 	}
-	return o.InsertedAt
+	return v.InsertedAt
 }
 
-func (o *V2Transaction) GetUpdatedAt() *time.Time {
-	if o == nil {
+func (v *V2Transaction) GetUpdatedAt() *time.Time {
+	if v == nil {
 		return nil
 	}
-	return o.UpdatedAt
+	return v.UpdatedAt
 }
 
-func (o *V2Transaction) GetTimestamp() time.Time {
-	if o == nil {
+func (v *V2Transaction) GetTimestamp() time.Time {
+	if v == nil {
 		return time.Time{}
 	}
-	return o.Timestamp
+	return v.Timestamp
 }
 
-func (o *V2Transaction) GetPostings() []V2Posting {
-	if o == nil {
+func (v *V2Transaction) GetPostings() []V2Posting {
+	if v == nil {
 		return []V2Posting{}
 	}
-	return o.Postings
+	return v.Postings
 }
 
-func (o *V2Transaction) GetReference() *string {
-	if o == nil {
+func (v *V2Transaction) GetReference() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Reference
+	return v.Reference
 }
 
-func (o *V2Transaction) GetMetadata() map[string]string {
-	if o == nil {
+func (v *V2Transaction) GetMetadata() map[string]string {
+	if v == nil {
 		return map[string]string{}
 	}
-	return o.Metadata
+	return v.Metadata
 }
 
-func (o *V2Transaction) GetID() *big.Int {
-	if o == nil {
+func (v *V2Transaction) GetID() *big.Int {
+	if v == nil {
 		return big.NewInt(0)
 	}
-	return o.ID
+	return v.ID
 }
 
-func (o *V2Transaction) GetReverted() bool {
-	if o == nil {
+func (v *V2Transaction) GetReverted() bool {
+	if v == nil {
 		return false
 	}
-	return o.Reverted
+	return v.Reverted
 }
 
-func (o *V2Transaction) GetRevertedAt() *time.Time {
-	if o == nil {
+func (v *V2Transaction) GetRevertedAt() *time.Time {
+	if v == nil {
 		return nil
 	}
-	return o.RevertedAt
+	return v.RevertedAt
 }
 
-func (o *V2Transaction) GetPreCommitVolumes() map[string]map[string]V2Volume {
-	if o == nil {
+func (v *V2Transaction) GetPreCommitVolumes() map[string]map[string]V2Volume {
+	if v == nil {
 		return nil
 	}
-	return o.PreCommitVolumes
+	return v.PreCommitVolumes
 }
 
-func (o *V2Transaction) GetPostCommitVolumes() map[string]map[string]V2Volume {
-	if o == nil {
+func (v *V2Transaction) GetPostCommitVolumes() map[string]map[string]V2Volume {
+	if v == nil {
 		return nil
 	}
-	return o.PostCommitVolumes
+	return v.PostCommitVolumes
 }
 
-func (o *V2Transaction) GetPreCommitEffectiveVolumes() map[string]map[string]V2Volume {
-	if o == nil {
+func (v *V2Transaction) GetPreCommitEffectiveVolumes() map[string]map[string]V2Volume {
+	if v == nil {
 		return nil
 	}
-	return o.PreCommitEffectiveVolumes
+	return v.PreCommitEffectiveVolumes
 }
 
-func (o *V2Transaction) GetPostCommitEffectiveVolumes() map[string]map[string]V2Volume {
-	if o == nil {
+func (v *V2Transaction) GetPostCommitEffectiveVolumes() map[string]map[string]V2Volume {
+	if v == nil {
 		return nil
 	}
-	return o.PostCommitEffectiveVolumes
+	return v.PostCommitEffectiveVolumes
 }
 
-func (o *V2Transaction) GetTemplate() *string {
-	if o == nil {
+func (v *V2Transaction) GetTemplate() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Template
+	return v.Template
 }
+
+// #region class-body-v2transaction
+// #endregion class-body-v2transaction

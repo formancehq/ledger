@@ -12,16 +12,19 @@ type V2CreateExporterResponse struct {
 	V2CreateExporterResponse *components.V2CreateExporterResponse
 }
 
-func (o *V2CreateExporterResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2CreateExporterResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2CreateExporterResponse) GetV2CreateExporterResponse() *components.V2CreateExporterResponse {
-	if o == nil {
+func (v *V2CreateExporterResponse) GetV2CreateExporterResponse() *components.V2CreateExporterResponse {
+	if v == nil {
 		return nil
 	}
-	return o.V2CreateExporterResponse
+	return v.V2CreateExporterResponse
 }
+
+// #region class-body-v2createexporterresponse
+// #endregion class-body-v2createexporterresponse

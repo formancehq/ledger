@@ -14,25 +14,25 @@ type RunScriptRequest struct {
 	Script  components.Script `request:"mediaType=application/json"`
 }
 
-func (o *RunScriptRequest) GetLedger() string {
-	if o == nil {
+func (r *RunScriptRequest) GetLedger() string {
+	if r == nil {
 		return ""
 	}
-	return o.Ledger
+	return r.Ledger
 }
 
-func (o *RunScriptRequest) GetPreview() *bool {
-	if o == nil {
+func (r *RunScriptRequest) GetPreview() *bool {
+	if r == nil {
 		return nil
 	}
-	return o.Preview
+	return r.Preview
 }
 
-func (o *RunScriptRequest) GetScript() components.Script {
-	if o == nil {
+func (r *RunScriptRequest) GetScript() components.Script {
+	if r == nil {
 		return components.Script{}
 	}
-	return o.Script
+	return r.Script
 }
 
 type RunScriptResponse struct {
@@ -48,16 +48,16 @@ type RunScriptResponse struct {
 	ScriptResponse *components.ScriptResponse
 }
 
-func (o *RunScriptResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (r *RunScriptResponse) GetHTTPMeta() components.HTTPMetadata {
+	if r == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return r.HTTPMeta
 }
 
-func (o *RunScriptResponse) GetScriptResponse() *components.ScriptResponse {
-	if o == nil {
+func (r *RunScriptResponse) GetScriptResponse() *components.ScriptResponse {
+	if r == nil {
 		return nil
 	}
-	return o.ScriptResponse
+	return r.ScriptResponse
 }

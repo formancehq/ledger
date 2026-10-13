@@ -26,43 +26,46 @@ func (v V2Schema) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2Schema) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, []string{"version", "createdAt", "chart"}); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *V2Schema) GetVersion() string {
-	if o == nil {
+func (v *V2Schema) GetVersion() string {
+	if v == nil {
 		return ""
 	}
-	return o.Version
+	return v.Version
 }
 
-func (o *V2Schema) GetCreatedAt() time.Time {
-	if o == nil {
+func (v *V2Schema) GetCreatedAt() time.Time {
+	if v == nil {
 		return time.Time{}
 	}
-	return o.CreatedAt
+	return v.CreatedAt
 }
 
-func (o *V2Schema) GetChart() map[string]V2ChartSegment {
-	if o == nil {
+func (v *V2Schema) GetChart() map[string]V2ChartSegment {
+	if v == nil {
 		return map[string]V2ChartSegment{}
 	}
-	return o.Chart
+	return v.Chart
 }
 
-func (o *V2Schema) GetTransactions() map[string]V2TransactionTemplate {
-	if o == nil {
+func (v *V2Schema) GetTransactions() map[string]V2TransactionTemplate {
+	if v == nil {
 		return nil
 	}
-	return o.Transactions
+	return v.Transactions
 }
 
-func (o *V2Schema) GetQueries() map[string]V2QueryTemplate {
-	if o == nil {
+func (v *V2Schema) GetQueries() map[string]V2QueryTemplate {
+	if v == nil {
 		return nil
 	}
-	return o.Queries
+	return v.Queries
 }
+
+// #region class-body-v2schema
+// #endregion class-body-v2schema

@@ -13,27 +13,33 @@ type V2StopPipelineRequest struct {
 	PipelineID string `pathParam:"style=simple,explode=false,name=pipelineID"`
 }
 
-func (o *V2StopPipelineRequest) GetLedger() string {
-	if o == nil {
+func (v *V2StopPipelineRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
 
-func (o *V2StopPipelineRequest) GetPipelineID() string {
-	if o == nil {
+func (v *V2StopPipelineRequest) GetPipelineID() string {
+	if v == nil {
 		return ""
 	}
-	return o.PipelineID
+	return v.PipelineID
 }
+
+// #region class-body-v2stoppipelinerequest
+// #endregion class-body-v2stoppipelinerequest
 
 type V2StopPipelineResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
 }
 
-func (o *V2StopPipelineResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2StopPipelineResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
+
+// #region class-body-v2stoppipelineresponse
+// #endregion class-body-v2stoppipelineresponse

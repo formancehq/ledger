@@ -17,8 +17,8 @@ const (
 )
 
 type V2TargetID struct {
-	Str    *string  `queryParam:"inline"`
-	Bigint *big.Int `queryParam:"inline"`
+	Str    *string  `queryParam:"inline" union:"member"`
+	Bigint *big.Int `queryParam:"inline" union:"member"`
 
 	Type V2TargetIDType
 }
@@ -44,14 +44,14 @@ func CreateV2TargetIDBigint(bigint *big.Int) V2TargetID {
 func (u *V2TargetID) UnmarshalJSON(data []byte) error {
 
 	var str string = ""
-	if err := utils.UnmarshalJSON(data, &str, "", true, true); err == nil {
+	if err := utils.UnmarshalJSON(data, &str, "", true, nil); err == nil {
 		u.Str = &str
 		u.Type = V2TargetIDTypeStr
 		return nil
 	}
 
 	var bigint *big.Int = big.NewInt(0)
-	if err := utils.UnmarshalJSON(data, &bigint, "", true, true); err == nil {
+	if err := utils.UnmarshalJSON(data, &bigint, "", true, nil); err == nil {
 		u.Bigint = bigint
 		u.Type = V2TargetIDTypeBigint
 		return nil

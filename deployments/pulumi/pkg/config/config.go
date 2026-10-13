@@ -497,7 +497,7 @@ type MonitoringTraces struct {
 	Jaeger *MonitoringTracesJaeger `json:"jaeger" yaml:"jaeger"`
 
 	// OTLP is the OTLP configuration for traces
-	OTLP *MonitoringTracesOTLP `json:"observe" yaml:"observe"`
+	OTLP *MonitoringTracesOTLP `json:"otlp" yaml:"otlp"`
 }
 
 func (t *MonitoringTraces) toInput() *monitoring.TracesArgs {
@@ -551,7 +551,7 @@ type MonitoringMetrics struct {
 	KeepInMemory bool `json:"keep-in-memory" yaml:"keep-in-memory"`
 
 	// OTLP is the OTLP configuration for metrics
-	MonitoringMetricsOTLP *MonitoringMetricsOTLP `json:"observe" yaml:"observe"`
+	MonitoringMetricsOTLP *MonitoringMetricsOTLP `json:"otlp" yaml:"otlp"`
 }
 
 func (m *MonitoringMetrics) toInput() *monitoring.MetricsArgs {

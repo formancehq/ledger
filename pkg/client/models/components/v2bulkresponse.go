@@ -3,28 +3,34 @@
 package components
 
 type V2BulkResponse struct {
-	Data         []V2BulkElementResult `json:"data,omitempty"`
-	ErrorCode    *V2ErrorsEnum         `json:"errorCode,omitempty"`
-	ErrorMessage *string               `json:"errorMessage,omitempty"`
+	// Result of each element of the bulk request, in submission order
+	Data []V2BulkElementResult `json:"data,omitempty"`
+	// Machine-readable error code identifying the failure
+	ErrorCode *V2ErrorsEnum `json:"errorCode,omitempty"`
+	// Human-readable description of the error
+	ErrorMessage *string `json:"errorMessage,omitempty"`
 }
 
-func (o *V2BulkResponse) GetData() []V2BulkElementResult {
-	if o == nil {
+func (v *V2BulkResponse) GetData() []V2BulkElementResult {
+	if v == nil {
 		return nil
 	}
-	return o.Data
+	return v.Data
 }
 
-func (o *V2BulkResponse) GetErrorCode() *V2ErrorsEnum {
-	if o == nil {
+func (v *V2BulkResponse) GetErrorCode() *V2ErrorsEnum {
+	if v == nil {
 		return nil
 	}
-	return o.ErrorCode
+	return v.ErrorCode
 }
 
-func (o *V2BulkResponse) GetErrorMessage() *string {
-	if o == nil {
+func (v *V2BulkResponse) GetErrorMessage() *string {
+	if v == nil {
 		return nil
 	}
-	return o.ErrorMessage
+	return v.ErrorMessage
 }
+
+// #region class-body-v2bulkresponse
+// #endregion class-body-v2bulkresponse

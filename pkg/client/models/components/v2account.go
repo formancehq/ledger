@@ -7,13 +7,21 @@ import (
 	"time"
 )
 
+// V2Account - An account in the ledger, identified by its address and carrying its metadata and volumes
 type V2Account struct {
-	Address          string              `json:"address"`
-	Metadata         map[string]string   `json:"metadata"`
-	InsertionDate    *time.Time          `json:"insertionDate,omitempty"`
-	UpdatedAt        *time.Time          `json:"updatedAt,omitempty"`
-	FirstUsage       *time.Time          `json:"firstUsage,omitempty"`
-	Volumes          map[string]V2Volume `json:"volumes,omitempty"`
+	// The account address, a colon-separated segmented path such as users:001
+	Address string `json:"address"`
+	// Arbitrary key/value pairs attached to the account. Metadata is bi-temporal, so a point-in-time query returns the metadata as it stood at that time
+	Metadata map[string]string `json:"metadata"`
+	// When the account was first written to the ledger, on the request-time axis
+	InsertionDate *time.Time `json:"insertionDate,omitempty"`
+	// When the account was last modified, for example by a metadata change
+	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
+	// Transaction time of the earliest transaction touching this account. Inserting a backdated transaction can move it earlier
+	FirstUsage *time.Time `json:"firstUsage,omitempty"`
+	// Volumes per asset for a single account
+	Volumes map[string]V2Volume `json:"volumes,omitempty"`
+	// Volumes per asset for a single account
 	EffectiveVolumes map[string]V2Volume `json:"effectiveVolumes,omitempty"`
 }
 
@@ -22,57 +30,60 @@ func (v V2Account) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2Account) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, []string{"address", "metadata"}); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *V2Account) GetAddress() string {
-	if o == nil {
+func (v *V2Account) GetAddress() string {
+	if v == nil {
 		return ""
 	}
-	return o.Address
+	return v.Address
 }
 
-func (o *V2Account) GetMetadata() map[string]string {
-	if o == nil {
+func (v *V2Account) GetMetadata() map[string]string {
+	if v == nil {
 		return map[string]string{}
 	}
-	return o.Metadata
+	return v.Metadata
 }
 
-func (o *V2Account) GetInsertionDate() *time.Time {
-	if o == nil {
+func (v *V2Account) GetInsertionDate() *time.Time {
+	if v == nil {
 		return nil
 	}
-	return o.InsertionDate
+	return v.InsertionDate
 }
 
-func (o *V2Account) GetUpdatedAt() *time.Time {
-	if o == nil {
+func (v *V2Account) GetUpdatedAt() *time.Time {
+	if v == nil {
 		return nil
 	}
-	return o.UpdatedAt
+	return v.UpdatedAt
 }
 
-func (o *V2Account) GetFirstUsage() *time.Time {
-	if o == nil {
+func (v *V2Account) GetFirstUsage() *time.Time {
+	if v == nil {
 		return nil
 	}
-	return o.FirstUsage
+	return v.FirstUsage
 }
 
-func (o *V2Account) GetVolumes() map[string]V2Volume {
-	if o == nil {
+func (v *V2Account) GetVolumes() map[string]V2Volume {
+	if v == nil {
 		return nil
 	}
-	return o.Volumes
+	return v.Volumes
 }
 
-func (o *V2Account) GetEffectiveVolumes() map[string]V2Volume {
-	if o == nil {
+func (v *V2Account) GetEffectiveVolumes() map[string]V2Volume {
+	if v == nil {
 		return nil
 	}
-	return o.EffectiveVolumes
+	return v.EffectiveVolumes
 }
+
+// #region class-body-v2account
+// #endregion class-body-v2account

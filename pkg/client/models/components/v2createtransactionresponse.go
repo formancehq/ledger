@@ -3,12 +3,16 @@
 package components
 
 type V2CreateTransactionResponse struct {
+	// A transaction recorded in the ledger, carrying its postings, metadata and both bi-temporal timestamps
 	Data V2Transaction `json:"data"`
 }
 
-func (o *V2CreateTransactionResponse) GetData() V2Transaction {
-	if o == nil {
+func (v *V2CreateTransactionResponse) GetData() V2Transaction {
+	if v == nil {
 		return V2Transaction{}
 	}
-	return o.Data
+	return v.Data
 }
+
+// #region class-body-v2createtransactionresponse
+// #endregion class-body-v2createtransactionresponse

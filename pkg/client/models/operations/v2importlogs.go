@@ -13,27 +13,33 @@ type V2ImportLogsRequest struct {
 	V2ImportLogsRequest any `request:"mediaType=application/octet-stream"`
 }
 
-func (o *V2ImportLogsRequest) GetLedger() string {
-	if o == nil {
+func (v *V2ImportLogsRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
 
-func (o *V2ImportLogsRequest) GetV2ImportLogsRequest() any {
-	if o == nil {
+func (v *V2ImportLogsRequest) GetV2ImportLogsRequest() any {
+	if v == nil {
 		return nil
 	}
-	return o.V2ImportLogsRequest
+	return v.V2ImportLogsRequest
 }
+
+// #region class-body-v2importlogsrequest
+// #endregion class-body-v2importlogsrequest
 
 type V2ImportLogsResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
 }
 
-func (o *V2ImportLogsResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2ImportLogsResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
+
+// #region class-body-v2importlogsresponse
+// #endregion class-body-v2importlogsresponse

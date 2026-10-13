@@ -2,5 +2,24 @@
 
 package components
 
+import (
+	"github.com/formancehq/ledger/pkg/client/internal/utils"
+)
+
+// V2ChartAccountRules - Rules applied to accounts matching a chart-of-accounts segment
 type V2ChartAccountRules struct {
 }
+
+func (v V2ChartAccountRules) MarshalJSON() ([]byte, error) {
+	return utils.MarshalJSON(v, "", false)
+}
+
+func (v *V2ChartAccountRules) UnmarshalJSON(data []byte) error {
+	if err := utils.UnmarshalJSON(data, &v, "", false, nil); err != nil {
+		return err
+	}
+	return nil
+}
+
+// #region class-body-v2chartaccountrules
+// #endregion class-body-v2chartaccountrules

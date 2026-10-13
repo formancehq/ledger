@@ -7,14 +7,22 @@ import (
 	"time"
 )
 
+// V2Ledger - A ledger and its configuration
 type V2Ledger struct {
-	Name      string            `json:"name"`
-	AddedAt   time.Time         `json:"addedAt"`
-	Bucket    string            `json:"bucket"`
-	DeletedAt *time.Time        `json:"deletedAt,omitempty"`
-	Metadata  map[string]string `json:"metadata,omitempty"`
-	Features  map[string]string `json:"features,omitempty"`
-	ID        *int64            `json:"id,omitempty"`
+	// Name of the ledger
+	Name string `json:"name"`
+	// When the ledger was created
+	AddedAt time.Time `json:"addedAt"`
+	// Name of the storage bucket backing the ledger
+	Bucket string `json:"bucket"`
+	// When the ledger was deleted, absent for active ledgers
+	DeletedAt *time.Time `json:"deletedAt,omitempty"`
+	// Arbitrary key/value pairs attached to the resource
+	Metadata map[string]string `json:"metadata,omitempty"`
+	// Feature flags enabled on the ledger, keyed by feature name
+	Features map[string]string `json:"features,omitempty"`
+	// Unique sequential identifier for the ledger
+	ID *int64 `json:"id,omitempty"`
 }
 
 func (v V2Ledger) MarshalJSON() ([]byte, error) {
@@ -22,57 +30,60 @@ func (v V2Ledger) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2Ledger) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *V2Ledger) GetName() string {
-	if o == nil {
+func (v *V2Ledger) GetName() string {
+	if v == nil {
 		return ""
 	}
-	return o.Name
+	return v.Name
 }
 
-func (o *V2Ledger) GetAddedAt() time.Time {
-	if o == nil {
+func (v *V2Ledger) GetAddedAt() time.Time {
+	if v == nil {
 		return time.Time{}
 	}
-	return o.AddedAt
+	return v.AddedAt
 }
 
-func (o *V2Ledger) GetBucket() string {
-	if o == nil {
+func (v *V2Ledger) GetBucket() string {
+	if v == nil {
 		return ""
 	}
-	return o.Bucket
+	return v.Bucket
 }
 
-func (o *V2Ledger) GetDeletedAt() *time.Time {
-	if o == nil {
+func (v *V2Ledger) GetDeletedAt() *time.Time {
+	if v == nil {
 		return nil
 	}
-	return o.DeletedAt
+	return v.DeletedAt
 }
 
-func (o *V2Ledger) GetMetadata() map[string]string {
-	if o == nil {
+func (v *V2Ledger) GetMetadata() map[string]string {
+	if v == nil {
 		return nil
 	}
-	return o.Metadata
+	return v.Metadata
 }
 
-func (o *V2Ledger) GetFeatures() map[string]string {
-	if o == nil {
+func (v *V2Ledger) GetFeatures() map[string]string {
+	if v == nil {
 		return nil
 	}
-	return o.Features
+	return v.Features
 }
 
-func (o *V2Ledger) GetID() *int64 {
-	if o == nil {
+func (v *V2Ledger) GetID() *int64 {
+	if v == nil {
 		return nil
 	}
-	return o.ID
+	return v.ID
 }
+
+// #region class-body-v2ledger
+// #endregion class-body-v2ledger

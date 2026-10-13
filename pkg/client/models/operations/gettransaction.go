@@ -20,24 +20,24 @@ func (g GetTransactionRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (g *GetTransactionRequest) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &g, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &g, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *GetTransactionRequest) GetLedger() string {
-	if o == nil {
+func (g *GetTransactionRequest) GetLedger() string {
+	if g == nil {
 		return ""
 	}
-	return o.Ledger
+	return g.Ledger
 }
 
-func (o *GetTransactionRequest) GetTxid() *big.Int {
-	if o == nil {
+func (g *GetTransactionRequest) GetTxid() *big.Int {
+	if g == nil {
 		return big.NewInt(0)
 	}
-	return o.Txid
+	return g.Txid
 }
 
 type GetTransactionResponse struct {
@@ -46,16 +46,16 @@ type GetTransactionResponse struct {
 	TransactionResponse *components.TransactionResponse
 }
 
-func (o *GetTransactionResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (g *GetTransactionResponse) GetHTTPMeta() components.HTTPMetadata {
+	if g == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return g.HTTPMeta
 }
 
-func (o *GetTransactionResponse) GetTransactionResponse() *components.TransactionResponse {
-	if o == nil {
+func (g *GetTransactionResponse) GetTransactionResponse() *components.TransactionResponse {
+	if g == nil {
 		return nil
 	}
-	return o.TransactionResponse
+	return g.TransactionResponse
 }

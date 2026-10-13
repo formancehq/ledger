@@ -1,5 +1,17 @@
 # V2QueryResource
 
+The resource a query template targets
+
+## Example Usage
+
+```go
+import (
+	"github.com/formancehq/ledger/pkg/client/models/components"
+)
+
+value := components.V2QueryResourceTransactions
+```
+
 
 ## Values
 

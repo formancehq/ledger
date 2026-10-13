@@ -11,12 +11,15 @@ type V2RestoreBucketRequest struct {
 	Bucket string `pathParam:"style=simple,explode=false,name=bucket"`
 }
 
-func (o *V2RestoreBucketRequest) GetBucket() string {
-	if o == nil {
+func (v *V2RestoreBucketRequest) GetBucket() string {
+	if v == nil {
 		return ""
 	}
-	return o.Bucket
+	return v.Bucket
 }
+
+// #region class-body-v2restorebucketrequest
+// #endregion class-body-v2restorebucketrequest
 
 type V2RestoreBucketResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
@@ -24,16 +27,19 @@ type V2RestoreBucketResponse struct {
 	V2ErrorResponse *components.V2ErrorResponse
 }
 
-func (o *V2RestoreBucketResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2RestoreBucketResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2RestoreBucketResponse) GetV2ErrorResponse() *components.V2ErrorResponse {
-	if o == nil {
+func (v *V2RestoreBucketResponse) GetV2ErrorResponse() *components.V2ErrorResponse {
+	if v == nil {
 		return nil
 	}
-	return o.V2ErrorResponse
+	return v.V2ErrorResponse
 }
+
+// #region class-body-v2restorebucketresponse
+// #endregion class-body-v2restorebucketresponse

@@ -3,6 +3,8 @@ module github.com/formancehq/ledger/pkg/client
 go 1.22
 
 require (
-	github.com/ericlagergren/decimal v0.0.0-20221120152707-495c53812d05
+	github.com/stretchr/testify v1.12.1
 	golang.org/x/sync v0.8.0
 )
+
+require go.yaml.in/yaml/v3 v3.0.5 // indirect

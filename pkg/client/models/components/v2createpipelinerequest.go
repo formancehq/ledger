@@ -3,12 +3,16 @@
 package components
 
 type V2CreatePipelineRequest struct {
+	// Identifier of the exporter this pipeline feeds
 	ExporterID string `json:"exporterID"`
 }
 
-func (o *V2CreatePipelineRequest) GetExporterID() string {
-	if o == nil {
+func (v *V2CreatePipelineRequest) GetExporterID() string {
+	if v == nil {
 		return ""
 	}
-	return o.ExporterID
+	return v.ExporterID
 }
+
+// #region class-body-v2createpipelinerequest
+// #endregion class-body-v2createpipelinerequest

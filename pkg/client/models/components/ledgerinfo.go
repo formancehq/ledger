@@ -2,32 +2,36 @@
 
 package components
 
+// Storage backend information, including the applied migrations
 type Storage struct {
 	Migrations []MigrationInfo `json:"migrations,omitempty"`
 }
 
-func (o *Storage) GetMigrations() []MigrationInfo {
-	if o == nil {
+func (s *Storage) GetMigrations() []MigrationInfo {
+	if s == nil {
 		return nil
 	}
-	return o.Migrations
+	return s.Migrations
 }
 
+// LedgerInfo - Runtime information about a ledger, including the state of its storage migrations
 type LedgerInfo struct {
-	Name    *string  `json:"name,omitempty"`
+	// Name of the ledger
+	Name *string `json:"name,omitempty"`
+	// Storage backend information, including the applied migrations
 	Storage *Storage `json:"storage,omitempty"`
 }
 
-func (o *LedgerInfo) GetName() *string {
-	if o == nil {
+func (l *LedgerInfo) GetName() *string {
+	if l == nil {
 		return nil
 	}
-	return o.Name
+	return l.Name
 }
 
-func (o *LedgerInfo) GetStorage() *Storage {
-	if o == nil {
+func (l *LedgerInfo) GetStorage() *Storage {
+	if l == nil {
 		return nil
 	}
-	return o.Storage
+	return l.Storage
 }

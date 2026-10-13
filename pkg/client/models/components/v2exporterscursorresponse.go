@@ -2,6 +2,7 @@
 
 package components
 
+// V2ExportersCursorResponseCursor - Paginated cursor wrapping the list of exporters
 type V2ExportersCursorResponseCursor struct {
 	PageSize int64        `json:"pageSize"`
 	HasMore  bool         `json:"hasMore"`
@@ -10,49 +11,56 @@ type V2ExportersCursorResponseCursor struct {
 	Data     []V2Exporter `json:"data"`
 }
 
-func (o *V2ExportersCursorResponseCursor) GetPageSize() int64 {
-	if o == nil {
+func (v *V2ExportersCursorResponseCursor) GetPageSize() int64 {
+	if v == nil {
 		return 0
 	}
-	return o.PageSize
+	return v.PageSize
 }
 
-func (o *V2ExportersCursorResponseCursor) GetHasMore() bool {
-	if o == nil {
+func (v *V2ExportersCursorResponseCursor) GetHasMore() bool {
+	if v == nil {
 		return false
 	}
-	return o.HasMore
+	return v.HasMore
 }
 
-func (o *V2ExportersCursorResponseCursor) GetPrevious() *string {
-	if o == nil {
+func (v *V2ExportersCursorResponseCursor) GetPrevious() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Previous
+	return v.Previous
 }
 
-func (o *V2ExportersCursorResponseCursor) GetNext() *string {
-	if o == nil {
+func (v *V2ExportersCursorResponseCursor) GetNext() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Next
+	return v.Next
 }
 
-func (o *V2ExportersCursorResponseCursor) GetData() []V2Exporter {
-	if o == nil {
+func (v *V2ExportersCursorResponseCursor) GetData() []V2Exporter {
+	if v == nil {
 		return []V2Exporter{}
 	}
-	return o.Data
+	return v.Data
 }
+
+// #region class-body-v2exporterscursorresponsecursor
+// #endregion class-body-v2exporterscursorresponsecursor
 
 // V2ExportersCursorResponse - Exporters list
 type V2ExportersCursorResponse struct {
+	// Paginated cursor wrapping the list of exporters
 	Cursor V2ExportersCursorResponseCursor `json:"cursor"`
 }
 
-func (o *V2ExportersCursorResponse) GetCursor() V2ExportersCursorResponseCursor {
-	if o == nil {
+func (v *V2ExportersCursorResponse) GetCursor() V2ExportersCursorResponseCursor {
+	if v == nil {
 		return V2ExportersCursorResponseCursor{}
 	}
-	return o.Cursor
+	return v.Cursor
 }
+
+// #region class-body-v2exporterscursorresponse
+// #endregion class-body-v2exporterscursorresponse

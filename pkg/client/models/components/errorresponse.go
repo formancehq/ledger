@@ -3,28 +3,31 @@
 package components
 
 type ErrorResponse struct {
-	ErrorCode    ErrorsEnum `json:"errorCode"`
-	ErrorMessage string     `json:"errorMessage"`
-	Details      *string    `json:"details,omitempty"`
+	// Machine-readable error code identifying the failure
+	ErrorCode ErrorsEnum `json:"errorCode"`
+	// Human-readable description of the error
+	ErrorMessage string `json:"errorMessage"`
+	// Optional link carrying additional context about the error, such as a Numscript playground URL reproducing it
+	Details *string `json:"details,omitempty"`
 }
 
-func (o *ErrorResponse) GetErrorCode() ErrorsEnum {
-	if o == nil {
+func (e *ErrorResponse) GetErrorCode() ErrorsEnum {
+	if e == nil {
 		return ErrorsEnum("")
 	}
-	return o.ErrorCode
+	return e.ErrorCode
 }
 
-func (o *ErrorResponse) GetErrorMessage() string {
-	if o == nil {
+func (e *ErrorResponse) GetErrorMessage() string {
+	if e == nil {
 		return ""
 	}
-	return o.ErrorMessage
+	return e.ErrorMessage
 }
 
-func (o *ErrorResponse) GetDetails() *string {
-	if o == nil {
+func (e *ErrorResponse) GetDetails() *string {
+	if e == nil {
 		return nil
 	}
-	return o.Details
+	return e.Details
 }

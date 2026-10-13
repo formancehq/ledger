@@ -37,52 +37,52 @@ func (l ListLogsRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (l *ListLogsRequest) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &l, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &l, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *ListLogsRequest) GetLedger() string {
-	if o == nil {
+func (l *ListLogsRequest) GetLedger() string {
+	if l == nil {
 		return ""
 	}
-	return o.Ledger
+	return l.Ledger
 }
 
-func (o *ListLogsRequest) GetPageSize() *int64 {
-	if o == nil {
+func (l *ListLogsRequest) GetPageSize() *int64 {
+	if l == nil {
 		return nil
 	}
-	return o.PageSize
+	return l.PageSize
 }
 
-func (o *ListLogsRequest) GetAfter() *string {
-	if o == nil {
+func (l *ListLogsRequest) GetAfter() *string {
+	if l == nil {
 		return nil
 	}
-	return o.After
+	return l.After
 }
 
-func (o *ListLogsRequest) GetStartTime() *time.Time {
-	if o == nil {
+func (l *ListLogsRequest) GetStartTime() *time.Time {
+	if l == nil {
 		return nil
 	}
-	return o.StartTime
+	return l.StartTime
 }
 
-func (o *ListLogsRequest) GetEndTime() *time.Time {
-	if o == nil {
+func (l *ListLogsRequest) GetEndTime() *time.Time {
+	if l == nil {
 		return nil
 	}
-	return o.EndTime
+	return l.EndTime
 }
 
-func (o *ListLogsRequest) GetCursor() *string {
-	if o == nil {
+func (l *ListLogsRequest) GetCursor() *string {
+	if l == nil {
 		return nil
 	}
-	return o.Cursor
+	return l.Cursor
 }
 
 type ListLogsResponse struct {
@@ -91,16 +91,16 @@ type ListLogsResponse struct {
 	LogsCursorResponse *components.LogsCursorResponse
 }
 
-func (o *ListLogsResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (l *ListLogsResponse) GetHTTPMeta() components.HTTPMetadata {
+	if l == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return l.HTTPMeta
 }
 
-func (o *ListLogsResponse) GetLogsCursorResponse() *components.LogsCursorResponse {
-	if o == nil {
+func (l *ListLogsResponse) GetLogsCursorResponse() *components.LogsCursorResponse {
+	if l == nil {
 		return nil
 	}
-	return o.LogsCursorResponse
+	return l.LogsCursorResponse
 }

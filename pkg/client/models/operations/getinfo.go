@@ -12,16 +12,16 @@ type GetInfoResponse struct {
 	ConfigInfoResponse *components.ConfigInfoResponse
 }
 
-func (o *GetInfoResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (g *GetInfoResponse) GetHTTPMeta() components.HTTPMetadata {
+	if g == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return g.HTTPMeta
 }
 
-func (o *GetInfoResponse) GetConfigInfoResponse() *components.ConfigInfoResponse {
-	if o == nil {
+func (g *GetInfoResponse) GetConfigInfoResponse() *components.ConfigInfoResponse {
+	if g == nil {
 		return nil
 	}
-	return o.ConfigInfoResponse
+	return g.ConfigInfoResponse
 }

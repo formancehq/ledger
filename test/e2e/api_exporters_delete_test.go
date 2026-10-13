@@ -43,7 +43,7 @@ var _ = Context("Exporters creation API tests", func() {
 			err                    error
 		)
 		BeforeEach(func(specContext SpecContext) {
-			createExporterResponse, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateExporter(ctx, components.V2ExporterConfiguration{
+			createExporterResponse, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateExporter(ctx, components.V2CreateExporterRequest{
 				Driver: "http",
 				Config: map[string]any{
 					"url": "http://example.com",

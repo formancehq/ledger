@@ -40,66 +40,66 @@ func (c CountTransactionsRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (c *CountTransactionsRequest) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &c, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &c, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *CountTransactionsRequest) GetLedger() string {
-	if o == nil {
+func (c *CountTransactionsRequest) GetLedger() string {
+	if c == nil {
 		return ""
 	}
-	return o.Ledger
+	return c.Ledger
 }
 
-func (o *CountTransactionsRequest) GetReference() *string {
-	if o == nil {
+func (c *CountTransactionsRequest) GetReference() *string {
+	if c == nil {
 		return nil
 	}
-	return o.Reference
+	return c.Reference
 }
 
-func (o *CountTransactionsRequest) GetAccount() *string {
-	if o == nil {
+func (c *CountTransactionsRequest) GetAccount() *string {
+	if c == nil {
 		return nil
 	}
-	return o.Account
+	return c.Account
 }
 
-func (o *CountTransactionsRequest) GetSource() *string {
-	if o == nil {
+func (c *CountTransactionsRequest) GetSource() *string {
+	if c == nil {
 		return nil
 	}
-	return o.Source
+	return c.Source
 }
 
-func (o *CountTransactionsRequest) GetDestination() *string {
-	if o == nil {
+func (c *CountTransactionsRequest) GetDestination() *string {
+	if c == nil {
 		return nil
 	}
-	return o.Destination
+	return c.Destination
 }
 
-func (o *CountTransactionsRequest) GetStartTime() *time.Time {
-	if o == nil {
+func (c *CountTransactionsRequest) GetStartTime() *time.Time {
+	if c == nil {
 		return nil
 	}
-	return o.StartTime
+	return c.StartTime
 }
 
-func (o *CountTransactionsRequest) GetEndTime() *time.Time {
-	if o == nil {
+func (c *CountTransactionsRequest) GetEndTime() *time.Time {
+	if c == nil {
 		return nil
 	}
-	return o.EndTime
+	return c.EndTime
 }
 
-func (o *CountTransactionsRequest) GetMetadata() *Metadata {
-	if o == nil {
+func (c *CountTransactionsRequest) GetMetadata() *Metadata {
+	if c == nil {
 		return nil
 	}
-	return o.Metadata
+	return c.Metadata
 }
 
 type CountTransactionsResponse struct {
@@ -107,16 +107,16 @@ type CountTransactionsResponse struct {
 	Headers  map[string][]string
 }
 
-func (o *CountTransactionsResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (c *CountTransactionsResponse) GetHTTPMeta() components.HTTPMetadata {
+	if c == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return c.HTTPMeta
 }
 
-func (o *CountTransactionsResponse) GetHeaders() map[string][]string {
-	if o == nil {
+func (c *CountTransactionsResponse) GetHeaders() map[string][]string {
+	if c == nil {
 		return map[string][]string{}
 	}
-	return o.Headers
+	return c.Headers
 }

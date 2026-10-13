@@ -25,63 +25,69 @@ type V2AddMetadataToAccountRequest struct {
 	RequestBody map[string]string `request:"mediaType=application/json"`
 }
 
-func (o *V2AddMetadataToAccountRequest) GetLedger() string {
-	if o == nil {
+func (v *V2AddMetadataToAccountRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
 
-func (o *V2AddMetadataToAccountRequest) GetAddress() string {
-	if o == nil {
+func (v *V2AddMetadataToAccountRequest) GetAddress() string {
+	if v == nil {
 		return ""
 	}
-	return o.Address
+	return v.Address
 }
 
-func (o *V2AddMetadataToAccountRequest) GetDryRun() *bool {
-	if o == nil {
+func (v *V2AddMetadataToAccountRequest) GetDryRun() *bool {
+	if v == nil {
 		return nil
 	}
-	return o.DryRun
+	return v.DryRun
 }
 
-func (o *V2AddMetadataToAccountRequest) GetIdempotencyKey() *string {
-	if o == nil {
+func (v *V2AddMetadataToAccountRequest) GetIdempotencyKey() *string {
+	if v == nil {
 		return nil
 	}
-	return o.IdempotencyKey
+	return v.IdempotencyKey
 }
 
-func (o *V2AddMetadataToAccountRequest) GetSchemaVersion() *string {
-	if o == nil {
+func (v *V2AddMetadataToAccountRequest) GetSchemaVersion() *string {
+	if v == nil {
 		return nil
 	}
-	return o.SchemaVersion
+	return v.SchemaVersion
 }
 
-func (o *V2AddMetadataToAccountRequest) GetRequestBody() map[string]string {
-	if o == nil {
+func (v *V2AddMetadataToAccountRequest) GetRequestBody() map[string]string {
+	if v == nil {
 		return map[string]string{}
 	}
-	return o.RequestBody
+	return v.RequestBody
 }
+
+// #region class-body-v2addmetadatatoaccountrequest
+// #endregion class-body-v2addmetadatatoaccountrequest
 
 type V2AddMetadataToAccountResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
 	Headers  map[string][]string
 }
 
-func (o *V2AddMetadataToAccountResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2AddMetadataToAccountResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2AddMetadataToAccountResponse) GetHeaders() map[string][]string {
-	if o == nil {
+func (v *V2AddMetadataToAccountResponse) GetHeaders() map[string][]string {
+	if v == nil {
 		return map[string][]string{}
 	}
-	return o.Headers
+	return v.Headers
 }
+
+// #region class-body-v2addmetadatatoaccountresponse
+// #endregion class-body-v2addmetadatatoaccountresponse

@@ -5,4 +5,4 @@
 
 | Field                                                    | Type                                                     | Required                                                 | Description                                              |
 | -------------------------------------------------------- | -------------------------------------------------------- | -------------------------------------------------------- | -------------------------------------------------------- |
-| `Data`                                                   | [components.V2Stats](../../models/components/v2stats.md) | :heavy_check_mark:                                       | N/A                                                      |
+| `Data`                                                   | [components.V2Stats](../../models/components/v2stats.md) | :heavy_check_mark:                                       | Aggregate counts for a ledger                            |
