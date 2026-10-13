@@ -118,6 +118,14 @@ no audit entry, and stores no idempotency result. The retry can re-resolve its
 dependencies, while a concurrent proposal with the same business-intent hash
 can still establish the authoritative outcome.
 
+The same disposition applies when order processing discovers a technical
+failure: storage IO, a stale admission observation, missing preload coverage,
+an invalid execution plan, or an internal state invariant. The error type marks
+itself `UncommittedFailure`; the FSM discards staged writes and returns before
+the audit and idempotency writers. A corrected or repaired attempt may then
+establish the business outcome. Typed `FailureDetails` variants are reserved
+for definitive business and governance rejections.
+
 ## TechnicalUpdate Gate
 
 `Proposal.technical_updates` bypasses the order/log path, so a new

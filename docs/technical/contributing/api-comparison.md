@@ -1386,7 +1386,7 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 - **`domain`**: Always `"ledger"`
 - **`metadata`**: Error-specific key-value pairs with context
 
-**Adding a new error**: define a typed error implementing `domain.Describable` (`Kind`, `Reason`). If the FSM can emit it, also implement `domain.SerializableError` with `FailureDetails()` to supply a typed code and fact values. Keep diagnostic text in `Error()`; only the structured projection is persisted and rendered publicly. The exhaustive `kindToGRPCCode` switch + reflection test enforce that no new error reaches the API without a mapping. Keep this table in sync as a reference.
+**Adding a new error**: define a typed error implementing `domain.Describable` (`Kind`, `Reason`). If the FSM can emit it, also implement `domain.SerializableError`. A definitive business rejection supplies typed `FailureDetails()` for audit and idempotency; a technical failure implements `UncommittedFailure`, returns no audited details, and exits before both writers. Keep diagnostic text in `Error()`; public presentation must not expose it. The exhaustive `kindToGRPCCode` switch + reflection test enforce that no new error reaches the API without a mapping. Keep this table in sync as a reference.
 
 | Error | gRPC Code | Reason | Metadata |
 |-------|-----------|--------|----------|
@@ -1406,11 +1406,11 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Volume overflow | `FAILED_PRECONDITION` | `VOLUME_OVERFLOW` | `account`, `asset`, `side`, `amount`, `current` |
 | Volume not materialized | `INTERNAL` | `VOLUME_NOT_MATERIALIZED` | `account`, `asset`, `side` |
 | Balance not found | `FAILED_PRECONDITION` | `BALANCE_NOT_FOUND` | `account`, `asset` |
-| Balance not preloaded | `FAILED_PRECONDITION` | `BALANCE_NOT_PRELOADED` | `account`, `asset` |
+| Balance not preloaded | `UNAVAILABLE` | `BALANCE_NOT_PRELOADED` | `account`, `asset`, `color` (public context; no audited facts) |
 | Numscript parse error | `INVALID_ARGUMENT` | `NUMSCRIPT_PARSE_ERROR` | *(none; diagnostic text stays server-side)* |
 | Numscript compile error | `INVALID_ARGUMENT` | `NUMSCRIPT_COMPILE_ERROR` | Code-specific stable facts, such as `expected` and `got` for a type mismatch |
 | Numscript execution error | `FAILED_PRECONDITION` | `NUMSCRIPT_EXECUTION_ERROR` | Code-specific stable facts, such as `asset`, `needed` and `available` for missing funds |
-| Numscript runtime error | `INTERNAL` | `NUMSCRIPT_RUNTIME` | *(none unless the error supplies stable facts)* |
+| Numscript runtime error | `INTERNAL` | `NUMSCRIPT_RUNTIME` | *(none; technical failure)* |
 | Numscript not found | `NOT_FOUND` | `NUMSCRIPT_NOT_FOUND` | `name` |
 | Numscript invalid version | `INVALID_ARGUMENT` | `NUMSCRIPT_INVALID_VERSION` | `version` |
 | Numscript version already exists | `ALREADY_EXISTS` | `NUMSCRIPT_VERSION_ALREADY_EXISTS` | `name`, `version` |
@@ -1433,7 +1433,7 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Prepared query not found | `NOT_FOUND` | `PREPARED_QUERY_NOT_FOUND` | `ledger`, `name` |
 | Filter compilation error | `INVALID_ARGUMENT` | `FILTER_COMPILATION_ERROR` | *(none; diagnostic text stays server-side)* |
 | Index not found | `FAILED_PRECONDITION` | `INDEX_NOT_FOUND` | `index` |
-| Index building | `UNAVAILABLE` | `INDEX_BUILDING` | `index` |
+| Index building | `UNAVAILABLE` | `INDEX_BUILDING` | *(none; read-side readiness)* |
 | Index inconsistent | `INTERNAL` | `INDEX_INCONSISTENT` | *(none — internal index/storage details remain server-side)* |
 | Account not matching type | `FAILED_PRECONDITION` | `ACCOUNT_NOT_MATCHING_TYPE` | `address` |
 | Account type not found | `NOT_FOUND` | `ACCOUNT_TYPE_NOT_FOUND` | `name` |
@@ -1447,8 +1447,8 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Sink batch size too large | `INVALID_ARGUMENT` | `SINK_BATCH_SIZE_TOO_LARGE` | `name`, `batchSize`, `max` |
 | Invalid order type (protocol mismatch) | `INTERNAL` | `INVALID_ORDER_TYPE` | `typeName` |
 | Invalid apply type (protocol mismatch) | `INTERNAL` | `INVALID_APPLY_TYPE` | `typeName` |
-| Storage operation failed | `INTERNAL` | `STORAGE_OPERATION_FAILED` | `operation` |
-| Preload coverage miss (admission contract violation) | `INTERNAL` | `COVERAGE_MISS` | *(none — coverage context remains in diagnostics and audit)* |
+| Storage operation failed | `INTERNAL` | `STORAGE_OPERATION_FAILED` | *(none; diagnostic operation remains server-side)* |
+| Preload coverage miss (admission contract violation) | `INTERNAL` | `COVERAGE_MISS` | *(none — coverage context remains in diagnostics, outside audit)* |
 | Checkpoint ID required | `INVALID_ARGUMENT` | `CHECKPOINT_ID_REQUIRED` | *(none)* |
 
 ### REST/HTTP Error Mapping

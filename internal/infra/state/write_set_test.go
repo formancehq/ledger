@@ -26,7 +26,9 @@ func TestWriteSetRejectsExhaustedLogSequenceWithoutMutation(t *testing.T) {
 	for range 2 {
 		sequence, err := buf.IncrementNextSequenceID()
 		require.Zero(t, sequence)
-		require.Equal(t, "logSequence", domain.FailureFactsOf(err).Facts["counter"])
+		var exhausted *domain.ErrSequenceExhausted
+		require.ErrorAs(t, err, &exhausted)
+		require.Equal(t, domain.SequenceCounterLog, exhausted.Counter)
 		require.Equal(t, uint64(math.MaxUint64), buf.NextSequenceID)
 	}
 }

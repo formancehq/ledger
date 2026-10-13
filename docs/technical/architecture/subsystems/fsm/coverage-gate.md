@@ -96,8 +96,9 @@ The FSM rejects the proposal before the audit writer. Earlier writes staged in
 the proposal's `WriteSet` are discarded; no `AuditFailure`, log, or frozen
 idempotency outcome records this admission bug. Once admission declares the
 missing key, the same business request can be retried. The error implements
-`UncommittedFailure` to carry this disposition from its producer to apply;
-other failures still follow their audited outcome path.
+`UncommittedFailure` to carry this disposition from its producer to apply.
+Other preparation, storage, and invariant failures use the same disposition;
+only definitive business and governance rejections follow the audited path.
 
 `domain.StoreFailure` preserves a nested coverage miss rather than relabelling
 it as `STORAGE_OPERATION_FAILED`. The domain helper matches its stable reason
@@ -107,9 +108,9 @@ order. The same handling applies to `gatedAccessor.Delete` when an overlay
 flushes a staged tombstone. Keeping the concrete miss intact lets the FSM
 recognise the uncommitted failure and lets operators retain its diagnostics.
 
-`INVALID_EXECUTION_PLAN` is a separate plan error. This change does not alter
-its audited outcome where it reaches the order audit path. Technical-update
-and preload failures already return before that path.
+`INVALID_EXECUTION_PLAN` is a separate plan error. It is also uncommitted:
+an admission/FSM coverage contract violation is not a business rejection.
+Technical-update and preload failures already return before the audit path.
 
 ## The cascade-on-delete edge case
 

@@ -661,7 +661,7 @@ All business errors carry an `ErrorInfo` detail with a machine-readable reason. 
 | Transaction already reverted | `FAILED_PRECONDITION` | `TRANSACTION_ALREADY_REVERTED` | `transactionId` |
 | Insufficient funds | `FAILED_PRECONDITION` | `INSUFFICIENT_FUNDS` | `account`, `asset`, `amount`, `balance` |
 | Balance not found | `FAILED_PRECONDITION` | `BALANCE_NOT_FOUND` | `account`, `asset` |
-| Balance not preloaded | `FAILED_PRECONDITION` | `BALANCE_NOT_PRELOADED` | `account`, `asset` |
+| Balance not preloaded | `UNAVAILABLE` | `BALANCE_NOT_PRELOADED` | `account`, `asset`, `color` (public context; no audited facts) |
 | Numscript parse error | `INVALID_ARGUMENT` | `NUMSCRIPT_PARSE_ERROR` | `details` |
 | Numscript compile error | `INVALID_ARGUMENT` | `NUMSCRIPT_COMPILE_ERROR` | `details` |
 | Numscript execution error | `FAILED_PRECONDITION` | `NUMSCRIPT_EXECUTION_ERROR` | `detail` |

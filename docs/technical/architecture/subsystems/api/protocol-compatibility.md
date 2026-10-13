@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"36"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"37"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 36:
+leader. For example, with a schema implementing revision 37:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 36' \
+grpcurl -plaintext -H 'ledger-protocol-version: 37' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -545,3 +545,22 @@ result; staged order writes are discarded. A corrected proposal can be retried.
 Successful cluster-policy updates still produce audited orders and the policy
 projection remains checker-verified. The removed arms are renumbered because
 v3 is unreleased. This shared gRPC change requires revision 36 on both sides.
+
+## Technical failures outside the audited outcome (revision 37)
+
+Revision 37 removes 22 technical, transient, invariant, and unclassified
+variants from the `FailureDetails` oneof. Storage failures, stale admission
+observations, missing preload coverage, sequence exhaustion, malformed internal
+plans, and inconsistent materialized state now return without an `AuditFailure`
+entry or frozen idempotency result. Mirror source sequence gaps are also
+retryable after correcting the source. Read-side index and checkpoint readiness
+errors retain their public reasons but have no audited detail variant.
+
+Known Numscript compiler and execution errors keep their specific audited
+variants. An unclassified compiler failure and an unknown Numscript runtime
+failure are not business verdicts. The generic compile and execution fallback
+variants are removed; public responses retain their coarse reasons. An
+unconfigured committed metadata policy is an internal failure, not a rejection
+attributed to the business command. Successful orders still produce audit
+entries. This shared protobuf change requires fresh v3 state and revision 37
+clients and servers.

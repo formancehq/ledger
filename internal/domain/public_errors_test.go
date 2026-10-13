@@ -31,7 +31,7 @@ func TestPublicErrorDetails(t *testing.T) {
 		{"nested business private", &BusinessError{Err: &BusinessError{Err: private}}, true, nil},
 		{"ordinary", ordinary, true, map[string]string{"name": "caller-ledger"}},
 		{"business ordinary", &BusinessError{Err: ordinary}, true, map[string]string{"name": "caller-ledger"}},
-		{"distinct outer reason", outer, true, map[string]string{}},
+		{"distinct outer reason", outer, true, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -105,7 +105,7 @@ func TestPublicErrorDetailsRejectMalformedFacts(t *testing.T) {
 
 	invalid := &ErrNumscriptExecution{
 		Detail:  "private diagnostic",
-		Details: commonpb.MustFailureDetails("NUMSCRIPT_COMPILE_ERROR", nil),
+		Details: commonpb.MustFailureDetails("NUMSCRIPT_COMPILE_INVALID_UNCAPPED_SOURCE", nil),
 	}
 	message, metadata, overridden := PublicErrorDetails(invalid)
 	require.True(t, overridden)

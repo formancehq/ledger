@@ -812,163 +812,141 @@ message FailureDetails {
     AccountTypePatternTooLongDetails account_type_pattern_too_long = 11 [(failure_reasons) = ERROR_REASON_VALIDATION];
     AssetInvalidDetails asset_invalid = 12 [(failure_reasons) = ERROR_REASON_VALIDATION];
     BalanceNotFoundDetails balance_not_found = 13 [(failure_reasons) = ERROR_REASON_BALANCE_NOT_FOUND];
-    BalanceNotPreloadedDetails balance_not_preloaded = 14 [(failure_reasons) = ERROR_REASON_BALANCE_NOT_PRELOADED];
-    CheckpointIdRequiredDetails checkpoint_id_required = 15 [(failure_reasons) = ERROR_REASON_CHECKPOINT_ID_REQUIRED];
-    CheckpointLimitReachedDetails checkpoint_limit_reached = 16 [(failure_reasons) = ERROR_REASON_CHECKPOINT_LIMIT_REACHED];
-    CheckpointNotFoundDetails checkpoint_not_found = 17 [(failure_reasons) = ERROR_REASON_CHECKPOINT_NOT_FOUND];
-    CheckpointNotReadyDetails checkpoint_not_ready = 18 [(failure_reasons) = ERROR_REASON_CHECKPOINT_NOT_READY];
-    ColorInvalidDetails color_invalid = 19 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    ColorTooLongDetails color_too_long = 20 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    EmptyTransactionDetails empty_transaction = 21 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    FilterCompilationErrorDetails filter_compilation_error = 22 [(failure_reasons) = ERROR_REASON_FILTER_COMPILATION_ERROR];
-    IdempotencyKeyConflictDetails idempotency_key_conflict = 23 [(failure_reasons) = ERROR_REASON_IDEMPOTENCY_KEY_CONFLICT];
-    IdRequiredDetails id_required = 24 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    IndexAlreadyExistsDetails index_already_exists = 25 [(failure_reasons) = ERROR_REASON_INDEX_ALREADY_EXISTS];
-    IndexBuildingDetails index_building = 26 [(failure_reasons) = ERROR_REASON_INDEX_BUILDING];
-    IndexInconsistentDetails index_inconsistent = 27 [(failure_reasons) = ERROR_REASON_INDEX_INCONSISTENT];
-    IndexNotFoundDetails index_not_found = 28 [(failure_reasons) = ERROR_REASON_INDEX_NOT_FOUND];
-    IndexTargetUnsupportedDetails index_target_unsupported = 29 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    InsufficientFundsDetails insufficient_funds = 30 [(failure_reasons) = ERROR_REASON_INSUFFICIENT_FUNDS];
-    InvalidApplyTypeDetails invalid_apply_type = 31 [(failure_reasons) = ERROR_REASON_INVALID_APPLY_TYPE];
-    InvalidCronExpressionDetails invalid_cron_expression = 32 [(failure_reasons) = ERROR_REASON_INVALID_CRON_EXPRESSION];
-    InvalidExecutionPlanDetails invalid_execution_plan = 33 [(failure_reasons) = ERROR_REASON_INVALID_EXECUTION_PLAN];
-    InvalidOrderTypeDetails invalid_order_type = 34 [(failure_reasons) = ERROR_REASON_INVALID_ORDER_TYPE];
-    InvalidPatternDetails invalid_pattern = 35 [(failure_reasons) = ERROR_REASON_INVALID_PATTERN];
-    InvalidSkippableReasonDetails invalid_skippable_reason = 36 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    LedgerAlreadyExistsDetails ledger_already_exists = 37 [(failure_reasons) = ERROR_REASON_LEDGER_ALREADY_EXISTS];
-    LedgerDeletedDetails ledger_deleted = 38 [(failure_reasons) = ERROR_REASON_LEDGER_DELETED];
-    LedgerInMirrorModeDetails ledger_in_mirror_mode = 39 [(failure_reasons) = ERROR_REASON_LEDGER_IN_MIRROR_MODE];
-    LedgerNameInvalidCharDetails ledger_name_invalid_char = 40 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    LedgerNameRequiredDetails ledger_name_required = 41 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    LedgerNameReservedPrefixDetails ledger_name_reserved_prefix = 42 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    LedgerNameTooLongDetails ledger_name_too_long = 43 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    LedgerNotFoundDetails ledger_not_found = 44 [(failure_reasons) = ERROR_REASON_LEDGER_NOT_FOUND];
-    LedgerNotInMirrorModeDetails ledger_not_in_mirror_mode = 45 [(failure_reasons) = ERROR_REASON_LEDGER_NOT_IN_MIRROR_MODE];
-    MetadataFieldNotInSchemaDetails metadata_field_not_in_schema = 46 [(failure_reasons) = ERROR_REASON_METADATA_FIELD_NOT_IN_SCHEMA];
-    MetadataKeyEmptyDetails metadata_key_empty = 47 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    MetadataKeyInvalidCharDetails metadata_key_invalid_char = 48 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    MetadataKeyRequiredDetails metadata_key_required = 49 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    MetadataLimitsUnconfiguredDetails metadata_limits_unconfigured = 50 [(failure_reasons) = ERROR_REASON_CLUSTER_POLICY_INVALID];
-    MetadataLimitExceededDetails metadata_limit_exceeded = 51 [(failure_reasons) = ERROR_REASON_METADATA_LIMIT_EXCEEDED];
-    MetadataNotFoundDetails metadata_not_found = 52 [(failure_reasons) = ERROR_REASON_METADATA_NOT_FOUND];
-    MetadataValueContainsNullByteDetails metadata_value_contains_null_byte = 53 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    MirrorHttpUrlInvalidDetails mirror_http_url_invalid = 54 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    MirrorIamRegionRequiredDetails mirror_iam_region_required = 55 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    MirrorIamRequiresTlsDetails mirror_iam_requires_tls = 56 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    MirrorRewriteRuleInvalidDetails mirror_rewrite_rule_invalid = 57 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    MirrorV2LogIdGapDetails mirror_v2_log_id_gap = 58 [(failure_reasons) = ERROR_REASON_MIRROR_V2_LOG_ID_GAP];
-    MirrorV2LogIdInvalidDetails mirror_v2_log_id_invalid = 59 [(failure_reasons) = ERROR_REASON_MIRROR_V2_LOG_ID_INVALID];
-    NumscriptAssetMismatchDetails numscript_asset_mismatch = 60 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptBadArityDetails numscript_bad_arity = 61 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptBadMetaValueDetails numscript_bad_meta_value = 62 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptBadPortionDetails numscript_bad_portion = 63 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptCannotCastScopedAccountDetails numscript_cannot_cast_scoped_account = 64 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptCannotCastToStringDetails numscript_cannot_cast_to_string = 65 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptCannotStoreScopedAccountDetails numscript_cannot_store_scoped_account = 66 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptCompileBadArityDetails numscript_compile_bad_arity = 67 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_COMPILE_ERROR];
-    NumscriptCompileCannotCastToStringDetails numscript_compile_cannot_cast_to_string = 68 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_COMPILE_ERROR];
-    NumscriptCompileCannotStoreScopedAccountDetails numscript_compile_cannot_store_scoped_account = 69 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_COMPILE_ERROR];
-    NumscriptCompileDuplicateRemainingDetails numscript_compile_duplicate_remaining = 70 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_COMPILE_ERROR];
-    NumscriptCompileDuplicateVariableDetails numscript_compile_duplicate_variable = 71 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_COMPILE_ERROR];
-    NumscriptCompileErrorDetails numscript_compile_error = 72 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_COMPILE_ERROR];
-    NumscriptCompileExperimentalFeatureDetails numscript_compile_experimental_feature = 73 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_COMPILE_ERROR];
-    NumscriptCompileInvalidFeatureDetails numscript_compile_invalid_feature = 74 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_COMPILE_ERROR];
-    NumscriptCompileInvalidMetaPositionDetails numscript_compile_invalid_meta_position = 75 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_COMPILE_ERROR];
-    NumscriptCompileInvalidTypeDetails numscript_compile_invalid_type = 76 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_COMPILE_ERROR];
-    NumscriptCompileInvalidUncappedSourceDetails numscript_compile_invalid_uncapped_source = 77 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_COMPILE_ERROR];
-    NumscriptCompileInvalidVariableValueDetails numscript_compile_invalid_variable_value = 78 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_COMPILE_ERROR];
-    NumscriptCompileMissingVariableDetails numscript_compile_missing_variable = 79 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_COMPILE_ERROR];
-    NumscriptCompileTypeMismatchDetails numscript_compile_type_mismatch = 80 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_COMPILE_ERROR];
-    NumscriptCompileUnboundVariableDetails numscript_compile_unbound_variable = 81 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_COMPILE_ERROR];
-    NumscriptCompileUnknownFunctionDetails numscript_compile_unknown_function = 82 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_COMPILE_ERROR];
-    NumscriptContentRequiredDetails numscript_content_required = 83 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    NumscriptCurrencyMismatchDetails numscript_currency_mismatch = 84 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptDivideByZeroDetails numscript_divide_by_zero = 85 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptExecutionErrorDetails numscript_execution_error = 86 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptExperimentalFeatureDetails numscript_experimental_feature = 87 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptInvalidAccountNameDetails numscript_invalid_account_name = 88 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptInvalidAllotmentInSendAllDetails numscript_invalid_allotment_in_send_all = 89 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptInvalidAllotmentSumDetails numscript_invalid_allotment_sum = 90 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptInvalidAssetDetails numscript_invalid_asset = 91 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptInvalidColorDetails numscript_invalid_color = 92 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptInvalidFeatureDetails numscript_invalid_feature = 93 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptInvalidMonetaryLiteralDetails numscript_invalid_monetary_literal = 94 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptInvalidNestedMetaDetails numscript_invalid_nested_meta = 95 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptInvalidNumberLiteralDetails numscript_invalid_number_literal = 96 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptInvalidRemainingAllotmentDetails numscript_invalid_remaining_allotment = 97 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptInvalidScopeDetails numscript_invalid_scope = 98 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptInvalidTypeDetails numscript_invalid_type = 99 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptInvalidUnboundedScalingAddressDetails numscript_invalid_unbounded_scaling_address = 100 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptInvalidUnboundedSendAllDetails numscript_invalid_unbounded_send_all = 101 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptInvalidUncappedSourceDetails numscript_invalid_uncapped_source = 102 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptInvalidVersionDetails numscript_invalid_version = 103 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_INVALID_VERSION];
-    NumscriptMetadataNotFoundDetails numscript_metadata_not_found = 104 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptMissingFundsDetails numscript_missing_funds = 105 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptMissingVariableDetails numscript_missing_variable = 106 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptNameInvalidCharDetails numscript_name_invalid_char = 107 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    NumscriptNameRequiredDetails numscript_name_required = 108 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    NumscriptNameTooLongDetails numscript_name_too_long = 109 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    NumscriptNegativeAmountDetails numscript_negative_amount = 110 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptNegativeBalanceDetails numscript_negative_balance = 111 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptNegativePortionDetails numscript_negative_portion = 112 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptNotFoundDetails numscript_not_found = 113 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_NOT_FOUND];
-    NumscriptParseErrorDetails numscript_parse_error = 114 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_PARSE_ERROR];
-    NumscriptPostingAmountOverflowDetails numscript_posting_amount_overflow = 115 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptPostingNegativeAmountDetails numscript_posting_negative_amount = 116 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptRuntimeDetails numscript_runtime = 117 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME];
-    NumscriptScalingUnsupportedDetails numscript_scaling_unsupported = 118 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    NumscriptTypeErrorDetails numscript_type_error = 119 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptUnboundFunctionDetails numscript_unbound_function = 120 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptUnboundVariableDetails numscript_unbound_variable = 121 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptVersionAlreadyExistsDetails numscript_version_already_exists = 122 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_VERSION_ALREADY_EXISTS];
-    PostingsAndScriptConflictDetails postings_and_script_conflict = 123 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    PreparedQueryAlreadyExistsDetails prepared_query_already_exists = 124 [(failure_reasons) = ERROR_REASON_PREPARED_QUERY_ALREADY_EXISTS];
-    PreparedQueryNameInvalidCharDetails prepared_query_name_invalid_char = 125 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    PreparedQueryNameRequiredDetails prepared_query_name_required = 126 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    PreparedQueryNameTooLongDetails prepared_query_name_too_long = 127 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    PreparedQueryNotFoundDetails prepared_query_not_found = 128 [(failure_reasons) = ERROR_REASON_PREPARED_QUERY_NOT_FOUND];
-    PreparedQueryRequiredDetails prepared_query_required = 129 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    PreparedQueryTargetUnsupportedDetails prepared_query_target_unsupported = 130 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    RevertTargetCreatedInBatchDetails revert_target_created_in_batch = 131 [(failure_reasons) = ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH];
-    ScopedBalanceUnsupportedDetails scoped_balance_unsupported = 132 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    ScriptAndReferenceConflictDetails script_and_reference_conflict = 133 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    ScriptRequiredDetails script_required = 134 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    SequenceExhaustedDetails sequence_exhausted = 135 [(failure_reasons) = ERROR_REASON_SEQUENCE_EXHAUSTED];
-    SigningKeyIdInvalidCharDetails signing_key_id_invalid_char = 136 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    SigningKeyIdRequiredDetails signing_key_id_required = 137 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    SigningKeyIdTooLongDetails signing_key_id_too_long = 138 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    SigningKeyInvalidLengthDetails signing_key_invalid_length = 139 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    SinkAlreadyExistsDetails sink_already_exists = 140 [(failure_reasons) = ERROR_REASON_SINK_ALREADY_EXISTS];
-    SinkBatchSizeTooLargeDetails sink_batch_size_too_large = 141 [(failure_reasons) = ERROR_REASON_SINK_BATCH_SIZE_TOO_LARGE];
-    SinkControllerMismatchDetails sink_controller_mismatch = 142 [(failure_reasons) = ERROR_REASON_SINK_CONTROLLER_MISMATCH];
-    SinkNotFoundDetails sink_not_found = 143 [(failure_reasons) = ERROR_REASON_SINK_NOT_FOUND];
-    StaleClusterPolicyDetails stale_cluster_policy = 144 [(failure_reasons) = ERROR_REASON_STALE_CLUSTER_POLICY];
-    StaleInputsResolutionDetails stale_inputs_resolution = 145 [(failure_reasons) = ERROR_REASON_STALE_INPUTS_RESOLUTION];
-    StaleProposalDetails stale_proposal = 146 [(failure_reasons) = ERROR_REASON_STALE_PROPOSAL];
-    StorageOperationFailedDetails storage_operation_failed = 147 [(failure_reasons) = ERROR_REASON_STORAGE_OPERATION_FAILED];
-    TargetRequiredDetails target_required = 148 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    TransactionAlreadyRevertedDetails transaction_already_reverted = 149 [(failure_reasons) = ERROR_REASON_TRANSACTION_ALREADY_REVERTED];
-    TransactionNotFoundDetails transaction_not_found = 150 [(failure_reasons) = ERROR_REASON_TRANSACTION_NOT_FOUND];
-    TransactionReferenceConflictDetails transaction_reference_conflict = 151 [(failure_reasons) = ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT];
-    TransactionReferenceNotFoundDetails transaction_reference_not_found = 152 [(failure_reasons) = ERROR_REASON_TRANSACTION_REFERENCE_NOT_FOUND];
-    TransactionReferenceTooLongDetails transaction_reference_too_long = 153 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    TransactionStateInconsistentDetails transaction_state_inconsistent = 154 [(failure_reasons) = ERROR_REASON_TRANSACTION_STATE_INCONSISTENT];
-    TransactionTargetMissingDetails transaction_target_missing = 155 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    TransientAccountNonZeroDetails transient_account_non_zero = 156 [(failure_reasons) = ERROR_REASON_TRANSIENT_ACCOUNT_NON_ZERO];
-    VolumeNotMaterializedDetails volume_not_materialized = 157 [(failure_reasons) = ERROR_REASON_VOLUME_NOT_MATERIALIZED];
-    VolumeOverflowDetails volume_overflow = 158 [(failure_reasons) = ERROR_REASON_VOLUME_OVERFLOW];
-    AccountMetadataKeyEmptyDetails account_metadata_key_empty = 159 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    AccountMetadataKeyInvalidCharDetails account_metadata_key_invalid_char = 160 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    AccountMetadataValueContainsNullByteDetails account_metadata_value_contains_null_byte = 161 [(failure_reasons) = ERROR_REASON_VALIDATION];
-    AccountMetadataLimitsUnconfiguredDetails account_metadata_limits_unconfigured = 162 [(failure_reasons) = ERROR_REASON_CLUSTER_POLICY_INVALID];
-    AccountMetadataLimitExceededDetails account_metadata_limit_exceeded = 163 [(failure_reasons) = ERROR_REASON_METADATA_LIMIT_EXCEEDED];
-    MetadataKeyLimitExceededDetails metadata_key_limit_exceeded = 164 [(failure_reasons) = ERROR_REASON_METADATA_LIMIT_EXCEEDED];
-    AccountMetadataKeyLimitExceededDetails account_metadata_key_limit_exceeded = 165 [(failure_reasons) = ERROR_REASON_METADATA_LIMIT_EXCEEDED];
-    NumscriptInsufficientFundsDetails numscript_insufficient_funds = 166 [(failure_reasons) = ERROR_REASON_INSUFFICIENT_FUNDS];
-    NumscriptDivideByZeroWithNumeratorDetails numscript_divide_by_zero_with_numerator = 167 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptScopedMetadataNotFoundDetails numscript_scoped_metadata_not_found = 168 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptScopedNegativeBalanceDetails numscript_scoped_negative_balance = 169 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_RUNTIME, (failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
-    NumscriptVersionNotFoundDetails numscript_version_not_found = 170 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_NOT_FOUND];
+    CheckpointIdRequiredDetails checkpoint_id_required = 14 [(failure_reasons) = ERROR_REASON_CHECKPOINT_ID_REQUIRED];
+    CheckpointLimitReachedDetails checkpoint_limit_reached = 15 [(failure_reasons) = ERROR_REASON_CHECKPOINT_LIMIT_REACHED];
+    CheckpointNotFoundDetails checkpoint_not_found = 16 [(failure_reasons) = ERROR_REASON_CHECKPOINT_NOT_FOUND];
+    ColorInvalidDetails color_invalid = 17 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    ColorTooLongDetails color_too_long = 18 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    EmptyTransactionDetails empty_transaction = 19 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    IdempotencyKeyConflictDetails idempotency_key_conflict = 20 [(failure_reasons) = ERROR_REASON_IDEMPOTENCY_KEY_CONFLICT];
+    IdRequiredDetails id_required = 21 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    IndexAlreadyExistsDetails index_already_exists = 22 [(failure_reasons) = ERROR_REASON_INDEX_ALREADY_EXISTS];
+    IndexNotFoundDetails index_not_found = 23 [(failure_reasons) = ERROR_REASON_INDEX_NOT_FOUND];
+    IndexTargetUnsupportedDetails index_target_unsupported = 24 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    InsufficientFundsDetails insufficient_funds = 25 [(failure_reasons) = ERROR_REASON_INSUFFICIENT_FUNDS];
+    InvalidCronExpressionDetails invalid_cron_expression = 26 [(failure_reasons) = ERROR_REASON_INVALID_CRON_EXPRESSION];
+    InvalidPatternDetails invalid_pattern = 27 [(failure_reasons) = ERROR_REASON_INVALID_PATTERN];
+    InvalidSkippableReasonDetails invalid_skippable_reason = 28 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    LedgerAlreadyExistsDetails ledger_already_exists = 29 [(failure_reasons) = ERROR_REASON_LEDGER_ALREADY_EXISTS];
+    LedgerDeletedDetails ledger_deleted = 30 [(failure_reasons) = ERROR_REASON_LEDGER_DELETED];
+    LedgerInMirrorModeDetails ledger_in_mirror_mode = 31 [(failure_reasons) = ERROR_REASON_LEDGER_IN_MIRROR_MODE];
+    LedgerNameInvalidCharDetails ledger_name_invalid_char = 32 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    LedgerNameRequiredDetails ledger_name_required = 33 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    LedgerNameReservedPrefixDetails ledger_name_reserved_prefix = 34 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    LedgerNameTooLongDetails ledger_name_too_long = 35 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    LedgerNotFoundDetails ledger_not_found = 36 [(failure_reasons) = ERROR_REASON_LEDGER_NOT_FOUND];
+    LedgerNotInMirrorModeDetails ledger_not_in_mirror_mode = 37 [(failure_reasons) = ERROR_REASON_LEDGER_NOT_IN_MIRROR_MODE];
+    MetadataFieldNotInSchemaDetails metadata_field_not_in_schema = 38 [(failure_reasons) = ERROR_REASON_METADATA_FIELD_NOT_IN_SCHEMA];
+    MetadataKeyEmptyDetails metadata_key_empty = 39 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    MetadataKeyInvalidCharDetails metadata_key_invalid_char = 40 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    MetadataKeyRequiredDetails metadata_key_required = 41 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    MetadataLimitExceededDetails metadata_limit_exceeded = 42 [(failure_reasons) = ERROR_REASON_METADATA_LIMIT_EXCEEDED];
+    MetadataNotFoundDetails metadata_not_found = 43 [(failure_reasons) = ERROR_REASON_METADATA_NOT_FOUND];
+    MetadataValueContainsNullByteDetails metadata_value_contains_null_byte = 44 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    MirrorHttpUrlInvalidDetails mirror_http_url_invalid = 45 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    MirrorIamRegionRequiredDetails mirror_iam_region_required = 46 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    MirrorIamRequiresTlsDetails mirror_iam_requires_tls = 47 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    MirrorRewriteRuleInvalidDetails mirror_rewrite_rule_invalid = 48 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    NumscriptAssetMismatchDetails numscript_asset_mismatch = 49 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptBadArityDetails numscript_bad_arity = 50 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptBadMetaValueDetails numscript_bad_meta_value = 51 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptBadPortionDetails numscript_bad_portion = 52 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptCannotCastScopedAccountDetails numscript_cannot_cast_scoped_account = 53 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptCannotCastToStringDetails numscript_cannot_cast_to_string = 54 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptCannotStoreScopedAccountDetails numscript_cannot_store_scoped_account = 55 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptCompileBadArityDetails numscript_compile_bad_arity = 56 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_COMPILE_ERROR];
+    NumscriptCompileCannotCastToStringDetails numscript_compile_cannot_cast_to_string = 57 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_COMPILE_ERROR];
+    NumscriptCompileCannotStoreScopedAccountDetails numscript_compile_cannot_store_scoped_account = 58 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_COMPILE_ERROR];
+    NumscriptCompileDuplicateRemainingDetails numscript_compile_duplicate_remaining = 59 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_COMPILE_ERROR];
+    NumscriptCompileDuplicateVariableDetails numscript_compile_duplicate_variable = 60 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_COMPILE_ERROR];
+    NumscriptCompileExperimentalFeatureDetails numscript_compile_experimental_feature = 61 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_COMPILE_ERROR];
+    NumscriptCompileInvalidFeatureDetails numscript_compile_invalid_feature = 62 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_COMPILE_ERROR];
+    NumscriptCompileInvalidMetaPositionDetails numscript_compile_invalid_meta_position = 63 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_COMPILE_ERROR];
+    NumscriptCompileInvalidTypeDetails numscript_compile_invalid_type = 64 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_COMPILE_ERROR];
+    NumscriptCompileInvalidUncappedSourceDetails numscript_compile_invalid_uncapped_source = 65 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_COMPILE_ERROR];
+    NumscriptCompileInvalidVariableValueDetails numscript_compile_invalid_variable_value = 66 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_COMPILE_ERROR];
+    NumscriptCompileMissingVariableDetails numscript_compile_missing_variable = 67 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_COMPILE_ERROR];
+    NumscriptCompileTypeMismatchDetails numscript_compile_type_mismatch = 68 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_COMPILE_ERROR];
+    NumscriptCompileUnboundVariableDetails numscript_compile_unbound_variable = 69 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_COMPILE_ERROR];
+    NumscriptCompileUnknownFunctionDetails numscript_compile_unknown_function = 70 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_COMPILE_ERROR];
+    NumscriptContentRequiredDetails numscript_content_required = 71 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    NumscriptCurrencyMismatchDetails numscript_currency_mismatch = 72 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptDivideByZeroDetails numscript_divide_by_zero = 73 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptExperimentalFeatureDetails numscript_experimental_feature = 74 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptInvalidAccountNameDetails numscript_invalid_account_name = 75 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptInvalidAllotmentInSendAllDetails numscript_invalid_allotment_in_send_all = 76 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptInvalidAllotmentSumDetails numscript_invalid_allotment_sum = 77 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptInvalidAssetDetails numscript_invalid_asset = 78 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptInvalidColorDetails numscript_invalid_color = 79 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptInvalidFeatureDetails numscript_invalid_feature = 80 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptInvalidMonetaryLiteralDetails numscript_invalid_monetary_literal = 81 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptInvalidNestedMetaDetails numscript_invalid_nested_meta = 82 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptInvalidNumberLiteralDetails numscript_invalid_number_literal = 83 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptInvalidRemainingAllotmentDetails numscript_invalid_remaining_allotment = 84 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptInvalidScopeDetails numscript_invalid_scope = 85 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptInvalidTypeDetails numscript_invalid_type = 86 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptInvalidUnboundedScalingAddressDetails numscript_invalid_unbounded_scaling_address = 87 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptInvalidUnboundedSendAllDetails numscript_invalid_unbounded_send_all = 88 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptInvalidUncappedSourceDetails numscript_invalid_uncapped_source = 89 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptInvalidVersionDetails numscript_invalid_version = 90 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_INVALID_VERSION];
+    NumscriptMetadataNotFoundDetails numscript_metadata_not_found = 91 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptMissingFundsDetails numscript_missing_funds = 92 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptMissingVariableDetails numscript_missing_variable = 93 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptNameInvalidCharDetails numscript_name_invalid_char = 94 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    NumscriptNameRequiredDetails numscript_name_required = 95 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    NumscriptNameTooLongDetails numscript_name_too_long = 96 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    NumscriptNegativeAmountDetails numscript_negative_amount = 97 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptNegativeBalanceDetails numscript_negative_balance = 98 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptNegativePortionDetails numscript_negative_portion = 99 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptNotFoundDetails numscript_not_found = 100 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_NOT_FOUND];
+    NumscriptParseErrorDetails numscript_parse_error = 101 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_PARSE_ERROR];
+    NumscriptPostingAmountOverflowDetails numscript_posting_amount_overflow = 102 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptPostingNegativeAmountDetails numscript_posting_negative_amount = 103 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptScalingUnsupportedDetails numscript_scaling_unsupported = 104 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    NumscriptTypeErrorDetails numscript_type_error = 105 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptUnboundFunctionDetails numscript_unbound_function = 106 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptUnboundVariableDetails numscript_unbound_variable = 107 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptVersionAlreadyExistsDetails numscript_version_already_exists = 108 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_VERSION_ALREADY_EXISTS];
+    PostingsAndScriptConflictDetails postings_and_script_conflict = 109 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    PreparedQueryAlreadyExistsDetails prepared_query_already_exists = 110 [(failure_reasons) = ERROR_REASON_PREPARED_QUERY_ALREADY_EXISTS];
+    PreparedQueryNameInvalidCharDetails prepared_query_name_invalid_char = 111 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    PreparedQueryNameRequiredDetails prepared_query_name_required = 112 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    PreparedQueryNameTooLongDetails prepared_query_name_too_long = 113 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    PreparedQueryNotFoundDetails prepared_query_not_found = 114 [(failure_reasons) = ERROR_REASON_PREPARED_QUERY_NOT_FOUND];
+    PreparedQueryRequiredDetails prepared_query_required = 115 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    PreparedQueryTargetUnsupportedDetails prepared_query_target_unsupported = 116 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    RevertTargetCreatedInBatchDetails revert_target_created_in_batch = 117 [(failure_reasons) = ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH];
+    ScopedBalanceUnsupportedDetails scoped_balance_unsupported = 118 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    ScriptAndReferenceConflictDetails script_and_reference_conflict = 119 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    ScriptRequiredDetails script_required = 120 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    SigningKeyIdInvalidCharDetails signing_key_id_invalid_char = 121 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    SigningKeyIdRequiredDetails signing_key_id_required = 122 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    SigningKeyIdTooLongDetails signing_key_id_too_long = 123 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    SigningKeyInvalidLengthDetails signing_key_invalid_length = 124 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    SinkAlreadyExistsDetails sink_already_exists = 125 [(failure_reasons) = ERROR_REASON_SINK_ALREADY_EXISTS];
+    SinkBatchSizeTooLargeDetails sink_batch_size_too_large = 126 [(failure_reasons) = ERROR_REASON_SINK_BATCH_SIZE_TOO_LARGE];
+    SinkControllerMismatchDetails sink_controller_mismatch = 127 [(failure_reasons) = ERROR_REASON_SINK_CONTROLLER_MISMATCH];
+    SinkNotFoundDetails sink_not_found = 128 [(failure_reasons) = ERROR_REASON_SINK_NOT_FOUND];
+    TargetRequiredDetails target_required = 129 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    TransactionAlreadyRevertedDetails transaction_already_reverted = 130 [(failure_reasons) = ERROR_REASON_TRANSACTION_ALREADY_REVERTED];
+    TransactionNotFoundDetails transaction_not_found = 131 [(failure_reasons) = ERROR_REASON_TRANSACTION_NOT_FOUND];
+    TransactionReferenceConflictDetails transaction_reference_conflict = 132 [(failure_reasons) = ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT];
+    TransactionReferenceNotFoundDetails transaction_reference_not_found = 133 [(failure_reasons) = ERROR_REASON_TRANSACTION_REFERENCE_NOT_FOUND];
+    TransactionReferenceTooLongDetails transaction_reference_too_long = 134 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    TransactionTargetMissingDetails transaction_target_missing = 135 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    TransientAccountNonZeroDetails transient_account_non_zero = 136 [(failure_reasons) = ERROR_REASON_TRANSIENT_ACCOUNT_NON_ZERO];
+    VolumeOverflowDetails volume_overflow = 137 [(failure_reasons) = ERROR_REASON_VOLUME_OVERFLOW];
+    AccountMetadataKeyEmptyDetails account_metadata_key_empty = 138 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    AccountMetadataKeyInvalidCharDetails account_metadata_key_invalid_char = 139 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    AccountMetadataValueContainsNullByteDetails account_metadata_value_contains_null_byte = 140 [(failure_reasons) = ERROR_REASON_VALIDATION];
+    AccountMetadataLimitExceededDetails account_metadata_limit_exceeded = 141 [(failure_reasons) = ERROR_REASON_METADATA_LIMIT_EXCEEDED];
+    MetadataKeyLimitExceededDetails metadata_key_limit_exceeded = 142 [(failure_reasons) = ERROR_REASON_METADATA_LIMIT_EXCEEDED];
+    AccountMetadataKeyLimitExceededDetails account_metadata_key_limit_exceeded = 143 [(failure_reasons) = ERROR_REASON_METADATA_LIMIT_EXCEEDED];
+    NumscriptInsufficientFundsDetails numscript_insufficient_funds = 144 [(failure_reasons) = ERROR_REASON_INSUFFICIENT_FUNDS];
+    NumscriptDivideByZeroWithNumeratorDetails numscript_divide_by_zero_with_numerator = 145 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptScopedMetadataNotFoundDetails numscript_scoped_metadata_not_found = 146 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptScopedNegativeBalanceDetails numscript_scoped_negative_balance = 147 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
+    NumscriptVersionNotFoundDetails numscript_version_not_found = 148 [(failure_reasons) = ERROR_REASON_NUMSCRIPT_NOT_FOUND];
   }
 }
 
@@ -1020,11 +998,6 @@ message BalanceNotFoundDetails {
   optional string asset = 2;
 }
 
-message BalanceNotPreloadedDetails {
-  optional string account = 1;
-  optional string asset = 2;
-  optional string color = 3;
-}
 
 message CheckpointIdRequiredDetails {
 }
@@ -1037,9 +1010,6 @@ message CheckpointNotFoundDetails {
   optional uint64 checkpoint_id = 1;
 }
 
-message CheckpointNotReadyDetails {
-  optional uint64 checkpoint_id = 1;
-}
 
 message ColorInvalidDetails {
 }
@@ -1050,8 +1020,6 @@ message ColorTooLongDetails {
 message EmptyTransactionDetails {
 }
 
-message FilterCompilationErrorDetails {
-}
 
 message IdempotencyKeyConflictDetails {
   optional string key = 1;
@@ -1064,13 +1032,7 @@ message IndexAlreadyExistsDetails {
   optional string index = 1;
 }
 
-message IndexBuildingDetails {
-  optional string index = 1;
-}
 
-message IndexInconsistentDetails {
-  optional string index = 1;
-}
 
 message IndexNotFoundDetails {
   optional string index = 1;
@@ -1093,18 +1055,12 @@ message NumscriptInsufficientFundsDetails {
   optional string balance = 3;
 }
 
-message InvalidApplyTypeDetails {
-}
 
 message InvalidCronExpressionDetails {
   optional string expression = 1;
 }
 
-message InvalidExecutionPlanDetails {
-}
 
-message InvalidOrderTypeDetails {
-}
 
 message InvalidPatternDetails {
   optional string pattern = 1;
@@ -1170,12 +1126,7 @@ message AccountMetadataKeyInvalidCharDetails {
 message MetadataKeyRequiredDetails {
 }
 
-message MetadataLimitsUnconfiguredDetails {
-}
 
-message AccountMetadataLimitsUnconfiguredDetails {
-  optional string account = 1;
-}
 
 message MetadataLimitExceededDetails {
   optional string dimension = 1;
@@ -1232,15 +1183,7 @@ message MirrorIamRequiresTlsDetails {
 message MirrorRewriteRuleInvalidDetails {
 }
 
-message MirrorV2LogIdGapDetails {
-  optional string name = 1;
-  optional uint64 got = 2;
-  optional uint64 expected = 3;
-}
 
-message MirrorV2LogIdInvalidDetails {
-  optional string name = 1;
-}
 
 message NumscriptAssetMismatchDetails {
   optional string expected = 1;
@@ -1293,8 +1236,6 @@ message NumscriptCompileDuplicateVariableDetails {
   optional string name = 1;
 }
 
-message NumscriptCompileErrorDetails {
-}
 
 message NumscriptCompileExperimentalFeatureDetails {
   optional string flag_name = 1;
@@ -1353,8 +1294,6 @@ message NumscriptDivideByZeroWithNumeratorDetails {
   optional string numerator = 1;
 }
 
-message NumscriptExecutionErrorDetails {
-}
 
 message NumscriptExperimentalFeatureDetails {
   optional string flag_name = 1;
@@ -1493,8 +1432,6 @@ message NumscriptPostingNegativeAmountDetails {
   optional string amount = 2;
 }
 
-message NumscriptRuntimeDetails {
-}
 
 message NumscriptScalingUnsupportedDetails {
 }
@@ -1557,9 +1494,6 @@ message ScriptAndReferenceConflictDetails {
 message ScriptRequiredDetails {
 }
 
-message SequenceExhaustedDetails {
-  optional string counter = 1;
-}
 
 message SigningKeyIdInvalidCharDetails {
 }
@@ -1592,19 +1526,9 @@ message SinkNotFoundDetails {
   optional string name = 1;
 }
 
-message StaleClusterPolicyDetails {
-  optional uint64 proposed_revision = 1;
-  optional uint64 applied_revision = 2;
-}
 
-message StaleInputsResolutionDetails {
-}
 
-message StaleProposalDetails {
-}
 
-message StorageOperationFailedDetails {
-}
 
 message TargetRequiredDetails {
 }
@@ -1630,9 +1554,6 @@ message TransactionReferenceNotFoundDetails {
 message TransactionReferenceTooLongDetails {
 }
 
-message TransactionStateInconsistentDetails {
-  optional uint64 transaction_id = 1;
-}
 
 message TransactionTargetMissingDetails {
 }
@@ -1641,12 +1562,6 @@ message TransientAccountNonZeroDetails {
   optional string accounts = 1;
 }
 
-message VolumeNotMaterializedDetails {
-  optional string account = 1;
-  optional string asset = 2;
-  optional string color = 3;
-  optional string side = 4;
-}
 
 message VolumeOverflowDetails {
   optional string account = 1;

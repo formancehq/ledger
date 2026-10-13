@@ -1,7 +1,6 @@
 package state
 
 import (
-	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -66,7 +65,7 @@ func TestIdempotencyFailureFactsMatchAudit(t *testing.T) {
 		},
 		{
 			name: "numscript execution error",
-			err:  &domain.ErrNumscriptExecution{Detail: "cannot send negative amount: -4"},
+			err:  &domain.ErrNumscriptExecution{Detail: "cannot send negative amount: -4", Details: commonpb.MustFailureDetails("NUMSCRIPT_NEGATIVE_AMOUNT", map[string]string{"amount": "-4"})},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -236,12 +235,6 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{"name": "normal-ledger"},
 		},
 		{
-			name:        "StaleClusterPolicy",
-			err:         &domain.ErrStaleClusterPolicy{ProposedRevision: 3, AppliedRevision: 5},
-			wantReason:  domain.ErrReasonStaleClusterPolicy,
-			wantContext: map[string]string{"proposedRevision": "3", "appliedRevision": "5"},
-		},
-		{
 			name:        "CheckpointLimitReached",
 			err:         &domain.ErrCheckpointLimitReached{Limit: 10},
 			wantReason:  domain.ErrReasonCheckpointLimitReached,
@@ -267,15 +260,6 @@ func auditFailureCases() []auditFailureCase {
 			},
 		},
 		{
-			// The last-resort guard when a committed policy carries no
-			// ceilings; it reports the policy as invalid rather than blaming
-			// the caller's request.
-			name:        "MetadataLimitsUnconfigured",
-			err:         domain.ErrMetadataLimitsUnconfigured,
-			wantReason:  domain.ErrReasonClusterPolicyInvalid,
-			wantContext: map[string]string{},
-		},
-		{
 			name:        "InvalidCronExpression",
 			err:         &domain.ErrInvalidCronExpression{Expression: "* * * *", Details: "expected 5 or 6 fields"},
 			wantReason:  domain.ErrReasonInvalidCronExpression,
@@ -286,12 +270,6 @@ func auditFailureCases() []auditFailureCase {
 			err:         &domain.ErrSinkAlreadyExists{Name: "kafka-main"},
 			wantReason:  domain.ErrReasonSinkAlreadyExists,
 			wantContext: map[string]string{"name": "kafka-main"},
-		},
-		{
-			name:        "SequenceExhausted",
-			err:         &domain.ErrSequenceExhausted{Counter: domain.SequenceCounterTransactionID},
-			wantReason:  domain.ErrReasonSequenceExhausted,
-			wantContext: map[string]string{"counter": "transactionId"},
 		},
 		{
 			name:        "SinkNotFound",
@@ -360,17 +338,6 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{"transactionId": "91"},
 		},
 		{
-			name: "TransactionStateInconsistent",
-			err: &domain.ErrTransactionStateInconsistent{
-				TransactionID: 91,
-				Operation:     "reverting transaction",
-			},
-			wantReason: domain.ErrReasonTransactionStateInconsistent,
-			wantContext: map[string]string{
-				"transactionId": "91",
-			},
-		},
-		{
 			// The Provided enum is rendered through domain.ReasonString, so the
 			// projected value is the client-facing identifier, not the enum name.
 			name:        "InvalidSkippableReason",
@@ -389,27 +356,6 @@ func auditFailureCases() []auditFailureCase {
 			err:         &domain.ErrBalanceNotFound{Account: "user:erin", Asset: "USD/2"},
 			wantReason:  domain.ErrReasonBalanceNotFound,
 			wantContext: map[string]string{"account": "user:erin", "asset": "USD/2"},
-		},
-		{
-			// Unlike ErrInsufficientFunds this type publishes color
-			// UNCONDITIONALLY (errors.go:1249) — only Error() branches on the
-			// empty color. Both rows therefore carry the same key set.
-			name:        "BalanceNotPreloadedColored",
-			err:         &domain.ErrBalanceNotPreloaded{Account: "user:frank", Asset: "USD/2", Color: "RESERVED"},
-			wantReason:  domain.ErrReasonBalanceNotPreloaded,
-			wantContext: map[string]string{"account": "user:frank", "asset": "USD/2", "color": "RESERVED"},
-		},
-		{
-			name:        "BalanceNotPreloadedUncolored",
-			err:         &domain.ErrBalanceNotPreloaded{Account: "user:grace", Asset: "EUR/2"},
-			wantReason:  domain.ErrReasonBalanceNotPreloaded,
-			wantContext: map[string]string{"account": "user:grace", "asset": "EUR/2", "color": ""},
-		},
-		{
-			name:        "VolumeNotMaterialized",
-			err:         &domain.ErrVolumeNotMaterialized{Account: "user:heidi", Asset: "USD/2", Color: "RESERVED", Side: "source"},
-			wantReason:  domain.ErrReasonVolumeNotMaterialized,
-			wantContext: map[string]string{"account": "user:heidi", "asset": "USD/2", "color": "RESERVED", "side": "source"},
 		},
 		{
 			// joinedAccounts renders "account/asset" for the uncolored bucket and
@@ -443,18 +389,6 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{"target": "TRANSACTION", "key": "invoice"},
 		},
 		{
-			name:        "MirrorV2LogIDGap",
-			err:         &domain.ErrMirrorV2LogIDGap{Name: "mirror-ledger", Got: 12, Expected: 9},
-			wantReason:  domain.ErrReasonMirrorV2LogIDGap,
-			wantContext: map[string]string{"name": "mirror-ledger", "got": "12", "expected": "9"},
-		},
-		{
-			name:        "MirrorV2LogIDInvalid",
-			err:         &domain.ErrMirrorV2LogIDInvalid{Name: "mirror-ledger"},
-			wantReason:  domain.ErrReasonMirrorV2LogIDInvalid,
-			wantContext: map[string]string{"name": "mirror-ledger"},
-		},
-		{
 			name:        "PreparedQueryAlreadyExists",
 			err:         &domain.ErrPreparedQueryAlreadyExists{Ledger: "main", Name: "top-accounts"},
 			wantReason:  domain.ErrReasonPreparedQueryAlreadyExists,
@@ -477,24 +411,6 @@ func auditFailureCases() []auditFailureCase {
 			err:         &domain.ErrIndexNotFound{Index: "main/TRANSACTION/invoice"},
 			wantReason:  domain.ErrReasonIndexNotFound,
 			wantContext: map[string]string{"index": "main/TRANSACTION/invoice"},
-		},
-		{
-			name:        "IndexBuilding",
-			err:         &domain.ErrIndexBuilding{Index: "main/TRANSACTION/invoice"},
-			wantReason:  domain.ErrReasonIndexBuilding,
-			wantContext: map[string]string{"index": "main/TRANSACTION/invoice"},
-		},
-		{
-			name:        "IndexInconsistent",
-			err:         &domain.ErrIndexInconsistent{Index: "main/TRANSACTION/invoice", Detail: "logId 7 missing from the log index"},
-			wantReason:  domain.ErrReasonIndexInconsistent,
-			wantContext: map[string]string{"index": "main/TRANSACTION/invoice"},
-		},
-		{
-			name:        "CheckpointNotReady",
-			err:         &domain.ErrCheckpointNotReady{CheckpointID: 18},
-			wantReason:  domain.ErrReasonCheckpointNotReady,
-			wantContext: map[string]string{"checkpointId": "18"},
 		},
 		{
 			// Version is gated on != "" (errors.go:1073), and Error() branches on
@@ -530,21 +446,15 @@ func auditFailureCases() []auditFailureCase {
 		},
 		{
 			name:        "NumscriptCompile",
-			err:         &domain.ErrNumscriptCompile{Detail: "cannot take all balance of an unbounded source"},
+			err:         &domain.ErrNumscriptCompile{Detail: "cannot take all balance of an unbounded source", Details: commonpb.MustFailureDetails("NUMSCRIPT_COMPILE_INVALID_UNCAPPED_SOURCE", nil)},
 			wantReason:  domain.ErrReasonNumscriptCompileError,
 			wantContext: map[string]string{},
 		},
 		{
 			name:        "NumscriptExecution",
-			err:         &domain.ErrNumscriptExecution{Detail: "cannot send negative amount: -4"},
+			err:         &domain.ErrNumscriptExecution{Detail: "cannot send negative amount: -4", Details: commonpb.MustFailureDetails("NUMSCRIPT_NEGATIVE_AMOUNT", map[string]string{"amount": "-4"})},
 			wantReason:  domain.ErrReasonNumscriptExecutionError,
-			wantContext: map[string]string{},
-		},
-		{
-			name:        "NumscriptRuntime",
-			err:         &domain.ErrNumscriptRuntime{Detail: "numscript panic: boom"},
-			wantReason:  domain.ErrReasonNumscriptRuntime,
-			wantContext: map[string]string{},
+			wantContext: map[string]string{"amount": "-4"},
 		},
 		{
 			name:        "AccountNotMatchingType",
@@ -592,54 +502,10 @@ func auditFailureCases() []auditFailureCase {
 			wantReason:  domain.ErrReasonInvalidPattern,
 			wantContext: map[string]string{"pattern": "user:["},
 		},
-		{
-			name:        "FilterCompilation",
-			err:         &domain.ErrFilterCompilation{Detail: "cannot parse 'x' as int64"},
-			wantReason:  domain.ErrReasonFilterCompilation,
-			wantContext: map[string]string{},
-		},
-		{
-			name:        "InvalidOrderType",
-			err:         &domain.ErrInvalidOrderType{TypeName: "*raftcmdpb.Order_Unknown"},
-			wantReason:  domain.ErrReasonInvalidOrderType,
-			wantContext: map[string]string{},
-		},
-		{
-			name:        "InvalidApplyType",
-			err:         &domain.ErrInvalidApplyType{TypeName: "*raftcmdpb.LedgerApplyOrder_Unknown"},
-			wantReason:  domain.ErrReasonInvalidApplyType,
-			wantContext: map[string]string{},
-		},
-		{
-			// Reason_ is diagnostic text; no free-form text enters audited facts.
-			name:        "InvalidExecutionPlan",
-			err:         &domain.ErrInvalidExecutionPlan{Reason_: "coverage bit 9 past the attribute slice"},
-			wantReason:  domain.ErrReasonInvalidExecutionPlan,
-			wantContext: map[string]string{},
-		},
-		{
-			// Operation and Cause remain diagnostic (#326).
-			name:        "StorageOperation",
-			err:         &domain.ErrStorageOperation{Operation: "loading volume", Cause: errors.New("pebble: /var/lib/ledger: io error")},
-			wantReason:  domain.ErrReasonStorageOperation,
-			wantContext: map[string]string{},
-		},
 		// The stateless sentinels below select a zero-field detail variant.
 		// They are reached through their exported SerializableError
 		// var — the concrete type is unexported, and that var IS the identity
 		// every call site compares against with errors.Is.
-		{
-			name:        "StaleProposal",
-			err:         domain.ErrStaleProposal,
-			wantReason:  domain.ErrReasonStaleProposal,
-			wantContext: map[string]string{},
-		},
-		{
-			name:        "StaleInputsResolution",
-			err:         domain.ErrStaleInputsResolution,
-			wantReason:  domain.ErrReasonStaleInputsResolution,
-			wantContext: map[string]string{},
-		},
 		{
 			name:        "CheckpointIDRequired",
 			err:         domain.ErrCheckpointIDRequired,
@@ -910,25 +776,14 @@ func sortedKeys(set map[describableTypeKey]bool) []string {
 	return out
 }
 
-// TestBuildAuditFailureDoesNotUnwrap pins the no-wrap contract of StoreFailure:
-// the FSM must receive a bare coverage miss to reject it before audit. A storage
-// wrapper would instead be recorded as STORAGE_OPERATION_FAILED.
-//
-// It is deliberately NOT a row in the table. It exercises two errors and asserts a
-// negative, and a row would register ErrStorageOperation in the coverage set on the
-// strength of a test that is not about that type's own projection.
-func TestBuildAuditFailureDoesNotUnwrap(t *testing.T) {
+// A storage error remains uncommitted even when its underlying cause is a
+// coverage miss. The caller can retry after repairing either condition.
+func TestStoreFailureDoesNotFreezeCoverageMiss(t *testing.T) {
 	t.Parallel()
 
 	miss := &ErrCoverageMiss{Attribute: "volumes", IDHex: "0102", RaftIndex: 42}
-
-	failure := buildAuditFailure(&domain.ErrStorageOperation{Operation: "loading volume", Cause: miss})
-
-	require.Equal(t, domain.ErrReasonStorageOperation, domain.ReasonString(failure.GetReason()))
-	require.Empty(t, failure.GetFacts(),
-		"the wrap strips the identifying key — this is what EN-1379 prevents")
-
-	// The supported path preserves the miss for the uncommitted rejection.
-	require.Equal(t, domain.ErrReasonCoverageMiss,
-		domain.StoreFailure("loading volume", miss).Reason())
+	storage := domain.StoreFailure("loading volume", miss)
+	require.Equal(t, domain.ErrReasonCoverageMiss, storage.Reason())
+	_, uncommitted := storage.(domain.UncommittedFailure)
+	require.True(t, uncommitted)
 }

@@ -32,7 +32,7 @@ func TestCompilerFailureFactsExcludeDiagnosticText(t *testing.T) {
 	second := mapCompilerError(numscriptlib.CompilerTypeError{
 		Kind: numscriptlib.TypecheckTypeMismatch{Expected: "account", Got: "asset"},
 	})
-	second.Detail = "reworded compiler diagnostic"
+	second.(*domain.ErrNumscriptCompile).Detail = "reworded compiler diagnostic"
 
 	firstFacts := domain.FailureFactsOf(first)
 	secondFacts := domain.FailureFactsOf(second)
@@ -40,6 +40,15 @@ func TestCompilerFailureFactsExcludeDiagnosticText(t *testing.T) {
 	require.Equal(t, "NUMSCRIPT_COMPILE_TYPE_MISMATCH", firstFacts.Code)
 	require.Equal(t, map[string]string{"expected": "account", "got": "asset"}, firstFacts.Facts)
 	require.NoError(t, domain.ValidateFailureFacts(firstFacts))
+}
+
+func TestUnclassifiedCompilerFailureIsUncommitted(t *testing.T) {
+	t.Parallel()
+	err := mapCompilerError(errors.New("unknown compiler failure"))
+	require.Equal(t, domain.ErrReasonNumscriptCompileError, err.Reason())
+	require.Nil(t, err.FailureDetails())
+	_, uncommitted := err.(domain.UncommittedFailure)
+	require.True(t, uncommitted)
 }
 
 // TestSafeResolveDependencies_DescribableSurvivesLibrary verifies that a typed

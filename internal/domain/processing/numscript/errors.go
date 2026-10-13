@@ -160,8 +160,9 @@ func mapInterpreterError(err error) domain.SerializableError {
 }
 
 // mapCompilerError records compiler classifications without depending on
-// diagnostic wording. Unknown compiler defects retain the generic reason.
-func mapCompilerError(err error) *domain.ErrNumscriptCompile {
+// diagnostic wording. Unknown compiler defects retain the public reason but
+// are not frozen as audited script rejections.
+func mapCompilerError(err error) domain.SerializableError {
 	result := &domain.ErrNumscriptCompile{Detail: err.Error()}
 	set := func(details *commonpb.FailureDetails) *domain.ErrNumscriptCompile {
 		result.Details = details
@@ -212,7 +213,7 @@ func mapCompilerError(err error) *domain.ErrNumscriptCompile {
 		return set(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptCompileInvalidVariableValue{NumscriptCompileInvalidVariableValue: &commonpb.NumscriptCompileInvalidVariableValueDetails{Name: new(e.Name), Type: new(e.Type)}}})
 	}
 
-	return result
+	return domain.NewUnclassifiedNumscriptCompile(err.Error())
 }
 
 // panicError marks a Describable that originated from a recovered panic inside

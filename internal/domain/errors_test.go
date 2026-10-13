@@ -513,7 +513,7 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 				"a frozen failure replays from the reason alone, so the two must agree",
 			name, d.Kind(), d.Reason(), KindForReason(ReasonCode(d.Reason())))
 		_, uncommitted := inst.(UncommittedFailure)
-		if serializable, ok := inst.(SerializableError); ok && !uncommitted && name != "validationSentinel" && name != "errValidation" {
+		if serializable, ok := inst.(SerializableError); ok && !uncommitted && name != "validationSentinel" && name != "errValidation" && name != "ErrNumscriptCompile" && name != "ErrNumscriptExecution" {
 			reason, code, details := TypedFailureOf(serializable)
 			require.True(t, commonpb.FailureDetailsAllowsReason(details, reason), name)
 			decoded, err := FailureFactsFromDetails(reason, code, details)

@@ -449,12 +449,13 @@ so a layer commits only to what it can actually honour (EN-2081):
 |---|---|---|---|
 | `Classifiable` | `Kind() ErrorKind` | anything that names no business outcome — the gRPC envelope guard, the admission idempotency-key and checkpoint-order guards, the read path's prepared-query argument checks | selects the status code; sends no `ErrorInfo` and no `errorCode` beyond the coarse kind-level one |
 | `Describable` | `Reason() string` | every domain business error | adds the `ErrorInfo` / `errorCode` clients pattern-match on |
-| `SerializableError` | `FailureDetails()` | errors eligible for an audited order outcome | supplies typed failure details; the selected oneof arm determines the code and its fields determine the stable facts written into the audit chain and idempotency projection |
+| `SerializableError` | `FailureDetails()` | FSM-returned errors, including uncommitted technical failures | supplies typed details for audited outcomes; uncommitted failures have no audited details |
 
 The tiers are enforced by the type system rather than by convention. The FSM
 audited order path (`internal/domain/processing`, `internal/infra/state`) types
-its error returns as `SerializableError`, and `buildAuditFailure` accepts
-nothing else. A separate `PublicFailureFacts()` implementation may provide a
+its error returns as `SerializableError`. `UncommittedFailure` returns before
+`buildAuditFailure` and before the idempotency outcome is frozen. A separate
+`PublicFailureFacts()` implementation may provide a
 public code and facts without admitting the error to the audit chain. This is
 used for admission and read failures such as plan-size and aggregate overflow.
 The FSM can also reject a committed proposal before audit capture for

@@ -1487,7 +1487,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// the staged WriteSet and let the caller retry after its producer is fixed.
 	// The error type owns this disposition; successes still take the normal
 	// audited path, including successful cluster-policy updates.
-	if _, uncommitted := err.(domain.UncommittedFailure); uncommitted {
+	if _, uncommitted := errors.AsType[domain.UncommittedFailure](err); uncommitted {
 		fsm.State.LastAppliedTimestamp = previousTimestamp
 		result.Error = &domain.BusinessError{Err: err}
 
@@ -1658,7 +1658,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	transientErr := buffer.ValidateTransientVolumes(validateScope)
 
 	if err := transientErr; err != nil {
-		if _, uncommitted := err.(domain.UncommittedFailure); uncommitted {
+		if _, uncommitted := errors.AsType[domain.UncommittedFailure](err); uncommitted {
 			fsm.State.LastAppliedTimestamp = previousTimestamp
 			result.Error = &domain.BusinessError{Err: err}
 

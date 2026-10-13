@@ -23,10 +23,9 @@ type CompiledScript struct {
 // path. The script-dependent compile is computed once per cached script
 // (lruEntry.compileParsed) and shared by every order carrying it; binding
 // the vars runs per order. A script the VM
-// cannot run is an admission rejection: ErrNumscriptCompile when the compiler
-// rejects the script or a var value does not bind to its layout (both
-// deterministic, freezable validation failures), a panicError (IsPanic) when
-// the library panics.
+// cannot run is an admission rejection: typed compiler errors produce
+// ErrNumscriptCompile; an unclassified compiler error remains uncommitted.
+// A library panic produces panicError (IsPanic).
 func compileScript(entry *lruEntry, vars map[string]string) (out *CompiledScript, err domain.SerializableError) {
 	defer func() {
 		if panicErr := numscriptPanicToDescribable(recover()); panicErr != nil {

@@ -83,9 +83,9 @@ func TestCompileScript_DirectExecution(t *testing.T) {
 	require.Equal(t, int64(30), result.Postings[0].Amount.Int64())
 }
 
-// TestCompileScript_UnsupportedFeatureRejected: a script the compiler cannot
-// lower is an admission rejection — the VM is the only engine, so there is no
-// other way to run it. ErrNumscriptCompile is a freezable validation failure.
+// TestCompileScript_UnsupportedFeatureRejected: the compiler currently returns
+// only an untyped diagnostic for scaling. Keep the public rejection but do not
+// freeze it as a business verdict without a typed library error.
 func TestCompileScript_UnsupportedFeatureRejected(t *testing.T) {
 	t.Parallel()
 
@@ -96,7 +96,7 @@ send [COIN/2 100] (
 )`
 	compiled, err := compileScript(mustEntry(t, script), nil)
 	require.Nil(t, compiled)
-	requireCompileError(t, err)
+	requireUnclassifiedCompileError(t, err)
 	require.False(t, IsPanic(err))
 }
 
@@ -154,9 +154,17 @@ func TestCompileScript_CompilesOncePerCachedScript(t *testing.T) {
 	scaling := cache.getOrParseEntry(`#![feature("experimental-asset-scaling")]
  send [COIN/2 100] (source = @src with scaling through @swap destination = @dst)`)
 	_, firstErr := scaling.compileParsed()
-	requireCompileError(t, firstErr)
+	requireUnclassifiedCompileError(t, firstErr)
 	_, secondErr := scaling.compileParsed()
 	require.Same(t, firstErr, secondErr, "a compile failure is cached")
+}
+
+func requireUnclassifiedCompileError(t *testing.T, err domain.SerializableError) {
+	t.Helper()
+	require.NotNil(t, err)
+	var uncommitted interface{ UncommittedFailure() }
+	require.ErrorAs(t, err, &uncommitted)
+	require.Nil(t, err.FailureDetails())
 }
 
 // TestVMStore_ForceReturnsUnlimitedBalance mirrors the resolver-facing

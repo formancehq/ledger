@@ -9,32 +9,26 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
-// Public diagnostics are independent of the stable facts in the audit chain.
-func TestPublicErrorAuditFactsExcludeDiagnosticText(t *testing.T) {
+// Read-only index failures retain a safe public presentation but have no
+// audited failure details.
+func TestPublicIndexFailureExcludesDiagnosticText(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
-		name  string
-		err   domain.SerializableError
-		code  string
-		facts map[string]string
+		name string
+		err  domain.Describable
 	}{
 		{
-			name:  "index",
-			err:   &domain.ErrIndexInconsistent{Index: "private-index", Detail: "reading /private/pebble: secret failure"},
-			code:  "INDEX_INCONSISTENT",
-			facts: map[string]string{"index": "private-index"},
+			name: "index",
+			err:  &domain.ErrIndexInconsistent{Index: "private-index", Detail: "reading /private/pebble: secret failure"},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, metadata, overridden := domain.PublicErrorDetails(tc.err)
+			message, metadata, overridden := domain.PublicErrorDetails(tc.err)
 			require.True(t, overridden)
+			require.Equal(t, "index is inconsistent", message)
 			require.Empty(t, metadata)
-			failure := buildAuditFailure(tc.err)
-			require.Equal(t, tc.code, failure.GetCode())
-			require.Equal(t, tc.facts, failure.GetFacts())
-			require.Equal(t, tc.err.Reason(), domain.ReasonString(failure.GetReason()))
 		})
 	}
 }

@@ -99,20 +99,6 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsStrippedContext(t *testing.T
 	require.Contains(t, events[0].GetError().GetMessage(), "missing required fact reference")
 }
 
-// TestVerifySkippedOrder_RejectsKindInternal pins the defense-in-depth gate.
-func TestVerifySkippedOrder_RejectsKindInternal(t *testing.T) {
-	t.Parallel()
-
-	expected := map[uint64]*expectedSkippableOrder{
-		7: {reasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_INVALID_EXECUTION_PLAN}},
-	}
-
-	payload := skippedPayloadWithContext(commonpb.ErrorReason_ERROR_REASON_INVALID_EXECUTION_PLAN, nil)
-	events := captureEvents(t, "L", 7, payload, expected, nil)
-	requireInvalidSkipEvent(t, events, 7)
-	require.Contains(t, events[0].GetError().GetMessage(), "KindInternal reason")
-}
-
 // Missing typed details must fail at the structured-failure boundary, without
 // being mistaken for coverage of a later reason-specific guard.
 func TestVerifySkippedOrder_RejectsMissingDetails(t *testing.T) {

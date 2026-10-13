@@ -33,7 +33,9 @@ func TestCheckedNextSequence(t *testing.T) {
 		require.Zero(t, next)
 		require.Equal(t, SequenceCounterAudit, err.Counter)
 		require.Equal(t, ErrReasonSequenceExhausted, err.Reason())
-		require.Equal(t, map[string]string{"counter": "auditSequence"}, FailureFactsOf(err).Facts)
+		require.Empty(t, FailureFactsOf(err).Facts)
+		_, uncommitted := any(err).(UncommittedFailure)
+		require.True(t, uncommitted)
 	})
 }
 

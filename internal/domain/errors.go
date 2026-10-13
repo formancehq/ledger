@@ -172,20 +172,22 @@ type Describable interface {
 	Reason() string
 }
 
-// SerializableError supplies the audited failure contract as typed details.
-// Error() retains diagnostic text for logs.
+// SerializableError is the return contract for FSM order processing. Audited
+// business rejections supply typed details; UncommittedFailure returns nil
+// because it exits before the audit and idempotency writers. Error() retains
+// diagnostic text for logs.
 //
 // Every error the FSM can emit must satisfy it, which is why the apply path
-// types its returns as SerializableError: an error that cannot serialise its
-// context cannot reach the audit chain. An error raised outside the FSM adopts
-// the tier only when it actually has context to publish.
+// types its returns as SerializableError. The apply path tests the producer's
+// UncommittedFailure marker before asking for FailureDetails, so technical
+// failures cannot reach the audit chain.
 //
 // API adapters read the presentation through PublicErrorDetails, so a type with
 // sensitive diagnostic context can publish a separate view. Audited failures
 // use a stable reason and protobuf variant supplied by FailureDetails().
 type SerializableError interface {
 	Describable
-	// FailureDetails is the typed persisted outcome owned by the error.
+	// FailureDetails is the typed persisted outcome for an auditable error.
 	FailureDetails() *commonpb.FailureDetails
 }
 
@@ -197,6 +199,26 @@ type UncommittedFailure interface {
 	Describable
 	UncommittedFailure()
 }
+
+// These failures describe preparation, infrastructure, or invariant failures.
+// Retrying or repairing the producer can change their outcome, so the FSM must
+// not persist them as a rejected business command or freeze an idempotency key.
+func (errMetadataLimitsUnconfigured) UncommittedFailure()    {}
+func (*ErrBalanceNotPreloaded) UncommittedFailure()          {}
+func (*ErrFilterCompilation) UncommittedFailure()            {}
+func (*ErrInvalidApplyType) UncommittedFailure()             {}
+func (*ErrInvalidExecutionPlan) UncommittedFailure()         {}
+func (*ErrInvalidOrderType) UncommittedFailure()             {}
+func (*ErrMirrorV2LogIDGap) UncommittedFailure()             {}
+func (*ErrMirrorV2LogIDInvalid) UncommittedFailure()         {}
+func (*ErrNumscriptRuntime) UncommittedFailure()             {}
+func (*ErrSequenceExhausted) UncommittedFailure()            {}
+func (*ErrStaleClusterPolicy) UncommittedFailure()           {}
+func (errStaleInputsResolution) UncommittedFailure()         {}
+func (errStaleProposal) UncommittedFailure()                 {}
+func (*ErrStorageOperation) UncommittedFailure()             {}
+func (*ErrTransactionStateInconsistent) UncommittedFailure() {}
+func (*ErrVolumeNotMaterialized) UncommittedFailure()        {}
 
 // PublicErrorDetails renders the structured public presentation owned by an
 // error type. Error() can carry transient diagnostics;
@@ -1249,6 +1271,21 @@ func (e *ErrNumscriptCompile) Error() string { return "numscript compile error: 
 func (*ErrNumscriptCompile) Kind() ErrorKind { return KindValidation }
 func (*ErrNumscriptCompile) Reason() string  { return ErrReasonNumscriptCompileError }
 
+// An unrecognised compiler error may be a library defect. It keeps the public
+// compile reason but cannot be committed as a deterministic script rejection.
+type unclassifiedNumscriptCompile struct{ detail string }
+
+func NewUnclassifiedNumscriptCompile(detail string) SerializableError {
+	return &unclassifiedNumscriptCompile{detail: detail}
+}
+
+func (e *unclassifiedNumscriptCompile) Error() string {
+	return "numscript compile error: " + e.detail
+}
+func (*unclassifiedNumscriptCompile) Kind() ErrorKind     { return KindValidation }
+func (*unclassifiedNumscriptCompile) Reason() string      { return ErrReasonNumscriptCompileError }
+func (*unclassifiedNumscriptCompile) UncommittedFailure() {}
+
 // ErrNumscriptExecution — the script failed on its own terms, during dependency
 // resolution or on the VM: an invalid account name, a missing or mistyped var,
 // a negative amount, an allotment that does not sum to 1, a division by zero, a
@@ -1262,6 +1299,10 @@ type ErrNumscriptExecution struct {
 }
 
 func NewNumscriptExecution(detail string, details *commonpb.FailureDetails) *ErrNumscriptExecution {
+	if details == nil {
+		panic("numscript execution requires classified failure details")
+	}
+
 	return &ErrNumscriptExecution{Detail: detail, Details: details}
 }
 
