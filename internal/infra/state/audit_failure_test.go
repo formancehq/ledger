@@ -60,7 +60,7 @@ func TestIdempotencyFailureFactsMatchAudit(t *testing.T) {
 			},
 		},
 		{
-			// FailureFacts().Facts is nil here, so both stored fact maps are empty.
+			// FailureDetails() is nil here, so both stored fact maps are empty.
 			name: "nil facts",
 			err:  domain.NewValidationSentinel("TARGET_REQUIRED", "EN-1772 fixture: value must not be empty"),
 		},
@@ -138,7 +138,7 @@ func auditFailureCases() []auditFailureCase {
 		// boolean, NOT on Color != "": the empty color IS the uncolored bucket,
 		// so the type needs a third state for "the Numscript path could not
 		// resolve which bucket failed". All three branches of Error() and both
-		// branches of FailureFacts().Facts get a row (errors.go:660-697).
+		// branches of FailureDetails() get a row (errors.go:660-697).
 		{
 			name: "InsufficientFundsColoredBucket",
 			err: &domain.ErrInsufficientFunds{
@@ -675,7 +675,7 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{"size": "4096", "limit": "1024"},
 		},
 		{
-			// FailureFacts().Facts returns nil and Error() is a constant: the Cause is
+			// FailureDetails() returns nil and Error() is a constant: the Cause is
 			// deliberately kept off the wire (#326).
 			name:        "IdempotencyCheckFailed",
 			err:         &domain.ErrIdempotencyCheckFailed{Cause: errors.New("pebble: /var/lib/ledger: io error")},
@@ -689,7 +689,7 @@ func auditFailureCases() []auditFailureCase {
 			wantReason:  domain.ErrReasonStorageOperation,
 			wantContext: map[string]string{},
 		},
-		// The stateless sentinels below all return nil from FailureFacts().Facts, so their
+		// The stateless sentinels below all return nil from FailureDetails(), so their
 		// projected fact map is the empty-but-non-nil map buildAuditFailure
 		// allocates. They are reached through their exported SerializableError
 		// var — the concrete type is unexported, and that var IS the identity
@@ -720,7 +720,7 @@ func auditFailureCases() []auditFailureCase {
 		},
 		{
 			// errValidation wraps a github.com/formancehq/invariants primitive so
-			// it satisfies Describable; FailureFacts().Facts is nil, so the
+			// it satisfies Describable; FailureDetails() is nil, so the
 			// invariants message does not enter the chain.
 			name:        "ValidationWrappedInvariant",
 			err:         domain.ErrLedgerNameRequired,
@@ -776,16 +776,15 @@ func auditFailureCases() []auditFailureCase {
 			},
 		},
 		{
-			// ReplayedFailure carries reason, code and facts from a stored
+			// ReplayedFailure carries reason and typed details from a stored
 			// idempotency outcome, so this row pins the pass-through — including
 			// that ReasonCode round-trips the
 			// stored reason string.
 			name: "ReplayedFailure",
 			err: &domain.ReplayedFailure{
 				ErrReason: domain.ErrReasonTransactionAlreadyReverted,
-				Code:      domain.ErrReasonTransactionAlreadyReverted,
 				Msg:       "transaction 91 is already reverted",
-				Meta:      map[string]string{"transactionId": "91"},
+				Details:   commonpb.MustFailureDetails(domain.ErrReasonTransactionAlreadyReverted, map[string]string{"transactionId": "91"}),
 			},
 			wantReason:  domain.ErrReasonTransactionAlreadyReverted,
 			wantContext: map[string]string{"transactionId": "91"},
@@ -851,7 +850,7 @@ var describableScanDirs = map[string]string{
 // It therefore needs no unreachable row here.
 //
 // Discovery is by METHOD SET, not by type name. It collects every receiver type
-// declaring Reason() and FailureFacts() — the structured
+// declaring Reason() and FailureDetails() — the structured
 // SerializableError contract. The name-prefix scan used by
 // TestEveryDomainErrorImplementsDescribable (internal/domain/errors_test.go:318)
 // would miss domain.ReplayedFailure, which does reach buildAuditFailure, and it
@@ -891,7 +890,7 @@ func TestBuildAuditFailureCoversEveryDescribable(t *testing.T) {
 }
 
 // describableTypesIn returns the names of every type declared in dir whose
-// method set includes Reason() and FailureFacts() — the
+// method set includes Reason() and FailureDetails() — the
 // structured SerializableError contract accepted by buildAuditFailure.
 func describableTypesIn(t *testing.T, dir string) map[string]bool {
 	t.Helper()
@@ -927,7 +926,7 @@ func describableTypesIn(t *testing.T, dir string) map[string]bool {
 			switch fn.Name.Name {
 			case "Reason":
 				hasReason[receiver] = true
-			case "FailureFacts":
+			case "FailureDetails":
 				hasFacts[receiver] = true
 			}
 		}
@@ -1009,7 +1008,7 @@ func sortedKeys(set map[describableTypeKey]bool) []string {
 }
 
 // TestBuildAuditFailureDoesNotUnwrap is the negative control for the CoverageMiss
-// row in auditFailureCases: buildAuditFailure reads Reason()/FailureFacts().Facts off the
+// row in auditFailureCases: buildAuditFailure reads Reason()/FailureDetails() off the
 // OUTERMOST Describable and genuinely does NOT unwrap, so the no-wrap contract has
 // to be upheld by every FSM read site going through domain.StoreFailure. If someone
 // reintroduces a bare wrap, this is the shape the audit chain would record forever —

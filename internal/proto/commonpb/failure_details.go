@@ -2,10 +2,14 @@ package commonpb
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/descriptorpb"
 )
 
 // NewFailureDetails converts validated public facts into their typed persisted
@@ -35,11 +39,17 @@ func NewFailureDetails(code string, facts map[string]string) (*FailureDetails, e
 		}
 		switch field.Kind() {
 		case protoreflect.StringKind:
+			if !utf8.ValidString(raw) {
+				return nil, fmt.Errorf("fact %q is not valid UTF-8", key)
+			}
 			message.Set(field, protoreflect.ValueOfString(raw))
 		case protoreflect.Uint64Kind:
 			number, err := strconv.ParseUint(raw, 10, 64)
 			if err != nil {
 				return nil, fmt.Errorf("fact %q is not an unsigned integer: %w", key, err)
+			}
+			if strconv.FormatUint(number, 10) != raw {
+				return nil, fmt.Errorf("fact %q is not canonical unsigned decimal", key)
 			}
 			message.Set(field, protoreflect.ValueOfUint64(number))
 		default:
@@ -49,6 +59,26 @@ func NewFailureDetails(code string, facts map[string]string) (*FailureDetails, e
 	parent.Set(arm, value)
 
 	return details, nil
+}
+
+// FailureDetailsAllowsReason reads the coarse reasons declared on the selected
+// protobuf variant. The schema owns this relationship; producers do not keep
+// separate code/reason registries.
+func FailureDetailsAllowsReason(details *FailureDetails, reason ErrorReason) bool {
+	if details == nil || reason == ErrorReason_ERROR_REASON_UNSPECIFIED {
+		return false
+	}
+	message := details.ProtoReflect()
+	arm := message.WhichOneof(message.Descriptor().Oneofs().ByName("kind"))
+	if arm == nil {
+		return false
+	}
+	options, ok := arm.Options().(*descriptorpb.FieldOptions)
+	if !ok || !proto.HasExtension(options, E_FailureReasons) {
+		return false
+	}
+
+	return slices.Contains(proto.GetExtension(options, E_FailureReasons).([]ErrorReason), reason)
 }
 
 // MustFailureDetails is intended for static fixtures whose schema is fixed by

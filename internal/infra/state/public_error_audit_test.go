@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // Public diagnostics are independent of the stable facts in the audit chain.
@@ -46,8 +47,8 @@ func TestPublicErrorAuditFactsExcludeDiagnosticText(t *testing.T) {
 
 func TestNumscriptExecutionAuditIgnoresDiagnosticWording(t *testing.T) {
 	t.Parallel()
-	first := &domain.ErrNumscriptExecution{Detail: "old wording", Code: "NUMSCRIPT_NEGATIVE_AMOUNT", Facts: map[string]string{"amount": "-4"}}
-	second := &domain.ErrNumscriptExecution{Detail: "new wording", Code: "NUMSCRIPT_NEGATIVE_AMOUNT", Facts: map[string]string{"amount": "-4"}}
+	first := &domain.ErrNumscriptExecution{Detail: "old wording", Details: commonpb.MustFailureDetails("NUMSCRIPT_NEGATIVE_AMOUNT", map[string]string{"amount": "-4"})}
+	second := &domain.ErrNumscriptExecution{Detail: "new wording", Details: commonpb.MustFailureDetails("NUMSCRIPT_NEGATIVE_AMOUNT", map[string]string{"amount": "-4"})}
 	firstFailure := buildAuditFailure(first)
 	secondFailure := buildAuditFailure(second)
 	require.Equal(t, firstFailure, secondFailure)

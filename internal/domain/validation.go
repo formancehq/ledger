@@ -81,15 +81,8 @@ func (e *errValidation) Error() string { return e.err.Error() }
 func (e *errValidation) Unwrap() error { return e.err }
 func (*errValidation) Kind() ErrorKind { return KindValidation }
 func (*errValidation) Reason() string  { return ErrReasonValidation }
-func (*errValidation) stableFacts() map[string]string {
-	return nil
-}
-
-func (e *errValidation) failureCode() string {
-	return e.code
-}
-func (e *errValidation) FailureFacts() FailureFacts {
-	return NewFailureFacts(e.Reason(), e.failureCode(), e.stableFacts())
+func (e *errValidation) FailureDetails() *commonpb.FailureDetails {
+	return mustFailureDetails(e.code, nil)
 }
 
 // maxColorLength caps the optional Color tag on a Posting. Color is a small

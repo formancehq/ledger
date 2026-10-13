@@ -461,8 +461,9 @@ Revision 32 replaces the persisted and service-visible `facts` string maps in
 `AuditFailure`, `IdempotencyFailure`, and `OrderSkippedLog` with one shared
 `FailureDetails` protobuf oneof. Each arm names a concrete stable failure code
 and carries optional fields with explicit protobuf types; numeric correlators
-are `uint64` instead of decimal text. The containing reason and code must
-match the selected arm. Ledger rejects missing arms, mismatched codes, unknown
+are `uint64` instead of decimal text. The containing reason must be one of the
+arm's `failure_reasons` annotations, and the code must name that arm. Ledger
+rejects missing arms, mismatched codes, unknown
 fields, and malformed values when reading audited failures. HTTP and public
 `ErrorInfo.metadata` still render the named facts as strings at their API
 boundaries.

@@ -32,13 +32,12 @@ func (e *ErrAggregateOverflow) Error() string {
 }
 func (*ErrAggregateOverflow) Kind() domain.ErrorKind { return domain.KindPrecondition }
 func (*ErrAggregateOverflow) Reason() string         { return domain.ErrReasonAggregateOverflow }
-func (e *ErrAggregateOverflow) stableFacts() map[string]string {
-	return map[string]string{"stage": e.Stage, "side": e.Side}
-}
-
-func (e *ErrAggregateOverflow) failureCode() string { return e.Reason() }
-func (e *ErrAggregateOverflow) FailureFacts() domain.FailureFacts {
-	return domain.NewFailureFacts(e.Reason(), e.failureCode(), e.stableFacts())
+func (e *ErrAggregateOverflow) FailureDetails() *commonpb.FailureDetails {
+	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_AggregateOverflow{
+		AggregateOverflow: &commonpb.AggregateOverflowDetails{
+			Stage: &e.Stage, Side: &e.Side,
+		},
+	}}
 }
 
 // Compile-time assertion that ErrAggregateOverflow keeps the full contract, so

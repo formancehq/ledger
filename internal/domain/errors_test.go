@@ -76,6 +76,16 @@ func TestErrDependencyDiscoveryFailed_ReasonPreservesDescribableCause(t *testing
 	}
 
 	require.Equal(t, ErrReasonNumscriptParseError, err.Reason())
+	reason, code, details := TypedFailureOf(err)
+	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_PARSE_ERROR, reason)
+	require.Equal(t, "NUMSCRIPT_PARSE_ERROR", code)
+	require.NotNil(t, details.GetNumscriptParseError())
+
+	wrapped := &ErrDependencyDiscoveryFailed{Cause: fmt.Errorf("dependency lookup: %w", err.Cause)}
+	require.Equal(t, ErrReasonNumscriptParseError, wrapped.Reason())
+	_, wrappedCode, wrappedDetails := TypedFailureOf(wrapped)
+	require.Equal(t, code, wrappedCode)
+	require.NotNil(t, wrappedDetails.GetNumscriptParseError())
 }
 
 func TestErrorTypes(t *testing.T) {
@@ -238,8 +248,8 @@ func TestErrInsufficientFundsColorMetadata(t *testing.T) {
 }
 
 func TestNumscriptExecutionPublicDetailsExcludeDiagnostic(t *testing.T) {
-	first := &ErrNumscriptExecution{Detail: "wording one", Code: "NUMSCRIPT_NEGATIVE_AMOUNT", Facts: map[string]string{"amount": "-4"}}
-	second := &ErrNumscriptExecution{Detail: "wording two", Code: "NUMSCRIPT_NEGATIVE_AMOUNT", Facts: map[string]string{"amount": "-4"}}
+	first := &ErrNumscriptExecution{Detail: "wording one", Details: commonpb.MustFailureDetails("NUMSCRIPT_NEGATIVE_AMOUNT", map[string]string{"amount": "-4"})}
+	second := &ErrNumscriptExecution{Detail: "wording two", Details: commonpb.MustFailureDetails("NUMSCRIPT_NEGATIVE_AMOUNT", map[string]string{"amount": "-4"})}
 	firstMessage, firstFacts, _ := PublicErrorDetails(first)
 	secondMessage, secondFacts, _ := PublicErrorDetails(second)
 	require.Equal(t, firstMessage, secondMessage)
@@ -501,6 +511,13 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 			"%s declares Kind() = %s but its reason %q classifies as %s in KindForReason — "+
 				"a frozen failure replays from the reason alone, so the two must agree",
 			name, d.Kind(), d.Reason(), KindForReason(ReasonCode(d.Reason())))
+		if serializable, ok := inst.(SerializableError); ok && name != "validationSentinel" && name != "errValidation" {
+			reason, code, details := TypedFailureOf(serializable)
+			require.True(t, commonpb.FailureDetailsAllowsReason(details, reason), name)
+			decoded, err := FailureFactsFromDetails(reason, code, details)
+			require.NoError(t, err, name)
+			require.Equal(t, FailureFactsOf(serializable), decoded, name)
+		}
 	}
 
 	// And conversely: every entry in instances must correspond to a

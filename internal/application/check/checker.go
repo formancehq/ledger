@@ -3519,7 +3519,7 @@ func appendAccountTypeMutation(
 }
 
 // formatTargetForSkipContext mirrors the string ErrMetadataNotFound stamps
-// into its FailureFacts().Facts["target"] — account targets carry the raw address,
+// into its FailureDetails() fields["target"] — account targets carry the raw address,
 // transaction targets carry the id as a decimal string. Kept in lockstep
 // with the sub-processor's formatting so the checker's context-tampering
 // check compares apples-to-apples.
@@ -3778,7 +3778,7 @@ func verifySkippedOrder(
 		// Check() with no other tripwire — the LedgerLog projection is
 		// not hash-bound.
 		//
-		// ErrTransactionReferenceConflict.FailureFacts() ALWAYS writes both
+		// ErrTransactionReferenceConflict.FailureDetails() always writes both
 		// `ledger` and `reference`; when the FSM detected the collision it
 		// also writes `existingTransactionId`. All three are re-derivable
 		// from audit-bound data (existingTransactionId via the owning tx id

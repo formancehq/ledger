@@ -127,9 +127,9 @@ Reference: `internal/infra/state/machine.go:1370-1384`. The hash is bound to the
 
 Each successful order produces a `Log` (`internal/proto/commonpb/common.proto`, `message Log { LogPayload payload = …; }`). The audit chain binds the orders via `AuditItem.SerializedOrder` (the order's canonical vtprotobuf bytes); the resulting `Log` rows are addressable separately by `LogSequence` and bound transitively through the items.
 
-`FailureFactsOf` reads each error's required `FailureFacts()` projection.
-The error owns its reason, code, and explicit fact keys; `NewFailureFacts`
-copies values exactly. Field-specific size rules are enforced at their producers,
+`TypedFailureOf` reads each error's required `FailureDetails()` projection.
+The error owns its reason and typed details; the selected oneof arm determines
+the code and explicit fact keys. Field-specific size rules are enforced at their producers,
 before a command enters Raft when the value comes from the request.
 Diagnostic `Error()` text never feeds this tuple; a producer must choose each
 fact deliberately instead of relying on a list of excluded metadata keys.

@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // stubDescribable is a minimal Describable used to build error chains without
@@ -18,8 +20,10 @@ type stubDescribable struct {
 func (s *stubDescribable) Error() string   { return s.msg }
 func (s *stubDescribable) Kind() ErrorKind { return KindForReason(ReasonCode(s.reason)) }
 func (s *stubDescribable) Reason() string  { return s.reason }
-func (s *stubDescribable) FailureFacts() FailureFacts {
-	return NewFailureFacts(s.Reason(), s.reason, nil)
+func (s *stubDescribable) FailureDetails() *commonpb.FailureDetails {
+	details, _ := commonpb.NewFailureDetails(s.reason, nil)
+
+	return details
 }
 
 func TestCoverageContractViolation(t *testing.T) {

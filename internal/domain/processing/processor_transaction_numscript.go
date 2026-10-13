@@ -8,7 +8,6 @@ import (
 	"maps"
 	"math/big"
 	"slices"
-	"strconv"
 
 	"github.com/holiman/uint256"
 
@@ -149,19 +148,29 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		}
 
 		if posting.Amount.Sign() < 0 {
-			return nil, &domain.ErrNumscriptExecution{
-				Detail: fmt.Sprintf("posting %d has negative amount %s", i, posting.Amount),
-				Code:   "NUMSCRIPT_POSTING_NEGATIVE_AMOUNT",
-				Facts:  map[string]string{"postingIndex": strconv.Itoa(i), "amount": posting.Amount.String()},
-			}
+			index, amount := uint64(i), posting.Amount.String()
+
+			return nil, domain.NewNumscriptExecution(
+				fmt.Sprintf("posting %d has negative amount %s", i, posting.Amount),
+				&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptPostingNegativeAmount{
+					NumscriptPostingNegativeAmount: &commonpb.NumscriptPostingNegativeAmountDetails{
+						PostingIndex: &index, Amount: &amount,
+					},
+				}},
+			)
 		}
 
 		if overflow := u256Amount.SetFromBig(posting.Amount); overflow {
-			return nil, &domain.ErrNumscriptExecution{
-				Detail: fmt.Sprintf("posting %d amount %s exceeds 256 bits", i, posting.Amount),
-				Code:   "NUMSCRIPT_POSTING_AMOUNT_OVERFLOW",
-				Facts:  map[string]string{"postingIndex": strconv.Itoa(i), "amount": posting.Amount.String()},
-			}
+			index, amount := uint64(i), posting.Amount.String()
+
+			return nil, domain.NewNumscriptExecution(
+				fmt.Sprintf("posting %d amount %s exceeds 256 bits", i, posting.Amount),
+				&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptPostingAmountOverflow{
+					NumscriptPostingAmountOverflow: &commonpb.NumscriptPostingAmountOverflowDetails{
+						PostingIndex: &index, Amount: &amount,
+					},
+				}},
+			)
 		}
 
 		postings[i] = &commonpb.Posting{

@@ -11,55 +11,52 @@ import (
 
 func TestTypedFailureDetailsCoverEveryStableCode(t *testing.T) {
 	t.Parallel()
-	codes := make(map[string]struct{})
-	for reason := range commonpb.ErrorReason_value {
-		code := strings.TrimPrefix(reason, "ERROR_REASON_")
-		if code != "UNSPECIFIED" {
-			codes[code] = struct{}{}
-		}
-	}
-	for code := range validationFailureCodes {
-		codes[code] = struct{}{}
-	}
-	for code := range numscriptFailureCodes {
-		codes[code] = struct{}{}
-	}
-	for code := range numscriptCompileFailureCodes {
-		codes[code] = struct{}{}
-	}
-	codes["METADATA_LIMITS_UNCONFIGURED"] = struct{}{}
-	for code := range codes {
+	fields := (&commonpb.FailureDetails{}).ProtoReflect().Descriptor().Oneofs().ByName("kind").Fields()
+	for i := range fields.Len() {
+		code := strings.ToUpper(string(fields.Get(i).Name()))
 		details, err := commonpb.NewFailureDetails(code, nil)
 		require.NoError(t, err, code)
 		require.Equal(t, code, commonpb.FailureDetailsCode(details))
+		if code == "VALIDATION" {
+			continue // A coarse validation reason must use a concrete subcode.
+		}
+		foundReason := false
+		for _, reason := range commonpb.ErrorReason_value {
+			if commonpb.FailureDetailsAllowsReason(details, commonpb.ErrorReason(reason)) {
+				foundReason = true
+			}
+		}
+		require.True(t, foundReason, "variant %s must declare a coarse reason", code)
 	}
 }
 
 func TestTypedFailureDetailsRoundTripAndRejectMismatches(t *testing.T) {
 	t.Parallel()
-	f := NewFailureFacts(ErrReasonTransactionReferenceConflict, "TRANSACTION_REFERENCE_CONFLICT", map[string]string{
-		"ledger": "L", "reference": "ref", "existingTransactionId": "42",
+	reason, code, details := TypedFailureOf(&ErrTransactionReferenceConflict{
+		Ledger: "L", Reference: "ref", ExistingTransactionID: 42,
 	})
-	details, err := FailureDetailsOf(f)
-	require.NoError(t, err)
-	actual, err := FailureFactsFromDetails(f.Reason, f.Code, details)
+	f := FailureFactsFromTyped(ErrReasonTransactionReferenceConflict, details)
+	actual, err := FailureFactsFromDetails(reason, code, details)
 	require.NoError(t, err)
 	require.Equal(t, f, actual)
 	require.Equal(t, uint64(42), details.GetTransactionReferenceConflict().GetExistingTransactionId())
 
 	_, err = FailureFactsFromDetails(f.Reason, "TRANSACTION_NOT_FOUND", details)
 	require.ErrorContains(t, err, "does not match")
+	_, err = FailureFactsFromDetails(commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND, f.Code, details)
+	require.ErrorContains(t, err, "not allowed")
 	_, err = FailureFactsFromDetails(f.Reason, f.Code, nil)
 	require.ErrorContains(t, err, "missing")
 	_, err = commonpb.NewFailureDetails(f.Code, map[string]string{"arbitrary": "text"})
 	require.ErrorContains(t, err, "not part of")
+	_, err = commonpb.NewFailureDetails(f.Code, map[string]string{"existingTransactionId": "042"})
+	require.ErrorContains(t, err, "canonical")
 }
 
 func TestFailureFactsPreserveValues(t *testing.T) {
 	err := &ErrNumscriptExecution{
-		Detail: "diagnostic only",
-		Code:   "NUMSCRIPT_INVALID_ACCOUNT_NAME",
-		Facts:  map[string]string{"name": "account"},
+		Detail:  "diagnostic only",
+		Details: commonpb.MustFailureDetails("NUMSCRIPT_INVALID_ACCOUNT_NAME", map[string]string{"name": "account"}),
 	}
 	facts := FailureFactsOf(err)
 	require.NoError(t, ValidateFailureFacts(facts))

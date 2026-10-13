@@ -24232,6 +24232,14 @@ var file_common_proto_extTypes = []protoimpl.ExtensionInfo{
 		Tag:           "varint,50127,opt,name=sensitive_url",
 		Filename:      "common.proto",
 	},
+	{
+		ExtendedType:  (*descriptorpb.FieldOptions)(nil),
+		ExtensionType: ([]ErrorReason)(nil),
+		Field:         50128,
+		Name:          "common.failure_reasons",
+		Tag:           "varint,50128,rep,packed,name=failure_reasons,enum=common.ErrorReason",
+		Filename:      "common.proto",
+	},
 }
 
 // Extension fields to descriptorpb.MethodOptions.
@@ -24266,6 +24274,10 @@ var (
 	//
 	// optional bool sensitive_url = 50127;
 	E_SensitiveUrl = &file_common_proto_extTypes[5]
+	// Allowed coarse reasons for each typed audited failure variant.
+	//
+	// repeated common.ErrorReason failure_reasons = 50128;
+	E_FailureReasons = &file_common_proto_extTypes[6]
 )
 
 var File_common_proto protoreflect.FileDescriptor
@@ -24677,185 +24689,186 @@ const file_common_proto_rawDesc = "" +
 	"\x14removed_account_type\x18\v \x01(\v2\x1d.common.RemovedAccountTypeLogB\x04\xe8\xbc\x18\x00H\x00R\x12removedAccountType\x12y\n" +
 	" updated_default_enforcement_mode\x18\f \x01(\v2(.common.UpdatedDefaultEnforcementModeLogB\x04\xe8\xbc\x18\x00H\x00R\x1dupdatedDefaultEnforcementMode\x12D\n" +
 	"\rorder_skipped\x18\r \x01(\v2\x17.common.OrderSkippedLogB\x04\xe8\xbc\x18\x01H\x00R\forderSkippedB\t\n" +
-	"\apayload\"\xfc\x88\x01\n" +
-	"\x0eFailureDetails\x12X\n" +
-	"\x15account_address_empty\x18\x01 \x01(\v2\".common.AccountAddressEmptyDetailsH\x00R\x13accountAddressEmpty\x12n\n" +
-	"\x1daccount_address_empty_segment\x18\x02 \x01(\v2).common.AccountAddressEmptySegmentDetailsH\x00R\x1aaccountAddressEmptySegment\x12k\n" +
-	"\x1caccount_address_invalid_char\x18\x03 \x01(\v2(.common.AccountAddressInvalidCharDetailsH\x00R\x19accountAddressInvalidChar\x12_\n" +
-	"\x18account_address_too_long\x18\x04 \x01(\v2$.common.AccountAddressTooLongDetailsH\x00R\x15accountAddressTooLong\x12b\n" +
-	"\x19account_not_matching_type\x18\x05 \x01(\v2%.common.AccountNotMatchingTypeDetailsH\x00R\x16accountNotMatchingType\x12h\n" +
-	"\x1baccount_type_already_exists\x18\x06 \x01(\v2'.common.AccountTypeAlreadyExistsDetailsH\x00R\x18accountTypeAlreadyExists\x12X\n" +
-	"\x15account_type_conflict\x18\a \x01(\v2\".common.AccountTypeConflictDetailsH\x00R\x13accountTypeConflict\x12b\n" +
-	"\x19account_type_has_accounts\x18\b \x01(\v2%.common.AccountTypeHasAccountsDetailsH\x00R\x16accountTypeHasAccounts\x12c\n" +
-	"\x1aaccount_type_name_too_long\x18\t \x01(\v2%.common.AccountTypeNameTooLongDetailsH\x00R\x16accountTypeNameTooLong\x12Y\n" +
+	"\apayload\"ݒ\x01\n" +
+	"\x0eFailureDetails\x12_\n" +
+	"\x15account_address_empty\x18\x01 \x01(\v2\".common.AccountAddressEmptyDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x13accountAddressEmpty\x12u\n" +
+	"\x1daccount_address_empty_segment\x18\x02 \x01(\v2).common.AccountAddressEmptySegmentDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x1aaccountAddressEmptySegment\x12r\n" +
+	"\x1caccount_address_invalid_char\x18\x03 \x01(\v2(.common.AccountAddressInvalidCharDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x19accountAddressInvalidChar\x12f\n" +
+	"\x18account_address_too_long\x18\x04 \x01(\v2$.common.AccountAddressTooLongDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x15accountAddressTooLong\x12i\n" +
+	"\x19account_not_matching_type\x18\x05 \x01(\v2%.common.AccountNotMatchingTypeDetailsB\x05\x82\xbd\x18\x01!H\x00R\x16accountNotMatchingType\x12o\n" +
+	"\x1baccount_type_already_exists\x18\x06 \x01(\v2'.common.AccountTypeAlreadyExistsDetailsB\x05\x82\xbd\x18\x01#H\x00R\x18accountTypeAlreadyExists\x12_\n" +
+	"\x15account_type_conflict\x18\a \x01(\v2\".common.AccountTypeConflictDetailsB\x05\x82\xbd\x18\x01&H\x00R\x13accountTypeConflict\x12i\n" +
+	"\x19account_type_has_accounts\x18\b \x01(\v2%.common.AccountTypeHasAccountsDetailsB\x05\x82\xbd\x18\x01%H\x00R\x16accountTypeHasAccounts\x12j\n" +
+	"\x1aaccount_type_name_too_long\x18\t \x01(\v2%.common.AccountTypeNameTooLongDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x16accountTypeNameTooLong\x12`\n" +
 	"\x16account_type_not_found\x18\n" +
-	" \x01(\v2\".common.AccountTypeNotFoundDetailsH\x00R\x13accountTypeNotFound\x12l\n" +
-	"\x1daccount_type_pattern_too_long\x18\v \x01(\v2(.common.AccountTypePatternTooLongDetailsH\x00R\x19accountTypePatternTooLong\x12Q\n" +
-	"\x12aggregate_overflow\x18\f \x01(\v2 .common.AggregateOverflowDetailsH\x00R\x11aggregateOverflow\x12B\n" +
-	"\rasset_invalid\x18\r \x01(\v2\x1b.common.AssetInvalidDetailsH\x00R\fassetInvalid\x12E\n" +
-	"\x0eaudit_disabled\x18\x0e \x01(\v2\x1c.common.AuditDisabledDetailsH\x00R\rauditDisabled\x12L\n" +
-	"\x11balance_not_found\x18\x0f \x01(\v2\x1e.common.BalanceNotFoundDetailsH\x00R\x0fbalanceNotFound\x12X\n" +
-	"\x15balance_not_preloaded\x18\x10 \x01(\v2\".common.BalanceNotPreloadedDetailsH\x00R\x13balanceNotPreloaded\x12[\n" +
-	"\x16checkpoint_id_required\x18\x11 \x01(\v2#.common.CheckpointIdRequiredDetailsH\x00R\x14checkpointIdRequired\x12a\n" +
-	"\x18checkpoint_limit_reached\x18\x12 \x01(\v2%.common.CheckpointLimitReachedDetailsH\x00R\x16checkpointLimitReached\x12U\n" +
-	"\x14checkpoint_not_found\x18\x13 \x01(\v2!.common.CheckpointNotFoundDetailsH\x00R\x12checkpointNotFound\x12U\n" +
-	"\x14checkpoint_not_ready\x18\x14 \x01(\v2!.common.CheckpointNotReadyDetailsH\x00R\x12checkpointNotReady\x12[\n" +
-	"\x16cluster_policy_invalid\x18\x15 \x01(\v2#.common.ClusterPolicyInvalidDetailsH\x00R\x14clusterPolicyInvalid\x12w\n" +
-	" cluster_policy_revision_conflict\x18\x16 \x01(\v2,.common.ClusterPolicyRevisionConflictDetailsH\x00R\x1dclusterPolicyRevisionConflict\x12N\n" +
-	"\x11cluster_unhealthy\x18\x17 \x01(\v2\x1f.common.ClusterUnhealthyDetailsH\x00R\x10clusterUnhealthy\x12B\n" +
-	"\rcolor_invalid\x18\x18 \x01(\v2\x1b.common.ColorInvalidDetailsH\x00R\fcolorInvalid\x12C\n" +
-	"\x0ecolor_too_long\x18\x19 \x01(\v2\x1b.common.ColorTooLongDetailsH\x00R\fcolorTooLong\x12B\n" +
-	"\rcoverage_miss\x18\x1a \x01(\v2\x1b.common.CoverageMissDetailsH\x00R\fcoverageMiss\x12j\n" +
-	"\x1bdependency_discovery_failed\x18\x1b \x01(\v2(.common.DependencyDiscoveryFailedDetailsH\x00R\x19dependencyDiscoveryFailed\x12N\n" +
-	"\x11empty_transaction\x18\x1c \x01(\v2\x1f.common.EmptyTransactionDetailsH\x00R\x10emptyTransaction\x12_\n" +
-	"\x18execution_plan_too_large\x18\x1d \x01(\v2$.common.ExecutionPlanTooLargeDetailsH\x00R\x15executionPlanTooLarge\x12a\n" +
-	"\x18filter_compilation_error\x18\x1e \x01(\v2%.common.FilterCompilationErrorDetailsH\x00R\x16filterCompilationError\x12a\n" +
-	"\x18idempotency_check_failed\x18\x1f \x01(\v2%.common.IdempotencyCheckFailedDetailsH\x00R\x16idempotencyCheckFailed\x12a\n" +
-	"\x18idempotency_key_conflict\x18  \x01(\v2%.common.IdempotencyKeyConflictDetailsH\x00R\x16idempotencyKeyConflict\x12<\n" +
-	"\vid_required\x18! \x01(\v2\x19.common.IdRequiredDetailsH\x00R\n" +
-	"idRequired\x12U\n" +
-	"\x14index_already_exists\x18\" \x01(\v2!.common.IndexAlreadyExistsDetailsH\x00R\x12indexAlreadyExists\x12E\n" +
-	"\x0eindex_building\x18# \x01(\v2\x1c.common.IndexBuildingDetailsH\x00R\rindexBuilding\x12Q\n" +
-	"\x12index_inconsistent\x18$ \x01(\v2 .common.IndexInconsistentDetailsH\x00R\x11indexInconsistent\x12F\n" +
-	"\x0findex_not_found\x18% \x01(\v2\x1c.common.IndexNotFoundDetailsH\x00R\rindexNotFound\x12a\n" +
-	"\x18index_target_unsupported\x18& \x01(\v2%.common.IndexTargetUnsupportedDetailsH\x00R\x16indexTargetUnsupported\x12Q\n" +
-	"\x12insufficient_funds\x18' \x01(\v2 .common.InsufficientFundsDetailsH\x00R\x11insufficientFunds\x12O\n" +
-	"\x12invalid_apply_type\x18( \x01(\v2\x1f.common.InvalidApplyTypeDetailsH\x00R\x10invalidApplyType\x12g\n" +
-	"\x1ainvalid_caller_attribution\x18) \x01(\v2'.common.InvalidCallerAttributionDetailsH\x00R\x18invalidCallerAttribution\x12^\n" +
-	"\x17invalid_cron_expression\x18* \x01(\v2$.common.InvalidCronExpressionDetailsH\x00R\x15invalidCronExpression\x12[\n" +
-	"\x16invalid_execution_plan\x18+ \x01(\v2#.common.InvalidExecutionPlanDetailsH\x00R\x14invalidExecutionPlan\x12O\n" +
-	"\x12invalid_order_type\x18, \x01(\v2\x1f.common.InvalidOrderTypeDetailsH\x00R\x10invalidOrderType\x12H\n" +
-	"\x0finvalid_pattern\x18- \x01(\v2\x1d.common.InvalidPatternDetailsH\x00R\x0einvalidPattern\x12a\n" +
-	"\x18invalid_skippable_reason\x18. \x01(\v2%.common.InvalidSkippableReasonDetailsH\x00R\x16invalidSkippableReason\x12X\n" +
-	"\x15ledger_already_exists\x18/ \x01(\v2\".common.LedgerAlreadyExistsDetailsH\x00R\x13ledgerAlreadyExists\x12E\n" +
-	"\x0eledger_deleted\x180 \x01(\v2\x1c.common.LedgerDeletedDetailsH\x00R\rledgerDeleted\x12V\n" +
-	"\x15ledger_in_mirror_mode\x181 \x01(\v2!.common.LedgerInMirrorModeDetailsH\x00R\x12ledgerInMirrorMode\x12_\n" +
-	"\x18ledger_name_invalid_char\x182 \x01(\v2$.common.LedgerNameInvalidCharDetailsH\x00R\x15ledgerNameInvalidChar\x12U\n" +
-	"\x14ledger_name_required\x183 \x01(\v2!.common.LedgerNameRequiredDetailsH\x00R\x12ledgerNameRequired\x12h\n" +
-	"\x1bledger_name_reserved_prefix\x184 \x01(\v2'.common.LedgerNameReservedPrefixDetailsH\x00R\x18ledgerNameReservedPrefix\x12S\n" +
-	"\x14ledger_name_too_long\x185 \x01(\v2 .common.LedgerNameTooLongDetailsH\x00R\x11ledgerNameTooLong\x12I\n" +
-	"\x10ledger_not_found\x186 \x01(\v2\x1d.common.LedgerNotFoundDetailsH\x00R\x0eledgerNotFound\x12`\n" +
-	"\x19ledger_not_in_mirror_mode\x187 \x01(\v2$.common.LedgerNotInMirrorModeDetailsH\x00R\x15ledgerNotInMirrorMode\x12K\n" +
-	"\x10maintenance_mode\x188 \x01(\v2\x1e.common.MaintenanceModeDetailsH\x00R\x0fmaintenanceMode\x12i\n" +
-	"\x1cmetadata_field_not_in_schema\x189 \x01(\v2'.common.MetadataFieldNotInSchemaDetailsH\x00R\x18metadataFieldNotInSchema\x12O\n" +
-	"\x12metadata_key_empty\x18: \x01(\v2\x1f.common.MetadataKeyEmptyDetailsH\x00R\x10metadataKeyEmpty\x12b\n" +
-	"\x19metadata_key_invalid_char\x18; \x01(\v2%.common.MetadataKeyInvalidCharDetailsH\x00R\x16metadataKeyInvalidChar\x12X\n" +
-	"\x15metadata_key_required\x18< \x01(\v2\".common.MetadataKeyRequiredDetailsH\x00R\x13metadataKeyRequired\x12m\n" +
-	"\x1cmetadata_limits_unconfigured\x18= \x01(\v2).common.MetadataLimitsUnconfiguredDetailsH\x00R\x1ametadataLimitsUnconfigured\x12^\n" +
-	"\x17metadata_limit_exceeded\x18> \x01(\v2$.common.MetadataLimitExceededDetailsH\x00R\x15metadataLimitExceeded\x12O\n" +
-	"\x12metadata_not_found\x18? \x01(\v2\x1f.common.MetadataNotFoundDetailsH\x00R\x10metadataNotFound\x12x\n" +
-	"!metadata_value_contains_null_byte\x18@ \x01(\v2,.common.MetadataValueContainsNullByteDetailsH\x00R\x1dmetadataValueContainsNullByte\x12\\\n" +
-	"\x17mirror_http_url_invalid\x18A \x01(\v2#.common.MirrorHttpUrlInvalidDetailsH\x00R\x14mirrorHttpUrlInvalid\x12e\n" +
-	"\x1amirror_iam_region_required\x18B \x01(\v2&.common.MirrorIamRegionRequiredDetailsH\x00R\x17mirrorIamRegionRequired\x12\\\n" +
-	"\x17mirror_iam_requires_tls\x18C \x01(\v2#.common.MirrorIamRequiresTlsDetailsH\x00R\x14mirrorIamRequiresTls\x12h\n" +
-	"\x1bmirror_rewrite_rule_invalid\x18D \x01(\v2'.common.MirrorRewriteRuleInvalidDetailsH\x00R\x18mirrorRewriteRuleInvalid\x12Q\n" +
-	"\x14mirror_v2_log_id_gap\x18E \x01(\v2\x1f.common.MirrorV2LogIdGapDetailsH\x00R\x10mirrorV2LogIdGap\x12]\n" +
-	"\x18mirror_v2_log_id_invalid\x18F \x01(\v2#.common.MirrorV2LogIdInvalidDetailsH\x00R\x14mirrorV2LogIdInvalid\x12a\n" +
-	"\x18numscript_asset_mismatch\x18G \x01(\v2%.common.NumscriptAssetMismatchDetailsH\x00R\x16numscriptAssetMismatch\x12R\n" +
-	"\x13numscript_bad_arity\x18H \x01(\v2 .common.NumscriptBadArityDetailsH\x00R\x11numscriptBadArity\x12_\n" +
-	"\x18numscript_bad_meta_value\x18I \x01(\v2$.common.NumscriptBadMetaValueDetailsH\x00R\x15numscriptBadMetaValue\x12X\n" +
-	"\x15numscript_bad_portion\x18J \x01(\v2\".common.NumscriptBadPortionDetailsH\x00R\x13numscriptBadPortion\x12\x81\x01\n" +
-	"$numscript_cannot_cast_scoped_account\x18K \x01(\v2/.common.NumscriptCannotCastScopedAccountDetailsH\x00R numscriptCannotCastScopedAccount\x12r\n" +
-	"\x1fnumscript_cannot_cast_to_string\x18L \x01(\v2*.common.NumscriptCannotCastToStringDetailsH\x00R\x1bnumscriptCannotCastToString\x12\x84\x01\n" +
-	"%numscript_cannot_store_scoped_account\x18M \x01(\v20.common.NumscriptCannotStoreScopedAccountDetailsH\x00R!numscriptCannotStoreScopedAccount\x12h\n" +
-	"\x1bnumscript_compile_bad_arity\x18N \x01(\v2'.common.NumscriptCompileBadArityDetailsH\x00R\x18numscriptCompileBadArity\x12\x88\x01\n" +
-	"'numscript_compile_cannot_cast_to_string\x18O \x01(\v21.common.NumscriptCompileCannotCastToStringDetailsH\x00R\"numscriptCompileCannotCastToString\x12\x9a\x01\n" +
-	"-numscript_compile_cannot_store_scoped_account\x18P \x01(\v27.common.NumscriptCompileCannotStoreScopedAccountDetailsH\x00R(numscriptCompileCannotStoreScopedAccount\x12\x86\x01\n" +
-	"%numscript_compile_duplicate_remaining\x18Q \x01(\v21.common.NumscriptCompileDuplicateRemainingDetailsH\x00R\"numscriptCompileDuplicateRemaining\x12\x83\x01\n" +
-	"$numscript_compile_duplicate_variable\x18R \x01(\v20.common.NumscriptCompileDuplicateVariableDetailsH\x00R!numscriptCompileDuplicateVariable\x12^\n" +
-	"\x17numscript_compile_error\x18S \x01(\v2$.common.NumscriptCompileErrorDetailsH\x00R\x15numscriptCompileError\x12\x89\x01\n" +
-	"&numscript_compile_experimental_feature\x18T \x01(\v22.common.NumscriptCompileExperimentalFeatureDetailsH\x00R#numscriptCompileExperimentalFeature\x12z\n" +
-	"!numscript_compile_invalid_feature\x18U \x01(\v2-.common.NumscriptCompileInvalidFeatureDetailsH\x00R\x1enumscriptCompileInvalidFeature\x12\x8a\x01\n" +
-	"'numscript_compile_invalid_meta_position\x18V \x01(\v22.common.NumscriptCompileInvalidMetaPositionDetailsH\x00R#numscriptCompileInvalidMetaPosition\x12q\n" +
-	"\x1enumscript_compile_invalid_type\x18W \x01(\v2*.common.NumscriptCompileInvalidTypeDetailsH\x00R\x1bnumscriptCompileInvalidType\x12\x90\x01\n" +
-	")numscript_compile_invalid_uncapped_source\x18X \x01(\v24.common.NumscriptCompileInvalidUncappedSourceDetailsH\x00R%numscriptCompileInvalidUncappedSource\x12\x8d\x01\n" +
-	"(numscript_compile_invalid_variable_value\x18Y \x01(\v23.common.NumscriptCompileInvalidVariableValueDetailsH\x00R$numscriptCompileInvalidVariableValue\x12}\n" +
-	"\"numscript_compile_missing_variable\x18Z \x01(\v2..common.NumscriptCompileMissingVariableDetailsH\x00R\x1fnumscriptCompileMissingVariable\x12t\n" +
-	"\x1fnumscript_compile_type_mismatch\x18[ \x01(\v2+.common.NumscriptCompileTypeMismatchDetailsH\x00R\x1cnumscriptCompileTypeMismatch\x12}\n" +
-	"\"numscript_compile_unbound_variable\x18\\ \x01(\v2..common.NumscriptCompileUnboundVariableDetailsH\x00R\x1fnumscriptCompileUnboundVariable\x12}\n" +
-	"\"numscript_compile_unknown_function\x18] \x01(\v2..common.NumscriptCompileUnknownFunctionDetailsH\x00R\x1fnumscriptCompileUnknownFunction\x12g\n" +
-	"\x1anumscript_content_required\x18^ \x01(\v2'.common.NumscriptContentRequiredDetailsH\x00R\x18numscriptContentRequired\x12j\n" +
-	"\x1bnumscript_currency_mismatch\x18_ \x01(\v2(.common.NumscriptCurrencyMismatchDetailsH\x00R\x19numscriptCurrencyMismatch\x12_\n" +
-	"\x18numscript_divide_by_zero\x18` \x01(\v2$.common.NumscriptDivideByZeroDetailsH\x00R\x15numscriptDivideByZero\x12d\n" +
-	"\x19numscript_execution_error\x18a \x01(\v2&.common.NumscriptExecutionErrorDetailsH\x00R\x17numscriptExecutionError\x12s\n" +
-	"\x1enumscript_experimental_feature\x18b \x01(\v2+.common.NumscriptExperimentalFeatureDetailsH\x00R\x1cnumscriptExperimentalFeature\x12q\n" +
-	"\x1enumscript_invalid_account_name\x18c \x01(\v2*.common.NumscriptInvalidAccountNameDetailsH\x00R\x1bnumscriptInvalidAccountName\x12\x88\x01\n" +
-	"'numscript_invalid_allotment_in_send_all\x18d \x01(\v21.common.NumscriptInvalidAllotmentInSendAllDetailsH\x00R\"numscriptInvalidAllotmentInSendAll\x12t\n" +
-	"\x1fnumscript_invalid_allotment_sum\x18e \x01(\v2+.common.NumscriptInvalidAllotmentSumDetailsH\x00R\x1cnumscriptInvalidAllotmentSum\x12^\n" +
-	"\x17numscript_invalid_asset\x18f \x01(\v2$.common.NumscriptInvalidAssetDetailsH\x00R\x15numscriptInvalidAsset\x12^\n" +
-	"\x17numscript_invalid_color\x18g \x01(\v2$.common.NumscriptInvalidColorDetailsH\x00R\x15numscriptInvalidColor\x12d\n" +
-	"\x19numscript_invalid_feature\x18h \x01(\v2&.common.NumscriptInvalidFeatureDetailsH\x00R\x17numscriptInvalidFeature\x12}\n" +
-	"\"numscript_invalid_monetary_literal\x18i \x01(\v2..common.NumscriptInvalidMonetaryLiteralDetailsH\x00R\x1fnumscriptInvalidMonetaryLiteral\x12n\n" +
-	"\x1dnumscript_invalid_nested_meta\x18j \x01(\v2).common.NumscriptInvalidNestedMetaDetailsH\x00R\x1anumscriptInvalidNestedMeta\x12w\n" +
-	" numscript_invalid_number_literal\x18k \x01(\v2,.common.NumscriptInvalidNumberLiteralDetailsH\x00R\x1dnumscriptInvalidNumberLiteral\x12\x86\x01\n" +
-	"%numscript_invalid_remaining_allotment\x18l \x01(\v21.common.NumscriptInvalidRemainingAllotmentDetailsH\x00R\"numscriptInvalidRemainingAllotment\x12^\n" +
-	"\x17numscript_invalid_scope\x18m \x01(\v2$.common.NumscriptInvalidScopeDetailsH\x00R\x15numscriptInvalidScope\x12[\n" +
-	"\x16numscript_invalid_type\x18n \x01(\v2#.common.NumscriptInvalidTypeDetailsH\x00R\x14numscriptInvalidType\x12\x96\x01\n" +
-	"+numscript_invalid_unbounded_scaling_address\x18o \x01(\v26.common.NumscriptInvalidUnboundedScalingAddressDetailsH\x00R'numscriptInvalidUnboundedScalingAddress\x12\x81\x01\n" +
-	"$numscript_invalid_unbounded_send_all\x18p \x01(\v2/.common.NumscriptInvalidUnboundedSendAllDetailsH\x00R numscriptInvalidUnboundedSendAll\x12z\n" +
-	"!numscript_invalid_uncapped_source\x18q \x01(\v2-.common.NumscriptInvalidUncappedSourceDetailsH\x00R\x1enumscriptInvalidUncappedSource\x12d\n" +
-	"\x19numscript_invalid_version\x18r \x01(\v2&.common.NumscriptInvalidVersionDetailsH\x00R\x17numscriptInvalidVersion\x12k\n" +
-	"\x1cnumscript_metadata_not_found\x18s \x01(\v2(.common.NumscriptMetadataNotFoundDetailsH\x00R\x19numscriptMetadataNotFound\x12^\n" +
-	"\x17numscript_missing_funds\x18t \x01(\v2$.common.NumscriptMissingFundsDetailsH\x00R\x15numscriptMissingFunds\x12g\n" +
-	"\x1anumscript_missing_variable\x18u \x01(\v2'.common.NumscriptMissingVariableDetailsH\x00R\x18numscriptMissingVariable\x12h\n" +
-	"\x1bnumscript_name_invalid_char\x18v \x01(\v2'.common.NumscriptNameInvalidCharDetailsH\x00R\x18numscriptNameInvalidChar\x12^\n" +
-	"\x17numscript_name_required\x18w \x01(\v2$.common.NumscriptNameRequiredDetailsH\x00R\x15numscriptNameRequired\x12\\\n" +
-	"\x17numscript_name_too_long\x18x \x01(\v2#.common.NumscriptNameTooLongDetailsH\x00R\x14numscriptNameTooLong\x12d\n" +
-	"\x19numscript_negative_amount\x18y \x01(\v2&.common.NumscriptNegativeAmountDetailsH\x00R\x17numscriptNegativeAmount\x12g\n" +
-	"\x1anumscript_negative_balance\x18z \x01(\v2'.common.NumscriptNegativeBalanceDetailsH\x00R\x18numscriptNegativeBalance\x12g\n" +
-	"\x1anumscript_negative_portion\x18{ \x01(\v2'.common.NumscriptNegativePortionDetailsH\x00R\x18numscriptNegativePortion\x12R\n" +
-	"\x13numscript_not_found\x18| \x01(\v2 .common.NumscriptNotFoundDetailsH\x00R\x11numscriptNotFound\x12X\n" +
-	"\x15numscript_parse_error\x18} \x01(\v2\".common.NumscriptParseErrorDetailsH\x00R\x13numscriptParseError\x12z\n" +
-	"!numscript_posting_amount_overflow\x18~ \x01(\v2-.common.NumscriptPostingAmountOverflowDetailsH\x00R\x1enumscriptPostingAmountOverflow\x12z\n" +
-	"!numscript_posting_negative_amount\x18\x7f \x01(\v2-.common.NumscriptPostingNegativeAmountDetailsH\x00R\x1enumscriptPostingNegativeAmount\x12O\n" +
-	"\x11numscript_runtime\x18\x80\x01 \x01(\v2\x1f.common.NumscriptRuntimeDetailsH\x00R\x10numscriptRuntime\x12q\n" +
-	"\x1dnumscript_scaling_unsupported\x18\x81\x01 \x01(\v2*.common.NumscriptScalingUnsupportedDetailsH\x00R\x1bnumscriptScalingUnsupported\x12V\n" +
-	"\x14numscript_type_error\x18\x82\x01 \x01(\v2!.common.NumscriptTypeErrorDetailsH\x00R\x12numscriptTypeError\x12h\n" +
-	"\x1anumscript_unbound_function\x18\x83\x01 \x01(\v2'.common.NumscriptUnboundFunctionDetailsH\x00R\x18numscriptUnboundFunction\x12h\n" +
-	"\x1anumscript_unbound_variable\x18\x84\x01 \x01(\v2'.common.NumscriptUnboundVariableDetailsH\x00R\x18numscriptUnboundVariable\x12x\n" +
-	" numscript_version_already_exists\x18\x85\x01 \x01(\v2,.common.NumscriptVersionAlreadyExistsDetailsH\x00R\x1dnumscriptVersionAlreadyExists\x12l\n" +
-	"\x1cpostings_and_script_conflict\x18\x86\x01 \x01(\v2(.common.PostingsAndScriptConflictDetailsH\x00R\x19postingsAndScriptConflict\x12U\n" +
-	"\x13preload_unavailable\x18\x87\x01 \x01(\v2!.common.PreloadUnavailableDetailsH\x00R\x12preloadUnavailable\x12o\n" +
-	"\x1dprepared_query_already_exists\x18\x88\x01 \x01(\v2).common.PreparedQueryAlreadyExistsDetailsH\x00R\x1apreparedQueryAlreadyExists\x12v\n" +
-	" prepared_query_name_invalid_char\x18\x89\x01 \x01(\v2+.common.PreparedQueryNameInvalidCharDetailsH\x00R\x1cpreparedQueryNameInvalidChar\x12l\n" +
-	"\x1cprepared_query_name_required\x18\x8a\x01 \x01(\v2(.common.PreparedQueryNameRequiredDetailsH\x00R\x19preparedQueryNameRequired\x12j\n" +
-	"\x1cprepared_query_name_too_long\x18\x8b\x01 \x01(\v2'.common.PreparedQueryNameTooLongDetailsH\x00R\x18preparedQueryNameTooLong\x12`\n" +
-	"\x18prepared_query_not_found\x18\x8c\x01 \x01(\v2$.common.PreparedQueryNotFoundDetailsH\x00R\x15preparedQueryNotFound\x12_\n" +
-	"\x17prepared_query_required\x18\x8d\x01 \x01(\v2$.common.PreparedQueryRequiredDetailsH\x00R\x15preparedQueryRequired\x12{\n" +
-	"!prepared_query_target_unsupported\x18\x8e\x01 \x01(\v2-.common.PreparedQueryTargetUnsupportedDetailsH\x00R\x1epreparedQueryTargetUnsupported\x12p\n" +
-	"\x1erevert_target_created_in_batch\x18\x8f\x01 \x01(\v2).common.RevertTargetCreatedInBatchDetailsH\x00R\x1arevertTargetCreatedInBatch\x12h\n" +
-	"\x1ascoped_balance_unsupported\x18\x90\x01 \x01(\v2'.common.ScopedBalanceUnsupportedDetailsH\x00R\x18scopedBalanceUnsupported\x12o\n" +
-	"\x1dscript_and_reference_conflict\x18\x91\x01 \x01(\v2).common.ScriptAndReferenceConflictDetailsH\x00R\x1ascriptAndReferenceConflict\x12I\n" +
-	"\x0fscript_required\x18\x92\x01 \x01(\v2\x1d.common.ScriptRequiredDetailsH\x00R\x0escriptRequired\x12R\n" +
-	"\x12sequence_exhausted\x18\x93\x01 \x01(\v2 .common.SequenceExhaustedDetailsH\x00R\x11sequenceExhausted\x12g\n" +
-	"\x1bsigning_key_id_invalid_char\x18\x94\x01 \x01(\v2&.common.SigningKeyIdInvalidCharDetailsH\x00R\x17signingKeyIdInvalidChar\x12]\n" +
-	"\x17signing_key_id_required\x18\x95\x01 \x01(\v2#.common.SigningKeyIdRequiredDetailsH\x00R\x14signingKeyIdRequired\x12[\n" +
-	"\x17signing_key_id_too_long\x18\x96\x01 \x01(\v2\".common.SigningKeyIdTooLongDetailsH\x00R\x13signingKeyIdTooLong\x12f\n" +
-	"\x1asigning_key_invalid_length\x18\x97\x01 \x01(\v2&.common.SigningKeyInvalidLengthDetailsH\x00R\x17signingKeyInvalidLength\x12S\n" +
-	"\x13sink_already_exists\x18\x98\x01 \x01(\v2 .common.SinkAlreadyExistsDetailsH\x00R\x11sinkAlreadyExists\x12a\n" +
-	"\x19sink_batch_size_too_large\x18\x99\x01 \x01(\v2$.common.SinkBatchSizeTooLargeDetailsH\x00R\x15sinkBatchSizeTooLarge\x12b\n" +
-	"\x18sink_controller_mismatch\x18\x9a\x01 \x01(\v2%.common.SinkControllerMismatchDetailsH\x00R\x16sinkControllerMismatch\x12D\n" +
-	"\x0esink_not_found\x18\x9b\x01 \x01(\v2\x1b.common.SinkNotFoundDetailsH\x00R\fsinkNotFound\x12V\n" +
-	"\x14stale_cluster_policy\x18\x9c\x01 \x01(\v2!.common.StaleClusterPolicyDetailsH\x00R\x12staleClusterPolicy\x12_\n" +
-	"\x17stale_inputs_resolution\x18\x9d\x01 \x01(\v2$.common.StaleInputsResolutionDetailsH\x00R\x15staleInputsResolution\x12F\n" +
-	"\x0estale_proposal\x18\x9e\x01 \x01(\v2\x1c.common.StaleProposalDetailsH\x00R\rstaleProposal\x12b\n" +
-	"\x18storage_operation_failed\x18\x9f\x01 \x01(\v2%.common.StorageOperationFailedDetailsH\x00R\x16storageOperationFailed\x12I\n" +
-	"\x0ftarget_required\x18\xa0\x01 \x01(\v2\x1d.common.TargetRequiredDetailsH\x00R\x0etargetRequired\x12n\n" +
-	"\x1ctransaction_already_reverted\x18\xa1\x01 \x01(\v2).common.TransactionAlreadyRevertedDetailsH\x00R\x1atransactionAlreadyReverted\x12Y\n" +
-	"\x15transaction_not_found\x18\xa2\x01 \x01(\v2\".common.TransactionNotFoundDetailsH\x00R\x13transactionNotFound\x12t\n" +
-	"\x1etransaction_reference_conflict\x18\xa3\x01 \x01(\v2+.common.TransactionReferenceConflictDetailsH\x00R\x1ctransactionReferenceConflict\x12u\n" +
-	"\x1ftransaction_reference_not_found\x18\xa4\x01 \x01(\v2+.common.TransactionReferenceNotFoundDetailsH\x00R\x1ctransactionReferenceNotFound\x12r\n" +
-	"\x1etransaction_reference_too_long\x18\xa5\x01 \x01(\v2*.common.TransactionReferenceTooLongDetailsH\x00R\x1btransactionReferenceTooLong\x12t\n" +
-	"\x1etransaction_state_inconsistent\x18\xa6\x01 \x01(\v2+.common.TransactionStateInconsistentDetailsH\x00R\x1ctransactionStateInconsistent\x12h\n" +
-	"\x1atransaction_target_missing\x18\xa7\x01 \x01(\v2'.common.TransactionTargetMissingDetailsH\x00R\x18transactionTargetMissing\x12f\n" +
-	"\x1atransient_account_non_zero\x18\xa8\x01 \x01(\v2&.common.TransientAccountNonZeroDetailsH\x00R\x17transientAccountNonZero\x12<\n" +
+	" \x01(\v2\".common.AccountTypeNotFoundDetailsB\x05\x82\xbd\x18\x01\"H\x00R\x13accountTypeNotFound\x12s\n" +
+	"\x1daccount_type_pattern_too_long\x18\v \x01(\v2(.common.AccountTypePatternTooLongDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x19accountTypePatternTooLong\x12X\n" +
+	"\x12aggregate_overflow\x18\f \x01(\v2 .common.AggregateOverflowDetailsB\x05\x82\xbd\x18\x01<H\x00R\x11aggregateOverflow\x12I\n" +
+	"\rasset_invalid\x18\r \x01(\v2\x1b.common.AssetInvalidDetailsB\x05\x82\xbd\x18\x01\rH\x00R\fassetInvalid\x12L\n" +
+	"\x0eaudit_disabled\x18\x0e \x01(\v2\x1c.common.AuditDisabledDetailsB\x05\x82\xbd\x18\x01\x0eH\x00R\rauditDisabled\x12S\n" +
+	"\x11balance_not_found\x18\x0f \x01(\v2\x1e.common.BalanceNotFoundDetailsB\x05\x82\xbd\x18\x01=H\x00R\x0fbalanceNotFound\x12_\n" +
+	"\x15balance_not_preloaded\x18\x10 \x01(\v2\".common.BalanceNotPreloadedDetailsB\x05\x82\xbd\x18\x01\vH\x00R\x13balanceNotPreloaded\x12b\n" +
+	"\x16checkpoint_id_required\x18\x11 \x01(\v2#.common.CheckpointIdRequiredDetailsB\x05\x82\xbd\x18\x011H\x00R\x14checkpointIdRequired\x12h\n" +
+	"\x18checkpoint_limit_reached\x18\x12 \x01(\v2%.common.CheckpointLimitReachedDetailsB\x05\x82\xbd\x18\x01AH\x00R\x16checkpointLimitReached\x12\\\n" +
+	"\x14checkpoint_not_found\x18\x13 \x01(\v2!.common.CheckpointNotFoundDetailsB\x05\x82\xbd\x18\x01BH\x00R\x12checkpointNotFound\x12\\\n" +
+	"\x14checkpoint_not_ready\x18\x14 \x01(\v2!.common.CheckpointNotReadyDetailsB\x05\x82\xbd\x18\x017H\x00R\x12checkpointNotReady\x12b\n" +
+	"\x16cluster_policy_invalid\x18\x15 \x01(\v2#.common.ClusterPolicyInvalidDetailsB\x05\x82\xbd\x18\x01@H\x00R\x14clusterPolicyInvalid\x12~\n" +
+	" cluster_policy_revision_conflict\x18\x16 \x01(\v2,.common.ClusterPolicyRevisionConflictDetailsB\x05\x82\xbd\x18\x01?H\x00R\x1dclusterPolicyRevisionConflict\x12U\n" +
+	"\x11cluster_unhealthy\x18\x17 \x01(\v2\x1f.common.ClusterUnhealthyDetailsB\x05\x82\xbd\x18\x014H\x00R\x10clusterUnhealthy\x12I\n" +
+	"\rcolor_invalid\x18\x18 \x01(\v2\x1b.common.ColorInvalidDetailsB\x05\x82\xbd\x18\x01\rH\x00R\fcolorInvalid\x12J\n" +
+	"\x0ecolor_too_long\x18\x19 \x01(\v2\x1b.common.ColorTooLongDetailsB\x05\x82\xbd\x18\x01\rH\x00R\fcolorTooLong\x12I\n" +
+	"\rcoverage_miss\x18\x1a \x01(\v2\x1b.common.CoverageMissDetailsB\x05\x82\xbd\x18\x01-H\x00R\fcoverageMiss\x12q\n" +
+	"\x1bdependency_discovery_failed\x18\x1b \x01(\v2(.common.DependencyDiscoveryFailedDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x19dependencyDiscoveryFailed\x12U\n" +
+	"\x11empty_transaction\x18\x1c \x01(\v2\x1f.common.EmptyTransactionDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x10emptyTransaction\x12f\n" +
+	"\x18execution_plan_too_large\x18\x1d \x01(\v2$.common.ExecutionPlanTooLargeDetailsB\x05\x82\xbd\x18\x01,H\x00R\x15executionPlanTooLarge\x12h\n" +
+	"\x18filter_compilation_error\x18\x1e \x01(\v2%.common.FilterCompilationErrorDetailsB\x05\x82\xbd\x18\x01(H\x00R\x16filterCompilationError\x12h\n" +
+	"\x18idempotency_check_failed\x18\x1f \x01(\v2%.common.IdempotencyCheckFailedDetailsB\x05\x82\xbd\x18\x01.H\x00R\x16idempotencyCheckFailed\x12h\n" +
+	"\x18idempotency_key_conflict\x18  \x01(\v2%.common.IdempotencyKeyConflictDetailsB\x05\x82\xbd\x18\x01\x04H\x00R\x16idempotencyKeyConflict\x12C\n" +
+	"\vid_required\x18! \x01(\v2\x19.common.IdRequiredDetailsB\x05\x82\xbd\x18\x01\rH\x00R\n" +
+	"idRequired\x12\\\n" +
+	"\x14index_already_exists\x18\" \x01(\v2!.common.IndexAlreadyExistsDetailsB\x05\x82\xbd\x18\x01DH\x00R\x12indexAlreadyExists\x12L\n" +
+	"\x0eindex_building\x18# \x01(\v2\x1c.common.IndexBuildingDetailsB\x05\x82\xbd\x18\x01\x1bH\x00R\rindexBuilding\x12X\n" +
+	"\x12index_inconsistent\x18$ \x01(\v2 .common.IndexInconsistentDetailsB\x05\x82\xbd\x18\x01\x1cH\x00R\x11indexInconsistent\x12M\n" +
+	"\x0findex_not_found\x18% \x01(\v2\x1c.common.IndexNotFoundDetailsB\x05\x82\xbd\x18\x01\x1aH\x00R\rindexNotFound\x12h\n" +
+	"\x18index_target_unsupported\x18& \x01(\v2%.common.IndexTargetUnsupportedDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x16indexTargetUnsupported\x12X\n" +
+	"\x12insufficient_funds\x18' \x01(\v2 .common.InsufficientFundsDetailsB\x05\x82\xbd\x18\x01\tH\x00R\x11insufficientFunds\x12V\n" +
+	"\x12invalid_apply_type\x18( \x01(\v2\x1f.common.InvalidApplyTypeDetailsB\x05\x82\xbd\x18\x01*H\x00R\x10invalidApplyType\x12n\n" +
+	"\x1ainvalid_caller_attribution\x18) \x01(\v2'.common.InvalidCallerAttributionDetailsB\x05\x82\xbd\x18\x01HH\x00R\x18invalidCallerAttribution\x12e\n" +
+	"\x17invalid_cron_expression\x18* \x01(\v2$.common.InvalidCronExpressionDetailsB\x05\x82\xbd\x18\x01\x15H\x00R\x15invalidCronExpression\x12b\n" +
+	"\x16invalid_execution_plan\x18+ \x01(\v2#.common.InvalidExecutionPlanDetailsB\x05\x82\xbd\x18\x01+H\x00R\x14invalidExecutionPlan\x12V\n" +
+	"\x12invalid_order_type\x18, \x01(\v2\x1f.common.InvalidOrderTypeDetailsB\x05\x82\xbd\x18\x01)H\x00R\x10invalidOrderType\x12O\n" +
+	"\x0finvalid_pattern\x18- \x01(\v2\x1d.common.InvalidPatternDetailsB\x05\x82\xbd\x18\x01$H\x00R\x0einvalidPattern\x12h\n" +
+	"\x18invalid_skippable_reason\x18. \x01(\v2%.common.InvalidSkippableReasonDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x16invalidSkippableReason\x12_\n" +
+	"\x15ledger_already_exists\x18/ \x01(\v2\".common.LedgerAlreadyExistsDetailsB\x05\x82\xbd\x18\x01\x01H\x00R\x13ledgerAlreadyExists\x12L\n" +
+	"\x0eledger_deleted\x180 \x01(\v2\x1c.common.LedgerDeletedDetailsB\x05\x82\xbd\x18\x01\x03H\x00R\rledgerDeleted\x12]\n" +
+	"\x15ledger_in_mirror_mode\x181 \x01(\v2!.common.LedgerInMirrorModeDetailsB\x05\x82\xbd\x18\x01\x16H\x00R\x12ledgerInMirrorMode\x12f\n" +
+	"\x18ledger_name_invalid_char\x182 \x01(\v2$.common.LedgerNameInvalidCharDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x15ledgerNameInvalidChar\x12\\\n" +
+	"\x14ledger_name_required\x183 \x01(\v2!.common.LedgerNameRequiredDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x12ledgerNameRequired\x12o\n" +
+	"\x1bledger_name_reserved_prefix\x184 \x01(\v2'.common.LedgerNameReservedPrefixDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x18ledgerNameReservedPrefix\x12Z\n" +
+	"\x14ledger_name_too_long\x185 \x01(\v2 .common.LedgerNameTooLongDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x11ledgerNameTooLong\x12P\n" +
+	"\x10ledger_not_found\x186 \x01(\v2\x1d.common.LedgerNotFoundDetailsB\x05\x82\xbd\x18\x01\x02H\x00R\x0eledgerNotFound\x12g\n" +
+	"\x19ledger_not_in_mirror_mode\x187 \x01(\v2$.common.LedgerNotInMirrorModeDetailsB\x05\x82\xbd\x18\x01\x17H\x00R\x15ledgerNotInMirrorMode\x12R\n" +
+	"\x10maintenance_mode\x188 \x01(\v2\x1e.common.MaintenanceModeDetailsB\x05\x82\xbd\x18\x01\x13H\x00R\x0fmaintenanceMode\x12p\n" +
+	"\x1cmetadata_field_not_in_schema\x189 \x01(\v2'.common.MetadataFieldNotInSchemaDetailsB\x05\x82\xbd\x18\x01\x1dH\x00R\x18metadataFieldNotInSchema\x12V\n" +
+	"\x12metadata_key_empty\x18: \x01(\v2\x1f.common.MetadataKeyEmptyDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x10metadataKeyEmpty\x12i\n" +
+	"\x19metadata_key_invalid_char\x18; \x01(\v2%.common.MetadataKeyInvalidCharDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x16metadataKeyInvalidChar\x12_\n" +
+	"\x15metadata_key_required\x18< \x01(\v2\".common.MetadataKeyRequiredDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x13metadataKeyRequired\x12t\n" +
+	"\x1cmetadata_limits_unconfigured\x18= \x01(\v2).common.MetadataLimitsUnconfiguredDetailsB\x05\x82\xbd\x18\x01@H\x00R\x1ametadataLimitsUnconfigured\x12e\n" +
+	"\x17metadata_limit_exceeded\x18> \x01(\v2$.common.MetadataLimitExceededDetailsB\x05\x82\xbd\x18\x01EH\x00R\x15metadataLimitExceeded\x12V\n" +
+	"\x12metadata_not_found\x18? \x01(\v2\x1f.common.MetadataNotFoundDetailsB\x05\x82\xbd\x18\x01\x12H\x00R\x10metadataNotFound\x12\x7f\n" +
+	"!metadata_value_contains_null_byte\x18@ \x01(\v2,.common.MetadataValueContainsNullByteDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x1dmetadataValueContainsNullByte\x12c\n" +
+	"\x17mirror_http_url_invalid\x18A \x01(\v2#.common.MirrorHttpUrlInvalidDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x14mirrorHttpUrlInvalid\x12l\n" +
+	"\x1amirror_iam_region_required\x18B \x01(\v2&.common.MirrorIamRegionRequiredDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x17mirrorIamRegionRequired\x12c\n" +
+	"\x17mirror_iam_requires_tls\x18C \x01(\v2#.common.MirrorIamRequiresTlsDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x14mirrorIamRequiresTls\x12o\n" +
+	"\x1bmirror_rewrite_rule_invalid\x18D \x01(\v2'.common.MirrorRewriteRuleInvalidDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x18mirrorRewriteRuleInvalid\x12X\n" +
+	"\x14mirror_v2_log_id_gap\x18E \x01(\v2\x1f.common.MirrorV2LogIdGapDetailsB\x05\x82\xbd\x18\x018H\x00R\x10mirrorV2LogIdGap\x12d\n" +
+	"\x18mirror_v2_log_id_invalid\x18F \x01(\v2#.common.MirrorV2LogIdInvalidDetailsB\x05\x82\xbd\x18\x019H\x00R\x14mirrorV2LogIdInvalid\x12i\n" +
+	"\x18numscript_asset_mismatch\x18G \x01(\v2%.common.NumscriptAssetMismatchDetailsB\x06\x82\xbd\x18\x022JH\x00R\x16numscriptAssetMismatch\x12Z\n" +
+	"\x13numscript_bad_arity\x18H \x01(\v2 .common.NumscriptBadArityDetailsB\x06\x82\xbd\x18\x022JH\x00R\x11numscriptBadArity\x12g\n" +
+	"\x18numscript_bad_meta_value\x18I \x01(\v2$.common.NumscriptBadMetaValueDetailsB\x06\x82\xbd\x18\x022JH\x00R\x15numscriptBadMetaValue\x12`\n" +
+	"\x15numscript_bad_portion\x18J \x01(\v2\".common.NumscriptBadPortionDetailsB\x06\x82\xbd\x18\x022JH\x00R\x13numscriptBadPortion\x12\x89\x01\n" +
+	"$numscript_cannot_cast_scoped_account\x18K \x01(\v2/.common.NumscriptCannotCastScopedAccountDetailsB\x06\x82\xbd\x18\x022JH\x00R numscriptCannotCastScopedAccount\x12z\n" +
+	"\x1fnumscript_cannot_cast_to_string\x18L \x01(\v2*.common.NumscriptCannotCastToStringDetailsB\x06\x82\xbd\x18\x022JH\x00R\x1bnumscriptCannotCastToString\x12\x8c\x01\n" +
+	"%numscript_cannot_store_scoped_account\x18M \x01(\v20.common.NumscriptCannotStoreScopedAccountDetailsB\x06\x82\xbd\x18\x022JH\x00R!numscriptCannotStoreScopedAccount\x12o\n" +
+	"\x1bnumscript_compile_bad_arity\x18N \x01(\v2'.common.NumscriptCompileBadArityDetailsB\x05\x82\xbd\x18\x01IH\x00R\x18numscriptCompileBadArity\x12\x8f\x01\n" +
+	"'numscript_compile_cannot_cast_to_string\x18O \x01(\v21.common.NumscriptCompileCannotCastToStringDetailsB\x05\x82\xbd\x18\x01IH\x00R\"numscriptCompileCannotCastToString\x12\xa1\x01\n" +
+	"-numscript_compile_cannot_store_scoped_account\x18P \x01(\v27.common.NumscriptCompileCannotStoreScopedAccountDetailsB\x05\x82\xbd\x18\x01IH\x00R(numscriptCompileCannotStoreScopedAccount\x12\x8d\x01\n" +
+	"%numscript_compile_duplicate_remaining\x18Q \x01(\v21.common.NumscriptCompileDuplicateRemainingDetailsB\x05\x82\xbd\x18\x01IH\x00R\"numscriptCompileDuplicateRemaining\x12\x8a\x01\n" +
+	"$numscript_compile_duplicate_variable\x18R \x01(\v20.common.NumscriptCompileDuplicateVariableDetailsB\x05\x82\xbd\x18\x01IH\x00R!numscriptCompileDuplicateVariable\x12e\n" +
+	"\x17numscript_compile_error\x18S \x01(\v2$.common.NumscriptCompileErrorDetailsB\x05\x82\xbd\x18\x01IH\x00R\x15numscriptCompileError\x12\x90\x01\n" +
+	"&numscript_compile_experimental_feature\x18T \x01(\v22.common.NumscriptCompileExperimentalFeatureDetailsB\x05\x82\xbd\x18\x01IH\x00R#numscriptCompileExperimentalFeature\x12\x81\x01\n" +
+	"!numscript_compile_invalid_feature\x18U \x01(\v2-.common.NumscriptCompileInvalidFeatureDetailsB\x05\x82\xbd\x18\x01IH\x00R\x1enumscriptCompileInvalidFeature\x12\x91\x01\n" +
+	"'numscript_compile_invalid_meta_position\x18V \x01(\v22.common.NumscriptCompileInvalidMetaPositionDetailsB\x05\x82\xbd\x18\x01IH\x00R#numscriptCompileInvalidMetaPosition\x12x\n" +
+	"\x1enumscript_compile_invalid_type\x18W \x01(\v2*.common.NumscriptCompileInvalidTypeDetailsB\x05\x82\xbd\x18\x01IH\x00R\x1bnumscriptCompileInvalidType\x12\x97\x01\n" +
+	")numscript_compile_invalid_uncapped_source\x18X \x01(\v24.common.NumscriptCompileInvalidUncappedSourceDetailsB\x05\x82\xbd\x18\x01IH\x00R%numscriptCompileInvalidUncappedSource\x12\x94\x01\n" +
+	"(numscript_compile_invalid_variable_value\x18Y \x01(\v23.common.NumscriptCompileInvalidVariableValueDetailsB\x05\x82\xbd\x18\x01IH\x00R$numscriptCompileInvalidVariableValue\x12\x84\x01\n" +
+	"\"numscript_compile_missing_variable\x18Z \x01(\v2..common.NumscriptCompileMissingVariableDetailsB\x05\x82\xbd\x18\x01IH\x00R\x1fnumscriptCompileMissingVariable\x12{\n" +
+	"\x1fnumscript_compile_type_mismatch\x18[ \x01(\v2+.common.NumscriptCompileTypeMismatchDetailsB\x05\x82\xbd\x18\x01IH\x00R\x1cnumscriptCompileTypeMismatch\x12\x84\x01\n" +
+	"\"numscript_compile_unbound_variable\x18\\ \x01(\v2..common.NumscriptCompileUnboundVariableDetailsB\x05\x82\xbd\x18\x01IH\x00R\x1fnumscriptCompileUnboundVariable\x12\x84\x01\n" +
+	"\"numscript_compile_unknown_function\x18] \x01(\v2..common.NumscriptCompileUnknownFunctionDetailsB\x05\x82\xbd\x18\x01IH\x00R\x1fnumscriptCompileUnknownFunction\x12n\n" +
+	"\x1anumscript_content_required\x18^ \x01(\v2'.common.NumscriptContentRequiredDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x18numscriptContentRequired\x12r\n" +
+	"\x1bnumscript_currency_mismatch\x18_ \x01(\v2(.common.NumscriptCurrencyMismatchDetailsB\x06\x82\xbd\x18\x022JH\x00R\x19numscriptCurrencyMismatch\x12g\n" +
+	"\x18numscript_divide_by_zero\x18` \x01(\v2$.common.NumscriptDivideByZeroDetailsB\x06\x82\xbd\x18\x022JH\x00R\x15numscriptDivideByZero\x12k\n" +
+	"\x19numscript_execution_error\x18a \x01(\v2&.common.NumscriptExecutionErrorDetailsB\x05\x82\xbd\x18\x01JH\x00R\x17numscriptExecutionError\x12{\n" +
+	"\x1enumscript_experimental_feature\x18b \x01(\v2+.common.NumscriptExperimentalFeatureDetailsB\x06\x82\xbd\x18\x022JH\x00R\x1cnumscriptExperimentalFeature\x12y\n" +
+	"\x1enumscript_invalid_account_name\x18c \x01(\v2*.common.NumscriptInvalidAccountNameDetailsB\x06\x82\xbd\x18\x022JH\x00R\x1bnumscriptInvalidAccountName\x12\x90\x01\n" +
+	"'numscript_invalid_allotment_in_send_all\x18d \x01(\v21.common.NumscriptInvalidAllotmentInSendAllDetailsB\x06\x82\xbd\x18\x022JH\x00R\"numscriptInvalidAllotmentInSendAll\x12|\n" +
+	"\x1fnumscript_invalid_allotment_sum\x18e \x01(\v2+.common.NumscriptInvalidAllotmentSumDetailsB\x06\x82\xbd\x18\x022JH\x00R\x1cnumscriptInvalidAllotmentSum\x12f\n" +
+	"\x17numscript_invalid_asset\x18f \x01(\v2$.common.NumscriptInvalidAssetDetailsB\x06\x82\xbd\x18\x022JH\x00R\x15numscriptInvalidAsset\x12f\n" +
+	"\x17numscript_invalid_color\x18g \x01(\v2$.common.NumscriptInvalidColorDetailsB\x06\x82\xbd\x18\x022JH\x00R\x15numscriptInvalidColor\x12l\n" +
+	"\x19numscript_invalid_feature\x18h \x01(\v2&.common.NumscriptInvalidFeatureDetailsB\x06\x82\xbd\x18\x022JH\x00R\x17numscriptInvalidFeature\x12\x85\x01\n" +
+	"\"numscript_invalid_monetary_literal\x18i \x01(\v2..common.NumscriptInvalidMonetaryLiteralDetailsB\x06\x82\xbd\x18\x022JH\x00R\x1fnumscriptInvalidMonetaryLiteral\x12v\n" +
+	"\x1dnumscript_invalid_nested_meta\x18j \x01(\v2).common.NumscriptInvalidNestedMetaDetailsB\x06\x82\xbd\x18\x022JH\x00R\x1anumscriptInvalidNestedMeta\x12\x7f\n" +
+	" numscript_invalid_number_literal\x18k \x01(\v2,.common.NumscriptInvalidNumberLiteralDetailsB\x06\x82\xbd\x18\x022JH\x00R\x1dnumscriptInvalidNumberLiteral\x12\x8e\x01\n" +
+	"%numscript_invalid_remaining_allotment\x18l \x01(\v21.common.NumscriptInvalidRemainingAllotmentDetailsB\x06\x82\xbd\x18\x022JH\x00R\"numscriptInvalidRemainingAllotment\x12f\n" +
+	"\x17numscript_invalid_scope\x18m \x01(\v2$.common.NumscriptInvalidScopeDetailsB\x06\x82\xbd\x18\x022JH\x00R\x15numscriptInvalidScope\x12c\n" +
+	"\x16numscript_invalid_type\x18n \x01(\v2#.common.NumscriptInvalidTypeDetailsB\x06\x82\xbd\x18\x022JH\x00R\x14numscriptInvalidType\x12\x9e\x01\n" +
+	"+numscript_invalid_unbounded_scaling_address\x18o \x01(\v26.common.NumscriptInvalidUnboundedScalingAddressDetailsB\x06\x82\xbd\x18\x022JH\x00R'numscriptInvalidUnboundedScalingAddress\x12\x89\x01\n" +
+	"$numscript_invalid_unbounded_send_all\x18p \x01(\v2/.common.NumscriptInvalidUnboundedSendAllDetailsB\x06\x82\xbd\x18\x022JH\x00R numscriptInvalidUnboundedSendAll\x12\x82\x01\n" +
+	"!numscript_invalid_uncapped_source\x18q \x01(\v2-.common.NumscriptInvalidUncappedSourceDetailsB\x06\x82\xbd\x18\x022JH\x00R\x1enumscriptInvalidUncappedSource\x12k\n" +
+	"\x19numscript_invalid_version\x18r \x01(\v2&.common.NumscriptInvalidVersionDetailsB\x05\x82\xbd\x18\x01 H\x00R\x17numscriptInvalidVersion\x12s\n" +
+	"\x1cnumscript_metadata_not_found\x18s \x01(\v2(.common.NumscriptMetadataNotFoundDetailsB\x06\x82\xbd\x18\x022JH\x00R\x19numscriptMetadataNotFound\x12f\n" +
+	"\x17numscript_missing_funds\x18t \x01(\v2$.common.NumscriptMissingFundsDetailsB\x06\x82\xbd\x18\x022JH\x00R\x15numscriptMissingFunds\x12o\n" +
+	"\x1anumscript_missing_variable\x18u \x01(\v2'.common.NumscriptMissingVariableDetailsB\x06\x82\xbd\x18\x022JH\x00R\x18numscriptMissingVariable\x12o\n" +
+	"\x1bnumscript_name_invalid_char\x18v \x01(\v2'.common.NumscriptNameInvalidCharDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x18numscriptNameInvalidChar\x12e\n" +
+	"\x17numscript_name_required\x18w \x01(\v2$.common.NumscriptNameRequiredDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x15numscriptNameRequired\x12c\n" +
+	"\x17numscript_name_too_long\x18x \x01(\v2#.common.NumscriptNameTooLongDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x14numscriptNameTooLong\x12l\n" +
+	"\x19numscript_negative_amount\x18y \x01(\v2&.common.NumscriptNegativeAmountDetailsB\x06\x82\xbd\x18\x022JH\x00R\x17numscriptNegativeAmount\x12o\n" +
+	"\x1anumscript_negative_balance\x18z \x01(\v2'.common.NumscriptNegativeBalanceDetailsB\x06\x82\xbd\x18\x022JH\x00R\x18numscriptNegativeBalance\x12o\n" +
+	"\x1anumscript_negative_portion\x18{ \x01(\v2'.common.NumscriptNegativePortionDetailsB\x06\x82\xbd\x18\x022JH\x00R\x18numscriptNegativePortion\x12Y\n" +
+	"\x13numscript_not_found\x18| \x01(\v2 .common.NumscriptNotFoundDetailsB\x05\x82\xbd\x18\x01\x1eH\x00R\x11numscriptNotFound\x12_\n" +
+	"\x15numscript_parse_error\x18} \x01(\v2\".common.NumscriptParseErrorDetailsB\x05\x82\xbd\x18\x01\fH\x00R\x13numscriptParseError\x12\x82\x01\n" +
+	"!numscript_posting_amount_overflow\x18~ \x01(\v2-.common.NumscriptPostingAmountOverflowDetailsB\x06\x82\xbd\x18\x022JH\x00R\x1enumscriptPostingAmountOverflow\x12\x82\x01\n" +
+	"!numscript_posting_negative_amount\x18\x7f \x01(\v2-.common.NumscriptPostingNegativeAmountDetailsB\x06\x82\xbd\x18\x022JH\x00R\x1enumscriptPostingNegativeAmount\x12V\n" +
+	"\x11numscript_runtime\x18\x80\x01 \x01(\v2\x1f.common.NumscriptRuntimeDetailsB\x05\x82\xbd\x18\x012H\x00R\x10numscriptRuntime\x12x\n" +
+	"\x1dnumscript_scaling_unsupported\x18\x81\x01 \x01(\v2*.common.NumscriptScalingUnsupportedDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x1bnumscriptScalingUnsupported\x12^\n" +
+	"\x14numscript_type_error\x18\x82\x01 \x01(\v2!.common.NumscriptTypeErrorDetailsB\x06\x82\xbd\x18\x022JH\x00R\x12numscriptTypeError\x12p\n" +
+	"\x1anumscript_unbound_function\x18\x83\x01 \x01(\v2'.common.NumscriptUnboundFunctionDetailsB\x06\x82\xbd\x18\x022JH\x00R\x18numscriptUnboundFunction\x12p\n" +
+	"\x1anumscript_unbound_variable\x18\x84\x01 \x01(\v2'.common.NumscriptUnboundVariableDetailsB\x06\x82\xbd\x18\x022JH\x00R\x18numscriptUnboundVariable\x12\x7f\n" +
+	" numscript_version_already_exists\x18\x85\x01 \x01(\v2,.common.NumscriptVersionAlreadyExistsDetailsB\x05\x82\xbd\x18\x01\x1fH\x00R\x1dnumscriptVersionAlreadyExists\x12s\n" +
+	"\x1cpostings_and_script_conflict\x18\x86\x01 \x01(\v2(.common.PostingsAndScriptConflictDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x19postingsAndScriptConflict\x12\\\n" +
+	"\x13preload_unavailable\x18\x87\x01 \x01(\v2!.common.PreloadUnavailableDetailsB\x05\x82\xbd\x18\x01;H\x00R\x12preloadUnavailable\x12v\n" +
+	"\x1dprepared_query_already_exists\x18\x88\x01 \x01(\v2).common.PreparedQueryAlreadyExistsDetailsB\x05\x82\xbd\x18\x01\x18H\x00R\x1apreparedQueryAlreadyExists\x12}\n" +
+	" prepared_query_name_invalid_char\x18\x89\x01 \x01(\v2+.common.PreparedQueryNameInvalidCharDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x1cpreparedQueryNameInvalidChar\x12s\n" +
+	"\x1cprepared_query_name_required\x18\x8a\x01 \x01(\v2(.common.PreparedQueryNameRequiredDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x19preparedQueryNameRequired\x12q\n" +
+	"\x1cprepared_query_name_too_long\x18\x8b\x01 \x01(\v2'.common.PreparedQueryNameTooLongDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x18preparedQueryNameTooLong\x12g\n" +
+	"\x18prepared_query_not_found\x18\x8c\x01 \x01(\v2$.common.PreparedQueryNotFoundDetailsB\x05\x82\xbd\x18\x01\x19H\x00R\x15preparedQueryNotFound\x12f\n" +
+	"\x17prepared_query_required\x18\x8d\x01 \x01(\v2$.common.PreparedQueryRequiredDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x15preparedQueryRequired\x12\x82\x01\n" +
+	"!prepared_query_target_unsupported\x18\x8e\x01 \x01(\v2-.common.PreparedQueryTargetUnsupportedDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x1epreparedQueryTargetUnsupported\x12w\n" +
+	"\x1erevert_target_created_in_batch\x18\x8f\x01 \x01(\v2).common.RevertTargetCreatedInBatchDetailsB\x05\x82\xbd\x18\x01FH\x00R\x1arevertTargetCreatedInBatch\x12o\n" +
+	"\x1ascoped_balance_unsupported\x18\x90\x01 \x01(\v2'.common.ScopedBalanceUnsupportedDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x18scopedBalanceUnsupported\x12v\n" +
+	"\x1dscript_and_reference_conflict\x18\x91\x01 \x01(\v2).common.ScriptAndReferenceConflictDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x1ascriptAndReferenceConflict\x12P\n" +
+	"\x0fscript_required\x18\x92\x01 \x01(\v2\x1d.common.ScriptRequiredDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x0escriptRequired\x12Y\n" +
+	"\x12sequence_exhausted\x18\x93\x01 \x01(\v2 .common.SequenceExhaustedDetailsB\x05\x82\xbd\x18\x01CH\x00R\x11sequenceExhausted\x12n\n" +
+	"\x1bsigning_key_id_invalid_char\x18\x94\x01 \x01(\v2&.common.SigningKeyIdInvalidCharDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x17signingKeyIdInvalidChar\x12d\n" +
+	"\x17signing_key_id_required\x18\x95\x01 \x01(\v2#.common.SigningKeyIdRequiredDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x14signingKeyIdRequired\x12b\n" +
+	"\x17signing_key_id_too_long\x18\x96\x01 \x01(\v2\".common.SigningKeyIdTooLongDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x13signingKeyIdTooLong\x12m\n" +
+	"\x1asigning_key_invalid_length\x18\x97\x01 \x01(\v2&.common.SigningKeyInvalidLengthDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x17signingKeyInvalidLength\x12Z\n" +
+	"\x13sink_already_exists\x18\x98\x01 \x01(\v2 .common.SinkAlreadyExistsDetailsB\x05\x82\xbd\x18\x01\x0fH\x00R\x11sinkAlreadyExists\x12h\n" +
+	"\x19sink_batch_size_too_large\x18\x99\x01 \x01(\v2$.common.SinkBatchSizeTooLargeDetailsB\x05\x82\xbd\x18\x01\x11H\x00R\x15sinkBatchSizeTooLarge\x12i\n" +
+	"\x18sink_controller_mismatch\x18\x9a\x01 \x01(\v2%.common.SinkControllerMismatchDetailsB\x05\x82\xbd\x18\x01GH\x00R\x16sinkControllerMismatch\x12K\n" +
+	"\x0esink_not_found\x18\x9b\x01 \x01(\v2\x1b.common.SinkNotFoundDetailsB\x05\x82\xbd\x18\x01\x10H\x00R\fsinkNotFound\x12]\n" +
+	"\x14stale_cluster_policy\x18\x9c\x01 \x01(\v2!.common.StaleClusterPolicyDetailsB\x05\x82\xbd\x18\x01>H\x00R\x12staleClusterPolicy\x12f\n" +
+	"\x17stale_inputs_resolution\x18\x9d\x01 \x01(\v2$.common.StaleInputsResolutionDetailsB\x05\x82\xbd\x18\x01:H\x00R\x15staleInputsResolution\x12M\n" +
+	"\x0estale_proposal\x18\x9e\x01 \x01(\v2\x1c.common.StaleProposalDetailsB\x05\x82\xbd\x18\x01\x14H\x00R\rstaleProposal\x12i\n" +
+	"\x18storage_operation_failed\x18\x9f\x01 \x01(\v2%.common.StorageOperationFailedDetailsB\x05\x82\xbd\x18\x01/H\x00R\x16storageOperationFailed\x12P\n" +
+	"\x0ftarget_required\x18\xa0\x01 \x01(\v2\x1d.common.TargetRequiredDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x0etargetRequired\x12u\n" +
+	"\x1ctransaction_already_reverted\x18\xa1\x01 \x01(\v2).common.TransactionAlreadyRevertedDetailsB\x05\x82\xbd\x18\x01\bH\x00R\x1atransactionAlreadyReverted\x12`\n" +
+	"\x15transaction_not_found\x18\xa2\x01 \x01(\v2\".common.TransactionNotFoundDetailsB\x05\x82\xbd\x18\x01\aH\x00R\x13transactionNotFound\x12{\n" +
+	"\x1etransaction_reference_conflict\x18\xa3\x01 \x01(\v2+.common.TransactionReferenceConflictDetailsB\x05\x82\xbd\x18\x01\x05H\x00R\x1ctransactionReferenceConflict\x12|\n" +
+	"\x1ftransaction_reference_not_found\x18\xa4\x01 \x01(\v2+.common.TransactionReferenceNotFoundDetailsB\x05\x82\xbd\x18\x01\x06H\x00R\x1ctransactionReferenceNotFound\x12y\n" +
+	"\x1etransaction_reference_too_long\x18\xa5\x01 \x01(\v2*.common.TransactionReferenceTooLongDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x1btransactionReferenceTooLong\x12{\n" +
+	"\x1etransaction_state_inconsistent\x18\xa6\x01 \x01(\v2+.common.TransactionStateInconsistentDetailsB\x05\x82\xbd\x18\x010H\x00R\x1ctransactionStateInconsistent\x12o\n" +
+	"\x1atransaction_target_missing\x18\xa7\x01 \x01(\v2'.common.TransactionTargetMissingDetailsB\x05\x82\xbd\x18\x01\rH\x00R\x18transactionTargetMissing\x12m\n" +
+	"\x1atransient_account_non_zero\x18\xa8\x01 \x01(\v2&.common.TransientAccountNonZeroDetailsB\x05\x82\xbd\x18\x01'H\x00R\x17transientAccountNonZero\x12<\n" +
 	"\n" +
 	"validation\x18\xa9\x01 \x01(\v2\x19.common.ValidationDetailsH\x00R\n" +
-	"validation\x12_\n" +
-	"\x17volume_not_materialized\x18\xaa\x01 \x01(\v2$.common.VolumeNotMaterializedDetailsH\x00R\x15volumeNotMaterialized\x12I\n" +
-	"\x0fvolume_overflow\x18\xab\x01 \x01(\v2\x1d.common.VolumeOverflowDetailsH\x00R\x0evolumeOverflow\x12c\n" +
-	"\x19writes_blocked_clock_skew\x18\xac\x01 \x01(\v2%.common.WritesBlockedClockSkewDetailsH\x00R\x16writesBlockedClockSkew\x12`\n" +
-	"\x18writes_blocked_disk_full\x18\xad\x01 \x01(\v2$.common.WritesBlockedDiskFullDetailsH\x00R\x15writesBlockedDiskFullB\x06\n" +
+	"validation\x12f\n" +
+	"\x17volume_not_materialized\x18\xaa\x01 \x01(\v2$.common.VolumeNotMaterializedDetailsB\x05\x82\xbd\x18\x013H\x00R\x15volumeNotMaterialized\x12P\n" +
+	"\x0fvolume_overflow\x18\xab\x01 \x01(\v2\x1d.common.VolumeOverflowDetailsB\x05\x82\xbd\x18\x01\n" +
+	"H\x00R\x0evolumeOverflow\x12j\n" +
+	"\x19writes_blocked_clock_skew\x18\xac\x01 \x01(\v2%.common.WritesBlockedClockSkewDetailsB\x05\x82\xbd\x18\x016H\x00R\x16writesBlockedClockSkew\x12g\n" +
+	"\x18writes_blocked_disk_full\x18\xad\x01 \x01(\v2$.common.WritesBlockedDiskFullDetailsB\x05\x82\xbd\x18\x015H\x00R\x15writesBlockedDiskFullB\x06\n" +
 	"\x04kind\"f\n" +
 	"\x1aAccountAddressEmptyDetails\x12\x15\n" +
 	"\x03key\x18\x01 \x01(\tH\x00R\x03key\x88\x01\x01\x12\x1d\n" +
@@ -26247,7 +26260,8 @@ const file_common_proto_rawDesc = "" +
 	"\x18valid_on_no_query_target\x12\x1d.google.protobuf.FieldOptions\x18̇\x03 \x01(\bR\x14validOnNoQueryTarget:R\n" +
 	"\x15ledger_log_is_history\x12\x1d.google.protobuf.FieldOptions\x18͇\x03 \x01(\bR\x12ledgerLogIsHistory:=\n" +
 	"\tsensitive\x12\x1d.google.protobuf.FieldOptions\x18·\x03 \x01(\bR\tsensitive:D\n" +
-	"\rsensitive_url\x12\x1d.google.protobuf.FieldOptions\x18χ\x03 \x01(\bR\fsensitiveUrlB9Z7github.com/formancehq/ledger/v3/internal/proto/commonpbb\x06proto3"
+	"\rsensitive_url\x12\x1d.google.protobuf.FieldOptions\x18χ\x03 \x01(\bR\fsensitiveUrl:]\n" +
+	"\x0ffailure_reasons\x12\x1d.google.protobuf.FieldOptions\x18Ї\x03 \x03(\x0e2\x13.common.ErrorReasonR\x0efailureReasonsB9Z7github.com/formancehq/ledger/v3/internal/proto/commonpbb\x06proto3"
 
 var (
 	file_common_proto_rawDescOnce sync.Once
@@ -27093,12 +27107,14 @@ var file_common_proto_depIdxs = []int32{
 	373, // 450: common.ledger_log_is_history:extendee -> google.protobuf.FieldOptions
 	373, // 451: common.sensitive:extendee -> google.protobuf.FieldOptions
 	373, // 452: common.sensitive_url:extendee -> google.protobuf.FieldOptions
-	18,  // 453: common.auth_policy:type_name -> common.MethodAuthPolicy
-	16,  // 454: common.allowed_query_targets:type_name -> common.QueryTarget
-	455, // [455:455] is the sub-list for method output_type
-	455, // [455:455] is the sub-list for method input_type
-	453, // [453:455] is the sub-list for extension type_name
-	447, // [447:453] is the sub-list for extension extendee
+	373, // 453: common.failure_reasons:extendee -> google.protobuf.FieldOptions
+	18,  // 454: common.auth_policy:type_name -> common.MethodAuthPolicy
+	16,  // 455: common.allowed_query_targets:type_name -> common.QueryTarget
+	11,  // 456: common.failure_reasons:type_name -> common.ErrorReason
+	457, // [457:457] is the sub-list for method output_type
+	457, // [457:457] is the sub-list for method input_type
+	454, // [454:457] is the sub-list for extension type_name
+	447, // [447:454] is the sub-list for extension extendee
 	0,   // [0:447] is the sub-list for field type_name
 }
 
@@ -27623,7 +27639,7 @@ func file_common_proto_init() {
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_common_proto_rawDesc), len(file_common_proto_rawDesc)),
 			NumEnums:      18,
 			NumMessages:   353,
-			NumExtensions: 6,
+			NumExtensions: 7,
 			NumServices:   0,
 		},
 		GoTypes:           file_common_proto_goTypes,

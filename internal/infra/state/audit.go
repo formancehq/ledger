@@ -1,7 +1,6 @@
 package state
 
 import (
-	"fmt"
 	"slices"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -20,15 +19,11 @@ import (
 // invariant violation that must fail loudly at its origin, never be downgraded
 // to an unspecified business outcome in the authoritative chain.
 func buildAuditFailure(d domain.SerializableError) *auditpb.AuditFailure {
-	facts := domain.FailureFactsOf(d)
-	details, err := domain.FailureDetailsOf(facts)
-	if err != nil {
-		panic(fmt.Errorf("invalid audited failure facts: %w", err))
-	}
+	reason, code, details := domain.TypedFailureOf(d)
 
 	failure := &auditpb.AuditFailure{
-		Reason:  facts.Reason,
-		Code:    facts.Code,
+		Reason:  reason,
+		Code:    code,
 		Details: details,
 	}
 

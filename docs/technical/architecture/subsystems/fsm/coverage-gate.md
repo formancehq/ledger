@@ -137,8 +137,8 @@ func StoreFailure(operation string, err error) Describable {
 The distinction is load-bearing. `buildAuditFailure` (`internal/infra/state/audit.go:19-29`) derives the reason, code, and facts from the **outermost** `SerializableError` and never unwraps:
 
 ```go
-facts := domain.FailureFactsOf(d)
-failure.Reason, failure.Code, failure.Facts = facts.Reason, facts.Code, facts.Facts
+failure := domain.TypedFailureOf(d)
+// failure.Reason, failure.Code, and failure.Details are written directly
 ```
 
 So wrapping a `*ErrCoverageMiss` would permanently record an admission bug as `STORAGE_OPERATION_FAILED`, with the structured coverage facts lost — in a chain that is immutable by construction. `businessErrorToGRPCStatus` (`internal/adapter/grpc/errors.go:86`) performs the same outermost-only read, so the client sees the relabelled reason too. (`recordIdempotencyFailure` reads the outermost `Describable` the same way, but never reaches a coverage miss at all — see the idempotency row above.)

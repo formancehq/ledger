@@ -9,6 +9,7 @@ import (
 	numscriptlib "github.com/formancehq/numscript"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // convertNumscriptError translates numscript library errors raised by
@@ -50,106 +51,108 @@ func convertNumscriptError(err error) domain.SerializableError {
 // mapInterpreterError uses only public, typed Numscript errors. Never classify
 // by Error() text: a wording change must not change an audited outcome.
 func mapInterpreterError(err error) domain.SerializableError {
-	makeError := func(code string, facts map[string]string) domain.SerializableError {
-		return &domain.ErrNumscriptExecution{Detail: err.Error(), Code: code, Facts: facts}
+	makeError := func(details *commonpb.FailureDetails) domain.SerializableError {
+		return domain.NewNumscriptExecution(err.Error(), details)
 	}
 	if e, ok := errors.AsType[numscriptlib.MissingFundsErr](err); ok {
-		return makeError("NUMSCRIPT_MISSING_FUNDS", map[string]string{"asset": e.Asset, "needed": e.Needed.String(), "available": e.Available.String()})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptMissingFunds{NumscriptMissingFunds: &commonpb.NumscriptMissingFundsDetails{Asset: new(e.Asset), Needed: new(e.Needed.String()), Available: new(e.Available.String())}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.NegativeAmountErr](err); ok {
-		return makeError("NUMSCRIPT_NEGATIVE_AMOUNT", map[string]string{"amount": e.Amount.String()})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptNegativeAmount{NumscriptNegativeAmount: &commonpb.NumscriptNegativeAmountDetails{Amount: new(e.Amount.String())}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.MissingVariableErr](err); ok {
-		return makeError("NUMSCRIPT_MISSING_VARIABLE", map[string]string{"name": e.Name})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptMissingVariable{NumscriptMissingVariable: &commonpb.NumscriptMissingVariableDetails{Name: new(e.Name)}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.InvalidAccountName](err); ok {
-		return makeError("NUMSCRIPT_INVALID_ACCOUNT_NAME", map[string]string{"name": e.Name})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptInvalidAccountName{NumscriptInvalidAccountName: &commonpb.NumscriptInvalidAccountNameDetails{Name: new(e.Name)}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.InvalidAsset](err); ok {
-		return makeError("NUMSCRIPT_INVALID_ASSET", map[string]string{"name": e.Name})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptInvalidAsset{NumscriptInvalidAsset: &commonpb.NumscriptInvalidAssetDetails{Name: new(e.Name)}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.InvalidColor](err); ok {
-		return makeError("NUMSCRIPT_INVALID_COLOR", map[string]string{"color": e.Color})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptInvalidColor{NumscriptInvalidColor: &commonpb.NumscriptInvalidColorDetails{Color: new(e.Color)}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.InvalidScope](err); ok {
-		return makeError("NUMSCRIPT_INVALID_SCOPE", map[string]string{"scope": e.Scope})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptInvalidScope{NumscriptInvalidScope: &commonpb.NumscriptInvalidScopeDetails{Scope: new(e.Scope)}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.InvalidMonetaryLiteral](err); ok {
-		return makeError("NUMSCRIPT_INVALID_MONETARY_LITERAL", map[string]string{"source": e.Source})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptInvalidMonetaryLiteral{NumscriptInvalidMonetaryLiteral: &commonpb.NumscriptInvalidMonetaryLiteralDetails{Source: new(e.Source)}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.InvalidNumberLiteral](err); ok {
-		return makeError("NUMSCRIPT_INVALID_NUMBER_LITERAL", map[string]string{"source": e.Source})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptInvalidNumberLiteral{NumscriptInvalidNumberLiteral: &commonpb.NumscriptInvalidNumberLiteralDetails{Source: new(e.Source)}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.BadPortionParsingErr](err); ok {
-		return makeError("NUMSCRIPT_BAD_PORTION", map[string]string{"source": e.Source})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptBadPortion{NumscriptBadPortion: &commonpb.NumscriptBadPortionDetails{Source: new(e.Source)}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.MismatchedCurrencyError](err); ok {
-		return makeError("NUMSCRIPT_CURRENCY_MISMATCH", map[string]string{"expected": e.Expected, "got": e.Got})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptCurrencyMismatch{NumscriptCurrencyMismatch: &commonpb.NumscriptCurrencyMismatchDetails{Expected: new(e.Expected), Got: new(e.Got)}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.DivideByZero](err); ok {
-		facts := map[string]string{}
+		details := &commonpb.NumscriptDivideByZeroDetails{}
 		if e.Numerator != nil {
-			facts["numerator"] = e.Numerator.String()
+			details.Numerator = new(e.Numerator.String())
 		}
 
-		return makeError("NUMSCRIPT_DIVIDE_BY_ZERO", facts)
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptDivideByZero{
+			NumscriptDivideByZero: details,
+		}})
 	}
 	if e, ok := errors.AsType[numscriptlib.TypeError](err); ok {
-		return makeError("NUMSCRIPT_TYPE_ERROR", map[string]string{"expected": e.Expected})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptTypeError{NumscriptTypeError: &commonpb.NumscriptTypeErrorDetails{Expected: new(e.Expected)}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.MetadataNotFound](err); ok {
-		return makeError("NUMSCRIPT_METADATA_NOT_FOUND", map[string]string{"account": e.Account, "scope": e.Scope, "key": e.Key})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptMetadataNotFound{NumscriptMetadataNotFound: &commonpb.NumscriptMetadataNotFoundDetails{Account: new(e.Account), Scope: new(e.Scope), Key: new(e.Key)}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.NegativeBalanceError](err); ok {
-		return makeError("NUMSCRIPT_NEGATIVE_BALANCE", map[string]string{"account": e.Account, "scope": e.Scope, "asset": e.Asset, "amount": e.Amount.String()})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptNegativeBalance{NumscriptNegativeBalance: &commonpb.NumscriptNegativeBalanceDetails{Account: new(e.Account), Scope: new(e.Scope), Asset: new(e.Asset), Amount: new(e.Amount.String())}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.InvalidAllotmentSum](err); ok {
-		return makeError("NUMSCRIPT_INVALID_ALLOTMENT_SUM", map[string]string{"actualSum": e.ActualSum.String()})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptInvalidAllotmentSum{NumscriptInvalidAllotmentSum: &commonpb.NumscriptInvalidAllotmentSumDetails{ActualSum: new(e.ActualSum.String())}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.NegativePortion](err); ok {
-		return makeError("NUMSCRIPT_NEGATIVE_PORTION", map[string]string{"portion": e.Portion.String()})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptNegativePortion{NumscriptNegativePortion: &commonpb.NumscriptNegativePortionDetails{Portion: new(e.Portion.String())}}})
 	}
 	if _, ok := errors.AsType[numscriptlib.InvalidRemainingAllotment](err); ok {
-		return makeError("NUMSCRIPT_INVALID_REMAINING_ALLOTMENT", nil)
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptInvalidRemainingAllotment{NumscriptInvalidRemainingAllotment: &commonpb.NumscriptInvalidRemainingAllotmentDetails{}}})
 	}
 	if _, ok := errors.AsType[numscriptlib.InvalidAllotmentInSendAll](err); ok {
-		return makeError("NUMSCRIPT_INVALID_ALLOTMENT_IN_SEND_ALL", nil)
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptInvalidAllotmentInSendAll{NumscriptInvalidAllotmentInSendAll: &commonpb.NumscriptInvalidAllotmentInSendAllDetails{}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.InvalidUnboundedInSendAll](err); ok {
-		return makeError("NUMSCRIPT_INVALID_UNBOUNDED_SEND_ALL", map[string]string{"name": e.Name, "scope": e.Scope})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptInvalidUnboundedSendAll{NumscriptInvalidUnboundedSendAll: &commonpb.NumscriptInvalidUnboundedSendAllDetails{Name: new(e.Name), Scope: new(e.Scope)}}})
 	}
 	if _, ok := errors.AsType[numscriptlib.InvalidUnboundedAddressInScalingAddress](err); ok {
-		return makeError("NUMSCRIPT_INVALID_UNBOUNDED_SCALING_ADDRESS", nil)
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptInvalidUnboundedScalingAddress{NumscriptInvalidUnboundedScalingAddress: &commonpb.NumscriptInvalidUnboundedScalingAddressDetails{}}})
 	}
 	if _, ok := errors.AsType[numscriptlib.InvalidNestedMeta](err); ok {
-		return makeError("NUMSCRIPT_INVALID_NESTED_META", nil)
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptInvalidNestedMeta{NumscriptInvalidNestedMeta: &commonpb.NumscriptInvalidNestedMetaDetails{}}})
 	}
 	if _, ok := errors.AsType[numscriptlib.CannotCastToString](err); ok {
-		return makeError("NUMSCRIPT_CANNOT_CAST_TO_STRING", nil)
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptCannotCastToString{NumscriptCannotCastToString: &commonpb.NumscriptCannotCastToStringDetails{}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.CannotCastScopedAccountToString](err); ok {
-		return makeError("NUMSCRIPT_CANNOT_CAST_SCOPED_ACCOUNT", map[string]string{"account": e.Account, "scope": e.Scope})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptCannotCastScopedAccount{NumscriptCannotCastScopedAccount: &commonpb.NumscriptCannotCastScopedAccountDetails{Account: new(e.Account), Scope: new(e.Scope)}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.CannotStoreScopedAccountInMeta](err); ok {
-		return makeError("NUMSCRIPT_CANNOT_STORE_SCOPED_ACCOUNT", map[string]string{"account": e.Account, "scope": e.Scope})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptCannotStoreScopedAccount{NumscriptCannotStoreScopedAccount: &commonpb.NumscriptCannotStoreScopedAccountDetails{Account: new(e.Account), Scope: new(e.Scope)}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.UnboundVariableErr](err); ok {
-		return makeError("NUMSCRIPT_UNBOUND_VARIABLE", map[string]string{"name": e.Name})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptUnboundVariable{NumscriptUnboundVariable: &commonpb.NumscriptUnboundVariableDetails{Name: new(e.Name)}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.UnboundFunctionErr](err); ok {
-		return makeError("NUMSCRIPT_UNBOUND_FUNCTION", map[string]string{"name": e.Name})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptUnboundFunction{NumscriptUnboundFunction: &commonpb.NumscriptUnboundFunctionDetails{Name: new(e.Name)}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.BadArityErr](err); ok {
-		return makeError("NUMSCRIPT_BAD_ARITY", map[string]string{"expectedArity": strconv.Itoa(e.ExpectedArity), "givenArguments": strconv.Itoa(e.GivenArguments)})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptBadArity{NumscriptBadArity: &commonpb.NumscriptBadArityDetails{ExpectedArity: new(strconv.Itoa(e.ExpectedArity)), GivenArguments: new(strconv.Itoa(e.GivenArguments))}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.InvalidTypeErr](err); ok {
-		return makeError("NUMSCRIPT_INVALID_TYPE", map[string]string{"name": e.Name})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptInvalidType{NumscriptInvalidType: &commonpb.NumscriptInvalidTypeDetails{Name: new(e.Name)}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.ExperimentalFeature](err); ok {
-		return makeError("NUMSCRIPT_EXPERIMENTAL_FEATURE", map[string]string{"flagName": e.FlagName})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptExperimentalFeature{NumscriptExperimentalFeature: &commonpb.NumscriptExperimentalFeatureDetails{FlagName: new(e.FlagName)}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.InvalidFeature](err); ok {
-		return makeError("NUMSCRIPT_INVALID_FEATURE", map[string]string{"feature": e.Feature})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptInvalidFeature{NumscriptInvalidFeature: &commonpb.NumscriptInvalidFeatureDetails{Feature: new(e.Feature)}}})
 	}
 
 	return nil
@@ -159,53 +162,53 @@ func mapInterpreterError(err error) domain.SerializableError {
 // diagnostic wording. Unknown compiler defects retain the generic reason.
 func mapCompilerError(err error) *domain.ErrNumscriptCompile {
 	result := &domain.ErrNumscriptCompile{Detail: err.Error()}
-	set := func(code string, facts map[string]string) *domain.ErrNumscriptCompile {
-		result.Code, result.Facts = code, facts
+	set := func(details *commonpb.FailureDetails) *domain.ErrNumscriptCompile {
+		result.Details = details
 
 		return result
 	}
 	if e, ok := errors.AsType[numscriptlib.CompilerTypeError](err); ok {
 		switch kind := e.Kind.(type) {
 		case numscriptlib.TypecheckTypeMismatch:
-			return set("NUMSCRIPT_COMPILE_TYPE_MISMATCH", map[string]string{"expected": kind.Expected, "got": kind.Got})
+			return set(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptCompileTypeMismatch{NumscriptCompileTypeMismatch: &commonpb.NumscriptCompileTypeMismatchDetails{Expected: new(kind.Expected), Got: new(kind.Got)}}})
 		case numscriptlib.TypecheckUnboundVariable:
-			return set("NUMSCRIPT_COMPILE_UNBOUND_VARIABLE", map[string]string{"name": kind.Name, "type": kind.Type})
+			return set(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptCompileUnboundVariable{NumscriptCompileUnboundVariable: &commonpb.NumscriptCompileUnboundVariableDetails{Name: new(kind.Name), Type: new(kind.Type)}}})
 		case numscriptlib.TypecheckInvalidType:
-			return set("NUMSCRIPT_COMPILE_INVALID_TYPE", map[string]string{"name": kind.Name})
+			return set(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptCompileInvalidType{NumscriptCompileInvalidType: &commonpb.NumscriptCompileInvalidTypeDetails{Name: new(kind.Name)}}})
 		case numscriptlib.TypecheckBadArity:
-			return set("NUMSCRIPT_COMPILE_BAD_ARITY", map[string]string{"expected": strconv.Itoa(kind.Expected), "actual": strconv.Itoa(kind.Actual)})
+			return set(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptCompileBadArity{NumscriptCompileBadArity: &commonpb.NumscriptCompileBadArityDetails{Expected: new(uint64(kind.Expected)), Actual: new(uint64(kind.Actual))}}})
 		case numscriptlib.TypecheckUnknownFunction:
-			return set("NUMSCRIPT_COMPILE_UNKNOWN_FUNCTION", map[string]string{"name": kind.Name, "wrongContext": kind.WrongContext})
+			return set(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptCompileUnknownFunction{NumscriptCompileUnknownFunction: &commonpb.NumscriptCompileUnknownFunctionDetails{Name: new(kind.Name), WrongContext: new(kind.WrongContext)}}})
 		case numscriptlib.TypecheckDuplicateVariable:
-			return set("NUMSCRIPT_COMPILE_DUPLICATE_VARIABLE", map[string]string{"name": kind.Name})
+			return set(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptCompileDuplicateVariable{NumscriptCompileDuplicateVariable: &commonpb.NumscriptCompileDuplicateVariableDetails{Name: new(kind.Name)}}})
 		}
 	}
 	if _, ok := errors.AsType[numscriptlib.CompilerInvalidUncappedSource](err); ok {
-		return set("NUMSCRIPT_COMPILE_INVALID_UNCAPPED_SOURCE", nil)
+		return set(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptCompileInvalidUncappedSource{NumscriptCompileInvalidUncappedSource: &commonpb.NumscriptCompileInvalidUncappedSourceDetails{}}})
 	}
 	if _, ok := errors.AsType[numscriptlib.CompilerDuplicateRemaining](err); ok {
-		return set("NUMSCRIPT_COMPILE_DUPLICATE_REMAINING", nil)
+		return set(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptCompileDuplicateRemaining{NumscriptCompileDuplicateRemaining: &commonpb.NumscriptCompileDuplicateRemainingDetails{}}})
 	}
 	if _, ok := errors.AsType[numscriptlib.CompilerInvalidMetaPosition](err); ok {
-		return set("NUMSCRIPT_COMPILE_INVALID_META_POSITION", nil)
+		return set(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptCompileInvalidMetaPosition{NumscriptCompileInvalidMetaPosition: &commonpb.NumscriptCompileInvalidMetaPositionDetails{}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.CompilerCannotCastToString](err); ok {
-		return set("NUMSCRIPT_COMPILE_CANNOT_CAST_TO_STRING", map[string]string{"type": e.Type})
+		return set(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptCompileCannotCastToString{NumscriptCompileCannotCastToString: &commonpb.NumscriptCompileCannotCastToStringDetails{Type: new(e.Type)}}})
 	}
 	if _, ok := errors.AsType[numscriptlib.CompilerCannotStoreScopedAccountInMeta](err); ok {
-		return set("NUMSCRIPT_COMPILE_CANNOT_STORE_SCOPED_ACCOUNT", nil)
+		return set(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptCompileCannotStoreScopedAccount{NumscriptCompileCannotStoreScopedAccount: &commonpb.NumscriptCompileCannotStoreScopedAccountDetails{}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.CompilerExperimentalFeature](err); ok {
-		return set("NUMSCRIPT_COMPILE_EXPERIMENTAL_FEATURE", map[string]string{"flagName": e.FlagName})
+		return set(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptCompileExperimentalFeature{NumscriptCompileExperimentalFeature: &commonpb.NumscriptCompileExperimentalFeatureDetails{FlagName: new(e.FlagName)}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.CompilerInvalidFeature](err); ok {
-		return set("NUMSCRIPT_COMPILE_INVALID_FEATURE", map[string]string{"feature": e.Feature})
+		return set(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptCompileInvalidFeature{NumscriptCompileInvalidFeature: &commonpb.NumscriptCompileInvalidFeatureDetails{Feature: new(e.Feature)}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.CompilerMissingVariable](err); ok {
-		return set("NUMSCRIPT_COMPILE_MISSING_VARIABLE", map[string]string{"name": e.Name})
+		return set(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptCompileMissingVariable{NumscriptCompileMissingVariable: &commonpb.NumscriptCompileMissingVariableDetails{Name: new(e.Name)}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.CompilerInvalidVariableValue](err); ok {
-		return set("NUMSCRIPT_COMPILE_INVALID_VARIABLE_VALUE", map[string]string{"name": e.Name, "type": e.Type})
+		return set(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptCompileInvalidVariableValue{NumscriptCompileInvalidVariableValue: &commonpb.NumscriptCompileInvalidVariableValueDetails{Name: new(e.Name), Type: new(e.Type)}}})
 	}
 
 	return result

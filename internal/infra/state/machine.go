@@ -1412,12 +1412,11 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 				if validationErr != nil {
 					return nil, fmt.Errorf("invalid stored idempotency failure: %w", validationErr)
 				}
-				message, metadata := domain.RenderFailureFacts(failure)
+				message, _ := domain.RenderFailureFacts(failure)
 				err = &domain.ReplayedFailure{
 					ErrReason: domain.ReasonString(fr.GetReason()),
-					Code:      fr.GetCode(),
 					Msg:       message,
-					Meta:      metadata,
+					Details:   fr.GetDetails(),
 				}
 			default:
 				replayed = true
@@ -1825,19 +1824,15 @@ func (fsm *Machine) recordIdempotencyFailure(batch *dal.WriteSession, key string
 		return nil
 	}
 
-	facts := domain.FailureFactsOf(d)
-	details, err := domain.FailureDetailsOf(facts)
-	if err != nil {
-		return fmt.Errorf("invalid idempotency failure facts: %w", err)
-	}
+	reason, code, details := domain.TypedFailureOf(d)
 
 	value := &commonpb.IdempotencyKeyValue{
 		Hash:      proposalHash,
 		CreatedAt: createdAt,
 		ExpiresAt: expiresAt,
 		Failure: &commonpb.IdempotencyFailure{
-			Reason:  facts.Reason,
-			Code:    facts.Code,
+			Reason:  reason,
+			Code:    code,
 			Details: details,
 		},
 	}

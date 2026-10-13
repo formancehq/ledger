@@ -23,8 +23,8 @@ type coverageMissDescribable struct{}
 func (coverageMissDescribable) Error() string          { return "preload coverage miss (test)" }
 func (coverageMissDescribable) Kind() domain.ErrorKind { return domain.KindInternal }
 func (coverageMissDescribable) Reason() string         { return domain.ErrReasonCoverageMiss }
-func (e coverageMissDescribable) FailureFacts() domain.FailureFacts {
-	return domain.NewFailureFacts(e.Reason(), e.Reason(), nil)
+func (coverageMissDescribable) FailureDetails() *commonpb.FailureDetails {
+	return commonpb.MustFailureDetails(domain.ErrReasonCoverageMiss, nil)
 }
 
 // staleScript reads a balance DURING dependency resolution via balance() in a

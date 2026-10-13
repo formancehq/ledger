@@ -8,6 +8,7 @@ import (
 	numscriptlib "github.com/formancehq/numscript"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // CompiledScript is admission's locally compiled program and bound vars.
@@ -197,47 +198,47 @@ func convertVMError(err error) domain.SerializableError {
 }
 
 func mapVMError(err error) domain.SerializableError {
-	makeError := func(code string, facts map[string]string) domain.SerializableError {
-		return &domain.ErrNumscriptExecution{Detail: err.Error(), Code: code, Facts: facts}
+	makeError := func(details *commonpb.FailureDetails) domain.SerializableError {
+		return domain.NewNumscriptExecution(err.Error(), details)
 	}
 	if e, ok := errors.AsType[numscriptlib.VmNegativeAmountError](err); ok {
-		return makeError("NUMSCRIPT_NEGATIVE_AMOUNT", map[string]string{"amount": e.Amount.String()})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptNegativeAmount{NumscriptNegativeAmount: &commonpb.NumscriptNegativeAmountDetails{Amount: new(e.Amount.String())}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.VmNegativeBalanceError](err); ok {
-		return makeError("NUMSCRIPT_NEGATIVE_BALANCE", map[string]string{"account": e.Account, "amount": e.Amount.String()})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptNegativeBalance{NumscriptNegativeBalance: &commonpb.NumscriptNegativeBalanceDetails{Account: new(e.Account), Amount: new(e.Amount.String())}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.VmAssetMismatchError](err); ok {
-		return makeError("NUMSCRIPT_ASSET_MISMATCH", map[string]string{"expected": e.Expected, "got": e.Got})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptAssetMismatch{NumscriptAssetMismatch: &commonpb.NumscriptAssetMismatchDetails{Expected: new(e.Expected), Got: new(e.Got)}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.VmInvalidAllotmentSum](err); ok {
-		return makeError("NUMSCRIPT_INVALID_ALLOTMENT_SUM", map[string]string{"actualSum": e.ActualSum.String()})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptInvalidAllotmentSum{NumscriptInvalidAllotmentSum: &commonpb.NumscriptInvalidAllotmentSumDetails{ActualSum: new(e.ActualSum.String())}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.VmNegativePortionError](err); ok {
-		return makeError("NUMSCRIPT_NEGATIVE_PORTION", map[string]string{"portion": e.Portion.String()})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptNegativePortion{NumscriptNegativePortion: &commonpb.NumscriptNegativePortionDetails{Portion: new(e.Portion.String())}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.VmDivideByZeroError](err); ok {
-		return makeError("NUMSCRIPT_DIVIDE_BY_ZERO", map[string]string{"numerator": e.Numerator.String()})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptDivideByZero{NumscriptDivideByZero: &commonpb.NumscriptDivideByZeroDetails{Numerator: new(e.Numerator.String())}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.VmInvalidAccountName](err); ok {
-		return makeError("NUMSCRIPT_INVALID_ACCOUNT_NAME", map[string]string{"name": e.Name})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptInvalidAccountName{NumscriptInvalidAccountName: &commonpb.NumscriptInvalidAccountNameDetails{Name: new(e.Name)}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.VmInvalidColor](err); ok {
-		return makeError("NUMSCRIPT_INVALID_COLOR", map[string]string{"color": e.Color})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptInvalidColor{NumscriptInvalidColor: &commonpb.NumscriptInvalidColorDetails{Color: new(e.Color)}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.VmInvalidScope](err); ok {
-		return makeError("NUMSCRIPT_INVALID_SCOPE", map[string]string{"scope": e.Scope})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptInvalidScope{NumscriptInvalidScope: &commonpb.NumscriptInvalidScopeDetails{Scope: new(e.Scope)}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.VmCannotCastScopedAccountToString](err); ok {
-		return makeError("NUMSCRIPT_CANNOT_CAST_SCOPED_ACCOUNT", map[string]string{"account": e.Account, "scope": e.Scope})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptCannotCastScopedAccount{NumscriptCannotCastScopedAccount: &commonpb.NumscriptCannotCastScopedAccountDetails{Account: new(e.Account), Scope: new(e.Scope)}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.VmInvalidUncappedSource](err); ok {
-		return makeError("NUMSCRIPT_INVALID_UNCAPPED_SOURCE", map[string]string{"account": e.Account})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptInvalidUncappedSource{NumscriptInvalidUncappedSource: &commonpb.NumscriptInvalidUncappedSourceDetails{Account: new(e.Account)}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.VmMetadataNotFoundError](err); ok {
-		return makeError("NUMSCRIPT_METADATA_NOT_FOUND", map[string]string{"account": e.Account, "key": e.Key})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptMetadataNotFound{NumscriptMetadataNotFound: &commonpb.NumscriptMetadataNotFoundDetails{Account: new(e.Account), Key: new(e.Key)}}})
 	}
 	if e, ok := errors.AsType[numscriptlib.VmBadMetaValueError](err); ok {
-		return makeError("NUMSCRIPT_BAD_META_VALUE", map[string]string{"account": e.Account, "key": e.Key})
+		return makeError(&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptBadMetaValue{NumscriptBadMetaValue: &commonpb.NumscriptBadMetaValueDetails{Account: new(e.Account), Key: new(e.Key)}}})
 	}
 
 	return nil

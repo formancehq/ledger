@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestPublicErrorDetails(t *testing.T) {
@@ -72,9 +74,8 @@ func TestPublicErrorDetailsRejectMalformedFacts(t *testing.T) {
 	t.Parallel()
 
 	invalid := &ErrNumscriptExecution{
-		Detail: "private diagnostic",
-		Code:   "NUMSCRIPT_INVALID_ACCOUNT_NAME",
-		Facts:  map[string]string{"detail": "private diagnostic"},
+		Detail:  "private diagnostic",
+		Details: commonpb.MustFailureDetails("NUMSCRIPT_COMPILE_ERROR", nil),
 	}
 	message, metadata, overridden := PublicErrorDetails(invalid)
 	require.True(t, overridden)

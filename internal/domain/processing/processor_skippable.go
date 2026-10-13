@@ -55,15 +55,11 @@ func matchOrderSkip(order *raftcmdpb.Order, err domain.SerializableError) (*comm
 		return nil, false
 	}
 
-	facts := domain.FailureFactsOf(err)
-	details, validationErr := domain.FailureDetailsOf(facts)
-	if validationErr != nil {
-		panic(fmt.Errorf("invalid skipped-order facts: %w", validationErr))
-	}
+	reason, code, details := domain.TypedFailureOf(err)
 
 	skipPayload := &commonpb.OrderSkippedLog{
-		Reason:  facts.Reason,
-		Code:    facts.Code,
+		Reason:  reason,
+		Code:    code,
 		Details: details,
 	}
 

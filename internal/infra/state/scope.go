@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"slices"
-	"strconv"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"go.opentelemetry.io/otel/attribute"
@@ -54,11 +53,11 @@ func (*ErrCoverageMiss) Reason() string         { return domain.ErrReasonCoverag
 //
 //   - numscript re-resolution returns the bare miss (convertNumscriptError
 //     flattens the chain via errors.As), and a ProcessOrders failure feeds
-//     buildAuditFailure, which copies stableFacts() into the hash-chained
+//     buildAuditFailure, which copies FailureDetails() into the hash-chained
 //     AuditFailure.Facts. The snake_case keys were already in the audit.
 //   - planInvariantFailure returns the bare miss to applyProposal, which
 //     surfaces it wrapped in a domain.BusinessError. The carrier declares no
-//     stableFacts() of its own, so the context is read off the miss itself through
+//     FailureDetails() of its own, so the context is read off the miss itself through
 //     domain.PublicErrorDetails. That metadata used to reach the gRPC ErrorInfo;
 //     API error responses now use PublicDetails while the audit identity stays
 //     intact.
@@ -74,22 +73,17 @@ func (*ErrCoverageMiss) Reason() string         { return domain.ErrReasonCoverag
 //
 // The structured log emitted by coverageMiss keeps its own snake_case field
 // names — that is a log, not a wire payload.
-func (e *ErrCoverageMiss) stableFacts() map[string]string {
-	return map[string]string{
-		"attribute":    e.Attribute,
-		"canonicalHex": e.CanonicalHex,
-		"idHex":        e.IDHex,
-		"raftIndex":    strconv.FormatUint(e.RaftIndex, 10),
-	}
-}
-
-func (e *ErrCoverageMiss) failureCode() string { return e.Reason() }
-func (e *ErrCoverageMiss) FailureFacts() domain.FailureFacts {
-	return domain.NewFailureFacts(e.Reason(), e.failureCode(), e.stableFacts())
+func (e *ErrCoverageMiss) FailureDetails() *commonpb.FailureDetails {
+	return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_CoverageMiss{
+		CoverageMiss: &commonpb.CoverageMissDetails{
+			Attribute: &e.Attribute, CanonicalHex: &e.CanonicalHex,
+			IdHex: &e.IDHex, RaftIndex: &e.RaftIndex,
+		},
+	}}
 }
 
 // PublicDetails hides cache keys and Raft position from API error responses.
-// Error() retains diagnostic values. stableFacts() supplies the separate
+// Error() retains diagnostic values. FailureDetails() supplies the separate
 // authoritative, hash-chained AuditFailure through buildAuditFailure.
 func (*ErrCoverageMiss) PublicDetails() (string, map[string]string, bool) {
 	return "preload coverage miss", nil, true
