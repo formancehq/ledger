@@ -2,6 +2,7 @@
 -- bucket migrated with v2.4.10 already recorded the position that the
 -- logs_blocks fix took in v2.4.11, so the fix never ran on it. Apply it
 -- again only where the primary key is not already (ledger, previous).
+-- See docs/database/logs-blocks-primary-key-catchup.md.
 do $$
 	declare
 		pkey_name name;
@@ -19,6 +20,13 @@ do $$
 
 		if pkey_columns is not distinct from array['ledger', 'previous'] then
 			return;
+		end if;
+
+		-- The rebuild takes an ACCESS EXCLUSIVE lock on logs_blocks. Do not
+		-- wait forever behind the async block worker: keep a lock_timeout
+		-- set on the session, or use 30s until the end of the transaction.
+		if current_setting('lock_timeout') = '0' then
+			set local lock_timeout = '30s';
 		end if;
 
 		if pkey_name is not null then
