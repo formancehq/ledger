@@ -430,9 +430,21 @@ operator-docker-build tag='':
             --platform linux/amd64,linux/arm64 --push misc/operator
     fi
 
-# Build and push a PR operator image under one explicit tag without moving :latest.
-operator-docker-build-pr image:
-    docker buildx build -t '{{ image }}' --platform linux/amd64,linux/arm64 --push misc/operator
+# Build and push a PR operator image with GoReleaser under one explicit
+# `<repository>:pr-<num>-<sha7>` tag. It never touches :latest, a GitHub release
+# or the Helm charts. Needs GORELEASER_KEY and a Docker login to the registry.
+# Config: misc/operator/.goreleaser.pr.yml.
+operator-docker-build-pr image: (_assert-pr-image image)
+    #!/usr/bin/env bash
+    set -euo pipefail
+    image='{{ image }}'
+    export OPERATOR_IMAGE_REPOSITORY="${image%:*}"
+    export PR_IMAGE_TAG="${image##*:}"
+    cd misc/operator
+    # GITHUB_TOKEN is removed on purpose: a PR build must never reach the GitHub
+    # releases API, even if a release step were enabled by mistake.
+    env -u GITHUB_TOKEN -u GH_TOKEN \
+        goreleaser release --nightly --clean --config .goreleaser.pr.yml --skip=archive,release
 
 # Package and publish operator Helm charts to GHCR. Args are positional: version then suffix.
 operator-helm-publish version='' suffix='':
@@ -442,13 +454,38 @@ operator-helm-publish version='' suffix='':
 docker-build *ARGS:
     docker buildx build -t '{{ image_repository }}' --platform linux/amd64,linux/arm64 --push --build-arg BUILD_TAGS=kafka,nats,clickhouse,s3,azure,pyroscope {{ARGS}} .
 
-# Build and push a PR docker image under a single explicit tag (no `:latest`).
-# Used by the `Build-PR-Image` workflow job to publish
-# `{{ image_repository }}:pr-<num>-<sha7>` for smoke tests
-# before merge — keeps the same BUILD_TAGS set as `docker-build` so a
-# reviewer exercises the full optional-feature surface.
-docker-build-pr image:
-    docker buildx build -t '{{ image }}' --platform linux/amd64,linux/arm64 --push --build-arg BUILD_TAGS=kafka,nats,clickhouse,s3,azure,pyroscope .
+# Build and push the PR docker image with GoReleaser under a single explicit
+# `<repository>:pr-<num>-<sha7>` tag. It never touches `:latest`, `:nightly`, a
+# GitHub release or the Helm charts. Needs GORELEASER_KEY and a Docker login to
+# the registry. Used by the `Build-PR-Image` workflow job.
+#
+# .goreleaser.pr.yml includes the canonical .goreleaser.yml, so the PR image has
+# the same binaries and build tags as a release: kafka,nats,clickhouse,databricks,
+# s3,pyroscope. It does not include `azure`, unlike `just docker-build`.
+docker-build-pr image: (_assert-pr-image image)
+    #!/usr/bin/env bash
+    set -euo pipefail
+    image='{{ image }}'
+    export IMAGE_REPOSITORY="${image%:*}"
+    export PR_IMAGE_TAG="${image##*:}"
+    # GITHUB_TOKEN is removed on purpose: a PR build must never reach the GitHub
+    # releases API, even if a release step were enabled by mistake.
+    env -u GITHUB_TOKEN -u GH_TOKEN \
+        goreleaser release --nightly --clean --config .goreleaser.pr.yml --skip=archive,release
+
+# Refuse any PR image reference that is not `<repository>:pr-<num>-<sha7>`, so a
+# PR build cannot move `latest`, `nightly` or a release tag.
+[private]
+_assert-pr-image image:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    image='{{ image }}'
+    last="${image##*/}"
+    tag="${last#*:}"
+    if [[ "$last" != *:* ]] || ! [[ "$tag" =~ ^pr-[0-9]+-[0-9a-f]{7}$ ]]; then
+        echo "error: '$image' is not <repository>:pr-<num>-<sha7>" >&2
+        exit 1
+    fi
 
 # Docker builds are handled via Pulumi
 

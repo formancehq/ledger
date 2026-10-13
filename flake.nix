@@ -88,8 +88,6 @@
             jsonnet-bundler
             jq
             kubernetes-helm
-            # The PR image CI gate tests run in Repository Invariants.
-            nodejs_22
             python314
           ]) ++ (with pkgs-unstable; [
             protobuf_34
@@ -132,6 +130,7 @@
 
           # `just test-sdk-bigint` and tests/sdk contract probes.
           sdk = mkTaskShell [
+            pkgs.nodejs_22
             self.packages.${system}.speakeasy
           ];
 

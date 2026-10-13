@@ -1,65 +1,29 @@
-# PR image CI isolation
+# Label-triggered PR images
 
-`Default` owns the existing Dirty, test, build, coverage, and nightly-release
-jobs. Adding a PR label never starts or cancels this workflow. The same trigger
-change applies to `Repository Invariants`. Its PR triggers
-are `assigned`, `opened`, `synchronize`, and `reopened`; push and merge-group
-triggers remain unchanged.
+The `Default` and `Repository Invariants` workflows do not listen for PR label events. Labels added by review bots therefore do not restart or cancel normal validation.
 
-`PR Images` owns the optional `Build-PR-Image` job. Adding exactly
-`build-images` requests publication of the Ledger and Ledger Operator images.
-On assignment, open, reopen, or synchronize, an existing `build-images` label requests
-images for the new PR revision. An unrelated label skips the image workflow's
-jobs before they enter any concurrency group. It can still appear as a skipped
-run in Actions. The image workflow is not a required merge check.
+## Separate image workflow
 
-## Validation before publication
+`PR Images` builds and publishes Ledger and Ledger Operator images through GoReleaser. It runs independently of `Default`: it does not wait for tests or run them again. An image may therefore be available even when normal CI fails. Publishing an image does not validate the PR or authorize a merge.
 
-The old image job depended on ten jobs in `Default`: Dirty, Tests,
-Tests-Operator, Tests-E2E-Business, Tests-E2E-Cluster, Tests-Scenarios,
-Tests-Antithesis-Workload, Tests-Model, Tests-Schemathesis, and Build.
-`Wait-for-CI` preserves that dependency across workflows: it reads the newest
-`main.yml` PR run for the same PR number, head SHA, and base SHA, and requires
-every one of these jobs to finish with `success`. It does not run tests again.
-Coverage is not an image prerequisite, as before.
+- Adding `build-images` to a same-repository PR starts the image job.
+- Opening, assigning, reopening, or pushing to a PR with `build-images` still present also starts the job.
+- Other label events skip the image job before it joins concurrency, so review labels cannot cancel an active build.
+- Fork PRs do not run the publishing job.
+- A new eligible request cancels the previous image job for the same PR. Image concurrency is separate from normal CI.
 
-The wait checks every 60 seconds for at most one hour on a small GitHub-hosted
-runner. Failed, cancelled, skipped, missing, or timed-out prerequisites do not
-authorize publication. A cancelled run gets two polls for a replacement to appear.
-A newer failed CI run cannot fall back to an older
-successful run. Closing the PR, changing its head or base, or removing the
-label invalidates the request. The image job checks the PR again before
-checkout and registry login. Image publication itself is not transactional;
-a change after that final check can still finish publishing an image under
-the previous revision's SHA-pinned tag.
+The workflow checks out the exact PR head commit and publishes both images with `pr-<number>-<first-seven-head-SHA-characters>`. It respects the existing `IMAGE_REPOSITORY` and `OPERATOR_IMAGE_REPOSITORY` repository variables. Removing the label prevents subsequent requests; it does not revoke an image or stop an already-running job.
 
-Wait and publication jobs have separate concurrency groups from `Default`.
-A new image request can supersede an older image request; it cannot cancel CI.
-Image publication is restricted to PR branches in the same repository.
-Existing image repositories, build commands, action pins, and
-`pr-<number>-<head-sha7>` tags are preserved. No deployment is added.
+## Build and publication
 
-## Review and rollout
+GoReleaser builds the binaries and publishes Linux amd64 and arm64 images. Buildx remains its container builder, as required by the multiarchitecture Docker configuration. There is no separate direct-Docker PR build pipeline. The job requires the existing `GORELEASER_KEY` secret and the registry login.
 
-The example targets `release/v3.0`. Merge-required CI job names stay unchanged.
-The image checks move to a separate workflow and must not be added to required
-checks. Unlike a `workflow_run` solution, this PR-event workflow can be tried
-on a release-branch PR without first installing it on the default branch.
+Ledger inherits the canonical GoReleaser release builds, including the `databricks` tag. The previous direct-Docker PR recipe used `azure` instead. PR images now exercise the release feature set (`kafka,nats,clickhouse,databricks,s3,pyroscope`). The operator has its own GoReleaser PR configuration because its existing release image recipe uses Docker directly.
 
-The cross-workflow wait is the additional mechanism introduced by the split.
-Before organization-wide rollout, decide whether to share it in `formancehq/ci`
-or use the existing bot to dispatch only relevant label events. Repositories
-with no label-driven build or deployment need only remove `labeled` from CI.
-Repositories with deployments must also preserve their tested-revision gate.
+The PR configuration disables GitHub releases, and the recipe explicitly skips the release pipe and removes GitHub token environment variables. It publishes no `latest` image and invokes no Helm publishing recipe. The first authenticated run must confirm that the Pro nightly path does not attempt to update the shared GitHub nightly release. Both expected image references must resolve to non-empty digests before the job succeeds. PR images are for testing the requested commit.
 
-Validate the gate with the Nix-provided Node runtime:
+There are no custom JavaScript polling scripts and no additional Node dependency in the CI shell. Tests remain in the normal validation workflow; their job names and dependencies are unchanged.
 
-```bash
-nix develop .#ci --command node --test .github/scripts/pr-image-ci.test.cjs
-```
+## Validation and scope
 
-Live verification on a test PR must cover: CI running during unrelated label
-adds, `build-images` added before and after CI completes, a failing prerequisite,
-a new push with the label retained, label removal, and a cancelled/re-run CI.
-The invariants workflow executes the gate tests, including a prerequisite-list
-drift check against `Release-Latest`. Local mocked API tests do not prove GitHub's scheduling or live check behavior.
+This is a pilot for `release/v3.0`. Other branches and repositories retain their existing workflows. Local checks cover workflow syntax, label routing, the unchanged normal CI jobs, and the GoReleaser configuration. Actual authenticated multiarchitecture image publication requires a live `build-images` run; local validation alone does not establish that publication succeeded.
