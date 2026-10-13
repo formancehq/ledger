@@ -174,3 +174,138 @@ func TestMigrations(t *testing.T) {
 		))
 	}
 }
+
+func TestMigrationEnsureLogsBlocksCompositePrimaryKey(t *testing.T) {
+	t.Parallel()
+
+	migrationNames, err := bucket.WalkMigrations(bucket.MigrationsFS, func(entry fs.DirEntry) (*string, error) {
+		return pointer.For(entry.Name()), nil
+	})
+	require.NoError(t, err)
+	migrationIndex := slices.Index(migrationNames, "53-ensure-logs-blocks-composite-pkey")
+	require.NotEqual(t, -1, migrationIndex)
+
+	for _, testCase := range []struct {
+		name string
+		// skippedFix simulates a bucket migrated by v2.4.10, where
+		// 51-fix-logs-blocks-pkey-collision was recorded but never ran.
+		skippedFix bool
+	}{
+		{name: "fix already applied", skippedFix: false},
+		{name: "fix skipped", skippedFix: true},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := logging.TestingContext()
+			pgDatabase := srv.NewDatabase(t)
+			db, err := connect.OpenSQLDB(ctx, pgDatabase.ConnectionOptions())
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				require.NoError(t, db.Close())
+			})
+			require.NoError(t, system.Migrate(ctx, db))
+
+			const schema = "testbucket"
+			migrator := bucket.GetMigrator(db, schema)
+			for range migrationIndex {
+				require.NoError(t, migrator.UpByOne(ctx))
+			}
+
+			logsBlocks := bun.Ident(schema + ".logs_blocks")
+			if testCase.skippedFix {
+				_, err = db.ExecContext(ctx, "ALTER TABLE ? DROP CONSTRAINT logs_blocks_pkey", logsBlocks)
+				require.NoError(t, err)
+				_, err = db.ExecContext(ctx, "ALTER TABLE ? ADD PRIMARY KEY (previous)", logsBlocks)
+				require.NoError(t, err)
+			}
+
+			require.NoError(t, migrator.UpByOne(ctx))
+
+			var primaryKeyColumns []string
+			require.NoError(t, db.NewRaw(`
+				SELECT a.attname
+				FROM pg_constraint c
+				CROSS JOIN LATERAL unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord)
+				JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
+				WHERE c.conrelid = ?::regclass AND c.contype = 'p'
+				ORDER BY k.ord`, schema+".logs_blocks").Scan(ctx, &primaryKeyColumns))
+			require.Equal(t, []string{"ledger", "previous"}, primaryKeyColumns)
+
+			// Each ledger starts its block chain with previous = 0.
+			_, err = db.ExecContext(ctx, "INSERT INTO ? (ledger, previous) VALUES ('ledger0', 0), ('ledger1', 0)", logsBlocks)
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestMigrationEnsureLogsBlocksCompositePrimaryKeyLockTimeout(t *testing.T) {
+	t.Parallel()
+
+	migrationNames, err := bucket.WalkMigrations(bucket.MigrationsFS, func(entry fs.DirEntry) (*string, error) {
+		return pointer.For(entry.Name()), nil
+	})
+	require.NoError(t, err)
+	migrationIndex := slices.Index(migrationNames, "53-ensure-logs-blocks-composite-pkey")
+	require.NotEqual(t, -1, migrationIndex)
+
+	ctx := logging.TestingContext()
+	pgDatabase := srv.NewDatabase(t)
+	options := pgDatabase.ConnectionOptions()
+	// One connection, so the session lock_timeout below applies to the migrator.
+	options.MaxOpenConns = 1
+	options.MaxIdleConns = 1
+	db, err := connect.OpenSQLDB(ctx, options)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+	require.NoError(t, system.Migrate(ctx, db))
+
+	const schema = "testbucket"
+	migrator := bucket.GetMigrator(db, schema)
+	for range migrationIndex {
+		require.NoError(t, migrator.UpByOne(ctx))
+	}
+
+	logsBlocks := bun.Ident(schema + ".logs_blocks")
+	_, err = db.ExecContext(ctx, "ALTER TABLE ? DROP CONSTRAINT logs_blocks_pkey", logsBlocks)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, "ALTER TABLE ? ADD PRIMARY KEY (previous)", logsBlocks)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, "SET lock_timeout = '1s'")
+	require.NoError(t, err)
+
+	// Hold the lock that the async block worker takes while it inserts blocks.
+	holderDB, err := connect.OpenSQLDB(ctx, pgDatabase.ConnectionOptions())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, holderDB.Close())
+	})
+	holder, err := holderDB.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	_, err = holder.ExecContext(ctx, "LOCK TABLE ? IN ROW EXCLUSIVE MODE", logsBlocks)
+	require.NoError(t, err)
+
+	err = migrator.UpByOne(ctx)
+	require.ErrorContains(t, err, "lock timeout")
+
+	var primaryKeyColumns []string
+	primaryKeyQuery := `
+		SELECT a.attname
+		FROM pg_constraint c
+		CROSS JOIN LATERAL unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord)
+		JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
+		WHERE c.conrelid = ?::regclass AND c.contype = 'p'
+		ORDER BY k.ord`
+	require.NoError(t, db.NewRaw(primaryKeyQuery, schema+".logs_blocks").Scan(ctx, &primaryKeyColumns))
+	require.Equal(t, []string{"previous"}, primaryKeyColumns)
+
+	require.NoError(t, holder.Rollback())
+
+	require.NoError(t, migrator.UpByOne(ctx))
+	primaryKeyColumns = nil
+	require.NoError(t, db.NewRaw(primaryKeyQuery, schema+".logs_blocks").Scan(ctx, &primaryKeyColumns))
+	require.Equal(t, []string{"ledger", "previous"}, primaryKeyColumns)
+	require.ErrorIs(t, migrator.UpByOne(ctx), migrations.ErrAlreadyUpToDate)
+}
