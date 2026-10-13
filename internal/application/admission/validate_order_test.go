@@ -76,24 +76,45 @@ func TestValidateOrderRejectsInvalidUTF8BeforeProposal(t *testing.T) {
 	require.Error(t, validateOrder(order), "map keys must also be validated")
 }
 
-func TestValidateOrderUTF8BoundsNestedMessages(t *testing.T) {
+func TestValidateOrderUTF8HandlesDeeplyNestedMessages(t *testing.T) {
 	t.Parallel()
 	filter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{
 		LogId: &commonpb.LogIdCondition{Cond: &commonpb.UintCondition{}},
 	}}
-	for range maxOrderProtoDepth + 1 {
+	for range 1000 {
 		filter = &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_And{
 			And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{filter}},
 		}}
 	}
 	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 		Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
-			CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{Query: &commonpb.PreparedQuery{Filter: filter}},
+			CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{Query: &commonpb.PreparedQuery{
+				Name: "q", Target: commonpb.QueryTarget_QUERY_TARGET_LOGS, Filter: filter,
+			}},
 		},
 	}}}
-	var business *domain.BusinessError
-	require.ErrorAs(t, validateOrder(order), &business)
-	require.IsType(t, orderNestingTooDeep{}, business.Err)
+	require.True(t, validOrderUTF8(order.ProtoReflect()))
+	require.ErrorIs(t, validateOrder(order), domain.ErrFilterTooDeep)
+}
+
+func TestValidateOrderUTF8PreservesSupportedFilterDepth(t *testing.T) {
+	t.Parallel()
+	filter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{
+		LogId: &commonpb.LogIdCondition{Cond: &commonpb.UintCondition{}},
+	}}
+	for range domain.MaxFilterDepth - 1 {
+		filter = &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_And{
+			And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{filter}},
+		}}
+	}
+	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
+			CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{Query: &commonpb.PreparedQuery{
+				Name: "q", Target: commonpb.QueryTarget_QUERY_TARGET_LOGS, Filter: filter,
+			}},
+		},
+	}}}
+	require.NoError(t, validateOrder(order))
 }
 
 func TestValidateOrder_TransactionReferenceFactBound(t *testing.T) {

@@ -40,7 +40,8 @@ import (
 // the new state and commit — a different outcome for the same key. If it
 // over-froze, a retryable failure would be pinned forever.
 //
-// Three keyed failures sit in the delta:
+// Two frozen keyed failures sit in the delta; a third, retryable interruption
+// has no audited outcome:
 //   - frozenKey fails INSUFFICIENT_FUNDS (KindPrecondition, freezable). Its
 //     source is funded afterwards, so only the frozen outcome keeps the retry
 //     failing.
@@ -288,9 +289,10 @@ send [USD 10] (
 			Expect(info.Reason).To(Equal(domain.ErrReasonPreloadUnavailable))
 		})
 
-		It("audits every failure", func() {
-			// Premise guard: a failure rejected before the FSM leaves no audit
-			// entry, so the restore would have nothing to rebuild or skip.
+		It("audits frozen failures but not the retryable preload interruption", func() {
+			// The two definitive failures are restored from audit entries.
+			// PRELOAD_UNAVAILABLE returns before the audit path and must remain
+			// retryable under the same idempotency key.
 			entries, err := actions.ListAuditEntries(ctx, client, true)
 			Expect(err).To(Succeed())
 
@@ -300,7 +302,7 @@ send [USD 10] (
 			}
 			Expect(reasons).To(HaveKeyWithValue(frozenKey, commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS))
 			Expect(reasons).To(HaveKeyWithValue(execKey, commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR))
-			Expect(reasons).To(HaveKeyWithValue(retryableKey, commonpb.ErrorReason_ERROR_REASON_PRELOAD_UNAVAILABLE))
+			Expect(reasons).NotTo(HaveKey(retryableKey))
 		})
 
 		It("replays the frozen keys on the live node after funding their sources", func() {
