@@ -137,7 +137,13 @@ func WalkMigrations[T any](_fs MigrationFileSystem, transformer func(entry fs.Di
 			panic(err)
 		}
 
-		return int(fileAVersion - fileBVersion)
+		if fileAVersion != fileBVersion {
+			return int(fileAVersion - fileBVersion)
+		}
+
+		// Migrations run by position. Two directories share the 51 prefix,
+		// so break ties by name to keep their released order stable.
+		return strings.Compare(a.Name(), b.Name())
 	})
 
 	ret := make([]T, len(entries))
