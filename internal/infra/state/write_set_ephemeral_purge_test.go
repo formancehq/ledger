@@ -189,9 +189,11 @@ func TestPartitionEphemeralVolumes(t *testing.T) {
 	require.Equal(t, "clearing:tx1", result.purged[0].Key.Account)
 
 	require.Len(t, result.kept, 3)
-	newKeptAccounts := make([]string, 0, len(result.newKept))
-	for _, update := range result.newKept {
-		newKeptAccounts = append(newKeptAccounts, update.Key.Account)
+	newKeptAccounts := make([]string, 0, len(result.kept))
+	for _, update := range result.kept {
+		if isNewVolumeUpdate(update) {
+			newKeptAccounts = append(newKeptAccounts, update.Key.Account)
+		}
 	}
 	require.ElementsMatch(t, []string{"clearing:tx2", "unknown:addr"}, newKeptAccounts)
 	require.Empty(t, result.transient)

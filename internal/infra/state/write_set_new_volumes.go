@@ -29,20 +29,22 @@ type volumeSetKey struct {
 	Color   string
 }
 
-// makeNewKeptKeySet builds the set of already-classified persistent-new
-// (ledger, account, asset) tuples that survived past commit. Classification is
-// performed by partitionVolumes because it alone knows the account persistence
-// policy and can distinguish a persisted normal {0, 0} row from an
-// absent/purged cache cell.
-func makeNewKeptKeySet(newKept []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]) map[volumeSetKey]struct{} {
+// makeNewKeptKeySet builds the set of (ledger, account, asset, color) tuples
+// that were newly created AND survived past commit — persistent-new volumes.
+// Consumed by buildTouchedByLog.
+func makeNewKeptKeySet(kept []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]) map[volumeSetKey]struct{} {
 	set := make(map[volumeSetKey]struct{})
 
-	for i := range newKept {
+	for i := range kept {
+		if !isNewVolumeUpdate(kept[i]) {
+			continue
+		}
+
 		set[volumeSetKey{
-			Ledger:  newKept[i].Key.LedgerName,
-			Account: newKept[i].Key.Account,
-			Asset:   newKept[i].Key.Asset,
-			Color:   newKept[i].Key.Color,
+			Ledger:  kept[i].Key.LedgerName,
+			Account: kept[i].Key.Account,
+			Asset:   kept[i].Key.Asset,
+			Color:   kept[i].Key.Color,
 		}] = struct{}{}
 	}
 

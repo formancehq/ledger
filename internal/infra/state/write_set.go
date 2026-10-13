@@ -445,7 +445,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	// keeps ephemeral-heavy workloads from paying 2× bytes on the log
 	// payload — see EN-1422.
 	ephemeralSet, drainingSet := splitPurged(partResult.purged)
-	newKeptSet := makeNewKeptKeySet(partResult.newKept)
+	newKeptSet := makeNewKeptKeySet(partResult.kept)
 
 	slots := b.volumes.Slots()
 	b.purgedByLog = buildTouchedByLog(slots, drainingSet)
